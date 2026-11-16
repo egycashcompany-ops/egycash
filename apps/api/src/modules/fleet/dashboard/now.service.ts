@@ -691,7 +691,8 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
       days,
       ...(set.ids === undefined ? {} : { vehicleIds: set.ids }),
     });
-    return { days, stale: digest.stale, neverRead: digest.neverRead };
+    // The whole lists (the overview's line and the links), their counts and the ≤ 3 listed rows.
+    return { days, ...digest };
   }),
 
   // T3.1–T3.3, T3.5, T3.7 — the matrix and the cash / ATM cars, counted by the vehicles list.
@@ -857,20 +858,13 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     }),
   ),
 
-  // T1.10 — open notices missing ANY attachment (once each), its two parts beside it; the
-  // caller's own context, so the licence scans read as on /fleet/notices (R-25).
-  notices: section('notices', 'company+set', async (d) => {
-    const [summary, missingAny] = await Promise.all([
-      fleetNoticeService.summary({ status: 'open' }, d.ctx),
-      fleetNoticeService.missingAnyCount({}, d.ctx),
-    ]);
-    return {
-      open: summary.open,
-      missingAny,
-      missingLicences: summary.missingLicences,
-      missingCheckImage: summary.missingCheckImage,
-    };
-  }),
+  // T1.10 and «إخطارات ينقصها مرفق» — the open notices (their count, the two parts, the union
+  // missing ANY attachment, each once, and ≤ 6 of those), ONE read through the screen's own filter
+  // by the car's CURRENT branch (a notice with no car is the company view's only); the caller's own
+  // context, so the licence scans read as on /fleet/notices (R-25).
+  notices: section('notices', 'company+set', (d) =>
+    fleetNoticeService.dashboardDigest({ ...branchFilter(d) }, d.ctx),
+  ),
 
   // T1.9 — dealership rows still waiting for an amount (`state=pending` sends `pending=true`).
   dealershipPending: section('dealershipPending', 'company+set', async (d) => ({

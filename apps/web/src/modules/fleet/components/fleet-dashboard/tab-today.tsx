@@ -678,11 +678,12 @@ const WorkshopKpi = ({
           >
             {t('fleet.dash.now.oldest')}
             {/* The car's file is the vehicles screen's (fleetVehicle.view), not this section's
-                (fleetMaintenance.view): a link only with its own guard. */}
+                (fleetMaintenance.view): a link only with its own guard — and never to the file of
+                a car deleted since (as «الصيانة والورش» does). */}
             <CarChip
               code={oldest.code}
               link={
-                oldest.vehicleId === null || !can('fleetVehicle.view')
+                oldest.vehicleId === null || oldest.deleted || !can('fleetVehicle.view')
                   ? null
                   : links.vehicle(oldest.vehicleId, 'workshop.oldest')
               }

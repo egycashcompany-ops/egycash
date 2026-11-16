@@ -22,7 +22,8 @@ const maintenance = { visitStates: fn(), exitBreakdown: fn() };
 const accidents = { summaryOver: fn(), undatedCount: fn(), list: fn() };
 const receipts = { summaryOver: fn(), firstReceiptDate: fn() };
 const dealership = { summaryOver: fn() };
-const vehicles = { codesByIds: fn() };
+const vehicles = { findByIdsSystem: fn() };
+const types = { findByIdsSystem: fn() };
 const set = { vehicleSet: fn() };
 const settings = { resolve: fn() };
 const branches = { listAll: fn() };
@@ -33,6 +34,9 @@ vi.mock('../accidents/accident.service', () => ({ fleetAccidentService: accident
 vi.mock('../receipts/receipt.service', () => ({ fleetReceiptService: receipts }));
 vi.mock('../dealership/dealership.service', () => ({ fleetDealershipService: dealership }));
 vi.mock('../vehicles/vehicle.repository', () => ({ fleetVehicleRepository: vehicles }));
+vi.mock('../vehicle-types/vehicle-type.repository', () => ({
+  fleetVehicleTypeRepository: types,
+}));
 vi.mock('../vehicles/vehicle-set', () => ({
   vehicleSet: (...args: unknown[]) => set.vehicleSet(...args) as unknown,
   withVehicleFilterMemo: <T>(read: () => Promise<T>): Promise<T> => read(),
@@ -54,6 +58,18 @@ const GIZA = { ar: 'الجيزة', en: 'Giza' };
 const T1 = '650000000000000000000201';
 const OP1 = '650000000000000000000301';
 const V1 = '650000000000000000000001';
+const ARMOURED = { ar: 'مصفحة', en: 'Armoured' };
+/** The period's files as `summaryOver` sums them: remaining = 500 + 1200 − 400 + 0 − 400. */
+const PERIOD_SUMS = {
+  count: 3,
+  amountCollected: 500,
+  companyCost: 1200,
+  paidAmount: 400,
+  transferredIn: 0,
+  transferredOut: 400,
+  remaining: 900,
+};
+const OPEN_SUMS = { ...PERIOD_SUMS, count: 1, remaining: 700 };
 
 const ctxWith = (
   keys: readonly string[],
@@ -104,9 +120,7 @@ beforeEach(() => {
     { _id: B2, name: GIZA },
   ]);
   accidents.summaryOver.mockImplementation((q: { status?: string }) =>
-    Promise.resolve(
-      q.status === 'open' ? { count: 1, remaining: 700 } : { count: 3, remaining: 900 },
-    ),
+    Promise.resolve(q.status === 'open' ? { ...OPEN_SUMS } : { ...PERIOD_SUMS }),
   );
   accidents.undatedCount.mockResolvedValue(25);
   accidents.list.mockResolvedValue({
@@ -116,6 +130,7 @@ beforeEach(() => {
         vehicleId: V1,
         vehicleCode: null,
         occurredAt: day('2026-11-01'),
+        statement: 'اصطدام خلفي على الطريق الدائري',
         culprit: 'محمد',
         culpritEmployeeId: null,
         culpritEmployeeIds: [],
@@ -131,6 +146,8 @@ beforeEach(() => {
         vehicleId: null,
         vehicleCode: '777',
         occurredAt: day('2026-11-01'),
+        // A file the old book kept without a statement.
+        statement: '',
         culprit: 'طرف ثالث',
         culpritEmployeeId: 'e9',
         status: 'closed',
@@ -141,7 +158,8 @@ beforeEach(() => {
     ],
     meta: { page: 1, pageSize: 6, totalItems: 9, totalPages: 2 },
   });
-  vehicles.codesByIds.mockResolvedValue(new Map([[V1, '101']]));
+  vehicles.findByIdsSystem.mockResolvedValue([{ _id: V1, code: '101', typeId: T1 }]);
+  types.findByIdsSystem.mockResolvedValue([{ _id: T1, name: ARMOURED }]);
   receipts.summaryOver.mockResolvedValue({
     count: 7,
     cardTotal: 100.1,
@@ -180,7 +198,8 @@ const USES: Record<FleetDashboardPeriodSection, readonly Mock[]> = {
   visits: [maintenance.visitStates],
   exits: [maintenance.exitBreakdown],
   accidents: [accidents.summaryOver, accidents.undatedCount],
-  accidentList: [accidents.list, vehicles.codesByIds],
+  // The listed files' cars (code + make id), then their makes — one read each.
+  accidentList: [accidents.list, vehicles.findByIdsSystem, types.findByIdsSystem],
   opex: [receipts.summaryOver, receipts.firstReceiptDate],
   dealership: [dealership.summaryOver],
 };
@@ -514,7 +533,10 @@ describe('R2 — screen-shaped calls (D9)', () => {
       outTo: day(TODAY),
     });
     expect(accidents.undatedCount).toHaveBeenCalledWith({});
-    expect(dto.accidents).toEqual({ count: 3, open: 1, openRemaining: 700, undated: 25 });
+    // «مبالغ ملفات حوادث الفترة» = the period summary itself without its count: no other query.
+    const { count, ...totals } = PERIOD_SUMS;
+    expect(dto.accidents).toEqual({ count, open: 1, openRemaining: 700, undated: 25, totals });
+    expect(accidents.summaryOver).toHaveBeenCalledTimes(2);
   });
 
   it('a narrowed view leaves the undated note out (it belongs to no set)', async () => {
@@ -567,7 +589,9 @@ describe('R2 — the figures as their modules give them', () => {
           accidentId: 'a1',
           vehicleId: V1,
           code: '101',
+          typeName: ARMOURED,
           date: TODAY,
+          statement: 'اصطدام خلفي على الطريق الدائري',
           culprit: 'محمد',
           culpritEmployeeIds: [],
           status: 'open',
@@ -577,7 +601,9 @@ describe('R2 — the figures as their modules give them', () => {
           accidentId: 'a2',
           vehicleId: null,
           code: '777',
+          typeName: null,
           date: TODAY,
+          statement: '',
           culprit: 'طرف ثالث',
           culpritEmployeeIds: ['e9'],
           status: 'closed',
@@ -586,6 +612,39 @@ describe('R2 — the figures as their modules give them', () => {
       ],
       more: 7,
     });
+  });
+
+  it('a page of carless files reads no car and no make; a car of no named make has none', async () => {
+    accidents.list.mockResolvedValueOnce({
+      items: [
+        {
+          _id: 'a3',
+          vehicleId: null,
+          vehicleCode: '888',
+          occurredAt: day('2026-11-01'),
+          statement: 'خدش',
+          culprit: null,
+          status: 'open',
+          amountCollected: 0,
+          companyCost: 0,
+          paidAmount: 0,
+        },
+      ],
+      meta: { page: 1, pageSize: 6, totalItems: 1, totalPages: 1 },
+    });
+    vehicles.findByIdsSystem.mockResolvedValueOnce([]);
+    const dto = await fleetDashboardPeriodService.read(ctxWith(ALL_KEYS), NOW, parse({}));
+    expect(types.findByIdsSystem).not.toHaveBeenCalled();
+    expect(dto.accidentList?.rows[0]).toMatchObject({
+      code: '888',
+      typeName: null,
+      statement: 'خدش',
+    });
+    expect(dto.accidentList?.more).toBe(0);
+
+    types.findByIdsSystem.mockResolvedValueOnce([]);
+    const unnamed = await fleetDashboardPeriodService.read(ctxWith(ALL_KEYS), NOW, parse({}));
+    expect(unnamed.accidentList?.rows[0]).toMatchObject({ code: '101', typeName: null });
   });
 
   it('a section that throws is null and named; the rest answer', async () => {

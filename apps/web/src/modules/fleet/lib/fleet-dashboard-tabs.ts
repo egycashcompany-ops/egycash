@@ -125,13 +125,13 @@ export interface TabBadge {
 /**
  * «الحركة اليوم» carries the ready cars without a driver today (amber, plain at 0); «الصيانة والورش»
  * the cars that reached the service limit (red, and only when there are some — it hides at 0 and
- * with its section); «نظرة عامة» and «توزيع السيارات» have no count (the approved bar draws none);
- * the old tabs keep theirs.
+ * with its section); «نظرة عامة», «توزيع السيارات», «العدادات والكيلومترات» and «الحوادث ومطالبات
+ * التأمين» have no count (the approved bar draws none); «التراخيص» keeps its own.
  */
 export const tabBadges = (
   answers: DashboardAnswers,
 ): Partial<Record<FleetDashboardTab, TabBadge>> => {
-  const { now, period } = answers;
+  const { now } = answers;
   const badges: Partial<Record<FleetDashboardTab, TabBadge>> = {};
   if (now?.roster != null) {
     badges.today = { n: now.roster.unmanned, tone: now.roster.unmanned > 0 ? 'amber' : 'plain' };
@@ -144,7 +144,6 @@ export const tabBadges = (
   }
   const red = now?.maintenanceAlarm?.red;
   if (red !== undefined && red > 0) badges.maintenance = { n: red, tone: 'red' };
-  if (period?.accidents != null) badges.accidents = { n: period.accidents.count, tone: 'plain' };
   return badges;
 };
 

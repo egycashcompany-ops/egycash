@@ -20,6 +20,7 @@ import {
   type FleetDashboardPeriodQuery,
   type FleetDashboardPeriodSection,
   type FleetDashboardVehicleScopeDto,
+  type LocalizedString,
 } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
 import { hasPermission, type AuthContext } from '../../../shared/types';
@@ -30,6 +31,7 @@ import { DEALERSHIP_BACKFILL_FROM } from '../go-live/dealership-backfill-plan';
 import { fleetMaintenanceService } from '../maintenance/maintenance.service';
 import { fleetOdometerService } from '../odometer/odometer.service';
 import { fleetReceiptService } from '../receipts/receipt.service';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { vehicleSet, withVehicleFilterMemo } from '../vehicles/vehicle-set';
 import { dashboardContext, scopeBranchesOf, type DashboardContext } from './dashboard-context';
@@ -122,7 +124,10 @@ const periodSections = (
       // Undated files never enter a period; the company view names them («حوادث بلا تاريخ»).
       p.setNarrows ? Promise.resolve(null) : fleetAccidentService.undatedCount({}),
     ]);
-    return { count: all.count, open: open.count, openRemaining: open.remaining, undated };
+    // «مبالغ ملفات حوادث الفترة» — the period's files' sums (open AND closed, as they are now),
+    // the register's «الإحصائيات» over the same filter: `all` itself, no new query.
+    const { count, ...totals } = all;
+    return { count, open: open.count, openRemaining: open.remaining, undated, totals };
   }),
 
   // T10.1 — the accidents screen's own list, newest accident first, then «+M».
@@ -134,19 +139,30 @@ const periodSections = (
       sortBy: 'occurredAt',
       sortDir: 'desc',
     });
-    const codes = await fleetVehicleRepository.codesByIds([
+    // The listed files' cars (code and make id, deleted ones included — their files are history),
+    // then their makes: one read each, none when no file has a car.
+    const cars = await fleetVehicleRepository.findByIdsSystem([
       ...new Set(
         page.items.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)])),
       ),
     ]);
+    const carOf = new Map(cars.map((car) => [String(car._id), car]));
+    const typeIds = [...new Set(cars.map((car) => String(car.typeId)))];
+    const types =
+      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    const makes = new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
     const rows = page.items.map((doc) => {
       const vehicleId = doc.vehicleId == null ? null : String(doc.vehicleId);
+      const car = vehicleId === null ? undefined : carOf.get(vehicleId);
       return {
         accidentId: String(doc._id),
         vehicleId,
-        code: (vehicleId === null ? undefined : codes.get(vehicleId)) ?? doc.vehicleCode ?? '—',
+        code: car?.code ?? doc.vehicleCode ?? '—',
+        typeName: car?.typeId == null ? null : (makes.get(String(car.typeId)) ?? null),
         // A period's files are dated by construction (`from` bounds the accident day).
         date: doc.occurredAt === null ? p.range.from : ymdOf(doc.occurredAt),
+        // «البيان» verbatim — '' on a file the old book kept without one.
+        statement: doc.statement ?? '',
         culprit: doc.culprit ?? null,
         culpritEmployeeIds: culpritIdsOf({
           culpritEmployeeId: doc.culpritEmployeeId ?? null,

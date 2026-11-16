@@ -1,7 +1,15 @@
 // R-15's drawing as data: what each column of «الكيلومترات يومًا بيوم» is allowed to show.
 import { describe, expect, it } from 'vitest';
 import { type FleetDashboardKmBucketDto } from '@ecms/contracts';
-import { HATCH_LIFT, axisLabel, axisTop, bucketDays, kmChart } from './fleet-dashboard-km-chart';
+import {
+  HATCH_LIFT,
+  LABEL_EVERY_DAY,
+  axisLabel,
+  axisTicks,
+  bucketDays,
+  isFriday,
+  kmChart,
+} from './fleet-dashboard-km-chart';
 
 const TODAY = '2026-11-01';
 
@@ -84,7 +92,9 @@ describe('the R-15 columns', () => {
   it('keeps every column under the axis top', () => {
     for (const c of chart.columns) expect(c.solid + c.span + c.hatch).toBeLessThanOrEqual(100);
     expect(chart.max).toBeGreaterThanOrEqual(3000 + 1800);
-    expect(chart.ticks).toEqual([chart.max, (chart.max * 2) / 3, chart.max / 3, 0]);
+    // Round steps from 0 to the top, the top being the axis' max.
+    expect(chart.ticks[0]).toBe(0);
+    expect(chart.ticks[chart.ticks.length - 1]).toBe(chart.max);
   });
 
   it('opens the readout on the latest confirmed day', () => {
@@ -124,6 +134,68 @@ describe('the R-15 columns', () => {
     expect(longer.labels.map((l) => l.index)).toEqual([0, 7, 14, 21, 28, 31]);
     expect(month.labels[0]?.text).toBe('09/01');
     expect(month.today).toBeNull();
+  });
+
+  it('names every day of a short period, as the approved drawing does (11 days of «هذا الشهر»)', () => {
+    const eleven = Array.from({ length: 11 }, (_, i) =>
+      bucket(`2026-11-${String(i + 1).padStart(2, '0')}`),
+    );
+    const short = kmChart(
+      { buckets: eleven, average: 31_248 },
+      { from: '2026-11-01', to: '2026-11-11', granularity: 'day' },
+      '2026-11-11',
+    );
+    expect(short.labels.map((l) => l.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(LABEL_EVERY_DAY).toBe(16);
+    const sixteen = kmChart(
+      {
+        buckets: Array.from({ length: 17 }, (_, i) =>
+          bucket(`2026-09-${String(i + 1).padStart(2, '0')}`),
+        ),
+        average: null,
+      },
+      { from: '2026-09-01', to: '2026-09-17', granularity: 'day' },
+      TODAY,
+    );
+    // Above sixteen days the axis thins out again.
+    expect(sixteen.labels.map((l) => l.index)).toEqual([0, 7, 16]);
+  });
+});
+
+describe('the Friday of each day (the week\u2019s rest day, dimmed)', () => {
+  it('reads the weekday of the server\u2019s own day key, in UTC', () => {
+    expect(isFriday('2026-11-06')).toBe(true);
+    expect(isFriday('2026-11-07')).toBe(false);
+    expect(isFriday('2026-10-30')).toBe(true);
+    expect(isFriday('2026-10-29')).toBe(false);
+  });
+
+  it('flags the Fridays of the daily axis, an empty or a today column too', () => {
+    // WEEK: 10/27 … 11/01 — 10/30 is the only Friday.
+    expect(chart.columns.filter((c) => c.friday).map((c) => c.bucket.key)).toEqual(['2026-10-30']);
+    const friday = kmChart(
+      {
+        buckets: [
+          bucket('2026-11-06', { hasRows: false, confirmed: false, confirmedKm: 0 }),
+          bucket('2026-11-13', { confirmed: false, pending: 4 }),
+        ],
+        average: null,
+      },
+      { from: '2026-11-06', to: '2026-11-13', granularity: 'day' },
+      '2026-11-13',
+    );
+    expect(friday.columns.map((c) => c.friday)).toEqual([true, true]);
+    expect(friday.columns[1]?.current).toBe(true);
+  });
+
+  it('never flags a month bucket, whatever its first day is', () => {
+    // 2026-05-01 is a Friday: its month is still no Friday.
+    const months = kmChart(
+      { buckets: [bucket('2026-05'), bucket('2026-06')], average: null },
+      { from: '2026-05-01', to: '2026-06-30', granularity: 'month' },
+      TODAY,
+    );
+    expect(months.columns.map((c) => c.friday)).toEqual([false, false]);
   });
 });
 
@@ -185,12 +257,14 @@ describe('the monthly axis (above 31 days)', () => {
 });
 
 describe('the axis', () => {
-  it('rounds up to three equal steps of 1, 2, 2.5 or 5 × 10ⁿ', () => {
-    expect(axisTop(0)).toBe(0);
-    expect(axisTop(5800)).toBe(6000);
-    expect(axisTop(6496)).toBe(7500);
-    expect(axisTop(12)).toBe(15);
-    expect(axisTop(130_000)).toBe(150_000);
+  it('climbs in four or so round steps of 1, 2, 2.5 or 5 × 10ⁿ to the first at or over the value', () => {
+    expect(axisTicks(0)).toEqual([0]);
+    expect(axisTicks(5800)).toEqual([0, 2000, 4000, 6000]);
+    // The approved drawing: 34,998 (the average and its head room) under a 40,000 top.
+    expect(axisTicks(34_998)).toEqual([0, 10_000, 20_000, 30_000, 40_000]);
+    expect(axisTicks(12)).toEqual([0, 5, 10, 15]);
+    expect(axisTicks(130_000)).toEqual([0, 50_000, 100_000, 150_000]);
+    expect(axisTicks(100)).toEqual([0, 25, 50, 75, 100]);
   });
 
   it('writes a day as MM/DD and a month as YYYY/MM', () => {
@@ -205,6 +279,7 @@ describe('the axis', () => {
       TODAY,
     );
     expect(still.max).toBe(0);
+    expect(still.ticks).toEqual([0]);
     expect(still.columns[0]).toMatchObject({ empty: false, solid: 0, span: 0, hatch: 0 });
   });
 });

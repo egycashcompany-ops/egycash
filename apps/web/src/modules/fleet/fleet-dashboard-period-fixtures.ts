@@ -1,5 +1,5 @@
-// «لوحة تحكم الحركة» — the fixtures of the period tabs' specs (the four old ones and the period band of
-// «الصيانة والورش»): one R2 answer with every section
+// «لوحة تحكم الحركة» — the fixtures of the period specs («أرقام الفترة» and the period parts of the
+// three mixed panels): one R2 answer with every section
 // over «آخر 30 يومًا» (2026-10-03 … today 2026-11-01, by the day), the same over «هذه السنة» (by the
 // month), and the renderers that mount the real page (or one period tab alone) in the node test
 // environment over seeded caches — no DOM, no fetch.
@@ -9,7 +9,9 @@
 //   the average = the closed km of 10/03 … 10/30 ÷ 28 closed calendar days;
 //   visits.count = closed + open (CHECK-IN day, «أرقام الفترة»);
 //   Σ exits.byWorkType = Σ exits.byWorkshop = exits.count (EXIT day, «الصيانة والورش»);
-//   opex.total = card + custody (and the dealership figure is never added to it).
+//   opex.total = card + custody (and the dealership figure is never added to it);
+//   km.coverage.of = active − inWorkshop − joinedAfter, noDistance.cars = of − withReadings;
+//   accidents.totals.remaining = collected + company − paid + in − out (= the open files' rest).
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -39,6 +41,8 @@ import {
 } from './fleet-dashboard-fixtures';
 
 export const FROM_30 = '2026-10-03';
+const SPRINTER = { ar: 'سبرينتر', en: 'Sprinter' };
+const ATEGO = { ar: 'أتيجو', en: 'Atego' };
 export const WT_SERVICE = '650000000000000000000501';
 export const WT_BRAKES = '650000000000000000000502';
 export const WS_COMPANY = '650000000000000000000601';
@@ -116,7 +120,31 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     total: KM_TOTAL,
     invalidRows: 2,
     perVehicleAvg: KM_TOTAL / 38,
-    coverage: { withReadings: 38, of: 40 },
+    // 40 active cars count (none held in the workshop all period, none joined after it); 38 have a
+    // distance, the other two are 318 (no reading — never read at all) and 305 (only an open one).
+    coverage: { withReadings: 38, of: 40, active: 40, inWorkshop: 0, joinedAfter: 0 },
+    noDistance: { cars: 2, neverRead: 1, codes: ['305', '318'], neverReadCodes: ['318'] },
+    // The two rows to review, the oldest day first: to = from + km, km < 0.
+    invalidList: [
+      {
+        vehicleId: 'v154',
+        code: '154',
+        typeName: ATEGO,
+        date: '2026-10-11',
+        from: 143_905,
+        to: 134_950,
+        km: -8_955,
+      },
+      {
+        vehicleId: 'v207',
+        code: '207',
+        typeName: SPRINTER,
+        date: '2026-10-20',
+        from: 186_420,
+        to: 186_240,
+        km: -180,
+      },
+    ],
     confirmedThrough: '2026-10-30',
     closedDays: 28,
     average: CLOSED_KM / 28,
@@ -129,19 +157,20 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     ],
     byType: null,
     unregistered: UNREGISTERED_KM,
+    // Each car's make (one with no make named: nothing under its chip).
     top5: [
-      { vehicleId: 'v182', code: '182', km: 5140 },
-      { vehicleId: 'v207', code: '207', km: 4890 },
-      { vehicleId: 'v150', code: '150', km: 4760 },
-      { vehicleId: 'v295', code: '295', km: 4610 },
-      { vehicleId: 'v154', code: '154', km: 4420 },
+      { vehicleId: 'v182', code: '182', km: 5140, typeName: SPRINTER },
+      { vehicleId: 'v207', code: '207', km: 4890, typeName: SPRINTER },
+      { vehicleId: 'v150', code: '150', km: 4760, typeName: ATEGO },
+      { vehicleId: 'v295', code: '295', km: 4610, typeName: SPRINTER },
+      { vehicleId: 'v154', code: '154', km: 4420, typeName: ATEGO },
     ],
     bottom5: [
-      { vehicleId: 'v141', code: '141', km: 980, inWorkshopSince: '2026-10-23' },
-      { vehicleId: 'v199', code: '199', km: 1240, inWorkshopSince: null },
-      { vehicleId: 'v133', code: '133', km: 1905, inWorkshopSince: null },
-      { vehicleId: 'v118', code: '118', km: 2310, inWorkshopSince: null },
-      { vehicleId: 'v304', code: '304', km: 2480, inWorkshopSince: null },
+      { vehicleId: 'v141', code: '141', km: 980, inWorkshopSince: '2026-10-23', typeName: ATEGO },
+      { vehicleId: 'v199', code: '199', km: 1240, inWorkshopSince: null, typeName: SPRINTER },
+      { vehicleId: 'v133', code: '133', km: 1905, inWorkshopSince: null, typeName: null },
+      { vehicleId: 'v118', code: '118', km: 2310, inWorkshopSince: null, typeName: SPRINTER },
+      { vehicleId: 'v304', code: '304', km: 2480, inWorkshopSince: null, typeName: ATEGO },
     ],
     withoutReadings: [
       { vehicleId: 'v318', code: '318', reason: 'noRow' },
@@ -204,11 +233,29 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     ],
     unregistered: 2,
   },
-  accidents: { count: 4, open: 2, openRemaining: 9800, undated: 25 },
+  accidents: {
+    count: 4,
+    open: 2,
+    openRemaining: 9800,
+    undated: 25,
+    // The four files as their amounts stand now (open AND closed):
+    // 12,000 + 4,500 − 7,200 + 1,000 − 500 = 9,800 — the open files' 6,500 + 3,300 (closed owe 0).
+    totals: {
+      amountCollected: 12000,
+      companyCost: 4500,
+      paidAmount: 7200,
+      transferredIn: 1000,
+      transferredOut: 500,
+      remaining: 9800,
+    },
+  },
   accidentList: {
+    // Newest first; each with its «بيان» as recorded and its car's make (the old-book file has none).
     rows: [
       {
         accidentId: 'a1',
+        typeName: SPRINTER,
+        statement: 'اصطدام خلفي أثناء الوقوف في إشارة شارع الهرم',
         vehicleId: 'v207',
         code: '207',
         date: '2026-10-27',
@@ -219,6 +266,8 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       },
       {
         accidentId: 'a2',
+        typeName: ATEGO,
+        statement: 'احتكاك جانبي مع ميكروباص أجرة عند الدوران',
         vehicleId: 'v154',
         code: '154',
         date: '2026-10-27',
@@ -229,6 +278,8 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       },
       {
         accidentId: 'a3',
+        typeName: SPRINTER,
+        statement: 'كسر المرآة الجانبية اليمنى أثناء الدخول إلى الجراج',
         vehicleId: 'v182',
         code: '182',
         date: '2026-10-14',
@@ -239,6 +290,8 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       },
       {
         accidentId: 'a4',
+        typeName: null,
+        statement: '',
         vehicleId: null,
         code: '295',
         date: '2026-10-06',

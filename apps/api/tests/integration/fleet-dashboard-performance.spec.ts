@@ -102,7 +102,16 @@ const PLAN = { r1: 45, r2: 15 };
 // R2: «أرقام الفترة»'s visits shrink to ONE `$group` (was a `$facet` + the catalog names + the cars
 // — −2), and the exits grow from one count into the exit-day breakdown: ONE `$facet` + the catalog
 // names + the cars + ONE vehicle-types read for the ranked cars' makes (+3) — 20.
-const CEILING = { r1: 71, r2: 20 };
+// «العدادات والكيلومترات» + «الحوادث ومطالبات التأمين» (build-ka): R1 69 → 68 measured — the notices
+// are ONE read of the open notices (`dashboardDigest`), not the screen's two full reads (−1 here,
+// with no notice in the fixture; −3 with notices on cars and drivers, +1 for their rows' makes),
+// and «بلا قراءة حديثة / لم تُقرأ أبدًا» name their ≤ 3 rows with ONE vehicle-types read, asked
+// only when a car is listed (+1, none here) — 68 + that 1 + the two of the line above: 71.
+// R2 20 → 22 measured: the km names its ranked and listed cars by their makes whatever the branch
+// (+1 types read) and «حوادث الفترة» names its rows' makes (+1 types read); «لم تُقرأ أبدًا» among
+// the cars with no distance is ONE `latestChainDates`, asked only when a car of the set has no
+// distance (+1, none here) — 23.
+const CEILING = { r1: 71, r2: 23 };
 /**
  * R2 narrowed by a type and car codes: the same sections plus the set's own resolution. The six
  * modules resolve the filter as their screens do, but inside one read each narrowing is asked of
@@ -113,8 +122,10 @@ const CEILING = { r1: 71, r2: 20 };
  * own code resolution for that count (the visits list resolves codes as its screen does, live cars
  * only — not through the registry memo). 24 with «الصيانة والورش»: the same +1 as R2 above (the
  * ranked cars' makes; the visits' names and cars moved into the exit breakdown, not added).
+ * 26 measured with «العدادات والكيلومترات» + «الحوادث ومطالبات التأمين» (the same two makes reads as
+ * R2 above); 27 with the conditional `latestChainDates` of the cars with no distance.
  */
-const CEILING_FILTERED_R2 = 24;
+const CEILING_FILTERED_R2 = 27;
 
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;

@@ -5,7 +5,8 @@
 // line's first list, none when there is no exact list); the hub's lines open the tab that shows the
 // same figure — keeping the page's own filters, never a period of their own — or the register; the
 // month card is «هذا الشهر» whatever the page's filters say, and links over its own read's echo; the
-// company-wide figures wear «الشركة كلها» only while the rest are narrowed; nothing the owner ruled
+// company-wide figures wear «الشركة كلها» only while the rest are narrowed (the notices follow the
+// car's branch, so their line never does); nothing the owner ruled
 // out is drawn. It also carries the pins of the retired «التنبيهات» tab that still hold.
 //
 // Rendered through the real page over seeded caches (`renderDashboard`), the fleet-dashboard way; the
@@ -80,7 +81,8 @@ const MONTH: FleetDashboardPeriodDto = {
   km: { ...need(PERIOD_DTO.km), total: 4896 },
   // The month's exits (by exit day): the overview draws their count; the rest is the tab's.
   exits: { ...need(PERIOD_DTO.exits), count: 21 },
-  accidents: { count: 4, open: 2, openRemaining: 1000, undated: 0 },
+  // The month's accidents: the overview draws their count alone.
+  accidents: { ...need(PERIOD_DTO.accidents), count: 4 },
   opex: { card: 9000, custody: 3500, fuel: 8200, total: 12500, count: 40, dataFrom: null },
   unavailable: [],
 };
@@ -603,8 +605,10 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
   });
 
   it('draws no foot for a tab the reader cannot see', () => {
-    // «الحوادث» is not in the bar (no accident section): its card keeps the fines line, no foot.
+    // «الحوادث ومطالبات التأمين» is not in the bar (none of its four parts: the open files, the
+    // notices, the period's accidents and their list): its card keeps the fines line, no foot.
     const noAccidents = page('/fleet?tab=overview', {
+      now: { ...NOW, accidentsOpen: null, notices: null },
       period: { ...MONTH, accidents: null, accidentList: null },
     });
     expect(noAccidents).not.toContain('data-dash-hub-foot="incidents"');
@@ -890,6 +894,25 @@ describe('«نظرة عامة» — R1 on its way or failed costs only R1’s pa
 // ── (f, g, h, i) Who sees what, and what is never drawn ───────────────────────────────────────
 
 describe('«نظرة عامة» — scope, readers and the ruled-out words', () => {
+  it('opens the notices of the figures’ branch: the line and its cheque figure carry it', () => {
+    const one = row(
+      page('/fleet?tab=overview', { now: { ...NOW, branchId: B1 } }),
+      'noticesMissing',
+    );
+    expect(one).not.toContain('data-company-wide');
+    expect(hrefOf(one, 'notices.missingAny')).toEqual([`/fleet/notices?status=open&branch=${B1}`]);
+    expect(hrefOf(one, 'notices.missingCheckImage')).toEqual([
+      `/fleet/notices?status=open&checkImage=missing&branch=${B1}`,
+    ]);
+    const several = row(
+      page('/fleet?tab=overview', { now: { ...NOW, scopeBranches: [CAIRO_BRANCH, GIZA_BRANCH] } }),
+      'noticesMissing',
+    );
+    expect(hrefOf(several, 'notices.missingAny')).toEqual([
+      `/fleet/notices?status=open&branch=${B1},${GIZA_BRANCH.id}`,
+    ]);
+  });
+
   it('has no count on its own pill', () => {
     expect(page()).not.toContain('data-dash-badge="overview"');
   });
@@ -899,15 +922,17 @@ describe('«نظرة عامة» — scope, readers and the ruled-out words', () 
     const several = page('/fleet?tab=overview', {
       now: { ...NOW, scopeBranches: [CAIRO_BRANCH, GIZA_BRANCH] },
     });
-    for (const id of ['fuelCardExpired', 'fuelRequests', 'fuelLow', 'noticesMissing', 'custody']) {
+    for (const id of ['fuelCardExpired', 'fuelRequests', 'fuelLow', 'custody']) {
       expect(row(several, id), id).toContain('data-company-wide="true"');
     }
+    // The notices follow the car's branch (the server narrows them): no tag on their line.
     for (const id of [
       'maintenanceRed',
       'vehicleLicenceExpired',
       'driverLicenceExpired',
       'crewAbsent',
       'dealershipPending',
+      'noticesMissing',
       'noReading',
     ]) {
       expect(row(several, id), id).not.toContain('data-company-wide');

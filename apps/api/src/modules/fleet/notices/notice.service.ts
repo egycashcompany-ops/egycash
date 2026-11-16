@@ -2,7 +2,10 @@
 // set-up. Audited like every Fleet record.
 import { Types, type FilterQuery } from 'mongoose';
 import {
+  FLEET_DASHBOARD_NOTICE_ROWS,
+  ymdOf,
   type CreateFleetNotice,
+  type FleetDashboardNoticeRowDto,
   type FleetLicenseImageDto,
   type FleetNoticeDto,
   type FleetNoticeImageKind,
@@ -12,6 +15,7 @@ import {
   type FleetNoticesSummaryQuery,
   type FleetNoticeTemplate,
   type ListFleetNoticesQuery,
+  type LocalizedString,
   type Paginated,
   type SaveFleetNoticeSettings,
   type SetFleetNoticeDone,
@@ -22,7 +26,9 @@ import { fileService, type FileDoc, type UploadedBinary } from '../../../platfor
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
 import { type AuthContext, hasPermission } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
-import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
+import { fleetVehicleRepository, intersectVehicleIds } from '../vehicles/vehicle.repository';
+import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
 import { fleetNoticeRepository } from './notice.repository';
 import { fleetNoticeSettingsRepository } from './notice-settings.repository';
@@ -36,6 +42,8 @@ import { type FleetNoticeSettingsDoc } from './notice-settings.model';
  */
 export type FleetNoticeWithCode = FleetNoticeDoc & {
   vehicleCode: string | null;
+  /** The car's make id — internal (the dashboard names its rows by it); `toNoticeDto` never sends it. */
+  vehicleTypeId: string | null;
   vehicleLicense: FleetNoticeLicenceSource;
   driverLicense: FleetNoticeLicenceSource;
   vehicleLicenseOnFile: boolean;
@@ -60,7 +68,14 @@ const IMAGE_NAME: Record<FleetNoticeImageKind, string> = {
 /** The day after — a «to» date counts its whole day. */
 const dayAfter = (day: Date): Date => new Date(day.getTime() + 24 * 60 * 60 * 1000);
 
-/** The notices table's filters, as one database filter. */
+/**
+ * The notices table's filters, as one database filter.
+ *
+ * The car half: the codes the reader named intersected with the vehicle set — «النوع / التشغيل /
+ * الفرع», by the car's CURRENT registry facts (`resolveVehicleFilterIds`, deleted cars included,
+ * as every other register resolves it). A notice with no car has no type, operation or branch, so
+ * once a set is asked it drops out; `[]` (a reach with no branch) narrows to nothing.
+ */
 const noticeFilter = async (
   query: FleetNoticesSummaryQuery,
 ): Promise<FilterQuery<FleetNoticeDoc>> => {
@@ -70,9 +85,19 @@ const noticeFilter = async (
     ...(query.template === undefined ? [] : [query.template]),
   ];
   if (templates.length > 0) filter.template = { $in: templates };
-  if (query.vehicleCodes !== undefined) {
-    const ids = await fleetVehicleRepository.idsByCodes(query.vehicleCodes);
-    filter.vehicleId = { $in: ids.map((id) => new Types.ObjectId(id)) };
+  const [byCode, bySet] = await Promise.all([
+    query.vehicleCodes === undefined
+      ? Promise.resolve(undefined)
+      : fleetVehicleRepository.idsByCodes(query.vehicleCodes),
+    resolveVehicleFilterIds({
+      typeIds: query.typeIds,
+      operationIds: query.operationIds,
+      branchIds: query.branchIds,
+    }),
+  ]);
+  const vehicleIds = intersectVehicleIds(byCode, bySet);
+  if (vehicleIds !== undefined) {
+    filter.vehicleId = { $in: vehicleIds.map((id) => new Types.ObjectId(id)) };
   }
   if (query.noticeNumber !== undefined && query.noticeNumber !== '') {
     filter.noticeNumber = {
@@ -222,12 +247,30 @@ const withCodes = async (
       doc.driverLicenseImage != null ? 'notice' : driverLicenseOnFile ? 'registry' : null;
     return Object.assign(doc, {
       vehicleCode: vehicle?.code ?? null,
+      vehicleTypeId: vehicle?.typeId == null ? null : String(vehicle.typeId),
       vehicleLicense,
       driverLicense,
       vehicleLicenseOnFile,
       driverLicenseOnFile,
     });
   });
+};
+
+/** Missing ANY attachment: a licence image (by its source rule) or the cheque image. */
+const missingAny = (doc: FleetNoticeWithCode): boolean =>
+  doc.vehicleLicense === null || doc.driverLicense === null || doc.checkImage == null;
+
+/** «إخطارات ينقصها مرفق»'s order: notice date asc (none last), then recorded asc, then the id. */
+const oldestNoticeFirst = (a: FleetNoticeWithCode, b: FleetNoticeWithCode): number => {
+  const dateA = a.noticeDate?.getTime() ?? null;
+  const dateB = b.noticeDate?.getTime() ?? null;
+  if (dateA !== dateB) {
+    if (dateA === null) return 1;
+    if (dateB === null) return -1;
+    return dateA - dateB;
+  }
+  const created = a.createdAt.getTime() - b.createdAt.getTime();
+  return created !== 0 ? created : String(a._id).localeCompare(String(b._id));
 };
 
 class FleetNoticeService {
@@ -298,9 +341,59 @@ class FleetNoticeService {
    */
   async missingAnyCount(query: FleetNoticesSummaryQuery, ctx?: AuthContext): Promise<number> {
     const docs = await this.liveWithCodes({ ...query, status: 'open' }, ctx);
-    return docs.filter(
-      (doc) => doc.vehicleLicense === null || doc.driverLicense === null || doc.checkImage == null,
-    ).length;
+    return docs.filter(missingAny).length;
+  }
+
+  /**
+   * T1.10 and «إخطارات ينقصها مرفق» — the dashboard's notices in ONE read of the open notices the
+   * filters leave (`status` is always `open`): `summary`'s open count and two parts, and
+   * `missingAnyCount`'s union, by their own rules over the same `withCodes(ctx)` (a licence the
+   * reader may not open counts as missing, as the screen shows it), with at most
+   * FLEET_DASHBOARD_NOTICE_ROWS of the missing-any notices — the oldest notice date first, a notice
+   * with no date last (a database sort would put it first), then the oldest recorded, then the id.
+   * The rows' makes are one read of the few types their cars carry, none when no row has a car.
+   */
+  async dashboardDigest(
+    query: FleetNoticesSummaryQuery,
+    ctx?: AuthContext,
+  ): Promise<{
+    open: number;
+    missingAny: number;
+    missingLicences: number;
+    missingCheckImage: number;
+    rows: FleetDashboardNoticeRowDto[];
+  }> {
+    const docs = await this.liveWithCodes({ ...query, status: 'open' }, ctx);
+    const missing = docs.filter(missingAny);
+    const listed = [...missing].sort(oldestNoticeFirst).slice(0, FLEET_DASHBOARD_NOTICE_ROWS);
+    const typeIds = [
+      ...new Set(listed.flatMap((doc) => (doc.vehicleTypeId === null ? [] : [doc.vehicleTypeId]))),
+    ];
+    const types =
+      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    const makes = new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
+    return {
+      open: docs.length,
+      missingAny: missing.length,
+      missingLicences: docs.filter(
+        (doc) => doc.vehicleLicense === null || doc.driverLicense === null,
+      ).length,
+      missingCheckImage: docs.filter((doc) => doc.checkImage == null).length,
+      rows: listed.map((doc) => ({
+        noticeId: String(doc._id),
+        template: doc.template,
+        vehicleId: stringOrNull(doc.vehicleId),
+        code: doc.vehicleCode,
+        typeName: doc.vehicleTypeId === null ? null : (makes.get(doc.vehicleTypeId) ?? null),
+        noticeNumber: doc.noticeNumber ?? null,
+        noticeDate: doc.noticeDate == null ? null : ymdOf(doc.noticeDate),
+        missing: {
+          vehicleLicense: doc.vehicleLicense === null,
+          driverLicense: doc.driverLicense === null,
+          checkImage: doc.checkImage == null,
+        },
+      })),
+    };
   }
 
   async get(id: string, ctx?: AuthContext): Promise<FleetNoticeWithCode> {

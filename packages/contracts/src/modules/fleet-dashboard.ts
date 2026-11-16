@@ -1,16 +1,19 @@
 // «لوحة تحكم الحركة» — the fleet module's home (/fleet), Phase 1.
 //
-// Two reads feed ten tabs, in the strip's order (FLEET_DASHBOARD_TABS): the four rebuilt tabs
-// «نظرة عامة» (overview), «الحركة اليوم» (today), «توزيع السيارات» (distribution) and
-// «الصيانة والورش» (maintenance) — the last two rebuilt in place, under their old keys, so every old
-// link opens the new body — then the six old tabs, each standing where its rebuilt replacement will
+// Two reads feed nine tabs, in the strip's order (FLEET_DASHBOARD_TABS): the six rebuilt tabs
+// «نظرة عامة» (overview), «الحركة اليوم» (today), «توزيع السيارات» (distribution),
+// «الصيانة والورش» (maintenance), «العدادات والكيلومترات» (km) and «الحوادث ومطالبات التأمين»
+// (accidents) — the last four rebuilt in place, under their old keys, so every old link opens the
+// new body («ترتيب السيارات» lives inside «العدادات والكيلومترات» now: a link to the retired
+// `ranking` opens `km`) — then the three old tabs, each standing where its rebuilt replacement will
 // stand and drawn as before until it is rebuilt:
 //   · R1 `GET /fleet/dashboard/now`    — the state of the fleet NOW, one Cairo `today`;
 //   · R2 `GET /fleet/dashboard/period` — a period's figures, a preset or a custom range. The overview
 //     and «توزيع السيارات» also read R2 for «هذا الشهر» on their own (never the page filters) — the
 //     'month' read.
-// FLEET_DASHBOARD_TAB_READS says which read(s) each tab draws. «الصيانة والورش» is the first MIXED
-// tab: an R1 «الآن» band and an R2 band under the page filters, each with its own loading and error.
+// FLEET_DASHBOARD_TAB_READS says which read(s) each tab draws. «الصيانة والورش», «العدادات
+// والكيلومترات» and «الحوادث ومطالبات التأمين» are MIXED tabs: R1 «الآن» parts and R2 parts under
+// the page filters, each read with its own loading and error.
 // The server resolves every date (R-01) and echoes it; the browser builds every label, chip and link
 // from that echo, never from its own clock. Every section is NULLABLE: `null` is "the reader may not
 // see it" or, when it is also named in `unavailable`, "its source failed" — never a zero.
@@ -24,7 +27,9 @@ import { listQuery, objectId } from '../common/index.js';
 import { addDaysYmd, daysBetweenYmd, isYmd, ymdOf } from '../common/cairo-date.js';
 import {
   type FleetAccidentStatus,
+  type FleetAccidentTotalsDto,
   type FleetDriverUnavailableReason,
+  type FleetNoticeTemplate,
   vehicleCodesQuery,
 } from './fleet.js';
 
@@ -32,11 +37,12 @@ import {
 
 /**
  * The strip, in its visible order: «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» ·
- * «الصيانة والورش» · «الكيلومترات» · «ترتيب السيارات» · «الحوادث» · «أرقام الفترة» · «ملخصات» ·
- * «التراخيص». `overview` and `today` replaced the old `alerts` and `now` (a link to either opens its
- * replacement); `distribution` and `maintenance` were rebuilt under their own keys (an old link opens
- * the new body); the other six are the old tabs, unchanged, each where its rebuilt replacement will
- * stand.
+ * «الصيانة والورش» · «العدادات والكيلومترات» · «الحوادث ومطالبات التأمين» · «أرقام الفترة» ·
+ * «ملخصات» · «التراخيص». `overview` and `today` replaced the old `alerts` and `now` (a link to
+ * either opens its replacement); `distribution`, `maintenance`, `km` and `accidents` were rebuilt
+ * under their own keys (an old link opens the new body); the old `ranking` («ترتيب السيارات») is
+ * retired — its top and bottom five live in «العدادات والكيلومترات», and a link to it opens `km`. The
+ * other three are the old tabs, unchanged, each where its rebuilt replacement will stand.
  */
 export const FLEET_DASHBOARD_TABS = [
   'overview',
@@ -44,7 +50,6 @@ export const FLEET_DASHBOARD_TABS = [
   'distribution',
   'maintenance',
   'km',
-  'ranking',
   'accidents',
   'period',
   'summaries',
@@ -65,20 +70,20 @@ export const FLEET_DASHBOARD_TAB_READS: Readonly<
   today: ['now'],
   distribution: ['now', 'month', 'web'],
   maintenance: ['now', 'period'],
-  km: ['period'],
-  ranking: ['period'],
-  accidents: ['period'],
+  km: ['now', 'period'],
+  accidents: ['now', 'period'],
   period: ['period'],
   summaries: ['now', 'web'],
   licences: ['now'],
 });
 
 /**
- * The four old tabs drawn under the page filter bar (the old `PeriodTab` wrapper), read from R2
- * alone — kept until each one is rebuilt. «الصيانة والورش» left them: it draws the same page filter
- * bar inside its body, between its «الآن» band (R1) and its period band (R2).
+ * The old tab drawn under the page filter bar (the old `PeriodTab` wrapper), read from R2 alone —
+ * «أرقام الفترة», kept until it is rebuilt. The MIXED tabs left it: «الصيانة والورش» and
+ * «الحوادث ومطالبات التأمين» draw the same page filter bar inside their body, between their «الآن»
+ * band (R1) and their period band (R2); «العدادات والكيلومترات» draws it at the top of its body.
  */
-export const FLEET_DASHBOARD_PERIOD_TABS = ['period', 'km', 'ranking', 'accidents'] as const;
+export const FLEET_DASHBOARD_PERIOD_TABS = ['period'] as const;
 
 export const FLEET_DASHBOARD_PRESETS = [
   'thisMonth',
@@ -100,10 +105,24 @@ export const FLEET_DASHBOARD_RECENT_ROWS = 8;
 export const FLEET_DASHBOARD_TODAY_ROWS = 8;
 /** T4.4: licence rows listed before «+N». */
 export const FLEET_DASHBOARD_LICENCE_ROWS = 6;
-/** T10.1: accident rows listed before «+M». */
+/** «حوادث الفترة» (`accidentList.rows`): accident rows listed before «عرض الباقي (N) في السجل». */
 export const FLEET_DASHBOARD_ACCIDENT_ROWS = 6;
-/** Rows of a ranking: the old km tab's, and «أكثر السيارات دخولًا للورشة» (`exits.topVehicles`). */
+/**
+ * «إخطارات ينقصها مرفق» (`notices.rows`): notice rows listed before «و N أخرى». Same number as the
+ * accident rows, but a separate rule.
+ */
+export const FLEET_DASHBOARD_NOTICE_ROWS = 6;
+/**
+ * Rows of a ranking: «العدادات والكيلومترات»'s top and bottom five (`km.top5` / `km.bottom5`), and
+ * «أكثر السيارات دخولًا للورشة» (`exits.topVehicles`).
+ */
 export const FLEET_DASHBOARD_RANK_ROWS = 5;
+/**
+ * «استثناءات قراءات العدادات»: rows of EACH group («بلا قراءة حديثة» `noReading.staleRows`,
+ * «لم تُقرأ أبدًا» `noReading.neverReadRows`, «قراءات تحتاج مراجعة» `km.invalidList`) before
+ * «و N أخرى في القائمة الكاملة».
+ */
+export const FLEET_DASHBOARD_EXCEPTION_ROWS = 3;
 /** «إنذارات الصيانة بالكيلومتر»: alarm rows listed before «كل إنذارات الصيانة (N)». */
 export const FLEET_DASHBOARD_ALARM_ROWS = 8;
 /** «أطول بقاء في الورشة الآن»: open visits listed before «كل السيارات في الورشة (N)». */
@@ -491,15 +510,23 @@ export const FLEET_DASHBOARD_TAB_SECTIONS: Readonly<
   ],
   summaries: ['fuelCharging', 'custodyFund', 'accidentsOpen', 'violationsYear'],
   period: ['km', 'visits', 'accidents', 'opex', 'dealership'],
-  km: ['km'],
-  ranking: ['km'],
+  /**
+   * «العدادات والكيلومترات» (the old «الكيلومترات» and «ترتيب السيارات» in one body): the period's km
+   * (R2) and the cars with no recent reading now (R1), both under `fleetOdometer.view`.
+   */
+  km: ['km', 'noReading'],
   /**
    * «الصيانة والورش», each KPI under its own gate: «الآن» (alarms, the workshop, the dealership's
    * value-less rows) and the period by EXIT day (`exits`). A dealership-only or odometer-only reader
    * sees the tab with that part alone.
    */
   maintenance: ['maintenanceAlarm', 'workshop', 'dealershipPending', 'exits'],
-  accidents: ['accidents', 'accidentList'],
+  /**
+   * «الحوادث ومطالبات التأمين», each part under its own gate: «الآن» (the open files, the insurance
+   * notices) and the period by ACCIDENT day (the count, the money, the list). A notices-only reader
+   * sees the tab with the notices alone; an accidents-only reader sees it without them.
+   */
+  accidents: ['accidentsOpen', 'notices', 'accidents', 'accidentList'],
 });
 
 /**
@@ -592,11 +619,22 @@ export interface FleetDashboardNowDto {
   fuelCharging: FleetDashboardNowFuelChargingDto | null;
   recentWorkshop: FleetDashboardRecentVisitDto[] | null;
   recentAccidents: FleetDashboardRecentAccidentDto[] | null;
+  /**
+   * The open notices — the notices screen's own `status=open` filter, over the cars of the reader's
+   * scope by the car's CURRENT branch (a notice with no car counts in the company view only).
+   * `missingAny` = missing ANY attachment (a notice missing both counts once).
+   */
   notices: {
     open: number;
     missingAny: number;
     missingLicences: number;
     missingCheckImage: number;
+    /**
+     * «إخطارات ينقصها مرفق»: at most FLEET_DASHBOARD_NOTICE_ROWS of the `missingAny` notices, the
+     * oldest notice date first (no date last), then the oldest recorded first. A count is
+     * `missingAny`, never `rows.length`.
+     */
+    rows: FleetDashboardNoticeRowDto[];
   } | null;
   dealershipPending: { rows: number } | null;
   /** Q-07: open files only. */
@@ -793,9 +831,63 @@ export interface FleetDashboardAlarmRowDto {
 /** T1.12, R-07 — active, no open visit. */
 export interface FleetDashboardNowNoReadingDto {
   days: number;
-  /** lastDate < today − days, code asc. */
+  /**
+   * lastDate < today − days, code asc — the whole list (the overview's line and the ≤ 50-code links
+   * read it).
+   */
   stale: { vehicleId: string; code: string; lastDate: string }[];
+  /** Never read, code asc — the whole list. */
   neverRead: { vehicleId: string; code: string }[];
+  /** = `stale.length`: «بلا قراءة عداد منذ N أيام» and the overview's alert. */
+  staleCount: number;
+  /** = `neverRead.length`. */
+  neverReadCount: number;
+  /**
+   * «بلا قراءة حديثة»: at most FLEET_DASHBOARD_EXCEPTION_ROWS of `stale`, the longest gap first
+   * (lastDate asc, then code); `staleRows[0]` is «أطول انقطاع». A count is `staleCount`.
+   */
+  staleRows: FleetDashboardStaleCarDto[];
+  /**
+   * «لم تُقرأ أبدًا»: at most FLEET_DASHBOARD_EXCEPTION_ROWS of `neverRead`, code order. A count is
+   * `neverReadCount`.
+   */
+  neverReadRows: FleetDashboardNeverReadCarDto[];
+}
+
+/** One row of «بلا قراءة حديثة»; every name resolved on the server. */
+export interface FleetDashboardStaleCarDto {
+  vehicleId: string;
+  code: string;
+  /** The make, as the vehicles list names it. */
+  typeName: LocalizedString | null;
+  /** The last reading's day, 'YYYY-MM-DD'. */
+  lastDate: string;
+  /** Cairo today − lastDate, in whole days. */
+  days: number;
+}
+
+/** One row of «لم تُقرأ أبدًا». */
+export interface FleetDashboardNeverReadCarDto {
+  vehicleId: string;
+  code: string;
+  typeName: LocalizedString | null;
+}
+
+/** One row of «إخطارات ينقصها مرفق»; every name resolved on the server. */
+export interface FleetDashboardNoticeRowDto {
+  noticeId: string;
+  /** The form = the insurer («مصر للتأمين» / «الدلتا للتأمين»). */
+  template: FleetNoticeTemplate;
+  /** `null` = a notice with no car («بلا سيارة»), listed in the company view only. */
+  vehicleId: string | null;
+  code: string | null;
+  /** The car's make; `null` with no car (or a car with no type name). */
+  typeName: LocalizedString | null;
+  noticeNumber: string | null;
+  /** The notice's date, 'YYYY-MM-DD' (no time); `null` = none recorded. */
+  noticeDate: string | null;
+  /** What is still owed — the notices screen's own rules (the licences by the reader's grants). */
+  missing: { vehicleLicense: boolean; driverLicense: boolean; checkImage: boolean };
 }
 
 /** Active cars by operation kind (one operation per car: cash + atm + other = the cars counted). */
@@ -966,8 +1058,25 @@ export interface FleetDashboardPeriodDto {
    * «زيارات الصيانة» («بتاريخ الخروج من الورشة»).
    */
   exits: FleetDashboardPeriodExitsDto | null;
-  /** `undated`: company view only. */
-  accidents: { count: number; open: number; openRemaining: number; undated: number | null } | null;
+  /**
+   * By ACCIDENT day, over the accidents register's own filter. `undated`: company view only.
+   * `openRemaining` (the open files' remaining) is «أرقام الفترة»'s.
+   */
+  accidents: {
+    count: number;
+    open: number;
+    openRemaining: number;
+    undated: number | null;
+    /**
+     * «مبالغ ملفات حوادث الفترة»: the period's files, open AND closed, as their amounts stand NOW —
+     * the register's «الإحصائيات» over the same filter (FleetAccidentTotalsDto without `count`).
+     */
+    totals: FleetDashboardPeriodAccidentTotalsDto;
+  } | null;
+  /**
+   * «حوادث الفترة»: at most FLEET_DASHBOARD_ACCIDENT_ROWS of the period's files, open and closed,
+   * newest first; `more` = the files left out («عرض الباقي (N) في السجل»).
+   */
   accidentList: { rows: FleetDashboardPeriodAccidentRowDto[]; more: number } | null;
   /** R-19, never + dealership. */
   opex: {
@@ -1013,13 +1122,40 @@ export type FleetDashboardNoReadingReason =
   | 'notActive'
   | 'joinedAfter';
 
-/** Tabs 6–8, R-14…R-17. */
+/**
+ * «العدادات والكيلومترات» (and «أرقام الفترة»'s km), R-14…R-17. Every count is a field here, never a
+ * list's length.
+ */
 export interface FleetDashboardPeriodKmDto {
   total: number;
+  /** «قراءات تحتاج مراجعة»: the period's closed rows with km < 0 (R-14); they never enter `total`. */
   invalidRows: number;
   /** total ÷ the cars with a valid row in it (any status, old-book codes included); null when none. */
   perVehicleAvg: number | null;
-  coverage: { withReadings: number; of: number };
+  /**
+   * «قراءات لـX من Y»: `of` = the set's cars counted in the period — active now, not in the workshop
+   * for the WHOLE period, not joined after it; `withReadings` = of them, those with a valid row.
+   * `active` = the set's active cars now; `inWorkshop` = of them, in the workshop for the whole period;
+   * `joinedAfter` = of them, joined after the period. Always `of = active − inWorkshop − joinedAfter`.
+   */
+  coverage: {
+    withReadings: number;
+    of: number;
+    active: number;
+    inWorkshop: number;
+    joinedAfter: number;
+  };
+  /**
+   * «سيارات بلا مسافة في الفترة»: `cars` = of − withReadings (the reasons noRow | onlyOpen |
+   * onlyNoCounter | onlyInvalid); `neverRead` = of those, the cars with no reading at ANY date.
+   * `codes` / `neverReadCodes` feed the vehicles-list links, code order, `[]` when over 50 (no link).
+   */
+  noDistance: { cars: number; neverRead: number; codes: string[]; neverReadCodes: string[] };
+  /**
+   * «قراءات تحتاج مراجعة»: at most FLEET_DASHBOARD_EXCEPTION_ROWS of the `invalidRows` rows, the
+   * oldest day first, then code. A count is `invalidRows`.
+   */
+  invalidList: FleetDashboardInvalidReadingDto[];
   /** R-15 average line. */
   confirmedThrough: string | null;
   closedDays: number;
@@ -1028,13 +1164,43 @@ export interface FleetDashboardPeriodKmDto {
   spans: { km: number; count: number };
   /** Current branch (K-12). */
   byBranch: { branchId: string | null; name: LocalizedString | null; km: number }[];
-  /** Only when exactly one branch is in scope (`vehicleScope.scopeBranches` of length 1). */
+  /**
+   * «الكيلومترات حسب النوع» — only when exactly one branch is in scope (a chosen branch, or a reader's
+   * only branch: `vehicleScope.scopeBranches` of length 1); `null` in the company view and under
+   * «كل فروعي».
+   */
   byType: { typeId: string; name: LocalizedString; km: number }[] | null;
   /** km of vehicleId-null rows; null when a set exists. */
   unregistered: number | null;
-  top5: { vehicleId: string; code: string; km: number }[];
-  bottom5: { vehicleId: string; code: string; km: number; inWorkshopSince: string | null }[];
+  /** «أعلى 5»: ≤ FLEET_DASHBOARD_RANK_ROWS; `typeName` = the make. */
+  top5: { vehicleId: string; code: string; km: number; typeName: LocalizedString | null }[];
+  /** «أقل 5»: ≤ FLEET_DASHBOARD_RANK_ROWS, active cars only; `typeName` = the make. */
+  bottom5: {
+    vehicleId: string;
+    code: string;
+    km: number;
+    inWorkshopSince: string | null;
+    typeName: LocalizedString | null;
+  }[];
   withoutReadings: { vehicleId: string; code: string; reason: FleetDashboardNoReadingReason }[];
+}
+
+/** One row of «قراءات تحتاج مراجعة»: a closed row whose km is negative (R-14). */
+export interface FleetDashboardInvalidReadingDto {
+  /** `null` = an old-book code with no registry car. */
+  vehicleId: string | null;
+  /** The car's code, else the row's own (old-book) code. */
+  code: string;
+  /** The make; `null` for an old-book code. */
+  typeName: LocalizedString | null;
+  /** The row's day, 'YYYY-MM-DD'. */
+  date: string;
+  /** The row's out reading. */
+  from: number;
+  /** from + km (below `from`). */
+  to: number;
+  /** < 0. */
+  km: number;
 }
 
 /** T6.3/T6.4, R-18 — «أرقام الفترة»: visits by CHECK-IN day. */
@@ -1089,14 +1255,26 @@ export interface FleetDashboardPeriodExitsDto {
   unregistered: number | null;
 }
 
-/** T10.1 — date only. */
+/**
+ * «مبالغ ملفات حوادث الفترة» — the register's sums without `count`:
+ * remaining = amountCollected + companyCost − paidAmount + transferredIn − transferredOut.
+ */
+export type FleetDashboardPeriodAccidentTotalsDto = Omit<FleetAccidentTotalsDto, 'count'>;
+
+/** One row of «حوادث الفترة» — date only, newest first. */
 export interface FleetDashboardPeriodAccidentRowDto {
   accidentId: string;
   vehicleId: string | null;
   code: string;
+  /** The car's make; `null` for a carless old-book file (or a car with no type name). */
+  typeName: LocalizedString | null;
+  /** The accident's day, 'YYYY-MM-DD' — never a time. */
   date: string;
+  /** The file's «بيان», verbatim (may be '' on old-book files). */
+  statement: string;
   culprit: string | null;
   culpritEmployeeIds: string[];
   status: FleetAccidentStatus;
+  /** As of now («المتبقي (حتى الآن)»). */
   remaining: number;
 }

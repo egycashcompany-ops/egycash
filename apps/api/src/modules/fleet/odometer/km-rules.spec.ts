@@ -11,6 +11,7 @@ import {
   kmDays,
   kmRowKind,
   missingReadingCutoff,
+  noDistanceIdsOf,
   noReadingReason,
   readingIsMissing,
   type KmBreakdownInput,
@@ -364,7 +365,17 @@ describe('R-16, R-17 · rankings, coverage and the cars without valid readings',
       ['160', 200, null],
       ['170', 1000, null],
     ]);
-    expect(out.coverage).toEqual({ withReadings: 4, of: 4 });
+    expect(out.coverage).toEqual({
+      withReadings: 4,
+      of: 4,
+      active: 4,
+      inWorkshop: 0,
+      joinedAfter: 0,
+    });
+    expect(out.noDistance).toEqual({ cars: 0, neverRead: 0, codes: [], neverReadCodes: [] });
+    // Every ranked car is named by its make, `byType` or not.
+    expect(out.top5.every((r) => r.typeName?.ar === 'مصفحة')).toBe(true);
+    expect(out.bottom5.every((r) => r.typeName?.ar === 'مصفحة')).toBe(true);
     // The km of all five cars ÷ the five cars that drove it (180, out of service now, included):
     // the coverage bar's 4 is not the divisor.
     expect(out.perVehicleAvg).toBe(304); // 1520 ÷ 5
@@ -402,8 +413,34 @@ describe('R-16, R-17 · rankings, coverage and the cars without valid readings',
       ['206', 'joinedAfter'],
     ]);
     expect(out.top5).toEqual([]);
-    // Y = the active cars less (d) and (f): 201, 202, 203, 209.
-    expect(out.coverage).toEqual({ withReadings: 0, of: 4 });
+    // Y = the active cars less (d) and (f): 201, 202, 203, 209 — six active (207 is disposed, 208
+    // deleted), less 204 in the workshop throughout, less 206 joined after.
+    expect(out.coverage).toEqual({
+      withReadings: 0,
+      of: 4,
+      active: 6,
+      inWorkshop: 1,
+      joinedAfter: 1,
+    });
+    // «سيارات بلا مسافة في الفترة» = Y − X: the four reasons noRow / onlyOpen / onlyNoCounter /
+    // onlyInvalid, never (d), (e) or (f).
+    expect(out.noDistance).toEqual({
+      cars: 4,
+      neverRead: 0,
+      codes: ['201', '202', '203', '209'],
+      neverReadCodes: [],
+    });
+    expect(out.invalidList).toEqual([
+      {
+        vehicleId: '209',
+        code: '209',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        date: '2026-10-15',
+        from: 4000,
+        to: 3980,
+        km: -20,
+      },
+    ]);
     expect(out.perVehicleAvg).toBeNull();
     expect(noReadingReason(car('209'), undefined, range)).toBe('noRow');
   });
@@ -428,10 +465,178 @@ describe('R-16, R-17 · rankings, coverage and the cars without valid readings',
       ['211', 'inWorkshop'],
     ]);
     // Y leaves it out: one car, not two.
-    expect(out.coverage).toEqual({ withReadings: 0, of: 1 });
+    expect(out.coverage).toEqual({
+      withReadings: 0,
+      of: 1,
+      active: 2,
+      inWorkshop: 1,
+      joinedAfter: 0,
+    });
     // The newest visit alone does not make it (d): it only says «في الورشة منذ».
     const newestOnly = car('212', { visit: { inDate: '2026-09-20', outDate: null } });
     expect(noReadingReason(newestOnly, undefined, range)).toBe('noRow');
+  });
+});
+
+describe('«العدادات والكيلومترات» · coverage parts, the cars with no distance, the readings to review', () => {
+  it('Y = active − in the workshop throughout − joined after, a car that is both counted once, in (f)', () => {
+    const out = breakdown({
+      rows: chain('301', [
+        ['2026-10-10', 0],
+        ['2026-10-11', 80],
+      ]),
+      vehicles: fleet(
+        car('301'),
+        car('302'),
+        car('303', { workshopThroughout: true, visit: { inDate: '2026-09-01', outDate: null } }),
+        car('304', { joinedAt: '2026-11-03' }),
+        // Joined after AND (somehow) held throughout: one car, in «انضمت بعد الفترة» only.
+        car('305', { joinedAt: '2026-11-03', workshopThroughout: true }),
+        car('306', { status: 'outOfService' }),
+      ),
+    });
+    const { active, inWorkshop, joinedAfter, of, withReadings } = out.coverage;
+    expect({ active, inWorkshop, joinedAfter, of, withReadings }).toEqual({
+      active: 5,
+      inWorkshop: 1,
+      joinedAfter: 2,
+      of: 2,
+      withReadings: 1,
+    });
+    expect(of).toBe(active - inWorkshop - joinedAfter);
+    expect(out.noDistance.cars).toBe(of - withReadings);
+    expect(out.noDistance.codes).toEqual(['302']);
+  });
+
+  it('names the never-read cars among them from the service’s answer, codes in the fleet order', () => {
+    const out = breakdown({
+      vehicles: fleet(car('12'), car('9'), car('101')),
+      // 101 was read before the period; 12 and 9 never were.
+      neverReadIds: new Set(['12', '9']),
+    });
+    expect(out.noDistance).toEqual({
+      cars: 3,
+      neverRead: 2,
+      codes: ['9', '12', '101'],
+      neverReadCodes: ['9', '12'],
+    });
+    // A never-read id that is not one of the period's no-distance cars is not counted.
+    const other = breakdown({
+      rows: chain('12', [
+        ['2026-10-10', 0],
+        ['2026-10-11', 50],
+      ]),
+      vehicles: fleet(car('12'), car('9')),
+      neverReadIds: new Set(['12', '9', 'not-in-the-set']),
+    });
+    expect(other.noDistance).toEqual({
+      cars: 1,
+      neverRead: 1,
+      codes: ['9'],
+      neverReadCodes: ['9'],
+    });
+  });
+
+  it('over 50 cars the codes are [] (no link) while the counts stay', () => {
+    const many = Array.from({ length: 51 }, (_, i) => car(String(500 + i)));
+    const out = breakdown({
+      vehicles: fleet(...many),
+      neverReadIds: new Set(many.slice(0, 50).map((c) => c.vehicleId)),
+    });
+    expect(out.noDistance.cars).toBe(51);
+    expect(out.noDistance.codes).toEqual([]);
+    // 50 is still a link.
+    expect(out.noDistance.neverRead).toBe(50);
+    expect(out.noDistance.neverReadCodes).toHaveLength(50);
+    expect(out.noDistance.neverReadCodes[0]).toBe('500');
+  });
+
+  it('the readings to review: at most three, the oldest day first, then the code; from → from + km', () => {
+    const out = breakdown({
+      rows: [
+        row('402', '2026-10-20', 9000, -15),
+        row('401', '2026-10-20', 7000, -5),
+        row('403', '2026-10-05', 1200, -200),
+        // An old-book code with no registry car: its own code, no make.
+        row(null, '2026-10-02', 300, -30, { vehicleCode: 'كوستر' }),
+        // A car whose make has no name: no make.
+        row('404', '2026-10-25', 50, -1),
+        row('401', '2026-10-21', 6995, 10), // valid, not listed
+      ],
+      vehicles: fleet(car('401'), car('402'), car('403'), car('404', { typeId: 'T9' })),
+    });
+    expect(out.invalidRows).toBe(5);
+    expect(out.invalidList).toEqual([
+      {
+        vehicleId: null,
+        code: 'كوستر',
+        typeName: null,
+        date: '2026-10-02',
+        from: 300,
+        to: 270,
+        km: -30,
+      },
+      {
+        vehicleId: '403',
+        code: '403',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        date: '2026-10-05',
+        from: 1200,
+        to: 1000,
+        km: -200,
+      },
+      {
+        vehicleId: '401',
+        code: '401',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        date: '2026-10-20',
+        from: 7000,
+        to: 6995,
+        km: -5,
+      },
+    ]);
+    // The fourth and fifth are counted, not listed; a negative row never enters the total.
+    expect(out.total).toBe(10);
+    const nameless = breakdown({
+      rows: [row('404', '2026-10-25', 50, -1)],
+      vehicles: fleet(car('404', { typeId: 'T9' })),
+    });
+    expect(nameless.invalidList[0]?.typeName).toBeNull();
+  });
+
+  it('a ranked car whose make has no name carries none', () => {
+    const out = breakdown({
+      rows: chain('601', [
+        ['2026-10-10', 0],
+        ['2026-10-11', 40],
+      ]),
+      vehicles: fleet(car('601', { typeId: null })),
+    });
+    expect(out.top5).toEqual([{ vehicleId: '601', code: '601', km: 40, typeName: null }]);
+    expect(out.bottom5[0]?.typeName).toBeNull();
+  });
+
+  it('noDistanceIdsOf asks the same question as the breakdown, before it is built', () => {
+    const input = {
+      rows: [
+        ...chain('701', [
+          ['2026-10-10', 0],
+          ['2026-10-11', 40],
+        ]),
+        row('702', '2026-10-15', 100, -3),
+      ],
+      vehicles: fleet(
+        car('701'),
+        car('702'),
+        car('703'),
+        car('704', { status: 'outOfService' }),
+        car('705', { isDeleted: true }),
+      ),
+      setIds: undefined,
+      range: { from: '2026-10-01', to: '2026-10-31' },
+    };
+    expect(noDistanceIdsOf(input)).toEqual(['702', '703']);
+    expect(breakdown(input).noDistance.codes).toEqual(['702', '703']);
   });
 });
 
@@ -476,7 +681,13 @@ describe('the km by branch and type; the rows without a car', () => {
     });
     expect(out.unregistered).toBeNull();
     expect(out.byType).toEqual([{ typeId: 'T1', name: { ar: 'مصفحة', en: 'Armoured' }, km: 300 }]);
-    expect(out.coverage).toEqual({ withReadings: 1, of: 1 });
+    expect(out.coverage).toEqual({
+      withReadings: 1,
+      of: 1,
+      active: 1,
+      inWorkshop: 0,
+      joinedAfter: 0,
+    });
   });
 
   it('the spans line and «confirmed through» come from the same days', () => {

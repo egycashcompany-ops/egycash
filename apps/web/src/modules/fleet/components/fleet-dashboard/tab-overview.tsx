@@ -775,9 +775,9 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
     foot: tabLink('maintenance', 'workshop.tab'),
   });
 
-  // «الحوادث والمخالفات» — the month's accidents (the accidents tab, opened on the month read's own
-  // slice — «هذا الشهر», no type or codes — so it shows this number), every fine still owed (the
-  // register: no tab holds every year).
+  // «الحوادث والمخالفات» — the month's accidents (the tab «الحوادث ومطالبات التأمين», opened on the
+  // month read's own slice — «هذا الشهر», no type or codes — so it shows this number), every fine
+  // still owed (the register: no tab holds every year).
   const incidents: HubLine[] = [];
   const accidentsLine = monthLine(props.month, 'accidents', props.can);
   if (accidentsLine === 'pending') {

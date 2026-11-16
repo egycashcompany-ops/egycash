@@ -52,7 +52,7 @@ const drivers = { registryDigest: fn() };
 const licensing = { openPaperCounts: fn() };
 const fuel = { summary: fn() };
 const accidents = { recentWritten: fn(), summaryOver: fn() };
-const notices = { summary: fn(), missingAnyCount: fn() };
+const notices = { dashboardDigest: fn() };
 const dealership = { summaryOver: fn() };
 const violations = { yearDigest: fn(), openDigest: fn() };
 const settings = { resolve: fn() };
@@ -108,6 +108,17 @@ const SP_CASH = '650000000000000000000401';
 const MISSION = '650000000000000000000501';
 const CAIRO = { ar: 'القاهرة', en: 'Cairo' };
 const GIZA = { ar: 'الجيزة', en: 'Giza' };
+/** One «إخطارات ينقصها مرفق» row as the notices module gives it. */
+const NOTICE_ROW = {
+  noticeId: '650000000000000000000601',
+  template: 'misrInsurance',
+  vehicleId: 'v1',
+  code: '1',
+  typeName: { ar: 'مصفحة', en: 'Armoured' },
+  noticeNumber: '17',
+  noticeDate: '2026-10-05',
+  missing: { vehicleLicense: false, driverLicense: true, checkImage: true },
+};
 
 const ctxWith = (
   keys: readonly string[],
@@ -234,7 +245,14 @@ beforeEach(() => {
     alarm({ vehicleId: 'v2', code: '2', level: 'red', remainingKm: 50 }),
     alarm({ vehicleId: 'v3', code: '3', level: 'yellow', remainingKm: 400 }),
   ]);
-  odometer.noReadingDigest.mockResolvedValue({ stale: [], neverRead: [] });
+  odometer.noReadingDigest.mockResolvedValue({
+    stale: [],
+    neverRead: [],
+    staleCount: 0,
+    neverReadCount: 0,
+    staleRows: [],
+    neverReadRows: [],
+  });
   set.vehicleSet.mockImplementation(
     (_f: unknown, branchIds: readonly string[] | null, opts: { branchId?: string | null } = {}) =>
       Promise.resolve({
@@ -294,8 +312,13 @@ beforeEach(() => {
   );
   accidents.recentWritten.mockResolvedValue([]);
   accidents.summaryOver.mockResolvedValue({ count: 2, remaining: 1500 });
-  notices.summary.mockResolvedValue({ open: 4, missingLicences: 2, missingCheckImage: 2 });
-  notices.missingAnyCount.mockResolvedValue(3);
+  notices.dashboardDigest.mockResolvedValue({
+    open: 4,
+    missingAny: 3,
+    missingLicences: 2,
+    missingCheckImage: 2,
+    rows: [NOTICE_ROW],
+  });
   dealership.summaryOver.mockResolvedValue({ count: 5, pending: 5, dealershipTotal: 0 });
   violations.yearDigest.mockResolvedValue({
     year: 2026,
@@ -337,7 +360,8 @@ const USES: Record<FleetDashboardNowSection, readonly Mock[]> = {
   fuelCharging: [fuel.summary],
   recentWorkshop: [maintenance.recentWritten],
   recentAccidents: [accidents.recentWritten],
-  notices: [notices.summary, notices.missingAnyCount],
+  // ONE read of the open notices: the counts and the rows (never the screen's two full reads).
+  notices: [notices.dashboardDigest],
   dealershipPending: [dealership.summaryOver],
   accidentsOpen: [accidents.summaryOver],
   violationsYear: [violations.yearDigest],
@@ -423,6 +447,8 @@ describe('R1 — data scope (R-27)', () => {
     expect(maintenance.openNow).toHaveBeenCalledWith({ today: TODAY, filter: {} });
     expect(violations.yearDigest).toHaveBeenCalledWith({ year: 2026, filter: {} });
     expect(violations.openDigest).toHaveBeenCalledWith({ filter: {} });
+    // The notices: the whole company (a notice with no car included), the reader's own grants.
+    expect(notices.dashboardDigest).toHaveBeenCalledWith({}, ctx);
     expect(JSON.stringify(accidents.summaryOver.mock.calls)).not.toContain('createdBy');
   });
 
@@ -434,6 +460,11 @@ describe('R1 — data scope (R-27)', () => {
       expect.objectContaining({ branchIds: [B2] }),
     );
     expect(violations.openDigest).toHaveBeenCalledWith({ filter: { branchIds: [B2] } });
+    // The notices follow the car's CURRENT branch, through the screen's own `branchIds`.
+    expect(notices.dashboardDigest).toHaveBeenCalledWith(
+      { branchIds: [B2] },
+      expect.objectContaining({ userId: expect.any(String) }),
+    );
     expect(odometer.noReadingDigest).toHaveBeenCalledWith({
       today: TODAY,
       days: 3,
@@ -534,6 +565,7 @@ describe('R1 — data scope (R-27)', () => {
     expect(drivers.registryDigest).toHaveBeenCalledWith(
       expect.objectContaining({ branchIds: both }),
     );
+    expect(notices.dashboardDigest).toHaveBeenCalledWith({ branchIds: both }, expect.anything());
     expect(set.vehicleSet).toHaveBeenCalledWith({}, both, { branchId: null });
     // No switcher named: the echo carries both branches by name, and no single branch.
     expect(dto.branchId).toBeNull();
@@ -606,6 +638,7 @@ describe('R1 — data scope (R-27)', () => {
     expect(accidents.summaryOver).toHaveBeenCalledWith({ status: 'open', branchIds: [] });
     expect(maintenance.openNow).toHaveBeenCalledWith({ today: TODAY, filter: { branchIds: [] } });
     expect(drivers.registryDigest).toHaveBeenCalledWith(expect.objectContaining({ branchIds: [] }));
+    expect(notices.dashboardDigest).toHaveBeenCalledWith({ branchIds: [] }, expect.anything());
     expect(set.vehicleSet).toHaveBeenCalledWith({}, [], { branchId: null });
     expect(dto.scopeBranches).toEqual([]);
   });
@@ -885,7 +918,7 @@ describe('R1 — one clock, Cairo day', () => {
 
 describe('R1 — isolation and alerts', () => {
   it('a section that throws is null and named; the others still answer', async () => {
-    notices.summary.mockRejectedValueOnce(new Error('boom'));
+    notices.dashboardDigest.mockRejectedValueOnce(new Error('boom'));
     alarms.computeAlarms.mockRejectedValueOnce(new Error('boom'));
     const dto = await fleetDashboardNowService.read(ctxWith(ALL_KEYS), NOW);
     expect(dto.notices).toBeNull();
@@ -894,6 +927,27 @@ describe('R1 — isolation and alerts', () => {
     expect(dto.vehicles).not.toBeNull();
     expect(dto.alerts.map((a) => a.id)).not.toContain('noticesMissing');
     expect(dto.alerts.map((a) => a.id)).not.toContain('maintenanceRed');
+  });
+
+  it('«بلا قراءة عداد»: the digest as the odometer module gives it; the alert reads its count', async () => {
+    const digest = {
+      stale: [
+        { vehicleId: 'v1', code: '1', lastDate: '2026-10-25' },
+        { vehicleId: 'v3', code: '3', lastDate: '2026-10-20' },
+      ],
+      neverRead: [{ vehicleId: 'v2', code: '2' }],
+      staleCount: 2,
+      neverReadCount: 1,
+      staleRows: [
+        { vehicleId: 'v3', code: '3', typeName: null, lastDate: '2026-10-20', days: 12 },
+        { vehicleId: 'v1', code: '1', typeName: null, lastDate: '2026-10-25', days: 7 },
+      ],
+      neverReadRows: [{ vehicleId: 'v2', code: '2', typeName: null }],
+    };
+    odometer.noReadingDigest.mockResolvedValueOnce(digest);
+    const dto = await fleetDashboardNowService.read(ctxWith(ALL_KEYS), NOW);
+    expect(dto.noReading).toEqual({ days: 3, ...digest });
+    expect(dto.alerts.find((a) => a.id === 'noReading')?.count).toBe(2);
   });
 
   it('derives the lines from the section values, red first, count > 0 only', async () => {
@@ -913,6 +967,7 @@ describe('R1 — isolation and alerts', () => {
       missingAny: 3,
       missingLicences: 2,
       missingCheckImage: 2,
+      rows: [NOTICE_ROW],
     });
     expect(dto.fuelCharging).toEqual({
       wataniya: 900,

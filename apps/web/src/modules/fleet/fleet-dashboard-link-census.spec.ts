@@ -2,9 +2,9 @@
 //
 // A figure on the dashboard opens the screen that shows the same number. The server half of that
 // promise is A-DASH's parity spec (every figure = its screen's endpoint called with the link's
-// parameters). This is the browser half: render all ten tabs from the fixtures — the company, a
+// parameters). This is the browser half: render all nine tabs from the fixtures — the company, a
 // chosen branch, a reader of several branches («كل فروعي»), and period filters that narrow by type,
-// operation, codes and branch (the four period tabs and the period band of «الصيانة والورش») — collect
+// operation, codes and branch («أرقام الفترة» and the period parts of the three mixed panels) — collect
 // EVERY figure link the page draws (the overview's links to other tabs of the page included), and
 // hold each to the screen it opens:
 //   · its path is a route of the fleet module, and the page that route mounts is known;
@@ -139,13 +139,26 @@ const anchors = (html: string): Anchor[] =>
 const NOW_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('now'),
 );
-/** The tabs drawn over the PAGE's R2: the four old ones under the filter bar, and «الصيانة والورش». */
+/**
+ * The tabs drawn over the PAGE's R2: «أرقام الفترة» under the filter bar, and the three mixed
+ * panels («الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين»).
+ */
 const PAGE_PERIOD_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('period'),
 );
 
 const CAIRO = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
 const GIZA = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
+
+const NOTICES = NOW_DTO.notices as NonNullable<typeof NOW_DTO.notices>;
+/** The notices of the branch's cars: a notice with no car is the whole company's alone. */
+const NOTICES_NARROWED: typeof NOTICES = {
+  open: 3,
+  missingAny: 2,
+  missingLicences: 1,
+  missingCheckImage: 2,
+  rows: NOTICES.rows.filter((row) => row.code !== null),
+};
 
 /** R1 with a branch chosen, and the alarm / no-reading codes the branch narrows to (D19). */
 const NOW_BRANCH = {
@@ -156,6 +169,7 @@ const NOW_BRANCH = {
     ...(NOW_DTO.maintenanceAlarm as NonNullable<typeof NOW_DTO.maintenanceAlarm>),
     codes: { red: ['133'], yellow: ['133', '141'] },
   },
+  notices: NOTICES_NARROWED,
 };
 
 /** R2 narrowed by every filter the bar offers, and by the branch. */
@@ -181,6 +195,7 @@ const NOW_MINE = {
     ...(NOW_DTO.maintenanceAlarm as NonNullable<typeof NOW_DTO.maintenanceAlarm>),
     codes: { red: ['133'], yellow: ['133', '141'] },
   },
+  notices: NOTICES_NARROWED,
 };
 const PERIOD_MINE: FleetDashboardPeriodDto = {
   ...PERIOD_FULL,
@@ -214,14 +229,16 @@ const rendered = (): Anchor[] => {
       permissions: [...ALL_KEYS, 'fleetVehicleContract.view'],
     }),
   );
-  // «الصيانة والورش» under a narrowed page R2, with the switcher's branch on R1 too.
-  const narrowedUrl = `/fleet?tab=maintenance&period=last30${SET}`;
-  pages.push(
-    renderDashboard({
-      url: narrowedUrl,
-      client: dashboardClient({ now: NOW_BRANCH, page: { url: narrowedUrl, dto: NARROWED } }),
-    }),
-  );
+  // The three mixed panels under a narrowed page R2, with the switcher's branch on R1 too.
+  for (const tab of ['maintenance', 'km', 'accidents']) {
+    const narrowedUrl = `/fleet?tab=${tab}&period=last30${SET}`;
+    pages.push(
+      renderDashboard({
+        url: narrowedUrl,
+        client: dashboardClient({ now: NOW_BRANCH, page: { url: narrowedUrl, dto: NARROWED } }),
+      }),
+    );
+  }
   for (const tab of PAGE_PERIOD_TABS) {
     pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30` }));
     pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=thisYear`, dto: PERIOD_YEAR }));
@@ -279,6 +296,13 @@ const built = (): Anchor[] => {
       L.violationsUnknown(2026),
       L.rosterAbsent('hrLeave'),
       L.attendance(),
+      L.noticesOpenAll(),
+      L.noticesOpenAll('notices.all'),
+      L.noticeRow({ code: '133', number: '24117', date: '2026-10-21' }),
+      L.noticeRow({ code: null, number: '7001', date: null }),
+      L.noticeRow({ code: null, number: null, date: '2026-10-31' }),
+      L.accidentsOpenAll(),
+      L.noReadingCar('133'),
     );
   }
   const sp = new URLSearchParams(`tab=overview${PAGE_FILTERS}`);
@@ -301,6 +325,8 @@ const built = (): Anchor[] => {
       P.exits('exits.topVehicle', { vehicleCodes: ['133'] }),
       P.accidents('accidents.open', 'open'),
       P.carKm('133', 'km.top'),
+      P.carKmDay('133', '2026-10-11', 'km.invalidList.row'),
+      P.vehiclesByCodes(['133', '141'], 'km.noDistance'),
     );
   }
   return all.flatMap(asAnchor);
@@ -313,9 +339,10 @@ const parse = (href: string): { pathname: string; params: URLSearchParams } => {
 };
 
 describe('the link census — every figure link against the screen it opens', () => {
-  it('collects the page’s links from all ten tabs (the census is not empty by accident)', () => {
+  it('collects the page’s links from all nine tabs (the census is not empty by accident)', () => {
+    expect(FLEET_DASHBOARD_TABS).toHaveLength(9);
     expect([...PAGE_PERIOD_TABS].sort()).toEqual(
-      [...FLEET_DASHBOARD_PERIOD_TABS, 'maintenance'].sort(),
+      [...FLEET_DASHBOARD_PERIOD_TABS, 'maintenance', 'km', 'accidents'].sort(),
     );
     expect(LINKS.length).toBeGreaterThan(150);
     const metrics = new Set(LINKS.map((l) => l.metric.split('.')[0]));
@@ -324,10 +351,15 @@ describe('the link census — every figure link against the screen it opens', ()
       'roster',
       'distributionVehicles',
       'km',
+      'noReading',
       'visits',
       'exits',
       'workshop',
       'supplyContracts',
+      'notices',
+      'accidentsOpen',
+      'accidents',
+      'accidentList',
     ]) {
       expect(metrics.has(section), section).toBe(true);
     }
@@ -382,6 +414,16 @@ describe('the link census — every figure link against the screen it opens', ()
         '/fleet/odometer?operation',
         '/fleet/odometer?branch',
         '/fleet/odometer?period',
+        '/fleet/odometer?vehicleCodes',
+        '/fleet/odometer?from',
+        '/fleet/notices?status',
+        '/fleet/notices?branch',
+        '/fleet/notices?checkImage',
+        '/fleet/notices?vehicleCodes',
+        '/fleet/notices?number',
+        '/fleet/notices?from',
+        '/fleet/notices?to',
+        '/fleet/vehicles?vehicleCodes',
         '/fleet/accidents?type',
         '/fleet/accidents?branch',
         '/fleet/dealership?operation',
@@ -516,7 +558,19 @@ describe('«كل فروعي» and the links to other tabs (plan D12, D15)', () =
       expect(parse(link.href).params.get('branch'), link.metric).toBe(`${B1},${B2}`);
     }
     const metrics = new Set(branchLinks.map((l) => l.metric));
-    for (const metric of ['workshop.open', 'violationsOpen.total', 'dealershipPending.rows']) {
+    // The notices follow the car's branch: they carry the reader's two branches too.
+    for (const metric of [
+      'workshop.open',
+      'violationsOpen.total',
+      'dealershipPending.rows',
+      'notices.missingAny',
+      'notices.missingCheckImage',
+      'notices.open',
+      'notices.all',
+      'notices.row',
+      'accidentsOpen.count',
+      'accidentsOpen.all',
+    ]) {
       expect(metrics.has(metric), metric).toBe(true);
     }
     // The same reader's period figures: the set's branch is the reader's two branches.
@@ -558,6 +612,69 @@ describe('«كل فروعي» and the links to other tabs (plan D12, D15)', () =
 });
 
 describe('a figure no screen shows is not linked (named exceptions)', () => {
+  it('«قراءات تحتاج مراجعة» and «قراءات الفترة في سجل العدادات» open the period’s whole register', () => {
+    // No screen lists the negative readings alone, nor ranks the cars by km: the closest list is
+    // the odometer register over the same days and set — exactly the total's link. Each review
+    // row's «فتح» is exact: that car on that ONE day.
+    const pages = [
+      renderPeriod({ url: '/fleet?tab=km&period=last30' }),
+      renderPeriod({ url: `/fleet?tab=km&period=last30${SET}`, dto: NARROWED }),
+    ];
+    for (const html of pages) {
+      const links = anchors(html);
+      const total = links.find((a) => a.metric === 'km.total')?.href;
+      expect(total).toBeDefined();
+      for (const metric of [
+        'km.invalidRows',
+        'km.invalidRows.list',
+        'km.invalidList.all',
+        'km.ranking.all',
+      ]) {
+        const found = links.filter((a) => a.metric === metric);
+        expect(found.length, metric).toBeGreaterThan(0);
+        for (const link of found) expect(link.href, metric).toBe(total);
+      }
+      const rows = links.filter((a) => a.metric === 'km.invalidList.row');
+      expect(rows.length).toBeGreaterThan(0);
+      for (const link of rows) {
+        const { pathname, params } = parse(link.href);
+        expect(pathname).toBe('/fleet/odometer');
+        expect(params.get('from')).toBe(params.get('to'));
+        expect(params.get('vehicleCodes')?.split(',')).toHaveLength(1);
+      }
+    }
+  });
+
+  it('a notice row opens the notices by what it carries, and a bare one not at all', () => {
+    const L = nowLinks({ today: TODAY, branchId: null, scopeBranches: null });
+    expect(L.noticeRow({ code: null, number: null, date: null })).toBeNull();
+    const rows = LINKS.filter((l) => l.metric === 'notices.row');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const link of rows) {
+      const { pathname, params } = parse(link.href);
+      expect(pathname).toBe('/fleet/notices');
+      expect(params.get('status')).toBe('open');
+      expect(
+        ['vehicleCodes', 'number', 'from'].some((name) => params.has(name)),
+        link.href,
+      ).toBe(true);
+      expect(params.get('from'), link.href).toBe(params.get('to'));
+    }
+  });
+
+  it('«سيارات بلا مسافة في الفترة» opens its cars by code, and nothing past the screens’ cap', () => {
+    const P = periodLinks({
+      range: { from: '2026-10-03', to: TODAY },
+      vehicleScope: NARROWED.vehicleScope,
+    });
+    expect(P.vehiclesByCodes([], 'km.noDistance')).toBeNull();
+    const many = Array.from({ length: 51 }, (_, i) => String(100 + i));
+    expect(P.vehiclesByCodes(many, 'km.noDistance')).toBeNull();
+    expect(P.vehiclesByCodes(many.slice(0, 50), 'km.noDistance')?.to).toBe(
+      `/fleet/vehicles?vehicleCodes=${many.slice(0, 50).join(',')}`,
+    );
+  });
+
   it('«المتاحون» has no link — it counts the seated drivers too; «بلا سيارة» opens the roster', () => {
     // The roster's available panel lists, and counts in its heading, only the licensed drivers
     // the day's board seats on no car: the dashboard's «بلا سيارة», not its headline.

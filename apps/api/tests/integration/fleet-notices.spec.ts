@@ -3,11 +3,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Types } from 'mongoose';
-import { CreateFleetNoticeSchema } from '@ecms/contracts';
+import { CreateFleetNoticeSchema, ListFleetNoticesQuerySchema } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { moduleManifests } from '../../src/modules';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { FleetNoticeModel } from '../../src/modules/fleet/notices/notice.model';
+import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
 import { fleetNoticeService, toNoticeDto } from '../../src/modules/fleet/notices/notice.service';
 
 let replset: MongoMemoryReplSet | undefined;
@@ -302,5 +303,111 @@ describe('the notices table’s filters and figures', () => {
       ACTOR,
     );
     expect(cleared).toMatchObject({ numberField: null, dateField: null });
+  });
+});
+
+describe('the notices table’s vehicle set — «النوع / التشغيل / الفرع» by the car’s CURRENT facts', () => {
+  it('narrows the list and the figures alike; a notice with no car is in the plain list only', async () => {
+    const B1 = new Types.ObjectId();
+    const B2 = new Types.ObjectId();
+    const T_ARMOURED = new Types.ObjectId();
+    const T_VAN = new Types.ObjectId();
+    const O_CASH = new Types.ObjectId();
+    let n = 0;
+    const car = async (
+      branchId: Types.ObjectId,
+      typeId: Types.ObjectId,
+      operationId: Types.ObjectId | null,
+      isDeleted = false,
+    ) => {
+      n += 1;
+      const [doc] = await FleetVehicleModel.create([
+        {
+          code: `NS-${n}`,
+          typeId,
+          plateNumber: `ن س ${n}`,
+          chassisNumber: `NSCH-${n}`,
+          motorNumber: `NSMO-${n}`,
+          joinedAt: new Date('2025-01-01T00:00:00.000Z'),
+          licenseExpiresAt: new Date('2027-01-01T00:00:00.000Z'),
+          operationId,
+          branchId,
+          isDeleted,
+          schemaVersion: 1,
+          createdBy: null,
+          updatedBy: null,
+        },
+      ]);
+      return String(doc?._id);
+    };
+    const inB1 = await car(B1, T_ARMOURED, O_CASH);
+    const inB2 = await car(B2, T_VAN, null);
+    // Deleted from the registry since: its notice is still its history, in its branch's set.
+    const goneB1 = await car(B1, T_VAN, O_CASH, true);
+
+    const mark = 'VS-';
+    const notice = async (vehicleId: string | null, i: number) =>
+      fleetNoticeService.create(
+        CreateFleetNoticeSchema.parse({
+          template: 'misrInsurance',
+          vehicleId,
+          noticeNumber: `${mark}${i}`,
+        }),
+        ACTOR,
+      );
+    const onB1 = await notice(inB1, 1);
+    const onB2 = await notice(inB2, 2);
+    const onGone = await notice(goneB1, 3);
+    const carless = await notice(null, 4);
+
+    const ids = async (query: Record<string, unknown>): Promise<string[]> =>
+      (
+        await fleetNoticeService.list({
+          page: 1,
+          pageSize: 100,
+          noticeNumber: mark,
+          ...query,
+        } as never)
+      ).items
+        .map((doc) => String(doc._id))
+        .sort();
+    const sorted = (...docs: { _id: unknown }[]) => docs.map((d) => String(d._id)).sort();
+    const total = async (query: Record<string, unknown>) =>
+      (await fleetNoticeService.summary({ noticeNumber: mark, ...query } as never)).total;
+
+    // No set: every notice, the carless one included.
+    expect(await ids({})).toEqual(sorted(onB1, onB2, onGone, carless));
+    // The branch: its cars (the deleted one's history too); never the notice with no car.
+    expect(await ids({ branchIds: [String(B1)] })).toEqual(sorted(onB1, onGone));
+    expect(await total({ branchIds: [String(B1)] })).toBe(2);
+    expect(await ids({ branchIds: [String(B1), String(B2)] })).toEqual(sorted(onB1, onB2, onGone));
+    // A reach with no branch narrows to nothing.
+    expect(await ids({ branchIds: [] })).toEqual([]);
+    expect(await total({ branchIds: [] })).toBe(0);
+    // The type, the operation, and all of them together (an intersection).
+    expect(await ids({ typeIds: [String(T_VAN)] })).toEqual(sorted(onB2, onGone));
+    expect(await total({ typeIds: [String(T_VAN)] })).toBe(2);
+    expect(await ids({ operationIds: [String(O_CASH)] })).toEqual(sorted(onB1, onGone));
+    expect(
+      await ids({
+        typeIds: [String(T_VAN)],
+        operationIds: [String(O_CASH)],
+        branchIds: [String(B1)],
+      }),
+    ).toEqual(sorted(onGone));
+    // The codes and the set intersect: a code outside the branch narrows to nothing.
+    expect(await ids({ vehicleCodes: ['NS-2'], branchIds: [String(B1)] })).toEqual([]);
+    expect(await ids({ vehicleCodes: ['NS-2'] })).toEqual(sorted(onB2));
+    // The dashboard's digest reads the same filter.
+    const digest = await fleetNoticeService.dashboardDigest({
+      noticeNumber: mark,
+      branchIds: [String(B1)],
+    } as never);
+    expect(digest.open).toBe(2);
+    expect(digest.rows.map((r) => r.noticeId).sort()).toEqual(sorted(onB1, onGone));
+    // The schema the screen parses takes the three lists.
+    expect(
+      ListFleetNoticesQuerySchema.parse({ branchIds: `${String(B1)},${String(B2)}` }),
+    ).toMatchObject({ branchIds: [String(B1), String(B2)] });
   });
 });

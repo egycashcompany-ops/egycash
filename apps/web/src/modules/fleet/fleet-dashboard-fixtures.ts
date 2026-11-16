@@ -269,6 +269,14 @@ export const NOW_DTO: FleetDashboardNowDto = {
       { vehicleId: 'v112', code: '112', lastDate: '2026-10-22' },
     ],
     neverRead: [{ vehicleId: 'v318', code: '318' }],
+    // The counts are the lists'; the rows the longest gap first (lastDate asc), days to TODAY.
+    staleCount: 2,
+    neverReadCount: 1,
+    staleRows: [
+      { vehicleId: 'v112', code: '112', typeName: JEEP, lastDate: '2026-10-22', days: 10 },
+      { vehicleId: 'v304', code: '304', typeName: ARMOURED, lastDate: '2026-10-28', days: 4 },
+    ],
+    neverReadRows: [{ vehicleId: 'v318', code: '318', typeName: JEEP }],
   },
   distributionVehicles: {
     branches: [
@@ -384,7 +392,46 @@ export const NOW_DTO: FleetDashboardNowDto = {
       status: 'closed',
     },
   ],
-  notices: { open: 4, missingAny: 3, missingLicences: 2, missingCheckImage: 2 },
+  // The three open notices missing an attachment, the oldest notice day first and the undated
+  // (carless) one last: two miss a licence image, two the cheque image.
+  notices: {
+    open: 4,
+    missingAny: 3,
+    missingLicences: 2,
+    missingCheckImage: 2,
+    rows: [
+      {
+        noticeId: 'n1',
+        template: 'misrInsurance',
+        vehicleId: 'v207',
+        code: '207',
+        typeName: ARMOURED,
+        noticeNumber: '24117',
+        noticeDate: '2026-10-12',
+        missing: { vehicleLicense: false, driverLicense: false, checkImage: true },
+      },
+      {
+        noticeId: 'n2',
+        template: 'deltaInsurance',
+        vehicleId: 'v295',
+        code: '295',
+        typeName: JEEP,
+        noticeNumber: '24130',
+        noticeDate: '2026-10-20',
+        missing: { vehicleLicense: true, driverLicense: false, checkImage: true },
+      },
+      {
+        noticeId: 'n3',
+        template: 'misrInsurance',
+        vehicleId: null,
+        code: null,
+        typeName: null,
+        noticeNumber: '7001',
+        noticeDate: null,
+        missing: { vehicleLicense: true, driverLicense: true, checkImage: false },
+      },
+    ],
+  },
   dealershipPending: { rows: 3 },
   accidentsOpen: { count: 5, remaining: 23400 },
   violationsYear: {
@@ -436,7 +483,10 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     total: 4896,
     invalidRows: 0,
     perVehicleAvg: 122.4,
-    coverage: { withReadings: 40, of: 40 },
+    // 41 active, one of them in the workshop all month: of = 41 − 1 − 0; every counted car read.
+    coverage: { withReadings: 40, of: 40, active: 41, inWorkshop: 1, joinedAfter: 0 },
+    noDistance: { cars: 0, neverRead: 0, codes: [], neverReadCodes: [] },
+    invalidList: [],
     confirmedThrough: null,
     closedDays: 0,
     average: null,
@@ -483,7 +533,21 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     ],
     unregistered: 1,
   },
-  accidents: { count: 4, open: 2, openRemaining: 1000, undated: 0 },
+  accidents: {
+    count: 4,
+    open: 2,
+    openRemaining: 1000,
+    undated: 0,
+    // The four files as they stand now: 2,500 + 600 − 2,300 + 400 − 200 = 1,000 (the closed ones owe 0).
+    totals: {
+      amountCollected: 2500,
+      companyCost: 600,
+      paidAmount: 2300,
+      transferredIn: 400,
+      transferredOut: 200,
+      remaining: 1000,
+    },
+  },
   accidentList: null,
   opex: null,
   dealership: null,

@@ -728,10 +728,21 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   their job's papers as the same tiles: tick, print one alone, or «طباعة المحدد». The set takes the
   chosen `keys`: a print that does not ask for the contract never makes one; one that does prints
   the contract held, or makes one as «مستندات التعيين» does.
+- **«جاهزون للتعيين»'s bar: «مستندات الوظائف» and «المعينون».** The HR settings bar above the
+  ready-to-hire table, with two sections of their own addresses (`/employees/ready/job-papers`,
+  `/employees/ready/hired`); the table is the page with neither pressed, and pressing the open one
+  closes it back to the table. «مستندات الوظائف» is the editor that was a popup, now a section
+  (`contractTemplate.manage`). «المعينون» (`contract.print`) lists everybody employed now —
+  `employed=true`, `origin=recruitment,direct`: not an external person, not someone whose service
+  ended — with search and branch / department / job ticks; ticked people print through the same
+  popup as candidates, each on a line of their own with their tab's papers, ONE document, each print
+  audited on the employee. A paper not theirs is never printed for them; a contract is made for one
+  who holds none only when it is ticked, as their tab does.
 - **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
   `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
   `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {people: [{offerId, keys}]}`;
   `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`;
+  `POST …/employees/bulk/open {employeeIds}`, `POST …/employees/bulk/render {people: [{employeeId, keys}]}`;
   `GET /hr/contracts/job-papers`, `PATCH /hr/contracts/job-papers {lines: [{departmentId, jobTitleId, keys}]}`.
 
 ## Review trail

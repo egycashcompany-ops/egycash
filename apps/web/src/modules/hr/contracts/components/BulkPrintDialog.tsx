@@ -9,7 +9,14 @@
 // person, each with what was ticked on their line; each print is recorded as on the person's own
 // page (their code kept, so «تعيين» opens there).
 import { useEffect, useState } from 'react';
-import { type CandidateBulkPersonDto, type Locale, type RenderCandidateBulk } from '@ecms/contracts';
+import {
+  type CandidateBulkPersonDto,
+  type EmployeeBulkPersonDto,
+  type JobPaperDto,
+  type Locale,
+  type RenderCandidateBulk,
+  type RenderEmployeeBulk,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Dialog } from '../../../../shared/ui/Dialog';
@@ -17,34 +24,83 @@ import { Button } from '../../../../shared/ui/Button';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
 import { openPrintWindow, writePrintWindow } from '../../../../shared/lib/print-window';
-import { useBulkOpenCandidates, useBulkRenderCandidates } from '../api/contract-queries';
+import {
+  useBulkOpenCandidates,
+  useBulkOpenEmployees,
+  useBulkRenderCandidates,
+  useBulkRenderEmployees,
+} from '../api/contract-queries';
 import { PaperTile } from './PaperTile';
 
-/** What is ticked on each person's line, by offer. */
+/**
+ * One line of the popup, whoever it is for: a candidate on «جاهزون للتعيين» (by offer), or an
+ * employee on «المعينون» (by employee). The popup is the same for both.
+ */
+export interface BulkPerson {
+  id: string;
+  name: string;
+  /** The offer's number, or the employee's code. */
+  code: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  papers: JobPaperDto[];
+  error: string | null;
+}
+
+export const candidatePerson = (person: CandidateBulkPersonDto): BulkPerson => ({
+  id: person.offerId,
+  name: person.applicantName,
+  code: person.offerCode,
+  jobTitle: person.jobTitle,
+  papers: person.papers,
+  error: person.error,
+});
+
+export const employeePerson = (person: EmployeeBulkPersonDto): BulkPerson => ({
+  id: person.employeeId,
+  name: person.employeeName,
+  code: person.employeeCode,
+  jobTitle: person.jobTitle,
+  papers: person.papers,
+  error: person.error,
+});
+
+/** What is ticked on each person's line, by person. */
 export type BulkChoice = ReadonlyMap<string, ReadonlySet<string>>;
 
 /** Each person's line as the popup opens: their papers ticked, but one only offered unticked. */
-export const startingChoice = (people: readonly CandidateBulkPersonDto[]): BulkChoice =>
-  new Map(people.map((person) => [person.offerId, new Set(person.papers.filter((p) => !p.optional).map((p) => p.key))]));
+export const startingChoice = (people: readonly BulkPerson[]): BulkChoice =>
+  new Map(people.map((person) => [person.id, new Set(person.papers.filter((p) => !p.optional).map((p) => p.key))]));
 
-/** The print request: each person who can be printed for with what is ticked on their line, in print order. */
-export const printRequest = (people: readonly CandidateBulkPersonDto[], chosen: BulkChoice): RenderCandidateBulk => ({
-  people: people
+/** Each person who can be printed for with what is ticked on their line, in print order. */
+export const printLines = (people: readonly BulkPerson[], chosen: BulkChoice): { id: string; keys: string[] }[] =>
+  people
     .filter((person) => person.error === null)
     .map((person) => ({
-      offerId: person.offerId,
-      keys: person.papers.map((p) => p.key).filter((key) => chosen.get(person.offerId)?.has(key) === true),
+      id: person.id,
+      keys: person.papers.map((p) => p.key).filter((key) => chosen.get(person.id)?.has(key) === true),
     }))
-    .filter((line) => line.keys.length > 0),
+    .filter((line) => line.keys.length > 0);
+
+/** The candidates' print request («جاهزون للتعيين»). */
+export const printRequest = (people: readonly BulkPerson[], chosen: BulkChoice): RenderCandidateBulk => ({
+  people: printLines(people, chosen).map((line) => ({ offerId: line.id, keys: line.keys })),
+});
+
+/** The employees' print request («المعينون»). */
+export const employeePrintRequest = (people: readonly BulkPerson[], chosen: BulkChoice): RenderEmployeeBulk => ({
+  people: printLines(people, chosen).map((line) => ({ employeeId: line.id, keys: line.keys })),
 });
 
 export const BulkPrintDialog = ({
-  offerIds,
+  ids,
+  source,
   open,
   onClose,
   onPrinted,
 }: {
-  offerIds: string[];
+  /** The ticked rows: offers on «جاهزون للتعيين», employees on «المعينون». */
+  ids: string[];
+  source: 'candidates' | 'employees';
   open: boolean;
   onClose: () => void;
   /** After a print — the caller clears the selection. */
@@ -52,40 +108,46 @@ export const BulkPrintDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const load = useBulkOpenCandidates();
-  const render = useBulkRenderCandidates();
-  const [people, setPeople] = useState<CandidateBulkPersonDto[]>([]);
+  const openCandidates = useBulkOpenCandidates();
+  const renderCandidates = useBulkRenderCandidates();
+  const openEmployees = useBulkOpenEmployees();
+  const renderEmployees = useBulkRenderEmployees();
+  const employees = source === 'employees';
+  const loading = employees ? openEmployees.isPending : openCandidates.isPending;
+  const rendering = employees ? renderEmployees.isPending : renderCandidates.isPending;
+  const [people, setPeople] = useState<BulkPerson[]>([]);
   const [chosen, setChosen] = useState<BulkChoice>(new Map());
 
   // The people and their papers, each time the dialog opens, each line as `startingChoice` sets it.
   useEffect(() => {
     if (!open) return;
     setPeople([]);
-    load
-      .mutateAsync(offerIds)
+    const loading = employees
+      ? openEmployees.mutateAsync(ids).then((rows) => rows.map(employeePerson))
+      : openCandidates.mutateAsync(ids).then((rows) => rows.map(candidatePerson));
+    loading
       .then((loaded) => {
         setPeople(loaded);
         setChosen(startingChoice(loaded));
       })
       .catch(() => undefined);
-  }, [open, offerIds.join(',')]);
+  }, [open, source, ids.join(',')]);
 
   const printable = people.filter((p) => p.error === null);
-  const request = printRequest(people, chosen);
-  const ready = request.people.length > 0;
+  const ready = printLines(people, chosen).length > 0;
 
   /** One person's line: one paper on or off, or all of them / none. */
-  const setLine = (offerId: string, keys: Iterable<string>): void =>
-    setChosen((current) => new Map(current).set(offerId, new Set(keys)));
-  const toggle = (offerId: string, key: string, on: boolean): void => {
-    const next = new Set(chosen.get(offerId) ?? []);
+  const setLine = (id: string, keys: Iterable<string>): void =>
+    setChosen((current) => new Map(current).set(id, new Set(keys)));
+  const toggle = (id: string, key: string, on: boolean): void => {
+    const next = new Set(chosen.get(id) ?? []);
     if (on) next.add(key);
     else next.delete(key);
-    setLine(offerId, next);
+    setLine(id, next);
   };
   /** Everybody's lines at once. */
   const setAll = (on: boolean): void =>
-    setChosen(new Map(people.map((person) => [person.offerId, new Set(on ? person.papers.map((p) => p.key) : [])])));
+    setChosen(new Map(people.map((person) => [person.id, new Set(on ? person.papers.map((p) => p.key) : [])])));
 
   const confirm = async (): Promise<void> => {
     // The tab opens on the click itself — one opened after the request returns is a blocked popup.
@@ -95,7 +157,9 @@ export const BulkPrintDialog = ({
       return;
     }
     try {
-      const out = await render.mutateAsync(request);
+      const out = employees
+        ? await renderEmployees.mutateAsync(employeePrintRequest(people, chosen))
+        : await renderCandidates.mutateAsync(printRequest(people, chosen));
       const done = out.results.filter((r) => r.error === null);
       if (out.html === '') win.close();
       else writePrintWindow(win, out.html);
@@ -114,18 +178,18 @@ export const BulkPrintDialog = ({
       open={open}
       onClose={onClose}
       size="full"
-      title={t('contracts.bulk.title', { count: offerIds.length })}
+      title={t('contracts.bulk.title', { count: ids.length })}
       description={t('contracts.bulk.hint')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button disabled={!ready} loading={render.isPending} onClick={() => void confirm()} data-bulk-confirm>
+          <Button disabled={!ready} loading={rendering} onClick={() => void confirm()} data-bulk-confirm>
             {t('contracts.bulk.confirm')}
           </Button>
         </>
       }
     >
-      {load.isPending || people.length === 0 ? (
+      {loading || people.length === 0 ? (
         <p className="text-sm text-slate-500">{t('common.loading')}</p>
       ) : (
         <section data-bulk-people>
@@ -144,21 +208,21 @@ export const BulkPrintDialog = ({
           </div>
           <ul className="max-h-[65vh] space-y-3 overflow-y-auto pe-1">
             {people.map((person) => {
-              const mine = chosen.get(person.offerId) ?? new Set<string>();
+              const mine = chosen.get(person.id) ?? new Set<string>();
               return (
                 <li
-                  key={person.offerId}
+                  key={person.id}
                   className="flex flex-col gap-3 rounded-lg border border-slate-200 p-3 lg:flex-row lg:items-start dark:border-slate-700"
-                  data-bulk-person={person.offerId}
+                  data-bulk-person={person.id}
                 >
                   <div className="w-full shrink-0 lg:w-60">
-                    <p className="truncate font-medium">{person.applicantName === '' ? '—' : person.applicantName}</p>
+                    <p className="truncate font-medium">{person.name === '' ? '—' : person.name}</p>
                     <p className="text-xs text-slate-500">
                       {person.jobTitle === null ? '—' : localized(person.jobTitle, locale)}
-                      {person.offerCode !== null && (
+                      {person.code !== null && (
                         <>
                           <span className="mx-1.5" aria-hidden="true">·</span>
-                          <span className="font-mono" dir="ltr">{person.offerCode}</span>
+                          <span className="font-mono" dir="ltr">{person.code}</span>
                         </>
                       )}
                     </p>
@@ -168,10 +232,10 @@ export const BulkPrintDialog = ({
                           {t('contracts.bulk.paperCount', { count: person.papers.filter((p) => mine.has(p.key)).length })}
                         </span>
                         <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" onClick={() => setLine(person.offerId, person.papers.map((p) => p.key))}>
+                          <Button size="sm" variant="ghost" onClick={() => setLine(person.id, person.papers.map((p) => p.key))}>
                             {t('contracts.candidate.selectAll')}
                           </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setLine(person.offerId, [])}>
+                          <Button size="sm" variant="ghost" onClick={() => setLine(person.id, [])}>
                             {t('contracts.candidate.selectNone')}
                           </Button>
                         </div>
@@ -189,7 +253,7 @@ export const BulkPrintDialog = ({
                           name={localized(paper.name, locale)}
                           kind={paper.kind}
                           checked={mine.has(paper.key)}
-                          onToggle={(on) => toggle(person.offerId, paper.key, on)}
+                          onToggle={(on) => toggle(person.id, paper.key, on)}
                         />
                       ))}
                     </div>

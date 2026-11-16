@@ -17,7 +17,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '../../../../shared/lib/cn';
-import { CogIcon } from '../../../../shared/ui/icons';
+import { CogIcon, type IconProps } from '../../../../shared/ui/icons';
 
 export interface SettingsTab {
   key: string;
@@ -45,6 +45,7 @@ export const SettingsTabBar = ({
   active,
   label,
   groupLabel,
+  icon: Icon = CogIcon,
 }: {
   tabs: readonly SettingsTab[];
   /** The open section's key; a key no tab carries leaves the pill hidden. */
@@ -52,6 +53,8 @@ export const SettingsTabBar = ({
   /** The bar's accessible name. */
   label: string;
   groupLabel: (group: string) => string;
+  /** The brand circle at the bar's head — the settings cog unless the page names its own. */
+  icon?: (props: IconProps) => JSX.Element;
 }): JSX.Element => {
   const strip = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
@@ -107,7 +110,7 @@ export const SettingsTabBar = ({
         aria-hidden="true"
         className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-600 text-white shadow-md shadow-brand-700/30"
       >
-        <CogIcon className="h-5 w-5" />
+        <Icon className="h-5 w-5" />
       </span>
       {/* Centred while the sections fit; once they overflow the auto margins fall to zero, so every
           section can be scrolled to (a centred overflow would push the first ones out of reach). */}

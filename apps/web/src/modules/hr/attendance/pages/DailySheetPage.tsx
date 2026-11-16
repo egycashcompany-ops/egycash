@@ -125,6 +125,7 @@ export const DailySheetPage = (): JSX.Element => {
               }}
               aria-label={t('attendance.daily.date')}
               dir="ltr"
+              className="w-auto"
             />
           </label>
           <MultiSelect

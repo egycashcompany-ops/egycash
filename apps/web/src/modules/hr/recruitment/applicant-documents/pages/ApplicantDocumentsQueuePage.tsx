@@ -12,6 +12,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useT } from '../../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { EmptyState, LoadingState, Pagination, SearchInput } from '../../../../../shared/ui';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { ApplicantDocumentReview } from '../components/ApplicantDocumentReview';
 import { ApplicantFolders } from '../components/ApplicantFolders';
 import { useApplicantDocumentSets } from '../api/applicant-document-queries';
@@ -99,13 +100,13 @@ export const ApplicantDocumentsQueuePage = (): JSX.Element => {
           ))}
         </div>
         {tab !== 'folders' && (
+          // As wide as its hint («العرض بتاع الفلتر … مظبوط ع كلام بظبط»). One write: `setSearch`
+          // already drops the page; a second write rebuilt the URL without what was just typed.
           <SearchInput
             value={search}
-            onChange={(value) => {
-              setSearch(value);
-              setPage(1);
-            }}
+            onChange={setSearch}
             placeholder={t('hr.applicantDocuments.searchPlaceholder')}
+            className={SEARCH_FITS_TEXT}
           />
         )}
       </div>

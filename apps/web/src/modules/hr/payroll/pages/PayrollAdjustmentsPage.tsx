@@ -238,10 +238,9 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
             role="tab"
             type="button"
             aria-selected={tab === key}
-            onClick={() => {
-              setTab(key);
-              setPage(1);
-            }}
+            // One write: `setTab` already drops the page. A second write here rebuilt the URL from
+            // the same pre-click params and put the old tab back — «الكل» could not be opened.
+            onClick={() => setTab(key)}
             className={`rounded-t-lg px-4 py-2 text-sm ${
               tab === key
                 ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
@@ -280,15 +279,15 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
               }))}
             />
             <label className="flex items-center gap-1.5 text-sm text-slate-500">
-              <span className="whitespace-nowrap">{t('payroll.adjustments.period')}</span>
+              <span className="hidden whitespace-nowrap sm:inline">{t('payroll.adjustments.period')}</span>
+              {/* One write: `setPeriod` already drops the page (a second write erased the month). */}
               <Input
                 type="month"
                 value={period}
-                onChange={(e) => {
-                  setPeriod(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => setPeriod(e.target.value)}
                 aria-label={t('payroll.adjustments.period')}
+                dir="ltr"
+                className="w-auto"
               />
             </label>
           </FilterBar>

@@ -261,10 +261,9 @@ export const EmployeeLoansAdminPage = (): JSX.Element => {
             role="tab"
             type="button"
             aria-selected={tab === key}
-            onClick={() => {
-              setTab(key);
-              setPage(1);
-            }}
+            // One write: `setTab` already drops the page. A second write here rebuilt the URL from
+            // the same pre-click params and put the old tab back — «الكل» could not be opened.
+            onClick={() => setTab(key)}
             className={`rounded-t-lg px-4 py-2 text-sm ${
               tab === key
                 ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'

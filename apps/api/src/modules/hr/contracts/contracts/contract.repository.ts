@@ -31,7 +31,11 @@ class ContractRepository extends BaseRepository<ContractDoc> {
       };
     }
     if (query.expiringWithinDays !== undefined) {
-      filter.status = { $in: ['active', 'signed'] };
+      // «ينتهي خلال 30 يومًا» is about live contracts: it NARROWS the statuses picked to the live ones
+      // among them, rather than replacing the picks (signed alone ticked used to list active ones too).
+      const live = ['active', 'signed'];
+      const picked = query.status !== undefined && query.status.length > 0 ? query.status : live;
+      filter.status = { $in: picked.filter((status) => live.includes(status)) };
       filter.endDate = {
         $ne: null,
         $lte: new Date(Date.now() + query.expiringWithinDays * 86_400_000),

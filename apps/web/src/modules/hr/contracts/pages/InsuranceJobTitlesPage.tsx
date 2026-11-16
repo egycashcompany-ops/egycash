@@ -26,6 +26,7 @@ import {
   SearchInput,
   toast,
 } from '../../../../shared/ui';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { columnSearchMatches } from '../../../../shared/lib/column-filter';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 import { LoadingState } from '../../../../shared/ui/states/LoadingState';
@@ -207,11 +208,13 @@ export const InsuranceJobTitlesPage = (): JSX.Element => {
             <ErrorState error={error} onRetry={() => void refetch()} />
           ) : (
             <>
-              <div className="mb-3 max-w-md">
+              {/* A flex row lets the box be as wide as its hint, as the other search-only pages. */}
+              <div className="mb-3 flex">
                 <SearchInput
                   value={search}
                   onChange={setSearch}
                   placeholder={t('contracts.insuranceTitles.searchPlaceholder')}
+                  className={SEARCH_FITS_TEXT}
                 />
               </div>
               <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">

@@ -73,11 +73,11 @@ const buildFilter = async (
         : own._id;
   } else {
     // Every other scope narrows to the branches the grant reaches (a department or section grant
-    // to its branch): the same rule the day-record list applies, from the same selector.
-    Object.assign(
-      filter,
-      orgScopeMatch(scope, { branch: 'branchId' }, { finerNarrowsToBranch: true }) ?? {},
-    );
+    // to its branch): the same rule the day-record list applies, from the same selector — and ANDed
+    // with the picks, as the list ANDs them. Merged into the same object, the grant's `branchId`
+    // overwrote the branches picked, and the file held every branch the grant reaches.
+    const reach = orgScopeMatch(scope, { branch: 'branchId' }, { finerNarrowsToBranch: true });
+    if (reach != null) return { $and: [filter, reach] } as FilterQuery<AttendanceDayDoc>;
   }
   return filter;
 };

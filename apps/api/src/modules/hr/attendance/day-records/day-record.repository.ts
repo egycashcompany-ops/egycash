@@ -36,7 +36,10 @@ class DayRecordRepository extends BaseRepository<AttendanceDayDoc> {
       workDate: { $gte: query.from, $lte: query.to },
     };
     if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
-    if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
+    // Several branches, ORed (the daily sheet's filter takes several).
+    if (query.branchId !== undefined && query.branchId.length > 0) {
+      filter.branchId = { $in: query.branchId.map((id) => new Types.ObjectId(id)) };
+    }
     if (query.status !== undefined) filter.status = query.status;
     // The section filter arrives pre-resolved to employee ids (day rows carry only the branch).
     // An explicit employeeId — including the own-scope forcing — always wins: the section can

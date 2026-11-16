@@ -48,9 +48,12 @@ const buildFilter = async (
     isDeleted: false,
   };
   if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
-  if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
+  // The daily sheet's filters, several branches and sections each, ORed — as the list reads them.
+  if (query.branchId !== undefined && query.branchId.length > 0) {
+    filter.branchId = { $in: query.branchId.map((id) => new Types.ObjectId(id)) };
+  }
   if (query.status !== undefined) filter.status = query.status;
-  if (query.sectionId !== undefined) {
+  if (query.sectionId !== undefined && query.sectionId.length > 0) {
     const ids = await employeeRepository.listIdsBySectionSystem(query.sectionId);
     filter.employeeId =
       query.employeeId !== undefined && !ids.includes(query.employeeId)

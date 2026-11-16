@@ -93,7 +93,7 @@ class DayRecordService {
   /**
    * Scoped list (AT-6): `own` resolves the caller's linked employee (rows are system-written, so
    * BaseRepository's creator-based own-match can never see them — C1-R); the org scopes ride the
-   * repository's `branchId` filter. A section filter resolves the section's employees first,
+   * repository's `branchId` filter. A section filter resolves the sections' employees first,
    * because day rows deliberately carry only the branch axis (D8).
    */
   async list(
@@ -101,7 +101,7 @@ class DayRecordService {
     scope?: ScopeSelector,
   ): Promise<Paginated<AttendanceDayDoc>> {
     let employeeIds: string[] | undefined;
-    if (query.sectionId !== undefined) {
+    if (query.sectionId !== undefined && query.sectionId.length > 0) {
       employeeIds = await employeeRepository.listIdsBySectionSystem(query.sectionId);
     }
     if (scope !== undefined && scope.scope === 'own') {

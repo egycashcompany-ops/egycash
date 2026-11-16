@@ -315,11 +315,15 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return rows.map((r) => String(r._id));
   }
 
-  /** Ids of a section's employees — the daily sheet's section filter (day rows carry no section). */
-  async listIdsBySectionSystem(sectionId: string): Promise<string[]> {
-    if (!Types.ObjectId.isValid(sectionId)) return [];
+  /**
+   * Ids of the employees of the given sections (any of them) — the daily sheet's section filter,
+   * which takes several (day rows carry no section).
+   */
+  async listIdsBySectionSystem(sectionIds: readonly string[]): Promise<string[]> {
+    const valid = sectionIds.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return [];
     const rows = await this.model
-      .find({ sectionId: new Types.ObjectId(sectionId), isDeleted: false })
+      .find({ sectionId: { $in: valid.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
       .select({ _id: 1 })
       .lean()
       .exec();

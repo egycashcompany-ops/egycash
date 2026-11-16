@@ -122,7 +122,7 @@ class EvaluationBatchService {
         sortDir: 'asc',
         sortBy: 'createdAt',
         phaseId: query.phaseId,
-        status: 'waiting',
+        status: ['waiting'],
         includeSuperseded: false,
         // One branch, said in the list form the queue filter now takes.
         ...(query.branchId === undefined ? {} : { branchId: [query.branchId] }),

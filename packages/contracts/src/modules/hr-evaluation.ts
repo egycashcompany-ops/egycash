@@ -215,8 +215,11 @@ export type BulkEvaluations = z.infer<typeof BulkEvaluationsSchema>;
 export const ListEvaluationsQuerySchema = PaginationQuerySchema.extend({
   applicantId: objectId().optional(),
   phaseId: objectId().optional(),
-  /** Doubles as the phase page's tab (I10/RW6a): waiting | approved | rejected. */
-  status: EvaluationStatusSchema.optional(),
+  /**
+   * Doubles as the phase page's tab (I10/RW6a): waiting | approved | rejected. A LIST — the queue's
+   * filter takes several («هنخلي كل الفلترز multi»), ORed; a tab's one value still parses.
+   */
+  status: listQuery(EvaluationStatusSchema),
   branchId: listQuery(objectId()),
   batchId: objectId().optional(),
   /** Include records belonging to superseded attempts (default false for queues). */

@@ -1134,7 +1134,7 @@ class LeaveRequestService {
    */
   async unreconciled(scope: ScopeSelector): Promise<UnreconciledLeaveDto[]> {
     const onLeave = await employeeRepository.listEmployees({
-      filter: { status: 'onLeave' },
+      filter: { status: ['onLeave'] },
       page: 1,
       pageSize: 200,
       scope,

@@ -65,8 +65,8 @@ class EmployeeLoanRepository extends BaseRepository<EmployeeLoanDoc> {
       sortableFields: ['createdAt', 'principal', 'firstPeriod'],
       filter: {
         employeeId: new Types.ObjectId(employeeId),
-        ...(query.type === undefined ? {} : { type: query.type }),
-        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.type === undefined ? {} : { type: { $in: query.type } }),
+        ...(query.status === undefined ? {} : { status: { $in: query.status } }),
       } as never,
     });
   }
@@ -87,8 +87,8 @@ class EmployeeLoanRepository extends BaseRepository<EmployeeLoanDoc> {
         ...(query.employeeId === undefined
           ? {}
           : { employeeId: new Types.ObjectId(query.employeeId) }),
-        ...(query.type === undefined ? {} : { type: query.type }),
-        ...(query.status === undefined ? {} : { status: query.status }),
+        ...(query.type === undefined ? {} : { type: { $in: query.type } }),
+        ...(query.status === undefined ? {} : { status: { $in: query.status } }),
       } as never,
     });
   }

@@ -124,7 +124,7 @@ class SettlementService {
   private async owesAtExit(employeeId: string, scope: ScopeSelector): Promise<boolean> {
     const page = await employeeLoanService.listForEmployee(
       employeeId,
-      { page: 1, pageSize: 1, sortDir: 'desc', status: 'outstandingAtExit' },
+      { page: 1, pageSize: 1, sortDir: 'desc', status: ['outstandingAtExit'] },
       scope,
     );
     return page.items.length > 0;
@@ -180,7 +180,7 @@ class SettlementService {
   private async loanFor(employeeId: string, scope: ScopeSelector): Promise<SettlementLoanDto | null> {
     const page = await employeeLoanService.listForEmployee(
       employeeId,
-      { page: 1, pageSize: 50, sortDir: 'desc', status: 'outstandingAtExit' },
+      { page: 1, pageSize: 50, sortDir: 'desc', status: ['outstandingAtExit'] },
       scope,
     );
     const doc = page.items[0];

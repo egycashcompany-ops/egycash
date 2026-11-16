@@ -21,6 +21,7 @@ import { DataTable, type Column } from '../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
 import { SearchInput } from '../../../../shared/ui';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { StatusBadge, type Tone } from '../../../../shared/ui/Badge';
 import { formatDate } from '../../../../shared/lib/format';
 import { useInsuranceCards } from '../api/medical-queries';
@@ -141,11 +142,16 @@ export const InsuranceCardsPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <SearchInput
-          value={search}
-          onChange={(value) => patchParams({ q: value === '' ? null : value, page: null })}
-          placeholder={t('medical.insurance.searchPlaceholder')}
-        />
+        {/* As wide as its hint («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»): a row lets the box size
+            to its words rather than stretch across the page. */}
+        <div className="flex">
+          <SearchInput
+            value={search}
+            onChange={(value) => patchParams({ q: value === '' ? null : value, page: null })}
+            placeholder={t('medical.insurance.searchPlaceholder')}
+            className={SEARCH_FITS_TEXT}
+          />
+        </div>
         <DataTable
           columns={columns}
           rows={data?.items ?? []}

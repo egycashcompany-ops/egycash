@@ -1480,3 +1480,73 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect((await save(specialistJob, { insuranceTitle: 'x', occupationCode: '' }, aliceToken)).status).toBe(403);
   });
 });
+
+// «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: the register's status and type
+// take several values, one comma list each, ORed; a single value still parses.
+describe('the contracts register filters take several', () => {
+  it('lists by several types and several statuses at once', async () => {
+    await setContractsSetting(HrContractSettingKeys.RequireApproval, false);
+    const [typeA, typeB, typeC] = [await mkType(), await mkType(), await mkType()];
+    const templateA = (await publishedTemplate(typeA.id)).id;
+    const templateB = (await publishedTemplate(typeB.id)).id;
+    const templateC = (await publishedTemplate(typeC.id)).id;
+    const draftA = await mkDraft((await mkEmployee()).id, typeA.id, templateA);
+    const activeA = await generated(typeA.id, templateA);
+    expect(activeA.status).toBe('active');
+    const draftB = await mkDraft((await mkEmployee()).id, typeB.id, templateB);
+    const draftC = await mkDraft((await mkEmployee()).id, typeC.id, templateC);
+
+    const ids = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/contracts')
+        .query({ pageSize: 100, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as ContractDto[]).map((c) => c.id);
+    };
+
+    const twoTypes = await ids({ typeId: `${typeA.id},${typeB.id}` });
+    expect(twoTypes).toEqual(expect.arrayContaining([draftA.id, activeA.id, draftB.id]));
+    expect(twoTypes).not.toContain(draftC.id);
+    const oneType = await ids({ typeId: typeA.id });
+    expect(oneType).toEqual(expect.arrayContaining([draftA.id, activeA.id]));
+    expect(oneType).not.toContain(draftB.id);
+
+    expect(await ids({ typeId: typeA.id, status: 'draft,active' })).toEqual(
+      expect.arrayContaining([draftA.id, activeA.id]),
+    );
+    const drafts = await ids({ typeId: typeA.id, status: 'draft' });
+    expect(drafts).toContain(draftA.id);
+    expect(drafts).not.toContain(activeA.id);
+
+    const bad = await request(app)
+      .get('/api/v1/hr/contracts')
+      .query({ status: 'draft,nonsense' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bad.status).toBe(400);
+  });
+
+  // «ينتهي خلال 30 يومًا» is about live contracts: it narrows the statuses picked to the live ones
+  // among them. It used to REPLACE the picks — «مسودة» ticked with it listed active contracts.
+  it('narrows the expiring tick to the live statuses picked, rather than replacing them', async () => {
+    await setContractsSetting(HrContractSettingKeys.RequireApproval, false);
+    const type = await mkType();
+    const template = (await publishedTemplate(type.id)).id;
+    const soon = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
+    const ending = await generate(await mkDraft((await mkEmployee()).id, type.id, template, { endDate: soon }));
+    expect(ending.status).toBe('active');
+    const ids = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/contracts')
+        .query({ pageSize: 100, typeId: type.id, expiringWithinDays: '30', ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as ContractDto[]).map((c) => c.id);
+    };
+
+    expect(await ids({})).toContain(ending.id);
+    expect(await ids({ status: 'active,draft' })).toContain(ending.id);
+    expect(await ids({ status: 'draft' })).not.toContain(ending.id);
+    expect(await ids({ status: 'signed' })).not.toContain(ending.id);
+  });
+});

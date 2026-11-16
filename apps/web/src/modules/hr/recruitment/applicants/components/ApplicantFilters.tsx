@@ -12,6 +12,7 @@ import { useT } from '../../../../../platform/localization/useT';
 import { localized } from '../../../../../shared/lib/format';
 import { useAppSelector } from '../../../../../store';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Checkbox } from '../../../../../shared/ui/form';
 import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
@@ -61,7 +62,7 @@ export const ApplicantFilters = ({
         value={value.search}
         onChange={(search) => set({ search })}
         placeholder={t('applicants.filters.searchPlaceholder')}
-        className="w-full sm:w-72"
+        className={SEARCH_FITS_TEXT}
       />
       <MultiSelect
         label={t('applicants.filters.status')}

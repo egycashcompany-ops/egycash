@@ -3,7 +3,7 @@
 // with the URL query string (deep-linkable, back/forward aware).
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { type EmployeeFileDto, type Locale } from '@ecms/contracts';
+import { EMPLOYEE_FILE_STATUSES, type EmployeeFileDto, type EmployeeFileStatus, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
@@ -12,6 +12,7 @@ import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { PlusIcon } from '../../../../../shared/ui/icons';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { formatDate, formatNumber } from '../../../../../shared/lib/format';
 import { EmployeeFileStatusBadge } from '../components/EmployeeFileStatusBadge';
 import { EmployeeFileFilters, type EmployeeFileFiltersState } from '../components/EmployeeFileFilters';
@@ -40,7 +41,10 @@ export const EmployeeFilesListPage = (): JSX.Element => {
 
   const filters: EmployeeFileFiltersState = {
     search: sp.get('q') ?? '',
-    status: (sp.get('status') ?? '') as EmployeeFileFiltersState['status'],
+    // Several statuses, ORed; a value the vocabulary does not carry (an old link) is dropped.
+    status: readList(sp, 'status').filter((s): s is EmployeeFileStatus =>
+      (EMPLOYEE_FILE_STATUSES as readonly string[]).includes(s),
+    ),
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -61,7 +65,7 @@ export const EmployeeFilesListPage = (): JSX.Element => {
     setSp(next);
   };
 
-  const changeFilters = (nf: EmployeeFileFiltersState): void => patch({ q: nf.search || null, status: nf.status || null });
+  const changeFilters = (nf: EmployeeFileFiltersState): void => patch({ q: nf.search || null, status: writeList(nf.status) });
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);

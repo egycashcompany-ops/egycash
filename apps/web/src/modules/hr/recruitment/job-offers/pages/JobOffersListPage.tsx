@@ -8,7 +8,7 @@
 // «كتابة العرض» on their row; the offer written, the row carries on as «مسودة», «مُرسَل», ….
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { type JobOfferDto, type Locale } from '@ecms/contracts';
+import { joinNameList, splitNameList, type JobOfferDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
@@ -23,7 +23,8 @@ import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { OfferStatusBadge } from '../components/OfferStatusBadge';
-import { OfferFilters, departmentIdsOf, type OfferFiltersState } from '../components/OfferFilters';
+import { NO_MATCH, OfferFilters, departmentIdsOf, type OfferFiltersState } from '../components/OfferFilters';
+import { useOfferPlacementNames } from '../components/OfferPlacement';
 import { useDepartmentReferenceOptions } from '../../../../organization/shared/references';
 import { useJobOffers, useBulkJobOffers } from '../api/job-offer-queries';
 import { type JobOfferListParams } from '../api/job-offer-api';
@@ -43,9 +44,6 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
-/** An id no department has: a department filter whose branch copies are not known yet. */
-const NO_MATCH = '000000000000000000000000';
-
 /** The offer form for somebody already at this stage — their choice fixed (`from=queue`). */
 export const writeOfferPath = (applicantId: string): string => `/job-offers/new?applicantId=${applicantId}&from=queue`;
 
@@ -63,7 +61,8 @@ export const JobOffersListPage = (): JSX.Element => {
     status: readList(sp, 'status') as OfferFiltersState['status'],
     active: sp.get('active') === 'true',
     branch: readList(sp, 'branch'),
-    department: readList(sp, 'department'),
+    // Group keys can be a unit's own name, which may hold a comma: a name list, commas escaped.
+    department: splitNameList(sp.get('department') ?? ''),
     job: readList(sp, 'job'),
   };
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -87,6 +86,7 @@ export const JobOffersListPage = (): JSX.Element => {
 
   const { data: departments = [] } = useDepartmentReferenceOptions();
   const departmentIds = departmentIdsOf(filters.department, departments, filters.branch);
+  const placementNames = useOfferPlacementNames();
 
   const changeFilters = (nf: OfferFiltersState): void =>
     patch({
@@ -94,7 +94,7 @@ export const JobOffersListPage = (): JSX.Element => {
       status: writeList(nf.status),
       active: nf.active ? 'true' : null,
       branch: writeList(nf.branch),
-      department: writeList(nf.department),
+      department: nf.department.length === 0 ? null : joinNameList(nf.department),
       job: writeList(nf.job),
     });
   const changeSort = (by: string): void => {
@@ -157,7 +157,16 @@ export const JobOffersListPage = (): JSX.Element => {
       header: t('offers.columns.applicant'),
       render: (o) => <span>{o.applicantName}</span>,
     },
+    // «هنحط الاداره و الوظيفه و الفرع في الجزء اللي تحت … جمب المتقدم». The filters above stay; the
+    // row now says which branch, department and job it is for.
+    { key: 'branch', header: t('recruitment.filters.branch'), render: (o) => placementNames.branch(o) },
+    { key: 'department', header: t('offers.filters.department'), render: (o) => placementNames.department(o) },
+    { key: 'job', header: t('offers.filters.job'), render: (o) => placementNames.job(o) },
     { key: 'status', header: t('offers.columns.status'), sortable: true, render: (o) => <OfferStatusBadge status={o.status} /> },
+    { key: 'createdAt', header: t('offers.columns.created'), sortable: true, render: (o) => formatDate(o.createdAt, locale) },
+    // «الراتب … لازقه في تاريخ الانشاء»: money reads from its end, as it does in every HR table, and
+    // an end-aligned figure beside a start-aligned date met it across one gutter. Last of the data,
+    // beside the row's action, it has room on both sides.
     {
       key: 'salary',
       header: t('offers.columns.salary'),
@@ -167,10 +176,11 @@ export const JobOffersListPage = (): JSX.Element => {
           ? '—'
           : formatMoney(o.terms.salary.amount, o.terms.salary.currency, locale),
     },
-    { key: 'createdAt', header: t('offers.columns.created'), sortable: true, render: (o) => formatDate(o.createdAt, locale) },
     {
       key: 'write',
       header: '',
+      // At its row's far end, as recruitment's other row actions sit, so it never meets the salary.
+      align: 'end',
       // «جاهز لعرض العمل»: nobody has written the offer yet — the form opens for this person, as
       // the queue above the table used to open it.
       render: (o) =>
@@ -188,6 +198,14 @@ export const JobOffersListPage = (): JSX.Element => {
         ) : null,
     },
   ];
+
+  // «ميكنش … السطر تكملتو تحت»: every cell and header on one line. Ten columns are more than a
+  // narrow laptop holds on one line, so there the table scrolls sideways instead of wrapping.
+  const oneLineColumns = columns.map((c) => ({
+    ...c,
+    className: c.className ?? 'whitespace-nowrap',
+    headerClassName: c.headerClassName ?? 'whitespace-nowrap',
+  }));
 
   return (
     <PageContainer>
@@ -220,7 +238,7 @@ export const JobOffersListPage = (): JSX.Element => {
         </Can>
         <DataTable
           selection={selection}
-          columns={columns}
+          columns={oneLineColumns}
           rows={rows}
           rowKey={(o) => o.id}
           loading={isLoading}

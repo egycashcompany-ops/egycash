@@ -19,7 +19,7 @@
 // here would be enforced on real hiring. The decisions are in
 // docs/12-planning/job-requisition-design.md.
 import { z } from 'zod';
-import { PaginationQuerySchema, objectId } from '../common/index.js';
+import { PaginationQuerySchema, listQuery, objectId } from '../common/index.js';
 
 /**
  * The single chain (D-REQ-10).
@@ -134,12 +134,13 @@ export const CloseJobRequisitionSchema = z
 export type CloseJobRequisition = z.infer<typeof CloseJobRequisitionSchema>;
 
 export const ListJobRequisitionsQuerySchema = PaginationQuerySchema.extend({
-  status: JobRequisitionStatusSchema.optional(),
+  /** Status and priority are LISTS — «هنخلي كل الفلترز multi» — each ORed; one value still parses. */
+  status: listQuery(JobRequisitionStatusSchema),
   /** The three axes a queue is read along, plus a free-text search over code and reason. */
   departmentId: objectId().optional(),
   branchId: objectId().optional(),
   jobTitleId: objectId().optional(),
-  priority: JobRequisitionPrioritySchema.optional(),
+  priority: listQuery(JobRequisitionPrioritySchema),
   search: z.string().trim().max(200).optional(),
 }).strict();
 export type ListJobRequisitionsQuery = z.infer<typeof ListJobRequisitionsQuerySchema>;

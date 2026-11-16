@@ -54,6 +54,7 @@ import {
   ensureEmployeePhotoCategory,
   migrateEmployeeIndexes,
   migrateEmployeesToRegistry,
+  migrateExternalEmployeeNumbers,
 } from './employee-management/employees';
 import { migrateEmployeeFiles } from './employee-management/employee-file';
 import { env } from '../../infrastructure/config/env';
@@ -559,6 +560,13 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await migrateEmployeesToRegistry();
   // ADR-017 — retire the unique index on the Global Employee Number (idempotent, guarded).
   await migrateEmployeeIndexes();
+  // An external person's number is their code, never one of the company's (see the function).
+  try {
+    const freed = await migrateExternalEmployeeNumbers();
+    if (freed > 0) logger.info({ freed }, 'employees: company numbers held by external people released');
+  } catch (error) {
+    logger.warn({ err: error }, 'employees: releasing external people\'s company numbers skipped');
+  }
   // I5 — drop the re-derived recruitment milestones from legacy Employee Files; the canonical
   // recruitment timeline is now the only history (idempotent).
   await migrateEmployeeFiles();

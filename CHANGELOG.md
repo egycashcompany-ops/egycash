@@ -1345,6 +1345,18 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **HR: an external person no longer holds a company employee number.** The last company code was
+  …2942. After an external person «C2» was registered, a new employee typed as 02002943 was refused:
+  «هذا الرقم مسجَّل بالفعل للموظف C2». The owner: «المفروض لا يحجز هذه الأكواد». Registering an
+  external person drew the next number from the company's counter and kept it behind the typed
+  code. Nobody saw that number, but the register screen counts a number held by anybody as taken.
+  An external person now draws nothing: their number is their code. At start-up, every external
+  person registered before is given their code as their number, which frees the numbers they drew
+  (`migrateExternalEmployeeNumbers`, idempotent), so an attendance punch for 2943 no longer finds
+  C2. The register check leaves external people out altogether, their code and their number alike.
+  The exact code stays theirs. The counter is not wound back. Its gaps are harmless, because HR
+  types each new code and the counter follows it.
+
 - **HR: an external employee's code can be changed to one with letters.** «لما باجي أغير كود الموظف
   (تعيين خارجي) مش بيسمح بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط». «تغيير كود الموظف» held
   every employee to the company's digits, so an external person's code, registered with letters,

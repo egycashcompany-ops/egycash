@@ -31,6 +31,7 @@ import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
 import { ApplicantFolderDialog } from '../../applicant-documents/components/ApplicantFolderDialog';
 import { useApplicantFolder } from '../../applicant-documents/api/applicant-document-queries';
 import { FolderIcon } from '../../../../../shared/ui/icons';
+import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
 
 export const ScreeningDetailPage = (): JSX.Element => {
   const t = useT();
@@ -117,7 +118,16 @@ export const ScreeningDetailPage = (): JSX.Element => {
           { label: s.applicantName },
         ]}
         actions={
-          isPending ? (
+          // The permanent delete sits beside the stage's own actions in BOTH states: a candidate
+          // is as erasable before a screening decision as after one, and the branch below is about
+          // the screening, not about them.
+          <div className="flex flex-wrap items-center gap-1.5">
+            <PurgeApplicantAction
+              applicantId={s.applicantId}
+              applicantCode={s.applicantCode}
+              applicantName={s.applicantName}
+            />
+          {isPending ? (
             <Can permission="screening.decide">
               <Button size="sm" variant="secondary" onClick={() => setDecide('accepted')}>{t('screening.actions.accept')}</Button>
               <Button size="sm" variant="danger" onClick={() => setDecide('rejected')}>{t('screening.actions.reject')}</Button>
@@ -151,7 +161,8 @@ export const ScreeningDetailPage = (): JSX.Element => {
                 </Button>
               </Can>
             </>
-          )
+          )}
+          </div>
         }
       />
 

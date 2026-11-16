@@ -47,6 +47,28 @@ export type Gender = z.infer<typeof GenderSchema>;
  * looking for an Employee row elsewhere — exactly the inference I11 removes. The boot migration
  * backfills candidates who already have an Employee.
  */
+/**
+ * «مسح نهائي» — permanently delete one applicant, from anywhere in the recruitment cycle.
+ *
+ * The CODE is typed back, and that is the whole body: a permanent delete has no undo, so the one
+ * thing the request carries is proof that whoever sent it knew WHICH candidate it was for. An id
+ * alone — copied from a URL, left in a tab, repeated by a script — is not enough to erase somebody.
+ */
+export const PurgeApplicantSchema = z
+  .object({ confirmCode: z.string().trim().min(1).max(32) })
+  .strict();
+export type PurgeApplicant = z.infer<typeof PurgeApplicantSchema>;
+
+/** What the erasure took, said back once. */
+export interface ApplicantPurgeReportDto {
+  code: string;
+  fullNameAr: string;
+  rowsDeleted: number;
+  filesRemoved: number;
+  /** Files whose bytes could not be removed; each needs a hand. Empty on a clean run. */
+  fileFailures: { id: string; reason: string }[];
+}
+
 export const APPLICANT_STATUSES = ['new', 'hired', 'rejected', 'withdrawn'] as const;
 export const ApplicantStatusSchema = z.enum(APPLICANT_STATUSES);
 export type ApplicantStatus = z.infer<typeof ApplicantStatusSchema>;

@@ -31,6 +31,10 @@ export const CONTRACT_VARIABLE_CATALOG: ContractVariableDto[] = [
   { key: 'employment.startDate', label: { en: 'Start date', ar: 'تاريخ المباشرة' }, source: 'employment', sample: '15/11/2026', required: false },
   { key: 'employment.startDayName', label: { en: 'Start day', ar: 'يوم المباشرة' }, source: 'employment', sample: 'الأحد', required: false },
   { key: 'contract.currentDayName', label: { en: "Today's day", ar: 'يوم اليوم' }, source: 'contract', sample: 'الأحد', required: false },
+  // Today in its three parts — «تحريراً في:  /  /» on «نموذج رقم (1)», each between the form's strokes.
+  { key: 'contract.currentDay', label: { en: "Today's date — day", ar: 'تاريخ اليوم — اليوم' }, source: 'contract', sample: '16', required: false },
+  { key: 'contract.currentMonth', label: { en: "Today's date — month", ar: 'تاريخ اليوم — الشهر' }, source: 'contract', sample: '11', required: false },
+  { key: 'contract.currentYear', label: { en: "Today's date — year", ar: 'تاريخ اليوم — السنة' }, source: 'contract', sample: '2026', required: false },
   { key: 'salary.gross', label: { en: 'Gross salary', ar: 'الراتب الشامل' }, source: 'employment', sample: '10,000', required: false },
   { key: 'salary.fixed', label: { en: 'Basic pay (70%)', ar: 'الأجر الأساسي (70%)' }, source: 'employment', sample: '7,000', required: false },
   { key: 'salary.attendanceBonus', label: { en: 'Attendance allowance (30%)', ar: 'بدل الانتظام (30%)' }, source: 'employment', sample: '3,000', required: false },

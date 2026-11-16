@@ -1446,6 +1446,20 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **HR: «نموذج رقم (1)» prints on the owner's own pages.** «انا عاوز النموزج بردو شبه منا بعتو بظبط
+  مفهوش اي تعديل خالص و بيتملي عادي بس الشكل اللي ادتولك بظبط». The form was drawn again in the
+  system's font, and its letters were lighter and thinner than his. It now prints the two pages of
+  the copy he sent (his 300 dpi scan, at 200 dpi in four greys), with nothing redrawn, retyped or
+  moved. The record's values are written on them, each where the form keeps it: the category, the
+  company, the insurance number and national ID in their boxes, name, nationality, qualification,
+  the occupation code and title at social insurance, the start date in its boxes, the basic wage of
+  2720, address, phone, email, and «تحريراً في» between its strokes. Overleaf, the company and his
+  name in the declaration. An empty value writes nothing, and the form's own dots stay. The page is
+  A4 like the other papers, so the Legal page stands on its full height, slightly smaller.
+  - Classes `scan`, `f1p1` / `f1p2`, `at` and one per place (`contracts/form-one-scan.ts`); the
+    page `scan` has no margin. New variables `contract.currentDay`, `currentMonth`, `currentYear`.
+    The paper's revision 3 rewrites the row at the next start.
+
 - **HR: an external person no longer holds a company employee number.** The last company code was
   …2942. After an external person «C2» was registered, a new employee typed as 02002943 was refused:
   «هذا الرقم مسجَّل بالفعل للموظف C2». The owner: «المفروض لا يحجز هذه الأكواد». Registering an

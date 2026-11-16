@@ -1409,7 +1409,11 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     const employee = await employeeIn(specialistJob);
     const html = ((await pack(employee.id)).body.data as HiringPackDto).html;
     expect(html).toContain('فني صيانة ماكينات');
-    expect(html).toContain('<span class="cells c3"><i>7</i><i>4</i><i>2</i></span> / <span class="cells c3"><i>1</i><i>1</i><i>5</i></span>');
+    // Each group of the code at its own boxes on his scanned page.
+    expect(html).toContain(
+      '<span class="at f1-occ1"><span class="cells c3"><i>7</i><i>4</i><i>2</i></span></span>' +
+        '<span class="at f1-occ2"><span class="cells c3"><i>1</i><i>1</i><i>5</i></span></span>',
+    );
     expect(html).toContain('بوظيفة ( أخصائى صراف آلى )');
 
     // Both emptied: nothing kept — form 1 prints the job's own name and empty code boxes.

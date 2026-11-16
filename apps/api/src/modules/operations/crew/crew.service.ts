@@ -60,6 +60,7 @@ import {
   ErrorCodes,
   OperationsEvents,
   OperationsSettingKeys,
+  canonicalCrewRowColour,
   canonicalOperationsDirection,
   type OperationsCrewBoardCrewDto,
   type OperationsCrewBoardDto,
@@ -127,7 +128,9 @@ const snapshot = (doc: OperationsCrewAssignmentDoc) => ({
   notes: doc.notes,
   // `== null`: a row written before Round 20 has neither field, and reads as "none".
   shiftTypeId: doc.shiftTypeId == null ? null : String(doc.shiftTypeId),
-  rowColour: doc.rowColour ?? null,
+  // Round 24b: the palette's name — a Round-20 name the boot has not migrated yet reads as the one
+  // it will be migrated to, so the board, the audit and the no-op test all see one spelling.
+  rowColour: canonicalCrewRowColour(doc.rowColour),
 });
 
 /** The board's view of a crew row — its id, then its facts. */

@@ -28,7 +28,12 @@
 // يجيب كل السيارات اللى مش عليها طاقم» — a row may hold a van the Fleet roster does not have that
 // day, with `fleetDutyAssignmentId` null (crew.service.ts `plan`).
 import { Schema, model, type Types } from 'mongoose';
-import { OPERATIONS_CREW_ROW_COLOURS, type OperationsCrewRowColour } from '@ecms/contracts';
+import {
+  OPERATIONS_CREW_ROW_COLOURS,
+  OPERATIONS_LEGACY_CREW_ROW_COLOURS,
+  type OperationsCrewRowColour,
+  type OperationsLegacyCrewRowColour,
+} from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
 export interface OperationsCrewAssignmentDoc extends BaseDocFields {
@@ -47,8 +52,14 @@ export interface OperationsCrewAssignmentDoc extends BaseDocFields {
    * written before Round 20 carry no such field; `.lean()` reads absent as undefined.
    */
   shiftTypeId?: Types.ObjectId | null;
-  /** The row's tint (Round 20), or null. Optional for the same reason. */
-  rowColour?: OperationsCrewRowColour | null;
+  /**
+   * The row's colour picked by hand (Round 20), or null. Optional for the same reason. Round 24b: a
+   * name of the types' palette, null meaning «لون النوع» — the board then draws the row in its
+   * type's colour. A row written before Round 24b may still hold one of Round 20's six names until
+   * the boot migrates it (`migrateCrewRowColoursToPalette`), which is why the type says so: every
+   * reader goes through `canonicalCrewRowColour`, and nothing writes a legacy name.
+   */
+  rowColour?: OperationsCrewRowColour | OperationsLegacyCrewRowColour | null;
   /**
    * The three slots, each now holding up to `CREW_SLOT_CAPACITY` people (six per vehicle). The
    * cap is a contract rule (`PlanOperationsCrewRowSchema`), enforced where the payload arrives
@@ -83,7 +94,19 @@ const crewAssignmentSchema = new Schema<OperationsCrewAssignmentDoc>(
     vehicleId: { type: Schema.Types.ObjectId, default: null },
     fleetDutyAssignmentId: { type: Schema.Types.ObjectId, default: null },
     shiftTypeId: { type: Schema.Types.ObjectId, default: null },
-    rowColour: { type: String, enum: [...OPERATIONS_CREW_ROW_COLOURS, null], default: null },
+    // The palette's names, and Round 20's (`OPERATIONS_LEGACY_CREW_ROW_COLOURS`) for a row not yet
+    // migrated — the enum describes what the collection may hold, not what is written now.
+    rowColour: {
+      type: String,
+      enum: [
+        ...new Set<string | null>([
+          ...OPERATIONS_CREW_ROW_COLOURS,
+          ...Object.keys(OPERATIONS_LEGACY_CREW_ROW_COLOURS),
+          null,
+        ]),
+      ],
+      default: null,
+    },
     captainEmployeeIds: crewSlot,
     specialist1EmployeeIds: crewSlot,
     specialist2EmployeeIds: crewSlot,

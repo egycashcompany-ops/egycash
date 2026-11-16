@@ -10,11 +10,13 @@ import {
   OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
   OPERATIONS_CREW_ROW_COLOURS,
   OPERATIONS_CREW_SLOTS,
+  OPERATIONS_LEGACY_CREW_ROW_COLOURS,
   OPERATIONS_SHIFT_TYPE_COLOURS,
   OperationsCrewAssignmentChangedPayloadV1,
   OrderOperationsShiftTypesSchema,
   PlanOperationsCrewSchema,
   UpdateOperationsShiftTypeSchema,
+  canonicalCrewRowColour,
   canonicalOperationsDirection,
   crewRoleOf,
   fitsCrewSlot,
@@ -62,20 +64,35 @@ describe('the shift-type catalog («أنواع التشغيل»)', () => {
 });
 
 describe('the crew-board save — type, colour, and rows without a van', () => {
-  it('carries a type and one of the six colours on a row', () => {
-    expect(
-      plan({ rows: [{ vehicleId: oid(1), shiftTypeId: oid(50), rowColour: 'yellow' }] }).success,
-    ).toBe(true);
-    expect(OPERATIONS_CREW_ROW_COLOURS).toEqual([
-      'yellow',
-      'green',
-      'blue',
-      'red',
-      'purple',
-      'orange',
-    ]);
-    expect(plan({ rows: [{ vehicleId: oid(1), rowColour: 'pink' }] }).success).toBe(false);
+  it('Round 24b — carries a type and a colour OF THE TYPES’ PALETTE on a row', () => {
+    const parsed = plan({
+      rows: [{ vehicleId: oid(1), shiftTypeId: oid(50), rowColour: 'crimson' }],
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.rows[0]?.rowColour).toBe('crimson');
+    // One palette: the row's colours ARE the types' colours.
+    expect(OPERATIONS_CREW_ROW_COLOURS).toBe(OPERATIONS_SHIFT_TYPE_COLOURS);
+    expect(plan({ rows: [{ vehicleId: oid(1), rowColour: 'magenta' }] }).success).toBe(false);
+    expect(plan({ rows: [{ vehicleId: oid(1), rowColour: '#ff0000' }] }).success).toBe(false);
     expect(plan({ rows: [{ vehicleId: oid(1), shiftTypeId: 'daily' }] }).success).toBe(false);
+    // null is «لون النوع» — the override taken off.
+    expect(plan({ rows: [{ vehicleId: oid(1), rowColour: null }] }).success).toBe(true);
+  });
+
+  it('Round 24b — still TAKES Round 20’s six names, mapped onto the palette (never a 400)', () => {
+    for (const [legacy, palette] of Object.entries(OPERATIONS_LEGACY_CREW_ROW_COLOURS)) {
+      const parsed = plan({ rows: [{ vehicleId: oid(1), rowColour: legacy }] });
+      expect(parsed.success, legacy).toBe(true);
+      expect(parsed.data?.rows[0]?.rowColour, legacy).toBe(palette);
+    }
+    expect(OPERATIONS_LEGACY_CREW_ROW_COLOURS).toEqual({
+      yellow: 'amber',
+      green: 'emerald',
+      blue: 'sky',
+      red: 'rose',
+      purple: 'violet',
+      orange: 'orange',
+    });
   });
 
   it('accepts a NEW row without a van, and a saved one by its id', () => {
@@ -300,5 +317,64 @@ describe('Round 23 — who may take which slot («ممنوع ان اعين قا�
 
   it('names the refusal of somebody newly put in a slot his role does not fit', () => {
     expect(ErrorCodes.OPERATIONS_CREW_MEMBER_WRONG_SLOT).toBe('OPERATIONS_CREW_MEMBER_WRONG_SLOT');
+  });
+});
+
+describe('Round 24b — the one palette and the legacy row colours', () => {
+  it('is twenty well-separated names, Round 20’s eleven first, the seeded nine before them all', () => {
+    expect(OPERATIONS_SHIFT_TYPE_COLOURS).toHaveLength(20);
+    expect(new Set(OPERATIONS_SHIFT_TYPE_COLOURS).size).toBe(20);
+    const round20 = [
+      'rose',
+      'orange',
+      'amber',
+      'lime',
+      'emerald',
+      'teal',
+      'sky',
+      'indigo',
+      'violet',
+      'fuchsia',
+      'slate',
+    ];
+    expect([...OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 11)].sort()).toEqual([...round20].sort());
+    // The nine the boot seeds the legacy types with (shift-type.service.ts) are the first nine, so
+    // a fresh catalog of nine types has every type's colour among the nine swatches shown.
+    const seeded = ['rose', 'teal', 'fuchsia', 'indigo', 'emerald', 'orange', 'amber', 'slate'];
+    expect([...OPERATIONS_SHIFT_TYPE_COLOURS.slice(0, 9)]).toEqual(
+      expect.arrayContaining([...seeded, 'violet']),
+    );
+  });
+
+  it('shares no name with a legacy row colour but orange — the mapping is never ambiguous', () => {
+    const palette = new Set<string>(OPERATIONS_SHIFT_TYPE_COLOURS);
+    for (const [legacy, target] of Object.entries(OPERATIONS_LEGACY_CREW_ROW_COLOURS)) {
+      expect(palette.has(target), target).toBe(true);
+      expect(palette.has(legacy), legacy).toBe(legacy === target);
+    }
+  });
+
+  it('reads a stored colour as the palette’s name: as it is, mapped, or none', () => {
+    expect(canonicalCrewRowColour('navy')).toBe('navy');
+    expect(canonicalCrewRowColour('yellow')).toBe('amber');
+    expect(canonicalCrewRowColour('purple')).toBe('violet');
+    expect(canonicalCrewRowColour('orange')).toBe('orange');
+    expect(canonicalCrewRowColour('magenta')).toBeNull();
+    expect(canonicalCrewRowColour('toString')).toBeNull();
+    expect(canonicalCrewRowColour(null)).toBeNull();
+    expect(canonicalCrewRowColour(undefined)).toBeNull();
+    expect(canonicalCrewRowColour(3)).toBeNull();
+  });
+
+  it('a type takes a new palette name, and never a legacy row name', () => {
+    expect(CreateOperationsShiftTypeSchema.safeParse({ name: 'ليلي', colour: 'navy' }).success).toBe(
+      true,
+    );
+    expect(UpdateOperationsShiftTypeSchema.safeParse({ colour: 'olive', version: 3 }).success).toBe(
+      true,
+    );
+    expect(UpdateOperationsShiftTypeSchema.safeParse({ colour: 'yellow', version: 3 }).success).toBe(
+      false,
+    );
   });
 });

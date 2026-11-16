@@ -21,6 +21,7 @@ import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
+  OPERATIONS_LEGACY_CREW_ROW_COLOURS,
   OperationsEvents,
   OperationsSettingKeys,
   SettingKeys,
@@ -51,7 +52,10 @@ import { OperationsCrewAssignmentModel } from '../../src/modules/operations/crew
 import { operationsCrewAssignmentRepository } from '../../src/modules/operations/crew/crew-assignment.repository';
 import { OperationsShiftTypeModel } from '../../src/modules/operations/shift-types/shift-type.model';
 import { seedOperationsShiftTypes } from '../../src/modules/operations/shift-types/shift-type.service';
-import { migrateCrewAssignmentIndexes } from '../../src/modules/operations/operations.migration';
+import {
+  migrateCrewAssignmentIndexes,
+  migrateCrewRowColoursToPalette,
+} from '../../src/modules/operations/operations.migration';
 import { operationsCrewRequirementsRepository } from '../../src/modules/operations/crew/crew-requirements.repository';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
@@ -556,6 +560,54 @@ describe('«أنواع التشغيل» — the shift-type catalog («النوع
       expect((await call.set('Authorization', `Bearer ${crewViewerToken}`)).status).toBe(403);
     }
   });
+
+  it('Round 24b — «ألوان الأنواع»: a type takes any of the twenty, two may share one, a row-only name is no type colour', async () => {
+    const daily = await typeNamed('يومي');
+    const travel = await typeNamed('سفر');
+    const patchType = (id: string, body: Record<string, unknown>): request.Test =>
+      request(app)
+        .patch(`/api/v1/operations/shift-types/${id}`)
+        .set('Authorization', `Bearer ${catalogToken}`)
+        .send(body);
+
+    // A name new in Round 24b, through the existing update and its existing grant.
+    const navy = await patchType(daily.id, { colour: 'navy', version: daily.version });
+    expect(navy.status, JSON.stringify(navy.body)).toBe(200);
+    const navyDto = data<OperationsShiftTypeDto>(navy);
+    expect(navyDto).toMatchObject({ colour: 'navy', version: daily.version + 1 });
+
+    // «ينفع نوعين ياخدوا نفس اللون؟» → «أيوه عادي».
+    const shared = await patchType(travel.id, { colour: 'navy', version: travel.version });
+    expect(shared.status, JSON.stringify(shared.body)).toBe(200);
+    expect(
+      (await types())
+        .filter((type) => type.colour === 'navy')
+        .map((type) => type.name)
+        .sort(),
+    ).toEqual(['سفر', 'يومي'].sort());
+
+    // Round 20's ROW names were never type colours, and are not now: only the row maps them.
+    expect((await patchType(daily.id, { colour: 'yellow', version: navyDto.version })).status).toBe(
+      400,
+    );
+    // The card sends the version it read: a stale one is refused, nothing written.
+    const stale = await patchType(daily.id, { colour: 'olive', version: daily.version });
+    expect(stale.status).toBe(409);
+    expect((await typeNamed('يومي')).colour).toBe('navy');
+
+    // Put back for the board cases below.
+    expect((await patchType(daily.id, { colour: 'rose', version: navyDto.version })).status).toBe(
+      200,
+    );
+    expect(
+      (
+        await patchType(travel.id, {
+          colour: 'orange',
+          version: data<OperationsShiftTypeDto>(shared).version,
+        })
+      ).status,
+    ).toBe(200);
+  });
 });
 
 describe('the crew row’s type and colour', () => {
@@ -569,12 +621,12 @@ describe('the crew row’s type and colour', () => {
           specialist1EmployeeIds: [spec1],
           plannedTime: '07:30',
           shiftTypeId: daily.id,
-          rowColour: 'yellow',
+          rowColour: 'amber',
         },
       ],
     });
     expect(first.changedCount).toBe(1);
-    expect(vanRow(first, van1)?.crew).toMatchObject({ shiftTypeId: daily.id, rowColour: 'yellow' });
+    expect(vanRow(first, van1)?.crew).toMatchObject({ shiftTypeId: daily.id, rowColour: 'amber' });
 
     const recoloured = await saved({
       rows: [
@@ -584,12 +636,12 @@ describe('the crew row’s type and colour', () => {
           specialist1EmployeeIds: [spec1],
           plannedTime: '07:30',
           shiftTypeId: daily.id,
-          rowColour: 'green',
+          rowColour: 'emerald',
         },
       ],
     });
     expect(recoloured.changedCount).toBe(1);
-    expect(vanRow(recoloured, van1)?.crew?.rowColour).toBe('green');
+    expect(vanRow(recoloured, van1)?.crew?.rowColour).toBe('emerald');
 
     const again = await saved({
       rows: [
@@ -599,7 +651,7 @@ describe('the crew row’s type and colour', () => {
           specialist1EmployeeIds: [spec1],
           plannedTime: '07:30',
           shiftTypeId: daily.id,
-          rowColour: 'green',
+          rowColour: 'emerald',
         },
       ],
     });
@@ -607,8 +659,8 @@ describe('the crew row’s type and colour', () => {
   });
 
   it('a row with a colour or a type and nothing else is still a row', async () => {
-    const res = await saved({ rows: [{ vehicleId: van2, rowColour: 'blue' }] });
-    expect(vanRow(res, van2)?.crew).toMatchObject({ rowColour: 'blue', shiftTypeId: null });
+    const res = await saved({ rows: [{ vehicleId: van2, rowColour: 'sky' }] });
+    expect(vanRow(res, van2)?.crew).toMatchObject({ rowColour: 'sky', shiftTypeId: null });
   });
 
   it('refuses a type nobody has, and an ARCHIVED type newly chosen — OPERATIONS_UNKNOWN_SHIFT_TYPE', async () => {
@@ -627,14 +679,14 @@ describe('the crew row’s type and colour', () => {
     expect(errorOf(archived).code).toBe(ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE);
     // Nothing written: van 2 is as it was.
     expect(vanRow(await board(), van2)?.crew).toMatchObject({
-      rowColour: 'blue',
+      rowColour: 'sky',
       shiftTypeId: null,
     });
   });
 
   it('keeps a type the row already holds when it is archived afterwards', async () => {
     const reserve = await typeNamed('احتياطي');
-    await saved({ rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'blue' }] });
+    await saved({ rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'sky' }] });
     const off = await request(app)
       .patch(`/api/v1/operations/shift-types/${reserve.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -642,21 +694,21 @@ describe('the crew row’s type and colour', () => {
     expect(off.status).toBe(200);
     // The row is saved again with a note — its archived type rides along untouched.
     const res = await saved({
-      rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'blue', notes: 'ملاحظة' }],
+      rows: [{ vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'sky', notes: 'ملاحظة' }],
     });
     expect(vanRow(res, van2)?.crew).toMatchObject({ shiftTypeId: reserve.id, notes: 'ملاحظة' });
     // …while ANOTHER row newly picking the same archived type is refused, and the refusal names
     // THAT row (index 1), not the one keeping it — the board marks the row it names.
     const picked = await save({
       rows: [
-        { vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'blue', notes: 'ملاحظة' },
+        { vehicleId: van2, shiftTypeId: reserve.id, rowColour: 'sky', notes: 'ملاحظة' },
         {
           vehicleId: van1,
           captainEmployeeIds: [cap1],
           specialist1EmployeeIds: [spec1],
           plannedTime: '07:30',
           shiftTypeId: reserve.id,
-          rowColour: 'green',
+          rowColour: 'emerald',
         },
       ],
     });
@@ -670,6 +722,128 @@ describe('the crew row’s type and colour', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ isActive: true, version: data<OperationsShiftTypeDto>(off).version });
     expect(back.status).toBe(200);
+  });
+
+  // Round 24b — «تلقائي ويتغيّر يدوي»: `rowColour` is the colour picked by hand over the type's, in the
+  // types' palette. Its own day, and its rows deleted at the end, so no case above or below meets
+  // them (the index cases rebuild `ux_day_vehicle` in its old shape, where two rows without a van
+  // on one day collide).
+  const COLOUR_DAY = shift(110);
+  const looseById = (dto: OperationsCrewBoardDto, id: string | undefined) =>
+    dto.vehiclelessRows.find((row) => row.id === id);
+
+  it('Round 24b — takes the palette’s names and Round 20’s six (mapped), answers in the palette’s, and either spelling of the same colour is a no-op', async () => {
+    const first = await saved(
+      { rows: [{ vehicleId: null, rowColour: 'purple', notes: 'r24b' }] },
+      COLOUR_DAY,
+    );
+    const id = first.vehiclelessRows.find((row) => row.notes === 'r24b')?.id;
+    expect(looseById(first, id)?.rowColour).toBe('violet');
+    // Stored in the palette's name too: no service writes a legacy one.
+    expect((await OperationsCrewAssignmentModel.findById(id).lean().exec())?.rowColour).toBe(
+      'violet',
+    );
+    const resend = (rowColour: unknown) =>
+      save(
+        { rows: [{ vehicleId: null, crewAssignmentId: id, rowColour, notes: 'r24b' }] },
+        COLOUR_DAY,
+      );
+
+    // The same colour, as the palette names it and as Round 20 did: nothing changed.
+    for (const same of ['violet', 'purple']) {
+      const again = await resend(same);
+      expect(again.status, same).toBe(200);
+      expect(data<{ changedCount: number }>(again).changedCount, same).toBe(0);
+    }
+    // An old client sending any of Round 20's six never meets a 400; each lands on its palette name.
+    for (const [legacy, palette] of Object.entries(OPERATIONS_LEGACY_CREW_ROW_COLOURS)) {
+      const res = await resend(legacy);
+      expect(res.status, legacy).toBe(200);
+      expect(looseById(data<OperationsCrewBoardDto>(res), id)?.rowColour, legacy).toBe(palette);
+    }
+    // The nine names new in Round 24b, as they are.
+    for (const colour of ['crimson', 'navy', 'forest', 'gold', 'plum', 'brown', 'cyan', 'pink']) {
+      const res = await resend(colour);
+      expect(res.status, colour).toBe(200);
+      expect(looseById(data<OperationsCrewBoardDto>(res), id)?.rowColour, colour).toBe(colour);
+    }
+    // Anything else is refused, nothing written.
+    const bad = await resend('magenta');
+    expect(bad.status).toBe(400);
+    expect(looseById(await board(COLOUR_DAY), id)?.rowColour).toBe('pink');
+    // null is «لون النوع»: the hand-picked colour is taken off, and the row wears its type's.
+    const auto = await resend(null);
+    expect(auto.status).toBe(200);
+    expect(looseById(data<OperationsCrewBoardDto>(auto), id)?.rowColour).toBeNull();
+  });
+
+  it('Round 24b — a row still holding a Round-20 name reads in the palette’s, and the boot migrates it once, history and timestamps untouched', async () => {
+    const res = await saved(
+      { rows: [{ vehicleId: null, rowColour: 'gold', notes: 'r24b-migrate' }] },
+      COLOUR_DAY,
+    );
+    const id = res.vehiclelessRows.find((row) => row.notes === 'r24b-migrate')?.id as string;
+    const _id = new Types.ObjectId(id);
+    // Round 20 wrote these names; written straight into the collection, as a database built before
+    // Round 24b holds them.
+    await OperationsCrewAssignmentModel.collection.updateOne(
+      { _id },
+      { $set: { rowColour: 'yellow' } },
+    );
+    const raw = (rowColour: string, isDeleted: boolean) => ({
+      operationsDayId: new Types.ObjectId(),
+      vehicleId: null,
+      fleetDutyAssignmentId: null,
+      shiftTypeId: null,
+      rowColour,
+      captainEmployeeIds: [],
+      specialist1EmployeeIds: [],
+      specialist2EmployeeIds: [],
+      direction: null,
+      plannedTime: null,
+      notes: null,
+      isDeleted,
+      createdAt: new Date('2026-01-02T03:04:05.000Z'),
+      updatedAt: new Date('2026-01-02T03:04:05.000Z'),
+      __v: 0,
+    });
+    const gone = (await OperationsCrewAssignmentModel.collection.insertOne(raw('red', true)))
+      .insertedId;
+    const orange = (await OperationsCrewAssignmentModel.collection.insertOne(raw('orange', false)))
+      .insertedId;
+    const before = await OperationsCrewAssignmentModel.collection.findOne({ _id });
+
+    // Read BEFORE the migration: the palette's name already — the board never shows «yellow».
+    expect(looseById(await board(COLOUR_DAY), id)?.rowColour).toBe('amber');
+
+    const first = await migrateCrewRowColoursToPalette();
+    expect(first.rowsUpdated).toBe(2);
+    const after = await OperationsCrewAssignmentModel.collection.findOne({ _id });
+    expect(after?.rowColour).toBe('amber');
+    // A spelling changed, not the crew: `updatedAt` and the version stay.
+    expect(after?.updatedAt).toEqual(before?.updatedAt);
+    expect(after?.__v).toEqual(before?.__v);
+    // A soft-deleted row is history the readers still reach: migrated too, still deleted.
+    expect(await OperationsCrewAssignmentModel.collection.findOne({ _id: gone })).toMatchObject({
+      rowColour: 'rose',
+      isDeleted: true,
+    });
+    // orange is a palette name: left as it is.
+    expect(
+      (await OperationsCrewAssignmentModel.collection.findOne({ _id: orange }))?.rowColour,
+    ).toBe('orange');
+    // No legacy name is left anywhere.
+    expect(
+      await OperationsCrewAssignmentModel.collection.countDocuments({
+        rowColour: { $in: ['yellow', 'green', 'blue', 'red', 'purple'] },
+      }),
+    ).toBe(0);
+
+    // Idempotent: the next boot (or the worker booting beside the api) writes nothing.
+    expect(await migrateCrewRowColoursToPalette()).toEqual({ rowsUpdated: 0 });
+    await OperationsCrewAssignmentModel.collection.deleteMany({
+      $or: [{ _id: { $in: [gone, orange] } }, { notes: { $in: ['r24b', 'r24b-migrate'] } }],
+    });
   });
 });
 
@@ -795,13 +969,13 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
           vehicleId: null,
           crewAssignmentId: looseB,
           specialist2EmployeeIds: [spec3],
-          rowColour: 'red',
+          rowColour: 'rose',
         },
       ],
     });
     expect(res.changedCount).toBe(1);
     expect(res.vehiclelessRows.find((row) => row.id === looseB)).toMatchObject({
-      rowColour: 'red',
+      rowColour: 'rose',
     });
   });
 
@@ -852,7 +1026,7 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
     // And back, for the cases below.
     await saved({
       rows: [
-        { vehicleId: van2, rowColour: 'blue' },
+        { vehicleId: van2, rowColour: 'sky' },
         {
           vehicleId: null,
           crewAssignmentId: looseA,
@@ -1260,7 +1434,7 @@ describe('Round 22 — who is away cannot be put on a row («لو القائد �
             vehicleId: van2,
             specialist1EmployeeIds: [laterAway],
             plannedTime: '08:15',
-            rowColour: 'green',
+            rowColour: 'emerald',
           },
         ],
       },
@@ -1270,14 +1444,14 @@ describe('Round 22 — who is away cannot be put on a row («لو القائد �
       captainEmployeeIds: [],
       specialist1EmployeeIds: [laterAway],
       plannedTime: '08:15',
-      rowColour: 'green',
+      rowColour: 'emerald',
     });
 
     // Moved to ANOTHER row, he is being put on it — refused, and the van keeps him.
     const moved = await save(
       {
         rows: [
-          { vehicleId: van2, plannedTime: '08:15', rowColour: 'green' },
+          { vehicleId: van2, plannedTime: '08:15', rowColour: 'emerald' },
           { vehicleId: null, captainEmployeeIds: [laterAway] },
         ],
       },
@@ -1464,7 +1638,7 @@ describe('Round 23 — a captain’s slot takes a captain, a specialist’s a sp
             vehicleId: van2,
             specialist1EmployeeIds: [reflagged],
             plannedTime: '08:15',
-            rowColour: 'green',
+            rowColour: 'emerald',
           },
         ],
       },
@@ -1473,7 +1647,7 @@ describe('Round 23 — a captain’s slot takes a captain, a specialist’s a sp
     expect(vanRow(edited, van2)?.crew).toMatchObject({
       specialist1EmployeeIds: [reflagged],
       plannedTime: '08:15',
-      rowColour: 'green',
+      rowColour: 'emerald',
     });
 
     // Moved to the other specialist's slot of the SAME row — a new seat, refused; the row stays.
@@ -1493,7 +1667,7 @@ describe('Round 23 — a captain’s slot takes a captain, a specialist’s a sp
     const elsewhere = await save(
       {
         rows: [
-          { vehicleId: van2, plannedTime: '08:15', rowColour: 'green' },
+          { vehicleId: van2, plannedTime: '08:15', rowColour: 'emerald' },
           { vehicleId: van3, specialist1EmployeeIds: [reflagged] },
         ],
       },
@@ -1984,7 +2158,7 @@ describe('Round 24 — «بدون سيارة» offers every car without a crew, 
             crewAssignmentId: heldId,
             captainEmployeeIds: [specialistOnly],
             notes: 'r24-held',
-            rowColour: 'blue',
+            rowColour: 'sky',
           },
         ],
       },

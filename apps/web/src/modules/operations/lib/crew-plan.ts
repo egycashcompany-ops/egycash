@@ -37,6 +37,7 @@ import {
   MAX_PAGE_SIZE,
   OPERATIONS_CREW_ROW_COLOURS,
   asciiDigits,
+  canonicalCrewRowColour,
   crewRoleOf,
   fitsCrewSlot,
   type ApiErrorDetail,
@@ -68,19 +69,20 @@ export { CREW_SLOTS, type CrewSlot };
  */
 export const SHIFT_TYPE_LIST = { page: 1, pageSize: MAX_PAGE_SIZE } as const;
 
-/** The row colours «زرار يبقى فى كذا لون» offers — the contract's six, plus none. */
+/**
+ * The colours a row may be given by hand — Round 24b: the TYPES' palette, one palette for both
+ * (`lib/type-colours.ts` says which of it is shown). Null is «لون النوع»: the row wears its type's.
+ */
 export const CREW_ROW_COLOURS = OPERATIONS_CREW_ROW_COLOURS;
 export type CrewRowColour = OperationsCrewRowColour;
 
 /**
- * A colour as the board will draw it, or none. The contract types it already; this guards the
- * class maps (`ROW_TINT`, `SWATCH`) against a colour a NEWER server may add before this screen
- * knows it — read as «no colour», never as a class name built from the wire.
+ * A colour as the board will draw it, or none (`canonicalCrewRowColour`): a palette name as it is,
+ * Round 20's six mapped (an older server, a row not migrated yet), and anything else — a colour a
+ * NEWER server may add before this screen knows it — «no colour», never a class name built from
+ * the wire.
  */
-const knownColour = (value: string | null): CrewRowColour | null =>
-  value !== null && (CREW_ROW_COLOURS as readonly string[]).includes(value)
-    ? (value as CrewRowColour)
-    : null;
+const knownColour = (value: string | null): CrewRowColour | null => canonicalCrewRowColour(value);
 
 // ── The rows ───────────────────────────────────────────────────────────────────────────────────────
 

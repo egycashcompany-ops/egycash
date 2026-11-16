@@ -18,6 +18,7 @@
 // value, so a disagreement is the NORMAL state of every row edited after the migration ran, and a
 // migration that reconciled them would undo real work on every restart.
 import { type Model, type Types } from 'mongoose';
+import { OPERATIONS_LEGACY_CREW_ROW_COLOURS } from '@ecms/contracts';
 import { logger } from '../../infrastructure/logging/logger';
 import { reconcileDeclaredIndexes } from '../../shared/base/index-drift';
 import {
@@ -172,7 +173,43 @@ export const migrateCrewAssignmentIndexes = async (): Promise<void> => {
   await reconcileDeclaredIndexes(OperationsCrewAssignmentModel as unknown as Model<unknown>);
 };
 
+/**
+ * Round 24b — ONE PALETTE: «عاوز pallett الالوان يكون على عدد الالوان يكون نفس عدد النوع». A crew row's
+ * colour is now a name of the types' palette (`OPERATIONS_CREW_ROW_COLOURS`), and Round 20's six
+ * names are legacy. This rewrites the stored ones to the palette's (`OPERATIONS_LEGACY_CREW_ROW_COLOURS`
+ * — yellow→amber, green→emerald, blue→sky, red→rose, purple→violet; orange is a palette name and
+ * stays), under the rules the slots' migration set above:
+ *
+ *   1. NOTHING ELSE IS TOUCHED. One field, one value for another, on exactly the rows that hold a
+ *      legacy name. Soft-deleted rows too: they are history the captain report and the audit trail
+ *      still read, and the readers map a legacy name anyway (`canonicalCrewRowColour`).
+ *   2. RE-RUNNING CHANGES NOTHING. The filter is the legacy name itself; once rewritten a row no
+ *      longer matches, so a second boot — or the api and the worker booting together — writes
+ *      nothing. A row an operator has since recoloured holds a palette name and is never revisited.
+ *   3. TIMESTAMPS OFF. `updatedAt` is when a person last changed the crew; this changed a spelling.
+ *
+ * The audit trail is NOT rewritten: an entry's `rowColour` old/new values are what was written at
+ * the time, and history is not edited after the fact.
+ */
+export const migrateCrewRowColoursToPalette = async (): Promise<{ rowsUpdated: number }> => {
+  let rowsUpdated = 0;
+  for (const [legacy, palette] of Object.entries(OPERATIONS_LEGACY_CREW_ROW_COLOURS)) {
+    if (legacy === palette) continue; // orange — already a palette name
+    const result = await OperationsCrewAssignmentModel.updateMany(
+      { rowColour: legacy },
+      { $set: { rowColour: palette } },
+      { timestamps: false },
+    ).exec();
+    rowsUpdated += result.modifiedCount;
+  }
+  if (rowsUpdated > 0) {
+    logger.info({ rowsUpdated }, 'operations: crew row colours migrated to the types’ palette');
+  }
+  return { rowsUpdated };
+};
+
 export const runOperationsMigrations = async (): Promise<void> => {
   await migrateCrewSlotsToArrays();
   await migrateCrewAssignmentIndexes();
+  await migrateCrewRowColoursToPalette();
 };

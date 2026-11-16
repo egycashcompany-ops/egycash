@@ -479,19 +479,39 @@ export type UpdateOperationsArea = z.infer<typeof UpdateOperationsAreaSchema>;
  * The colours a type may wear — a small fixed palette the screen maps to its tag colours, so a
  * type added on the reference screen still reads as a coloured tag on the board without anybody
  * picking a hex value. Names, never CSS: the screen owns how each looks in light and dark.
+ *
+ * Round 24b — ONE PALETTE, for the types AND the crew rows: «عاوز pallett الالوان يكون على عدد الالوان
+ * يكون نفس عدد النوع … اقدر ادى كل نوع لون من الالوان». An ORDERED, curated list of well-separated
+ * colours: the board offers its FIRST N, N being the number of live types (all of it past twenty), so
+ * the order is the order colours join as types are added — each prefix as far apart as the list
+ * allows. The eleven names of Round 20 stay and stay first (a saved type keeps its colour by name),
+ * re-ordered among themselves so the first nine are the nine the boot seeds the legacy types with —
+ * on a fresh catalog every type's colour is among the swatches shown. The nine after them are new
+ * and deliberately share no name with Round 20's six row colours (yellow, green, blue, red, purple):
+ * those are now legacy names the boundary maps (`OPERATIONS_LEGACY_CREW_ROW_COLOURS`), and a palette
+ * name equal to one would make the mapping ambiguous.
  */
 export const OPERATIONS_SHIFT_TYPE_COLOURS = [
   'rose',
-  'orange',
-  'amber',
-  'lime',
   'emerald',
-  'teal',
-  'sky',
   'indigo',
+  'amber',
   'violet',
+  'teal',
+  'orange',
   'fuchsia',
   'slate',
+  'lime',
+  'sky',
+  'crimson',
+  'navy',
+  'forest',
+  'gold',
+  'plum',
+  'brown',
+  'cyan',
+  'pink',
+  'olive',
 ] as const;
 export const OperationsShiftTypeColourSchema = z.enum(OPERATIONS_SHIFT_TYPE_COLOURS);
 export type OperationsShiftTypeColour = z.infer<typeof OperationsShiftTypeColourSchema>;
@@ -1806,19 +1826,66 @@ export const fitsCrewSlot = (role: OperationsCrewRole, slot: OperationsCrewSlot)
   role === 'dual' || (slot === 'captain' ? role === 'captain' : role === 'specialist');
 
 /**
- * Round 20 — the row's tint on the crew board: «وعاوز زرا يبقى فى كذا لون اقدر الون به الصف». Six
- * names, and null for none. A planner's mark, nothing more: no rule reads it.
+ * Round 20 — the row's tint on the crew board: «وعاوز زرا يبقى فى كذا لون اقدر الون به الصف». A
+ * planner's mark, nothing more: no rule reads it.
+ *
+ * Round 24b — THE TYPES' PALETTE, and an OVERRIDE: «تلقائي ويتغيّر يدوي». A row wears its type's
+ * colour by itself; `rowColour` is the colour picked by hand over it, null meaning «لون النوع» (the
+ * type's, or none for a row with no type). Its names ARE the palette's
+ * (`OPERATIONS_SHIFT_TYPE_COLOURS`) — Round 20's own six (yellow, green, blue, red, purple, orange)
+ * are gone from what the server answers: the boot migrates the stored ones
+ * (`migrateCrewRowColoursToPalette`) and the boundary still TAKES them, mapped
+ * (`OPERATIONS_LEGACY_CREW_ROW_COLOURS`), so an old client, or a row the migration has not reached,
+ * never meets a 400.
  */
-export const OPERATIONS_CREW_ROW_COLOURS = [
-  'yellow',
-  'green',
-  'blue',
-  'red',
-  'purple',
-  'orange',
-] as const;
-export const OperationsCrewRowColourSchema = z.enum(OPERATIONS_CREW_ROW_COLOURS);
-export type OperationsCrewRowColour = z.infer<typeof OperationsCrewRowColourSchema>;
+export const OPERATIONS_CREW_ROW_COLOURS = OPERATIONS_SHIFT_TYPE_COLOURS;
+export type OperationsCrewRowColour = OperationsShiftTypeColour;
+
+/**
+ * Round 20's six row colours → the palette's names, each the nearest of the palette's colours to
+ * how Round 20 drew it (`yellow` was drawn amber-ish, `green` emerald, `blue` sky, `red` rose,
+ * `purple` violet). `orange` is a palette name too and maps to itself.
+ */
+export const OPERATIONS_LEGACY_CREW_ROW_COLOURS = {
+  yellow: 'amber',
+  green: 'emerald',
+  blue: 'sky',
+  red: 'rose',
+  purple: 'violet',
+  orange: 'orange',
+} as const satisfies Record<string, OperationsShiftTypeColour>;
+export type OperationsLegacyCrewRowColour = keyof typeof OPERATIONS_LEGACY_CREW_ROW_COLOURS;
+
+/** The legacy names that are NOT palette names — the ones the boundary has to translate. */
+const LEGACY_ONLY_ROW_COLOURS = ['yellow', 'green', 'blue', 'red', 'purple'] as const satisfies
+  readonly Exclude<OperationsLegacyCrewRowColour, OperationsShiftTypeColour>[];
+
+/**
+ * A stored or sent row colour → the palette's name, or null: a palette name as it is, a Round-20
+ * name mapped, anything else (null, absent, a name no build of this contract knows) none. The one
+ * reading every reader of a STORED colour goes through — a row the boot's migration has not reached
+ * yet reads as it will after.
+ */
+export const canonicalCrewRowColour = (value: unknown): OperationsCrewRowColour | null => {
+  if (typeof value !== 'string') return null;
+  if ((OPERATIONS_SHIFT_TYPE_COLOURS as readonly string[]).includes(value)) {
+    return value as OperationsCrewRowColour;
+  }
+  return Object.prototype.hasOwnProperty.call(OPERATIONS_LEGACY_CREW_ROW_COLOURS, value)
+    ? OPERATIONS_LEGACY_CREW_ROW_COLOURS[value as OperationsLegacyCrewRowColour]
+    : null;
+};
+
+/**
+ * What the save takes for `rowColour`: a palette name, or a Round-20 name MAPPED to one (the parsed
+ * value is always a palette name — the service never sees a legacy one). Anything else → 400.
+ */
+export const OperationsCrewRowColourSchema = z.union([
+  OperationsShiftTypeColourSchema,
+  z
+    .enum(LEGACY_ONLY_ROW_COLOURS)
+    .transform((legacy): OperationsCrewRowColour => OPERATIONS_LEGACY_CREW_ROW_COLOURS[legacy]),
+]);
 
 export interface OperationsCrewAssignmentDto {
   id: string;

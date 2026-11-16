@@ -13,53 +13,138 @@ import {
 } from '@ecms/contracts';
 import { cn } from '../../../shared/lib/cn';
 
-/** A type's colours: its tag (tint, text, ring) and its dot. */
-export const SHIFT_TYPE_TONE: Record<OperationsShiftTypeColour, { tag: string; dot: string }> = {
+/**
+ * A palette colour's looks — Round 24b, ONE PALETTE for the types and the crew rows
+ * (`OPERATIONS_SHIFT_TYPE_COLOURS`, twenty names, ordered):
+ *   · `tag` — a type as a tag (tint, text, ring);
+ *   · `dot` — the colour alone, solid: a type's dot, and every swatch it is picked by (on the board's
+ *     «اللون» list, in «ألوان الأنواع», on the reference tab). In dark, the deep ones (navy, plum, …)
+ *     a step lighter, so a swatch never vanishes into the panel;
+ *   · `row` — a crew row drawn in the colour on «لوحة التشغيلة»: «وعاوز اللون فى الجدول يكون متشبع
+ *     اكتر من كدا». The colour itself at 30% on light and 35% on dark (Round 20 drew a 100-level
+ *     wash, about 15%, and 14% on dark), on the CELLS — the table paints a hovered ROW itself, which
+ *     would wash the colour out exactly while the pointer is on it — and `--row-bar`, the solid
+ *     colour of the bar at the row's start edge (`ROW_BAR`). The text stays the table's, and stays
+ *     legible: slate-800 on every light tint is 8.4:1 or better (plum the lowest), slate-200 on
+ *     every dark one 6.6:1 or better (lime the lowest) — AA asks 4.5:1.
+ */
+export const SHIFT_TYPE_TONE: Record<
+  OperationsShiftTypeColour,
+  { tag: string; dot: string; row: string }
+> = {
   rose: {
     tag: 'bg-rose-500/15 text-rose-700 ring-rose-500/30 dark:text-rose-300',
     dot: 'bg-rose-500',
-  },
-  orange: {
-    tag: 'bg-orange-500/15 text-orange-700 ring-orange-500/30 dark:text-orange-300',
-    dot: 'bg-orange-500',
-  },
-  amber: {
-    tag: 'bg-amber-600/15 text-amber-800 ring-amber-600/30 dark:text-amber-300',
-    dot: 'bg-amber-600',
-  },
-  lime: {
-    tag: 'bg-lime-500/20 text-lime-800 ring-lime-600/30 dark:text-lime-300',
-    dot: 'bg-lime-500',
+    row: '[&>td]:!bg-rose-500/30 dark:[&>td]:!bg-rose-500/35 [--row-bar:theme(colors.rose.500)]',
   },
   emerald: {
     tag: 'bg-emerald-500/15 text-emerald-700 ring-emerald-500/30 dark:text-emerald-300',
     dot: 'bg-emerald-500',
-  },
-  teal: {
-    tag: 'bg-teal-500/15 text-teal-700 ring-teal-500/30 dark:text-teal-300',
-    dot: 'bg-teal-500',
-  },
-  sky: {
-    tag: 'bg-sky-500/15 text-sky-700 ring-sky-500/30 dark:text-sky-300',
-    dot: 'bg-sky-500',
+    row: '[&>td]:!bg-emerald-500/30 dark:[&>td]:!bg-emerald-500/35 [--row-bar:theme(colors.emerald.500)]',
   },
   indigo: {
     tag: 'bg-indigo-500/15 text-indigo-700 ring-indigo-500/30 dark:text-indigo-300',
     dot: 'bg-indigo-500',
+    row: '[&>td]:!bg-indigo-500/30 dark:[&>td]:!bg-indigo-500/35 [--row-bar:theme(colors.indigo.500)]',
+  },
+  amber: {
+    tag: 'bg-amber-600/15 text-amber-800 ring-amber-600/30 dark:text-amber-300',
+    dot: 'bg-amber-600',
+    row: '[&>td]:!bg-amber-500/30 dark:[&>td]:!bg-amber-500/35 [--row-bar:theme(colors.amber.600)]',
   },
   violet: {
     tag: 'bg-violet-500/15 text-violet-700 ring-violet-500/30 dark:text-violet-300',
     dot: 'bg-violet-500',
+    row: '[&>td]:!bg-violet-500/30 dark:[&>td]:!bg-violet-500/35 [--row-bar:theme(colors.violet.500)]',
+  },
+  teal: {
+    tag: 'bg-teal-500/15 text-teal-700 ring-teal-500/30 dark:text-teal-300',
+    dot: 'bg-teal-500',
+    row: '[&>td]:!bg-teal-500/30 dark:[&>td]:!bg-teal-500/35 [--row-bar:theme(colors.teal.500)]',
+  },
+  orange: {
+    tag: 'bg-orange-500/15 text-orange-700 ring-orange-500/30 dark:text-orange-300',
+    dot: 'bg-orange-500',
+    row: '[&>td]:!bg-orange-500/30 dark:[&>td]:!bg-orange-500/35 [--row-bar:theme(colors.orange.500)]',
   },
   fuchsia: {
     tag: 'bg-fuchsia-500/15 text-fuchsia-700 ring-fuchsia-500/30 dark:text-fuchsia-300',
     dot: 'bg-fuchsia-500',
+    row: '[&>td]:!bg-fuchsia-500/30 dark:[&>td]:!bg-fuchsia-500/35 [--row-bar:theme(colors.fuchsia.500)]',
   },
   slate: {
     tag: 'bg-slate-700/15 text-slate-800 ring-slate-500/40 dark:bg-slate-400/15 dark:text-slate-200',
     dot: 'bg-slate-700 dark:bg-slate-300',
+    row: '[&>td]:!bg-slate-500/30 dark:[&>td]:!bg-slate-400/35 [--row-bar:theme(colors.slate.700)] dark:[--row-bar:theme(colors.slate.300)]',
+  },
+  lime: {
+    tag: 'bg-lime-500/20 text-lime-800 ring-lime-600/30 dark:text-lime-300',
+    dot: 'bg-lime-500',
+    row: '[&>td]:!bg-lime-500/30 dark:[&>td]:!bg-lime-500/35 [--row-bar:theme(colors.lime.500)]',
+  },
+  sky: {
+    tag: 'bg-sky-500/15 text-sky-700 ring-sky-500/30 dark:text-sky-300',
+    dot: 'bg-sky-500',
+    row: '[&>td]:!bg-sky-500/30 dark:[&>td]:!bg-sky-500/35 [--row-bar:theme(colors.sky.500)]',
+  },
+  crimson: {
+    tag: 'bg-red-700/15 text-red-800 ring-red-700/35 dark:bg-red-500/20 dark:text-red-300',
+    dot: 'bg-red-700 dark:bg-red-600',
+    row: '[&>td]:!bg-red-700/30 dark:[&>td]:!bg-red-600/35 [--row-bar:theme(colors.red.700)] dark:[--row-bar:theme(colors.red.600)]',
+  },
+  navy: {
+    tag: 'bg-blue-800/15 text-blue-900 ring-blue-800/35 dark:bg-blue-500/20 dark:text-blue-300',
+    dot: 'bg-blue-800 dark:bg-blue-600',
+    row: '[&>td]:!bg-blue-800/30 dark:[&>td]:!bg-blue-600/35 [--row-bar:theme(colors.blue.800)] dark:[--row-bar:theme(colors.blue.600)]',
+  },
+  forest: {
+    tag: 'bg-green-700/15 text-green-800 ring-green-700/35 dark:bg-green-500/20 dark:text-green-300',
+    dot: 'bg-green-700 dark:bg-green-600',
+    row: '[&>td]:!bg-green-700/30 dark:[&>td]:!bg-green-600/35 [--row-bar:theme(colors.green.700)] dark:[--row-bar:theme(colors.green.600)]',
+  },
+  gold: {
+    tag: 'bg-yellow-400/25 text-yellow-800 ring-yellow-500/40 dark:bg-yellow-400/20 dark:text-yellow-200',
+    dot: 'bg-yellow-400',
+    row: '[&>td]:!bg-yellow-400/40 dark:[&>td]:!bg-yellow-400/30 [--row-bar:theme(colors.yellow.400)]',
+  },
+  plum: {
+    tag: 'bg-purple-800/15 text-purple-900 ring-purple-800/35 dark:bg-purple-500/20 dark:text-purple-300',
+    dot: 'bg-purple-800 dark:bg-purple-600',
+    row: '[&>td]:!bg-purple-800/30 dark:[&>td]:!bg-purple-600/35 [--row-bar:theme(colors.purple.800)] dark:[--row-bar:theme(colors.purple.600)]',
+  },
+  brown: {
+    tag: 'bg-amber-800/15 text-amber-900 ring-amber-800/35 dark:bg-amber-700/25 dark:text-orange-200',
+    dot: 'bg-amber-800 dark:bg-amber-700',
+    row: '[&>td]:!bg-amber-800/30 dark:[&>td]:!bg-amber-700/40 [--row-bar:theme(colors.amber.800)] dark:[--row-bar:theme(colors.amber.700)]',
+  },
+  cyan: {
+    tag: 'bg-cyan-500/15 text-cyan-800 ring-cyan-500/35 dark:text-cyan-300',
+    dot: 'bg-cyan-400',
+    row: '[&>td]:!bg-cyan-400/35 dark:[&>td]:!bg-cyan-400/30 [--row-bar:theme(colors.cyan.400)]',
+  },
+  pink: {
+    tag: 'bg-pink-400/20 text-pink-700 ring-pink-400/40 dark:text-pink-300',
+    dot: 'bg-pink-400',
+    row: '[&>td]:!bg-pink-400/35 dark:[&>td]:!bg-pink-400/30 [--row-bar:theme(colors.pink.400)]',
+  },
+  olive: {
+    tag: 'bg-lime-700/15 text-lime-900 ring-lime-700/35 dark:bg-lime-600/20 dark:text-lime-200',
+    dot: 'bg-lime-700 dark:bg-lime-600',
+    row: '[&>td]:!bg-lime-700/30 dark:[&>td]:!bg-lime-600/35 [--row-bar:theme(colors.lime.700)] dark:[--row-bar:theme(colors.lime.600)]',
   },
 };
+
+/**
+ * The solid bar at a coloured row's START edge — the right in Arabic, the left in English — in the
+ * row's `--row-bar` (`SHIFT_TYPE_TONE[c].row`): an inset shadow on the first cell, drawn over its
+ * tint and taking no width from the table.
+ */
+export const ROW_BAR =
+  'ltr:[&>td:first-child]:[box-shadow:inset_5px_0_0_0_var(--row-bar)] rtl:[&>td:first-child]:[box-shadow:inset_-5px_0_0_0_var(--row-bar)]';
+
+/** A crew row drawn in a palette colour: its tint, and the bar at its start. */
+export const rowTint = (colour: OperationsShiftTypeColour): string =>
+  cn(SHIFT_TYPE_TONE[colour].row, ROW_BAR);
 
 /**
  * A type's name in the reader's language. The catalog's Arabic name is the type's name; the

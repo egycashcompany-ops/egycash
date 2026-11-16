@@ -30,6 +30,17 @@ export type PaletteColour = OperationsShiftTypeColour;
 /** The palette in full, in its order. */
 export const PALETTE: readonly PaletteColour[] = OPERATIONS_SHIFT_TYPE_COLOURS;
 
+/**
+ * Where the catalog's read stands. The palette is built from the types, so «no types, no colours» is
+ * said only once the list has ANSWERED with none: before that it is loading, and a read that failed
+ * with nothing in hand says so and offers another try — never «no active types» while nine exist.
+ * A re-read that fails while a list is in hand keeps that list (`ready`).
+ */
+export type CatalogState = 'loading' | 'failed' | 'ready';
+
+export const catalogStateOf = (read: { data?: unknown; isError: boolean }): CatalogState =>
+  read.data !== undefined ? 'ready' : read.isError ? 'failed' : 'loading';
+
 /** The live types — not archived. What the palette's size counts. */
 export const liveTypes = (types: readonly OperationsShiftTypeDto[]): OperationsShiftTypeDto[] =>
   types.filter((type) => type.isActive);
@@ -46,7 +57,10 @@ export const paletteFor = (
   adding = 0,
 ): PaletteColour[] => {
   const live = liveTypes(types);
-  const count = Math.max(0, Math.min(live.length + Math.max(0, Math.floor(adding)), PALETTE.length));
+  const count = Math.max(
+    0,
+    Math.min(live.length + Math.max(0, Math.floor(adding)), PALETTE.length),
+  );
   const worn = new Set<PaletteColour>(live.map((type) => type.colour));
   let unworn = Math.max(0, count - worn.size);
   return PALETTE.filter((colour) => {
@@ -66,9 +80,7 @@ export const typeColourOf = (
   types: readonly OperationsShiftTypeDto[],
   shiftTypeId: string | null,
 ): PaletteColour | null =>
-  shiftTypeId === null
-    ? null
-    : (types.find((type) => type.id === shiftTypeId)?.colour ?? null);
+  shiftTypeId === null ? null : (types.find((type) => type.id === shiftTypeId)?.colour ?? null);
 
 /** Where a row's colour comes from: picked by hand on the row, its type's, or none at all. */
 export type RowColourSource = 'row' | 'type' | null;
@@ -129,6 +141,23 @@ export const freeColourFor = (types: readonly OperationsShiftTypeDto[]): Palette
   const worn = new Set(liveTypes(types).map((type) => type.colour));
   return paletteFor(types, 1).find((colour) => !worn.has(colour)) ?? PALETTE[0] ?? 'rose';
 };
+
+/**
+ * What a press on a swatch of «ألوان الأنواع» does:
+ *   · `none`   — read only (no `operationsCatalog.manage`), or another type's colour is on its way;
+ *   · `save`   — a colour the card does not show the type in: the catalog's PATCH, at the version read;
+ *   · `reread` — the colour the card ALREADY shows it in. The card's list may be older than the
+ *     server's (another desk recoloured it since): the types are read again rather than nothing
+ *     done, and the card says so when the server's colour was another — the next press then saves.
+ *     No save is sent: it would change nothing but the version.
+ */
+export type SwatchPress = 'none' | 'save' | 'reread';
+
+export const swatchPress = (
+  shown: PaletteColour,
+  pressed: PaletteColour,
+  { canEdit, busy }: { canEdit: boolean; busy: boolean },
+): SwatchPress => (!canEdit || busy ? 'none' : shown === pressed ? 'reread' : 'save');
 
 /**
  * The arrows in a grid of swatches — where the focus goes from `at` of `count`, `columns` a row:

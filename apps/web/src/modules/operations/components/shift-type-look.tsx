@@ -163,7 +163,8 @@ export const ON_TINT = {
   },
   pick: {
     plain: 'text-slate-400 hover:bg-brand-500/10 dark:text-slate-500',
-    tinted: 'bg-white text-slate-600 hover:bg-brand-50 dark:bg-[#0b1226] dark:text-slate-300 dark:hover:bg-[#16203a]',
+    tinted:
+      'bg-white text-slate-600 hover:bg-brand-50 dark:bg-[#0b1226] dark:text-slate-300 dark:hover:bg-[#16203a]',
   },
 } as const;
 

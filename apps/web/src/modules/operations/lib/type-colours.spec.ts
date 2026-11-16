@@ -171,7 +171,12 @@ describe('a row’s colour — «تلقائي ويتغيّر يدوي»', () => 
 
 describe('two types, one colour — «أيوه عادي»', () => {
   it('names every live type wearing a colour, in the catalog’s order', () => {
-    const shared = [type('a', 'navy'), type('b', 'rose'), type('c', 'navy'), type('d', 'navy', false)];
+    const shared = [
+      type('a', 'navy'),
+      type('b', 'rose'),
+      type('c', 'navy'),
+      type('d', 'navy', false),
+    ];
     expect(colourWearers(shared, 'navy').map((t) => t.id)).toEqual(['a', 'c']);
     expect(colourWearers(shared, 'gold')).toEqual([]);
   });

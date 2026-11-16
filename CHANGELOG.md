@@ -824,18 +824,28 @@ its entry here in the same PR.
         names. Round 20's eleven stay first (a saved type keeps its colour by name), re-ordered so
         the first nine are the nine the boot seeds (rose, emerald, indigo, amber, violet, teal,
         orange, fuchsia, slate), then lime and sky, then nine new ones (crimson, navy, forest, gold,
-        plum, brown, cyan, pink, olive). The board SHOWS its first N, N the live types (all twenty
-        past twenty, said in the card). The type's form on «أنواع التشغيل» offers the same: N
-        swatches (N + 1 for a new type), and an edited type's own colour after them when outside.
+        plum, brown, cyan, pink, olive). The board SHOWS N of them, N the live types: every colour
+        a live type wears, then the first ones nobody wears until there are N, in the palette's
+        order (`paletteFor`) — so archiving a type never pushes a live type's colour off the
+        palette, nor shows the archived one's (all twenty past twenty, said in the card). The type's
+        form on «أنواع التشغيل» offers the same: N swatches (N + 1 for a new type, the extra one the
+        first nobody wears), and an archived type's own colour after them when outside. Each colour
+        has a name of its own in both languages: cyan is «سماوي فاتح» and pink «وردي فاتح», where
+        «تركوازي» and «زهري» read as teal's «فيروزي» and rose's «وردي».
       - «ألوان الأنواع» at the top of «لوحة التشغيلة», right after «الطاقم الثابت»: a card laid out
         as a table — a row per type in the board's order (its strip's), a column per swatch shown.
         A press gives that type that colour through the existing `PATCH
         /operations/shift-types/:id` under `operationsCatalog.manage` (no new grant); two types may
         share a colour. Each press saves at once; the answer is written into the cached types and
         both the types and the crew board are re-read, so the board recolours at once. Without the
-        grant the table is shown read only, and says why. A type whose colour is off the palette
-        shown is marked «خارج اللوحة». A phone gets Fleet's bottom sheet, the swatches wrapping
-        under each type. It is a catalog save: «تراجع» never takes it back.
+        grant the table is shown read only, and says why. A live type is never off the palette; an
+        archived type it lists (a row of the day holds it) whose colour is off it is marked «خارج
+        اللوحة». Opened, it reads the types again; a press on the colour a type already shows reads
+        them again rather than doing nothing, and says «عُدِّل هذا النوع من مكان آخر…» when another
+        desk had moved it (no save is sent: it would change only the version). Until the types
+        answer, the card and a row's «اللون» say they are loading, or that the read failed with
+        «إعادة المحاولة» — never «لا توجد أنواع تشغيل». A phone gets Fleet's bottom sheet, the
+        swatches wrapping under each type. It is a catalog save: «تراجع» never takes it back.
       - A row's colour is its own `rowColour` (picked by hand) ?? its type's ?? none. «اللون» offers
         exactly the swatches shown, each naming the types that wear it, plus «لون النوع» (null —
         back to automatic). A row's own colour that is no longer among them still colours it and is
@@ -847,10 +857,17 @@ its entry here in the same PR.
         the row's start edge. The text stays legible: 8.4:1 or better in light, 6.6:1 or better in
         dark. Marks stay visible on top: a marked chip (picked up, refused, away, wrong slot) on a
         coloured row stands on a halo of the page's colour, and the refused chip and the refused
-        van ring are solid.
+        van ring are solid. The marks drawn straight on the cells stand on the page's colour too
+        (`ON_TINT`): the short-crew ⚠, the board's only sign of a crew below its minimum, is
+        amber-600 on a disc of it (3.2:1; amber-500 on a rose row was 1.4:1, on a navy one 1.3:1),
+        and an empty slot's «+ اختيار» slate-600 on it (7.6:1; slate-400 was 1.5–2.1:1 on the
+        tints). The spec measures the words and both marks against all twenty tints, light and
+        dark.
       - The row colour's names are the palette's. `OperationsCrewRowColourSchema` takes a palette
-        name, or one of Round 20's six MAPPED onto it (yellow→gold, green→emerald, blue→sky,
-        red→rose, purple→violet, orange→orange), so an old client never meets a 400; the parsed
+        name, or one of Round 20's six MAPPED onto the palette colour Round 20 drew it in — its
+        swatch was that colour's dot exactly (yellow→gold, bg-yellow-400, not the orange-brown
+        amber; green→emerald, blue→sky, red→rose, purple→violet, orange→orange) — so a yellow row
+        stays yellow and an old client never meets a 400; the parsed
         value, and every answer, is a palette name. The crew row's model accepts both spellings
         (what the collection may hold); every reader goes through `canonicalCrewRowColour`, so a
         row not yet migrated reads in the palette's name, and the same colour in either spelling

@@ -369,14 +369,14 @@ describe('Round 24b — the one palette and the legacy row colours', () => {
   });
 
   it('a type takes a new palette name, and never a legacy row name', () => {
-    expect(CreateOperationsShiftTypeSchema.safeParse({ name: 'ليلي', colour: 'navy' }).success).toBe(
-      true,
-    );
+    expect(
+      CreateOperationsShiftTypeSchema.safeParse({ name: 'ليلي', colour: 'navy' }).success,
+    ).toBe(true);
     expect(UpdateOperationsShiftTypeSchema.safeParse({ colour: 'olive', version: 3 }).success).toBe(
       true,
     );
-    expect(UpdateOperationsShiftTypeSchema.safeParse({ colour: 'yellow', version: 3 }).success).toBe(
-      false,
-    );
+    expect(
+      UpdateOperationsShiftTypeSchema.safeParse({ colour: 'yellow', version: 3 }).success,
+    ).toBe(false);
   });
 });

@@ -20,7 +20,7 @@
 //
 // A COMPUTER gets the board's dialog with the table; a PHONE gets Fleet's bottom sheet, each type a
 // block of its own with its swatches wrapping under its name — no table wider than the screen.
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { type Locale, type OperationsShiftTypeDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -41,6 +41,8 @@ import {
   paletteFor,
   paletteOverflow,
   liveTypes,
+  swatchPress,
+  type CatalogState,
   type PaletteColour,
 } from '../lib/type-colours';
 import { PLAN_ICON } from './crew-plan-icons';
@@ -78,6 +80,13 @@ export interface TypeColoursCardProps {
   canEdit: boolean;
   /** A phone: the bottom sheet, the swatches wrapping. */
   sheet: boolean;
+  /** The types' read (`catalogStateOf`): «no types» only once it has answered with none. */
+  catalog: CatalogState;
+  /**
+   * Read the types again and answer the fresh list — as the card opens (another desk may have
+   * recoloured one since), on «إعادة المحاولة», and on a press of the colour it already shows.
+   */
+  reread: () => Promise<readonly OperationsShiftTypeDto[] | undefined>;
 }
 
 export const TypeColoursCard = ({
@@ -87,12 +96,21 @@ export const TypeColoursCard = ({
   listed,
   canEdit,
   sheet,
+  catalog,
+  reread,
 }: TypeColoursCardProps): JSX.Element | null => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const recolour = useRecolourOperationsShiftType();
   /** The type whose colour is on its way — its swatches wait for the answer. */
   const [saving, setSaving] = useState<string | null>(null);
+  // Opened: the types are read again, so the card starts from the server's colours, not a list read
+  // when the board loaded.
+  const rereadNow = useRef(reread);
+  rereadNow.current = reread;
+  useEffect(() => {
+    if (open) void rereadNow.current();
+  }, [open]);
 
   const palette = paletteFor(types);
   const overflow = paletteOverflow(types);
@@ -110,7 +128,22 @@ export const TypeColoursCard = ({
   };
 
   const give = (type: OperationsShiftTypeDto, colour: PaletteColour): void => {
-    if (!canEdit || saving !== null || type.colour === colour) return;
+    const press = swatchPress(type.colour, colour, { canEdit, busy: saving !== null });
+    if (press === 'none') return;
+    if (press === 'reread') {
+      // The colour the card shows it in already — but its list may be older than the server's:
+      // read again, and say so when another desk had moved it (the next press then saves).
+      setSaving(type.id);
+      void reread()
+        .then((fresh) => {
+          const now = fresh?.find((candidate) => candidate.id === type.id);
+          if (now !== undefined && now.colour !== colour) {
+            toast.error(t('operations.crewPlan.typeColours.stale'));
+          }
+        })
+        .finally(() => setSaving(null));
+      return;
+    }
     setSaving(type.id);
     recolour.mutate(
       { type, colour },
@@ -235,18 +268,51 @@ export const TypeColoursCard = ({
           })}
         </p>
       )}
-      {listed.length === 0 && (
-        <p className="py-6 text-center text-[13px] font-bold text-slate-500 dark:text-slate-400">
-          {t('operations.crewPlan.typeColours.empty')}
+      {catalog === 'loading' ? (
+        <p
+          role="status"
+          data-type-colours-catalog="loading"
+          className="flex items-center justify-center gap-2 py-6 text-[13px] font-bold text-slate-500 dark:text-slate-400"
+        >
+          <Spinner className="h-4 w-4 shrink-0" />
+          {t('operations.crewPlan.colour.loading')}
         </p>
+      ) : catalog === 'failed' ? (
+        <div
+          role="alert"
+          data-type-colours-catalog="failed"
+          className="flex flex-col items-center gap-2 py-6 text-center"
+        >
+          <p className="text-[13px] font-bold text-rose-700 dark:text-rose-300">
+            {t('operations.crewPlan.colour.failed')}
+          </p>
+          <button
+            type="button"
+            data-type-colours-retry="true"
+            onClick={() => void reread()}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-[12.5px] font-bold text-slate-700 transition hover:border-brand-400 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-slate-600 dark:text-slate-200 dark:hover:text-brand-200"
+          >
+            {t('common.retry')}
+          </button>
+        </div>
+      ) : (
+        listed.length === 0 && (
+          <p className="py-6 text-center text-[13px] font-bold text-slate-500 dark:text-slate-400">
+            {t('operations.crewPlan.typeColours.empty')}
+          </p>
+        )
       )}
     </>
   );
 
   const title = t('operations.crewPlan.typeColours.title');
-  const subtitle = t('operations.crewPlan.typeColours.subtitle', {
-    count: formatNumber(palette.length, locale),
-  });
+  // The palette's size only once the types have answered — never «(٠)» while they load.
+  const subtitle =
+    catalog === 'ready'
+      ? t('operations.crewPlan.typeColours.subtitle', {
+          count: formatNumber(palette.length, locale),
+        })
+      : undefined;
 
   if (sheet) {
     return (
@@ -320,7 +386,10 @@ export const TypeColoursCard = ({
                     <span className="sr-only">{colourName(colour)}</span>
                     <span
                       aria-hidden
-                      className={cn('mx-auto block h-2 w-5 rounded-full', SHIFT_TYPE_TONE[colour].dot)}
+                      className={cn(
+                        'mx-auto block h-2 w-5 rounded-full',
+                        SHIFT_TYPE_TONE[colour].dot,
+                      )}
                     />
                   </th>
                 ))}

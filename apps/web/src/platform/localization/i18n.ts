@@ -11505,6 +11505,8 @@ const en: Record<string, string> = {
   'operations.crewPlan.colour.unworn': '{{colour}} — no type wears it',
   'operations.crewPlan.colour.outside': '{{colour}} — not among the palette shown now',
   'operations.crewPlan.colour.empty': 'No active shift types — no colours to offer',
+  'operations.crewPlan.colour.loading': 'Loading the types’ colours…',
+  'operations.crewPlan.colour.failed': 'The shift types could not be read, so their colours cannot be shown yet',
   'operations.crewPlan.typeColours.open': 'Type colours',
   'operations.crewPlan.typeColours.title': 'Type colours',
   'operations.crewPlan.typeColours.subtitle':
@@ -25672,6 +25674,8 @@ const ar: Record<string, string> = {
   'operations.crewPlan.colour.unworn': '{{colour}} — لا يحمله أي نوع',
   'operations.crewPlan.colour.outside': '{{colour}} — ليس من ألوان اللوحة المعروضة الآن',
   'operations.crewPlan.colour.empty': 'لا توجد أنواع تشغيل نشطة، فلا ألوان لعرضها',
+  'operations.crewPlan.colour.loading': 'جارٍ تحميل ألوان الأنواع…',
+  'operations.crewPlan.colour.failed': 'تعذّرت قراءة أنواع التشغيل، فلا تظهر ألوانها الآن',
   'operations.crewPlan.typeColours.open': 'ألوان الأنواع',
   'operations.crewPlan.typeColours.title': 'ألوان الأنواع',
   'operations.crewPlan.typeColours.subtitle':
@@ -26103,8 +26107,8 @@ const ar: Record<string, string> = {
   'operations.catalogs.shiftType.colours.gold': 'ذهبي',
   'operations.catalogs.shiftType.colours.plum': 'أرجواني',
   'operations.catalogs.shiftType.colours.brown': 'بني',
-  'operations.catalogs.shiftType.colours.cyan': 'تركوازي',
-  'operations.catalogs.shiftType.colours.pink': 'زهري',
+  'operations.catalogs.shiftType.colours.cyan': 'سماوي فاتح',
+  'operations.catalogs.shiftType.colours.pink': 'وردي فاتح',
   'operations.catalogs.shiftType.colours.olive': 'زيتوني',
   'operations.nav.captainReport': 'تقرير القادة',
   'operations.cards.captainReport': 'الشحنات المكتملة خلال الفترة، حسب القائد',

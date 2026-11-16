@@ -29,7 +29,7 @@ import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { record, startHistory, undo, sameCrewDraft, type CrewDraft } from '../lib/crew-undo';
 import { patchRow, type PlanRow } from '../lib/crew-plan';
-import { paletteFor, rowColourChoices } from '../lib/type-colours';
+import { catalogStateOf, paletteFor, rowColourChoices, swatchPress } from '../lib/type-colours';
 import { RowColourPicker, RowColourSwatches } from './CrewPlanControls';
 import { TypeColoursCard } from './TypeColoursCard';
 import { ON_TINT, ROW_BAR, SHIFT_TYPE_TONE, rowTint } from './shift-type-look';
@@ -103,6 +103,8 @@ const card = (
       listed={LIVE}
       canEdit
       sheet={false}
+      catalog="ready"
+      reread={async () => TYPES}
       {...over}
     />,
     locale,
@@ -114,9 +116,9 @@ const rowSwatches = (html: string, typeId: string): { colour: string; on: boolea
   expect(start, typeId).toBeGreaterThan(-1);
   const next = html.indexOf('data-type-row="', start + 1);
   const slice = html.slice(start, next < 0 ? undefined : next);
-  return [...slice.matchAll(/<button[^>]*data-swatch="([a-z]+)"[^>]*aria-pressed="(true|false)"/g)].map(
-    (m) => ({ colour: m[1] as string, on: m[2] === 'true' }),
-  );
+  return [
+    ...slice.matchAll(/<button[^>]*data-swatch="([a-z]+)"[^>]*aria-pressed="(true|false)"/g),
+  ].map((m) => ({ colour: m[1] as string, on: m[2] === 'true' }));
 };
 
 describe('«ألوان الأنواع» — a table: a row per type, a column per swatch shown', () => {
@@ -195,7 +197,8 @@ describe('«ألوان الأنواع» — a table: a row per type, a column pe
     expect(heads).toContain('slate');
     expect(heads).not.toContain('rose');
     expect(html8).not.toContain('data-type-outside="true"');
-    for (const t of live) expect(rowSwatches(html8, t.id).find((s) => s.on)?.colour, t.id).toBe(t.colour);
+    for (const t of live)
+      expect(rowSwatches(html8, t.id).find((s) => s.on)?.colour, t.id).toBe(t.colour);
   });
 
   it('names an archived type it lists as archived (a row of the day still holds it)', () => {
@@ -329,6 +332,8 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
           typeColour={typeColour}
           choices={rowColourChoices(paletteFor(TYPES), value)}
           wornBy={wornBy}
+          catalog="ready"
+          onRetry={() => undefined}
           disabled={false}
           onChange={() => undefined}
         />,
@@ -345,6 +350,99 @@ describe('a row’s «اللون» — the shown palette over the type’s colou
   });
 });
 
+describe('before the types answer — loading, or failed with «إعادة المحاولة»; never «no types»', () => {
+  it('reads the query: loading until it answers, failed with nothing in hand, ready once it has a list', () => {
+    expect(catalogStateOf({ data: undefined, isError: false })).toBe('loading');
+    expect(catalogStateOf({ data: undefined, isError: true })).toBe('failed');
+    // A re-read that failed while a list is in hand keeps that list.
+    expect(catalogStateOf({ data: { items: [] }, isError: true })).toBe('ready');
+    expect(catalogStateOf({ data: { items: [] }, isError: false })).toBe('ready');
+  });
+
+  const swatchList = (catalog: 'loading' | 'failed' | 'ready', onRetry?: () => void): string =>
+    render(
+      <RowColourSwatches
+        value={null}
+        typeColour={null}
+        // Nothing to offer: the types have not answered, or answered with none live.
+        choices={rowColourChoices(paletteFor([]), null)}
+        wornBy={() => []}
+        catalog={catalog}
+        {...(onRetry === undefined ? {} : { onRetry })}
+        onPick={() => undefined}
+      />,
+    );
+
+  it('the row’s «اللون» says the types are loading — not that none are active', () => {
+    const html = swatchList('loading');
+    expect(html).toContain('data-colour-catalog="loading"');
+    expect(html).toContain(ar('operations.crewPlan.colour.loading'));
+    expect(html).not.toContain(ar('operations.crewPlan.colour.empty'));
+    expect(html).not.toContain(ar('operations.crewPlan.colour.palette', { count: '٠' }));
+    // «لون النوع» is still there to press.
+    expect(html).toContain('data-colour="type"');
+  });
+
+  it('a failed read says so and offers «إعادة المحاولة»', () => {
+    const html = swatchList('failed', () => undefined);
+    expect(html).toContain('data-colour-catalog="failed"');
+    expect(html).toContain(ar('operations.crewPlan.colour.failed'));
+    expect(html).toContain('data-colour-retry="true"');
+    expect(html).toContain(ar('common.retry'));
+    expect(html).not.toContain(ar('operations.crewPlan.colour.empty'));
+  });
+
+  it('only a list that ANSWERED with no live type says «no active types»', () => {
+    expect(swatchList('ready')).toContain(ar('operations.crewPlan.colour.empty'));
+  });
+
+  it('«ألوان الأنواع» says the same — loading, or failed with «إعادة المحاولة» — and no «(٠)»', () => {
+    const loading = card({ types: [], listed: [], catalog: 'loading' });
+    expect(loading).toContain('data-type-colours-catalog="loading"');
+    expect(loading).toContain(ar('operations.crewPlan.colour.loading'));
+    expect(loading).not.toContain(ar('operations.crewPlan.typeColours.empty'));
+    expect(loading).not.toContain(ar('operations.crewPlan.typeColours.subtitle', { count: '٠' }));
+    const failed = card({ types: [], listed: [], catalog: 'failed' });
+    expect(failed).toContain('data-type-colours-catalog="failed"');
+    expect(failed).toContain('data-type-colours-retry="true"');
+    expect(failed).not.toContain(ar('operations.crewPlan.typeColours.empty'));
+    expect(card({ types: [], listed: [] })).toContain(ar('operations.crewPlan.typeColours.empty'));
+  });
+
+  it('the board hands both the types’ read, and the card a way to read them again', () => {
+    const page = read('../pages/CrewBoardPage.tsx');
+    expect(page).toContain('const typesCatalog = catalogStateOf(shiftTypeList);');
+    expect(page.split('catalog={typesCatalog}')).toHaveLength(3);
+    expect(page).toContain('onRetry={() => void rereadTypes()}');
+    expect(page).toContain('reread={rereadTypes}');
+  });
+});
+
+describe('a press on the colour the card already shows — the list is read again, not ignored', () => {
+  it('is a re-read; another colour is a save; nothing without the grant or while one saves', () => {
+    expect(swatchPress('rose', 'rose', { canEdit: true, busy: false })).toBe('reread');
+    expect(swatchPress('rose', 'navy', { canEdit: true, busy: false })).toBe('save');
+    expect(swatchPress('rose', 'navy', { canEdit: false, busy: false })).toBe('none');
+    expect(swatchPress('rose', 'rose', { canEdit: false, busy: false })).toBe('none');
+    expect(swatchPress('rose', 'navy', { canEdit: true, busy: true })).toBe('none');
+  });
+
+  it('the card re-reads, says «stale» when the server’s colour was another, and re-reads as it opens', () => {
+    const source = read('./TypeColoursCard.tsx');
+    expect(source).toContain(
+      'const press = swatchPress(type.colour, colour, { canEdit, busy: saving !== null });',
+    );
+    expect(source).toMatch(
+      /if \(press === 'reread'\) \{[\s\S]*?void reread\(\)[\s\S]*?now\.colour !== colour[\s\S]*?typeColours\.stale/,
+    );
+    expect(source).toMatch(
+      /useEffect\(\(\) => \{\s*if \(open\) void rereadNow\.current\(\);\s*\}, \[open\]\);/,
+    );
+    // No early return on the colour the cache shows any more.
+    expect(source).not.toContain('type.colour === colour) return;');
+  });
+});
+
 describe('the row drawn in its colour — deeper than Round 20, a bar at its start', () => {
   it('tints every cell with the colour itself at 30% (35% in dark), not a 100-level wash', () => {
     for (const colour of OPERATIONS_SHIFT_TYPE_COLOURS) {
@@ -357,10 +455,42 @@ describe('the row drawn in its colour — deeper than Round 20, a bar at its sta
   });
 
   it('draws the bar on the START edge — right in Arabic, left in English', () => {
-    expect(ROW_BAR).toContain('rtl:[&>td:first-child]:[box-shadow:inset_-5px_0_0_0_var(--row-bar)]');
+    expect(ROW_BAR).toContain(
+      'rtl:[&>td:first-child]:[box-shadow:inset_-5px_0_0_0_var(--row-bar)]',
+    );
     expect(ROW_BAR).toContain('ltr:[&>td:first-child]:[box-shadow:inset_5px_0_0_0_var(--row-bar)]');
     expect(rowTint('navy')).toContain(ROW_BAR);
     expect(rowTint('navy')).toContain(SHIFT_TYPE_TONE.navy.row);
+  });
+});
+
+describe('each palette colour is named apart — a swatch’s label, «تراجع» and the toast say WHICH', () => {
+  const en = (colour: string): string =>
+    translate('en', `operations.catalogs.shiftType.colours.${colour}`);
+
+  it('twenty names in each language, no two alike', () => {
+    for (const name of [colourAr, en]) {
+      const names = OPERATIONS_SHIFT_TYPE_COLOURS.map((colour) => name(colour));
+      expect(new Set(names).size).toBe(OPERATIONS_SHIFT_TYPE_COLOURS.length);
+    }
+  });
+
+  it('no two Arabic names are one colour’s synonyms — turquoise once, pink once', () => {
+    const names = OPERATIONS_SHIFT_TYPE_COLOURS.map((colour) => colourAr(colour));
+    // «فيروزي» and «تركوازي» are both turquoise; «وردي» and «زهري» both pink.
+    for (const synonyms of [
+      ['فيروزي', 'تركوازي', 'تركواز'],
+      ['وردي', 'زهري', 'بمبي'],
+    ]) {
+      expect(
+        names.filter((name) => synonyms.includes(name)),
+        synonyms.join('/'),
+      ).toHaveLength(1);
+    }
+    expect(colourAr('teal')).toBe('فيروزي');
+    expect(colourAr('cyan')).toBe('سماوي فاتح');
+    expect(colourAr('rose')).toBe('وردي');
+    expect(colourAr('pink')).toBe('وردي فاتح');
   });
 });
 
@@ -450,8 +580,12 @@ describe('every mark on a coloured row stays legible — measured against the tw
 
   it('the short-crew ⚠ stands on an opaque disc of the page’s colour on a coloured row — 3:1 or better', () => {
     const { tinted, plain } = ON_TINT.short;
-    expect(contrast(paint(tinted, 'text', false), paint(tinted, 'bg', false))).toBeGreaterThanOrEqual(3);
-    expect(contrast(paint(tinted, 'text', true), paint(tinted, 'bg', true))).toBeGreaterThanOrEqual(3);
+    expect(
+      contrast(paint(tinted, 'text', false), paint(tinted, 'bg', false)),
+    ).toBeGreaterThanOrEqual(3);
+    expect(contrast(paint(tinted, 'text', true), paint(tinted, 'bg', true))).toBeGreaterThanOrEqual(
+      3,
+    );
     // On a plain row, on the cell's own ground.
     expect(contrast(paint(plain, 'text', false), WHITE)).toBeGreaterThanOrEqual(3);
     for (const ground of DARK_GROUNDS) {
@@ -464,8 +598,12 @@ describe('every mark on a coloured row stays legible — measured against the tw
 
   it('an empty slot’s «+ اختيار» stands on the page’s colour on a coloured row — 4.5:1 or better', () => {
     const { tinted } = ON_TINT.pick;
-    expect(contrast(paint(tinted, 'text', false), paint(tinted, 'bg', false))).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(paint(tinted, 'text', true), paint(tinted, 'bg', true))).toBeGreaterThanOrEqual(4.5);
+    expect(
+      contrast(paint(tinted, 'text', false), paint(tinted, 'bg', false)),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(paint(tinted, 'text', true), paint(tinted, 'bg', true))).toBeGreaterThanOrEqual(
+      4.5,
+    );
   });
 
   it('the board puts both on whatever row is drawn in a colour — its own or its type’s', () => {
@@ -506,9 +644,9 @@ describe('«تراجع» — a colour picked is ONE step; a type recoloured in t
     );
     expect(after.past).toHaveLength(1);
     expect(after.now.rows[0]?.rowColour).toBe('navy');
-    expect(ar(`operations.crewPlan.undo.kind.${after.past[0]?.what.kind}`, after.past[0]?.what.vars)).toBe(
-      'تلوين الصف 150 باللون كحلي',
-    );
+    expect(
+      ar(`operations.crewPlan.undo.kind.${after.past[0]?.what.kind}`, after.past[0]?.what.vars),
+    ).toBe('تلوين الصف 150 باللون كحلي');
     expect(undo(after).now.rows[0]?.rowColour).toBeNull();
     expect(ar('operations.crewPlan.undo.kind.colourAuto', { row: '150' })).toBe(
       'إعادة الصف 150 إلى لون نوعه',
@@ -519,7 +657,9 @@ describe('«تراجع» — a colour picked is ONE step; a type recoloured in t
     const page = read('../pages/CrewBoardPage.tsx');
     expect(page).toMatch(/onChange=\{\(rowColour\) => recolour\(row\.key, rowColour\)\}/);
     expect(page).toMatch(/kind: 'colourAuto'/);
-    expect(page).toMatch(/kind: 'colour', vars: \{ row: nameOfRow\(key\), colour: colourName\(rowColour\) \}/);
+    expect(page).toMatch(
+      /kind: 'colour', vars: \{ row: nameOfRow\(key\), colour: colourName\(rowColour\) \}/,
+    );
     const cardSource = read('./TypeColoursCard.tsx');
     expect(cardSource).toContain('useRecolourOperationsShiftType');
     expect(cardSource).not.toMatch(/\b(apply|applyRows|setHistory|record)\(/);
@@ -549,8 +689,10 @@ describe('the board wires it', () => {
   });
 
   it('draws a row in its own colour, else its type’s, and marks which', () => {
-    expect(page).toContain('resolveRowColour(row.rowColour, typeColourOf(shiftTypes, row.shiftTypeId))');
-    expect(page).toContain("return colour === null ? undefined : rowTint(colour);");
+    expect(page).toContain(
+      'resolveRowColour(row.rowColour, typeColourOf(shiftTypes, row.shiftTypeId))',
+    );
+    expect(page).toContain('return colour === null ? undefined : rowTint(colour);');
     expect(page).toContain("marks['data-row-colour-source'] = source ?? 'type';");
     expect(page).toContain('choices={rowColourChoices(palette, row.rowColour)}');
   });
@@ -559,6 +701,8 @@ describe('the board wires it', () => {
     expect(page).toContain(
       '[&_tr[data-row-colour]_[data-crew-chip]:is([data-selected],[data-refused],[data-away],[data-wrong-slot])]:shadow-[0_0_0_3px_#fff]',
     );
-    expect(read('./CrewPlanChip.tsx')).toContain("refused && 'ring-4 ring-rose-600 dark:ring-rose-400'");
+    expect(read('./CrewPlanChip.tsx')).toContain(
+      "refused && 'ring-4 ring-rose-600 dark:ring-rose-400'",
+    );
   });
 });

@@ -86,7 +86,12 @@
 // planned a day ahead (the legacy default).
 import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { CREW_SLOT_CAPACITY, type Locale, type OperationsCrewMemberDto } from '@ecms/contracts';
+import {
+  CREW_SLOT_CAPACITY,
+  type Locale,
+  type OperationsCrewMemberDto,
+  type OperationsShiftTypeDto,
+} from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useT } from '../../../platform/localization/useT';
@@ -225,6 +230,7 @@ import {
 } from '../lib/crew-undo';
 import { giveVehicle, vehicleChoices, type VehicleChoice } from '../lib/crew-vehicles';
 import {
+  catalogStateOf,
   colourWearers,
   paletteFor,
   resolveRowColour,
@@ -430,6 +436,11 @@ export const CrewBoardPage = (): JSX.Element => {
   // many swatches as there are live types (`lib/type-colours.ts`). A row is drawn in the colour
   // picked by hand on it, else its type's — «تلقائي ويتغيّر يدوي».
   const palette = useMemo(() => paletteFor(shiftTypes), [shiftTypes]);
+  // The palette is the types': until their list answers, the «اللون» list and «ألوان الأنواع» say it
+  // is loading (or failed, with «إعادة المحاولة») — never «no active types» while nine exist.
+  const typesCatalog = catalogStateOf(shiftTypeList);
+  const rereadTypes = async (): Promise<readonly OperationsShiftTypeDto[] | undefined> =>
+    (await shiftTypeList.refetch()).data?.items;
   const colourName = (colour: PaletteColour): string =>
     t(`operations.catalogs.shiftType.colours.${colour}`);
   const wornBy = (colour: PaletteColour): string[] =>
@@ -1492,6 +1503,8 @@ export const CrewBoardPage = (): JSX.Element => {
               typeColour={typeColourOf(shiftTypes, row.shiftTypeId)}
               choices={rowColourChoices(palette, row.rowColour)}
               wornBy={wornBy}
+              catalog={typesCatalog}
+              onRetry={() => void rereadTypes()}
               disabled={!canPlan}
               onChange={(rowColour) => recolour(row.key, rowColour)}
             />
@@ -2035,6 +2048,8 @@ export const CrewBoardPage = (): JSX.Element => {
         listed={strip.chips.map(({ type }) => type)}
         canEdit={canColourTypes}
         sheet={phone}
+        catalog={typesCatalog}
+        reread={rereadTypes}
       />
 
       {/* «تغييرات غير محفوظة» — another day, a link in the menu, a reload. */}

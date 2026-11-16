@@ -47,10 +47,11 @@ import { cn } from '../../../shared/lib/cn';
 import { fold } from '../../../shared/lib/fold';
 import { formatNumber } from '../../../shared/lib/format';
 import { useAppSelector } from '../../../store';
+import { Spinner } from '../../../shared/ui/Spinner';
 import { floatingSpot, type FloatingSpot } from '../../../shared/ui/MultiSelect';
 import { BoardIcon, NUM } from '../../fleet/components/FuelCardBoard';
 import { parseClock, shiftTypeChoices, type CrewRowColour } from '../lib/crew-plan';
-import { gridStep, type RowColourChoice } from '../lib/type-colours';
+import { gridStep, type CatalogState, type RowColourChoice } from '../lib/type-colours';
 import { PLAN_ICON } from './crew-plan-icons';
 import { SHIFT_TYPE_TONE, ShiftTypeDot, ShiftTypeTag, shiftTypeName } from './shift-type-look';
 
@@ -758,6 +759,8 @@ export const RowColourPicker = ({
   typeColour,
   choices,
   wornBy,
+  catalog,
+  onRetry,
   disabled,
   onChange,
 }: {
@@ -770,6 +773,10 @@ export const RowColourPicker = ({
   choices: readonly RowColourChoice[];
   /** The live types wearing a colour, by name — a swatch's tooltip. */
   wornBy: (colour: CrewRowColour) => readonly string[];
+  /** The types' read, which the palette is built from (`catalogStateOf`). */
+  catalog: CatalogState;
+  /** Read the types again — after a failed read. */
+  onRetry: () => void;
   disabled: boolean;
   onChange: (next: CrewRowColour | null) => void;
 }): JSX.Element => {
@@ -836,6 +843,8 @@ export const RowColourPicker = ({
           typeColour={typeColour}
           choices={choices}
           wornBy={wornBy}
+          catalog={catalog}
+          onRetry={onRetry}
           onPick={pick}
         />
       </FloatingPanel>
@@ -849,19 +858,24 @@ const COLOUR_COLUMNS = 6;
 /**
  * The «اللون» list itself: the palette shown (each swatch naming the types that wear it), the row's
  * own colour after it when outside it, and «لون النوع». Pressed: the colour picked on the row; dashed:
- * the type's, while nothing is picked.
+ * the type's, while nothing is picked. Until the types have answered (`catalog`), it says they are
+ * loading, or that the read failed with «إعادة المحاولة» — never «no active types».
  */
 export const RowColourSwatches = ({
   value,
   typeColour,
   choices,
   wornBy,
+  catalog = 'ready',
+  onRetry,
   onPick,
 }: {
   value: CrewRowColour | null;
   typeColour: CrewRowColour | null;
   choices: readonly RowColourChoice[];
   wornBy: (colour: CrewRowColour) => readonly string[];
+  catalog?: CatalogState;
+  onRetry?: () => void;
   onPick: (next: CrewRowColour | null) => void;
 }): JSX.Element => {
   const t = useT();
@@ -894,10 +908,37 @@ export const RowColourSwatches = ({
   };
   return (
     <>
-      <p className="mb-2 text-[11px] font-black text-slate-500 dark:text-slate-400">
-        {t('operations.crewPlan.colour.palette', { count: formatNumber(palette, locale) })}
-      </p>
-      {choices.length === 0 ? (
+      {catalog === 'ready' && (
+        <p className="mb-2 text-[11px] font-black text-slate-500 dark:text-slate-400">
+          {t('operations.crewPlan.colour.palette', { count: formatNumber(palette, locale) })}
+        </p>
+      )}
+      {catalog === 'loading' ? (
+        <p
+          role="status"
+          data-colour-catalog="loading"
+          className="mb-1 flex items-center gap-2 text-[12px] font-bold text-slate-500 dark:text-slate-400"
+        >
+          <Spinner className="h-3.5 w-3.5 shrink-0" />
+          {t('operations.crewPlan.colour.loading')}
+        </p>
+      ) : catalog === 'failed' ? (
+        <div role="alert" data-colour-catalog="failed" className="mb-1 space-y-1.5">
+          <p className="text-[12px] font-bold text-rose-700 dark:text-rose-300">
+            {t('operations.crewPlan.colour.failed')}
+          </p>
+          {onRetry !== undefined && (
+            <button
+              type="button"
+              data-colour-retry="true"
+              onClick={onRetry}
+              className="rounded-md border border-slate-300 px-2 py-1 text-[12px] font-bold text-slate-700 transition hover:border-brand-400 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-slate-600 dark:text-slate-200 dark:hover:text-brand-200"
+            >
+              {t('common.retry')}
+            </button>
+          )}
+        </div>
+      ) : choices.length === 0 ? (
         <p className="mb-1 text-[12px] font-bold text-slate-500 dark:text-slate-400">
           {t('operations.crewPlan.colour.empty')}
         </p>

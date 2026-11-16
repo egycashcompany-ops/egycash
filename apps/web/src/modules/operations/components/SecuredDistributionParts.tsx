@@ -69,19 +69,19 @@ export const carriesShipment = (event: DragEvent): boolean =>
 
 /**
  * The two columns (Round 24c — «عاوز اصغر المكان اللى فيه المحصنات واكبر المكان اللى فيه المحصنة
- * بالعربيه»): on a wide screen the vans take three parts and the محصنات on no van one — about 1/4 —
- * never narrower than its cards read (17.5rem); between the computer's first width and a wide one
- * two parts to one, as before, where a quarter would squeeze the cards; stacked on a phone.
+ * بالعربيه»): from a computer's width the vans take three parts and the محصنات on no van one — about
+ * 1/4 — never narrower than its cards read (17rem: at 1024 that column is wider than a quarter);
+ * stacked on a phone.
  */
 export const DISTRIBUTION_COLUMNS =
-  'grid gap-4 lg:min-h-[24rem] lg:flex-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,3fr)_minmax(17.5rem,1fr)]';
+  'grid gap-4 lg:min-h-[24rem] lg:flex-1 lg:grid-cols-[minmax(0,3fr)_minmax(17rem,1fr)]';
 
 /**
- * The vans' cards: as many to a row as fit at 18rem or more — three at 1440, four on a 1920 screen,
- * two at 1024, one on a phone (`min(100%, …)`: a card never wider than its column).
+ * The vans' cards: as many to a row as fit at 17.5rem or more — three at 1440, four on a 1920
+ * screen, two at 1024 and 1280, one on a phone (`min(100%, …)`: a card never wider than its column).
  */
 export const VAN_GRID =
-  'grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] items-start gap-3';
+  'grid grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))] items-start gap-3';
 
 /**
  * The day's bar — the boards' filter surface (`DARK_FILTER_BAR`'s box and input colours) holding the
@@ -275,17 +275,21 @@ export const MoneyLine = ({
   figures,
   packages,
   showZero = false,
+  lead,
 }: {
   figures: Pick<LoadFigures, 'egp' | 'usd' | 'othersSum'>;
   packages?: Packaging | null | undefined;
   /** A van's total says «0» rather than nothing — an empty van is a fact worth reading. */
   showZero?: boolean;
+  /** First on the line, wrapping with the chips — the van's count of محصنات (Round 24c). */
+  lead?: ReactNode;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const any = figures.egp !== 0 || figures.usd !== 0 || figures.othersSum !== 0;
   return (
     <div className="flex flex-wrap items-center gap-1">
+      {lead}
       {(showZero || figures.egp !== 0 || !any) && (
         <MoneyChip
           data-money="EGP"
@@ -821,8 +825,8 @@ const VanCrew = ({
  * واحسن الاسماء بتاعت القادة والاخصائيين»:
  *   · THE HEAD IS ONE LINE: the code (or «بدون سيارة (n)»), the time, then the direction — moved up
  *     from the band it had under the head. A long direction is cut, whole on hover. The count of
- *     محصنات stays at the head's end; where the card is too narrow for both (a crew without a van,
- *     three cards to a row), the count steps under it rather than cut the direction to nothing.
+ *     محصنات stays, first on the line of what the van carries (the money, the packages): at three
+ *     cards to a row a head holding the count as well cut «المعادي» itself to «…الم».
  *   · THE CREW (`VanCrew`): the captain first, on his own green line with the captain's mark; the two
  *     specialists as labelled chips; an empty slot «غير معيَّن», quietly; each name cut to its chip
  *     and whole on the board's person card.
@@ -894,19 +898,19 @@ export const VanCard = ({
           {actions}
         </div>
       )}
-      <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        {/* ONE line: code · time · direction. Its own flex item, so the count wraps, never it. */}
+      <header className="flex min-w-0 items-center">
+        {/* ONE line: code · time · direction — nothing else, so the direction has the room. */}
         <div data-van-head="true" className="flex min-w-0 flex-1 items-center gap-1.5">
           <span
             aria-hidden
             className={cn(
-              'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+              'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
               noVan
                 ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300'
                 : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
             )}
           >
-            <BoardIcon d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]} className="h-4 w-4" />
+            <BoardIcon d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]} className="h-3.5 w-3.5" />
           </span>
           <span
             dir={noVan ? undefined : 'ltr'}
@@ -945,19 +949,26 @@ export const VanCard = ({
             <span className="min-w-0 truncate">{directionText}</span>
           </span>
         </div>
-        <span
-          data-van-count={figures.count}
-          className="ms-auto shrink-0 whitespace-nowrap rounded-full bg-brand-500/15 px-2 py-0.5 text-[11px] font-black text-brand-700 dark:text-brand-200"
-        >
-          {/* «4 محصنات», «11 محصنة» — the count's own form (`pluralKey`). */}
-          {t(pluralKey('operations.distribution.loadCount', locale, figures.count), {
-            count: formatNumber(figures.count, locale),
-          })}
-        </span>
       </header>
       <VanCrew van={van} vanName={name} crewPlanVisible={crewPlanVisible} day={day} />
       <div data-van-figures={van.crewAssignmentId}>
-        <MoneyLine figures={figures} packages={figures.packages} showZero />
+        <MoneyLine
+          figures={figures}
+          packages={figures.packages}
+          showZero
+          lead={
+            <span
+              data-van-count={figures.count}
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-brand-500/15 px-2 py-0.5 text-[11px] font-black text-brand-700 dark:text-brand-200"
+            >
+              <BoardIcon d={[...SHIPMENT_PATH.shipment]} className="h-3 w-3 shrink-0" />
+              {/* «4 محصنات», «11 محصنة» — the count's own form (`pluralKey`). */}
+              {t(pluralKey('operations.distribution.loadCount', locale, figures.count), {
+                count: formatNumber(figures.count, locale),
+              })}
+            </span>
+          }
+        />
       </div>
       <div
         className={cn(

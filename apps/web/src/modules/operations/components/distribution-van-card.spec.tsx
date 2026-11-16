@@ -89,26 +89,30 @@ const card = (
     locale,
   );
 
-/** The head line's markup — from its start to the count. */
+/** The head line's markup. */
 const headOf = (html: string): string =>
-  html.slice(html.indexOf('data-van-head="true"'), html.indexOf('data-van-count='));
+  html.slice(html.indexOf('data-van-head="true"'), html.indexOf('</header>'));
 
 describe('the van card’s head — one line', () => {
   for (const locale of ['ar', 'en'] as const) {
-    it(`[${locale}] code, then time, then the direction, in one line; the count after it`, () => {
+    it(`[${locale}] code, then time, then the direction, in one line — the count leads what it carries`, () => {
       const html = card(VAN, { locale });
       const head = headOf(html);
       expect(head.indexOf('data-van-code="249"')).toBeGreaterThan(-1);
       expect(head.indexOf('data-van-time="08:15"')).toBeGreaterThan(head.indexOf('data-van-code'));
       expect(head.indexOf('data-van-direction=')).toBeGreaterThan(head.indexOf('data-van-time'));
-      // One flex line that does not wrap; the count is its own item, after it.
+      // One flex line that does not wrap, and nothing else in the head to take its room.
       expect(html).toMatch(
         /data-van-head="true" class="flex min-w-0 flex-1 items-center gap-1\.5"/,
       );
       expect(html).not.toMatch(/data-van-head="true" class="[^"]*flex-wrap/);
-      expect(html).toContain(
-        `>${tr(locale, 'operations.distribution.loadCount.few', { count: formatNumber(3, locale) })}<`,
-      );
+      expect(head).not.toContain('data-van-count');
+      // The count stays, in its own Arabic form, first on the line of the money.
+      const count = `>${tr(locale, 'operations.distribution.loadCount.few', { count: formatNumber(3, locale) })}<`;
+      const figures = html.slice(html.indexOf('data-van-figures='));
+      expect(figures).toMatch(/^data-van-figures="cr-249"><div[^>]*><span data-van-count="3"/);
+      expect(figures).toContain(count.replace(/^>/, '</svg>'));
+      expect(figures.indexOf('data-van-count')).toBeLessThan(figures.indexOf('data-money="EGP"'));
       // The direction band of Round 12 is gone: the direction is in the head, nowhere else.
       expect(html.match(/data-van-direction=/g)).toHaveLength(1);
     });
@@ -216,9 +220,9 @@ describe('the van card’s crew', () => {
 
 describe('the columns', () => {
   it('three quarters for the vans on a wide screen, as many cards to a row as fit', () => {
-    expect(DISTRIBUTION_COLUMNS).toContain('xl:grid-cols-[minmax(0,3fr)_minmax(17.5rem,1fr)]');
-    expect(DISTRIBUTION_COLUMNS).toContain('lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]');
-    expect(VAN_GRID).toContain('grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]');
+    expect(DISTRIBUTION_COLUMNS).toContain('lg:grid-cols-[minmax(0,3fr)_minmax(17rem,1fr)]');
+    expect(DISTRIBUTION_COLUMNS).not.toContain('2fr');
+    expect(VAN_GRID).toContain('grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))]');
   });
 
   const column = (open: boolean | null): string =>

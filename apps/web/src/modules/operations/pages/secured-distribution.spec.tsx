@@ -781,16 +781,16 @@ describe('Round 24c — the widths, and the van card', () => {
 
   it('gives the vans three quarters of a wide screen and the shipments on no van one', () => {
     for (const html of [desk, vault]) {
-      expect(html).toContain('xl:grid-cols-[minmax(0,3fr)_minmax(17.5rem,1fr)]');
+      expect(html).toContain('lg:grid-cols-[minmax(0,3fr)_minmax(17rem,1fr)]');
       // As many van cards to a row as fit — not two at most.
-      expect(html).toContain('grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))]');
+      expect(html).toContain('grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))]');
       expect(html).not.toContain('xl:grid-cols-2');
     }
   });
 
   it('puts code · time · direction on ONE line, the count after it — no band of its own for the direction', () => {
     const card = vanOf(desk, 'cr-101');
-    const head = card.slice(card.indexOf('data-van-head="true"'), card.indexOf('data-van-count='));
+    const head = card.slice(card.indexOf('data-van-head="true"'), card.indexOf('</header>'));
     const code = head.indexOf('data-van-code="101"');
     const time = head.indexOf('data-van-time="08:30"');
     const direction = head.indexOf('data-van-direction="المعادي - حلوان"');
@@ -800,8 +800,9 @@ describe('Round 24c — the widths, and the van card', () => {
     // The whole direction on hover; the line cuts it.
     expect(head).toContain(`title="${ar('operations.crew.direction')}: المعادي - حلوان"`);
     expect(head).toMatch(/class="min-w-0 truncate">المعادي - حلوان</);
-    // The count stays, after the head line.
-    expect(card.indexOf('data-van-count=')).toBeGreaterThan(card.indexOf('data-van-head="true"'));
+    // The count stays — first on the line of what the van carries, so the head keeps its room.
+    expect(head).not.toContain('data-van-count');
+    expect(card).toMatch(/data-van-figures="cr-101"><div[^>]*><span data-van-count="2"/);
   });
 
   it('marks the captain and labels the specialists; an empty slot says «غير معيَّن», never «—»', () => {

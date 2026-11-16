@@ -65,11 +65,17 @@ export const ChangeCodeDialog = ({ employee, open, onClose }: Props): JSX.Elemen
           : undefined;
 
   // A taken code is the one refusal worth its own words; everything else reads as it does elsewhere.
+  // The server answers DUPLICATE for two things: a code another employee holds, and — marked by a
+  // `username` detail — a sign-in name another account holds, which no employee code may explain.
   const serverError =
     change.error === null
       ? undefined
-      : change.error instanceof ApiError && change.error.code === 'CONFLICT'
-        ? t('employees.changeCode.taken')
+      : change.error instanceof ApiError && change.error.code === 'DUPLICATE'
+        ? t(
+            change.error.details?.some((d) => d.field === 'username') === true
+              ? 'employees.changeCode.loginTaken'
+              : 'employees.changeCode.taken',
+          )
         : errorMessage(change.error, locale);
 
   const save = (): void => {

@@ -246,8 +246,9 @@ export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
  * So an external code is just a NAME, unique among employees and nothing more. The person still
  * draws an `employeeNumber` from the same counter (every employee has one); their code simply is
  * not composed from it. Nothing reads a branch or a number out of an external code, and nothing
- * should: `findHighestNumberedCode` already matches digits only, so these never reach the hint the
- * ordinary registration screen shows.
+ * should: `findHighestNumberedCode` and `findHoldingNumber` skip external people by `origin` — an
+ * all-digit external code included — so `EX-2900` neither reaches the hint the ordinary
+ * registration screen shows nor holds employee number 2900. Their permanent `employeeNumber` does.
  */
 export const EXTERNAL_EMPLOYEE_CODE_PATTERN = /^[A-Za-z0-9-]{2,20}$/;
 

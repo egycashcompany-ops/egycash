@@ -379,6 +379,22 @@ describe('changing an external person\'s code by hand', () => {
     expect(data<EmployeeDto>(res).code).toBe('CX5');
   });
 
+  /**
+   * An external code is a name, not a branch and a number: `EX-8899` holds no employee number 8899,
+   * so an ordinary employee may still be given it — by hand or at registration.
+   */
+  it('reads no employee number out of an external code', async () => {
+    const employee = data<EmployeeDto>(
+      await registerExternal(registrarToken, wellFormed('خارجي بكود فيه رقم')),
+    );
+    expect((await changeCode(employee, 'EX-8899')).status).toBe(200);
+
+    const check = await asAdmin('get', `/hr/employees/code-check?code=${BRANCH_CODE}8899`);
+
+    expect(check.status, JSON.stringify(check.body)).toBe(200);
+    expect(data<{ takenBy: string | null }>(check).takenBy).toBeNull();
+  });
+
   it('refuses what the registration would refuse', async () => {
     const employee = data<EmployeeDto>(
       await registerExternal(registrarToken, wellFormed('خارجي بكود قصير')),

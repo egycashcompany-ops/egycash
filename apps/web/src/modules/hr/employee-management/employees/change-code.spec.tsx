@@ -45,8 +45,12 @@ describe('changing an employee code by hand', () => {
 
   /** The global «conflicts with the current state» says nothing about codes. */
   it('answers a taken code in words about codes', () => {
-    expect(DIALOG).toContain("change.error.code === 'CONFLICT'");
-    expect(DIALOG).toContain("t('employees.changeCode.taken')");
+    // The server's code for both clashes is DUPLICATE (ConflictError); there is no CONFLICT code.
+    expect(DIALOG).toContain("change.error.code === 'DUPLICATE'");
+    expect(DIALOG).toContain("'employees.changeCode.taken'");
+    // …and a sign-in name another account holds is told apart by its detail.
+    expect(DIALOG).toContain("d.field === 'username'");
+    expect(DIALOG).toContain("'employees.changeCode.loginTaken'");
   });
 
   it('requires a reason', () => {
@@ -71,7 +75,7 @@ describe('changing an employee code by hand', () => {
   it('has every word in both locales', () => {
     const keys = [
       'title', 'current', 'new', 'reason', 'save', 'required', 'shape', 'same', 'taken',
-      'reasonRequired', 'note', 'done', 'doneWithLogin',
+      'reasonRequired', 'note', 'done', 'doneWithLogin', 'loginTaken',
     ];
     for (const locale of LOCALES) {
       for (const key of keys) {

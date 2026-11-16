@@ -32,6 +32,7 @@ import {
   type FileDto,
   type EmployeeLoginProvisionDto,
   type JobValueSource,
+  ErrorCodes,
   employeeCodeBranchPrefix,
   employeeCodePatternFor,
   employeeCodeSerial,
@@ -40,6 +41,7 @@ import {
   type LastEmployeeCodeDto,
 } from '@ecms/contracts';
 import {
+  AppError,
   BusinessRuleError,
   ConflictError,
   NotFoundError,
@@ -1264,7 +1266,12 @@ class EmployeeService {
     if (renameLogin) {
       const taken = await userService.findByUsernameOrEmail(code);
       if (taken !== null && String(taken._id) !== String(user._id)) {
-        throw new ConflictError(`the sign-in name ${code} is already used by another account`);
+        // Still a DUPLICATE, but of an ACCOUNT's sign-in name, not of a code: the detail is what
+        // lets the dialog say which, instead of telling HR another employee holds a code nobody does.
+        const message = `the sign-in name ${code} is already used by another account`;
+        throw new AppError(ErrorCodes.DUPLICATE, 409, message, {
+          details: [{ field: 'username', code: 'LOGIN_TAKEN', message }],
+        });
       }
     }
 

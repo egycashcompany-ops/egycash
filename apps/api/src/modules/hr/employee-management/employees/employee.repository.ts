@@ -183,7 +183,8 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   async findHighestNumberedCode(): Promise<string | null> {
     const [row] = await this.model
       .aggregate<{ code: string }>([
-        { $match: { code: { $regex: '^[0-9]{7,}$' } } },
+        // An external person's code is a name even when it is all digits: it is not the last code issued.
+        { $match: { code: { $regex: '^[0-9]{7,}$' }, origin: { $ne: 'external' } } },
         { $addFields: { _number: codeNumberExpression('code') } },
         { $match: { _number: { $ne: null } } },
         { $sort: { _number: -1, code: -1 } },
@@ -218,13 +219,19 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    * A record in any state already holding employee NUMBER `number`, under any branch prefix —
    * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
    * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.
+   *
+   * An EXTERNAL person's code is a name, not a branch and a number (EXTERNAL_EMPLOYEE_CODE_PATTERN),
+   * so no number is read out of it: `EX-2900` holds no employee number 2900. Their permanent
+   * `employeeNumber` is a real one from the same counter, and is still matched.
    */
   async findHoldingNumber(number: number): Promise<{ code: string } | null> {
     const [row] = await this.model
       .aggregate<{ code: string }>([
         {
           $addFields: {
-            _codeNumber: codeNumberExpression('code'),
+            _codeNumber: {
+              $cond: [{ $eq: ['$origin', 'external'] }, null, codeNumberExpression('code')],
+            },
             _issuedNumber: {
               $convert: { input: '$employeeNumber', to: 'long', onError: null, onNull: null },
             },

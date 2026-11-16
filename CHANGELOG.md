@@ -1244,6 +1244,13 @@ its entry here in the same PR.
   2 to 20 characters, exactly as their registration does, and the dialog says that shape and opens a
   full keyboard for them. Everybody else's code stays 3 branch digits then at least 4 of number; the
   boundary admits either shape, and the service refuses the wrong one for the person with a 400.
+  - The dialog's own «هذا الكود مستخدم لموظف آخر» never showed: it waited for a `CONFLICT` code the
+    server does not send (a taken code is `DUPLICATE`), so the English server sentence appeared
+    instead. A code another ACCOUNT signs in with — refused whole so the employee is not left signing
+    in under somebody else's name — now carries a `username` detail and has its own message.
+  - No employee number is read out of an external code any more: `EX-2900` no longer holds number
+    2900 against an ordinary employee's code at registration or in the code check, and an all-digit
+    external code no longer counts as «آخر كود». Their permanent employee number still does.
 
 - **Fleet: a driver's round badge no longer spells a rude word.** The badge shows the first letter
   of the first two words of the name («السيد» gives «س»), so «كريم السيد» drew «كس». The owner: «صلّح

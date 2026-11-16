@@ -127,6 +127,13 @@ const everyLink = (): DashLink[] => {
       L.dealershipPending(),
       L.noticesOpen(),
       L.noticesCheckImage(),
+      L.noticesOpenAll(),
+      L.noticesOpenAll('notices.all'),
+      L.noticeRow({ code: '207', number: '24117', date: '2026-10-12' }),
+      L.noticeRow({ code: null, number: '7001', date: null }),
+      L.noticeRow({ code: null, number: null, date: null }),
+      L.accidentsOpenAll(),
+      L.noReadingCar('112'),
       L.custodyDashboard('custodyFund.lines'),
       L.custodyExpenses(),
       L.noReading(['304', '112']),
@@ -178,6 +185,9 @@ const everyLink = (): DashLink[] => {
       P.opexFuel(),
       P.km(),
       P.carKm('133', 'km.top'),
+      P.carKmDay('154', '2026-10-11', 'km.invalidList.row'),
+      P.kmDay('2026-10-11', 'km.invalidList.row'),
+      P.vehiclesByCodes(['305', '318'], 'km.noDistance'),
       P.vehicle('v1', 'km.vehicle'),
       P.visits(),
       P.visits('visits.closed', { state: 'closed' }),
@@ -325,9 +335,17 @@ describe('the branch and the vehicle set travel as filters', () => {
       to: TODAY,
       branch: 'b1',
     });
-    // The company-wide sources take no branch (fuel, notices).
+    // The company-wide sources take no branch (fuel); the notices follow the car's branch.
     expect(parse(NOW_BRANCH.charging('low')).params.has('branch')).toBe(false);
-    expect(parse(NOW_BRANCH.noticesOpen()).params.has('branch')).toBe(false);
+    for (const link of [
+      NOW_BRANCH.noticesOpen(),
+      NOW_BRANCH.noticesCheckImage(),
+      NOW_BRANCH.noticesOpenAll(),
+      NOW_BRANCH.accidentsOpenAll(),
+    ]) {
+      expect(parse(link).params.get('branch'), link.to).toBe('b1');
+    }
+    expect(parse(NOW.noticesOpen()).params.has('branch')).toBe(false);
   });
 
   it('keeps a 60-car type a link: the type goes as `type`, never as a list of codes', () => {
@@ -402,9 +420,17 @@ describe('the branch the figures cover (plan D12): the switcher, else the reader
       ]) {
         expect(parse(link).params.get('branch'), link.to).toBe(branch);
       }
-      // The company-wide sources still take no branch.
+      // The company-wide sources still take no branch; the notices are the branch's cars'.
       expect(parse(L.charging('low')).params.has('branch')).toBe(false);
-      expect(parse(L.noticesOpen()).params.has('branch')).toBe(false);
+      for (const link of [
+        L.noticesOpen(),
+        L.noticesCheckImage(),
+        L.noticesOpenAll('notices.all'),
+        L.noticeRow({ code: '207', number: null, date: null }),
+        L.accidentsOpenAll(),
+      ]) {
+        expect(parse(link as DashLink).params.get('branch'), link?.to).toBe(branch);
+      }
     }
   });
 
@@ -666,5 +692,70 @@ describe('the custody figures', () => {
     const sections: FleetDashboardSection[] = ['custodyFund'];
     const link = custodyDashboardLink('custodyFund.total');
     expect(link.to).toBe(FLEET_DASHBOARD_GATES[sections[0] as FleetDashboardSection].path);
+  });
+});
+
+describe('the links of «العدادات والكيلومترات» and «الحوادث ومطالبات التأمين» (exact URLs)', () => {
+  it('opens the notices of the figures: open, without the cheque, and one row by what it carries', () => {
+    expect(NOW.noticesOpen()).toEqual({
+      to: '/fleet/notices?status=open',
+      metric: 'notices.missingAny',
+    });
+    expect(NOW_BRANCH.noticesCheckImage()).toEqual({
+      to: '/fleet/notices?status=open&checkImage=missing&branch=b1',
+      metric: 'notices.missingCheckImage',
+    });
+    expect(NOW_MINE.noticesOpenAll()).toEqual({
+      to: '/fleet/notices?status=open&branch=b1,b2',
+      metric: 'notices.open',
+    });
+    expect(NOW.noticesOpenAll('notices.all').metric).toBe('notices.all');
+    expect(NOW.noticeRow({ code: '207', number: '24117', date: '2026-10-12' })).toEqual({
+      to: '/fleet/notices?status=open&vehicleCodes=207&number=24117&from=2026-10-12&to=2026-10-12',
+      metric: 'notices.row',
+    });
+    // Each part only when the notice carries it; none of the three → no link at all.
+    expect(NOW_BRANCH.noticeRow({ code: null, number: '7001', date: null })?.to).toBe(
+      '/fleet/notices?status=open&number=7001&branch=b1',
+    );
+    expect(NOW.noticeRow({ code: null, number: null, date: null })).toBeNull();
+  });
+
+  it('opens the open accident files, the branch’s when there is one', () => {
+    expect(NOW.accidentsOpenAll()).toEqual({
+      to: '/fleet/accidents?status=open',
+      metric: 'accidentsOpen.all',
+    });
+    expect(NOW_ONE.accidentsOpenAll().to).toBe('/fleet/accidents?status=open&branch=b1');
+  });
+
+  it('opens a stale car’s whole odometer history, a review row’s ONE day, and the cars by code', () => {
+    expect(NOW.noReadingCar('112')).toEqual({
+      to: '/fleet/odometer?vehicleCodes=112&period=all',
+      metric: 'noReading.row',
+    });
+    const P = periodLinks({ range: RANGE, vehicleScope: MINE_SET });
+    expect(P.carKmDay('154', '2026-10-11', 'km.invalidList.row')).toEqual({
+      to: '/fleet/odometer?vehicleCodes=154&from=2026-10-11&to=2026-10-11',
+      metric: 'km.invalidList.row',
+    });
+    // A car deleted since: the register finds no deleted car by code, so that ONE day under the
+    // set's branches (types, operations) and without any code.
+    expect(P.kmDay('2026-10-11', 'km.invalidList.row')).toEqual({
+      to: '/fleet/odometer?from=2026-10-11&to=2026-10-11&branch=b1,b2',
+      metric: 'km.invalidList.row',
+    });
+    const coded = periodLinks({
+      range: RANGE,
+      vehicleScope: { ...MINE_SET, typeIds: ['t1'], vehicleCodes: ['154'] },
+    });
+    expect(coded.kmDay('2026-10-11', 'km.invalidList.row').to).not.toContain('vehicleCodes');
+    expect(coded.kmDay('2026-10-11', 'km.invalidList.row').to).toContain('type=t1');
+    expect(P.vehiclesByCodes(['305', '318'], 'km.noDistance')).toEqual({
+      to: '/fleet/vehicles?vehicleCodes=305,318',
+      metric: 'km.noDistance',
+    });
+    expect(P.vehiclesByCodes([], 'km.noDistance')).toBeNull();
+    expect(P.vehiclesByCodes(ids(51, 0x300), 'km.noDistance')).toBeNull();
   });
 });

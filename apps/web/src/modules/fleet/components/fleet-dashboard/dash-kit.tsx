@@ -571,7 +571,8 @@ export const Tag = ({
 );
 
 /** «الشركة كلها» — a company-wide part while the figures are narrowed to the reader's branches (one
- *  branch, or «كل فروعي»: `scopeBranches !== null`): fuel, custody, notices, drivers. */
+ *  branch, or «كل فروعي»: `scopeBranches !== null`): fuel, custody, drivers. The notices follow the
+ *  car's branch and never carry it. */
 export const CompanyWide = ({ show }: { show: boolean }): JSX.Element | null => {
   const t = useT();
   if (!show) return null;

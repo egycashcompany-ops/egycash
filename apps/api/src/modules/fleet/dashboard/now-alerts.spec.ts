@@ -85,14 +85,39 @@ const FULL: AlertSources = {
     cards: 0, // No alert line reads the card count.
   },
   dealershipPending: { rows: 3 },
-  notices: { open: 9, missingAny: 3, missingLicences: 2, missingCheckImage: 2 },
+  notices: {
+    open: 9,
+    missingAny: 3,
+    missingLicences: 2,
+    missingCheckImage: 2,
+    // The rows are a display: the line reads `missingAny`, never their length.
+    rows: [
+      {
+        noticeId: 'n1',
+        template: 'misrInsurance',
+        vehicleId: 'a',
+        code: '304',
+        typeName: null,
+        noticeNumber: '11',
+        noticeDate: '2026-10-03',
+        missing: { vehicleLicense: false, driverLicense: false, checkImage: true },
+      },
+    ],
+  },
   noReading: {
     days: 3,
     stale: [
-      { vehicleId: 'a', code: '304', lastDate: '2026-10-28' },
       { vehicleId: 'b', code: '112', lastDate: '2026-10-22' },
+      { vehicleId: 'a', code: '304', lastDate: '2026-10-28' },
     ],
     neverRead: [{ vehicleId: 'c', code: '318' }],
+    staleCount: 2,
+    neverReadCount: 1,
+    staleRows: [
+      { vehicleId: 'b', code: '112', typeName: null, lastDate: '2026-10-22', days: 10 },
+      { vehicleId: 'a', code: '304', typeName: null, lastDate: '2026-10-28', days: 4 },
+    ],
+    neverReadRows: [{ vehicleId: 'c', code: '318', typeName: null }],
   },
 };
 
@@ -126,8 +151,17 @@ describe('deriveNowAlerts', () => {
         yellowKm: 1000,
         rows: [],
       },
-      notices: { open: 9, missingAny: 0, missingLicences: 0, missingCheckImage: 0 },
-      noReading: { days: 3, stale: [], neverRead: [{ vehicleId: 'c', code: '318' }] },
+      notices: { open: 9, missingAny: 0, missingLicences: 0, missingCheckImage: 0, rows: [] },
+      // Never-read cars are their own sub-line: they never make «بلا قراءة» fire.
+      noReading: {
+        days: 3,
+        stale: [],
+        neverRead: [{ vehicleId: 'c', code: '318' }],
+        staleCount: 0,
+        neverReadCount: 1,
+        staleRows: [],
+        neverReadRows: [{ vehicleId: 'c', code: '318', typeName: null }],
+      },
     };
     const ids = deriveNowAlerts(quiet).map((a) => a.id);
     expect(ids).not.toContain('maintenanceRed');
@@ -139,6 +173,14 @@ describe('deriveNowAlerts', () => {
     const lines = deriveNowAlerts(FULL);
     expect(lines.find((a) => a.id === 'noticesMissing')?.count).toBe(3);
     expect(lines.find((a) => a.id === 'crewAbsent')?.count).toBe(2);
+  });
+
+  it('T1.12 reads `staleCount`, never a list’s length (the ≤ 3 rows are a display)', () => {
+    const lines = deriveNowAlerts({
+      ...FULL,
+      noReading: { ...FULL.noReading!, staleCount: 7 },
+    });
+    expect(lines.find((a) => a.id === 'noReading')?.count).toBe(7);
   });
 
   it('a hidden section takes only its own lines with it (fuelCharging carries two)', () => {

@@ -1,23 +1,17 @@
-// The four «حسب الفلاتر» tabs on the real page (plan §8.6–§8.8, §8.10, unified.md W-PERIOD): what
-// each tab shows from R2's answer, where every figure leads, the R-15 drawing in the markup, the one
-// filter state shared by the four and by the period band of «الصيانة والورش» (which draws the same
-// bar inside its body — its own figures are pinned in fleet-dashboard-tab-maintenance.spec.tsx), and
-// what the period tabs must never draw.
+// «أرقام الفترة» — the last «حسب الفلاتر» tab — on the real page (plan §8.6, unified.md W-PERIOD):
+// what it shows from R2's answer and where every figure leads; then the ONE filter state it shares
+// with the period parts of the three mixed panels («الصيانة والورش», «العدادات والكيلومترات»,
+// «الحوادث ومطالبات التأمين» — each draws the same bar inside its body; their own figures are pinned
+// in fleet-dashboard-tab-{maintenance,km,accidents}.spec.tsx), and what a period tab must never draw.
 import { describe, expect, it } from 'vitest';
-import { FLEET_DASHBOARD_PERIOD_TABS, type FleetDashboardPeriodDto } from '@ecms/contracts';
+import { FLEET_DASHBOARD_PERIOD_TABS } from '@ecms/contracts';
 import { periodFiltersPatch, readPeriodFilters } from './lib/fleet-dashboard-url';
 import { CLEARED, isCleared, withPreset } from './components/fleet-dashboard/period-filter-bar';
-import { ALL_KEYS, B1, T1, TODAY, ar } from './fleet-dashboard-fixtures';
+import { ALL_KEYS, T1, TODAY, ar } from './fleet-dashboard-fixtures';
 import {
-  EMPTY_DAY,
   FROM_30,
   KM_TOTAL,
-  PENDING_DAY,
   PERIOD_FULL,
-  PERIOD_YEAR,
-  SPAN_DAY,
-  STALE_DAY,
-  UNREGISTERED_KM,
   renderPeriod,
   renderPeriodTab,
 } from './fleet-dashboard-period-fixtures';
@@ -64,8 +58,6 @@ const slice = (html: string, attr: string, value: string, next: string): string 
   const end = html.indexOf(next, start + attr.length + value.length + 3);
   return html.slice(start, end === -1 ? undefined : end);
 };
-const column = (html: string, key: string): string =>
-  slice(html, 'data-km-column', key, 'data-km-column=');
 const tabBody = (html: string, tab: string): string =>
   html.slice(html.indexOf(`data-dash-tab-body="${tab}"`));
 
@@ -116,7 +108,9 @@ describe('tab 6 «أرقام الفترة»', () => {
         url: URL_30('period'),
         dto: {
           ...PERIOD_FULL,
-          accidents: { count: 4, open: 2, openRemaining: 9800, undated: null },
+          // The branch view: the server names no undated file (they belong to no branch).
+          accidents:
+            PERIOD_FULL.accidents === null ? null : { ...PERIOD_FULL.accidents, undated: null },
         },
       }),
       'period',
@@ -203,257 +197,11 @@ describe('tab 6 «أرقام الفترة»', () => {
   });
 });
 
-// ── Tab 7 ─────────────────────────────────────────────────────────────────────────────────────
-
-describe('tab 7 «الكيلومترات» — the R-15 drawing', () => {
-  const html = renderPeriod({ url: URL_30('km') });
-  const body = tabBody(html, 'km');
-
-  it('draws a day without any reading as an empty slot, never a bar', () => {
-    const empty = column(body, EMPTY_DAY);
-    expect(empty).toContain('data-km-part="empty"');
-    expect(empty).not.toContain('data-km-part="solid"');
-    expect(empty).not.toContain('data-metric');
-  });
-
-  it('never draws today solid: it is hatched, waiting for its readings', () => {
-    const today = column(body, TODAY);
-    expect(today).toContain('data-km-part="open"');
-    expect(today).not.toContain('data-km-part="solid"');
-  });
-
-  it('keeps a stale day solid, with its marker', () => {
-    const stale = column(body, STALE_DAY);
-    expect(stale).toContain('data-km-part="solid"');
-    expect(stale).toContain('data-km-part="stale"');
-    expect(stale).not.toContain('data-km-part="open"');
-  });
-
-  it('hatches an unfinished day above its confirmed part', () => {
-    const pending = column(body, PENDING_DAY);
-    expect(pending).toContain('data-km-part="solid"');
-    expect(pending).toContain('data-km-part="open"');
-  });
-
-  it('stacks the span on its start day, outlined and never in the confirmed colour', () => {
-    const start = column(body, SPAN_DAY);
-    expect(start).toContain('data-km-part="span"');
-    const span = /<span data-km-part="span" class="([^"]*)"/u.exec(start)?.[1] ?? '';
-    expect(span).toContain('border-dashed');
-    expect(span).not.toMatch(/emerald/u);
-  });
-
-  it('opens each day on the odometer screen over that day and the filters', () => {
-    expect(column(body, SPAN_DAY)).toContain(
-      `href="/fleet/odometer?from=${SPAN_DAY}&amp;to=${SPAN_DAY}"`,
-    );
-    // 30 days, one without any reading: 29 columns open a day (the readout's figure is the 30th link).
-    expect(body.match(/<a\b[^>]*data-km-column=/gu)).toHaveLength(29);
-    expect(hrefs(body, 'km.day')).toHaveLength(30);
-  });
-
-  it('draws the average line and names the closed days it is over', () => {
-    expect(body).toContain('data-km-average="true"');
-    expect(text(body)).toContain('28 يومًا مغلقًا');
-    expect(text(body)).toContain('2026/10/30');
-  });
-
-  it('notes the unfinished days, the empty day, the spans and the stale cars', () => {
-    const notes = text(slice(body, 'data-km-notes', 'true', 'data-period-card'));
-    expect(notes).toContain('2026/10/31');
-    expect(notes).toContain('2026/10/09');
-    expect(notes).toContain(ar('fleet.dash.km.notes.openToday').replace(' {{day}}', ''));
-    expect(body).toContain('data-km-spans="true"');
-    expect(body).toContain('data-km-stale="true"');
-  });
-
-  it('splits the total by the current branch, with «غير مسجّلة», each branch opening its screen', () => {
-    const branches = slice(body, 'data-period-card', 'km.byBranch', 'data-period-card');
-    expect(hrefOf(branches, 'km.byBranch')).toBe(`/fleet/odometer?${DATES}&branch=${B1}`);
-    expect(hrefs(branches, 'km.byBranch')).toHaveLength(2);
-    expect(text(branches)).toContain(ar('fleet.dash.km.unregistered'));
-    expect(text(branches)).toContain(KM.format(UNREGISTERED_KM));
-    expect(text(branches)).toContain(ar('fleet.dash.km.noBranch'));
-    expect(hrefOf(branches, 'km.total')).toBe(`/fleet/odometer?${DATES}`);
-  });
-
-  it('adds the by-type card only when the server gives it (one branch in scope)', () => {
-    expect(body).not.toContain('data-period-card="km.byType"');
-    const typed = tabBody(
-      renderPeriod({
-        url: URL_30('km'),
-        dto: {
-          ...PERIOD_FULL,
-          vehicleScope: {
-            count: 20,
-            typeIds: [],
-            operationIds: [],
-            vehicleCodes: [],
-            branchId: B1,
-            scopeBranches: [{ id: B1, name: { ar: 'القاهرة', en: 'Cairo' } }],
-          },
-          km: {
-            ...(PERIOD_FULL.km as NonNullable<FleetDashboardPeriodDto['km']>),
-            byType: [{ typeId: T1, name: { ar: 'مصفحة', en: 'Armoured' }, km: 9000 }],
-            unregistered: null,
-          },
-        },
-      }),
-      'km',
-    );
-    const byType = slice(typed, 'data-period-card', 'km.byType', 'data-period-card');
-    expect(hrefOf(byType, 'km.byType')).toBe(`/fleet/odometer?${DATES}&type=${T1}&branch=${B1}`);
-  });
-
-  it('goes by the month above 31 days, with no per-day average line over month totals', () => {
-    const year = tabBody(
-      renderPeriod({ url: '/fleet?tab=km&period=thisYear', dto: PERIOD_YEAR }),
-      'km',
-    );
-    expect(year).toContain('data-km-chart="month"');
-    expect(year).not.toContain('data-km-average');
-    expect(text(year)).toContain('2026/01');
-    expect(column(year, '2026-01')).toContain(
-      'href="/fleet/odometer?from=2026-01-01&amp;to=2026-01-31',
-    );
-    expect(column(year, '2026-02')).toContain('data-km-part="empty"');
-    expect(column(year, '2026-11')).toContain('data-km-part="open"');
-    expect(text(year)).toContain(ar('fleet.dash.km.chart.monthly'));
-  });
-});
-
-// ── Tab 8 ─────────────────────────────────────────────────────────────────────────────────────
-
-describe('tab 8 «ترتيب السيارات»', () => {
-  const body = tabBody(renderPeriod({ url: URL_30('ranking') }), 'ranking');
-
-  it('ranks the five top and five bottom cars, each opening its readings over the period', () => {
-    expect(body).toContain('data-rank="top-1"');
-    expect(body).toContain('data-rank="bottom-5"');
-    expect(hrefs(body, 'km.top')[0]).toBe(`/fleet/odometer?vehicleCodes=182&${DATES}`);
-    expect(hrefs(body, 'km.bottom')[0]).toBe(`/fleet/odometer?vehicleCodes=141&${DATES}`);
-    expect(hrefOf(body, 'km.topVehicle')).toBe('/fleet/vehicles/v182');
-  });
-
-  it('says how long a bottom car has been in the workshop, «منذ N أيام» only', () => {
-    expect(body).toContain('data-in-workshop="2026-10-23"');
-    expect(text(body)).toContain('في الورشة منذ 9 أيام');
-  });
-
-  it('lists every car without a valid reading with its reason, and never ranks it', () => {
-    const out = slice(body, 'data-without-readings', 'true', 'data-dash-tab-body');
-    for (const reason of ['noRow', 'onlyOpen', 'notActive'] as const) {
-      expect(out).toContain(`data-reason="${reason}"`);
-      expect(text(out)).toContain(ar(`fleet.dash.ranking.reason.${reason}`));
-    }
-    expect(body).not.toContain('data-rank="top-6"');
-    expect(hrefs(out, 'km.withoutReadings')).toEqual([
-      '/fleet/vehicles/v318',
-      '/fleet/vehicles/v305',
-      '/fleet/vehicles/v260',
-    ]);
-  });
-
-  it('names a car whose only readings need review, right after the days without a counter', () => {
-    const km = PERIOD_FULL.km as NonNullable<FleetDashboardPeriodDto['km']>;
-    const dto: FleetDashboardPeriodDto = {
-      ...PERIOD_FULL,
-      km: {
-        ...km,
-        withoutReadings: [
-          ...km.withoutReadings,
-          { vehicleId: 'v209', code: '209', reason: 'onlyInvalid' },
-        ],
-      },
-    };
-    const out = slice(
-      tabBody(renderPeriod({ url: URL_30('ranking'), dto }), 'ranking'),
-      'data-without-readings',
-      'true',
-      'data-dash-tab-body',
-    );
-    expect(out).toContain('data-reason="onlyInvalid"');
-    expect(text(out)).toContain(ar('fleet.dash.ranking.reason.onlyInvalid'));
-    expect(out.indexOf('data-reason="onlyOpen"')).toBeLessThan(
-      out.indexOf('data-reason="onlyInvalid"'),
-    );
-    expect(out.indexOf('data-reason="onlyInvalid"')).toBeLessThan(
-      out.indexOf('data-reason="notActive"'),
-    );
-  });
-
-  it('links no car record for a reader without the registry', () => {
-    const blind = tabBody(
-      renderPeriod({
-        url: URL_30('ranking'),
-        permissions: ALL_KEYS.filter((k) => k !== 'fleetVehicle.view'),
-      }),
-      'ranking',
-    );
-    expect(links(blind).filter((l) => l.href.startsWith('/fleet/vehicles/'))).toEqual([]);
-    expect(hrefs(blind, 'km.top')).toHaveLength(5);
-  });
-});
-
-// ── Tab 10 ────────────────────────────────────────────────────────────────────────────────────
-
-describe('tab 10 «الحوادث»', () => {
-  const body = tabBody(renderPeriod({ url: URL_30('accidents') }), 'accidents');
-
-  it('heads the list with the period’s count, the open files and their outstanding (= tab 6)', () => {
-    expect(hrefOf(body, 'accidents.count')).toBe(`/fleet/accidents?${DATES}`);
-    expect(hrefOf(body, 'accidents.open')).toBe(`/fleet/accidents?${DATES}&status=open`);
-    expect(text(body)).toContain('9,800.00');
-  });
-
-  it('shows each accident’s date only, never a time, and opens it on its car and day', () => {
-    for (const id of ['a1', 'a2', 'a3', 'a4']) {
-      const row = text(slice(body, 'data-accident-row', id, 'data-accident-row'));
-      expect(row).not.toMatch(/\d{1,2}:\d{2}/u);
-    }
-    expect(hrefs(body, 'accidentList.row')[0]).toBe(
-      '/fleet/accidents?vehicleCodes=207&from=2026-10-27&to=2026-10-27',
-    );
-    expect(text(body)).toContain('2026/10/06');
-  });
-
-  it('puts the driver card only on a culprit who is one of ours; the text as written otherwise', () => {
-    expect(slice(body, 'data-accident-row', 'a1', 'data-accident-row')).toContain(
-      'data-culprit="driver"',
-    );
-    expect(slice(body, 'data-accident-row', 'a2', 'data-accident-row')).toContain(
-      'data-culprit="text"',
-    );
-    expect(text(slice(body, 'data-accident-row', 'a4', 'data-accident-row'))).toContain(
-      ar('fleet.dash.licences.noCulprit'),
-    );
-  });
-
-  it('opens the rest of the list in the log when there are more than the rows shown', () => {
-    expect(hrefs(body, 'accidentList.more')).toEqual([]);
-    const more = tabBody(
-      renderPeriod({
-        url: URL_30('accidents'),
-        dto: {
-          ...PERIOD_FULL,
-          accidentList: {
-            ...(PERIOD_FULL.accidentList as NonNullable<FleetDashboardPeriodDto['accidentList']>),
-            more: 3,
-          },
-        },
-      }),
-      'accidents',
-    );
-    expect(hrefOf(more, 'accidentList.more')).toBe(`/fleet/accidents?${DATES}`);
-    expect(hrefOf(more, 'accidentList.all')).toBe(`/fleet/accidents?${DATES}`);
-  });
-});
-
 // ── The filter bar and the one filter state ───────────────────────────────────────────────────
 
-describe('the filter bar — one state for the four tabs and «الصيانة والورش»', () => {
-  it('stands at the top of every period tab, with the same filters and the echoed range', () => {
-    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period', 'km', 'ranking', 'accidents']);
+describe('the filter bar — one state for «أرقام الفترة» and the three mixed panels', () => {
+  it('stands at the top of «أرقام الفترة», with the same filters and the echoed range', () => {
+    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period']);
     for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
       const html = renderPeriod({ url: URL_30(tab) });
       expect(html, tab).toContain('data-period-filters="true"');
@@ -482,6 +230,36 @@ describe('the filter bar — one state for the four tabs and «الصيانة و
     expect(bar).toBeLessThan(body.indexOf('data-maint-kpi="exits"'));
     // Its own head names the range as the server echoed it.
     expect(text(slice(body, 'data-dash-range', 'last30', '</span>'))).toContain('2026/10/03');
+  });
+
+  it('is the same bar at the top of «العدادات والكيلومترات», before its figures', () => {
+    const html = renderPeriod({ url: URL_30('km') });
+    const body = tabBody(html, 'km');
+    expect(html).not.toContain('data-period-tab=');
+    expect(body.match(/data-period-filters="true"/gu)).toHaveLength(1);
+    expect(body).toMatch(/<option value="last30" selected="">/u);
+    const range = text(slice(body, 'data-period-chip', 'range', 'data-period-chip'));
+    expect(range).toContain('2026/10/03');
+    expect(range).toContain('2026/11/01');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(bar).toBeLessThan(body.indexOf('data-km-kpi="total"'));
+    expect(bar).toBeLessThan(body.indexOf('data-km-kpi="stale"'));
+    expect(bar).toBeLessThan(body.indexOf('data-km-block="chart"'));
+  });
+
+  it('is the same bar inside «الحوادث ومطالبات التأمين», between its «الآن» band and its period figures', () => {
+    const html = renderPeriod({ url: URL_30('accidents') });
+    const body = tabBody(html, 'accidents');
+    expect(html).not.toContain('data-period-tab=');
+    expect(body.match(/data-period-filters="true"/gu)).toHaveLength(1);
+    expect(body).toMatch(/<option value="last30" selected="">/u);
+    const range = text(slice(body, 'data-period-chip', 'range', 'data-period-chip'));
+    expect(range).toContain('2026/10/03');
+    expect(range).toContain('2026/11/01');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(body.indexOf('data-acc-band="now"')).toBeLessThan(bar);
+    expect(body.indexOf('data-acc-band="period"')).toBeLessThan(bar);
+    expect(bar).toBeLessThan(body.indexOf('data-acc-kpi="period"'));
   });
 
   it('writes a new state without touching the tab', () => {
@@ -571,16 +349,16 @@ describe('the filter bar — one state for the four tabs and «الصيانة و
 
 describe('the period read', () => {
   it('shows the skeleton while it loads, and the error with its retry when it failed', () => {
-    expect(renderPeriodTab({ tab: 'km', loading: true })).toContain('data-dash-loading="true"');
-    const failed = renderPeriodTab({ tab: 'km', error: true });
+    expect(renderPeriodTab({ tab: 'period', loading: true })).toContain('data-dash-loading="true"');
+    const failed = renderPeriodTab({ tab: 'period', error: true });
     expect(failed).toContain('data-dash-read-error="true"');
     expect(failed).toContain('data-period-filters="true"');
   });
 
   it('keeps the shell’s hand-over: the tab’s heading and its range', () => {
-    const html = renderPeriodTab({ tab: 'km', data: PERIOD_FULL });
-    expect(html).toContain('data-period-tab="km"');
-    expect(html).toContain(ar('fleet.dash.shell.tab.km'));
+    const html = renderPeriodTab({ tab: 'period', data: PERIOD_FULL });
+    expect(html).toContain('data-period-tab="period"');
+    expect(html).toContain(ar('fleet.dash.shell.tab.period'));
     expect(html).toContain('data-period-range="true"');
   });
 

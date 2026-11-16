@@ -290,6 +290,15 @@ describe('«الحركة اليوم» — the five cards', () => {
     expect(text(card(blind, 'workshop'))).toContain('141');
   });
 
+  it('gives a car deleted since no link to its file — the file is no longer served', () => {
+    const workshop = need(NOW.workshop);
+    const oldest = need(workshop.oldest);
+    const gone = tab({ ...NOW, workshop: { ...workshop, oldest: { ...oldest, deleted: true } } });
+    expect(hrefOf(gone, 'workshop.oldest')).toEqual([]);
+    // The car is still named (its visit is still open and counted).
+    expect(text(card(gone, 'workshop'))).toContain('141');
+  });
+
   it('splits «أسباب عدم التعيين» into parts of the unmanned cars only — never the ready stale plans', () => {
     const html = withRoster({
       unmannedCrewGap: 1,

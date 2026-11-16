@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
   SettingKeys,
+  compareFleetVehicleCodes,
   platformPermissions,
   type FleetCatalogItemDto,
   type FleetOdometerLogDto,
@@ -471,7 +472,13 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
       { ...OCTOBER, vehicleCodes: set },
       { ...ctx, setNarrows: true },
     );
-    expect(narrowed.coverage).toEqual({ withReadings: 1, of: 2 });
+    expect(narrowed.coverage).toEqual({
+      withReadings: 1,
+      of: 2,
+      active: 3,
+      inWorkshop: 1,
+      joinedAfter: 0,
+    });
     expect(new Map(narrowed.withoutReadings.map((r) => [r.vehicleId, r.reason]))).toEqual(
       new Map([
         [never.id, 'noRow'],
@@ -483,7 +490,13 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
       { from: '2026-09-15', to: '2026-10-31', vehicleCodes: set },
       { ...ctx, setNarrows: true },
     );
-    expect(late.coverage).toEqual({ withReadings: 1, of: 3 });
+    expect(late.coverage).toEqual({
+      withReadings: 1,
+      of: 3,
+      active: 3,
+      inWorkshop: 0,
+      joinedAfter: 0,
+    });
     expect(late.withoutReadings.find((r) => r.vehicleId === twice.id)?.reason).toBe('noRow');
   });
 
@@ -516,6 +529,66 @@ describe('kmBreakdown — tabs 6–8 over the same rows (R-15, R-16)', () => {
   });
 });
 
+describe('kmBreakdown — «العدادات والكيلومترات»: no distance, never read, readings to review, makes', () => {
+  const ctx = { today: '2026-11-03', staleDays: 3, byType: false, setNarrows: false };
+
+  it('the cars with no distance in October, and of them the one never read at ANY date', async () => {
+    const km = await fleetOdometerService.kmBreakdown(OCTOBER, ctx);
+    // Y: the active cars (twice is in the workshop all October; oos is out of service; gone is
+    // deleted) — a1, a2 and stale28 drove; neg (a row to review and an open one), shop and fresh29
+    // (an open row each) and never (no row at all) did not.
+    expect(km.coverage).toEqual({
+      withReadings: 3,
+      of: 7,
+      active: 8,
+      inWorkshop: 1,
+      joinedAfter: 0,
+    });
+    expect(km.noDistance.cars).toBe(4);
+    expect(new Set(km.noDistance.codes)).toEqual(
+      new Set([neg.code, shop.code, fresh29.code, never.code]),
+    );
+    expect(km.noDistance.codes).toEqual([...km.noDistance.codes].sort(compareFleetVehicleCodes));
+    // neg, shop and fresh29 have chain rows; never has none at any date.
+    expect(km.noDistance.neverRead).toBe(1);
+    expect(km.noDistance.neverReadCodes).toEqual([never.code]);
+  });
+
+  it('the readings to review: the register’s negative row, from its out reading down by its km', async () => {
+    const km = await fleetOdometerService.kmBreakdown(OCTOBER, ctx);
+    const summary = ok<FleetOdometerSummaryDto>(await get('/fleet/odometer/summary', OCTOBER));
+    expect(km.invalidRows).toBe(summary.invalidRows);
+    expect(km.invalidList).toEqual([
+      {
+        vehicleId: neg.id,
+        code: neg.code,
+        deleted: false,
+        typeName: expect.objectContaining({ ar: 'مصفحة العداد' }) as unknown,
+        date: '2026-10-06',
+        from: 9_000,
+        to: 8_950,
+        km: -50,
+      },
+    ]);
+  });
+
+  it('names the ranked cars by their make without a branch (the km by type stays the branch’s)', async () => {
+    const km = await fleetOdometerService.kmBreakdown(OCTOBER, ctx);
+    expect(km.byType).toBeNull();
+    const makes = new Map([
+      [a1.id, 'مصفحة العداد'],
+      [a2.id, 'ميكروباص العداد'],
+      [stale28.id, 'مصفحة العداد'],
+      [gone.id, 'ميكروباص العداد'],
+      [oos.id, 'مصفحة العداد'],
+    ]);
+    expect(km.top5.length).toBeGreaterThan(0);
+    for (const row of [...km.top5, ...km.bottom5]) {
+      expect(row.typeName?.ar, row.code).toBe(makes.get(row.vehicleId));
+    }
+  });
+});
+
 describe('noReadingDigest — «بلا قراءة عداد منذ N أيام» (R-07)', () => {
   it('on 2026-11-01 with N = 3: the 28th fires, the 29th does not, the workshop car never does', async () => {
     const digest = await fleetOdometerService.noReadingDigest({ today: '2026-11-01', days: 3 });
@@ -540,6 +613,33 @@ describe('noReadingDigest — «بلا قراءة عداد منذ N أيام» (
       { vehicleId: stale28.id, code: stale28.code, lastDate: '2026-10-28' },
     ]);
     expect(digest.neverRead.map((n) => n.vehicleId)).toEqual([never.id]);
+  });
+
+  it('counts and lists: the longest gap first (then the code), at most three, with makes and days', async () => {
+    const digest = await fleetOdometerService.noReadingDigest({ today: '2026-11-01', days: 3 });
+    expect(digest.staleCount).toBe(digest.stale.length);
+    expect(digest.neverReadCount).toBe(digest.neverRead.length);
+    // a1, a2 and neg were last read on the 9th, stale28 on the 28th: the three of the 9th, by code.
+    const ninth = [a1, a2, neg].sort((x, y) => compareFleetVehicleCodes(x.code, y.code));
+    expect(digest.staleRows).toEqual(
+      ninth.map((car) => ({
+        vehicleId: car.id,
+        code: car.code,
+        typeName: expect.objectContaining({
+          ar: car.id === a2.id ? 'ميكروباص العداد' : 'مصفحة العداد',
+        }) as unknown,
+        lastDate: '2026-10-09',
+        days: 23,
+      })),
+    );
+    expect(digest.staleRows.map((r) => r.vehicleId)).not.toContain(stale28.id);
+    expect(digest.neverReadRows).toEqual([
+      {
+        vehicleId: never.id,
+        code: never.code,
+        typeName: expect.objectContaining({ ar: 'ميكروباص العداد' }) as unknown,
+      },
+    ]);
   });
 
   it('a day recorded without a counter is not a reading: the 28th stays the latest', async () => {
@@ -660,5 +760,52 @@ describe('GET /fleet/odometer/latest-readings — the car card’s «آخر قر
     expect((await get(URL, {}, maintenanceOnly)).status).toBe(200);
     expect((await get(URL, {}, strangerToken)).status).toBe(403);
     expect((await request(app).get(`/api/v1${URL}`)).status).toBe(401);
+  });
+});
+
+describe('kmBreakdown — a car deleted after its row to review (no dead link)', () => {
+  // Last in the file and in August, so the October world above is untouched.
+  const AUGUST = { from: '2026-08-01', to: '2026-08-31' };
+  const ctx = { today: '2026-11-03', staleDays: 3, byType: false, setNarrows: false };
+
+  it('keeps the row, flags the car deleted (its file is 404); its day lists it, its code does not', async () => {
+    const late = await mkVehicle({ typeId: T1, branchId: B1, operationId: O1 });
+    await FleetOdometerLogModel.create([
+      bookRow({
+        vehicleId: new Types.ObjectId(late.id),
+        date: day('2026-08-12'),
+        outReading: 5_000,
+        inReading: 4_960,
+        km: -40,
+      }),
+    ]);
+    const del = await request(app)
+      .delete(`/api/v1/fleet/vehicles/${late.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect([200, 204]).toContain(del.status);
+
+    const km = await fleetOdometerService.kmBreakdown(AUGUST, ctx);
+    expect(km.invalidList).toEqual([
+      {
+        vehicleId: late.id,
+        code: late.code,
+        deleted: true,
+        typeName: expect.objectContaining({ ar: 'مصفحة العداد' }) as unknown,
+        date: '2026-08-12',
+        from: 5_000,
+        to: 4_960,
+        km: -40,
+      },
+    ]);
+    // The web gives this row no car link: the car's file is no longer served.
+    expect((await get(`/fleet/vehicles/${late.id}`)).status).toBe(404);
+    // The register's code filter finds live cars only — so the web's «فتح» for this row opens
+    // that ONE day without the code (`kmDay`), under the set's types, which reach deleted cars.
+    const byCode = await listed({ vehicleCodes: late.code, from: '2026-08-12', to: '2026-08-12' });
+    expect(byCode).toEqual([]);
+    const theDay = await listed({ typeIds: [T1], from: '2026-08-12', to: '2026-08-12' });
+    expect(theDay.filter((r) => r.vehicleId === late.id).map((r) => [r.outReading, r.km])).toEqual([
+      [5_000, -40],
+    ]);
   });
 });

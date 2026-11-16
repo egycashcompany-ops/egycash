@@ -76,19 +76,22 @@ describe('the frame', () => {
     expect(html.match(/role="tablist"/gu)).toHaveLength(1);
   });
 
-  it('shows all ten tabs, in the bar’s order, to a reader with every key', () => {
+  it('shows all nine tabs, in the bar’s order, to a reader with every key', () => {
     expect(barTabs(html)).toEqual([
       'overview',
       'today',
       'distribution',
       'maintenance',
       'km',
-      'ranking',
       'accidents',
       'period',
       'summaries',
       'licences',
     ]);
+    expect(ar('fleet.dash.shell.tab.km')).toBe('العدادات والكيلومترات');
+    expect(ar('fleet.dash.shell.tab.accidents')).toBe('الحوادث ومطالبات التأمين');
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.km')}<`);
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.accidents')}<`);
   });
 
   it('presses «نظرة عامة» on a clean address, in the system’s indigo', () => {
@@ -136,10 +139,17 @@ describe('the frame', () => {
     expect(now).toContain('data-dash-panel="today"');
     expect(barTabs(now)).not.toContain('now');
     expect(barTabs(alerts)).not.toContain('alerts');
+    // «ترتيب السيارات» → «العدادات والكيلومترات» (its top 5 and bottom 5 live there now).
+    const ranking = renderDashboard({ url: '/fleet?tab=ranking' });
+    expect(pressed(ranking)).toBe('km');
+    expect(ranking).toContain('data-dash-panel="km"');
+    expect(ranking).toContain('data-dash-tab-body="km"');
+    expect(ranking).toContain('data-km-kpi="total"');
+    expect(barTabs(ranking)).not.toContain('ranking');
   });
 
-  it('renders the four period tabs through the period hand-over (H1)', () => {
-    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period', 'km', 'ranking', 'accidents']);
+  it('renders «أرقام الفترة» alone through the period hand-over (H1)', () => {
+    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period']);
     for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
       const html = renderDashboard({ url: `/fleet?tab=${tab}` });
       expect(html, tab).toContain(`data-period-tab="${tab}"`);
@@ -164,7 +174,35 @@ describe('the frame', () => {
     expect(body.indexOf('data-maint-kpi="exits"')).toBeGreaterThan(bar);
   });
 
-  it('opens an old `?tab=distribution` / `?tab=maintenance` link on the rebuilt body (keys kept)', () => {
+  it('draws «العدادات والكيلومترات» as a panel of R1 and R2 both, the page’s filter bar at its top', () => {
+    const html = renderDashboard({ url: '/fleet?tab=km' });
+    expect(pressed(html)).toBe('km');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.km')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="km"'));
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(bar).toBeGreaterThan(-1);
+    expect(body.indexOf('data-km-kpi="total"')).toBeGreaterThan(bar);
+    // Its R1 card «بلا قراءة عداد منذ N أيام» stands among the period cards.
+    expect(body.indexOf('data-km-kpi="stale"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «الحوادث ومطالبات التأمين» as a panel of R1 and R2 both, the bar between its bands', () => {
+    const html = renderDashboard({ url: '/fleet?tab=accidents' });
+    expect(pressed(html)).toBe('accidents');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.accidents')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="accidents"'));
+    const now = body.indexOf('data-acc-band="now"');
+    const period = body.indexOf('data-acc-band="period"');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(now).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(now);
+    expect(bar).toBeGreaterThan(period);
+    expect(body.indexOf('data-acc-kpi="period"')).toBeGreaterThan(bar);
+  });
+
+  it('opens an old `?tab=distribution` / `?tab=maintenance` / `?tab=km` / `?tab=accidents` link on the rebuilt body (keys kept)', () => {
     const distribution = renderDashboard({ url: '/fleet?tab=distribution' });
     expect(pressed(distribution)).toBe('distribution');
     expect(distribution).toContain('data-dash-tab-body="distribution"');
@@ -172,6 +210,12 @@ describe('the frame', () => {
     const maintenance = renderDashboard({ url: '/fleet?tab=maintenance' });
     expect(maintenance).toContain('data-dash-tab-body="maintenance"');
     expect(maintenance).toContain('data-maint-band="now"');
+    const km = renderDashboard({ url: '/fleet?tab=km' });
+    expect(km).toContain('data-dash-tab-body="km"');
+    expect(km).toContain('data-km-block="exceptions"');
+    const accidents = renderDashboard({ url: '/fleet?tab=accidents' });
+    expect(accidents).toContain('data-dash-tab-body="accidents"');
+    expect(accidents).toContain('data-acc-block="notices"');
   });
 });
 
@@ -248,6 +292,37 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
     // The period band is the workshop's (by exit day): not drawn for either.
     expect(dealerTab).not.toContain('data-maint-band="period"');
     expect(odometerTab).not.toContain('data-maint-band="period"');
+    // The odometer reader also sees «العدادات والكيلومترات», the whole of it.
+    expect(barTabs(odometer)).toContain('km');
+    expect(barTabs(odometer)).not.toContain('accidents');
+  });
+
+  it('shows a notices-only reader «الحوادث ومطالبات التأمين» with the notices alone — no R2 asked', () => {
+    const client = dashboardClient({ period: null });
+    const bar = renderDashboard({ permissions: ['fleetNotice.view'], client });
+    expect(barTabs(bar)).toContain('accidents');
+    const html = renderDashboard({
+      url: '/fleet?tab=accidents',
+      permissions: ['fleetNotice.view'],
+      client,
+    });
+    expect(html).toContain('data-dash-tab-body="accidents"');
+    expect(html).toContain('data-acc-kpi="notices"');
+    expect(html).not.toContain('data-acc-kpi="files"');
+    expect(html).not.toContain('data-acc-band="period"');
+    expect(html).not.toContain('data-period-filters');
+    // R2 is never sent for this reader: every period query the page holds is disabled.
+    const period = client.getQueryCache().findAll({ queryKey: ['fleet', 'dashboard', 'period'] });
+    expect(period.length).toBeGreaterThan(0);
+    for (const query of period) expect(query.isDisabled(), String(query.queryKey)).toBe(true);
+    // An accidents-only reader: the files and the period, no notices.
+    const accidents = renderDashboard({
+      url: '/fleet?tab=accidents',
+      permissions: ['fleetAccident.view'],
+    });
+    expect(accidents).toContain('data-acc-kpi="files"');
+    expect(accidents).toContain('data-acc-band="period"');
+    expect(accidents).not.toContain('data-acc-kpi="notices"');
   });
 
   it('keeps each band of «الصيانة والورش» on its own read — R1 on its way never blanks the period', () => {
@@ -264,6 +339,43 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
     });
     expect(r2Pending).toContain('data-maint-kpi="red"');
     expect(r2Pending).not.toContain('data-maint-kpi="exits"');
+    expect(r2Pending).toContain('data-period-filters="true"');
+  });
+
+  it('keeps each part of «العدادات والكيلومترات» on its own read — R1 on its way never blanks R2', () => {
+    const r1Pending = renderDashboard({
+      url: '/fleet?tab=km',
+      client: dashboardClient({ now: null }),
+    });
+    expect(r1Pending).toContain('data-dash-tab-body="km"');
+    expect(r1Pending).toContain('data-km-loading="stale"');
+    expect(r1Pending).toContain('data-km-kpi="total"');
+    expect(r1Pending).toContain('data-km-block="chart"');
+    const r2Pending = renderDashboard({
+      url: '/fleet?tab=km',
+      client: dashboardClient({ period: null }),
+    });
+    expect(r2Pending).toContain('data-km-kpi="stale"');
+    expect(r2Pending).not.toContain('data-km-kpi="total"');
+    expect(r2Pending).toContain('data-period-filters="true"');
+  });
+
+  it('keeps each band of «الحوادث ومطالبات التأمين» on its own read — R1 on its way never blanks R2', () => {
+    const r1Pending = renderDashboard({
+      url: '/fleet?tab=accidents',
+      client: dashboardClient({ now: null }),
+    });
+    expect(r1Pending).toContain('data-dash-tab-body="accidents"');
+    expect(r1Pending).toContain('data-read-band="loading"');
+    expect(r1Pending).not.toContain('data-acc-kpi="files"');
+    expect(r1Pending).toContain('data-acc-kpi="period"');
+    const r2Pending = renderDashboard({
+      url: '/fleet?tab=accidents',
+      client: dashboardClient({ period: null }),
+    });
+    expect(r2Pending).toContain('data-acc-kpi="files"');
+    expect(r2Pending).toContain('data-acc-kpi="notices"');
+    expect(r2Pending).not.toContain('data-acc-kpi="period"');
     expect(r2Pending).toContain('data-period-filters="true"');
   });
 
@@ -357,7 +469,13 @@ describe('the counts on the bar (plan §5.10)', () => {
     expect(html).toContain(
       `title="${ar('fleet.dash.shell.badge.maintenance', { count: NOW_DTO.maintenanceAlarm?.red ?? 0 })}"`,
     );
-    expect(badge(html, 'accidents')).toBe(String(PERIOD_DTO.accidents?.count));
+    // «العدادات والكيلومترات» and «الحوادث ومطالبات التأمين» carry none (the approved bar draws
+    // none): the old count of the period's accidents went with the old body.
+    expect(badge(html, 'km')).toBeUndefined();
+    expect(badge(html, 'accidents')).toBeUndefined();
+    expect(
+      tabBadges({ can: () => true, now: NOW_DTO, period: PERIOD_DTO }).accidents,
+    ).toBeUndefined();
     expect(badge(html, 'summaries')).toBeUndefined();
   });
 

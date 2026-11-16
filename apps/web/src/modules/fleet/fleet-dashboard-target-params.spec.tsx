@@ -31,6 +31,7 @@ import {
   type FleetLicensingRowDto,
   type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
+  type FleetNoticeDto,
   type FleetReceiptDto,
   type FleetVehicleDto,
   type FleetViolationDto,
@@ -54,6 +55,7 @@ import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { VehicleContractsPage } from './pages/VehicleContractsPage';
 import { vehicleContractSummaryKey } from './api/vehicle-contract-queries';
 import { ViolationsPage } from './pages/ViolationsPage';
+import { NoticesPage } from './pages/NoticesPage';
 import { paperStage } from './pages/LicensingPage';
 
 // The fuel-card board's dialogs portal into `document.body`, which this suite has no DOM for.
@@ -665,6 +667,128 @@ describe('the period screens read the vehicle set — type, operation, branch', 
         expect(readsInSource(page, param), `${page} reads ${param}`).toBe(true);
       }
     }
+  });
+});
+
+// ── /fleet/notices — the notices follow the car's branch («الحوادث ومطالبات التأمين», «نظرة عامة») ──
+
+const notice = (over: Partial<FleetNoticeDto> = {}): FleetNoticeDto => ({
+  id: 'nt-1',
+  template: 'misrInsurance',
+  values: {},
+  checks: {},
+  vehicleId: 'v-247',
+  vehicleCode: '247',
+  driverEmployeeId: null,
+  accidentId: null,
+  noticeNumber: '24117',
+  noticeDate: '2026-10-21',
+  noticeImage: null,
+  vehicleLicense: null,
+  driverLicense: null,
+  vehicleLicenseOnFile: false,
+  driverLicenseOnFile: false,
+  checkImage: null,
+  completedAt: null,
+  version: 0,
+  createdAt: '2026-10-21T00:00:00.000Z',
+  updatedAt: '2026-10-21T00:00:00.000Z',
+  ...over,
+});
+
+const noticesAt = (
+  route: string,
+  filters: Record<string, unknown>,
+  extraKeys: readonly string[] = [],
+): string => {
+  const qc = client();
+  qc.setQueryData(
+    listKey('fleet', 'notices', { page: 1, pageSize: 25, ...filters }),
+    paged([notice()]),
+  );
+  return mount(qc, ['fleetNotice.view', ...extraKeys], route, '/fleet/notices', <NoticesPage />);
+};
+const noticeRowShown = (html: string): boolean => html.includes('data-notice-row="nt-1"');
+
+describe('/fleet/notices reads the vehicle set — the car’s type, operation and branch', () => {
+  it('sends the branch with «open» (the overview’s line, «إخطارات تأمين مفتوحة») and the whole set', () => {
+    expect(
+      noticeRowShown(
+        noticesAt('/fleet/notices?status=open&branch=b1', { status: 'open', branchIds: ['b1'] }),
+      ),
+    ).toBe(true);
+    expect(
+      noticeRowShown(
+        noticesAt(`/fleet/notices?status=open&${SET_ROUTE}`, { status: 'open', ...SET_QUERY }),
+      ),
+    ).toBe(true);
+    // «بلا صورة الشيك» and a row's «فتح» carry it beside their own params.
+    expect(
+      noticeRowShown(
+        noticesAt('/fleet/notices?status=open&checkImage=missing&branch=b1,b2', {
+          status: 'open',
+          checkImage: 'missing',
+          branchIds: ['b1', 'b2'],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      noticeRowShown(
+        noticesAt(
+          '/fleet/notices?status=open&vehicleCodes=247&number=24117&from=2026-10-21&to=2026-10-21&branch=b1',
+          {
+            status: 'open',
+            vehicleCodes: '247',
+            noticeNumber: '24117',
+            from: '2026-10-21',
+            to: '2026-10-21',
+            branchIds: ['b1'],
+          },
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('asks the figures above the list with the same set (one filter object for both)', () => {
+    const flat = source('NoticesPage.tsx').replace(/\s+/gu, ' ');
+    expect(flat).toContain('...vehicleSetQuery(vehicleSet),');
+    expect(flat).toContain('useNotices({ page, pageSize, ...filters, })');
+    expect(flat).toContain('const summary = useNoticesSummary(filters);');
+  });
+
+  it('does not answer a narrowed address from the un-narrowed list', () => {
+    expect(
+      noticeRowShown(noticesAt('/fleet/notices?status=open&branch=b1', { status: 'open' })),
+    ).toBe(false);
+    expect(noticeRowShown(noticesAt(`/fleet/notices?${SET_ROUTE}`, {}))).toBe(false);
+    // …and an ordinary visit asks exactly what it asked before.
+    expect(noticeRowShown(noticesAt('/fleet/notices?status=open', { status: 'open' }))).toBe(true);
+  });
+
+  it('shows the set on the bar while it narrows — nameless, removable chips without the lists’ guards', () => {
+    const plain = noticesAt('/fleet/notices?status=open', { status: 'open' });
+    expect(plain).not.toContain('data-vehicle-set-chip');
+    const narrowed = noticesAt(`/fleet/notices?${SET_ROUTE}`, SET_QUERY);
+    expect(narrowed).toContain('data-vehicle-set-chip="type"');
+    expect(narrowed).toContain('data-vehicle-set-chip="operation"');
+    expect(narrowed).toContain(ar('fleet.dash.filters.someTypes'));
+    expect(narrowed).toContain(ar('fleet.dash.filters.someOperations'));
+    expect(narrowed).toContain(ar('recruitment.filters.branch'));
+    // With the types list's and the catalog's own guard: the named controls instead.
+    const registry = noticesAt(`/fleet/notices?${SET_ROUTE}`, SET_QUERY, ['fleetVehicle.view']);
+    expect(registry).toContain(ar('fleet.vehicles.filters.short.make'));
+    expect(registry).toContain(ar('fleet.vehicles.filters.short.operation'));
+  });
+
+  it('remembers the set with its other filters, reads it in its own source, and clears it with the bar', () => {
+    for (const param of ['type', 'operation', 'branch']) {
+      expect(remembered('NoticesPage.tsx'), `remembers ${param}`).toContain(param);
+      expect(readsInSource('NoticesPage.tsx', param), `reads ${param}`).toBe(true);
+    }
+    // «إعادة الضبط» drops the set too: a remembered branch never outlives it.
+    expect(source('NoticesPage.tsx').replace(/\s+/gu, ' ')).toMatch(
+      /onClear=\{\(\) => patch\(\{[^}]*\.\.\.CLEAR_VEHICLE_SET,/u,
+    );
   });
 });
 

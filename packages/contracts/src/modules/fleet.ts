@@ -3311,6 +3311,12 @@ const noticeFilters = {
   to: z.coerce.date().optional(),
   status: FleetNoticeStatusSchema.optional(),
   checkImage: FleetNoticeImageStateSchema.optional(),
+  /**
+   * The notice follows its CAR: the car's type, operation and CURRENT branch, as every other period
+   * screen asks (the dashboard's notices on a branch are that branch's cars' notices). A notice with
+   * no car matches no set — it is listed only when none of the three is asked.
+   */
+  ...vehicleSetFilters(),
 };
 export const ListFleetNoticesQuerySchema = PaginationQuerySchema.extend(noticeFilters);
 export type ListFleetNoticesQuery = z.infer<typeof ListFleetNoticesQuerySchema>;

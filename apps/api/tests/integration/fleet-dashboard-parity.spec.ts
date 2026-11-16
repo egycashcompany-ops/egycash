@@ -53,6 +53,7 @@ import { type AuthContext } from '../../src/shared/types';
 import { FleetAccidentModel } from '../../src/modules/fleet/accidents/accident.model';
 import { FleetViolationModel } from '../../src/modules/fleet/violations/violation.model';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
+import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
 import { nextNationalId } from './helpers/national-id';
 
 /** Cairo's 2026-11-01, 01:30 — the UTC date is still the 31st (R-01). */
@@ -624,6 +625,23 @@ beforeAll(async () => {
     collected: false,
   });
 
+  // «قراءات تحتاج مراجعة»: a closed row whose km is negative (as a data fix can leave one) — below
+  // v3's open reading, so its chain and its latest reading stay what they were.
+  await FleetOdometerLogModel.create({
+    ...legacy,
+    vehicleId: new Types.ObjectId(v3.id),
+    vehicleCode: null,
+    date: new Date('2026-10-15T00:00:00.000Z'),
+    outReading: 90,
+    inReading: 60,
+    km: -30,
+    driver1EmployeeId: null,
+    driver2EmployeeId: null,
+    driver1Name: null,
+    driver2Name: null,
+    notes: null,
+  });
+
   const del = await send('delete', `/fleet/vehicles/${v7.id}`);
   expect([200, 204]).toContain(del.status);
 
@@ -868,6 +886,25 @@ describe('R1 parity — the overview’s action centre (the old «التنبيه
       { vehicleId: v2.id, code: v2.code, lastDate: '2026-10-28' },
     ]);
     expect(now.noReading?.neverRead).toEqual([{ vehicleId: v6.id, code: v6.code }]);
+    // The counts are fields; the listed rows carry the make and the days since the last reading.
+    expect(now.noReading?.staleCount).toBe(now.noReading?.stale.length);
+    expect(now.noReading?.neverReadCount).toBe(1);
+    expect(now.noReading?.staleRows).toEqual([
+      {
+        vehicleId: v2.id,
+        code: v2.code,
+        typeName: expect.objectContaining({ ar: 'مصفحة' }) as unknown,
+        lastDate: '2026-10-28',
+        days: 4,
+      },
+    ]);
+    expect(now.noReading?.neverReadRows).toEqual([
+      {
+        vehicleId: v6.id,
+        code: v6.code,
+        typeName: expect.objectContaining({ ar: 'مصفحة' }) as unknown,
+      },
+    ]);
     // The link: the odometer screen of those cars shows no chain row since today − N.
     expect(await total('/fleet/odometer', { vehicleCodes: v2.code, from: '2026-10-29' })).toBe(0);
     expect(await total('/fleet/odometer', { vehicleCodes: v3.code, from: '2026-10-29' })).toBe(1);
@@ -926,15 +963,51 @@ describe('R1 parity — the overview’s action centre (the old «التنبيه
     const listed = ok<FleetNoticeDto[]>(
       await get('/fleet/notices', { status: 'open', pageSize: 100 }),
     );
+    const missing = listed.filter(
+      (n) => n.vehicleLicense === null || n.driverLicense === null || n.checkImage === null,
+    );
     expect(now.notices).toEqual({
       open: summary.open,
-      missingAny: listed.filter(
-        (n) => n.vehicleLicense === null || n.driverLicense === null || n.checkImage === null,
-      ).length,
+      missingAny: missing.length,
       missingLicences: summary.missingLicences,
       missingCheckImage: summary.missingCheckImage,
+      rows: expect.any(Array) as unknown,
     });
     expect(now.notices?.missingAny).toBe(1);
+    // «إخطارات ينقصها مرفق»: each row is one of the screen's open notices missing something, as
+    // the screen shows it, and the row's link (its car, number and day) lists it.
+    expect(now.notices?.rows).toHaveLength(Math.min(missing.length, 6));
+    for (const row of now.notices?.rows ?? []) {
+      const twin = missing.find((n) => n.id === row.noticeId);
+      expect(twin, row.noticeId).toBeDefined();
+      expect(row).toMatchObject({
+        template: twin?.template,
+        vehicleId: twin?.vehicleId,
+        code: twin?.vehicleCode,
+        noticeNumber: twin?.noticeNumber,
+        noticeDate: twin?.noticeDate == null ? null : twin.noticeDate.slice(0, 10),
+        missing: {
+          vehicleLicense: twin?.vehicleLicense === null,
+          driverLicense: twin?.driverLicense === null,
+          checkImage: twin?.checkImage === null,
+        },
+      });
+      const link = ok<FleetNoticeDto[]>(
+        await get('/fleet/notices', {
+          status: 'open',
+          ...(row.code === null ? {} : { vehicleCodes: row.code }),
+          ...(row.noticeNumber === null ? {} : { noticeNumber: row.noticeNumber }),
+          ...(row.noticeDate === null ? {} : { from: row.noticeDate, to: row.noticeDate }),
+        }),
+      );
+      expect(link.map((n) => n.id)).toContain(row.noticeId);
+    }
+    expect(now.notices?.rows[0]).toMatchObject({
+      vehicleId: v1.id,
+      code: v1.code,
+      typeName: expect.objectContaining({ ar: 'مصفحة' }) as unknown,
+      template: 'deltaInsurance',
+    });
   });
 
   it('derives its lines from those very figures, red first', () => {
@@ -1244,6 +1317,28 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
     expect(b2.roster?.absentDrivers).toEqual(now.roster?.absentDrivers);
   });
 
+  it('the notices follow the car’s CURRENT branch: /fleet/notices/summary?status=open&branchIds=B2', async () => {
+    const summary = ok<{ open: number; missingLicences: number; missingCheckImage: number }>(
+      await get('/fleet/notices/summary', { status: 'open', branchIds: B2 }),
+    );
+    const listed = ok<FleetNoticeDto[]>(
+      await get('/fleet/notices', { status: 'open', branchIds: B2, pageSize: 100 }),
+    );
+    expect(b2.notices).toEqual({
+      open: summary.open,
+      missingAny: listed.filter(
+        (n) => n.vehicleLicense === null || n.driverLicense === null || n.checkImage === null,
+      ).length,
+      missingLicences: summary.missingLicences,
+      missingCheckImage: summary.missingCheckImage,
+      rows: [],
+    });
+    // The one notice is on v1 (B1): none on B2, and the company's line is not B2's.
+    expect(b2.notices?.open).toBe(0);
+    expect(now.notices?.open).toBe(1);
+    expect(b2.alerts.map((a) => a.id)).not.toContain('noticesMissing');
+  });
+
   it('the alarm and no-reading lines narrow to the branch’s cars, the link carrying their codes', async () => {
     // Each level's link carries that level's codes of the branch, as the alarms board lists them.
     const board = ok<FleetMaintenanceAlarmDto[]>(await get('/fleet/odometer/alarms'));
@@ -1266,6 +1361,9 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
     );
     expect(b2.noReading?.stale.map((row) => row.code)).toEqual([v2.code]);
     expect(b2.noReading?.neverRead.map((row) => row.code)).toEqual([v6.code]);
+    expect(b2.noReading?.staleRows.map((row) => row.code)).toEqual([v2.code]);
+    expect(b2.noReading?.neverReadRows.map((row) => row.code)).toEqual([v6.code]);
+    expect([b2.noReading?.staleCount, b2.noReading?.neverReadCount]).toEqual([1, 1]);
     expect(b2.vehicleScope).toMatchObject({
       branchId: B2,
       typeIds: [],
@@ -1353,6 +1451,50 @@ const periodParity = async (
     open: accOpen.count,
     openRemaining: accOpen.remaining,
   });
+  // «مبالغ ملفات حوادث الفترة» = the register's «الإحصائيات» over the same filter (open AND closed).
+  const sums = ok<Record<string, number>>(await get('/fleet/accidents/summary', q, branch));
+  expect(dto.accidents?.totals).toEqual({
+    amountCollected: sums['amountCollected'],
+    companyCost: sums['companyCost'],
+    paidAmount: sums['paidAmount'],
+    transferredIn: sums['transferredIn'],
+    transferredOut: sums['transferredOut'],
+    remaining: sums['remaining'],
+  });
+  // The rows' «بيان» and make are the register's own.
+  const listedAcc = ok<{ id: string; statement: string }[]>(
+    await get('/fleet/accidents', { ...q, pageSize: 100 }, branch),
+  );
+  for (const row of dto.accidentList?.rows ?? []) {
+    expect(row.statement).toBe(listedAcc.find((a) => a.id === row.accidentId)?.statement);
+  }
+  // «سيارات بلا مسافة في الفترة»: Y − X, each a car of the set with no valid row in the range; the
+  // never-read ones have no chain row at all.
+  const dist = dto.km?.noDistance;
+  const cov = dto.km?.coverage;
+  expect(dist?.cars).toBe((cov?.of ?? 0) - (cov?.withReadings ?? 0));
+  expect(cov?.of).toBe((cov?.active ?? 0) - (cov?.inWorkshop ?? 0) - (cov?.joinedAfter ?? 0));
+  expect(dist?.codes).toHaveLength(dist?.cars ?? 0);
+  for (const code of dist?.codes ?? []) {
+    const own = ok<{ validRows: number }>(
+      await get('/fleet/odometer/summary', { from: q.from, to: q.to, vehicleCodes: code }),
+    );
+    expect(own.validRows, code).toBe(0);
+    expect(await total('/fleet/vehicles', { status: 'active', vehicleCodes: code })).toBe(1);
+  }
+  for (const code of dist?.neverReadCodes ?? []) {
+    expect(dist?.codes).toContain(code);
+    expect(await total('/fleet/odometer', { vehicleCodes: code }), code).toBe(0);
+  }
+  // «قراءات تحتاج مراجعة»: each listed row is the register's row of that car on that day.
+  expect(dto.km?.invalidList).toHaveLength(Math.min(km.invalidRows, 3));
+  for (const bad of dto.km?.invalidList ?? []) {
+    const rows = ok<{ outReading: number | null; km: number | null }[]>(
+      await get('/fleet/odometer', { vehicleCodes: bad.code, from: bad.date, to: bad.date }),
+    );
+    expect(rows.some((r) => r.outReading === bad.from && r.km === bad.km)).toBe(true);
+    expect(bad.to).toBe(bad.from + bad.km);
+  }
   expect(dto.accidentList?.more).toBe(acc.count - (dto.accidentList?.rows.length ?? 0));
   const rec = ok<{ cardTotal: number; custodyTotal: number; count: number }>(
     await get('/fleet/receipts/summary', q, branch),
@@ -1420,7 +1562,53 @@ describe('R2 parity — the company view of October', () => {
       open: 3,
       openRemaining: oct.accidents?.openRemaining,
       undated: 1,
+      totals: oct.accidents?.totals,
     });
+    // v1 (1000 − 300), the deleted v7 (400) and the book's B-77 (70): all open, so the period's
+    // remaining equals the open files' here.
+    expect(oct.accidents?.totals).toMatchObject({ companyCost: 1470, paidAmount: 300 });
+    expect(oct.accidents?.totals.remaining).toBe(1170);
+    expect(oct.accidentList?.rows.map((r) => r.statement)).toEqual([
+      'اصطدام',
+      'من الدفتر',
+      'اصطدام',
+    ]);
+    expect(oct.accidentList?.rows.map((r) => r.typeName?.ar ?? null)).toEqual([
+      'مصفحة',
+      null,
+      'مصفحة',
+    ]);
+    // The odometer: active v1–v4 and v6 (v5 is out of service, v7 deleted); v1 and v2 drove; v3
+    // (an open row and a row to review), v4 (an open row) and v6 (never read) did not.
+    expect(oct.km?.coverage).toEqual({
+      withReadings: 2,
+      of: 5,
+      active: 5,
+      inWorkshop: 0,
+      joinedAfter: 0,
+    });
+    expect(oct.km?.noDistance).toEqual({
+      cars: 3,
+      neverRead: 1,
+      codes: [v3.code, v4.code, v6.code],
+      neverReadCodes: [v6.code],
+    });
+    expect(oct.km?.invalidRows).toBe(1);
+    expect(oct.km?.invalidList).toEqual([
+      {
+        vehicleId: v3.id,
+        code: v3.code,
+        deleted: false,
+        typeName: expect.objectContaining({ ar: 'ميكروباص' }) as unknown,
+        date: '2026-10-15',
+        from: 90,
+        to: 60,
+        km: -30,
+      },
+    ]);
+    // The makes name the ranked cars in the company view too (no branch, no «حسب النوع»).
+    expect(oct.km?.byType).toBeNull();
+    expect(oct.km?.top5.map((r) => r.typeName?.ar)).toEqual(oct.km?.top5.map(() => 'مصفحة'));
     expect(oct.opex?.custody).toBe(85 + 120);
     expect(oct.opex?.fuel).toBe(120);
     expect(oct.opex?.total).toBe((oct.opex?.card ?? 0) + (oct.opex?.custody ?? 0));

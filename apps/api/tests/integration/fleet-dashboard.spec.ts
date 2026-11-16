@@ -326,6 +326,21 @@ beforeAll(async () => {
     201,
   );
 
+  // Two open notices, both still owed their cheque image: one on car1 (B1), dated, and one written
+  // before a car was chosen — no car, no date.
+  for (const body of [
+    {
+      template: 'misrInsurance',
+      values: { driverName: 'سائق' },
+      vehicleId: car1.id,
+      noticeNumber: 'N-7',
+      noticeDate: '2026-10-10',
+    },
+    { template: 'deltaInsurance', values: { driverName: 'سائق' }, vehicleId: null },
+  ]) {
+    ok(await send('post', '/fleet/notices', body), 201);
+  }
+
   // The old book: a closed odometer row, a visit and an undated accident on cars the registry has no
   // record of (`vehicleId: null`, the book's code kept), as go-live imported them.
   const legacy = { isDeleted: false, schemaVersion: 1, createdBy: null, updatedBy: null };
@@ -666,6 +681,101 @@ describe('the old book’s rows — counted as on the unfiltered screens (R-13, 
     expect(dto.visits).toEqual({ count: 1, closed: 0, open: 1 });
     expect(dto.exits).toEqual(NO_EXITS_UNDER_A_SET);
     expect(dto.accidents?.undated).toBeNull();
+  });
+});
+
+describe('«الحوادث ومطالبات التأمين» — the notices follow the car’s CURRENT branch (D9)', () => {
+  const NOTICES = ['fleetNotice.view'];
+
+  it('the company view counts the notice with no car and lists it last; a branch never does', async () => {
+    const company = await nowOf(adminToken);
+    expect(company.notices).toMatchObject({ open: 2, missingAny: 2, missingCheckImage: 2 });
+    expect(company.notices?.rows.map((r) => [r.code, r.noticeNumber, r.noticeDate])).toEqual([
+      [car1.code, 'N-7', '2026-10-10'],
+      [null, null, null],
+    ]);
+    expect(company.notices?.rows[0]).toMatchObject({
+      vehicleId: car1.id,
+      template: 'misrInsurance',
+      typeName: { ar: 'مصفحة', en: 'Armored' },
+      missing: { checkImage: true },
+    });
+    expect(company.notices?.rows[1]).toMatchObject({
+      vehicleId: null,
+      typeName: null,
+      template: 'deltaInsurance',
+    });
+
+    const b1 = await nowOf((await reader(NOTICES, 'branch', B1)).token);
+    expect(b1.notices).toMatchObject({ open: 1, missingAny: 1 });
+    expect(b1.notices?.rows.map((r) => r.code)).toEqual([car1.code]);
+    const b2 = await nowOf((await reader(NOTICES, 'branch', B2)).token);
+    expect(b2.notices).toMatchObject({ open: 0, missingAny: 0, rows: [] });
+    expect(b2.alerts.map((a) => a.id)).not.toContain('noticesMissing');
+    // «كل فروعي»: both branches — and still not the notice with no car.
+    const both = await nowOf((await multiReader(NOTICES)).token);
+    expect(both.notices).toMatchObject({ open: 1, missingAny: 1 });
+  });
+
+  it('the notices screen answers the same question with `branchIds`', async () => {
+    const total = async (query: Record<string, unknown>) =>
+      ok<{ open: number }>(await call('/fleet/notices/summary', adminToken, query)).open;
+    expect(await total({ status: 'open' })).toBe(2);
+    expect(await total({ status: 'open', branchIds: B1 })).toBe(1);
+    expect(await total({ status: 'open', branchIds: B2 })).toBe(0);
+    expect(await total({ status: 'open', branchIds: `${B1},${B2}` })).toBe(1);
+  });
+
+  it('a notices-only reader gets the notices and nothing of the period', async () => {
+    const only = await reader(NOTICES);
+    expect(present(await nowOf(only.token), NOW_SECTIONS)).toEqual(['notices']);
+  });
+});
+
+describe('«الحوادث ومطالبات التأمين» and «العدادات والكيلومترات» — the period figures', () => {
+  it('the period’s files: the four sums and the transfers, remaining = the formula', async () => {
+    const dto = await periodOf(adminToken);
+    const t = dto.accidents?.totals;
+    expect(t).toEqual({
+      amountCollected: 0,
+      companyCost: 600,
+      paidAmount: 100,
+      transferredIn: 0,
+      transferredOut: 0,
+      remaining: 500,
+    });
+    expect(t?.remaining).toBe(
+      (t?.amountCollected ?? 0) +
+        (t?.companyCost ?? 0) -
+        (t?.paidAmount ?? 0) +
+        (t?.transferredIn ?? 0) -
+        (t?.transferredOut ?? 0),
+    );
+    // The row: its «بيان» verbatim and the car's make.
+    expect(dto.accidentList?.rows[0]).toMatchObject({
+      code: car1.code,
+      statement: 'اصطدام',
+      typeName: { ar: 'مصفحة', en: 'Armored' },
+      date: '2026-10-18',
+    });
+  });
+
+  it('the coverage parts and the cars with no distance', async () => {
+    const dto = await periodOf(adminToken);
+    // car1 and car2 both drove on the 5th; car2's visit began on the 20th (not the whole month).
+    expect(dto.km?.coverage).toEqual({
+      withReadings: 2,
+      of: 2,
+      active: 2,
+      inWorkshop: 0,
+      joinedAfter: 0,
+    });
+    expect(dto.km?.noDistance).toEqual({ cars: 0, neverRead: 0, codes: [], neverReadCodes: [] });
+    expect(dto.km?.invalidList).toEqual([]);
+    expect(dto.km?.top5.map((r) => r.typeName)).toEqual([
+      { ar: 'مصفحة', en: 'Armored' },
+      { ar: 'مصفحة', en: 'Armored' },
+    ]);
   });
 });
 

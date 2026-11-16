@@ -427,15 +427,19 @@ describe('the shared blocks’ source', () => {
     }
   });
 
-  it('keeps the named bars in one place: the old km tab draws them from dash-blocks', () => {
+  it('keeps the named bars in one place: «العدادات والكيلومترات» draws them from dash-blocks', () => {
     expect(source('tab-km.tsx')).toContain("from './dash-blocks'");
     expect(source('tab-km.tsx')).not.toContain("from './tab-maintenance'");
   });
 
-  it('leaves four period tabs under the period hand-over; «الصيانة والورش» is not one of them', () => {
+  it('leaves «أرقام الفترة» alone under the period hand-over; the three mixed panels are not there', () => {
     const src = source('period-tabs.tsx');
-    expect(src).toContain("tab: 'period' | 'km' | 'ranking' | 'accidents';");
-    expect(src).not.toContain('MaintenanceTab');
-    expect(src).not.toMatch(/\bmaintenance:/u);
+    expect(src).toContain("tab: 'period';");
+    for (const name of ['MaintenanceTab', 'KmTab', 'RankingTab', 'AccidentsTab']) {
+      expect(src, name).not.toContain(name);
+    }
+    for (const key of ['maintenance', 'km', 'ranking', 'accidents']) {
+      expect(src, key).not.toMatch(new RegExp(`\\b${key}:`, 'u'));
+    }
   });
 });

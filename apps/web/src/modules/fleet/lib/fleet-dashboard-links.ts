@@ -1,6 +1,7 @@
 // «لوحة تحكم الحركة» — ONE builder for the link behind every figure of the dashboard's tabs (plan R-28,
-// unified.md §6.2): «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» · «الصيانة والورش» and the six
-// tabs still waiting for their redesign. A
+// unified.md §6.2): «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» · «الصيانة والورش» ·
+// «العدادات والكيلومترات» · «الحوادث ومطالبات التأمين» and the three old tabs («أرقام الفترة» ·
+// «ملخصات» · «التراخيص»). A
 // figure on the dashboard opens the screen that shows the same number: this file knows each screen's OWN
 // parameter names and fills them from the server's echo only — `today`, the `range` of a period, the
 // `vehicleScope` filters, the active `branchId` and the reader's `scopeBranches` — never from the
@@ -138,8 +139,8 @@ export const tabLink = (
 };
 
 /**
- * The branch a company+set figure covers (plan D12): the switcher's branch when the echo names one
- * (and the per-row override of the old km tab), else the reader's own branches, else `null` — the
+ * The branch a company+set figure covers (plan D12): the switcher's branch when the echo names one,
+ * else the reader's own branches, else `null` — the
  * whole company. A reader whose branch grant holds no branch (`[]`) gets no param: the screens
  * narrow that reader to nothing by the same rule, so the list still shows the figure's zero.
  */
@@ -265,10 +266,41 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
     /** T1.9. */
     dealershipPending: (): DashLink =>
       at('dealership', { state: 'pending', ...br }, 'dealershipPending.rows'),
-    /** T1.10: the union headline is a named exception (D16) — the open notices, its closest list. */
-    noticesOpen: (): DashLink => at('notices', { status: 'open' }, 'notices.missingAny'),
+    /**
+     * T1.10: the union headline is a named exception (D16) — the open notices, its closest list. The
+     * notices follow the car's branch (a notice with no car is the whole company's alone), so every
+     * notices link carries the figures' branch.
+     */
+    noticesOpen: (): DashLink => at('notices', { status: 'open', ...br }, 'notices.missingAny'),
     noticesCheckImage: (): DashLink =>
-      at('notices', { status: 'open', checkImage: 'missing' }, 'notices.missingCheckImage'),
+      at('notices', { status: 'open', checkImage: 'missing', ...br }, 'notices.missingCheckImage'),
+    /** «إخطارات تأمين مفتوحة» and «كل الإخطارات المفتوحة (N)»: the open notices of the branch. */
+    noticesOpenAll: (metric = 'notices.open'): DashLink =>
+      at('notices', { status: 'open', ...br }, metric),
+    /**
+     * «فتح» on a row of «إخطارات ينقصها مرفق»: the open notices by what the row carries — its car,
+     * its number and its day (the screen's `number` is a substring match, so a notice sharing them
+     * opens beside it). A notice with none of the three has no exact list: no link.
+     */
+    noticeRow: (n: {
+      code: string | null;
+      number: string | null;
+      date: string | null;
+    }): DashLink | null =>
+      n.code === null && n.number === null && n.date === null
+        ? null
+        : at(
+            'notices',
+            {
+              status: 'open',
+              vehicleCodes: n.code === null ? null : [n.code],
+              number: n.number,
+              from: n.date,
+              to: n.date,
+              ...br,
+            },
+            'notices.row',
+          ),
     custodyDashboard: custodyDashboardLink,
     /** T5.9: the spend screen over the last 30 days. */
     custodyExpenses: (): DashLink =>
@@ -280,6 +312,9 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
         ? null
         : at('odometer', { vehicleCodes: narrowed, period: 'all' }, 'noReading.stale');
     },
+    /** «فتح» on a row of «بلا قراءة حديثة»: that car's whole odometer history. */
+    noReadingCar: (code: string): DashLink =>
+      at('odometer', { vehicleCodes: [code], period: 'all' }, 'noReading.row'),
     neverRead: (codes: readonly string[]): DashLink | null => {
       const narrowed = codesOrNull(codes);
       return narrowed === null
@@ -397,6 +432,9 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
     /** T5.10. */
     accidentsOpen: (): DashLink =>
       at('accidents', { status: 'open', ...br }, 'accidentsOpen.count'),
+    /** «عرض الملفات المفتوحة» (the foot of «ملفات حوادث مفتوحة»): the same list. */
+    accidentsOpenAll: (): DashLink =>
+      at('accidents', { status: 'open', ...br }, 'accidentsOpen.all'),
     /**
      * T5.11: company statements and the drivers' ledger of the Cairo year, unpaid. The drivers'
      * half has its own year (`dyear`): without it the ledger listed every year's unpaid fines
@@ -451,11 +489,34 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
   const over = (screen: string, metric: string, extra: Record<string, Param> = {}) =>
     at(screen, { ...dates, ...set, ...extra }, metric);
   return {
-    /** T6.1 / T7 / T8. */
+    /** T6.1 and «العدادات والكيلومترات»: the odometer register over the range and the set. */
     km: (metric = 'km.total'): DashLink => over('odometer', metric),
     /** T8.x: one car's readings over the period. */
     carKm: (code: string, metric: string): DashLink =>
       at('odometer', { vehicleCodes: [code], ...dates }, metric),
+    /** «فتح» on a row of «قراءات تحتاج مراجعة»: that car's readings on that ONE day. */
+    carKmDay: (code: string, day: string, metric: string): DashLink =>
+      at('odometer', { vehicleCodes: [code], from: day, to: day }, metric),
+    /**
+     * «فتح» on a review row whose car was DELETED since: the register's code filter finds live cars
+     * only, so that ONE day under the period's types, operations and branches (which do reach a
+     * deleted car's history, D10) and without the codes — the row is among them.
+     */
+    kmDay: (day: string, metric: string): DashLink =>
+      at(
+        'odometer',
+        { from: day, to: day, type: set.type, operation: set.operation, branch: set.branch },
+        metric,
+      ),
+    /**
+     * «سيارات بلا مسافة في الفترة» (and «منها N لم تُقرأ أبدًا»): those cars on the vehicles list, by
+     * the codes the server sent — `null` when there are none or more than the screens' cap (the
+     * server sends `[]` then), so the figure stands plain.
+     */
+    vehiclesByCodes: (codes: readonly string[], metric: string): DashLink | null => {
+      const narrowed = codesOrNull(codes);
+      return narrowed === null ? null : at('vehicles', { vehicleCodes: narrowed }, metric);
+    },
     vehicle: (vehicleId: string, metric: string): DashLink => ({
       to: `/fleet/vehicles/${encodeURIComponent(vehicleId)}`,
       metric,

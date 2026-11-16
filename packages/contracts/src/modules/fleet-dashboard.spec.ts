@@ -4,11 +4,14 @@
 import { describe, expect, it } from 'vitest';
 import { addDaysYmd, cairoYmd, calendarDayBounds } from '../common/cairo-date.js';
 import {
+  FLEET_DASHBOARD_ACCIDENT_ROWS,
   FLEET_DASHBOARD_ALARM_ROWS,
   FLEET_DASHBOARD_ALERTS,
   FLEET_DASHBOARD_DEFAULT_PRESET,
+  FLEET_DASHBOARD_EXCEPTION_ROWS,
   FLEET_DASHBOARD_GATES,
   FLEET_DASHBOARD_MAX_CUSTOM_DAYS,
+  FLEET_DASHBOARD_NOTICE_ROWS,
   FLEET_DASHBOARD_NOW_KEYS,
   FLEET_DASHBOARD_NOW_SECTIONS,
   FLEET_DASHBOARD_PAGE_KEYS,
@@ -36,9 +39,13 @@ import {
   periodOf,
   type FleetDashboardNowAlarmDto,
   type FleetDashboardNowDistributionVehiclesDto,
+  type FleetDashboardNowDto,
+  type FleetDashboardNowNoReadingDto,
   type FleetDashboardNowWorkshopDto,
+  type FleetDashboardPeriodAccidentRowDto,
   type FleetDashboardPeriodDto,
   type FleetDashboardPeriodExitsDto,
+  type FleetDashboardPeriodKmDto,
   type FleetDashboardPeriodVisitsDto,
   type FleetDashboardRead,
   type FleetDashboardSection,
@@ -50,6 +57,7 @@ import {
   FleetAccidentSummaryQuerySchema,
   FleetDealershipSummaryQuerySchema,
   FleetFuelCardSummaryQuerySchema,
+  FleetNoticesSummaryQuerySchema,
   FleetOdometerSummaryQuerySchema,
   FleetReceiptSummaryQuerySchema,
   FleetSettingKeys,
@@ -59,6 +67,7 @@ import {
   ListFleetDriversQuerySchema,
   ListFleetFuelCardsQuerySchema,
   ListFleetMaintenanceQuerySchema,
+  ListFleetNoticesQuerySchema,
   ListFleetOdometerQuerySchema,
   ListFleetReceiptsQuerySchema,
   ListFleetViolationsQuerySchema,
@@ -574,25 +583,27 @@ describe('the gate table', () => {
 });
 
 describe('tabs and their sections', () => {
-  it('ten tabs in the strip’s order: the four rebuilt ones, then the old six where their replacements will stand', () => {
+  it('nine tabs in the strip’s order: the six rebuilt ones, then the old three where their replacements will stand', () => {
     expect(FLEET_DASHBOARD_TABS).toEqual([
       'overview',
       'today',
       'distribution',
       'maintenance',
       'km',
-      'ranking',
       'accidents',
       'period',
       'summaries',
       'licences',
     ]);
-    // The retired `alerts` and `now` keys are gone (the web maps a link to them onto overview / today).
+    // The retired `alerts` and `now` keys are gone (the web maps a link to them onto overview / today),
+    // and so is `ranking`: «ترتيب السيارات» lives inside «العدادات والكيلومترات» (a link opens `km`).
     expect(FLEET_DASHBOARD_TABS).not.toContain('alerts');
     expect(FLEET_DASHBOARD_TABS).not.toContain('now');
+    expect(FLEET_DASHBOARD_TABS).not.toContain('ranking');
+    expect(Object.keys(FLEET_DASHBOARD_TAB_SECTIONS)).not.toContain('ranking');
   });
 
-  it('names the read(s) of every tab, and the four old filter-bar tabs read R2 alone', () => {
+  it('names the read(s) of every tab, and «أرقام الفترة» alone is drawn under the old filter-bar wrapper', () => {
     expect(Object.keys(FLEET_DASHBOARD_TAB_READS)).toEqual([...FLEET_DASHBOARD_TABS]);
     expect(Object.isFrozen(FLEET_DASHBOARD_TAB_READS)).toBe(true);
     expect(FLEET_DASHBOARD_TAB_READS).toEqual({
@@ -600,26 +611,29 @@ describe('tabs and their sections', () => {
       today: ['now'],
       distribution: ['now', 'month', 'web'],
       maintenance: ['now', 'period'],
-      km: ['period'],
-      ranking: ['period'],
-      accidents: ['period'],
+      km: ['now', 'period'],
+      accidents: ['now', 'period'],
       period: ['period'],
       summaries: ['now', 'web'],
       licences: ['now'],
     });
-    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period', 'km', 'ranking', 'accidents']);
+    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period']);
     for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
       expect(FLEET_DASHBOARD_TABS, tab).toContain(tab);
       expect(FLEET_DASHBOARD_TAB_READS[tab], tab).toEqual(['period']);
     }
-    // «الصيانة والورش» left them: the first MIXED tab, R1 «الآن» + R2 under the page filters…
-    expect(FLEET_DASHBOARD_PERIOD_TABS).not.toContain('maintenance');
-    // …so the tabs drawn under the page filters are the four, plus «الصيانة والورش».
+    // The MIXED tabs left them: R1 «الآن» parts + R2 parts under the page filters…
+    const mixed = ['maintenance', 'km', 'accidents'] as const;
+    for (const tab of mixed) {
+      expect(FLEET_DASHBOARD_PERIOD_TABS, tab).not.toContain(tab);
+      expect(FLEET_DASHBOARD_TAB_READS[tab], tab).toEqual(['now', 'period']);
+    }
+    // …so the tabs drawn under the page filters are «أرقام الفترة», plus the three mixed tabs.
     expect(
       sorted(
         FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_READS[tab].includes('period')),
       ),
-    ).toEqual(sorted([...FLEET_DASHBOARD_PERIOD_TABS, 'maintenance']));
+    ).toEqual(sorted([...FLEET_DASHBOARD_PERIOD_TABS, ...mixed]));
     // «توزيع السيارات» reads «هذا الشهر» on its own, never the page filters.
     expect(FLEET_DASHBOARD_TAB_READS.distribution).not.toContain('period');
   });
@@ -662,7 +676,7 @@ describe('tabs and their sections', () => {
     expect(FLEET_DASHBOARD_TAB_READS.overview).not.toContain('period');
   });
 
-  it('pins the plan’s mapping (the old eight unchanged)', () => {
+  it('pins the plan’s mapping (the old three unchanged)', () => {
     expect(FLEET_DASHBOARD_TAB_SECTIONS).toEqual({
       overview: [
         'vehicles',
@@ -696,10 +710,9 @@ describe('tabs and their sections', () => {
       ],
       summaries: ['fuelCharging', 'custodyFund', 'accidentsOpen', 'violationsYear'],
       period: ['km', 'visits', 'accidents', 'opex', 'dealership'],
-      km: ['km'],
-      ranking: ['km'],
+      km: ['km', 'noReading'],
       maintenance: ['maintenanceAlarm', 'workshop', 'dealershipPending', 'exits'],
-      accidents: ['accidents', 'accidentList'],
+      accidents: ['accidentsOpen', 'notices', 'accidents', 'accidentList'],
     });
   });
 
@@ -751,6 +764,71 @@ describe('tabs and their sections', () => {
     ]);
   });
 
+  it('«العدادات والكيلومترات» shows for the odometer reader: the period’s km (R2) and the cars with no recent reading (R1)', () => {
+    const keysOf = (tab: FleetDashboardTab): string[][] =>
+      FLEET_DASHBOARD_TAB_SECTIONS[tab].map((section) => [...fleetDashboardGateKeys(section)]);
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.km.map((s) => FLEET_DASHBOARD_GATES[s].read)).toEqual([
+      'period',
+      'now',
+    ]);
+    expect(keysOf('km')).toEqual([['fleetOdometer.view'], ['fleetOdometer.view']]);
+    // The old «ترتيب السيارات» drew `km` alone; its body is in this tab now.
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.km).toContain('km');
+  });
+
+  it('«الحوادث ومطالبات التأمين» shows for any one of its parts, each under its own gate', () => {
+    // A notices-only reader sees the tab with the notices alone; an accidents-only reader sees it
+    // without them.
+    const sections = FLEET_DASHBOARD_TAB_SECTIONS.accidents;
+    expect(sections.map((s) => FLEET_DASHBOARD_GATES[s].read)).toEqual([
+      'now',
+      'now',
+      'period',
+      'period',
+    ]);
+    expect(sections.map((section) => [...fleetDashboardGateKeys(section)])).toEqual([
+      ['fleetAccident.view'],
+      ['fleetNotice.view'],
+      ['fleetAccident.view'],
+      ['fleetAccident.view'],
+    ]);
+    // «ملخصات» keeps the open files (the same field), «التراخيص» the recent accidents.
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.summaries).toContain('accidentsOpen');
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.licences).toContain('recentAccidents');
+    expect(sections).not.toContain('recentAccidents');
+  });
+
+  it('the two rebuilt tabs add no section and no gate: the unions are what they were', () => {
+    expect(FLEET_DASHBOARD_NOW_SECTIONS).toContain('noReading');
+    expect(FLEET_DASHBOARD_NOW_SECTIONS).toContain('notices');
+    expect(FLEET_DASHBOARD_NOW_SECTIONS).toContain('accidentsOpen');
+    expect([...FLEET_DASHBOARD_PERIOD_SECTIONS]).toEqual([
+      'km',
+      'visits',
+      'exits',
+      'accidents',
+      'accidentList',
+      'opex',
+      'dealership',
+    ]);
+    expect(sorted(FLEET_DASHBOARD_PAGE_KEYS)).toEqual([
+      'fleetAccident.view',
+      'fleetCustody.view',
+      'fleetDealership.view',
+      'fleetDriver.view',
+      'fleetFuelCard.view',
+      'fleetFuelCharge.view',
+      'fleetLicensing.view',
+      'fleetMaintenance.view',
+      'fleetNotice.view',
+      'fleetOdometer.view',
+      'fleetReceipt.view',
+      'fleetRoster.view',
+      'fleetVehicle.view',
+      'fleetViolation.view',
+    ]);
+  });
+
   it('caps the «الحركة اليوم» lists with their own constant', () => {
     expect(FLEET_DASHBOARD_TODAY_ROWS).toBe(8);
     // Same number as the recent lists today, but a separate rule: changing one never moves the other.
@@ -763,6 +841,17 @@ describe('tabs and their sections', () => {
     // «أطول بقاء في الورشة الآن» before «كل السيارات في الورشة (N)».
     expect(FLEET_DASHBOARD_WORKSHOP_ROWS).toBe(5);
     // «أكثر السيارات دخولًا للورشة» keeps the ranking rule.
+    expect(FLEET_DASHBOARD_RANK_ROWS).toBe(5);
+  });
+
+  it('caps the lists of «العدادات والكيلومترات» and «الحوادث ومطالبات التأمين» with their own constants', () => {
+    // Each group of «استثناءات قراءات العدادات» before «و N أخرى في القائمة الكاملة».
+    expect(FLEET_DASHBOARD_EXCEPTION_ROWS).toBe(3);
+    // «إخطارات ينقصها مرفق» before «و N أخرى».
+    expect(FLEET_DASHBOARD_NOTICE_ROWS).toBe(6);
+    // «حوادث الفترة» before «عرض الباقي (N) في السجل»: the same number, a separate rule.
+    expect(FLEET_DASHBOARD_ACCIDENT_ROWS).toBe(6);
+    // «أعلى 5» / «أقل 5» keep the ranking rule.
     expect(FLEET_DASHBOARD_RANK_ROWS).toBe(5);
   });
 });
@@ -912,6 +1001,221 @@ describe('the shapes of «توزيع السيارات» and «الصيانة و�
   });
 });
 
+describe('the shapes of «العدادات والكيلومترات» and «الحوادث ومطالبات التأمين»', () => {
+  const name = { ar: 'س', en: 'S' };
+
+  it('odometer now: the counts are fields, the rows the longest gap first', () => {
+    const noReading: FleetDashboardNowNoReadingDto = {
+      days: 3,
+      stale: [
+        { vehicleId: ID_A, code: '150', lastDate: '2026-11-02' },
+        { vehicleId: ID_B, code: '151', lastDate: '2026-10-20' },
+        { vehicleId: ID_A, code: '152', lastDate: '2026-11-08' },
+        { vehicleId: ID_B, code: '153', lastDate: '2026-11-02' },
+      ],
+      neverRead: [{ vehicleId: ID_A, code: '160' }],
+      staleCount: 4,
+      neverReadCount: 1,
+      staleRows: [
+        { vehicleId: ID_B, code: '151', typeName: name, lastDate: '2026-10-20', days: 26 },
+        { vehicleId: ID_A, code: '150', typeName: null, lastDate: '2026-11-02', days: 13 },
+        { vehicleId: ID_B, code: '153', typeName: name, lastDate: '2026-11-02', days: 13 },
+      ],
+      neverReadRows: [{ vehicleId: ID_A, code: '160', typeName: name }],
+    };
+    expect(noReading.staleCount).toBe(noReading.stale.length);
+    expect(noReading.neverReadCount).toBe(noReading.neverRead.length);
+    expect(noReading.staleRows.length).toBeLessThanOrEqual(
+      Math.min(noReading.staleCount, FLEET_DASHBOARD_EXCEPTION_ROWS),
+    );
+    expect(noReading.neverReadRows.length).toBeLessThanOrEqual(
+      Math.min(noReading.neverReadCount, FLEET_DASHBOARD_EXCEPTION_ROWS),
+    );
+    // The longest gap first, then code: «أطول انقطاع» is `staleRows[0]`.
+    expect(noReading.staleRows.map((row) => `${row.lastDate}:${row.code}`)).toEqual(
+      noReading.staleRows.map((row) => `${row.lastDate}:${row.code}`).sort(),
+    );
+    // Every row is one of the whole list's cars.
+    for (const row of noReading.staleRows) {
+      expect(
+        noReading.stale.map((car) => car.code),
+        row.code,
+      ).toContain(row.code);
+    }
+  });
+
+  it('notices now: open and missing counts, and at most six rows (a carless notice, a dateless one last)', () => {
+    const notices: NonNullable<FleetDashboardNowDto['notices']> = {
+      open: 9,
+      missingAny: 7,
+      missingLicences: 5,
+      missingCheckImage: 4,
+      rows: [
+        {
+          noticeId: ID_A,
+          template: 'misrInsurance',
+          vehicleId: ID_A,
+          code: '150',
+          typeName: name,
+          noticeNumber: '771',
+          noticeDate: '2026-10-04',
+          missing: { vehicleLicense: true, driverLicense: false, checkImage: true },
+        },
+        {
+          noticeId: ID_B,
+          template: 'deltaInsurance',
+          // «بلا سيارة» — listed in the company view only.
+          vehicleId: null,
+          code: null,
+          typeName: null,
+          noticeNumber: null,
+          noticeDate: null,
+          missing: { vehicleLicense: false, driverLicense: false, checkImage: true },
+        },
+      ],
+    };
+    expect(notices.rows.length).toBeLessThanOrEqual(
+      Math.min(notices.missingAny, FLEET_DASHBOARD_NOTICE_ROWS),
+    );
+    expect(notices.missingAny).toBeLessThanOrEqual(notices.open);
+    expect(notices.rows.at(-1)?.noticeDate).toBeNull();
+    // Every listed notice misses something.
+    for (const row of notices.rows) {
+      expect(Object.values(row.missing), row.noticeId).toContain(true);
+    }
+  });
+
+  it('odometer period: coverage ties, the cars with no distance, the readings to review, makes on the ranking', () => {
+    const km: FleetDashboardPeriodKmDto = {
+      total: 5200,
+      invalidRows: 4,
+      perVehicleAvg: 1300,
+      coverage: { withReadings: 3, of: 5, active: 8, inWorkshop: 2, joinedAfter: 1 },
+      noDistance: { cars: 2, neverRead: 1, codes: ['154', '160'], neverReadCodes: ['160'] },
+      invalidList: [
+        {
+          vehicleId: ID_A,
+          code: '150',
+          deleted: false,
+          typeName: name,
+          date: '2026-11-02',
+          from: 84210,
+          to: 84190,
+          km: -20,
+        },
+        {
+          // An old-book code with no registry car.
+          vehicleId: null,
+          code: '9001',
+          deleted: false,
+          typeName: null,
+          date: '2026-11-05',
+          from: 1200,
+          to: 1100,
+          km: -100,
+        },
+      ],
+      confirmedThrough: '2026-11-14',
+      closedDays: 14,
+      average: 371,
+      buckets: [],
+      spans: { km: 0, count: 0 },
+      byBranch: [],
+      byType: null,
+      unregistered: 0,
+      top5: [{ vehicleId: ID_A, code: '150', km: 2100, typeName: name }],
+      bottom5: [
+        { vehicleId: ID_B, code: '151', km: 300, inWorkshopSince: '2026-11-10', typeName: null },
+      ],
+      withoutReadings: [
+        { vehicleId: ID_A, code: '154', reason: 'onlyOpen' },
+        { vehicleId: ID_B, code: '160', reason: 'noRow' },
+      ],
+    };
+    const { coverage, noDistance } = km;
+    expect(coverage.of).toBe(coverage.active - coverage.inWorkshop - coverage.joinedAfter);
+    expect(noDistance.cars).toBe(coverage.of - coverage.withReadings);
+    expect(noDistance.neverRead).toBeLessThanOrEqual(noDistance.cars);
+    expect(noDistance.codes).toEqual(expect.arrayContaining(noDistance.neverReadCodes));
+    expect(km.invalidList.length).toBeLessThanOrEqual(
+      Math.min(km.invalidRows, FLEET_DASHBOARD_EXCEPTION_ROWS),
+    );
+    for (const row of km.invalidList) {
+      expect(row.km, row.code).toBeLessThan(0);
+      expect(row.to, row.code).toBe(row.from + row.km);
+      // Only a registry car can have been deleted since.
+      if (row.vehicleId === null) expect(row.deleted, row.code).toBe(false);
+    }
+    // The oldest day first.
+    expect(km.invalidList.map((row) => row.date)).toEqual(
+      km.invalidList.map((row) => row.date).sort(),
+    );
+    expect(km.top5.length).toBeLessThanOrEqual(FLEET_DASHBOARD_RANK_ROWS);
+    expect(km.bottom5.length).toBeLessThanOrEqual(FLEET_DASHBOARD_RANK_ROWS);
+  });
+
+  it('accidents period: the money of the period’s files without a count, and rows with the statement and the make', () => {
+    const accidents: NonNullable<FleetDashboardPeriodDto['accidents']> = {
+      count: 4,
+      open: 2,
+      openRemaining: 1500,
+      undated: 1,
+      totals: {
+        amountCollected: 12000,
+        companyCost: 3000,
+        paidAmount: 9000,
+        transferredIn: 500,
+        transferredOut: 1000,
+        remaining: 5500,
+      },
+    };
+    const { totals } = accidents;
+    expect(Object.keys(totals).sort()).toEqual([
+      'amountCollected',
+      'companyCost',
+      'paidAmount',
+      'remaining',
+      'transferredIn',
+      'transferredOut',
+    ]);
+    expect(totals.remaining).toBe(
+      totals.amountCollected +
+        totals.companyCost -
+        totals.paidAmount +
+        totals.transferredIn -
+        totals.transferredOut,
+    );
+    const row: FleetDashboardPeriodAccidentRowDto = {
+      accidentId: ID_A,
+      vehicleId: ID_A,
+      code: '150',
+      typeName: name,
+      date: '2026-11-03',
+      statement: 'اصطدام خلفي 10:30',
+      culprit: null,
+      culpritEmployeeIds: [],
+      status: 'open',
+      remaining: -200,
+    };
+    const oldBook: FleetDashboardPeriodAccidentRowDto = {
+      ...row,
+      accidentId: ID_B,
+      vehicleId: null,
+      code: '9001',
+      typeName: null,
+      statement: '',
+      status: 'closed',
+    };
+    const list: NonNullable<FleetDashboardPeriodDto['accidentList']> = {
+      rows: [row, oldBook],
+      more: 0,
+    };
+    expect(list.rows.length).toBeLessThanOrEqual(FLEET_DASHBOARD_ACCIDENT_ROWS);
+    // `date` stays a day — the statement may hold a time, the date never does.
+    for (const r of list.rows) expect(r.date, r.accidentId).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
 describe('the alerts of the overview’s action centre', () => {
   it('names a real now section for every alert, each id once, red before orange', () => {
     const ids = FLEET_DASHBOARD_ALERTS.map((alert) => alert.id);
@@ -998,6 +1302,9 @@ describe('the fleet contracts the dashboard links through (plan §2.2)', () => {
       ListFleetViolationsQuerySchema,
       FleetViolationRollupQuerySchema,
       ListFleetMaintenanceQuerySchema,
+      // The notices follow their car: type, operation and CURRENT branch.
+      ListFleetNoticesQuerySchema,
+      FleetNoticesSummaryQuerySchema,
     };
     for (const [name, schema] of Object.entries(schemas)) {
       const result = schema.safeParse(set);

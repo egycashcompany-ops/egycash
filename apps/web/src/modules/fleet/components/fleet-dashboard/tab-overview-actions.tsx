@@ -9,8 +9,9 @@
 //
 // Every number is the server's — the line's count (`alerts`) and its section's parts — and the
 // custody line's count is the custody screen's own banner (D3). «الشركة كلها» on the lines the
-// server cannot narrow yet (fuel cards, top-ups, notices, custody) while the figures are narrowed to
-// the reader's branches (`scopeBranches !== null`).
+// server cannot narrow yet (fuel cards, top-ups, custody) while the figures are narrowed to the
+// reader's branches (`scopeBranches !== null`). The notices follow the car's branch, so their line
+// is narrowed like the rest and carries no tag.
 import { Fragment, type ReactNode } from 'react';
 import {
   FLEET_DASHBOARD_ALERTS,
@@ -359,7 +360,8 @@ export const useActionLine = (
           ),
           noun: 'notice',
           link: links.noticesOpen(),
-          companyWide: narrowed,
+          // The notices follow the car's branch (its links carry it): never «الشركة كلها».
+          companyWide: false,
         };
       }
       case 'noReading': {

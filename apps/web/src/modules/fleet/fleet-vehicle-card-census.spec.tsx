@@ -189,13 +189,16 @@ const WIRED: readonly Wired[] = [
   },
   ...(
     [
+      // «الحوادث ومطالبات التأمين»: the notices missing an attachment and the period's accidents.
       ['tab-accidents.tsx', 'accidents'],
       ['tab-overview.tsx', 'overview'],
       ['tab-overview-actions.tsx', 'overview action centre'],
       // «الصيانة والورش»: the oldest car's line, and the alarm, top and longest-stay tables.
       ['tab-maintenance.tsx', 'maintenance'],
       ['tab-today.tsx', 'today'],
-      ['tab-ranking.tsx', 'ranking'],
+      // «العدادات والكيلومترات» (it holds the old «ترتيب السيارات»): the longest gap, the top and
+      // bottom five, the cars that cannot be ranked and the exceptions.
+      ['tab-km.tsx', 'km'],
     ] as const
   ).map(([file, tab]) => ({
     file: `components/fleet-dashboard/${file}`,

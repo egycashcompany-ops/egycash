@@ -48,7 +48,7 @@ const FIGURE: Record<FleetDashboardAlertId, (s: AlertSources) => number | null> 
   noticesMissing: (s) => s.notices?.missingAny ?? null,
   // T1.12 — active cars with no reading for N days. The never-read cars are its own sub-line and
   // are never mixed into the count (R-07).
-  noReading: (s) => (s.noReading === null ? null : s.noReading.stale.length),
+  noReading: (s) => s.noReading?.staleCount ?? null,
 };
 
 export const deriveNowAlerts = (sources: AlertSources): FleetDashboardAlertDto[] =>

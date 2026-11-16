@@ -148,6 +148,7 @@ import {
   isRemovableRow,
   listPool,
   loadStandingIntoPlan,
+  looseRowNumber,
   matchesShiftType,
   patchRow,
   placeMember,
@@ -425,12 +426,12 @@ export const CrewBoardPage = (): JSX.Element => {
     setRowFilter(EMPTY_ROW_FILTER);
   };
   const strip = shiftTypeStrip(shiftTypes, rows);
-  const looseNumber = new Map(
-    rows.filter((row) => row.vehicleId === null).map((row, index) => [row.key, index + 1]),
-  );
-  const rowName = (row: PlanRow): string =>
+  /** A row's name: its van's code, or «بدون سيارة (n)» by its place among `among` (the draft). */
+  const rowName = (row: PlanRow, among: readonly PlanRow[] = rows): string =>
     row.vehicleCode ??
-    t('operations.crewPlan.looseRow', { n: formatNumber(looseNumber.get(row.key) ?? 0, locale) });
+    t('operations.crewPlan.looseRow', {
+      n: formatNumber(looseRowNumber(among, row.key) ?? 0, locale),
+    });
 
   // ── Picking up, dragging, dropping ───────────────────────────────────────────────────────────
   // `selected`: a chip pressed (the keyboard's and the phone's way). `dragging`: a chip in a drag,
@@ -960,7 +961,9 @@ export const CrewBoardPage = (): JSX.Element => {
           : undefined;
       if (named?.field === 'remove' && restored !== undefined && named.removed !== undefined) {
         const crewId = named.removed.crewId;
-        applyRows({ kind: 'restoreRow', vars: { row: rowName(restored) } }, (current) =>
+        // Named by its place once it is back — the draft it was deleted from has no place for it.
+        const back = rowName(restored, restoreRemovedRow(rows, serverRows, crewId));
+        applyRows({ kind: 'restoreRow', vars: { row: back } }, (current) =>
           restoreRemovedRow(current, serverRows, crewId),
         );
       }

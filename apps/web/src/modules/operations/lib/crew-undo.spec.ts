@@ -295,7 +295,9 @@ describe('the page — the owner’s «تراجع»', () => {
     const controls = read('../components/CrewPlanControls.tsx');
     // The panel closing — a minute, «مسح», Escape, outside — settles; so does a typed time taken.
     expect(controls).toContain('if (wasOpen.current && !open) settle.current?.();');
-    expect(controls).toMatch(/if \(parsed !== undefined\) set\(parsed\);\s*setTyped\(null\);\s*onSettle\?\.\(\);/);
+    expect(controls).toMatch(
+      /if \(parsed !== undefined\) set\(parsed\);\s*setTyped\(null\);\s*onSettle\?\.\(\);/,
+    );
   });
 
   it('every operation kind is said, in formal Arabic and in English', () => {

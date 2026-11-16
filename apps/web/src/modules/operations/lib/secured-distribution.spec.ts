@@ -617,9 +617,14 @@ describe('«تراجع» on the distribution — the day’s proposals are its f
     expect(opening.now.get('s')?.crewAssignmentId).toBe('van-104');
     expect(lastStep(opening)?.what.kind).toBe('auto');
     // A move by hand on top: one press takes back the move only, the next the proposals.
-    const moved = record(opening, moveToVan(opening.now, t, V3), { kind: 'move' }, {
-      same: sameDistributionDraft,
-    });
+    const moved = record(
+      opening,
+      moveToVan(opening.now, t, V3),
+      { kind: 'move' },
+      {
+        same: sameDistributionDraft,
+      },
+    );
     expect(moved.past).toHaveLength(2);
     const once = undo(moved);
     expect(once.now.has('t')).toBe(false);

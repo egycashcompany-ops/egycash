@@ -1079,6 +1079,17 @@ export const planRefusal = (
 };
 
 /**
+ * A row without a van's number on the board — «بدون سيارة (n)»: its place among the rows without
+ * one, from 1 — or null when it is not one of them. Counted on the rows it is NAMED among: a row the
+ * save put back (`restoreRemovedRow`) is named by its place once it is back, not by the draft it was
+ * missing from (where it has no place, and read «بدون سيارة (0)»).
+ */
+export const looseRowNumber = (rows: readonly PlanRow[], key: string): number | null => {
+  const at = rows.filter((row) => row.vehicleId === null).findIndex((row) => row.key === key);
+  return at === -1 ? null : at + 1;
+};
+
+/**
  * Round 24 — a deleted row the save refused to delete (it holds محصنات): back on screen where it
  * was, as the server last listed it, so the rest of the save can go and the planner sees which row
  * it was. Before the first row of the answer after it that is still on screen; at the end else.

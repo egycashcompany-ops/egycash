@@ -291,9 +291,14 @@ export const openingDistributionHistory = <R extends DistributionRowFacts>(
 ): UndoHistory<DistributionDraft> => {
   const start = startHistory(EMPTY_DRAFT);
   if (!canEdit) return start;
-  return record(start, proposeByDirection(rows, vans, EMPTY_DRAFT), { kind: 'auto' }, {
-    same: sameDistributionDraft,
-  });
+  return record(
+    start,
+    proposeByDirection(rows, vans, EMPTY_DRAFT),
+    { kind: 'auto' },
+    {
+      same: sameDistributionDraft,
+    },
+  );
 };
 
 /**

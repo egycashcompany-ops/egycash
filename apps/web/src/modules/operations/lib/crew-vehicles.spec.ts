@@ -14,6 +14,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import {
   discardRow,
   isRemovableRow,
+  looseRowNumber,
   planChanges,
   planRefusal,
   rebaseDraft,
@@ -304,6 +305,12 @@ describe('the save refuses the van, or the removal (Round 24)', () => {
     const back = restoreRemovedRow(deleted, ORIGINAL, id(21));
     expect(back.map((row) => row.key)).toEqual(ORIGINAL.map((row) => row.key));
     expect(restoreRemovedRow(back, ORIGINAL, id(21))).toBe(back);
+    // Named by its place once it is back («بدون سيارة (n)», the step «تراجع» then offers) — never by
+    // the draft it was missing from, where it has no place.
+    expect(looseRowNumber(deleted, LOOSE)).toBeNull();
+    const looseKeys = ORIGINAL.filter((row) => row.vehicleId === null).map((row) => row.key);
+    expect(looseRowNumber(back, LOOSE)).toBe(looseKeys.indexOf(LOOSE) + 1);
+    expect(looseRowNumber(back, LOOSE)).toBeGreaterThan(0);
     expect(errorMessage(failure, 'ar')).toContain('توزيع المحصنات');
   });
 });

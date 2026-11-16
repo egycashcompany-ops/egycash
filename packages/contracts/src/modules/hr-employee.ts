@@ -278,6 +278,38 @@ export interface ChangeEmployeeCodeMeta {
   loginUsernameChanged: boolean;
 }
 
+/**
+ * «مسح نهائي» — permanently delete one employee.
+ *
+ * THE CODE IS TYPED BACK, and that is the whole body. A permanent delete has no undo, so the one
+ * thing the request carries is proof that whoever sent it knew WHICH person it was for: the server
+ * refuses unless `confirmCode` matches the employee's own code. An id alone — copied from a URL,
+ * left over in a tab, repeated by a script — is not enough to erase somebody.
+ */
+export const PurgeEmployeeSchema = z
+  .object({ confirmCode: z.string().trim().min(1).max(32) })
+  .strict();
+export type PurgeEmployee = z.infer<typeof PurgeEmployeeSchema>;
+
+/**
+ * What the erasure took, said back so it can be read once and never again.
+ *
+ * `namesScrubbed` and `keptCollections` are the half people do not expect: a gold receipt, a
+ * traffic violation and the consumables ledger are records in their own right and are NOT deleted
+ * with the person — their copy of the name is rewritten instead.
+ */
+export interface EmployeePurgeReportDto {
+  code: string;
+  fullNameAr: string;
+  rowsDeleted: number;
+  namesScrubbed: number;
+  filesRemoved: number;
+  /** Files whose bytes could not be removed; each needs a hand. Empty on a clean run. */
+  fileFailures: { id: string; reason: string }[];
+  /** Collections left standing on purpose, with the person's name rewritten on them. */
+  keptCollections: string[];
+}
+
 export const UpdateEmployeeInsuranceSchema = EmployeeInsuranceSchema.extend({
   version: z.number().int().min(0),
 }).strict();

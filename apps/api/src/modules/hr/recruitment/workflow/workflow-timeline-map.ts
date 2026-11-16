@@ -32,7 +32,7 @@ const TIMELINE_TYPES: Partial<Record<WorkflowEventName, RecruitmentTimelineType>
   [WorkflowEvents.EvaluationRejected]: 'evaluationDecided',
   [WorkflowEvents.EvaluationCancelled]: 'evaluationCancelled',
   [WorkflowEvents.EvaluationRedecided]: 'evaluationDecided',
-  [WorkflowEvents.EvaluationReopened]: 'evaluationOpened',
+  [WorkflowEvents.EvaluationReopened]: 'evaluationReopened',
 
   [WorkflowEvents.OfferCreated]: 'offerDrafted',
   [WorkflowEvents.OfferSent]: 'offerSent',
@@ -51,7 +51,10 @@ const TIMELINE_TYPES: Partial<Record<WorkflowEventName, RecruitmentTimelineType>
 /** Materializing a record (I11) names the stage it opened, not a generic "entered". */
 export const stageEnteredType = (object: StageObject): RecruitmentTimelineType => {
   if (object === 'screening') return 'screeningOpened';
-  if (object === 'interview') return 'interviewScheduled';
+  // An opened round is NOT an appointment. Borrowing `interviewScheduled` for it is what put
+  // «تم تحديد موعد المقابلة» on the history of a candidate whose round had just ended: passing the
+  // first round materializes the second, and the entry announced a booking nobody had made.
+  if (object === 'interview') return 'interviewOpened';
   if (object === 'offer') return 'offerDrafted';
   return 'evaluationOpened';
 };

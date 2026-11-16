@@ -154,6 +154,8 @@ describe('«مسح نهائي» — permanently deleting an applicant', () => {
   it('refuses every other authority over candidates', async () => {
     const applicant = await register('رافض الصلاحية');
     // Everything HR does to a candidate, including the SOFT delete, short of erasing them.
+    // «إرجاع إلى مرحلة سابقة» is deliberately absent: it is break-glass in its own right now
+    // (`applicantReturn.execute`), so it is not part of what an ordinary recruiter holds.
     const hr = await accountWith('applicant-purge-hr@ecms.local', [
       'applicant.view',
       'applicant.create',
@@ -162,7 +164,6 @@ describe('«مسح نهائي» — permanently deleting an applicant', () => {
       'applicant.export',
       'applicant.verifyIdentity',
       'applicant.moveToOffer',
-      'applicant.returnToStage',
     ]);
     expect((await purge(hr, applicant.id, applicant.code)).status).toBe(403);
     expect((await asAdmin('get', `/hr/applicants/${applicant.id}`)).status).toBe(200);

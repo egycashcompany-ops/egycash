@@ -22,7 +22,7 @@ export const previewReturnToStage = async (req: Request, res: Response): Promise
 export const returnApplicantToStage = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<ReturnToStage, never, IdParam>(req);
-  const scope = scopeSelector(ctx, 'applicant.returnToStage');
+  const scope = scopeSelector(ctx, 'applicantReturn.execute');
   // RW13 is the action that changes the most at once — forward records superseded, a new attempt
   // opened — so it is exactly the one a client must not have to re-query to understand (I6).
   ok(

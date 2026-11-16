@@ -38,7 +38,14 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService, resolvePlacement } from '../applicants';
 import { screeningService } from '../screening';
-import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
+import {
+  assertStageCorrectable,
+  assertStageNotPassed,
+  recruitmentWorkflowEngine,
+  registerStageBinding,
+  runBulk,
+  type StageBinding,
+} from '../workflow';
 import { InterviewModel } from './interview.model';
 import { interviewRepository, type InterviewListFilter } from './interview.repository';
 import { interviewStageRepository } from './interview-stage.repository';
@@ -102,6 +109,11 @@ class InterviewService {
     }
 
     await this.assertStageEntry(input.applicantId, stage);
+    // ...and that the candidate has not already moved BEYOND this round. `assertStageEntry`
+    // only looks backwards, so opening the first round again for somebody now at the security
+    // check passed it — and because `completed` is terminal for a round, `ensureStageRecord`
+    // would have obliged with a fresh attempt and pulled them back down the pipeline.
+    await assertStageNotPassed(input.applicantId, 'interview', stage.order, 'interview');
 
     // One live interview per stage (a cancelled round may be replaced).
     const active = await interviewRepository.findActiveAtStage(input.applicantId, stage.order);
@@ -172,6 +184,11 @@ class InterviewService {
       ]);
     }
     await this.assertStageEntry(input.applicantId, stage);
+    // ...and that the candidate has not already moved BEYOND this round. `assertStageEntry`
+    // only looks backwards, so opening the first round again for somebody now at the security
+    // check passed it — and because `completed` is terminal for a round, `ensureStageRecord`
+    // would have obliged with a fresh attempt and pulled them back down the pipeline.
+    await assertStageNotPassed(input.applicantId, 'interview', stage.order, 'interview');
 
     const { record: waiting } = (await recruitmentWorkflowEngine.ensureStageRecord({
       binding: BINDING,
@@ -230,6 +247,12 @@ class InterviewService {
     scope: ScopeSelector,
   ): Promise<InterviewDoc> {
     const before = await interviewRepository.getById(id, scope);
+    await assertStageNotPassed(
+      String(before.applicantId),
+      'interview',
+      before.stageOrder,
+      'interview',
+    );
     const now = new Date();
     const onPanel = before.panel.some((p) => String(p.interviewerId) === ctx.userId);
     const { record: updated } = (await recruitmentWorkflowEngine.transition({
@@ -568,6 +591,16 @@ class InterviewService {
     if (before.outcome === input.outcome) {
       throw new BusinessRuleError('the interview already has this outcome');
     }
+    // Correctable while nothing has been built on the outcome: passing the round opens the next one
+    // (or the checks), and while those are untouched the outcome may be flipped — flipping it to
+    // `failed` closes them through the lifecycle (I14). Once anybody has acted on them, reversing
+    // the round would strand what they decided.
+    await assertStageCorrectable(
+      String(before.applicantId),
+      'interview',
+      before.stageOrder,
+      'interview',
+    );
     const { record: updated } = await recruitmentWorkflowEngine.transition({
       binding: BINDING,
       id,

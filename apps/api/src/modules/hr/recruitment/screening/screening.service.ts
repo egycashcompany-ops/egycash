@@ -22,7 +22,13 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { applicantService } from '../applicants';
-import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
+import {
+  assertStageCorrectable,
+  recruitmentWorkflowEngine,
+  registerStageBinding,
+  runBulk,
+  type StageBinding,
+} from '../workflow';
 import { ScreeningModel } from './screening.model';
 import { screeningRepository, type ScreeningListFilter } from './screening.repository';
 import { type ScreeningDoc, type ScreeningNote } from './screening.model';
@@ -230,6 +236,12 @@ class ScreeningService {
     if (before.status === 'waiting') {
       throw new BusinessRuleError('screening has not been decided yet');
     }
+    // A decision is not final (D7) — but only while nothing has been built on it. The acceptance
+    // opens the first interview round; while that round is still untouched the screening may be
+    // flipped, and flipping it to a rejection closes the round through the lifecycle (I14), which
+    // is this system's undo. Once anybody has scheduled, started or decided that round, the
+    // correction would contradict them and a return to an earlier stage is the only way back.
+    await assertStageCorrectable(String(before.applicantId), 'screening', null, 'screening');
     if (before.status === input.outcome) {
       throw new BusinessRuleError('the screening already has this decision');
     }

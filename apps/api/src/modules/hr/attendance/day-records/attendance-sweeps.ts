@@ -55,9 +55,25 @@ const employeeUserId = async (doc: AttendanceDayDoc): Promise<string | null> => 
 
 class AttendanceSweepService {
   /**
-   * `incomplete` means the engine saw a check-in and no check-out (D6) — and an incomplete day
-   * BLOCKS the employee's payroll calculation until it is regularized, which is exactly why the
-   * person who can fix it hears about it the next morning rather than at month end.
+   * INERT SINCE THE CHECK-IN RULING, ON PURPOSE — and left in place rather than deleted.
+   *
+   * It queries yesterday's `incomplete` rows. Nothing derives `incomplete` any more: a check-in
+   * with no check-out is `checkedIn`, an attended day. So this sweep finds nothing from the day
+   * after that change, except a legacy row on the first morning, and sends nothing.
+   *
+   * THE OBVIOUS EDIT IS THE WRONG ONE. Re-aiming it at `checkedIn` would notify 70–90% of
+   * employees every morning that they had forgotten to do something nobody here does — the
+   * devices say that is simply how this workforce scans. A notice that reaches almost everybody
+   * every day is read by nobody, and it would bury the absence notice beside it.
+   *
+   * The old reason this notice existed — "an incomplete day blocks the employee's payroll
+   * calculation until it is regularized" — is void: `checkedIn` counts as an attended day
+   * (`attendance-quantities.ts`), so nothing is blocked and there is nothing to chase.
+   *
+   * It stays because the shape is still the right one for a notice we may yet want: telling
+   * somebody whose days normally DO have a check-out that yesterday's was missing. That needs a
+   * per-employee habit, which the 90-day medians of the attendance dashboard will provide. Until
+   * then this is a no-op, said out loud here so nobody reads its silence as a bug.
    */
   async sweepMissingCheckouts(): Promise<number> {
     const rows = await previousDayRows('incomplete');

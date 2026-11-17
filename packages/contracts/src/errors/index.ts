@@ -60,6 +60,18 @@ export const ErrorCodes = {
 
   // organization
   ORG_UNIT_HAS_CHILDREN: 'ORG_UNIT_HAS_CHILDREN',
+  // ── The org chart and job places (P-ORG-3, ADR-038) ──────────────────────────────────────────
+  /** 422 — a chart section write under a department or section with no editable group (§4.2). */
+  ORG_UNIT_NOT_EDITABLE: 'ORG_UNIT_NOT_EDITABLE',
+  /** 409 — «إضافة قسم» / «تغيير الاسم»: the department already has a section of that name. */
+  ORG_SECTION_NAME_TAKEN: 'ORG_SECTION_NAME_TAKEN',
+  /** 422 — a ticked branch has no active row of the department linked to its company entry. */
+  BRANCH_WITHOUT_DEPARTMENT: 'BRANCH_WITHOUT_DEPARTMENT',
+  /** 422 — a new job place in a group that is not editable, for an inactive job, or with a section
+   *  outside its department. Places already stored are kept regardless. */
+  JOB_PLACE_NOT_ALLOWED: 'JOB_PLACE_NOT_ALLOWED',
+  /** 409 — a catalog entry that job places cite cannot be deleted. */
+  ORG_CATALOG_ENTRY_IN_USE: 'ORG_CATALOG_ENTRY_IN_USE',
 
   // applications
   APPLICATION_CATEGORY_IN_USE: 'APPLICATION_CATEGORY_IN_USE',

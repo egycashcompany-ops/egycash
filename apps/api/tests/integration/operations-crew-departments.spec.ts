@@ -20,6 +20,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
+import { Types } from 'mongoose';
 import {
   OperationsSettingKeys,
   SettingKeys,
@@ -35,6 +36,7 @@ import { rbacService } from '../../src/platform/rbac';
 import { settingsService } from '../../src/platform/settings';
 import { userService } from '../../src/platform/users';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { DepartmentModel } from '../../src/platform/organization';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -124,6 +126,12 @@ const mkDepartment = async (
   });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
   const dto = data<{ id: string; version: number }>(res);
+  // A copy "with a name of its own" stands for one made before anyone linked it. Since P-ORG-3 the
+  // service links a new row to the company list when it creates it (§5.6), so the link is undone
+  // here — the cases below are about rows that never had one.
+  if (!('catalogId' in of)) {
+    await DepartmentModel.updateOne({ _id: new Types.ObjectId(dto.id) }, { $set: { catalogId: null } });
+  }
   return { id: dto.id, branchId, version: dto.version };
 };
 

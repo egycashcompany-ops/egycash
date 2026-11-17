@@ -6,6 +6,7 @@ import { assertManagerExists } from '../shared/managers';
 import { departmentRepository } from '../departments';
 import { sectionCatalogService } from '../section-catalog';
 import { sectionRepository } from './section.repository';
+import { sectionRowFields } from './section-row';
 import { type SectionDoc } from './section.model';
 
 export const sectionService = new OrgUnitService<SectionDoc>('section', sectionRepository, {
@@ -40,10 +41,7 @@ export const sectionService = new OrgUnitService<SectionDoc>('section', sectionR
       throw new BusinessRuleError('A section needs a name, or a catalog entry to take one from');
     }
     return {
-      branchId: department.branchId,
-      departmentId: department._id,
-      catalogId: catalog === null ? null : catalog._id,
-      path: `${String(department.branchId)}/${String(department._id)}/${String(id)}`,
+      ...sectionRowFields(department, catalog === null ? null : catalog._id, id),
       description: input.description ?? null,
       ...(catalog === null ? {} : { name: catalog.name }),
     } as Partial<SectionDoc>;

@@ -7,6 +7,15 @@ import { ApiError } from './api-client';
 
 const FRIENDLY: Record<Locale, Record<string, string>> = {
   en: {
+    // P-ORG-3 — the org chart and job places (org-chart-design.md §5.5).
+    ORG_UNIT_NOT_EDITABLE:
+      'This unit cannot be edited here: it is not linked to the company list, or is stopped in it.',
+    ORG_SECTION_NAME_TAKEN: 'This department already has a section with this name.',
+    BRANCH_WITHOUT_DEPARTMENT:
+      'In one of the ticked branches the department does not exist, or is not linked to the company list.',
+    JOB_PLACE_NOT_ALLOWED:
+      'The job cannot be placed here: the job or the section is stopped, or the section is not in this department.',
+    ORG_CATALOG_ENTRY_IN_USE: 'Jobs are placed in this entry, so it cannot be deleted.',
     VALIDATION_FAILED: 'Some fields need your attention.',
     FORBIDDEN: 'You do not have permission to do that.',
     NOT_FOUND: 'That item could not be found.',
@@ -124,6 +133,14 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     UNKNOWN: 'Something went wrong. Please try again.',
   },
   ar: {
+    // P-ORG-3 — شجرة الهيكل التنظيمي ومكان الوظيفة.
+    ORG_UNIT_NOT_EDITABLE:
+      'لا يمكن تعديل هذه الإدارة أو هذا القسم من هنا: غير مربوط بقائمة الشركة أو موقوف فيها.',
+    ORG_SECTION_NAME_TAKEN: 'يوجد قسم بهذا الاسم في هذه الإدارة.',
+    BRANCH_WITHOUT_DEPARTMENT: 'الإدارة غير موجودة أو غير مربوطة بقائمة الشركة في أحد الفروع المحددة.',
+    JOB_PLACE_NOT_ALLOWED:
+      'لا يمكن وضع الوظيفة في هذا المكان: الوظيفة أو القسم موقوف، أو القسم لا يتبع هذه الإدارة.',
+    ORG_CATALOG_ENTRY_IN_USE: 'توجد وظائف موضوعة في هذا البند، فلا يمكن حذفه.',
     VALIDATION_FAILED: 'بعض الحقول تحتاج إلى مراجعة.',
     FORBIDDEN: 'ليس لديك صلاحية للقيام بذلك.',
     NOT_FOUND: 'تعذّر العثور على هذا العنصر.',

@@ -155,6 +155,30 @@ export const JobTitleDetailPage = (): JSX.Element => {
         </Card>
       </div>
 
+      {/* Where the job sits in the structure (ADR-038) — the same rows the org chart shows. */}
+      <div className="mt-4">
+        <Card>
+          <CardHeader title={t('organization.jobTitles.places.title')} />
+          <CardBody>
+            {jt.places.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t('organization.jobTitles.places.none')}</p>
+            ) : (
+              <ul className="space-y-1.5 text-sm">
+                {jt.places.map((place) => (
+                  <li key={place.id} className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
+                    <span>
+                      {localized(place.department.name, locale)} ›{' '}
+                      {place.section === null ? t('organization.chart.direct') : localized(place.section.name, locale)}
+                    </span>
+                    {!place.shown && <Badge tone="warning">{t('organization.jobTitles.places.stopped')}</Badge>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+
       <Dialog
         open={confirming}
         onClose={() => setConfirming(false)}

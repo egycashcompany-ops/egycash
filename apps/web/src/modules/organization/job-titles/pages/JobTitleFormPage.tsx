@@ -18,6 +18,7 @@ import { ApiError } from '../../../../shared/lib/api-client';
 import { localized } from '../../../../shared/lib/format';
 import { LocalizedNameFields, StatusSelect, localizedOrNull, type LocalizedValue } from '../../shared/form-fields';
 import { useCreateJobTitle, useJobTitle, useUpdateJobTitle } from '../job-title-queries';
+import { JobPlacesField, type PlaceRow } from '../components/JobPlacesField';
 
 const numOrNull = (s: string): number | null => {
   const trimmed = s.trim();
@@ -58,6 +59,20 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
   const [fixedSalary, setFixedSalary] = useState(
     existing?.fixedSalary == null ? '' : String(existing.fixedSalary.amount),
   );
+  // Where the job sits (ADR-038): the whole set, saved with the form — the chart writes the same rows.
+  const [places, setPlaces] = useState<PlaceRow[]>(
+    (existing?.places ?? []).map((place) => ({
+      departmentCatalogId: place.department.departmentCatalogId,
+      sectionCatalogId: place.section?.sectionCatalogId ?? null,
+      departmentName: place.department.name,
+      sectionName: place.section?.name ?? null,
+      shown: place.shown,
+    })),
+  );
+  const placesBody = places.map((place) => ({
+    departmentCatalogId: place.departmentCatalogId,
+    sectionCatalogId: place.sectionCatalogId,
+  }));
 
   /**
    * The band warns while you type; it never blocks (P-HR-22 — the owner's ruling).
@@ -113,6 +128,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
         if (experience.trim() !== '') body.requiredExperienceYears = numOrNull(experience) ?? undefined;
         if (requiresDrivingTest) body.requiresDrivingTest = true;
         if (fixedMoney !== null) body.fixedSalary = fixedMoney;
+        if (placesBody.length > 0) body.places = placesBody;
         const doc = await create.mutateAsync(body);
         toast.success(t('organization.jobTitle.created'));
         navigate(`/organization/job-titles/${doc.id}`);
@@ -129,6 +145,8 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
           requiredExperienceYears: numOrNull(experience),
           requiresDrivingTest,
           fixedSalary: fixedMoney,
+          // The whole set, stopped places included — they are kept, never dropped by a form save.
+          places: placesBody,
         };
         const doc = await update.mutateAsync(body);
         toast.success(t('organization.jobTitle.updated'));
@@ -184,6 +202,8 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
             />
           </CardBody>
         </Card>
+
+        <JobPlacesField value={places} onChange={setPlaces} locale={locale} />
 
         <Card>
           <CardHeader

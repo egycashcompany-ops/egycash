@@ -34,6 +34,22 @@ its entry here in the same PR.
     create and update take `places` (at most 50). New collections `job_title_places` and
     `job_title_place_fills`, with indexes built at boot.
 
+- **IT: on a computer only the table scrolls.** «فى شاشات الـ IT مش عايز كل الصفحة تعمل Scroll !! عايز
+  فقط الجدول لكن الزراير والفلتر يبقوا ثابتين». Every IT list screen — assets, custody, consumables and
+  their movements, mobile lines, employees, catalogs, vendors, licenses, software, tickets,
+  maintenance orders and plans, spare parts — now uses the Fleet and ATM boards' frame
+  (`PageContainer fullHeight`, `BOARD_FRAME`, `DataTable stickyHead`): from `lg` the title, the
+  buttons, the figures and the filters keep their place, the pager keeps its place below, and only
+  the rows scroll under a head that stays; a phone or tablet scrolls the page as before.
+  - The IT boards' table floor is 8rem (`BOARD_TABLE_FILL_LOW`), not the shared 14rem, so on a
+    1280×720 or 1024×768 screen the rows shrink before the filters move — measured in a browser on
+    every board at 1024×768 to 1920×1080. Fleet and ATM are unchanged.
+  - The mobile lines' network cards are compact from `lg` (counts beside the name, accounts as chips,
+    «+N» past four); the pressed card's mark and ring sit inside the card.
+  - The bulk upload's lines scroll in a box of their own under a sticky head, «تأكيد» in view.
+  - Left as they were: dashboards, records, and the help desk settings (two settings cards over a
+    table of a few priorities).
+
 - **HR: «تعديل» on the employee's «طباعة العقد والمستندات».** «في شاشه الموظفين … نخلي في امكانيه
   للتعديل زي معملنا قبل كدا تحت الtoggle تعديل و طباعه و تحت يظهر البيانات عشان التعديل و النص التاني
   الفورم».

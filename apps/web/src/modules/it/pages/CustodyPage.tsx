@@ -31,6 +31,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { SearchInput } from '../../../shared/ui/SearchInput';
@@ -478,33 +479,36 @@ export const CustodyPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.custody')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.custody') }]}
-        actions={
-          <>
-            {/* «عايز الزرارين قبل مش بعد زرار الـ Action بتاع الفورم» — the files first, the
-                hand-over after them. Not offered when the list failed: the file behind them
-                would be empty or short. */}
-            {!isError && (
-              <RegisterExportButtons name="it-custody" onExcel={exportSheet} onPdf={exportPdf} />
-            )}
-            {can('itAsset.assign') && (
-              <Button
-                size="sm"
-                leftIcon={<UsersIcon className="h-4 w-4" />}
-                onClick={() => setHandingOver(true)}
-              >
-                {t('it.custody.receipt.title')}
-              </Button>
-            )}
-          </>
-        }
-      />
-      <AssignAssetDialog open={handingOver} onClose={() => setHandingOver(false)} asset={null} />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; for IT «مش عايز كل الصفحة تعمل Scroll !! عايز
+          فقط الجدول لكن الزراير والفلتر يبقوا ثابتين», 2026-11-17): on a computer the title and its
+          buttons and the column filters keep their place, the pager keeps its place below, and
+          only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.custody')}
+          breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.custody') }]}
+          actions={
+            <>
+              {/* «عايز الزرارين قبل مش بعد زرار الـ Action بتاع الفورم» — the files first, the
+                  hand-over after them. Not offered when the list failed: the file behind them
+                  would be empty or short. */}
+              {!isError && (
+                <RegisterExportButtons name="it-custody" onExcel={exportSheet} onPdf={exportPdf} />
+              )}
+              {can('itAsset.assign') && (
+                <Button
+                  size="sm"
+                  leftIcon={<UsersIcon className="h-4 w-4" />}
+                  onClick={() => setHandingOver(true)}
+                >
+                  {t('it.custody.receipt.title')}
+                </Button>
+              )}
+            </>
+          }
+        />
 
-      <div className="space-y-4">
         {/* The table's columns, in the table's order, each under the column's name — except that
             the search comes first and «الصنف» follows its category («الصنف يبقي بعد الفئة»). The
             search, the category and «الصنف» are facts of the asset, the rest of the interval; the
@@ -692,16 +696,19 @@ export const CustodyPage = (): JSX.Element => {
           </FilterField>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={data?.items ?? []}
-          rowKey={(a) => a.id}
-          loading={isLoading || nameFilter.settling}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            rowKey={(a) => a.id}
+            loading={isLoading || nameFilter.settling}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
@@ -710,6 +717,7 @@ export const CustodyPage = (): JSX.Element => {
           />
         )}
       </div>
+      <AssignAssetDialog open={handingOver} onClose={() => setHandingOver(false)} asset={null} />
     </PageContainer>
   );
 };

@@ -3,3 +3,4 @@ export { JobPlaceModel, type JobPlaceDoc } from './job-place.model';
 export { JobPlaceFillModel, type JobPlaceFillDoc } from './job-place-fill.model';
 export { migrateJobPlaceIndexes } from './job-place-indexes';
 export { jobPlaceRepository, placeKey, type PlaceKey } from './job-place.repository';
+export { fillJobPlacesFromHolders, type HeldUnit, type FillResult } from './job-place-fill';

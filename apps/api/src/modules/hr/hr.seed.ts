@@ -59,6 +59,9 @@ import {
 import { migrateEmployeeFiles } from './employee-management/employee-file';
 import { env } from '../../infrastructure/config/env';
 import { logger } from '../../infrastructure/logging/logger';
+import { fillJobPlacesFromHolders } from '../../platform/organization';
+import { employeeRepository } from './employee-management/employees/employee.repository';
+import { jobOfferRepository } from './recruitment/job-offers/job-offer.repository';
 import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { ensureEmployeeActionAttachmentsCategory } from './employee-management/employee-actions';
@@ -570,6 +573,19 @@ export const seedHrRecruitment = async (): Promise<void> => {
   // I5 — drop the re-derived recruitment milestones from legacy Employee Files; the canonical
   // recruitment timeline is now the only history (idempotent).
   await migrateEmployeeFiles();
+  // P-ORG-3 §7 (D-ORG3-2): each company department gets the job places where its holders sit, ONCE.
+  // The platform owns the places and the marks; HR only hands over where people sit. Returns at once
+  // on every start where every department is already marked — no employee is read then.
+  try {
+    const filled = await fillJobPlacesFromHolders(async () => [
+      ...(await employeeRepository.jobUnitsHeldSystem()),
+      ...(await jobOfferRepository.jobUnitsAcceptedSystem()),
+    ]);
+    if (filled !== null) logger.info(filled, 'org chart: job places filled from where holders sit');
+  } catch (error) {
+    // Error, not warn: a fill that never commits leaves the org chart empty.
+    logger.error({ err: error }, 'org chart: the one-time job place fill failed; it will run again next start');
+  }
   // Auth design D2 — every employed employee gets an auto-provisioned login (idempotent).
   //
   // Each provisioning SENDS: a WhatsApp message and an email carrying a one-time setup link. That

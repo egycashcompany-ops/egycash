@@ -76,7 +76,8 @@ describe('the seeded navigation catalog', () => {
     //   receive screen (Operations, Round 12).
     // 138 → 138: «تجميع الخزينة» left Operations — its content is «تقرير البنوك» now, and the row is
     //   RETIRED on live installations — and «إدارات العمليات» joined it beneath the roster (−1 +1).
-    expect(rows).toHaveLength(138);
+    // 138 → 139: «شجرة الهيكل التنظيمي» joined Organization, after «الوظائف» (org-chart-design.md).
+    expect(rows).toHaveLength(139);
   });
 
   /**

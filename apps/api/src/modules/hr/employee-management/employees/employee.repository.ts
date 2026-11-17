@@ -385,6 +385,38 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /**
+   * Where the company's people hold their jobs, down to the section — the facts the org chart's
+   * one-time fill places jobs by (P-ORG-3 §7). One row per distinct (department, section, job) among
+   * employees who have not exited. `jobsByDepartmentSystem` below stays as it is: «مستندات الوظائف»
+   * groups by department only, and a section in its key would split its lines.
+   */
+  async jobUnitsHeldSystem(): Promise<{ departmentId: string; sectionId: string | null; jobTitleId: string }[]> {
+    const rows = await this.model
+      .aggregate<{
+        _id: { departmentId: Types.ObjectId | null; sectionId: Types.ObjectId | null; jobTitleId: Types.ObjectId | null };
+      }>([
+        { $match: { isDeleted: false, status: { $ne: 'exited' } } },
+        {
+          $group: {
+            _id: {
+              departmentId: '$employment.departmentId',
+              sectionId: '$employment.sectionId',
+              jobTitleId: '$employment.jobTitleId',
+            },
+          },
+        },
+      ])
+      .exec();
+    return rows
+      .filter((row) => row._id.departmentId != null && row._id.jobTitleId != null)
+      .map((row) => ({
+        departmentId: String(row._id.departmentId),
+        sectionId: row._id.sectionId == null ? null : String(row._id.sectionId),
+        jobTitleId: String(row._id.jobTitleId),
+      }));
+  }
+
+  /**
    * A28 — the jobs held in each department: one row per department and job among the employees who
    * have not exited, for «مستندات الوظائف», which shows every department with the jobs in it.
    * `System`: it names no person and no figure, and the popup is the whole company's.

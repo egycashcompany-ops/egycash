@@ -174,6 +174,37 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
 
   /** The applicant's accepted offer, if any (the Employee-Creation gate for Stage 5). */
   /**
+   * The jobs candidates ready to hire are taking, down to the section — for the org chart's one-time
+   * fill (P-ORG-3 §7). Accepted, not hired, and NOT superseded (a re-offer replaces the old one); the
+   * accepted terms first, else the offer's own. One row per distinct (department, section, job).
+   */
+  async jobUnitsAcceptedSystem(): Promise<{ departmentId: string; sectionId: string | null; jobTitleId: string }[]> {
+    const rows = await this.model
+      .aggregate<{
+        _id: { departmentId: Types.ObjectId | null; sectionId: Types.ObjectId | null; jobTitleId: Types.ObjectId | null };
+      }>([
+        { $match: { isDeleted: false, status: 'accepted', hiredEmployeeId: null, supersededAt: null } },
+        {
+          $group: {
+            _id: {
+              departmentId: { $ifNull: ['$acceptedSnapshot.terms.departmentId', '$terms.departmentId'] },
+              sectionId: { $ifNull: ['$acceptedSnapshot.terms.sectionId', '$terms.sectionId'] },
+              jobTitleId: { $ifNull: ['$acceptedSnapshot.terms.jobTitleId', '$terms.jobTitleId'] },
+            },
+          },
+        },
+      ])
+      .exec();
+    return rows
+      .filter((row) => row._id.departmentId != null && row._id.jobTitleId != null)
+      .map((row) => ({
+        departmentId: String(row._id.departmentId),
+        sectionId: row._id.sectionId == null ? null : String(row._id.sectionId),
+        jobTitleId: String(row._id.jobTitleId),
+      }));
+  }
+
+  /**
    * A28 — the jobs the candidates ready to hire (accepted, not hired yet) are taking, by department:
    * one row per department and job, for «مستندات الوظائف».
    */

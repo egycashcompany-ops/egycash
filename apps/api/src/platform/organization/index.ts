@@ -89,4 +89,10 @@ export { effectiveManagerId } from './shared/org-unit';
 export { nextFreeCode, nextFreeCodes } from './shared/next-free-code';
 export { sectionRowFields } from './sections/section-row';
 export { buildOrgChartRouter, orgChartService } from './org-chart';
-export { JobPlaceModel, JobPlaceFillModel, migrateJobPlaceIndexes } from './job-places';
+export {
+  JobPlaceModel,
+  JobPlaceFillModel,
+  migrateJobPlaceIndexes,
+  fillJobPlacesFromHolders,
+  type HeldUnit,
+} from './job-places';

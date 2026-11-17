@@ -33,6 +33,11 @@ import {
 } from '../../src/platform/organization';
 import { JobTitleModel } from '../../src/platform/organization/job-titles/job-title.model';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { fillJobPlacesFromHolders, JobPlaceFillModel } from '../../src/platform/organization';
+import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { JobOfferModel } from '../../src/modules/hr/recruitment/job-offers/job-offer.model';
+import { employeeRepository } from '../../src/modules/hr/employee-management/employees/employee.repository';
+import { jobOfferRepository } from '../../src/modules/hr/recruitment/job-offers/job-offer.repository';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 
@@ -221,6 +226,9 @@ beforeEach(async () => {
     SectionCatalogModel.deleteMany({}),
     JobPlaceModel.deleteMany({}),
     JobTitleModel.deleteMany({}),
+    JobPlaceFillModel.deleteMany({}),
+    EmployeeModel.collection.deleteMany({}),
+    JobOfferModel.collection.deleteMany({}),
   ]);
 });
 
@@ -585,5 +593,127 @@ describe('a new department or section is linked when created (P-ORG-3 §5.6, D-O
     const entryId = data<{ catalogId: string | null }>(res).catalogId;
     const entry = await SectionCatalogModel.findById(entryId).lean();
     expect(String(entry?.departmentCatalogId)).toBe(String(ops.entry._id));
+  });
+});
+
+
+describe('the one-time fill from where holders sit (P-ORG-3 §7)', () => {
+  /** HR's own readers — what the seed hands the platform. */
+  const holders = async () => [
+    ...(await employeeRepository.jobUnitsHeldSystem()),
+    ...(await jobOfferRepository.jobUnitsAcceptedSystem()),
+  ];
+  const fill = () => fillJobPlacesFromHolders(holders);
+
+  const employee = async (
+    department: Types.ObjectId,
+    section: Types.ObjectId | null,
+    jobTitleId: Types.ObjectId,
+    status = 'active',
+  ) =>
+    EmployeeModel.collection.insertOne({
+      isDeleted: false,
+      code: nextCode('EMP-'),
+      status,
+      employment: { departmentId: department, sectionId: section, jobTitleId, branchId: new Types.ObjectId() },
+    });
+
+  const offer = async (department: Types.ObjectId, jobTitleId: Types.ObjectId, supersededAt: Date | null = null) =>
+    JobOfferModel.collection.insertOne({
+      isDeleted: false,
+      status: 'accepted',
+      hiredEmployeeId: null,
+      supersededAt,
+      terms: { departmentId: department, sectionId: null, jobTitleId },
+    });
+
+  const placesOf = async (jobId: Types.ObjectId) =>
+    (await JobPlaceModel.find({ jobTitleId: jobId, isDeleted: false }).lean()).map((p) =>
+      p.sectionCatalogId === null ? 'direct' : String(p.sectionCatalogId),
+    );
+
+  it('places each job where its holders sit, sections included, and skips what it must', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 2));
+    const treasury = await linkedSection({ ar: 'الخزينة', en: 'Treasury' }, ops.entry._id, ops.rows);
+    const treasuryRow = await SectionModel.findOne({ catalogId: treasury._id }).lean();
+    const legacy = await unlinkedDepartment({ ar: 'قديمة', en: 'Legacy' }, branches[2] ?? '');
+    const [cashier, driver, recruit, gone, legacyJob, stopped] = await Promise.all([
+      job('Cashier', 'أمين خزينة'),
+      job('Driver', 'سائق'),
+      job('Recruit', 'مرشح'),
+      job('Gone', 'سابق'),
+      job('Legacy', 'قديم'),
+      job('Stopped', 'موقوف'),
+    ]);
+    await JobTitleModel.updateOne({ _id: stopped._id }, { $set: { status: 'inactive' } });
+    const deptRow = ops.rows[0]?._id ?? new Types.ObjectId();
+    await employee(deptRow, treasuryRow?._id ?? null, cashier._id);
+    await employee(deptRow, treasuryRow?._id ?? null, cashier._id); // the same triple twice
+    await employee(deptRow, null, driver._id);
+    await employee(deptRow, null, gone._id, 'exited');
+    await employee(legacy._id, null, legacyJob._id);
+    await employee(deptRow, null, stopped._id);
+    await offer(deptRow, recruit._id);
+    const supersededJob = await job('Superseded', 'ملغى');
+    await offer(deptRow, supersededJob._id, new Date());
+
+    const result = await fill();
+    expect(result).toMatchObject({ departments: 1, placed: 3 });
+    expect(await placesOf(cashier._id)).toEqual([String(treasury._id)]);
+    expect(await placesOf(driver._id)).toEqual(['direct']);
+    expect(await placesOf(recruit._id)).toEqual(['direct']);
+    expect(await placesOf(gone._id)).toEqual([]);
+    expect(await placesOf(legacyJob._id)).toEqual([]);
+    expect(await placesOf(stopped._id)).toEqual([]);
+    expect(await placesOf(supersededJob._id)).toEqual([]);
+    const audit = await AuditLogModel.findOne({ 'entityRef.entityId': String(cashier._id), action: 'update' }).lean();
+    expect(audit?.changes.find((c) => c.field === 'places')?.new).toEqual(['العمليات › الخزينة']);
+  });
+
+  it('a section row outside its department falls back to directly under the department', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const sec = await linkedDepartment({ ar: 'الأمن', en: 'Security' }, branches.slice(0, 1));
+    const guards = await linkedSection({ ar: 'الحراسة', en: 'Guards' }, sec.entry._id, sec.rows);
+    const guardsRow = await SectionModel.findOne({ catalogId: guards._id }).lean();
+    const driver = await job('Driver', 'سائق');
+    await employee(ops.rows[0]?._id ?? new Types.ObjectId(), guardsRow?._id ?? null, driver._id);
+    await fill();
+    expect(await placesOf(driver._id)).toEqual(['direct']);
+  });
+
+  it('runs once: a second run does nothing, even after a place is removed', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const driver = await job('Driver', 'سائق');
+    await employee(ops.rows[0]?._id ?? new Types.ObjectId(), null, driver._id);
+    await fill();
+    await JobPlaceModel.updateMany({ jobTitleId: driver._id }, { $set: { isDeleted: true } });
+    expect(await fill()).toBeNull();
+    expect(await placesOf(driver._id)).toEqual([]);
+  });
+
+  it('fills a department linked later at the next run, but never one edited by hand', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const driver = await job('Driver', 'سائق');
+    await fill(); // marks Operations (nobody sits there yet)
+    const later = await linkedDepartment({ ar: 'الحركة', en: 'Movement' }, branches.slice(0, 1));
+    const edited = await linkedDepartment({ ar: 'الأمن', en: 'Security' }, branches.slice(0, 1));
+    await JobPlaceModel.create({ jobTitleId: driver._id, departmentCatalogId: edited.entry._id, sectionCatalogId: null, isDeleted: true });
+    await employee(later.rows[0]?._id ?? new Types.ObjectId(), null, driver._id);
+    await employee(edited.rows[0]?._id ?? new Types.ObjectId(), null, driver._id);
+    await employee(ops.rows[0]?._id ?? new Types.ObjectId(), null, driver._id);
+    const result = await fill();
+    expect(result).toMatchObject({ departments: 2, placed: 1 });
+    const live = await JobPlaceModel.find({ jobTitleId: driver._id, isDeleted: false }).lean();
+    expect(live.map((p) => String(p.departmentCatalogId))).toEqual([String(later.entry._id)]);
+  });
+
+  it('two runs at once: exactly one commits the marks', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const driver = await job('Driver', 'سائق');
+    await employee(ops.rows[0]?._id ?? new Types.ObjectId(), null, driver._id);
+    const results = await Promise.all([fill(), fill()]);
+    expect(results.filter((r) => r !== null)).toHaveLength(1);
+    expect(await JobPlaceFillModel.countDocuments({})).toBe(1);
+    expect(await JobPlaceModel.countDocuments({ jobTitleId: driver._id, isDeleted: false })).toBe(1);
   });
 });

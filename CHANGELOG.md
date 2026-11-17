@@ -1923,6 +1923,13 @@ its entry here in the same PR.
   - **An entry the company list already has is joined, not duplicated**: one added by hand, or one a
     department created since P-ORG-3 linked itself to. A branch that would end up with two copies of it
     is refused, with the `--merge` that resolves it.
+  - **The dry run checks what `--write` would trip over**, and refuses or warns before anything is
+    written: a planned entry whose code an existing entry holds gets the next free code; an entry
+    stopped in the company list is not joined; leave requests awaiting approval in a department whose
+    approval chain starts applying on linking must be decided first (the chains are listed either way);
+    names the plan groups differently from the screens are listed, as is every row whose name changes
+    to its entry's spelling. Department rows are now linked after their sections, so the org chart's
+    one-time fill never sees a department without them.
   - **The plan is printed to the log**, one line per company department and section, so the dry run
     can be read on the deployed service, where the report file does not survive.
   - **A department or section filter remembered from before linking still works.** The employees list,

@@ -594,6 +594,9 @@ describe('the migration, against real rows', () => {
       expect(dry.joined.departments).toEqual([
         { code: expect.any(String), name: 'العمليات', entryCode: 'OPS' },
       ]);
+      // Every copy takes the entry's spelling, and the dry run lists each one that changes.
+      expect(dry.renames).toHaveLength(7);
+      expect(dry.renames[0]?.to).toEqual({ ar: 'العمليات', en: 'Operations' });
 
       const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
       expect(report.plan.problems).toEqual([]);
@@ -663,6 +666,71 @@ describe('the migration, against real rows', () => {
       expect(merged.plan.problems).toEqual([]);
       expect(merged.written).toBe(true);
       expect(await DepartmentCatalogModel.countDocuments({ isDeleted: false })).toBe(1);
+    });
+  });
+
+  describe('what the dry run checks before anything is written', () => {
+    const db = () => DepartmentModel.db;
+
+    it('gives a planned entry a free code when the company list already holds its code', async () => {
+      await departmentCatalogService.create({ code: 'DEP-7001', name: { ar: 'الأمن', en: 'Security' } }, ACTOR);
+      const branch = await makeBranch('أ');
+      await legacyDepartment({ code: 'DEP-7001', branchId: String(branch._id), name: { ar: 'العمليات', en: 'Ops' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.plan.problems).toEqual([]);
+      expect(report.recoded).toEqual([{ name: 'العمليات', from: 'DEP-7001', to: 'DC-0001' }]);
+      expect(report.written).toBe(true);
+      expect(await DepartmentCatalogModel.countDocuments({ isDeleted: false })).toBe(2);
+    });
+
+    it('refuses to join an entry the company list has stopped', async () => {
+      const entry = await departmentCatalogService.create({ code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } }, ACTOR);
+      await DepartmentCatalogModel.updateOne({ _id: entry._id }, { $set: { status: 'inactive' } });
+      await sevenBranches('العمليات');
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.written).toBe(false);
+      expect(report.plan.problems.join(' ')).toContain('stopped in the company list');
+      expect(await DepartmentModel.countDocuments({ catalogId: { $ne: null } })).toBe(0);
+    });
+
+    it('lists an approval chain that starts applying, and waits for leave requests already awaiting it', async () => {
+      const entry = await departmentCatalogService.create({ code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } }, ACTOR);
+      const ids = await sevenBranches('العمليات');
+      await db().collection('approval_workflows').insertOne({
+        requestType: 'leave', departmentCatalogId: entry._id, branchId: null, isActive: true, isDeleted: false, steps: [],
+      });
+      const pending = await db().collection('hr_leave_requests').insertOne({
+        status: 'pendingApproval', departmentId: new Types.ObjectId(ids[0]), isDeleted: false,
+      });
+      try {
+        const refused = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+        expect(refused.written).toBe(false);
+        expect(refused.approvals).toEqual({ chains: [{ requestType: 'leave', department: 'العمليات' }], pendingRequests: 1 });
+        expect(refused.plan.problems.join(' ')).toContain('awaiting approval');
+
+        // Decided: the chain is still listed, and nothing stops the run.
+        await db().collection('hr_leave_requests').updateOne({ _id: pending.insertedId }, { $set: { status: 'approved' } });
+        const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+        expect(report.approvals.pendingRequests).toBe(0);
+        expect(report.approvals.chains).toHaveLength(1);
+        expect(report.written).toBe(true);
+      } finally {
+        await db().collection('approval_workflows').deleteMany({});
+        await db().collection('hr_leave_requests').deleteMany({});
+      }
+    });
+
+    it('warns where the plan groups names the screens show apart', async () => {
+      // The importer's fold joins ظ and ض; the screens' does not.
+      const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
+      await legacyDepartment({ code: code('DEP'), branchId: String(a._id), name: { ar: 'الحفظ', en: 'Keeping' } }, ACTOR);
+      await legacyDepartment({ code: code('DEP'), branchId: String(b._id), name: { ar: 'الحفض', en: 'Keeping' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(report.plan.departments).toHaveLength(1);
+      expect(report.warnings.join(' ')).toContain('joins names the screens show apart');
     });
   });
 

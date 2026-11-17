@@ -20,9 +20,11 @@ import { logger } from '../infrastructure/logging/logger';
 // Through the BARREL, never the model files. Entering the graph at `department.model` re-opens the
 // cycle documented at the top of `shared/org-unit.ts` and kills the entrypoint before its first
 // line of logic — the failure `org-duplication-report.cli.ts` shipped with once already.
+import { foldOrgUnitName } from '@ecms/contracts';
 import {
   DepartmentCatalogModel,
   DepartmentModel,
+  nextFreeCode,
   SectionCatalogModel,
   SectionModel,
 } from '../platform/organization';
@@ -88,6 +90,17 @@ export interface OrgCatalogReport {
    * move, how many are retired as a second line for the same job, and every pair that disagreed.
    */
   papers: { moves: number; retired: number; conflicts: PaperConflictReport[] };
+  /** Planned entries given a new code, because an entry of the company list already holds theirs. */
+  recoded: { name: string; from: string; to: string }[];
+  /**
+   * Approval chains set for a company department this run JOINS: they match nobody today (no row
+   * is linked) and start governing that department's requests in every branch once it is linked.
+   */
+  approvals: { chains: { requestType: string; department: string }[]; pendingRequests: number };
+  /** Rows whose name changes to their entry's spelling (`name` is set from the entry on link). */
+  renames: { code: string; from: { ar: string; en: string }; to: { ar: string; en: string } }[];
+  /** Things worth reading before `--write` that do not stop it (see `foldWarnings`, `nameClashWarnings`). */
+  warnings: string[];
   /** The company list as it stood before this run: entries a run can join (`joined`). */
   existing: { departmentEntries: number; sectionEntries: number };
   /** What was actually written. All zeroes on a dry run. */
@@ -205,6 +218,7 @@ interface LeanEntry {
   _id: Types.ObjectId;
   code: string;
   name: { ar: string; en: string };
+  status?: 'active' | 'inactive';
   departmentCatalogId?: Types.ObjectId | null;
 }
 
@@ -273,6 +287,15 @@ const joinExisting = (
       continue;
     }
     const existing = matches[0] as LeanEntry;
+    // A stopped entry is not joined: its rows would be linked to a department the list no longer
+    // offers, and a fresh entry beside it would clash with its name.
+    if (existing.status === 'inactive') {
+      plan.problems.push(
+        `department ${entry.foldedKey} matches ${existing.code}, which is stopped in the company ` +
+          'list. Restart it on «قائمة الشركة» (or rename it), then run again.',
+      );
+      continue;
+    }
     const members = new Set(entry.memberIds.map((member) => member.toLowerCase()));
     const linkedByBranch = new Map(
       departments
@@ -310,6 +333,15 @@ const joinExisting = (
     const parents = departmentsByFold.get(entry.parentKey ?? '') ?? [];
     if (parents.length !== 1) continue;
     const parent = parents[0] as LeanEntry;
+    // A section under a department the list has stopped would be created under it, active — the
+    // one thing the section catalog itself refuses.
+    if (parent.status === 'inactive') {
+      plan.problems.push(
+        `section ${entry.foldedKey} hangs under ${parent.code}, which is stopped in the company list. ` +
+          'Restart it on «قائمة الشركة», then run again.',
+      );
+      continue;
+    }
     const matches = groupByFold(sectionsByParent.get(id(parent._id)) ?? []).get(entry.foldedKey) ?? [];
     if (matches.length === 0) continue;
     if (matches.length > 1) {
@@ -321,6 +353,13 @@ const joinExisting = (
       continue;
     }
     const existing = matches[0] as LeanEntry;
+    if (existing.status === 'inactive') {
+      plan.problems.push(
+        `section ${entry.foldedKey} matches ${existing.code} under ${parent.code}, which is stopped ` +
+          'in the company list. Restart it on «قائمة الشركة» (or rename it), then run again.',
+      );
+      continue;
+    }
     const members = new Set(entry.memberIds.map((member) => member.toLowerCase()));
     const departmentOf = (row: LeanUnit): string => movedTo.get(id(row._id)) ?? id(row.departmentId);
     const linkedByDepartment = new Map(
@@ -342,6 +381,210 @@ const joinExisting = (
     joins.sections.set(sectionKey(entry), existing);
   }
   return joins;
+};
+
+/**
+ * A planned entry takes its oldest member's code; an entry of the company list may already hold it
+ * (one added by hand, or by the workforce importer). Created as it stands, `--write` would stop on
+ * the unique code halfway through — after some rows were linked. So such an entry is given the
+ * next free code instead, and the dry run says which.
+ */
+const recodeClashes = (
+  plan: CatalogPlan,
+  joins: Joins,
+  departmentEntries: readonly LeanEntry[],
+  sectionEntries: readonly LeanEntry[],
+): OrgCatalogReport['recoded'] => {
+  const recoded: OrgCatalogReport['recoded'] = [];
+  const pass = (
+    entries: readonly PlannedCatalogEntry[],
+    existing: readonly LeanEntry[],
+    joined: (entry: PlannedCatalogEntry) => boolean,
+    prefix: string,
+  ): void => {
+    const taken = existing.map((entry) => entry.code.toUpperCase());
+    for (const entry of entries) {
+      if (joined(entry)) continue;
+      if (taken.includes(entry.code.toUpperCase())) {
+        const to = nextFreeCode(prefix, taken);
+        recoded.push({ name: entry.name.ar, from: entry.code, to });
+        entry.code = to;
+      }
+      taken.push(entry.code.toUpperCase());
+    }
+  };
+  pass(plan.departments, departmentEntries, (entry) => joins.departments.has(entry.foldedKey), 'DC');
+  pass(plan.sections, sectionEntries, (entry) => joins.sections.has(sectionKey(entry)), 'SC');
+  return recoded;
+};
+
+/**
+ * Approval chains set for a company department (`approval_workflows.departmentCatalogId`) match a
+ * request through the requester's row's `catalogId`, so while no row is linked they govern nobody.
+ * Linking a row to an EXISTING entry switches them on in every branch at once — and a leave request
+ * already awaiting approval re-reads its recorded steps against that chain, which can leave it
+ * undecidable. Such requests must be decided first; the chains themselves are listed either way.
+ * An entry this run creates is a new id that no chain can name.
+ */
+const surveyApprovals = async (
+  plan: CatalogPlan,
+  joins: Joins,
+): Promise<OrgCatalogReport['approvals']> => {
+  const joined = [...joins.departments.entries()];
+  if (joined.length === 0) return { chains: [], pendingRequests: 0 };
+  const db = mongoose.connection.db;
+  if (db === undefined) return { chains: [], pendingRequests: 0 };
+  const has = async (name: string): Promise<boolean> =>
+    (await db.listCollections({ name }).toArray()).length > 0;
+
+  const entryIds = joined.map(([, entry]) => entry._id);
+  const chains = (await has('approval_workflows'))
+    ? await db
+        .collection('approval_workflows')
+        .find({ isDeleted: { $ne: true }, isActive: true, departmentCatalogId: { $in: entryIds } })
+        .toArray()
+    : [];
+  if (chains.length === 0) return { chains: [], pendingRequests: 0 };
+
+  const nameOf = new Map(joined.map(([, entry]) => [String(entry._id), entry.name.ar]));
+  const governed = new Set(chains.map((chain) => String(chain['departmentCatalogId'])));
+  const rows = plan.departments
+    .filter((entry) => governed.has(String(joins.departments.get(entry.foldedKey)?._id)))
+    .flatMap((entry) => entry.memberIds.map((id) => new Types.ObjectId(id)));
+  const pendingRequests = (await has('hr_leave_requests'))
+    ? await db
+        .collection('hr_leave_requests')
+        .countDocuments({ isDeleted: { $ne: true }, status: 'pendingApproval', departmentId: { $in: rows } })
+    : 0;
+  if (pendingRequests > 0) {
+    plan.problems.push(
+      `${String(pendingRequests)} leave request(s) awaiting approval sit in departments whose approval ` +
+        'chain starts applying when they are linked, and would be read against that chain mid-way. ' +
+        'Decide or cancel them (or stop the chain), then run again.',
+    );
+  }
+  return {
+    chains: chains.map((chain) => ({
+      requestType: String(chain['requestType']),
+      department: nameOf.get(String(chain['departmentCatalogId'])) ?? String(chain['departmentCatalogId']),
+    })),
+    pendingRequests,
+  };
+};
+
+/**
+ * Where the plan's grouping and the screens' differ. The plan groups by the workforce importer's
+ * fold (`orgKey`), which is what the catalog was built with; every screen and the crew roster group
+ * unlinked rows by `foldOrgUnitName`. The two agree on almost every name, but not on all (the
+ * importer also folds ظ into ض). Rows the screens show apart that become ONE company department,
+ * and rows the screens show together that become TWO, are listed for the operator to read.
+ */
+const foldWarnings = (
+  plan: CatalogPlan,
+  departments: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+  sections: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+): string[] => {
+  const warnings: string[] = [];
+  const screenFold = (name: { ar: string; en: string }): string =>
+    foldOrgUnitName(name.ar) || foldOrgUnitName(name.en);
+  const check = (
+    kind: string,
+    entries: readonly PlannedCatalogEntry[],
+    rows: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+    scope: (entry: PlannedCatalogEntry) => string,
+  ): void => {
+    const byId = new Map(rows.map((row) => [String(row._id).toLowerCase(), row]));
+    // The screens' group (within the same parent, for a section) → the entries its rows go to.
+    const destinations = new Map<string, { name: string; codes: Set<string> }>();
+    for (const entry of entries) {
+      const spellings = new Set<string>();
+      for (const id of entry.memberIds) {
+        const row = byId.get(id.toLowerCase());
+        if (row === undefined) continue;
+        const fold = screenFold(row.name);
+        spellings.add(fold);
+        const key = `${scope(entry)}|${fold}`;
+        const group = destinations.get(key) ?? { name: row.name.ar, codes: new Set<string>() };
+        group.codes.add(entry.code);
+        destinations.set(key, group);
+      }
+      if (spellings.size > 1) {
+        warnings.push(
+          `${kind} ${entry.code} «${entry.name.ar}» joins names the screens show apart: ` +
+            `${[...spellings].join(' / ')}.`,
+        );
+      }
+    }
+    for (const group of destinations.values()) {
+      if (group.codes.size > 1) {
+        warnings.push(
+          `«${group.name}» is one ${kind} on the screens today but becomes ${String(group.codes.size)} ` +
+            `company ${kind}s: ${[...group.codes].join(', ')}.`,
+        );
+      }
+    }
+  };
+  check('department', plan.departments, departments, () => '');
+  check('section', plan.sections, sections, (entry) => entry.parentKey ?? '');
+  return warnings;
+};
+
+/**
+ * Two company entries the catalog's own rule would call the same name — the same Arabic, or the same
+ * English, ignoring case — while folding apart. The migration writes entries directly, past that rule,
+ * so it says so instead: renaming either later on «قائمة الشركة» would then be refused.
+ */
+const nameClashWarnings = (
+  plan: CatalogPlan,
+  joins: Joins,
+  departmentEntries: readonly LeanEntry[],
+): string[] => {
+  const warnings: string[] = [];
+  const seen = new Map<string, string>();
+  const note = (code: string, name: { ar: string; en: string }): void => {
+    for (const key of [`ar:${name.ar.trim().toLowerCase()}`, `en:${name.en.trim().toLowerCase()}`]) {
+      if (key.endsWith(':')) continue;
+      const other = seen.get(key);
+      if (other !== undefined && other !== code) {
+        warnings.push(`departments ${other} and ${code} carry the same name (${key.slice(3)}) in the company list.`);
+      } else seen.set(key, code);
+    }
+  };
+  for (const entry of departmentEntries) note(entry.code, entry.name);
+  for (const entry of plan.departments) {
+    if (!joins.departments.has(entry.foldedKey)) note(entry.code, entry.name);
+  }
+  return warnings;
+};
+
+/** Rows whose name changes on link: every member takes its entry's spelling, Arabic and English. */
+const renamesOf = (
+  plan: CatalogPlan,
+  joins: Joins,
+  departments: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+  sections: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+): OrgCatalogReport['renames'] => {
+  const out: OrgCatalogReport['renames'] = [];
+  const pass = (
+    entries: readonly PlannedCatalogEntry[],
+    rows: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+    joined: (entry: PlannedCatalogEntry) => LeanEntry | undefined,
+  ): void => {
+    const byId = new Map(rows.map((row) => [String(row._id).toLowerCase(), row]));
+    for (const entry of entries) {
+      const to = joined(entry)?.name ?? entry.name;
+      for (const id of entry.memberIds) {
+        const row = byId.get(id.toLowerCase());
+        if (row === undefined) continue;
+        if (row.name.ar !== to.ar || row.name.en !== to.en) {
+          out.push({ code: row.code, from: { ar: row.name.ar, en: row.name.en }, to: { ar: to.ar, en: to.en } });
+        }
+      }
+    }
+  };
+  pass(plan.departments, departments, (entry) => joins.departments.get(entry.foldedKey));
+  pass(plan.sections, sections, (entry) => joins.sections.get(sectionKey(entry)));
+  return out;
 };
 
 /** «مستندات الوظائف» — named rather than imported: this migration may not reach into HR's code. */
@@ -485,6 +728,7 @@ const createEntries = async (
   by: Types.ObjectId,
 ): Promise<{ departments: Map<string, Types.ObjectId>; departmentsCreated: number; sections: number }> => {
   const departmentIdByKey = new Map<string, Types.ObjectId>();
+  const departmentDocs: { entry: PlannedCatalogEntry; id: Types.ObjectId; name: { ar: string; en: string } }[] = [];
   let departmentsCreated = 0;
   for (const entry of plan.departments) {
     const joined = joins.departments.get(entry.foldedKey);
@@ -500,12 +744,7 @@ const createEntries = async (
       }));
     if (joined === undefined) departmentsCreated += 1;
     departmentIdByKey.set(entry.foldedKey, doc._id);
-    // `name` is set too, deliberately: every member takes the entry's spelling, which is what
-    // makes the seven copies read as one department everywhere they appear from now on.
-    await DepartmentModel.updateMany(
-      { _id: { $in: entry.memberIds.map((id) => new Types.ObjectId(id)) } },
-      { $set: { catalogId: doc._id, name: doc.name, updatedBy: by } },
-    );
+    departmentDocs.push({ entry, id: doc._id, name: doc.name });
   }
 
   // A re-run links sections under departments an earlier run already catalogued, so the parent may
@@ -541,6 +780,18 @@ const createEntries = async (
     await SectionModel.updateMany(
       { _id: { $in: entry.memberIds.map((id) => new Types.ObjectId(id)) } },
       { $set: { catalogId: doc._id, name: doc.name, updatedBy: by } },
+    );
+  }
+
+  // The department rows LAST. A linked department is what the org chart's one-time fill waits for
+  // (P-ORG-3 §7): a process that started while this ran, after its departments were linked and
+  // before its sections were, would fill that department without its sections — once, for good.
+  // `name` is set too, deliberately: every member takes the entry's spelling, which is what makes
+  // the seven copies read as one department everywhere they appear from now on.
+  for (const { entry, id, name } of departmentDocs) {
+    await DepartmentModel.updateMany(
+      { _id: { $in: entry.memberIds.map((member) => new Types.ObjectId(member)) } },
+      { $set: { catalogId: id, name, updatedBy: by } },
     );
   }
   return { departments: departmentIdByKey, departmentsCreated, sections };
@@ -622,12 +873,16 @@ export const runOrgCatalogMigration = async (options: {
   const [departments, sections, departmentEntries, sectionEntries] = await Promise.all([
     DepartmentModel.find(live).lean().exec(),
     SectionModel.find(live).lean().exec(),
-    DepartmentCatalogModel.find(live, { code: 1, name: 1 }).lean<LeanEntry[]>().exec(),
-    SectionCatalogModel.find(live, { code: 1, name: 1, departmentCatalogId: 1 }).lean<LeanEntry[]>().exec(),
+    DepartmentCatalogModel.find(live, { code: 1, name: 1, status: 1 }).lean<LeanEntry[]>().exec(),
+    SectionCatalogModel.find(live, { code: 1, name: 1, status: 1, departmentCatalogId: 1 })
+      .lean<LeanEntry[]>()
+      .exec(),
   ]);
 
   const plan = planOrgCatalog(departments.map(toRow), sections.map(toRow), options.merges ?? []);
   const joins = joinExisting(plan, departments, sections, departmentEntries, sectionEntries);
+  const recoded = recodeClashes(plan, joins, departmentEntries, sectionEntries);
+  const approvals = await surveyApprovals(plan, joins);
   const loserIds = plan.merges.map((merge) => merge.loserId);
   const references = await surveyReferences(loserIds, plan.problems);
   await surveyMixedCarriers(loserIds, plan.problems);
@@ -654,6 +909,13 @@ export const runOrgCatalogMigration = async (options: {
     written: false,
     plan,
     references,
+    recoded,
+    approvals,
+    renames: renamesOf(plan, joins, departments, sections),
+    warnings: [
+      ...foldWarnings(plan, departments, sections),
+      ...nameClashWarnings(plan, joins, departmentEntries),
+    ],
     joined: {
       departments: joinedOf(plan.departments, (entry) => joins.departments.get(entry.foldedKey)),
       sections: joinedOf(plan.sections, (entry) => joins.sections.get(sectionKey(entry))),

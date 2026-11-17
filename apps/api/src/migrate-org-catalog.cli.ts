@@ -138,6 +138,9 @@ const main = async (): Promise<void> => {
       referencesToRepoint: report.references.map((r) => `${r.collection}.${r.path} x${r.rows}`),
       companyListBefore: report.existing,
       joinedExisting: report.joined,
+      recoded: report.recoded,
+      approvalChainsSwitchedOn: report.approvals.chains,
+      rowsRenamed: report.renames.length,
       jobPapers: { moves: report.papers.moves, retired: report.papers.retired, conflicts: report.papers.conflicts.length },
       reportPath,
     },
@@ -157,6 +160,13 @@ const main = async (): Promise<void> => {
       { section: entry.name.ar, under: entry.parentKey, code: entry.code, rows: entry.memberCodes },
       'org catalog: section entry',
     );
+  }
+  for (const rename of report.renames) {
+    logger.info(rename, 'org catalog: row takes its entry\'s spelling');
+  }
+  for (const warning of report.warnings) logger.warn({ warning }, 'org catalog: read before --write');
+  for (const chain of report.approvals.chains) {
+    logger.warn(chain, 'org catalog: this approval chain starts applying to the department once linked');
   }
   // A line that loses to another for the same job: what HR set on one branch copy is replaced by
   // what it set on another. Printed one by one so it is read before `--write`, not after.

@@ -14,9 +14,25 @@ import { type JobValueSource } from './hr-employee.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
-/** One enum, one value per day (§2) — no parallel set of booleans. */
+/**
+ * One enum, one value per day (§2) — no parallel set of booleans.
+ *
+ * `checkedIn` IS A PRESENCE, and that is the whole point of it. The branch devices say that 70–90%
+ * of employees scan once, when they arrive, and never scan out: on this payroll that is the normal
+ * shape of a working day, not a fault. Those days used to derive as `incomplete`, which carried a
+ * warning tone on screen and priced at nothing — so the common case looked like an error and the
+ * month came out short. `checkedIn` records exactly what is known: the person was here, from this
+ * time, and the hours are unknown. It counts as an attended day.
+ *
+ * `incomplete` STAYS, and nothing produces it any more. Rows written before this change carry it,
+ * and a value that exists in the database must keep existing in the vocabulary that reads it —
+ * dropping it would turn a year of stored days into values this enum cannot name. A recompute of
+ * an unfrozen day rewrites it to `checkedIn`; a frozen one keeps it, and is deliberately priced
+ * exactly as it was priced when the month closed (`attendance-quantities.ts`).
+ */
 export const ATTENDANCE_DAY_STATUSES = [
   'present',
+  'checkedIn',
   'late',
   'earlyLeave',
   'lateAndEarly',

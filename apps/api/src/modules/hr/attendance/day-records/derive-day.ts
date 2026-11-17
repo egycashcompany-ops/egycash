@@ -3,7 +3,21 @@
 //
 // The resolution order is the specification, first match wins:
 //   not employed → no row · leave → onLeave · holiday → holiday · weekend → weekend ·
-//   no shift → dayOff · no punches → absent · unpaired punch → incomplete · else compute.
+//   no shift → what the device saw (dayOff · checkedIn · present) ·
+//   no punches → absent · one punch → checkedIn · else compute.
+//
+// TWO THINGS THIS FILE USED TO GET WRONG ABOUT THIS COMPANY, both fixed here:
+//
+//   NO SHIFT USED TO MEAN NO ANSWER. A `dayOff` with no times was returned for anybody without a
+//   shift assignment — which is most of the workforce — so their scans were invisible and the
+//   module looked broken while the punches sat in the database. With no shift there is still
+//   nothing to be late against, but there is plenty to REPORT: when they arrived, when they left,
+//   how long they were here.
+//
+//   ONE PUNCH WAS TREATED AS A FAULT. 70–90% of employees scan on arrival and never scan out, so
+//   `incomplete` — a warning on screen, priced at nothing — was the label on the ordinary working
+//   day. It is `checkedIn` now: a presence with an arrival time and unknown hours. Lateness is
+//   still real and still computed, because being expected at a time is what makes it real.
 //
 // QUANTITIES ONLY. Late minutes are raw minutes past grace (D4); overtime minutes are derived
 // and worth nothing until approved (D5); nothing in this file knows what a minute costs.
@@ -114,6 +128,37 @@ export const shiftWindow = (workDate: Date, shift: EngineShift): { start: Date; 
 export const PUNCH_WINDOW_BEFORE_MS = 6 * 60 * 60 * 1000;
 export const PUNCH_WINDOW_AFTER_MS = 12 * 60 * 60 * 1000;
 
+/**
+ * The window a work date's punches are drawn from. Pure, and exported, so the one property that
+ * matters about it can be proven without a database (see the spec).
+ *
+ * WITH A SHIFT — the shift's own span widened by the margins above. Consecutive shifts' windows
+ * DO overlap, deliberately: the pairing that follows is positional over the attributed punches,
+ * and a long overtime tail belongs to the day that was worked rather than to the next one.
+ *
+ * WITH NO SHIFT — the Cairo calendar day, and not one millisecond either side. There is no shift
+ * to say which day a 05:00 punch belongs to, so the only defensible answer is the calendar: a
+ * margin here would put that punch inside two days' windows at once, making it yesterday's
+ * last-out — a twenty-hour working day — and today's first-in simultaneously. The upper bound is
+ * the last millisecond BEFORE the next Cairo midnight because the repository query is inclusive at
+ * both ends, so midnight itself would belong to two days and reintroduce the overlap at exactly
+ * the boundary. Night work gets a real shift or pattern, where `crossesMidnight` answers properly.
+ */
+export const punchWindowFor = (
+  workDate: Date,
+  shift: EngineShift | null,
+): { from: Date; to: Date } => {
+  if (shift === null) {
+    const nextMidnight = cairoInstant(new Date(workDate.getTime() + 86_400_000), '00:00');
+    return { from: cairoInstant(workDate, '00:00'), to: new Date(nextMidnight.getTime() - 1) };
+  }
+  const { start, end } = shiftWindow(workDate, shift);
+  return {
+    from: new Date(start.getTime() - PUNCH_WINDOW_BEFORE_MS),
+    to: new Date(end.getTime() + PUNCH_WINDOW_AFTER_MS),
+  };
+};
+
 const minutesBetween = (from: Date, to: Date): number =>
   Math.floor((to.getTime() - from.getTime()) / 60_000);
 
@@ -176,18 +221,51 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   if (input.holiday) return { ...empty, status: 'holiday', flags };
   if (input.weekend) return { ...empty, status: 'weekend', flags };
 
-  // 5 — nobody said they should be here.
-  if (input.shift === null) return { ...empty, status: 'dayOff', flags };
+  // 5 — no shift and no default pattern: nobody said WHEN they were expected, so nothing here can
+  // be late, early or overtime. What the devices saw is reported all the same, which is the whole
+  // difference between this and the `dayOff` this branch used to return for everyone.
+  //
+  // The window these punches were drawn from is the Cairo calendar day and nothing more (see
+  // `computeDay`): no tail into the next morning, because a 05:00 punch inside two days' windows
+  // would be the first day's last-out AND the second day's first-in, which reads as a twenty-hour
+  // shift and an arrival at dawn. Night work gets a real shift or a pattern, where
+  // `crossesMidnight` answers it properly.
+  if (input.shift === null) {
+    if (punches.length === 0) return { ...empty, status: 'dayOff', flags };
+    if (punches.length === 1) {
+      return { ...empty, status: 'checkedIn', firstInAt: (punches[0] as EnginePunch).at, flags };
+    }
+    const firstIn = (punches[0] as EnginePunch).at;
+    const lastOut = (punches[punches.length - 1] as EnginePunch).at;
+    return {
+      ...empty,
+      status: 'present',
+      firstInAt: firstIn,
+      lastOutAt: lastOut,
+      // No break is subtracted: there is no shift to say how long a break was meant to be, and
+      // inventing one would be a labour rule nobody has granted this system.
+      workedMinutes: Math.max(0, minutesBetween(firstIn, lastOut)),
+      flags,
+    };
+  }
 
   // 6 — expected, and no evidence of presence.
   if (punches.length === 0) return { ...empty, status: 'absent', flags };
 
-  // 7 — evidence of arrival but not of leaving: never guessed into a day (D6).
+  // 7 — checked in, never checked out: the ordinary working day here, not an anomaly. The hours
+  // are genuinely unknown, so `workedMinutes` stays 0 and nothing is early leave or overtime —
+  // guessing a departure into a day is still refused (D6). LATENESS IS DIFFERENT: they were
+  // expected at a time and the arrival is on record, so it is computed, with the same grace the
+  // full day below uses.
   if (punches.length === 1) {
+    const firstIn = (punches[0] as EnginePunch).at;
+    const { start } = shiftWindow(input.workDate, input.shift);
+    const graceInEnd = new Date(start.getTime() + input.shift.graceInMinutes * 60_000);
     return {
       ...empty,
-      status: 'incomplete',
-      firstInAt: punches[0]?.at ?? null,
+      status: 'checkedIn',
+      firstInAt: firstIn,
+      lateMinutes: firstIn > graceInEnd ? minutesBetween(start, firstIn) : 0,
       flags,
     };
   }

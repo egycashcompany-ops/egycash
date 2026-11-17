@@ -449,10 +449,14 @@ describe('the derivation engine over HTTP', () => {
     await recompute(emp.id, weekend);
     expect((await dayRow(emp.id, weekend)).status).toBe('weekend');
 
-    // One punch → incomplete (D6), never a guessed day.
+    // One punch → checkedIn: a presence with the hours unknown. A departure is still never
+    // guessed into the day (D6) — what changed is that the day is no longer called a fault.
     await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:05').toISOString() });
     await recompute(emp.id, workday);
-    expect((await dayRow(emp.id, workday)).status).toBe('incomplete');
+    const checkedIn = await dayRow(emp.id, workday);
+    expect(checkedIn.status).toBe('checkedIn');
+    expect(checkedIn.workedMinutes).toBe(0);
+    expect(checkedIn.lastOutAt).toBeNull();
 
     // The out punch arrives → present, worked minutes, zero late (inside the 30-minute grace).
     await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
@@ -698,10 +702,11 @@ describe('AT-5 — regularizations and overtime approval', () => {
     const { emp, auth } = await regManagedEmployee(managerAuth.userId);
     const workday = recentWorkday();
 
-    // An incomplete day: one punch, no checkout (the D6 headline case).
+    // A check-in with no checkout. Still the case a regularization exists to correct — the
+    // employee wants their real hours on the record — but no longer a day priced at nothing.
     await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:05').toISOString() });
     await recompute(emp.id, workday);
-    expect((await dayRow(emp.id, workday)).status).toBe('incomplete');
+    expect((await dayRow(emp.id, workday)).status).toBe('checkedIn');
 
     const filed = await file(auth.token, {
       workDate: dateOnlyIso(workday),
@@ -1386,11 +1391,35 @@ describe('AT-7 — absence and missing-checkout sweeps', () => {
     return { emp, userId, workDate };
   };
 
-  it('notifies a missing check-out once, however many times the sweep runs', async () => {
-    // A check-in with no check-out is `incomplete` (D6) — the status that blocks payroll until
-    // it is regularized, which is why the employee hears about it the next morning.
+  /**
+   * THE SWEEP SAYS NOTHING ABOUT A CHECK-IN-ONLY DAY, and that is the point of this test.
+   *
+   * It queries yesterday's `incomplete` rows, and nothing derives `incomplete` any more: a single
+   * punch is `checkedIn`. So the sweep is inert from the day after this change — deliberately.
+   * Most of this workforce never scans out, so pointing this notice at `checkedIn` would tell
+   * 70–90% of employees every single morning that they had forgotten to do something nobody here
+   * does, and a notice that arrives for almost everybody every day is not read by anybody.
+   *
+   * The test is written as the guarantee rather than as the absence of one, so that re-aiming the
+   * sweep at `checkedIn` fails here and has to be argued for.
+   */
+  it('says NOTHING about a check-in-only day — that is the normal day here, not a fault', async () => {
     const { emp, userId, workDate } = await employeeWithYesterday(['09:00']);
-    expect((await dayRow(emp.id, workDate)).status).toBe('incomplete');
+    expect((await dayRow(emp.id, workDate)).status).toBe('checkedIn');
+
+    const notified = await attendanceSweepService.sweepMissingCheckouts();
+    expect(notified).toBe(0);
+    expect(await noticesFor(userId, HrAttendanceTemplates.MissingCheckout)).toBe(0);
+  });
+
+  it('still notifies once for a legacy incomplete row, however many times it runs', async () => {
+    // A row derived before the ruling above. The sweep may still meet one on the first day after
+    // the deploy, so its idempotency is still a promise worth holding.
+    const { emp, userId, workDate } = await employeeWithYesterday(['09:00']);
+    await AttendanceDayModel.updateOne(
+      { employeeId: new Types.ObjectId(emp.id), workDate },
+      { $set: { status: 'incomplete' } },
+    ).exec();
 
     const first = await attendanceSweepService.sweepMissingCheckouts();
     expect(first).toBeGreaterThan(0);

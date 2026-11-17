@@ -266,17 +266,18 @@ describe('«نموذج رقم (1)» — the social-insurance registration', () =
       '<span class="at f1-occ1"><span class="cells c3">{{job.occupationCode1}}</span></span>' +
         '<span class="at f1-occ2"><span class="cells c3">{{job.occupationCode2}}</span></span>',
     );
-    // A newer revision: the boot rewrites the row it wrote with his own pages.
-    expect(FORM.revision).toBe(3);
+    // A newer revision: the boot rewrites the row it wrote before the fixed values.
+    expect(FORM.revision).toBe(4);
   });
 
-  it('writes each digit in its own box, left to right, and leaves the rest of a row empty', () => {
+  it('writes each digit in its own box, left to right, in Arabic figures, and leaves the rest of a row empty', () => {
     const boxes = (count: number, chars: string) =>
       `<span class="cells c${count}">${[...chars.padEnd(count, ' ')].map((c) => `<i>${c === ' ' ? '&nbsp;' : c}</i>`).join('')}</span>`;
-    expect(html).toContain(`<span class="at f1-nid">${boxes(14, '29501011234567')}</span>`);
-    expect(html).toContain(`<span class="at f1-day">${boxes(2, '05')}</span>`);
-    expect(html).toContain(`<span class="at f1-month">${boxes(2, '11')}</span>`);
-    expect(html).toContain(`<span class="at f1-year">${boxes(4, '2026')}</span>`);
+    // «كل الارقام بالعربي».
+    expect(html).toContain(`<span class="at f1-nid">${boxes(14, '٢٩٥٠١٠١١٢٣٤٥٦٧')}</span>`);
+    expect(html).toContain(`<span class="at f1-day">${boxes(2, '٠٥')}</span>`);
+    expect(html).toContain(`<span class="at f1-month">${boxes(2, '١١')}</span>`);
+    expect(html).toContain(`<span class="at f1-year">${boxes(4, '٢٠٢٦')}</span>`);
     expect(html).toContain(`<span class="at f1-ins">${boxes(9, '')}</span>`); // the insurance number the record does not hold
     expect(html).toContain('<span class="at f1-cat">✓</span>'); // «عاملين لدى الغير»
   });
@@ -301,17 +302,57 @@ describe('«نموذج رقم (1)» — the social-insurance registration', () =
     expect(html).toContain('@page scan { margin: 0;');
     expect(html).toContain(FORM_ONE_PAGE_1_PNG.slice(0, 120));
     expect(html).toContain(FORM_ONE_PAGE_2_PNG.slice(0, 120));
+    // What the paper itself holds: the tick, the basic wage, and the company's own number and address.
     const own = FORM.sections.body
       .replace(/\{\{[a-zA-Z0-9.]+\}\}/g, '')
       .replace(/<[^>]+>/g, '')
       .replace(/\s+/g, '');
-    expect(own).toBe('✓272000');
+    expect(own).toBe('✓٣٣٣٨٧٢٦272000٣٣٣٨٧٢٦٩٠داحمدعرابيالمهندسين-الجيزه');
     expect(FORM.sections.header).toBe('');
-    // As the boot writes it: every page and place survives the template's sanitizing.
+    // As the boot writes it: every page, place and row of boxes survives the template's sanitizing.
     expect(preparedSections(FORM).sections.body).toBe(FORM.sections.body);
-    expect(preparedSections(FORM).placeholders).toEqual(
-      expect.arrayContaining(['contract.currentDay', 'contract.currentMonth', 'contract.currentYear']),
-    );
+  });
+
+  /**
+   * «رقم المنشاه موجود فيها 8 مربعات هنثبت اول مربع و هنحط من تاني مربع الرقم دا 3338726 بالعربي من
+   * الشمال لليمين … و في الصفحه التاني في حاجه اسمها رقمها التاميني هنثبتة بردو … و العنوان نثبتو
+   * هيبقا 90 د احمد عرابي المهندسين-الجيزه كل الارقام بالعربي».
+   */
+  it('fixes the establishment\'s number — the first of its eight boxes empty — and, overleaf, its insurance number and address', () => {
+    const boxes = (chars: string) => `<span class="cells c7">${[...chars].map((c) => `<i>${c}</i>`).join('')}</span>`;
+    expect(html).toContain(`<span class="at f1-est">${boxes('٣٣٣٨٧٢٦')}</span>`);
+    expect(html).toContain('<span class="at f2-ins">٣٣٣٨٧٢٦</span>');
+    expect(html).toContain('<span class="at f2-addr">٩٠ د احمد عرابي المهندسين-الجيزه</span>');
+  });
+
+  // «و نشيل التاريخ اللي موجو في تحريرا في».
+  it('writes no date at «تحريراً في» — its strokes are left for the hand', () => {
+    const { placeholders } = preparedSections(FORM);
+    for (const key of ['contract.currentDay', 'contract.currentMonth', 'contract.currentYear']) expect(placeholders).not.toContain(key);
+    expect(FORM.sections.body).not.toMatch(/f1-t(day|month|year)/);
+  });
+
+  // «عاوزين نحط الاجر داخل اشتراك و الاجر الشامل علي حسب الوظيفهه … من الاجر اللي بيتكتب جوه المسميات الوظيفيه».
+  it('writes the job\'s fixed salary as the subscription wage and the comprehensive wage, the pounds at the end of their boxes', () => {
+    const job = renderFormHtml({ ...FORM, language: 'ar' }, [
+      value('job.fixedSalaryPounds', '9500'),
+      value('job.fixedSalaryPiasters', '00'),
+    ], LETTERHEAD);
+    const pounds = '<span class="cells c5 end"><i>&nbsp;</i><i>٩</i><i>٥</i><i>٠</i><i>٠</i></span>';
+    const piasters = '<span class="cells c2"><i>٠</i><i>٠</i></span>';
+    expect(job).toContain(`<span class="at f1-subwage">${pounds}</span><span class="at f1-subqirsh">${piasters}</span>`);
+    expect(job).toContain(`<span class="at f1-totwage">${pounds}</span><span class="at f1-totqirsh">${piasters}</span>`);
+  });
+
+  it('keeps an e-mail address in its own figures — every other number in Arabic', () => {
+    const mail = renderFormHtml({ ...FORM, language: 'ar' }, [
+      value('employee.email', 'm.ahmed95@example.com'),
+      value('employee.phone', '01000000000'),
+    ], LETTERHEAD);
+    expect(mail).toContain('<span class="at f1-email">m.ahmed95@example.com</span>');
+    expect(mail).toContain('<span class="at f1-phone">٠١٠٠٠٠٠٠٠٠٠</span>');
+    // A tag's classes keep theirs.
+    expect(mail).toContain('<span class="at f1-occ1"><span class="cells c3">');
   });
 
   it('keeps the scan as he sent it: 1700 × 2800 pixels a page, the whole Legal page at 200 dpi', () => {

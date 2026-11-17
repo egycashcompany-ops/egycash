@@ -343,21 +343,40 @@ const escapeHtml = (text: string): string =>
 /**
  * A row of digit boxes (`<span class="cells cN">…</span>`, «نموذج رقم (1)»): N boxes, one character
  * each from what the span holds once its placeholders are filled — the rest left empty for the hand.
+ * With `end` (`cells cN end`) the characters fill the LAST boxes, as an amount does: 9500 in five
+ * boxes of pounds is « 9500», not «9500 ».
  */
 const boxCells = (html: string, values: Map<string, string>): string =>
-  html.replace(/<span class="cells c(\d+)">([^<]*)<\/span>/g, (_m, n: string, inner: string) => {
+  html.replace(/<span class="cells c(\d+)( end)?">([^<]*)<\/span>/g, (_m, n: string, end: string | undefined, inner: string) => {
     const count = Number(n);
     const text = inner
       .replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_k, key: string) => values.get(key) ?? '')
       .replace(/&nbsp;/g, ' ')
       .replace(/\s+/g, '');
     const chars = [...text].slice(0, count);
+    const offset = end === undefined ? 0 : count - chars.length;
     const boxes = Array.from({ length: count }, (_x, i) => {
-      const char = chars[i];
+      const char = chars[i - offset];
       return `<i>${char === undefined ? '&nbsp;' : escapeHtml(char)}</i>`;
     });
-    return `<span class="cells c${count}">${boxes.join('')}</span>`;
+    return `<span class="cells c${count}${end ?? ''}">${boxes.join('')}</span>`;
   });
+
+const ARABIC_FIGURES = '٠١٢٣٤٥٦٧٨٩';
+
+/**
+ * The scanned «نموذج رقم (1)» filled in Arabic figures — «كل الارقام بالعربي»: the numbers, the
+ * dates, the wages, the codes, the telephone. Only the text changes, never a tag's classes (`c14`,
+ * `f1-occ1`) or an entity; an e-mail address (`f1-email`) keeps its own figures.
+ */
+export const arabicFigures = (html: string): string =>
+  html.replace(
+    /(<span class="at f1-email">[^<]*<\/span>)|>([^<]+)(?=<)/g,
+    (whole: string, email: string | undefined, text: string | undefined) =>
+      email !== undefined || text === undefined
+        ? whole
+        : `>${text.replace(/&#?\w+;|[0-9]/g, (m) => (m.length === 1 ? (ARABIC_FIGURES[Number(m)] ?? m) : m))}`,
+  );
 
 const formBody = (
   template: Pick<ContractTemplateDoc, 'sections' | 'signatures' | 'language'>,
@@ -366,10 +385,11 @@ const formBody = (
 ): string => {
   const map = new Map(values.map((v) => [v.key, v.value]));
   const fill = (html: string): string => {
-    return boxCells(html, map).replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_m, key: string) => {
+    const filled = boxCells(html, map).replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_m, key: string) => {
       const value = map.get(key) ?? '';
       return value.trim() === '' ? BLANK : value;
     });
+    return onScan(template) ? arabicFigures(filled) : filled;
   };
   const signatures = template.signatures
     .map(

@@ -26,6 +26,7 @@ import {
   type RoleManagement,
   type UpdateRole,
   type UpdateRoleAssignment,
+  type UserRoleRefDto,
   type PageDef,
   type PageDto,
   type PermissionCatalogDto,
@@ -1358,6 +1359,34 @@ class RbacService {
    * assignments would have to load the whole catalog to render a name — the pattern ADR-019 exists
    * to prevent.
    */
+  /**
+   * The roles each of these accounts holds right now, deduplicated — a role granted twice (two
+   * branches, say) is one role to the reader. A grant whose role has since been deleted names
+   * nothing. Accounts holding no role map to an empty list.
+   */
+  async rolesInForceFor(userIds: readonly string[]): Promise<Map<string, UserRoleRefDto[]>> {
+    const byUser = new Map<string, UserRoleRefDto[]>(userIds.map((id) => [id, []]));
+    const assignments = await roleAssignmentRepository.findInForceForUsers(
+      userIds.map((id) => new Types.ObjectId(id)),
+    );
+    const roles = await this.rolesForAssignments(assignments);
+    for (const assignment of assignments) {
+      const role = roles.get(String(assignment.roleId));
+      const held = byUser.get(String(assignment.userId));
+      if (role === undefined || held === undefined) continue;
+      if (held.some((r) => r.id === String(role._id))) continue;
+      held.push({ id: String(role._id), key: role.key, name: role.name });
+    }
+    return byUser;
+  }
+
+  /** Accounts holding any of these roles right now — the System Users list's role filter. */
+  async userIdsHoldingRoles(roleIds: readonly string[]): Promise<string[]> {
+    return roleAssignmentRepository.distinctUserIdsInForceForRoles(
+      roleIds.map((id) => new Types.ObjectId(id)),
+    );
+  }
+
   async rolesForAssignments(docs: RoleAssignmentDoc[]): Promise<Map<string, RoleDoc>> {
     if (docs.length === 0) return new Map();
     const roles = await roleRepository.findByIds([...new Set(docs.map((d) => d.roleId))]);

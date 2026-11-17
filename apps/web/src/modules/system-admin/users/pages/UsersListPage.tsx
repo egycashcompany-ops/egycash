@@ -12,7 +12,7 @@
 //     Offering a sortable "last login" header would produce a column that looks interactive and
 //     changes nothing.
 //
-// Filters are search, lifecycle status and branch — the three `ListUsersQuery` accepts. The branch
+// Filters are search, lifecycle status, branch, department, job title and role. The branch
 // filter waited until SA-2, when this module gained its own branch reference surface
 // (`/platform/branches/options`): the only one that existed before lived inside the organization
 // module, which this module may not import.
@@ -22,13 +22,25 @@
 // is a reading aid over the caller's own slice, not a second authorization path. The field itself
 // disappears for an administrator whose account cannot read the branch catalog, because a dropdown
 // with nothing in it is a worse answer than no dropdown.
+//
+// «زود أدوار كل واحد + الإدارة بتاعته + مسماه الوظيفي .. وطبعاً هتزودهم فى الفلتر». Each row names
+// its department and job title (resolved by the server, retired units included) and the roles it
+// holds right now. Roles — column and filter — are shown only to an administrator who may see
+// roles (`role.view`); the server sends `roles: null` to anyone else and refuses a role filter
+// from them. The department filter lists each COMPANY department once (`user-list-filters.ts`).
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { USER_STATUSES, type Locale, type UserDto } from '@ecms/contracts';
+import {
+  USER_STATUSES,
+  joinNameList,
+  splitNameList,
+  type Locale,
+  type UserListItemDto,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
-import { Can } from '../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../platform/rbac/Can';
 import {
   Badge,
   Button,
@@ -40,8 +52,16 @@ import {
   Select,
   type Column,
 } from '../../../../shared/ui';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
 import { formatDate, fullName } from '../../../../shared/lib/format';
 import { PlusIcon } from '../../../../shared/ui/icons';
+import {
+  useDepartmentReferenceOptions,
+  useJobTitleReferenceOptions,
+} from '../../../organization/shared/references';
+import { useRoleOptions } from '../../roles/api/role-queries';
+import { departmentChoices, departmentIdsFor } from '../lib/user-list-filters';
 import { AccountStatusBadge, UserStatusBadge } from '../components/UserStatusBadges';
 import { UserFormDialog } from '../components/UserFormDialog';
 import { useBranchOptions, useSystemUsers } from '../api/user-queries';
@@ -51,11 +71,17 @@ import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilter
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'branch',
+  'dept',
+  'job',
+  'role',
   'q',
   'status',
   'size',
   'sort',
 ] as const;
+
+/** Roles shown in a row before the rest fold into «+n» (all of them are in its tooltip). */
+const ROLES_SHOWN = 3;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -70,6 +96,10 @@ export const UsersListPage = (): JSX.Element => {
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
   const branchId = sp.get('branch') ?? '';
+  // `dept` holds COMPANY department keys (each standing for its branch copies), not ids.
+  const departmentKeys = splitNameList(sp.get('dept') ?? '');
+  const jobTitleIds = readList(sp, 'job');
+  const roleIds = readList(sp, 'role');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'createdAt:desc').split(':');
@@ -78,6 +108,29 @@ export const UsersListPage = (): JSX.Element => {
     dir: 'asc' | 'desc';
   };
   const paramsKey = sp.toString();
+
+  const can = useCan();
+  const seesRoles = can('role.view');
+  const { data: departmentOptions = [] } = useDepartmentReferenceOptions();
+  const { data: jobTitleOptions = [] } = useJobTitleReferenceOptions();
+  const { data: rolePage } = useRoleOptions(seesRoles);
+  const roleOptions = useMemo(
+    () =>
+      seesRoles
+        ? [...(rolePage?.items ?? [])].sort((a, b) =>
+            a.name[locale].localeCompare(b.name[locale], locale),
+          )
+        : [],
+    [rolePage, seesRoles, locale],
+  );
+  const departments = useMemo(
+    () => departmentChoices(departmentOptions, branchId === '' ? null : branchId),
+    [departmentOptions, branchId],
+  );
+  const departmentIds = useMemo(
+    () => departmentIdsFor(departmentOptions, branchId === '' ? null : branchId, departmentKeys),
+    [departmentOptions, branchId, departmentKeys.join(',')],
+  );
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
     const next = new URLSearchParams(sp);
@@ -103,8 +156,11 @@ export const UsersListPage = (): JSX.Element => {
       search,
       ...(status === '' ? {} : { status }),
       ...(branchId === '' ? {} : { branchId }),
+      ...(departmentIds.length === 0 ? {} : { departmentId: departmentIds }),
+      ...(jobTitleIds.length === 0 ? {} : { jobTitleId: jobTitleIds }),
+      ...(roleIds.length === 0 || !seesRoles ? {} : { roleId: roleIds }),
     }),
-    [paramsKey],
+    [paramsKey, departmentIds.join(','), seesRoles],
   );
 
   const { data, isLoading, isError, error, refetch } = useSystemUsers(params);
@@ -113,7 +169,7 @@ export const UsersListPage = (): JSX.Element => {
   // is to not be there. `?? []` covers both "failed" and "still loading" with the same absence.
   const { data: branches = [] } = useBranchOptions();
 
-  const columns: Column<UserDto>[] = [
+  const columns: Column<UserListItemDto>[] = [
     {
       key: 'name',
       header: t('systemAdmin.users.columns.name'),
@@ -144,6 +200,57 @@ export const UsersListPage = (): JSX.Element => {
         </div>
       ),
     },
+    {
+      key: 'department',
+      header: t('systemAdmin.users.columns.department'),
+      render: (u) => (
+        <span className="text-xs text-slate-600 dark:text-slate-300">
+          {u.department?.name[locale] ?? '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'jobTitle',
+      header: t('systemAdmin.users.columns.jobTitle'),
+      render: (u) => (
+        <span className="text-xs text-slate-600 dark:text-slate-300">
+          {u.jobTitle?.name[locale] ?? '—'}
+        </span>
+      ),
+    },
+    ...(seesRoles
+      ? [
+          {
+            key: 'roles',
+            header: t('systemAdmin.users.columns.roles'),
+            render: (u: UserListItemDto) => {
+              const roles = [...(u.roles ?? [])].sort((a, b) =>
+                a.name[locale].localeCompare(b.name[locale], locale),
+              );
+              if (roles.length === 0) return <span className="text-xs text-slate-400">—</span>;
+              const shown = roles.slice(0, ROLES_SHOWN);
+              const rest = roles.length - shown.length;
+              return (
+                <div
+                  className="flex max-w-xs flex-wrap gap-1"
+                  title={roles.map((r) => r.name[locale]).join('، ')}
+                >
+                  {shown.map((r) => (
+                    <Badge key={r.id} size="sm" tone="neutral">
+                      {r.name[locale]}
+                    </Badge>
+                  ))}
+                  {rest > 0 && (
+                    <Badge size="sm" tone="neutral">
+                      {t('systemAdmin.users.rolesMore', { count: rest })}
+                    </Badge>
+                  )}
+                </div>
+              );
+            },
+          } satisfies Column<UserListItemDto>,
+        ]
+      : []),
     {
       key: 'status',
       header: t('systemAdmin.users.columns.status'),
@@ -231,6 +338,30 @@ export const UsersListPage = (): JSX.Element => {
                 </option>
               ))}
             </Select>
+          )}
+          {departments.length > 0 && (
+            <MultiSelect
+              label={t('systemAdmin.users.columns.department')}
+              value={departmentKeys}
+              onChange={(next) => patch({ dept: next.length === 0 ? null : joinNameList(next) })}
+              options={departments.map((d) => ({ value: d.key, label: d.name[locale] }))}
+            />
+          )}
+          {jobTitleOptions.length > 0 && (
+            <MultiSelect
+              label={t('systemAdmin.users.columns.jobTitle')}
+              value={jobTitleIds}
+              onChange={(next) => patch({ job: writeList(next) })}
+              options={jobTitleOptions.map((j) => ({ value: j.id, label: j.name[locale] }))}
+            />
+          )}
+          {roleOptions.length > 0 && (
+            <MultiSelect
+              label={t('systemAdmin.users.columns.roles')}
+              value={roleIds}
+              onChange={(next) => patch({ role: writeList(next) })}
+              options={roleOptions.map((r) => ({ value: r.id, label: r.name[locale] }))}
+            />
           )}
         </FilterBar>
 

@@ -11,6 +11,31 @@ its entry here in the same PR.
 
 ### Added
 
+- **System users: department, job title and roles on every row, and as filters.** «فى صفحة
+  /system/users مستخدمو النظام عايزك تزود أدوار كل واحد + الإدارة بتاعته + مسماه الوظيفي .. وطبعاً
+  هتزودهم فى الفلتر».
+  - Each row names the account's department and job title. The server resolves the names,
+    retired units included, so an account in a closed department still shows that department.
+  - Each row names the roles held now: a grant that is revoked, not yet started or already ended
+    is not one of them. Three show, and the rest fold into «+n» with all of them on hover.
+  - Three new filters, each taking several picks. The department filter lists each company
+    department once and means every branch copy of it, or only the copy in the branch chosen.
+  - Roles, column and filter, are only for an administrator who holds `role.view`. For anyone
+    else the server sends `roles: null` and refuses a role filter with 403 rather than ignoring it.
+  - `GET /platform/users` takes `roleId`, `departmentId` and `jobTitleId` lists, and each row is
+    a `UserListItemDto`. The search box now also finds the sign-in name, which its placeholder
+    already promised; for an employee that is the employee code.
+
+- **Account setup link: «نسخ الرسالة» beside «نسخ الرابط».** «عند نسخ رابط إعداد الحساب هناك زر نسخ
+  الرابط .. عايز زر تانى جنبه يكون نسخ الرسالة». The button copies the owner's message, ready to paste
+  into WhatsApp, filled in for the person:
+  - their Arabic name and employee code (the account's sign-in name);
+  - the link itself;
+  - where to sign in afterwards: the link's own host, e.g. `ecms.egycash.com.eg`.
+
+  An account with no sign-in name is named by its email instead. The message is always in
+  Arabic, whatever language the screen is in.
+
 - **HR: «جاهزون للتعيين» gets the settings bar, with «مستندات الوظائف» and «المعينون».** «عاوز اعمل
   toggle switch في جاهزون للتعيين … بين مستندات الوظائف و حاجه اسمها المعينون … زي اللي موجود فيي
   الاعدادت فال hr»; «ملهاش دعوه باللي فالجدول». The bar sits above the ready-to-hire table, which is

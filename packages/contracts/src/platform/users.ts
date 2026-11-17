@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  listQuery,
   objectId,
   LocaleSchema,
   LocalizedStringSchema,
@@ -146,8 +147,47 @@ export const ListUsersQuerySchema = PaginationQuerySchema.extend({
   search: z.string().max(200).optional(),
   /** Narrow to one population — the pickers ask for `employee` so a customer is never offered. */
   kind: UserKindSchema.optional(),
+  /**
+   * Accounts holding ANY of these roles right now — a grant that is not revoked and whose validity
+   * window is open. Answered only for a caller who may see roles (`role.view`); anyone else is
+   * refused, because a filter that is quietly ignored returns rows that look filtered and are not.
+   */
+  roleId: listQuery(objectId(), 100),
+  /**
+   * The account's placement, ORed within each list. A department is one record PER BRANCH, so a
+   * company department chosen on the screen arrives as every branch copy of it — hence the 500.
+   */
+  departmentId: listQuery(objectId(), 500),
+  jobTitleId: listQuery(objectId(), 200),
 }).strict();
 export type ListUsersQuery = z.infer<typeof ListUsersQuerySchema>;
+
+/** One role an account holds, as the System Users list names it. */
+export interface UserRoleRefDto {
+  id: string;
+  /** The seeded role's stable key (`super-admin`, `employee-self-service`); null for a custom one. */
+  key: string | null;
+  name: { ar: string; en: string };
+}
+
+/** A unit the account is placed in, by name — the department or the job title. */
+export interface UserPlacementRefDto {
+  id: string;
+  name: { ar: string; en: string };
+}
+
+/**
+ * One row of `GET /platform/users`: the account, and what the list shows beside it.
+ *
+ * The names are resolved on the server, the retired units included, so an account filed under a
+ * department that has since closed still reads as that department rather than as a dash.
+ */
+export interface UserListItemDto extends UserDto {
+  /** Roles held right now, deduplicated; `null` when the caller may not see roles (`role.view`). */
+  roles: UserRoleRefDto[] | null;
+  department: UserPlacementRefDto | null;
+  jobTitle: UserPlacementRefDto | null;
+}
 
 export interface UserDto {
   id: string;

@@ -138,6 +138,44 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
       .exec();
   }
 
+  /**
+   * Every grant IN FORCE now for any of `userIds` — not revoked, its validity window open. What a
+   * row of the System Users list names as the account's roles: a grant that has not started yet,
+   * or has ended, gives no authority today and is not one of them.
+   */
+  async findInForceForUsers(userIds: readonly Types.ObjectId[]): Promise<RoleAssignmentDoc[]> {
+    if (userIds.length === 0) return [];
+    const now = new Date();
+    return this.model
+      .find({
+        userId: { $in: userIds },
+        isDeleted: false,
+        $and: [
+          { $or: [{ validFrom: null }, { validFrom: { $lte: now } }] },
+          { $or: [{ validTo: null }, { validTo: { $gt: now } }] },
+        ],
+      } as FilterQuery<RoleAssignmentDoc>)
+      .lean<RoleAssignmentDoc[]>()
+      .exec();
+  }
+
+  /** Users holding any of `roleIds` in force now, at any scope — the System Users role filter. */
+  async distinctUserIdsInForceForRoles(roleIds: readonly Types.ObjectId[]): Promise<string[]> {
+    if (roleIds.length === 0) return [];
+    const now = new Date();
+    const ids = await this.model
+      .distinct('userId', {
+        roleId: { $in: roleIds },
+        isDeleted: false,
+        $and: [
+          { $or: [{ validFrom: null }, { validFrom: { $lte: now } }] },
+          { $or: [{ validTo: null }, { validTo: { $gt: now } }] },
+        ],
+      } as FilterQuery<RoleAssignmentDoc>)
+      .exec();
+    return ids.map(String);
+  }
+
   async findExpiringWithin(days: number): Promise<RoleAssignmentDoc[]> {
     const now = new Date();
     return this.model

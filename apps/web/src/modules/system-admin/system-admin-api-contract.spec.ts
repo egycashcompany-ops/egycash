@@ -121,12 +121,21 @@ describe('the client stays inside what the API accepts', () => {
   // `ListUsersQuerySchema` is `.strict()`, so a filter the client invents is a 400 at the boundary
   // rather than an ignored parameter. This scans what the page actually sends.
   it('sends only query keys the users list schema accepts', () => {
-    const block = /useMemo<SystemUserListParams>\(([\s\S]*?)\n {4}\[paramsKey\],/.exec(LIST_PAGE)?.[1] ?? '';
-    // Three ways a key reaches the object: `k,` · `k: v` · `...(cond ? {} : { k })`.
-    const sent = [/^ {6}([a-zA-Z]+),$/gm, /^ {6}([a-zA-Z]+):/gm, /\{ ([a-zA-Z]+) \}\)/g].flatMap(
+    const block =
+      /useMemo<SystemUserListParams>\(([\s\S]*?)\n {4}\[paramsKey[^\]\n]*\],/.exec(LIST_PAGE)?.[1] ?? '';
+    // Four ways a key reaches the object: `k,` · `k: v` · `...(cond ? {} : { k })` ·
+    // `...(cond ? {} : { k: v })`.
+    const sent = [
+      /^ {6}([a-zA-Z]+),$/gm,
+      /^ {6}([a-zA-Z]+):/gm,
+      /\{ ([a-zA-Z]+) \}\)/g,
+      /\{ ([a-zA-Z]+): [a-zA-Z]+ \}\)/g,
+    ].flatMap(
       (pattern) => [...block.matchAll(pattern)].flatMap((m) => (m[1] === undefined ? [] : [m[1]])),
     );
     expect(sent, 'the scan itself must not match nothing').toContain('branchId');
+    // The placement and role filters reach the request too, and the schema must name them.
+    for (const key of ['departmentId', 'jobTitleId', 'roleId']) expect(sent).toContain(key);
     const schema = /ListUsersQuerySchema = PaginationQuerySchema\.extend\(\{([\s\S]*?)\}\)/.exec(
       USERS_CONTRACT,
     )?.[1];

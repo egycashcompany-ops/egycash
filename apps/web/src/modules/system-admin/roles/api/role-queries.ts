@@ -23,6 +23,19 @@ const assignmentsKey = featureKey(MODULE, ASSIGNMENTS);
 export const useRoles = (params: RoleListParams) =>
   useQuery({ queryKey: listKey(MODULE, ROLES, params), queryFn: () => api.listRoles(params) });
 
+/**
+ * Every role, for a filter's choices — one page of the most a page may hold. Off for a reader who
+ * cannot see roles (`role.view`), whose request would only be refused.
+ */
+export const useRoleOptions = (enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, ROLES, { pageSize: 100 }),
+    queryFn: () => api.listRoles({ pageSize: 100 }),
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
 export const useRole = (id: string) =>
   useQuery({ queryKey: detailKey(MODULE, ROLES, id), queryFn: () => api.getRole(id) });
 

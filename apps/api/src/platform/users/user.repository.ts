@@ -285,6 +285,9 @@ class UserRepository extends BaseRepository<UserDoc> {
     return {
       $or: [
         { email: pattern },
+        // The placeholder says «name, username or email»; for an employee the username is the
+        // employee code, which is how people are most often looked up.
+        { username: pattern },
         { 'profile.firstName.ar': pattern },
         { 'profile.firstName.en': pattern },
         { 'profile.lastName.ar': pattern },

@@ -11,9 +11,11 @@
 // small chips — and only its COLOURS are his.
 //
 // Round 27d — the owner on Round 27's screens: «اعملى نسخة واحدة بس من الشاشة بس تكون بالوان اهدى».
-// The same hues in the same roles, CALMER: no coloured glow or halo anywhere (a neutral soft shadow
-// at most); every edge a breath of its hue (by day x-200/300, by night x-400 at a third or so); the
-// grounds the faintest tint; the words neutral slate — the hue only in an icon, a figure or a dot:
+// The same hues in the same roles, CALMER: no coloured glow or halo on the board (a neutral soft
+// shadow at most — the app's shared brand buttons, «حفظ», «تسليم» and the confirmation's, keep the
+// app's own shadow); every edge a breath of its hue (by day x-200/300, by night x-400 at a third or
+// so); the grounds the faintest tint; the words neutral slate — the hue only in an icon, a figure or
+// a dot:
 //
 //   · THE VAN — one look for every van (`VAN_LOOK`): its code on a soft blue tint, its number slate
 //     (near-white by night), a faint blue edge, its truck blue; the card white by day, the deep navy by
@@ -24,9 +26,10 @@
 //     3:1 against the column (they are the card's state at a glance); its stripe the same hue,
 //     lighter. Each state also says itself in words — colour is never its only sign.
 //   · THE COUNTS (`COUNT_LOOK`): a soft tile — the faintest tint of its hue, a faint edge of it — its
-//     icon and figure in a muted tone of the hue, its word neutral slate: محصنات cyan, كراتين amber,
+//     icon and figure in a deep tone of the hue, its word neutral slate: محصنات cyan, كراتين amber,
 //     حقائب blue, صناديق purple. A 0 is neutral grey throughout — ground, edge, figure, word — only
-//     its icon keeps a faint hue (`zeroMark`), so a 0 sits back and a count stands out.
+//     its icon keeps a faint hue (`zeroMark`, plainly fainter than its count's), so a 0 sits back
+//     and a count stands out.
 //   · THE CHIPS (`CHIP_LOOK`, `CHIP_DOT`, `CHIP_WORDS`): on a van a neutral row with a small cyan dot
 //     (a محصنة, the محصنات' colour); a proposal a lighter dashed amber; one on NO van («بلا سيارة») a
 //     faint rose ground, a light dashed rose edge, a small rose dot, its words neutral — and its
@@ -112,10 +115,14 @@ export const VAN_STATE_STRIPE = {
  *   · `chip` — a count of 1 or more: the faintest tint of its hue (by day x-50, by night x-400 at
  *     /[0.08]), a faint edge of it (the tile draws it as an inset ring — by day x-300, by night
  *     x-400/35), its word neutral slate; no glow;
- *   · `figure` — its figure on that ground, a muted tone of the hue; `mark` — its icon, likewise;
+ *   · `figure` — its figure on that ground, a deep tone of the hue (by day x-900 for cyan and amber,
+ *     x-800 for blue and purple — the four 8:1 to 9:1 alike, each 2.5:1 or more over its 0's grey);
+ *   · `mark` — its icon: by day cyan and amber x-700, the bags' a deep blue-900 and the boxes'
+ *     purple-600 (the two 20 or more apart, and each over its 0's icon by 1:1 or more);
  *   · `zero` — a count of 0 (or «…» / «—»): neutral grey throughout — ground, edge and word slate;
  *   · `zeroFigure` — its figure then: slate, still 4.5:1 (it is text — R26b verify);
- *   · `zeroMark` — its icon then: the only part that keeps the hue, fainter than a count's, 3:1.
+ *   · `zeroMark` — its icon then: the only part that keeps the hue, plainly fainter than a count's
+ *     (1:1 or more under it — R27d critic), still 3:1.
  */
 export interface CountLook {
   icon: readonly string[];
@@ -146,7 +153,7 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
     hue: 'cyan',
     square: 'bg-cyan-500/10 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300',
     chip: 'bg-cyan-50 text-slate-600 ring-cyan-300 dark:bg-cyan-400/[0.08] dark:text-slate-300 dark:ring-cyan-400/35',
-    figure: 'text-cyan-800 dark:text-cyan-200',
+    figure: 'text-cyan-900 dark:text-cyan-200',
     mark: 'text-cyan-700 dark:text-cyan-300',
     zero: ZERO_TILE,
     zeroFigure: ZERO_FIGURE,
@@ -157,7 +164,7 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
     hue: 'amber',
     square: 'bg-amber-500/10 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300',
     chip: 'bg-amber-50 text-slate-600 ring-amber-300 dark:bg-amber-400/[0.08] dark:text-slate-300 dark:ring-amber-400/35',
-    figure: 'text-amber-800 dark:text-amber-200',
+    figure: 'text-amber-900 dark:text-amber-200',
     mark: 'text-amber-700 dark:text-amber-400',
     zero: ZERO_TILE,
     zeroFigure: ZERO_FIGURE,
@@ -169,7 +176,7 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
     square: 'bg-blue-500/10 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
     chip: 'bg-blue-50 text-slate-600 ring-blue-300 dark:bg-blue-400/[0.08] dark:text-slate-300 dark:ring-blue-400/35',
     figure: 'text-blue-800 dark:text-blue-200',
-    mark: 'text-blue-800 dark:text-blue-400',
+    mark: 'text-blue-900 dark:text-blue-400',
     zero: ZERO_TILE,
     zeroFigure: ZERO_FIGURE,
     zeroMark: 'text-blue-500 dark:text-blue-500',
@@ -180,7 +187,7 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
     square: 'bg-purple-500/10 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300',
     chip: 'bg-purple-50 text-slate-600 ring-purple-300 dark:bg-purple-400/[0.08] dark:text-slate-300 dark:ring-purple-400/35',
     figure: 'text-purple-800 dark:text-purple-200',
-    mark: 'text-purple-500 dark:text-purple-400',
+    mark: 'text-purple-600 dark:text-purple-400',
     zero: ZERO_TILE,
     zeroFigure: ZERO_FIGURE,
     zeroMark: 'text-purple-500 dark:text-purple-500',
@@ -309,5 +316,8 @@ export const COLUMN_WARN = {
   glyph: 'text-rose-600 dark:text-rose-300',
 } as const;
 
-/** The page's «السيارات» figure — neutral slate, so the bar's only blue is the bags' figure. */
-export const VANS_FIGURE = 'bg-slate-500/15 text-slate-700 dark:text-slate-300';
+/**
+ * The page's «السيارات» figure — neutral slate, so the bar's only blue is the bags' figure; its
+ * square the bar's one tint, /10 (R27d critic — it alone had stayed /15, the darkest on the bar).
+ */
+export const VANS_FIGURE = 'bg-slate-500/10 text-slate-700 dark:text-slate-300';

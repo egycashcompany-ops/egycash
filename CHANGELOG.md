@@ -1612,13 +1612,14 @@ its entry here in the same PR.
     blue, صناديق purple, «بلا قائد» rose, a kept row dashed amber, a waiting chip dashed rose with its
     rose dot, the captain's emerald frame, the van's blue code), only calmer — colours only, in
     `distribution-look.ts`; no shape, mark, drag or data change (web only; no new words):
-    - No glow or halo anywhere: the code pill's blue glow, the محصنات' cyan glow, «بلا قائد»'s rose
+    - No glow or halo on the board: the code pill's blue glow, the محصنات' cyan glow, «بلا قائد»'s rose
       glow and 3px halo, the kept row's amber glow and halo, the waiting column's rose glow — gone; a
-      card keeps only its neutral soft shadow.
+      card keeps only its neutral soft shadow. The app's shared brand buttons on these screens
+      («حفظ», «تسليم» and the confirmation's) keep the app's own brand shadow, as everywhere else.
     - The counts: the faintest tint of their hue (x-50 by day, x-400/[0.08] by night) under a faint
-      edge of it (x-300 by day, x-400/35 by night); the icon and the figure in muted tones of the hue,
-      the word neutral slate. A 0 is neutral grey throughout — only its icon keeps a faint hue — so a
-      count stands out and a 0 sits back.
+      edge of it (x-300 by day, x-400/35 by night); the icon and the figure in deep tones of the hue,
+      the word neutral slate. A 0 is neutral grey throughout — only its icon keeps a faint hue,
+      plainly fainter than its count's — so a count stands out and a 0 sits back.
     - The head: the code on a soft blue tint, its number slate (near-white by night), a faint blue
       edge; the time and the direction one neutral pill, the direction's arrow blue. The stripes
       lighter.
@@ -1628,20 +1629,25 @@ its entry here in the same PR.
     - The chips: on a van a neutral row with its small cyan dot; on no van a faint rose ground, a light
       dashed rose edge, a rose dot, neutral words; a proposal a lighter dashed amber. The «بلا سيارة»
       head: a rose icon, a neutral count (its warning glyph rose where the icon gives way). The page's
-      figures: neutral pills, only their small squares tinted.
+      figures: neutral pills, only their small squares tinted, all at /10.
     - Measured (`distribution-colours.spec.ts`): every word still 4.5:1 or better and every icon and
-      dot 3:1, both themes; the two states' edges 3:1 on their column; no coloured glow on either
-      screen (a new check). Relaxed on purpose, each documented where it is measured: the edges that
-      only draw a shape (a tile's, a 0's, the code pill's, the head pills', a waiting chip's) are no
-      longer held to 3:1 — they are held to «quiet» (2.75:1 or less) and «still drawn» (a CIEDE2000
-      floor), WCAG 1.4.11 asking nothing of a container's outline; the tiles' edges 10 apart by night
-      (was 15) and their grounds 5 by day / 2.5 by night (was 10 / 7) — the icons still 20 apart; the
-      محصنات' ground 4 from the captain's frame by day (was 5); a 0's figure 2 under its count's (was
-      2.5) and by night its edge 0.5 under (was 1); the three packages' 0s told apart by their icons
-      (20 or more apart) now that their figures are grey. Literal values retuned in
-      `distribution-round26.spec.tsx` and `secured-distribution.spec.tsx`: a waiting chip's edge
-      rose-300 (was rose-500), a proposal's amber-400 on amber-50/70 (was amber-500 on amber-50), the
-      page's figure squares /10 (was /15).
+      dot 3:1, both themes; the two states' edges 3:1 on their column; no coloured glow in the
+      board's own colours — the look's tokens and every class the two screens write themselves (a
+      new check; the shared brand buttons are outside it); a 0's icon 1:1 or more under its count's
+      (a new check). Thresholds LOWERED on purpose — not colours retuned — each documented where it
+      is measured, each one a fainter tint or edge cannot keep: the edges that only draw a shape (a
+      tile's, a 0's, the code pill's, the head pills', a waiting chip's) are no longer held to 3:1 —
+      they are held to «quiet» (2.75:1 or less) and «still drawn» (a CIEDE2000 floor), WCAG 1.4.11
+      asking nothing of a container's outline; the tiles' edges 10 apart by night (was 15) and their
+      grounds 5 by day / 2.5 by night (was 10 / 7) — the icons still 20 apart; the محصنات' ground 4
+      from the captain's frame by day (was 5); by night a 0's edge 0.5 under its count's (was 1);
+      the three packages' 0s told apart by their icons (20 or more apart) now that their figures are
+      grey. A 0's figure stays 2.5:1 under its count's, as before: by day the cyan and amber figures
+      are x-900 (the four figures 8:1 to 9:1 alike), the bags' icon blue-900 and the boxes'
+      purple-600 (the boxes' 0 had worn its count's own purple-500, as loud as the count). Literal
+      values retuned in `distribution-round26.spec.tsx` and `secured-distribution.spec.tsx`: a
+      waiting chip's edge rose-300 (was rose-500), a proposal's amber-400 on amber-50/70 (was
+      amber-500 on amber-50), the page's figure squares /10 (was /15).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

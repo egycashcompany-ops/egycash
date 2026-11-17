@@ -25,9 +25,10 @@
 //   · THE CAPTAIN'S FRAME (unchanged), THE LOAD, THE KEPT NOTICE — their words at 4.5:1.
 //
 // Round 27d — the owner on Round 27's screens: «اعملى نسخة واحدة بس من الشاشة بس تكون بالوان اهدى».
-// The same hues in the same roles, calmer — and measured so: NO coloured glow anywhere; every word
-// still 4.5:1, every icon and dot 3:1, and the two STATES' edges («بلا قائد», a kept row) still 3:1 on
-// their column — they are the card's state at a glance. What changed, each on purpose:
+// The same hues in the same roles, calmer — and measured so: no coloured glow on the board (the
+// look's tokens and the classes the two screens write — not the app's shared brand buttons); every
+// word still 4.5:1, every icon and dot 3:1, and the two STATES' edges («بلا قائد», a kept row) still
+// 3:1 on their column — they are the card's state at a glance. What changed, each on purpose:
 //   · the edges that only DRAW a shape — a count's tile, a 0's, the code pill, the head's pills, a
 //     chip on no van — are a breath of their hue now (by day x-200/300, by night x-400 at about a
 //     third): WCAG 1.4.11 asks nothing of a container's outline, and none of them is the only sign of
@@ -36,7 +37,14 @@
 //   · a count's word is neutral slate, its 0 neutral grey throughout — only the 0's icon keeps a
 //     faint hue (`zeroMark`), and the three packages' 0 icons stand 20 or more apart (R26's «one grey
 //     for every 0» is answered by the icon now, not the figure);
-//   · the distances calmer tints legitimately shrink — each relaxed where it is measured, with why.
+//   · the distances calmer tints legitimately shrink — each relaxed where it is measured, with why:
+//     these are THRESHOLDS lowered, not colours retuned (R27d critic), and each is one the owner's
+//     «اهدى» cannot keep — a fainter tint or edge is, by measure, closer to its neighbour;
+//   · R27d critic — what was relaxed and need not be is restored: a 0's figure 2.5:1 under its
+//     count's again (the cyan and amber figures x-900 by day), and a 0's ICON is now measured too —
+//     1:1 or more under its count's (the bags' icon blue-900 and the boxes' purple-600 by day).
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import colors from 'tailwindcss/colors';
 import { COUNT_KINDS, PACKAGE_KINDS } from '../lib/van-card';
@@ -52,6 +60,7 @@ import {
   KEPT_NOTICE,
   LOAD_LOOK,
   VAN_CARD,
+  VANS_FIGURE,
   VAN_LOOK,
   VAN_STATE_STRIPE,
 } from './distribution-look';
@@ -629,10 +638,11 @@ describe('the counts — four hues on soft tiles (Round 27; calmer, Round 27d)',
     // The critic, by night: «0 كراتين» read as loud as «2 كرتونتان» — the 0's figure only 1.2:1
     // under a count's, its words LOUDER than a count's, its edge as strong. Each part measured, on
     // every ground the count stands on (and a 0 never loses its edge).
-    // Round 27d relaxes two margins, on purpose: the figure's 2.5:1 to 2 — by day a count's figure is
-    // a muted x-800 now (was x-950) and a 0's slate-500 cannot go lower and stay 4.5:1 (amber 2.3,
-    // cyan 2.4 apart), while the 0 has lost its hue altogether; and by night the edges' 1:1 to 0.5 —
-    // a count's edge is itself only x-400/35 now (was /80), the 0's a neutral /25 under it.
+    // Round 27d relaxes one margin, on purpose: by night the edges' 1:1 to 0.5 — a count's edge is
+    // itself only x-400/35 now (was /80), the 0's a neutral /25 under it, and no edge reads under
+    // 1:1. R27d critic — the figure's 2.5:1, relaxed to 2 in the same round, is RESTORED: by day the
+    // cyan and amber figures are x-900 (were x-800 — 2.4 and 2.3 over a 0's slate-500, which cannot
+    // go lower and stay 4.5:1); the four figures now stand 8:1 to 9:1 alike.
     for (const kind of COUNT_KINDS) {
       const { chip, zero, figure, zeroFigure } = COUNT_LOOK[kind];
       for (const dark of [false, true]) {
@@ -643,7 +653,7 @@ describe('the counts — four hues on soft tiles (Round 27; calmer, Round 27d)',
           expect(
             contrast(words(figure, dark), on) - contrast(words(zeroFigure, dark), on0),
             `figure ${theme}`,
-          ).toBeGreaterThanOrEqual(2);
+          ).toBeGreaterThanOrEqual(2.5);
           expect(contrast(words(zero, dark), on0), `words ${theme}`).toBeLessThan(
             contrast(words(chip, dark), on),
           );
@@ -657,6 +667,23 @@ describe('the counts — four hues on soft tiles (Round 27; calmer, Round 27d)',
               `edge ${theme}`,
             ).toBeGreaterThanOrEqual(0.5);
           }
+        }
+      }
+    }
+  });
+
+  it('R27d critic — a 0’s ICON is plainly fainter than its count’s (1:1 or more under it) on every ground, light and dark', () => {
+    // `zeroMark` is «fainter than a count's» — the critic found it was not, by day: the boxes' 0 wore
+    // its count's very purple-500 (3.78:1 on its grey against 3.69:1 on purple-50 — LOUDER). Each 0's
+    // icon is measured against its count's, on every ground the count stands on: never louder, and
+    // a whole 1:1 or more under it, so a 0 sits back in its icon too — and still 3:1 (above).
+    for (const kind of COUNT_KINDS) {
+      const { chip, zero, mark, zeroMark } = COUNT_LOOK[kind];
+      for (const dark of [false, true]) {
+        for (const under of groundsFor(kind, dark)) {
+          const count = contrast(words(mark, dark), ground(chip, dark, under));
+          const none = contrast(words(zeroMark, dark), ground(zero, dark, under));
+          expect(count - none, `${kind} (${dark ? 'dark' : 'light'})`).toBeGreaterThanOrEqual(1);
         }
       }
     }
@@ -699,11 +726,40 @@ describe('the counts — four hues on soft tiles (Round 27; calmer, Round 27d)',
     }
   });
 
-  it('Round 27d — NO coloured glow or halo anywhere on the two screens (a drag’s «here» keeps Round 25’s lift)', () => {
+  it('R27d critic — the bar’s squares wear ONE tint by day (/10), «السيارات»’ grey too; by night it is never the heaviest', () => {
+    // Round 27d set every square on the page's bar to /10 by day — the counts' and «بلا سيارة»'s —
+    // and left «السيارات»' grey square at /15, the darkest tint on the bar.
+    const squares: Record<string, string> = {
+      vans: VANS_FIGURE,
+      unplaced: COLUMN_WARN.figure,
+      ...Object.fromEntries(COUNT_KINDS.map((kind) => [kind, COUNT_LOOK[kind].square])),
+    };
+    /** A square's tint in a theme — its own `dark:` ground by night, else its day one (it holds). */
+    const tint = (classes: string, dark: boolean): number =>
+      token(
+        dark && own(classes, true).some((c) => c.startsWith('bg-'))
+          ? pick(classes, 'bg', true)
+          : pick(classes, 'bg', false),
+      ).alpha;
+    for (const [name, classes] of Object.entries(squares)) {
+      expect(tint(classes, false), name).toBe(0.1);
+    }
+    const hued = Object.entries(squares).filter(([name]) => name !== 'vans');
+    expect(tint(VANS_FIGURE, true)).toBeLessThanOrEqual(
+      Math.min(...hued.map(([, classes]) => tint(classes, true))),
+    );
+  });
+
+  it('Round 27d — no coloured glow or halo on the BOARD: the look’s tokens and every class the two screens write themselves', () => {
     // «بالوان اهدى»: Round 27's glows — the code pill's blue, the محصنات' cyan, «بلا قائد»'s rose, the
     // kept row's amber, the waiting column's rose count — and the 3px halos by day are gone. A
-    // neutral soft shadow (slate / black) is all a card keeps.
+    // neutral soft shadow (slate / black) is all a card keeps; a drag's «here» keeps Round 25's lift.
+    // R27d critic — this is what it measures, and no more: the colours in `distribution-look.ts` and
+    // the classes written in the two screens' own files. The app's SHARED brand buttons they use —
+    // «حفظ» and «تسليم» (`ADD_BUTTON`), the confirmation's own (`DesignSave`) — keep the app's brand
+    // shadow, as on every other screen; this round does not touch them.
     const looks: Record<string, unknown> = {
+      VANS_FIGURE,
       VAN_LOOK,
       VAN_CARD: { ...VAN_CARD, place: '' },
       VAN_STATE_STRIPE,
@@ -733,6 +789,29 @@ describe('the counts — four hues on soft tiles (Round 27; calmer, Round 27d)',
           expect(c, `${name}: ${classes}`).toMatch(/^(dark:)?shadow-(sm|md|lg|slate-|black\/)/);
         }
       }
+    }
+    // R27d critic — and the classes the screens write by hand, outside the look (a menu's, a chip's
+    // shadow): any shadow utility, in any variant (`dark:`, `hover:`, `focus:` …), is a size or a
+    // neutral colour — never a hue, never an arbitrary one.
+    const written = [
+      './SecuredDistributionParts.tsx',
+      '../pages/SecuredDistributionPage.tsx',
+      '../pages/VaultHandoverPage.tsx',
+    ].flatMap((file) =>
+      (
+        readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8').match(
+          /(?<![\w-])(?:[\w-]+:)*shadow-[^\s'"`]+/g,
+        ) ?? []
+      ).map((c): [string, string] => [file, c]),
+    );
+    // The scan sees them: the move menu's and the chip's own shadows are written there.
+    expect(written.map(([, c]) => c)).toEqual(
+      expect.arrayContaining(['shadow-2xl', 'shadow-slate-900/15', 'dark:shadow-black/60']),
+    );
+    for (const [file, c] of written) {
+      expect(c, file).toMatch(
+        /^(?:[\w-]+:)*shadow-(?:none|sm|md|lg|xl|2xl|inner|(?:slate|black)(?:-\d+)?(?:\/(?:\d+|\[[\d.]+\]))?)$/,
+      );
     }
   });
 

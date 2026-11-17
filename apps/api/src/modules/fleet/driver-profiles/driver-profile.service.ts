@@ -3,10 +3,14 @@
 // is an operational capability, and you cannot enroll someone who is no longer employed.
 // No domain events: the frozen surface (§8) has none for profiles; enrollment is configuration.
 import {
+  FLEET_DASHBOARD_LICENCE_MONTHS,
+  FLEET_LICENCE_GREY_DAYS,
   FleetEvents,
+  addDaysYmd,
   calendarDayBounds,
   licenceWindows,
   parseFleetSort,
+  ymdOf,
   type CreateFleetDriverProfile,
   type FleetCatalogKind,
   type ListFleetDriversQuery,
@@ -55,11 +59,54 @@ export interface FleetDriverRegistryDigest {
     notRecorded: number;
     /** A seat-holder with no profile at all — «غير مسجّلين» (no list parameter: named exception). */
     unregistered: number;
+    /**
+     * The files by the Cairo month their licence expires, `FLEET_DASHBOARD_LICENCE_MONTHS` months
+     * from today's (key 'YYYY-MM', zeros kept, this month first) — each the total of
+     * `?licExpFrom=<its first day>&licExpBefore=<its last day>`, suspended files included.
+     */
+    months: { key: string; count: number }[];
+    /**
+     * «أقرب رخص السائقين»: the files whose licence runs out on or before today + 60 (the expired
+     * included), the longest-expired first (then by employee), at most `nearestLimit` of them;
+     * `total` = `?licExpBefore=<today + 60>`'s total = expired + expiring + soon (suspended
+     * included) while `warnDays` ≤ 60.
+     */
+    nearest: { rows: FleetDriverLicenceRow[]; total: number };
   };
   /** `drivers` includes `legacy`: the profiles matched only through the legacy «التخصص» enum. */
   cash: { drivers: number; legacy: number };
   atm: { drivers: number; legacy: number };
 }
+
+/** One file of «أقرب رخص السائقين» — the dashboard names the driver from `/fleet/people`. */
+export interface FleetDriverLicenceRow {
+  profileId: string;
+  employeeId: string;
+  /** The expiry's day, 'YYYY-MM-DD'. */
+  expiresAt: string;
+  /** The licence type, by catalog id — the caller names it; `null` when none was chosen. */
+  licenceTypeId: string | null;
+  /** `false`: the file is suspended («الملف موقوف»). */
+  active: boolean;
+}
+
+/** 'YYYY-MM' → its first and last calendar day, 'YYYY-MM-DD'. */
+const monthDays = (key: string): { first: string; last: string } => {
+  const year = Number(key.slice(0, 4));
+  const month = Number(key.slice(5, 7));
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { first: `${key}-01`, last: `${key}-${String(lastDay).padStart(2, '0')}` };
+};
+
+/** `count` month keys ('YYYY-MM') from the month of `ymd`, in order. */
+export const monthKeysFrom = (ymd: string, count: number): string[] => {
+  const year = Number(ymd.slice(0, 4));
+  const month = Number(ymd.slice(5, 7)) - 1;
+  return Array.from({ length: count }, (_, i) => {
+    const at = new Date(Date.UTC(year, month + i, 1));
+    return `${String(at.getUTCFullYear()).padStart(4, '0')}-${String(at.getUTCMonth() + 1).padStart(2, '0')}`;
+  });
+};
 
 /** The legacy enum's reading of a profile nobody re-classified — `both` counts on both sides. */
 const legacyKinds = (profile: DriverProfileFacts): { cash: boolean; atm: boolean } => {
@@ -281,6 +328,8 @@ class FleetDriverProfileService {
     branchIds: readonly string[] | null;
     cashSpecIds: readonly string[];
     atmSpecIds: readonly string[];
+    /** How many of «أقرب رخص السائقين»'s files to return (`nearest.rows`). */
+    nearestLimit: number;
   }): Promise<FleetDriverRegistryDigest> {
     const nobody = input.branchIds !== null && input.branchIds.length === 0;
     const roster = nobody ? [] : await drivingSeatRoster();
@@ -309,6 +358,22 @@ class FleetDriverProfileService {
       return { drivers: viaCatalog + viaLegacy, legacy: viaLegacy };
     };
 
+    // «أقرب رخص السائقين»: the very files `?licExpBefore=<today + 60>` keeps, nearest first.
+    const horizon = addDaysYmd(input.today, FLEET_LICENCE_GREY_DAYS);
+    const within = rows
+      .filter(
+        (profile): profile is NonNullable<typeof profile> =>
+          profile !== null &&
+          matchesFleetFilters(profile, {
+            licenseExpiresBefore: calendarDayBounds(horizon, horizon).before,
+          }),
+      )
+      .sort(
+        (a, b) =>
+          (a.licenseExpiresAt?.getTime() ?? 0) - (b.licenseExpiresAt?.getTime() ?? 0) ||
+          String(a.employeeId).localeCompare(String(b.employeeId)),
+      );
+
     return {
       total: rows.length,
       licence: {
@@ -319,6 +384,20 @@ class FleetDriverProfileService {
         soon: windows.soon === null ? 0 : between(windows.soon.from, windows.soon.to),
         notRecorded: count({ licenseNotRecorded: true }),
         unregistered: rows.filter((profile) => profile === null).length,
+        months: monthKeysFrom(input.today, FLEET_DASHBOARD_LICENCE_MONTHS).map((key) => {
+          const { first, last } = monthDays(key);
+          return { key, count: between(first, last) };
+        }),
+        nearest: {
+          rows: within.slice(0, Math.max(0, input.nearestLimit)).map((profile) => ({
+            profileId: String(profile._id),
+            employeeId: String(profile.employeeId),
+            expiresAt: ymdOf(profile.licenseExpiresAt as Date),
+            licenceTypeId: ref(profile.licenseTypeId),
+            active: profile.isActive,
+          })),
+          total: within.length,
+        },
       },
       cash: kind(input.cashSpecIds, 'cash'),
       atm: kind(input.atmSpecIds, 'atm'),

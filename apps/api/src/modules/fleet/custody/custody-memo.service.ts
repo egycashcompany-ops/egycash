@@ -384,6 +384,20 @@ class FleetCustodyMemoService {
   }
 
   /**
+   * The live memos a replenishment took and still holds while it waits for its transfer — the
+   * «المذكرات» list's own `status=held` clause — each as that list gives it (live receipts and
+   * total), oldest `no` first. «استعاضة معلّقة» groups them by `replenishment.id`.
+   */
+  async heldRows(): Promise<FleetCustodyMemoRowDto[]> {
+    const docs = await FleetCustodyMemoModel.find({ isDeleted: false, ...STATUS_CLAUSES.held })
+      .sort({ no: 1 })
+      .lean<FleetCustodyMemoDoc[]>()
+      .exec();
+    const totals = await readMemoTotals(docs);
+    return docs.map((doc) => toCustodyMemoRowDto(doc, totals.get(String(doc._id))));
+  }
+
+  /**
    * How many live memos there are, how many wait for a «استعاضة» (none has taken them — a held one
    * is counted in the fund's `held`), and what those add up to.
    */

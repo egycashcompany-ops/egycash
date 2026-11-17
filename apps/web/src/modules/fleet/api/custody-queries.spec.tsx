@@ -104,6 +104,9 @@ const ID = '650000000000000000000001';
 const CUSTODY = JSON.stringify(['fleet', 'custody']);
 const RECEIPTS = JSON.stringify(['fleet', 'receipts']);
 const LICENCE = JSON.stringify(['fleet', 'licenseExpenses']);
+// «لوحة تحكم الحركة» R2: a period still running, and one that ended (custody memo states are as of now).
+const DASH_LIVE = JSON.stringify(['fleet', 'dashboard', 'period', 'live']);
+const DASH_PAST = JSON.stringify(['fleet', 'dashboard', 'period', 'past']);
 
 describe('the custody keys', () => {
   it('all sit under the custody subtree — a receipt written refreshes every one of them', () => {
@@ -277,17 +280,17 @@ describe('every custody write throws away what it moves', () => {
 describe('and so is a screen left open when somebody ELSE makes that write', () => {
   const keys = (topic: string): string[] => keysForTopic(topic).map((key) => JSON.stringify(key));
 
-  it('a memo: the custody subtree and the receipts', () => {
-    expect(keys('fleet.custodyMemo')).toEqual([CUSTODY, RECEIPTS]);
+  it('a memo: the custody subtree, the receipts and the dashboard’s period — live and ended («منها حتى الآن»)', () => {
+    expect(keys('fleet.custodyMemo')).toEqual([CUSTODY, RECEIPTS, DASH_LIVE, DASH_PAST]);
   });
-  it('an operation: the custody subtree and the licence screen', () => {
-    expect(keys('fleet.custodyOperation')).toEqual([CUSTODY, LICENCE]);
+  it('an operation: the custody subtree, the licence screen and the dashboard’s period — live and ended', () => {
+    expect(keys('fleet.custodyOperation')).toEqual([CUSTODY, LICENCE, DASH_LIVE, DASH_PAST]);
   });
   it('the papers’ names: the custody subtree', () => {
     expect(keys('fleet.custodyPaperSettings')).toEqual([CUSTODY]);
   });
-  it('a licence record: its screen and the custody subtree', () => {
-    expect(keys('fleet.licenseExpense')).toEqual([LICENCE, CUSTODY]);
+  it('a licence record: its screen, the custody subtree and the dashboard’s live period («مصروفات التراخيص في الفترة»)', () => {
+    expect(keys('fleet.licenseExpense')).toEqual([LICENCE, CUSTODY, DASH_LIVE]);
   });
 });
 

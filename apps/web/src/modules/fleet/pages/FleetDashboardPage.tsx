@@ -1,25 +1,28 @@
 // «لوحة تحكم الحركة» — the fleet module's home (/fleet).
 //
-// Eleven tabs on ONE sticky pill strip, and NO page head (owner-decisions #3), in the order the
+// Twelve tabs on ONE sticky pill strip, and NO page head (owner-decisions #3), in the order the
 // finished dashboard will keep (plan D2):
 //   نظرة عامة · الحركة اليوم · توزيع السيارات · الصيانة والورش · العدادات والكيلومترات ·
-//   الحوادث ومطالبات التأمين · المخالفات المرورية والتسويات · الوقود والمصروفات ·
-//   أرقام الفترة · ملخصات · التراخيص
-// The first eight are the redesigned screens: «نظرة عامة» and «الحركة اليوم» took the content of the
+//   الحوادث ومطالبات التأمين · المخالفات المرورية والتسويات · الوقود والمصروفات · العهدة ·
+//   التراخيص والتجديدات · أرقام الفترة · ملخصات
+// The first ten are the redesigned screens: «نظرة عامة» and «الحركة اليوم» took the content of the
 // retired «التنبيهات» and «الحركة الآن» (an old `?tab=alerts` / `?tab=now` opens them);
-// «توزيع السيارات», «الصيانة والورش», «العدادات والكيلومترات» (key `km`) and «الحوادث ومطالبات
-// التأمين» (key `accidents`) were rebuilt under their old keys (an old link opens the new body);
-// «العدادات والكيلومترات» also holds the old «ترتيب السيارات» (an old `?tab=ranking` opens it);
-// «المخالفات المرورية والتسويات» (key `violations`) and «الوقود والمصروفات» (key `fuel`) are NEW
-// tabs with no old tab of their own. The last three are the old tabs, unchanged:
+// «توزيع السيارات», «الصيانة والورش», «العدادات والكيلومترات» (key `km`), «الحوادث ومطالبات
+// التأمين» (key `accidents`) and «التراخيص والتجديدات» (key `licences`) were rebuilt under their old
+// keys (an old link opens the new body); «العدادات والكيلومترات» also holds the old «ترتيب السيارات»
+// (an old `?tab=ranking` opens it); «المخالفات المرورية والتسويات» (key `violations`), «الوقود
+// والمصروفات» (key `fuel`) and «العهدة» (key `custody`) are NEW tabs with no old tab of their own.
+// The last two are the old tabs, unchanged:
 //   · R1 `GET /fleet/dashboard/now` (Cairo today, untouched by the filters) — overview, today,
-//     distribution, summaries, licences; the overview and «توزيع السيارات» (its km, with the km key)
-//     also read R2 over «هذا الشهر» with no page filter;
+//     distribution, summaries; the overview and «توزيع السيارات» (its km, with the km key) also read
+//     R2 over «هذا الشهر» with no page filter;
 //   · R2 `GET /fleet/dashboard/period` — «أرقام الفترة» alone under `PeriodTab`;
-//   · the five MIXED panels — «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات
-//     التأمين», «المخالفات المرورية والتسويات», «الوقود والمصروفات»: an R1 part and a period part over
-//     the page's R2, under the same filter bar (between the bands, or at the top of «العدادات
-//     والكيلومترات»); each part wears its own read's face.
+//   · the seven MIXED panels — «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات
+//     التأمين», «المخالفات المرورية والتسويات», «الوقود والمصروفات», «العهدة», «التراخيص
+//     والتجديدات»: a «الآن» part and a period part over the page's R2, under the same filter bar
+//     (between the bands, or at the top of «العدادات والكيلومترات»); each part wears its own read's
+//     face. The «الآن» part is R1's, except on «العهدة», whose «الآن» is the custody screen's own
+//     reads (`FLEET_DASHBOARD_TAB_READS`: 'web').
 // One filter state serves every screen that reads R2.
 // At the strip's end «الفرع: …» says what the figures cover, as the server answered it.
 //
@@ -28,17 +31,23 @@
 // on «هذا الشهر» on every visit and a chosen period stays in the address bar while the reader moves
 // between tabs (DECISIONS §0c). Switching tabs re-reads nothing: `tab` is in neither query key.
 //
-// PERMISSIONS ARE THE SERVER'S (R-28). A reader holding no key of a read never asks for it; a section
-// the reader may not see comes back `null` and renders nothing; a tab with no section left is not in
-// the bar. The custody figures come from the custody screen's own hooks, mounted only with
-// `fleetCustody.view` (D3).
+// PERMISSIONS ARE THE SERVER'S (R-28). A reader holding no key of a read never asks for it — R2 only
+// when some period section is fully permitted (a custody-only reader holds an R2 key but no section,
+// and sends no R2); a section the reader may not see comes back `null` and renders nothing; a tab
+// with no section left is not in the bar. The custody figures come from the custody screen's own
+// hooks, mounted only with `fleetCustody.view` (D3).
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_DASHBOARD_NOW_KEYS,
-  FLEET_DASHBOARD_PERIOD_KEYS,
+  FLEET_DASHBOARD_PAGELESS_SECTIONS,
+  FLEET_DASHBOARD_PERIOD_SECTIONS,
   cairoYmd,
   FLEET_DASHBOARD_PERIOD_TABS,
+  FLEET_DASHBOARD_TABS,
+  FLEET_DASHBOARD_TAB_PARTS,
+  FLEET_DASHBOARD_TAB_READS,
+  FLEET_DASHBOARD_TAB_SECTIONS,
   type FleetDashboardPeriodQuery,
   type FleetDashboardSection,
   type FleetDashboardTab,
@@ -77,7 +86,7 @@ import {
   type PageRead,
 } from '../components/fleet-dashboard/dash-shell';
 import { PeriodTab } from '../components/fleet-dashboard/period-tabs';
-import { OverviewTab } from '../components/fleet-dashboard/tab-overview';
+import { MONTH_SECTIONS, OverviewTab } from '../components/fleet-dashboard/tab-overview';
 import { TodayTab } from '../components/fleet-dashboard/tab-today';
 import { DistributionTab } from '../components/fleet-dashboard/tab-distribution';
 import { MaintenanceTab } from '../components/fleet-dashboard/tab-maintenance';
@@ -85,6 +94,7 @@ import { KmTab } from '../components/fleet-dashboard/tab-km';
 import { AccidentsTab } from '../components/fleet-dashboard/tab-accidents';
 import { ViolationsTab } from '../components/fleet-dashboard/tab-violations';
 import { FuelTab } from '../components/fleet-dashboard/tab-fuel';
+import { CustodyTab } from '../components/fleet-dashboard/tab-custody';
 import { LicencesTab } from '../components/fleet-dashboard/tab-licences';
 import { SummariesTab } from '../components/fleet-dashboard/tab-summaries';
 
@@ -112,12 +122,35 @@ export const dashboardView = (query: {
   data: unknown;
 }): DashboardView => (query.isPending ? 'loading' : query.data === undefined ? 'error' : 'ready');
 
+/**
+ * A period section some tab may DRAW for this reader. A PAGELESS one (`licenceSpend`) is drawn only
+ * beside the figures of the tab that holds it as a part (FLEET_DASHBOARD_TAB_PARTS), so it counts
+ * only while that tab can show by its own sections: on its key alone it would send R2 for nothing
+ * (a custody clerk who also holds the licence-expense key sees no «التراخيص والتجديدات»).
+ */
+const periodSectionDrawn = (
+  section: (typeof FLEET_DASHBOARD_PERIOD_SECTIONS)[number],
+  can: (permission: string) => boolean,
+): boolean => {
+  if (!sectionPermitted(section, can)) return false;
+  if (!(FLEET_DASHBOARD_PAGELESS_SECTIONS as readonly string[]).includes(section)) return true;
+  return FLEET_DASHBOARD_TABS.some(
+    (tab) =>
+      (FLEET_DASHBOARD_TAB_PARTS[tab] ?? []).includes(section) &&
+      FLEET_DASHBOARD_TAB_SECTIONS[tab].some((own) => sectionPermitted(own, can)),
+  );
+};
+
 /** Which of the two reads this reader may ask for at all (a read nobody may see is never sent). */
 export const dashboardReads = (
   can: (permission: string) => boolean,
 ): { now: boolean; period: boolean; custody: boolean } => ({
   now: FLEET_DASHBOARD_NOW_KEYS.some((key) => can(key)),
-  period: FLEET_DASHBOARD_PERIOD_KEYS.some((key) => can(key)),
+  // R2 only when some period section is fully permitted AND drawn somewhere (plan D5):
+  // `fleetCustody.view` is in the R2 union (`custodyStates` needs the receipts' key too), so a
+  // custody-only reader sends no R2; nor does a reader whose only period section is a PAGELESS part
+  // of a tab they cannot see.
+  period: FLEET_DASHBOARD_PERIOD_SECTIONS.some((section) => periodSectionDrawn(section, can)),
   custody: sectionPermitted('custodyFund', can),
 });
 
@@ -126,19 +159,26 @@ type PeriodTabKey = (typeof FLEET_DASHBOARD_PERIOD_TABS)[number];
 const isPeriodTab = (tab: FleetDashboardTab): tab is PeriodTabKey =>
   (FLEET_DASHBOARD_PERIOD_TABS as readonly string[]).includes(tab);
 
-/** The panels of R1 and R2 both, each part with its own read's face (plan D3). */
+/**
+ * The panels of a «الآن» read and R2 both, each part with its own read's face (plan D3): R1's, or —
+ * «العهدة» — the custody screen's own reads.
+ */
 const MIXED_PANELS = {
   maintenance: MaintenanceTab,
   km: KmTab,
   accidents: AccidentsTab,
   violations: ViolationsTab,
   fuel: FuelTab,
+  custody: CustodyTab,
+  licences: LicencesTab,
 } as const satisfies Partial<Record<FleetDashboardTab, (props: MixedTabProps) => JSX.Element>>;
 type MixedTabKey = keyof typeof MIXED_PANELS;
 /**
  * The R2 sections each mixed panel draws its period band from (any one of them draws it — «الوقود
  * والمصروفات» from the receipts OR the dealership): a reader who may read R2 for another tab (km,
- * dealership) but none of these sees no band, so its age and «تحديث» leave R2 out.
+ * dealership) but none of these sees no band, so its age and «تحديث» leave R2 out. «العهدة» draws its
+ * band from the receipts (`custodyStates` only adds lines to it); «التراخيص والتجديدات» from the
+ * licence memos.
  */
 const MIXED_PERIOD_SECTIONS = {
   maintenance: ['exits'],
@@ -146,6 +186,8 @@ const MIXED_PERIOD_SECTIONS = {
   accidents: ['accidents'],
   violations: ['violations'],
   fuel: ['opex', 'dealership'],
+  custody: ['opex'],
+  licences: ['licenceSpend'],
 } as const satisfies Record<MixedTabKey, readonly FleetDashboardSection[]>;
 
 const isMixedTab = (tab: FleetDashboardTab): tab is MixedTabKey =>
@@ -158,7 +200,6 @@ const NOW_PANELS: Record<
   overview: OverviewTab,
   today: TodayTab,
   distribution: DistributionTab,
-  licences: LicencesTab,
   summaries: SummariesTab,
 };
 
@@ -198,12 +239,14 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   const lines = alertLines(nowQ.data?.alerts ?? [], custody?.lines ?? null);
   const badges = tabBadges(answers);
 
-  // «هذا الشهر» for the overview's month card and the km of «توزيع السيارات» (only for a reader of
-  // the km): the page's filters never reach it. At the default filters it is the page's own R2 key,
-  // so the two are one request.
+  // «هذا الشهر» for the overview's month card (only for a reader of one of its four figures) and the
+  // km of «توزيع السيارات» (only for a reader of the km): the page's filters never reach it — and no
+  // reader meets a month skeleton that could never fill. At the default filters it is the page's own
+  // R2 key, so the two are one request.
   const monthEnabled =
     reads.period &&
-    (active === 'overview' || (active === 'distribution' && sectionPermitted('km', can)));
+    ((active === 'overview' && MONTH_SECTIONS.some((section) => sectionPermitted(section, can))) ||
+      (active === 'distribution' && sectionPermitted('km', can)));
   const monthQ = useFleetDashboardPeriod(MONTH_QUERY, 'live', monthEnabled);
   const month: MonthRead = {
     data: monthQ.data,
@@ -269,19 +312,25 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   let panel: JSX.Element;
   if (isMixedTab(active)) {
     // «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية
-    // والتسويات», «الوقود والمصروفات»: an R1 part and a period part (the page's R2, under the bar the
-    // tab draws). «تحديث» refetches both; the heading's age is the OLDER of the two answers.
+    // والتسويات», «الوقود والمصروفات», «العهدة», «التراخيص والتجديدات»: a «الآن» part and a period
+    // part (the page's R2, under the bar the tab draws). «تحديث» refetches both; the heading's age is
+    // the OLDER of the two answers.
     const Panel = MIXED_PANELS[active];
+    // The tab's own «الآن» read (`FLEET_DASHBOARD_TAB_READS`): R1, or — «العهدة» — the custody
+    // screen's reads ('web'), whose face the tab draws itself (no `nowPending`).
+    const web = !FLEET_DASHBOARD_TAB_READS[active].includes('now');
+    const ownStamp = web ? (custody?.updatedAt ?? 0) : reads.now ? nowQ.dataUpdatedAt : 0;
     // R2 counts in the heading only when this tab draws its band (R2 itself stays page-wide).
     const periodDrawn =
       reads.period &&
       MIXED_PERIOD_SECTIONS[active].some((section) => sectionPermitted(section, can));
     const stamps = [
-      ...(reads.now && nowQ.dataUpdatedAt > 0 ? [nowQ.dataUpdatedAt] : []),
+      ...(ownStamp > 0 ? [ownStamp] : []),
       ...(periodDrawn && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),
     ];
     const refreshBoth = (): void => {
-      if (reads.now) void nowQ.refetch({ cancelRefetch: false });
+      if (web) custody?.refetch();
+      else if (reads.now) void nowQ.refetch({ cancelRefetch: false });
       if (periodDrawn) refreshPeriod();
     };
     const pageRead: PageRead = {
@@ -302,13 +351,16 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
         lines={lines}
         can={can}
         updatedAt={stamps.length === 0 ? 0 : Math.min(...stamps)}
-        refreshing={(reads.now && nowQ.isFetching) || (periodDrawn && periodQ.isFetching)}
+        refreshing={
+          (web ? (custody?.fetching ?? false) : reads.now && nowQ.isFetching) ||
+          (periodDrawn && periodQ.isFetching)
+        }
         onRefresh={refreshBoth}
         onRetry={refreshNow}
         month={month}
         tabLink={toTab}
         period={pageRead}
-        {...(nowPending === undefined ? {} : { nowPending })}
+        {...(nowPending === undefined || web ? {} : { nowPending })}
       />
     );
   } else if (isPeriodTab(active)) {

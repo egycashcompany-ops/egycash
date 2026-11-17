@@ -97,4 +97,29 @@ export const registerHrAttendanceSettings = (): void => {
     defaultValue: 0,
     allowedScopes: ['organization', 'branch'],
   });
+  // Stage 3. Seven days by the owner's ruling, and configurable because what counts as "recent"
+  // differs by branch: beyond it a manager's decision is recorded but changes nothing until HR
+  // approves it, because the older the day, the more likely the correction is reconstruction
+  // rather than recollection. Zero would mean every decision needs HR, which is a legitimate
+  // posture for a branch that wants it.
+  // Stage 4. A PROMPT TO LOOK, not a limit: crossing it blocks nothing and undoes nothing. Twenty
+  // a week is a starting point rather than a measured figure — a supervisor covering a branch
+  // whose reader is broken will cross it legitimately, which is the week worth looking at. It is a
+  // setting precisely so the number can be moved once there is a month of real traffic to judge by.
+  declareSetting({
+    key: HrAttendanceSettingKeys.DecisionWeeklyReviewThreshold,
+    description:
+      'Decisions by one manager in a week above which the review screen flags them for a look',
+    schema: z.number().int().min(1).max(1000),
+    defaultValue: 20,
+    allowedScopes: ['organization', 'branch'],
+  });
+  declareSetting({
+    key: HrAttendanceSettingKeys.DecisionApprovalAfterDays,
+    description:
+      'Days back a manager may decide an attendance day alone; older days wait for HR approval',
+    schema: z.number().int().min(0).max(366),
+    defaultValue: 7,
+    allowedScopes: ['organization', 'branch'],
+  });
 };

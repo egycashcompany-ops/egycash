@@ -62,10 +62,15 @@ describe('closed vocabularies', () => {
     // day flag, so a reviewer could not tell a decision from a keystroke.
     expect([...ATTENDANCE_PUNCH_SOURCES]).toEqual(['device', 'manual', 'regularization', 'web']);
     expect([...ATTENDANCE_PUNCH_DIRECTIONS]).toEqual(['in', 'out', 'unknown']);
+    // Stage 3 added `overriddenByManager`: a day whose status a manager DECIDED rather than the
+    // engine derived. It is a flag and not a status because the status is still a real answer
+    // about the day — the flag says where that answer came from, and that the device's punches
+    // are still standing underneath it.
     expect([...ATTENDANCE_DAY_FLAGS]).toEqual([
       'crossBranchPunch',
       'manualPunch',
       'regularizedPunch',
+      'overriddenByManager',
     ]);
   });
 
@@ -94,6 +99,11 @@ describe('closed vocabularies', () => {
       'hr.attendance.defaultPattern.breakMinutes',
       'hr.attendance.defaultPattern.graceInMinutes',
       'hr.attendance.defaultPattern.graceOutMinutes',
+      // Stage 3: how far back a manager decides alone before HR has to approve.
+      'hr.attendance.decisionApprovalAfterDays',
+      // Stage 4: the volume above which the review screen flags a manager for a LOOK. It blocks
+      // nothing — a broken reader produces many legitimate changes — so it is a prompt, not a cap.
+      'hr.attendance.decisionWeeklyReviewThreshold',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

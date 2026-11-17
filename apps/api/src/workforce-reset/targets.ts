@@ -135,6 +135,7 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_attendance_days: { action: 'purge', why: 'a day worked by somebody' },
   hr_attendance_punches: { action: 'purge', why: 'a punch by somebody' },
   hr_attendance_regularizations: { action: 'purge', why: 'a correction to somebody’s attendance' },
+  hr_attendance_day_decisions: { action: 'purge', why: 'a decision about somebody’s day' },
   hr_attendance_enrollments: { action: 'purge', why: 'somebody’s device enrolment' },
   hr_shift_assignments: { action: 'purge', why: 'somebody’s shift' },
   hr_leave_requests: { action: 'purge', why: 'somebody’s leave request' },

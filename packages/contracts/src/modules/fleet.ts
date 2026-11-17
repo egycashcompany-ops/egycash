@@ -4987,6 +4987,8 @@ export interface FleetReceiptTotalsDto {
   fuelCustodyTotal: number;
   /** Fuel receipts with no litre price: counted in `fuelTotal`, never in `fuelLitres`. */
   fuelUnpriced: number;
+  /** The custody-paid receipts (source custody) — the receipts in `custodyTotal`. */
+  custodyCount: number;
 }
 
 /**
@@ -6132,7 +6134,15 @@ export interface FleetCustodyFundSummaryDto {
   /** Transferred replenishments, and legacy ones — what came back into the fund. */
   replenished: FleetCustodyCountAmountDto & { memos: number };
   /** Replenishments waiting for their transfer — not in `fundTotal`. */
-  held: FleetCustodyCountAmountDto & { memos: number; receipts: number };
+  held: FleetCustodyCountAmountDto & {
+    memos: number;
+    receipts: number;
+    /**
+     * Each of them («استعاضة معلّقة»), the oldest letter first: `length` = `count`, Σ `amount` =
+     * `amount`, Σ `receipts` = `receipts`, Σ `memos.length` = `memos`.
+     */
+    letters: FleetCustodyHeldLetterDto[];
+  };
   /** Cancelled replenishments — never in `fundTotal`. */
   cancelled: FleetCustodyCountAmountDto;
   settled: FleetCustodyCountAmountDto & { parts: number };
@@ -6146,6 +6156,25 @@ export interface FleetCustodyFundSummaryDto {
   outside: FleetCustodyOutsideKindDto[];
   /** Operations in «العمليات المحذوفة» — the toolbar pill. */
   deleted: { count: number };
+}
+/** One replenishment waiting for its transfer, with the memos it took. */
+export interface FleetCustodyHeldLetterDto {
+  /** The operation's id («فتح» → the custody register at that operation). */
+  id: string;
+  /** The letter's day, YYYY-MM-DD («في انتظار التحويل منذ …»). */
+  date: string;
+  /** The letter's period, YYYY-MM-DD; `null` when none was written. */
+  from: string | null;
+  to: string | null;
+  /** The operation's own amount, to the piastre. */
+  amount: number;
+  /** Σ of its memos' live receipts. */
+  receipts: number;
+  /** Its memos, `no` ascending — each as the memos list gives it (live receipts and total). */
+  memos: Pick<
+    FleetCustodyMemoRowDto,
+    'id' | 'no' | 'kind' | 'name' | 'date' | 'receipts' | 'total'
+  >[];
 }
 export interface FleetCustodyReplenishCandidatesDto {
   /** The memos no replenishment has taken yet (neither held nor transferred), oldest `no` first. */

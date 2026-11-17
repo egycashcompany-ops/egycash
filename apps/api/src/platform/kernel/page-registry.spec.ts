@@ -56,9 +56,13 @@ describe('the assembled page registry', () => {
   // /mobile-lines», 2026-11-17) added two pages and nine keys: `itMobileLine.*` (view, create,
   // edit, assign, viewNationalId) on `it.mobile-lines`, `itConsumable.*` (view, create, edit,
   // assign) on `it.consumables` — the screens that rode `itAsset.*` until then.
-  it('declares 88 pages over 330 permissions', () => {
+  //
+  // Stage 3's two day-decision keys then arrive WITH the screen that uses them — they route to
+  // `hr.attendance-regularizations`, which gained a fourth tab for the queue — so both land in the
+  // assigned count below and the unassigned one does not move.
+  it('declares 88 pages over 332 permissions', () => {
     expect(pages).toHaveLength(88);
-    expect(permissions).toHaveLength(330);
+    expect(permissions).toHaveLength(332);
   });
 
   /**
@@ -150,13 +154,13 @@ describe('the assembled page registry', () => {
    * receipt's national ID is its own sensitive-data grant there, as the device receipt's is on
    * `it.assets`), four on `it.consumables`. The unassigned count does not move.
    */
-  it('assigns 301 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 303 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     // `hiringRequirement.manage` arrives WITH its page, so it lands here and the unassigned count
     // below does not move — the same shape as `insuranceJobTitle.manage` before it.
     // `employee.purge` routes to `hr.employees`, the screen its button sits on, so it lands here
     // and the unassigned count below does not move.
-    expect(assigned).toHaveLength(301);
+    expect(assigned).toHaveLength(303);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.

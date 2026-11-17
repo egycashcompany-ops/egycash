@@ -118,6 +118,14 @@ export const ATTENDANCE_DAY_FLAGS = [
   'crossBranchPunch',
   'manualPunch',
   'regularizedPunch',
+  /**
+   * A manager's `markAbsent` decision (stage 3) decided this day against the evidence. The device
+   * punches are NOT deleted — they stay visible and superseded by nothing — so the flag is what
+   * tells a reviewer that the status they are reading was a judgement rather than a derivation.
+   * `markPresent` and `editTimes` need no flag of their own: they write manual punches and so
+   * already raise `manualPunch`.
+   */
+  'overriddenByManager',
 ] as const;
 export const AttendanceDayFlagSchema = z.enum(ATTENDANCE_DAY_FLAGS);
 export type AttendanceDayFlag = z.infer<typeof AttendanceDayFlagSchema>;
@@ -612,6 +620,217 @@ export interface AttendanceRegularizationDto {
   employeeName?: string;
 }
 
+// ── Manager day decisions (§3 stage 3) ──────────────────────────────────────
+
+/**
+ * What a manager can decide about one employee-day.
+ *
+ * NONE OF THEM EDITS THE DAY ROW, AND NONE OF THEM TOUCHES A PUNCH. A decision is an INPUT to the
+ * derivation: `computeDay` loads it and the engine applies it, every time. That is what makes it
+ * survive the branch servers calling `days/recompute` every few seconds — a judgement written onto
+ * the derived row would be erased by the next recompute, which is the one thing it must not be.
+ *
+ * It also means the device's evidence is never altered to make a decision stick. `markPresent` and
+ * `editTimes` supply the times the manager vouches for and the engine derives from those instead;
+ * `markAbsent` decides the day outright. Either way the punches stay exactly as the devices
+ * recorded them, and the day carries the `overriddenByManager` flag so a reviewer can see that the
+ * status was judged rather than read. Revoking is then exact: the decision stops being live, the
+ * day is recomputed, and what the devices saw is still what they saw.
+ *
+ * Nothing about lateness or overtime is special-cased for a decision. A vouched-for arrival is
+ * late against the same grace and a vouched-for span earns overtime by the same arithmetic — the
+ * manager supplies the evidence, not the verdict.
+ *
+ * `revoke` undoes a decision by RECORDING one, never by deleting: the original row stays, marked
+ * `revoked`, and the new row says who undid it and why.
+ */
+export const ATTENDANCE_DECISION_TYPES = [
+  'markPresent',
+  'markAbsent',
+  'editTimes',
+  'revoke',
+] as const;
+export const AttendanceDecisionTypeSchema = z.enum(ATTENDANCE_DECISION_TYPES);
+export type AttendanceDecisionType = z.infer<typeof AttendanceDecisionTypeSchema>;
+
+/**
+ * `applied` is the ordinary outcome — a manager deciding a recent day acts on their own authority
+ * and it takes effect at once. `pendingHr` is the OLD-DAY path: past
+ * `hr.attendance.decisionApprovalAfterDays`, the decision is recorded but changes nothing until
+ * HR approves it. There is no `pendingManager`: the manager IS the first step here, unlike a
+ * regularization, which an employee files and a manager then judges.
+ */
+export const ATTENDANCE_DECISION_STATUSES = [
+  'applied',
+  'pendingHr',
+  'rejected',
+  'revoked',
+] as const;
+export const AttendanceDecisionStatusSchema = z.enum(ATTENDANCE_DECISION_STATUSES);
+export type AttendanceDecisionStatus = z.infer<typeof AttendanceDecisionStatusSchema>;
+
+/**
+ * A REASON IS MANDATORY on every decision, including the revocation. The whole value of this
+ * feature to a later reviewer — and the whole protection for the manager who used it — is that the
+ * record says why, in their own words, at the time.
+ *
+ * `inAt`/`outAt` carry the times for `markPresent` and `editTimes`. A `markPresent` with `inAt`
+ * alone is honest and expected: on this payroll most people scan on arrival and never scan out, so
+ * a manager vouching for an arrival should not have to invent a departure. It derives `checkedIn`,
+ * exactly as the device's own single punch does.
+ */
+export const CreateAttendanceDecisionSchema = z
+  .object({
+    employeeId: objectId(),
+    workDate: z.coerce.date(),
+    type: z.enum(['markPresent', 'markAbsent', 'editTimes']),
+    inAt: z.coerce.date().optional(),
+    outAt: z.coerce.date().optional(),
+    reason: z.string().trim().min(3).max(500),
+  })
+  .strict()
+  .refine((v) => v.type !== 'markAbsent' || (v.inAt === undefined && v.outAt === undefined), {
+    path: ['inAt'],
+    message: 'markAbsent records no times — it decides the day, it does not describe one',
+  })
+  .refine((v) => v.type === 'markAbsent' || v.inAt !== undefined, {
+    path: ['inAt'],
+    message: 'an arrival time is required',
+  })
+  .refine((v) => v.type !== 'editTimes' || v.outAt !== undefined, {
+    path: ['outAt'],
+    message: 'editTimes corrects a span — give both ends',
+  })
+  .refine((v) => v.outAt === undefined || v.inAt === undefined || v.outAt > v.inAt, {
+    path: ['outAt'],
+    message: 'the departure must be after the arrival',
+  });
+export type CreateAttendanceDecision = z.infer<typeof CreateAttendanceDecisionSchema>;
+
+export const DecideAttendanceDecisionSchema = z
+  .object({
+    verdict: z.enum(['approve', 'reject']),
+    comment: z.string().max(500).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type DecideAttendanceDecision = z.infer<typeof DecideAttendanceDecisionSchema>;
+
+/** Revoking is itself a decision, so it carries its own mandatory reason. */
+export const RevokeAttendanceDecisionSchema = z
+  .object({
+    reason: z.string().trim().min(3).max(500),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type RevokeAttendanceDecision = z.infer<typeof RevokeAttendanceDecisionSchema>;
+
+export const ListAttendanceDecisionsQuerySchema = PaginationQuerySchema.extend({
+  status: listQuery(AttendanceDecisionStatusSchema),
+  type: listQuery(AttendanceDecisionTypeSchema),
+  employeeId: objectId().optional(),
+  branchId: listQuery(objectId()),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  /** The manager whose decisions are being reviewed — the §4 accountability read. */
+  decidedBy: objectId().optional(),
+}).strict();
+export type ListAttendanceDecisionsQuery = z.infer<typeof ListAttendanceDecisionsQuerySchema>;
+
+export interface AttendanceDecisionDto {
+  id: string;
+  employeeId: string;
+  workDate: string;
+  type: AttendanceDecisionType;
+  inAt: string | null;
+  outAt: string | null;
+  reason: string;
+  status: AttendanceDecisionStatus;
+  /** True when the day held device evidence that this decision decided against (§4 warning). */
+  overrodePunch: boolean;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  hrDecidedBy: string | null;
+  hrDecidedAt: string | null;
+  hrComment: string | null;
+  /** The decision this one revokes, on a `revoke` row; null on every other row. */
+  revokesId: string | null;
+  branchId: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Display labels, enriched on the list reads — never stored on the row. */
+  employeeCode?: string;
+  employeeName?: string;
+  /**
+   * Who decided, and who approved it, by name. Resolved on the read like the employee labels and
+   * for the same reason: a decision is answerable to a PERSON, and a screen showing an opaque id
+   * cannot be used to hold anybody to it.
+   */
+  decidedByName?: LocalizedString;
+  hrDecidedByName?: LocalizedString;
+}
+
+/**
+ * The §4 accountability read: who has been deciding days, how often, and how often against the
+ * devices.
+ *
+ * `flagged` is a PROMPT TO LOOK, not a verdict and not a limit. Nothing is blocked by crossing the
+ * threshold — a manager whose fingerprint reader broke will legitimately cross it, and that is
+ * precisely the week somebody should look at. The count and the threshold are both returned so the
+ * screen can say how far over, rather than only that it is.
+ */
+export interface AttendanceDecisionSignalDto {
+  decidedBy: string;
+  /** Localized, because a person's name is shown in the reader's language everywhere else. */
+  decidedByName: LocalizedString;
+  total: number;
+  /** Of those, the ones taken on a day that DID hold device evidence at the time. */
+  overrodePunch: number;
+  flagged: boolean;
+}
+
+export interface AttendanceDecisionSignalsDto {
+  from: string;
+  to: string;
+  /** Scaled from the weekly setting to the window actually asked about. */
+  threshold: number;
+  managers: AttendanceDecisionSignalDto[];
+}
+
+/** The decisions CSV — its own permission and its own audit row, like the attendance export. */
+export const ExportAttendanceDecisionsQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    employeeId: objectId().optional(),
+    branchId: listQuery(objectId()),
+    status: listQuery(AttendanceDecisionStatusSchema),
+    type: listQuery(AttendanceDecisionTypeSchema),
+    decidedBy: objectId().optional(),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the export window is capped at 92 days',
+  });
+export type ExportAttendanceDecisionsQuery = z.infer<typeof ExportAttendanceDecisionsQuerySchema>;
+
+export const AttendanceDecisionSignalsQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    branchId: listQuery(objectId()),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the review window is capped at 92 days',
+  });
+export type AttendanceDecisionSignalsQuery = z.infer<typeof AttendanceDecisionSignalsQuerySchema>;
+
 // ── Overtime approval (D5) ──────────────────────────────────────────────────
 
 /**
@@ -816,6 +1035,19 @@ export const HrAttendanceSettingKeys = {
   DefaultPatternBreakMinutes: 'hr.attendance.defaultPattern.breakMinutes',
   DefaultPatternGraceInMinutes: 'hr.attendance.defaultPattern.graceInMinutes',
   DefaultPatternGraceOutMinutes: 'hr.attendance.defaultPattern.graceOutMinutes',
+  /**
+   * How many days back a manager may decide a day on their own authority (stage 3). Beyond it the
+   * decision is recorded as `pendingHr` and takes effect only when HR approves it — the older the
+   * day, the more likely the correction is reconstruction rather than recollection.
+   */
+  DecisionApprovalAfterDays: 'hr.attendance.decisionApprovalAfterDays',
+  /**
+   * How many decisions a single manager may record in a week before the review screen flags them
+   * (stage 4). It is a PROMPT TO LOOK, never a limit: nothing is blocked, refused or undone by it.
+   * A manager whose devices are broken will legitimately cross it, which is exactly the case
+   * somebody should see.
+   */
+  DecisionWeeklyReviewThreshold: 'hr.attendance.decisionWeeklyReviewThreshold',
 } as const;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────

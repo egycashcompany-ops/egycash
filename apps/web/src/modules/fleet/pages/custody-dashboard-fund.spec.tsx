@@ -54,12 +54,17 @@ import { LedgerFigures, STRIP_FIGURE } from '../components/CustodyLedgerFigures'
 import { CAIRO } from '../components/custody-dashboard-parts';
 import {
   custodyAgeDays,
+  custodyDoneRows,
   custodyFundAlerts,
   custodyIsLate,
   custodyLedgerTarget,
+  custodyLetterMemos,
   custodyMemoStateParts,
   custodyNotReplenished,
+  custodyOutsideReceipts,
+  custodyPendingCount,
   custodyPeriodLink,
+  custodySettleCount,
   custodySettleWaiting,
   custodyWaiting,
   custodyWaitingShares,
@@ -104,7 +109,7 @@ const FUND: FleetCustodyFundSummaryDto = {
   spent: { count: 126, amount: 97794 },
   replenished: { count: 1, amount: 81908, memos: 5 },
   settled: { count: 1, amount: 124139.46, parts: 3 },
-  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+  held: { count: 0, amount: 0, memos: 0, receipts: 0, letters: [] },
   cancelled: { count: 0, amount: 0 },
   operations: 4,
   memos: { count: 5, pending: 0, pendingTotal: 0 },
@@ -558,6 +563,42 @@ describe('the fund’s arithmetic — ages, waiting money, where a line leads', 
     expect(custodyNowLabelPlace(242, 200)).toEqual({ top: 226, beside: true });
     // A rise to the top of the plot: beside it too.
     expect(custodyNowLabelPlace(26, 100)).toEqual({ top: 14, beside: true });
+    // A taller plot (the fleet dashboard's 280): a fall near the bottom still fits under the point.
+    expect(custodyNowLabelPlace(230, 200)).toEqual({ top: 218, beside: true });
+    expect(custodyNowLabelPlace(230, 200, 280)).toEqual({ top: 244, beside: false });
+  });
+
+  it('counts what the dashboard’s «العهدة» tab lists — in the lib, never in a tab file', () => {
+    // «إيصالات لم تدخل أي مذكرة بعد»: every kind's receipts together (3 + 8 + 18 + 4).
+    expect(custodyOutsideReceipts(OUTSIDE)).toBe(33);
+    expect(custodyOutsideReceipts(OUTSIDE6)).toBe(29);
+    expect(custodyOutsideReceipts([])).toBe(0);
+    // The same 33 the waiting card's chip adds with the memos' receipts (`custodyWaiting`).
+    expect(custodyWaiting([], OUTSIDE, 0).receipts).toBe(custodyOutsideReceipts(OUTSIDE));
+    // The licensing memos waiting, and the memos no replenishment has taken.
+    expect(custodySettleCount(PARTS)).toBe(2);
+    expect(custodySettleCount([])).toBe(0);
+    expect(custodyPendingCount([MEMO6])).toBe(1);
+    expect(custodyPendingCount([])).toBe(0);
+    // A held letter's memos.
+    expect(
+      custodyLetterMemos({
+        memos: [
+          { id: 'a', no: 1, kind: 'fuel', name: '', date: '2026-10-01', receipts: 2, total: 10 },
+          { id: 'b', no: 2, kind: 'wash', name: '', date: '2026-10-01', receipts: 1, total: 5 },
+        ],
+      }),
+    ).toBe(2);
+    // The chart's done lines: oldest first, held and cancelled left out, «الآن» on the last kept.
+    const steps = custodyDoneRows([
+      row({ id: 'h', op: 'replenish', status: 'held', latest: true }),
+      row({ id: 'c', op: 'replenish', status: 'cancelled' }),
+      row({ id: 's2', op: 'settle' }),
+      row({ id: 's1', op: 'charge' }),
+    ]);
+    expect(steps.map((step) => step.id)).toEqual(['s1', 's2']);
+    expect(steps.map((step) => step.latest)).toEqual([false, true]);
+    expect(custodyDoneRows([])).toEqual([]);
   });
 
   it('splits the spend by its memos’ state — the whole card or one kind', () => {
@@ -1209,7 +1250,43 @@ describe('«مصروفات العهدة حسب الفلاتر» — five spend c
 describe('a replenishment held for its transfer — or cancelled — on «لوحة تحكم العهدة»', () => {
   const HELD_FUND: FleetCustodyFundSummaryDto = {
     ...FUND,
-    held: { count: 1, amount: 8476, memos: 2, receipts: 12 },
+    held: {
+      count: 1,
+      amount: 8476,
+      memos: 2,
+      receipts: 12,
+      // The one letter held for its transfer: its two memos make its amount and its receipts.
+      letters: [
+        {
+          id: 'op-h1',
+          date: '2026-10-19',
+          from: '2026-10-01',
+          to: '2026-10-15',
+          amount: 8476,
+          receipts: 12,
+          memos: [
+            {
+              id: 'm-h1',
+              no: 21,
+              kind: 'fuel',
+              name: '',
+              date: '2026-10-16',
+              receipts: 7,
+              total: 5126,
+            },
+            {
+              id: 'm-h2',
+              no: 22,
+              kind: 'wash',
+              name: '',
+              date: '2026-10-16',
+              receipts: 5,
+              total: 3350,
+            },
+          ],
+        },
+      ],
+    },
     cancelled: { count: 1, amount: 600 },
     operations: 6,
   };

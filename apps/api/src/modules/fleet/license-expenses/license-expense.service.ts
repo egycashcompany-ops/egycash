@@ -4,6 +4,7 @@ import { Types, type FilterQuery } from 'mongoose';
 import {
   FLEET_LICENSE_EXPENSE_KINDS,
   type CreateFleetLicenseExpense,
+  type FleetDashboardPeriodLicenceSpendDto,
   type FleetLicenseExpenseDto,
   type FleetLicenseExpenseKind,
   type FleetLicenseExpensePart,
@@ -265,6 +266,18 @@ class FleetLicenseExpenseService {
   /** «الإحصائيات» — over every memo the filters match, never the page on screen. */
   async summary(query: FleetLicenseExpenseSummaryQuery): Promise<FleetLicenseExpenseTotalsDto> {
     return fleetLicenseExpenseRepository.totals(await expenseFilter(query));
+  }
+
+  /**
+   * The fleet dashboard's «مصروفات التراخيص في الفترة» (R2 `licenceSpend`): the memos whose memo
+   * day is in `from` … `to` — the register's own day rule (`expenseFilter`: whole days at both
+   * ends) — and nothing else: a memo carries no branch, no car type and no operation. Its `count`,
+   * `cars`, `visa` and `cash` are `/summary`'s over the same range.
+   */
+  async periodSpend(range: { from: Date; to: Date }): Promise<FleetDashboardPeriodLicenceSpendDto> {
+    return fleetLicenseExpenseRepository.spendDigest(
+      await expenseFilter({ from: range.from, to: range.to }),
+    );
   }
 
   async get(id: string): Promise<FleetLicenseExpenseDto> {

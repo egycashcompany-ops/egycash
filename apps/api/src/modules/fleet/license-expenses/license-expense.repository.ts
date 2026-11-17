@@ -1,5 +1,6 @@
 import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
 import {
+  type FleetDashboardPeriodLicenceSpendDto,
   type FleetLicenseExpenseKind,
   type FleetLicenseExpensePaidBy,
   type FleetLicenseExpenseTotalsDto,
@@ -46,6 +47,35 @@ export const linesTotalExpression = (paidBy?: FleetLicenseExpensePaidBy) => ({
         paidBy === undefined
           ? LINE_COST
           : { $cond: [{ $eq: ['$$this.paidBy', paidBy] }, LINE_COST, 0] },
+      ],
+    },
+  },
+});
+
+/**
+ * One line's cost in whole piastres: its amount to the piastre, times its count. «تفصيل مصروفات
+ * الفترة» sums its four groups this way so each pair adds up EXACTLY to the same total — every line
+ * is in one memo and paid one way. For an amount entered in pounds and piastres (`egp()`), it is
+ * the strip's `LINE_COST` to the piastre.
+ */
+const LINE_PIASTRES = {
+  $multiply: [
+    { $round: [{ $multiply: [{ $ifNull: ['$$this.amount', 0] }, 100] }, 0] },
+    { $ifNull: ['$$this.count', 1] },
+  ],
+};
+
+/** Σ `LINE_PIASTRES` over `input` — all its lines, or only those paid one way. */
+const linesPiastres = (input: unknown, paidBy?: FleetLicenseExpensePaidBy) => ({
+  $reduce: {
+    input,
+    initialValue: 0,
+    in: {
+      $add: [
+        '$$value',
+        paidBy === undefined
+          ? LINE_PIASTRES
+          : { $cond: [{ $eq: ['$$this.paidBy', paidBy] }, LINE_PIASTRES, 0] },
       ],
     },
   },
@@ -98,6 +128,21 @@ interface TotalsRow {
   visaTotal: number;
   cashTotal: number;
 }
+
+interface SpendRow {
+  count: number;
+  cars: number;
+  visa: number;
+  cash: number;
+  renewal: number;
+  extension: number;
+}
+
+/** Whole piastres → pounds, never `-0`. */
+const fromPiastres = (piastres: number): number => {
+  const rounded = Math.round(piastres);
+  return rounded === 0 ? 0 : rounded / 100;
+};
 
 class FleetLicenseExpenseRepository extends BaseRepository<FleetLicenseExpenseDoc> {
   constructor() {
@@ -250,6 +295,44 @@ class FleetLicenseExpenseRepository extends BaseRepository<FleetLicenseExpenseDo
       cars: row?.cars ?? 0,
       visaTotal: roundMoney(row?.visaTotal ?? 0),
       cashTotal: roundMoney(row?.cashTotal ?? 0),
+    };
+  }
+
+  /**
+   * «مصروفات التراخيص في الفترة» and «تفصيل مصروفات الفترة» (the fleet dashboard's R2
+   * `licenceSpend`) — ONE aggregate over every memo `filter` matches, through
+   * `ix_license_expense_date` when it names a day: the register's own count and cars (the strip's
+   * expressions), and the money split twice — by memo (the renewal's lines, the extension's) and by
+   * payment (visa, cash) — each in whole piastres, so renewal + extension = visa + cash = total.
+   */
+  async spendDigest(
+    filter: FilterQuery<FleetLicenseExpenseDoc>,
+  ): Promise<FleetDashboardPeriodLicenceSpendDto> {
+    const pipeline: PipelineStage[] = [
+      { $match: this.baseFilter(undefined, filter) },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          cars: { $sum: CARS_COUNT_EXPRESSION },
+          visa: { $sum: linesPiastres(ALL_LINES, 'visa') },
+          cash: { $sum: linesPiastres(ALL_LINES, 'cash') },
+          renewal: { $sum: linesPiastres({ $ifNull: ['$renewal.items', []] }) },
+          extension: { $sum: linesPiastres({ $ifNull: ['$extension.items', []] }) },
+        },
+      },
+    ];
+    const [row] = await this.model.aggregate<SpendRow>(pipeline).exec();
+    const visa = Math.round(row?.visa ?? 0);
+    const cash = Math.round(row?.cash ?? 0);
+    return {
+      count: row?.count ?? 0,
+      cars: row?.cars ?? 0,
+      visa: fromPiastres(visa),
+      cash: fromPiastres(cash),
+      renewal: fromPiastres(row?.renewal ?? 0),
+      extension: fromPiastres(row?.extension ?? 0),
+      total: fromPiastres(visa + cash),
     };
   }
 }

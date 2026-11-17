@@ -146,6 +146,8 @@ describe('tab 6 «أرقام الفترة»', () => {
             maintenance: 1,
             litres: 0,
             unpricedFuel: 0,
+            // The custody receipt of the two.
+            custodyCount: 1,
           },
           dealership: { amount: 5, rows: 1, pending: 0, dataFrom: '2026-10-05' },
         },

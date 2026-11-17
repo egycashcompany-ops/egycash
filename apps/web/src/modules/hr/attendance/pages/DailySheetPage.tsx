@@ -1,5 +1,13 @@
 // The daily sheet (AT-6, frozen design v1.1 §10): one branch/section on one date, read-only.
 //
+// IT LISTS PEOPLE, NOT ROWS, and that is a correctness fix rather than a presentation choice. It
+// used to read the day list, which filters day DOCUMENTS — so an employee the engine had written
+// no row for was missing from the sheet instead of showing as not-yet-in. The branch servers
+// recompute only the employees who scanned, so the people this screen is opened to find were
+// exactly the people it could not show, and the sheet reported near-perfect attendance every
+// morning by construction. `/hr/attendance/days/sheet` starts from the employees and resolves
+// «لم يحضر بعد» / «غائب» from the clock against the hour they were due — writing nothing.
+//
 // Every number here is a QUANTITY the engine derived — worked, late, early-leave, overtime — and
 // none of them is priced: pricing is Payroll's, and nothing on this screen knows a rate exists
 // (§1, D5). The one write the sheet offers is the overtime APPROVAL, which releases derived
@@ -18,10 +26,10 @@ import { MultiSelect } from '../../../../shared/ui/MultiSelect';
 import { readList, writeList } from '../../../../shared/lib/list-param';
 import { localized, orgUnitLabel } from '../../../../shared/lib/format';
 import { useBranchOptions, useSectionOptions } from '../../../organization/shared/references';
-import { DaysTable } from '../components/DaysTable';
+import { SheetTable } from '../components/SheetTable';
 import { OvertimeApprovalDialog } from '../components/OvertimeApprovalDialog';
 import { downloadAttendanceExport } from '../api/attendance-api';
-import { useAttendanceDays } from '../api/attendance-queries';
+import { useAttendanceSheet } from '../api/attendance-queries';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
@@ -66,8 +74,7 @@ export const DailySheetPage = (): JSX.Element => {
 
   const filters = useMemo(
     () => ({
-      from: date,
-      to: date,
+      date,
       page,
       pageSize: 50,
       ...(branchIds.length === 0 ? {} : { branchId: branchIds }),
@@ -76,7 +83,7 @@ export const DailySheetPage = (): JSX.Element => {
     // Keyed by the lists' text: a fresh array each render is not a new filter.
     [date, branchIds.join(','), sectionIds.join(','), page],
   );
-  const days = useAttendanceDays(filters, date !== '');
+  const days = useAttendanceSheet(filters, date !== '');
 
   const runExport = (): void => {
     setExporting(true);
@@ -149,18 +156,21 @@ export const DailySheetPage = (): JSX.Element => {
         </p>
       )}
 
-      <DaysTable
+      <SheetTable
         rows={days.data?.items ?? []}
         loading={days.isLoading}
         error={days.isError ? days.error : undefined}
         onRetry={() => void days.refetch()}
-        showEmployee
         empty={<EmptyState title={t('attendance.daily.empty')} />}
         rowActions={(row) =>
           // The approval is offered only where it can succeed: a derived surplus, an unfrozen
-          // row, and the key in hand. A frozen day's correction flows forward as an adjustment.
-          can('attendance.approveOvertime') && row.overtimeMinutes > 0 && row.frozenAt === null ? (
-            <Button size="sm" variant="secondary" onClick={() => setApproving(row)}>
+          // row, and the key in hand. A line with no day row has nothing to approve — there is no
+          // version to send and no overtime to release.
+          can('attendance.approveOvertime') &&
+          row.day !== null &&
+          row.day.overtimeMinutes > 0 &&
+          row.day.frozenAt === null ? (
+            <Button size="sm" variant="secondary" onClick={() => setApproving(row.day)}>
               {t('attendance.overtime.approve')}
             </Button>
           ) : null

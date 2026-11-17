@@ -18,12 +18,28 @@ import {
 } from './hr-attendance.js';
 
 describe('closed vocabularies', () => {
-  it('pins the ten day statuses of §2 — one enum, one value per day', () => {
+  it('pins the twelve day statuses of §2 — one enum, one value per day', () => {
+    // `checkedIn` is a deliberate contract change (owner ruling, 2026-11-17). The branch devices
+    // show 70–90% of employees scan on arrival and never scan out, so a check-in with no
+    // check-out is the ordinary working day here; it used to derive as `incomplete`, which is
+    // toned as a fault and priced at nothing. It counts as an attended day.
+    //
+    // `incomplete` STAYS in the vocabulary although nothing derives it any more: rows written
+    // before that ruling carry it, and a value that exists in the database must stay nameable by
+    // the enum that reads it. Payroll deliberately leaves it out of the attended statuses so no
+    // frozen month is restated — see `attendance-quantities.ts`.
+    //
+    // `pending` is the twelfth (stage 2): the day that is still being lived. It is written only
+    // for a date in progress and is payroll-neutral by construction, and once the date is past the
+    // read paths resolve it to `absent` — so it is a status that can be stored but can never be a
+    // date's final answer.
     expect([...ATTENDANCE_DAY_STATUSES]).toEqual([
       'present',
+      'checkedIn',
       'late',
       'earlyLeave',
       'lateAndEarly',
+      'pending',
       'absent',
       'onLeave',
       'weekend',
@@ -63,6 +79,15 @@ describe('closed vocabularies', () => {
       'hr.attendance.autoComputeHour',
       'hr.attendance.overtimeRequiresApproval',
       'hr.attendance.absenceNotify',
+      // The default working pattern (stage 1b) — six scalars rather than one object, because the
+      // settings screen can only edit boolean, number and string, and HR owns these hours. All
+      // six take a per-branch override; `enabled` ships false so the pattern is inert.
+      'hr.attendance.defaultPattern.enabled',
+      'hr.attendance.defaultPattern.startTime',
+      'hr.attendance.defaultPattern.endTime',
+      'hr.attendance.defaultPattern.breakMinutes',
+      'hr.attendance.defaultPattern.graceInMinutes',
+      'hr.attendance.defaultPattern.graceOutMinutes',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

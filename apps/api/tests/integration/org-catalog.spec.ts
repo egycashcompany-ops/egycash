@@ -290,13 +290,53 @@ describe('the catalog is one name, kept true', () => {
   });
 });
 
+/**
+ * Rows as history wrote them: never linked. Since P-ORG-3 the department and section services link a
+ * new row to the company list when they create it (§5.6), so the "legacy" rows the migration exists
+ * for are inserted through the models, as the employees here already are.
+ */
+const legacyDepartment = async (
+  input: { code: string; branchId: string; name: { ar: string; en: string } },
+  _by?: string,
+) => {
+  const _id = new Types.ObjectId();
+  return DepartmentModel.create({
+    _id,
+    code: input.code,
+    branchId: new Types.ObjectId(input.branchId),
+    name: input.name,
+    catalogId: null,
+    status: 'active',
+    path: `${input.branchId}/${String(_id)}`,
+  });
+};
+
+const legacySection = async (
+  input: { code: string; departmentId: string; name: { ar: string; en: string } },
+  _by?: string,
+) => {
+  const department = await DepartmentModel.findById(input.departmentId).lean().exec();
+  if (department === null) throw new Error('legacySection: no such department');
+  const _id = new Types.ObjectId();
+  return SectionModel.create({
+    _id,
+    code: input.code,
+    branchId: department.branchId,
+    departmentId: department._id,
+    name: input.name,
+    catalogId: null,
+    status: 'active',
+    path: `${String(department.branchId)}/${String(department._id)}/${String(_id)}`,
+  });
+};
+
 describe('the migration, against real rows', () => {
   /** Seven branches each holding «العمليات», exactly the shape the owner reported. */
   const sevenBranches = async (name: string): Promise<string[]> => {
     const ids: string[] = [];
     for (let n = 0; n < 7; n += 1) {
       const branch = await makeBranch(`فرع ${String(n)}`);
-      const row = await departmentService.create(
+      const row = await legacyDepartment(
         { code: code('DEP'), branchId: String(branch._id), name: { ar: name, en: name } },
         ACTOR,
       );
@@ -348,7 +388,7 @@ describe('the migration, against real rows', () => {
   it('refuses while one branch holds the same department twice', async () => {
     const branch = await makeBranch('المهندسين');
     for (const spelling of ['العليا', 'العليا']) {
-      await departmentService.create(
+      await legacyDepartment(
         { code: code('DEP'), branchId: String(branch._id), name: { ar: spelling, en: spelling } },
         ACTOR,
       );
@@ -362,11 +402,11 @@ describe('the migration, against real rows', () => {
 
   it('resolves that same gate once a merge is named, and moves the people with it', async () => {
     const branch = await makeBranch('المهندسين');
-    const loser = await departmentService.create(
+    const loser = await legacyDepartment(
       { code: 'DEP-9041', branchId: String(branch._id), name: { ar: 'العليا', en: 'Top' } },
       ACTOR,
     );
-    const winner = await departmentService.create(
+    const winner = await legacyDepartment(
       { code: 'CAI-90', branchId: String(branch._id), name: { ar: 'العليا', en: 'Top' } },
       ACTOR,
     );
@@ -409,11 +449,11 @@ describe('the migration, against real rows', () => {
 
   it('refuses a merge across branches, and writes nothing', async () => {
     const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
-    await departmentService.create(
+    await legacyDepartment(
       { code: 'DEP-A1', branchId: String(a._id), name: { ar: 'العمليات', en: 'Ops' } },
       ACTOR,
     );
-    await departmentService.create(
+    await legacyDepartment(
       { code: 'DEP-B1', branchId: String(b._id), name: { ar: 'التشغيل', en: 'Running' } },
       ACTOR,
     );
@@ -431,11 +471,11 @@ describe('the migration, against real rows', () => {
   it('catalogues the sections under the company-wide department they belong to', async () => {
     const branches = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
     for (const branch of branches) {
-      const department = await departmentService.create(
+      const department = await legacyDepartment(
         { code: code('DEP'), branchId: String(branch._id), name: { ar: 'العمليات', en: 'Ops' } },
         ACTOR,
       );
-      await sectionService.create(
+      await legacySection(
         {
           code: code('SEC'),
           departmentId: String(department._id),

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cairoInstant,
   deriveDay,
+  punchWindowFor,
   shiftWindow,
   type DeriveDayInput,
   type EnginePunch,
@@ -43,6 +44,14 @@ const punch = (at: Date, over: Partial<EnginePunch> = {}): EnginePunch => ({
   ...over,
 });
 
+/**
+ * Two days after the test day, so every expectation under test has already ENDED by `now` and an
+ * expected day with no punches derives `absent` — the state this file has always asserted. The
+ * `pending` boundary is interesting enough to get its own describe block rather than to be smeared
+ * across the default, and it moves `now` explicitly.
+ */
+const AFTER_THE_FACT = new Date(Date.UTC(2026, 6, 17));
+
 const base = (over: Partial<DeriveDayInput> = {}): DeriveDayInput => ({
   workDate: DAY,
   employed: true,
@@ -52,6 +61,7 @@ const base = (over: Partial<DeriveDayInput> = {}): DeriveDayInput => ({
   shift: GENERAL,
   punches: [],
   employeeBranchId: BRANCH,
+  now: AFTER_THE_FACT,
   ...over,
 });
 
@@ -103,11 +113,176 @@ describe('the resolution order — first match wins', () => {
     expect(deriveDay(base())?.status).toBe('absent');
   });
 
-  it('one punch is an incomplete day, never a guessed one (D6)', () => {
+  it('one punch is a CHECK-IN, not a fault — the ordinary day here (owner ruling)', () => {
     const row = deriveDay(base({ punches: [punch(at(9))] }));
-    expect(row?.status).toBe('incomplete');
-    expect(row?.workedMinutes).toBe(0);
+    expect(row?.status).toBe('checkedIn');
     expect(row?.firstInAt?.toISOString()).toBe(at(9).toISOString());
+    // The hours are unknown, and a departure is still never guessed into the day (D6).
+    expect(row?.workedMinutes).toBe(0);
+    expect(row?.lastOutAt).toBeNull();
+    expect(row?.earlyLeaveMinutes).toBe(0);
+    expect(row?.overtimeMinutes).toBe(0);
+  });
+
+  it('a check-in is still LATE when it is late — being expected at a time is what makes it so', () => {
+    const onTime = deriveDay(base({ punches: [punch(at(9, 10))] }));
+    expect(onTime?.status).toBe('checkedIn');
+    expect(onTime?.lateMinutes).toBe(0); // inside the 15-minute grace
+
+    const late = deriveDay(base({ punches: [punch(at(10))] }));
+    expect(late?.status).toBe('checkedIn');
+    expect(late?.lateMinutes).toBe(60); // raw minutes past the 09:00 start (D4)
+    expect(late?.workedMinutes).toBe(0);
+  });
+});
+
+// Most of this workforce has no shift assignment. The engine used to answer `dayOff` with no
+// times for all of them, which hid scans that were sitting in the database.
+describe('no shift and no default pattern — report what the devices saw', () => {
+  const noShift = (punches: EnginePunch[]) => deriveDay(base({ shift: null, punches }));
+
+  it('no punches at all is still a day nobody owes anything for', () => {
+    expect(noShift([])?.status).toBe('dayOff');
+  });
+
+  it('one punch is a check-in, and nothing is late with no expected start', () => {
+    const row = noShift([punch(at(9))]);
+    expect(row?.status).toBe('checkedIn');
+    expect(row?.firstInAt?.toISOString()).toBe(at(9).toISOString());
+    expect(row?.lateMinutes).toBe(0);
+    expect(row?.workedMinutes).toBe(0);
+  });
+
+  it('two punches give a present day with both times and the span between them', () => {
+    const row = noShift([punch(at(9)), punch(at(17))]);
+    expect(row?.status).toBe('present');
+    expect(row?.firstInAt?.toISOString()).toBe(at(9).toISOString());
+    expect(row?.lastOutAt?.toISOString()).toBe(at(17).toISOString());
+    // The full 8 hours: with no shift there is no break to subtract, where the same two punches
+    // against GENERAL would be 450 minutes.
+    expect(row?.workedMinutes).toBe(480);
+  });
+
+  it('nothing is ever late, early or overtime without an expected start and end', () => {
+    const row = noShift([punch(at(5)), punch(at(23))]);
+    expect(row?.lateMinutes).toBe(0);
+    expect(row?.earlyLeaveMinutes).toBe(0);
+    expect(row?.overtimeMinutes).toBe(0);
+  });
+
+  it('first-in and last-out are taken over the whole day, whatever order they arrive in', () => {
+    const row = noShift([punch(at(17)), punch(at(9)), punch(at(13))]);
+    expect(row?.firstInAt?.toISOString()).toBe(at(9).toISOString());
+    expect(row?.lastOutAt?.toISOString()).toBe(at(17).toISOString());
+  });
+});
+
+// The window is where a pre-dawn punch is either attributed once or attributed twice, and the
+// difference is a twenty-hour working day on somebody's record. These are the properties that
+// make the shift-less case safe, proven without a database.
+describe('pending — an expected day nobody has concluded yet', () => {
+  // GENERAL ends at 17:00 Cairo, which is 14:00 UTC on this July day.
+  const end = shiftWindow(DAY, GENERAL).end;
+
+  it('is pending while the expected end is still ahead, and absent once it has passed', () => {
+    // The branch servers recompute all day long, so this is a row that really does get written at
+    // ten in the morning for somebody who has not scanned. Calling that an absence would put a
+    // false statement in the database about a person who is very likely to walk in at ten past.
+    expect(deriveDay(base({ now: at(10) }))?.status).toBe('pending');
+    expect(deriveDay(base({ now: at(18) }))?.status).toBe('absent');
+  });
+
+  it('turns over exactly AT the expected end, not a minute either side', () => {
+    expect(deriveDay(base({ now: new Date(end.getTime() - 1) }))?.status).toBe('pending');
+    expect(deriveDay(base({ now: end }))?.status).toBe('absent');
+    expect(deriveDay(base({ now: new Date(end.getTime() + 1) }))?.status).toBe('absent');
+  });
+
+  it('carries no quantities either way — it is the absence of information, not a measurement', () => {
+    const pending = deriveDay(base({ now: at(10) }));
+    expect(pending).toMatchObject({
+      status: 'pending',
+      firstInAt: null,
+      lastOutAt: null,
+      workedMinutes: 0,
+      lateMinutes: 0,
+      earlyLeaveMinutes: 0,
+      overtimeMinutes: 0,
+    });
+  });
+
+  it('never applies without an expectation: no shift and no pattern stays dayOff all day', () => {
+    // Nobody said when this person was due, so there is no hour for them to be "not yet in" by.
+    expect(deriveDay(base({ shift: null, now: at(10) }))?.status).toBe('dayOff');
+    expect(deriveDay(base({ shift: null, now: at(23) }))?.status).toBe('dayOff');
+  });
+
+  it('never outranks the calendar or a punch', () => {
+    // Every earlier branch of the resolution still wins: `pending` is only ever the answer to
+    // "expected, and nothing seen".
+    expect(deriveDay(base({ now: at(10), weekend: true }))?.status).toBe('weekend');
+    expect(deriveDay(base({ now: at(10), holiday: true }))?.status).toBe('holiday');
+    expect(
+      deriveDay(base({ now: at(10), leave: { leaveId: 'lv-1', halfDay: false } }))?.status,
+    ).toBe('onLeave');
+    expect(deriveDay(base({ now: at(10), punches: [punch(at(9))] }))?.status).toBe('checkedIn');
+  });
+
+  it('follows a night shift past midnight — the day is winnable until the shift ends', () => {
+    // NIGHT runs 22:00 → 06:00, so at 02:00 Cairo on the following morning the day that started
+    // on DAY is still in progress. A cut at midnight would mint an absence for somebody halfway
+    // through their shift.
+    const nightEnd = shiftWindow(DAY, NIGHT).end;
+    expect(deriveDay(base({ shift: NIGHT, now: new Date(nightEnd.getTime() - 60_000) }))?.status).toBe(
+      'pending',
+    );
+    expect(deriveDay(base({ shift: NIGHT, now: new Date(nightEnd.getTime() + 60_000) }))?.status).toBe(
+      'absent',
+    );
+  });
+});
+
+describe('punchWindowFor — no punch belongs to two days', () => {
+  const dayAfter = (d: Date): Date => new Date(d.getTime() + 86_400_000);
+
+  it('with no shift the window is exactly one Cairo calendar day', () => {
+    const w = punchWindowFor(DAY, null);
+    expect(w.from.toISOString()).toBe(cairoInstant(DAY, '00:00').toISOString());
+    // The last millisecond before the next Cairo midnight, because the repository query is
+    // inclusive at both ends.
+    expect(w.to.getTime()).toBe(cairoInstant(dayAfter(DAY), '00:00').getTime() - 1);
+  });
+
+  it('consecutive shift-less days do not overlap, not even by one millisecond', () => {
+    const first = punchWindowFor(DAY, null);
+    const second = punchWindowFor(dayAfter(DAY), null);
+    expect(first.to.getTime()).toBeLessThan(second.from.getTime());
+    expect(second.from.getTime() - first.to.getTime()).toBe(1);
+  });
+
+  it('a 05:00 punch falls in exactly ONE shift-less day — the morning it happened', () => {
+    const preDawn = new Date(Date.UTC(2026, 6, 16, 2)); // 05:00 Cairo on the 16th (UTC+3)
+    const inWindow = (w: { from: Date; to: Date }): boolean =>
+      preDawn >= w.from && preDawn <= w.to;
+    expect(inWindow(punchWindowFor(DAY, null))).toBe(false); // not the 15th's last-out
+    expect(inWindow(punchWindowFor(dayAfter(DAY), null))).toBe(true); // the 16th's first-in
+  });
+
+  it('holds across the DST boundary, where a day is not 24 hours of UTC', () => {
+    const w = punchWindowFor(WINTER_DAY, null);
+    expect(w.from.toISOString()).toBe(cairoInstant(WINTER_DAY, '00:00').toISOString());
+    expect(w.to.getTime()).toBe(cairoInstant(dayAfter(WINTER_DAY), '00:00').getTime() - 1);
+    const next = punchWindowFor(dayAfter(WINTER_DAY), null);
+    expect(next.from.getTime() - w.to.getTime()).toBe(1);
+  });
+
+  it('with a shift it is the shift span plus the D3 margins, which DO overlap on purpose', () => {
+    const w = punchWindowFor(DAY, GENERAL);
+    const { start, end } = shiftWindow(DAY, GENERAL);
+    expect(w.from.getTime()).toBe(start.getTime() - 6 * 60 * 60 * 1000);
+    expect(w.to.getTime()).toBe(end.getTime() + 12 * 60 * 60 * 1000);
+    // Stated as a property so nobody "fixes" it later: an overtime tail belongs to the day worked.
+    expect(punchWindowFor(dayAfter(DAY), GENERAL).from.getTime()).toBeLessThan(w.to.getTime());
   });
 });
 

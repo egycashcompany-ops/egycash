@@ -35,13 +35,20 @@ const noticeKey = (kind: string, doc: AttendanceDayDoc): string =>
   `hr.attendance.${kind}:${String(doc.employeeId)}:${dateOnlyIso(doc.workDate)}`;
 
 /**
- * Yesterday's rows of one status. A FROZEN day is skipped: its period has already been closed for
- * payroll, so a notice inviting a correction would be inviting one that cannot land (§4 — a frozen
- * row never moves; corrections after a freeze flow forward as adjustments).
+ * Yesterday's rows of the given statuses. A FROZEN day is skipped: its period has already been
+ * closed for payroll, so a notice inviting a correction would be inviting one that cannot land
+ * (§4 — a frozen row never moves; corrections after a freeze flow forward as adjustments).
  */
-const previousDayRows = async (status: 'absent' | 'incomplete'): Promise<AttendanceDayDoc[]> => {
+const previousDayRows = async (
+  statuses: readonly ('absent' | 'incomplete' | 'pending')[],
+): Promise<AttendanceDayDoc[]> => {
   const workDate = addDays(cairoToday(), -1);
-  return AttendanceDayModel.find({ workDate, status, frozenAt: null, isDeleted: false })
+  return AttendanceDayModel.find({
+    workDate,
+    status: { $in: [...statuses] },
+    frozenAt: null,
+    isDeleted: false,
+  })
     .lean<AttendanceDayDoc[]>()
     .exec();
 };
@@ -55,12 +62,28 @@ const employeeUserId = async (doc: AttendanceDayDoc): Promise<string | null> => 
 
 class AttendanceSweepService {
   /**
-   * `incomplete` means the engine saw a check-in and no check-out (D6) — and an incomplete day
-   * BLOCKS the employee's payroll calculation until it is regularized, which is exactly why the
-   * person who can fix it hears about it the next morning rather than at month end.
+   * INERT SINCE THE CHECK-IN RULING, ON PURPOSE — and left in place rather than deleted.
+   *
+   * It queries yesterday's `incomplete` rows. Nothing derives `incomplete` any more: a check-in
+   * with no check-out is `checkedIn`, an attended day. So this sweep finds nothing from the day
+   * after that change, except a legacy row on the first morning, and sends nothing.
+   *
+   * THE OBVIOUS EDIT IS THE WRONG ONE. Re-aiming it at `checkedIn` would notify 70–90% of
+   * employees every morning that they had forgotten to do something nobody here does — the
+   * devices say that is simply how this workforce scans. A notice that reaches almost everybody
+   * every day is read by nobody, and it would bury the absence notice beside it.
+   *
+   * The old reason this notice existed — "an incomplete day blocks the employee's payroll
+   * calculation until it is regularized" — is void: `checkedIn` counts as an attended day
+   * (`attendance-quantities.ts`), so nothing is blocked and there is nothing to chase.
+   *
+   * It stays because the shape is still the right one for a notice we may yet want: telling
+   * somebody whose days normally DO have a check-out that yesterday's was missing. That needs a
+   * per-employee habit, which the 90-day medians of the attendance dashboard will provide. Until
+   * then this is a no-op, said out loud here so nobody reads its silence as a bug.
    */
   async sweepMissingCheckouts(): Promise<number> {
-    const rows = await previousDayRows('incomplete');
+    const rows = await previousDayRows(['incomplete']);
     let notified = 0;
     for (const doc of rows) {
       try {
@@ -99,7 +122,14 @@ class AttendanceSweepService {
       return 0;
     }
 
-    const rows = await previousDayRows('absent');
+    // `pending` COUNTS AS YESTERDAY'S ABSENCE, because by now that is what it means and what
+    // every screen shows for it: the date has passed with nobody arriving, and the read-time
+    // resolution turns a past `pending` into `absent` for exactly that reason. The row exists in
+    // that state when the day was last recomputed while it was still being lived — a branch
+    // recompute in the afternoon — and the nightly pass has not reached it, which is precisely
+    // the case where the person would otherwise be told nothing at all. Screen and notice have
+    // to agree about the same row, or one of them is lying.
+    const rows = await previousDayRows(['absent', 'pending']);
     let notified = 0;
     for (const doc of rows) {
       try {

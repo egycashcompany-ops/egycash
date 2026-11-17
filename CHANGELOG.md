@@ -11,6 +11,94 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administration: only the table scrolls, not the page.** «عايز بردو كل الصفحات اللى فى مديول الإدارة
+  ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس». Every page of the «الإدارة» menu now takes the
+  board frame Fleet and ATM use (`shared/ui/board-scroll.ts`). On a computer the title, tabs and
+  filters keep their place, the pager stays below, and only the table's rows scroll, under a head
+  that stays. A phone or a tablet scrolls as before.
+  - The table pages: System Users, Active Users, Notification Templates, Audit Log, Activity Log,
+    Applications and Application Categories.
+  - The pages whose list is cards: Roles, the Permission Catalog, Approval Workflows and System
+    Settings. Their list scrolls instead (`BOARD_LIST_FILL`).
+  - `BOARD_LISTVIEW_FILL` does the same for a `ListView` card.
+  - The Audit Log, whose filter bar is the tallest, takes the IT boards' lower table floor
+    (`BOARD_TABLE_FILL_LOW`). With the usual 14rem floor, a 1280×720 or 1366×768 laptop scrolled
+    the whole page, filters included.
+  - `admin-board-scroll.spec.ts` holds every page of the menu to this shape.
+  - Checked in a browser against a mocked API. At 1440×900, 1366×768 and 1280×720 the title and
+    filters stay in place on all eleven pages, and the table or list takes the height that is left.
+
+- **Organization: «شجرة الهيكل التنظيمي», and a job's place in the structure.** «HR hierarchical chart …
+  عبارة عن شارت بالشركة كلها .. فيه الإدارات والأقسام والمسميات الوظيفية … ولما أختار إدارة بالضغط على
+  كارت يجيب تحتها الشارت بتاع هيكلها التنظيمي مع إمكانية تعديل الهيكل»; «عند إضافة وظيفة جديدة لا يتم
+  اختيار القسم التابع لها أو الإدارة … والأتنين يسمعوا فى بعض». Design: `docs/12-planning/org-chart-design.md`;
+  ADR-038 (job places, which supersedes ADR-031 in part).
+  - **The page** (`/organization/chart`, `department.view`): every company department as a tile, the
+    branch copies folded into one; picking one draws its sections side by side, each with its jobs, and
+    the jobs placed directly under the department in a first column. A department with no sections
+    hangs its jobs straight from it. Phones get the same content as an indented tree.
+  - **Edit mode** saves each gesture at once: add a section in the ticked branches, rename it, stop it,
+    add a job to a place, move it (drag, or «نقل إلى»), remove it from a place. Groups not linked to the
+    company list stay read-only and say so.
+  - **The job form and detail** get «مكانها في الهيكل التنظيمي»: a department, or one of its sections;
+    several allowed. The chart and the form write the very same rows through the job's own
+    version-checked update, so each shows what the other changed.
+  - **Places are descriptive:** they block nothing and count no headcount. A new department or section
+    row is linked to the company list when created (D-ORG3-5). At the first start, each department gets
+    the places where its holders sit, once; after that they are edited by hand.
+  - The server takes `GET /platform/org-chart`, `POST /platform/org-chart/sections`,
+    `PATCH /platform/org-chart/sections/:id` and `POST /platform/org-chart/sections/:id/stop`; job
+    create and update take `places` (at most 50). New collections `job_title_places` and
+    `job_title_place_fills`, with indexes built at boot.
+
+- **IT: on a computer only the table scrolls.** «فى شاشات الـ IT مش عايز كل الصفحة تعمل Scroll !! عايز
+  فقط الجدول لكن الزراير والفلتر يبقوا ثابتين». Every IT list screen — assets, custody, consumables and
+  their movements, mobile lines, employees, catalogs, vendors, licenses, software, tickets,
+  maintenance orders and plans, spare parts — now uses the Fleet and ATM boards' frame
+  (`PageContainer fullHeight`, `BOARD_FRAME`, `DataTable stickyHead`): from `lg` the title, the
+  buttons, the figures and the filters keep their place, the pager keeps its place below, and only
+  the rows scroll under a head that stays; a phone or tablet scrolls the page as before.
+  - The IT boards' table floor is 8rem (`BOARD_TABLE_FILL_LOW`), not the shared 14rem, so on a
+    1280×720 or 1024×768 screen the rows shrink before the filters move — measured in a browser on
+    every board at 1024×768 to 1920×1080. Fleet and ATM are unchanged.
+  - The mobile lines' network cards are compact from `lg` (counts beside the name, accounts as chips,
+    «+N» past four); the pressed card's mark and ring sit inside the card.
+  - The bulk upload's lines scroll in a box of their own under a sticky head, «تأكيد» in view.
+  - Left as they were: dashboards, records, and the help desk settings (two settings cards over a
+    table of a few priorities).
+
+- **HR: «تعديل» on the employee's «طباعة العقد والمستندات».** «في شاشه الموظفين … نخلي في امكانيه
+  للتعديل زي معملنا قبل كدا تحت الtoggle تعديل و طباعه و تحت يظهر البيانات عشان التعديل و النص التاني
+  الفورم».
+  - Every paper has «تعديل» and «طباعة» under it. Below, side by side: the opened paper's values and
+    the paper as it prints, redrawn with each change.
+  - What is typed is saved as a box is left, for that employee only (`hr_employee_paper_values`), and
+    printed by every paper of theirs that prints it — on the tab and in «المعينون»'s printing for
+    many. The employee's file does not change; clearing a box gives the record's value back. Until
+    something is typed, the values typed for them as a candidate stand.
+  - The contract they hold shows its values and prints as issued; it changes only by renewing or
+    amending it. Its number and term are never typed.
+  - «تاريخ بدء الاشتراك» (form 1) is one date box, on this tab and on «عقد جديد»: the start of work
+    unless another date is chosen.
+  - Server: `PATCH /hr/contracts/employee-papers/:employeeId/values` and `POST …/preview`
+    (`contract.print`); the papers' read returns each paper's values.
+
+- **HR: «نموذج رقم (1)» carries the company's own number and address, the job's wage, and Arabic
+  figures.** «رقم المنشاه … هنثبت اول مربع و هنحط من تاني مربع الرقم دا 3338726 بالعربي من الشمال
+  لليمين و نشيل التاريخ اللي موجو في تحريرا في و عاوزين نحط الاجر داخل اشتراك و الاجر الشامل علي حسب
+  الوظيفهه … رقمها التاميني … العنوان … كل الارقام بالعربي». The scanned pages are unchanged.
+  - «رقم المنشأة»: the first of its eight boxes empty, ٣٣٣٨٧٢٦ in the other seven. Overleaf,
+    «رقمها التأميني» ٣٣٣٨٧٢٦ and «العنوان» «٩٠ د احمد عرابي المهندسين-الجيزه».
+  - «أجر /دخل الاشتراك» and «الأجر الشامل»: the job's «الراتب الثابت» from the organization chart,
+    the pounds at the end of their five boxes, the piasters in their two (variables
+    `job.fixedSalaryPounds`, `job.fixedSalaryPiasters`). A job with none leaves the boxes empty.
+  - «تحريراً في» is left for the hand; «تاريخ بدء الاشتراك» is still the start date.
+  - Overleaf, «أقر أنا …» is left for the hand too: the employee's name is no longer written there
+    («اقر انا دي سبها متكتبش فيها اسم الموظف»; revision 5).
+  - Every figure the form is filled with is printed in Arabic figures; an e-mail address keeps its own.
+  - The template sanitizer keeps rows of five and seven boxes (`c5`, `c7`) and `end`; the paper's
+    revision 4 rewrites the stored row at boot.
+
 - **System users: department, job title and roles on every row, and as filters.** «فى صفحة
   /system/users مستخدمو النظام عايزك تزود أدوار كل واحد + الإدارة بتاعته + مسماه الوظيفي .. وطبعاً
   هتزودهم فى الفلتر».
@@ -1897,6 +1985,19 @@ its entry here in the same PR.
   replaced, and a note names the asset the data came from.
 
 ### Fixed
+
+- **A role holding a retired permission can be saved again.** «لما بعدل صلاحيات دور بيظهر كدا !
+  Unknown permission keys: applicant.returnToStage» (the role «الموارد البشرية Test»).
+  - The cause: `applicant.returnToStage` was retired on 2026-11-16 (replaced by
+    `applicantReturn.execute`). Roles that held it kept it, and every save checked ALL the role's
+    keys against the registry, so the role could not be saved at all.
+  - Now only the keys an edit ADDS must be registered, the same rule the "keys you hold" check
+    already followed. A key the role already holds may be re-sent and is kept.
+  - Delegated grants follow the same rule.
+  - Retired keys are not stripped automatically: a key can be missing from the registry only for
+    now (the automation keys while `AUTOMATION_ENABLED` is off).
+  - The role form already lists such keys at the end, as «غير معروفة», where they can be unticked
+    but not re-added.
 
 - **HR: «نموذج رقم (1)» prints on the owner's own pages.** «انا عاوز النموزج بردو شبه منا بعتو بظبط
   مفهوش اي تعديل خالص و بيتملي عادي بس الشكل اللي ادتولك بظبط». The form was drawn again in the

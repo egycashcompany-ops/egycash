@@ -31,6 +31,8 @@ import {
   LoadingState,
 } from '../../../../shared/ui';
 import { Field, Select } from '../../../../shared/ui/form';
+import { cn } from '../../../../shared/lib/cn';
+import { BOARD_FRAME, BOARD_LIST_FILL } from '../../../../shared/ui/board-scroll';
 import { useBranchOptions } from '../../../organization/shared/references';
 import { useDepartmentCatalog } from '../../roles/api/role-queries';
 import {
@@ -114,112 +116,116 @@ export const ApprovalWorkflowsPage = (): JSX.Element => {
     );
   };
 
-  if (workflows.isLoading || types.isLoading) {
-    return (
-      <PageContainer>
-        <LoadingState />
-      </PageContainer>
-    );
-  }
-  if (workflows.isError) {
-    return (
-      <PageContainer>
-        <ErrorState onRetry={() => void workflows.refetch()} />
-      </PageContainer>
-    );
-  }
-
+  const loading = workflows.isLoading || types.isLoading;
   const firstType = types.data?.[0]?.key ?? '';
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('approvals.page.title')}
-        actions={
-          firstType === '' ? undefined : (
-            <Button onClick={() => setDraft(emptyDraft(firstType))}>
-              {t('approvals.page.add')}
-            </Button>
-          )
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «ميبقاش الصفحات كلها بتعمل Scroll
+          لكن الجداول بس»): on a computer the title and the explanation keep their place, and only
+          the request-type groups scroll. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('approvals.page.title')}
+          actions={
+            // Only once the chains are on screen: before the frame, loading and failing replaced
+            // the whole page, this button with it.
+            loading || workflows.isError || firstType === '' ? undefined : (
+              <Button onClick={() => setDraft(emptyDraft(firstType))}>
+                {t('approvals.page.add')}
+              </Button>
+            )
+          }
+        />
 
-      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
-        {t('approvals.page.description')}
-      </p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {t('approvals.page.description')}
+        </p>
 
-      {grouped.length === 0 && <EmptyState title={t('approvals.page.empty')} />}
+        <div className={cn(BOARD_LIST_FILL, 'space-y-4')}>
+          {loading ? (
+            <LoadingState />
+          ) : workflows.isError ? (
+            <ErrorState onRetry={() => void workflows.refetch()} />
+          ) : (
+            <>
+              {grouped.length === 0 && <EmptyState title={t('approvals.page.empty')} />}
 
-      <div className="space-y-4">
-        {grouped.map((group) => (
-          <Card key={group.requestType}>
-            <CardBody>
-              <h3 className="mb-3 text-sm font-semibold">{typeName(group.requestType)}</h3>
-              <ul className="space-y-3">
-                {group.rows.map((row) => (
-                  <li
-                    key={row.id}
-                    className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium">{placeOf(row)}</span>
-                        {row.department === null && row.branch === null && (
-                          <Badge size="sm" tone="neutral">
-                            {t('approvals.place.defaultHint')}
-                          </Badge>
-                        )}
-                        {!row.isActive && (
-                          <Badge size="sm" tone="warning">
-                            {t('approvals.inactive')}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() =>
-                            setDraft({
-                              requestType: row.requestType,
-                              departmentCatalogId: row.department?.id ?? null,
-                              branchId: row.branch?.id ?? null,
-                              steps: row.steps,
-                              isActive: row.isActive,
-                            })
-                          }
+              {grouped.map((group) => (
+                <Card key={group.requestType}>
+                  <CardBody>
+                    <h3 className="mb-3 text-sm font-semibold">{typeName(group.requestType)}</h3>
+                    <ul className="space-y-3">
+                      {group.rows.map((row) => (
+                        <li
+                          key={row.id}
+                          className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"
                         >
-                          {t('common.edit')}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => remove.mutate(row.id)}
-                          disabled={remove.isPending}
-                        >
-                          {t('common.delete')}
-                        </Button>
-                      </div>
-                    </div>
-                    <ol className="mt-2 flex flex-wrap items-center gap-2">
-                      {row.steps.map((step, index) => (
-                        <li key={index} className="flex items-center gap-2">
-                          {index > 0 && <span className="text-slate-400">←</span>}
-                          <span className="rounded-md bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800">
-                            {t(`approvals.level.${step.level}`)}
-                            <span className="ms-1 font-mono text-[10px] text-slate-400" dir="ltr">
-                              {step.permissionKey}
-                            </span>
-                          </span>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium">{placeOf(row)}</span>
+                              {row.department === null && row.branch === null && (
+                                <Badge size="sm" tone="neutral">
+                                  {t('approvals.place.defaultHint')}
+                                </Badge>
+                              )}
+                              {!row.isActive && (
+                                <Badge size="sm" tone="warning">
+                                  {t('approvals.inactive')}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  setDraft({
+                                    requestType: row.requestType,
+                                    departmentCatalogId: row.department?.id ?? null,
+                                    branchId: row.branch?.id ?? null,
+                                    steps: row.steps,
+                                    isActive: row.isActive,
+                                  })
+                                }
+                              >
+                                {t('common.edit')}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => remove.mutate(row.id)}
+                                disabled={remove.isPending}
+                              >
+                                {t('common.delete')}
+                              </Button>
+                            </div>
+                          </div>
+                          <ol className="mt-2 flex flex-wrap items-center gap-2">
+                            {row.steps.map((step, index) => (
+                              <li key={index} className="flex items-center gap-2">
+                                {index > 0 && <span className="text-slate-400">←</span>}
+                                <span className="rounded-md bg-slate-100 px-2 py-1 text-xs dark:bg-slate-800">
+                                  {t(`approvals.level.${step.level}`)}
+                                  <span
+                                    className="ms-1 font-mono text-[10px] text-slate-400"
+                                    dir="ltr"
+                                  >
+                                    {step.permissionKey}
+                                  </span>
+                                </span>
+                              </li>
+                            ))}
+                          </ol>
                         </li>
                       ))}
-                    </ol>
-                  </li>
-                ))}
-              </ul>
-            </CardBody>
-          </Card>
-        ))}
+                    </ul>
+                  </CardBody>
+                </Card>
+              ))}
+            </>
+          )}
+        </div>
       </div>
 
       <Dialog

@@ -19,6 +19,7 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { Select } from '../../../shared/ui/form';
@@ -202,57 +203,68 @@ export const SoftwarePage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.software')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.software') }]}
-        actions={
-          <div className="flex items-center gap-2">
-            {can('itLicense.view') && (
-              <Button size="sm" variant="secondary" onClick={() => navigate('/it/licenses')}>
-                {t('it.nav.licenses')}
-              </Button>
-            )}
-            <Can permission="itSoftware.manage">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => (tab === 'products' ? setCreatingProduct(true) : setInstalling(true))}
-              >
-                {tab === 'products' ? t('it.software.add') : t('it.software.install')}
-              </Button>
-            </Can>
-          </div>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»), as on ATM's
+          data-edit screen: on a computer the title, its actions, the tabs and the filter bar keep
+          their place, the pager keeps its place below, and only the table's rows scroll, under a
+          head that stays. The two tabs share the filter bar and the pager and show one table at a
+          time, so the page is one frame and the table shown is its fill's direct child. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.software')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.software') },
+          ]}
+          actions={
+            <div className="flex items-center gap-2">
+              {can('itLicense.view') && (
+                <Button size="sm" variant="secondary" onClick={() => navigate('/it/licenses')}>
+                  {t('it.nav.licenses')}
+                </Button>
+              )}
+              <Can permission="itSoftware.manage">
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  onClick={() =>
+                    tab === 'products' ? setCreatingProduct(true) : setInstalling(true)
+                  }
+                >
+                  {tab === 'products' ? t('it.software.add') : t('it.software.install')}
+                </Button>
+              </Can>
+            </div>
+          }
+        />
 
-      <div
-        className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
-        role="tablist"
-        aria-label={t('it.nav.software')}
-      >
-        {TABS.map((value) => (
-          <button
-            key={value}
-            role="tab"
-            aria-selected={tab === value}
-            type="button"
-            onClick={() => {
-              setTab(value);
-              setPage(1);
-            }}
-            className={`rounded-t-lg px-4 py-2 text-sm ${
-              tab === value
-                ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            {t(`it.software.tab.${value}`)}
-          </button>
-        ))}
-      </div>
+        <div
+          className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
+          role="tablist"
+          aria-label={t('it.nav.software')}
+        >
+          {TABS.map((value) => (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={tab === value}
+              type="button"
+              onClick={() => {
+                setTab(value);
+                setPage(1);
+              }}
+              className={`rounded-t-lg px-4 py-2 text-sm ${
+                tab === value
+                  ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              {t(`it.software.tab.${value}`)}
+            </button>
+          ))}
+        </div>
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={search !== '' || active !== 'true'}
           onClear={() => {
@@ -292,39 +304,43 @@ export const SoftwarePage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        {tab === 'products' ? (
-          <DataTable
-            columns={productColumns}
-            rows={products.data?.items ?? []}
-            rowKey={(p) => p.id}
-            loading={products.isLoading}
-            error={products.isError ? products.error : undefined}
-            onRetry={() => void products.refetch()}
-            empty={
-              <EmptyState
-                icon={<LayersIcon className="h-10 w-10" />}
-                title={t('it.software.emptyProductsTitle')}
-                description={t('it.software.emptyProductsBody')}
-              />
-            }
-          />
-        ) : (
-          <DataTable
-            columns={installColumns}
-            rows={installs.data?.items ?? []}
-            rowKey={(i) => i.id}
-            loading={installs.isLoading}
-            error={installs.isError ? installs.error : undefined}
-            onRetry={() => void installs.refetch()}
-            empty={
-              <EmptyState
-                icon={<LayersIcon className="h-10 w-10" />}
-                title={t('it.software.emptyInstallsTitle')}
-                description={t('it.software.emptyInstallsBody')}
-              />
-            }
-          />
-        )}
+        <div className={BOARD_TABLE_FILL_LOW}>
+          {tab === 'products' ? (
+            <DataTable
+              columns={productColumns}
+              rows={products.data?.items ?? []}
+              rowKey={(p) => p.id}
+              loading={products.isLoading}
+              error={products.isError ? products.error : undefined}
+              onRetry={() => void products.refetch()}
+              empty={
+                <EmptyState
+                  icon={<LayersIcon className="h-10 w-10" />}
+                  title={t('it.software.emptyProductsTitle')}
+                  description={t('it.software.emptyProductsBody')}
+                />
+              }
+              stickyHead
+            />
+          ) : (
+            <DataTable
+              columns={installColumns}
+              rows={installs.data?.items ?? []}
+              rowKey={(i) => i.id}
+              loading={installs.isLoading}
+              error={installs.isError ? installs.error : undefined}
+              onRetry={() => void installs.refetch()}
+              empty={
+                <EmptyState
+                  icon={<LayersIcon className="h-10 w-10" />}
+                  title={t('it.software.emptyInstallsTitle')}
+                  description={t('it.software.emptyInstallsBody')}
+                />
+              }
+              stickyHead
+            />
+          )}
+        </div>
         {current.data !== undefined && current.data.meta.totalItems > 0 && (
           <Pagination
             meta={current.data.meta}

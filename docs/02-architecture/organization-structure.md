@@ -23,7 +23,7 @@ Company (singleton)
         └── Section              (organizational subdivision only)
             └── Employee         (carries departmentId + optional sectionId, and a Job Title)
 
-Job Titles ── organization-wide catalog (NOT nested under Section)
+Job Titles ── organization-wide catalog (NOT nested under Section; each names its job places — ADR-038)
 ```
 
 This tree is the **canonical organizational backbone**: **Branch is the first node** below the
@@ -45,6 +45,12 @@ A **Job Title defines a role** — it is deliberately **not** tied to a Branch/D
 Where a role sits is carried by the **record that holds it**: an employee has `departmentId`
 (required), `sectionId` (optional) and `branchId` beside `jobTitleId`, which is what keeps the
 org-wide catalog org-wide and the Talent-Pool rule (ADR-016) possible.
+
+**Job places (P-ORG-3, [ADR-038](../03-decisions/ADR-038-job-titles-placed-in-the-structure.md)).** A
+title still belongs to no unit, but it may NAME where it is found: a company department (its catalog
+entry), optionally one of that department's sections — several places allowed, in
+`job_title_places`. The places describe the structure the org chart draws; nothing checks a person's
+registration against them, and they carry no headcount. The job form and the chart write the same rows.
 
 ### Job Titles vs Job Positions — merged 2026-08-24 (P-ORG-1)
 
@@ -94,7 +100,9 @@ version-checked mutations, URL-synchronized list filters, i18n + RTL, and the sh
 Because Branch/Department/Section are structurally identical, their **List / Detail / Form screens
 are one generic implementation** (`shared/Unit*Page.tsx`) configured per unit
 (`shared/unit-config.ts`) — the same "thin over one implementation" shape the backend uses via
-`makeOrgUnitHandlers`. Company and the enriched Job Titles have their own screens.
+`makeOrgUnitHandlers`. Company and the enriched Job Titles have their own screens, and so does the
+company org chart (`/organization/chart`, P-ORG-3): one tile per company department, its sections and
+the jobs placed in each, editable in place.
 
 - **No new backend endpoints, permissions, or events** were introduced — the admin consumes the
   existing platform APIs and RBAC catalog.
@@ -254,7 +262,7 @@ nesting. When Job Positions are built (roadmap #2), the entity carries `departme
   **Job Position** entity was built and then removed.
 - **Departments/Sections** are plain org units (`branchId`, and `departmentId` for sections) with no
   embedded application/position lists that would force a one-to-many — a future M2M join is a pure
-  addition.
+  addition. One now exists: `job_title_places` (job title ⇄ department or section entry, ADR-038).
 - **RBAC** already supports direct `userId → roleId` assignments with scope, so the derived
   (Position→Department→Applications→Roles) model and the optional direct override can both be layered
   on additively.

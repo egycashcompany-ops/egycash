@@ -17,6 +17,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   type AttendanceDayDto,
   type AttendanceRegularizationDto,
+  type AttendanceSheetRowDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
@@ -152,13 +153,34 @@ const render = (
   );
 };
 
-const dailyFilters = { from: TODAY, to: TODAY, page: 1, pageSize: 50 };
+/**
+ * A sheet LINE, which is a person rather than a row: `day` is null for somebody the engine has
+ * written nothing for, and `status` is the resolved label the server worked out when it was read.
+ */
+const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRowDto => ({
+  employeeId: 'e-1',
+  employeeCode: 'EMP-0007',
+  employeeName: 'سارة أحمد',
+  branchId: 'b-1',
+  date: TODAY,
+  status: 'late',
+  expectedStartAt: `${TODAY}T07:00:00.000Z`,
+  expectedEndAt: `${TODAY}T15:00:00.000Z`,
+  day: day(),
+  ...over,
+});
+
+const dailyFilters = { date: TODAY, page: 1, pageSize: 50 };
+
+/** Seeds the SHEET cache — the daily sheet reads `/days/sheet`, not the day list. */
+const seedSheet =
+  (rows: AttendanceSheetRowDto[]) =>
+  (qc: QueryClient): void => {
+    qc.setQueryData(listKey('hr', 'attendanceSheet', dailyFilters), paged(rows));
+  };
 
 const sheet = (options: Parameters<typeof render>[1] = {}): string =>
-  render(<DailySheetPage />, {
-    seed: (qc) => qc.setQueryData(listKey('hr', 'attendanceDays', dailyFilters), paged([day()])),
-    ...options,
-  });
+  render(<DailySheetPage />, { seed: seedSheet([sheetRow()]), ...options });
 
 describe('the daily sheet reads quantities and offers only what the caller may do', () => {
   it('renders the derived numbers for the day', () => {
@@ -192,11 +214,7 @@ describe('the daily sheet reads quantities and offers only what the caller may d
     // Frozen: the correction flows forward as an adjustment, so no button.
     const frozen = sheet({
       permissions: ['attendance.view', 'attendance.approveOvertime'],
-      seed: (qc) =>
-        qc.setQueryData(
-          listKey('hr', 'attendanceDays', dailyFilters),
-          paged([day({ frozenAt: `${TODAY}T23:00:00.000Z` })]),
-        ),
+      seed: seedSheet([sheetRow({ day: day({ frozenAt: `${TODAY}T23:00:00.000Z` }) })]),
     });
     expect(frozen).not.toContain('Approve overtime');
     expect(frozen).toContain('Frozen');
@@ -204,11 +222,7 @@ describe('the daily sheet reads quantities and offers only what the caller may d
     // No derived surplus: nothing to release.
     const noOvertime = sheet({
       permissions: ['attendance.view', 'attendance.approveOvertime'],
-      seed: (qc) =>
-        qc.setQueryData(
-          listKey('hr', 'attendanceDays', dailyFilters),
-          paged([day({ overtimeMinutes: 0, approvedOvertimeMinutes: 0 })]),
-        ),
+      seed: seedSheet([sheetRow({ day: day({ overtimeMinutes: 0, approvedOvertimeMinutes: 0 }) })]),
     });
     expect(noOvertime).not.toContain('Approve overtime');
   });
@@ -218,6 +232,28 @@ describe('the daily sheet reads quantities and offers only what the caller may d
     expect(html).toContain('الحضور اليومي');
     expect(html).toContain('متأخر');
     expect(html).not.toContain('Daily attendance');
+  });
+
+  it('shows a person with NO day row as «لم يحضر بعد», and offers nothing to approve on them', () => {
+    // The stage-2 line: an employee nobody has recomputed today. There are no quantities to print
+    // and no version to send, so every number is a dash and the approval is not offered — but the
+    // person is on the sheet, which is the entire point of the change.
+    const html = sheet({
+      locale: 'ar',
+      permissions: ['attendance.view', 'attendance.approveOvertime'],
+      seed: seedSheet([sheetRow({ status: 'pending', day: null })]),
+    });
+    expect(html).toContain('EMP-0007');
+    expect(html).toContain('لم يحضر بعد');
+    expect(html).not.toContain('اعتماد الإضافي');
+  });
+
+  it('prints the expected hours, which no day row carries', () => {
+    const html = sheet({ permissions: ['attendance.view'] });
+    // 07:00–15:00 UTC is 09:00–17:00 in Cairo — the 24-hour business clock (R10), never the
+    // browser's zone — and the sheet is the only screen that shows it.
+    expect(html).toContain('Expected');
+    expect(html).toContain('09:00 → 17:00');
   });
 });
 

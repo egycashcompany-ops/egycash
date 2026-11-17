@@ -667,7 +667,7 @@ export type HiringPackRequest = z.infer<typeof HiringPackRequestSchema>;
  * the contract they hold now, to print again or renew.
  */
 export interface EmployeePapersDto {
-  papers: JobPaperDto[];
+  papers: EmployeePaperDto[];
   contract: {
     id: string;
     code: string;
@@ -676,6 +676,48 @@ export interface EmployeePapersDto {
     endDate: string | null;
     version: number;
   } | null;
+  /**
+   * «تعديل» on the employee's tab — «زي معملنا قبل كدا»: every value the papers print for this
+   * employee, as they would print now, the values typed in for them applied. The contract they hold
+   * is not among them: its values are its own (`contractValues`).
+   */
+  values: CandidateValueDto[];
+  /** The values the contract the employee holds carries — shown, never changed here. */
+  contractValues: CandidateValueDto[];
+  /** The version of the values typed in for this employee, for the next save; 0 before the first. */
+  valuesVersion: number;
+  valuesUpdatedAt: string | null;
+}
+
+/** One of the employee's papers on their tab: what «تعديل» opens. */
+export interface EmployeePaperDto extends JobPaperDto {
+  /** The values it prints. */
+  placeholders: string[];
+  /**
+   * The contract the employee holds: printed as it was issued, its values changed only by renewing or
+   * amending it — what the verification code checks must be what is printed.
+   */
+  locked: boolean;
+}
+
+/**
+ * Save the values typed in for an employee's papers — the whole list each time; a blank value gives
+ * the record's own back. The employee's file does not change.
+ */
+export const UpdateEmployeePaperValuesSchema = z
+  .object({
+    overrides: overridesField(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateEmployeePaperValues = z.infer<typeof UpdateEmployeePaperValuesSchema>;
+
+/** One of the employee's papers as it would print now — nothing is made, printed or recorded. */
+export const PreviewEmployeePaperSchema = z.object({ key: z.string().min(1).max(100) }).strict();
+export type PreviewEmployeePaper = z.infer<typeof PreviewEmployeePaperSchema>;
+
+export interface PreviewEmployeePaperDto {
+  html: string;
 }
 
 /**

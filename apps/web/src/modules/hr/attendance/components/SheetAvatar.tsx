@@ -28,10 +28,13 @@ export const SheetAvatar = ({
   employeeId,
   photoFileId,
   name,
+  size = 'sm',
 }: {
   employeeId: string;
   photoFileId: string | null;
   name: string;
+  /** `sm` in a list row; the employee's own header card wears `lg`. */
+  size?: 'sm' | 'md' | 'lg';
 }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const photo = useEmployeePhotoUrl(employeeId, photoFileId);
@@ -40,10 +43,12 @@ export const SheetAvatar = ({
       src={photo.url}
       alt={name}
       shape="circle"
-      size="sm"
+      size={size}
       fallback={
         <span
-          className="text-xs font-semibold text-slate-500 dark:text-slate-400"
+          className={`font-semibold text-slate-500 dark:text-slate-400 ${
+            size === 'sm' ? 'text-xs' : 'text-sm'
+          }`}
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
         >
           {initialsOf(name)}

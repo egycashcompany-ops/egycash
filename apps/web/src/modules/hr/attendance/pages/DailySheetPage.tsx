@@ -35,6 +35,8 @@ import { MultiSelect } from '../../../../shared/ui/MultiSelect';
 import {
   AlertIcon,
   CheckIcon,
+  ChevronEndIcon,
+  ChevronStartIcon,
   CloseIcon,
   HistoryIcon,
   UsersIcon,
@@ -49,11 +51,14 @@ import { DayDecisionDialog } from '../components/DayDecisionDialog';
 import { downloadAttendanceExport } from '../api/attendance-api';
 import { useAttendanceSheet, useAttendanceSheetSummary } from '../api/attendance-queries';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+import { addDays, cairoToday } from '../components/period';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = ['branch', 'section', 'status', 'q'] as const;
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+// Today on the COMPANY's calendar (Africa/Cairo, R10) — not the browser's, which would open the
+// sheet on yesterday for the two hours every night between Cairo midnight and UTC midnight.
+const today = (): string => cairoToday();
 
 /**
  * The five cards, and which statuses each one counts.
@@ -200,6 +205,12 @@ export const DailySheetPage = (): JSX.Element => {
     return parts.length === 0 ? null : <span className="flex gap-2">{parts}</span>;
   };
 
+  /** A day back or forward, keeping every filter and returning to the first page. */
+  const goToDay = (step: number): void => {
+    setDate((current) => addDays(current, step));
+    setPage(1);
+  };
+
   const hasFilters =
     branchIds.length > 0 || sectionIds.length > 0 || statuses.length > 0 || search !== '';
 
@@ -207,7 +218,10 @@ export const DailySheetPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('attendance.daily.title')}
-        breadcrumbs={[{ label: t('attendance.module.title') }, { label: t('attendance.daily.title') }]}
+        breadcrumbs={[
+          { label: t('attendance.module.title') },
+          { label: t('attendance.daily.title') },
+        ]}
         actions={
           <Can permission="attendance.export">
             <Button size="sm" variant="secondary" loading={exporting} onClick={runExport}>
@@ -255,19 +269,44 @@ export const DailySheetPage = (): JSX.Element => {
         }
         filters={
           <>
+            {/* The date, with a day either side of it. Reading a week means reading seven
+                consecutive days, and a date picker makes that seven dialogs. */}
             <label className="flex items-center gap-1.5 text-sm text-slate-500">
-              <span className="hidden whitespace-nowrap sm:inline">{t('attendance.daily.date')}</span>
-              <Input
-                type="date"
-                value={date}
-                onChange={(e) => {
-                  setDate(e.target.value);
-                  setPage(1);
-                }}
-                aria-label={t('attendance.daily.date')}
-                dir="ltr"
-                className="w-auto"
-              />
+              <span className="hidden whitespace-nowrap sm:inline">
+                {t('attendance.daily.date')}
+              </span>
+              <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => goToDay(-1)}
+                  aria-label={t('attendance.daily.previousDay')}
+                  title={t('attendance.daily.previousDay')}
+                  className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                >
+                  <ChevronStartIcon className="h-4 w-4" />
+                </button>
+                <Input
+                  type="date"
+                  value={date}
+                  onChange={(e) => {
+                    if (e.target.value === '') return;
+                    setDate(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label={t('attendance.daily.date')}
+                  dir="ltr"
+                  className="w-auto"
+                />
+                <button
+                  type="button"
+                  onClick={() => goToDay(1)}
+                  aria-label={t('attendance.daily.nextDay')}
+                  title={t('attendance.daily.nextDay')}
+                  className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                >
+                  <ChevronEndIcon className="h-4 w-4" />
+                </button>
+              </span>
             </label>
             <MultiSelect
               label={t('attendance.daily.branch')}
@@ -325,9 +364,7 @@ export const DailySheetPage = (): JSX.Element => {
         <OvertimeApprovalDialog day={approving} onClose={() => setApproving(null)} />
       )}
 
-      {deciding !== null && (
-        <DayDecisionDialog row={deciding} onClose={() => setDeciding(null)} />
-      )}
+      {deciding !== null && <DayDecisionDialog row={deciding} onClose={() => setDeciding(null)} />}
     </PageContainer>
   );
 };

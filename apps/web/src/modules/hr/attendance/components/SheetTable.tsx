@@ -17,6 +17,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { DataTable, type Column } from '../../../../shared/ui';
 import { AttendanceDayStatusBadge } from './AttendanceStatusBadge';
+import { DayTimeline, TimelineScale } from './DayTimeline';
 import { SheetAvatar } from './SheetAvatar';
 import { cairoTime, formatMinutes } from './minutes';
 
@@ -42,11 +43,37 @@ export const SheetIdentity = ({ row }: { row: AttendanceSheetRowDto }): JSX.Elem
   </span>
 );
 
-/** `09:00 → 17:00`, or a dash when nobody has said when this person is due. */
-export const expectedSpan = (row: AttendanceSheetRowDto, locale: Locale): string =>
-  row.expectedStartAt === null
-    ? unknown
-    : `${cairoTime(row.expectedStartAt, locale)} → ${cairoTime(row.expectedEndAt, locale)}`;
+/**
+ * `09:00 → 17:05` — and the nesting is not decoration.
+ *
+ * WRITTEN AS ONE STRING IT COMES OUT BACKWARDS IN ARABIC. Arabic-Indic digits are bidi class AN,
+ * and UAX#9 has neutrals between two AN runs take the RIGHT-to-left direction — so the arrow
+ * resolves RTL, the whole run is reordered, and «٠٩:٠٠ → ١٧:٠٥» renders as «١٧:٠٥ → ٠٩:٠٠»:
+ * departure first, arrival second, with the arrow still pointing the other way. `dir="ltr"` on
+ * the surrounding span does not help, because the reordering happens INSIDE it.
+ *
+ * Giving each time its own `dir` makes it an isolate — HTML's own stylesheet applies
+ * `unicode-bidi: isolate` to `[dir]` — so each reads as one neutral object to the line around it,
+ * and the outer LTR context lays the three parts out in the order they are written.
+ */
+export const TimeSpan = ({
+  from,
+  to,
+  locale,
+}: {
+  from: string | null;
+  to: string | null;
+  locale: Locale;
+}): JSX.Element =>
+  from === null ? (
+    <span className="text-slate-400">{unknown}</span>
+  ) : (
+    <span dir="ltr" className="whitespace-nowrap">
+      <span dir="ltr">{cairoTime(from, locale)}</span>
+      {' → '}
+      <span dir="ltr">{cairoTime(to, locale)}</span>
+    </span>
+  );
 
 export const SheetTable = ({
   rows,
@@ -85,8 +112,8 @@ export const SheetTable = ({
       key: 'expected',
       header: t('attendance.daily.expected'),
       render: (r) => (
-        <span dir="ltr" className="whitespace-nowrap text-xs text-slate-500">
-          {expectedSpan(r, locale)}
+        <span className="text-xs text-slate-500">
+          <TimeSpan from={r.expectedStartAt} to={r.expectedEndAt} locale={locale} />
         </span>
       ),
     },
@@ -94,11 +121,20 @@ export const SheetTable = ({
       key: 'span',
       header: t('attendance.days.span'),
       render: (r) => (
-        <span dir="ltr" className="whitespace-nowrap text-xs">
-          {r.day === null
-            ? unknown
-            : `${cairoTime(r.day.firstInAt, locale)} → ${cairoTime(r.day.lastOutAt, locale)}`}
+        <span className="text-xs">
+          <TimeSpan from={r.day?.firstInAt ?? null} to={r.day?.lastOutAt ?? null} locale={locale} />
         </span>
+      ),
+    },
+    {
+      // The same strip of clock the employee's own record draws, on the same fixed 8 AM →
+      // midnight scale — so a column of rows shows at a glance who came in when, which a column
+      // of printed times does not.
+      key: 'timeline',
+      header: t('attendance.days.timeline'),
+      headerNode: <TimelineScale sparse />,
+      render: (r) => (
+        <DayTimeline inAt={r.day?.firstInAt ?? null} outAt={r.day?.lastOutAt ?? null} />
       ),
     },
     {

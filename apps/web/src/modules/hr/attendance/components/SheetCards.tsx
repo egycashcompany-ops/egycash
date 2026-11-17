@@ -12,10 +12,9 @@ import { type AttendanceSheetRowDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { AttendanceDayStatusBadge } from './AttendanceStatusBadge';
-import { SheetIdentity, expectedSpan } from './SheetTable';
-import { cairoTime, formatMinutes } from './minutes';
-
-const unknown = '—';
+import { DayTimeline } from './DayTimeline';
+import { SheetIdentity, TimeSpan } from './SheetTable';
+import { formatMinutes } from './minutes';
 
 const Line = ({ label, children }: { label: string; children: React.ReactNode }): JSX.Element => (
   <div className="flex items-baseline justify-between gap-3">
@@ -46,17 +45,22 @@ export const SheetCards = ({
             </div>
             <div className="space-y-1 ps-[2.625rem]">
               <Line label={t('attendance.daily.expected')}>
-                <span dir="ltr" className="text-slate-500">
-                  {expectedSpan(row, locale)}
+                <span className="text-slate-500">
+                  <TimeSpan from={row.expectedStartAt} to={row.expectedEndAt} locale={locale} />
                 </span>
               </Line>
               <Line label={t('attendance.days.span')}>
-                <span dir="ltr">
-                  {row.day === null
-                    ? unknown
-                    : `${cairoTime(row.day.firstInAt, locale)} → ${cairoTime(row.day.lastOutAt, locale)}`}
-                </span>
+                <TimeSpan
+                  from={row.day?.firstInAt ?? null}
+                  to={row.day?.lastOutAt ?? null}
+                  locale={locale}
+                />
               </Line>
+              {/* The day on a fixed 8 AM → midnight scale, so two cards are comparable without
+                  reading either one's times. */}
+              {row.day !== null && row.day.firstInAt !== null && (
+                <DayTimeline inAt={row.day.firstInAt} outAt={row.day.lastOutAt} />
+              )}
               {/* Shown only when there is something to say: a dash on every card for a quantity
                   nobody measured is three lines of noise on a screen with room for six rows. */}
               {row.day !== null && row.day.lateMinutes > 0 && (

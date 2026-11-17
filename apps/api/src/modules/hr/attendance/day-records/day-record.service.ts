@@ -34,7 +34,8 @@ import { workCalendarService } from '../../work-calendar';
 import { shiftRepository, type ShiftDoc } from '../shifts';
 import { shiftAssignmentService } from '../assignments';
 import { punchRepository } from '../punches';
-import { deriveDay, punchWindowFor, type EnginePunch } from './derive-day';
+import { deriveDay, punchWindowFor, type EnginePunch, type EngineShift } from './derive-day';
+import { patternFrom } from './default-pattern';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 import { dayRecordRepository } from './day-record.repository';
 import { monthRange, toFeedRow } from './attendance-feed';
@@ -183,11 +184,24 @@ class DayRecordService {
     );
     const shift: ShiftDoc | null = shiftId === null ? null : await shiftRepository.findById(shiftId);
 
-    // THE PUNCHES ARE LOADED WHETHER OR NOT THERE IS A SHIFT. This used to sit inside
+    // WHAT THIS EMPLOYEE WAS EXPECTED TO WORK — a real assignment, else the branch's default
+    // working pattern (1b), else nothing.
+    //
+    // A REAL ASSIGNMENT ALWAYS WINS, and the pattern is only read when there is none: somebody
+    // took the trouble to say what this person works, and a company-wide default must not argue
+    // with them.
+    //
+    // `shift` and `expectation` stay SEPARATE VARIABLES on purpose. The derivation wants the
+    // expectation, whatever its source; the stored row wants `shiftId`, which must be null when no
+    // shift document was involved — a day that says it belongs to a shift that was never assigned
+    // would be a lie that the payroll feed then carries.
+    const expectation: EngineShift | null = shift ?? (await this.defaultPatternFor(employee));
+
+    // THE PUNCHES ARE LOADED WHETHER OR NOT THERE IS AN EXPECTATION. This used to sit inside
     // `if (shift !== null)`, so an employee with no shift assignment had an empty punch list by
     // construction and their scans could not be reported although they were in the database.
     // `punchWindowFor` owns which window, and why the two differ.
-    const punchWindow = punchWindowFor(workDate, shift);
+    const punchWindow = punchWindowFor(workDate, expectation);
     const punchRows = await punchRepository.listForWindow(
       employee._id as Types.ObjectId,
       punchWindow.from,
@@ -206,7 +220,7 @@ class DayRecordService {
       leave,
       holiday: holidays.length > 0,
       weekend: weekendDays.includes(isoWeekday(workDate)),
-      shift,
+      shift: expectation,
       punches,
       employeeBranchId: String(employee.employment.branchId),
     });
@@ -314,6 +328,47 @@ class DayRecordService {
       ],
     });
     return { computed, skippedFrozen };
+  }
+
+  /**
+   * The default working pattern for one employee, resolved against THEIR branch (1b).
+   *
+   * The subject is `{ userId: null, branchId: <their branch> }`, so the organization value is the
+   * company default and a branch row overrides it — the same mechanism the notification settings
+   * use, and the reason this needed no new model or screen.
+   *
+   * THE SWITCH IS READ FIRST AND ALONE. While the pattern is off — which is how it ships, and how
+   * it stays until somebody fills in the hours — this costs exactly one settings read, and that
+   * read is cached per subject. Only when it is on are the other five fetched, together.
+   */
+  private async defaultPatternFor(employee: EmployeeDoc): Promise<EngineShift | null> {
+    const subject = { userId: null, branchId: String(employee.employment.branchId) };
+    const enabled = await settingsService.resolve<boolean>(
+      HrAttendanceSettingKeys.DefaultPatternEnabled,
+      subject,
+    );
+    if (!enabled) return null;
+    const [startTime, endTime, breakMinutes, graceInMinutes, graceOutMinutes] = await Promise.all([
+      settingsService.resolve<string>(HrAttendanceSettingKeys.DefaultPatternStartTime, subject),
+      settingsService.resolve<string>(HrAttendanceSettingKeys.DefaultPatternEndTime, subject),
+      settingsService.resolve<number>(HrAttendanceSettingKeys.DefaultPatternBreakMinutes, subject),
+      settingsService.resolve<number>(
+        HrAttendanceSettingKeys.DefaultPatternGraceInMinutes,
+        subject,
+      ),
+      settingsService.resolve<number>(
+        HrAttendanceSettingKeys.DefaultPatternGraceOutMinutes,
+        subject,
+      ),
+    ]);
+    return patternFrom({
+      enabled,
+      startTime,
+      endTime,
+      breakMinutes,
+      graceInMinutes,
+      graceOutMinutes,
+    });
   }
 
   /** The nightly compute (§9): the previous Cairo day, at the configured hour, idempotent. */

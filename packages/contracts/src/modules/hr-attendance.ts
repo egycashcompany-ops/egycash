@@ -708,6 +708,37 @@ export const HrAttendanceSettingKeys = {
    * notice only — the day record itself is unaffected either way.
    */
   AbsenceNotify: 'hr.attendance.absenceNotify',
+
+  /**
+   * THE DEFAULT WORKING PATTERN (Attendance v2, stage 1b) — the expectation that applies to an
+   * employee nobody has assigned a shift to.
+   *
+   * WHY IT EXISTS. `late`, `earlyLeave` and `absent` all need somebody to have said when the
+   * person was due. Until now that could only be said per employee, through a shift assignment,
+   * and most of this workforce has none — so for most people the engine could report the times it
+   * saw and nothing else. One pattern, set once, gives the whole company those three answers
+   * without assigning shifts one by one. A REAL ASSIGNMENT ALWAYS WINS over it.
+   *
+   * WHY SIX SCALARS RATHER THAN ONE OBJECT. The settings screen picks its editor from the
+   * declared type: `boolean`, `number` and `string` are editable, and anything else falls to
+   * read-only (`editorFor` in `settings-view.ts`). An object-valued pattern would therefore be
+   * unreachable for the HR staff who are supposed to own it. Six scalars are editable today, in
+   * the screen that already exists, with no new form to build.
+   *
+   * SCOPE: organization, with a per-branch override — the mechanism the weekend setting and the
+   * notification settings already use, resolved against the employee's own branch.
+   *
+   * `enabled` DEFAULTS TO FALSE, so the pattern ships inert: until somebody fills in the hours
+   * and switches it on, every derivation behaves exactly as it did before 1b. There is
+   * deliberately no `crossesMidnight` key — it is inferred as `endTime <= startTime`, so a
+   * pattern cannot be saved in the self-contradictory state of 09:00–17:00 "crossing midnight".
+   */
+  DefaultPatternEnabled: 'hr.attendance.defaultPattern.enabled',
+  DefaultPatternStartTime: 'hr.attendance.defaultPattern.startTime',
+  DefaultPatternEndTime: 'hr.attendance.defaultPattern.endTime',
+  DefaultPatternBreakMinutes: 'hr.attendance.defaultPattern.breakMinutes',
+  DefaultPatternGraceInMinutes: 'hr.attendance.defaultPattern.graceInMinutes',
+  DefaultPatternGraceOutMinutes: 'hr.attendance.defaultPattern.graceOutMinutes',
 } as const;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────

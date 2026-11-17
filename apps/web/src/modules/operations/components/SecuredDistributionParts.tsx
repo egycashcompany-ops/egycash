@@ -1459,7 +1459,10 @@ export const VanCard = ({
       <span
         aria-hidden
         data-van-stripe="true"
-        className={cn('pointer-events-none absolute inset-y-0 start-0 z-[1] w-[3px]', VAN_LOOK.stripe)}
+        className={cn(
+          'pointer-events-none absolute inset-y-0 start-0 z-[1] w-[3px]',
+          VAN_LOOK.stripe,
+        )}
       />
       {actions !== undefined && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 py-2 pe-2.5 ps-3.5 dark:border-slate-800">
@@ -1603,7 +1606,9 @@ export const VanCard = ({
 };
 
 /** A crossed circle — a van that takes nothing. */
-const REFUSE_ICON = ['M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636'];
+const REFUSE_ICON = [
+  'M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636',
+];
 /** An arrow into a tray — where a dragged محصنة lands. */
 const DROP_ICON = ['M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2', 'M12 4v11', 'M8 11l4 4 4-4'];
 

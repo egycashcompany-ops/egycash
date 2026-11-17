@@ -11,6 +11,10 @@
 // الصناديق حتى لو ب 0 يتكتب»: ONE captain's line — the count, then the FIRST captain; no specialist,
 // no money; the three package counts always. «عاوز المحصنة تظهر صغيره عبارة عن البنك والفرع ولما اعمل
 // هوفر عليها يجيب بقى معلومتها»: the chip, and its card.
+//
+// Round 26b — «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل»: the count of محصنات
+// leaves the captain's line for a row of its own — the captain in a frame of his own, then the four
+// counts (the محصنات first), then the load.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -115,9 +119,9 @@ const card = (
 /** The head line's markup. */
 const headOf = (html: string): string =>
   html.slice(html.indexOf('data-van-head="true"'), html.indexOf('</header>'));
-/** The captain's line. */
+/** The captain's frame (Round 26b — his own, the counts after it). */
 const lineOf = (html: string): string =>
-  html.slice(html.indexOf('data-van-captain-line='), html.indexOf('data-van-packages='));
+  html.slice(html.indexOf('data-van-captain-line='), html.indexOf('data-van-counts='));
 
 describe('the van card’s head — one line', () => {
   for (const locale of ['ar', 'en'] as const) {
@@ -170,14 +174,19 @@ describe('the van card’s head — one line', () => {
   });
 });
 
-describe('Round 25 — the captain’s line', () => {
-  it('the count FIRST, in its Arabic form, then the captain with his mark, his name cut and a card trigger', () => {
-    const line = lineOf(card(VAN));
-    expect(line).toMatch(/^data-van-captain-line="cr-249"[^>]*><span data-van-count="3"/);
-    expect(line).toContain(
+describe('Round 25 — the captain’s line; Round 26b — his own frame, the count after it', () => {
+  it('the captain with his mark, his name cut and a card trigger — then the count, in its Arabic form, in a row of its own', () => {
+    const html = card(VAN);
+    const line = lineOf(html);
+    // «وافصل الاليطار بتاع القائد عن المحصنة»: the frame opens on the captain, no count in it.
+    expect(line).toMatch(/^data-van-captain-line="cr-249"[^>]*><span data-van-captain="c1"/);
+    expect(line).not.toContain('data-van-count');
+    // The count first among the counts, after the frame — its whole Arabic form said.
+    const counts = html.slice(html.indexOf('data-van-counts='));
+    expect(counts).toMatch(/^data-van-counts="van"[^>]*><span data-van-count="3"/);
+    expect(counts).toContain(
       `>${tr('ar', 'operations.distribution.loadCount.few', { count: '3' })}<`,
     );
-    expect(line.indexOf('data-van-count')).toBeLessThan(line.indexOf('data-van-captain="c1"'));
     expect(line).toMatch(
       new RegExp(
         `data-captain-mark="true"[^>]*>[\\s\\S]*?${tr('ar', 'operations.crewPlan.role.captain')}</span><span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0">عبد الرحمن محمد عبد العزيز الشناوي</span>`,
@@ -196,17 +205,15 @@ describe('Round 25 — the captain’s line', () => {
     expect(html.match(/data-captain-mark="true"/g)).toHaveLength(1);
   });
 
-  it('no captain: the count, then «بلا قائد» in red — the van takes nothing', () => {
+  it('no captain: «بلا قائد» in red, in his frame — the count of 0 in its row — the van takes nothing', () => {
     const html = card({ ...VAN, captains: [] }, { count: 0 });
     const line = lineOf(html);
     expect(line).toMatch(
-      /^data-van-captain-line="cr-249"[^>]*bg-rose-50[^>]*><span data-van-count="0"/,
+      /^data-van-captain-line="cr-249"[^>]*bg-rose-50[^>]*><span data-van-captain="none"/,
     );
-    expect(line).toMatch(
-      new RegExp(
-        `data-van-captain="none"[\\s\\S]*${tr('ar', 'operations.distribution.noCaptain')}`,
-      ),
-    );
+    expect(line).toContain(`>${tr('ar', 'operations.distribution.noCaptainShort')}<`);
+    expect(line).not.toContain('data-van-count');
+    expect(html).toContain('data-van-count="0"');
     expect(html).not.toContain('data-captain-mark');
   });
 

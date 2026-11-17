@@ -17,9 +17,11 @@
 //   · THE COUNTS — each kind its own hue and icon, a FILLED tinted chip (a real ground of its
 //     colour, its icon and figure in it), the same on the van card, the van's card, a chip's card and
 //     the page's figures (`COUNT_LOOK`): محصنات blue, كراتين orange (the cardboard), حقائب cyan,
-//     صناديق fuchsia — four hues 22 or more apart (CIEDE2000, solid) and 12 or more apart as grounds,
-//     none of them the van's slate, the captain's emerald, a proposal's amber or a refusal's rose. A 0
-//     keeps its hue, muted: a lighter ground, a lighter figure (3:1 or better), never one grey for all.
+//     صناديق fuchsia — four hues 20 or more apart (CIEDE2000) as solid marks and 10 or more as grounds,
+//     in both themes (the dark shades are chosen for that: a blue-400 mark beside a cyan-300, an
+//     orange-500 one far from a proposal's amber-400), and as far from the van's slate, the captain's
+//     emerald, a proposal's amber and a refusal's rose. A 0 keeps its hue, muted: a lighter ground, a
+//     lighter figure (3:1 or better), never one grey for all.
 //   · THE HEAD: the time and the direction calm and neutral — each a white pill ringed in slate, its
 //     own icon (a clock, a route) — so the head is the van's alone (Round 26's sky and violet would
 //     now sit beside a cyan and a fuchsia count).
@@ -70,41 +72,41 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
   shipments: {
     icon: SHIPMENT_PATH.shipment,
     hue: 'blue',
-    square: 'bg-blue-500/15 text-blue-700 dark:text-blue-300',
-    chip: 'bg-blue-100 text-blue-800 ring-blue-200 dark:bg-blue-500/[0.16] dark:text-blue-200 dark:ring-blue-400/30',
+    square: 'bg-blue-500/15 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300',
+    chip: 'bg-blue-100 text-blue-800 ring-blue-200 dark:bg-blue-500/[0.22] dark:text-blue-200 dark:ring-blue-400/30',
     figure: 'text-blue-900 dark:text-blue-50',
-    mark: 'text-blue-600 dark:text-blue-300',
+    mark: 'text-blue-600 dark:text-blue-400',
     zero: 'bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-500/[0.06] dark:text-blue-300 dark:ring-blue-400/15',
     zeroFigure: 'text-blue-600 dark:text-blue-400',
   },
   cartons: {
     icon: PATH.box,
     hue: 'orange',
-    square: 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
-    chip: 'bg-orange-100 text-orange-800 ring-orange-200 dark:bg-orange-500/[0.16] dark:text-orange-200 dark:ring-orange-400/30',
+    square: 'bg-orange-500/15 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300',
+    chip: 'bg-orange-100 text-orange-800 ring-orange-200 dark:bg-orange-400/[0.22] dark:text-orange-200 dark:ring-orange-400/30',
     figure: 'text-orange-900 dark:text-orange-50',
-    mark: 'text-orange-600 dark:text-orange-300',
-    zero: 'bg-orange-50 text-orange-700 ring-orange-100 dark:bg-orange-500/[0.06] dark:text-orange-300 dark:ring-orange-400/15',
+    mark: 'text-orange-600 dark:text-orange-500',
+    zero: 'bg-orange-50 text-orange-700 ring-orange-100 dark:bg-orange-400/[0.06] dark:text-orange-300 dark:ring-orange-400/15',
     zeroFigure: 'text-orange-600 dark:text-orange-400',
   },
   bags: {
     icon: SHIPMENT_PATH.bag,
     hue: 'cyan',
-    square: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300',
-    chip: 'bg-cyan-100 text-cyan-800 ring-cyan-200 dark:bg-cyan-500/[0.16] dark:text-cyan-200 dark:ring-cyan-400/30',
+    square: 'bg-cyan-500/15 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300',
+    chip: 'bg-cyan-100 text-cyan-800 ring-cyan-200 dark:bg-cyan-400/[0.26] dark:text-cyan-200 dark:ring-cyan-400/30',
     figure: 'text-cyan-900 dark:text-cyan-50',
     mark: 'text-cyan-600 dark:text-cyan-300',
-    zero: 'bg-cyan-50 text-cyan-700 ring-cyan-100 dark:bg-cyan-500/[0.06] dark:text-cyan-300 dark:ring-cyan-400/15',
+    zero: 'bg-cyan-50 text-cyan-700 ring-cyan-100 dark:bg-cyan-400/[0.07] dark:text-cyan-300 dark:ring-cyan-400/15',
     zeroFigure: 'text-cyan-600 dark:text-cyan-400',
   },
   boxes: {
     icon: SHIPMENT_PATH.cube,
     hue: 'fuchsia',
-    square: 'bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-300',
-    chip: 'bg-fuchsia-100 text-fuchsia-800 ring-fuchsia-200 dark:bg-fuchsia-500/[0.16] dark:text-fuchsia-200 dark:ring-fuchsia-400/30',
+    square: 'bg-fuchsia-500/15 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300',
+    chip: 'bg-fuchsia-100 text-fuchsia-800 ring-fuchsia-200 dark:bg-fuchsia-600/[0.26] dark:text-fuchsia-200 dark:ring-fuchsia-400/30',
     figure: 'text-fuchsia-900 dark:text-fuchsia-50',
-    mark: 'text-fuchsia-600 dark:text-fuchsia-300',
-    zero: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-100 dark:bg-fuchsia-500/[0.06] dark:text-fuchsia-300 dark:ring-fuchsia-400/15',
+    mark: 'text-fuchsia-600 dark:text-fuchsia-400',
+    zero: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-100 dark:bg-fuchsia-600/[0.08] dark:text-fuchsia-300 dark:ring-fuchsia-400/15',
     zeroFigure: 'text-fuchsia-600 dark:text-fuchsia-400',
   },
 };

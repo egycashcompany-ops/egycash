@@ -104,14 +104,7 @@ export const BoardFigurePill = ({
 } & Record<`data-${string}`, string>): JSX.Element =>
   onClick === undefined ? (
     <span className={compact ? COMPACT_PILL : PILL} title={title} {...rest}>
-      <PillBody
-        icon={icon}
-        tone={tone}
-        label={label}
-        value={value}
-        unit={unit}
-        compact={compact}
-      />
+      <PillBody icon={icon} tone={tone} label={label} value={value} unit={unit} compact={compact} />
       {children}
     </span>
   ) : (
@@ -126,14 +119,7 @@ export const BoardFigurePill = ({
       )}
       {...rest}
     >
-      <PillBody
-        icon={icon}
-        tone={tone}
-        label={label}
-        value={value}
-        unit={unit}
-        compact={compact}
-      />
+      <PillBody icon={icon} tone={tone} label={label} value={value} unit={unit} compact={compact} />
       {children}
     </button>
   );

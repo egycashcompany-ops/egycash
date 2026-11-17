@@ -971,9 +971,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                   : {})}
               >
                 {load.length === 0 ? (
-                  <EmptyLoad
-                    tone={takesShipments(van) ? (canEdit ? 'drop' : 'empty') : 'refuse'}
-                  >
+                  <EmptyLoad tone={takesShipments(van) ? (canEdit ? 'drop' : 'empty') : 'refuse'}>
                     {takesShipments(van)
                       ? canEdit
                         ? t('operations.distribution.dropHere')

@@ -4,7 +4,12 @@
 //   · «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين» — the van's
 //     card: every captain, both specialist slots, the drivers, and what it carries;
 //   · «عاوزك تضيف الوان عشان حاسس ان مش اقدر اميز اوى العربيه والمحصنات اللى عليها والاعداد وكدا» —
-//     each van in its colour, every chip on it in the same, the counts each in theirs.
+//     the counts each in their colour.
+// Round 26b — «لا استنى الالوان مش عجبانى بتاعت العربيه» → «لون واحد لكل العربيات»: Round 26's colour
+// per van (its stripe, band and code pill, every chip on it, the swatches on the cards and in «نقل
+// إلى…») is gone, and its specs here with it; every van wears ONE look (section C). «وافصل الاليطار
+// بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل»: the captain in a frame of his own, the four counts
+// in a row of their own.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -21,11 +26,11 @@ import {
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { type Packaging } from '../lib/secured-distribution';
-import { type VanAccent } from '../lib/van-accent';
 import {
   ColumnFilterBar,
   CountChip,
   DistributionColumn,
+  EmptyLoad,
   FilterAreaSelect,
   FilterTextBox,
   ShipmentCardBody,
@@ -34,8 +39,7 @@ import {
   VanCard,
   VanCrewCardBody,
 } from './SecuredDistributionParts';
-import { COUNT_LOOK, COUNT_ZERO, SHIPMENTS_BADGE, VAN_ACCENT_LOOK } from './distribution-look';
-import { SHIFT_TYPE_TONE } from './shift-type-look';
+import { CAPTAIN_FRAME, COUNT_LOOK, HEAD_PILL, LOAD_LOOK, VAN_LOOK } from './distribution-look';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -96,19 +100,16 @@ const vanCard = (
     locale = 'ar',
     crewPlanVisible = true,
     looseNumber = null,
-    accent = 'forest',
   }: {
     locale?: Locale;
     crewPlanVisible?: boolean;
     looseNumber?: string | null;
-    accent?: VanAccent | null;
   } = {},
 ): string =>
   render(
     <VanCrewCardBody
       van={{ ...VAN, ...over }}
       looseNumber={looseNumber}
-      accent={accent}
       crewPlanVisible={crewPlanVisible}
       count={2}
       packages={PACKAGES}
@@ -365,30 +366,40 @@ describe('B — the van’s card', () => {
       expect([...at].sort((a, b) => a - b)).toEqual(at);
     });
 
-    it(`[${locale}] the van, its time and its direction head the card, in their colours`, () => {
+    it(`[${locale}] the van, its time and its direction head the card — the van’s one pill, no swatch`, () => {
       const html = vanCard({}, { locale });
       const head = html.slice(0, html.indexOf('<dl'));
-      expect(head).toContain('data-van-swatch="forest"');
+      // Round 26b — no colour of its own, so no swatch: the van's one slate pill.
+      expect(html).not.toContain('data-van-swatch');
       expect(head).toContain('data-van-code="112"');
-      expect(head).toContain(VAN_ACCENT_LOOK.forest.pill);
+      expect(head).toContain(VAN_LOOK.pill);
       expect(head).toContain('data-van-time="07:15"');
       expect(head).toContain('data-van-direction="السادس من أكتوبر - الشيخ زايد"');
       // The direction whole on the card — never cut.
       expect(head).toContain('class="min-w-0 break-words">السادس من أكتوبر - الشيخ زايد<');
     });
 
-    it(`[${locale}] what it carries: the محصنات badge, then the packages each in its colour`, () => {
+    it(`[${locale}] what it carries: the van card’s own four counts — the محصنات, then the packages each in its hue`, () => {
       const html = vanCard({}, { locale });
       const counts = html.slice(html.indexOf('data-van-card-counts'));
+      // Round 26b — the same row of four tiles as on the van card.
+      expect(counts).toMatch(/data-van-counts="card" class="grid grid-cols-4 gap-1\.5"/);
       expect(counts).toContain('data-van-card-count-of="shipments"');
-      expect(counts).toContain(
-        `>${tr(locale, locale === 'ar' ? 'operations.distribution.loadCount.two' : 'operations.distribution.loadCount.other', { count: '2' })}<`,
+      // Its whole phrase to a screen reader and on hover — «محصنتان», «2 secured».
+      const said = tr(
+        locale,
+        locale === 'ar'
+          ? 'operations.distribution.loadCount.two'
+          : 'operations.distribution.loadCount.other',
+        { count: '2' },
       );
+      expect(counts).toContain(`title="${said}"`);
+      expect(counts).toContain(`<span class="sr-only">${said}</span>`);
       for (const kind of ['cartons', 'bags', 'boxes'] as const) {
         expect(counts).toContain(`data-van-card-count-of="${kind}"`);
         expect(counts).toContain(tr(locale, `operations.distribution.${kind}`));
       }
-      // 2 cartons, 4 bags in their colours; 0 boxes grey.
+      // 2 cartons, 4 bags filled in their hues; 0 boxes muted in its own.
       expect(counts).toMatch(
         new RegExp(
           `data-van-card-count-of="cartons" data-count-kind="cartons" class="[^"]*${literal(COUNT_LOOK.cartons.chip)}`,
@@ -396,7 +407,7 @@ describe('B — the van’s card', () => {
       );
       expect(counts).toMatch(
         new RegExp(
-          `data-van-card-count-of="boxes" data-count-kind="boxes" data-count-zero="true" class="[^"]*${literal(COUNT_ZERO)}`,
+          `data-van-card-count-of="boxes" data-count-kind="boxes" data-count-zero="true" class="[^"]*${literal(COUNT_LOOK.boxes.zero)}`,
         ),
       );
     });
@@ -447,23 +458,18 @@ describe('B — the van’s card', () => {
 
   it('opens on the head and the captain’s line — not on the packages, not on a chip — through the shared layer', () => {
     const html = render(
-      <VanCard
-        van={VAN}
-        crewPlanVisible
-        day="2026-11-17"
-        count={2}
-        packages={PACKAGES}
-        accent="forest"
-      >
+      <VanCard van={VAN} crewPlanVisible day="2026-11-17" count={2} packages={PACKAGES}>
         <p data-the-load="true">load</p>
       </VanCard>,
     );
     const zone = html.slice(
       html.indexOf('data-van-hover="cr-112"'),
-      html.indexOf('data-van-packages='),
+      html.indexOf('data-van-counts='),
     );
     expect(zone).toContain('data-van-head="true"');
     expect(zone).toContain('data-van-captain-line="cr-112"');
+    // Round 26b — the counts are a row of their own, after the hover's zone; the load after them.
+    expect(zone).not.toContain('data-van-count=');
     expect(zone).not.toContain('data-the-load');
     // A keyboard reaches it; a screen reader hears what it opens.
     expect(html).toMatch(/tabindex="0" data-van-hover="cr-112" role="group" aria-label="[^"]+"/);
@@ -515,100 +521,154 @@ describe('B — the van’s card', () => {
   });
 });
 
-describe('C — each van in its colour, every chip on it in the same', () => {
-  const card = (accent: VanAccent | null) =>
+describe('C — Round 26b: ONE look for every van; the captain in his own frame; the counts apart', () => {
+  const card = (
+    van: OperationsDayBoardVehicleCrewDto & { securedType?: boolean; shiftTypeName?: string },
+    count = 2,
+    load: ReactElement = <p>load</p>,
+  ) =>
     render(
-      <VanCard
-        van={VAN}
-        crewPlanVisible
-        day="2026-11-17"
-        count={2}
-        packages={PACKAGES}
-        accent={accent}
-      >
-        <p>load</p>
+      <VanCard van={van} crewPlanVisible day="2026-11-17" count={count} packages={PACKAGES}>
+        {load}
       </VanCard>,
     );
+  /** The classes of the element carrying a mark. */
+  const classOf = (html: string, mark: string): string =>
+    new RegExp(`${literal(mark)}[^>]*? class="([^"]*)"`).exec(html)?.[1] ?? '';
+  const VANS = [
+    VAN,
+    { ...VAN, crewAssignmentId: 'cr-125', vehicleId: 'v-125', vehicleCode: '125', captains: [] },
+    {
+      ...VAN,
+      crewAssignmentId: 'cr-106',
+      vehicleCode: '106',
+      securedType: false,
+      shiftTypeName: 'سفر',
+    },
+    { ...VAN, crewAssignmentId: 'cr-loose', vehicleId: null, vehicleCode: null },
+  ];
 
-  it('the stripe at its start edge is the palette’s own dot; its head on a band of it; its code on a pill of it', () => {
-    for (const accent of ['forest', 'gold', 'navy'] as const) {
-      const html = card(accent);
-      expect(html).toContain(`data-van-accent="${accent}"`);
-      expect(html).toContain(
-        `data-van-stripe="${accent}" class="pointer-events-none absolute inset-y-0 start-0 w-[5px] ${SHIFT_TYPE_TONE[accent].dot}"`,
-      );
-      expect(html).toContain(
-        `data-van-band="${accent}" class="flex min-w-0 items-center rounded-lg px-1.5 py-1 ${VAN_ACCENT_LOOK[accent].band}"`,
-      );
-      expect(html).toMatch(
-        new RegExp(`data-van-code="112" class="[^"]*${literal(VAN_ACCENT_LOOK[accent].pill)}`),
-      );
-      // The card cuts the stripe to its round corners.
-      expect(html).toMatch(
-        /^<article[^>]*class="relative flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl/,
-      );
-    }
-  });
-
-  it('no colour given: drawn neutral — no stripe', () => {
-    const html = card(null);
-    expect(html).not.toContain('data-van-stripe');
-    expect(html).not.toContain('data-van-accent');
-    expect(html).toContain('data-van-band="none"');
-  });
-
-  it('the counts: the محصنات badge indigo, each package its colour, a 0 grey; the time sky, the direction violet', () => {
-    const html = card('forest');
-    // R26 critic — the badge was solid indigo-600, the very pill of an indigo van's code right
-    // above it: a count is now drawn as a count (a light ground, ringed and marked in its colour),
-    // never as a van.
-    expect(html).toMatch(
-      new RegExp(
-        `<span data-van-count="2" data-count-kind="shipments" class="[^"]*${literal(SHIPMENTS_BADGE.some)}`,
-      ),
-    );
-    for (const accent of Object.values(VAN_ACCENT_LOOK)) {
-      expect(SHIPMENTS_BADGE.some).not.toContain(accent.pill.split(' ')[0] as string);
-    }
-    expect(SHIPMENTS_BADGE.some).toMatch(/^bg-white /);
-    expect(html).toMatch(
-      new RegExp(
-        `data-van-package="bags" data-count-kind="bags" class="[^"]*${literal(COUNT_LOOK.bags.chip)}`,
-      ),
-    );
-    expect(html).toMatch(
-      new RegExp(
-        `data-van-package="boxes" data-count-kind="boxes" data-count-zero="true" class="[^"]*${literal(COUNT_ZERO)}`,
-      ),
-    );
-    expect(html).toMatch(/data-van-time="07:15"[^>]*class="[^"]*text-sky-800/);
-    expect(html).toMatch(/data-van-direction="[^"]*"[^>]*class="[^"]*text-violet-800/);
-    const zero = render(
-      <VanCard
-        van={VAN}
-        crewPlanVisible
-        day="2026-11-17"
-        count={0}
-        packages={PACKAGES}
-        accent="forest"
-      >
-        <p>load</p>
-      </VanCard>,
-    );
-    // A 0 muted as every 0 (`COUNT_ZERO`) — lighter than a count, never heavier.
-    expect(zero).toMatch(
-      new RegExp(
-        `<span data-van-count="0" data-count-kind="shipments" class="[^"]*${literal(COUNT_ZERO)}`,
-      ),
+  it('every van wears the same stripe, band and code pill — whichever van, whatever its place', () => {
+    // «لون واحد لكل العربيات»: the look is the same classes on every card, and none is a van's own.
+    const looks = VANS.map((van) => {
+      const html = card(van);
+      expect(html).not.toContain('data-van-accent');
+      return [
+        classOf(html, 'data-van-stripe="true"'),
+        classOf(html, 'data-van-band="true"'),
+        classOf(html, `data-van-code="${van.vehicleCode ?? ''}"`),
+      ];
+    });
+    for (const look of looks) expect(look).toEqual(looks[0]);
+    const [stripe, band, pill] = looks[0] as [string, string, string];
+    expect(stripe).toContain(VAN_LOOK.stripe);
+    expect(band).toContain(VAN_LOOK.band);
+    expect(pill).toContain(VAN_LOOK.pill);
+    // The card cuts the stripe and the band to its round corners.
+    expect(card(VAN)).toMatch(
+      /^<article[^>]*class="relative flex min-w-0 flex-col overflow-hidden rounded-xl/,
     );
   });
 
-  it('the captain’s line stays the captain’s green on any van', () => {
-    for (const accent of ['forest', 'crimson', 'gold'] as const) {
-      expect(card(accent)).toMatch(
-        /data-van-captain-line="cr-112" class="[^"]*bg-emerald-50 ring-emerald-200/,
+  it('the head: the code, the time and the direction on one line — the time and the direction calm', () => {
+    const html = card(VAN);
+    expect(classOf(html, 'data-van-time="07:15"')).toContain(HEAD_PILL.time);
+    expect(classOf(html, 'data-van-direction="')).toContain(HEAD_PILL.direction);
+    // Round 26's sky and violet are gone from the head.
+    expect(html).not.toMatch(/data-van-time[^>]*text-sky-/);
+    expect(html).not.toMatch(/data-van-direction[^>]*text-violet-/);
+  });
+
+  it('«وافصل الاليطار بتاع القائد عن المحصنة»: the captain’s frame holds his mark and his name — no count', () => {
+    const html = card(VAN);
+    const frame = html.slice(
+      html.indexOf('data-van-captain-line="cr-112"'),
+      html.indexOf('data-van-counts='),
+    );
+    expect(classOf(html, 'data-van-captain-line="cr-112"')).toContain(CAPTAIN_FRAME.some);
+    expect(frame).toContain('data-captain-mark="true"');
+    expect(frame).toContain('data-van-person="c7"');
+    expect(frame).not.toContain('data-count-kind');
+    expect(frame).not.toContain('data-van-count');
+    // The name is cut to the frame — his own card says it whole.
+    expect(frame).toMatch(/data-van-person="c7" class="min-w-0 truncate/);
+    // No captain: «بلا قائد» in the refusal's rose, its frame alone.
+    const none = card(VANS[1] as OperationsDayBoardVehicleCrewDto, 0);
+    expect(classOf(none, 'data-van-captain-line="cr-125"')).toContain(CAPTAIN_FRAME.none);
+    expect(none).toContain(`>${tr('ar', 'operations.distribution.noCaptainShort')}<`);
+  });
+
+  it('the counts: a row of their own — the محصنات first, then كراتين, حقائب, صناديق, four tiles of one width', () => {
+    const html = card(VAN);
+    const at = [
+      html.indexOf('data-van-captain-line='),
+      html.indexOf('data-van-counts="van"'),
+      html.indexOf('data-van-load='),
+    ];
+    expect(at.every((i) => i > -1)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(html).toContain('data-van-counts="van" class="grid grid-cols-4 gap-1.5"');
+    // The packages' three span three of the four columns, with the row's own gap: equal widths.
+    expect(html).toMatch(
+      /data-van-packages="2\/4\/0" class="grid grid-cols-3 gap-1\.5 col-span-3"/,
+    );
+    const order = [
+      'data-van-count="2"',
+      'data-van-package="cartons"',
+      'data-van-package="bags"',
+      'data-van-package="boxes"',
+    ].map((m) => html.indexOf(m));
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // Each filled in its own hue; a 0 muted in its own (never one grey).
+    expect(classOf(html, 'data-van-count="2"')).toContain(COUNT_LOOK.shipments.chip);
+    expect(classOf(html, 'data-van-package="cartons"')).toContain(COUNT_LOOK.cartons.chip);
+    expect(classOf(html, 'data-van-package="bags"')).toContain(COUNT_LOOK.bags.chip);
+    expect(classOf(html, 'data-van-package="boxes"')).toContain(COUNT_LOOK.boxes.zero);
+    const zero = card(VAN, 0);
+    expect(classOf(zero, 'data-van-count="0"')).toContain(COUNT_LOOK.shipments.zero);
+  });
+
+  it('the محصنات tile says its figure and the count’s own word; the whole Arabic phrase to a screen reader', () => {
+    for (const [count, form] of [
+      [1, 'one'],
+      [2, 'two'],
+      [3, 'few'],
+      [11, 'many'],
+    ] as const) {
+      const html = card(VAN, count);
+      const tile = html.slice(
+        html.indexOf(`data-van-count="${count}"`),
+        html.indexOf('data-van-packages='),
       );
+      expect(tile).toMatch(new RegExp(`dir="ltr"[^>]*>${count}<`));
+      expect(tile).toContain(`>${tr('ar', `operations.distribution.loadWord.${form}`)}<`);
+      const said = tr('ar', `operations.distribution.loadCount.${form}`, { count: String(count) });
+      expect(tile).toContain(`<span class="sr-only">${said}</span>`);
+      expect(tile).toContain(`title="${said}"`);
     }
+    // Two are «محصنتان» — never «2 محصنة» (Round 17).
+    expect(tr('ar', 'operations.distribution.loadWord.two')).toBe('محصنتان');
+  });
+
+  it('the load: a bounded place of its own; empty, it says where to drop — or, on a van that takes nothing, why in rose', () => {
+    const full = card(VAN);
+    expect(classOf(full, 'data-van-load="cr-112"')).toContain(LOAD_LOOK.area);
+    expect(classOf(full, 'data-van-load="cr-112"')).not.toContain('border-dashed');
+    const empty = card(VAN, 0, <EmptyLoad tone="drop">drop</EmptyLoad>);
+    expect(classOf(empty, 'data-van-load="cr-112"')).toContain(LOAD_LOOK.area);
+    expect(classOf(empty, 'data-van-load="cr-112"')).toContain('border-dashed');
+    expect(empty).toContain('data-empty-load="drop"');
+    const refusing = card(
+      VANS[1] as OperationsDayBoardVehicleCrewDto,
+      0,
+      <EmptyLoad tone="refuse">no</EmptyLoad>,
+    );
+    expect(classOf(refusing, 'data-van-load="cr-125"')).toContain(LOAD_LOOK.refuse);
+    expect(refusing).toMatch(/data-empty-load="refuse" class="[^"]*text-rose-700/);
+    // A kept row of another type keeps its dashed amber edge and its notice.
+    const kept = card(VANS[2] as OperationsDayBoardVehicleCrewDto);
+    expect(kept).toMatch(/^<article[^>]*class="[^"]*border-dashed border-amber-400/);
+    expect(kept).toContain('data-van-not-secured="سفر"');
   });
 
   const ROW = {
@@ -624,54 +684,35 @@ describe('C — each van in its colour, every chip on it in the same', () => {
     vaultReceiptNumber: null,
     lines: [],
   } as unknown as OperationsSecuredDistributionRowDto;
-  const chip = (accent: VanAccent | null, tone?: 'proposed' | 'moved') =>
+  const chip = (tone?: 'proposed' | 'moved') =>
     render(
       <ShipmentChip
         row={ROW}
         bankName="الأهلي"
         branchName="فرع المعادي"
-        accent={accent}
         tone={tone}
         card={<p>card</p>}
       />,
     );
 
-  it('a chip on a van wears its van’s colour — a stripe at its start and a thin ground of it', () => {
-    const html = chip('forest');
-    expect(html).toContain('data-chip-accent="forest"');
-    expect(html).toContain(
-      `data-chip-stripe="forest" class="pointer-events-none absolute inset-y-0 start-0 w-[3px] ${SHIFT_TYPE_TONE.forest.dot}"`,
-    );
-    expect(html).toContain(VAN_ACCENT_LOOK.forest.chip);
-    expect(html).not.toContain('bg-white dark:bg-[#0f1a3a]');
-  });
-
-  it('on the left — on no van — a chip stays neutral', () => {
-    const html = chip(null);
+  it('a chip on a van is plain — the same chip as on the left, no van’s colour on it', () => {
+    const html = chip();
     expect(html).not.toContain('data-chip-accent');
     expect(html).not.toContain('data-chip-stripe');
     expect(html).toContain('bg-white dark:bg-[#0f1a3a]');
   });
 
-  it('a proposal on a van keeps its «مقترحة» look — dashed amber on its own amber ground — the van only its stripe', () => {
-    // R26 critic — the van's ground had replaced the proposal's amber-50: on an orange van the
-    // dashed edge and a small icon were all that was left of «مقترحة».
-    const html = chip('orange', 'proposed');
+  it('a proposal keeps its «مقترحة» look — dashed amber on its own amber ground; an unsaved move its own', () => {
+    const html = chip('proposed');
     expect(html).toContain('data-shipment-tone="proposed"');
     expect(html).toContain('border-dashed border-amber-500');
-    expect(html).toContain('data-chip-stripe="orange"');
     expect(html).toContain('bg-amber-50 dark:bg-amber-400/[0.06]');
-    expect(html).not.toContain(VAN_ACCENT_LOOK.orange.chip);
-    // An unsaved move keeps its own ground as well.
-    const moved = chip('orange', 'moved');
-    expect(moved).toContain('data-chip-stripe="orange"');
+    const moved = chip('moved');
     expect(moved).toContain('bg-brand-50/60 dark:bg-brand-500/[0.08]');
-    expect(moved).not.toContain(VAN_ACCENT_LOOK.orange.chip);
-    // Off a van, a proposal's own ground.
-    expect(chip(null, 'proposed')).toContain('bg-amber-50');
+    expect(moved).toContain('border-brand-400');
   });
 
-  it('a chip’s card names its van with the van’s swatch, and counts its packages in their colours', () => {
+  it('a chip’s card names its van in words — no swatch — and counts its packages in their hues', () => {
     const html = render(
       <ShipmentCardBody
         row={ROW}
@@ -680,33 +721,20 @@ describe('C — each van in its colour, every chip on it in the same', () => {
         packages={{ bags: 1, cartons: 0, boxes: 2 }}
         packagesRead="ready"
         place="السيارة 112 · مع كريم"
-        placeAccent="forest"
         notes={[]}
       />,
     );
-    expect(html).toContain('data-card-van-accent="forest"');
-    expect(html).toMatch(/data-van-swatch="forest"[\s\S]*السيارة 112 · مع كريم/);
+    expect(html).not.toContain('data-van-swatch');
+    expect(html).not.toContain('data-card-van-accent');
+    expect(html).toContain('السيارة 112 · مع كريم');
     expect(html).toMatch(
       new RegExp(`data-count-kind="boxes" class="[^"]*${literal(COUNT_LOOK.boxes.chip)}`),
     );
     expect(html).toMatch(
       new RegExp(
-        `data-count-kind="cartons" data-count-zero="true" class="[^"]*${literal(COUNT_ZERO)}`,
+        `data-count-kind="cartons" data-count-zero="true" class="[^"]*${literal(COUNT_LOOK.cartons.zero)}`,
       ),
     );
-    // On no van: no swatch.
-    const left = render(
-      <ShipmentCardBody
-        row={ROW}
-        bankName="الأهلي"
-        money={[]}
-        packages={undefined}
-        packagesRead="forbidden"
-        place={null}
-        notes={[]}
-      />,
-    );
-    expect(left).not.toContain('data-van-swatch');
   });
 
   it('a count writes its figure in the figures’ face — a 0 as «0», «…» while it is read', () => {
@@ -737,31 +765,21 @@ describe('R26 critic — the vans’ grid never lays more than four a row', () =
   });
 });
 
-describe('both screens take their colours from the same list', () => {
-  it('the colour is the van’s place in the day’s WHOLE list — never the filtered one', () => {
-    expect(DIST).toContain('const accents = vanAccents(vans);');
-    expect(HANDOVER).toContain('const accents = vanAccents(vans);');
-    expect(DIST).not.toMatch(/vanAccents\(vansShown/);
-    expect(DIST).toContain('accent={accentOf(van.crewAssignmentId)}');
-    expect(HANDOVER).toContain('accent={accentOf(van.crewAssignmentId)}');
-    // A chip is its van's colour — on the left, none.
-    expect(DIST).toContain('accent={van === undefined ? null : accentOf(van.crewAssignmentId)}');
-    expect(HANDOVER).toContain(
-      'accent={van === undefined ? null : accentOf(van.crewAssignmentId)}',
+describe('Round 26b — no colour per van reaches either screen', () => {
+  it('neither page asks a van’s colour; the parts draw no swatch, no chip stripe, no per-van look', () => {
+    for (const page of [DIST, HANDOVER]) {
+      expect(page).not.toMatch(/vanAccents|accentOf|placeAccent|accent=\{/);
+      expect(page).not.toContain('van-accent');
+    }
+    expect(PARTS).not.toMatch(
+      /VanSwatch|VAN_ACCENT_LOOK|data-chip-accent|data-van-accent|data-van-swatch/,
     );
-    expect(DIST).toContain(
-      'placeAccent={van === undefined ? null : accentOf(van.crewAssignmentId)}',
-    );
-    // «نقل إلى…» names each van beside its swatch, as its card does.
-    expect(DIST).toContain('accent: accentOf(van.crewAssignmentId),');
-    expect(PARTS).toMatch(
-      /choice\.accent !== undefined && choice\.accent !== null && \(\s*<VanSwatch accent=\{choice\.accent\} \/>/,
-    );
+    expect(PARTS).toContain('VAN_LOOK.pill');
   });
 
   it('the printed sheet stays black on white — no colour reaches it', () => {
     const sheet = read('../lib/van-load-sheet.ts');
-    expect(sheet).not.toMatch(/accent|VAN_ACCENT_LOOK|COUNT_LOOK/);
+    expect(sheet).not.toMatch(/accent|VAN_LOOK|COUNT_LOOK/);
   });
 });
 

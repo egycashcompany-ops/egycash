@@ -372,16 +372,18 @@ describe('«توزيع المحصنات» — the desk', () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
-  it('says on each van its number, time and direction, then ONE captain’s line — the count first, the FIRST captain', () => {
+  it('says on each van its number, time and direction, then the FIRST captain in his own frame, then the count', () => {
     const v104 = vanOf(html, 'cr-104');
     expect(v104).toContain('data-van-code="104"');
     expect(v104).toContain('08:30');
     expect(v104).toContain('data-van-direction="مدينة نصر"');
     // Round 25 — «العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا ضيفته ف الاول»: the first
-    // captain on the row only; «الصف نفسه بتاع القائد يكون قبله عدد المحصنات»: the count before him.
+    // captain on the row only. Round 26b — «وافصل الاليطار بتاع القائد عن المحصنة»: his frame holds
+    // him alone; the count of محصنات leads the counts' own row, after it.
     const line = v104.slice(v104.indexOf('data-van-captain-line='));
-    expect(line).toMatch(/^data-van-captain-line="cr-104"[^>]*><span data-van-count="2"/);
-    expect(line.indexOf('data-van-count')).toBeLessThan(line.indexOf('data-van-captain="c2"'));
+    expect(line).toMatch(/^data-van-captain-line="cr-104"[^>]*><span data-van-captain="c2"/);
+    expect(line.indexOf('data-van-captain="c2"')).toBeLessThan(line.indexOf('data-van-count="2"'));
+    expect(line.slice(0, line.indexOf('data-van-counts='))).not.toContain('data-van-count');
     expect(v104).toContain('شادي محمد أحمد');
     expect(v104).not.toContain('data-van-captain="c3"');
     expect(vanOf(html, 'cr-104').slice(0, v104.indexOf('data-van-load='))).not.toContain(
@@ -846,7 +848,7 @@ describe('Round 24c — the widths, and the van card', () => {
     }
   });
 
-  it('puts code · time · direction on ONE line, the count on the captain’s line — no band of its own for the direction', () => {
+  it('puts code · time · direction on ONE line, the count in the counts’ row — no band of its own for the direction', () => {
     const card = vanOf(desk, 'cr-101');
     const head = card.slice(card.indexOf('data-van-head="true"'), card.indexOf('</header>'));
     const code = head.indexOf('data-van-code="101"');
@@ -858,9 +860,9 @@ describe('Round 24c — the widths, and the van card', () => {
     // The whole direction on hover; the line cuts it.
     expect(head).toContain(`title="${ar('operations.crew.direction')}: المعادي - حلوان"`);
     expect(head).toMatch(/class="min-w-0 truncate">المعادي - حلوان</);
-    // The count stays — first on the captain's line (Round 25), so the head keeps its room.
+    // The count is not in the head — Round 26b: first in the counts' own row, after the captain.
     expect(head).not.toContain('data-van-count');
-    expect(card).toMatch(/data-van-captain-line="cr-101"[^>]*><span data-van-count="2"/);
+    expect(card).toMatch(/data-van-counts="van"[^>]*><span data-van-count="2"/);
   });
 
   it('marks the captain on his line, after the count; no specialist slot at all (Round 25)', () => {
@@ -902,7 +904,7 @@ describe('Round 24c — the widths, and the van card', () => {
     expect(card).toContain('data-handover-print="cr-loose-1"');
     expect(card.indexOf('data-handover-print')).toBeLessThan(card.indexOf('data-van-head="true"'));
     expect(card).toContain('data-van-captain="c9"');
-    expect(card).toMatch(/data-van-captain-line="cr-loose-1"[^>]*><span data-van-count="0"/);
+    expect(card).toMatch(/data-van-counts="van"[^>]*><span data-van-count="0"/);
     expect(card).toContain('data-van-packages="0/0/0"');
     expect(card).not.toContain('data-van-slot');
   });
@@ -1147,8 +1149,6 @@ describe('Round 26 — the screens', () => {
     permissions: [...VAULT, 'operationsCrew.view'],
     data: answer(),
   });
-  const accentOf = (html: string, id: string): string | null =>
-    /data-van-accent="([a-z]+)"/.exec(vanOf(html, id))?.[1] ?? null;
 
   it('puts each column’s filter boxes on its title’s line — inside its head', () => {
     for (const column of ['vans', 'unplaced']) {
@@ -1166,25 +1166,34 @@ describe('Round 26 — the screens', () => {
     );
   });
 
-  it('gives each van its colour by its place in the day’s list — the same on both screens', () => {
-    // R26 critic — the order starts navy, orange, olive, sky, fuchsia (no count's colour first).
-    const expected = ['navy', 'orange', 'olive', 'sky', 'fuchsia'];
-    VANS.forEach((van, at) => {
-      expect(accentOf(desk, van.crewAssignmentId), van.crewAssignmentId).toBe(expected[at]);
-      expect(accentOf(vault, van.crewAssignmentId), van.crewAssignmentId).toBe(expected[at]);
-    });
+  it('Round 26b — «لون واحد لكل العربيات»: every van the same look on both screens, no colour of its own', () => {
+    // Round 26 painted each van by its place in the day's list; the owner: «لا استنى الالوان مش
+    // عجبانى بتاعت العربيه». Every card now wears the same stripe, band and code pill.
+    const classes = (html: string, id: string, mark: string): string =>
+      new RegExp(`${mark}[^>]*? class="([^"]*)"`).exec(vanOf(html, id))?.[1] ?? '';
+    const looks = [desk, vault].flatMap((html) =>
+      VANS.map((van) =>
+        [
+          classes(html, van.crewAssignmentId, 'data-van-stripe="true"'),
+          classes(html, van.crewAssignmentId, 'data-van-band="true"'),
+          classes(html, van.crewAssignmentId, `data-van-code="${van.vehicleCode}"`),
+        ].join(' | '),
+      ),
+    );
+    expect(new Set(looks).size).toBe(1);
+    expect(looks[0]).toContain('bg-slate-700');
+    for (const html of [desk, vault]) expect(html).not.toContain('data-van-accent');
   });
 
-  it('paints every chip on a van in its van’s colour; the chips on no van stay plain', () => {
-    // 101 carries «المعادي» (proposed) and the one with its captain.
-    for (const id of ['s-maadi', 's-captain']) {
-      expect(cardOf(desk, id), id).toContain('data-chip-accent="navy"');
-    }
-    expect(cardOf(desk, 's-104')).toContain('data-chip-accent="orange"');
-    for (const id of ['s-giza', 's-abbassia']) {
+  it('paints no chip in a van’s colour — on a van as on the left, a chip is plain', () => {
+    for (const id of ['s-maadi', 's-captain', 's-104', 's-giza', 's-abbassia']) {
       expect(cardOf(desk, id), id).not.toContain('data-chip-accent');
+      expect(cardOf(desk, id), id).not.toContain('data-chip-stripe');
     }
-    expect(cardOf(vault, 's-captain')).toContain('data-chip-accent="navy"');
+    expect(cardOf(vault, 's-captain')).not.toContain('data-chip-accent');
+    // The saved one on 101 is the left's own plain chip; the proposal keeps its dashed amber.
+    expect(cardOf(desk, 's-captain')).toContain('bg-white dark:bg-[#0f1a3a]');
+    expect(cardOf(desk, 's-maadi')).toContain('border-dashed border-amber-500');
   });
 
   it('opens the van’s card from its head and its captain’s line, on both screens', () => {
@@ -1197,7 +1206,7 @@ describe('Round 26 — the screens', () => {
     }
   });
 
-  it('counts on the page’s bar in the counts’ own colours — the محصنات indigo, then the day’s packages', () => {
+  it('counts on the page’s bar in the counts’ own colours — the محصنات blue, then the day’s packages', () => {
     const bar = desk.slice(
       desk.indexOf('data-distribution-toolbar'),
       desk.indexOf('data-distribution-bar'),
@@ -1206,8 +1215,18 @@ describe('Round 26 — the screens', () => {
       expect(bar, figure).toContain(`data-figure="${figure}"`);
     }
     expect(bar).toMatch(
-      /bg-indigo-500\/15 text-indigo-700[\s\S]*data-figure="shipments"|data-figure="shipments"[\s\S]*bg-indigo-500\/15 text-indigo-700/,
+      /bg-blue-500\/15 text-blue-700[\s\S]*data-figure="shipments"|data-figure="shipments"[\s\S]*bg-blue-500\/15 text-blue-700/,
     );
+    // Round 26b — كراتين orange, حقائب cyan, صناديق fuchsia: each its own.
+    for (const [figure, hue] of [
+      ['cartons', 'orange'],
+      ['bags', 'cyan'],
+      ['boxes', 'fuchsia'],
+    ] as const) {
+      expect(bar).toMatch(
+        new RegExp(`data-figure="${figure}"[^>]*>\\s*<span class="[^"]*bg-${hue}-500/15`),
+      );
+    }
     // s-maadi is the one counted: 4 bags, 1 box.
     expect(bar).toMatch(/data-figure="bags"[\s\S]*?>4</);
     expect(bar).toMatch(/data-figure="cartons"[\s\S]*?>0</);
@@ -1220,4 +1239,127 @@ describe('Round 26 — the screens', () => {
     expect(blind).not.toContain('data-figure="bags"');
     expect(blind).toContain('data-figure="shipments"');
   });
+});
+
+// Round 26b — the owner on Round 26's screens: «عاوز اخلى التاريخ يكون مكان الاحصائيات والاحصائيات
+// تكون فى النص» (the top row), «وعاوز اضيف اسم القائد فى الفلاتر بعد العربيه» (the captain's box).
+describe('Round 26b — the top row, and the captain’s box', () => {
+  const desk = render({
+    path: '/operations/secured/distribution',
+    permissions: [...DESK, 'operationsVault.view'],
+    data: answer(),
+  });
+  const vault = render({
+    path: '/operations/vault/handover',
+    permissions: [...VAULT, 'operationsCrew.view'],
+    data: answer(),
+  });
+  /** The top row's markup — from its mark to the line under it. */
+  const rowOf = (html: string, mark: string, under: string): string =>
+    html.slice(html.indexOf(mark), html.indexOf(under));
+
+  it('the desk’s top row: the DAY first, the figures in the MIDDLE, the acts LAST', () => {
+    const row = rowOf(desk, 'data-distribution-toolbar', 'data-distribution-bar');
+    const at = [
+      row.indexOf('data-top-row="day"'),
+      row.indexOf('data-distribution-day="true"'),
+      row.indexOf('data-top-row="figures"'),
+      row.indexOf('data-figure="vans"'),
+      row.indexOf('data-figure="boxes"'),
+      row.indexOf('data-top-row="end"'),
+      row.indexOf('data-distribution-auto="true"'),
+      row.indexOf('data-distribution-save='),
+    ];
+    expect(at.every((i) => i > -1)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    // The day is no longer in the line under it.
+    expect(desk.slice(desk.indexOf('data-distribution-bar'))).not.toContain(
+      'data-distribution-day',
+    );
+  });
+
+  it('the figures stand TRULY in the middle on a wide row — two sides of one share; narrower, a line of their own', () => {
+    expect(PARTS).toContain(
+      "'[@container(min-width:68rem)]:grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)]'",
+    );
+    // Narrower: the day and the acts on the first line, the figures centred on the next; a phone:
+    // the day, the figures, the acts, each a line.
+    expect(PARTS).toContain("'[@container(min-width:36rem)]:grid-cols-[auto_minmax(0,1fr)]'");
+    expect(PARTS).toMatch(
+      /data-top-row="figures"\s+className="col-start-1 row-start-2 min-w-0 justify-self-center \[@container\(min-width:36rem\)\]:col-span-2 \[@container\(min-width:68rem\)\]:col-span-1 \[@container\(min-width:68rem\)\]:col-start-2 \[@container\(min-width:68rem\)\]:row-start-1"/,
+    );
+    expect(PARTS).toContain(
+      "export const TOP_FIGURES = 'flex min-w-0 flex-wrap items-center justify-center gap-1.5';",
+    );
+    // The row is a container: it lays itself out by its own width.
+    expect(desk).toContain(
+      '<div class="[container-type:inline-size]"><div data-distribution-toolbar="true"',
+    );
+  });
+
+  it('where the acts’ words would push the figures off the middle, «تراجع» shows its icon — its name kept', () => {
+    const undo = desk.slice(desk.indexOf('data-distribution-discard="true"'));
+    expect(undo.slice(0, undo.indexOf('</button>'))).toMatch(
+      /aria-label="[^"]+"[\s\S]*data-act-words="undo"[^>]*>تراجع</,
+    );
+    const auto = desk.slice(desk.indexOf('data-distribution-auto="true"'));
+    expect(auto.slice(0, auto.indexOf('</button>'))).toContain(
+      `aria-label="${ar('operations.distribution.auto')}"`,
+    );
+  });
+
+  it('the hint and the proposals not saved are a slim line under the row — no band of their own', () => {
+    const bar = desk.slice(desk.indexOf('data-distribution-bar'));
+    expect(bar.slice(0, 200)).toMatch(/data-distribution-bar="true" class="flex min-w-0 flex-wrap/);
+    expect(bar).toContain(ar('operations.distribution.dragHint'));
+    expect(bar.indexOf(ar('operations.distribution.dragHint'))).toBeLessThan(
+      bar.indexOf('data-proposed-count="2"'),
+    );
+    expect(DIST).not.toContain('DAY_BAR');
+  });
+
+  it('«تسليم المحصنات» the same: its day first, its figures in the middle; its acts stay on each van', () => {
+    const row = rowOf(vault, 'data-handover-toolbar', 'data-handover-bar');
+    const at = [
+      row.indexOf('data-top-row="day"'),
+      row.indexOf('data-distribution-day="true"'),
+      row.indexOf('data-top-row="figures"'),
+      row.indexOf('data-figure="ready"'),
+    ];
+    expect(at.every((i) => i > -1)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(row).not.toContain('data-top-row="end"');
+    expect(HANDOVER).not.toContain('DAY_BAR');
+  });
+
+  it('the vans’ head: «اسم القائد» right after «كود السيارة», before the bank or branch and the area', () => {
+    const at = desk.indexOf('data-distribution-column="vans"');
+    const head = desk.slice(at, desk.indexOf('</header>', at));
+    const order = ['van-code', 'van-captain', 'van-search', 'van-area'].map((box) =>
+      head.indexOf(`data-filter="${box}"`),
+    );
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // Its whole name for a screen reader and on hover; shorter words in the box.
+    const box = head.slice(head.indexOf('data-filter="van-captain"') - 400);
+    expect(box).toContain(`aria-label="${ar('operations.distribution.filter.captain')}"`);
+    expect(box).toContain(`title="${ar('operations.distribution.filter.captain')}"`);
+    expect(box).toContain(`placeholder="${ar('operations.distribution.filter.captainShort')}"`);
+    // AND-ed with the rest, counted in «المعروض … من …», cleared by «مسح التصفية».
+    expect(DIST).toContain(
+      'onChange={(captain) => setVanFilter((current) => ({ ...current, captain }))}',
+    );
+    expect(DIST).toContain('onClear={() => setVanFilter(EMPTY_VAN_FILTER)}');
+    expect(DIST).toMatch(/matchesVanFilter\(van, load, vanFilter, \{/);
+  });
+
+  for (const locale of ['ar', 'en'] as const) {
+    it(`[${locale}] the captain’s box speaks both languages — its short words shorter than its name`, () => {
+      const whole = translate(locale, 'operations.distribution.filter.captain');
+      const short = translate(locale, 'operations.distribution.filter.captainShort');
+      expect(whole).not.toBe('operations.distribution.filter.captain');
+      expect(short).not.toBe('operations.distribution.filter.captainShort');
+      expect(short.length).toBeLessThan(whole.length);
+    });
+  }
 });

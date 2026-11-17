@@ -10366,6 +10366,9 @@ const en: Record<string, string> = {
   'systemAdmin.users.audit.attendanceRegularization': 'Attendance regularization requested',
   'systemAdmin.users.audit.attendanceRegularizationDecision': 'Attendance regularization decided',
   'systemAdmin.users.audit.attendanceOvertimeApproval': 'Overtime approved',
+  'systemAdmin.users.audit.attendanceDecision': 'Attendance day decided',
+  'systemAdmin.users.audit.attendanceDecisionApproval': 'Day decision approved',
+  'systemAdmin.users.audit.attendanceDecisionRevoke': 'Day decision revoked',
   'systemAdmin.users.audit.settingChanged': 'Setting changed',
   'systemAdmin.users.audit.loginCreated': 'Login account created',
   'systemAdmin.users.audit.personnelAction': 'Personnel action',
@@ -11025,6 +11028,8 @@ const en: Record<string, string> = {
     'Lateness grace (minutes)',
   'systemAdmin.settings.keys.hr.attendance.defaultPattern.graceOutMinutes':
     'Early-leave grace (minutes)',
+  'systemAdmin.settings.keys.hr.attendance.decisionApprovalAfterDays':
+    'Days a manager may decide an attendance day alone',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
     'Nightly attendance calculation hour (0–23)',
   'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'Overtime requires approval',
@@ -11146,6 +11151,8 @@ const en: Record<string, string> = {
     'Minutes after the start time that are not counted as lateness. Arriving later than this is recorded as late by the full number of minutes after the start time, not after the grace.',
   'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.graceOutMinutes':
     'Minutes before the end time that are not counted as leaving early. Zero means any departure before the end time is recorded as early leave.',
+  'systemAdmin.settings.descriptions.hr.attendance.decisionApprovalAfterDays':
+    'How far back a supervisor may decide a day on their own authority. An older day is recorded and takes effect only after HR approves it.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
     'The hour, Cairo time on a 24-hour clock, at which the previous day\'s attendance is calculated for every employee. For example, 2 runs it shortly after 2:00 am.',
   'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':
@@ -25152,6 +25159,9 @@ const ar: Record<string, string> = {
   'systemAdmin.users.audit.attendanceRegularization': 'طلب تسوية حضور',
   'systemAdmin.users.audit.attendanceRegularizationDecision': 'البت في تسوية حضور',
   'systemAdmin.users.audit.attendanceOvertimeApproval': 'اعتماد عمل إضافي',
+  'systemAdmin.users.audit.attendanceDecision': 'قرار بشأن يوم حضور',
+  'systemAdmin.users.audit.attendanceDecisionApproval': 'اعتماد قرار يوم حضور',
+  'systemAdmin.users.audit.attendanceDecisionRevoke': 'إلغاء قرار يوم حضور',
   'systemAdmin.users.audit.settingChanged': 'تغيير إعداد',
   'systemAdmin.users.audit.loginCreated': 'إنشاء حساب دخول',
   'systemAdmin.users.audit.personnelAction': 'إجراء وظيفي',
@@ -25805,6 +25815,8 @@ const ar: Record<string, string> = {
     'سماح التأخير بالدقائق',
   'systemAdmin.settings.keys.hr.attendance.defaultPattern.graceOutMinutes':
     'سماح الانصراف المبكر بالدقائق',
+  'systemAdmin.settings.keys.hr.attendance.decisionApprovalAfterDays':
+    'عدد الأيام التي يبتّ فيها المسؤول منفردًا',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
   'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'اشتراط اعتماد العمل الإضافي',
   'systemAdmin.settings.keys.hr.attendance.selfPunchEnabled':
@@ -25926,6 +25938,8 @@ const ar: Record<string, string> = {
     'عدد الدقائق بعد موعد البداية التي لا تُحتسب تأخيرًا. وإذا تجاوز الحضور هذه المدة، يُسجّل التأخير بكامل الدقائق المحسوبة من موعد البداية، لا من نهاية مدة السماح.',
   'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.graceOutMinutes':
     'عدد الدقائق قبل موعد النهاية التي لا تُحتسب انصرافًا مبكرًا. والقيمة صفر تعني أن أي انصراف قبل موعد النهاية يُسجّل انصرافًا مبكرًا.',
+  'systemAdmin.settings.descriptions.hr.attendance.decisionApprovalAfterDays':
+    'المدة التي يجوز خلالها للمسؤول أن يبتّ في يوم حضور بسلطته وحده. وما كان أقدم من ذلك يُسجَّل القرار بشأنه ولا يسري إلا بعد اعتماد الموارد البشرية.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
     'الساعة، بتوقيت القاهرة وبنظام 24 ساعة، التي يُحتسب فيها حضور اليوم السابق لجميع الموظفين. مثلًا، القيمة 2 تعني بعد الساعة الثانية صباحًا بقليل.',
   'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':

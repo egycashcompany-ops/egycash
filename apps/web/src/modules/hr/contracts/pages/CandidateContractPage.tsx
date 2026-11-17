@@ -182,10 +182,10 @@ export const CandidateContractPage = ({ offerId }: { offerId: string }): JSX.Ele
     }
   };
 
-  /** One value typed in for this candidate ('' gives the record's own back). */
-  const saveValue = (change: { key: string; value: string }): void => {
+  /** Values typed in for this candidate ('' gives the record's own back). */
+  const saveValue = (changes: { key: string; value: string }[]): void => {
     const kept = new Map(draft.values.filter((v) => v.overridden).map((v) => [v.key, v.value]));
-    kept.set(change.key, change.value);
+    for (const change of changes) kept.set(change.key, change.value);
     void save({ overrides: [...kept].map(([key, value]) => ({ key, value })) });
   };
 

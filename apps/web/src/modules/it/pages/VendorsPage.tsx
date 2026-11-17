@@ -15,6 +15,7 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { Select } from '../../../shared/ui/form';
@@ -142,24 +143,27 @@ export const VendorsPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.vendors')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.vendors') }]}
-        actions={
-          <Can permission="itVendor.manage">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCreating(true)}
-            >
-              {t('it.vendors.create')}
-            </Button>
-          </Can>
-        }
-      />
-
-      <div className="space-y-4">
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»): on a computer
+          the title, its action and the filter bar keep their place, the pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.vendors')}
+          breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.vendors') }]}
+          actions={
+            <Can permission="itVendor.manage">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setCreating(true)}
+              >
+                {t('it.vendors.create')}
+              </Button>
+            </Can>
+          }
+        />
         <FilterBar
           hasActiveFilters={search !== '' || active !== ''}
           onClear={() => patch({ q: null, active: null })}
@@ -183,16 +187,19 @@ export const VendorsPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={data?.items ?? []}
-          rowKey={(v) => v.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            rowKey={(v) => v.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

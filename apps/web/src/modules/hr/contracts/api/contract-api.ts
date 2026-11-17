@@ -32,6 +32,8 @@ import {
   type DecideContractApproval,
   type DownloadTicketDto,
   type EmployeePapersDto,
+  type PreviewEmployeePaperDto,
+  type UpdateEmployeePaperValues,
   type HiringPackDto,
   type Paginated,
   type PreviewContract,
@@ -113,6 +115,12 @@ export const hiringPack = (employeeId: string, keys?: string[]): Promise<HiringP
 /** A28 — the employee's «طباعة العقد والمستندات» tab: their job's papers and their contract. */
 export const employeePapers = (employeeId: string): Promise<EmployeePapersDto> =>
   get<EmployeePapersDto>(`/hr/contracts/employee-papers/${employeeId}`);
+/** «تعديل» — the values typed in for the employee's papers, the whole list each time. */
+export const saveEmployeePaperValues = (employeeId: string, body: UpdateEmployeePaperValues): Promise<EmployeePapersDto> =>
+  patch<EmployeePapersDto>(`/hr/contracts/employee-papers/${employeeId}/values`, body);
+/** One of the employee's papers as it would print now. */
+export const previewEmployeePaper = (employeeId: string, key: string): Promise<PreviewEmployeePaperDto> =>
+  post<PreviewEmployeePaperDto>(`/hr/contracts/employee-papers/${employeeId}/preview`, { key });
 
 // ── A28 — «عقد جديد» for a candidate, before the hire ─────────────────────────
 export const openCandidate = (offerId: string): Promise<CandidateDraftDto> =>

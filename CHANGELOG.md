@@ -11,6 +11,38 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: on a computer only the table scrolls.** «فى شاشات الـ IT مش عايز كل الصفحة تعمل Scroll !! عايز
+  فقط الجدول لكن الزراير والفلتر يبقوا ثابتين». Every IT list screen — assets, custody, consumables and
+  their movements, mobile lines, employees, catalogs, vendors, licenses, software, tickets,
+  maintenance orders and plans, spare parts — now uses the Fleet and ATM boards' frame
+  (`PageContainer fullHeight`, `BOARD_FRAME`, `DataTable stickyHead`): from `lg` the title, the
+  buttons, the figures and the filters keep their place, the pager keeps its place below, and only
+  the rows scroll under a head that stays; a phone or tablet scrolls the page as before.
+  - The IT boards' table floor is 8rem (`BOARD_TABLE_FILL_LOW`), not the shared 14rem, so on a
+    1280×720 or 1024×768 screen the rows shrink before the filters move — measured in a browser on
+    every board at 1024×768 to 1920×1080. Fleet and ATM are unchanged.
+  - The mobile lines' network cards are compact from `lg` (counts beside the name, accounts as chips,
+    «+N» past four); the pressed card's mark and ring sit inside the card.
+  - The bulk upload's lines scroll in a box of their own under a sticky head, «تأكيد» in view.
+  - Left as they were: dashboards, records, and the help desk settings (two settings cards over a
+    table of a few priorities).
+
+- **HR: «تعديل» on the employee's «طباعة العقد والمستندات».** «في شاشه الموظفين … نخلي في امكانيه
+  للتعديل زي معملنا قبل كدا تحت الtoggle تعديل و طباعه و تحت يظهر البيانات عشان التعديل و النص التاني
+  الفورم».
+  - Every paper has «تعديل» and «طباعة» under it. Below, side by side: the opened paper's values and
+    the paper as it prints, redrawn with each change.
+  - What is typed is saved as a box is left, for that employee only (`hr_employee_paper_values`), and
+    printed by every paper of theirs that prints it — on the tab and in «المعينون»'s printing for
+    many. The employee's file does not change; clearing a box gives the record's value back. Until
+    something is typed, the values typed for them as a candidate stand.
+  - The contract they hold shows its values and prints as issued; it changes only by renewing or
+    amending it. Its number and term are never typed.
+  - «تاريخ بدء الاشتراك» (form 1) is one date box, on this tab and on «عقد جديد»: the start of work
+    unless another date is chosen.
+  - Server: `PATCH /hr/contracts/employee-papers/:employeeId/values` and `POST …/preview`
+    (`contract.print`); the papers' read returns each paper's values.
+
 - **HR: «نموذج رقم (1)» carries the company's own number and address, the job's wage, and Arabic
   figures.** «رقم المنشاه … هنثبت اول مربع و هنحط من تاني مربع الرقم دا 3338726 بالعربي من الشمال
   لليمين و نشيل التاريخ اللي موجو في تحريرا في و عاوزين نحط الاجر داخل اشتراك و الاجر الشامل علي حسب

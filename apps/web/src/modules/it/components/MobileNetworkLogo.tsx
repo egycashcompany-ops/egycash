@@ -22,6 +22,8 @@ export const MOBILE_NETWORK_LOGO: Readonly<Record<ItMobileNetwork, string>> = {
 const BOX = {
   /** A table row's badge, beside the network's name. */
   sm: 'h-7 w-10 rounded-md p-0.5',
+  /** The filter card's mark on a computer, where the card is one compact block. */
+  md: 'h-9 w-12 rounded-lg p-0.5',
   /** The filter card's mark. */
   lg: 'h-12 w-16 rounded-xl p-1',
 } as const;

@@ -26,6 +26,10 @@ import {
   type RenderCandidateBulk,
   HiringPackRequestSchema,
   RenderCandidatePapersSchema,
+  UpdateEmployeePaperValuesSchema,
+  PreviewEmployeePaperSchema,
+  type UpdateEmployeePaperValues,
+  type PreviewEmployeePaper,
   UpdateCandidateDraftSchema,
   type HireCandidate,
   type RenderCandidatePapers,
@@ -169,12 +173,27 @@ const hiringPack = async (req: Request, res: Response): Promise<void> => {
 const employeePapers = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, { employeeId: string }>(req);
-  ok(res, await hiringPackService.papersFor(params.employeeId, scopeSelector(ctx, 'contract.print')));
+  ok(res, await hiringPackService.papersFor(ctx, params.employeeId, scopeSelector(ctx, 'contract.print')));
+};
+
+/** A28 — «تعديل» on the employee's tab: keep the values typed in for their papers. */
+const saveEmployeePaperValues = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<UpdateEmployeePaperValues, never, { employeeId: string }>(req);
+  ok(res, await hiringPackService.saveValues(ctx, params.employeeId, body, scopeSelector(ctx, 'contract.print')));
+};
+
+/** A28 — one of the employee's papers as it would print now; nothing is made or recorded. */
+const previewEmployeePaper = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<PreviewEmployeePaper, never, { employeeId: string }>(req);
+  ok(res, await hiringPackService.preview(ctx, params.employeeId, body.key, scopeSelector(ctx, 'contract.print')));
 };
 
 // ── A28 — «عقد جديد» for a candidate, before the hire ─────────────────────────
 
 const OfferParamSchema = z.object({ offerId: objectId() }).strict();
+const EmployeeParamSchema = z.object({ employeeId: objectId() }).strict();
 type OfferParam = { offerId: string };
 
 const openCandidate = async (req: Request, res: Response): Promise<void> => {
@@ -322,7 +341,11 @@ export const buildContractsRouter = (): Router => {
   router.post('/hiring-pack', ...guard('contract.print'), validate({ body: HiringPackRequestSchema }),
     asyncHandler(hiringPack));
   router.get('/employee-papers/:employeeId', ...guard('contract.print'),
-    validate({ params: z.object({ employeeId: objectId() }).strict() }), asyncHandler(employeePapers));
+    validate({ params: EmployeeParamSchema }), asyncHandler(employeePapers));
+  router.patch('/employee-papers/:employeeId/values', ...guard('contract.print'),
+    validate({ body: UpdateEmployeePaperValuesSchema, params: EmployeeParamSchema }), asyncHandler(saveEmployeePaperValues));
+  router.post('/employee-papers/:employeeId/preview', ...guard('contract.print'),
+    validate({ body: PreviewEmployeePaperSchema, params: EmployeeParamSchema }), asyncHandler(previewEmployeePaper));
   // A28 — «مسميات الوظائف لدى التأمينات»: each job's title at the insurance authority. Before '/:id'.
   router.get('/insurance-job-titles', ...guard('insuranceJobTitle.manage'), asyncHandler(listInsuranceJobTitles));
   router.patch('/insurance-job-titles/:jobTitleId', ...guard('insuranceJobTitle.manage'),

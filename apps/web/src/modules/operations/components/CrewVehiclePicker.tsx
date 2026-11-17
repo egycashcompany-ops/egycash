@@ -61,7 +61,7 @@ export interface VehiclePickerProps {
    * Round 27 — the same list on «الطاقم الثابت»'s «إضافة سيارة»: its own head and its own word for
    * «nothing left to offer». The board's words when left out.
    */
-  words?: { title: string; subtitle: string; none: string };
+  words?: { title: string; subtitle: string; none: string; search: string };
 }
 
 export const CrewVehiclePicker = ({
@@ -143,6 +143,7 @@ export const CrewVehiclePicker = ({
   };
 
   const title = words?.title ?? t('operations.crewPlan.vehicles.title');
+  const searchWord = words?.search ?? t('operations.crewPlan.vehicles.search');
   const subtitle = words?.subtitle ?? t('operations.crewPlan.picker.row', { row: rowName });
 
   const searchBox = (
@@ -165,10 +166,10 @@ export const CrewVehiclePicker = ({
         aria-controls={`${id}-list`}
         aria-autocomplete="list"
         aria-activedescendant={activeKey === null ? undefined : optionId(activeKey)}
-        aria-label={t('operations.crewPlan.vehicles.search')}
+        aria-label={searchWord}
         autoComplete="off"
         inputMode="search"
-        placeholder={t('operations.crewPlan.vehicles.search')}
+        placeholder={searchWord}
         value={search}
         data-vehicle-search="true"
         onChange={(event) => {

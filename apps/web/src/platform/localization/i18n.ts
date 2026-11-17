@@ -11815,22 +11815,64 @@ const en: Record<string, string> = {
   'operations.standingCrew.addVehicle': 'Add a vehicle',
   'operations.standingCrew.unfiltered':
     'Every active vehicle is offered because no cash-transfer operation is chosen yet. To narrow the list, set “Cash-transfer vehicle operations” under Operations in System settings.',
-  'operations.standingCrew.remove': 'Remove',
-  'operations.standingCrew.removed': 'Removed {{code}} from the cash-transfer fleet',
   'operations.standingCrew.removeFailed': 'Could not remove this vehicle',
-  'operations.standingCrew.confirmRemove':
-    'Remove {{code}} from the cash-transfer fleet? Days already planned keep their crew.',
-  'operations.standingCrew.saved': 'Saved {{count}} vehicle(s)',
-  'operations.standingCrew.saveCount': 'Save {{count}} change(s)',
   'operations.standingCrew.saveFailed':
     'Could not save. Someone may already hold a standing place on another vehicle.',
-  'operations.standingCrew.unsaved': '{{count}} unsaved change(s)',
   'operations.standingCrew.empty': 'No cash-transfer vehicles yet',
-  'operations.standingCrew.unknownMember': 'Former employee — remove',
-  'operations.standingCrew.removeMember': 'Remove this crew member',
   'operations.standingCrew.removeVehicle': 'Remove {{code}} from the cash-transfer fleet',
   'operations.standingCrew.emptyHint':
     'This list is explicit, not derived: add the vehicles that carry cash, then give each its usual crew.',
+  // Round 27 — «الطاقم الثابت» in «لوحة التشغيلة»’s look: the board’s hands, without the day.
+  'operations.standingCrew.hint':
+    'Press «+ Choose» in a slot, or drag a name onto a vehicle’s row or a slot; a captain moves with his crew. Drag it back onto a list to free it.',
+  'operations.standingCrew.viewOnly':
+    'You can view the standing crew; changing it needs the crew-planning permission.',
+  'operations.standingCrew.toBoard': 'Crew board',
+  'operations.standingCrew.toBoardHint':
+    'Each day’s crew board loads this list with «Standing crew» — empty vehicles only.',
+  'operations.standingCrew.dayless': 'No day — each day’s board loads it',
+  'operations.standingCrew.daylessHint':
+    'This list has no day: no notes, no type, and no absence or leave — those belong to one day, and the crew board shows them. One person holds one vehicle here.',
+  'operations.standingCrew.counts': 'Vehicles by crew',
+  'operations.standingCrew.countsHint':
+    'Counts every vehicle of the list, whatever the filters show',
+  'operations.standingCrew.total': 'Vehicles',
+  'operations.standingCrew.state.complete': 'Full crew',
+  'operations.standingCrew.state.short': 'Crew short',
+  'operations.standingCrew.state.empty': 'No crew',
+  'operations.standingCrew.newTag': 'New',
+  'operations.standingCrew.newHint': 'Added to the cash-transfer fleet — not saved yet',
+  'operations.standingCrew.noneShown': 'No vehicle matches the filters',
+  'operations.standingCrew.savedCount': 'Standing crew saved ({{count}})',
+  'operations.standingCrew.fileStem': 'standing-crew',
+  'operations.standingCrew.picker.title': 'Add a vehicle to the standing crew',
+  'operations.standingCrew.picker.filtered': 'Not in the list yet',
+  'operations.standingCrew.picker.search': 'Search by vehicle code',
+  'operations.standingCrew.columns.actions': 'Remove',
+  'operations.standingCrew.picker.unfiltered': 'Every active vehicle — no operation chosen yet',
+  'operations.standingCrew.picker.none': 'No other vehicle can be added',
+  'operations.standingCrew.undo.place': 'moving {{name}} to {{where}}',
+  'operations.standingCrew.undo.moveCrew': 'moving {{name}} with his crew to {{where}}',
+  'operations.standingCrew.undo.free': 'taking {{name}} off the standing crew',
+  'operations.standingCrew.undo.direction': 'the direction of vehicle {{row}}',
+  'operations.standingCrew.undo.time': 'the time of vehicle {{row}}',
+  'operations.standingCrew.undo.addVehicle': 'adding vehicle {{code}}',
+  'operations.standingCrew.undo.removeVehicle': 'removing vehicle {{code}}',
+  'operations.standingCrew.leaveBody.one':
+    'The standing crew has 1 unsaved change. Leave without saving?',
+  'operations.standingCrew.leaveBody.two':
+    'The standing crew has 2 unsaved changes. Leave without saving?',
+  'operations.standingCrew.leaveBody.few':
+    'The standing crew has {{count}} unsaved changes. Leave without saving?',
+  'operations.standingCrew.leaveBody.many':
+    'The standing crew has {{count}} unsaved changes. Leave without saving?',
+  'operations.standingCrew.leaveBody.other':
+    'The standing crew has {{count}} unsaved changes. Leave without saving?',
+  'operations.standingCrew.plan.card.seat': 'In the standing crew',
+  'operations.standingCrew.plan.card.unseated': 'Not in the standing crew',
+  'operations.standingCrew.plan.pools.dropBack': 'Drop here to take them off the standing crew',
+  'operations.standingCrew.plan.pools.returnPicked': 'Take {{name}} off the standing crew',
+  'operations.standingCrew.plan.picker.seated': 'In the standing crew — picking moves them here',
   'operations.crew.direction': 'Direction',
   'operations.crew.plannedTime': 'Planned time',
   'operations.crew.slot.captain': 'Captain',
@@ -26559,25 +26601,66 @@ const ar: Record<string, string> = {
   'operations.standingCrew.title': 'الطاقم الثابت',
   'operations.standingCrew.subtitle':
     'مَن يقود كل مركبة من مركبات نقل الأموال في المعتاد. تشغيلة كل يوم تنزل من هنا، ويظل تعديلها لذلك اليوم ممكنًا.',
-  'operations.standingCrew.addVehicle': 'إضافة مركبة',
+  'operations.standingCrew.addVehicle': 'إضافة سيارة',
   'operations.standingCrew.unfiltered':
     'كل المركبات النشطة معروضة لأنه لم يُحدَّد بعد تشغيل نقل الأموال. لتضييق القائمة، حدِّد «تشغيل مركبات نقل الأموال» في إعدادات النظام ضمن العمليات.',
-  'operations.standingCrew.remove': 'إزالة',
-  'operations.standingCrew.removed': 'تم إخراج {{code}} من أسطول نقل الأموال',
   'operations.standingCrew.removeFailed': 'تعذّر إزالة هذه المركبة',
-  'operations.standingCrew.confirmRemove':
-    'إخراج {{code}} من أسطول نقل الأموال؟ الأيام المخطَّطة بالفعل تحتفظ بأطقمها.',
-  'operations.standingCrew.saved': 'تم حفظ {{count}} مركبة',
-  'operations.standingCrew.saveCount': 'حفظ {{count}} تغيير',
   'operations.standingCrew.saveFailed':
     'تعذّر الحفظ. قد يكون أحد الأفراد له مكان ثابت على مركبة أخرى.',
-  'operations.standingCrew.unsaved': '{{count}} تغيير غير محفوظ',
   'operations.standingCrew.empty': 'لا توجد مركبات نقل أموال بعد',
-  'operations.standingCrew.unknownMember': 'موظف سابق — أزِله',
-  'operations.standingCrew.removeMember': 'إزالة هذا الفرد من الطاقم',
   'operations.standingCrew.removeVehicle': 'إخراج {{code}} من أسطول نقل الأموال',
   'operations.standingCrew.emptyHint':
     'هذه القائمة صريحة وليست مشتقّة: أضف المركبات التي تنقل الأموال، ثم عيّن لكل واحدة طاقمها المعتاد.',
+  // الجولة 27 — «الطاقم الثابت» بشكل «لوحة التشغيلة»: أدوات اللوحة نفسها، دون اليوم.
+  'operations.standingCrew.hint':
+    'اضغط «+ اختيار» في الخانة، أو اسحب الاسم إلى صف السيارة أو إلى الخانة؛ ينتقل القائد ومعه طاقمه. أعِده إلى القائمة لإخلائه.',
+  'operations.standingCrew.viewOnly':
+    'يمكنك الاطلاع على الطاقم الثابت؛ أما تعديله فيحتاج صلاحية تخطيط الطاقم.',
+  'operations.standingCrew.toBoard': 'لوحة التشغيلة',
+  'operations.standingCrew.toBoardHint':
+    'تُحمِّل «لوحة التشغيلة» كل يوم هذه القائمة بزر «الطاقم الثابت» — على السيارات الفارغة فقط.',
+  'operations.standingCrew.dayless': 'بلا يوم — تُحمِّله لوحة كل يوم',
+  'operations.standingCrew.daylessHint':
+    'لا يوم لهذه القائمة: لا ملاحظات ولا نوع ولا غياب أو إجازة — فتلك حقائق يوم بعينه تعرضها «لوحة التشغيلة». ولكل فرد هنا سيارة واحدة.',
+  'operations.standingCrew.counts': 'السيارات حسب الطاقم',
+  'operations.standingCrew.countsHint': 'تَعُدّ كل سيارات القائمة أيًّا كانت التصفية',
+  'operations.standingCrew.total': 'السيارات',
+  'operations.standingCrew.state.complete': 'طاقم مكتمل',
+  'operations.standingCrew.state.short': 'طاقم ناقص',
+  'operations.standingCrew.state.empty': 'بدون طاقم',
+  'operations.standingCrew.newTag': 'جديدة',
+  'operations.standingCrew.newHint': 'أُضيفت إلى أسطول نقل الأموال — لم تُحفظ بعد',
+  'operations.standingCrew.noneShown': 'لا توجد سيارة تطابق التصفية',
+  'operations.standingCrew.savedCount': 'تم حفظ الطاقم الثابت ({{count}})',
+  'operations.standingCrew.fileStem': 'الطاقم-الثابت',
+  'operations.standingCrew.picker.title': 'إضافة سيارة إلى الطاقم الثابت',
+  'operations.standingCrew.picker.filtered': 'لم تُضف إلى القائمة بعد',
+  'operations.standingCrew.picker.search': 'بحث بكود السيارة',
+  'operations.standingCrew.columns.actions': 'إزالة',
+  'operations.standingCrew.picker.unfiltered': 'كل السيارات النشطة — لم يُحدَّد التشغيل بعد',
+  'operations.standingCrew.picker.none': 'لا توجد سيارة أخرى يمكن إضافتها',
+  'operations.standingCrew.undo.place': 'نقل {{name}} إلى {{where}}',
+  'operations.standingCrew.undo.moveCrew': 'نقل {{name}} مع طاقمه إلى {{where}}',
+  'operations.standingCrew.undo.free': 'إخراج {{name}} من الطاقم الثابت',
+  'operations.standingCrew.undo.direction': 'تغيير اتجاه السيارة {{row}}',
+  'operations.standingCrew.undo.time': 'تغيير توقيت السيارة {{row}}',
+  'operations.standingCrew.undo.addVehicle': 'إضافة السيارة {{code}}',
+  'operations.standingCrew.undo.removeVehicle': 'إخراج السيارة {{code}}',
+  'operations.standingCrew.leaveBody.one':
+    'في الطاقم الثابت تغيير واحد لم يُحفظ. هل تريد المغادرة دون حفظ؟',
+  'operations.standingCrew.leaveBody.two':
+    'في الطاقم الثابت تغييران لم يُحفظا. هل تريد المغادرة دون حفظ؟',
+  'operations.standingCrew.leaveBody.few':
+    'في الطاقم الثابت {{count}} تغييرات لم تُحفظ. هل تريد المغادرة دون حفظ؟',
+  'operations.standingCrew.leaveBody.many':
+    'في الطاقم الثابت {{count}} تغييرًا لم يُحفظ. هل تريد المغادرة دون حفظ؟',
+  'operations.standingCrew.leaveBody.other':
+    'في الطاقم الثابت {{count}} تغيير لم يُحفظ. هل تريد المغادرة دون حفظ؟',
+  'operations.standingCrew.plan.card.seat': 'في الطاقم الثابت',
+  'operations.standingCrew.plan.card.unseated': 'ليس في الطاقم الثابت',
+  'operations.standingCrew.plan.pools.dropBack': 'أفلِته هنا لإخراجه من الطاقم الثابت',
+  'operations.standingCrew.plan.pools.returnPicked': 'إخراج {{name}} من الطاقم الثابت',
+  'operations.standingCrew.plan.picker.seated': 'في الطاقم الثابت — اختياره ينقله إلى هنا',
   'operations.crew.direction': 'الاتجاه',
   'operations.crew.plannedTime': 'الوقت المخطط',
   'operations.crew.slot.captain': 'القائد',

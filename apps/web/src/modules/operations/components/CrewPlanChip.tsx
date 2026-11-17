@@ -51,7 +51,6 @@ import {
 } from '../lib/crew-plan';
 import { PlanAttendanceFact, usePlanMemberCard } from './CrewPlanMemberCard';
 import { CrewFlagMarks } from './crew-plan-icons';
-import { showsDayFacts, useCrewPlanScope } from './crew-plan-scope';
 
 /** The role's fill — solid, as legacy's, so a column of names reads by colour first. */
 export const ROLE_FILL: Record<CrewRole, string> = {
@@ -176,12 +175,10 @@ export const CrewPlanChip = ({
   const blocked = away !== null && variant === 'pool';
   const movable = canPlan && !blocked;
   // The whole name, the code, the role, where he sits and his day: the card, on hover (no `title`).
-  // «الطاقم الثابت» has no day (Round 27): no attendance line — HR's answer is about one day.
-  const dayFacts = showsDayFacts(useCrewPlanScope());
   const card = usePlanMemberCard(member, {
     dragActive,
     seat: where?.long ?? seatedAt,
-    attendance: dayFacts ? <PlanAttendanceFact away={away} /> : null,
+    attendance: <PlanAttendanceFact away={away} />,
   });
   const awayWord = away === null ? null : t(`operations.crewPlan.away.${away}`);
 

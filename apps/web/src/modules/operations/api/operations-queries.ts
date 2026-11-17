@@ -630,6 +630,10 @@ export const useRemoveOperationsStandingCrew = () => {
   return useMutation({
     mutationFn: (vehicleId: string) => api.removeStandingCrew(vehicleId),
     onSuccess: invalidate,
+    // «الطاقم الثابت»'s «حفظ» owns this one's errors (Round 27): a vehicle another desk already took
+    // out answers 404 and is DONE there (`sendStandingSave`) — the global notifier would toast «not
+    // found» over a save that succeeded; any other refusal the page words, with the server's reason.
+    onError: formOwnsTheError,
   });
 };
 

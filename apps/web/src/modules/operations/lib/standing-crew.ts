@@ -16,11 +16,13 @@ import {
   type OperationsStandingCrewBoardDto,
   type OperationsStandingCrewRowDto,
 } from '@ecms/contracts';
+import { ApiError } from '../../../shared/lib/api-client';
 import { SLOT_POSITIONS, slotOccupants, type BoardRow, type SlotCells } from './crew-board';
 import {
   crewShortfall,
   placeMember,
   planChanges,
+  rebaseDraft,
   rowPeople,
   seatOf,
   type CrewSlot,
@@ -32,9 +34,7 @@ import { byVehicleCode, type VehicleChoice } from './crew-vehicles';
 const toCells = (ids: readonly string[] | undefined): SlotCells =>
   SLOT_POSITIONS.map((position) => ids?.[position] ?? null);
 
-export const toStandingRows = (
-  rows: readonly OperationsStandingCrewRowDto[],
-): BoardRow[] =>
+export const toStandingRows = (rows: readonly OperationsStandingCrewRowDto[]): BoardRow[] =>
   rows.map((row) => ({
     vehicleId: row.vehicleId,
     vehicleCode: row.vehicleCode,
@@ -83,6 +83,9 @@ export const toStandingPayloadRows = (rows: readonly BoardRow[]) =>
  *   · local only  → keep it, but ONLY if it was never on the server. That is a vehicle added from
  *                the picker and not yet saved. A local row whose server row has GONE was removed —
  *                by this operator or another — and must not be resurrected.
+ *
+ * Round 27: the page no longer calls this — it edits the board's rows, and reconciles with
+ * `rebaseStandingDraft` below, which keeps this promise for a row the planner TOUCHED too.
  */
 export const mergeStandingRows = (
   server: readonly BoardRow[],
@@ -194,11 +197,128 @@ export const standingSave = (
   const removeVehicleIds = serverRows
     .filter((row) => row.crewId !== null && removed.has(row.crewId) && row.vehicleId !== null)
     .map((row) => row.vehicleId as string);
-  const put = toStandingPayloadRows(
-    changes.changed.filter((row) => row.vehicleId !== null).map(standingBoardRow),
-  );
+  const put = toStandingPayloadRows(putRowsOf(changes).map(standingBoardRow));
   return { put, removeVehicleIds, count: put.length + removeVehicleIds.length };
 };
+
+/** The changed rows the PUT carries, in its order — every one has a vehicle on this list. */
+const putRowsOf = (changes: ReturnType<typeof planChanges>): PlanRow[] =>
+  changes.changed.filter((row) => row.vehicleId !== null);
+
+/**
+ * The rows «حفظ»'s PUT is written from, in the PUT's own order. A refusal that names a row names it
+ * by its place in the PUT (`ROW_INDEX` — Round 23's «not his role's slot»), so the board's
+ * `planRefusal` reads it against THESE rows and the page rings the person on that row.
+ */
+export const standingPutRows = (
+  rows: readonly PlanRow[],
+  serverRows: readonly PlanRow[],
+): PlanRow[] => putRowsOf(planChanges(rows, serverRows));
+
+/**
+ * A vehicle's DELETE answered «not found»: another desk took it out after this list was read. The
+ * end state «حفظ» asked for is already the server's (its `remove` says so: the second caller of a
+ * race gets a NotFoundError for «the same end state») — so it is DONE, not a failure.
+ */
+export const isAlreadyRemoved = (failure: unknown): boolean =>
+  failure instanceof ApiError && failure.status === 404;
+
+/** How «حفظ» ended, and which vehicles were found already taken out on the way. */
+export type StandingSaveOutcome = { alreadyGone: string[] } & (
+  | { kind: 'saved' }
+  | { kind: 'removeFailed'; vehicleId: string; failure: unknown }
+  | { kind: 'putFailed'; failure: unknown }
+);
+
+/**
+ * «حفظ»'s requests, in their order: each vehicle taken out (one DELETE each) — a person freed from
+ * one of them may sit on another vehicle in the PUT, and the server checks one person, one vehicle
+ * against the whole list — then the changed rows in ONE PUT (none when nothing but removals).
+ *
+ * A DELETE refused for any other reason stops the save there: the PUT behind it is not sent, and
+ * what is left is exactly what is still to save. One answered «not found» does NOT stop it
+ * (`isAlreadyRemoved`) — the screen would otherwise send that DELETE again on every press, fail
+ * again, and never save the rest of the draft (Round 27 verification: a vehicle removed at another
+ * desk left «حفظ» stuck until a reload threw the draft away).
+ */
+export const sendStandingSave = async (
+  plan: { removeVehicleIds: readonly string[]; put: readonly unknown[] },
+  send: { remove: (vehicleId: string) => Promise<unknown>; put: () => Promise<unknown> },
+): Promise<StandingSaveOutcome> => {
+  const alreadyGone: string[] = [];
+  for (const vehicleId of plan.removeVehicleIds) {
+    try {
+      await send.remove(vehicleId);
+    } catch (failure) {
+      if (!isAlreadyRemoved(failure)) {
+        return { kind: 'removeFailed', vehicleId, failure, alreadyGone };
+      }
+      alreadyGone.push(vehicleId);
+    }
+  }
+  if (plan.put.length > 0) {
+    try {
+      await send.put();
+    } catch (failure) {
+      return { kind: 'putFailed', failure, alreadyGone };
+    }
+  }
+  return { kind: 'saved', alreadyGone };
+};
+
+/**
+ * The vehicles «حفظ» took out of the fleet before it STOPPED — saved on the server, whatever came
+ * after. The DELETEs go first (`sendStandingSave`), so a PUT refused behind them, or a DELETE refused
+ * after others went through, leaves vehicles already out that the planner must be TOLD of: the
+ * re-read drops them from the table and from «تراجع», and «تعذّر الحفظ» alone reads as «nothing
+ * was saved» (Round 27 review). A vehicle found already gone (404) is out too. Nothing when saved.
+ */
+export const removedBeforeStop = (
+  plan: { removeVehicleIds: readonly string[] },
+  outcome: StandingSaveOutcome,
+): string[] => {
+  if (outcome.kind === 'saved') return [];
+  if (outcome.kind === 'putFailed') return [...plan.removeVehicleIds];
+  const at = plan.removeVehicleIds.indexOf(outcome.vehicleId);
+  return at <= 0 ? [] : plan.removeVehicleIds.slice(0, at);
+};
+
+/**
+ * Another desk's answer under the draft — the board's `rebaseDraft`, with the standing crew's one
+ * extra promise: A VEHICLE TAKEN OUT ON THE SERVER IS NOT BROUGHT BACK. The board's rebase keeps a
+ * row the planner touched whose server row is gone («the save then says what became of it»): the
+ * board's save names a saved row by its id and the server refuses one deleted. The standing PUT
+ * names a row by its VEHICLE and upserts — so a touched row kept there would silently put the
+ * vehicle, and its crew, back in the fleet on the next «حفظ» (Round 27 review). Such a row — it has
+ * a stored row's id the new answer no longer holds — is dropped, as `mergeStandingRows` dropped it;
+ * a vehicle added here and never saved (no id) stays. `standingEditsLost` names what was dropped.
+ */
+export const rebaseStandingDraft = (
+  draft: readonly PlanRow[],
+  base: readonly PlanRow[],
+  next: readonly PlanRow[],
+): readonly PlanRow[] => {
+  const rebased = rebaseDraft(draft, base, next);
+  const gone = goneOnServer(rebased, next);
+  return gone.length === 0 ? rebased : rebased.filter((row) => !gone.includes(row));
+};
+
+/** The rows of the draft whose stored row the new answer no longer holds. */
+const goneOnServer = (rows: readonly PlanRow[], next: readonly PlanRow[]): PlanRow[] => {
+  const held = new Set(next.flatMap((row) => (row.crewId === null ? [] : [row.crewId])));
+  return rows.filter((row) => row.crewId !== null && !held.has(row.crewId));
+};
+
+/**
+ * The vehicles whose UNSAVED changes `rebaseStandingDraft` drops — taken out of the fleet on the
+ * server while the planner held an edit of them. Said on the page, never dropped without a word. An
+ * untouched vehicle taken out is simply the other desk's change showing, as on the board: not here.
+ */
+export const standingEditsLost = (
+  draft: readonly PlanRow[],
+  base: readonly PlanRow[],
+  next: readonly PlanRow[],
+): PlanRow[] => goneOnServer(rebaseDraft(draft, base, next), next);
 
 /**
  * A vehicle joining the fleet from «إضافة سيارة» — at the end of the table, nobody on it yet. One the
@@ -247,20 +367,18 @@ export const standingVehicleChoices = (
       seen.add(vehicle.vehicleId);
       return true;
     })
-    .map(
-      (vehicle): VehicleChoice => ({
-        vehicleId: vehicle.vehicleId,
-        vehicleCode: vehicle.vehicleCode,
-        // Narrowed to the cash-transfer operations' vehicles when that is configured; every active
-        // vehicle otherwise — and the list's heading says which.
-        group: designated ? 'cashTransfer' : 'other',
-        onRoster: false,
-        inWorkshop: false,
-        drivers: [],
-        vanKey: null,
-        pickable: true,
-      }),
-    )
+    .map((vehicle): VehicleChoice => ({
+      vehicleId: vehicle.vehicleId,
+      vehicleCode: vehicle.vehicleCode,
+      // Narrowed to the cash-transfer operations' vehicles when that is configured; every active
+      // vehicle otherwise — and the list's heading says which.
+      group: designated ? 'cashTransfer' : 'other',
+      onRoster: false,
+      inWorkshop: false,
+      drivers: [],
+      vanKey: null,
+      pickable: true,
+    }))
     .sort(byVehicleCode);
 };
 

@@ -39,7 +39,7 @@ import {
 import { crewRoleOf, flagsOf, type CrewAway, type CrewRole } from '../lib/crew-plan';
 import { CardHead, PersonIcon } from './BoardCrewCards';
 import { FLAG_PATH } from './crew-plan-icons';
-import { scopedKey, useCrewPlanScope } from './crew-plan-scope';
+import { scopedKey, showsDayFacts, useCrewPlanScope } from './crew-plan-scope';
 import { CardHeld, CarriesNothing, CrewPersonFacts, HeldChip } from './RosterMemberCard';
 
 /** The role in the chip's own solid colour (`ROLE_FILL`, without its hover). */
@@ -127,8 +127,9 @@ export const PlanMemberCardBody = ({
             <span data-plan-member-seat="true">{seat}</span>
           )}
         </Fact>
-        {/* His attendance on the board's day — one line (`PlanAttendanceFact`, from the chip). */}
-        {attendance}
+        {/* His attendance on the board's day — one line (`PlanAttendanceFact`, from the chip). Not
+            on «الطاقم الثابت» (Round 27): a dateless list has no day for HR to answer about. */}
+        {showsDayFacts(scope) ? attendance : null}
       </dl>
       {/* «قائد» and «أخصائي» are the role above; these are the rest, as the chip's icons. */}
       <CardHeld>

@@ -1469,6 +1469,54 @@ its entry here in the same PR.
       (7) By night the van's code pill was a dark slab on a dark band (1.5:1): its edge is a
       slate-400 line now, 3.5:1 on the band. The vault's top row with no acts puts its figures beside
       the day where they fit (1024) rather than alone on a second line.
+  - Round 27 — «الطاقم الثابت», the owner: «عاوزك تخلى شاشة الطاقم الثابت نفس شكل لوحة التشغيل بقى
+    فاهم». The screen is «لوحة التشغيلة»'s twin, minus the day (web only; no server change):
+    - THE SAME LOOK, from the same pieces: the board's frame, its toolbar (the role legend and the
+      hint, or the chip picked up; then «لوحة التشغيلة», «إضافة سيارة», Excel, «تراجع», «حفظ (n)»), its
+      bar, its table (السيارة | قائد الطاقم | أخصائي 1 | أخصائي 2 | الاتجاه | التوقيت | إزالة), its
+      slots and chips, and the two pools at the end with the captain-specialists last — dark and
+      light, at 390 the pools before the table and nothing sideways. What the two pages share is one
+      source now: `CrewPlanFrame` (the table's and the bar's looks, the count chip, the grid, the
+      toolbar's start, «المعروض N من M», «إخراج …» and the drop's `targetAt`, which the board imports
+      too — its look unchanged, pixel for pixel) and `CrewPlanSlot` (the board's slot, drawn as a
+      component). The old screen's cards, dashed boxes and per-box drop (`CrewPools`,
+      `CrewMemberCard`) are no longer on it.
+    - THE SAME HANDS: Round 22's drop (who is dragged kept from the chip's own dragstart, the whole
+      frame accepting, the drop deciding — a slot, anywhere on a vehicle's row, back on a pool;
+      a full slot said); «+ اختيار قائد» / «+ اختيار أخصائي» and the «+» beside a half-full slot's ✕
+      open the slot's list; a chip pressed, then «ضع هنا»; the person's card on every chip; Round
+      23's refusal in the board's words; «تراجع» one operation a press, its tooltip saying which,
+      Ctrl+Z (⌘Z) outside a box; the vehicle, person and direction filters; the board's bin takes a
+      vehicle out as a step of the draft (no confirm, no instant delete). «إضافة سيارة» opens the
+      board's list of cars (Round 24's `CrewVehiclePicker`) on the vehicles that may still join —
+      searchable by code, a vehicle taken out here offered again — where a bare <select> was. The
+      bar counts the vehicles and their crews («السيارات»، «طاقم مكتمل»، «طاقم ناقص»، «بدون طاقم»),
+      each a filter; a vehicle added and not saved is tagged «جديدة» under its code.
+    - WHAT STAYS ITS OWN: no day — where the board has «يوم التشغيلة» the bar says «بلا يوم — تُحمِّله
+      لوحة كل يوم» —, no notes, no type, no row colour. No day's marks either: the roster answers
+      absent / on leave (and which van holds whom) for ONE day, the server's today when asked
+      without one, and the standing save has no attendance gate — so the screen reads the roster
+      without them, nobody is faded or refused for it, and the person's card drops its attendance
+      line, the van's card its drivers (both the day's). The day's board still leaves an away man
+      off when it loads this list. A captain put in another vehicle's «قائد الطاقم» still brings the
+      specialists riding with him, where they fit and there is room («يسحب الأخصائيين اللى معاه» —
+      one «تراجع» takes the whole move back). «حفظ (n)» takes the vehicles out first (one DELETE
+      each), then sends the changed rows in ONE PUT whose body is `toStandingPayloadRows`' as before.
+    - Proof: real OS drags (XTEST, headed Chromium, the real API on mongodb-memory-server) — pool →
+      captain slot, pool → specialist slot, a chip to another vehicle's slot, a captain moving with
+      his crew, a captain refused on a specialist's slot; «حفظ» then a reload equal to the server —
+      6/6 at 1× and 6/6 at 6× CPU; a vehicle taken out, one of its captains seated elsewhere and a
+      vehicle added saved in one press (the DELETE first). Specs: `standing-crew.spec.ts` (the rows,
+      the save's body, the add list, the day's facts dropped, the counters, the drop, the filters,
+      «تراجع», a rebase, the captain's crew) and `standing-crew-page.spec.tsx` (the shared pieces, the
+      hands, what stays its own, every new word in both languages).
+    - Verification fix: a vehicle another desk had already taken out answered «حفظ»'s DELETE with
+      404, and the save stopped there on every press — the rest of the draft (a captain seated on
+      another vehicle) could not be saved without a reload that threw it away. A 404 is the end
+      state asked for, so it now counts as done (`sendStandingSave`), the list is read again, and
+      the PUT goes out; any other refused DELETE still stops the save, in ONE toast naming the
+      vehicle and the server's reason (the remove hook no longer also fires the global notifier).
+      Proved on the real stack with two desks, the socket on and off.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

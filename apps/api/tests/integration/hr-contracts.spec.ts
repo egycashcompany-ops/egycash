@@ -56,6 +56,8 @@ const FAR_END_DATE = '2028-07-31';
 let JOB_TITLE_ID = '';
 let BRANCH_ID = '';
 let DEPARTMENT_ID = '';
+/** «مستندات الوظائف» keys a department by its company entry; a new one is linked to an entry when created (D-ORG3-5). */
+let DEPARTMENT_KEY = '';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminId = '';
@@ -286,6 +288,7 @@ beforeAll(async () => {
     .send({ branchId: BRANCH_ID, code: 'DEP-OPS-1', name: { ar: 'العمليات', en: 'Ops' } });
   expect(depRes.status).toBe(201);
   DEPARTMENT_ID = (depRes.body as { data: { id: string } }).data.id;
+  DEPARTMENT_KEY = (depRes.body as { data: { catalogId: string | null } }).data.catalogId ?? DEPARTMENT_ID;
   const titleRes = await request(app)
     .post('/api/v1/platform/job-titles')
     .set('Authorization', `Bearer ${adminToken}`)
@@ -1383,10 +1386,10 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     const before = res.body.data as JobPapersDto;
     expect(before.papers[0]?.key).toBe(key('contract'));
     expect(before.papers.map((p) => p.key)).toEqual(expect.arrayContaining([...ALL_JOBS, key('weapon'), key('card.atm-specialist')]));
-    const ops = before.departments.find((d) => d.departmentId === DEPARTMENT_ID);
+    const ops = before.departments.find((d) => d.departmentId === DEPARTMENT_KEY);
     expect(ops?.name.ar).toBe('العمليات');
     // His papers as the templates tick them: the weapon declaration only offered, so not ticked.
-    expect(lineOf(before, DEPARTMENT_ID, specialistJob)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
+    expect(lineOf(before, DEPARTMENT_KEY, specialistJob)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
     // Every active job, to add one to a department.
     expect(before.jobs.find((j) => j.jobTitleId === crewLeaderJob)?.keys).toContain(key('weapon'));
 
@@ -1398,9 +1401,9 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
       key('card.atm-specialist'),
       key('card.atm-crew-leader'),
     ];
-    const saved = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys }] });
+    const saved = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys }] });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    expect(lineOf(saved.body.data as JobPapersDto, DEPARTMENT_ID, specialistJob)).toEqual(keys);
+    expect(lineOf(saved.body.data as JobPapersDto, DEPARTMENT_KEY, specialistJob)).toEqual(keys);
 
     // The employee's papers and their printed set follow what was saved for their department and job.
     const papers = (
@@ -1413,16 +1416,16 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect(((await pack(employee.id)).body.data as HiringPackDto).documents.map((d) => d.key)).toEqual(keys);
 
     // A job added to a department nobody holds it in yet is listed there from now on.
-    const added = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: crewLeaderJob, keys: [key('contract'), key('weapon')] }] });
-    expect(lineOf(added.body.data as JobPapersDto, DEPARTMENT_ID, crewLeaderJob)).toEqual([key('contract'), key('weapon')]);
+    const added = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: crewLeaderJob, keys: [key('contract'), key('weapon')] }] });
+    expect(lineOf(added.body.data as JobPapersDto, DEPARTMENT_KEY, crewLeaderJob)).toEqual([key('contract'), key('weapon')]);
 
     // Saved again as it was: back to its templates' papers.
-    const back = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys: lineOf(before, DEPARTMENT_ID, specialistJob) }] });
-    expect(lineOf(back.body.data as JobPapersDto, DEPARTMENT_ID, specialistJob)).toEqual(lineOf(before, DEPARTMENT_ID, specialistJob));
+    const back = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys: lineOf(before, DEPARTMENT_KEY, specialistJob) }] });
+    expect(lineOf(back.body.data as JobPapersDto, DEPARTMENT_KEY, specialistJob)).toEqual(lineOf(before, DEPARTMENT_KEY, specialistJob));
 
     // An unpublished paper, an unknown department, an empty request and a user without the permission
     // are refused.
-    const line = (over: object) => ({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys, ...over }] });
+    const line = (over: object) => ({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys, ...over }] });
     expect((await save(line({ keys: ['not.a.paper'] }))).status).toBe(400);
     expect((await save(line({ departmentId: '64b1f0cccccccccccccccc0e' }))).status).toBe(404);
     expect((await save({ lines: [] })).status).toBe(400);

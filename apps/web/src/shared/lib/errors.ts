@@ -77,6 +77,9 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A secured shipment is not due on this day — it cannot be placed on this day’s vans.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'Its captain has already started this delivery in the app — it can no longer be moved or taken off his van.',
+    // Round 25 — only a row of the «محصنة» type takes a محصنة.
+    OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED:
+      'That row is not of the secured type — it takes no new secured shipment. Choose a secured row.',
     // «تسليم المحصنات» (Round 17): the server refuses a handover of any van but today's. The screen
     // offers «تسليم» on today's vans only, so this reaches a page left open from another day — or
     // past midnight — and says the same rule the screen does.
@@ -162,6 +165,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'إحدى المحصنات ليست مستحقة التسليم في هذا اليوم، فلا يمكن وضعها على سيارات هذا اليوم.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقلها أو إزالتها من سيارته ممكنًا.',
+    OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED:
+      'هذا الصف ليس من نوع محصنة، فلا يأخذ محصنات جديدة — اختر صفًا من نوع محصنة.',
     OPERATIONS_DISPATCH_NOT_TODAY:
       'التسليم يتم يوم خروج السيارة فقط — هذه السيارة ليست من سيارات اليوم.',
     OPERATIONS_UNKNOWN_SHIFT_TYPE:

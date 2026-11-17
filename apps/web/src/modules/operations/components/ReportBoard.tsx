@@ -49,7 +49,7 @@
 import { useState, type HTMLAttributes, type ReactNode } from 'react';
 import { MAX_PAGE_SIZE, type OperationsReportTotalsDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { DataTable, type Column, type SortState } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -135,6 +135,45 @@ const TOTAL_ROW_MARK = { 'data-report-total': 'true' } as HTMLAttributes<HTMLTab
 const MIN_COLUMN_REM = 5.25;
 
 /**
+ * Round 25 — the arrow at the END of a row, after «الصناديق»: «عاوز فى الجدول عند البنك فى الاخر بعد
+ * الصناديق يكون فيه سهم ادوس عليه يفتح زى داش برود كدا للبنك بالفروع بتاعته». «تقرير البنوك» hands
+ * it in to open a bank's dashboard; a row the server could not attribute, and «الإجمالي», have none.
+ */
+export interface ReportRowAction {
+  /** The column's head — what the arrow opens. */
+  header: string;
+  /** The arrow's name, to a screen reader and as its tooltip — the row's own. */
+  label: (row: ReportBoardRow) => string;
+  onOpen: (row: ReportBoardRow) => void;
+}
+
+/**
+ * Round 25 — a column right after the name: the branch's area on «لوحة البنك بفروعه». Its value
+ * per line (null prints a dash, and «الإجمالي» has none).
+ */
+export interface ReportDetailColumn {
+  header: string;
+  of: (line: ReportTableLine) => string | null;
+}
+
+/** Round 25 — the table sorted by a column head (the caller orders the rows; «الإجمالي» stays last). */
+export interface ReportSort extends SortState {
+  onChange: (key: ReportColumnKey) => void;
+}
+
+/** The columns a report's table can be sorted by, as `ReportSort` names them. */
+export type ReportColumnKey =
+  'label' | 'detail' | 'count' | 'egp' | 'usd' | 'others' | 'bags' | 'cartons' | 'boxes';
+
+/**
+ * The floor of a table of `columns` columns, kept at the nine columns' own (`MIN_COLUMN_REM`): the
+ * arrow's column is a narrow one, so the bank report keeps fitting beside its panel at 1280px rather
+ * than growing a sideways scrollbar for an icon.
+ */
+const columnFloor = (columns: number, narrow: number): number =>
+  (MIN_COLUMN_REM * (columns - narrow)) / columns;
+
+/**
  * The report's content row: on a computer the table and the panel side by side, each as tall as
  * what is left of the screen under the bar (`items-stretch` — the panel takes the table card's
  * height, `VaultValuePanel.tsx`); on a phone stacked, the page scrolling.
@@ -217,6 +256,10 @@ export const ReportTable = ({
   onRetry,
   empty,
   className,
+  rowAction,
+  detail,
+  labelNote,
+  sort,
 }: {
   /** The table's strip — «بيان الشحنات لكل بنك», «بيان عدد الشحنات لكل قائد طاقم». */
   title: string;
@@ -236,6 +279,14 @@ export const ReportTable = ({
   empty: string;
   /** The card's size where it sits — the reports' full height, the vault history's capped one. */
   className?: string;
+  /** Round 25 — the arrow after «الصناديق» (`ReportRowAction`); none on the other tables. */
+  rowAction?: ReportRowAction | undefined;
+  /** Round 25 — a column after the name (`ReportDetailColumn`). */
+  detail?: ReportDetailColumn | undefined;
+  /** Round 25 — a muted second line under a row's name (a branch of another bank says which). */
+  labelNote?: ((line: ReportTableLine) => string | null) | undefined;
+  /** Round 25 — sortable column heads (`ReportSort`); the rows come in already sorted. */
+  sort?: ReportSort | undefined;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
@@ -243,6 +294,7 @@ export const ReportTable = ({
   const currencies = useOperationsCurrencies({ page: 1, pageSize: MAX_PAGE_SIZE });
   const catalog = currencies.data?.items ?? [];
   const [others, setOthers] = useState<OpenOthers | null>(null);
+  const sortable = sort !== undefined;
   const nameOf = useLineName();
 
   const lines = reportTableLines(rows, total);
@@ -270,36 +322,71 @@ export const ReportTable = ({
     {
       key: 'label',
       header: keyHeader,
-      render: (line) =>
-        line.kind === 'row' && line.unattributed ? (
+      sortable,
+      render: (line) => {
+        const note = labelNote?.(line) ?? null;
+        return line.kind === 'row' && line.unattributed ? (
           // Worded as it always was, and muted: a bucket, not a bank or a captain.
           <span className="text-slate-500 dark:text-slate-400">{nameOf(line)}</span>
         ) : (
           <span className="block min-w-[6rem] max-w-[14rem] whitespace-normal leading-tight">
             {nameOf(line)}
+            {note !== null && (
+              <span
+                data-report-label-note="true"
+                className="mt-0.5 block text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+              >
+                {note}
+              </span>
+            )}
           </span>
-        ),
+        );
+      },
     },
+    ...(detail === undefined
+      ? []
+      : [
+          {
+            key: 'detail',
+            header: detail.header,
+            sortable,
+            render: (line: ReportTableLine) => {
+              if (line.kind === 'total') return null;
+              const value = detail.of(line);
+              return value === null || value === '' ? (
+                <span className="text-slate-400 dark:text-slate-500">—</span>
+              ) : (
+                <span className="block min-w-[5rem] max-w-[10rem] whitespace-normal leading-tight">
+                  {value}
+                </span>
+              );
+            },
+          } satisfies Column<ReportTableLine>,
+        ]),
     {
       key: 'count',
       header: countHeader,
       align: 'center',
+      sortable,
       render: (line) => figure(line.totals.shipmentCount),
     },
     {
       key: 'egp',
+      sortable,
       header: t('operations.reportBoard.pound'),
       align: 'center',
       render: (line) => figure(money(line).egp),
     },
     {
       key: 'usd',
+      sortable,
       header: t('operations.reportBoard.dollar'),
       align: 'center',
       render: (line) => figure(money(line).usd),
     },
     {
       key: 'others',
+      sortable,
       header: t('operations.board.figures.otherCurrencies'),
       align: 'center',
       // A sum of DIFFERENT currencies, so a click lists each one apart — the boards' «عملات أخرى»
@@ -331,22 +418,68 @@ export const ReportTable = ({
     },
     {
       key: 'bags',
+      sortable,
       header: t('operations.reportBoard.bags'),
       align: 'center',
       render: (line) => figure(line.totals.bagCount),
     },
     {
       key: 'cartons',
+      sortable,
       header: t('operations.reportBoard.cartons'),
       align: 'center',
       render: (line) => figure(line.totals.cartonCount),
     },
     {
       key: 'boxes',
+      sortable,
       header: t('operations.reportBoard.boxes'),
       align: 'center',
       render: (line) => figure(line.totals.boxCount),
     },
+    ...(rowAction === undefined
+      ? []
+      : [
+          {
+            key: 'open',
+            header: rowAction.header,
+            align: 'center',
+            headerClassName: 'w-14',
+            render: (line: ReportTableLine) => {
+              if (line.kind !== 'row' || line.unattributed) return null;
+              const label = rowAction.label(line);
+              return (
+                <button
+                  type="button"
+                  data-report-open={line.key}
+                  aria-label={label}
+                  title={label}
+                  onClick={() => rowAction.onOpen(line)}
+                  // `[&&]`: the board table squeezes a cell's button to 22–28px; the arrow is the
+                  // row's way in, so it keeps a 32px square — the size a finger or a mouse finds —
+                  // in a brand ring, so it reads as a way in rather than a figure.
+                  className="inline-flex items-center justify-center rounded-lg border border-brand-200 bg-brand-50 text-brand-700 transition hover:border-brand-400 hover:bg-brand-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 active:scale-95 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-200 dark:hover:border-brand-400/60 dark:hover:bg-brand-500/20 [&&]:!h-8 [&&]:!w-8 [&&]:!p-0"
+                >
+                  {/* «سهم» — an arrow onward, the reading direction's: it points left on an Arabic
+                      page, right on an English one. */}
+                  <svg
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                    className="h-[18px] w-[18px] shrink-0 rtl:-scale-x-100"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M5 12h14" />
+                    <path d="m13 6 6 6-6 6" />
+                  </svg>
+                </button>
+              );
+            },
+          } satisfies Column<ReportTableLine>,
+        ]),
   ];
 
   const shownOthers = others === null ? null : reportOtherCards(others.money);
@@ -377,7 +510,13 @@ export const ReportTable = ({
           empty={empty}
           embedded
           stickyHead
-          minColumnWidth={MIN_COLUMN_REM}
+          minColumnWidth={rowAction === undefined ? MIN_COLUMN_REM : columnFloor(columns.length, 1)}
+          {...(sort === undefined
+            ? {}
+            : {
+                sort: { by: sort.by, dir: sort.dir },
+                onSortChange: (key: string) => sort.onChange(key as ReportColumnKey),
+              })}
         />
       </div>
 
@@ -440,11 +579,14 @@ export const ReportExportPair = ({
   lines,
   total,
   exportSpec,
+  detail,
 }: {
   /** The table's strip — the sheet's name. */
   title: string;
   keyHeader: string;
   countHeader: string;
+  /** Round 25 — the table's column after the name, carried into the files too. */
+  detail?: ReportDetailColumn | undefined;
   /** The lines the table draws (`reportTableLines`) — none, and there is nothing to export. */
   lines: readonly ReportTableLine[];
   /** «الإجمالي» — what the vault's panel is read off. */
@@ -461,7 +603,13 @@ export const ReportExportPair = ({
   const canExport = lines.length > 0 && currencies.data !== undefined;
 
   const table = () =>
-    reportExportTable(lines, catalog, reportExportHeader(t, keyHeader, countHeader), nameOf);
+    reportExportTable(
+      lines,
+      catalog,
+      reportExportHeader(t, keyHeader, countHeader, detail?.header),
+      nameOf,
+      detail?.of,
+    );
   const panel = () =>
     exportSpec.withValuePanel === true && total !== undefined
       ? vaultPanelExport(t, total, catalog)
@@ -545,6 +693,7 @@ export const ReportBoard = ({
   onResetFilters,
   exportSpec,
   aside,
+  rowAction,
 }: {
   /** The screen's name, for a reader — the page draws no title, as no board does. */
   label: string;
@@ -571,6 +720,8 @@ export const ReportBoard = ({
   exportSpec: ReportExportSpec;
   /** Beside the table at its far side (the left on an Arabic page), under it on a phone — the vault's panel. */
   aside?: ReactNode;
+  /** Round 25 — the arrow at each row's end (`ReportRowAction`): «تقرير البنوك»'s bank dashboards. */
+  rowAction?: ReportRowAction | undefined;
 }): JSX.Element => {
   // The files carry the lines the table draws — nothing to carry while there are none (loading,
   // refused, empty, or a name that matched nobody).
@@ -630,6 +781,7 @@ export const ReportBoard = ({
             // A computer: the card runs to the screen's bottom (its rows scroll inside it). A
             // phone: at most three quarters of the screen, so its «الإجمالي» stays in sight.
             className="max-lg:max-h-[75vh] lg:min-h-0 lg:flex-1"
+            rowAction={rowAction}
           />
           {aside}
         </div>

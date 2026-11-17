@@ -28,6 +28,8 @@ import {
   type OperationsAreaDto,
   type OperationsBankBranchDto,
   type OperationsBankDto,
+  type OperationsBankBranchReportDto,
+  type OperationsBankBranchReportSide,
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
   type OperationsCrewAttendanceDayDto,
@@ -552,6 +554,19 @@ export const getBankReport = (
   params: { from: string; to: string },
 ): Promise<OperationsBankReportDto> =>
   get<OperationsBankReportDto>(`/operations/reports/banks${buildQuery(params)}`);
+
+/**
+ * Round 25 — «لوحة البنك بفروعه»: one bank of «تقرير البنوك» broken down by its branches, over the
+ * period the page shows. `side` is which of the shipment's two branches files it — «من فرع» or «إلى
+ * فرع». The bank id is a path segment, encoded as one.
+ */
+export const getBankBranchReport = (
+  bankId: string,
+  params: { from: string; to: string; side: OperationsBankBranchReportSide },
+): Promise<OperationsBankBranchReportDto> =>
+  get<OperationsBankBranchReportDto>(
+    `/operations/reports/banks/${encodeURIComponent(bankId)}/branches${buildQuery(params)}`,
+  );
 
 /**
  * Round 12 — «تقرير الخزينة»: what the vault holds NOW, per main bank, through the same roll-up as

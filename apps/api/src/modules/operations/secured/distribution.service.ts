@@ -13,6 +13,12 @@
 //   save()  every change of the screen in ONE transaction: a shipment placed on a van, moved to
 //           another, or taken off. Nothing is written unless every change holds.
 //
+// ROUND 25 — «لو ضيفت اى عربيه بتظهر فى توزيع المحصنات على طول انا عاوز اللى يظهر اللى نوعها محصنة بس
+// ولازم اكون دايس حفظ»: the vans are the SAVED crew rows whose «النوع» is the seeded «محصنة» type
+// (`isSecuredRow` — by `seedKey`, so a rename keeps it), van or none. The board's unsaved draft is not
+// in the database, so it never shows here. A row of another type that already carries one of the
+// screen's shipments stays listed, marked, so nothing on it vanishes — and takes no new one.
+//
 // A SHIPMENT IS "ON A VAN" THROUGH ITS DELIVERY LEG and nothing else — the leg «صرف الخزينة»'s assign
 // dialog wrote (secured.service.ts `assignDeliveryLeg`), the one the dispatch checks, the captain's
 // phone reads and the captain report attributes. So distributing changes exactly the fact every
@@ -39,6 +45,7 @@ import {
   ymdOf,
   type ErrorCode,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsSecuredDistributionCrewDto,
   type SaveSecuredDistribution,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
@@ -65,6 +72,7 @@ import { isCaptainOf } from '../crew/crew-slots';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
+import { operationsShiftTypeRepository } from '../shift-types/shift-type.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { type OperationsShipmentDoc } from '../shipments/shipment.model';
 import { DISTRIBUTION_RESCHEDULE_MARKER } from '../shipments/shipment-log';
@@ -124,8 +132,8 @@ const dayInPast = (day: string, today: string): AppError =>
 
 /** Vans in van-code order — numbers in number order («9» before «150»), a van with no code last. */
 const byVanCode = (
-  a: OperationsDayBoardVehicleCrewDto,
-  b: OperationsDayBoardVehicleCrewDto,
+  a: Pick<OperationsDayBoardVehicleCrewDto, 'vehicleCode' | 'crewAssignmentId'>,
+  b: Pick<OperationsDayBoardVehicleCrewDto, 'vehicleCode' | 'crewAssignmentId'>,
 ): number => {
   if (a.vehicleCode === null || b.vehicleCode === null) {
     if (a.vehicleCode !== b.vehicleCode) return a.vehicleCode === null ? 1 : -1;
@@ -138,6 +146,38 @@ const byVanCode = (
 };
 
 /**
+ * Round 25 — is this crew row of the «محصنة» type? Its `shiftTypeId` is the seeded secured type's
+ * (`findSecuredType`). A row with no type, or of another, is not — and neither is any row when the
+ * catalog holds no «محصنة» at all.
+ */
+export const isSecuredRow = (
+  row: Pick<OperationsCrewAssignmentDoc, 'shiftTypeId'>,
+  securedTypeId: string | null,
+): boolean =>
+  securedTypeId !== null &&
+  row.shiftTypeId !== undefined &&
+  row.shiftTypeId !== null &&
+  String(row.shiftTypeId) === securedTypeId;
+
+/**
+ * 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED` — a shipment put on a crew row that is not of the
+ * «محصنة» type. Names the shipment (as every distribution refusal does) and then the row. The
+ * single-shipment door (`assign-delivery`) refuses with it too.
+ */
+export const rowNotSecured = (shipmentId: string, crewAssignmentId: string): AppError =>
+  new AppError(
+    ErrorCodes.OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED,
+    422,
+    `crew row ${crewAssignmentId} is not of the «محصنة» type — it takes no secured shipment`,
+    {
+      details: [
+        { field: 'shipmentId', code: 'SHIPMENT', message: shipmentId },
+        { field: 'crewAssignmentId', code: 'NOT_SECURED', message: crewAssignmentId },
+      ],
+    },
+  );
+
+/**
  * The distribution screen before mapping: the shipments as board rows, the day's vans, and per
  * shipment what the screen needs beside its row. `day` and `today` are UTC midnights.
  */
@@ -145,10 +185,12 @@ export interface DistributionView extends DayBoardView {
   day: Date;
   today: Date;
   /**
-   * Every crew row of the day, as van cards: the vans in van-code order, then (Round 24) the rows
-   * without a van in the order they were added.
+   * The crew rows of the day the screen lists, as van cards: the vans in van-code order, then
+   * (Round 24) the rows without a van in the order they were added. Since Round 25 only the rows of
+   * the «محصنة» type, and those of another type that carry one of the listed shipments
+   * (`securedType` false).
    */
-  vans: OperationsDayBoardVehicleCrewDto[];
+  vans: OperationsSecuredDistributionCrewDto[];
   /** shipment id → when the vault took it in. */
   receivedAt: Map<string, Date>;
   /** shipment id → its LIVE delivery leg. */
@@ -214,6 +256,11 @@ class OperationsDistributionService {
    * shipment is dropped. Van cards built by the same code as the boards' (`vanCardsOf`). Since
    * Round 24 a row WITHOUT A VAN is one of them («عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها
    * محصنات»): after the vans, in the order the board added them, its card naming no van.
+   *
+   * Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس»: only the rows of the «محصنة» type
+   * (`isSecuredRow`); a row of another type (or none) only while it holds the LIVE delivery leg of a
+   * shipment listed here — then marked (`securedType` false), never a target of a proposal. The
+   * direction's proposals look at the «محصنة» rows alone.
    */
   async view(date: Date | undefined, now: Date = new Date()): Promise<DistributionView> {
     const { day, today } = this.resolveDay(date, now);
@@ -233,10 +280,33 @@ class OperationsDistributionService {
     const ids = docs.map((d) => String(d._id));
 
     const dayDoc = await operationsDayService.findByDate(day);
-    // EVERY crew row of the day — the vans, and (Round 24) the rows without a van, which the owner
-    // now loads like a van. The rows without one keep the board's order: the order they were added.
-    const crewRows =
-      dayDoc === null ? [] : await operationsCrewAssignmentRepository.findForDay(dayDoc._id);
+    const [legs, securedType, types] = await Promise.all([
+      operationsShipmentAssignmentRepository.findByShipments(ids),
+      operationsShiftTypeRepository.findSecuredType(),
+      operationsShiftTypeRepository.listAll(),
+    ]);
+    const securedTypeId = securedType === null ? null : String(securedType._id);
+    // The rows that carry a LIVE delivery leg of a shipment on this screen — kept whatever their
+    // type, so nothing placed before Round 25 (or on a row whose type changed since) vanishes.
+    const carrying = new Set(
+      legs.filter((leg) => leg.leg === 'delivery').map((leg) => String(leg.crewAssignmentId)),
+    );
+    // The SAVED crew rows of the day (Round 25: the «محصنة» ones, and the carrying ones) — the vans,
+    // and (Round 24) the rows without a van, which the owner loads like a van. The rows without one
+    // keep the board's order: the order they were added.
+    const crewRows = (
+      dayDoc === null ? [] : await operationsCrewAssignmentRepository.findForDay(dayDoc._id)
+    ).filter((row) => isSecuredRow(row, securedTypeId) || carrying.has(String(row._id)));
+    const securedRows = new Set(
+      crewRows.filter((row) => isSecuredRow(row, securedTypeId)).map((row) => String(row._id)),
+    );
+    const typeNames = new Map(types.map((type) => [String(type._id), type.name] as const));
+    const typeNameOf = new Map(
+      crewRows.map((row) => {
+        const typeId = row.shiftTypeId ?? null;
+        return [String(row._id), typeId === null ? null : (typeNames.get(String(typeId)) ?? null)];
+      }),
+    );
     const vanless = crewRows
       .filter((row) => !hasVan(row))
       .sort(
@@ -244,17 +314,28 @@ class OperationsDistributionService {
           a.createdAt.getTime() - b.createdAt.getTime() ||
           String(a._id).localeCompare(String(b._id)),
       );
-    const [board, { crews }, custody, legs] = await Promise.all([
+    const [board, { crews }, custody, looseNumbers] = await Promise.all([
       operationsShipmentService.boardView(docs),
       operationsShipmentService.vanCardsOf([...crewRows.filter(hasVan), ...vanless]),
       vaultCustody().findMany(ids),
-      operationsShipmentAssignmentRepository.findByShipments(ids),
+      // The board's own numbering of the rows without a van (all of the day's, of any type), so
+      // «بدون سيارة (n)» here is the board's n although only the «محصنة» ones are listed.
+      operationsShipmentService.looseNumbersOf(vanless),
     ]);
+    const cards: OperationsSecuredDistributionCrewDto[] = crews.map((card) => ({
+      ...card,
+      securedType: securedRows.has(card.crewAssignmentId),
+      shiftTypeName: typeNameOf.get(card.crewAssignmentId) ?? null,
+      looseNumber:
+        card.vehicleId === null ? (looseNumbers.get(card.crewAssignmentId) ?? null) : null,
+    }));
     const vans = [
-      ...crews.filter((card) => card.vehicleId !== null).sort(byVanCode),
+      ...cards.filter((card) => card.vehicleId !== null).sort(byVanCode),
       // `vanCardsOf` keeps the order given, so these stay in the order they were added.
-      ...crews.filter((card) => card.vehicleId === null),
+      ...cards.filter((card) => card.vehicleId === null),
     ];
+    // Proposals by direction point at the «محصنة» rows only — a kept row takes no new shipment.
+    const proposable = vans.filter((van) => van.securedType);
 
     return {
       ...board,
@@ -271,7 +352,7 @@ class OperationsDistributionService {
       // screen and the server cannot read a direction two ways.
       directionVanIds: new Map(
         docs.map(
-          (doc) => [String(doc._id), operationsDirectionVanIds(doc.areaName, vans)] as const,
+          (doc) => [String(doc._id), operationsDirectionVanIds(doc.areaName, proposable)] as const,
         ),
       ),
     };
@@ -304,6 +385,10 @@ class OperationsDistributionService {
     const dayYmd = ymdOf(day);
     const todayYmd = ymdOf(today);
     const dayDoc = await operationsDayService.findByDate(day);
+    // Round 25 — the «محصنة» type, read once for the whole save: a row of any other type takes no
+    // NEW shipment.
+    const securedType = await operationsShiftTypeRepository.findSecuredType();
+    const securedTypeId = securedType === null ? null : String(securedType._id);
 
     const plans: Plan[] = [];
     for (const change of input.changes) {
@@ -376,6 +461,15 @@ class OperationsDistributionService {
           id,
           `that crew assignment is not on ${dayYmd}`,
         );
+      }
+      // Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس»: only a row of the «محصنة» type takes a
+      // محصنة. One the shipment is ALREADY on stays its (a captain switched on it, an overdue one
+      // re-dated there) — the screen keeps such a row listed, so it must be able to save it.
+      if (
+        !isSecuredRow(crew, securedTypeId) &&
+        (leg === null || String(leg.crewAssignmentId) !== change.crewAssignmentId)
+      ) {
+        throw rowNotSecured(id, change.crewAssignmentId);
       }
       // Either of the van's captains — a van may carry two, and the screen sends the one chosen.
       if (!isCaptainOf(crew, change.captainEmployeeId)) {

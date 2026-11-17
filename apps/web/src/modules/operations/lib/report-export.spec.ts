@@ -171,6 +171,34 @@ describe('reportExportTable — what is shown, as numbers', () => {
   });
 });
 
+describe('Round 25 — a column after the name (the bank dashboard’s «المنطقة»)', () => {
+  it('heads it after the name and carries each row’s value — none under «الإجمالي»', () => {
+    const header = reportExportHeader(
+      t,
+      t('operations.bankDashboard.branch'),
+      t('operations.vaultReport.securedCount'),
+      t('operations.shipment.area'),
+    );
+    expect(header.slice(0, 3)).toEqual(['الفرع', 'المنطقة', 'عدد المحصنات']);
+    const area = new Map([
+      ['ba', 'الجيزة'],
+      ['bu', null],
+    ]);
+    const table = reportExportTable(
+      reportTableLines(ROWS.slice(0, 2), GRAND),
+      CATALOG,
+      header,
+      nameOf,
+      (l) => (l.kind === 'row' ? (area.get(l.key) ?? null) : 'never asked'),
+    );
+    expect(table.rows.map((row) => row.slice(0, 3))).toEqual([
+      ['الأهلي', 'الجيزة', 14],
+      ['الأهلي المتحد', '', 7],
+    ]);
+    expect(table.total?.slice(0, 3)).toEqual(['الإجمالي', '', 99]);
+  });
+});
+
 describe('vaultPanelExport — «إجمالي قيمة الشحنات» top to bottom, as the panel lists it', () => {
   it('the two sums, then every currency of the reference list but the pound, zeros included', () => {
     const panel = vaultPanelExport(t, GRAND, CATALOG);

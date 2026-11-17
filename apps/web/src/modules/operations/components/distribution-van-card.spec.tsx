@@ -1,32 +1,45 @@
-// Round 24c — the van card of «توزيع المحصنات» and «تسليم المحصنات», and its column, rendered for real
-// in both languages.
+// The van card of «توزيع المحصنات» and «تسليم المحصنات», the محصنة's chip and the column, rendered for
+// real in both languages.
 //
-// THE OWNER, on the round-24 screen: «عاوز اصغر المكان اللى فيه المحصنات واكبر المكان اللى فيه المحصنة
-// بالعربيه», then «عاوز احسن شكل الكارد العربيه بالمحصنة يعنى عاوز انقل الاتجاه بعد كود السيارة والوقت
-// واحسن الاسماء بتاعت القادة والاخصائيين». Pinned here:
-//   · the head: ONE line of code (or «بدون سيارة (n)»), time and direction — the band the direction
-//     had under the head is gone — then the count; a direction cut by the line is whole on hover;
-//   · the crew: each captain on a line of his own with the captain's mark, the two specialists as
-//     labelled chips, an empty slot «غير معيَّن» (never «—»), every name cut to its chip and a
-//     trigger of the person card; no specialist chip at all without the crew plan's grant;
-//   · the column that folds on a phone: its head a button that says whether it is open, its body
-//     hidden when folded.
+// Round 24c — «عاوز احسن شكل الكارد العربيه بالمحصنة يعنى عاوز انقل الاتجاه بعد كود السيارة والوقت»: the
+// head is ONE line of code (or «بدون سيارة (n)»), time and direction; a direction cut by the line is
+// whole on hover. The column folds on a phone.
+//
+// Round 25 — «شكل العربية بالمحصنات يتغير يعنى العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا
+// ضيفته ف الاول الصف نفسه بتاع القائد يكون قبله عدد المحصنات اللى على العربيه بعد كدا مش عاوز يظهر
+// اخصائيين ولا اجمالى المصرى ولا اجمالى الدولار ولا اجمالى العملات اللى يظهر عدد الكراتين و الحقائب و
+// الصناديق حتى لو ب 0 يتكتب»: ONE captain's line — the count, then the FIRST captain; no specialist,
+// no money; the three package counts always. «عاوز المحصنة تظهر صغيره عبارة عن البنك والفرع ولما اعمل
+// هوفر عليها يجيب بقى معلومتها»: the chip, and its card.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { type Locale, type OperationsDayBoardVehicleCrewDto } from '@ecms/contracts';
+import {
+  type Locale,
+  type OperationsDayBoardVehicleCrewDto,
+  type OperationsSecuredDistributionRowDto,
+} from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { formatNumber } from '../../../shared/lib/format';
-import { type LoadFigures } from '../lib/secured-distribution';
+import { type Packaging, type PackagingRead } from '../lib/secured-distribution';
 import {
+  ColumnFilterBar,
   DISTRIBUTION_COLUMNS,
   DistributionColumn,
+  FilterAreaSelect,
+  FilterTextBox,
+  PackageCounts,
+  ShipmentCardBody,
+  ShipmentChip,
   VAN_GRID,
   VanCard,
+  hoverIsOnChip,
 } from './SecuredDistributionParts';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -70,15 +83,21 @@ const VAN: OperationsDayBoardVehicleCrewDto = {
   plannedTime: '08:15',
 };
 
-const FIGURES: LoadFigures = { count: 3, egp: 1_500_000, usd: 0, othersSum: 0, packages: null };
-
 const card = (
-  van: OperationsDayBoardVehicleCrewDto,
+  van: OperationsDayBoardVehicleCrewDto & { securedType?: boolean; shiftTypeName?: string | null },
   {
     crewPlanVisible = true,
     looseNumber = null,
     locale = 'ar',
-  }: { crewPlanVisible?: boolean; looseNumber?: string | null; locale?: Locale } = {},
+    count = 3,
+    packages = { bags: 2, cartons: 0, boxes: 1 },
+  }: {
+    crewPlanVisible?: boolean;
+    looseNumber?: string | null;
+    locale?: Locale;
+    count?: number;
+    packages?: Packaging | null;
+  } = {},
 ): string =>
   render(
     <VanCard
@@ -86,7 +105,8 @@ const card = (
       looseNumber={looseNumber}
       crewPlanVisible={crewPlanVisible}
       day="2026-11-16"
-      figures={FIGURES}
+      count={count}
+      packages={packages}
     >
       <p>load</p>
     </VanCard>,
@@ -96,28 +116,23 @@ const card = (
 /** The head line's markup. */
 const headOf = (html: string): string =>
   html.slice(html.indexOf('data-van-head="true"'), html.indexOf('</header>'));
+/** The captain's line. */
+const lineOf = (html: string): string =>
+  html.slice(html.indexOf('data-van-captain-line='), html.indexOf('data-van-packages='));
 
 describe('the van card’s head — one line', () => {
   for (const locale of ['ar', 'en'] as const) {
-    it(`[${locale}] code, then time, then the direction, in one line — the count leads what it carries`, () => {
+    it(`[${locale}] code, then time, then the direction, in one line — the count is not in it`, () => {
       const html = card(VAN, { locale });
       const head = headOf(html);
       expect(head.indexOf('data-van-code="249"')).toBeGreaterThan(-1);
       expect(head.indexOf('data-van-time="08:15"')).toBeGreaterThan(head.indexOf('data-van-code'));
       expect(head.indexOf('data-van-direction=')).toBeGreaterThan(head.indexOf('data-van-time'));
-      // One flex line that does not wrap, and nothing else in the head to take its room.
       expect(html).toMatch(
         /data-van-head="true" class="flex min-w-0 flex-1 items-center gap-1\.5"/,
       );
       expect(html).not.toMatch(/data-van-head="true" class="[^"]*flex-wrap/);
       expect(head).not.toContain('data-van-count');
-      // The count stays, in its own Arabic form, first on the line of the money.
-      const count = `>${tr(locale, 'operations.distribution.loadCount.few', { count: formatNumber(3, locale) })}<`;
-      const figures = html.slice(html.indexOf('data-van-figures='));
-      expect(figures).toMatch(/^data-van-figures="cr-249"><div[^>]*><span data-van-count="3"/);
-      expect(figures).toContain(count.replace(/^>/, '</svg>'));
-      expect(figures.indexOf('data-van-count')).toBeLessThan(figures.indexOf('data-money="EGP"'));
-      // The direction band of Round 12 is gone: the direction is in the head, nowhere else.
       expect(html.match(/data-van-direction=/g)).toHaveLength(1);
     });
   }
@@ -128,7 +143,6 @@ describe('the van card’s head — one line', () => {
     expect(head).toContain(`title="${tr('ar', 'operations.crew.direction')}: ${whole}"`);
     expect(head).toContain(`class="min-w-0 truncate">${whole}<`);
     expect(head).toContain(`class="sr-only">${tr('ar', 'operations.crew.direction')}: <`);
-    // The time chip says what it is on hover too.
     expect(head).toContain(`title="${tr('ar', 'operations.crew.plannedTime')}: 08:15"`);
   });
 
@@ -147,78 +161,360 @@ describe('the van card’s head — one line', () => {
   it('no direction: «بلا اتجاه», quietly — no time: no time chip', () => {
     const head = headOf(card({ ...VAN, direction: '  ', plannedTime: null }));
     expect(head).toContain(`>${tr('ar', 'operations.distribution.noDirection')}<`);
-    expect(head).toContain('data-van-direction="  "');
-    expect(head).toContain('bg-slate-100 font-bold text-slate-500');
     expect(head).not.toContain('data-van-time');
+  });
+
+  it('the whole card is the van’s drop mark — head, captain’s line, packages and load alike', () => {
+    const html = card(VAN);
+    expect(html).toMatch(/^<article data-distribution-van="cr-249" data-drop-van="cr-249"/);
+    expect(html.indexOf('data-van-load="cr-249"')).toBeGreaterThan(-1);
   });
 });
 
-describe('the van card’s crew', () => {
-  it('the captain on his own green line with the captain’s mark, his name cut and a card trigger', () => {
-    const html = card(VAN);
-    expect(html).toMatch(
+describe('Round 25 — the captain’s line', () => {
+  it('the count FIRST, in its Arabic form, then the captain with his mark, his name cut and a card trigger', () => {
+    const line = lineOf(card(VAN));
+    expect(line).toMatch(/^data-van-captain-line="cr-249"[^>]*><span data-van-count="3"/);
+    expect(line).toContain(
+      `>${tr('ar', 'operations.distribution.loadCount.few', { count: '3' })}<`,
+    );
+    expect(line.indexOf('data-van-count')).toBeLessThan(line.indexOf('data-van-captain="c1"'));
+    expect(line).toMatch(
       new RegExp(
-        `data-van-captain="c1" class="[^"]*bg-emerald-50[^"]*"><span data-captain-mark="true"[^>]*>[\\s\\S]*?${tr('ar', 'operations.crewPlan.role.captain')}</span><span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0">عبد الرحمن محمد عبد العزيز الشناوي</span>`,
+        `data-captain-mark="true"[^>]*>[\\s\\S]*?${tr('ar', 'operations.crewPlan.role.captain')}</span><span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0">عبد الرحمن محمد عبد العزيز الشناوي</span>`,
       ),
     );
   });
 
-  it('two captains: two lines, named «القادة» as a group', () => {
-    const html = card({ ...VAN, captains: [P('c1', 'أحمد فتحي السيد'), P('c2', 'كريم سمير علي')] });
-    expect(html).toContain(
-      `role="group" aria-label="${tr('ar', 'operations.distribution.captains')}"`,
-    );
-    expect(html.match(/data-captain-mark="true"/g)).toHaveLength(2);
-  });
-
-  it('the specialists as two labelled chips; an empty one «غير معيَّن», never «—»', () => {
-    const html = card(VAN);
-    expect(html).toMatch(
-      new RegExp(
-        `data-van-slot="specialist1" data-van-slot-count="1"[^>]*>[\\s\\S]*?${tr('ar', 'operations.crew.slot.specialist1')}</span><span data-van-person="s1" class="min-w-0 truncate`,
-      ),
-    );
-    expect(html).toMatch(
-      new RegExp(
-        `data-van-slot="specialist2" data-van-slot-count="0" class="[^"]*border-dashed[^"]*">[\\s\\S]*?${tr('ar', 'operations.crew.slot.specialist2')}</span><span data-slot-empty="true"[^>]*>${tr('ar', 'operations.distribution.slotEmpty')}</span>`,
-      ),
-    );
-    const crew = html.slice(html.indexOf('data-van-crew='), html.indexOf('data-van-figures='));
-    expect(crew).not.toContain('—');
-  });
-
-  it('several in one slot: each name on a line of its own', () => {
+  it('two captains: only the FIRST one put on the row', () => {
     const html = card({
       ...VAN,
-      specialist1: [P('s1', 'وليد سيد فوزي'), P('s2', 'عمرو جمال الدين')],
+      captains: [P('c1', 'أحمد فتحي السيد'), P('c2', 'كريم سمير علي')],
     });
-    expect(html).toContain('data-van-slot="specialist1" data-van-slot-count="2"');
-    expect(html).toMatch(/data-van-person="s1" class="min-w-0 truncate[^"]* block /);
-    expect(html).toMatch(/data-van-person="s2" class="min-w-0 truncate[^"]* block /);
+    expect(html).toContain('data-van-captain="c1"');
+    expect(html).not.toContain('data-van-captain="c2"');
+    expect(html).not.toContain('كريم سمير علي');
+    expect(html.match(/data-captain-mark="true"/g)).toHaveLength(1);
   });
 
-  it('no captain: said in red where the captain would be — the van takes nothing', () => {
-    const html = card({ ...VAN, captains: [] });
-    expect(html).toMatch(
+  it('no captain: the count, then «بلا قائد» in red — the van takes nothing', () => {
+    const html = card({ ...VAN, captains: [] }, { count: 0 });
+    const line = lineOf(html);
+    expect(line).toMatch(
+      /^data-van-captain-line="cr-249"[^>]*bg-rose-50[^>]*><span data-van-count="0"/,
+    );
+    expect(line).toMatch(
       new RegExp(
-        `data-van-captain="none"[^>]*text-rose-700[\\s\\S]*${tr('ar', 'operations.distribution.noCaptain')}`,
+        `data-van-captain="none"[\\s\\S]*${tr('ar', 'operations.distribution.noCaptain')}`,
       ),
     );
     expect(html).not.toContain('data-captain-mark');
   });
 
-  it('without the crew plan’s grant, no specialist chip at all — not «غير معيَّن» over people who ride', () => {
-    const html = card({ ...VAN, specialist1: [], specialist2: [] }, { crewPlanVisible: false });
-    expect(html).not.toContain('data-van-slot=');
-    expect(html).not.toContain(tr('ar', 'operations.distribution.slotEmpty'));
-    expect(html).toContain('data-van-captain="c1"');
+  it('no specialist and no money — whoever rides in the slots', () => {
+    const html = card(VAN);
+    expect(html).not.toContain('وليد سيد فوزي');
+    expect(html).not.toContain('data-van-slot');
+    expect(html).not.toContain('data-money=');
+    expect(html).not.toContain(tr('ar', 'operations.reportBoard.pound'));
+    expect(html).not.toContain(tr('ar', 'operations.board.figures.otherCurrencies'));
   });
 
-  it('in English, the same pieces in English words', () => {
-    const html = card(VAN, { locale: 'en' });
-    expect(html).toContain(`>${tr('en', 'operations.distribution.slotEmpty')}<`);
-    expect(tr('en', 'operations.distribution.slotEmpty')).toBe('Not assigned');
-    expect(html).toContain(`${tr('en', 'operations.crewPlan.role.captain')}</span>`);
+  it('a row of another type kept for what it carries says so, with its type', () => {
+    const html = card({ ...VAN, securedType: false, shiftTypeName: 'سفر' });
+    expect(html).toContain('data-not-secured="true"');
+    expect(html).toMatch(
+      new RegExp(
+        `data-van-not-secured="سفر" title="${tr('ar', 'operations.distribution.notSecuredHint', { type: 'سفر' })}"`,
+      ),
+    );
+    expect(html).toContain(tr('ar', 'operations.distribution.notSecured'));
+    expect(card(VAN)).not.toContain('data-not-secured');
+    const untyped = card({ ...VAN, securedType: false, shiftTypeName: null });
+    expect(untyped).toContain(
+      `title="${tr('ar', 'operations.distribution.notSecuredHintNoType')}"`,
+    );
+  });
+});
+
+describe('Round 25 — the packages, always', () => {
+  for (const locale of ['ar', 'en'] as const) {
+    it(`[${locale}] cartons, bags and boxes in that order, a 0 written`, () => {
+      const html = render(<PackageCounts packages={{ bags: 0, cartons: 0, boxes: 0 }} />, locale);
+      expect(html).toContain('data-van-packages="0/0/0"');
+      const at = ['cartons', 'bags', 'boxes'].map((kind) =>
+        html.indexOf(`data-van-package="${kind}"`),
+      );
+      expect(at.every((i) => i > -1)).toBe(true);
+      expect([...at].sort((a, b) => a - b)).toEqual(at);
+      // «0», never an Arabic zero that reads as a dot — and never left out.
+      expect(html.match(/>0</g)).toHaveLength(3);
+      for (const kind of ['cartons', 'bags', 'boxes']) {
+        expect(html).toContain(tr(locale, `operations.distribution.${kind}`));
+      }
+    });
+  }
+
+  it('says «—» with why when the reader cannot read the vault’s counts — never a 0 that would be a guess', () => {
+    const html = render(<PackageCounts packages={null} />);
+    expect(html).toContain('data-van-packages="unknown"');
+    expect(html).toContain(`title="${tr('ar', 'operations.distribution.packagesUnknown')}"`);
+    expect(html.match(/>—</g)).toHaveLength(3);
+  });
+
+  for (const locale of ['ar', 'en'] as const) {
+    it(`[${locale}] never a 0 before the vault’s counts are in — «…» while the read is out, «—» when it failed`, () => {
+      const pending = render(<PackageCounts packages="pending" />, locale);
+      expect(pending).toContain('data-van-packages="pending"');
+      expect(pending).toContain(`title="${tr(locale, 'operations.distribution.packagesPending')}"`);
+      expect(pending).toContain('aria-busy="true"');
+      expect(pending.match(/>…</g)).toHaveLength(3);
+      expect(pending).not.toMatch(/>0</);
+      const failed = render(<PackageCounts packages="failed" />, locale);
+      expect(failed).toContain('data-van-packages="failed"');
+      expect(failed).toContain(`title="${tr(locale, 'operations.distribution.packagesFailed')}"`);
+      expect(failed).not.toContain('aria-busy');
+      expect(failed.match(/>—</g)).toHaveLength(3);
+      expect(failed).not.toMatch(/>0</);
+    });
+  }
+
+  it('on the van card, under the captain’s line', () => {
+    const html = card(VAN, { packages: { bags: 2, cartons: 0, boxes: 1 } });
+    expect(html).toContain('data-van-packages="0/2/1"');
+    expect(html.indexOf('data-van-captain-line')).toBeLessThan(html.indexOf('data-van-packages'));
+    expect(html.indexOf('data-van-packages')).toBeLessThan(html.indexOf('data-van-load'));
+  });
+});
+
+const ROW = {
+  id: 's-1',
+  shipmentType: 'secured',
+  status: 'inVault',
+  mainBankId: 'b-1',
+  secondaryBankId: null,
+  originBranchId: 'o',
+  destinationBranchId: 'd',
+  areaName: 'المعادي',
+  lines: [{ currencyId: 'egp', amount: 1_500_000 }],
+  collectionDate: '2026-11-16T00:00:00.000Z',
+  deliveryDate: '2026-11-16T00:00:00.000Z',
+  receiptNumber: null,
+  vaultReceiptNumber: 'V-77',
+  receiptImage: null,
+  serialTracked: false,
+  notes: null,
+  receivedById: null,
+  receivedAt: null,
+  version: 1,
+  createdAt: '2026-11-15T00:00:00.000Z',
+  updatedAt: '2026-11-15T00:00:00.000Z',
+  origin: { id: 'o', name: 'فرع المهندسين', code: 'O1', bankId: 'b-1', bankName: 'الأهلي' },
+  destination: { id: 'd', name: 'فرع المعادي', code: 'D1', bankId: 'b-1', bankName: 'الأهلي' },
+  crew: null,
+  captainDeliveredAt: null,
+  securedStage: 'inVault',
+  pickedUpBy: 'captain',
+  pickedUpAt: null,
+  vaultReceivedAt: '2026-11-15T09:00:00.000Z',
+  overdue: false,
+  delivery: null,
+  deliveryLegVersion: null,
+  placedCrewAssignmentId: null,
+  directionCrewAssignmentIds: [],
+} as OperationsSecuredDistributionRowDto;
+
+describe('Round 25 — the محصنة’s chip', () => {
+  const chip = (drag: boolean, locale: Locale = 'ar') =>
+    render(
+      <ShipmentChip
+        row={ROW}
+        bankName="الأهلي"
+        branchName="فرع المعادي"
+        card={<p data-the-card="true">card</p>}
+        move={<button type="button" data-move-open="s-1" />}
+        {...(drag
+          ? { drag: { dragging: false, onDragStart: () => undefined, onDragEnd: () => undefined } }
+          : {})}
+      />,
+      locale,
+    );
+
+  it('is small: the stage’s mark, «البنك · الفرع», «نقل إلى…» — nothing else on it', () => {
+    const html = chip(true);
+    expect(html).toMatch(/^<div[^>]*data-distribution-shipment="s-1"/);
+    expect(html).toContain('draggable="true"');
+    expect(html).toContain('data-secured-stage="inVault"');
+    expect(html).toMatch(
+      /data-chip-text="true"[^>]*><span[^>]*>الأهلي<\/span><span aria-hidden="true"[^>]*> · <\/span><span data-chip-branch="true"[^>]*>فرع المعادي<\/span>/,
+    );
+    expect(html).toContain('data-move-open="s-1"');
+    expect(html).toContain('aria-label="الأهلي · فرع المعادي"');
+    // The money, the area and the stage's words are the card's, not the chip's.
+    expect(html).not.toContain('1,500,000');
+    expect(html).not.toContain('data-shipment-area');
+    // A tab stop: a keyboard focus opens its card; not open until then.
+    expect(html).toContain('tabindex="0"');
+    expect(html).not.toContain('data-the-card');
+  });
+
+  it('a held leg is not draggable', () => {
+    expect(chip(false)).toContain('draggable="false"');
+  });
+
+  // Critic — the «نقل إلى…» menu is a portal React counts inside the chip: a pointer coming into the
+  // menu from outside fired the chip's mouseenter, and its card opened over the menu's vans.
+  it('opens its card on a hover on the chip only — not from its menu’s portal, not while the menu is open', () => {
+    const fakeChip = (inside: readonly unknown[], menuOpen: boolean) => ({
+      contains: (node: unknown) => inside.includes(node),
+      querySelector: (selector: string) =>
+        menuOpen && selector === '[data-move-open][aria-expanded="true"]' ? {} : null,
+    });
+    const own = { own: true } as unknown as EventTarget;
+    const menuItem = { portal: true } as unknown as EventTarget;
+    expect(hoverIsOnChip(fakeChip([own], false) as never, own)).toBe(true);
+    expect(hoverIsOnChip(fakeChip([own], false) as never, menuItem)).toBe(false);
+    expect(hoverIsOnChip(fakeChip([own], true) as never, own)).toBe(false);
+    expect(hoverIsOnChip(fakeChip([own], false) as never, null)).toBe(false);
+    // The chip's mouseenter goes through it; the hook's own is not spread on the chip.
+    const parts = readFileSync(
+      fileURLToPath(new URL('./SecuredDistributionParts.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(parts).toContain(
+      'const { onDragStart: closeOnDrag, onMouseEnter: hoverIn, ...trigger } = hover.triggerProps;',
+    );
+    expect(parts).toMatch(
+      /onMouseEnter=\{\(event\) => \{\s*if \(!hoverIsOnChip\(event\.currentTarget, event\.target\)\) return;\s*hoverIn\?\.\(\);/,
+    );
+  });
+});
+
+describe('Round 25 — the chip’s card says the rest', () => {
+  const body = (
+    packages: Packaging | undefined,
+    readable = true,
+    locale: Locale = 'ar',
+    read: PackagingRead = readable ? 'ready' : 'forbidden',
+  ) =>
+    render(
+      <ShipmentCardBody
+        row={{ ...ROW, overdue: true }}
+        bankName="الأهلي"
+        money={[
+          { key: 'egp', label: 'مصري', amount: 1_500_000 },
+          { key: 'usd', label: 'دولار', amount: 20_000 },
+        ]}
+        packages={packages}
+        packagesRead={read}
+        place="السيارة 249 · مع أحمد"
+        notes={[{ key: 'proposed', text: 'مقترحة', tone: 'warn' }]}
+      />,
+      locale,
+    );
+
+  it('the bank, its stage, from → to, the area, the day, the amounts, the packages, the receipt, where it is, the marks', () => {
+    const html = body({ bags: 2, cartons: 1, boxes: 0 });
+    expect(html).toContain('data-secured-card="s-1"');
+    expect(html).toContain('data-secured-stage="inVault"');
+    for (const key of ['from', 'to', 'deliveryDay', 'amounts', 'packages', 'receipt', 'on']) {
+      expect(html).toContain(`>${tr('ar', `operations.distribution.card.${key}`)}<`);
+    }
+    expect(html).toContain('فرع المهندسين');
+    expect(html).toContain('فرع المعادي');
+    expect(html).toContain('المعادي');
+    expect(html).toContain(tr('ar', 'operations.distribution.overdue'));
+    expect(html).toMatch(/data-card-money="egp"[\s\S]*1,500,000[\s\S]*مصري/);
+    expect(html).toMatch(/data-card-money="usd"[\s\S]*20,000[\s\S]*دولار/);
+    expect(html).toContain('data-card-packages="1/2/0"');
+    expect(html).toContain('V-77');
+    expect(html).toContain('السيارة 249 · مع أحمد');
+    expect(html).toContain('data-card-note="proposed"');
+  });
+
+  it('not counted yet: says so; no vault grant: no package line at all', () => {
+    expect(body(undefined)).toContain(tr('ar', 'operations.distribution.card.notCounted'));
+    expect(body(undefined, false)).not.toContain(
+      `>${tr('ar', 'operations.distribution.card.packages')}<`,
+    );
+  });
+
+  // Critic — the vault's read still out or failed: the card said «لم تُعدّ بعد، فهي ليست بالخزينة»
+  // about a shipment its own stage badge marks «بالخزينة».
+  for (const locale of ['ar', 'en'] as const) {
+    it(`[${locale}] the vault’s read out or failed: says that — never «not in the vault»`, () => {
+      const pending = body(undefined, true, locale, 'pending');
+      expect(pending).toContain(`>${tr(locale, 'operations.distribution.card.packages')}<`);
+      expect(pending).toContain('data-card-packages="pending"');
+      expect(pending).toContain(tr(locale, 'operations.distribution.packagesPending'));
+      expect(pending).not.toContain(tr(locale, 'operations.distribution.card.notCounted'));
+      const failed = body(undefined, true, locale, 'failed');
+      expect(failed).toContain('data-card-packages="failed"');
+      expect(failed).toContain(tr(locale, 'operations.distribution.packagesFailed'));
+      expect(failed).not.toContain(tr(locale, 'operations.distribution.card.notCounted'));
+    });
+  }
+
+  it('in English, in English words', () => {
+    const html = body({ bags: 0, cartons: 0, boxes: 0 }, true, 'en');
+    expect(html).toContain(`>${tr('en', 'operations.distribution.card.amounts')}<`);
+    expect(tr('en', 'operations.distribution.card.amounts')).toBe('Amounts');
+  });
+});
+
+describe('Round 25 — a column’s filter bar', () => {
+  const bar = (active: boolean) =>
+    render(
+      <ColumnFilterBar
+        data-filter-bar="vans"
+        active={active}
+        shown={2}
+        total={7}
+        onClear={() => undefined}
+      >
+        <FilterTextBox
+          data-filter="van-code"
+          label="كود السيارة"
+          value=""
+          onChange={() => undefined}
+        />
+        <FilterAreaSelect
+          data-filter="van-area"
+          label="المنطقة"
+          allLabel="كل المناطق"
+          value=""
+          options={[
+            { value: 'المعادي', label: 'المعادي' },
+            { value: 'none', label: 'بلا اتجاه' },
+          ]}
+          onChange={() => undefined}
+        />
+      </ColumnFilterBar>,
+    );
+
+  it('its boxes, each named for a screen reader; the areas offered after «كل المناطق»', () => {
+    const html = bar(false);
+    expect(html).toContain('role="search"');
+    expect(html).toMatch(
+      /data-filter="van-code"[^>]*aria-label="كود السيارة"|aria-label="كود السيارة"[^>]*data-filter="van-code"/,
+    );
+    expect(html).toContain('placeholder="كود السيارة"');
+    expect(html).toMatch(
+      /<option value=""[^>]*>كل المناطق<\/option><option value="المعادي">المعادي<\/option><option value="none">بلا اتجاه<\/option>/,
+    );
+    expect(html).not.toContain('data-filter-clear');
+  });
+
+  it('set, it says what it leaves and offers to clear', () => {
+    const html = bar(true);
+    expect(html).toContain('data-filter-shown="2/7"');
+    expect(html).toContain(
+      tr('ar', 'operations.distribution.filter.shown', {
+        shown: formatNumber(2, 'ar'),
+        total: formatNumber(7, 'ar'),
+      }),
+    );
+    expect(html).toContain(`>${tr('ar', 'operations.distribution.filter.clear')}<`);
   });
 });
 

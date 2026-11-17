@@ -48,8 +48,11 @@ export const reportExportHeader = (
   t: Translate,
   keyHeader: string,
   countHeader: string,
+  /** Round 25 — a column after the name («المنطقة» on «لوحة البنك بفروعه»), when the table has one. */
+  detailHeader?: string,
 ): string[] => [
   keyHeader,
+  ...(detailHeader === undefined ? [] : [detailHeader]),
   countHeader,
   t('operations.reportBoard.pound'),
   t('operations.reportBoard.dollar'),
@@ -85,11 +88,15 @@ export const reportExportTable = (
   catalog: readonly OperationsCurrencyDto[],
   header: string[],
   nameOf: (line: ReportTableLine) => string,
+  /** Round 25 — the column after the name, as the screen prints it (empty for «الإجمالي»). */
+  detailOf?: (line: ReportTableLine) => string | null,
 ): ReportExportTable => {
   const rows: XlsxCell[][] = [];
   let total: XlsxCell[] | null = null;
   for (const line of lines) {
-    const cells = [nameOf(line), ...figuresOf(line.totals, catalog)];
+    const detail =
+      detailOf === undefined ? [] : [line.kind === 'total' ? '' : (detailOf(line) ?? '')];
+    const cells = [nameOf(line), ...detail, ...figuresOf(line.totals, catalog)];
     if (line.kind === 'total') total = cells;
     else rows.push(cells);
   }

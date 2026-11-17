@@ -23,6 +23,9 @@ import {
   isStartedLeg,
   landingCaptain,
   loadFigures,
+  loadPackages,
+  packagingRead,
+  vanPackages,
   moveToVan,
   nextCaptain,
   notYetInVault,
@@ -37,6 +40,7 @@ import {
   sameDistributionDraft,
   samePlacement,
   savedPlacement,
+  shownCaptain,
   takesShipments,
   withoutShipment,
   type DistributionDraft,
@@ -639,5 +643,80 @@ describe('«تراجع» on the distribution — the day’s proposals are its f
     const reader = openingDistributionHistory([s], VANS, false);
     expect(reader.now.size).toBe(0);
     expect(lastStep(reader)).toBeNull();
+  });
+});
+
+// Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس», «العربيه لو عليها اتنين قادة انا عاوز اللى يظهر
+// اللى انا ضيفته ف الاول», «اللى يظهر عدد الكراتين و الحقائب و الصناديق حتى لو ب 0 يتكتب».
+describe('Round 25 — the «محصنة» rows, the first captain, the packages', () => {
+  const KEPT = { ...van('van-106', ['c7'], 'المعادي'), securedType: false };
+
+  it('a row of another type kept for what it carries takes nothing new; a «محصنة» row does', () => {
+    expect(takesShipments(KEPT)).toBe(false);
+    expect(takesShipments({ ...V1, securedType: true })).toBe(true);
+    // The vault's screen sends no type: a van takes shipments as before.
+    expect(takesShipments(V1)).toBe(true);
+    expect(takesShipments({ ...EMPTY_VAN, securedType: true })).toBe(false);
+  });
+
+  // Critic — moved off its kept row in the draft, a محصنة saved there could not be put back.
+  it('a kept row takes back the shipment SAVED on it (the save’s keep rule) — no other', () => {
+    expect(takesShipments(KEPT, KEPT.crewAssignmentId)).toBe(true);
+    expect(takesShipments(KEPT, 'van-1')).toBe(false);
+    expect(takesShipments(KEPT, null)).toBe(false);
+    expect(takesShipments({ ...KEPT, captains: [] }, KEPT.crewAssignmentId)).toBe(false);
+  });
+
+  it('a proposal never lands on a kept row, even when the direction names only it', () => {
+    const one = row('s-zone', { directionCrewAssignmentIds: ['van-106'] });
+    expect(proposeByDirection([one], [KEPT, V1], EMPTY_DRAFT).size).toBe(0);
+    // Named beside a «محصنة» row, the «محصنة» row is the one match.
+    const two = row('s-two', { directionCrewAssignmentIds: ['van-106', 'van-101'] });
+    expect(proposeByDirection([two], [KEPT, V1], EMPTY_DRAFT).get('s-two')).toMatchObject({
+      crewAssignmentId: 'van-101',
+      proposed: true,
+    });
+  });
+
+  it('the van card shows the FIRST captain put on the row — the stored order', () => {
+    expect(shownCaptain(V2)?.employeeId).toBe('c2');
+    expect(shownCaptain(V1)?.employeeId).toBe('c1');
+    expect(shownCaptain(EMPTY_VAN)).toBeNull();
+  });
+
+  it('sums the vault’s counts over the load, every kind, 0 included — never null', () => {
+    const counted = new Map([
+      ['a', { bags: 2, cartons: 1, boxes: 0 }],
+      ['b', { bags: 1, cartons: 0, boxes: 3 }],
+    ]);
+    expect(loadPackages([row('a'), row('b'), row('c')], (id) => counted.get(id))).toEqual({
+      bags: 3,
+      cartons: 1,
+      boxes: 3,
+    });
+    expect(loadPackages([], () => undefined)).toEqual({ bags: 0, cartons: 0, boxes: 0 });
+    expect(loadPackages([row('c')], () => undefined)).toEqual({ bags: 0, cartons: 0, boxes: 0 });
+  });
+
+  // Critic — the vault's read still out, or failed, made every van «0/0/0».
+  it('knows where the vault’s read stands — a 0 only once its counts are in', () => {
+    const counts = new Map([['a', { bags: 2, cartons: 1, boxes: 0 }]]);
+    expect(packagingRead(false, { data: counts, isError: false })).toBe('forbidden');
+    expect(packagingRead(true, { data: undefined, isError: false })).toBe('pending');
+    expect(packagingRead(true, { data: undefined, isError: true })).toBe('failed');
+    expect(packagingRead(true, { data: counts, isError: false })).toBe('ready');
+    // A refetch that failed after a good read keeps the good read.
+    expect(packagingRead(true, { data: counts, isError: true })).toBe('ready');
+
+    const of = (id: string) => counts.get(id);
+    expect(vanPackages('ready', [row('a'), row('c')], of)).toEqual({
+      bags: 2,
+      cartons: 1,
+      boxes: 0,
+    });
+    expect(vanPackages('ready', [], of)).toEqual({ bags: 0, cartons: 0, boxes: 0 });
+    expect(vanPackages('pending', [row('a')], of)).toBe('pending');
+    expect(vanPackages('failed', [row('a')], of)).toBe('failed');
+    expect(vanPackages('forbidden', [row('a')], of)).toBeNull();
   });
 });

@@ -14,12 +14,15 @@ import {
   type ListAttendanceDecisionsQuery,
   type Paginated,
   type RevokeAttendanceDecision,
+  type AttendanceDecisionSignalsDto,
+  type AttendanceDecisionSignalsQuery,
   HrAttendanceSettingKeys,
 } from '@ecms/contracts';
 import { BusinessRuleError, ForbiddenError, NotFoundError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { settingsService } from '../../../../platform/settings';
+import { directoryProfileService } from '../../../../platform/directory/directory-profile.service';
 import { cairoToday, dateOnlyIso, toDateOnly } from '../../shared/business-date';
 import { employeeRepository } from '../../employee-management/employees';
 import { AttendancePunchModel } from '../punches';
@@ -27,6 +30,9 @@ import { AttendanceDayModel, dayRecordService, punchWindowFor } from '../day-rec
 import { AttendanceDecisionModel, type AttendanceDecisionDoc } from './decision.model';
 import { decisionRepository } from './decision.repository';
 import { approveProblem, dayProblem, decideProblem, landsPendingHr, revokeProblem } from './decision-rules';
+
+/** The review threshold is a company-wide posture, read at the organization subject. */
+const ORG_SUBJECT = { userId: null, branchId: null };
 
 const entityRef = (id: string) => ({
   moduleId: 'hr',
@@ -295,6 +301,51 @@ class DecisionService {
     scope?: ScopeSelector,
   ): Promise<Paginated<AttendanceDecisionDoc>> {
     return decisionRepository.listDecisions(query, scope);
+  }
+
+  /**
+   * WHO HAS BEEN DECIDING DAYS, and how often against the devices (stage 4 §4).
+   *
+   * One grouped pass over the window rather than a page of rows counted in the client: the point
+   * of the screen is the totals, and a reviewer narrowing to one branch should not have to page
+   * through a quarter's decisions to find out that one supervisor made most of them.
+   *
+   * `revoke` rows are EXCLUDED from the counts. Undoing a decision is not a second decision about
+   * the day, and counting it would make a manager who corrected their own mistake look twice as
+   * busy as one who left it standing — exactly the wrong incentive for a screen like this.
+   *
+   * The threshold is stored per WEEK and scaled to the window asked about, so a reviewer looking
+   * at a month is not flagged against a week's number. It is a prompt to look: nothing here
+   * blocks, refuses or undoes anything.
+   */
+  async signals(
+    query: AttendanceDecisionSignalsQuery,
+    scope?: ScopeSelector,
+  ): Promise<AttendanceDecisionSignalsDto> {
+    const weekly = await settingsService.resolve<number>(
+      HrAttendanceSettingKeys.DecisionWeeklyReviewThreshold,
+      ORG_SUBJECT,
+    );
+    const days = Math.max(1, Math.round((query.to.getTime() - query.from.getTime()) / 86_400_000) + 1);
+    const threshold = Math.max(1, Math.ceil((weekly * days) / 7));
+
+    const rows = await decisionRepository.countByDecider(query, scope);
+    const names = await directoryProfileService.resolve(rows.map((row) => row.decidedBy));
+
+    return {
+      from: dateOnlyIso(query.from),
+      to: dateOnlyIso(query.to),
+      threshold,
+      managers: rows
+        .map((row) => ({
+          decidedBy: row.decidedBy,
+          decidedByName: names.get(row.decidedBy)?.displayName ?? { ar: row.decidedBy, en: row.decidedBy },
+          total: row.total,
+          overrodePunch: row.overrodePunch,
+          flagged: row.total > threshold,
+        }))
+        .sort((a, b) => b.total - a.total),
+    };
   }
 
   /**

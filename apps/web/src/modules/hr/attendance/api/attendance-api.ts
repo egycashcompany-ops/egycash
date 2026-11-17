@@ -4,6 +4,7 @@ import {
   type ApproveOvertime,
   type AttendanceDayDto,
   type AttendanceDecisionDto,
+  type AttendanceDecisionSignalsDto,
   type AttendanceRegularizationDto,
   type AttendanceSheetRowDto,
   type CreateAttendanceRegularization,
@@ -90,6 +91,18 @@ export const revokeAttendanceDecision = (
   body: unknown,
 ): Promise<AttendanceDecisionDto> =>
   post<AttendanceDecisionDto>(`/hr/attendance/decisions/${id}/revoke`, body);
+
+/** Who has been deciding days over a window, and how often against the devices (stage 4). */
+export const attendanceDecisionSignals = (
+  params: QueryParams,
+): Promise<AttendanceDecisionSignalsDto> =>
+  get<AttendanceDecisionSignalsDto>(`/hr/attendance/decisions/signals${buildQuery(params)}`);
+
+export const downloadDecisionsExport = (params: QueryParams): Promise<void> =>
+  downloadBlob(
+    `/hr/attendance/decisions/export${buildQuery(params)}`,
+    `attendance-decisions-${new Date().toISOString().slice(0, 10)}.csv`,
+  );
 
 export const listRegularizations = (
   params: QueryParams,

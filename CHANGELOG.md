@@ -93,6 +93,8 @@ its entry here in the same PR.
     the pounds at the end of their five boxes, the piasters in their two (variables
     `job.fixedSalaryPounds`, `job.fixedSalaryPiasters`). A job with none leaves the boxes empty.
   - «تحريراً في» is left for the hand; «تاريخ بدء الاشتراك» is still the start date.
+  - Overleaf, «أقر أنا …» is left for the hand too: the employee's name is no longer written there
+    («اقر انا دي سبها متكتبش فيها اسم الموظف»; revision 5).
   - Every figure the form is filled with is printed in Arabic figures; an e-mail address keeps its own.
   - The template sanitizer keeps rows of five and seven boxes (`c5`, `c7`) and `end`; the paper's
     revision 4 rewrites the stored row at boot.

@@ -1143,6 +1143,13 @@ export interface FleetDashboardNowLicenceVehiclesDto {
   list: FleetDashboardNowLicenceVehicleRowDto[];
   more: number;
   /**
+   * The licensing board's paper lookup for the listed rows failed: every row's `papers` is `null`
+   * because the board could not be read, NOT because no paper is open — the browser says so in the
+   * papers column instead of a «—». `false` when the lookup answered or was not asked (no rows, or a
+   * reader without `fleetLicensing.view`).
+   */
+  papersFailed: boolean;
+  /**
    * Active cars by the month their licence expires, FLEET_DASHBOARD_LICENCE_MONTHS slots from this
    * (Cairo) month (`key` order = the chart's order), over the same cars as the counts.
    */
@@ -1163,7 +1170,8 @@ export interface FleetDashboardNowLicenceVehicleRowDto {
   licenceClass: LocalizedString | null;
   /**
    * The licensing board's two papers (`paperStage`) — only for a car on the board (its «ت» licence
-   * classes) and only for a reader who holds `fleetLicensing.view`; `null` otherwise (no column).
+   * classes) and only for a reader who holds `fleetLicensing.view`; `null` otherwise (no column), or
+   * when the board's lookup failed (`papersFailed` on the list).
    */
   papers: { insurance: 'none' | 'open' | 'done'; tax: 'none' | 'open' | 'done' } | null;
 }

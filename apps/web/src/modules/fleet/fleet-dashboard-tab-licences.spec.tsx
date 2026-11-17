@@ -50,6 +50,7 @@ import {
   pagePeriodKey,
   renderDashboard,
 } from './fleet-dashboard-fixtures';
+import { PERIOD_FULL } from './fleet-dashboard-period-fixtures';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -160,6 +161,7 @@ const VEHICLES: Vehicles = {
   outOfServiceExpired: 1,
   list: CAR_ROWS,
   more: 10,
+  papersFailed: false,
   months: months(CAR_MONTHS),
 };
 const DRIVERS: Drivers = {
@@ -419,10 +421,34 @@ describe('«التراخيص والتجديدات» — the heading, the two ban
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
-  it('puts the six cards in one grid: cars row over drivers row, six in a row from 1800 px', () => {
+  it('puts the cards in two rows — cars over drivers, three a row from 1024 px, six in a line from 1800 px', () => {
     const grid = slice(DEFAULT, 'data-lic-kpis', 'now', '>');
-    expect(grid).toContain('min-[1800px]:grid-cols-6');
-    expect(grid).toContain('lg:grid-cols-3');
+    expect(grid).toContain('min-[1800px]:grid-cols-2');
+    const rowIds = (html: string, row: string): string[] => {
+      const start = html.indexOf(`data-lic-kpi-row="${row}"`);
+      if (start === -1) return [];
+      const next = html.indexOf('data-lic-kpi-row=', start + 20);
+      const stop = next === -1 ? html.indexOf('data-lic-notes=', start) : next;
+      return [...html.slice(start, stop).matchAll(/data-lic-kpi="([A-Za-z]+)"/gu)].map(
+        (m) => m[1] ?? '',
+      );
+    };
+    expect(rowIds(DEFAULT, 'cars')).toEqual(['carsExpired', 'carsExpiring', 'papers']);
+    expect(rowIds(DEFAULT, 'drivers')).toEqual(['driversExpired', 'driversExpiring', 'missing']);
+    for (const row of ['cars', 'drivers']) {
+      const box = slice(DEFAULT, 'data-lic-kpi-row', row, '>');
+      expect(box).toContain('lg:grid-cols-3');
+      // Two a row on a tablet, the row's odd last card the full width.
+      expect(box).toContain('sm:[&amp;&gt;*:last-child:nth-child(odd)]:col-span-2');
+    }
+    // A reader without the board's papers: a driver card never moves up beside the cars.
+    const noPapers = tab({}, ['fleetVehicle.view', 'fleetDriver.view']);
+    expect(rowIds(noPapers, 'cars')).toEqual(['carsExpired', 'carsExpiring']);
+    expect(rowIds(noPapers, 'drivers')).toEqual(['driversExpired', 'driversExpiring', 'missing']);
+    // Without the cars' registry: the papers alone on the cars' row.
+    const noCars = tab({}, ['fleetDriver.view', 'fleetLicensing.view']);
+    expect(rowIds(noCars, 'cars')).toEqual(['papers']);
+    expect(rowIds(noCars, 'drivers')).toEqual(['driversExpired', 'driversExpiring', 'missing']);
   });
 
   it('wears the approved tones: red · amber · violet · red · amber · amber', () => {
@@ -705,6 +731,15 @@ describe('the notes — the fuel cards’ expiry and the drivers’ branch', () 
     expect(html).not.toContain('data-lic-note="fuel"');
   });
 
+  it('draws no pointer for a fuel tab without the cards’ expiry (receipts only) — critic C6', () => {
+    const permissions = ['fleetVehicle.view', 'fleetReceipt.view'];
+    const seed = { page: { ...PAGE, opex: PERIOD_FULL.opex } };
+    expect(page(seed, permissions)).toContain('data-dash-tab="fuel"');
+    expect(tab(seed, permissions)).not.toContain('data-lic-note="fuel"');
+    // The cards' reader keeps it.
+    expect(tab({}, ['fleetVehicle.view', 'fleetFuelCard.view'])).toContain('data-lic-note="fuel"');
+  });
+
   it('says the drivers follow their HR branch only while the figures are narrowed', () => {
     expect(DEFAULT).not.toContain('data-lic-note="hr-branch"');
     for (const html of [BRANCH, MINE]) {
@@ -863,6 +898,25 @@ describe('«أقرب تراخيص السيارات» — the server’s nearest 
     expect(text(cars)).toContain(w('cars.col.papers'));
   });
 
+  it('says the board could not be read — never a «—» that reads as «no open paper»', () => {
+    const rows = CAR_ROWS.map((row) => ({ ...row, papers: null }));
+    const html = block(
+      tab({ now: { ...NOW, licenceVehicles: { ...VEHICLES, list: rows, papersFailed: true } } }),
+      'cars',
+    );
+    expect(text(html)).toContain(w('cars.col.papers'));
+    for (const row of CAR_ROWS) {
+      expect(carRowOf(html, row.vehicleId)).toContain('data-lic-papers="failed"');
+      expect(text(carRowOf(html, row.vehicleId))).toContain(w('cars.papersFailed'));
+    }
+    expect(html).not.toContain('data-lic-papers="none"');
+    // The rows, the days and the counts still answer.
+    expect(text(carRowOf(html, 'v150'))).toContain('مرسيدس اسيليو 915');
+    expect(text(slice(html, 'data-lic-chip', 'cars', '</div>'))).toContain(
+      w('count.car.many', { count: 16 }),
+    );
+  });
+
   it('draws no papers column for a reader who cannot open the board', () => {
     const html = block(tab({}, ['fleetVehicle.view', 'fleetDriver.view']), 'cars');
     expect(text(html)).not.toContain(w('cars.col.papers'));
@@ -885,9 +939,14 @@ describe('«أقرب تراخيص السيارات» — the server’s nearest 
     expect(block(all, 'cars')).not.toContain('data-lic-more');
   });
 
-  it('folds each row into a block below 768 px', () => {
-    expect(cars).toContain('hidden overflow-x-auto md:block');
+  it('folds each row into a block below 1024 px — both tables, so a tablet never cuts a name short', () => {
+    for (const html of [cars, block(DEFAULT, 'drivers')]) {
+      expect(html).toContain('hidden overflow-x-auto lg:block');
+      expect(html).toMatch(/<ul class="[^"]*\blg:hidden\b/u);
+      expect(html).not.toContain('md:block');
+    }
     expect(times(cars, 'data-lic-car-block=')).toBe(CAR_ROWS.length);
+    expect(times(block(DEFAULT, 'drivers'), 'data-lic-driver-block=')).toBe(DRIVER_ROWS.length);
   });
 });
 

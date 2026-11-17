@@ -2055,19 +2055,25 @@ its entry here in the same PR.
   تُستعَض» / «خارج المذكرات») beside «مصروفات العهدة حسب النوع» (صيانة · وقود من العهدة · كاوتش ·
   غسيل, with one-decimal shares). A sentence says these are the fuel tab's custody columns and are
   never added to them. Each figure opens «سجل العهدة» by operation or record, «المذكرات» by state or
-  kind, the licence expenses waiting for settlement, or the custody spend (`/fleet/custody-expenses`
-  when only codes narrow the period, else `/fleet/receipts`).
+  kind, «لوحة تحكم العهدة» (what waits for replenishment), the licence expenses waiting for
+  settlement, or the custody spend (`/fleet/custody-expenses` when only codes narrow the period, else
+  `/fleet/receipts`); the three «منها حتى الآن» figures are plain (no list holds a state over a
+  period). Ages count whole days as the custody screens do. «آخر عمليات العهدة» counts a
+  settlement's cars as the sample does («سيارتين»، «سيارة واحدة»), and its table starts at 1024 px.
 
   «التراخيص والتجديدات», «الآن»:
-  - six cards, cars over drivers: expired; expiring within the warning days of «إعدادات الحركة», plus
+  - six cards, the cars' row over the drivers' row (each row its own grid, three a row from 1024 px,
+    six in a line from 1800 px): expired; expiring within the warning days of «إعدادات الحركة», plus
     «ومن … إلى 60 يومًا»; «أوراق لم تُستلم بعد» (تأمينات / ضرائب); expired driver licences (up to 3
     names); expiring; «بيانات رخص ناقصة» («رخصة غير مسجّلة» / «بلا ملف سائق»);
-  - a line to the fuel tab for the cards' expiry;
+  - a line to the fuel tab for the cards' expiry, for a reader of the fuel cards;
   - a note, when narrowed, that drivers follow their HR branch;
   - «التراخيص المستحقة للتجديد — 12 شهرًا»: cars and drivers per month from this month, never summed;
     each column opens its month's list;
-  - «أقرب تراخيص السيارات» (make, licence class, and a papers column for a licensing-board reader);
-  - «أقرب رخص السائقين» (names, licence type, «الملف موقوف» on a suspended file).
+  - «أقرب تراخيص السيارات» (make, licence class, and a papers column for a licensing-board reader,
+    «تعذّرت القراءة» when the board cannot be read);
+  - «أقرب رخص السائقين» (names, licence type, «الملف موقوف» on a suspended file); both tables from
+    1024 px, rows below.
 
   Its period part is company-wide, under the period choices alone (a licence memo has no branch, car
   type or operation): «مصروفات التراخيص في الفترة» («عدد المذكرات», «السيارات») and «تفصيل مصروفات
@@ -2086,12 +2092,14 @@ its entry here in the same PR.
   - a reader of «لوحة التراخيص» alone keeps `/fleet` and this tab (the papers only, no R2);
   - a reader of the licence expenses alone gets no page (new `FLEET_DASHBOARD_PAGELESS_SECTIONS`);
   - a custody-only reader still sends no R2 (R2 is asked only when a period section is fully
-    permitted);
+    permitted and some tab the reader sees draws it — the licence expenses only beside this tab), and
+    the overview asks «هذا الشهر» only of a reader of one of its four figures;
   - a reader of the fuel cards alone no longer sees the licences tab;
   - the two new R2 keys never widen a branch reader's figures to the whole company.
 
   New read fields:
-  - R1 licence rows `typeName` / `licenceClass` / `papers` (their `expiresAt` is now the day);
+  - R1 licence rows `typeName` / `licenceClass` / `papers` (their `expiresAt` is now the day), and
+    `licenceVehicles.papersFailed` when the board's lookup fails;
   - R1 `licenceVehicles.months`, `licenceDrivers.months` / `list`;
   - R2 `opex.custodyCount`, `custodyStates`, `licenceSpend`;
   - the fund summary's `held.letters`;

@@ -1930,6 +1930,7 @@ describe('the shapes of «العهدة» and «التراخيص والتجديد
         row({ code: '155', expiresAt: '2026-12-27', days: 40, papers: null }),
       ],
       more: 3,
+      papersFailed: false,
       months: months([4, 2, 0, 1, 0, 0, 3, 0, 0, 0, 1, 0]),
     };
     expect(cars.list.length).toBeLessThanOrEqual(FLEET_DASHBOARD_LICENCE_ROWS);

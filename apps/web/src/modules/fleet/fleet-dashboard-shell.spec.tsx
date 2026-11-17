@@ -381,6 +381,42 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
     expect(custody).not.toContain('data-read-band="loading"');
   });
 
+  it('sends no R2 (and no month read) for a custody clerk who also holds the licence expenses’ key', () => {
+    // `licenceSpend` is PAGELESS: drawn only beside «التراخيص والتجديدات», which this reader cannot
+    // see — so its key alone asks for nothing, and the overview shows no month card that never fills.
+    const permissions = ['fleetCustody.view', 'fleetLicenseExpense.view'];
+    for (const url of ['/fleet', '/fleet?tab=custody']) {
+      const client = dashboardClient({ now: null, period: null });
+      const html = renderDashboard({ url, permissions, client });
+      expect(barTabs(html), url).toEqual(['overview', 'custody', 'summaries']);
+      const asked = client
+        .getQueryCache()
+        .findAll({ queryKey: ['fleet', 'dashboard'] })
+        .filter((query) => !query.isDisabled());
+      expect(asked, url).toEqual([]);
+      expect(html, url).not.toContain('data-dash-month-loading');
+      expect(html, url).not.toContain('data-dash-block="month"');
+    }
+  });
+
+  it('draws no month skeleton for a reader of none of the month card’s four figures', () => {
+    // A violations-only reader reads R2 for its own tab; the overview's «هذا الشهر» could never
+    // fill for them (km, spend, exits, accidents), so it is not asked for — no grey card on the way.
+    const html = renderDashboard({
+      permissions: ['fleetViolation.view'],
+      client: dashboardClient({ now: NOW_DTO, period: null }),
+    });
+    expect(pressed(html)).toBe('overview');
+    expect(html).not.toContain('data-dash-month-loading');
+    expect(html).not.toContain('data-dash-block="month"');
+    // A reader of one of them still meets the card on its way.
+    const km = renderDashboard({
+      permissions: ['fleetViolation.view', 'fleetOdometer.view'],
+      client: dashboardClient({ now: NOW_DTO, period: null }),
+    });
+    expect(km).toContain('data-dash-month-loading');
+  });
+
   it('keeps «العهدة» to the custody fund’s reader — the receipts alone never show it', () => {
     const url = '/fleet?tab=custody&period=last30';
     const client = dashboardClient({ now: null, period: null, page: { url, dto: PERIOD_FULL } });
@@ -855,7 +891,7 @@ describe('the address bar (D14)', () => {
     // «توزيع السيارات» for a reader of its km.
     const flat = PAGE.replace(/\s+/gu, ' ');
     expect(flat).toContain(
-      "const monthEnabled = reads.period && (active === 'overview' || (active === 'distribution' && sectionPermitted('km', can)));",
+      "const monthEnabled = reads.period && ((active === 'overview' && MONTH_SECTIONS.some((section) => sectionPermitted(section, can))) || (active === 'distribution' && sectionPermitted('km', can)));",
     );
     expect(flat).toContain("useFleetDashboardPeriod(MONTH_QUERY, 'live', monthEnabled)");
   });

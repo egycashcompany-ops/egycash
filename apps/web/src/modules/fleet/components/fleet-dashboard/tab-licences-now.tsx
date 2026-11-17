@@ -9,8 +9,8 @@
 //     board's two papers, each opening the board on its open papers — no total) · «رخص سائقين
 //     منتهية» red (the files' names) · «رخص تنتهي خلال {W}» amber · «بيانات رخص ناقصة» amber («رخصة
 //     غير مسجّلة» linked as «الحركة اليوم» writes it, «بلا ملف سائق» plain: no list holds them);
-//   · the fuel-card pointer (only when the fuel tab is the reader's) and, under a branch, the drivers'
-//     branch rule;
+//   · the fuel-card pointer (only for a reader of the fuel tab's card expiry) and, under a branch,
+//     the drivers' branch rule;
 //   · the 12-month chart (tab-licences-chart.tsx) and the two full-width tables
 //     (tab-licences-tables.tsx).
 //
@@ -488,8 +488,8 @@ const DriverKpis = ({ lic, links }: { lic: Drivers; links: NowLinks }): JSX.Elem
 
 // ── 5 · The notes under the cards ─────────────────────────────────────────────────────────────
 
-/** The fuel-card pointer (Q1 told; only when the fuel tab is the reader's) and, while the figures
- *  are narrowed, the drivers' branch rule (they follow their HR branch, not the car's). */
+/** The fuel-card pointer (Q1 told; only for a reader of the fuel tab's card expiry) and, while the
+ *  figures are narrowed, the drivers' branch rule (they follow their HR branch, not the car's). */
 const NowNotes = ({
   fuelTab,
   hrBranch,
@@ -519,12 +519,29 @@ const NowNotes = ({
 
 // ── The band ──────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The six cards as the approved rows (DECISIONS §11, told with the sample): the cars' row
+ * (منتهية · تنتهي · أوراق) over the drivers' row (منتهية · تنتهي · بيانات ناقصة), each its own grid
+ * so a reader without one of a row's sections never pulls a driver card up beside the cars. Three a
+ * row from 1024 px, the two rows side by side (six in a line) from 1800 px; from 640 px two a row,
+ * a row's odd last card the full width (a third card would cut its title short on a tablet).
+ */
+const KPI_ROWS = 'grid grid-cols-1 gap-4 min-[1800px]:grid-cols-2';
+const KPI_ROW = cn(
+  'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3',
+  'sm:[&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1',
+);
+
 /** R1 on its way: the six cards in grey, never zeroes pretending to be data. */
 const NowSkeleton = (): JSX.Element => (
   <div className="space-y-5">
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-6">
-      {[0, 1, 2, 3, 4, 5].map((i) => (
-        <Skeleton key={i} className="h-52 rounded-2xl" />
+    <div className={KPI_ROWS}>
+      {[0, 1].map((row) => (
+        <div key={row} className={KPI_ROW}>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-52 rounded-2xl" />
+          ))}
+        </div>
       ))}
     </div>
     <Skeleton className="h-96 rounded-2xl" />
@@ -563,17 +580,26 @@ export const LicencesNowBand = ({ props }: { props: MixedTabProps }): JSX.Elemen
           </div>
         )}
         {links !== null && (vehicles !== null || papers !== null || drivers !== null) && (
-          <div
-            data-lic-kpis="now"
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 min-[1800px]:grid-cols-6"
-          >
-            {vehicles !== null && <CarKpis lic={vehicles} links={links} />}
-            {papers !== null && <PapersKpi papers={papers} links={links} />}
-            {drivers !== null && <DriverKpis lic={drivers} links={links} />}
+          <div data-lic-kpis="now" className={KPI_ROWS}>
+            {(vehicles !== null || papers !== null) && (
+              <div data-lic-kpi-row="cars" className={KPI_ROW}>
+                {vehicles !== null && <CarKpis lic={vehicles} links={links} />}
+                {papers !== null && <PapersKpi papers={papers} links={links} />}
+              </div>
+            )}
+            {drivers !== null && (
+              <div data-lic-kpi-row="drivers" className={KPI_ROW}>
+                <DriverKpis lic={drivers} links={links} />
+              </div>
+            )}
           </div>
         )}
         <NowNotes
-          fuelTab={props.tabLink('fuel', 'fuelCards.tab')}
+          // The cards' expiry is the fuel tab's `fuelCards` KPI: pointed to only for its reader
+          // (critic C6) — a receipts- or dealership-only fuel tab has no such card.
+          fuelTab={
+            sectionPermitted('fuelCards', can) ? props.tabLink('fuel', 'fuelCards.tab') : null
+          }
           hrBranch={drivers !== null && narrowedView(props)}
         />
         {links !== null && (vehicles !== null || drivers !== null) && now !== null && (

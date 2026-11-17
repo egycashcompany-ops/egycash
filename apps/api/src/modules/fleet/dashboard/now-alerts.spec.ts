@@ -39,6 +39,7 @@ const FULL: AlertSources = {
     outOfServiceExpired: 1,
     list: [],
     more: 0,
+    papersFailed: false,
     // The 12 months and the drivers' list feed no alert line.
     months: [],
   },

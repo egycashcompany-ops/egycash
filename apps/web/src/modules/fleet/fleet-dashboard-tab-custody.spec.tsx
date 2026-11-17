@@ -925,6 +925,24 @@ describe('«آخر عمليات العهدة» — the newest lines of any statu
     expect(text(done)).toContain('مرجع 58203');
   });
 
+  it('counts a settlement’s cars as the approved sample: «سيارتين», «سيارة واحدة» (never «2 سيارات»)', () => {
+    const settle = text(slice(table, 'data-cust-row', 'op-settle', '</tr>'));
+    const kinds = (kind: string): string => ar(`fleet.licenseExpenses.kinds.${kind}`);
+    expect(settle).toContain(`${kinds('renewal')} سيارتين، ${kinds('extension')} سيارة واحدة`);
+    expect(settle).not.toContain('2 سيارات');
+    expect(settle).not.toContain('1 سيارة');
+  });
+
+  it('draws the table from 1024 px only, the chip and the amount in columns they always fit', () => {
+    // Below 1024 px every line is a block (a tablet never gets a cut-off 900 px table).
+    expect(table).toContain('hidden overflow-x-auto lg:block');
+    expect(table).toMatch(/<ul class="[^"]*\blg:hidden\b/u);
+    expect(table).not.toContain('md:block');
+    const cols = [...table.matchAll(/<col class="([^"]*)"/gu)].map((m) => m[1]);
+    expect(cols).toContain('w-[176px] xl:w-[15%]');
+    expect(cols).toContain('w-[150px] xl:w-[13%]');
+  });
+
   it('puts «الآن» on the latest line only, and opens each line where the log does', () => {
     expect(table.match(/data-cust-now-chip="true"/gu)).toHaveLength(2); // the table + the phone block
     expect(slice(table, 'data-cust-row', 'spend:2026-11-08:2026-11-12', '</tr>')).toContain(

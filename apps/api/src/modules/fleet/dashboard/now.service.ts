@@ -788,13 +788,17 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     ]);
     // Only the listed rows are named: the makes (the memoised type list), their licence classes
     // (one catalog read) and — only for a reader of the licensing board — their papers (the
-    // board's own READ-ONLY rule). A lookup that fails costs its names (or the papers: `null`, no
-    // column), never the counts.
+    // board's own READ-ONLY rule). A lookup that fails costs its names, never the counts; the
+    // papers' failure is SAID (`papersFailed`), so the browser never reads it as «no open paper».
     const classIds = [
       ...new Set(
         nearest.rows.flatMap((row) => (row.licenseClassId === null ? [] : [row.licenseClassId])),
       ),
     ];
+    type PaperRead = {
+      stages: Awaited<ReturnType<typeof fleetLicensingService.paperStagesFor>> | null;
+      failed: boolean;
+    };
     const [types, classNames, papers] = await Promise.all([
       nearest.rows.length === 0 ? Promise.resolve([]) : namesOnly('types', typeList(d), []),
       classIds.length === 0
@@ -805,14 +809,16 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
             new Map<string, LocalizedString>(),
           ),
       nearest.rows.length === 0 || !d.permits('papers')
-        ? Promise.resolve(null)
-        : namesOnly(
+        ? Promise.resolve<PaperRead>({ stages: null, failed: false })
+        : namesOnly<PaperRead>(
             'licencePapers',
-            fleetLicensingService.paperStagesFor(
-              d.scope('fleetLicensing.view'),
-              nearest.rows.map((row) => row.vehicleId),
-            ),
-            null,
+            fleetLicensingService
+              .paperStagesFor(
+                d.scope('fleetLicensing.view'),
+                nearest.rows.map((row) => row.vehicleId),
+              )
+              .then((stages) => ({ stages, failed: false })),
+            { stages: null, failed: true },
           ),
     ]);
     const typeNames = new Map(
@@ -828,7 +834,7 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         typeName: row.typeId === null ? null : (typeNames.get(row.typeId) ?? null),
         licenceClass:
           row.licenseClassId === null ? null : (classNames.get(row.licenseClassId) ?? null),
-        papers: papers?.get(row.vehicleId) ?? null,
+        papers: papers.stages?.get(row.vehicleId) ?? null,
       };
     });
     return {
@@ -839,6 +845,7 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
       outOfServiceExpired,
       list,
       more: nearest.total - list.length,
+      papersFailed: papers.failed,
       months: monthKeys.map((key) => ({ key, count: byMonth.get(key) ?? 0 })),
     };
   }),

@@ -563,6 +563,9 @@ describe('the fund’s arithmetic — ages, waiting money, where a line leads', 
     expect(custodyNowLabelPlace(242, 200)).toEqual({ top: 226, beside: true });
     // A rise to the top of the plot: beside it too.
     expect(custodyNowLabelPlace(26, 100)).toEqual({ top: 14, beside: true });
+    // A taller plot (the fleet dashboard's 280): a fall near the bottom still fits under the point.
+    expect(custodyNowLabelPlace(230, 200)).toEqual({ top: 218, beside: true });
+    expect(custodyNowLabelPlace(230, 200, 280)).toEqual({ top: 244, beside: false });
   });
 
   it('counts what the dashboard’s «العهدة» tab lists — in the lib, never in a tab file', () => {

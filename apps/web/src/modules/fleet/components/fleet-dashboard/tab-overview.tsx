@@ -945,7 +945,8 @@ const MONTH_FIG = cn(
   CAIRO,
 );
 
-const MONTH_SECTIONS = [
+/** The month card's four figures; the page asks for the month read only for a reader of one. */
+export const MONTH_SECTIONS = [
   'km',
   'opex',
   'exits',

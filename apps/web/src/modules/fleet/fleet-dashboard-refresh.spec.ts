@@ -280,7 +280,7 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
   it('«توزيع السيارات» asks the month read only for a reader of its km, and «تحديث» joins it to R1', () => {
     const flat = source('pages/FleetDashboardPage.tsx').replace(/\s+/gu, ' ');
     expect(flat).toContain(
-      "const monthEnabled = reads.period && (active === 'overview' || (active === 'distribution' && sectionPermitted('km', can)));",
+      "const monthEnabled = reads.period && ((active === 'overview' && MONTH_SECTIONS.some((section) => sectionPermitted(section, can))) || (active === 'distribution' && sectionPermitted('km', can)));",
     );
     expect(flat).toContain("useFleetDashboardPeriod(MONTH_QUERY, 'live', monthEnabled)");
     // R1 + the month read on one button; the heading says how old the OLDER of the two is.

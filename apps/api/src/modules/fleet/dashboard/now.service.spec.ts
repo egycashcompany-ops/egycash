@@ -1080,6 +1080,8 @@ describe('R1 — one clock, Cairo day', () => {
     ]);
     expect(licensing.paperStagesFor).not.toHaveBeenCalled();
     expect(dto.licenceVehicles?.more).toBe(3);
+    // Not asked is not failed.
+    expect(dto.licenceVehicles?.papersFailed).toBe(false);
   });
 
   it('«أقرب تراخيص السيارات»: the board’s papers only beside the board’s key, under ITS scope', async () => {
@@ -1090,13 +1092,15 @@ describe('R1 — one clock, Cairo day', () => {
       ['v3'],
     );
     expect(dto.licenceVehicles?.list[0]?.papers).toEqual({ insurance: 'open', tax: 'done' });
-    // A car off the board (absent from the answer) has no papers.
+    expect(dto.licenceVehicles?.papersFailed).toBe(false);
+    // A car off the board (absent from the answer) has no papers — and the board did answer.
     licensing.paperStagesFor.mockResolvedValueOnce(new Map());
     const off = await fleetDashboardNowService.read(ctx, NOW);
     expect(off.licenceVehicles?.list[0]?.papers).toBeNull();
+    expect(off.licenceVehicles?.papersFailed).toBe(false);
   });
 
-  it('the board failing costs the papers only — the rows and the counts still answer', async () => {
+  it('the board failing costs the papers only — SAID, so no row reads «no open paper»', async () => {
     licensing.paperStagesFor.mockRejectedValueOnce(new Error('boom'));
     const dto = await fleetDashboardNowService.read(
       ctxWith(['fleetVehicle.view', 'fleetLicensing.view']),
@@ -1104,6 +1108,7 @@ describe('R1 — one clock, Cairo day', () => {
     );
     expect(dto.unavailable).toEqual([]);
     expect(dto.licenceVehicles?.list[0]).toMatchObject({ code: '3', papers: null });
+    expect(dto.licenceVehicles?.papersFailed).toBe(true);
     expect(dto.licenceVehicles?.expired).toBe(1);
   });
 

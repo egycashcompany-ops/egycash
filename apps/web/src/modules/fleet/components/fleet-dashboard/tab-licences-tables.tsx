@@ -5,7 +5,8 @@
 //   · «أقرب تراخيص السيارات»: the server's nearest rows (≤ FLEET_DASHBOARD_LICENCE_ROWS, the
 //     longest-expired first) — the car and its make │ the licence class │ the day in the board's red
 //     / amber / neutral │ the state in ONE spelling («منتهٍ منذ …», «بعد …») │ the board's open papers
-//     (a column only for a reader of the board: «تأمينات لم تُستلم» / «ضرائب لم تُستلم», «—» else) │
+//     (a column only for a reader of the board: «تأمينات لم تُستلم» / «ضرائب لم تُستلم», «—» else,
+//     «تعذّرت القراءة» when the board could not be read) │
 //     «فتح» on the car's record; the chip = the server's rows + `more` (= expired + expiring + soon
 //     while the warning days are within 60 — the list never reaches past 60 days); «عرض الباقي (N)»
 //     only when the server left rows out;
@@ -13,8 +14,8 @@
 //     people list (`/fleet/people`, the «الحركة اليوم» read), the licence type, the roster's «الملف
 //     موقوف» on a suspended file (counted as the counts are), «فتح» on the driver's file.
 //
-// The two tables share their columns' widths, so the days and states line up. From 768 px a table;
-// below, each row a block. NOTHING IS COUNTED HERE: the chips and «عرض الباقي» are server fields.
+// The two tables share their columns' widths, so the days and states line up. From 1024 px a table
+// (a tablet's narrower card would cut a driver's name short); below, each row a block. NOTHING IS COUNTED HERE: the chips and «عرض الباقي» are server fields.
 import { type ReactNode } from 'react';
 import {
   FLEET_LICENCE_GREY_DAYS,
@@ -151,9 +152,18 @@ const ShowRest = ({ more, link }: { more: number; link: DashLink }): JSX.Element
 
 // ── «أقرب تراخيص السيارات» ────────────────────────────────────────────────────────────────────
 
-/** The board's open papers of a «ت» car; «—» for a car off the board (or a paper not open). */
-const Papers = ({ papers }: { papers: CarRow['papers'] }): JSX.Element => {
+/** The board's open papers of a «ت» car; «—» for a car off the board (or a paper not open); «تعذّرت
+ *  القراءة» when the board could not be read (`papersFailed`) — never a «—» that reads as «none». */
+const Papers = ({ papers, failed }: { papers: CarRow['papers']; failed: boolean }): JSX.Element => {
   const t = useT();
+  const w = useLicenceWords();
+  if (failed) {
+    return (
+      <span data-lic-papers="failed">
+        <Tag tone="slate">{w('cars.papersFailed')}</Tag>
+      </span>
+    );
+  }
   const open =
     papers === null ? [] : (['insurance', 'tax'] as const).filter((p) => papers[p] === 'open');
   if (open.length === 0) {
@@ -221,7 +231,7 @@ export const CarLicencesTable = ({
         <EndLine marker="cars">{w('cars.empty', { days: count(FLEET_LICENCE_GREY_DAYS) })}</EndLine>
       ) : (
         <>
-          <div className="hidden overflow-x-auto md:block">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[720px] table-fixed border-collapse text-[13px]">
               <ColGroup />
               <thead className={TH_ROW}>
@@ -249,7 +259,9 @@ export const CarLicencesTable = ({
                     <td className={cn(ROW, 'whitespace-nowrap')}>
                       <Remaining days={row.days} warnDays={warn} />
                     </td>
-                    <td className={ROW}>{papers && <Papers papers={row.papers} />}</td>
+                    <td className={ROW}>
+                      {papers && <Papers papers={row.papers} failed={lic.papersFailed} />}
+                    </td>
                     <td className={cn(ROW, 'text-end')}>
                       <Btn
                         link={links.vehicle(row.vehicleId, 'licenceVehicles.row')}
@@ -263,7 +275,7 @@ export const CarLicencesTable = ({
               </tbody>
             </table>
           </div>
-          <ul className={cn('border-t md:hidden', RULE, DIVIDE)}>
+          <ul className={cn('border-t lg:hidden', RULE, DIVIDE)}>
             {lic.list.map((row) => (
               <li
                 key={row.vehicleId}
@@ -287,7 +299,7 @@ export const CarLicencesTable = ({
                     <>
                       <Label>{w('cars.col.papers')}</Label>
                       <dd>
-                        <Papers papers={row.papers} />
+                        <Papers papers={row.papers} failed={lic.papersFailed} />
                       </dd>
                     </>
                   )}
@@ -364,7 +376,7 @@ export const DriverLicencesTable = ({
         </EndLine>
       ) : (
         <>
-          <div className="hidden overflow-x-auto md:block">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[720px] table-fixed border-collapse text-[13px]">
               <ColGroup />
               <thead className={TH_ROW}>
@@ -410,7 +422,7 @@ export const DriverLicencesTable = ({
               </tbody>
             </table>
           </div>
-          <ul className={cn('border-t md:hidden', RULE, DIVIDE)}>
+          <ul className={cn('border-t lg:hidden', RULE, DIVIDE)}>
             {rows.map((row) => (
               <li
                 key={row.profileId}

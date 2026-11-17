@@ -425,6 +425,7 @@ export const NOW_DTO: FleetDashboardNowDto = {
       },
     ],
     more: 2,
+    papersFailed: false,
     // This month holds the 4 expiring cars; the 2 «soon» ones run out in December.
     months: licenceMonths([4, 2, 5, 3, 0, 6, 2, 1, 4, 3, 0, 2]),
   },

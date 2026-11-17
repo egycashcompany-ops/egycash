@@ -1281,6 +1281,8 @@ describe('«العهدة» and «التراخيص والتجديدات» — the
     // A car with no licence class is off the board: no papers, no class.
     const plain = now.licenceVehicles?.list.find((r) => r.vehicleId === car1.id);
     expect(plain).toMatchObject({ licenceClass: null, papers: null, expiresAt: '2026-10-15' });
+    // The board answered: its `null`s mean «off the board», not «could not be read».
+    expect(now.licenceVehicles?.papersFailed).toBe(false);
     expect(now.licenceVehicles?.months.map((m) => m.key)).toEqual([
       '2026-11',
       '2026-12',

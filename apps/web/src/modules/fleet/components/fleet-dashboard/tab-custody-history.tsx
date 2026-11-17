@@ -12,7 +12,7 @@
 //   · «آخر عمليات العهدة» — the page's full width: the newest FLEET_DASHBOARD_CUSTODY_RECENT_ROWS lines
 //     of any status in the log's own words, a held line tinted «لم تتغيّر بعد», a transferred one with
 //     its letter day and reference, «الآن» on the latest, «فتح» per row (an operation to its drawer, a
-//     receipts run to «مصروفات العهدة» over its days); a table from 768 px, each row a block below.
+//     receipts run to «مصروفات العهدة» over its days); a table from 1024 px, each row a block below.
 //
 // The axis is the custody board's own (`custodyStepScale`, `custodyNowLabelPlace`); the words are
 // the log's (`ledgerWords`). Nothing is counted here.
@@ -27,7 +27,7 @@ import { type useCustodyLedger } from '../../api/fleet-queries';
 import { custodyLinks, type DashLink } from '../../lib/fleet-dashboard-links';
 import { slashDay } from '../../lib/fleet-dashboard-tabs';
 import { custodyDoneRows, custodyLedgerTarget } from '../../lib/custody-dashboard-fund';
-import { ledgerWords } from '../../lib/custody-ledger-words';
+import { ledgerWords, type LedgerWordsKit } from '../../lib/custody-ledger-words';
 import {
   CUSTODY_LEDGER_PARAMS,
   custodyNowLabelPlace,
@@ -123,8 +123,9 @@ const HistoryFace = ({
 
 // ── «إجمالي العهدة بعد كل عملية» ──────────────────────────────────────────────────────────────
 
-/** The plot as the custody board draws it (its «الآن» label rule reads these). */
-const CHART_H = 250;
+/** The plot as the approved sample draws it — 30 px taller than the custody board's, so the «الآن»
+ *  label rule is handed this height; the value axis keeps the board's own steps (`custodyStepScale`). */
+const CHART_H = 280;
 const PAD = { top: 26, bottom: 8 };
 const PLOT_W = 1000;
 /** Each line's least width: the history fits a wide screen, scrolls on a narrow one. */
@@ -162,7 +163,8 @@ const StepsChart = ({ rows, capped }: { rows: FleetCustodyLedgerRowDto[]; capped
   const gradientId = 'cust-steps-area';
   const clip = (side: string): { clipPath?: string } =>
     negative ? { clipPath: `url(#cust-steps-${side})` } : {};
-  const now = latest === undefined ? null : custodyNowLabelPlace(y(latest.after), y(latest.before));
+  const now =
+    latest === undefined ? null : custodyNowLabelPlace(y(latest.after), y(latest.before), CHART_H);
   return (
     <Card data-cust-block="steps" className="mt-5">
       <BlockHead
@@ -482,11 +484,30 @@ const RecentDate = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => 
   return <Day ymd={row.date} />;
 };
 
+/**
+ * The log's own words, its cars counted as the approved sample writes them after «تجديد تراخيص» /
+ * «مد مدة» (and as «تنتظر التسوية» on this tab counts them): «سيارة واحدة», «سيارتين» — the
+ * genitive dual — never «1 سيارة», «2 سيارات». Three and up as the log writes them.
+ */
+const useDashLedgerKit = (): LedgerWordsKit => {
+  const kit = useLedgerWordsKit();
+  const w = useCustodyWords();
+  return {
+    ...kit,
+    cars: (n) => {
+      const form = kit.form(n);
+      if (form === 'one') return w('count.car.one');
+      if (form === 'two') return w('count.car.twoGenitive');
+      return kit.cars(n);
+    },
+  };
+};
+
 /** «التفاصيل» in the log's own words; a held line «في انتظار تحويل المبلغ منذ …», a transferred
  *  one «حُوِّل المبلغ في …» and its reference when one was typed. */
 const RecentDetail = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element => {
   const t = useT();
-  const words = ledgerWords(row, useLedgerWordsKit());
+  const words = ledgerWords(row, useDashLedgerKit());
   return (
     <span className="flex min-w-0 flex-col">
       <span
@@ -505,7 +526,7 @@ const RecentDetail = ({ row }: { row: FleetCustodyLedgerRowDto }): JSX.Element =
       {row.status === 'held' && (
         <span
           data-cust-held-note="true"
-          className="mt-0.5 whitespace-nowrap text-[12px] font-bold leading-4 text-amber-700 dark:text-amber-300"
+          className="mt-0.5 text-[12px] font-bold leading-4 text-amber-700 dark:text-amber-300"
         >
           <Phrase
             text={t('fleet.custody.hold.waitingSince')}
@@ -596,13 +617,17 @@ const RecentTable = ({ rows }: { rows: FleetCustodyLedgerRowDto[] }): JSX.Elemen
         </p>
       ) : (
         <>
-          <div className="hidden overflow-x-auto md:block">
+          {/* From 1024 px a table: the operation's chip and the signed amount in fixed columns they
+              always fit, the approved shares from 1280 px (where those shares are wider); the
+              details take the rest. Below, each line a block of its own — the page never scrolls
+              sideways, and a tablet never cuts the table off. */}
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[900px] table-fixed border-collapse text-[13px]">
               <colgroup>
                 <col className="w-[17%]" />
-                <col className="w-[15%]" />
+                <col className="w-[176px] xl:w-[15%]" />
                 <col />
-                <col className="w-[13%]" />
+                <col className="w-[150px] xl:w-[13%]" />
                 <col className="w-[14%]" />
                 <col className="w-[104px]" />
               </colgroup>
@@ -651,8 +676,7 @@ const RecentTable = ({ rows }: { rows: FleetCustodyLedgerRowDto[] }): JSX.Elemen
               </tbody>
             </table>
           </div>
-          {/* Under 768 px: each line a block of its own — the page never scrolls sideways. */}
-          <ul className={cn('border-t md:hidden', RULE, DIVIDE)}>
+          <ul className={cn('border-t lg:hidden', RULE, DIVIDE)}>
             {rows.map((row) => (
               <li
                 key={row.id}

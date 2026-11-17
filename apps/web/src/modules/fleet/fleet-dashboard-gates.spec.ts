@@ -228,9 +228,22 @@ describe('a reader asks only for what a gate lets them see', () => {
     });
   });
 
-  it('sends R2 for a licence-expense reader’s one section, a licensing-only reader R1 alone', () => {
+  it('sends R2 for the licence expenses only beside a licences section (PAGELESS), a licensing-only reader R1 alone', () => {
+    // The key alone: no tab draws its section, so nothing is sent.
     expect(dashboardReads(holding('fleetLicenseExpense.view'))).toEqual({
       now: false,
+      period: false,
+      custody: false,
+    });
+    // A custody clerk with it: «العهدة» shows, «التراخيص والتجديدات» does not — still no R2.
+    expect(dashboardReads(holding('fleetCustody.view', 'fleetLicenseExpense.view'))).toEqual({
+      now: false,
+      period: false,
+      custody: true,
+    });
+    // Beside the board's papers (the licences tab shows): the spend band reads R2.
+    expect(dashboardReads(holding('fleetLicensing.view', 'fleetLicenseExpense.view'))).toEqual({
+      now: true,
       period: true,
       custody: false,
     });

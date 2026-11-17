@@ -40,10 +40,14 @@ import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_DASHBOARD_NOW_KEYS,
+  FLEET_DASHBOARD_PAGELESS_SECTIONS,
   FLEET_DASHBOARD_PERIOD_SECTIONS,
   cairoYmd,
   FLEET_DASHBOARD_PERIOD_TABS,
+  FLEET_DASHBOARD_TABS,
+  FLEET_DASHBOARD_TAB_PARTS,
   FLEET_DASHBOARD_TAB_READS,
+  FLEET_DASHBOARD_TAB_SECTIONS,
   type FleetDashboardPeriodQuery,
   type FleetDashboardSection,
   type FleetDashboardTab,
@@ -82,7 +86,7 @@ import {
   type PageRead,
 } from '../components/fleet-dashboard/dash-shell';
 import { PeriodTab } from '../components/fleet-dashboard/period-tabs';
-import { OverviewTab } from '../components/fleet-dashboard/tab-overview';
+import { MONTH_SECTIONS, OverviewTab } from '../components/fleet-dashboard/tab-overview';
 import { TodayTab } from '../components/fleet-dashboard/tab-today';
 import { DistributionTab } from '../components/fleet-dashboard/tab-distribution';
 import { MaintenanceTab } from '../components/fleet-dashboard/tab-maintenance';
@@ -118,14 +122,35 @@ export const dashboardView = (query: {
   data: unknown;
 }): DashboardView => (query.isPending ? 'loading' : query.data === undefined ? 'error' : 'ready');
 
+/**
+ * A period section some tab may DRAW for this reader. A PAGELESS one (`licenceSpend`) is drawn only
+ * beside the figures of the tab that holds it as a part (FLEET_DASHBOARD_TAB_PARTS), so it counts
+ * only while that tab can show by its own sections: on its key alone it would send R2 for nothing
+ * (a custody clerk who also holds the licence-expense key sees no «التراخيص والتجديدات»).
+ */
+const periodSectionDrawn = (
+  section: (typeof FLEET_DASHBOARD_PERIOD_SECTIONS)[number],
+  can: (permission: string) => boolean,
+): boolean => {
+  if (!sectionPermitted(section, can)) return false;
+  if (!(FLEET_DASHBOARD_PAGELESS_SECTIONS as readonly string[]).includes(section)) return true;
+  return FLEET_DASHBOARD_TABS.some(
+    (tab) =>
+      (FLEET_DASHBOARD_TAB_PARTS[tab] ?? []).includes(section) &&
+      FLEET_DASHBOARD_TAB_SECTIONS[tab].some((own) => sectionPermitted(own, can)),
+  );
+};
+
 /** Which of the two reads this reader may ask for at all (a read nobody may see is never sent). */
 export const dashboardReads = (
   can: (permission: string) => boolean,
 ): { now: boolean; period: boolean; custody: boolean } => ({
   now: FLEET_DASHBOARD_NOW_KEYS.some((key) => can(key)),
-  // R2 only when some period section is fully permitted (plan D5): `fleetCustody.view` is in the R2
-  // union (`custodyStates` needs the receipts' key too), so a custody-only reader sends no R2.
-  period: FLEET_DASHBOARD_PERIOD_SECTIONS.some((section) => sectionPermitted(section, can)),
+  // R2 only when some period section is fully permitted AND drawn somewhere (plan D5):
+  // `fleetCustody.view` is in the R2 union (`custodyStates` needs the receipts' key too), so a
+  // custody-only reader sends no R2; nor does a reader whose only period section is a PAGELESS part
+  // of a tab they cannot see.
+  period: FLEET_DASHBOARD_PERIOD_SECTIONS.some((section) => periodSectionDrawn(section, can)),
   custody: sectionPermitted('custodyFund', can),
 });
 
@@ -214,12 +239,14 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
   const lines = alertLines(nowQ.data?.alerts ?? [], custody?.lines ?? null);
   const badges = tabBadges(answers);
 
-  // «هذا الشهر» for the overview's month card and the km of «توزيع السيارات» (only for a reader of
-  // the km): the page's filters never reach it. At the default filters it is the page's own R2 key,
-  // so the two are one request.
+  // «هذا الشهر» for the overview's month card (only for a reader of one of its four figures) and the
+  // km of «توزيع السيارات» (only for a reader of the km): the page's filters never reach it — and no
+  // reader meets a month skeleton that could never fill. At the default filters it is the page's own
+  // R2 key, so the two are one request.
   const monthEnabled =
     reads.period &&
-    (active === 'overview' || (active === 'distribution' && sectionPermitted('km', can)));
+    ((active === 'overview' && MONTH_SECTIONS.some((section) => sectionPermitted(section, can))) ||
+      (active === 'distribution' && sectionPermitted('km', can)));
   const monthQ = useFleetDashboardPeriod(MONTH_QUERY, 'live', monthEnabled);
   const month: MonthRead = {
     data: monthQ.data,

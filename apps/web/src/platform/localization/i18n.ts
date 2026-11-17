@@ -6967,6 +6967,7 @@ const en: Record<string, string> = {
   'fleet.dash.custody.count.alert.other': '{{count}} alerts',
   'fleet.dash.custody.count.car.one': '1 car',
   'fleet.dash.custody.count.car.two': '2 cars',
+  'fleet.dash.custody.count.car.twoGenitive': '2 cars',
   'fleet.dash.custody.count.car.few': '{{count}} cars',
   'fleet.dash.custody.count.car.many': '{{count}} cars',
   'fleet.dash.custody.count.car.other': '{{count}} cars',
@@ -7023,6 +7024,7 @@ const en: Record<string, string> = {
   'fleet.dash.licences.cars.col.car': 'Car',
   'fleet.dash.licences.cars.col.class': 'Licence',
   'fleet.dash.licences.cars.col.papers': 'Licence papers',
+  'fleet.dash.licences.cars.papersFailed': 'Could not be read',
   'fleet.dash.licences.drivers.title': 'Nearest driver licences',
   'fleet.dash.licences.drivers.note':
     'From the Fleet driver files, the longest expired first, up to {{days}} days.',
@@ -21697,6 +21699,7 @@ const ar: Record<string, string> = {
   'fleet.dash.custody.count.alert.other': '{{count}} تنبيه',
   'fleet.dash.custody.count.car.one': 'سيارة واحدة',
   'fleet.dash.custody.count.car.two': 'سيارتان',
+  'fleet.dash.custody.count.car.twoGenitive': 'سيارتين',
   'fleet.dash.custody.count.car.few': '{{count}} سيارات',
   'fleet.dash.custody.count.car.many': '{{count}} سيارة',
   'fleet.dash.custody.count.car.other': '{{count}} سيارة',
@@ -21752,6 +21755,7 @@ const ar: Record<string, string> = {
   'fleet.dash.licences.cars.col.car': 'السيارة',
   'fleet.dash.licences.cars.col.class': 'الترخيص',
   'fleet.dash.licences.cars.col.papers': 'أوراق الترخيص',
+  'fleet.dash.licences.cars.papersFailed': 'تعذّرت القراءة',
   'fleet.dash.licences.drivers.title': 'أقرب رخص السائقين',
   'fleet.dash.licences.drivers.note':
     'من ملفات السائقين في الحركة، الأقدم انتهاءً أولًا، حتى {{days}} يومًا.',

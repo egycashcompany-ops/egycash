@@ -5,7 +5,7 @@
 // chart's own read: only departments and sections that can take a new place are offered. A place the
 // job already has under a stopped section stays listed, tagged «موقوف», and is sent back as it is.
 import { useMemo, useState } from 'react';
-import { type JobTitlePlaceDto, type Locale } from '@ecms/contracts';
+import { JOB_PLACES_MAX, type JobTitlePlaceDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { Badge } from '../../../../shared/ui/Badge';
 import { Button } from '../../../../shared/ui/Button';
@@ -126,6 +126,11 @@ export const JobPlacesField = ({
     if (department === undefined || department.departmentCatalogId === null) return;
     const section =
       sectionId === DIRECT ? undefined : sections.find((s) => s.sectionCatalogId === sectionId);
+    // The picked section is no longer offered (stopped meanwhile): never record it as «directly under».
+    if (sectionId !== DIRECT && section === undefined) {
+      setSectionId(DIRECT);
+      return;
+    }
     const row: PlaceRow = {
       departmentCatalogId: department.departmentCatalogId,
       sectionCatalogId: section?.sectionCatalogId ?? null,
@@ -186,7 +191,11 @@ export const JobPlacesField = ({
                 ]}
               />
             </Field>
-            <Button variant="secondary" disabled={department === undefined} onClick={add}>
+            <Button
+              variant="secondary"
+              disabled={department === undefined || value.length >= JOB_PLACES_MAX}
+              onClick={add}
+            >
               {t('organization.jobTitles.places.add')}
             </Button>
           </div>

@@ -12,10 +12,15 @@
 // which is only called when some department still needs filling — every start after the first returns
 // before reading a single employee.
 import { Types } from 'mongoose';
+import { JOB_PLACES_MAX } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
 import { unitOfWork } from '../../kernel/unit-of-work';
 import { auditService, type AuditEntry } from '../../audit';
-import { indexOrgChart, type ChartDepartmentGroup, type ChartSectionGroup } from '../org-chart/org-chart.groups';
+import {
+  indexOrgChart,
+  type ChartDepartmentGroup,
+  type ChartSectionGroup,
+} from '../org-chart/org-chart.groups';
 import { loadOrgChart } from '../org-chart/org-chart.load';
 import { keyOf, labelPlaces, type PlaceKeyed } from '../org-chart/job-place-plan';
 import { JobPlaceModel } from './job-place.model';
@@ -61,9 +66,12 @@ export const fillJobPlacesFromHolders = async (
       const chart = await loadOrgChart({ session });
       const index = indexOrgChart(chart);
       const marked = new Set(
-        (await JobPlaceFillModel.find({}, { departmentCatalogId: 1 }).session(session).lean().exec()).map((m) =>
-          String(m.departmentCatalogId),
-        ),
+        (
+          await JobPlaceFillModel.find({}, { departmentCatalogId: 1 })
+            .session(session)
+            .lean()
+            .exec()
+        ).map((m) => String(m.departmentCatalogId)),
       );
       const toFill = pending(index.departments, marked);
       if (toFill.length === 0) return null;
@@ -82,36 +90,53 @@ export const fillJobPlacesFromHolders = async (
       );
 
       const departmentOfRow = new Map<string, ChartDepartmentGroup>();
-      const sectionOfRow = new Map<string, { department: ChartDepartmentGroup; section: ChartSectionGroup }>();
+      const sectionOfRow = new Map<
+        string,
+        { department: ChartDepartmentGroup; section: ChartSectionGroup }
+      >();
       for (const department of index.departments) {
         for (const row of department.rows) departmentOfRow.set(row.id, department);
         for (const section of department.sections) {
           for (const row of section.rows) sectionOfRow.set(row.id, { department, section });
         }
       }
-      const activeJobs = new Set(chart.jobs.filter((job) => job.status === 'active').map((job) => job.id));
+      const activeJobs = new Set(
+        chart.jobs.filter((job) => job.status === 'active').map((job) => job.id),
+      );
 
       let skipped = 0;
       const placesByJob = new Map<string, Map<string, PlaceKeyed>>();
       const seenTriples = new Set<string>();
       for (const held of holders) {
-        const triple = `${held.departmentId}|${held.sectionId ?? ''}|${held.jobTitleId}`.toLowerCase();
+        const triple =
+          `${held.departmentId}|${held.sectionId ?? ''}|${held.jobTitleId}`.toLowerCase();
         if (seenTriples.has(triple)) continue;
         seenTriples.add(triple);
         const department = departmentOfRow.get(held.departmentId.toLowerCase());
         const entryId = department?.entry?.id ?? null;
         // Gone; a name group (no entry, and the fill creates none); already marked or hand-edited; or a
         // job that is not active — skipped, and counted.
-        if (department === undefined || entryId === null || !filling.has(entryId) || !activeJobs.has(held.jobTitleId.toLowerCase())) {
+        if (
+          department === undefined ||
+          entryId === null ||
+          !filling.has(entryId) ||
+          !activeJobs.has(held.jobTitleId.toLowerCase())
+        ) {
           skipped += 1;
           continue;
         }
-        const inSection = held.sectionId === null ? undefined : sectionOfRow.get(held.sectionId.toLowerCase());
+        const inSection =
+          held.sectionId === null ? undefined : sectionOfRow.get(held.sectionId.toLowerCase());
         const sectionEntry =
-          inSection !== undefined && inSection.department === department ? inSection.section.entry : null;
+          inSection !== undefined && inSection.department === department
+            ? inSection.section.entry
+            : null;
         const place: PlaceKeyed = {
           departmentCatalogId: entryId,
-          sectionCatalogId: sectionEntry !== null && sectionEntry.departmentCatalogId === entryId ? sectionEntry.id : null,
+          sectionCatalogId:
+            sectionEntry !== null && sectionEntry.departmentCatalogId === entryId
+              ? sectionEntry.id
+              : null,
         };
         const jobId = held.jobTitleId.toLowerCase();
         const set = placesByJob.get(jobId) ?? new Map<string, PlaceKeyed>();
@@ -119,10 +144,34 @@ export const fillJobPlacesFromHolders = async (
         placesByJob.set(jobId, set);
       }
 
+      // What each job already has, in other departments (a department being filled has none, §7).
+      const storedOf = (jobId: string): PlaceKeyed[] =>
+        chart.places
+          .filter((place) => place.jobTitleId.toLowerCase() === jobId)
+          .map((place) => ({
+            departmentCatalogId: place.departmentCatalogId,
+            sectionCatalogId: place.sectionCatalogId,
+          }));
+      // Never store a set the job's own update would refuse back (JOB_PLACES_MAX): a job whose holders
+      // sit in more places than that is left for a person to place.
+      for (const [jobId, set] of placesByJob) {
+        if (storedOf(jobId).length + set.size > JOB_PLACES_MAX) {
+          logger.warn(
+            { jobId, places: set.size },
+            'job places: holders sit in more places than a job may have; left unplaced',
+          );
+          skipped += set.size;
+          placesByJob.delete(jobId);
+        }
+      }
+
       const placedPer = new Map<string, number>();
       for (const set of placesByJob.values()) {
         for (const place of set.values()) {
-          placedPer.set(place.departmentCatalogId, (placedPer.get(place.departmentCatalogId) ?? 0) + 1);
+          placedPer.set(
+            place.departmentCatalogId,
+            (placedPer.get(place.departmentCatalogId) ?? 0) + 1,
+          );
         }
       }
       const at = new Date();
@@ -139,19 +188,30 @@ export const fillJobPlacesFromHolders = async (
         [...set.values()].map((place) => ({
           jobTitleId: new Types.ObjectId(jobId),
           departmentCatalogId: new Types.ObjectId(place.departmentCatalogId),
-          sectionCatalogId: place.sectionCatalogId === null ? null : new Types.ObjectId(place.sectionCatalogId),
+          sectionCatalogId:
+            place.sectionCatalogId === null ? null : new Types.ObjectId(place.sectionCatalogId),
           createdBy: null,
           updatedBy: null,
         })),
       );
       if (docs.length > 0) await JobPlaceModel.create(docs, { session, ordered: true });
 
-      const audits: AuditEntry[] = [...placesByJob.entries()].map(([jobId, set]) => ({
-        entityRef: { moduleId: 'platform', entityType: 'jobTitle', entityId: jobId },
-        action: 'update',
-        changes: [{ field: 'places', old: null, new: labelPlaces([...set.values()], chart) }],
-        actor: { userId: null, ip: null, userAgent: null },
-      }));
+      // The job's whole set before and after, as the job's own update records it.
+      const audits: AuditEntry[] = [...placesByJob.entries()].map(([jobId, set]) => {
+        const stored = storedOf(jobId);
+        return {
+          entityRef: { moduleId: 'platform', entityType: 'jobTitle', entityId: jobId },
+          action: 'update',
+          changes: [
+            {
+              field: 'places',
+              old: labelPlaces(stored, chart),
+              new: labelPlaces([...stored, ...set.values()], chart),
+            },
+          ],
+          actor: { userId: null, ip: null, userAgent: null },
+        };
+      });
       return { result: { departments: toFill.length, placed: docs.length, skipped }, audits };
     });
     if (outcome === null) return null;

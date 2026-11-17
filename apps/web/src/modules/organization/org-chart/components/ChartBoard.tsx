@@ -52,6 +52,7 @@ const JobRow = ({
   locale,
   draggableRow,
   onDragStart,
+  onDragEnd,
 }: {
   job: OrgChartJobDto;
   sectionCatalogId: string | null;
@@ -61,6 +62,7 @@ const JobRow = ({
   locale: Locale;
   draggableRow: boolean;
   onDragStart: () => void;
+  onDragEnd: () => void;
 }): JSX.Element => {
   const t = useT();
   const controls = editing && actions.canPlace && department.editable;
@@ -91,7 +93,12 @@ const JobRow = ({
   return (
     <div
       draggable={controls && draggableRow && !actions.busy}
-      onDragStart={onDragStart}
+      // Only the row itself starts a move — never a drag of selected text, never outside edit mode.
+      onDragStart={(e) => {
+        if (e.target === e.currentTarget && controls && draggableRow && !actions.busy)
+          onDragStart();
+      }}
+      onDragEnd={onDragEnd}
       aria-label={localized(job.name, locale)}
       className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
     >
@@ -143,8 +150,10 @@ const JobList = ({
   locale,
   draggableRows,
   onDragStart,
+  onDragEnd,
   onDrop,
   connector = true,
+  targetEditable = true,
 }: {
   jobs: readonly OrgChartJobDto[];
   sectionCatalogId: string | null;
@@ -154,20 +163,28 @@ const JobList = ({
   locale: Locale;
   draggableRows: boolean;
   onDragStart: (job: OrgChartJobDto, from: string | null) => void;
+  onDragEnd: () => void;
   onDrop: (to: string | null) => void;
+  /** Whether a job may be placed here: not under a section stopped or filed elsewhere in the list. */
+  targetEditable?: boolean;
   /** The side line from the section box down its jobs; off where the jobs hang from the department. */
   connector?: boolean;
 }): JSX.Element => {
   const t = useT();
-  const canAdd = editing && actions.canPlace && department.editable;
+  const canAdd = editing && actions.canPlace && department.editable && targetEditable;
   return (
     <ul
       className={cn(
         'space-y-1.5',
         connector && 'mt-2 border-s border-slate-300 ps-3 dark:border-slate-700',
       )}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={() => onDrop(sectionCatalogId)}
+      // Takes a drop only where a job could be added (the browser refuses it elsewhere).
+      onDragOver={(e) => {
+        if (canAdd) e.preventDefault();
+      }}
+      onDrop={() => {
+        if (canAdd) onDrop(sectionCatalogId);
+      }}
     >
       {jobs.map((job) => (
         <li key={job.id}>
@@ -180,6 +197,7 @@ const JobList = ({
             locale={locale}
             draggableRow={draggableRows}
             onDragStart={() => onDragStart(job, sectionCatalogId)}
+            onDragEnd={onDragEnd}
           />
         </li>
       ))}
@@ -241,7 +259,9 @@ const SectionBox = ({
       </h4>
       {section !== null && !section.editable && (
         <div className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
-          {t('organization.chart.notEditable')}
+          {section.sectionCatalogId === null
+            ? t('organization.chart.notEditable')
+            : t('organization.chart.sectionLocked')}
         </div>
       )}
       {sectionControls && (
@@ -291,7 +311,9 @@ export const ChartBoard = ({
     if (drag === null) return;
     const { job, from } = drag;
     setDrag(null);
-    if (to !== from) actions.onMove(job, from, to);
+    if (!editing || !actions.canPlace || !department.editable || actions.busy) return;
+    const target = moveTargets(department).some((place) => place.sectionCatalogId === to);
+    if (to !== from && target) actions.onMove(job, from, to);
   };
   const listProps = (draggableRows: boolean) => ({
     department,
@@ -300,6 +322,8 @@ export const ChartBoard = ({
     locale,
     draggableRows,
     onDragStart: (job: OrgChartJobDto, from: string | null) => setDrag({ job, from }),
+    // A drag released anywhere else leaves nothing behind (the drop, when there is one, comes first).
+    onDragEnd: () => setDrag(null),
     onDrop: drop,
   });
 
@@ -370,6 +394,7 @@ export const ChartBoard = ({
                         jobs={columns.bySection.get(section.sectionCatalogId.toLowerCase()) ?? []}
                         sectionCatalogId={section.sectionCatalogId}
                         {...listProps(true)}
+                        targetEditable={section.editable}
                       />
                     )}
                   </div>
@@ -446,6 +471,7 @@ export const ChartBoard = ({
                     jobs={columns.bySection.get(section.sectionCatalogId.toLowerCase()) ?? []}
                     sectionCatalogId={section.sectionCatalogId}
                     {...listProps(false)}
+                    targetEditable={section.editable}
                   />
                 )}
               </li>

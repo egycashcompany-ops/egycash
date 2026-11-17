@@ -13,6 +13,7 @@ import {
   platformPermissions,
   type JobTitleDto,
   type OrgChartDto,
+  JOB_PLACES_MAX,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -488,6 +489,25 @@ describe('section writes from the chart (P-ORG-3 §5.3)', () => {
     }
   });
 
+  it('refuses a name an unlinked section of the department already has (no entry may absorb it)', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const row = ops.rows[0];
+    const _id = new Types.ObjectId();
+    await SectionModel.create({
+      _id, branchId: row?.branchId, departmentId: row?._id, code: nextCode('S-'),
+      name: { ar: 'الخزينه', en: 'Old treasury' }, catalogId: null, status: 'active',
+      path: `${String(row?.branchId)}/${String(row?._id)}/${String(_id)}`,
+    });
+    const res = await addSection({
+      departmentCatalogId: String(ops.entry._id),
+      name: { ar: 'الخزينة', en: 'Treasury' },
+      branchIds: [branches[0]],
+    });
+    expect(res.status).toBe(409);
+    expect(errorCode(res)).toBe('ORG_SECTION_NAME_TAKEN');
+    expect(await SectionCatalogModel.countDocuments({})).toBe(0);
+  });
+
   it('refuses a branch without a linked row of the department, writing nothing', async () => {
     const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
     await unlinkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches[1] ?? '');
@@ -533,6 +553,18 @@ describe('section writes from the chart (P-ORG-3 §5.3)', () => {
     expect(names.filter((n) => n === 'Vault')).toHaveLength(2);
     const stale = await request(app).patch(url).set('Authorization', `Bearer ${adminToken}`).send({ name: { ar: 'أخرى', en: 'Other' }, version: 0 });
     expect(errorCode(stale)).toBe('STALE_DOCUMENT');
+  });
+
+  it('refuses rename and stop under a department whose every row is stopped', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const treasury = await linkedSection({ ar: 'الخزينة', en: 'Treasury' }, ops.entry._id, ops.rows);
+    await DepartmentModel.updateMany({ catalogId: ops.entry._id }, { $set: { status: 'inactive' } });
+    const url = `/api/v1/platform/org-chart/sections/${String(treasury._id)}`;
+    const rename = await request(app).patch(url).set('Authorization', `Bearer ${adminToken}`).send({ name: { ar: 'الصندوق', en: 'Vault' }, version: 0 });
+    expect(errorCode(rename)).toBe('ORG_UNIT_NOT_EDITABLE');
+    const stop = await request(app).post(`${url}/stop`).set('Authorization', `Bearer ${adminToken}`).send({ version: 0 });
+    expect(errorCode(stop)).toBe('ORG_UNIT_NOT_EDITABLE');
+    expect(await SectionModel.countDocuments({ catalogId: treasury._id, status: 'active', 'name.en': 'Treasury' })).toBe(1);
   });
 
   it('stop deactivates every row, keeps the entry active and the places, and lists the rows it stopped', async () => {
@@ -705,6 +737,37 @@ describe('the one-time fill from where holders sit (P-ORG-3 §7)', () => {
     expect(result).toMatchObject({ departments: 2, placed: 1 });
     const live = await JobPlaceModel.find({ jobTitleId: driver._id, isDeleted: false }).lean();
     expect(live.map((p) => String(p.departmentCatalogId))).toEqual([String(later.entry._id)]);
+  });
+
+  it('audits the job\'s whole set, the places it already had included', async () => {
+    const security = await linkedDepartment({ ar: 'الأمن', en: 'Security' }, branches.slice(0, 1));
+    const driver = await job('Driver', 'سائق');
+    await fill(); // marks Security
+    await JobPlaceModel.create({ jobTitleId: driver._id, departmentCatalogId: security.entry._id, sectionCatalogId: null });
+    const movement = await linkedDepartment({ ar: 'الحركة', en: 'Movement' }, branches.slice(0, 1));
+    await employee(movement.rows[0]?._id ?? new Types.ObjectId(), null, driver._id);
+    await fill();
+    const audit = await AuditLogModel.findOne({ 'entityRef.entityId': String(driver._id), action: 'update' }).lean();
+    const change = audit?.changes.find((c) => c.field === 'places');
+    expect(change?.old).toEqual(['الأمن']);
+    expect(change?.new).toEqual(['الأمن', 'الحركة']);
+  });
+
+  it('leaves unplaced a job whose holders sit in more places than a job may have', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const row = ops.rows[0];
+    const everywhere = await job('Clerk', 'كاتب');
+    const driver = await job('Driver', 'سائق');
+    for (let i = 0; i <= JOB_PLACES_MAX; i += 1) {
+      const section = await linkedSection({ ar: `قسم ${i}`, en: `Section ${i}` }, ops.entry._id, ops.rows);
+      const sectionRow = await SectionModel.findOne({ catalogId: section._id }).lean();
+      await employee(row?._id ?? new Types.ObjectId(), sectionRow?._id ?? null, everywhere._id);
+    }
+    await employee(row?._id ?? new Types.ObjectId(), null, driver._id);
+    const result = await fill();
+    expect(result).toMatchObject({ departments: 1, placed: 1, skipped: JOB_PLACES_MAX + 1 });
+    expect(await placesOf(everywhere._id)).toEqual([]);
+    expect(await placesOf(driver._id)).toEqual(['direct']);
   });
 
   it('two runs at once: exactly one commits the marks', async () => {

@@ -3,6 +3,7 @@
 // its footer — with the module's own `LocalizedNameFields` for the two names.
 import { useMemo, useState } from 'react';
 import {
+  JOB_PLACES_MAX,
   type Locale,
   type OrgChartDepartmentDto,
   type OrgChartDto,
@@ -258,7 +259,12 @@ export const AddJobDialog = ({
           locale,
         )}`;
   const options = chart.jobs
-    .filter((job) => !isPlacedAt(job, departmentCatalogId, sectionCatalogId))
+    // A job already at the most places it may have cannot take one more (JOB_PLACES_MAX).
+    .filter(
+      (job) =>
+        !isPlacedAt(job, departmentCatalogId, sectionCatalogId) &&
+        job.places.length < JOB_PLACES_MAX,
+    )
     .map((job) => {
       const elsewhere = otherPlaceLabels(job, chart, locale, here);
       const name = `${localized(job.name, locale)} (${job.code})`;

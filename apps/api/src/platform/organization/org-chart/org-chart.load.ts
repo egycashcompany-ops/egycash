@@ -22,7 +22,28 @@ interface LeanBase {
   __v: number;
 }
 
-const str = (id: Types.ObjectId | null | undefined): string | null => (id == null ? null : String(id));
+const str = (id: Types.ObjectId | null | undefined): string | null =>
+  id == null ? null : String(id);
+
+type ReadResults<T extends readonly (() => Promise<unknown>)[]> = {
+  -readonly [K in keyof T]: T[K] extends () => Promise<infer R> ? R : never;
+};
+
+/**
+ * Several reads. Inside a transaction they run one after another — a session cannot run operations
+ * in parallel, and the driver starts the transaction on the first command only, so parallel first
+ * reads race it (readCustodyFundTerms does the same); outside one they run together.
+ */
+export const readAll = async <T extends readonly (() => Promise<unknown>)[]>(
+  session: ClientSession | null,
+  reads: T,
+): Promise<ReadResults<T>> => {
+  if (session === null)
+    return (await Promise.all(reads.map((read) => read()))) as unknown as ReadResults<T>;
+  const results: unknown[] = [];
+  for (const read of reads) results.push(await read());
+  return results as unknown as ReadResults<T>;
+};
 
 export interface LoadOptions {
   session?: ClientSession | undefined;
@@ -38,35 +59,61 @@ export const loadOrgChart = async (options: LoadOptions = {}): Promise<ChartInpu
       ? { ...live, status: 'active' }
       : { ...live, _id: { $in: options.jobIds.map((id) => new Types.ObjectId(id)) } };
 
-  const [departments, sections, departmentEntries, sectionEntries, branches, jobs, places] = await Promise.all([
-    DepartmentModel.find(live, { code: 1, name: 1, catalogId: 1, status: 1, branchId: 1, createdAt: 1 })
-      .session(session)
-      .lean()
-      .exec(),
-    SectionModel.find(live, {
-      code: 1,
-      name: 1,
-      catalogId: 1,
-      status: 1,
-      branchId: 1,
-      departmentId: 1,
-      createdAt: 1,
-    })
-      .session(session)
-      .lean()
-      .exec(),
-    DepartmentCatalogModel.find(live, { code: 1, name: 1, status: 1, __v: 1 }).session(session).lean().exec(),
-    SectionCatalogModel.find(live, { code: 1, name: 1, status: 1, __v: 1, departmentCatalogId: 1 })
-      .session(session)
-      .lean()
-      .exec(),
-    BranchModel.find(live, { name: 1 }).session(session).lean().exec(),
-    JobTitleModel.find(jobFilter, { code: 1, name: 1, status: 1, __v: 1 }).session(session).lean().exec(),
-    JobPlaceModel.find(live, { jobTitleId: 1, departmentCatalogId: 1, sectionCatalogId: 1 })
-      .session(session)
-      .lean()
-      .exec(),
-  ]);
+  const [departments, sections, departmentEntries, sectionEntries, branches, jobs, places] =
+    await readAll(session, [
+      () =>
+        DepartmentModel.find(live, {
+          code: 1,
+          name: 1,
+          catalogId: 1,
+          status: 1,
+          branchId: 1,
+          createdAt: 1,
+        })
+          .session(session)
+          .lean()
+          .exec(),
+      () =>
+        SectionModel.find(live, {
+          code: 1,
+          name: 1,
+          catalogId: 1,
+          status: 1,
+          branchId: 1,
+          departmentId: 1,
+          createdAt: 1,
+        })
+          .session(session)
+          .lean()
+          .exec(),
+      () =>
+        DepartmentCatalogModel.find(live, { code: 1, name: 1, status: 1, __v: 1 })
+          .session(session)
+          .lean()
+          .exec(),
+      () =>
+        SectionCatalogModel.find(live, {
+          code: 1,
+          name: 1,
+          status: 1,
+          __v: 1,
+          departmentCatalogId: 1,
+        })
+          .session(session)
+          .lean()
+          .exec(),
+      () => BranchModel.find(live, { name: 1 }).session(session).lean().exec(),
+      () =>
+        JobTitleModel.find(jobFilter, { code: 1, name: 1, status: 1, __v: 1 })
+          .session(session)
+          .lean()
+          .exec(),
+      () =>
+        JobPlaceModel.find(live, { jobTitleId: 1, departmentCatalogId: 1, sectionCatalogId: 1 })
+          .session(session)
+          .lean()
+          .exec(),
+    ] as const);
 
   return {
     departmentRows: departments.map((row) => ({
@@ -95,16 +142,16 @@ export const loadOrgChart = async (options: LoadOptions = {}): Promise<ChartInpu
       status: entry.status,
       version: entry.__v,
     })),
-    sectionEntries: (sectionEntries as unknown as (LeanBase & { departmentCatalogId: Types.ObjectId })[]).map(
-      (entry) => ({
-        id: String(entry._id),
-        code: entry.code,
-        name: entry.name,
-        status: entry.status,
-        version: entry.__v,
-        departmentCatalogId: String(entry.departmentCatalogId),
-      }),
-    ),
+    sectionEntries: (
+      sectionEntries as unknown as (LeanBase & { departmentCatalogId: Types.ObjectId })[]
+    ).map((entry) => ({
+      id: String(entry._id),
+      code: entry.code,
+      name: entry.name,
+      status: entry.status,
+      version: entry.__v,
+      departmentCatalogId: String(entry.departmentCatalogId),
+    })),
     branches: branches.map((branch) => ({ id: String(branch._id), name: branch.name })),
     jobs: (jobs as unknown as LeanBase[]).map((job) => ({
       id: String(job._id),

@@ -614,6 +614,9 @@ It returns `null` when there was nothing to do.
    - Otherwise it becomes a place in the department group's entry. The section narrows it only when
      the section row is still in that department group and its group is a catalog group. Otherwise the
      job goes directly under the department.
+   - **The cap.** A job whose stored places plus its new ones would pass `JOB_PLACES_MAX` (50, the
+     contract's cap on `places`) gets none from the fill: its triples are counted in `skipped` and a
+     warning is logged. The fill never stores a set the job's own update would refuse back.
 6. **Write, in one transaction.** Step 2 runs inside the transaction callback, reading through its
    session. Then:
    - insert one mark per department entry from step 2 **first**, including the ones that will receive
@@ -629,6 +632,7 @@ It returns `null` when there was nothing to do.
      and step 2 then finds the marks and returns `null`, or the insert fails with a duplicate key. The
      fill treats any duplicate-key error as the lost race and logs it at info.
 7. **Audit:** after commit, one `update` entry for each job that gained places, through `recordMany`.
+   It records the job's whole set before and after, as the job's own update does.
 
 **What is guaranteed:**
 - **Once per department.** A department is filled once: at the first start where it has an active

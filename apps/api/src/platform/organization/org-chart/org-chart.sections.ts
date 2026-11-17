@@ -17,7 +17,12 @@ import {
   type RenameChartSection,
   type StopChartSection,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, NotFoundError, StaleDocumentError } from '../../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+  StaleDocumentError,
+} from '../../../shared/errors';
 import { unitOfWork } from '../../kernel/unit-of-work';
 import { auditService, type AuditEntry } from '../../audit';
 import { emit } from '../../kernel/event-bus';
@@ -26,7 +31,12 @@ import { SectionCatalogModel } from '../section-catalog/section-catalog.model';
 import { sectionRowFields } from '../sections/section-row';
 import { catalogNameClash } from '../shared/org-catalog-names';
 import { nextFreeCode, nextFreeCodes } from '../shared/next-free-code';
-import { indexOrgChart, type ChartDepartmentGroup, type ChartIndex, type ChartInput } from './org-chart.groups';
+import {
+  indexOrgChart,
+  type ChartDepartmentGroup,
+  type ChartIndex,
+  type ChartInput,
+} from './org-chart.groups';
 import { loadOrgChart } from './org-chart.load';
 
 type Event = {
@@ -39,7 +49,11 @@ interface Effects {
   events: Event[];
 }
 
-const ref = (entityType: string, id: string) => ({ moduleId: 'platform', entityType, entityId: id });
+const ref = (entityType: string, id: string) => ({
+  moduleId: 'platform',
+  entityType,
+  entityId: id,
+});
 
 /** The Arabic name folded, else the English one — the `orgUnitGroupKeys` rule. */
 const foldOf = (name: LocalizedString): string => {
@@ -52,9 +66,13 @@ const notEditable = (what: string): never => {
 };
 
 /** The editable department group of a department entry, or refuse. */
-const editableDepartment = (index: ChartIndex, departmentCatalogId: string): ChartDepartmentGroup => {
+const editableDepartment = (
+  index: ChartIndex,
+  departmentCatalogId: string,
+): ChartDepartmentGroup => {
   const department = index.departmentByEntry.get(departmentCatalogId.toLowerCase());
-  if (department === undefined || !department.shown || !department.editable) return notEditable('This department');
+  if (department === undefined || !department.shown || !department.editable)
+    return notEditable('This department');
   return department;
 };
 
@@ -70,16 +88,22 @@ const assertSectionNameFree = (
   exceptEntryId?: string,
 ): void => {
   const departmentEntryId = department.entry?.id ?? '';
-  const siblings = input.sectionEntries.filter((entry) => entry.departmentCatalogId === departmentEntryId);
+  const siblings = input.sectionEntries.filter(
+    (entry) => entry.departmentCatalogId === departmentEntryId,
+  );
   const exact = catalogNameClash(name, siblings, exceptEntryId);
   const folded = foldOf(name);
   const foldClash = department.sections.some(
     (section) =>
-      section.entry?.id !== exceptEntryId &&
+      // Add checks every group, unlinked ones included; rename skips only its own.
+      (exceptEntryId === undefined || section.entry?.id !== exceptEntryId) &&
       (foldOf(section.name) === folded || section.rows.some((row) => foldOf(row.name) === folded)),
   );
   if (exact !== null || foldClash) {
-    throw new ConflictError('This department already has a section with this name', ErrorCodes.ORG_SECTION_NAME_TAKEN);
+    throw new ConflictError(
+      'This department already has a section with this name',
+      ErrorCodes.ORG_SECTION_NAME_TAKEN,
+    );
   }
 };
 
@@ -101,7 +125,10 @@ export const chartSections = {
       // Each ticked branch: the department's ACTIVE row there that is linked to its entry (step 2).
       const rows = input.branchIds.map((branchId) => {
         const row = department.rows.find(
-          (r) => r.branchId === branchId.toLowerCase() && r.status === 'active' && r.catalogId === departmentEntryId,
+          (r) =>
+            r.branchId === branchId.toLowerCase() &&
+            r.status === 'active' &&
+            r.catalogId === departmentEntryId,
         );
         if (row === undefined) {
           throw new BusinessRuleError(
@@ -114,7 +141,10 @@ export const chartSections = {
 
       const actor = new Types.ObjectId(by);
       const entryId = new Types.ObjectId();
-      const entryCode = nextFreeCode('SEC', chart.sectionEntries.map((entry) => entry.code));
+      const entryCode = nextFreeCode(
+        'SEC',
+        chart.sectionEntries.map((entry) => entry.code),
+      );
       await SectionCatalogModel.create(
         [
           {
@@ -167,21 +197,23 @@ export const chartSections = {
               { field: 'departmentCatalogId', old: null, new: departmentEntryId },
             ],
           },
-          ...created.map(
-            (row): AuditEntry => ({
-              entityRef: ref('section', String(row._id)),
-              action: 'create',
-              changes: [
-                { field: 'code', old: null, new: row.code },
-                { field: 'name', old: null, new: row.name },
-                { field: 'branchId', old: null, new: String(row.branchId) },
-              ],
-            }),
-          ),
+          ...created.map((row): AuditEntry => ({
+            entityRef: ref('section', String(row._id)),
+            action: 'create',
+            changes: [
+              { field: 'code', old: null, new: row.code },
+              { field: 'name', old: null, new: row.name },
+              { field: 'branchId', old: null, new: String(row.branchId) },
+            ],
+          })),
         ],
         events: [
           { unitType: 'sectionCatalog', unitId: String(entryId), change: 'created' },
-          ...created.map((row): Event => ({ unitType: 'section', unitId: String(row._id), change: 'created' })),
+          ...created.map((row): Event => ({
+            unitType: 'section',
+            unitId: String(row._id),
+            change: 'created',
+          })),
         ],
       };
     });
@@ -195,7 +227,12 @@ export const chartSections = {
       const index = indexOrgChart(chart);
       const found = index.sectionByEntry.get(sectionCatalogId.toLowerCase());
       if (found === undefined) throw new NotFoundError('No such section');
-      if (!found.department.editable || !found.section.editable || !found.section.shown) {
+      if (
+        !found.department.shown ||
+        !found.department.editable ||
+        !found.section.editable ||
+        !found.section.shown
+      ) {
         return notEditable('This section');
       }
       assertSectionNameFree(chart, found.department, input.name, found.section.entry?.id);
@@ -218,7 +255,9 @@ export const chartSections = {
         { session },
       ).exec();
 
-      const unlinked = found.section.rows.filter((row) => row.catalogId !== sectionCatalogId.toLowerCase());
+      const unlinked = found.section.rows.filter(
+        (row) => row.catalogId !== sectionCatalogId.toLowerCase(),
+      );
       return {
         audits: [
           {
@@ -229,13 +268,11 @@ export const chartSections = {
               { field: 'linkedUnitsRenamed', old: null, new: rowIds.length },
             ],
           },
-          ...unlinked.map(
-            (row): AuditEntry => ({
-              entityRef: ref('section', row.id),
-              action: 'update',
-              changes: [{ field: 'name', old: row.name, new: input.name }],
-            }),
-          ),
+          ...unlinked.map((row): AuditEntry => ({
+            entityRef: ref('section', row.id),
+            action: 'update',
+            changes: [{ field: 'name', old: row.name, new: input.name }],
+          })),
         ],
         events: [{ unitType: 'sectionCatalog', unitId: sectionCatalogId, change: 'updated' }],
       };
@@ -253,7 +290,12 @@ export const chartSections = {
       const index = indexOrgChart(chart);
       const found = index.sectionByEntry.get(sectionCatalogId.toLowerCase());
       if (found === undefined) throw new NotFoundError('No such section');
-      if (!found.department.editable || !found.section.editable || !found.section.shown) {
+      if (
+        !found.department.shown ||
+        !found.department.editable ||
+        !found.section.editable ||
+        !found.section.shown
+      ) {
         return notEditable('This section');
       }
       const actor = new Types.ObjectId(by);
@@ -279,15 +321,17 @@ export const chartSections = {
             action: 'update',
             changes: [{ field: 'stoppedRows', old: null, new: stopping.map((row) => row.code) }],
           },
-          ...stopping.map(
-            (row): AuditEntry => ({
-              entityRef: ref('section', row.id),
-              action: 'update',
-              changes: [{ field: 'status', old: 'active', new: 'inactive' }],
-            }),
-          ),
+          ...stopping.map((row): AuditEntry => ({
+            entityRef: ref('section', row.id),
+            action: 'update',
+            changes: [{ field: 'status', old: 'active', new: 'inactive' }],
+          })),
         ],
-        events: stopping.map((row): Event => ({ unitType: 'section', unitId: row.id, change: 'updated' })),
+        events: stopping.map((row): Event => ({
+          unitType: 'section',
+          unitId: row.id,
+          change: 'updated',
+        })),
       };
     });
     await flush(effects);

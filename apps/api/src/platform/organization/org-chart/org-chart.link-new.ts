@@ -27,7 +27,11 @@ const foldOf = (name: LocalizedString): string => {
   return ar !== '' ? ar : foldOrgUnitName(name.en);
 };
 
-const ref = (entityType: string, id: string) => ({ moduleId: 'platform', entityType, entityId: id });
+const ref = (entityType: string, id: string) => ({
+  moduleId: 'platform',
+  entityType,
+  entityId: id,
+});
 
 interface Entry {
   id: string;
@@ -37,7 +41,8 @@ interface Entry {
 }
 
 /** What to do with the new row: link to an entry, create one, or leave it as today. */
-type Decision = { kind: 'leave'; why: string } | { kind: 'link'; entryId: string } | { kind: 'create' };
+type Decision =
+  { kind: 'leave'; why: string } | { kind: 'link'; entryId: string } | { kind: 'create' };
 
 /**
  * The decision, pure. `others` are the live rows in scope OTHER than the new one; `linkedHere` says
@@ -57,7 +62,9 @@ export const decideLink = (
   if (others.some((other) => other.catalogId === null && foldOf(other.name) === fold)) {
     return { kind: 'leave', why: 'an unlinked row of that name already exists' };
   }
-  const matches = entries.filter((entry) => entry.status === 'active' && foldOf(entry.name) === fold);
+  const matches = entries.filter(
+    (entry) => entry.status === 'active' && foldOf(entry.name) === fold,
+  );
   if (matches.length > 1) return { kind: 'leave', why: 'the name matches more than one entry' };
   const [match] = matches;
   if (match !== undefined) {
@@ -82,26 +89,43 @@ const settle = async (audits: AuditEntry[]): Promise<void> => {
   if (audits.length > 0) await auditService.recordMany(audits);
 };
 
-export const linkNewDepartmentRow = async (doc: DepartmentDoc, by: string): Promise<DepartmentDoc> => {
+export const linkNewDepartmentRow = async (
+  doc: DepartmentDoc,
+  by: string,
+): Promise<DepartmentDoc> => {
   if (doc.catalogId != null) return doc;
   try {
     const audits = await unitOfWork(async (session): Promise<AuditEntry[]> => {
-      const [entries, rows] = await Promise.all([
-        DepartmentCatalogModel.find({ isDeleted: false }).session(session).lean().exec(),
-        DepartmentModel.find({ isDeleted: false, _id: { $ne: doc._id } }, { name: 1, catalogId: 1, branchId: 1 })
-          .session(session)
-          .lean()
-          .exec(),
-      ]);
+      // One after the other: a session cannot run operations in parallel.
+      const entries = await DepartmentCatalogModel.find({ isDeleted: false })
+        .session(session)
+        .lean()
+        .exec();
+      const rows = await DepartmentModel.find(
+        { isDeleted: false, _id: { $ne: doc._id } },
+        { name: 1, catalogId: 1, branchId: 1 },
+      )
+        .session(session)
+        .lean()
+        .exec();
       const decision = decideLink(
         doc,
         entries.map(toEntry),
-        rows.map((row) => ({ name: row.name, catalogId: row.catalogId == null ? null : String(row.catalogId) })),
+        rows.map((row) => ({
+          name: row.name,
+          catalogId: row.catalogId == null ? null : String(row.catalogId),
+        })),
         (entryId) =>
-          rows.some((row) => String(row.branchId) === String(doc.branchId) && String(row.catalogId) === entryId),
+          rows.some(
+            (row) =>
+              String(row.branchId) === String(doc.branchId) && String(row.catalogId) === entryId,
+          ),
       );
       if (decision.kind === 'leave') {
-        logger.info({ departmentId: String(doc._id), why: decision.why }, 'department left unlinked at creation');
+        logger.info(
+          { departmentId: String(doc._id), why: decision.why },
+          'department left unlinked at creation',
+        );
         return [];
       }
       const actor = new Types.ObjectId(by);
@@ -112,11 +136,24 @@ export const linkNewDepartmentRow = async (doc: DepartmentDoc, by: string): Prom
         // The row's own code: it has just claimed it among rows; `ux_code` refuses if an entry holds it,
         // and the step falls back to the unlinked row.
         await DepartmentCatalogModel.create(
-          [{ _id: entryId, code: doc.code, name: doc.name, description: null, status: 'active', createdBy: actor, updatedBy: actor }],
+          [
+            {
+              _id: entryId,
+              code: doc.code,
+              name: doc.name,
+              description: null,
+              status: 'active',
+              createdBy: actor,
+              updatedBy: actor,
+            },
+          ],
           { session },
         );
         // A department that exists from this moment has nobody in it to fill from (§7).
-        await JobPlaceFillModel.create([{ departmentCatalogId: entryId, at: new Date(), placed: 0 }], { session });
+        await JobPlaceFillModel.create(
+          [{ departmentCatalogId: entryId, at: new Date(), placed: 0 }],
+          { session },
+        );
         out.push({
           entityRef: ref('departmentCatalog', String(entryId)),
           action: 'create',
@@ -128,7 +165,11 @@ export const linkNewDepartmentRow = async (doc: DepartmentDoc, by: string): Prom
       } else {
         entryId = new Types.ObjectId(decision.entryId);
       }
-      await DepartmentModel.updateOne({ _id: doc._id }, { $set: { catalogId: entryId } }, { session }).exec();
+      await DepartmentModel.updateOne(
+        { _id: doc._id },
+        { $set: { catalogId: entryId } },
+        { session },
+      ).exec();
       out.push({
         entityRef: ref('department', String(doc._id)),
         action: 'update',
@@ -138,7 +179,10 @@ export const linkNewDepartmentRow = async (doc: DepartmentDoc, by: string): Prom
     });
     await settle(audits);
   } catch (error) {
-    logger.warn({ err: error, departmentId: String(doc._id) }, 'department left unlinked: linking at creation failed');
+    logger.warn(
+      { err: error, departmentId: String(doc._id) },
+      'department left unlinked: linking at creation failed',
+    );
   }
   return (await DepartmentModel.findById(doc._id).lean<DepartmentDoc>().exec()) ?? doc;
 };
@@ -147,10 +191,16 @@ export const linkNewSectionRow = async (doc: SectionDoc, by: string): Promise<Se
   if (doc.catalogId != null) return doc;
   try {
     const audits = await unitOfWork(async (session): Promise<AuditEntry[]> => {
-      const department = await DepartmentModel.findById(doc.departmentId).session(session).lean().exec();
+      const department = await DepartmentModel.findById(doc.departmentId)
+        .session(session)
+        .lean()
+        .exec();
       const departmentEntryId = department?.catalogId == null ? null : String(department.catalogId);
       if (departmentEntryId === null) return [];
-      const departmentEntry = await DepartmentCatalogModel.findById(departmentEntryId).session(session).lean().exec();
+      const departmentEntry = await DepartmentCatalogModel.findById(departmentEntryId)
+        .session(session)
+        .lean()
+        .exec();
       // The section catalog's own create refuses a stopped parent; so does this step (§5.6).
       if (departmentEntry === null || departmentEntry.status !== 'active') return [];
       const departmentRows = await DepartmentModel.find(
@@ -160,28 +210,43 @@ export const linkNewSectionRow = async (doc: SectionDoc, by: string): Promise<Se
         .session(session)
         .lean()
         .exec();
-      const [entries, rows] = await Promise.all([
-        SectionCatalogModel.find({ isDeleted: false, departmentCatalogId: new Types.ObjectId(departmentEntryId) })
-          .session(session)
-          .lean()
-          .exec(),
-        SectionModel.find(
-          { isDeleted: false, _id: { $ne: doc._id }, departmentId: { $in: departmentRows.map((row) => row._id) } },
-          { name: 1, catalogId: 1, departmentId: 1 },
-        )
-          .session(session)
-          .lean()
-          .exec(),
-      ]);
+      const entries = await SectionCatalogModel.find({
+        isDeleted: false,
+        departmentCatalogId: new Types.ObjectId(departmentEntryId),
+      })
+        .session(session)
+        .lean()
+        .exec();
+      const rows = await SectionModel.find(
+        {
+          isDeleted: false,
+          _id: { $ne: doc._id },
+          departmentId: { $in: departmentRows.map((row) => row._id) },
+        },
+        { name: 1, catalogId: 1, departmentId: 1 },
+      )
+        .session(session)
+        .lean()
+        .exec();
       const decision = decideLink(
         doc,
         entries.map(toEntry),
-        rows.map((row) => ({ name: row.name, catalogId: row.catalogId == null ? null : String(row.catalogId) })),
+        rows.map((row) => ({
+          name: row.name,
+          catalogId: row.catalogId == null ? null : String(row.catalogId),
+        })),
         (entryId) =>
-          rows.some((row) => String(row.departmentId) === String(doc.departmentId) && String(row.catalogId) === entryId),
+          rows.some(
+            (row) =>
+              String(row.departmentId) === String(doc.departmentId) &&
+              String(row.catalogId) === entryId,
+          ),
       );
       if (decision.kind === 'leave') {
-        logger.info({ sectionId: String(doc._id), why: decision.why }, 'section left unlinked at creation');
+        logger.info(
+          { sectionId: String(doc._id), why: decision.why },
+          'section left unlinked at creation',
+        );
         return [];
       }
       const actor = new Types.ObjectId(by);
@@ -216,7 +281,11 @@ export const linkNewSectionRow = async (doc: SectionDoc, by: string): Promise<Se
       } else {
         entryId = new Types.ObjectId(decision.entryId);
       }
-      await SectionModel.updateOne({ _id: doc._id }, { $set: { catalogId: entryId } }, { session }).exec();
+      await SectionModel.updateOne(
+        { _id: doc._id },
+        { $set: { catalogId: entryId } },
+        { session },
+      ).exec();
       out.push({
         entityRef: ref('section', String(doc._id)),
         action: 'update',
@@ -226,7 +295,10 @@ export const linkNewSectionRow = async (doc: SectionDoc, by: string): Promise<Se
     });
     await settle(audits);
   } catch (error) {
-    logger.warn({ err: error, sectionId: String(doc._id) }, 'section left unlinked: linking at creation failed');
+    logger.warn(
+      { err: error, sectionId: String(doc._id) },
+      'section left unlinked: linking at creation failed',
+    );
   }
   return (await SectionModel.findById(doc._id).lean<SectionDoc>().exec()) ?? doc;
 };

@@ -61,6 +61,10 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
   );
   // Where the job sits (ADR-038): the whole set, saved with the form — the chart writes the same rows.
   const [places, setPlaces] = useState<PlaceRow[]>((existing?.places ?? []).map(placeRowOf));
+  // The version this form was opened with. A background refetch (another tab, the org chart) must not
+  // advance it under the form's older fields: a save over a newer write is refused as stale instead of
+  // silently putting back the places it read.
+  const [loadedVersion] = useState(existing?.version ?? 0);
   const placesBody = places.map((place) => ({
     departmentCatalogId: place.departmentCatalogId,
     sectionCatalogId: place.sectionCatalogId,
@@ -126,7 +130,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
         navigate(`/organization/job-titles/${doc.id}`);
       } else {
         const body: UpdateJobTitle = {
-          version: existing.version,
+          version: loadedVersion,
           name: { ar: name.ar.trim(), en: name.en.trim() },
           jobGrade: jobGrade.trim(),
           status,

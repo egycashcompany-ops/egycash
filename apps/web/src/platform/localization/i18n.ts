@@ -3634,6 +3634,8 @@ const en: Record<string, string> = {
   'organization.chart.notLinked': 'Not linked',
   'organization.chart.notEditable': 'Not linked to the company list, so it cannot be edited here.',
   'organization.chart.stoppedInList': 'This department is stopped in the company list.',
+  'organization.chart.sectionLocked':
+    'Stopped in the company list, or filed there under another department, so it cannot be edited here.',
   'organization.chart.moveTo': 'Move to',
   'organization.chart.remove': 'Remove from here',
   'organization.chart.addJob': 'Add job',
@@ -18455,6 +18457,7 @@ const ar: Record<string, string> = {
   'organization.chart.notLinked': 'غير مربوطة',
   'organization.chart.notEditable': 'غير مربوط بقائمة الشركة، فلا يمكن تعديله من هنا.',
   'organization.chart.stoppedInList': 'الإدارة موقوفة في قائمة الشركة.',
+  'organization.chart.sectionLocked': 'موقوف في قائمة الشركة أو مسجّل فيها تحت إدارة أخرى، فلا يمكن تعديله من هنا.',
   'organization.chart.moveTo': 'نقل إلى',
   'organization.chart.remove': 'إزالة من هنا',
   'organization.chart.addJob': 'إضافة وظيفة',

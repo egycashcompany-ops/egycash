@@ -27,7 +27,9 @@ export type JobPlaceInput = z.infer<typeof JobPlaceInputSchema>;
  * Duplicates are allowed on the wire and merged by the server: a «نقل إلى» onto a place the job
  * already has is a removal of the moved one, not an error.
  */
-export const JobPlacesInputSchema = z.array(JobPlaceInputSchema).max(50);
+/** The most places one job may have — the job's update refuses more, and the one-time fill stores no more. */
+export const JOB_PLACES_MAX = 50;
+export const JobPlacesInputSchema = z.array(JobPlaceInputSchema).max(JOB_PLACES_MAX);
 
 const distinct = (ids: readonly string[]): boolean =>
   new Set(ids.map((id) => id.toLowerCase())).size === ids.length;

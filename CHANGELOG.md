@@ -11,6 +11,29 @@ its entry here in the same PR.
 
 ### Added
 
+- **Organization: «شجرة الهيكل التنظيمي», and a job's place in the structure.** «HR hierarchical chart …
+  عبارة عن شارت بالشركة كلها .. فيه الإدارات والأقسام والمسميات الوظيفية … ولما أختار إدارة بالضغط على
+  كارت يجيب تحتها الشارت بتاع هيكلها التنظيمي مع إمكانية تعديل الهيكل»; «عند إضافة وظيفة جديدة لا يتم
+  اختيار القسم التابع لها أو الإدارة … والأتنين يسمعوا فى بعض». Design: `docs/12-planning/org-chart-design.md`;
+  ADR-038 (job places, which supersedes ADR-031 in part).
+  - **The page** (`/organization/chart`, `department.view`): every company department as a tile, the
+    branch copies folded into one; picking one draws its sections side by side, each with its jobs, and
+    the jobs placed directly under the department in a first column. A department with no sections
+    hangs its jobs straight from it. Phones get the same content as an indented tree.
+  - **Edit mode** saves each gesture at once: add a section in the ticked branches, rename it, stop it,
+    add a job to a place, move it (drag, or «نقل إلى»), remove it from a place. Groups not linked to the
+    company list stay read-only and say so.
+  - **The job form and detail** get «مكانها في الهيكل التنظيمي»: a department, or one of its sections;
+    several allowed. The chart and the form write the very same rows through the job's own
+    version-checked update, so each shows what the other changed.
+  - **Places are descriptive:** they block nothing and count no headcount. A new department or section
+    row is linked to the company list when created (D-ORG3-5). At the first start, each department gets
+    the places where its holders sit, once; after that they are edited by hand.
+  - The server takes `GET /platform/org-chart`, `POST /platform/org-chart/sections`,
+    `PATCH /platform/org-chart/sections/:id` and `POST /platform/org-chart/sections/:id/stop`; job
+    create and update take `places` (at most 50). New collections `job_title_places` and
+    `job_title_place_fills`, with indexes built at boot.
+
 - **HR: «جاهزون للتعيين» gets the settings bar, with «مستندات الوظائف» and «المعينون».** «عاوز اعمل
   toggle switch في جاهزون للتعيين … بين مستندات الوظائف و حاجه اسمها المعينون … زي اللي موجود فيي
   الاعدادت فال hr»; «ملهاش دعوه باللي فالجدول». The bar sits above the ready-to-hire table, which is

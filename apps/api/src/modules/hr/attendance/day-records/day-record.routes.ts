@@ -7,6 +7,7 @@ import { Router } from 'express';
 import {
   ExportAttendanceQuerySchema,
   ListAttendanceDaysQuerySchema,
+  ListAttendanceSheetQuerySchema,
   RecomputeAttendanceDaysSchema,
 } from '@ecms/contracts';
 import { asyncHandler, validate } from '../../../../platform/web';
@@ -15,6 +16,7 @@ import { authorize } from '../../../../platform/rbac';
 import {
   exportAttendance,
   listAttendanceDays,
+  listAttendanceSheet,
   listMyAttendanceDays,
   recomputeAttendanceDays,
 } from './day-record.controller';
@@ -27,6 +29,16 @@ export const buildAttendanceDaysRouter = (): Router => {
     authenticate,
     validate({ query: ListAttendanceDaysQuerySchema }),
     asyncHandler(listMyAttendanceDays),
+  );
+  // Before `/` so the literal path is matched as one, and on this router because it answers the
+  // same question `attendance.view` already governs — a sheet is a day list that starts from the
+  // people rather than from the rows, not a second kind of access.
+  router.get(
+    '/sheet',
+    authenticate,
+    authorize('attendance.view'),
+    validate({ query: ListAttendanceSheetQuerySchema }),
+    asyncHandler(listAttendanceSheet),
   );
   router.get(
     '/',

@@ -16,3 +16,14 @@ export {
   type EnginePunch,
   type EngineShift,
 } from './derive-day';
+export {
+  resolveDisplayStatus,
+  type DisplayStatusInput,
+} from './resolve-display-status';
+export {
+  defaultPatternForBranch,
+  expectationsForDate,
+  type DayExpectation,
+  type ExpectationSubject,
+} from './expectations';
+export { patternFrom, type DefaultPatternSettings } from './default-pattern';

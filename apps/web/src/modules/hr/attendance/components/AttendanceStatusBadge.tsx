@@ -1,4 +1,4 @@
-// The eleven day statuses (§3) and the six regularization statuses (§7), toned the way Leave tones
+// The twelve day statuses (§3) and the six regularization statuses (§7), toned the way Leave tones
 // its own: a warning is something waiting on a human, a danger is a refusal or an absence, and a
 // neutral is a day nobody owes anything for.
 import {
@@ -18,6 +18,12 @@ const DAY_TONE: Record<AttendanceDayStatus, Tone> = {
   late: 'warning',
   earlyLeave: 'warning',
   lateAndEarly: 'warning',
+  // NOT a danger, and keeping it out of danger is the entire reason this status exists. «لم يحضر
+  // بعد» is a day still being lived: the person is expected later today and nothing has gone
+  // wrong yet. Toning it red would put an alarm beside every name every morning until each one
+  // scanned, which is both false and the fastest way to teach people to ignore the colour.
+  // Neutral by this file's own rule — nobody owes anything for it YET.
+  pending: 'neutral',
   absent: 'danger',
   onLeave: 'info',
   weekend: 'neutral',

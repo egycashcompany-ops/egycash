@@ -11,7 +11,9 @@ import {
   HrAttendanceSettingKeys,
   type AttendanceDayDto,
   type AttendanceFeedRow,
+  type AttendanceSheetRowDto,
   type ListAttendanceDaysQuery,
+  type ListAttendanceSheetQuery,
   type Paginated,
   type RecomputeAttendanceDays,
 } from '@ecms/contracts';
@@ -35,7 +37,8 @@ import { shiftRepository, type ShiftDoc } from '../shifts';
 import { shiftAssignmentService } from '../assignments';
 import { punchRepository } from '../punches';
 import { deriveDay, punchWindowFor, type EnginePunch, type EngineShift } from './derive-day';
-import { patternFrom } from './default-pattern';
+import { defaultPatternForBranch, expectationsForDate } from './expectations';
+import { resolveDisplayStatus } from './resolve-display-status';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 import { dayRecordRepository } from './day-record.repository';
 import { monthRange, toFeedRow } from './attendance-feed';
@@ -125,6 +128,145 @@ class DayRecordService {
   }
 
   /**
+   * THE DAILY SHEET (stage 2) — and it starts from EMPLOYEES, not from day rows.
+   *
+   * WHY IT IS NOT JUST `list()` WITH `from = to`. `listDays` filters day DOCUMENTS, so an employee
+   * the engine has written no row for is absent from the ANSWER rather than shown as absent from
+   * WORK. On this deployment that is not an edge case: the branch servers call `days/recompute`
+   * only for the employees who scanned, so the people a supervisor opens this screen to find — the
+   * ones who have not turned up — are precisely the ones with no row to find. The sheet was
+   * therefore reporting a near-perfect attendance rate every morning by construction.
+   *
+   * So the page is a page of employees, left-joined to whatever day rows exist, and the status on
+   * each line is RESOLVED (`resolveDisplayStatus`) rather than read off a row: «لم يحضر بعد»
+   * before the hour they were due, «غائب» after it. NOTHING IS WRITTEN. Minting rows to make
+   * people visible would mean 1,300 writes per branch for a date that is not over yet, every time
+   * somebody opened a screen — and each of those rows would then have to be corrected when the
+   * person walked in.
+   *
+   * ONE DATE, and the expectations for the whole page are resolved together
+   * (`expectationsForDate`): one assignment query, one shift query, and one settings read per
+   * distinct branch, instead of three per employee.
+   *
+   * KNOWN AND DELIBERATE: the page is the CURRENTLY employed, so a sheet for a date in the past
+   * does not list somebody who has since left the company. The sheet is a live operational screen;
+   * the day list and the CSV export remain the record for people who are no longer employed, and
+   * they are unchanged.
+   */
+  async sheet(
+    query: ListAttendanceSheetQuery,
+    scope?: ScopeSelector,
+  ): Promise<Paginated<AttendanceSheetRowDto>> {
+    const workDate = toDateOnly(query.date);
+    const branchFilter = query.branchId === undefined ? [] : query.branchId;
+    const sectionFilter = query.sectionId === undefined ? [] : query.sectionId;
+
+    let employees: EmployeeDoc[];
+    let meta: Paginated<AttendanceDayDoc>['meta'];
+
+    if (scope !== undefined && scope.scope === 'own') {
+      // Mirrors `list()`: own scope answers for the caller and never widens, and a filter that
+      // excludes them is answered with nothing rather than with themselves anyway.
+      const own = await employeeRepository.findByUserIdSystem(scope.userId);
+      if (own === null) throw new NotFoundError('no employee is linked to this login');
+      const excluded =
+        (branchFilter.length > 0 && !branchFilter.includes(String(own.employment.branchId))) ||
+        (sectionFilter.length > 0 &&
+          !sectionFilter.includes(String(own.employment.sectionId ?? '')));
+      employees = excluded ? [] : [own];
+      meta = {
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems: employees.length,
+        totalPages: employees.length === 0 ? 0 : 1,
+      };
+    } else {
+      const page = await employeeRepository.listEmployees({
+        filter: {
+          employed: true,
+          ...(branchFilter.length === 0 ? {} : { branchId: branchFilter }),
+          ...(sectionFilter.length === 0 ? {} : { sectionId: sectionFilter }),
+        },
+        page: query.page,
+        pageSize: query.pageSize,
+        sortBy: 'code',
+        sortDir: query.sortDir ?? 'asc',
+        ...(scope === undefined ? {} : { scope }),
+      });
+      employees = page.items;
+      meta = page.meta;
+    }
+
+    if (employees.length === 0) return { items: [], meta };
+
+    const ids = employees.map((employee) => String(employee._id));
+    // THE CALENDAR IS READ ONCE FOR THE WHOLE PAGE — it is organization-wide (the owner's ruling
+    // that the weekend stays global), so one answer serves every line. Without it a line with no
+    // row would read «لم يحضر بعد» on a Friday morning for the entire company.
+    const [dayRows, expectations, holidays, weekendDays] = await Promise.all([
+      AttendanceDayModel.find({
+        employeeId: { $in: employees.map((employee) => employee._id) },
+        workDate,
+        isDeleted: false,
+      })
+        .lean<AttendanceDayDoc[]>()
+        .exec(),
+      expectationsForDate(
+        employees.map((employee) => ({
+          id: String(employee._id),
+          branchId: String(employee.employment.branchId),
+        })),
+        workDate,
+      ),
+      workCalendarService.listHolidays(workDate, workDate),
+      workCalendarService.weekendDays(),
+    ]);
+    const dayByEmployee = new Map(dayRows.map((row) => [String(row.employeeId), row]));
+    const calendar: 'working' | 'weekend' | 'holiday' =
+      holidays.length > 0
+        ? 'holiday'
+        : weekendDays.includes(isoWeekday(workDate))
+          ? 'weekend'
+          : 'working';
+
+    // ONE reading of the clock for the whole page, so two lines of the same sheet cannot land on
+    // opposite sides of an expected end.
+    const now = new Date();
+    const today = cairoToday();
+
+    const items: AttendanceSheetRowDto[] = [];
+    for (const employeeId of ids) {
+      const employee = employees.find((e) => String(e._id) === employeeId) as EmployeeDoc;
+      const day = dayByEmployee.get(employeeId) ?? null;
+      const expectation = expectations.get(employeeId) ?? null;
+      const status = resolveDisplayStatus({
+        stored: day === null ? null : day.status,
+        workDate,
+        today,
+        expectedEnd: expectation === null ? null : expectation.end,
+        calendar,
+        now,
+      });
+      // null means "this person has no day here at all" — a past date the engine never concluded
+      // for them, most often because they were not employed on it. The line is left out rather
+      // than filled in with a claim nobody made.
+      if (status === null) continue;
+      items.push({
+        employeeId,
+        employeeCode: employee.code,
+        employeeName: employee.personal.fullNameAr,
+        branchId: String(employee.employment.branchId),
+        date: dateOnlyIso(workDate),
+        status,
+        expectedStartAt: expectation === null ? null : expectation.start.toISOString(),
+        expectedEndAt: expectation === null ? null : expectation.end.toISOString(),
+        day: day === null ? null : toAttendanceDayDto(day),
+      });
+    }
+    return { items, meta };
+  }
+
+  /**
    * Compute (or recompute) one employee-day. Returns the row, `'frozen'` when the §4 guard
    * refused, or null when the employee was not employed that day (no row — and a stale row from
    * an employment correction is removed so the answer stays exactly one or exactly none).
@@ -195,7 +337,8 @@ class DayRecordService {
     // expectation, whatever its source; the stored row wants `shiftId`, which must be null when no
     // shift document was involved — a day that says it belongs to a shift that was never assigned
     // would be a lie that the payroll feed then carries.
-    const expectation: EngineShift | null = shift ?? (await this.defaultPatternFor(employee));
+    const expectation: EngineShift | null =
+      shift ?? (await defaultPatternForBranch(String(employee.employment.branchId)));
 
     // THE PUNCHES ARE LOADED WHETHER OR NOT THERE IS AN EXPECTATION. This used to sit inside
     // `if (shift !== null)`, so an employee with no shift assignment had an empty punch list by
@@ -214,6 +357,11 @@ class DayRecordService {
       branchIdAtPunch: p.branchIdAtPunch === null ? null : String(p.branchIdAtPunch),
     }));
 
+    // ONE READING OF THE CLOCK for the whole computation, passed in rather than taken inside the
+    // engine: it decides `pending` versus `absent` for an expected day with no punches, and it
+    // stamps `computedAt` — two answers that must agree about when "now" was.
+    const now = new Date();
+
     const derived = deriveDay({
       workDate,
       employed: true,
@@ -223,10 +371,10 @@ class DayRecordService {
       shift: expectation,
       punches,
       employeeBranchId: String(employee.employment.branchId),
+      now,
     });
     if (derived === null) return null;
 
-    const now = new Date();
     const updated = await AttendanceDayModel.findOneAndUpdate(
       // The freeze guard rides INSIDE the atomic upsert: a row frozen between the read above and
       // this write is matched out, so the engine cannot overtake a concurrent freeze.
@@ -328,47 +476,6 @@ class DayRecordService {
       ],
     });
     return { computed, skippedFrozen };
-  }
-
-  /**
-   * The default working pattern for one employee, resolved against THEIR branch (1b).
-   *
-   * The subject is `{ userId: null, branchId: <their branch> }`, so the organization value is the
-   * company default and a branch row overrides it — the same mechanism the notification settings
-   * use, and the reason this needed no new model or screen.
-   *
-   * THE SWITCH IS READ FIRST AND ALONE. While the pattern is off — which is how it ships, and how
-   * it stays until somebody fills in the hours — this costs exactly one settings read, and that
-   * read is cached per subject. Only when it is on are the other five fetched, together.
-   */
-  private async defaultPatternFor(employee: EmployeeDoc): Promise<EngineShift | null> {
-    const subject = { userId: null, branchId: String(employee.employment.branchId) };
-    const enabled = await settingsService.resolve<boolean>(
-      HrAttendanceSettingKeys.DefaultPatternEnabled,
-      subject,
-    );
-    if (!enabled) return null;
-    const [startTime, endTime, breakMinutes, graceInMinutes, graceOutMinutes] = await Promise.all([
-      settingsService.resolve<string>(HrAttendanceSettingKeys.DefaultPatternStartTime, subject),
-      settingsService.resolve<string>(HrAttendanceSettingKeys.DefaultPatternEndTime, subject),
-      settingsService.resolve<number>(HrAttendanceSettingKeys.DefaultPatternBreakMinutes, subject),
-      settingsService.resolve<number>(
-        HrAttendanceSettingKeys.DefaultPatternGraceInMinutes,
-        subject,
-      ),
-      settingsService.resolve<number>(
-        HrAttendanceSettingKeys.DefaultPatternGraceOutMinutes,
-        subject,
-      ),
-    ]);
-    return patternFrom({
-      enabled,
-      startTime,
-      endTime,
-      breakMinutes,
-      graceInMinutes,
-      graceOutMinutes,
-    });
   }
 
   /** The nightly compute (§9): the previous Cairo day, at the configured hour, idempotent. */

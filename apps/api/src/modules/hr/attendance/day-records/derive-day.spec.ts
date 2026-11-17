@@ -44,6 +44,14 @@ const punch = (at: Date, over: Partial<EnginePunch> = {}): EnginePunch => ({
   ...over,
 });
 
+/**
+ * Two days after the test day, so every expectation under test has already ENDED by `now` and an
+ * expected day with no punches derives `absent` — the state this file has always asserted. The
+ * `pending` boundary is interesting enough to get its own describe block rather than to be smeared
+ * across the default, and it moves `now` explicitly.
+ */
+const AFTER_THE_FACT = new Date(Date.UTC(2026, 6, 17));
+
 const base = (over: Partial<DeriveDayInput> = {}): DeriveDayInput => ({
   workDate: DAY,
   employed: true,
@@ -53,6 +61,7 @@ const base = (over: Partial<DeriveDayInput> = {}): DeriveDayInput => ({
   shift: GENERAL,
   punches: [],
   employeeBranchId: BRANCH,
+  now: AFTER_THE_FACT,
   ...over,
 });
 
@@ -171,6 +180,68 @@ describe('no shift and no default pattern — report what the devices saw', () =
 // The window is where a pre-dawn punch is either attributed once or attributed twice, and the
 // difference is a twenty-hour working day on somebody's record. These are the properties that
 // make the shift-less case safe, proven without a database.
+describe('pending — an expected day nobody has concluded yet', () => {
+  // GENERAL ends at 17:00 Cairo, which is 14:00 UTC on this July day.
+  const end = shiftWindow(DAY, GENERAL).end;
+
+  it('is pending while the expected end is still ahead, and absent once it has passed', () => {
+    // The branch servers recompute all day long, so this is a row that really does get written at
+    // ten in the morning for somebody who has not scanned. Calling that an absence would put a
+    // false statement in the database about a person who is very likely to walk in at ten past.
+    expect(deriveDay(base({ now: at(10) }))?.status).toBe('pending');
+    expect(deriveDay(base({ now: at(18) }))?.status).toBe('absent');
+  });
+
+  it('turns over exactly AT the expected end, not a minute either side', () => {
+    expect(deriveDay(base({ now: new Date(end.getTime() - 1) }))?.status).toBe('pending');
+    expect(deriveDay(base({ now: end }))?.status).toBe('absent');
+    expect(deriveDay(base({ now: new Date(end.getTime() + 1) }))?.status).toBe('absent');
+  });
+
+  it('carries no quantities either way — it is the absence of information, not a measurement', () => {
+    const pending = deriveDay(base({ now: at(10) }));
+    expect(pending).toMatchObject({
+      status: 'pending',
+      firstInAt: null,
+      lastOutAt: null,
+      workedMinutes: 0,
+      lateMinutes: 0,
+      earlyLeaveMinutes: 0,
+      overtimeMinutes: 0,
+    });
+  });
+
+  it('never applies without an expectation: no shift and no pattern stays dayOff all day', () => {
+    // Nobody said when this person was due, so there is no hour for them to be "not yet in" by.
+    expect(deriveDay(base({ shift: null, now: at(10) }))?.status).toBe('dayOff');
+    expect(deriveDay(base({ shift: null, now: at(23) }))?.status).toBe('dayOff');
+  });
+
+  it('never outranks the calendar or a punch', () => {
+    // Every earlier branch of the resolution still wins: `pending` is only ever the answer to
+    // "expected, and nothing seen".
+    expect(deriveDay(base({ now: at(10), weekend: true }))?.status).toBe('weekend');
+    expect(deriveDay(base({ now: at(10), holiday: true }))?.status).toBe('holiday');
+    expect(
+      deriveDay(base({ now: at(10), leave: { leaveId: 'lv-1', halfDay: false } }))?.status,
+    ).toBe('onLeave');
+    expect(deriveDay(base({ now: at(10), punches: [punch(at(9))] }))?.status).toBe('checkedIn');
+  });
+
+  it('follows a night shift past midnight — the day is winnable until the shift ends', () => {
+    // NIGHT runs 22:00 → 06:00, so at 02:00 Cairo on the following morning the day that started
+    // on DAY is still in progress. A cut at midnight would mint an absence for somebody halfway
+    // through their shift.
+    const nightEnd = shiftWindow(DAY, NIGHT).end;
+    expect(deriveDay(base({ shift: NIGHT, now: new Date(nightEnd.getTime() - 60_000) }))?.status).toBe(
+      'pending',
+    );
+    expect(deriveDay(base({ shift: NIGHT, now: new Date(nightEnd.getTime() + 60_000) }))?.status).toBe(
+      'absent',
+    );
+  });
+});
+
 describe('punchWindowFor — no punch belongs to two days', () => {
   const dayAfter = (d: Date): Date => new Date(d.getTime() + 86_400_000);
 

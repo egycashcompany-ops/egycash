@@ -38,23 +38,27 @@ const attendanceDaySweep: readonly KeyPrefix[] = [
 ];
 
 /**
- * «لوحة تحكم الحركة» (D13): R1, the «الآن» tabs, and R2 while its period is still LIVE (a period
- * that ended — `past` — never moves, so no signal names it). A dashboard counts over every fleet
- * screen at once, so a busy morning would re-read it on every save: these two prefixes are NOT
- * swept like the rest — the provider hands them to the platform throttle (`throttle.ts`), which
- * marks them stale at once and refetches what is on screen at most once per window.
+ * «لوحة تحكم الحركة» (D13): R1, the «الآن» tabs, and R2 while its period is still LIVE. A period
+ * that ended — `past` — counts rows whose days are behind it, so only one signal names it: a
+ * fine's, because the period's drivers' fines carry their state AS OF NOW (a tick turns «قائمة»
+ * into «محصَّلة» even in «الشهر الماضي»). A dashboard counts over every fleet screen at once, so a
+ * busy morning would re-read it on every save: these prefixes are NOT swept like the rest — the
+ * provider hands them to the platform throttle (`throttle.ts`), which marks them stale at once and
+ * refetches what is on screen at most once per window.
  */
 const FLEET_DASHBOARD_NOW: KeyPrefix = ['fleet', 'dashboard', 'now'];
 const FLEET_DASHBOARD_LIVE: KeyPrefix = ['fleet', 'dashboard', 'period', 'live'];
+const FLEET_DASHBOARD_PAST: KeyPrefix = ['fleet', 'dashboard', 'period', 'past'];
 /** The rows whose writes move a figure of both reads (a «الآن» count and a period total). */
 const fleetDashboardBoth: readonly KeyPrefix[] = [FLEET_DASHBOARD_NOW, FLEET_DASHBOARD_LIVE];
-/** The rows whose writes move only a «الآن» figure (roster, licences, notices, fuel, violations). */
+/** The rows whose writes move only a «الآن» figure (roster, licences, notices, fuel cards). */
 const fleetDashboardNow: readonly KeyPrefix[] = [FLEET_DASHBOARD_NOW];
 
 /** Every prefix realtime refreshes through the throttle rather than the plain sweep. */
 export const THROTTLED_KEY_PREFIXES: readonly KeyPrefix[] = [
   FLEET_DASHBOARD_NOW,
   FLEET_DASHBOARD_LIVE,
+  FLEET_DASHBOARD_PAST,
 ];
 
 /**
@@ -87,6 +91,19 @@ const STALE_ONLY_LISTS: readonly { prefix: KeyPrefix; kinds: readonly string[] }
  * `[module, feature, 'list', { kind, … }]` (`shared/lib/query-keys.ts`).
  */
 export const isStaleOnlyKey = (queryKey: readonly unknown[]): boolean => {
+  // The Operations shipments history (`['operations', 'dayBoard', 'history', { from, to }]`) — a
+  // whole range of day boards, up to a year and five thousand shipments. It sits under the day
+  // board's key so the reader's own saves refresh it at once; another desk's single write only marks
+  // it stale, rather than re-reading the whole range for every viewer on every signal. Its deleted
+  // shipments (`[…, 'deleted', { from, to }]`, the «المحذوفة» icon's count) are the same range read
+  // over deleted rows, and follow the same rule; their dialog reads them afresh when it opens.
+  if (
+    queryKey[0] === 'operations' &&
+    queryKey[1] === 'dayBoard' &&
+    (queryKey[2] === 'history' || queryKey[2] === 'deleted')
+  ) {
+    return true;
+  }
   const params = queryKey[3];
   if (queryKey[2] !== 'list' || typeof params !== 'object' || params === null) return false;
   const kind = (params as { kind?: unknown }).kind;
@@ -245,21 +262,45 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['operations', 'vaultReport'],
     ['operations', 'securedDue'],
     ['operations', 'securedBacklog'],
+    // «شاشة استلام الخزينه» (Round 8) lives under the day board's key, which only the shipment
+    // topics sweep — and those need `operationsShipment.view`. A treasurer with the vault grant
+    // alone hears THIS topic (`operationsVault.view`), so a colleague's receive must turn the row
+    // green here too, as it emptied the old draft queue (`securedBacklog`) before.
+    ['operations', 'dayBoard', 'vaultQueue'],
+    // «صرف الخزينة» (Round 10) — every محصنة in the vault, under the day board's key too. A receipt
+    // puts a row on it, a cancelled receipt (`operations.custody.receiptCancelled`) or a release takes
+    // one off: all the vault's own topic, which is all a vault-only treasurer hears.
+    ['operations', 'dayBoard', 'securedDispatch'],
+    // «تسليم المحصنات» (Round 12) reads the distribution, under the day board's key: a receipt makes
+    // a shipment on a van one the vault can hand over, a hand-over takes it off. A vault-only
+    // treasurer hears only this topic (a placement Operations saves reaches them by the screen's
+    // own once-a-minute re-read).
+    ['operations', 'dayBoard', 'securedDistribution'],
   ],
   'operations.area': [['operations', 'areas']],
   'operations.bank': [
     ['operations', 'banks'],
     ['operations', 'bankBranches'],
-    ['operations', 'reportBanks'],
+    // «تقرير البنوك» (the vault roll-up, Round 14) prints each row's bank name as the server sent it —
+    // a bank renamed on another desk would keep its old name on the report until the next receipt.
+    ['operations', 'vaultReport'],
   ],
   'operations.bankBranch': [
     ['operations', 'bankBranches'],
     ['operations', 'banks'],
   ],
   'operations.currency': [['operations', 'currencies']],
+  // Round 20 — «أنواع التشغيل»: a type renamed, recoloured, archived or dragged on another desk. The
+  // crew board names a row's type from this list (the row holds only the id), so this one key is all
+  // a change of the catalog moves.
+  'operations.shiftType': [['operations', 'shiftTypes']],
 
   // ── HR ─────────────────────────────────────────────────────────────────────
-  'hr.employee': [['hr', 'employees'], ['employees']],
+  // The company ID card's keys ride here rather than on a topic of their own: a print, a receipt
+  // or a handover changes the employee (`idCard` sits on the document the list reads), and the
+  // card's own mutations invalidate all four of these locally — so a signal that ANOTHER HR user
+  // printed or handed over a card has to reach the same four.
+  'hr.employee': [['hr', 'employees'], ['employees'], ['hr', 'employeeIdCard']],
   'hr.employeeFile': [['hr', 'employeeFiles']],
   'hr.employeeLoan': [['hr', 'employeeLoans']],
   'hr.employeeLoanAttachment': [['hr', 'employeeLoans']],
@@ -323,6 +364,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],
+  'hr.insuranceJobTitle': [['hr', 'contracts', 'insuranceJobTitles']],
   'hr.contractType': [['hr', 'contracts']],
   'hr.costCenterAssignment': [
     ['hr', 'employeeCostCenters'],
@@ -410,7 +452,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // maintenance subtrees: every write that moves the alarm names it, here as in `fleet-queries.ts`,
   // or a board left open never hears of a reading somebody else recorded.
   // The dashboard's two live reads ride the rows whose writes move one of its figures (D13); the
-  // custody rows do not — tab 1's custody line is the custody hooks' own `['fleet', 'custody']`.
+  // custody rows do not — the overview's custody line is the custody hooks' own
+  // `['fleet', 'custody']`.
   'fleet.vehicle': [
     ['fleet', 'vehicles'],
     ['fleet', 'roster'],
@@ -452,13 +495,21 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ...fleetDashboardBoth,
   ],
   'fleet.accident': [['fleet', 'accidents'], ['fleet', 'vehicles'], ...fleetDashboardBoth],
-  'fleet.violation': [['fleet', 'violations'], ['fleet', 'drivers'], ...fleetDashboardNow],
+  // A fine moves «الآن»'s owed totals AND the period's drivers' fines (a tick turns «قائمة» into
+  // «محصَّلة»; a new fine or a moved day changes the period's count) — both reads, and a CLOSED
+  // period too: its fines' states are as of now, whatever range is chosen.
+  'fleet.violation': [
+    ['fleet', 'violations'],
+    ['fleet', 'drivers'],
+    ...fleetDashboardBoth,
+    FLEET_DASHBOARD_PAST,
+  ],
   'fleet.violationGrievance': [['fleet', 'violations'], ...fleetDashboardNow],
   // The board — and tab 4's paper counts, which read the same papers.
   'fleet.vehicleLicensing': [['fleet', 'licensing'], ...fleetDashboardNow],
   'fleet.notice': [['fleet', 'notices'], ...fleetDashboardNow],
   // A notice's scans (Files rows owned by `fleetNotice`) and a form's set-up both live on the
-  // notices screen and its editor (and in tab 1's «إخطارات ناقصة المرفقات»).
+  // notices screen and its editor (and in the overview's action centre, «إخطارات ناقصة المرفقات»).
   'fleet.fleetNotice': [['fleet', 'notices'], ...fleetDashboardNow],
   'fleet.noticeSettings': [['fleet', 'notices'], ...fleetDashboardNow],
   // A licence record is a settle candidate of the custody fund («تسوية العهدة») too.
@@ -523,6 +574,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'it.consumable': [['it', 'consumables']],
   // A memo's signed copy shows on the ledger's rows («موقّع» / «بانتظار التوقيع»).
   'it.consumableMemo': [['it', 'consumables']],
+  // FR-21 — a report filed on a phone, a photo added to it, or a wrong one deleted moves the vehicle
+  // checks dashboard's figures, its reports list and an open report: one subtree, as the delete's
+  // own `onSuccess` says.
+  'it.vehicleCheck': [['it', 'vehicleChecks']],
   'it.catalogItem': [
     ['it', 'catalogs'],
     ['it', 'priorities'],

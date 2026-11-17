@@ -23,6 +23,7 @@ import {
   PhoneNumberSchema,
   type Address,
   listQuery,
+  arabicName,
 } from '../common/index.js';
 import { UsernameSchema, type UserDto } from '../platform/users.js';
 import { type CredentialsDeliveryResultDto } from '../platform/auth.js';
@@ -71,8 +72,19 @@ export const EMPLOYEE_EXIT_TYPES = [
 export const EmployeeExitTypeSchema = z.enum(EMPLOYEE_EXIT_TYPES);
 export type EmployeeExitType = z.infer<typeof EmployeeExitTypeSchema>;
 
-/** How the employee entered the registry. Recruitment refs are null for `direct`. */
-export const EMPLOYEE_ORIGINS = ['recruitment', 'direct'] as const;
+/**
+ * How the employee entered the registry. Recruitment refs are null for `direct` and `external`.
+ *
+ * `external` is a person the company did NOT hire — «موظفين خارجيين .. يعني تعيين خارجى». They are
+ * in the registry for one reason: the company hands them things (IT custody above all), and
+ * everything that hands a person something names an employee. So they carry a name, a branch, a
+ * department, a job title and a code, and nothing else: no national ID, no salary, no login.
+ *
+ * THEY ARE NOT PAID. Anything that pays, or counts, the workforce must exclude them by this field
+ * — the payslip run does (see `payslip.service.ts`). A new batch that walks every employee has to
+ * decide the same question.
+ */
+export const EMPLOYEE_ORIGINS = ['recruitment', 'direct', 'external'] as const;
 export const EmployeeOriginSchema = z.enum(EMPLOYEE_ORIGINS);
 export type EmployeeOrigin = z.infer<typeof EmployeeOriginSchema>;
 
@@ -220,6 +232,27 @@ export type EmployeeInsurance = z.infer<typeof EmployeeInsuranceSchema>;
  */
 export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
 
+/**
+ * An EXTERNAL person's code — «زود فى الموظف الخارجى دا كود .. واسمح ان الكود يتكتب فيه حروف
+ * انجليزي». Latin letters, digits and a hyphen; 2 to 20 characters.
+ *
+ * It is a SEPARATE pattern on purpose, and `EMPLOYEE_CODE_PATTERN` is untouched. An employee's code
+ * is `<branch prefix><employee number>` and the system reads both halves out of it: the prefix
+ * names the hiring branch, and the digits after it ARE the global employee number, which is why
+ * `employeeCodeSerial` can turn a code back into a number and the counter can be raised past a
+ * typed one. Letting a letter into that shape would make both meaningless — `Number('EX01')` is
+ * `NaN` — and would do it to all 2,699 real codes, not just to external people.
+ *
+ * So an external code is just a NAME, unique among employees and nothing more. The person draws
+ * NO number from the company's counter: their `employeeNumber` is the code itself. A drawn number
+ * was never shown, yet it held the company code with that number — «02002943 … مسجَّل بالفعل
+ * للموظف C2». Nothing reads a branch or a number out of an external code, and nothing should:
+ * `findHighestNumberedCode` and `findHoldingNumber` skip external people by `origin` — an
+ * all-digit external code included — so `EX-2900` neither reaches the hint the ordinary
+ * registration screen shows nor holds employee number 2900.
+ */
+export const EXTERNAL_EMPLOYEE_CODE_PATTERN = /^[A-Za-z0-9-]{2,20}$/;
+
 /** The branch part of a code: its first three digits (`0702862` → `070`). */
 export const employeeCodeBranchPrefix = (code: string): string => code.slice(0, 3);
 
@@ -233,9 +266,26 @@ export const employeeCodeSerial = (code: string): number => Number(code.slice(3)
 /** A code with its branch hidden, the way the register screen states the last one: `xxx2862`. */
 export const maskEmployeeCodeBranch = (code: string): string => `xxx${code.slice(3)}`;
 
+/**
+ * The code an employee may be given by hand: the company's digits for everybody, and an external
+ * person's own name for an external person — «لما باجي أغير كود الموظف (تعيين خارجي) مش بيسمح
+ * بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط».
+ *
+ * Pure, so the change dialog and the service apply the same rule. The boundary below admits either
+ * shape because it cannot see whose code it is; the service, which can, holds each person to theirs.
+ */
+export const employeeCodePatternFor = (origin: EmployeeOrigin): RegExp =>
+  origin === 'external' ? EXTERNAL_EMPLOYEE_CODE_PATTERN : EMPLOYEE_CODE_PATTERN;
+
 export const ChangeEmployeeCodeSchema = z
   .object({
-    code: z.string().trim().regex(EMPLOYEE_CODE_PATTERN),
+    code: z
+      .string()
+      .trim()
+      .refine(
+        (code) => EMPLOYEE_CODE_PATTERN.test(code) || EXTERNAL_EMPLOYEE_CODE_PATTERN.test(code),
+        { message: 'an employee code is digits, or an external code of letters, digits and a hyphen' },
+      ),
     reason: z.string().trim().min(3).max(500),
     version: z.number().int().min(0),
   })
@@ -245,6 +295,38 @@ export type ChangeEmployeeCode = z.infer<typeof ChangeEmployeeCodeSchema>;
 /** Said back after a change: whether the employee's sign-in name followed the code. */
 export interface ChangeEmployeeCodeMeta {
   loginUsernameChanged: boolean;
+}
+
+/**
+ * «مسح نهائي» — permanently delete one employee.
+ *
+ * THE CODE IS TYPED BACK, and that is the whole body. A permanent delete has no undo, so the one
+ * thing the request carries is proof that whoever sent it knew WHICH person it was for: the server
+ * refuses unless `confirmCode` matches the employee's own code. An id alone — copied from a URL,
+ * left over in a tab, repeated by a script — is not enough to erase somebody.
+ */
+export const PurgeEmployeeSchema = z
+  .object({ confirmCode: z.string().trim().min(1).max(32) })
+  .strict();
+export type PurgeEmployee = z.infer<typeof PurgeEmployeeSchema>;
+
+/**
+ * What the erasure took, said back so it can be read once and never again.
+ *
+ * `namesScrubbed` and `keptCollections` are the half people do not expect: a gold receipt, a
+ * traffic violation and the consumables ledger are records in their own right and are NOT deleted
+ * with the person — their copy of the name is rewritten instead.
+ */
+export interface EmployeePurgeReportDto {
+  code: string;
+  fullNameAr: string;
+  rowsDeleted: number;
+  namesScrubbed: number;
+  filesRemoved: number;
+  /** Files whose bytes could not be removed; each needs a hand. Empty on a clean run. */
+  fileFailures: { id: string; reason: string }[];
+  /** Collections left standing on purpose, with the person's name rewritten on them. */
+  keptCollections: string[];
 }
 
 export const UpdateEmployeeInsuranceSchema = EmployeeInsuranceSchema.extend({
@@ -384,6 +466,36 @@ export const DirectRegisterEmployeeSchema = z
   .strict();
 export type DirectRegisterEmployee = z.infer<typeof DirectRegisterEmployeeSchema>;
 
+/**
+ * Registering an EXTERNAL person — «موظفين خارجيين .. يعني تعيين خارجى .. بالتالى ملهمش كود عندنا
+ * ولا بيانات .. محتاج أسجل بس أسمهم والإدارة والوظيفة بتاعتهم عشان أقدر أسلملهم عهده فى الـ IT».
+ *
+ * Deliberately the smallest payload in this file. It is NOT a hire: there is no national ID, no
+ * contact, no salary, no employment type, no probation and no login — asking for any of them would
+ * be asking the company to invent facts about somebody it did not employ.
+ *
+ * The branch is here although the owner listed only three fields, and it earns its place twice: the
+ * code's first three digits ARE the hiring branch (ADR-017), and the branch is how scope decides
+ * who may see the person — without it a branch-scoped IT user could not find the very person they
+ * are handing a laptop to. The code itself is never typed: the server composes it from that branch
+ * and the next number on the global counter, exactly as it does for anyone else.
+ */
+export const RegisterExternalEmployeeSchema = z
+  .object({
+    /**
+     * Typed by HR, not composed: an external person's code is the company's own name for them, and
+     * the screen states the last one issued underneath the box so the next can follow it.
+     */
+    code: z.string().trim().regex(EXTERNAL_EMPLOYEE_CODE_PATTERN),
+    fullNameAr: arabicName(z.string().trim().min(2).max(200)),
+    branchId: objectId(),
+    departmentId: objectId(),
+    sectionId: objectId().nullish(),
+    jobTitleId: objectId(),
+  })
+  .strict();
+export type RegisterExternalEmployee = z.infer<typeof RegisterExternalEmployeeSchema>;
+
 /** «تكتب تحته آخر كود موجود»: the code holding the highest number, any branch, any state. */
 export interface LastEmployeeCodeDto {
   /** Null on an empty system. */
@@ -487,11 +599,24 @@ export type LinkEmployeeUser = z.infer<typeof LinkEmployeeUserSchema>;
 
 // ── List ─────────────────────────────────────────────────────────────────────
 
+/** The ID card filter's two answers. */
+/**
+ * `received` — handed at least one card (HR confirmed the signed receipt); `never` — never handed
+ * one; `awaiting` — a card printed, its receipt not printed yet; `receipt` — card and receipt
+ * printed, waiting for the employee to sign and take the card.
+ */
+export const EMPLOYEE_ID_CARD_FILTERS = ['received', 'never', 'awaiting', 'receipt'] as const;
+export type EmployeeIdCardFilter = (typeof EMPLOYEE_ID_CARD_FILTERS)[number];
+
 export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
-  status: EmployeeStatusSchema.optional(),
+  /**
+   * Status, origin and the ID card are LISTS too — «هنخلي كل الفلترز multi». The picks of one are
+   * ORed. A single value still parses as a one-item list, so every existing caller is unchanged.
+   */
+  status: listQuery(EmployeeStatusSchema),
   /** true → only employed statuses (probation/active/onLeave/suspended); false → exited only. */
   employed: z.coerce.boolean().optional(),
-  origin: EmployeeOriginSchema.optional(),
+  origin: listQuery(EmployeeOriginSchema),
   applicantId: objectId().optional(),
   jobOfferId: objectId().optional(),
   branchId: listQuery(objectId()),
@@ -500,8 +625,12 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
    * eight ids — the screen folds them to one name and sends all eight. A single id still parses as
    * a one-item list, so every existing caller is unchanged.
    */
-  departmentId: listQuery(objectId()),
-  sectionId: listQuery(objectId()),
+  //
+  // Several picks of a company department expand to EVERY branch copy of each (eight per department
+  // here), so the cap is the job offers' own 500, not the default 50 — seven departments picked
+  // company-wide would otherwise be refused.
+  departmentId: listQuery(objectId(), 500),
+  sectionId: listQuery(objectId(), 500),
   /**
    * The seats asked about, ORed — like `branchId` above and for the same reason a consumer
    * eventually needs: a caller whose question is «people holding ANY of these titles» would
@@ -529,6 +658,8 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   address: z.string().trim().min(1).max(200).optional(),
   /** Partial match on the PRIMARY phone — the number every screen displays. */
   phone: z.string().trim().min(1).max(30).optional(),
+  /** The company ID card's states asked about, ORed (`EMPLOYEE_ID_CARD_FILTERS`). */
+  idCard: listQuery(z.enum(EMPLOYEE_ID_CARD_FILTERS)),
 }).strict();
 export type ListEmployeesQuery = z.infer<typeof ListEmployeesQuerySchema>;
 
@@ -768,10 +899,65 @@ export interface EmployeeDto {
   /** The officer/armed-security profile, or null. Redacted without `employee.viewOfficer`. */
   officer: EmployeeOfficerDto | null;
   officerVisible: boolean;
+  /** The company ID card's print counters. Optional only so older fixtures still type-check. */
+  idCard?: EmployeeIdCardSummaryDto;
   hiredAt: string;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * The company ID card for one employee. Two counts, on purpose: PRINTING is only paper — reprints,
+ * a jammed printer, a second try — so it never counts as a card. A card COUNTS when HR confirms the
+ * employee signed the receipt (إقرار الاستلام) and took it: `receivedCount`.
+ */
+export interface EmployeeIdCardSummaryDto {
+  /** Cards the employee has actually received — the number the list shows, filters and sorts on. */
+  receivedCount: number;
+  firstReceivedAt: string | null;
+  lastReceivedAt: string | null;
+  /** The user who confirmed the last handover. */
+  lastReceivedBy: string | null;
+  /** A card printed since the last handover, waiting for HR to confirm it was received. */
+  awaitingHandover: boolean;
+  /** When the receipt (إقرار الاستلام) for the waiting card was printed — the employee's turn. */
+  receiptPrintedAt: string | null;
+  /** Every print, reprints and spoiled ones included — for the record, never as a card. */
+  printCount: number;
+  firstPrintedAt: string | null;
+  lastPrintedAt: string | null;
+  /** The user who printed it last. */
+  lastPrintedBy: string | null;
+}
+
+/**
+ * Everything printed on the company ID card. The ONLY DTO that carries the national ID unmasked —
+ * it is printed on the card — behind `employee.editPersonal`, and every read is audited.
+ */
+export interface EmployeeIdCardDataDto {
+  employeeId: string;
+  code: string;
+  employeeNumber: string;
+  fullNameAr: string;
+  jobTitle: { ar: string; en: string } | null;
+  nationalId: string | null;
+  hasPhoto: boolean;
+  summary: EmployeeIdCardSummaryDto;
+}
+
+/** One print of the card, and — once HR confirmed it — its handover. */
+export interface EmployeeIdCardPrintDto {
+  id: string;
+  /** The print's own number: 1, 2, 3 … every print counted. */
+  printNumber: number;
+  printedAt: string;
+  printedBy: string | null;
+  withPhoto: boolean;
+  /** Set on the print that was handed over: the card's number among those RECEIVED (1, 2, …). */
+  receivedNumber: number | null;
+  receivedAt: string | null;
+  receivedBy: string | null;
 }
 
 /** Exited-employee match for a national id (the Rehire prompt / duplicate guard). */

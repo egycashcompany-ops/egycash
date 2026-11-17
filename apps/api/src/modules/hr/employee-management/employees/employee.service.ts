@@ -19,6 +19,7 @@ import {
   type CreateEmployeeLogin,
   type CreateUser,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeTimelineItemDto,
   type ListEmployeesQuery,
   type Paginated,
@@ -31,13 +32,16 @@ import {
   type FileDto,
   type EmployeeLoginProvisionDto,
   type JobValueSource,
+  ErrorCodes,
   employeeCodeBranchPrefix,
+  employeeCodePatternFor,
   employeeCodeSerial,
   type EmployeeCodeCheckDto,
   type JobTitlePlacementDto,
   type LastEmployeeCodeDto,
 } from '@ecms/contracts';
 import {
+  AppError,
   BusinessRuleError,
   ConflictError,
   NotFoundError,
@@ -63,6 +67,7 @@ import { applicantService } from '../../recruitment/applicants';
 import { resolveNationalIdCardCategoryId } from '../../recruitment/applicants/national-id-card.files';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { jobOfferService } from '../../recruitment/job-offers';
+import { type OfferTerms } from '../../recruitment/job-offers/job-offer.model';
 // File import (not the barrel) — the barrel would close an import cycle via the actions service.
 import { employeeActionRepository } from '../employee-actions/employee-action.repository';
 import { employeeRepository, type EmployeeListFilter } from './employee.repository';
@@ -107,7 +112,13 @@ const entryProbation = (
   }
   return {
     status: 'active',
-    probation: { endDate: null, confirmedAt: hiredAt, confirmedBy: confirmedBy, extendedTo: null, failed: false },
+    probation: {
+      endDate: null,
+      confirmedAt: hiredAt,
+      confirmedBy: confirmedBy,
+      extendedTo: null,
+      failed: false,
+    },
   };
 };
 
@@ -223,10 +234,80 @@ class EmployeeService {
    * Create an Employee from an Accepted Job Offer. Reads employment data only from the offer's
    * Accepted Snapshot and copies the personal data ONCE from the applicant's raw document (I5).
    */
+  /**
+   * A28 — the employee an accepted offer WOULD make, unsaved: what the candidate's papers print
+   * before the hire («عقد جديد»). Built exactly as `create` builds the record — the offer's accepted
+   * terms and the applicant's personal data — with the employee code kept for the candidate, if
+   * one is (else the code prints blank). Nothing is written.
+   */
+  async candidateFromOffer(
+    offerId: string,
+    scope: ScopeSelector,
+    opts: { employeeNumber: string | null; hiredAt: Date },
+  ): Promise<{ employee: EmployeeDoc; offerCode: string | null; applicantName: string; hiredEmployeeId: string | null }> {
+    const offer = await jobOfferService.acceptedOfferById(offerId);
+    if (offer === null || offer.acceptedSnapshot === null) {
+      throw new BusinessRuleError('only an accepted job offer can be printed for');
+    }
+    const applicant = await applicantService.getById(String(offer.applicantId), scope);
+    const employment = await this.employmentFromOffer(offer.acceptedSnapshot.terms);
+    const branch = await branchService.getById(String(employment.branchId));
+    const code = opts.employeeNumber === null ? '' : buildEmployeeCode(branch.code, opts.employeeNumber);
+    const employee = {
+      _id: new Types.ObjectId(),
+      employeeNumber: opts.employeeNumber ?? '',
+      code,
+      status: 'active',
+      origin: 'recruitment',
+      personal: personalFromApplicant(applicant),
+      insurance: null,
+      officer: null,
+      employment,
+      branchId: employment.branchId,
+      departmentId: employment.departmentId,
+      sectionId: employment.sectionId,
+      hiredAt: opts.hiredAt,
+    } as unknown as EmployeeDoc;
+    return {
+      employee,
+      offerCode: offer.code ?? null,
+      applicantName: offer.applicantName,
+      hiredEmployeeId: offer.hiredEmployeeId === null ? null : String(offer.hiredEmployeeId),
+    };
+  }
+
+  /** A28 — take the next employee number now, to keep for a candidate until the hire. */
+  async reserveEmployeeNumber(): Promise<string> {
+    return nextEmployeeNumber();
+  }
+
+  /** An accepted offer's terms as the employment they make — one builder for the hire and its papers. */
+  private async employmentFromOffer(t: OfferTerms): Promise<EmploymentDetails> {
+    const offered = t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency };
+    const starting = await salaryForAssignment(String(t.jobTitleId), offered);
+    return {
+      jobTitleId: t.jobTitleId,
+      departmentId: t.departmentId,
+      // The offer snapshot does not carry a section/position; kept null (future-proof, ADR-016/017).
+      sectionId: null,
+      branchId: t.branchId,
+      managerId: t.managerId,
+      employmentType: t.employmentType,
+      salary: starting.salary,
+      salarySource: starting.salarySource,
+      allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
+      benefits: [...t.benefits],
+      probationMonths: t.probationMonths,
+      startDate: t.startDate,
+    };
+  }
+
   async create(
     ctx: AuthContext,
     input: CreateEmployee,
     scope: ScopeSelector,
+    /** A28 — the employee number kept for the candidate when its papers were printed. */
+    opts: { employeeNumber?: string } = {},
   ): Promise<{ doc: EmployeeDoc; provisionedLogin: EmployeeLoginProvisionDto | null }> {
     const offer = await jobOfferService.acceptedOfferById(input.jobOfferId);
     if (offer === null) {
@@ -250,33 +331,21 @@ class EmployeeService {
     }
     await this.assertPersonNotEmployed(applicant.nationalId);
 
-    const t = snapshot.terms;
-    const offered = t.salary === null ? null : { amount: t.salary.amount, currency: t.salary.currency };
-    const starting = await salaryForAssignment(String(t.jobTitleId), offered);
-    const employment: EmploymentDetails = {
-      jobTitleId: t.jobTitleId,
-      departmentId: t.departmentId,
-      // The offer snapshot does not carry a section/position; kept null (future-proof, ADR-016/017).
-      sectionId: null,
-      branchId: t.branchId,
-      managerId: t.managerId,
-      employmentType: t.employmentType,
-      salary: starting.salary,
-      salarySource: starting.salarySource,
-      allowances: t.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
-      benefits: [...t.benefits],
-      probationMonths: t.probationMonths,
-      startDate: t.startDate,
-    };
+    const employment = await this.employmentFromOffer(snapshot.terms);
     const hiredAt = input.hiringDate ?? new Date();
-    const entry = entryProbation(hiredAt, employment.probationMonths, true, new Types.ObjectId(ctx.userId));
+    const entry = entryProbation(
+      hiredAt,
+      employment.probationMonths,
+      true,
+      new Types.ObjectId(ctx.userId),
+    );
 
     const branch = await branchService.getById(String(employment.branchId));
 
     // Atomic: allocate the permanent Global Employee Number and insert the record in one
     // transaction; the unique offer index guarantees no duplicate under concurrency.
     const doc = await unitOfWork(async (session) => {
-      const employeeNumber = await nextEmployeeNumber(session);
+      const employeeNumber = opts.employeeNumber ?? (await nextEmployeeNumber(session));
       const code = buildEmployeeCode(branch.code, employeeNumber);
       const hireEvent: EmployeeStatusEvent = {
         from: null,
@@ -358,6 +427,11 @@ class EmployeeService {
   /** «أخر كود موجود بأعتماد xxx0000» — the code holding the highest number, whatever its branch. */
   async lastCode(): Promise<LastEmployeeCodeDto> {
     return { code: await employeeRepository.findHighestNumberedCode() };
+  }
+
+  /** «أخر كود كام للموظفين الخارجيين دول» — the code of the external person registered last. */
+  async lastExternalCode(): Promise<LastEmployeeCodeDto> {
+    return { code: await employeeRepository.findLastExternalCode() };
   }
 
   /**
@@ -451,7 +525,11 @@ class EmployeeService {
     const derived = identity.nationalId !== undefined ? parseNationalId(identity.nationalId) : null;
     if (identity.nationalId !== undefined && derived === null) {
       throw new ValidationError([
-        { field: 'personal.identity.nationalId', code: 'INVALID', message: 'invalid Egyptian national ID' },
+        {
+          field: 'personal.identity.nationalId',
+          code: 'INVALID',
+          message: 'invalid Egyptian national ID',
+        },
       ]);
     }
     if (identity.nationalId !== undefined) {
@@ -554,7 +632,11 @@ class EmployeeService {
       employmentType: e.employmentType,
       salary: registered.salary,
       salarySource: registered.salarySource,
-      allowances: e.allowances.map((a) => ({ name: a.name, amount: a.amount, currency: a.currency })),
+      allowances: e.allowances.map((a) => ({
+        name: a.name,
+        amount: a.amount,
+        currency: a.currency,
+      })),
       benefits: [...e.benefits],
       probationMonths: e.probationMonths,
       startDate: e.startDate,
@@ -681,6 +763,180 @@ class EmployeeService {
   }
 
   /**
+   * Register an EXTERNAL person — «موظفين خارجيين .. يعني تعيين خارجى .. بالتالى ملهمش كود عندنا
+   * ولا بيانات .. محتاج أسجل بس أسمهم والإدارة والوظيفة بتاعتهم عشان أقدر أسلملهم عهده فى الـ IT».
+   *
+   * NOT A HIRE. The company did not employ this person; the registry holds them for one reason —
+   * everything that hands somebody something (IT custody above all) names an employee, so a person
+   * who is to receive custody has to be one.
+   *
+   * It therefore writes the least it can and invents nothing. No national ID, so the person guard
+   * and the live-applicant check have nothing to run on and are not called. No salary and no
+   * `salaryForAssignment`, which would copy the job title's pay onto somebody the company does not
+   * pay. No probation: the status is `active` from the first moment, because an external person has
+   * no probation to serve. No login is provisioned and no hire notification is sent — both reach a
+   * human, and neither has anything true to say here.
+   *
+   * The phone is `'N/A'`, which is not a placeholder invented here: the schema requires a phone,
+   * the company holds none, and those exact words are already stored for every employee the go-live
+   * migration loaded without a number (`employee.migration.ts`).
+   *
+   * The code is composed, never typed: the branch's code plus the next number on the global counter
+   * (ADR-017) — the same identity every other employee carries, which is what «واديله كود بردو»
+   * asks for and what lets custody, the profile and the card treat them like anyone else.
+   */
+  async registerExternal(
+    ctx: AuthContext,
+    input: RegisterExternalEmployee,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    void scope;
+    // The org coherence rules `registerDirect` applies, and for the same reasons: a department
+    // belongs to its branch, a section to its department, and a retired title is not handed out.
+    const department = await departmentService.getById(input.departmentId);
+    if (String(department.branchId) !== input.branchId) {
+      throw new BusinessRuleError('the department does not belong to the selected branch');
+    }
+    if (input.sectionId != null) {
+      const section = await sectionService.getById(input.sectionId);
+      if (String(section.departmentId) !== input.departmentId) {
+        throw new BusinessRuleError('the section does not belong to the selected department');
+      }
+    }
+    const title = await jobTitleService.getById(input.jobTitleId);
+    if (title.status !== 'active') {
+      throw new BusinessRuleError('the selected job title is not active');
+    }
+    await branchService.getById(input.branchId);
+    // The code is typed, so it is checked here rather than left to `ux_code` to reject: ANY state
+    // holds it, a deleted person's code included, and the message names who has it. The check is
+    // against the whole registry, not only external people — one code, one person, company-wide.
+    const taken = await employeeRepository.findByCodeAnyState(input.code);
+    if (taken !== null) {
+      throw new ConflictError(`the code ${input.code} is already held by employee ${taken.code}`);
+    }
+
+    const personal: EmployeePersonalData = {
+      fullNameAr: input.fullNameAr,
+      fullNameEn: null,
+      searchName: normalizeArabic(input.fullNameAr),
+      nationalId: null,
+      birthDate: null,
+      gender: null,
+      // The schema's own default. Nothing is asked, so nothing beyond it is claimed.
+      nationality: 'Egyptian',
+      placeOfBirth: null,
+      photoFileId: null,
+      maritalStatus: null,
+      religion: null,
+      nationalIdExpiry: null,
+      dependentsCount: null,
+      contact: {
+        primaryPhone: 'N/A',
+        secondaryPhone: null,
+        email: null,
+        preferredContactChannel: null,
+      },
+      officialAddress: null,
+      currentAddress: null,
+      military: null,
+      education: null,
+      experience: [],
+      drivingLicenses: [],
+      certifications: [],
+      references: [],
+    };
+
+    const employment: EmploymentDetails = {
+      jobTitleId: new Types.ObjectId(input.jobTitleId),
+      departmentId: new Types.ObjectId(input.departmentId),
+      sectionId: input.sectionId == null ? null : new Types.ObjectId(input.sectionId),
+      branchId: new Types.ObjectId(input.branchId),
+      managerId: null,
+      // The honest reading of somebody working here on somebody else's books.
+      employmentType: 'contract',
+      // Never `salaryForAssignment`: see the note above. `manual` because a human decided there is
+      // no pay here, which is exactly what that flag means — not that a job default was applied.
+      salary: null,
+      salarySource: 'manual',
+      allowances: [],
+      benefits: [],
+      probationMonths: 0,
+      startDate: new Date(),
+    };
+
+    const registeredAt = employment.startDate;
+    const doc = await unitOfWork(async (session) => {
+      // No company number is drawn: the person's number IS the code HR typed. A number drawn from
+      // the company's sequence was never shown, yet it held the company's code with that number
+      // («02002943 … مسجَّل بالفعل للموظف C2») — a company code taken by somebody who is not on the
+      // company's books. `migrateExternalEmployeeNumbers` frees the numbers drawn before this.
+      const code = input.code;
+      const employeeNumber = code;
+      const entryEvent: EmployeeStatusEvent = {
+        from: null,
+        to: 'active',
+        reason: null,
+        effectiveDate: registeredAt,
+        at: new Date(),
+        by: new Types.ObjectId(ctx.userId),
+        actionId: null,
+      };
+      return employeeRepository.create(
+        {
+          employeeNumber,
+          code,
+          status: 'active',
+          origin: 'external',
+          personal,
+          insurance: null,
+          officer: null,
+          probation: null,
+          exit: null,
+          // The registry's record of when this person appeared, not a term of employment.
+          employmentPeriods: [{ hiredAt: registeredAt, exitedAt: null, exitType: null }],
+          actionSeq: 1,
+          statusHistory: [entryEvent],
+          userId: null,
+          applicantId: null,
+          applicantCode: null,
+          jobRequisitionId: null,
+          jobOfferId: null,
+          offerCode: null,
+          acceptedOfferRevision: null,
+          employment,
+          branchId: employment.branchId,
+          departmentId: employment.departmentId,
+          sectionId: employment.sectionId,
+          hiredAt: registeredAt,
+        },
+        { by: ctx.userId, session },
+      );
+    });
+
+    // The engine stays the only writer of employment facts, and the row it writes carries
+    // `origin: 'external'` — so the history says how this person entered, not that they were hired.
+    await this.recordHireAction(doc, 'active', ctx.userId);
+    await auditService.record({
+      entityRef: entityRef(String(doc._id)),
+      action: 'create',
+      changes: [
+        { field: 'code', old: null, new: doc.code },
+        { field: 'origin', old: null, new: 'external' },
+        { field: 'status', old: null, new: 'active' },
+      ],
+    });
+    await emit(HrEmployeeEvents.EmployeeCreated, {
+      employeeId: String(doc._id),
+      code: doc.code,
+      applicantId: null,
+      jobOfferId: null,
+      origin: 'external',
+    });
+    return doc;
+  }
+
+  /**
    * Post-hire personal-data edits — plain audited updates, NOT personnel actions (I4).
    * Groups are replaced whole; a national-id change re-derives birth date/gender/place of
    * birth server-side and re-runs the person guard.
@@ -692,7 +948,9 @@ class EmployeeService {
     scope: ScopeSelector,
   ): Promise<EmployeeDoc> {
     const before = await employeeRepository.getById(id, scope);
-    const personal: EmployeePersonalData = JSON.parse(JSON.stringify(before.personal)) as EmployeePersonalData;
+    const personal: EmployeePersonalData = JSON.parse(
+      JSON.stringify(before.personal),
+    ) as EmployeePersonalData;
     // JSON round-trip stringifies dates — restore the Date fields we keep untouched below.
     const changes: { field: string; old: string | null; new: string | null }[] = [];
     const jsonOf = (v: unknown): string | null => (v == null ? null : JSON.stringify(v));
@@ -703,7 +961,11 @@ class EmployeeService {
         const derived = parseNationalId(idn.nationalId);
         if (derived === null) {
           throw new ValidationError([
-            { field: 'identity.nationalId', code: 'INVALID', message: 'invalid Egyptian national ID' },
+            {
+              field: 'identity.nationalId',
+              code: 'INVALID',
+              message: 'invalid Egyptian national ID',
+            },
           ]);
         }
         await this.assertPersonNotEmployed(idn.nationalId);
@@ -714,19 +976,33 @@ class EmployeeService {
         personal.placeOfBirth = derived.governorate;
       }
       if (idn.fullNameAr !== undefined && idn.fullNameAr !== before.personal.fullNameAr) {
-        changes.push({ field: 'personal.fullNameAr', old: before.personal.fullNameAr, new: idn.fullNameAr });
+        changes.push({
+          field: 'personal.fullNameAr',
+          old: before.personal.fullNameAr,
+          new: idn.fullNameAr,
+        });
         personal.fullNameAr = idn.fullNameAr;
       }
       if (idn.fullNameEn !== undefined && idn.fullNameEn !== before.personal.fullNameEn) {
-        changes.push({ field: 'personal.fullNameEn', old: before.personal.fullNameEn, new: idn.fullNameEn });
+        changes.push({
+          field: 'personal.fullNameEn',
+          old: before.personal.fullNameEn,
+          new: idn.fullNameEn,
+        });
         personal.fullNameEn = idn.fullNameEn;
       }
-      personal.searchName = normalizeArabic([personal.fullNameAr, personal.fullNameEn ?? ''].join(' '));
+      personal.searchName = normalizeArabic(
+        [personal.fullNameAr, personal.fullNameEn ?? ''].join(' '),
+      );
       if (idn.nationality !== undefined) personal.nationality = idn.nationality;
       // The photo is not edited here: it has its own endpoints (POST/DELETE /:id/photo), which check
       // the image, file it as this employee's and audit the change. A file id sent here is ignored.
       if (idn.maritalStatus !== undefined) {
-        changes.push({ field: 'personal.maritalStatus', old: before.personal.maritalStatus, new: idn.maritalStatus });
+        changes.push({
+          field: 'personal.maritalStatus',
+          old: before.personal.maritalStatus,
+          new: idn.maritalStatus,
+        });
         personal.maritalStatus = idn.maritalStatus;
       }
       if (idn.religion !== undefined) personal.religion = idn.religion;
@@ -734,14 +1010,19 @@ class EmployeeService {
       if (idn.dependentsCount !== undefined) personal.dependentsCount = idn.dependentsCount;
     }
     if (input.contact !== undefined) {
-      changes.push({ field: 'personal.contact', old: jsonOf(before.personal.contact), new: jsonOf(input.contact) });
+      changes.push({
+        field: 'personal.contact',
+        old: jsonOf(before.personal.contact),
+        new: jsonOf(input.contact),
+      });
       personal.contact = {
         primaryPhone: input.contact.primaryPhone ?? before.personal.contact.primaryPhone,
         secondaryPhone:
           input.contact.secondaryPhone === undefined
             ? before.personal.contact.secondaryPhone
             : input.contact.secondaryPhone,
-        email: input.contact.email === undefined ? before.personal.contact.email : input.contact.email,
+        email:
+          input.contact.email === undefined ? before.personal.contact.email : input.contact.email,
         preferredContactChannel:
           input.contact.preferredContactChannel === undefined
             ? before.personal.contact.preferredContactChannel
@@ -765,7 +1046,11 @@ class EmployeeService {
       personal.currentAddress = input.currentAddress ?? null;
     }
     if (input.military !== undefined) {
-      changes.push({ field: 'personal.military', old: jsonOf(before.personal.military), new: jsonOf(input.military) });
+      changes.push({
+        field: 'personal.military',
+        old: jsonOf(before.personal.military),
+        new: jsonOf(input.military),
+      });
       personal.military =
         input.military == null
           ? null
@@ -776,7 +1061,11 @@ class EmployeeService {
             };
     }
     if (input.education !== undefined) {
-      changes.push({ field: 'personal.education', old: jsonOf(before.personal.education), new: jsonOf(input.education) });
+      changes.push({
+        field: 'personal.education',
+        old: jsonOf(before.personal.education),
+        new: jsonOf(input.education),
+      });
       personal.education =
         input.education == null
           ? null
@@ -789,7 +1078,11 @@ class EmployeeService {
             };
     }
     if (input.experience !== undefined) {
-      changes.push({ field: 'personal.experience', old: `${String(before.personal.experience.length)} entries`, new: `${String(input.experience.length)} entries` });
+      changes.push({
+        field: 'personal.experience',
+        old: `${String(before.personal.experience.length)} entries`,
+        new: `${String(input.experience.length)} entries`,
+      });
       personal.experience = input.experience.map((x) => ({
         employer: x.employer,
         position: x.position ?? null,
@@ -799,15 +1092,30 @@ class EmployeeService {
       }));
     }
     if (input.drivingLicenses !== undefined) {
-      changes.push({ field: 'personal.drivingLicenses', old: jsonOf(before.personal.drivingLicenses), new: jsonOf(input.drivingLicenses) });
-      personal.drivingLicenses = input.drivingLicenses.map((d) => ({ class: d.class, expiry: d.expiry ?? null }));
+      changes.push({
+        field: 'personal.drivingLicenses',
+        old: jsonOf(before.personal.drivingLicenses),
+        new: jsonOf(input.drivingLicenses),
+      });
+      personal.drivingLicenses = input.drivingLicenses.map((d) => ({
+        class: d.class,
+        expiry: d.expiry ?? null,
+      }));
     }
     if (input.certifications !== undefined) {
-      changes.push({ field: 'personal.certifications', old: jsonOf(before.personal.certifications), new: jsonOf(input.certifications) });
+      changes.push({
+        field: 'personal.certifications',
+        old: jsonOf(before.personal.certifications),
+        new: jsonOf(input.certifications),
+      });
       personal.certifications = [...input.certifications];
     }
     if (input.references !== undefined) {
-      changes.push({ field: 'personal.references', old: `${String(before.personal.references.length)} entries`, new: `${String(input.references.length)} entries` });
+      changes.push({
+        field: 'personal.references',
+        old: `${String(before.personal.references.length)} entries`,
+        new: `${String(input.references.length)} entries`,
+      });
       personal.references = input.references.map((r) => ({
         name: r.name,
         relationship: r.relationship ?? null,
@@ -829,7 +1137,8 @@ class EmployeeService {
     }
     personal.photoFileId = before.personal.photoFileId;
     if (input.experience === undefined) personal.experience = before.personal.experience;
-    if (input.drivingLicenses === undefined) personal.drivingLicenses = before.personal.drivingLicenses;
+    if (input.drivingLicenses === undefined)
+      personal.drivingLicenses = before.personal.drivingLicenses;
     if (input.military === undefined) personal.military = before.personal.military;
 
     const updated = await employeeRepository.updateById(
@@ -891,7 +1200,11 @@ class EmployeeService {
       entityRef: entityRef(id),
       action: 'update',
       // Field names only — a wage bracket is not written into the audit trail in the clear.
-      changes: changed.map((field) => ({ field: `insurance.${field}`, old: '[redacted]', new: '[redacted]' })),
+      changes: changed.map((field) => ({
+        field: `insurance.${field}`,
+        old: '[redacted]',
+        new: '[redacted]',
+      })),
     });
     return updated;
   }
@@ -924,7 +1237,22 @@ class EmployeeService {
   ): Promise<{ doc: EmployeeDoc; loginUsernameChanged: boolean }> {
     const before = await employeeRepository.getById(id, scope);
     const code = input.code.trim();
-    if (code === before.code) throw new BusinessRuleError('the new code is the same as the current one');
+    // Each person is held to their own shape: an external person's code may carry letters, and
+    // nobody else's may — the company's code is a branch and a number, read back out of it.
+    if (!employeeCodePatternFor(before.origin).test(code)) {
+      throw new ValidationError([
+        {
+          field: 'code',
+          code: 'INVALID_FORMAT',
+          message:
+            before.origin === 'external'
+              ? 'an external code is letters, digits and a hyphen, 2 to 20 characters'
+              : 'an employee code is 3 branch digits then at least 4 digits of number',
+        },
+      ]);
+    }
+    if (code === before.code)
+      throw new BusinessRuleError('the new code is the same as the current one');
 
     const holder = await employeeRepository.findByCodeAnyState(code);
     if (holder !== null) {
@@ -933,12 +1261,18 @@ class EmployeeService {
 
     // The sign-in name follows only if it is still the code it was issued as. Checked BEFORE the
     // code is written, so a clash refuses the whole change rather than leaving half of it done.
-    const user = before.userId === null ? null : await userService.findByIdSystem(String(before.userId));
+    const user =
+      before.userId === null ? null : await userService.findByIdSystem(String(before.userId));
     const renameLogin = user !== null && (user.username ?? '') === before.code.toLowerCase();
     if (renameLogin) {
       const taken = await userService.findByUsernameOrEmail(code);
       if (taken !== null && String(taken._id) !== String(user._id)) {
-        throw new ConflictError(`the sign-in name ${code} is already used by another account`);
+        // Still a DUPLICATE, but of an ACCOUNT's sign-in name, not of a code: the detail is what
+        // lets the dialog say which, instead of telling HR another employee holds a code nobody does.
+        const message = `the sign-in name ${code} is already used by another account`;
+        throw new AppError(ErrorCodes.DUPLICATE, 409, message, {
+          details: [{ field: 'username', code: 'LOGIN_TAKEN', message }],
+        });
       }
     }
 
@@ -951,12 +1285,19 @@ class EmployeeService {
     let loginUsernameChanged = false;
     if (renameLogin) {
       try {
-        await userService.update(String(user._id), { username: code, version: user.__v }, ctx.userId);
+        await userService.update(
+          String(user._id),
+          { username: code, version: user.__v },
+          ctx.userId,
+        );
         loginUsernameChanged = true;
       } catch (error) {
         // The code is changed either way; a sign-in name that could not follow is reported, not
         // allowed to undo the change somebody asked for.
-        logger.warn({ err: error, employeeId: id, code }, 'employee code changed; sign-in name did not follow');
+        logger.warn(
+          { err: error, employeeId: id, code },
+          'employee code changed; sign-in name did not follow',
+        );
       }
     }
 
@@ -969,7 +1310,9 @@ class EmployeeService {
       changes: [
         { field: 'code', old: before.code, new: code },
         { field: 'codeChangeReason', old: null, new: input.reason.trim() },
-        ...(loginUsernameChanged ? [{ field: 'loginUsername', old: before.code.toLowerCase(), new: code }] : []),
+        ...(loginUsernameChanged
+          ? [{ field: 'loginUsername', old: before.code.toLowerCase(), new: code }]
+          : []),
       ],
     });
     return { doc: updated, loginUsernameChanged };
@@ -1040,6 +1383,7 @@ class EmployeeService {
       governorate: query.governorate,
       address: query.address,
       phone: query.phone,
+      idCard: query.idCard,
     };
   }
 
@@ -1063,7 +1407,9 @@ class EmployeeService {
     return files.map((f) => fileService.toDto(f) as FileDto);
   }
 
-  private async cardFiles(employeeId: string): Promise<Awaited<ReturnType<typeof fileService.list>>['items']> {
+  private async cardFiles(
+    employeeId: string,
+  ): Promise<Awaited<ReturnType<typeof fileService.list>>['items']> {
     const page = await fileService.list(
       {
         moduleId: 'hr',
@@ -1115,7 +1461,10 @@ class EmployeeService {
         });
       }
     } catch (error) {
-      logger.warn({ err: error, employeeId: String(employee._id) }, 'carrying the national-id card failed');
+      logger.warn(
+        { err: error, employeeId: String(employee._id) },
+        'carrying the national-id card failed',
+      );
     }
   }
 
@@ -1395,9 +1744,8 @@ class EmployeeService {
     // employees, so the timeline reaches the leave feature the same acyclic way it reaches the
     // Employee File (leave design §1.3; absent ⇒ degrade, BD-007).
     try {
-      const { leaveRequestRepository } = await import(
-        '../../leave-management/leave-requests/leave-request.repository'
-      );
+      const { leaveRequestRepository } =
+        await import('../../leave-management/leave-requests/leave-request.repository');
       const leave = await leaveRequestRepository.listRequests(
         { page: 1, pageSize: 100, employeeId: id },
         undefined,
@@ -1800,13 +2148,17 @@ class EmployeeService {
     const ending = await employeeRepository.findProbationEndingSystem(from, to);
     for (const employee of ending) {
       const recipients = new Set<string>();
-      if (employee.employment.managerId !== null) recipients.add(String(employee.employment.managerId));
+      if (employee.employment.managerId !== null)
+        recipients.add(String(employee.employment.managerId));
       if (employee.createdBy !== null) recipients.add(String(employee.createdBy));
       const deadline = employee.probation?.extendedTo ?? employee.probation?.endDate ?? null;
       await notificationsService
         .notify({
           template: HrEmployeeTemplates.ProbationEnding,
-          to: recipients.size > 0 ? { userIds: [...recipients] } : { permission: 'employee.manageActions', scope: 'organization' },
+          to:
+            recipients.size > 0
+              ? { userIds: [...recipients] }
+              : { permission: 'employee.manageActions', scope: 'organization' },
           data: {
             employeeCode: employee.code,
             endDate: deadline === null ? '' : deadline.toISOString(),

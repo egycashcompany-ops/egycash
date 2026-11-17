@@ -29,8 +29,17 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
+import {
+  resetNationalIdOcrProvider,
+  setNationalIdOcrProvider,
+} from '../../src/modules/hr/recruitment/applicants/national-id-ocr';
 
 const PASSWORD = 'Str0ng#Pass!';
+/** A one-pixel PNG — small, real, and the right MIME for a slot that takes a photograph. */
+const ONE_PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
@@ -391,10 +400,42 @@ describe('a candidate applies through a published link, signed in to nothing', (
     expect((publicForm.body as { data: { fields: unknown[] } }).data.fields.length).toBe(4);
   });
 
+  /** Upload one photo through the link, the way the page does, and return the id it answers with. */
+  const uploadThroughLink = async (filename: string): Promise<string> => {
+    const res = await request(app)
+      .post(`/api/v1/hr/public/apply/${token}/national-id-card`)
+      .attach('file', ONE_PIXEL_PNG, { filename, contentType: 'image/png' });
+    expect(res.status).toBe(201);
+    return (res.body as { data: { fileId: string } }).data.fileId;
+  };
+
   it('accepts the submission — HTTP 200', async () => {
+    // WHAT A REAL CANDIDATE HANDS OVER NOW, and all of it goes up through the link FIRST so the
+    // submission only names ids: the service insists every photo came through this source's own
+    // live link rather than from anywhere else.
+    //
+    //  · both sides of the card — the application is refused outright without them;
+    //  · a military certificate, because this candidate's National ID says male.
+    const frontFileId = await uploadThroughLink('card-front.png');
+    const backFileId = await uploadThroughLink('card-back.png');
+    const militaryServiceFileId = await uploadThroughLink('military.png');
+
+    // AND THE CARD IS READ, not trusted. The submission is accepted only when the reader gets the
+    // number off the photo AND it matches what the candidate typed, so a one-pixel PNG needs the
+    // reader stubbed to the number below — there is no sidecar in a test run, and without a stub
+    // every public application is refused with `ID_OCR_UNAVAILABLE`. The stub returns the typed
+    // number: this test is about the submission being accepted, and the mismatch and unreadable
+    // refusals are each covered on their own elsewhere.
+    setNationalIdOcrProvider({
+      id: 'integration-stub',
+      available: true,
+      extract: () => Promise.resolve({ nationalId: { value: '28805152101234', confidence: 'high' } }),
+    });
+
     const submit = await request(app)
       .post(`/api/v1/hr/public/apply/${token}`)
       .send({
+        nationalIdCard: { frontFileId, backFileId },
         // Every question the default form asks, all four required — a partial answer is a 400
         // about the missing ones, which is the form working, not the bug this suite guards.
         answers: {
@@ -403,9 +444,18 @@ describe('a candidate applies through a published link, signed in to nothing', (
           primaryPhone: '01012345678',
           educationLevel: 'bachelor',
         },
+        // «عرفتنا منين» is answered too, because the page always answers it: the dropdown opens
+        // pre-selected on the source the link belongs to, so a real submission through this link
+        // carries exactly this. Omitting it is a 400 naming `heardFrom`, which is the same
+        // "partial answer" case as above rather than anything this suite is guarding.
+        heardFrom: { sourceId: publishedSource },
+        documents: { militaryService: militaryServiceFileId },
       });
     submitStatus = submit.status;
     envelope = submit.body as typeof envelope;
+    // Put the real reader back immediately: it is process-wide, and a stub left in place would
+    // quietly accept any card photo in every test that runs after this one.
+    resetNationalIdOcrProvider();
     expect(submitStatus).toBe(200);
   });
 

@@ -59,12 +59,14 @@ class ItConsumableRepository extends BaseRepository<ItConsumableDoc> {
   /**
    * The store's item of this name, other than `exceptId` — the readable half of `ux_branch_name`:
    * the index is what holds under two people adding the same item at once, this is what lets the
-   * refusal say which name it was.
+   * refusal say which name it was. The name is matched EXACTLY, as the index compares it. A
+   * transfer reads the receiving store's item inside its transaction (`session`).
    */
   async findByBranchAndName(
     branchId: Types.ObjectId,
     name: string,
     exceptId?: Types.ObjectId,
+    session?: ClientSession,
   ): Promise<ItConsumableDoc | null> {
     return this.model
       .findOne({
@@ -73,6 +75,7 @@ class ItConsumableRepository extends BaseRepository<ItConsumableDoc> {
         isDeleted: false,
         ...(exceptId === undefined ? {} : { _id: { $ne: exceptId } }),
       })
+      .session(session ?? null)
       .lean<ItConsumableDoc>()
       .exec();
   }

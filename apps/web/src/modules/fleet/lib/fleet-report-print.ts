@@ -66,6 +66,13 @@ export interface FleetReport {
    */
   totalRow?: ReportTotal;
   /**
+   * The bottom line laid out ACROSS the columns — one cell per `header` entry, the serial cell left
+   * empty — for a table whose total has a figure under every column: the Operations reports'
+   * «الإجمالي» (`operations/lib/report-export.ts`), as their screens draw it. Inside the border,
+   * bold, like `totalRow`; a sheet uses one of the three ways of saying its total, never two.
+   */
+  totalLine?: readonly string[];
+  /**
    * Who signs it. Left out on a register nobody signs — the IT custody register's print — and the
    * block goes with it: two «التوقيع /» lines with nobody over them would read as a form somebody
    * forgot to fill in.
@@ -120,6 +127,10 @@ const pageHtml = (doc: FleetReport): string => {
     doc.totalRow === undefined
       ? ''
       : `<tr class="trow"><th colspan="${String(span)}">${esc(doc.totalRow.label)}</th><td>${esc(doc.totalRow.value)}</td></tr>`;
+  const totalLine =
+    doc.totalLine === undefined
+      ? ''
+      : `<tr class="trow"><td class="ser"></td>${doc.totalLine.map((cell) => `<td>${esc(cell)}</td>`).join('')}</tr>`;
   const totals = doc.totals
     .map(
       (total) =>
@@ -137,7 +148,7 @@ const pageHtml = (doc: FleetReport): string => {
   ${
     doc.rows.length === 0
       ? `<p class="empty">${esc(doc.emptyLabel)}</p>`
-      : `<table><thead><tr>${head}</tr></thead><tbody>${body}${totalRow}</tbody></table>`
+      : `<table><thead><tr>${head}</tr></thead><tbody>${body}${totalRow}${totalLine}</tbody></table>`
   }
   ${totals === '' ? '' : `<div class="totals">${totals}</div>`}
   ${

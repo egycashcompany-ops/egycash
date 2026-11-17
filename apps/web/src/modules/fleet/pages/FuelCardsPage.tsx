@@ -22,6 +22,8 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { formatDate } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import {
   useAllFuelCards,
   useAllVehicles,
@@ -47,9 +49,9 @@ import {
   NoCardsBody,
   PATH,
   StockSection,
-  VehicleFuelGroup,
   expiryState,
 } from '../components/FuelCardBoard';
+import { FuelCarGroup } from '../components/FuelCarGroup';
 import { groupCardNumber } from '../lib/fuel-card-number';
 import { saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport } from '../lib/fleet-report-print';
@@ -62,6 +64,7 @@ const REMEMBERED_FILTERS = [
   'number',
   'expiresBefore',
   'expiresFrom',
+  'branch',
 ] as const;
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 
@@ -80,6 +83,10 @@ export const FuelCardsPage = (): JSX.Element => {
   // The other side of the window: the dashboard's «expiring» figure starts TOMORROW, so the cards
   // already expired (its own red line) are not counted twice.
   const expiresFrom = sp.get('expiresFrom') ?? '';
+  // «الفرع» a dashboard figure was counted over: the branch of each card's CURRENT car (a car
+  // deleted since by its last branch). The server narrows; a card on no car is in no branch, so the
+  // stock below is empty under it.
+  const branchIds = readList(sp, 'branch');
   const paramsKey = sp.toString();
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -104,6 +111,7 @@ export const FuelCardsPage = (): JSX.Element => {
       number: number || undefined,
       expiresFrom: bounds.from,
       expiresBefore: bounds.before,
+      branchIds: branchIds.length > 0 ? branchIds : undefined,
     };
   }, [paramsKey]);
   const { data, isLoading, isError, error, refetch } = useAllFuelCards(filters);
@@ -111,7 +119,7 @@ export const FuelCardsPage = (): JSX.Element => {
   const noCarCards = useMemo(() => cards.filter((card) => card.vehicleId === null), [cards]);
   // Every active car of the registry has its block — one with no card says so and offers the
   // stock. A filter on the card shows only the cars whose cards answer it; a filter on the car,
-  // the cars chosen, with or without cards.
+  // the cars chosen, with or without cards; a branch, the cars of that branch only.
   const vehicles = useAllVehicles({ anyStatus: true });
   const carGroups = useMemo(() => {
     const byCar = new Map<
@@ -135,11 +143,15 @@ export const FuelCardsPage = (): JSX.Element => {
     if (!cardFiltered) {
       for (const vehicle of vehicles.data?.items ?? []) {
         if (byCar.has(vehicle.id)) continue;
+        const inBranch =
+          branchIds.length === 0 ||
+          (vehicle.branchId !== null && branchIds.includes(vehicle.branchId));
         const chosen =
-          vehicleCodes.length === 0
+          inBranch &&
+          (vehicleCodes.length === 0
             ? vehicle.status === 'active'
             : // Whitespace and Latin case aside: «فورتشنر 2» is the stored «فورتشنر 2 ».
-              vehicleCodes.some((code) => sameVehicleCode(code, vehicle.code));
+              vehicleCodes.some((code) => sameVehicleCode(code, vehicle.code)));
         if (chosen) byCar.set(vehicle.id, { vehicleId: vehicle.id, code: vehicle.code, cards: {} });
       }
     }
@@ -151,7 +163,7 @@ export const FuelCardsPage = (): JSX.Element => {
         numbered(a.code) - numbered(b.code) ||
         a.code.localeCompare(b.code, 'en', { numeric: true }),
     );
-  }, [cards, vehicles.data, cardFiltered, vehicleCodes.join(',')]);
+  }, [cards, vehicles.data, cardFiltered, vehicleCodes.join(','), branchIds.join(',')]);
 
   // «المعاد اللى عاوز احطه قبل انتهاء الفيزا عشان الانذار» — from Fleet settings.
   const settings = useMySettings();
@@ -436,7 +448,7 @@ export const FuelCardsPage = (): JSX.Element => {
         {/* «الفلاتر … تكون زى شاشه السيارات»: the same dark bar, one row on a computer. */}
         <div className={DARK_FILTER_BAR}>
           <FilterBar
-            hasActiveFilters={vehicleCodes.length > 0 || cardFiltered}
+            hasActiveFilters={vehicleCodes.length > 0 || cardFiltered || branchIds.length > 0}
             onClear={() => {
               setCustomDate(false);
               patch({
@@ -445,6 +457,7 @@ export const FuelCardsPage = (): JSX.Element => {
                 number: null,
                 expiresBefore: null,
                 expiresFrom: null,
+                branch: null,
               });
             }}
           >
@@ -565,6 +578,24 @@ export const FuelCardsPage = (): JSX.Element => {
                 />
               </FilterWithIcon>
             )}
+            {/* «الفرع» a dashboard link narrowed the cards to — shown only while it does, so a
+                remembered one is never a filter with nothing on the bar saying so; it comes off
+                here or with «مسح». `BranchFilterSelect` takes no width of its own. */}
+            {branchIds.length > 0 && (
+              <div data-fuel-branch-filter={branchIds.join(',')} className="contents">
+                <FilterWithIcon
+                  icon={FILTER_ICON.branch}
+                  tone="text-violet-600 dark:text-violet-300"
+                  className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+                >
+                  <BranchFilterSelect
+                    clearable
+                    value={branchIds}
+                    onChange={(ids) => patch({ branch: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+              </div>
+            )}
           </FilterBar>
         </div>
 
@@ -589,7 +620,7 @@ export const FuelCardsPage = (): JSX.Element => {
               const mayAdd = can('fleetFuelCard.create');
               const mayLink = can('fleetFuelCard.edit');
               return (
-                <VehicleFuelGroup
+                <FuelCarGroup
                   key={group.vehicleId}
                   vehicleId={group.vehicleId}
                   code={group.code}
@@ -644,7 +675,7 @@ export const FuelCardsPage = (): JSX.Element => {
                       );
                     })
                   )}
-                </VehicleFuelGroup>
+                </FuelCarGroup>
               );
             })}
             {noCarCards.length > 0 && (

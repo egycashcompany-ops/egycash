@@ -418,7 +418,7 @@ export const CardTag = ({ line }: { line: FleetFuelReconcileLineDto }): JSX.Elem
       >
         {line.card.name}
       </span>
-      {line.card.vehicleCode !== null && <CodeChip code={line.card.vehicleCode} />}
+      {line.card.vehicleCode !== null && <CodeChip code={line.card.vehicleCode} card={false} />}
       <span className="text-xs text-slate-500 dark:text-slate-400">
         {t(`${R}colDiff`)}{' '}
         <b

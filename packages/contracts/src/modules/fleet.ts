@@ -1417,6 +1417,23 @@ export interface FleetMaintenanceAlarmDto {
   newestReading: FleetAlarmChainPointDto | null;
 }
 
+/**
+ * One car's last odometer reading — the car card's «آخر قراءة عداد» («تمام وزود اخر عداد»).
+ *
+ * `GET /fleet/odometer/latest-readings` (`fleetOdometer.view` or `fleetMaintenance.view`): one
+ * row for EVERY registry car (not soft-deleted, ANY status) that has a reading on file. The alarm
+ * projection covers active cars only, so a car taken out of service after an accident would have
+ * read «—» there although its log has readings. The figure is the alarm's own (`latestReadings`):
+ * `latestReading`/`latestReadingAt` here equal the alarm row's for an active car.
+ */
+export interface FleetVehicleLatestReadingDto {
+  vehicleId: string;
+  /** How far the car's top reading got — `FleetMaintenanceAlarmDto.latestReading`. */
+  latestReading: number;
+  /** The day of `latestReading`, as the alarm row carries it. */
+  latestReadingAt: string;
+}
+
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────
 
 export interface FleetMaintenanceVisitDto {
@@ -1440,6 +1457,16 @@ export interface FleetMaintenanceVisitDto {
    * from the old book for a car the registry never had.
    */
   operationId: string | null;
+  /**
+   * The CAR's «الفرع» (`vehicle.branchId`) — «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى
+   * فيه الصيانه».
+   *
+   * Read off the registry for the row like `operationId`, so it names the branch the car is
+   * assigned to TODAY — never the branch whose workshop it went to, and the same branch the
+   * `branchIds` filter matches. A soft-deleted car keeps its branch. `null` when the car has none
+   * on file, and on a visit kept from the old book for a car the registry never had.
+   */
+  branchId: string | null;
   /** The drivers' NAMES as the old book wrote them, where HR has no employee — see the odometer log. */
   driverInName: string | null;
   driverOutName: string | null;
@@ -1584,10 +1611,19 @@ export const UpdateFleetMaintenanceSchema = z
     exitOdometer: z.number().int().min(0).nullish().optional(),
     /**
      * Correctable, like the rest of the check-in facts this endpoint edits. A required field with
-     * no correction path turns one mistyped driver into a permanent one; the check-OUT driver is
-     * deliberately not here, because changing it belongs to reopening and closing the visit again.
+     * no correction path turns one mistyped driver into a permanent one.
      */
     driverInEmployeeId: objectId().optional(),
+    /**
+     * «سائق الخروج», correctable too — «عاوز اقدر اعدل السواق التانى اللى هو سائق الخروج». Before,
+     * fixing it meant reopening the visit, which also wipes the exit date, the exit counter and
+     * the custody, and checking it out again.
+     *
+     * Only on a CLOSED visit: an open one has no exit yet, and check-out sets it (400 on an open
+     * visit). A correction, never a clear, as for the entry driver: `null` is refused. The server
+     * checks the employee only when the value differs from the one stored.
+     */
+    driverOutEmployeeId: objectId().optional(),
     takenInByEmployeeId: objectId().nullish().optional(),
     notes: z.string().trim().min(1).max(1000).nullish().optional(),
     version: z.number().int().min(0),
@@ -2039,18 +2075,28 @@ export interface FleetAccidentDto {
 }
 
 /**
- * «اختار عربيه و جمبها مبلغ» — take `amount` out of another car's remaining and add it to the file
+ * «اختار عربيه و جمبها مبلغ» — take `amount` out of other cars' remaining and add it to the file
  * being recorded or edited.
  *
- * The amount is capped by what that car has left over ALL its files (the server checks, inside
- * the same transaction as the write) and is drawn from those files oldest first.
+ * Two caps, both checked by the server inside the same transaction as the write, nothing written
+ * when either refuses:
+ * - the RECEIVING file's negative (owner-approved 2026-11-09): a take brings the file up to zero
+ *   and never past it — `FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT`, details `{deficit, amount}`;
+ * - what the cars sent have left, together, over ALL their files —
+ *   `FLEET_ACCIDENT_TRANSFER_SHORT`, details `{available, amount}`. The screen plans within what it
+ *   was shown, so this answers a race: another clerk took from one of those cars a moment ago.
+ * Within a car the amount is drawn from its files oldest first.
+ *
+ * The screen's plan (`planTransfer`) decides which cars and how much each gives; the body carries
+ * only the cars that give something, in the plan's row order, with `amount` = Σ of their takes.
  */
 export const FleetAccidentTransferInputSchema = z
   .object({
     /**
-     * The cars to take from, IN THE ORDER PICKED: the first gives all it has left before the
-     * second gives anything — «لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من
-     * العربيه التانيه».
+     * The cars to take from, IN THIS ORDER: the first gives all it has left before the second
+     * gives anything — «لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من العربيه
+     * التانيه». The screen sends its plan's rows (his picks first, then the ones it completed with)
+     * and never more than twenty.
      */
     fromVehicleIds: z
       .array(objectId())
@@ -2225,13 +2271,21 @@ export interface FleetAccidentTotalsDto {
 }
 
 /**
- * GET /fleet/accidents/car-balances — every car with MORE THAN ZERO remaining over its files, the
- * list the «كود السيارة المأخوذ منها» picker offers: a car with nothing left has nothing to give.
+ * GET /fleet/accidents/car-balances — every registry car with MORE THAN ZERO remaining over its
+ * files, the list the «كود السيارة المأخوذ منها» picker offers: a car with nothing left has nothing
+ * to give.
+ *
+ * Only cars a save can take from: a soft-deleted car is left out (the save refuses it, 404), and a
+ * file kept from the old book under a code counts for the LIVE car carrying that code, never a
+ * deleted one that once carried it. Sorted by the fleet's code order.
  */
 export interface FleetAccidentCarBalanceDto {
   vehicleId: string;
   vehicleCode: string;
-  /** Always > 0 — the same figure a transfer from this car is capped by. */
+  /**
+   * Always > 0 — the car's NET «إجمالي المتبقي» over its live files, the same figure a transfer
+   * from this car is capped by when nothing else moved it since this list was read.
+   */
   remaining: number;
 }
 
@@ -2625,6 +2679,14 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
    */
   collected: booleanQuery().optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
+  /**
+   * The FINE's day from (`$gte`), WHOLE days: the server takes the start of this calendar day — an
+   * old-book row may be stored off midnight. A company statement carries a year and no day, so a
+   * period lists driver rows only. The dashboard's «مخالفات السائقين في الفترة» names its range so.
+   */
+  from: z.coerce.date().optional(),
+  /** The FINE's day up to (inclusive), WHOLE days: the server takes the end of this calendar day. */
+  to: z.coerce.date().optional(),
   ...vehicleSetFilters(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;
@@ -3257,6 +3319,12 @@ const noticeFilters = {
   to: z.coerce.date().optional(),
   status: FleetNoticeStatusSchema.optional(),
   checkImage: FleetNoticeImageStateSchema.optional(),
+  /**
+   * The notice follows its CAR: the car's type, operation and CURRENT branch, as every other period
+   * screen asks (the dashboard's notices on a branch are that branch's cars' notices). A notice with
+   * no car matches no set — it is listed only when none of the three is asked.
+   */
+  ...vehicleSetFilters(),
 };
 export const ListFleetNoticesQuerySchema = PaginationQuerySchema.extend(noticeFilters);
 export type ListFleetNoticesQuery = z.infer<typeof ListFleetNoticesQuerySchema>;
@@ -3631,6 +3699,11 @@ const fuelCardFilters = {
   requested: booleanQuery().optional(),
   /** Only cards whose balance is below this. */
   balanceBelow: z.coerce.number().nonnegative().optional(),
+  /**
+   * «الفرع» — the branch of the card's CURRENT car (a car deleted since by its last branch), ORed.
+   * A card on no car («سفر»، «اسبير») matches no branch, so it drops out under this filter.
+   */
+  branchIds: listQuery(objectId()),
 };
 export const ListFleetFuelCardsQuerySchema = PaginationQuerySchema.extend({
   ...fuelCardFilters,
@@ -3708,6 +3781,12 @@ export interface FleetFuelCardTotalsDto {
    */
   chargedTodayAmount: number;
   cardCount: number;
+  /** The cards of each company; `wataniyaCards + chilloutCards = cardCount`. */
+  wataniyaCards: number;
+  chilloutCards: number;
+  /** Cards on no car («سفر»، «اسبير»): how many, and Σ their balance (inside the totals above). */
+  noCarCards: number;
+  noCarBalance: number;
 }
 
 /** «طلب رصيد» — write the amount; `null` takes the request back (the ✕). */
@@ -4904,6 +4983,10 @@ export interface FleetReceiptTotalsDto {
   tyresTotal: number;
   washTotal: number;
   maintenanceTotal: number;
+  /** Fuel paid from the custody (kind fuel ∧ source custody); `fuelTotal − fuelCustodyTotal` = by card. */
+  fuelCustodyTotal: number;
+  /** Fuel receipts with no litre price: counted in `fuelTotal`, never in `fuelLitres`. */
+  fuelUnpriced: number;
 }
 
 /**

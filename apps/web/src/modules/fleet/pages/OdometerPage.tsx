@@ -60,6 +60,7 @@ import { chosenSorts, clickSort, readSorts, sortQuery, writeSorts } from '../lib
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { AlarmReasonCell, NotActiveCell } from '../components/AlarmReasonCell';
 import { NewestGapCell, RowGapCell } from '../components/AlarmFigureCell';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import { newestRows, reasonRows, sheetGapOf } from '../lib/alarm-reason-rows';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
@@ -493,10 +494,15 @@ export const OdometerPage = (): JSX.Element => {
         log.vehicleCode === null ? (
           DASH
         ) : (
-          // A size over the row, as the alarms board writes the car's code.
-          <span dir="ltr" className={cn('font-bold', FIGURE, ALARMS_CODE_TYPE)}>
-            {log.vehicleCode}
-          </span>
+          // A size over the row, as the alarms board writes the car's code. The same element is
+          // the car card's trigger — the car the reading is LINKED to; a row from the old book
+          // (`vehicleId` null) keeps its code and gets no card.
+          <VehicleHoverCode
+            vehicleId={log.vehicleId}
+            code={log.vehicleCode}
+            dir="ltr"
+            className={cn('font-bold', FIGURE, ALARMS_CODE_TYPE)}
+          />
         ),
     },
     // ONE COLUMN, THE TWO SHIFTS ONE UNDER THE OTHER — «شاشه عدادات السيارات خلى الاسامى زى

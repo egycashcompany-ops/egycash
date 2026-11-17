@@ -13,8 +13,7 @@ import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
 import { Field } from '../../../../../shared/ui/form';
 import { formatMoney } from '../../../../../shared/lib/format';
-import { amountInArabicWords } from '../../../../../shared/lib/arabic-amount';
-import { salaryBreakdown } from '../lib/salary-breakdown';
+import { amountInArabicWords, salaryBreakdown } from '@ecms/contracts';
 
 /** A figure that follows from the gross: shown like a field, but not one anybody can type in. */
 const Computed = ({ value, locale }: { value: number | null; locale: Locale }): JSX.Element => (

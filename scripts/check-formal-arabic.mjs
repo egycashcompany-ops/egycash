@@ -152,6 +152,7 @@ export const VERBATIM_PAPERS = [
   'apps/web/src/modules/fleet/lib/custody-paper-wording.ts',
   'packages/contracts/src/modules/fleet-custody-paper-defaults.ts',
   'apps/web/src/modules/atm/lib/papers/settlement-paper-wording.ts',
+  'apps/api/src/modules/hr/contracts/hiring-templates/hiring-papers.ts',
 ];
 
 const SKIP_DIRS = new Set([

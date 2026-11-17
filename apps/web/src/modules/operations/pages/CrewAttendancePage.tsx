@@ -11,7 +11,9 @@
 // the day's attendance beside the roster so a planner can SEE it. It does not gate assignment: an
 // absent crew member remains fully assignable on the crew board, exactly as in legacy. Attendance
 // is an indicator here, on the same footing as the requirement flags — the standing owner decision
-// that requirements gate nothing applies to this for the same reason.
+// that requirements gate nothing applies to this for the same reason. (Two owner rounds narrowed
+// both on the crew board itself: Round 22 keeps somebody away that day off a row, and Round 23 lets
+// the two ROLE flags decide which slot a person may take. This page still decides nothing.)
 //
 // "Unknown" is its own state and is never shown as present: attendance having no record for
 // somebody is not the same fact as that person being at work.
@@ -55,7 +57,8 @@ export const CrewAttendancePage = (): JSX.Element => {
       // The reason a planner is on this page: somebody absent who is nevertheless crewed today.
       header: t('operations.attendance.assignedToday'),
       render: (row) =>
-        row.assignedVehicleId === null ? (
+        // `isCrewed`, not `assignedVehicleId`: a row without a van holds its people too.
+        !row.isCrewed ? (
           <span className="text-slate-400">—</span>
         ) : (
           <Badge tone="info">{t('operations.attendance.assigned')}</Badge>

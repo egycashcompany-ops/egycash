@@ -19,9 +19,14 @@ export const registerOperationsSettings = (): void => {
   declareSetting({
     key: OperationsSettingKeys.CrewDepartmentIds,
     description:
-      'HR department ids whose employees ARE the operations crew. Empty falls back to whoever ' +
-      'already holds a crew-requirements row.',
-    schema: z.array(objectId()).max(50),
+      'HR department ids whose employees ARE the operations crew. Each id stands for its ' +
+      'company-wide department: every active branch copy of the same catalog entry (or, never ' +
+      'linked, of the same name) is crew too, a branch added later included. Empty falls back to ' +
+      'whoever already holds a crew-requirements row.',
+    // 200, not 50: the card saves every branch copy of each department it ticks, so a choice is
+    // still anchored if one branch's copy is deleted — «نقل الأموال» alone is seven ids today, and
+    // fifty would have refused a save of a handful of departments across the company's branches.
+    schema: z.array(objectId()).max(200),
     defaultValue: [],
     // Organization only: who works in Operations is one fact about the company, not a per-branch
     // opinion — two branches disagreeing would give two planners two different crews.

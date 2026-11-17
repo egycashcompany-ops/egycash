@@ -16,6 +16,7 @@ import {
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
+  type TransferItConsumables,
   type UpdateItConsumable,
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../platform/web';
@@ -24,6 +25,7 @@ import { scopeSelector } from '../../../shared/types';
 import { toItConsumableDto, toItConsumableMemoDto, toItConsumableMovementDto } from '../it.mappers';
 import { itConsumableService } from './consumable.service';
 import { itConsumableIssueService } from './consumable-issue.service';
+import { itConsumableTransferService } from './consumable-transfer.service';
 import { type ItConsumableMovementDoc } from './consumable-movement.model';
 
 type IdParam = { id: string };
@@ -100,6 +102,21 @@ export const listItConsumableMovementsOf = async (req: Request, res: Response): 
 export const listItConsumableMovements = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListItConsumableMovementsQuery>(req);
   await movementPage(req, res, await itConsumableService.listMovements(query, viewScope(req)));
+};
+
+/**
+ * «تحويل إلى فرع» — stock of one store's items to another branch's store, at once. Gated on
+ * `itAsset.assign` and SCOPED by it: the items a caller may send are the ones their custody grant
+ * covers, and the store they go to must be one that grant reaches. Answered with the transfer, line
+ * by line — both stores' items, and which of them it made.
+ */
+export const transferItConsumables = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<TransferItConsumables>(req);
+  const ctx = authContext(req);
+  created(
+    res,
+    await itConsumableTransferService.transfer(body, ctx, scopeSelector(ctx, 'itAsset.assign')),
+  );
 };
 
 /** «صرف لموظف» — one action, one memo; answered with the memo to print and the items as they stand. */

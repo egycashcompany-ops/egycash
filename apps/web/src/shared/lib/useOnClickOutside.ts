@@ -9,7 +9,7 @@ type Inside = RefObject<HTMLElement | null>;
 
 export const useOnClickOutside = (
   ref: Inside | readonly Inside[],
-  handler: () => void,
+  handler: (event: MouseEvent | TouchEvent) => void,
   active = true,
 ): void => {
   useEffect(() => {
@@ -19,7 +19,7 @@ export const useOnClickOutside = (
       const target = event.target as Node;
       const els = refs.map((one) => one.current).filter((el): el is HTMLElement => el !== null);
       if (els.length === 0 || els.some((el) => el.contains(target))) return;
-      handler();
+      handler(event);
     };
     document.addEventListener('mousedown', listener);
     document.addEventListener('touchstart', listener);

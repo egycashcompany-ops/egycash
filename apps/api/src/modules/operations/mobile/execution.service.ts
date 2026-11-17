@@ -22,14 +22,15 @@
 //      means the shipment is business-complete;
 //   3. the business ladder has legacy reopen semantics (quirk Q30) that execution must not disturb.
 // The one place the two meet is `isStopSettled`, and it is a READ: a shipment the back office has
-// already completed leaves the captain nothing to do, so it stops blocking his route.
+// already completed leaves the captain nothing to do, so it stops blocking his route — and so, since
+// Round 13, does a secured shipment the vault received before he started its pickup leg.
 import {
   OperationsEvents,
   type OperationsExecutionBody,
   type OperationsExecutionResultDto,
   type OperationsExecutionStatus,
 } from '@ecms/contracts';
-import { type ClientSession } from 'mongoose';
+import { Types, type ClientSession } from 'mongoose';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
@@ -42,6 +43,7 @@ import {
 } from '../../../shared/errors';
 import { ErrorCodes } from '@ecms/contracts';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
+import { vehicleIdOf } from '../crew/crew-assignment.model';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
@@ -136,12 +138,12 @@ class OperationsExecutionService {
     const { row, captainEmployeeId } = await authorizeStop(userId, assignmentId);
     const { from, to, stamps } = executionTransition(action);
 
-    const outcome = await unitOfWork(async (session) => {
+    const written = await unitOfWork(async (session) => {
       const shipment = await operationsShipmentRepository.findById(String(row.shipmentId));
       if (shipment === null) throw new NotFoundError('shipment not found');
 
       const current = statusOf(row);
-      if (isStopSettled(current, shipment.status)) {
+      if (isStopSettled({ leg: row.leg, executionStatus: current }, shipment)) {
         throw new BusinessRuleError(
           'this stop is already settled — there is nothing left to execute',
           ErrorCodes.OPERATIONS_EXECUTION_ALREADY_SETTLED,
@@ -173,20 +175,65 @@ class OperationsExecutionService {
           ErrorCodes.OPERATIONS_EXECUTION_CONFLICT,
         );
       }
-      return moved;
+
+      // Round 10 — «لو قائد تم الاستلام من القائد»: the captain's ✓ on collecting a محصنة from the
+      // bank is ALSO the shipment's pickup record, written in the same transaction as his leg. The
+      // ONE place execution writes the shipment, and only this one fact: a secured shipment still in
+      // draft, with no pickup recorded — so the desk's ✓ is never overwritten («لو العمليات عملت صح
+      // القائد مينفعش يشيلها»), and nothing happens once the vault has it. The leg stays his
+      // execution record; the shipment's record is what its stage reads, and what the desk may undo.
+      //
+      // Round 13 leans on that last clause: the vault may now receive a محصنة nobody recorded
+      // collecting («والخزنه تستلم عادي»). A captain who had already STARTED his pickup leg may still
+      // press ✓ afterwards — he must be able to finish a stop he began — but it records his leg
+      // only: the shipment is past draft, so its pickup record keeps saying «لم يتم الاستلام», which
+      // is what the vault's screen must show for a receipt nobody handed over.
+      const recorded =
+        action === 'confirmPickup' && moved.leg === 'pickup' && shipment.shipmentType === 'secured'
+          ? await operationsShipmentRepository.recordCaptainPickup(
+              String(shipment._id),
+              {
+                by: 'captain',
+                at: moved.pickedUpAt ?? new Date(),
+                userId: new Types.ObjectId(userId),
+              },
+              session,
+            )
+          : null;
+      return { moved, recorded };
     });
+    const { moved: outcome, recorded } = written;
 
     await auditService.record({
       entityRef: entityRef(assignmentId),
       action: 'update',
       changes: diffChanges({ executionStatus: from }, { executionStatus: to }),
     });
+    if (recorded?.pickup != null) {
+      // The shipment's half of the same act, audited on the shipment — its realtime topic refreshes
+      // every board, and the action log folds it into his leg's entry (shipment-log.ts).
+      await auditService.record({
+        entityRef: { moduleId: 'operations', entityType: 'shipment', entityId: String(recorded._id) },
+        action: 'update',
+        changes: [
+          { field: 'pickedUpBy', old: null, new: recorded.pickup.by },
+          { field: 'pickedUpAt', old: null, new: recorded.pickup.at.toISOString() },
+        ],
+      });
+      await emit(OperationsEvents.ShipmentPickupConfirmed, {
+        shipmentId: String(recorded._id),
+        shipmentType: recorded.shipmentType,
+        status: recorded.status,
+        by: recorded.pickup.by,
+      });
+    }
     await emit(EVENT_BY_ACTION[action], {
       assignmentId,
       shipmentId: String(outcome.shipmentId),
       operationsDayId: String(outcome.operationsDayId),
       captainEmployeeId,
-      vehicleId: String(outcome.vehicleId),
+      // Null for a stop of a crew row without a van (Round 24).
+      vehicleId: vehicleIdOf(outcome),
       leg: outcome.leg,
       sequence: outcome.sequence,
       from,
@@ -229,7 +276,9 @@ class OperationsExecutionService {
       if (String(prior._id) === String(row._id)) return; // reached this stop — everything before it passed
       const shipment = await operationsShipmentRepository.findById(String(prior.shipmentId));
       const settled =
-        shipment === null ? true : isStopSettled(statusOf(prior), shipment.status);
+        shipment === null
+          ? true
+          : isStopSettled({ leg: prior.leg, executionStatus: statusOf(prior) }, shipment);
       if (!settled) {
         throw new BusinessRuleError(
           `stop ${String(prior.sequence)} (${prior.leg}) is not finished — finish it before starting this one`,
@@ -248,7 +297,9 @@ class OperationsExecutionService {
     for (const stop of route) {
       const shipment = await operationsShipmentRepository.findById(String(stop.shipmentId));
       if (shipment === null) continue;
-      if (!isStopSettled(statusOf(stop), shipment.status)) return String(stop._id);
+      if (!isStopSettled({ leg: stop.leg, executionStatus: statusOf(stop) }, shipment)) {
+        return String(stop._id);
+      }
     }
     return null;
   }

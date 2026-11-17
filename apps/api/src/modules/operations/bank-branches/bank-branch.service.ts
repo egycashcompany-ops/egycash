@@ -16,6 +16,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from './bank-branch.repository';
 import { type OperationsBankBranchDoc } from './bank-branch.model';
+import { containsText } from '../catalog-search';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -71,9 +72,9 @@ class OperationsBankBranchService {
     if (query.isActive !== undefined) filter.isActive = query.isActive;
     if (query.search !== undefined && query.search !== '') {
       filter.$or = [
-        { name: { $regex: query.search, $options: 'i' } },
-        { code: { $regex: query.search, $options: 'i' } },
-        { opsAreaName: { $regex: query.search, $options: 'i' } },
+        { name: containsText(query.search) },
+        { code: containsText(query.search) },
+        { opsAreaName: containsText(query.search) },
       ];
     }
     return operationsBankBranchRepository.list({
@@ -84,6 +85,14 @@ class OperationsBankBranchService {
       sortDir: query.sortDir,
       sortableFields: ['code', 'name', 'opsAreaName', 'createdAt'],
     });
+  }
+
+  /**
+   * One branch by id, deactivated ones included — a shipment keeps pointing at the branch it was
+   * collected from after that branch closes, and its edit form still has to name it.
+   */
+  async getById(id: string): Promise<OperationsBankBranchDoc> {
+    return operationsBankBranchRepository.getById(id);
   }
 
   async update(

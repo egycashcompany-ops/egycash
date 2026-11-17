@@ -12,6 +12,7 @@ import {
   ListItAssetNamesQuerySchema,
   ListItAssetsQuerySchema,
   ListItAssignmentsQuerySchema,
+  MoveItAssetsToBranchSchema,
   ReturnItAssetSchema,
   TransferItAssetSchema,
   UpdateItAssetSchema,
@@ -31,10 +32,17 @@ import {
   updateItAsset,
 } from './asset.controller';
 import {
+  assetWorkbookUpload,
+  importItAssets,
+  listItAssetImportBranches,
+} from './asset-import.controller';
+import {
   assignItAsset,
   disposeItAsset,
   listItAssetAssignments,
   listItAssetHistory,
+  listItMoveTargets,
+  moveItAssetsToBranch,
   returnItAsset,
   transferItAsset,
 } from './custody.controller';
@@ -75,6 +83,46 @@ export const buildItAssetsRouter = (): Router => {
     authorize('itAsset.view'),
     validate({ body: ItAssetLabelsSchema }),
     asyncHandler(renderItAssetLabels),
+  );
+  // «نقل إلى فرع» — several assets to one branch at once, a held one with its custody. The custody
+  // grant: it moves an asset in stock and transfers a held one, and needs nothing beyond what
+  // transfer already does (design §7 — no new key).
+  router.post(
+    '/move-branch',
+    authenticate,
+    authorize('itAsset.assign'),
+    validate({ body: MoveItAssetsToBranchSchema }),
+    asyncHandler(moveItAssetsToBranch),
+  );
+  // Where that move — and the consumables' transfer, the same grant — may go: the branches
+  // `itAsset.assign` reaches as the server judges it, not the account's reach over all its grants.
+  // Before '/:id' like every literal segment here.
+  router.get(
+    '/move-targets',
+    authenticate,
+    authorize('itAsset.assign'),
+    asyncHandler(listItMoveTargets),
+  );
+  // «رفع جماعي» — «عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول»: the
+  // branches' custody sheet, previewed (200) and then applied (201), under the registration grant.
+  // A line that fills or moves a device the register holds needs `itAsset.edit` / `itAsset.assign`
+  // over it as well — the service reports it out of reach otherwise. The workbook is held in
+  // memory. Before '/:id' like every literal segment here.
+  router.post(
+    '/import',
+    authenticate,
+    authorize('itAsset.create'),
+    assetWorkbookUpload(),
+    asyncHandler(importItAssets),
+  );
+  // Where that upload may register — the active branches `itAsset.create` reaches as the server
+  // judges it (the move-targets' answer, asked of the registration grant), so the screen's branch
+  // picker offers nothing the upload would refuse. Before '/:id' like every literal segment here.
+  router.get(
+    '/import/branches',
+    authenticate,
+    authorize('itAsset.create'),
+    asyncHandler(listItAssetImportBranches),
   );
   router.get(
     '/:id',

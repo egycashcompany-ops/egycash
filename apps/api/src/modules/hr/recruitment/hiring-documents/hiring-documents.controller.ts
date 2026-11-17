@@ -25,9 +25,9 @@ import { type UploadedBinary } from '../../../../platform/files';
 import { hiringDocumentsService } from './hiring-documents.service';
 import { hiringDocumentTypeService } from './hiring-document-type.service';
 import {
-  computeMissingRequired,
   toHiringDocumentTypeDto,
   toHiringDocumentsDto,
+  type HiringChecklist,
 } from './hiring-documents.mapper';
 import { type HiringDocumentsDoc } from './hiring-documents.model';
 
@@ -46,8 +46,7 @@ const binaryOf = (req: Request): UploadedBinary => {
 
 /** Reads are unchanged by I6 — a GET answers with the aggregate, as it always did. */
 const respondRead = async (res: Response, doc: HiringDocumentsDoc): Promise<void> => {
-  const keys = await hiringDocumentsService.activeRequiredKeys();
-  ok(res, toHiringDocumentsDto(doc, computeMissingRequired(doc, keys)));
+  ok(res, toHiringDocumentsDto(doc, await hiringDocumentsService.checklistFor(doc)));
 };
 
 /**
@@ -61,11 +60,15 @@ const respond = async (
   action: () => Promise<HiringDocumentsDoc>,
   status = 200,
 ): Promise<void> => {
-  const keys = await hiringDocumentsService.activeRequiredKeys();
+  let checklist: HiringChecklist = { typeKeys: [], requiredKeys: [] };
   const envelope = await withWorkflowEnvelope(
     ctx,
-    action,
-    (doc) => toHiringDocumentsDto(doc, computeMissingRequired(doc, keys)),
+    async () => {
+      const doc = await action();
+      checklist = await hiringDocumentsService.checklistFor(doc);
+      return doc;
+    },
+    (doc) => toHiringDocumentsDto(doc, checklist),
     (doc) => (doc.applicantId === null ? '' : String(doc.applicantId)),
   );
   if (status === 201) created(res, envelope, `/api/v1/hr/hiring-documents/${envelope.data.id}`);
@@ -81,12 +84,20 @@ export const createHiringDocuments = async (req: Request, res: Response): Promis
   await respond(ctx, res, () => hiringDocumentsService.create(ctx, body, scope), 201);
 };
 
+/** The employee's set, opened if missing — the landing after «تعيين» (A27). */
+export const openHiringDocuments = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<CreateHiringDocuments>(req);
+  const scope = scopeSelector(ctx, 'hiringDocuments.create');
+  await respond(ctx, res, () => hiringDocumentsService.openFor(ctx, body.employeeId, scope), 200);
+};
+
 export const listHiringDocuments = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListHiringDocumentsQuery>(req);
   const page = await hiringDocumentsService.list(query, scopeSelector(ctx, 'hiringDocuments.view'));
-  const keys = await hiringDocumentsService.activeRequiredKeys();
-  okPage(res, page, (d) => toHiringDocumentsDto(d, computeMissingRequired(d, keys)));
+  const checklists = await hiringDocumentsService.checklistsFor(page.items);
+  okPage(res, page, (d) => toHiringDocumentsDto(d, checklists.get(String(d._id)) ?? { typeKeys: [], requiredKeys: [] }));
 };
 
 export const getHiringDocuments = async (req: Request, res: Response): Promise<void> => {

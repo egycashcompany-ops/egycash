@@ -187,6 +187,11 @@ export interface ReturnToStagePreviewDto {
  * The complete chronological history of one candidate. This is THE recruitment history (I5):
  * every screen reads it, no screen keeps its own. Append-only and permanently retained.
  */
+/** Who acted. `system` has no user behind it; `candidate` is the applicant's own portal account. */
+export const TIMELINE_ACTOR_KINDS = ['user', 'system', 'candidate'] as const;
+export const TimelineActorKindSchema = z.enum(TIMELINE_ACTOR_KINDS);
+export type TimelineActorKind = z.infer<typeof TimelineActorKindSchema>;
+
 export const RECRUITMENT_TIMELINE_TYPES = [
   'applied',
   'identityVerified',
@@ -195,11 +200,22 @@ export const RECRUITMENT_TIMELINE_TYPES = [
   // A lifecycle exit closes an undecided screening (I14). That is not a decision, so it has its
   // own type — the same distinction `interviewCancelled` already draws for a round.
   'screeningCancelled',
+  /**
+   * The round's queue row was OPENED (I11) — not an appointment being made.
+   *
+   * It used to borrow `interviewScheduled`, and that one borrowed label produced the complaint
+   * «تم تحديد موعد المقابلة appears after the interview had already ended»: passing the first round
+   * materializes the second, so the candidate's history announced an appointment for a round
+   * nobody had scheduled, dated after the round that had just finished.
+   */
+  'interviewOpened',
   'interviewScheduled',
   'interviewStarted',
   'interviewCompleted',
   'interviewCancelled',
   'evaluationOpened',
+  /** A decided phase sent back for another look — not the phase opening for the first time. */
+  'evaluationReopened',
   'evaluationScheduled',
   'evaluationDecided',
   /** Closed by a lifecycle exit rather than decided (I14). */
@@ -217,6 +233,22 @@ export const RECRUITMENT_TIMELINE_TYPES = [
   'hired',
   'positionChanged',
   'branchChanged',
+  // ── The candidate's FILE (I5) ─────────────────────────────────────────────
+  //
+  // Handing a paper in, swapping it, ruling on it, taking it off the file, replacing a photograph
+  // of an ID card, adding or removing an attachment, and the portal account being opened. Every
+  // one of these was already audited and none of them reached the history, so the timeline of a
+  // candidate whose file HR had spent an afternoon on showed nothing between two decisions. The
+  // audit trail answers «who touched this record»; this answers «what happened to this person»,
+  // and they are not the same question.
+  'documentUploaded',
+  'documentReplaced',
+  'documentReviewed',
+  'documentRemoved',
+  'idCardReplaced',
+  'attachmentAdded',
+  'attachmentRemoved',
+  'portalAccountOpened',
   'returnedToStage',
   'withdrawn',
   'rejected',
@@ -241,6 +273,8 @@ export const TIMELINE_CORRELATION_TYPES = [
   'placementChange',
   'return',
   'hire',
+  /** One paper on the candidate's file — its slot is the episode its handing-in and review share. */
+  'document',
 ] as const;
 export const TimelineCorrelationTypeSchema = z.enum(TIMELINE_CORRELATION_TYPES);
 export type TimelineCorrelationType = z.infer<typeof TimelineCorrelationTypeSchema>;
@@ -257,6 +291,12 @@ export interface RecruitmentTimelineEntryDto {
   actorUserId: string | null;
   /** Denormalized at write time so history survives user renames and deletions. */
   actorName: string;
+  /**
+   * WHO this was, in the three kinds a reader has to tell apart: a member of staff (render their
+   * directory card), the system itself — a queue row opened by a decision, an offer expired by the
+   * sweep — or the candidate, acting through the applicant portal on their own application.
+   */
+  actorKind: TimelineActorKind;
   type: RecruitmentTimelineType;
   stage: StageRefDto | null;
   fromStatus: string | null;
@@ -320,6 +360,35 @@ export interface WorkflowActionDto {
 }
 
 /**
+ * One live stage record the candidate holds, and whether they have moved past it.
+ *
+ * `passed` is the server's answer to "may anything on this stage still move?", derived from the
+ * whole pipeline rather than from the record's own status — a screening that was accepted is not
+ * waiting, but it is also not finished with until the candidate has a record further along. A
+ * stage page renders its result, its notes and its files either way, and offers no action that
+ * changes the pipeline once this is true.
+ */
+export interface StageRecordStateDto {
+  recordId: string;
+  /** `screening` · `interview:<stageId>` · `evaluation:<phaseId>` · `jobOffer`. */
+  key: string;
+  status: string;
+  attempt: number;
+  passed: boolean;
+  /**
+   * May this record's DECISION still be corrected? (D7 — «a decision is not final», but not for
+   * ever.) True while everything the decision set in motion is still untouched; false the moment
+   * anybody schedules, starts, decides, drafts or sends what came after it.
+   *
+   * Deliberately NOT the negation of `passed`: a stage with a freshly opened row after it is past
+   * — its forward actions are gone — and still correctable. Collapsing the two would make
+   * «تعديل القرار» either always offered or never, which is how it came to be offered on the
+   * screening of a candidate already at the security check.
+   */
+  correctable: boolean;
+}
+
+/**
  * The candidate's CURRENT workflow state, always DERIVED from the latest active attempt (I1) —
  * never stored, never cached, never duplicated on the applicant document.
  */
@@ -337,6 +406,12 @@ export interface WorkflowStateDto {
   attempt: number;
   placement: PlacementDto;
   placementLabel: PlacementLabelDto;
+  /**
+   * Every live stage record, so a stage screen can ask whether the candidate has moved past the
+   * record it is showing instead of guessing from that record's own status. Superseded attempts are
+   * absent: they are already read-only (I1) and must not set how far the candidate has got.
+   */
+  stageRecords: StageRecordStateDto[];
   /**
    * What the caller may do next. Capability lives HERE and nowhere else (I10) — there is no
    * `placementEditable` boolean; "can I reassign?" is `availableActions`' `reassign` entry.

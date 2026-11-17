@@ -369,7 +369,8 @@ describe('screening — decide', () => {
     expect(body.workflow.stage?.kind).toBe('interview');
     expect(body.workflow.status).toBe('waiting');
     expect(body.timeline.produced.map((e) => e.type)).toEqual(
-      expect.arrayContaining(['screeningDecided', 'interviewScheduled']),
+      // Accepting a screening OPENS the first round; it does not make an appointment for it.
+      expect.arrayContaining(['screeningDecided', 'interviewOpened']),
     );
     expect(body.timeline.latest.length).toBeGreaterThan(0);
     expect(counter(body.counters, 'screening')).toBeDefined();

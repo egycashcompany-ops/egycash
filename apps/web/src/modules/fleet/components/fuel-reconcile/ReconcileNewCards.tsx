@@ -113,7 +113,7 @@ export const ReconcileNewCards = ({
                     <span className="inline-flex flex-col items-center gap-1">
                       {row.to?.vehicleCode != null ? (
                         <>
-                          <CodeChip code={row.to.vehicleCode} />
+                          <CodeChip code={row.to.vehicleCode} vehicleId={row.to.vehicleId} />
                           {row.slotHeldBy === null ? (
                             <span className="whitespace-nowrap text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
                               {t(`${N}slotFree`, { company: companyName })}

@@ -199,7 +199,21 @@ export const TemplatesListPage = (): JSX.Element => {
       header: t('contracts.templates.language'),
       render: (x) => (x.language === 'ar' ? t('contracts.language.ar') : t('contracts.language.en')),
     },
-    { key: 'type', header: t('contracts.columns.type'), render: (x) => typeName(x.contractTypeId) },
+    {
+      // A27 — a contract, or a hiring form (which has no contract type), and the jobs it prints for.
+      key: 'type',
+      header: t('contracts.columns.type'),
+      render: (x) => (
+        <div className="space-y-0.5">
+          <div>{x.kind === 'form' ? t('contracts.templates.kinds.form') : typeName(x.contractTypeId)}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400" data-template-scope={x.key}>
+            {x.allJobs
+              ? t('contracts.templates.allJobs')
+              : t('contracts.templates.jobsCount', { count: x.jobTitleIds.length })}
+          </div>
+        </div>
+      ),
+    },
     {
       key: 'version',
       header: t('contracts.templates.version'),

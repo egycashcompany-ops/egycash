@@ -30,6 +30,7 @@ import {
   type LifecycleEvent,
 } from './workflow-lifecycle';
 import { WORKFLOW_ENGINE_TOKEN } from './workflow-guard';
+import { stageIdentityOf } from './stage-frontier';
 import {
   validateTransition,
   type ApplicantWorkflowStatus,
@@ -237,7 +238,10 @@ class RecruitmentWorkflowEngine {
           actorUserId: input.actorUserId ?? null,
           branchId: input.branchId,
           correlationId: String(record._id),
-          payload: { stageRefId: input.stageRefId === null || input.stageRefId === undefined ? null : String(input.stageRefId) },
+          // WHICH round or phase this is, travelling with the fact — so the candidate's history
+          // can name «المقابلة الأولى» and «الفحص الأمني» instead of leaving two phases that
+          // opened in the same minute looking like one event written twice.
+          payload: { ...stageIdentityOf(input.binding.object, record) },
         },
         session,
       );
@@ -340,7 +344,11 @@ class RecruitmentWorkflowEngine {
         actorUserId: input.actorUserId,
         branchId: updated.branchId,
         correlationId: input.correlationId ?? String(updated._id),
-        payload: { action: check.transition.action, ...(input.payload ?? {}) },
+        payload: {
+          action: check.transition.action,
+          ...stageIdentityOf(input.binding.object, updated),
+          ...(input.payload ?? {}),
+        },
       },
       session,
     );
@@ -518,7 +526,7 @@ class RecruitmentWorkflowEngine {
         actorUserId,
         branchId: updated.branchId,
         correlationId: String(updated._id),
-        payload: { returnEventId },
+        payload: { returnEventId, ...stageIdentityOf(binding.object, updated) },
       },
       session,
     );

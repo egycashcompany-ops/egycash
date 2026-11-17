@@ -1,34 +1,43 @@
-// Create / edit a cash shipment — the legacy `/main_ops` add and edit modals.
+// Create / edit a cash shipment — the legacy `/main_ops` add and edit forms, in the Fleet forms'
+// design («عدل الـ ui بتاع الفورم … زى الحركة»: `DesignDialog`, the shape every Fleet entry form
+// takes).
 //
-// WHAT THE LEGACY FORM ACTUALLY WAS (discovery §E, contad_app.js:306-569): one handler with four
-// non-exclusive `if` branches — create/edit × single/multi currency — where the multi-currency
-// path walked SEVENTEEN fixed field pairs (`contractValue`..`contractValue17`) and kept the index
-// pairs whose value was non-empty (quirk Q7). The single-currency path wrote a scalar where the
-// multi path wrote an array (Q6), so the same field held two different shapes.
+// The shipment's data — the three banks, the branches, the area, the money lines, the dates and
+// their floors — is held and boxed by `ShipmentDraftFields` (`useShipmentDraft`), which Round 18's
+// receive form («إستلام محصنة») shares, so the two forms keep ONE set of rules. What is this form's
+// own: its three-column layout, the required-field banner, the collection crew of a new shipment,
+// and the save.
 //
-// Here there is ONE shape: a list of {currency, amount} lines, added and removed freely. The 17
-// remains only as the contract's max, so a legacy record can always round-trip.
+// «تتبّع أرقام الأوراق النقدية» is gone from the form — «ومحتاج اشيل دا». The API keeps the field:
+// a new shipment is sent `false` (its default), and an edit leaves whatever is stored untouched.
 //
-// The cascading pickers are legacy behaviour made server-truth: the from-branch list showed only
-// the main bank's branches, and the to-branch list the destination bank's (main_ops.ejs:461-503).
-// That was a client filter in legacy and is a server rule now (OPERATIONS_BRANCH_BANK_MISMATCH) —
-// the form mirrors it so the operator is not offered a choice the server will refuse.
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+// «اسم القائد وكود العربيه»: two boxes over ONE choice — a crew row of the collection date's plan.
+// Picking a vehicle names the captain on it; picking a captain names his vehicle. Only on CREATE:
+// re-crewing a saved shipment moves a stop between captains' ordered days, which is not an edit.
+//
+import { useEffect, useId, useMemo, useState } from 'react';
 import {
   type OperationsBankDto,
   type OperationsCurrencyDto,
+  type OperationsDayBoardShipmentDto,
   type OperationsShipmentDto,
   type OperationsShipmentType,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { MoneyInput } from '../../../shared/ui/MoneyInput';
-import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
+import { useCan } from '../../../platform/rbac/Can';
+import { Combobox } from '../../../shared/ui/Combobox';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { TrashIcon, PlusIcon } from '../../../shared/ui/icons';
+import { errorMessage } from '../../../shared/lib/errors';
+import { useAppSelector } from '../../../store';
 import {
-  useBranchesOfBank,
+  DesignCancel,
+  DesignDialog,
+  DesignSave,
+  DesignSection,
+} from '../../fleet/components/DesignDialog';
+import { DesignField, carBoxClass } from '../../fleet/components/FuelCardDialog';
+import {
   useCreateOperationsShipment,
   useOperationsCrewBoard,
   useOperationsCrewDirectory,
@@ -40,173 +49,177 @@ import {
   findDispatchOption,
   vehiclesOf,
 } from '../lib/dispatch-crew';
+import {
+  SHIPMENT_DATE_PROBLEM_KEY,
+  secondaryBankFor,
+  isLockedRefusal,
+  shipmentSaveErrorKey,
+} from '../lib/shipment-form';
+import { cairoToday } from '../lib/shipment-history';
+import {
+  AddLineButton,
+  AreaBox,
+  CollectionDateField,
+  DeliveryDateField,
+  DraftBranchCreate,
+  DraftBranchSide,
+  MainBankField,
+  MoneyLines,
+  NotesField,
+  deliveryDateFor,
+  hasUsableLine,
+  toShipmentLines,
+  useShipmentDraft,
+} from './ShipmentDraftFields';
+import { SHIPMENT_PATH } from './shipment-icons';
 
-/** The contract's ceiling, inherited from the legacy form's 17 fixed currency slots (Q7). */
-export const MAX_SHIPMENT_LINES = 17;
-
-export interface DraftLine {
-  currencyId: string;
-  amount: string;
-}
-
-export const EMPTY_LINE: DraftLine = { currencyId: '', amount: '' };
-
-/**
- * Only complete lines are sent. A blank row the operator added and never filled is not an error —
- * legacy compacted exactly this way, keeping the index pairs whose value was non-empty
- * (contad_app.js:386-398) — so it is dropped rather than rejected.
- */
-export const toShipmentLines = (
-  draft: readonly DraftLine[],
-): { currencyId: string; amount: number }[] =>
-  draft
-    .filter((line) => line.currencyId !== '' && line.amount.trim() !== '')
-    .map((line) => ({ currencyId: line.currencyId, amount: Number(line.amount) }));
-
-/** A shipment needs at least one real line — the legacy server guard (contad_app.js:313). */
-export const hasUsableLine = (draft: readonly DraftLine[]): boolean =>
-  toShipmentLines(draft).length > 0;
-
-/**
- * `deliveryDate` belongs to secured shipments only: legacy wrote `del_date: ""` for daily
- * (contad_app.js:353) and the contract rejects a daily shipment carrying one.
- */
-export const deliveryDateFor = (
-  shipmentType: OperationsShipmentType,
-  raw: string,
-): Date | null => (shipmentType === 'daily' || raw === '' ? null : new Date(raw));
-
-const dateOnly = (iso: string | null): string => (iso === null ? '' : iso.slice(0, 10));
+// The line helpers live with the shared draft; the shipment form's specs (and any caller) still
+// find them here, where they were first written.
+export {
+  EMPTY_LINE,
+  MAX_SHIPMENT_LINES,
+  defaultCurrencyId,
+  deliveryDateFor,
+  hasUsableLine,
+  toShipmentLines,
+  type DraftLine,
+} from './ShipmentDraftFields';
 
 export const ShipmentFormDialog = ({
   open,
   shipment,
-  defaultDate,
   banks,
   currencies,
+  createType,
   onClose,
 }: {
   open: boolean;
-  shipment: OperationsShipmentDto | null;
-  /** The board's day — a new shipment defaults to the day being looked at, not to "today". */
-  defaultDate: string;
+  /**
+   * The kind a NEW shipment is — decided by the screen, not chosen in the form. «عاوز اضافة شحنة
+   * اشيل النوع ويكون يومى بس»: the day board adds daily shipments; the secured backlog (legacy
+   * `/mohsana`, where secured shipments were always created) adds secured ones. An edit keeps the
+   * shipment's own type — it never changes (legacy had no path between the two).
+   */
+  createType: OperationsShipmentType;
+  /**
+   * A board row (with its branches resolved) or a plain shipment; null creates one — dated today
+   * (Cairo), the earliest day a new shipment may have, whichever screen it is added from.
+   */
+  shipment: OperationsShipmentDto | OperationsDayBoardShipmentDto | null;
   banks: OperationsBankDto[];
   currencies: OperationsCurrencyDto[];
   onClose: () => void;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
+  const can = useCan();
   const create = useCreateOperationsShipment();
   const update = useUpdateOperationsShipment();
-  const editing = shipment !== null;
-
-  const [shipmentType, setShipmentType] = useState<OperationsShipmentType>('daily');
-  const [mainBankId, setMainBankId] = useState('');
-  const [secondaryBankId, setSecondaryBankId] = useState('');
-  const [originBranchId, setOriginBranchId] = useState('');
-  const [destinationBranchId, setDestinationBranchId] = useState('');
-  const [areaName, setAreaName] = useState('');
-  const [collectionDate, setCollectionDate] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [serialTracked, setSerialTracked] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>([EMPTY_LINE]);
-
+  const draft = useShipmentDraft({ open, shipment, createType, banks, currencies });
+  const {
+    editing,
+    row,
+    shipmentType,
+    mainBankId,
+    toBankId,
+    originBranchId,
+    destinationBranchId,
+    areaName,
+    collectionDate,
+    deliveryDate,
+    notes,
+    lines,
+    adding,
+    dateProblems,
+    needsDeliveryDate,
+    collectionLabel,
+  } = draft;
+  const [crewKey, setCrewKey] = useState('');
   useEffect(() => {
-    if (!open) return;
-    setShipmentType(shipment?.shipmentType ?? 'daily');
-    setMainBankId(shipment?.mainBankId ?? '');
-    setSecondaryBankId(shipment?.secondaryBankId ?? '');
-    setOriginBranchId(shipment?.originBranchId ?? '');
-    setDestinationBranchId(shipment?.destinationBranchId ?? '');
-    setAreaName(shipment?.areaName ?? '');
-    setCollectionDate(shipment === null ? defaultDate : dateOnly(shipment.collectionDate));
-    setDeliveryDate(shipment === null ? '' : dateOnly(shipment.deliveryDate));
-    setSerialTracked(shipment?.serialTracked ?? false);
-    setNotes(shipment?.notes ?? '');
-    setLines(
-      shipment === null || shipment.lines.length === 0
-        ? [EMPTY_LINE]
-        : shipment.lines.map((line) => ({
-            currencyId: line.currencyId,
-            amount: String(line.amount),
-          })),
-    );
-  }, [open, shipment, defaultDate]);
-
-  // The destination side follows the secondary bank when one is chosen, else the main bank —
-  // exactly what the legacy to-branch datalist did.
-  const destinationBankId = secondaryBankId === '' ? mainBankId : secondaryBankId;
-  const originBranches = useBranchesOfBank(mainBankId === '' ? null : mainBankId);
-  const destinationBranches = useBranchesOfBank(destinationBankId === '' ? null : destinationBankId);
-
-  // Changing a bank invalidates the branch chosen under the old one.
-  useEffect(() => {
-    if (!open) return;
-    const list = originBranches.data?.items ?? [];
-    if (originBranchId !== '' && list.length > 0 && !list.some((b) => b.id === originBranchId)) {
-      setOriginBranchId('');
-    }
-  }, [originBranches.data, open]);
-  useEffect(() => {
-    if (!open) return;
-    const list = destinationBranches.data?.items ?? [];
-    if (
-      destinationBranchId !== '' &&
-      list.length > 0 &&
-      !list.some((b) => b.id === destinationBranchId)
-    ) {
-      setDestinationBranchId('');
-    }
-  }, [destinationBranches.data, open]);
-
-  const areaOptions = useMemo(() => {
-    const names = (originBranches.data?.items ?? [])
-      .map((branch) => branch.opsAreaName)
-      .filter((name): name is string => name !== null);
-    return [...new Set(names)];
-  }, [originBranches.data]);
-
-  const setLine = (index: number, patch: Partial<DraftLine>): void =>
-    setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+    if (open) setCrewKey('');
+  }, [open, shipment]);
 
   // ── The collection crew (legacy leader1 + car_num1, written at creation) ──────────────────────
   //
-  // Only on CREATE. Re-crewing an existing shipment is `assign-pickup`'s job — it has to move the
-  // stop between captains' ordered days, and a quiet edit here would skip that entirely.
-  const crewBoard = useOperationsCrewBoard(editing ? null : collectionDate, !editing);
-  const crewDirectory = useOperationsCrewDirectory(editing ? null : collectionDate, !editing);
+  // Read from the collection date's crew plan; both boxes edit the SAME choice (`crewKey`, one
+  // crew row and one of its captains), so they cannot disagree. Only on CREATE: re-crewing a saved
+  // shipment moves a stop between captains' ordered days, which is not an edit.
+  const canSeeCrew = can('operationsCrew.view');
+  const crewHintId = useId();
+  const crewOn = open && !editing && canSeeCrew && collectionDate !== '';
+  const crewBoard = useOperationsCrewBoard(crewOn ? collectionDate : null, crewOn);
+  const crewDirectory = useOperationsCrewDirectory(crewOn ? collectionDate : null, crewOn);
   const crewOptions = useMemo(
     () => dispatchCrewOptions(crewBoard.data?.rows ?? []),
     [crewBoard.data],
   );
-  const [crewKey, setCrewKey] = useState('');
   const chosenCrew = findDispatchOption(crewOptions, crewKey);
-
-  // The day changed under the choice — the crew belongs to a date, so a stale pick would send a
-  // row the server refuses with OPERATIONS_CREW_DAY_MISMATCH.
+  // The day changed under the choice — a crew belongs to a date, so a stale pick would be refused
+  // (OPERATIONS_CREW_DAY_MISMATCH).
   useEffect(() => setCrewKey(''), [collectionDate]);
 
   const captainName = (employeeId: string): string =>
-    crewDirectory.data?.members.find((m) => m.employeeId === employeeId)?.fullNameAr ?? employeeId;
+    crewDirectory.data?.members.find((m) => m.employeeId === employeeId)?.fullNameAr ?? '…';
+  // A captain named twice (two vans — the plan forbids it, but a stale plan could) says which van.
+  const captainLabel = (key: string): string => {
+    const option = findDispatchOption(crewOptions, key);
+    if (option === undefined) return key;
+    const twice =
+      crewOptions.filter((o) => o.captainEmployeeId === option.captainEmployeeId).length > 1;
+    const name = captainName(option.captainEmployeeId);
+    return twice ? `${name} — ${option.vehicleCode ?? '…'}` : name;
+  };
+  const vehicles = vehiclesOf(crewOptions);
 
-  const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
-    if (!hasUsableLine(lines)) {
-      toast.error(t('operations.shipment.needLine'));
+  // ── Required fields ────────────────────────────────────────────────────────────────────────────
+  const required = useRequiredFields(
+    [
+      { key: 'mainBank', label: t('operations.shipment.form.mainBank'), ok: mainBankId !== '' },
+      { key: 'origin', label: t('operations.shipment.origin'), ok: originBranchId !== '' },
+      {
+        key: 'destination',
+        label: t('operations.shipment.destination'),
+        ok: destinationBranchId !== '',
+      },
+      {
+        key: 'collectionDate',
+        label: collectionLabel,
+        ok: collectionDate !== '',
+      },
+      // A new محصنة's delivery date — it opens filled in (the day after collection), so this only
+      // ever names one the person emptied. Not an old محصنة stored without one (legacy never
+      // required it, receive_mohsana.ejs:644): a date invented to get past the form would put it
+      // on that day's dispatch list (`deliveryDateRequired`).
+      {
+        key: 'deliveryDate',
+        label: t('operations.shipment.deliveryDate'),
+        ok: !needsDeliveryDate || deliveryDate !== '',
+      },
+      { key: 'amount', label: t('operations.shipment.form.amount'), ok: hasUsableLine(lines) },
+    ],
+    open,
+  );
+
+  const submit = async (): Promise<void> => {
+    // Refused here first, in words, rather than sent to be refused by the server. Today is read
+    // again: the save may come after a midnight the last render did not see.
+    const problems = dateProblems(cairoToday());
+    const problem = problems.collection ?? problems.delivery;
+    if (problem !== null) {
+      toast.error(t(SHIPMENT_DATE_PROBLEM_KEY[problem]));
       return;
     }
     const core = {
       mainBankId,
-      secondaryBankId: secondaryBankId === '' ? null : secondaryBankId,
+      secondaryBankId: secondaryBankFor(mainBankId, toBankId),
       originBranchId,
       destinationBranchId,
       areaName: areaName.trim() === '' ? null : areaName.trim(),
       lines: toShipmentLines(lines),
       // The contract types dates post-coercion, and JSON.stringify serialises a Date to ISO —
-      // which is exactly what the server coerces back. A raw yyyy-mm-dd string would not typecheck.
+      // which is exactly what the server coerces back.
       collectionDate: new Date(collectionDate),
       deliveryDate: deliveryDateFor(shipmentType, deliveryDate),
-      serialTracked,
       notes: notes.trim() === '' ? null : notes.trim(),
     };
     try {
@@ -214,6 +227,9 @@ export const ShipmentFormDialog = ({
         await create.mutateAsync({
           ...core,
           shipmentType,
+          // «تتبّع أرقام الأوراق النقدية» is no longer asked: a new shipment takes the field's
+          // default. An edit sends nothing for it, so whatever is stored stays.
+          serialTracked: false,
           // The VEHICLE IS NOT SENT. `crewAssignmentId` is a (day, vehicle) row, so the vehicle is
           // a fact the server reads off it — a client that named its own could claim a captain was
           // on a van he was never planned onto.
@@ -227,254 +243,220 @@ export const ShipmentFormDialog = ({
         });
       }
       // `shipmentType` is immutable — legacy has no path that converts one type into the other.
-      else await update.mutateAsync({ id: shipment.id, body: { ...core, version: shipment.version } });
+      else
+        await update.mutateAsync({ id: shipment.id, body: { ...core, version: shipment.version } });
       toast.success(t('operations.shipment.saved'));
       onClose();
-    } catch {
-      toast.error(t('operations.shipment.saveFailed'));
+    } catch (error) {
+      // The mutations leave their errors to this form (operations-queries.ts), so this is the one
+      // message — in the reader's language, naming the reason where the server gave one, and the
+      // shared wording when the reason is not the values at all (a dropped connection, no rights).
+      const key = shipmentSaveErrorKey(error);
+      toast.error(key === null ? errorMessage(error, locale) : t(key));
+      // Round 10: the vault received this محصنة after the form was opened from a row read before
+      // its ✓ («ميقدر حد … يعدل عليها»). Nothing typed can be saved past that, so the form closes on
+      // its message — over a board the refusal re-reads (`useUpdateOperationsShipment`), where the
+      // row is now green and offers no edit.
+      if (isLockedRefusal(error)) onClose();
     }
   };
 
   const busy = create.isPending || update.isPending;
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      size="lg"
-      title={t(editing ? 'operations.shipment.edit' : 'operations.shipment.add')}
-    >
-      <form onSubmit={submit} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('operations.shipment.type')} required>
-            <Select
-              value={shipmentType}
-              onChange={(e) => setShipmentType(e.target.value as OperationsShipmentType)}
-              disabled={editing}
-            >
-              <option value="daily">{t('operations.shipment.type.daily')}</option>
-              <option value="secured">{t('operations.shipment.type.secured')}</option>
-            </Select>
-          </Field>
-          <Field label={t('operations.shipment.collectionDate')} required>
-            <Input
-              type="date"
-              value={collectionDate}
-              onChange={(e) => setCollectionDate(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label={t('operations.shipment.mainBank')} required>
-            <Select
-              value={mainBankId}
-              onChange={(e) => setMainBankId(e.target.value)}
-              required
-            >
-              <option value="">{t('common.select')}</option>
-              {banks.map((bank) => (
-                <option key={bank.id} value={bank.id}>
-                  {bank.opsName}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field
-            label={t('operations.shipment.secondaryBank')}
-            hint={t('operations.shipment.secondaryBankHint')}
-          >
-            <Select value={secondaryBankId} onChange={(e) => setSecondaryBankId(e.target.value)}>
-              <option value="">{t('operations.shipment.sameBank')}</option>
-              {banks.map((bank) => (
-                <option key={bank.id} value={bank.id}>
-                  {bank.opsName}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('operations.shipment.origin')} required>
-            <Select
-              value={originBranchId}
-              onChange={(e) => setOriginBranchId(e.target.value)}
-              required
-              disabled={mainBankId === ''}
-            >
-              <option value="">{t('common.select')}</option>
-              {(originBranches.data?.items ?? []).map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('operations.shipment.destination')} required>
-            <Select
-              value={destinationBranchId}
-              onChange={(e) => setDestinationBranchId(e.target.value)}
-              required
-              disabled={destinationBankId === ''}
-            >
-              <option value="">{t('common.select')}</option>
-              {(destinationBranches.data?.items ?? []).map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {branch.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('operations.shipment.area')}>
-            <Input
-              list="operations-area-options"
-              value={areaName}
-              onChange={(e) => setAreaName(e.target.value)}
-            />
-            <datalist id="operations-area-options">
-              {areaOptions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          </Field>
-          {shipmentType === 'secured' && (
-            <Field
-              label={t('operations.shipment.deliveryDate')}
-              hint={t('operations.shipment.deliveryDateHint')}
-            >
-              <Input
-                type="date"
-                value={deliveryDate}
-                onChange={(e) => setDeliveryDate(e.target.value)}
-              />
-            </Field>
-          )}
-        </div>
-
-        <fieldset className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-          <legend className="px-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-            {t('operations.shipment.lines')}
-          </legend>
-          {lines.map((line, index) => (
-            <div key={index} className="flex items-end gap-2">
-              <div className="flex-1">
-                <Select
-                  aria-label={t('operations.shipment.currency')}
-                  value={line.currencyId}
-                  onChange={(e) => setLine(index, { currencyId: e.target.value })}
-                >
-                  <option value="">{t('operations.shipment.currency')}</option>
-                  {currencies.map((currency) => (
-                    <option key={currency.id} value={currency.id}>
-                      {currency.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div className="flex-1">
-                <MoneyInput
-                  aria-label={t('operations.shipment.amount')}
-                  placeholder={t('operations.shipment.amount')}
-                  value={line.amount}
-                  onChange={(next) => setLine(index, { amount: next })}
-                />
-              </div>
-              <button
-                type="button"
-                aria-label={t('common.remove')}
-                className="rounded-md p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800"
-                disabled={lines.length === 1}
-                onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
-              >
-                <TrashIcon className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={lines.length >= MAX_SHIPMENT_LINES}
-            onClick={() => setLines((prev) => [...prev, EMPTY_LINE])}
-          >
-            <PlusIcon className="h-4 w-4" />
-            {t('operations.shipment.addLine')}
-          </Button>
-        </fieldset>
-
-        {/* ── The collection crew ─────────────────────────────────────────────────────────────
-            Two controls over ONE choice. A crew row is a (operating day, vehicle) pair and Q11
-            gives a captain at most one vehicle a day, so naming the captain names the vehicle and
-            naming the vehicle names the captain — which is why only the crew row goes on the wire.
-            Create only: re-crewing an existing shipment must go through assign-pickup, which
-            re-sequences the stop inside the captain's ordered day. */}
-        {!editing && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('operations.shipment.captain')}>
-              <Select
-                value={crewKey}
-                onChange={(e) => setCrewKey(e.target.value)}
-                disabled={crewOptions.length === 0}
-              >
-                <option value="">{t('operations.shipment.noCrew')}</option>
-                {crewOptions.map((option) => (
-                  <option key={option.key} value={option.key}>
-                    {captainName(option.captainEmployeeId)} — {option.vehicleCode}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label={t('operations.shipment.vehicle')}>
-              <Select
-                value={chosenCrew?.vehicleId ?? ''}
-                disabled={crewOptions.length === 0}
-                onChange={(e) => {
-                  // Changing the vehicle re-points the same choice. The captain is KEPT when he is
-                  // on the new vehicle and otherwise falls to its first captain — which the select
-                  // beside this one then shows, so the operator sees who they were given.
-                  const next = chooseVehicle(
-                    crewOptions,
-                    e.target.value,
-                    chosenCrew?.captainEmployeeId ?? '',
-                  );
-                  setCrewKey(next?.key ?? '');
-                }}
-              >
-                <option value="">{t('operations.shipment.noCrew')}</option>
-                {vehiclesOf(crewOptions).map((vehicle) => (
-                  <option key={vehicle.vehicleId} value={vehicle.vehicleId}>
-                    {vehicle.vehicleCode}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            {crewOptions.length === 0 && !crewBoard.isLoading && (
-              <p className="text-sm text-amber-700 sm:col-span-2 dark:text-amber-400">
-                {t('operations.shipment.noCrewForDay')}
-              </p>
-            )}
-          </div>
+    <>
+      <DesignDialog
+        open={open}
+        // Escape inside the branch form closes THAT form; this one must not close with it. Both are
+        // DesignDialogs listening on the window, in whatever order React last registered them:
+        // only the dialog on top of the `[data-dialog-root]` stack answers, and it marks the key
+        // handled for a listener that runs after it. `adding` alone is not enough — a real key
+        // press lets React commit `adding = null` and re-register this listener before the event
+        // reaches it. The check stays for the × and «إلغاء» while the branch form is up.
+        onClose={() => {
+          if (adding === null) onClose();
+        }}
+        // A new محصنة says so — «إضافة محصنة», as the secured screen's button does.
+        title={t(
+          editing
+            ? 'operations.shipment.edit'
+            : shipmentType === 'secured'
+              ? 'operations.secured.backlog.add'
+              : 'operations.shipment.add',
         )}
+        subtitle={t('operations.shipment.form.subtitle')}
+        icon={SHIPMENT_PATH.shipment}
+        width="6xl"
+        dense
+        panelProps={{ 'data-shipment-form': editing ? 'edit' : 'new' }}
+        footer={
+          <>
+            <DesignSave
+              data-shipment-save="true"
+              busy={busy}
+              onClick={required.guard(() => void submit())}
+            />
+            <DesignCancel onClick={onClose} />
+          </>
+        }
+      >
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
 
-        <Field label={t('operations.shipment.notes')}>
-          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </Field>
+        {/* «الفورم … كبيرة انها متهكنش فيها اسكرول»: ONE band of three columns on a wide panel —
+            the shipment, its two branches, then the money and the crew — so the form is as tall as
+            its tallest column rather than the sum of its rows, and fits a laptop screen. One
+            column on a narrow screen. */}
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
+          <DesignSection
+            title={t('operations.shipment.form.sections.shipment')}
+            icon={SHIPMENT_PATH.calendar}
+          >
+            {/* What «الرئيسي» means is the form's subtitle («البنك المُحاسب…»); a hint here too
+                would cost the line that keeps the form on a laptop screen without a scroll. */}
+            <MainBankField draft={draft} missing={required.isMissing('mainBank')} />
+            <CollectionDateField draft={draft} missing={required.isMissing('collectionDate')} />
+            {shipmentType === 'secured' && (
+              <DeliveryDateField draft={draft} missing={required.isMissing('deliveryDate')} />
+            )}
+            <NotesField draft={draft} />
+          </DesignSection>
 
-        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={serialTracked}
-            onChange={(e) => setSerialTracked(e.target.checked)}
-            className="h-4 w-4"
-          />
-          {t('operations.shipment.serialTracked')}
-        </label>
+          <DesignSection
+            title={t('operations.shipment.form.sections.route')}
+            icon={SHIPMENT_PATH.route}
+          >
+            <div className="space-y-4">
+              <DraftBranchSide draft={draft} side="origin" missing={required.isMissing('origin')} />
+              <DraftBranchSide
+                draft={draft}
+                side="destination"
+                missing={required.isMissing('destination')}
+              >
+                {/* «المنطقة … تحت الفرع اللى الى»: under the TO branch, read only. */}
+                <AreaBox areaName={areaName} />
+              </DraftBranchSide>
+            </div>
+          </DesignSection>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {t('common.save')}
-          </Button>
+          <div className="space-y-5">
+            {/* «+ إضافة عملة» sits on the section's own title line, and only the first line
+                carries the boxes' names: a shipment of several currencies (the owner's own
+                example has four) grows by a box's height a currency, not a labelled field's. */}
+            <div className="relative">
+              <DesignSection
+                title={t('operations.shipment.form.sections.money')}
+                icon={SHIPMENT_PATH.money}
+              >
+                <MoneyLines draft={draft} missing={required.isMissing('amount')} />
+              </DesignSection>
+              <AddLineButton draft={draft} className="absolute end-0 top-0" />
+            </div>
+
+            <DesignSection
+              title={t('operations.shipment.form.sections.crew')}
+              icon={SHIPMENT_PATH.crew}
+            >
+              {editing ? (
+                // Re-crewing a saved shipment is not an edit — it moves a stop between captains'
+                // ordered days. What it rides with now is shown, read only.
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200">
+                  {row?.crew != null
+                    ? t('operations.shipment.form.crewHeld', {
+                        captain: row.crew.captainName ?? '—',
+                        vehicle:
+                          row.crew.vehicleId === null
+                            ? t('operations.crewPlan.noVehicle')
+                            : (row.crew.vehicleCode ?? '—'),
+                      })
+                    : // «No crew yet» is said plainly only of a daily row, whose one leg the row
+                      // reports. A secured row reports the leg it is ON — the pickup on its way to the
+                      // vault, the delivery from the vault on — and its crews are named on the
+                      // vault's screens; a plain shipment carries no legs at all. For those, say
+                      // where the crew is set.
+                      t(
+                        row !== null && row.shipmentType === 'daily'
+                          ? 'operations.shipment.form.crewNotOnEdit'
+                          : 'operations.shipment.form.crewElsewhere',
+                      )}
+                </p>
+              ) : !canSeeCrew ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {t('operations.shipment.form.crewNoAccess')}
+                </p>
+              ) : (
+                <>
+                  {/* How the two boxes pick each other, said to a screen reader on both of them — a
+                    visible line would cost the height that keeps the form without a scroll. */}
+                  <span id={crewHintId} className="sr-only">
+                    {t('operations.shipment.form.crewHint')}
+                  </span>
+                  <div
+                    className="grid grid-cols-1 items-start gap-4"
+                    title={t('operations.shipment.form.crewHint')}
+                  >
+                    <DesignField label={t('operations.shipment.form.captain')}>
+                      <div className={carBoxClass(false)}>
+                        <Combobox
+                          value={crewKey}
+                          options={crewOptions.map((option) => option.key)}
+                          optionLabel={captainLabel}
+                          onChange={setCrewKey}
+                          placeholder={t('operations.shipment.noCrew')}
+                          emptyText={t(crewBoard.isLoading ? 'common.loading' : 'common.noResults')}
+                          clearLabel={t('common.clear')}
+                          ariaLabel={t('operations.shipment.form.captain')}
+                          testId="shipment-captain"
+                          ariaDescribedBy={crewHintId}
+                        />
+                      </div>
+                    </DesignField>
+                    <DesignField label={t('operations.shipment.form.vehicle')}>
+                      <div className={carBoxClass(false)}>
+                        <Combobox
+                          // The PICKUP leg rides a van's row only (no row without a van is offered
+                          // here), so a row's `vanKey` is its van's id.
+                          value={chosenCrew?.vanKey ?? ''}
+                          options={vehicles.map((vehicle) => vehicle.vanKey)}
+                          optionLabel={(key) =>
+                            vehicles.find((vehicle) => vehicle.vanKey === key)?.vehicleCode ?? key
+                          }
+                          onChange={(vehicleId) =>
+                            setCrewKey(
+                              vehicleId === ''
+                                ? ''
+                                : (chooseVehicle(
+                                    crewOptions,
+                                    vehicleId,
+                                    chosenCrew?.captainEmployeeId ?? '',
+                                  )?.key ?? ''),
+                            )
+                          }
+                          placeholder={t('operations.shipment.noCrew')}
+                          emptyText={t(crewBoard.isLoading ? 'common.loading' : 'common.noResults')}
+                          clearLabel={t('common.clear')}
+                          ariaLabel={t('operations.shipment.form.vehicle')}
+                          testId="shipment-vehicle"
+                          ariaDescribedBy={crewHintId}
+                        />
+                      </div>
+                    </DesignField>
+                  </div>
+                  {/* Only the warning keeps a line of its own; how the two boxes pick each other is said
+                    by the boxes' title, so the form fits a laptop screen with no scroll. */}
+                  {crewOptions.length === 0 && !crewBoard.isLoading && (
+                    <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                      {t('operations.shipment.noCrewForDay')}
+                    </p>
+                  )}
+                </>
+              )}
+            </DesignSection>
+          </div>
         </div>
-      </form>
-    </Dialog>
+      </DesignDialog>
+
+      {/* «يظهر موديل كدا انه يضيف باقى البيانات»: the catalogs screen's own branch form. */}
+      <DraftBranchCreate draft={draft} />
+    </>
   );
 };

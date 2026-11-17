@@ -3,9 +3,10 @@ import { type Request, type Response } from 'express';
 import {
   type CreateOperationsCurrency,
   type ListOperationsReferenceQuery,
+  type OrderOperationsCurrencies,
   type UpdateOperationsCurrency,
 } from '@ecms/contracts';
-import { created, ok, okPage, validated } from '../../../platform/web';
+import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toCurrencyDto } from '../operations.mappers';
 import { operationsCurrencyService } from './currency.service';
@@ -27,4 +28,11 @@ export const updateCurrency = async (req: Request, res: Response): Promise<void>
   const { body, params } = validated<UpdateOperationsCurrency, never, IdParam>(req);
   const doc = await operationsCurrencyService.update(params.id, body, authContext(req).userId);
   ok(res, toCurrencyDto(doc));
+};
+
+/** «زى شاشة الحركة بالظبط» — the catalog's dragged order; 204, the Fleet catalogs' answer. */
+export const orderCurrencies = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<OrderOperationsCurrencies>(req);
+  await operationsCurrencyService.order(body, authContext(req).userId);
+  noContent(res);
 };

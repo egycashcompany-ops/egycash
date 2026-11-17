@@ -1,8 +1,8 @@
 // Workshop entry and exit, proven against what the screen actually produces.
 //
 // Five claims, each a rule a typecheck cannot see:
-//   • the eleven columns render in the required order, and the vehicle CODE and the roster DRIVER
-//     arrive ON the row rather than being joined against one page of the registry;
+//   • the twelve columns render in the required order, and the vehicle CODE, the car's BRANCH and
+//     the roster DRIVER arrive ON the row rather than being joined against one page of the registry;
 //   • a closed visit reads as closed in WORDS as well as in colour, and carries the exit reading
 //     and both custody names stacked in one cell;
 //   • the spare parts are catalog references, and the free text an older visit recorded is still
@@ -57,6 +57,9 @@ const WORKSHOP_ID = 'ws1';
 const WORK_TYPE_ID = 'wt1';
 const PART_ID = 'sp1';
 const OPERATION_ID = 'op1';
+/** The car's branch, and a branch that has since been closed — a car keeps the branch it was given. */
+const BRANCH_ID = '64b1f0bbbbbbbbbbbbbbbb01';
+const CLOSED_BRANCH_ID = '64b1f0bbbbbbbbbbbbbbbb02';
 /** Two drivers to pick, as real employee ids — what `drv` carries now. */
 const DRIVER_A = '64b1f0dddddddddddddddd01';
 const DRIVER_B = '64b1f0dddddddddddddddd02';
@@ -67,6 +70,8 @@ const visit = (o: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisit
   // A SERVER fact on the row, like the roster crew below it.
   vehicleCode: '150',
   operationId: null,
+  // The CAR's branch, joined by the server like the operation; null for a car with none.
+  branchId: null,
   driverInEmployeeId: null,
   driverOutEmployeeId: null,
   driverInName: null,
@@ -122,6 +127,17 @@ const KEY = (over: Record<string, unknown> = {}) =>
   listKey('fleet', 'maintenance', { ...BASE_PARAMS, ...over });
 
 const CATALOG_KEY = (kind: string) => listKey('fleet', 'catalogs', { kind });
+/** Every branch's name, the closed ones too — `useBranchNames`. */
+const BRANCH_NAMES_KEY = ['organization', 'branches', 'options', 'withInactive'];
+/** The ACTIVE branches only — `useBranchOptions`, the pickers' list. */
+const ACTIVE_BRANCHES_KEY = ['organization', 'branches', 'options'];
+const branch = (id: string, ar: string, en: string) => ({
+  id,
+  code: id.slice(-2),
+  name: { ar, en },
+  parentId: null,
+  catalogId: null,
+});
 /** The WHOLE registry the car filter reads — every page, every status. */
 const WHOLE_REGISTRY_KEY = () => listKey('fleet', 'vehicles', { whole: true, anyStatus: true });
 
@@ -142,6 +158,13 @@ const catalogs = (qc: QueryClient): void => {
     CATALOG_KEY('operation'),
     pageOf([{ id: OPERATION_ID, name: { ar: 'نقل اموال', en: 'Cash transport' } }]),
   );
+  // The closed branch is in the names list and NOT in the pickers' active list: a cell that read
+  // the active list would print a dash for it.
+  qc.setQueryData(BRANCH_NAMES_KEY, [
+    branch(BRANCH_ID, 'القاهرة', 'Cairo'),
+    branch(CLOSED_BRANCH_ID, 'فرع مغلق', 'Closed branch'),
+  ]);
+  qc.setQueryData(ACTIVE_BRANCHES_KEY, [branch(BRANCH_ID, 'القاهرة', 'Cairo')]);
 };
 
 const client = (
@@ -259,6 +282,9 @@ const REQUIRED_COLUMNS = [
   'fleet.odometer.columns.vehicle',
   // «ضيف عمود فى الجدول ب نوع التشغيل» — the car's operation, beside its code.
   'fleet.maintenance.fields.operation',
+  // «وشاشة الصيانات احط الفرع فى الجدول … عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه
+  // الصيانه» — the CAR's branch, right after its operation.
+  'fleet.vehicles.columns.branch',
   // THE TWO LEGS IN ONE COLUMN, ONE UNDER THE OTHER — «ورينى سامبل الاتنين دول تحت بعض».
   //
   // A REVERSAL OF A REVERSAL, said out loud: the drivers shared a cell, then «تفصل الصباحى عن
@@ -280,10 +306,36 @@ const REQUIRED_COLUMNS = [
   'fleet.vehicles.columns.actions',
 ];
 
+/** Where a column sits in the row — read off `REQUIRED_COLUMNS`, never written as a number. */
+const columnAt = (key: string): number => {
+  const index = REQUIRED_COLUMNS.indexOf(key);
+  if (index < 0) throw new Error(`${key} is not a column`);
+  return index;
+};
+/**
+ * Every column's place in the row. A number written into an assertion silently reads the
+ * NEIGHBOUR once a column is added before it — «الفرع» moved every column after «نوع التشغيل»
+ * along by one — so each test asks for the column by its name.
+ */
+const COLUMN = {
+  inDate: columnAt('fleet.maintenance.fields.inDate'),
+  outDate: columnAt('fleet.maintenance.fields.outDate'),
+  vehicle: columnAt('fleet.odometer.columns.vehicle'),
+  operation: columnAt('fleet.maintenance.fields.operation'),
+  branch: columnAt('fleet.vehicles.columns.branch'),
+  drivers: columnAt('fleet.maintenance.fields.drivers'),
+  workshop: columnAt('fleet.maintenance.fields.workshop'),
+  workType: columnAt('fleet.maintenance.fields.workType'),
+  spareParts: columnAt('fleet.maintenance.fields.spareParts'),
+  reading: columnAt('fleet.maintenance.fields.odometerAtService'),
+  notes: columnAt('fleet.odometer.columns.notes'),
+  actions: columnAt('fleet.vehicles.columns.actions'),
+};
+
 // ── 1. The table ────────────────────────────────────────────────────────────
 
 describe('the maintenance table', () => {
-  it('renders the eleven columns in the required order, and nothing else', () => {
+  it('renders the twelve columns in the required order, and nothing else', () => {
     // Exact equality, not "each appears after the last": that is what catches a column silently
     // added, dropped or moved rather than only a reordering.
     expect(headers(render())).toEqual(REQUIRED_COLUMNS.map((key) => t(key)));
@@ -330,7 +382,7 @@ describe('the maintenance table', () => {
     // capped the answer at `MAX_PAGE_SIZE` cars, so every car past it printed a dash. Here the
     // registry search answers with a DIFFERENT car entirely and the row still names its own.
     const qc = client([visit({ vehicleId: 'v101', vehicleCode: '101' })]);
-    expect(cells(render({ qc }))[2]).toBe('101');
+    expect(cells(render({ qc }))[COLUMN.vehicle]).toBe('101');
   });
 
   it('never joins the vehicle code against a page of the registry', () => {
@@ -343,7 +395,7 @@ describe('the maintenance table', () => {
   it('names the DRIVER who brought the car in — in red, on top, with no word before it', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
     const markup = render({ qc });
-    expect(cells(markup)[4]).toMatch(/^سائق الصباح/u);
+    expect(cells(markup)[COLUMN.drivers]).toMatch(/^سائق الصباح/u);
     expect(tone(tbody(markup), 'سائق الصباح')).toContain('text-red-700');
   });
 
@@ -356,16 +408,15 @@ describe('the maintenance table', () => {
       }),
     ]);
     const markup = render({ qc });
-    const both = cells(markup)[4] as string;
+    const both = cells(markup)[COLUMN.drivers] as string;
     // «امسح كلمه دخول وخروج»: entry first, exit after it, no word before either — the place and
     // the tone say which end of the visit a name belongs to.
     expect(both).toBe('سائق الصباح سائق المساء');
     expect(both.indexOf('سائق الصباح'), 'entry above exit').toBeLessThan(
       both.indexOf('سائق المساء'),
     );
-    expect(cells(markup)[5], 'the next column is the workshop, not a second driver').not.toContain(
-      'سائق المساء',
-    );
+    expect(COLUMN.workshop, 'the next column is the workshop').toBe(COLUMN.drivers + 1);
+    expect(cells(markup)[COLUMN.workshop], 'not a second driver').not.toContain('سائق المساء');
     // The two legs are told apart by TONE — with no word before them, the colour is what a
     // reader scanning down the column goes by.
     // Asserting each is NOT the other's colour is what fails if one class ever paints both.
@@ -406,13 +457,13 @@ describe('the maintenance table', () => {
 
   it('shows no exit driver while the car is still in the workshop — a dash under the entry', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
-    const both = cells(render({ qc }))[4] as string;
+    const both = cells(render({ qc }))[COLUMN.drivers] as string;
     expect(both, 'nobody has driven it away yet').toBe('سائق الصباح —');
   });
 
   it('dashes BOTH legs for a visit written before the driver fields existed', () => {
     const body = tbody(render());
-    expect(cells(render())[4]).toBe('— —');
+    expect(cells(render())[COLUMN.drivers]).toBe('— —');
     expect(body).not.toContain('null');
     expect(body).not.toContain('undefined');
   });
@@ -465,8 +516,7 @@ describe('the maintenance table', () => {
 
   it('shows catalog spare parts by NAME, and still shows an old visit’s free text', () => {
     const qc = client([visit({ sparePartIds: [PART_ID], spareParts: ['بوجيهات'] })]);
-    // Column 7: «نوع التشغيل» sits beside the car's code, and the two drivers share one column.
-    const partsCell = cells(render({ qc }))[7] as string;
+    const partsCell = cells(render({ qc }))[COLUMN.spareParts] as string;
     expect(partsCell, 'the catalog name, not the id').toContain('فلتر زيت');
     expect(partsCell).not.toContain(PART_ID);
     // The words an older visit recorded are the only record of what was fitted on it.
@@ -502,31 +552,59 @@ describe('the maintenance table’s look', () => {
   it('writes both dates year first, with slashes and Latin digits', () => {
     const qc = client([visit({ outDate: '2026-09-03T00:00:00.000Z' })]);
     const row = cells(render({ qc }));
-    expect(row[0], 'check-in').toBe('2026/09/01');
-    expect(row[1], 'check-out').toBe('2026/09/03');
+    expect(row[COLUMN.inDate], 'check-in').toBe('2026/09/01');
+    expect(row[COLUMN.outDate], 'check-out').toBe('2026/09/03');
   });
 
   it('writes the reading with Latin digits and a thousands comma, in the board’s figures', () => {
     const markup = render();
-    expect(cells(markup)[8]).toBe('120,000');
+    expect(cells(markup)[COLUMN.reading]).toBe('120,000');
     expect(tbody(markup), 'no Arabic-Indic reading left').not.toContain('١٢٠٬٠٠٠');
-    expect(cellTag(markup, 8), 'tabular, monospace').toContain('tabular-nums');
-    expect(cellTag(markup, 8), 'read left to right').toContain('dir="ltr"');
+    expect(cellTag(markup, COLUMN.reading), 'tabular, monospace').toContain('tabular-nums');
+    expect(cellTag(markup, COLUMN.reading), 'read left to right').toContain('dir="ltr"');
   });
 
   it('dashes a visit with no reading on file', () => {
-    expect(cells(render({ qc: client([visit({ odometerAtService: null })]) }))[8]).toBe('—');
+    const row = cells(render({ qc: client([visit({ odometerAtService: null })]) }));
+    expect(row[COLUMN.reading]).toBe('—');
   });
 
   it('writes the car’s code heavy and left to right — and dashes a car the registry lost', () => {
     const markup = render();
-    expect(cells(markup)[2]).toBe('150');
-    expect(cellTag(markup, 2)).toContain('dir="ltr"');
-    expect(cellTag(markup, 2)).toContain('font-bold');
-    expect(cellTag(markup, 2)).toContain('tabular-nums');
+    expect(cells(markup)[COLUMN.vehicle]).toBe('150');
+    expect(cellTag(markup, COLUMN.vehicle)).toContain('dir="ltr"');
+    expect(cellTag(markup, COLUMN.vehicle)).toContain('font-bold');
+    expect(cellTag(markup, COLUMN.vehicle)).toContain('tabular-nums');
     // A size over the row, as the alarms board writes the car's code.
-    expect(cellTag(markup, 2)).toContain(ALARMS_CODE_TYPE);
-    expect(cells(render({ qc: client([visit({ vehicleCode: null })]) }))[2]).toBe('—');
+    expect(cellTag(markup, COLUMN.vehicle)).toContain(ALARMS_CODE_TYPE);
+    const lost = cells(render({ qc: client([visit({ vehicleCode: null })]) }));
+    expect(lost[COLUMN.vehicle]).toBe('—');
+  });
+
+  it('opens the car card on the code — for a row linked to the registry, and a reader who may', () => {
+    // «عاوز لما اماوس يقف على كود عربيه يجيب بيانات زى اما اقف على اسم السواق»: the code's OWN
+    // element is the card's trigger, so the look asserted above is the same element's.
+    const reader = [...ALL, 'fleetVehicle.view'];
+    const linked = render({ permissions: reader });
+    expect(cellTag(linked, COLUMN.vehicle), 'the code opens the card').toContain(
+      'data-vehicle-hover="true"',
+    );
+    expect(cellTag(linked, COLUMN.vehicle), 'the card is on the code itself').toMatch(
+      /<span dir="ltr" class="[^"]*font-bold[^"]*"[^>]*data-vehicle-hover="true"[^>]*>150<\/span>/u,
+    );
+    // A visit from the old books keeps its code and gets no card: the card is the car the row is
+    // LINKED to, never a guess by the code.
+    const oldBook = render({ permissions: reader, qc: client([visit({ vehicleId: null })]) });
+    expect(cells(oldBook)[COLUMN.vehicle]).toBe('150');
+    expect(cellTag(oldBook, COLUMN.vehicle), 'no card for an unlinked row').not.toContain(
+      'data-vehicle-hover',
+    );
+    // The card is the registry's facts: without `fleetVehicle.view` the code is text as before.
+    expect(cellTag(render(), COLUMN.vehicle), 'no card without the grant').not.toContain(
+      'data-vehicle-hover',
+    );
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source).toMatch(/<VehicleHoverCode\s+vehicleId=\{visit\.vehicleId\}/u);
   });
 
   it('centres every value and header, the row’s controls too («تكون متوسطانه»)', () => {
@@ -549,12 +627,12 @@ describe('the maintenance table’s look', () => {
       }),
     ]);
     const markup = render({ qc });
-    expect(cells(markup)[4], 'the entry driver').toContain('سائق الصباح');
-    expect(cells(markup)[4], 'the exit driver').toContain('سائق المساء');
+    expect(cells(markup)[COLUMN.drivers], 'the entry driver').toContain('سائق الصباح');
+    expect(cells(markup)[COLUMN.drivers], 'the exit driver').toContain('سائق المساء');
     // «عاوز الاسم بتاع السواق كامل وشيل الكود»: no code on the row, no badge; the code on hover.
-    expect(cells(markup)[4], 'no code on the row').not.toContain('HR-D1');
-    expect(cells(markup)[4], 'no code on the row').not.toContain('HR-D2');
-    expect(cellTag(markup, 4)).not.toContain('rounded-full');
+    expect(cells(markup)[COLUMN.drivers], 'no code on the row').not.toContain('HR-D1');
+    expect(cells(markup)[COLUMN.drivers], 'no code on the row').not.toContain('HR-D2');
+    expect(cellTag(markup, COLUMN.drivers)).not.toContain('rounded-full');
     // The code on hover is the driver card now — «اقف على اسم السواق يجيب الاسم كامل والكود …» —
     // on each name, in place of a title that only said the name and the code.
     expect(tone(tbody(markup), 'سائق الصباح'), 'the entry driver’s card').toContain(
@@ -563,7 +641,7 @@ describe('the maintenance table’s look', () => {
     expect(tone(tbody(markup), 'سائق المساء'), 'the exit driver’s card').toContain(
       'data-driver-hover="true"',
     );
-    expect(cellTag(markup, 4), 'no title beside the card').not.toContain('title=');
+    expect(cellTag(markup, COLUMN.drivers), 'no title beside the card').not.toContain('title=');
     expect(tone(tbody(markup), 'سائق الصباح'), 'the entry leg’s tone').toContain('text-red-700');
     expect(tone(tbody(markup), 'سائق المساء'), 'the exit leg’s tone').toContain('text-emerald-700');
     const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
@@ -574,9 +652,9 @@ describe('the maintenance table’s look', () => {
   it('writes a long name whole, wrapping instead of cutting it', () => {
     const qc = client([visit({ driverInName: 'ابراهيم محمد محفوظ اسماعيل صيام' })]);
     const markup = render({ qc });
-    expect(cells(markup)[4]).toContain('ابراهيم محمد محفوظ اسماعيل صيام');
-    expect(cellTag(markup, 4)).toContain('whitespace-normal');
-    expect(cellTag(markup, 4)).not.toContain('truncate');
+    expect(cells(markup)[COLUMN.drivers]).toContain('ابراهيم محمد محفوظ اسماعيل صيام');
+    expect(cellTag(markup, COLUMN.drivers)).toContain('whitespace-normal');
+    expect(cellTag(markup, COLUMN.drivers)).not.toContain('truncate');
   });
 
   it('writes the workshop and the work type at the row’s size — no smaller 15px of their own', () => {
@@ -585,9 +663,9 @@ describe('the maintenance table’s look', () => {
     const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
     expect(source).not.toContain('BIG_WORDS');
     const markup = render();
-    expect(cells(markup)[5]).toBe('ورشة النور');
-    expect(cells(markup)[6]).toBe('صيانة');
-    for (const index of [5, 6]) {
+    expect(cells(markup)[COLUMN.workshop]).toBe('ورشة النور');
+    expect(cells(markup)[COLUMN.workType]).toBe('صيانة');
+    for (const index of [COLUMN.workshop, COLUMN.workType]) {
       expect(cellTag(markup, index), `column ${index} in a span, for the row’s bold`).toMatch(
         /<span>[^<]+<\/span>/u,
       );
@@ -621,7 +699,7 @@ describe('the maintenance table’s look', () => {
     expect(body, 'no 12px pill or word left in a cell').not.toContain('text-xs');
     expect(body, 'no size pinned below the row’s').not.toMatch(/text-\[1[1-4](?:\.5)?px\]/u);
     // The operation is held in a span like every other value, so the row's bold reaches it.
-    expect(cellTag(markup, 3)).toMatch(/<span>نقل اموال<\/span>/u);
+    expect(cellTag(markup, COLUMN.operation)).toMatch(/<span>نقل اموال<\/span>/u);
     // The driver's name at the row's size, not a 15px of its own.
     expect(tone(body, 'سائق الصباح'), 'the name at the row’s size').not.toContain('text-[');
     // The open visit's state: the alarms board's pill size, not the shared 12px.
@@ -636,8 +714,10 @@ describe('the maintenance table’s look', () => {
   it('keeps a name from the old books, grey, under the leg it was written for', () => {
     const qc = client([visit({ driverInName: 'عم سيد' })]);
     const markup = render({ qc });
-    expect(cells(markup)[4]).toContain('عم سيد');
-    expect(cellTag(markup, 4), 'marked as the book’s spelling').toContain('data-legacy-name');
+    expect(cells(markup)[COLUMN.drivers]).toContain('عم سيد');
+    expect(cellTag(markup, COLUMN.drivers), 'marked as the book’s spelling').toContain(
+      'data-legacy-name',
+    );
     expect(tone(tbody(markup), 'عم سيد'), 'grey, not a person the roster knows').toContain(
       'text-slate-500',
     );
@@ -661,8 +741,8 @@ describe('a visit that has left the workshop', () => {
   it('says it is closed with DATA, not only with colour', () => {
     // The state's non-colour carrier is the check-out DATE column: a closed visit prints one, an
     // open visit prints the «in the workshop» badge instead.
-    const closedOut = cells(render({ qc: client([closed()]) }))[1] as string;
-    const openOut = cells(render())[1] as string;
+    const closedOut = cells(render({ qc: client([closed()]) }))[COLUMN.outDate] as string;
+    const openOut = cells(render())[COLUMN.outDate] as string;
     expect(closedOut, 'a closed visit shows its check-out date').not.toBe(openOut);
     expect(openOut).toContain(t('fleet.maintenance.open'));
     expect(closedOut).not.toContain(t('fleet.maintenance.open'));
@@ -887,8 +967,9 @@ describe('the filter bar', () => {
 
 describe('the row actions follow the permission matrix', () => {
   // Derived from the column list, not hardcoded: a column added anywhere before the actions
-  // would otherwise silently move this index and make the assertion read the wrong cell.
-  const ACTIONS_INDEX = REQUIRED_COLUMNS.indexOf('fleet.vehicles.columns.actions') + 1;
+  // would otherwise silently move this index and make the assertion read the wrong cell. (It was
+  // one PAST the actions — a cell no row has — so the read-only case below passed on `undefined`.)
+  const ACTIONS_INDEX = COLUMN.actions;
   const actionsOf = (permissions: string[], v = visit()): string =>
     cells(render({ permissions, qc: client([v]) }))[ACTIONS_INDEX] ?? '';
   const html = (permissions: string[], v = visit()): string =>
@@ -1296,5 +1377,110 @@ describe('«نوع التشغيل» on the maintenance register', () => {
     );
     expect(set).not.toContain('data-date-caption="from"');
     expect(set).toContain('data-date-caption="outFrom"');
+  });
+});
+
+// ── «الفرع» — the CAR's branch ───────────────────────────────────────────────
+
+describe('«الفرع» on the maintenance register', () => {
+  // «وشاشة الصيانات احط الفرع فى الجدول … عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه
+  // الصيانه» — the branch the CAR is assigned to (`vehicle.branchId`, which the server joins onto
+  // the visit like the operation), never the branch of the workshop it went to.
+  const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+  const cellTag = (markup: string, index: number): string =>
+    [...tbody(markup).matchAll(/<td\b[^>]*>[\s\S]*?<\/td>/g)].map((m) => m[0])[index] as string;
+  const headTag = (markup: string, index: number): string =>
+    [...thead(markup).matchAll(/<th\b[^>]*>[\s\S]*?<\/th>/g)].map((m) => m[0])[index] as string;
+
+  it('sits right after «نوع التشغيل», under the registry’s own «الفرع»', () => {
+    expect(COLUMN.branch).toBe(COLUMN.operation + 1);
+    const head = headers(render());
+    expect(head[COLUMN.branch]).toBe('الفرع');
+    expect(head[COLUMN.branch]).toBe(t('fleet.vehicles.columns.branch'));
+    expect(t('fleet.vehicles.columns.branch', 'en')).toBe('Branch');
+  });
+
+  it('names the car’s branch from the row — a CLOSED branch by its name too', () => {
+    const named = cells(render({ qc: client([visit({ branchId: BRANCH_ID })]) }));
+    expect(named[COLUMN.branch]).toBe('القاهرة');
+    // The closed branch is not in the pickers' active list: a cell read from that list would
+    // print a dash for a car that has a branch.
+    const closed = cells(render({ qc: client([visit({ branchId: CLOSED_BRANCH_ID })]) }));
+    expect(closed[COLUMN.branch], 'named from the list that keeps closed branches').toBe(
+      'فرع مغلق',
+    );
+    expect(source).toContain('useBranchNames()');
+    expect(source, 'not the pickers’ active-only list').not.toContain('useBranchOptions');
+  });
+
+  it('is the row’s `branchId` — not the workshop’s branch, not a lookup in the browser', () => {
+    // The workshop is named beside it from its own catalog; nothing ties the two together.
+    const markup = render({ qc: client([visit({ branchId: BRANCH_ID })]) });
+    expect(cells(markup)[COLUMN.workshop]).toBe('ورشة النور');
+    expect(cells(markup)[COLUMN.branch]).toBe('القاهرة');
+    // Code only: the comments may name `vehicle.branchId` to say where the server reads it.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code).toContain('visit.branchId');
+    expect(code, 'no registry join in the browser').not.toMatch(
+      /vehicle\.branchId|useAllVehicles/u,
+    );
+  });
+
+  it('prints a dash — never the id — for a car with no branch, an old-book visit, an unknown id', () => {
+    const none = render();
+    expect(cells(none)[COLUMN.branch], 'a car with no branch').toBe('—');
+    const oldBook = render({
+      qc: client([visit({ vehicleId: null, vehicleCode: null, branchId: null })]),
+    });
+    expect(cells(oldBook)[COLUMN.branch], 'a visit from the old books').toBe('—');
+    const unknown = render({ qc: client([visit({ branchId: '64b1f0bbbbbbbbbbbbbbbb99' })]) });
+    expect(cells(unknown)[COLUMN.branch], 'an id no branch answers').toBe('—');
+    expect(tbody(unknown)).not.toContain('64b1f0bbbbbbbbbbbbbbbb99');
+    for (const markup of [none, oldBook, unknown]) {
+      expect(tbody(markup)).not.toContain('null');
+      expect(tbody(markup)).not.toContain('undefined');
+    }
+  });
+
+  it('is drawn exactly as «نوع التشغيل» is — the same cell, a value in a span, no size of its own', () => {
+    const markup = render({
+      qc: client([visit({ operationId: OPERATION_ID, branchId: BRANCH_ID })]),
+    });
+    const cell = cellTag(markup, COLUMN.branch);
+    const operation = cellTag(markup, COLUMN.operation);
+    expect(cell).toMatch(/<span>القاهرة<\/span>/u);
+    expect(cell.match(/^<td\b[^>]*>/u)?.[0], 'the operation cell’s own td').toBe(
+      operation.match(/^<td\b[^>]*>/u)?.[0],
+    );
+    expect(cell).toContain('text-center');
+    expect(cell).not.toContain('text-[');
+    expect(headTag(markup, COLUMN.branch).match(/^<th\b[^>]*>/u)?.[0]).toBe(
+      headTag(markup, COLUMN.operation).match(/^<th\b[^>]*>/u)?.[0],
+    );
+  });
+
+  it('carries no sort arrow — the server would have to join it for the whole register first', () => {
+    const head = headTag(render(), COLUMN.branch);
+    expect(head, 'a plain header, no button').not.toContain('<button');
+    expect(head).not.toContain('<svg');
+    const column = source.slice(source.indexOf("key: 'branch',"));
+    expect(column.slice(0, column.indexOf('},\n    },'))).not.toContain('sortable');
+  });
+
+  it('goes into the Excel file right after «نوع التشغيل», named as the cell names it', () => {
+    const sheet = source.slice(
+      source.indexOf('const exportSheet'),
+      source.indexOf('const runExport'),
+    );
+    expect(sheet).toMatch(
+      /t\('fleet\.maintenance\.fields\.operation'\),\s*t\('fleet\.vehicles\.columns\.branch'\),\s*t\('fleet\.maintenance\.fields\.driverIn'\),/u,
+    );
+    // The value in the same place among the row's values, from the same lookup as the cell; a
+    // car with no branch is an empty cell, not a dash, as the operation's is.
+    expect(sheet).toMatch(
+      /catalogName\.get\(visit\.operationId\) \?\? ''\),\s*carBranch\(visit\) \?\? '',\s*driverCell\(/u,
+    );
+    const cellCode = source.slice(source.indexOf("key: 'branch',"));
+    expect(cellCode.slice(0, cellCode.indexOf('    },\n'))).toContain('carBranch(visit)');
   });
 });

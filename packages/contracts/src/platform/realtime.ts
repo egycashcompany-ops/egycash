@@ -20,6 +20,10 @@ export const REALTIME_BROADCAST_ACTIONS = [
   'create',
   'update',
   'delete',
+  // A restore puts a deleted record back where `delete` took it from — the same data change in
+  // reverse, so a board that dropped the row on the delete signal must hear it come back (the
+  // Operations deleted-shipments restore; the Files and ATM mail-ticket restores alike).
+  'restore',
   'statusChange',
   'settingChanged',
   'roleAssigned',

@@ -15,11 +15,12 @@
 // database: a failure here is a 400 in the browser.
 import { describe, expect, it } from 'vitest';
 import {
+  CancelVaultReceiptSchema,
+  ConfirmSecuredPickupSchema,
   ListOperationsBankBranchesQuerySchema,
   ListOperationsCrewRequirementsQuerySchema,
   ListOperationsReferenceQuerySchema,
   ListOperationsShipmentsQuerySchema,
-  ListSecuredBacklogQuerySchema,
   ListSecuredDueQuerySchema,
   ListVaultInventoryQuerySchema,
   MAX_PAGE_SIZE,
@@ -27,7 +28,13 @@ import {
   OperationsCrewBoardQuerySchema,
   OperationsCrewDirectoryQuerySchema,
   OperationsDayBoardQuerySchema,
+  OperationsDeletedShipmentsQuerySchema,
   OperationsReportQuerySchema,
+  OperationsSecuredBoardQuerySchema,
+  OperationsSecuredDispatchBoardQuerySchema,
+  OperationsShipmentHistoryQuerySchema,
+  OperationsVaultQueueQuerySchema,
+  OrderOperationsCurrenciesSchema,
 } from '@ecms/contracts';
 import { buildQuery, type QueryParams } from '../../../shared/lib/api-client';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -89,16 +96,37 @@ const REQUESTS = [
   },
   { screen: 'Daily operations · the board', schema: OperationsDayBoardQuerySchema, params: { date: '2026-08-18' } },
   {
-    screen: 'Secured backlog',
-    schema: ListSecuredBacklogQuerySchema,
-    params: { page: 1, pageSize: 25, sortDir: 'desc' },
+    screen: 'Shipments history · the default range (this month to date)',
+    schema: OperationsShipmentHistoryQuerySchema,
+    params: { from: '2026-08-01', to: '2026-08-18' },
   },
   {
-    screen: 'Vault receive · the draft queue',
-    schema: ListSecuredBacklogQuerySchema,
-    params: { page: 1, pageSize: MAX_PAGE_SIZE, sortDir: 'desc', status: ['draft'] },
+    screen: 'Shipments history · the deleted shipments of the same range',
+    schema: OperationsDeletedShipmentsQuerySchema,
+    params: { from: '2026-08-01', to: '2026-08-18' },
+  },
+  // Round 8: the secured screen is the day board's board over every open محصنة — no parameters.
+  { screen: 'Secured screen · the board', schema: OperationsSecuredBoardQuerySchema, params: {} },
+  // Round 8: the vault's receive queue is board rows — with the captain and received today, and
+  // «الكل» adding the ones no captain has collected (`getVaultQueue` sends `all` only when on).
+  { screen: 'Vault receive · the queue', schema: OperationsVaultQueueQuerySchema, params: {} },
+  {
+    screen: 'Vault receive · «الكل»',
+    schema: OperationsVaultQueueQuerySchema,
+    params: { all: true },
   },
   { screen: 'Vault dispatch · due list', schema: ListSecuredDueQuerySchema, params: { date: '2026-08-18' } },
+  // Round 10: «صرف الخزينة» — every محصنة in the vault (no key at all), or one delivery day.
+  {
+    screen: 'Vault dispatch · every shipment in the vault',
+    schema: OperationsSecuredDispatchBoardQuerySchema,
+    params: {},
+  },
+  {
+    screen: 'Vault dispatch · one delivery day',
+    schema: OperationsSecuredDispatchBoardQuerySchema,
+    params: { date: '2026-08-18' },
+  },
   { screen: 'Vault inventory', schema: ListVaultInventoryQuerySchema, params: { page: 1, pageSize: 25 } },
   { screen: 'Crew board', schema: OperationsCrewBoardQuerySchema, params: { date: '2026-08-18' } },
   { screen: 'Crew board · pool', schema: OperationsCrewDirectoryQuerySchema, params: { date: '2026-08-18' } },
@@ -119,6 +147,13 @@ const REQUESTS = [
     schema: OperationsReportQuerySchema,
     params: { from: '2026-08-01', to: '2026-08-31' },
   },
+  // Round 11 — «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر»: the vault roll-up takes the
+  // same period as the two reports (it refused any query before the owner's answer).
+  {
+    screen: 'Vault roll-up · the current month',
+    schema: OperationsReportQuerySchema,
+    params: { from: '2026-08-01', to: '2026-08-31' },
+  },
 ] as const;
 
 describe('every Operations request parses against the schema that receives it (B8)', () => {
@@ -132,6 +167,42 @@ describe('every Operations request parses against the schema that receives it (B
       expect(result.success, why).toBe(true);
     });
   }
+});
+
+// Round 10 — the bodies the secured screen and the vault's screens send, against the schemas that
+// receive them: the pickup ✓ and its undo carry the version the row was read at; a cancelled receipt
+// its reason, trimmed, within the server's bounds (the dialog sends `reason.trim()`).
+describe('the Round 10 acts’ bodies', () => {
+  it('sends the pickup ✓ and its undo the row’s version, and nothing else', () => {
+    expect(ConfirmSecuredPickupSchema.safeParse({ version: 4 }).success).toBe(true);
+    expect(ConfirmSecuredPickupSchema.safeParse({ version: 4, by: 'operations' }).success).toBe(
+      false,
+    );
+  });
+
+  it('sends a cancelled receipt its reason and the row’s version', () => {
+    expect(
+      CancelVaultReceiptSchema.safeParse({ reason: 'أُدخلت بالخطأ', version: 5 }).success,
+    ).toBe(true);
+    expect(CancelVaultReceiptSchema.safeParse({ reason: '', version: 5 }).success).toBe(false);
+  });
+
+  it('never asks «صرف الخزينة» for an empty day — the key is left out instead', () => {
+    // The server refuses `date=` (400): an empty day is not a day.
+    expect(OperationsSecuredDispatchBoardQuerySchema.safeParse({ date: '' }).success).toBe(false);
+    // So an empty value never reaches it: `buildQuery` drops it, and «every day» is no key at all.
+    expect(buildQuery({ date: '' })).toBe('');
+    expect(
+      OperationsSecuredDispatchBoardQuerySchema.safeParse(asServerQuery({ date: '' })).success,
+    ).toBe(true);
+  });
+});
+
+describe('the currencies’ dragged order (Round 8)', () => {
+  it('sends a body the order endpoint takes — the ids in their new order', () => {
+    const ids = ['68c0f4a2b1d3e4f5a6b7c8d9', '68c0f4a2b1d3e4f5a6b7c8da'];
+    expect(OrderOperationsCurrenciesSchema.safeParse({ ids }).success).toBe(true);
+  });
 });
 
 describe('the ceiling that caused it (B8)', () => {

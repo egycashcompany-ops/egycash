@@ -7,7 +7,9 @@ import {
   carRemaining,
   fileRemaining,
   liveTransfers,
+  receivingCap,
   sumLive,
+  type ReceivingFigures,
   type TransferSource,
 } from './accident-transfer';
 import { type FleetAccidentTransfer } from './accident.model';
@@ -145,6 +147,73 @@ describe('allocateTransfer — «أقدم حادث عليه متبقي الأو�
     const earlier = file('2024-01-01', 100, { createdAt: new Date('2024-01-02T00:00:00Z') });
     const allocation = allocateTransfer([later, earlier], 50);
     expect(allocation.ok && String(allocation.lines[0]?.accidentId)).toBe(String(earlier._id));
+  });
+});
+
+describe('receivingCap — «اعرف المبلغ اللى بالسالب كام وشيله»', () => {
+  /** A receiving file `below` zero: collected 0, paid `below`, nothing moved yet. */
+  const short = (below: number, over: Partial<ReceivingFigures> = {}): ReceivingFigures => ({
+    amountCollected: 0,
+    companyCost: 0,
+    paidAmount: below,
+    transferredIn: 0,
+    transferredOut: 0,
+    ...over,
+  });
+
+  it('allows up to the file’s whole negative — and the negative exactly', () => {
+    expect(receivingCap(short(300), 100)).toEqual({ ok: true });
+    expect(receivingCap(short(300), 300)).toEqual({ ok: true });
+  });
+
+  it('REFUSES a piastre past it, naming the negative', () => {
+    expect(receivingCap(short(300), 300.01)).toEqual({ ok: false, deficit: 300 });
+  });
+
+  it('refuses any take onto a file at zero or above — it has no negative', () => {
+    expect(receivingCap(short(0), 0.01)).toEqual({ ok: false, deficit: 0 });
+    expect(receivingCap({ amountCollected: 500, companyCost: 0, paidAmount: 0 }, 1)).toEqual({
+      ok: false,
+      deficit: 0,
+    });
+  });
+
+  it('reads all five figures: collected + company − paid + in − out', () => {
+    // 1,000 + 200 − 2,000 = −800; 300 already taken in → −500; 100 given out → −600.
+    const file = short(2000, {
+      amountCollected: 1000,
+      companyCost: 200,
+      transferredIn: 300,
+      transferredOut: 100,
+    });
+    expect(receivingCap(file, 600)).toEqual({ ok: true });
+    expect(receivingCap(file, 600.01)).toEqual({ ok: false, deficit: 600 });
+  });
+
+  it('counts what the file already took: a second take fills only the rest', () => {
+    expect(receivingCap(short(500, { transferredIn: 400 }), 100)).toEqual({ ok: true });
+    expect(receivingCap(short(500, { transferredIn: 400 }), 100.01)).toEqual({
+      ok: false,
+      deficit: 100,
+    });
+    expect(receivingCap(short(500, { transferredIn: 500 }), 0.01)).toEqual({
+      ok: false,
+      deficit: 0,
+    });
+  });
+
+  it('reads a file written before transfers existed as having none', () => {
+    expect(receivingCap({ amountCollected: 0, companyCost: 0, paidAmount: 50 }, 50)).toEqual({
+      ok: true,
+    });
+  });
+
+  it('compares in piastres — no binary residue refuses the exact negative', () => {
+    // 0.1 + 0.2 − 0.6 is −0.30000000000000004 in floating point: the negative is 0.30.
+    const file = short(0.6, { amountCollected: 0.1, companyCost: 0.2 });
+    expect(receivingCap(file, 0.3)).toEqual({ ok: true });
+    expect(receivingCap(file, 0.31)).toEqual({ ok: false, deficit: 0.3 });
+    expect(receivingCap(short(19.99), 19.99)).toEqual({ ok: true });
   });
 });
 

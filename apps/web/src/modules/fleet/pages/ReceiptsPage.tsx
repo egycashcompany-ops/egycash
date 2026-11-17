@@ -47,6 +47,7 @@ import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverCell } from '../components/DriverPerson';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import { FuelCompanyLogo } from '../components/FuelCardTiles';
 import { ReceiptDialog } from '../components/ReceiptDialog';
 import { ReceiptImageCell, ReceiptImagePreviewDialog } from '../components/ReceiptImageCell';
@@ -365,13 +366,17 @@ export const ReceiptsPage = (): JSX.Element => {
       align: 'center',
       header: t('fleet.odometer.columns.vehicle'),
       sortable: true,
+      // The code's own element is the car card's trigger — the car the receipt is on.
       render: (row) =>
         row.vehicleCode === null ? (
           DASH
         ) : (
-          <span dir="ltr" className={cn('text-sm font-bold', FIGURE)}>
-            {row.vehicleCode}
-          </span>
+          <VehicleHoverCode
+            vehicleId={row.vehicleId}
+            code={row.vehicleCode}
+            dir="ltr"
+            className={cn('text-sm font-bold', FIGURE)}
+          />
         ),
     },
     {

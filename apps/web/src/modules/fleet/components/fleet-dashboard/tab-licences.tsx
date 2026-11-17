@@ -22,6 +22,7 @@ import { nowLinks, type DashLink, type NowLinks } from '../../lib/fleet-dashboar
 import { cairoTime, share, slashDay } from '../../lib/fleet-dashboard-tabs';
 import { DriverHoverText } from '../DriverHoverCard';
 import { useEmployeeRecords } from '../EmployeeName';
+import { VehicleHoverCode } from '../VehicleHoverCard';
 import {
   AMBER,
   BAND,
@@ -32,7 +33,6 @@ import {
   Card,
   CardHead,
   CarChip,
-  CompanyWide,
   FOCUS,
   Fig,
   FootLink,
@@ -41,6 +41,7 @@ import {
   MUTED,
   N,
   NOTE,
+  NUM,
   RED,
   RULE,
   SEG,
@@ -178,13 +179,28 @@ const Bucket = ({
 
 /** A licence row's car: its code in the approved drawing's framed box, the box itself the link to
  *  the car's file. */
-const CodeBox = ({ code, link }: { code: string; link: DashLink | null }): JSX.Element => (
+const CodeBox = ({
+  vehicleId,
+  code,
+  link,
+}: {
+  vehicleId: string;
+  code: string;
+  link: DashLink | null;
+}): JSX.Element => (
   <Fig
     link={link}
     linkedClassName=""
     className="inline-grid h-9 min-w-[3rem] shrink-0 place-items-center rounded-md border border-slate-300 bg-slate-50 px-2 text-[15px] font-bold leading-5 text-slate-900 shadow-sm transition-colors hover:border-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:hover:border-slate-500"
   >
-    <N>{code}</N>
+    {/* The car card on the code — a Tab stop of its own only when the box is no link. */}
+    <VehicleHoverCode
+      vehicleId={vehicleId}
+      code={code}
+      focusable={link === null}
+      dir="ltr"
+      className={NUM}
+    />
   </Fig>
 );
 
@@ -294,6 +310,7 @@ const VehicleLicences = ({
                 className={cn(ROW, 'py-2.5')}
               >
                 <CodeBox
+                  vehicleId={row.vehicleId}
                   code={row.code}
                   link={links.vehicle(row.vehicleId, 'licenceVehicles.row')}
                 />
@@ -393,7 +410,8 @@ const VisitRow = ({
           <Phrase
             text={t(row.open ? 'fleet.dash.licences.visitIn' : 'fleet.dash.licences.visitOut')}
             parts={{
-              code: <CarChip code={row.code} />,
+              // Inside the line's own link: the chip hovers, and Tab reaches the link.
+              code: <CarChip code={row.code} focusable={false} />,
               workshop:
                 row.workshop === null
                   ? t('fleet.dash.licences.noWorkshop')
@@ -745,12 +763,10 @@ const PapersAndCards = ({
   papers,
   cards,
   links,
-  branch,
 }: {
   papers: FleetDashboardNowDto['papers'];
   cards: FleetDashboardNowDto['fuelCards'];
   links: NowLinks;
-  branch: boolean;
 }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
@@ -762,7 +778,6 @@ const PapersAndCards = ({
           dot="amber"
           title={t('fleet.dash.licences.papersTitle')}
           sub={t('fleet.dash.licences.papersSub')}
-          end={cards !== null ? <CompanyWide show={branch} /> : undefined}
         />
       }
       note={t('fleet.dash.licences.papersNote')}
@@ -874,12 +889,7 @@ export const LicencesTab = (props: NowTabProps): JSX.Element => {
           )}
           {now.licenceDrivers !== null && <DriverLicences lic={now.licenceDrivers} links={links} />}
           {(now.papers !== null || now.fuelCards !== null) && (
-            <PapersAndCards
-              papers={now.papers}
-              cards={now.fuelCards}
-              links={links}
-              branch={now.branchId !== null}
-            />
+            <PapersAndCards papers={now.papers} cards={now.fuelCards} links={links} />
           )}
         </div>
       )}

@@ -20,6 +20,7 @@ export const toInterviewStageDto = (doc: InterviewStageDoc): InterviewStageDto =
   name: doc.name,
   order: doc.order,
   active: doc.active,
+  mode: doc.mode ?? (doc.order >= 2 ? 'decisionOnly' : 'evaluation'),
   version: doc.__v,
 });
 

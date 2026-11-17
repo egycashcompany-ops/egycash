@@ -51,7 +51,8 @@ import {
   useVehicleTypes,
   useVehicles,
 } from '../api/fleet-queries';
-import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
+import { InWorkshopBadge, LicenceTag, VehicleStatusBadge } from '../components/VehicleStatusBadge';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import {
   BOARD_FONT,
   BoardIcon,
@@ -574,9 +575,14 @@ export const VehiclesListPage = (): JSX.Element => {
       sortable: true,
       render: (v) => (
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-          <span className="font-figures text-sm" dir="ltr">
-            {v.code}
-          </span>
+          {/* The car card on the code — today's drivers and the last reading, which no column
+              here shows; as the drivers board hangs the driver card on a name. */}
+          <VehicleHoverCode
+            vehicleId={v.id}
+            code={v.code}
+            className="font-figures text-sm"
+            dir="ltr"
+          />
           {/* «الجدول … مش ظاهر كله»: a laptop has no room for two pills beside every code, so
               below the wide screen the state is a coloured dot and the workshop a small icon —
               the words on hover — and the whole table fits. A wide screen keeps the pills. */}
@@ -1418,23 +1424,6 @@ const CompactVehicleState = ({
           <span className="sr-only">{t('fleet.vehicles.inWorkshop')}</span>
         </span>
       )}
-    </span>
-  );
-};
-
-const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.Element | null => {
-  const t = useT();
-  if (state === 'unknown') return null;
-  return (
-    <span
-      className={cn(
-        'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
-        state === 'valid' && 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
-        state === 'soon' && 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
-        state === 'expired' && 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400',
-      )}
-    >
-      {t(`fleet.fuelCards.expiry.${state}`)}
     </span>
   );
 };

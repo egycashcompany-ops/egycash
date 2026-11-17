@@ -30,7 +30,10 @@ export const fleetDashboardKeys = {
     ['fleet', 'dashboard', 'period', liveness, query] as const,
   /** Every period read whose range reaches today — what midnight and the realtime signals move. */
   livePeriod: ['fleet', 'dashboard', 'period', 'live'] as const,
-  /** The closed ranges: the realtime signals leave them alone; midnight moves «الشهر الماضي» only. */
+  /**
+   * The closed ranges: only a fine's signal reaches them (their fines' states are as of now);
+   * midnight moves «الشهر الماضي» only.
+   */
   pastPeriod: ['fleet', 'dashboard', 'period', 'past'] as const,
 };
 

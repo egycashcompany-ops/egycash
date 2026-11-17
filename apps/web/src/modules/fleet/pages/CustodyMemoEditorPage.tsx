@@ -483,7 +483,8 @@ export const CustodyMemoEditorPage = (): JSX.Element => {
           />
         </td>
         <td>
-          <CodeChip code={code} />
+          {/* A pick list: no car card here — never inside a picker or a form. */}
+          <CodeChip code={code} card={false} />
         </td>
         <td>
           <Day day={row.date} />

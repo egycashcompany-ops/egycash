@@ -126,8 +126,20 @@ export const Field = ({
       {label !== undefined && (
         <label
           htmlFor={htmlFor}
+          // A label not tied to its control by `htmlFor` still has to put the cursor IN the box:
+          // otherwise a click focuses nothing and the browser shows its caret beside the label.
+          onClick={
+            htmlFor === undefined
+              ? (e) => {
+                  const control = e.currentTarget.parentElement?.querySelector<HTMLElement>(
+                    'input:not([type=hidden]):not([aria-hidden=true]), select, textarea, [role=combobox]',
+                  );
+                  control?.focus();
+                }
+              : undefined
+          }
           className={cn(
-            'block text-sm font-medium',
+            'block cursor-default select-none text-sm font-medium',
             missing ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200',
           )}
         >

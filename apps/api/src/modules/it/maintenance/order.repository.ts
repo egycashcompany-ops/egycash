@@ -77,6 +77,28 @@ class ItMaintenanceOrderRepository extends BaseRepository<ItMaintenanceOrderDoc>
   }
 
   /**
+   * Which of these assets an order still governs — `hasActiveForAsset`'s question, counted the
+   * same way (open or in progress), for a whole page in ONE read, so the register can say it of
+   * every row (`ItAssetDto.hasActiveMaintenance`) without a query per row. Unscoped like that
+   * guard: the assets were already read under the caller's scope, and their orders are theirs.
+   *
+   * `session` — read INSIDE the caller's transaction, as the guard is: the assets bulk upload asks
+   * it of the devices it would move, in the same transaction that moves them.
+   */
+  async activeAssetIds(assetIds: readonly string[], session?: ClientSession): Promise<Set<string>> {
+    const ids = [...new Set(assetIds)].filter((id) => Types.ObjectId.isValid(id));
+    if (ids.length === 0) return new Set();
+    const query = this.model.distinct('assetId', {
+      assetId: { $in: ids.map((id) => new Types.ObjectId(id)) },
+      status: { $in: ACTIVE_ORDER_STATUSES },
+      isDeleted: false,
+    });
+    if (session !== undefined) query.session(session);
+    const found: unknown[] = await query.exec();
+    return new Set(found.map((id) => String(id)));
+  }
+
+  /**
    * §4.6's idempotency guard: a plan gets no second order while one is still unfinished.
    *
    * Deliberately UNSCOPED — the sweep is the system acting for the organization, not a user

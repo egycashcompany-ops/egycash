@@ -15,6 +15,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   EMPLOYEE_STATUSES,
+  IT_ASSET_IMPORT_DECISIONS,
+  IT_ASSET_IMPORT_WARNINGS,
   IT_ASSET_STATUSES,
   IT_CATALOG_KINDS,
   IT_CONSUMABLE_ISSUE_REASONS,
@@ -30,10 +32,15 @@ import {
   IT_MOBILE_SIM_KINDS,
   IT_TICKET_EVENT_TYPES,
   IT_TICKET_STATUSES,
+  IT_VEHICLE_CHECK_ANSWERS,
+  IT_VEHICLE_CHECK_ITEMS,
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../platform/localization/i18n';
 import { CUSTODY_COUNT_FORMS } from '../fleet/lib/custody-words';
+import { ASSET_MOVE_REFUSALS } from './lib/asset-branch-move';
+import { HELD_ELSEWHERE_WORDINGS, IMPORT_RESULT_COUNTS } from './lib/asset-import';
+import { VEHICLE_CHECK_PERIODS } from './lib/vehicle-check-dashboard';
 
 const LOCALES: Locale[] = ['en', 'ar'];
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -112,6 +119,84 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
     name: 'warranty window',
     prefix: 'it.assets.warranty.endsWithin',
     values: CUSTODY_COUNT_FORMS,
+  },
+  // FR-21 — the vehicle checks dashboard names each device, each answer, the period and its short
+  // column heads through TEMPLATE keys, and counts days, faults, reporters, cars and photos in
+  // Arabic's five forms through more — none of which the source scan below can see.
+  { name: 'vehicle check device', prefix: 'it.vehicleCheck.item', values: IT_VEHICLE_CHECK_ITEMS },
+  {
+    name: 'vehicle check answer',
+    prefix: 'it.vehicleCheck.answer',
+    values: IT_VEHICLE_CHECK_ANSWERS,
+  },
+  {
+    name: 'vehicle check column head',
+    prefix: 'it.vehicleChecks.short',
+    values: IT_VEHICLE_CHECK_ITEMS.filter((item) => !item.startsWith('camera')),
+  },
+  {
+    name: 'vehicle check period',
+    prefix: 'it.vehicleChecks.period',
+    values: VEHICLE_CHECK_PERIODS,
+  },
+  ...(['days', 'faults', 'reporters', 'activeCars'] as const).map((noun) => ({
+    name: `vehicle checks ${noun} count`,
+    prefix: `it.vehicleChecks.${noun}`,
+    values: CUSTODY_COUNT_FORMS,
+  })),
+  {
+    name: 'vehicle check photo count',
+    prefix: 'it.vehicleCheck.sent.photoCount',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  // «نقل إلى فرع» / «تحويل إلى فرع» (2026-11-11): why an asset stays, and the toasts that count
+  // what moved — and what the other store did not have — in Arabic's five forms, all through
+  // TEMPLATE keys the source scan below cannot see.
+  { name: 'asset move refusal', prefix: 'it.assets.move.refused', values: ASSET_MOVE_REFUSALS },
+  { name: 'assets moved count', prefix: 'it.assets.move.moved', values: CUSTODY_COUNT_FORMS },
+  {
+    name: 'consumables transferred count',
+    prefix: 'it.consumables.transfer.done',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  {
+    name: 'consumables made in the other store count',
+    prefix: 'it.consumables.transfer.created',
+    values: CUSTODY_COUNT_FORMS,
+  },
+  // «رفع جماعي» (2026-11-16): each line's decision (with its particulars, and without them), the
+  // chips that count the decisions, the doubts, and what the apply did — all through TEMPLATE keys.
+  {
+    name: 'asset import decision',
+    prefix: 'it.assets.import.decision',
+    values: IT_ASSET_IMPORT_DECISIONS,
+  },
+  {
+    name: 'asset import decision without its branch or row',
+    prefix: 'it.assets.import.decisionNoBranch',
+    values: ['move', 'duplicateInFile', ...HELD_ELSEWHERE_WORDINGS],
+  },
+  // A device left in another branch says why — held, kept by maintenance, or disposed.
+  {
+    name: 'asset import device left in another branch',
+    prefix: 'it.assets.import.decision',
+    values: HELD_ELSEWHERE_WORDINGS,
+  },
+  {
+    name: 'asset import chip',
+    prefix: 'it.assets.import.count',
+    values: IT_ASSET_IMPORT_DECISIONS,
+  },
+  {
+    name: 'asset import warning',
+    prefix: 'it.assets.import.warning',
+    values: IT_ASSET_IMPORT_WARNINGS,
+  },
+  { name: 'asset import result', prefix: 'it.assets.import.result', values: IMPORT_RESULT_COUNTS },
+  {
+    name: 'asset import written as',
+    prefix: 'it.assets.import.resultAction',
+    values: ['created', 'filled', 'moved'] as const,
   },
 ];
 

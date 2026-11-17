@@ -1,9 +1,16 @@
-// Accidents (FW-8, legacy car_accidents): the §4.6 file registry over FL-6.
+// Accidents (FW-8, legacy car_accidents): the §4.6 file registry over FL-6, in the Fleet boards'
+// look — «شكل تعديل الشاشه بتاعت الحوادث تمام» (the owner-approved board, 2026-11-09): no page
+// title, a toolbar with «N نتيجة», «الإحصائيات», the Excel pill and the purple «تسجيل حادث»; the
+// dark filter bar with an icon on every filter; the five totals between the filters and the table,
+// behind «الإحصائيات» and closed on the way in; the boards' table, bold like Receipts («سيب شكل
+// الخط كدا»), with Azeret Mono figures and year-first dates.
 //
 // AMOUNTS. The three money facts are shown exactly as stored, and «إجمالي المتبقي» beside them is
-// DERIVED on read — `amountCollected + companyCost − paidAmount`, the contract's own
-// `fleetAccidentRemaining`, which is also what the server sums for the strip above the table.
-// Nothing about it is stored: no column, no migration, no second copy to fall out of step.
+// DERIVED on read — `amountCollected + companyCost − paidAmount + in − out`, the contract's own
+// `fleetAccidentRemaining`, which is also what the server sums for the figures. Nothing about it
+// is stored: no column, no migration, no second copy to fall out of step. A file that took from or
+// gave to another car prints «تحويل وارد» / «تحويل صادر» and the amount under its remaining, so
+// the row's own figures add up on screen.
 //
 // THE FIGURES ARE THE SERVER'S. They describe every accident the filters match, not the page in
 // front of the reader, so they come from their own endpoint whose query has no `page` at all —
@@ -17,58 +24,65 @@
 // row's colour, the direction of its action, and a word for screen readers — three carriers, none
 // of them colour alone.
 //
-// URL-synced filters (vehicle codes + culprit search + date range + status), sortable
-// occurredAt and pagination, per the module idiom.
+// URL-synced filters (dates + vehicle codes + culprit drivers + note search + status + the
+// dashboard's vehicle set), sortable columns and pagination, per the module idiom.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   fleetAccidentRemaining,
   splitVehicleCodeList,
   type FleetAccidentDto,
+  type FleetAccidentTotalsDto,
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
-import { Can, useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { useCan } from '../../../platform/rbac/Can';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
-import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
-import { Input, Select } from '../../../shared/ui/form';
+import { Input } from '../../../shared/ui/form';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { CheckIcon, CornerDownIcon, HistoryIcon, PlusIcon } from '../../../shared/ui/icons';
+import { CheckIcon, CornerDownIcon, HistoryIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
-import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
+import { formatDate, formatMoney, formatMoneyParts } from '../../../shared/lib/format';
+import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
 import {
   useAccidentSummary,
   useAccidents,
+  useAllVehicles,
   useDeleteAccident,
   useSetAccidentStatus,
-  useAllVehicles,
 } from '../api/fleet-queries';
-import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { ExportSheetButton } from '../components/ExportSheetButton';
-import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import * as fleetApi from '../api/fleet-api';
+import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
+import { FigureChip, moneyChip } from '../components/FleetFigures';
+import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
+import { CUSTODY_NEGATIVE_INK } from '../components/CustodyFigures';
+import { DARK_TABLE } from './VehiclesListPage';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { AccidentFormDialog } from '../components/AccidentFormDialog';
 import { AccidentTransferLogDialog } from '../components/AccidentTransferLogDialog';
 import { DriverHoverText } from '../components/DriverHoverCard';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import { useEmployeeRecords } from '../components/EmployeeName';
-import { DateBox } from '../components/DateBox';
-import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
-import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
-import { readList, writeList } from '../../../shared/lib/list-param';
-import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { VehicleSetChip } from '../components/VehicleSetChip';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
+import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
+import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { readList, writeList } from '../../../shared/lib/list-param';
 import {
   CLEAR_VEHICLE_SET,
   hasVehicleSet,
@@ -102,6 +116,118 @@ const DEFAULT_PAGE_SIZE = 25;
  */
 const DEFAULT_SORT = 'occurredAt:desc';
 
+/** «مفتوح» / «مغلق» is ONE answer: the list holds at most one. */
+const one = (value: string): string[] => (value === '' ? [] : [value]);
+/** A count in Latin digits, grouped — «1,204» — as the boards write every figure. */
+const LATIN = new Intl.NumberFormat('en-US');
+
+/** Every filter is `density="tight"`, as on the vehicles, maintenance and receipts boards. */
+const TIGHT = 'tight' as const;
+
+/** The toolbar's three buttons — ReceiptsPage's / MaintenancePage's own (local there too). */
+const BRAND_BUTTON =
+  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
+const PILL_BUTTON =
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
+const ADD_BUTTON =
+  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-2 py-1.5 text-[11px] font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-xs active:scale-95';
+
+/**
+ * The closed file's green — MaintenancePage's `CLOSED_ROW` (local there). The boards' table paints
+ * its own hover over every row, so the tint is restated on the row's `data-closed`, with a hover of
+ * its own: a closed file stays green under the pointer too.
+ */
+const CLOSED_ROW =
+  '[&_tbody_tr[data-closed=true]]:!bg-emerald-50 dark:[&_tbody_tr[data-closed=true]]:!bg-[#10241c] [&_tbody_tr[data-closed=true]:hover]:!bg-emerald-100 dark:[&_tbody_tr[data-closed=true]:hover]:!bg-[#143026]';
+
+/**
+ * The boards' table: DARK_TABLE, Arabic words in Cairo, every figure in `NUM` (Azeret Mono), the
+ * values bold like Receipts. The date and the car code never break their heading over two lines,
+ * so the heading row stays one line high as on the maintenance and receipts boards.
+ */
+const ACCIDENTS_TABLE = cn(
+  DARK_TABLE,
+  BOARD_TABLE_FILL,
+  "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif]",
+  '[&_thead_th:nth-child(-n+2)]:!whitespace-nowrap',
+  CLOSED_ROW,
+);
+
+/** A figure on the row — «2026/11/07», «1,500.00»: monospace, tabular, one line. */
+const FIGURE = cn('whitespace-nowrap', NUM);
+const DASH = <span className="text-slate-400">—</span>;
+
+/**
+ * The five figures behind «الإحصائيات», straight from the server's own sums. Its fixes stay HERE
+ * (the shared `FigureChip` is not changed): the negative remaining is isolated left to right so
+ * its «−» reads in front of the figure, and its red is made to win over the chip's own colour.
+ */
+export const AccidentFigures = ({ totals }: { totals: FleetAccidentTotalsDto }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const negative = totals.remaining < 0;
+  const remaining = moneyChip(Math.abs(totals.remaining), locale);
+  return (
+    <section
+      data-accident-figures="true"
+      className="grid shrink-0 animate-drop-in grid-cols-2 gap-3 lg:grid-cols-5"
+    >
+      <div className="col-span-2 sm:col-span-1">
+        <FigureChip
+          icon={PATH.warn}
+          iconClass="bg-rose-500/10 text-rose-600 dark:text-rose-400"
+          label={t('fleet.accidents.totals.count')}
+          value={LATIN.format(totals.count)}
+          unit=""
+        />
+      </div>
+      <div className="col-span-2 sm:col-span-1">
+        <FigureChip
+          icon={PATH.box}
+          iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
+          label={t('fleet.accidents.totals.amountCollected')}
+          {...moneyChip(totals.amountCollected, locale)}
+        />
+      </div>
+      <div className="col-span-2 sm:col-span-1">
+        <FigureChip
+          icon={FILTER_ICON.branch}
+          iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-300"
+          label={t('fleet.accidents.totals.companyCost')}
+          {...moneyChip(totals.companyCost, locale)}
+        />
+      </div>
+      <div className="col-span-2 sm:col-span-1">
+        <FigureChip
+          icon={PATH.card}
+          iconClass="bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
+          label={t('fleet.accidents.totals.paidAmount')}
+          {...moneyChip(totals.paidAmount, locale)}
+        />
+      </div>
+      <div className="col-span-2 sm:col-span-1" data-accident-figure="remaining">
+        <FigureChip
+          icon={PATH.trend}
+          iconClass={
+            negative
+              ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+              : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+          }
+          label={t('fleet.accidents.totals.remaining')}
+          // FigureChip writes its value in the page's direction, which sends a leading «−» to the
+          // far end («11,287.50−»); the figure is isolated left to right (LRI … PDI) so it reads
+          // «−11,287.50», as the custody header's `dir="ltr"` negative does.
+          value={negative ? `⁦−${remaining.value}⁩` : remaining.value}
+          unit={remaining.unit}
+          // FigureChip hard-codes `text-slate-900 dark:text-white` beside `valueClass`, and that
+          // colour comes later in the stylesheet than the red — so the red is made to win here.
+          {...(negative ? { valueClass: '!text-red-600 dark:!text-red-400' } : {})}
+        />
+      </div>
+    </section>
+  );
+};
+
 /**
  * The culprit as the accident wrote it, and — when it was one or several of our drivers — their
  * card on hover. A third party's name is the text alone.
@@ -119,8 +245,7 @@ export const AccidentsPage = (): JSX.Element => {
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const vehicleCodes = splitVehicleCodeList(sp.get('vehicleCodes') ?? '');
-  // WHICH drivers, exactly — where the name box above is a guess that matches anyone sharing a
-  // first name, and is the only way to find a third party.
+  // WHICH drivers, exactly — by name or code, several at once.
   const culpritBy = splitVehicleCodeList(sp.get('culpritBy') ?? '');
   // «عاوز اقدر ابحث فى الملاحظات» — part of the note, matched server-side over the WHOLE set.
   // Not a filter the browser could apply: the table holds one page, and the note that would have
@@ -170,13 +295,8 @@ export const AccidentsPage = (): JSX.Element => {
   /**
    * WHAT THE READER IS LOOKING AT — the filters, and only the filters.
    *
-   * `code` and `vehicleId` are two narrowings of the same axis and are sent SEPARATELY on purpose:
-   * the server applies both (an AND), so typing part of a code while a vehicle is picked shows
-   * their intersection, and a code the registry does not have shows nothing rather than
-   * everything. Neither control cancels the other, here or there.
-   *
    * This object is also exactly what the totals are asked for, which is the whole reason it is
-   * split out from the page: the figures below describe THIS set, and paging cannot reach them.
+   * split out from the page: the figures describe THIS set, and paging cannot reach them.
    */
   const filters = useMemo(
     () => ({
@@ -199,8 +319,8 @@ export const AccidentsPage = (): JSX.Element => {
   const summary = useAccidentSummary(filters);
 
   const clearFilters = (): void =>
-    // ONE update, every key. The code search and the vehicle pick go together — leaving either
-    // behind would hand back a "cleared" bar that is still filtering.
+    // ONE update, every key — leaving any behind would hand back a "cleared" bar that is still
+    // filtering.
     patch({
       vehicleCodes: null,
       culpritBy: null,
@@ -220,8 +340,9 @@ export const AccidentsPage = (): JSX.Element => {
     narrowedToSet;
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes — the WHOLE
-  // registry, not its first page of 100.
-  const vehiclesQuery = useAllVehicles({ anyStatus: true });
+  // registry, not its first page of 100. Asked for only by a reader who may read the registry
+  // (`fleetVehicle.view`); for anyone else the row's own code — the server joins it — is the code.
+  const vehiclesQuery = useAllVehicles({ anyStatus: true }, can('fleetVehicle.view'));
   // The row's own code first — the server resolves it, and a file kept from the old book for a
   // car the registry never had carries the book's code and no vehicle at all.
   const codeOf = (r: { vehicleId: string | null; vehicleCode: string | null }): string =>
@@ -237,6 +358,8 @@ export const AccidentsPage = (): JSX.Element => {
   const [deleting, setDeleting] = useState<FleetAccidentDto | null>(null);
   /** The car whose transfer log is open — «خدت من مين او ادت ل مين». */
   const [logOf, setLogOf] = useState<FleetAccidentDto | null>(null);
+  // «الإحصائيات» — the five totals open from the toolbar, closed on the way in, as on the boards.
+  const [statsOpen, setStatsOpen] = useState(false);
   const setStatus = useSetAccidentStatus();
   const remove = useDeleteAccident();
 
@@ -258,49 +381,40 @@ export const AccidentsPage = (): JSX.Element => {
     setDeleting(null);
   };
 
-  // One step up the type scale for the filter row, to match the table under it. It is a PROP on
-  // every control rather than a class, because a class would lose: `cn` has no tailwind-merge and
-  // the control's own `text-sm` wins whichever order they are written in — measured, not assumed.
-  const dateLabel = 'shrink-0 text-base font-medium text-slate-600 dark:text-slate-300';
+  /**
+   * A sum of money on the row as the receipts board writes one: the figure in `NUM`, «ج.م.» beside
+   * it in the page's type. `signed`: a negative remaining in the boards' red, «−1,850.00», read
+   * left to right so the minus stays in front of the figure.
+   */
+  const money = (amount: number, signed = false): JSX.Element => {
+    const negative = signed && amount < 0;
+    const { figure, currency } = formatMoneyParts(Math.abs(amount), 'EGP', locale);
+    return (
+      <span
+        className="inline-flex items-baseline gap-1"
+        {...(negative ? { 'data-negative': 'true' } : {})}
+      >
+        <span dir="ltr" className={cn(FIGURE, negative && CUSTODY_NEGATIVE_INK)}>
+          {negative ? `−${figure}` : figure}
+        </span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">{currency}</span>
+      </span>
+    );
+  };
 
-  const money = (amount: number): JSX.Element => (
-    <span className="tabular-nums" dir="ltr">
-      {formatMoney(amount, 'EGP', locale)}
+  /** «تحويل وارد +500.00» / «تحويل صادر −1,000.00» — small and muted, under the remaining. */
+  const transferLine = (way: 'in' | 'out', amount: number): JSX.Element => (
+    <span
+      data-transfer-line={way}
+      className="inline-flex items-baseline gap-1.5 whitespace-nowrap text-[11px] font-semibold leading-none text-slate-500 dark:text-slate-400"
+    >
+      <span>{t(`fleet.accidents.transferLine.${way}`)}</span>
+      <span dir="ltr" className={NUM}>
+        {way === 'in' ? '+' : '−'}
+        {formatMoneyParts(amount, 'EGP', locale).figure}
+      </span>
     </span>
   );
-
-  /**
-   * The five figures above the table, straight from the server's own sums.
-   *
-   * Nothing here reads `rows`. It could not: `rows` is one page, and these describe the whole
-   * filtered set — which is also why they are given as absent while the request is in flight
-   * rather than as zeros, so the strip shows a skeleton instead of a number that is about to be
-   * contradicted.
-   */
-  const figures = summary.data;
-  const asMoney = (value: number): string => formatMoney(value, 'EGP', locale);
-  const asCount = (value: number): string => formatNumber(value, locale);
-  // `value` is OMITTED, not undefined, while the sums are in flight — `exactOptionalPropertyTypes`
-  // draws that distinction and `StatStrip` reads the absence as "hold the space, do not invent a
-  // number". A zero here would be a claim, and it would be wrong as often as it was right.
-  const figure = (
-    key: string,
-    figureValue: number | undefined,
-    format: (value: number) => string,
-  ): StatStripItem => ({
-    key,
-    label: t(`fleet.accidents.totals.${key}`),
-    loading: summary.isPending,
-    ...(figureValue === undefined ? {} : { value: format(figureValue) }),
-  });
-  const totals: StatStripItem[] = [
-    // A count of files is not money and keeps the reader's own digits; the four sums are money.
-    figure('count', figures?.count, asCount),
-    figure('amountCollected', figures?.amountCollected, asMoney),
-    figure('companyCost', figures?.companyCost, asMoney),
-    figure('paidAmount', figures?.paidAmount, asMoney),
-    figure('remaining', figures?.remaining, asMoney),
-  ];
 
   /**
    * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
@@ -308,19 +422,15 @@ export const AccidentsPage = (): JSX.Element => {
    * THE FILTER'S WHOLE ANSWER, not the page's. `params` carries the reader's filters, their sort
    * AND their page; `filtersOnly` drops the last of the three and `fetchFilteredRows` walks every
    * page, so a reader who narrows to four hundred files gets four hundred rows rather than the
-   * twenty-five in front of them. A file that is silently short is the worst kind of wrong,
-   * because it looks complete. The sort rides along untouched: the workbook opens in the order
-   * the reader is looking at, which is the order they will look for a row in.
+   * twenty-five in front of them. The sort rides along untouched.
    *
    * THE CODE CELL IS SPLIT. On screen it carries two facts — the car's code and, for anyone the
-   * green tint does not reach, the open/closed state. This screen deliberately has no Status
-   * column; a spreadsheet has neither the tint nor the action button, so the state has to become
-   * a column of its own or the workbook would lose it altogether.
+   * green tint does not reach, the open/closed state. A spreadsheet has neither the tint nor the
+   * action button, so the state becomes a column of its own.
    *
    * THE FOUR SUMS GO IN AS NUMBERS, never as `formatMoney` strings, so the reader can total a
-   * filtered set in the sheet itself — `moneyColumns` is what gives them their two decimals.
-   * «إجمالي المتبقي» is computed by the CONTRACT's own formula, the same one the column prints
-   * and the server sums for the strip above, so cell and total stay one statement.
+   * filtered set in the sheet itself. «إجمالي المتبقي» is computed by the CONTRACT's own formula,
+   * the same one the column prints and the server sums for the figures.
    */
   const exportSheet = async (): Promise<void> => {
     const sheetFilters = filtersOnly(params);
@@ -355,8 +465,9 @@ export const AccidentsPage = (): JSX.Element => {
     saveSheet({
       name: t('fleet.nav.accidents'),
       serialHeader: t('fleet.violations.report.serial'),
+      // The car's column is headed «كود السيارة», as on the screen.
       header: [
-        t('fleet.vehicles.columns.code'),
+        t('fleet.odometer.columns.vehicle'),
         t('fleet.vehicles.columns.status'),
         t('fleet.accidents.fields.occurredAt'),
         t('fleet.accidents.fields.culprit'),
@@ -368,9 +479,8 @@ export const AccidentsPage = (): JSX.Element => {
         t('fleet.accidents.log.column'),
         t('fleet.accidents.fields.notes'),
       ],
-      // `codeOf` is the table's own resolver, reused rather than repeated: it prefers the code
-      // the server joined in and falls back to the registry map this screen already holds, so a
-      // file kept from the old book reads in the sheet exactly as it reads on screen.
+      // `codeOf` is the table's own resolver, reused rather than repeated, so a file kept from
+      // the old book reads in the sheet exactly as it reads on screen.
       rows: all.map((r) => [
         codeOf(r),
         t(`fleet.accidents.status.${r.status}`),
@@ -387,87 +497,129 @@ export const AccidentsPage = (): JSX.Element => {
       moneyColumns: [5, 6, 7, 8],
     });
   };
+  const [exporting, setExporting] = useState(false);
+  const runExport = async (): Promise<void> => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      await exportSheet();
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    } finally {
+      setExporting(false);
+    }
+  };
 
+  // The boards' table — every value centred under a centred header, the date year first, every
+  // figure in Latin digits; the row's controls at its end. The date first, then «كود السيارة», as
+  // on maintenance, receipts and the dealership.
   const columns: Column<FleetAccidentDto>[] = [
     {
+      key: 'occurredAt',
+      align: 'center',
+      header: t('fleet.accidents.fields.occurredAt'),
+      sortable: true,
+      render: (r) =>
+        r.occurredAt === null ? (
+          DASH
+        ) : (
+          <span dir="ltr" className={FIGURE}>
+            {ymd(r.occurredAt)}
+          </span>
+        ),
+    },
+    {
       key: 'vehicle',
-      header: t('fleet.vehicles.columns.code'),
+      align: 'center',
+      header: t('fleet.odometer.columns.vehicle'),
       // The car's CODE, joined in by the server before the page is cut: the register is paged, so
       // ordering the rows in hand would sort one page and claim to have sorted the file.
       sortable: true,
       sortKey: 'vehicleCode',
+      // «عاوز لما اماوس يقف على كود عربيه يجيب بيانات» — the car card hangs on the code's own
+      // element; a file kept from the old book with no registry car (`vehicleId` null) has none.
       render: (r) => (
-        <span className="font-figures text-xs" dir="ltr">
+        <VehicleHoverCode
+          vehicleId={r.vehicleId}
+          code={codeOf(r)}
+          dir="ltr"
+          className={cn('text-sm font-bold', FIGURE)}
+        >
           {codeOf(r)}
           {/*
-            The row's state, for anyone the colour does not reach. With the Status column gone the
+            The row's state, for anyone the colour does not reach. With no Status column the
             open/closed fact is carried by the tint and by the direction of the action button —
             and a reader who has neither the colour nor the close grant would be left with
-            nothing. This is that third carrier, and it costs no width. It rode on the serial
-            until the serial column went; the first cell of the row is still where it belongs.
+            nothing. This is that third carrier, and it costs no width.
           */}
           <span className="sr-only"> — {t(`fleet.accidents.status.${r.status}`)}</span>
-        </span>
+        </VehicleHoverCode>
       ),
     },
     {
-      key: 'occurredAt',
-      header: t('fleet.accidents.fields.occurredAt'),
-      sortable: true,
-      render: (r) => <span className="tabular-nums">{formatDate(r.occurredAt, locale)}</span>,
-    },
-    {
       key: 'culprit',
+      align: 'center',
       header: t('fleet.accidents.fields.culprit'),
       render: (r) => <CulpritCell accident={r} />,
     },
     {
       key: 'statement',
+      align: 'center',
       header: t('fleet.accidents.fields.statement'),
-      render: (r) => <span className="block max-w-[18rem] truncate">{r.statement}</span>,
+      render: (r) => (
+        <span className="mx-auto block min-w-[9rem] max-w-[13rem] whitespace-normal break-words leading-snug [text-wrap:balance]">
+          {r.statement}
+        </span>
+      ),
     },
     {
       key: 'amountCollected',
+      align: 'center',
       header: t('fleet.accidents.fields.amountCollected'),
-      align: 'end',
       sortable: true,
       render: (r) => money(r.amountCollected),
     },
     {
       key: 'companyCost',
+      align: 'center',
       header: t('fleet.accidents.fields.companyCost'),
-      align: 'end',
       sortable: true,
       render: (r) => money(r.companyCost),
     },
     {
       key: 'paidAmount',
+      align: 'center',
       header: t('fleet.accidents.fields.paidAmount'),
-      align: 'end',
       sortable: true,
       render: (r) => money(r.paidAmount),
     },
     {
-      // Derived here from the three facts beside it, by the CONTRACT's formula — the same one the
-      // server sums for the strip above, so the column and its total are one statement.
+      // Derived here from the facts beside it, by the CONTRACT's formula — the same one the
+      // server sums for the figures. ORDERED BY THE SAME SUBTRACTION, computed in the query
+      // before the page is cut: «مين لسه عليه أكتر» is a question about the whole file.
       key: 'remaining',
+      align: 'center',
       header: t('fleet.accidents.fields.remaining'),
-      align: 'end',
-      // ORDERED BY THE SAME SUBTRACTION the cell prints. The figure is never stored, so the
-      // server computes it in the query — before the page is cut, because «مين لسه عليه أكتر»
-      // is a question about the whole file and not about the twenty-five rows in hand.
       sortable: true,
-      className: 'font-medium',
-      render: (r) => money(fleetAccidentRemaining(r)),
+      render: (r) =>
+        r.transferredIn > 0 || r.transferredOut > 0 ? (
+          <span className="inline-flex flex-col items-center gap-1">
+            {money(fleetAccidentRemaining(r), true)}
+            {r.transferredIn > 0 && transferLine('in', r.transferredIn)}
+            {r.transferredOut > 0 && transferLine('out', r.transferredOut)}
+          </span>
+        ) : (
+          money(fleetAccidentRemaining(r), true)
+        ),
     },
     {
       // «يتحط زرار فى كل صف يكون قبل الملاحظات» — the CAR's log, opened from any of its files.
       key: 'transferLog',
-      header: t('fleet.accidents.log.column'),
       align: 'center',
+      header: t('fleet.accidents.log.column'),
       render: (r) =>
         r.vehicleId === null ? (
-          <span className="text-slate-400 dark:text-slate-600">—</span>
+          DASH
         ) : (
           <span className={ACTION_GROUP}>
             <button
@@ -493,12 +645,15 @@ export const AccidentsPage = (): JSX.Element => {
     },
     {
       key: 'notes',
+      align: 'center',
       header: t('fleet.accidents.fields.notes'),
       render: (r) =>
         r.notes === null ? (
-          <span className="text-slate-400 dark:text-slate-600">—</span>
+          DASH
         ) : (
-          <span className="block max-w-[14rem] truncate">{r.notes}</span>
+          <span className="mx-auto block max-w-[12.5rem] whitespace-normal break-words leading-snug [text-wrap:balance]">
+            {r.notes}
+          </span>
         ),
     },
     ...(can('fleetAccident.edit') || can('fleetAccident.close') || can('fleetAccident.delete')
@@ -562,239 +717,287 @@ export const AccidentsPage = (): JSX.Element => {
       : []),
   ];
 
+  /** «من» / «إلى» written inside the box while it is empty — MaintenancePage's `dateBound`. */
+  const dateBound = (labelKey: string, value: string, param: string): JSX.Element => (
+    <FilterWithIcon
+      icon={FILTER_ICON.calendar}
+      tone="text-cyan-600 dark:text-cyan-400"
+      className="w-36 shrink-0 max-sm:basis-[calc(50%-4px)]"
+      datePicker={{ label: t(labelKey) }}
+    >
+      <Input
+        type="date"
+        dir="ltr"
+        density={TIGHT}
+        aria-label={t(labelKey)}
+        title={t(labelKey)}
+        value={value}
+        onChange={(e) => patch({ [param]: e.target.value || null })}
+        className={cn(
+          'dark:[color-scheme:dark]',
+          value === '' && 'peer [&:not(:focus)::-webkit-datetime-edit]:opacity-0',
+        )}
+      />
+      {value === '' && (
+        <span
+          aria-hidden="true"
+          data-date-caption={param}
+          className="pointer-events-none absolute inset-y-0 left-1.5 right-11 flex items-center justify-center truncate text-sm text-slate-500 peer-focus:hidden lg:max-xl:text-xs dark:text-slate-400"
+        >
+          {t(labelKey)}
+        </span>
+      )}
+    </FilterWithIcon>
+  );
+
   return (
     <PageContainer fullHeight>
-      <PageHeader
-        title={t('fleet.nav.accidents')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.accidents') },
-        ]}
-        actions={
-          <>
-            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
-                told the reader it has no data reads as a way out of the failure, and the
-                file behind it would be empty or short. Disabling is not enough — it still
-                draws. */}
-            {!isError && <ExportSheetButton name="accidents" onExport={exportSheet} />}
-            <Can permission="fleetAccident.create">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setRecordOpen(true)}
-              >
-                {t('fleet.accidents.record')}
-              </Button>
-            </Can>
-          </>
-        }
-      />
-
-      <div className={BOARD_FRAME}>
-        {/*
-          ONE row on desktop — and the two dates are why it was not one before.
-
-          `Field` stacks its label ABOVE the control. Two of those in a row of bare controls make
-          the bar two lines tall, push every neighbour's centre off, and cost the width that made
-          the seventh control wrap. So «من» and «إلى» keep their visible labels and sit BESIDE
-          them: same height as everything else, and the row is a row.
-
-          Every child is `shrink-0` with a width of its own, which is what `singleRow`'s
-          `flex-nowrap` needs — with no wrapping to fall back on, a child left to flex would be
-          squeezed by its neighbours rather than moving to the next line.
-
-          The width lives on a WRAPPER, never on the control. `cn` is a plain joiner: a `w-40`
-          handed to a control whose base is `w-full` does not win, and the browser showed exactly
-          that — date boxes that ignored their width, clipped their own placeholder and ran into
-          the select beside them. Widths are sized to their content (a code is short, a name is
-          not) so the bar spends its space where the typing happens, and each is the width its
-          own contents MEASURE at this type size — a clipped placeholder is a filter nobody can
-          name. `singleRowFrom` is measured the same way: seven controls at this size, with the
-          shell's widest sidebar, fit from 1440 and not before.
-
-          The exception is the two search boxes, which are `flex-1` over a `min-w` floor: a select
-          and a date box have one right width and gain nothing from more, but a box somebody TYPES
-          into does. So the slack a wide screen leaves goes to them instead of sitting empty at the
-          end of the bar, and the floor is what stops `flex-nowrap` squeezing them under their own
-          placeholder on the narrowest screen that still claims one row.
-
-          The first two are BOTH about the vehicle and both stay: the box sweeps by code, the
-          dropdown pins one car, and using them together narrows to the intersection rather than
-          letting either replace the other. In Arabic the bar reads from the right exactly as
-          specified: كود ← العربية ← اسم المتسبب ← من ← إلى ← الحالة ← Reset.
-        */}
-        <FilterBar
-          // The set's three controls do not fit the measured row, so while a link narrows the
-          // screen to a set the bar wraps instead of pushing them off the page.
-          singleRow={!narrowedToSet}
-          // One control wider than the 1440 this was measured at. The note box shares the row's
-          // slack rather than claiming a width of its own, so the bar needs the next notch up and
-          // no more — `flex-nowrap` does not shorten a row that will not fit, it pushes it off
-          // the page.
-          singleRowFrom={1536}
-          hasActiveFilters={hasFilters}
-          onClear={clearFilters}
-        >
-          {/* ONE vehicle control. Until this there were two — a substring code box AND a
-              single-car dropdown — and the server intersected them, so picking 215 and typing 216
-              produced an empty page the filter bar itself had offered. */}
-          <VehicleCodeFilter
-            className="shrink-0"
-            value={vehicleCodes}
-            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
-          />
-          {/* WHICH DRIVERS, by name or code, from the registry — several at once. The box beside it
-              still searches the written name, and has to: a third party is not on any roster, and
-              «سائق الطرف الآخر» is the commonest thing this column says. */}
-          <div className="min-w-[11rem] flex-1">
-            <RegistryDriverPicker
-              value={culpritBy}
-              onChange={(next) => patch({ culpritBy: next.length === 0 ? null : next.join(',') })}
-              multiple
-              fullWidth
-              className="w-full"
-            />
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <label htmlFor="accidents-from" className={dateLabel}>
-              {t('fleet.odometer.from')}
-            </label>
-            <DateBox label={t('fleet.odometer.from')} className="w-44">
-              <Input
-                id="accidents-from"
-                type="date"
-                value={from}
-                onChange={(e) => patch({ from: e.target.value || null })}
-                textScale="comfortable"
-              />
-            </DateBox>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <label htmlFor="accidents-to" className={dateLabel}>
-              {t('fleet.odometer.to')}
-            </label>
-            <DateBox label={t('fleet.odometer.to')} className="w-44">
-              <Input
-                id="accidents-to"
-                type="date"
-                value={to}
-                onChange={(e) => patch({ to: e.target.value || null })}
-                textScale="comfortable"
-              />
-            </DateBox>
-          </div>
-          {/* THE NOTE, SEARCHED — «عاوز اقدر ابحث فى الملاحظات». A SHARED child, like the driver
-              picker beside it: it takes a share of whatever the row has left rather than
-              demanding its own width, so adding it cannot push the bar off the page. */}
-          <div className="min-w-[8rem] flex-1">
-            <Input
-              aria-label={t('fleet.odometer.columns.notes')}
-              placeholder={t('fleet.maintenance.notesFilter')}
-              value={notes}
-              onChange={(e) => patch({ notes: e.target.value || null })}
-              textScale="comfortable"
-            />
-          </div>
-          <div className="w-32 shrink-0">
-            <Select
-              aria-label={t('fleet.vehicles.columns.status')}
-              value={status}
-              onChange={(e) => patch({ status: e.target.value || null })}
-              textScale="comfortable"
+      <div className={BOARD_FRAME} data-accidents-board="true">
+        {/* «زى باقى شاشات الحركة»: no page title — the board opens on its toolbar. */}
+        <div className="flex items-center justify-between gap-2" data-accidents-toolbar="true">
+          <span
+            role="status"
+            data-filtered-count
+            title={t('fleet.filters.matchedRows')}
+            className="text-sm font-bold text-slate-600 dark:text-slate-300"
+          >
+            {data === undefined
+              ? ''
+              : // Latin digits, as every figure on the board — `formatNumber` would print «١٢».
+                t('common.list.count', { count: LATIN.format(data.meta.totalItems) })}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <button
+              type="button"
+              data-accident-stats-toggle="true"
+              aria-expanded={statsOpen}
+              onClick={() => setStatsOpen((open) => !open)}
+              className={BRAND_BUTTON}
             >
-              <option value="">{t('fleet.accidents.allStatuses')}</option>
-              <option value="open">{t('fleet.accidents.status.open')}</option>
-              <option value="closed">{t('fleet.accidents.status.closed')}</option>
-            </Select>
-          </div>
-          {/* The vehicle set a dashboard link narrowed the files to — shown only while it does,
-              so a remembered one is never a filter with nothing on the bar saying so. The same
-              controls the registry (type) and the maintenance screen (operation, branch) use. */}
-          {narrowedToSet && (
-            <>
-              {sets.types ? (
-                <div className="min-w-[8rem] flex-1">
-                  <MultiSelect
-                    clearable
-                    fullWidth
-                    showSelectedValues
-                    chips
-                    className="w-full"
-                    label={t('fleet.vehicles.filters.short.make')}
-                    options={typeOptions}
-                    value={vehicleSet.typeIds}
-                    onChange={(ids) => patch({ type: writeList(ids) })}
-                  />
-                </div>
-              ) : (
-                vehicleSet.typeIds.length > 0 && (
-                  <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
-                )
-              )}
-              {sets.operations ? (
-                <div className="min-w-[8rem] flex-1">
-                  <CatalogMultiSelect
-                    kind="operation"
-                    className="w-full"
-                    fullWidth
-                    value={vehicleSet.operationIds}
-                    onChange={(ids) => patch({ operation: writeList(ids) })}
-                    label={t('fleet.vehicles.filters.short.operation')}
-                  />
-                </div>
-              ) : (
-                vehicleSet.operationIds.length > 0 && (
-                  <VehicleSetChip kind="operation" onClear={() => patch({ operation: null })} />
-                )
-              )}
-              {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
-              <div className="min-w-[8rem] flex-1 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between">
-                <BranchFilterSelect
-                  clearable
-                  value={vehicleSet.branchIds}
-                  onChange={(ids) => patch({ branch: writeList(ids) })}
-                />
+              {statsOpen
+                ? t('fleet.vehicles.board.breakdownHide')
+                : t('fleet.vehicles.board.breakdown')}
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden
+                className={cn(
+                  'h-3 w-3 transition-transform sm:h-3.5 sm:w-3.5',
+                  statsOpen && 'rotate-180',
+                )}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {/* Excel ONLY — the accidents screen has never printed a PDF. NOT OFFERED WHEN THE
+                LIST FAILED: a green button on a screen that has just told the reader it has no
+                data reads as a way out of the failure, and the file behind it would be empty or
+                short. */}
+            {!isError && (
+              <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80">
+                <button
+                  type="button"
+                  data-export="accidents"
+                  title={t('fleet.export.excel')}
+                  disabled={exporting}
+                  onClick={() => void runExport()}
+                  className={cn(
+                    PILL_BUTTON,
+                    'hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300',
+                  )}
+                >
+                  {exporting ? (
+                    <Spinner className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  ) : (
+                    <BoardIcon
+                      d={PATH.excel}
+                      className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                    />
+                  )}
+                  <span className="sm:hidden">Excel</span>
+                  <span className="hidden sm:inline">{t('fleet.fuelCards.board.excel')}</span>
+                </button>
               </div>
-            </>
-          )}
-        </FilterBar>
-
-        {/*
-          `labelFirst` — the name above the figure, both centred in the tile. Five money totals
-          that differ only by the word beside them are READ, not glanced at: leading with the
-          number would ask the reader to find the figure and then hunt for what it counts.
-        */}
-        <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
-          <StatStrip columns={5} labelFirst items={totals} />
+            )}
+            {can('fleetAccident.create') && (
+              <button
+                type="button"
+                data-accident-new="true"
+                onClick={() => setRecordOpen(true)}
+                className={ADD_BUTTON}
+              >
+                <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
+                {t('fleet.accidents.record')}
+              </button>
+            )}
+          </span>
         </div>
 
-        <div className={BOARD_TABLE_FILL}>
+        {/* The vehicles board's dark bar: every filter's name in its box, an icon at its start. */}
+        <div
+          className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}
+          data-accidents-filters="true"
+        >
+          <FilterBar hasActiveFilters={hasFilters} onClear={clearFilters}>
+            {dateBound('fleet.odometer.from', from, 'from')}
+            {dateBound('fleet.odometer.to', to, 'to')}
+            {/* On a phone the bar reads in clean pairs — من/إلى · كود/الحالة — then the culprit and
+                the note search each across the row (`order`). ONE vehicle control: a substring
+                code box beside a single-car dropdown, intersected by the server, once produced an
+                empty page the bar itself had offered. */}
+            <FilterWithIcon
+              icon={FILTER_ICON.car}
+              tone="text-emerald-600 dark:text-emerald-400"
+              className="max-sm:basis-[calc(50%-4px)]"
+            >
+              <VehicleCodeFilter
+                fullWidth
+                density={TIGHT}
+                value={vehicleCodes}
+                onChange={(next) =>
+                  patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+                }
+              />
+            </FilterWithIcon>
+            {/* WHICH of our drivers was at fault, several at once — a third party is found by the
+                note search or by the code. */}
+            <FilterWithIcon
+              icon={FILTER_ICON.person}
+              tone="text-emerald-600 dark:text-emerald-400"
+              className="w-52 max-sm:order-1 max-sm:basis-full"
+            >
+              <RegistryDriverPicker
+                multiple
+                fullWidth
+                density={TIGHT}
+                className="w-full"
+                placeholder={t('fleet.accidents.fields.culprit')}
+                value={culpritBy}
+                onChange={(next) => patch({ culpritBy: next.length === 0 ? null : next.join(',') })}
+              />
+            </FilterWithIcon>
+            {/* THE NOTE, SEARCHED — «عاوز اقدر ابحث فى الملاحظات». */}
+            <FilterWithIcon
+              icon={PATH.edit}
+              tone="text-slate-500 dark:text-slate-400"
+              className="w-40 max-sm:order-1 max-sm:basis-full"
+            >
+              <Input
+                aria-label={t('fleet.odometer.columns.notes')}
+                placeholder={t('fleet.maintenance.notesFilter')}
+                density={TIGHT}
+                value={notes}
+                onChange={(e) => patch({ notes: e.target.value || null })}
+              />
+            </FilterWithIcon>
+            {/* «مفتوح» / «مغلق» — ONE answer: ticking one replaces the other, empty is every file. */}
+            <FilterWithIcon
+              icon={FILTER_ICON.status}
+              tone="text-emerald-600 dark:text-emerald-400"
+              className="max-sm:basis-[calc(50%-4px)]"
+            >
+              <MultiSelect
+                clearable
+                fullWidth
+                className="w-full"
+                density={TIGHT}
+                showSelectedValues
+                label={t('fleet.vehicles.columns.status')}
+                options={[
+                  { value: 'open', label: t('fleet.accidents.status.open') },
+                  { value: 'closed', label: t('fleet.accidents.status.closed') },
+                ]}
+                value={one(status)}
+                onChange={(next) => patch({ status: pickOne(one(status), next) })}
+              />
+            </FilterWithIcon>
+            {/* The vehicle set a dashboard link narrowed the files to — shown only while it does,
+                so a remembered one is never a filter with nothing on the bar saying so. The same
+                controls the registry (type) and the maintenance screen (operation, branch) use. */}
+            {narrowedToSet && (
+              <>
+                {sets.types ? (
+                  <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                    <MultiSelect
+                      clearable
+                      className="w-full"
+                      fullWidth
+                      density={TIGHT}
+                      showSelectedValues
+                      chips
+                      label={t('fleet.vehicles.filters.short.make')}
+                      options={typeOptions}
+                      value={vehicleSet.typeIds}
+                      onChange={(ids) => patch({ type: writeList(ids) })}
+                    />
+                  </FilterWithIcon>
+                ) : (
+                  vehicleSet.typeIds.length > 0 && (
+                    <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
+                  )
+                )}
+                {sets.operations ? (
+                  <FilterWithIcon
+                    icon={FILTER_ICON.operation}
+                    tone="text-slate-600 dark:text-slate-300"
+                  >
+                    <CatalogMultiSelect
+                      kind="operation"
+                      className="w-full"
+                      fullWidth
+                      density={TIGHT}
+                      value={vehicleSet.operationIds}
+                      onChange={(ids) => patch({ operation: writeList(ids) })}
+                      label={t('fleet.vehicles.filters.short.operation')}
+                    />
+                  </FilterWithIcon>
+                ) : (
+                  vehicleSet.operationIds.length > 0 && (
+                    <VehicleSetChip kind="operation" onClear={() => patch({ operation: null })} />
+                  )
+                )}
+                {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
+                <FilterWithIcon
+                  icon={FILTER_ICON.branch}
+                  tone="text-violet-600 dark:text-violet-300"
+                  className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+                >
+                  <BranchFilterSelect
+                    clearable
+                    value={vehicleSet.branchIds}
+                    onChange={(ids) => patch({ branch: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+              </>
+            )}
+          </FilterBar>
+        </div>
+
+        {/* «الاجماليات تكون بين الجدول والفلاتر» — behind «الإحصائيات», as on the boards. */}
+        {statsOpen && summary.data !== undefined && <AccidentFigures totals={summary.data} />}
+
+        <div className={ACCIDENTS_TABLE} data-accidents-table="true">
           <DataTable
             columns={columns}
             rows={rows}
             rowKey={(r) => r.id}
-            // A register somebody works through for an hour, not a panel they glance at: one step up
-            // the type scale for the headers and every cell.
-            textScale="comfortable"
-            // Eleven columns since «السجل» joined them: at the comfortable gutters the table was
-            // 1360px in a 1246px box at 1600, and in RTL the excess clips «إجراءات». The side gutter
-            // is trimmed instead of the text — measured, it then fits with room to spare.
-            dense
-            tightGutter
-            minColumnWidth={6}
-            rowClassName={(r) =>
-              // Read from the PERSISTED status on every render, and from nothing else. A file the
-              // server says is closed is green after a refresh, in another tab, and for the next
-              // reader; a flip that fails leaves the row exactly as the server still has it.
-              r.status === 'closed'
-                ? 'bg-emerald-50 hover:bg-emerald-100/70 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60'
-                : undefined
-            }
             loading={isLoading}
             error={isError ? error : undefined}
             onRetry={() => void refetch()}
             sort={sorts}
             onSortChange={changeSort}
+            // Read from the PERSISTED status on every render, and from nothing else. A file the
+            // server says is closed is green after a refresh, in another tab, and for the next
+            // reader; a flip that fails leaves the row exactly as the server still has it. The
+            // boards' table paints its own hover, so the tint is restated on `data-closed` too —
+            // see `CLOSED_ROW`.
+            rowClassName={(r) =>
+              r.status === 'closed' ? 'bg-emerald-50/70 dark:bg-emerald-950/30' : undefined
+            }
+            rowProps={(r) => ({ 'data-closed': r.status === 'closed' ? 'true' : 'false' }) as never}
+            minColumnWidth={4}
             stickyHead
           />
         </div>
@@ -812,8 +1015,8 @@ export const AccidentsPage = (): JSX.Element => {
         onClose={() => setRecordOpen(false)}
         accident={null}
         // Carried over from the filter, but only when it names ONE car — the same rule the other
-        // screens' dialogs use. The id comes from the registry page this screen already holds to
-        // print codes on its rows; the DIALOG still picks a single vehicle, as it should.
+        // screens' dialogs use. The id comes from the registry this screen holds to print codes
+        // on its rows; the DIALOG still picks a single vehicle, as it should.
         initialVehicleId={
           vehicleCodes.length === 1
             ? (vehiclesQuery.data?.items.find((v) => v.code === vehicleCodes[0])?.id ?? '')

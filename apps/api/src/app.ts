@@ -167,6 +167,10 @@ export const buildApp = (): Express => {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
           'img-src': ["'self'", 'data:', 'blob:', 'https://*.tile.openstreetmap.org'],
           'frame-src': ["'self'", 'blob:'],
+          // The HR photo's face finder runs as WebAssembly in the page (MediaPipe, served from this
+          // origin): compiling it needs 'wasm-unsafe-eval'. It allows WebAssembly only — JavaScript
+          // eval stays refused — and no script host is added.
+          'script-src': ["'self'", "'wasm-unsafe-eval'"],
         },
       },
     }),

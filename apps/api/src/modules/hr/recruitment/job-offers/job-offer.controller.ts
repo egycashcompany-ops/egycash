@@ -10,6 +10,7 @@ import {
   type CreateJobOffer,
   type ListAwaitingOfferQuery,
   type ListJobOffersQuery,
+  type OfferDefaultsQuery,
   type RejectJobOffer,
   type ReviseJobOffer,
   type SendJobOffer,
@@ -21,6 +22,7 @@ import { scopeSelector } from '../../../../shared/types';
 import { withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { jobOfferService } from './job-offer.service';
 import { awaitingOfferService } from './awaiting-offer.service';
+import { offerDefaultsService } from './offer-defaults.service';
 import { toJobOfferDto } from './job-offer.mapper';
 import { type JobOfferDoc } from './job-offer.model';
 
@@ -54,6 +56,13 @@ export const listJobOffers = async (req: Request, res: Response): Promise<void> 
  * can already read on the applicant screens. What the BUTTON beside each row does still needs
  * `applicant.moveToOffer` and `jobOffer.create`, enforced where those acts happen.
  */
+/** What «اكتب العرض» starts from for this candidate — placement, manager, full-time, the job's salary. */
+export const offerDefaults = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, OfferDefaultsQuery>(req);
+  ok(res, await offerDefaultsService.forApplicant(query.applicantId, scopeSelector(ctx, 'jobOffer.create')));
+};
+
 export const listAwaitingOffer = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListAwaitingOfferQuery>(req);

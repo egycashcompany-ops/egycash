@@ -18,6 +18,8 @@ import {
   type OperationsBankDto,
   type OperationsCurrencyDto,
   type OperationsLocation,
+  type OperationsShiftTypeColour,
+  type OperationsShiftTypeDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -35,15 +37,29 @@ import {
   type MapsLinkFailure,
 } from '../lib/maps-link';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { cn } from '../../../shared/lib/cn';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
+import { DesignCancel, DesignDialog, DesignSave, DesignSection } from '../../fleet/components/DesignDialog';
+import { DesignField, LOOK, MONO, Stroke, boxTone } from '../../fleet/components/FuelCardDialog';
+import { FILTER_ICON } from '../../fleet/components/FilterWithIcon';
+import { SHIPMENT_PATH } from './shipment-icons';
+import { errorMessage } from '../../../shared/lib/errors';
+import { ApiError } from '../../../shared/lib/api-client';
+import { useAppSelector } from '../../../store';
+import { SHIFT_TYPE_TONE, ShiftTypeTag } from './shift-type-look';
+import { freeColourFor, paletteFor } from '../lib/type-colours';
+import { branchSaveErrorKey } from '../lib/shipment-form';
 import {
   useCreateOperationsArea,
   useCreateOperationsBank,
   useCreateOperationsBankBranch,
   useCreateOperationsCurrency,
+  useCreateOperationsShiftType,
   useUpdateOperationsArea,
   useUpdateOperationsBank,
   useUpdateOperationsBankBranch,
   useUpdateOperationsCurrency,
+  useUpdateOperationsShiftType,
 } from '../api/operations-queries';
 
 /** Blank → null, so an untouched optional field is absent rather than an empty string. */
@@ -189,12 +205,31 @@ export const branchLocation = (
     ? null
     : { addressLine: orNull(addressLine), coordinates };
 
+/** Two fields a row on a computer, one on a phone — the Fleet forms' grid. */
+const FORM_GRID = 'grid grid-cols-1 items-start gap-5 md:grid-cols-2';
+/** The Fleet forms' select box (MaintenanceDialogs), red-ringed while a required one is empty. */
+const designSelect = (missing: boolean): string =>
+  cn(
+    '!h-auto !rounded-xl !py-3 !ps-4 !text-[15px] !font-medium !text-slate-900 dark:!text-white focus:!border-indigo-500 focus:!ring-1 focus:!ring-indigo-500',
+    missing
+      ? '!border-rose-500/70 !bg-slate-50 shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] dark:!bg-[#0a1233]'
+      : '!border-slate-200 !bg-slate-50 dark:!border-[#2b3b6b] dark:!bg-[#0a1233]',
+  );
+/** «قراءة» beside the link box — a quiet button of the design's height. */
+const SECONDARY_BUTTON =
+  'shrink-0 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-600 dark:border-[#2b3b6b] dark:bg-[#0f1838] dark:text-slate-200 dark:hover:text-indigo-300';
+/** «اختيار على الخريطة» — the design's dashed secondary button (the shipment form's «إضافة عملة»). */
+const DASHED_BUTTON =
+  'inline-flex items-center gap-1.5 rounded-xl border border-dashed border-indigo-300 px-4 py-2 text-sm font-bold text-indigo-600 transition-colors hover:bg-indigo-50 dark:border-indigo-500/50 dark:text-indigo-300 dark:hover:bg-indigo-500/10';
+
 export const BankBranchDialog = ({
   open,
   branch,
   banks,
   areas,
   onClose,
+  initial,
+  onSaved,
 }: {
   open: boolean;
   branch: OperationsBankBranchDto | null;
@@ -206,8 +241,16 @@ export const BankBranchDialog = ({
    */
   areas: OperationsAreaDto[];
   onClose: () => void;
+  /**
+   * A NEW branch that starts filled in — the shipment form's «add this branch»: the bank the
+   * operator was choosing from and the name they typed and did not find. Ignored when editing.
+   */
+  initial?: { bankId: string; name: string };
+  /** The branch as the server saved it — so the form that asked for it can select it at once. */
+  onSaved?: (saved: OperationsBankBranchDto) => void;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
   const create = useCreateOperationsBankBranch();
   const update = useUpdateOperationsBankBranch();
 
@@ -227,8 +270,8 @@ export const BankBranchDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    setBankId(branch?.bankId ?? '');
-    setName(branch?.name ?? '');
+    setBankId(branch?.bankId ?? initial?.bankId ?? '');
+    setName(branch?.name ?? initial?.name ?? '');
     setCode(branch?.code ?? '');
     setOpsArea(branch?.opsAreaName ?? '');
     setFinanceArea(branch?.financeAreaName ?? '');
@@ -237,6 +280,7 @@ export const BankBranchDialog = ({
     setLinkDraft('');
     setLinkError(null);
     setMapOpen(false);
+    // `initial` is read on OPEN only: it is a starting point, not a value to keep in step with.
   }, [open, branch]);
 
   const applyLink = (raw: string): void => {
@@ -250,8 +294,18 @@ export const BankBranchDialog = ({
     setLinkError(result.reason);
   };
 
-  const submit = async (event: FormEvent): Promise<void> => {
-    event.preventDefault();
+  // «شكل الفورم بتاعت اضافة فرع تكون احسن من كدا»: the Fleet forms' design — the same panel, sections
+  // and boxes as the shipment form it opens over — and the same «!» on what is still missing.
+  const required = useRequiredFields(
+    [
+      { key: 'bank', label: t('operations.catalogs.branch.bank'), ok: bankId !== '' },
+      { key: 'name', label: t('operations.catalogs.branch.name'), ok: name.trim() !== '' },
+      { key: 'code', label: t('operations.catalogs.branch.code'), ok: code.trim() !== '' },
+    ],
+    open,
+  );
+
+  const submit = async (): Promise<void> => {
     const core = {
       bankId,
       name: name.trim(),
@@ -262,87 +316,164 @@ export const BankBranchDialog = ({
       location: branchLocation(addressLine, coordinates),
     };
     try {
-      if (branch === null) await create.mutateAsync(core);
-      else await update.mutateAsync({ id: branch.id, body: { ...core, version: branch.version } });
+      const saved =
+        branch === null
+          ? await create.mutateAsync(core)
+          : await update.mutateAsync({ id: branch.id, body: { ...core, version: branch.version } });
       toast.success(t('operations.catalogs.saved'));
+      onSaved?.(saved);
       onClose();
-    } catch {
-      toast.error(t('operations.catalogs.saveFailed'));
+    } catch (error) {
+      // The branch mutations leave their errors to this form (operations-queries.ts): ONE message,
+      // naming a duplicate — which from the shipment form is usually a deactivated branch's name.
+      const key = branchSaveErrorKey(error);
+      toast.error(key === null ? errorMessage(error, locale) : t(key));
     }
   };
 
   const busy = create.isPending || update.isPending;
+  const box = boxTone(LOOK.add);
   return (
-    <Dialog
+    // A DesignDialog takes no click on its backdrop, so a stray click cannot throw away a branch
+    // half typed in — nor land on the shipment form underneath. Escape closes only this one: it is
+    // on top of the dialog stack (`DesignDialog`).
+    <DesignDialog
       open={open}
       onClose={onClose}
       title={t(
         branch === null ? 'operations.catalogs.branch.add' : 'operations.catalogs.branch.edit',
       )}
+      icon={SHIPMENT_PATH.bank}
+      width="3xl"
+      panelProps={{ 'data-branch-form': branch === null ? 'new' : 'edit' }}
+      footer={
+        <>
+          <DesignSave
+            data-branch-save="true"
+            busy={busy}
+            onClick={required.guard(() => void submit())}
+          />
+          <DesignCancel onClick={onClose} />
+        </>
+      }
     >
-      <form onSubmit={submit} className="space-y-4">
-        <Field label={t('operations.catalogs.branch.bank')} required>
-          <Select value={bankId} onChange={(e) => setBankId(e.target.value)} required>
-            <option value="">{t('common.select')}</option>
-            {banks.map((bank) => (
-              <option key={bank.id} value={bank.id}>
-                {bank.opsName}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label={t('operations.catalogs.branch.name')} required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required />
-        </Field>
-        <Field label={t('operations.catalogs.branch.code')} required>
-          <Input value={code} onChange={(e) => setCode(e.target.value)} required />
-        </Field>
-        <Field
-          label={t('operations.catalogs.branch.opsArea')}
-          hint={t('operations.catalogs.branch.opsAreaHint')}
+      <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+
+      <DesignSection title={t('operations.catalogs.branch.sections.details')} icon={SHIPMENT_PATH.bank}>
+        <div className={FORM_GRID}>
+          <DesignField
+            label={t('operations.catalogs.branch.bank')}
+            required
+            missing={required.isMissing('bank')}
+          >
+            <Select
+              value={bankId}
+              onChange={(e) => setBankId(e.target.value)}
+              className={designSelect(required.isMissing('bank'))}
+              aria-label={t('operations.catalogs.branch.bank')}
+            >
+              <option value="">{t('common.select')}</option>
+              {banks.map((bank) => (
+                <option key={bank.id} value={bank.id}>
+                  {bank.opsName}
+                </option>
+              ))}
+            </Select>
+          </DesignField>
+          <DesignField
+            label={t('operations.catalogs.branch.code')}
+            required
+            missing={required.isMissing('code')}
+          >
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              tone={cn(box, MONO)}
+              aria-label={t('operations.catalogs.branch.code')}
+              data-branch-code="true"
+            />
+          </DesignField>
+        </div>
+        <DesignField
+          label={t('operations.catalogs.branch.name')}
+          required
+          missing={required.isMissing('name')}
         >
           <Input
-            value={opsArea}
-            onChange={(e) => setOpsArea(e.target.value)}
-            list="operations-area-suggestions"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            tone={box}
+            aria-label={t('operations.catalogs.branch.name')}
           />
-          <datalist id="operations-area-suggestions">
-            {areas.map((area) => (
-              <option key={area.id} value={area.name} />
-            ))}
-          </datalist>
-        </Field>
-        <Field
-          label={t('operations.catalogs.branch.financeArea')}
-          hint={t('operations.catalogs.branch.financeAreaHint')}
-        >
-          <Input value={financeArea} onChange={(e) => setFinanceArea(e.target.value)} />
-        </Field>
+        </DesignField>
+      </DesignSection>
 
-        {/*
-          The branch's location. Optional end to end — legacy carried no geography at all, so most
-          rows are blank and a captain's screen degrades to names. What is stored is the POINT; the
-          link field below is only how a point gets in, and a saved point regenerates a working
-          link forever, which a pasted URL would not.
-        */}
-        <Field
+      <DesignSection title={t('operations.catalogs.branch.sections.areas')} icon={SHIPMENT_PATH.route}>
+        <div className={FORM_GRID}>
+          <DesignField
+            label={t('operations.catalogs.branch.opsArea')}
+            hint={t('operations.catalogs.branch.opsAreaHint')}
+          >
+            <Input
+              value={opsArea}
+              onChange={(e) => setOpsArea(e.target.value)}
+              list="operations-area-suggestions"
+              tone={box}
+              aria-label={t('operations.catalogs.branch.opsArea')}
+              data-branch-ops-area="true"
+            />
+            <datalist id="operations-area-suggestions">
+              {areas.map((area) => (
+                <option key={area.id} value={area.name} />
+              ))}
+            </datalist>
+          </DesignField>
+          <DesignField
+            label={t('operations.catalogs.branch.financeArea')}
+            hint={t('operations.catalogs.branch.financeAreaHint')}
+          >
+            <Input
+              value={financeArea}
+              onChange={(e) => setFinanceArea(e.target.value)}
+              tone={box}
+              aria-label={t('operations.catalogs.branch.financeArea')}
+            />
+          </DesignField>
+        </div>
+      </DesignSection>
+
+      {/*
+        The branch's location. Optional end to end — legacy carried no geography at all, so most
+        rows are blank and a captain's screen degrades to names. What is stored is the POINT; the
+        link field below is only how a point gets in, and a saved point regenerates a working
+        link forever, which a pasted URL would not.
+      */}
+      <DesignSection title={t('operations.catalogs.branch.sections.location')} icon={FILTER_ICON.map}>
+        <DesignField
           label={t('operations.catalogs.branch.address')}
           hint={t('operations.catalogs.branch.addressHint')}
         >
-          <Input value={addressLine} onChange={(e) => setAddressLine(e.target.value)} />
-        </Field>
+          <Input
+            value={addressLine}
+            onChange={(e) => setAddressLine(e.target.value)}
+            tone={box}
+            aria-label={t('operations.catalogs.branch.address')}
+          />
+        </DesignField>
 
-        <Field
+        <DesignField
           label={t('operations.catalogs.branch.mapsLink')}
           hint={t('operations.catalogs.branch.mapsLinkHint')}
           error={linkError === null ? undefined : t(`operations.catalogs.branch.maps.${linkError}`)}
+          endAdornment={null}
         >
           <div className="flex gap-2">
             <Input
               value={linkDraft}
               placeholder="https://maps.app.goo.gl/… , 30.0444, 31.2357"
               dir="ltr"
-              error={linkError !== null}
+              tone={cn(box, MONO)}
+              aria-label={t('operations.catalogs.branch.mapsLink')}
               onChange={(e) => {
                 setLinkDraft(e.target.value);
                 setLinkError(null);
@@ -355,32 +486,35 @@ export const BankBranchDialog = ({
                   applyLink(pasted);
                 }
               }}
-              // Enter in a lone text field would submit the dialog; here it means "read this".
+              // Enter here means "read this", not "save the branch".
               onKeyDown={(e) => {
                 if (e.key !== 'Enter') return;
                 e.preventDefault();
                 applyLink(linkDraft);
               }}
             />
-            <Button type="button" variant="secondary" onClick={() => applyLink(linkDraft)}>
+            <button
+              type="button"
+              onClick={() => applyLink(linkDraft)}
+              className={SECONDARY_BUTTON}
+            >
               {t('operations.catalogs.branch.maps.read')}
-            </Button>
+            </button>
           </div>
-        </Field>
+        </DesignField>
 
-        <div>
-          <button
-            type="button"
-            onClick={() => setMapOpen((wasOpen) => !wasOpen)}
-            className="text-sm text-brand-600 underline dark:text-brand-400"
-          >
-            {t(mapOpen ? 'operations.catalogs.branch.maps.hide' : 'operations.catalogs.branch.maps.pick')}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setMapOpen((wasOpen) => !wasOpen)}
+          className={DASHED_BUTTON}
+        >
+          <Stroke d={[...FILTER_ICON.map]} className="h-4 w-4" />
+          {t(mapOpen ? 'operations.catalogs.branch.maps.hide' : 'operations.catalogs.branch.maps.pick')}
+        </button>
         {mapOpen && (
           <Suspense
             fallback={
-              <div className="h-64 w-full animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+              <div className="h-64 w-full animate-pulse rounded-xl bg-slate-100 dark:bg-[#0a1233]" />
             }
           >
             <BranchMapPicker value={coordinates} onChange={setCoordinates} />
@@ -388,13 +522,13 @@ export const BankBranchDialog = ({
         )}
 
         {coordinates === null ? (
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-[13px] text-slate-500 dark:text-slate-400">
             {t('operations.catalogs.branch.maps.none')}
           </p>
         ) : (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 p-3 text-sm dark:border-slate-700">
-            <PinIcon className="h-4 w-4 text-brand-500" />
-            <span className="font-mono tabular-nums" dir="ltr">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200">
+            <PinIcon className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+            <span className={cn(MONO, 'tabular-nums')} dir="ltr">
               {coordinates.lat}, {coordinates.lng}
             </span>
             {/* Checking what was just saved is one click, on the map everyone already trusts. */}
@@ -402,30 +536,21 @@ export const BankBranchDialog = ({
               href={mapsUrl(coordinates)}
               target="_blank"
               rel="noreferrer"
-              className="text-brand-600 underline dark:text-brand-400"
+              className="font-bold text-indigo-600 underline dark:text-indigo-300"
             >
               {t('operations.catalogs.branch.maps.open')}
             </a>
             <button
               type="button"
-              className="ms-auto text-slate-500 underline"
+              className="ms-auto font-bold text-rose-600 underline dark:text-rose-400"
               onClick={() => setCoordinates(null)}
             >
               {t('common.remove')}
             </button>
           </div>
         )}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button type="submit" disabled={busy}>
-            {t('common.save')}
-          </Button>
-        </div>
-      </form>
-    </Dialog>
+      </DesignSection>
+    </DesignDialog>
   );
 };
 
@@ -573,6 +698,192 @@ export const AreaDialog = ({
           hint={t('operations.catalogs.area.governorateHint')}
         >
           <Input value={governorate} onChange={(e) => setGovernorate(e.target.value)} />
+        </Field>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+};
+
+/**
+ * The first colour of the palette SHOWN to a new type no ACTIVE type wears yet — a new type starts
+ * told apart from the others on the board's strip, and the planner can still pick any of the shown
+ * colours. All worn: the palette's first (`freeColourFor`, Round 24b).
+ */
+export const freeShiftTypeColour = (
+  types: readonly OperationsShiftTypeDto[],
+): OperationsShiftTypeColour => freeColourFor(types);
+
+/**
+ * The swatches the type's form offers — Round 24b, «عاوز pallett الالوان يكون على عدد الالوان يكون نفس
+ * عدد النوع»: the board's palette (`paletteFor` — every colour a live type wears, then the first
+ * unworn ones), as many colours as there are live types — counting the one being added — and an
+ * archived type's own colour at the end when it is not among them (kept, and shown as its). A live
+ * type's own colour is always among them.
+ */
+export const shiftTypeFormPalette = (
+  types: readonly OperationsShiftTypeDto[],
+  shiftType: OperationsShiftTypeDto | null,
+): OperationsShiftTypeColour[] => {
+  const palette = paletteFor(types, shiftType === null ? 1 : 0);
+  return shiftType !== null && !palette.includes(shiftType.colour)
+    ? [...palette, shiftType.colour]
+    : palette;
+};
+
+/**
+ * «أنواع التشغيل» — one type of the crew board's «النوع» (Round 20): «انا عاوز النوع يكون بيضاف من
+ * البيانات المرجعيه». The areas' form (an Arabic name, an optional English one) and a colour from
+ * the contract's palette, chosen by swatch, with the type drawn as the board will draw it. Archiving
+ * is not here: the tab's own button says it in one click (`isActive`), as the server takes it.
+ */
+export const ShiftTypeDialog = ({
+  open,
+  shiftType,
+  types,
+  onClose,
+}: {
+  open: boolean;
+  shiftType: OperationsShiftTypeDto | null;
+  /** The catalog — the palette it shows (one swatch a live type) and a new type's free colour. */
+  types: readonly OperationsShiftTypeDto[];
+  onClose: () => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
+  const create = useCreateOperationsShiftType();
+  const update = useUpdateOperationsShiftType();
+
+  const [name, setName] = useState('');
+  const [nameEn, setNameEn] = useState('');
+  const [colour, setColour] = useState<OperationsShiftTypeColour>('rose');
+  /** A name another type holds (409) — said on the name's own box. */
+  const [taken, setTaken] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(shiftType?.name ?? '');
+    setNameEn(shiftType?.nameEn ?? '');
+    setColour(shiftType?.colour ?? freeShiftTypeColour(types));
+    setTaken(false);
+    // `types` is left out on purpose: the catalog is read once per opening, so a refetch behind
+    // an open form never moves the colour the planner is looking at.
+  }, [open, shiftType]);
+
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    const core = { name: name.trim(), nameEn: orNull(nameEn), colour };
+    try {
+      if (shiftType === null) await create.mutateAsync(core);
+      else
+        await update.mutateAsync({
+          id: shiftType.id,
+          body: { ...core, version: shiftType.version },
+        });
+      toast.success(t('operations.catalogs.saved'));
+      onClose();
+    } catch (failure) {
+      // The catalog's unique name (a live type's Arabic name) — the one 409 that is about a field.
+      if (failure instanceof ApiError && failure.code === 'DUPLICATE') {
+        setTaken(true);
+        toast.error(t('operations.catalogs.shiftType.nameTaken'));
+        return;
+      }
+      toast.error(errorMessage(failure, locale));
+    }
+  };
+
+  // The type as the board will draw it — the name typed, in the colour picked.
+  const preview: OperationsShiftTypeDto = {
+    id: shiftType?.id ?? 'preview',
+    name: name.trim() === '' ? t('operations.catalogs.shiftType.name') : name.trim(),
+    nameEn: orNull(nameEn),
+    colour,
+    sortOrder: null,
+    isActive: true,
+    version: 0,
+    createdAt: '',
+    updatedAt: '',
+  };
+
+  const busy = create.isPending || update.isPending;
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t(
+        shiftType === null
+          ? 'operations.catalogs.shiftType.add'
+          : 'operations.catalogs.shiftType.edit',
+      )}
+    >
+      <form onSubmit={submit} className="space-y-4" data-shift-type-form="true">
+        <Field
+          label={t('operations.catalogs.shiftType.name')}
+          required
+          error={taken ? t('operations.catalogs.shiftType.nameTaken') : undefined}
+        >
+          <Input
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setTaken(false);
+            }}
+            required
+            maxLength={60}
+            error={taken}
+          />
+        </Field>
+        <Field label={t('operations.catalogs.shiftType.nameEn')}>
+          <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} maxLength={60} />
+        </Field>
+        <Field
+          label={t('operations.catalogs.shiftType.colour')}
+          hint={t('operations.catalogs.shiftType.colourHint')}
+        >
+          <div className="space-y-3">
+            <div
+              role="radiogroup"
+              aria-label={t('operations.catalogs.shiftType.colour')}
+              className="flex flex-wrap gap-2"
+              data-shift-type-palette="true"
+            >
+              {shiftTypeFormPalette(types, shiftType).map((option) => {
+                const label = t(`operations.catalogs.shiftType.colours.${option}`);
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    role="radio"
+                    data-colour={option}
+                    aria-checked={option === colour}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => setColour(option)}
+                    className={cn(
+                      'h-8 w-8 rounded-full transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900',
+                      SHIFT_TYPE_TONE[option].dot,
+                      option === colour &&
+                        'ring-2 ring-slate-900 ring-offset-2 dark:ring-white dark:ring-offset-slate-900',
+                    )}
+                  />
+                );
+              })}
+            </div>
+            <div
+              className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 dark:border-slate-700"
+              data-shift-type-preview="true"
+            >
+              <ShiftTypeTag type={preview} locale={locale} size="md" />
+            </div>
+          </div>
         </Field>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>

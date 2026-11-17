@@ -16,6 +16,15 @@ import { type OrgUnitDoc, type OrgUnitService } from './org-unit';
 const IdParamSchema = z.object({ id: objectId() }).strict();
 type IdParam = z.infer<typeof IdParamSchema>;
 
+/**
+ * `/options?includeInactive=true` — the inactive units as well, for naming a unit a record still
+ * points at (see `OrgUnitService.options`). Absent or `false`: active only, as every picker reads it.
+ */
+const OptionsQuerySchema = z
+  .object({ includeInactive: z.enum(['true', 'false']).optional() })
+  .strict();
+type OptionsQuery = z.infer<typeof OptionsQuerySchema>;
+
 export interface OrgUnitHttpConfig<TDoc extends OrgUnitDoc, TDto> {
   /** Permission resource, e.g. `branch` → `branch.view` etc. */
   resource: string;
@@ -75,8 +84,9 @@ export const makeOrgUnitHandlers = <TDoc extends OrgUnitDoc, TDto>(
       noContent(res);
     },
     // Reference options for form dropdowns — any authenticated user, decoupled from `<r>.view`.
-    options: async (_req: Request, res: Response): Promise<void> => {
-      ok(res, await config.service.options());
+    options: async (req: Request, res: Response): Promise<void> => {
+      const { query } = validated<never, OptionsQuery>(req);
+      ok(res, await config.service.options({ includeInactive: query.includeInactive === 'true' }));
     },
   };
 };
@@ -96,7 +106,12 @@ export const makeOrgUnitRouter = <TDoc extends OrgUnitDoc, TDto>(
   );
   // Reference options for form dropdowns (declared before `/:id`). Authenticated but NOT gated by
   // `<r>.view`, so a user who can create a Department/Section can still pick a Branch (bug fix).
-  router.get('/options', authenticate, asyncHandler(handlers.options));
+  router.get(
+    '/options',
+    authenticate,
+    validate({ query: OptionsQuerySchema }),
+    asyncHandler(handlers.options),
+  );
   router.get(
     '/:id',
     authenticate,

@@ -35,8 +35,8 @@ class JobRequisitionRepository extends BaseRepository<JobRequisitionDoc> {
       sortableFields: ['createdAt', 'neededBy', 'quantity', 'code'],
       scope,
       filter: {
-        ...(query.status === undefined ? {} : { status: query.status }),
-        ...(query.priority === undefined ? {} : { priority: query.priority }),
+        ...(query.status === undefined ? {} : { status: { $in: query.status } }),
+        ...(query.priority === undefined ? {} : { priority: { $in: query.priority } }),
         ...(query.departmentId === undefined
           ? {}
           : { departmentId: new Types.ObjectId(query.departmentId) }),

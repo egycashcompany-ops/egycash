@@ -94,7 +94,10 @@ const login = async (identifier: string): Promise<string> => {
 const nextPhone = (): string => `011${String(phoneCounter++).padStart(8, '0')}`;
 const nextNid = (): string => `290010101${String(100 + nidCounter++)}10`;
 
-const regEmployee = async (): Promise<EmployeeDto> => {
+/** Placed in the suite's branch and department unless told otherwise (the daily sheet's filters). */
+const regEmployee = async (
+  placement: { branchId: string; departmentId: string; sectionId?: string } | null = null,
+): Promise<EmployeeDto> => {
   const res = await request(app)
     .post('/api/v1/hr/employees/direct')
     .set('Authorization', `Bearer ${adminToken}`)
@@ -109,8 +112,9 @@ const regEmployee = async (): Promise<EmployeeDto> => {
       },
       employment: {
         jobTitleId: JOB_TITLE_ID,
-        departmentId: DEPARTMENT_ID,
-        branchId: BRANCH_ID,
+        departmentId: placement?.departmentId ?? DEPARTMENT_ID,
+        branchId: placement?.branchId ?? BRANCH_ID,
+        ...(placement?.sectionId === undefined ? {} : { sectionId: placement.sectionId }),
         employmentType: 'fullTime',
         probationMonths: 0,
         startDate: '2024-01-01T00:00:00.000Z',
@@ -1028,6 +1032,66 @@ describe('AT-6 — screens, self-service and export', () => {
     expect((unfiltered.body.data as AttendanceDayDto[]).some((r) => r.employeeId === emp.id)).toBe(true);
   });
 
+  // «هنخلي كل الفلترز multi»: the sheet's branch and section each take several, ORed — and the CSV
+  // reads the same filters. One value, every link written before, still answers as it did.
+  it('the sheet and its CSV take several branches and several sections at once', async () => {
+    const post = async (path: string, body: Record<string, unknown>): Promise<string> => {
+      const res = await request(app)
+        .post(`/api/v1/platform/${path}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(body);
+      expect(res.status).toBe(201);
+      return (res.body as { data: { id: string } }).data.id;
+    };
+    const place = async (n: string): Promise<{ branchId: string; departmentId: string; sectionId: string }> => {
+      const branchId = await post('branches', { code: `05${n}`, name: { ar: `فرع ${n}`, en: `B${n}` } });
+      const departmentId = await post('departments', {
+        code: `DEP-AT-M${n}`,
+        name: { ar: `إدارة ${n}`, en: `D${n}` },
+        branchId,
+      });
+      const sectionId = await post('sections', {
+        code: `SEC-AT-M${n}`,
+        name: { ar: `قسم ${n}`, en: `S${n}` },
+        departmentId,
+      });
+      return { branchId, departmentId, sectionId };
+    };
+    const a = await place('1');
+    const b = await place('2');
+    const empA = await regEmployee(a);
+    const empB = await regEmployee(b);
+    const workday = recentWorkday();
+    for (const emp of [empA, empB]) {
+      await assign(emp.id, GENERAL.id);
+      await recompute(emp.id, workday);
+    }
+    const range = `from=${dateOnlyIso(workday)}&to=${dateOnlyIso(workday)}&pageSize=100`;
+    const ids = async (query: string): Promise<string[]> => {
+      const res = await get(`hr/attendance/days?${range}&${query}`, adminToken);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as AttendanceDayDto[]).map((r) => r.employeeId).sort();
+    };
+    const both = [empA.id, empB.id].sort();
+
+    expect(await ids(`branchId=${a.branchId},${b.branchId}`)).toEqual(both);
+    expect(await ids(`branchId=${b.branchId}`)).toEqual([empB.id]);
+    expect(await ids(`sectionId=${a.sectionId},${b.sectionId}`)).toEqual(both);
+    expect(await ids(`sectionId=${a.sectionId}`)).toEqual([empA.id]);
+
+    const csv = async (query: string): Promise<string> => {
+      const res = await get(`hr/attendance/export?${range.replace('&pageSize=100', '')}&${query}`, adminToken);
+      expect(res.status).toBe(200);
+      return res.text;
+    };
+    const several = await csv(`branchId=${a.branchId},${b.branchId}`);
+    expect(several).toContain(empA.code);
+    expect(several).toContain(empB.code);
+    const one = await csv(`sectionId=${b.sectionId}`);
+    expect(one).toContain(empB.code);
+    expect(one).not.toContain(empA.code);
+  });
+
   it('the queue shows the manager step to the manager and the HR step to the key-holder', async () => {
     const managerEmp = await regEmployee();
     const managerReread = await request(app)
@@ -1116,6 +1180,55 @@ describe('AT-6 — screens, self-service and export', () => {
     expect(mine.status).toBe(200);
     const mineRows = mine.body.data as AttendanceRegularizationDto[];
     expect(mineRows.every((r) => r.employeeId === subjectEmp.id)).toBe(true);
+  });
+
+  // «هنخلي كل الفلترز multi»: the «all» tab's status takes several, ORed; one value still works.
+  it('lists regularizations in several statuses at once', async () => {
+    const workday = recentWorkday();
+    // No manager: the employee's own request goes straight to the HR step.
+    const ess = await essEmployee();
+    const filed = await request(app)
+      .post('/api/v1/hr/attendance/regularizations')
+      .set('Authorization', `Bearer ${ess.token}`)
+      .send({
+        workDate: dateOnlyIso(workday),
+        proposedInAt: cairoInstant(workday, '09:00').toISOString(),
+        proposedOutAt: cairoInstant(workday, '17:00').toISOString(),
+        reason: 'several statuses, pending',
+      });
+    expect(filed.status).toBe(201);
+    const pending = filed.body.data as AttendanceRegularizationDto;
+    expect(pending.status).toBe('pendingHr');
+    // HR's own filing is decided in the same act.
+    const other = await regEmployee();
+    await assign(other.id, GENERAL.id);
+    const direct = await request(app)
+      .post('/api/v1/hr/attendance/regularizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        employeeId: other.id,
+        workDate: dateOnlyIso(workday),
+        proposedInAt: cairoInstant(workday, '09:00').toISOString(),
+        proposedOutAt: cairoInstant(workday, '17:00').toISOString(),
+        reason: 'several statuses, approved',
+      });
+    expect(direct.status).toBe(201);
+    const approved = direct.body.data as AttendanceRegularizationDto;
+    expect(approved.status).toBe('approved');
+
+    const ids = async (status: string): Promise<string[]> => {
+      const res = await get(`hr/attendance/regularizations?status=${status}&pageSize=100`, adminToken);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as AttendanceRegularizationDto[]).map((r) => r.id);
+    };
+    const several = await ids('pendingHr,approved');
+    expect(several).toContain(pending.id);
+    expect(several).toContain(approved.id);
+    const one = await ids('approved');
+    expect(one).toContain(approved.id);
+    expect(one).not.toContain(pending.id);
+    // A status the vocabulary lacks is refused, not read as «all».
+    expect((await get('hr/attendance/regularizations?status=pendingHr,nonsense', adminToken)).status).toBe(400);
   });
 
   it('exports the §15.1 columns as CSV, behind attendance.export, audited', async () => {

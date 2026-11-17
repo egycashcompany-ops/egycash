@@ -3,8 +3,17 @@
 //   /fleet?tab=<tab>&period=<preset>&from&to&type=<id,…>&operation=<id,…>&vehicleCodes=<code,…>
 //
 // `tab` names the panel and is never remembered (a link names its tab). The rest is ONE filter state
-// shared by the five period tabs, remembered for the page: switching tabs keeps it, the «الآن» tabs
-// ignore it, and only R2's query key carries it.
+// shared by «أرقام الفترة» and the period parts of «الصيانة والورش», «العدادات والكيلومترات»,
+// «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات» and «الوقود والمصروفات» (each draws the
+// same filter bar): switching tabs keeps it (it stays in the address bar), the R1 tabs ignore it,
+// and only R2's
+// query key carries it. Of it, only type / operation / codes are remembered across visits; the period
+// opens on «هذا الشهر» on every visit (DECISIONS §0c). The overview and «توزيع السيارات» read «هذا
+// الشهر» apart, with no page filter at all (the month card; the km by branch). «توزيع السيارات»,
+// «الصيانة والورش», «العدادات والكيلومترات» (`km`) and «الحوادث ومطالبات التأمين» (`accidents`) were
+// rebuilt under their own keys, so an old link to any of them opens the new body — no entry in
+// LEGACY_TABS for them; «المخالفات المرورية والتسويات» (`violations`) and «الوقود والمصروفات»
+// (`fuel`) are new tabs with no old key.
 import {
   FLEET_DASHBOARD_DEFAULT_PRESET,
   FLEET_DASHBOARD_MAX_CUSTOM_DAYS,
@@ -98,11 +107,26 @@ export const toPeriodQuery = (f: PeriodFilters): FleetDashboardPeriodQuery => {
   return { preset: f.preset, ...lists };
 };
 
-/** The panel to show: the asked one when it is visible, else the first visible tab. */
+/**
+ * The retired tabs' keys and the tab that took their content (plan D1): an old link to «التنبيهات»
+ * opens «نظرة عامة», one to «الحركة الآن» opens «الحركة اليوم», and one to «ترتيب السيارات» opens
+ * «العدادات والكيلومترات» (its top 5 and bottom 5 live there now).
+ */
+export const LEGACY_TABS: ReadonlyMap<string, FleetDashboardTab> = new Map<
+  string,
+  FleetDashboardTab
+>([
+  ['alerts', 'overview'],
+  ['now', 'today'],
+  ['ranking', 'km'],
+]);
+
+/** The panel to show: the asked one (an old key mapped first) when visible, else the first visible. */
 export const readTab = (
   raw: string | null,
   visible: readonly FleetDashboardTab[],
 ): FleetDashboardTab => {
-  const asked = visible.find((tab) => tab === raw);
-  return asked ?? visible[0] ?? 'alerts';
+  const wanted = raw === null ? null : (LEGACY_TABS.get(raw) ?? raw);
+  const asked = visible.find((tab) => tab === wanted);
+  return asked ?? visible[0] ?? 'overview';
 };

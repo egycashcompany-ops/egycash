@@ -25,6 +25,7 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Input } from '../../../shared/ui/form';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { FigureChip } from '../components/FleetFigures';
@@ -631,7 +632,8 @@ export const LicensingPage = (): JSX.Element => {
                     className="border-t border-slate-200 transition hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-[#16203a]"
                   >
                     <td className={`${cell} text-center`} dir="ltr">
-                      {row.code}
+                      {/* The code carries the car card. */}
+                      <VehicleHoverCode vehicleId={row.vehicleId} code={row.code} />
                     </td>
                     <td className={`${cell} text-center`} dir="ltr">
                       {row.plateNumber}

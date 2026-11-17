@@ -45,6 +45,9 @@ class ContractTemplateRepository extends BaseRepository<ContractTemplateDoc> {
     if (query.language !== undefined) filter.language = query.language;
     if (query.contractTypeId !== undefined) filter.contractTypeId = query.contractTypeId;
     if (query.status !== undefined) filter.status = query.status;
+    // A row from before A27 has no `kind` and is a contract.
+    if (query.kind === 'contract') filter.kind = { $ne: 'form' };
+    if (query.kind === 'form') filter.kind = 'form';
     return this.list({
       filter,
       page: query.page,
@@ -58,6 +61,14 @@ class ContractTemplateRepository extends BaseRepository<ContractTemplateDoc> {
   /** Boot/system writes without optimistic concurrency (publish supersede). */
   async systemSet(id: string, set: Record<string, unknown>): Promise<void> {
     await this.model.updateOne({ _id: id }, { $set: set }).exec();
+  }
+
+  /**
+   * Every PUBLISHED template, contracts and forms — the candidates for one employee's printed
+   * set; which of them his job takes is decided by the caller.
+   */
+  async listPublished(): Promise<ContractTemplateDoc[]> {
+    return this.model.find({ status: 'published', isDeleted: false }).lean<ContractTemplateDoc[]>().exec();
   }
 
   /** Latest version per key (the templates list view), filtered in memory after grouping. */

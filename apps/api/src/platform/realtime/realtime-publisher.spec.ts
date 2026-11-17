@@ -74,6 +74,24 @@ describe('publishAuditedChange', () => {
     expect(emitted.mock.calls[0]?.[0]).toBe(`topic:${AUDIT_STREAM_TOPIC}`);
   });
 
+  // FR-21 — the vehicle checks dashboard has a screen now: a report filed (`create`), a photo added
+  // (the report's `update`) and a report deleted each reach its topic.
+  it('sends every vehicle check change to its topic — filed, a photo added, deleted', () => {
+    for (const action of ['create', 'update', 'delete'] as const) {
+      emitted.mockReset();
+      publishAuditedChange(
+        change({
+          entityRef: { moduleId: 'it', entityType: 'vehicleCheck', entityId: 'v1' },
+          action,
+        }),
+      );
+      expect(emitted.mock.calls.map(([room]) => room)).toEqual([
+        `topic:${AUDIT_STREAM_TOPIC}`,
+        'topic:it.vehicleCheck',
+      ]);
+    }
+  });
+
   it('does not double-send an audit-log entity record to the stream it already rode', () => {
     publishAuditedChange(
       change({

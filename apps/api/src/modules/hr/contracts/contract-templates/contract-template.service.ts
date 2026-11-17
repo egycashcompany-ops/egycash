@@ -19,7 +19,7 @@ import { contractTypeService } from '../contract-types';
 import { extractPlaceholders, sanitizeTemplateHtml } from '../shared/template-html';
 import { CATALOG_KEYS } from '../shared/variable-catalog';
 import { contractTemplateRepository } from './contract-template.repository';
-import { type ContractTemplateDoc } from './contract-template.model';
+import { printSettings, type ContractTemplateDoc } from './contract-template.model';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'contractTemplate', entityId: id });
 
@@ -40,6 +40,10 @@ const auditSnapshot = (doc: ContractTemplateDoc): Record<string, unknown> => ({
   footer: doc.sections.footer,
   logoFileId: doc.logoFileId === null ? null : String(doc.logoFileId),
   signatures: JSON.stringify(doc.signatures),
+  kind: printSettings(doc).kind,
+  allJobs: printSettings(doc).allJobs,
+  jobTitleIds: printSettings(doc).jobTitleIds.map(String).join(','),
+  printOrder: printSettings(doc).printOrder,
 });
 
 class ContractTemplateService {
@@ -73,6 +77,10 @@ class ContractTemplateService {
         sections,
         logoFileId: input.logoFileId === null ? null : new Types.ObjectId(input.logoFileId),
         signatures: input.signatures,
+        kind: input.kind,
+        allJobs: input.allJobs,
+        jobTitleIds: input.jobTitleIds.map((jobTitleId) => new Types.ObjectId(jobTitleId)),
+        printOrder: input.printOrder,
         placeholders,
         changedBy: new Types.ObjectId(by),
       },
@@ -122,6 +130,13 @@ class ContractTemplateService {
                 ? null
                 : new Types.ObjectId(input.logoFileId),
           signatures: input.signatures ?? before.signatures,
+          kind: input.kind ?? printSettings(before).kind,
+          allJobs: input.allJobs ?? printSettings(before).allJobs,
+          jobTitleIds:
+            input.jobTitleIds === undefined
+              ? printSettings(before).jobTitleIds
+              : input.jobTitleIds.map((jobTitleId) => new Types.ObjectId(jobTitleId)),
+          printOrder: input.printOrder ?? printSettings(before).printOrder,
           placeholders: prepared?.placeholders ?? before.placeholders,
           changedBy: new Types.ObjectId(by),
         },
@@ -146,6 +161,12 @@ class ContractTemplateService {
       set.logoFileId = input.logoFileId === null ? null : new Types.ObjectId(input.logoFileId);
     }
     if (input.signatures !== undefined) set.signatures = input.signatures;
+    if (input.kind !== undefined) set.kind = input.kind;
+    if (input.allJobs !== undefined) set.allJobs = input.allJobs;
+    if (input.jobTitleIds !== undefined) {
+      set.jobTitleIds = input.jobTitleIds.map((jobTitleId) => new Types.ObjectId(jobTitleId));
+    }
+    if (input.printOrder !== undefined) set.printOrder = input.printOrder;
     const after = await contractTemplateRepository.updateById(id, set, { by, version: input.version });
     await auditService.record({
       entityRef: entityRef(id),
@@ -166,7 +187,10 @@ class ContractTemplateService {
     const missing: string[] = [];
     if (doc.name.ar.trim() === '') missing.push('Arabic name');
     if (doc.name.en.trim() === '') missing.push('English name');
-    if (doc.contractTypeId === null) missing.push('contract type');
+    // A form is no contract: it has no type to carry (A27).
+    const print = printSettings(doc);
+    if (print.kind === 'contract' && doc.contractTypeId === null) missing.push('contract type');
+    if (!print.allJobs && print.jobTitleIds.length === 0) missing.push('the jobs it is printed for');
     // A body of empty markup (e.g. the editor's leftover `<p></p>`) is still empty.
     if (isBlankHtml(doc.sections.body)) missing.push('body');
     if (doc.signatures.some((block) => block.label.trim() === '')) missing.push('signature labels');
@@ -178,7 +202,8 @@ class ContractTemplateService {
       ];
       throw new BusinessRuleError(`cannot publish an incomplete template — ${parts.join('; ')}`);
     }
-    await contractTypeService.getById(String(doc.contractTypeId)); // the type must still exist
+    // The type must still exist.
+    if (doc.contractTypeId !== null) await contractTypeService.getById(String(doc.contractTypeId));
     // The previous published version (if any) goes back to archived — one published per key.
     const current = await contractTemplateRepository.findPublishedByKey(doc.key);
     if (current !== null && String(current._id) !== id) {
@@ -207,6 +232,7 @@ class ContractTemplateService {
         sections: source.sections,
         logoFileId: source.logoFileId,
         signatures: source.signatures,
+        ...printSettings(source),
         placeholders: source.placeholders,
         changedBy: new Types.ObjectId(by),
       },
@@ -235,6 +261,20 @@ class ContractTemplateService {
 
   async getById(id: string): Promise<ContractTemplateDoc> {
     return contractTemplateRepository.getById(id);
+  }
+
+  /** A template a CONTRACT may be made from — a hiring form (A27) is printed, never contracted. */
+  async contractTemplateById(id: string): Promise<ContractTemplateDoc> {
+    const doc = await contractTemplateRepository.getById(id);
+    if (printSettings(doc).kind === 'form') {
+      throw new BusinessRuleError('a hiring form cannot be the template of a contract');
+    }
+    return doc;
+  }
+
+  /** Every published template, contracts and forms (A27's printed set picks from these). */
+  async listPublished(): Promise<ContractTemplateDoc[]> {
+    return contractTemplateRepository.listPublished();
   }
 
   /** The version generation must pin (A17): the key's PUBLISHED version. */
@@ -281,6 +321,8 @@ class ContractTemplateService {
       sections: doc.sections,
       logoFileId: doc.logoFileId === null ? null : String(doc.logoFileId),
       signatures: doc.signatures,
+      ...printSettings(doc),
+      jobTitleIds: printSettings(doc).jobTitleIds.map(String),
       placeholders: doc.placeholders,
       changedBy: doc.changedBy === null ? null : String(doc.changedBy),
       createdAt: doc.createdAt.toISOString(),

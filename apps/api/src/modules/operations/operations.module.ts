@@ -17,6 +17,7 @@ import { buildOperationsBanksRouter } from './banks/bank.routes';
 import { buildOperationsBankBranchesRouter } from './bank-branches/bank-branch.routes';
 import { buildOperationsCurrenciesRouter } from './currencies/currency.routes';
 import { buildOperationsAreasRouter } from './areas/area.routes';
+import { buildOperationsShiftTypesRouter } from './shift-types/shift-type.routes';
 import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
 import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
@@ -27,6 +28,7 @@ import { buildOperationsAssignmentsRouter } from './assignments/assignment.route
 import { buildOperationsMobileRouter } from './mobile/mobile.routes';
 import { buildOperationsReportsRouter } from './reports/report.routes';
 import { seedOperations } from './operations.seed';
+import { shipmentFileAuthorizer } from './shipments/shipment-files';
 // Registers the interim vault-custody provider on the Treasury port at module load
 // (see ./treasury-boundary.ts). Importing for the side effect is the platform seam convention.
 import './vault/vault-custody.service';
@@ -104,6 +106,14 @@ const vaultPermissions = declarePermissions(
     // screens had different owners, and the Treasury port exists to keep them different.
     { action: 'receive', name: { en: 'Receive into the vault', ar: 'استلام في الخزينة' } },
     { action: 'dispatch', name: { en: 'Release and dispatch from the vault', ar: 'صرف من الخزينة' } },
+    // Round 10 — after the vault's ✓ nobody edits a محصنة, «بس صلاحية خاصة تقدر تلغى استلام الخزينة».
+    // A grant of its OWN, apart from `receive`: undoing the treasury's signature is a rarer and
+    // heavier decision than giving it, so no role holds it unless an administrator grants it (the
+    // `super-admin` role holds every key by design — rbac.service.ts keeps it on the full catalog).
+    {
+      action: 'cancelReceipt',
+      name: { en: 'Cancel a vault receipt', ar: 'إلغاء استلام الخزينة' },
+    },
   ],
   'operations.vault',
 );
@@ -181,14 +191,50 @@ export const operationsModule: ModuleManifest = {
   // and store nothing, so no permission or page was added.
   //
   // B6 completes the surface: the vault roll-up joins the reports prefix under the EXISTING
-  // `operationsVault.view` grant, and the legacy `/data_edit` city list arrives as
-  // `operations_areas` under the EXISTING catalog grants. One new prefix, one new collection, and
-  // still no new permission or page — the catalogs page already owns the reference surface.
+  // `operationsVault.view` grant (Round 14 made it «تقرير البنوك», below), and the legacy
+  // `/data_edit` city list arrives as `operations_areas` under the EXISTING catalog grants. One new
+  // prefix, one new collection, and still no new permission or page — the catalogs page already
+  // owns the reference surface.
   //
   // The standing crew (الطاقم الثابت) follows the same shape a third time: one new prefix, one new
   // collection, no new permission and no new page. It rides `operationsCrew.view` / `.plan`,
   // because deciding who crews which vehicle is one authority whether it is said once or daily.
-  version: '0.10.0',
+  //
+  // The receipt photo on a shipment is the first Operations file: three routes under the existing
+  // shipments prefix, on the EXISTING `operationsShipment.view` / `.edit` grants, plus the file
+  // authorizer below. Still no new permission, page or collection.
+  //
+  // Round 10 adds ONE permission, `operationsVault.cancelReceipt`, on the existing vault page — the
+  // owner's «صلاحية خاصة» that undoes a vault receipt — and new routes under the existing
+  // `/operations/secured` prefix (the pickup ✓ and its undo on the EXISTING
+  // `operationsShipment.complete`, «صرف الخزينة»'s board on the EXISTING `operationsVault.view`).
+  // No page and no collection; ONE field on the shipment (the pickup record — absent on older rows,
+  // read as their pickup leg says, so no migration: secured-stage.ts) and three on the custody (all
+  // optional), and one custody index.
+  //
+  // Round 12 adds NO permission, page, prefix or collection. «توزيع المحصنات» is
+  // `GET`/`POST /operations/secured/distribution` on the EXISTING grants — read under
+  // `operationsShipment.view` or `operationsVault.view` (the vault's «تسليم المحصنات» reads it too),
+  // saved under `operationsShipment.edit`, assign-delivery's — and the vault's handover is the
+  // existing dispatch. «تقرير الخزينة» is `GET /operations/reports/vault/held` on
+  // `operationsVault.view`, and «سجل الخزينة» is the shipments history with `type=secured`. One
+  // assignment index (`ix_shipment_all_legs`, the action log's read of a retired leg) and one event
+  // (`operations.shipmentAssignment.removed`).
+  //
+  // Round 14 adds NO permission, page, prefix or collection, and takes one route away. «تقرير
+  // البنوك» is the vault roll-up now — «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك» — served
+  // at `GET /operations/reports/banks` to holders of EITHER `operationsShipment.view` or
+  // `operationsVault.view` (the two screens' readers); `GET /operations/reports/vault` and the old
+  // completed-per-bank answer are gone. «إدارات العمليات» gets a screen of its own, on the platform's
+  // `setting.edit` — the grant that writes the setting it edits.
+  //
+  // Round 20 — «لوحة التشغيلة» for real — adds NO permission or page, ONE prefix and ONE collection:
+  // «أنواع التشغيل» (`/operations/shift-types`, `operations_shift_types`), the board's «النوع» as
+  // reference data («انا عاوز النوع يكون بيضاف من البيانات المرجعيه»), on the EXISTING catalog grant
+  // for its writes and read by the crew board's own `operationsCrew.view`. The legacy nine are seeded
+  // on boot, once. The crew row gains a type, a colour, and rows WITHOUT A VAN (`ux_day_vehicle`
+  // becomes partial on a present van — rebuilt on boot by the index-drift repair).
+  version: '0.15.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -198,6 +244,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/bank-branches', router: buildOperationsBankBranchesRouter() },
     { prefix: '/operations/currencies', router: buildOperationsCurrenciesRouter() },
     { prefix: '/operations/areas', router: buildOperationsAreasRouter() },
+    { prefix: '/operations/shift-types', router: buildOperationsShiftTypesRouter() },
     { prefix: '/operations/days', router: buildOperationsDaysRouter() },
     { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
     { prefix: '/operations/standing-crew', router: buildOperationsStandingCrewRouter() },
@@ -212,6 +259,7 @@ export const operationsModule: ModuleManifest = {
     'operations_bank_branches',
     'operations_currencies',
     'operations_areas',
+    'operations_shift_types',
     'operations_days',
     'operations_crew_assignments',
     'operations_crew_requirements',
@@ -219,6 +267,10 @@ export const operationsModule: ModuleManifest = {
     'operations_vault_custody',
     'operations_shipment_assignments',
   ],
+  // ADR-023 — the receipt photo on a shipment answers to the SHIPMENT's grants (view to see it,
+  // edit to change it), so reaching it through the platform's own file endpoints is guarded
+  // exactly as the shipment routes are. Without this the Files service refuses every read of it.
+  fileEntityAuthorizers: [shipmentFileAuthorizer],
   eventSubscriptions: [],
   // Widens the seeded `super-admin` role with this module's grants on a database that ran the
   // platform seed before Operations existed. See operations.seed.ts — without it, no account on

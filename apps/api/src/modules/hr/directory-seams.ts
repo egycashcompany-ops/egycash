@@ -45,6 +45,7 @@ const toDirectoryEmployee = (employee: {
   branchId: unknown;
   departmentId: unknown;
   hiredAt?: Date | null;
+  employment?: { jobTitleId?: unknown } | null;
   personal: {
     fullNameAr: string;
     contact?: { primaryPhone?: string | null } | null;
@@ -71,6 +72,10 @@ const toDirectoryEmployee = (employee: {
     phone: employee.personal.contact?.primaryPhone ?? null,
     governorate: address?.governorate ?? null,
     hiredAt: employee.hiredAt ?? null,
+    // The seat, as an id — Operations' crew roster prints «الوظيفة» from it (Round 19), naming it
+    // from the organization catalogue. `== null`: a projection that missed it reads as no seat.
+    jobTitleId:
+      employee.employment?.jobTitleId == null ? null : String(employee.employment.jobTitleId),
     // The same two parts the drivers registry has always printed, joined the same way. Joined
     // HERE rather than on the screen so the one seam answers with the one string — the registry
     // and the sheet exported from it were already sharing a helper to avoid exactly that drift.
@@ -168,7 +173,9 @@ export const registerHrDirectorySeams = (): void => {
   // B5 adds the ATTENDANCE-DAY lookup. Read-only and batch: the Operations crew board shows a
   // day's attendance beside the roster, and attendance is NOT an eligibility gate there (legacy
   // never queried absence for the cash-transfer department at all — discovery §10.2), so this
-  // seam deliberately answers a question and grants nothing.
+  // seam deliberately answers a question and grants nothing. (Round 22: the owner made absence a
+  // rule on the crew board — that rule is Operations', asked of this answer; the seam still
+  // decides nothing.)
   registerAttendanceDayLookup(async (employeeIds, date) => {
     const rows = await AttendanceDayModel.find({
       employeeId: { $in: employeeIds },

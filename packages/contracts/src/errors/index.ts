@@ -103,7 +103,11 @@ export const ErrorCodes = {
   OPERATIONS_UNKNOWN_BANK: 'OPERATIONS_UNKNOWN_BANK',
   OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
   OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
-  /** The legacy client-side branch-per-bank picker filter, made a domain rule (main_ops.ejs:477). */
+  /**
+   * The destination branch is not a branch of the destination bank (`secondaryBankId ?? mainBankId`)
+   * — legacy's client-side to-branch filter (main_ops.ejs:501-503), made a domain rule. The ORIGIN
+   * carries no bank rule: it may belong to any bank, the main bank being the billed one.
+   */
   OPERATIONS_BRANCH_BANK_MISMATCH: 'OPERATIONS_BRANCH_BANK_MISMATCH',
   /** Legacy parity: a daily shipment hardcodes del_date "" (contad_app.js:353). */
   OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE: 'OPERATIONS_DAILY_HAS_NO_DELIVERY_DATE',
@@ -115,10 +119,79 @@ export const ErrorCodes = {
    * §9.4 anchor: crew is planned only for a vehicle on the Fleet roster for that date — the
    * normalized form of the legacy car_lock gate (tashghela listed only car_lock'd vehicles,
    * contad_app.js:2255).
+   *
+   * NO LONGER ANSWERED since Round 24: «مكان بدون سيارة دا لما ادوس عليه يجيب كل السيارات اللى مش
+   * عليها طاقم واقدر اختار منهم» — a crew row may take ANY active vehicle with no crew that day,
+   * on the roster or not (refusals: `OPERATIONS_CREW_VEHICLE_NOT_ACTIVE`, `…_IN_WORKSHOP`,
+   * `…_TAKEN`). Kept so a client built before still reads it.
    */
   OPERATIONS_FLEET_DUTY_REQUIRED: 'OPERATIONS_FLEET_DUTY_REQUIRED',
-  /** Q2 NORMALIZE — the dual-control rule the legacy schema described and never enforced. */
-  OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED: 'OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED',
+  /**
+   * 422 — Round 20: a crew-board save NEWLY gave a row a type («النوع») that is not an active type
+   * of the `أنواع التشغيل` catalog (unknown, or archived). A row keeps a type it already holds.
+   * Details: `field` 'shiftTypeId' (`message` the id refused) and `field` 'rows' (`code` 'ROW_INDEX',
+   * `message` the row's index in the save).
+   */
+  OPERATIONS_UNKNOWN_SHIFT_TYPE: 'OPERATIONS_UNKNOWN_SHIFT_TYPE',
+  /**
+   * 422 — Round 20: a crew-board save gave a row a NEW or CHANGED «الاتجاه» that is not the name of
+   * an active operations area («لازم اختار من الاتجاهات اللى موجوده»). A direction the row already
+   * holds stays while it is sent unchanged. Details: one per part refused (`field` 'direction',
+   * `message` the part as typed), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index).
+   */
+  OPERATIONS_DIRECTION_NOT_AN_AREA: 'OPERATIONS_DIRECTION_NOT_AN_AREA',
+  /**
+   * 422 — Round 22: a crew-board save NEWLY put on a row somebody HR has as away on the board's day
+   * («لو القائد غايب ... مقدرش احطه على العربيه و كذلك الاخصائيين») — the member's `availability`
+   * in the pool. Someone already on that row before the save stays. Details: `field` 'employeeId'
+   * (`code` 'ABSENT' or 'ON_LEAVE', `message` the employee's id), then `field` 'rows' (`code`
+   * 'ROW_INDEX', `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_MEMBER_ABSENT: 'OPERATIONS_CREW_MEMBER_ABSENT',
+  /**
+   * 422 — Round 23: a crew-board save, or a standing-crew save, NEWLY put somebody in a slot his
+   * role does not fit (`fitsCrewSlot`): «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد
+   * اخصائى». A captain-only in a specialist's slot, or a specialist — or somebody with no requirements
+   * row — in the captain's; a captain-specialist fits every slot. Somebody already in that same slot
+   * of that same row before the save stays. Details: `field` 'employeeId' (`code` 'NOT_A_CAPTAIN' or
+   * 'NOT_A_SPECIALIST', `message` the employee's id), then `field` 'rows' (`code` 'ROW_INDEX',
+   * `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_MEMBER_WRONG_SLOT: 'OPERATIONS_CREW_MEMBER_WRONG_SLOT',
+  /**
+   * 422 — Round 24: a crew-board save gave a row a van the Fleet roster does not have that day, and
+   * Fleet does not hold it as an ACTIVE vehicle (unknown, deleted, out of service or disposed). A
+   * row that already holds its van is not asked again. Details: `field` 'vehicleId' (`code`
+   * 'NOT_ACTIVE', `message` the vehicle's id), then `field` 'rows' (`code` 'ROW_INDEX', `message` the
+   * row's index in the save).
+   */
+  OPERATIONS_CREW_VEHICLE_NOT_ACTIVE: 'OPERATIONS_CREW_VEHICLE_NOT_ACTIVE',
+  /**
+   * 422 — Round 24: a crew-board save gave a row a van the Fleet roster does not have that day, and
+   * Fleet's workshop holds it that day (an open visit — the board's «صيانة»). A roster van is
+   * Fleet's decision and is not asked; a row that already holds its van keeps it. Details: `field`
+   * 'vehicleId' (`code` 'IN_WORKSHOP', `message` the vehicle's id), then `field` 'rows' (`code`
+   * 'ROW_INDEX', `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_VEHICLE_IN_WORKSHOP: 'OPERATIONS_CREW_VEHICLE_IN_WORKSHOP',
+  /**
+   * 409 — Round 24: a saved row was given a van («X takes V») that ANOTHER live crew row of the day
+   * still holds at the end of the save (one van, one row a day — `ux_day_vehicle`). Remove that row
+   * in the same save to free the van. (A ROSTER van's row emptied to nothing, with no shipment leg,
+   * does not hold it: it is released in the same save.) Details: `field` 'vehicleId' (`code` 'TAKEN', `message` the
+   * vehicle's id), `field` 'crewAssignmentId' (`code` 'CREW_ROW', `message` the id of the row that
+   * holds it), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index in the save).
+   */
+  OPERATIONS_CREW_VEHICLE_TAKEN: 'OPERATIONS_CREW_VEHICLE_TAKEN',
+  /**
+   * 409 — Round 24: a crew-board save would REMOVE a row that holds محصنات — live shipment legs
+   * (placed on it on «توزيع المحصنات», delivered or not): removing it would strand them on a row
+   * nobody sees. Take them off on «توزيع المحصنات», or give the row a van instead (it keeps its id
+   * and its legs). Details: `field` 'crewAssignmentId' (`code` 'CREW_ROW', `message` the row's id),
+   * `field` 'shipments' (`code` 'COUNT', `message` how many legs it holds), then `field`
+   * 'removeCrewAssignmentIds' (`code` 'REMOVAL_INDEX', `message` the removal's index in the save).
+   */
+  OPERATIONS_CREW_ROW_HAS_SHIPMENTS: 'OPERATIONS_CREW_ROW_HAS_SHIPMENTS',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */
@@ -130,13 +203,121 @@ export const ErrorCodes = {
   OPERATIONS_ASSIGNMENT_NOT_IN_SET: 'OPERATIONS_ASSIGNMENT_NOT_IN_SET',
   /** A reorder omitted assignments — accepting it would strand them at stale positions. */
   OPERATIONS_INCOMPLETE_ORDER: 'OPERATIONS_INCOMPLETE_ORDER',
+  /**
+   * 422 — the shipments history range holds more than `OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS`
+   * shipments. Refused, never cut short: totals over a silently truncated list would be wrong
+   * figures. Details carry `count` and `max` (field = the name, message = the number).
+   */
+  OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE: 'OPERATIONS_SHIPMENT_HISTORY_TOO_LARGE',
+  /**
+   * 422 — «مينفعش لما يجى يضيف شحنه يختار تاريخ فات»: a NEW shipment dated before today on the
+   * Cairo calendar (its collection date, or a secured one's delivery date), or a delivery date set
+   * for the first time on an edit before today. One detail: `field` = the date refused,
+   * `code` = 'MIN_DATE', `message` = the earliest day allowed ('YYYY-MM-DD').
+   */
+  OPERATIONS_SHIPMENT_DATE_IN_PAST: 'OPERATIONS_SHIPMENT_DATE_IN_PAST',
+  /**
+   * 422 — «ميقدرش يحدد يوم قبل يوم اللى كانت عليه الشحنة»: an edit moving the collection date (or
+   * the delivery date) EARLIER than the day the shipment is on. Later, or unchanged, is accepted.
+   * Same detail shape as `OPERATIONS_SHIPMENT_DATE_IN_PAST`; `message` = the shipment's current day.
+   */
+  OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL: 'OPERATIONS_SHIPMENT_DATE_BEFORE_ORIGINAL',
+  /**
+   * 422 — a secured shipment's delivery date before its collection date («تاريخ التسليم تانى يوم
+   * الاستلام افتراضى وممكن يغير» — it may move, never to before the collection day; the same day
+   * is accepted). Checked on create and on an edit that changes either date. Same detail shape as
+   * `OPERATIONS_SHIPMENT_DATE_IN_PAST`, `field` = 'deliveryDate', `message` = the collection day.
+   */
+  OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION: 'OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION',
+  /** 409 — a restore asked for a shipment that is not deleted. */
+  OPERATIONS_SHIPMENT_NOT_DELETED: 'OPERATIONS_SHIPMENT_NOT_DELETED',
+
+  // ── The secured pickup ✓, the vault lock and the cancelled receipt (Round 10) ────────────────
+  /**
+   * 409 — the shipment is LOCKED: a secured shipment the vault has received (status `inVault`,
+   * `dispatched` or `completed`) — «ميقدر حد من القادة او العمليات او الخزنه يعدل عليها». Refuses
+   * the edit, the delete, the receipt photo, the pickup crew, and the desk's pickup ✓ / its undo.
+   * The way back is the cancelled receipt (`operationsVault.cancelReceipt`).
+   */
+  OPERATIONS_SECURED_LOCKED: 'OPERATIONS_SECURED_LOCKED',
+  /**
+   * 409 — nobody has confirmed collecting this secured shipment (stage `awaitingPickup`): the
+   * desk's undo has no pickup ✓ to take back. Round 10's other use — the vault's ✓ refusing a white
+   * row — was lifted in Round 13 («والخزنه تستلم عادي»): the vault receives any draft.
+   */
+  OPERATIONS_SECURED_NOT_PICKED_UP: 'OPERATIONS_SECURED_NOT_PICKED_UP',
+  /**
+   * 409 — the desk's pickup ✓ on a secured shipment whose pickup is already recorded — by its
+   * captain in the app or by the desk itself. The desk never stamps over the captain's ✓ (it may
+   * take it back, then confirm as Operations).
+   */
+  OPERATIONS_SECURED_ALREADY_PICKED_UP: 'OPERATIONS_SECURED_ALREADY_PICKED_UP',
+  /**
+   * 409 — a cancelled receipt asked for a shipment that is not in the vault: not received yet, or
+   * already dispatched or completed.
+   */
+  OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+  /**
+   * 409 — Round 21b: the vault's receipt (`POST /operations/secured/:id/receive`) names a seal the
+   * vault STILL HOLDS on another محصنة. The owner: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت
+   * وخرجت واتكرر يبقى عادى» — refused while that محصنة is with us; once it has gone out (released to
+   * its van, dispatched, completed) or its receipt was cancelled, the number may come again. "Held"
+   * is the custody's `state: 'held'` on a receipt not cancelled — what the vault inventory lists;
+   * "the same seal" is `vaultSealKey`'s (0099 = 99 = ٩٩). Nothing is written. One detail per seal
+   * refused: `field` its place in THIS receipt as stored (`bagSeals.<i>` / `boxSeals.<i>`, blank
+   * boxes dropped — the form sends none), `code` 'HELD_IN_VAULT', `message` the id of the held
+   * shipment it is on; `POST /operations/secured/seal-check` names that محصنة (bank, branches,
+   * receipt number) for a screen.
+   */
+  OPERATIONS_SEAL_HELD_IN_VAULT: 'OPERATIONS_SEAL_HELD_IN_VAULT',
+
+  // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
+  /**
+   * 422 — the distribution screen (`GET`/`POST /operations/secured/distribution`) asked for a day
+   * before today on the Cairo calendar: a past day's vans have left. One detail: `field` 'date',
+   * `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_DISTRIBUTION_DAY_IN_PAST: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
+  /**
+   * 409 — a distribution change named a secured shipment that is already `dispatched` or `completed`:
+   * it has left the vault, and its van is history. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED: 'OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED',
+  /**
+   * 422 — a distribution change named a shipment that is not this day's: neither due on the day
+   * (draft or in the vault) nor OVERDUE in the vault (delivery date before TODAY, Cairo). A draft due
+   * another day, one with no delivery date, or one in the vault due on its own day between today and
+   * the day asked for. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_NOT_ON_DAY: 'OPERATIONS_DISTRIBUTION_NOT_ON_DAY',
+  /**
+   * 409 — a distribution change would move or clear a delivery leg its captain has already started
+   * in the app (`executionStatus` past `pending`). Also the shipment edit's (`PATCH
+   * /operations/shipments/:id`) when it would move a secured shipment's delivery date off the day of
+   * such a leg, or clear it — the edit would take the stop off his van just the same; nothing is
+   * written. Detail: `field` 'shipmentId', `message` its id.
+   */
+  OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
+  /**
+   * 422 — a dispatch (`POST /operations/secured/dispatch`, the vault's «تسليم») named a van — a crew
+   * row — whose operating day is not TODAY on the Cairo calendar. A van is handed over on its own
+   * day: «تسليم المحصنات» offers «تسليم» on today's vans only, and the server holds the same line, so
+   * a page left open from another day, or a call made by hand, cannot release tomorrow's van today
+   * (nor a past day's, which has left). Checked before any shipment; nothing is written. One
+   * detail: `field` 'crewAssignmentId', `code` 'TODAY_ONLY', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_DISPATCH_NOT_TODAY: 'OPERATIONS_DISPATCH_NOT_TODAY',
 
   // ── Captain execution (OP-7, NEW — no legacy counterpart) ─────────────────────────────────────
   /** The action is not legal from the stop's current execution state (start/pickup/deliver/complete). */
   OPERATIONS_INVALID_EXECUTION_TRANSITION: 'OPERATIONS_INVALID_EXECUTION_TRANSITION',
   /** The sequential lock: an earlier stop on this captain's route is not finished yet. */
   OPERATIONS_EXECUTION_OUT_OF_SEQUENCE: 'OPERATIONS_EXECUTION_OUT_OF_SEQUENCE',
-  /** Nothing left to execute here — the stop is already settled. */
+  /**
+   * Nothing left to execute here — the stop is already settled: the captain finished it, the back
+   * office completed the shipment, or (Round 13) the vault received a secured shipment whose pickup
+   * leg he never started.
+   */
   OPERATIONS_EXECUTION_ALREADY_SETTLED: 'OPERATIONS_EXECUTION_ALREADY_SETTLED',
   /** Someone else moved this stop first; the transition's precondition no longer holds. */
   OPERATIONS_EXECUTION_CONFLICT: 'OPERATIONS_EXECUTION_CONFLICT',
@@ -149,6 +330,12 @@ export const ErrorCodes = {
    * any more — a machine may have several open of either kind. Kept reserved, never reused.
    */
   ATM_OPERATION_ALREADY_OPEN: 'ATM_OPERATION_ALREADY_OPEN',
+  /**
+   * «قراءة الآن» while a reading of the maintenance mailbox is already running (the minute's own, or
+   * another person's): one reading at a time (2026-11-13), and that one's result is what the
+   * screen's last-run line will show.
+   */
+  ATM_MAIL_POLL_BUSY: 'ATM_MAIL_POLL_BUSY',
 
   // ── ATM efficiency register (docs/12-planning/atm-efficiency-register.md) ─────────────────────
   /** D6: the machine code already has an OPEN custody period somewhere in the company. */
@@ -333,6 +520,51 @@ export const ErrorCodes = {
    * the file's header only. Nothing was written. `{ field: 'thumb', code: … }`.
    */
   FLEET_FUEL_CARD_THUMB_INVALID: 'FLEET_FUEL_CARD_THUMB_INVALID',
+
+  // ── Fleet accident transfers («أخذ مبلغ من متبقي سيارة أخرى») ───────────────────────────────
+  /**
+   * 422 — the cars picked have less left, together, than the amount sent. Read inside the save's
+   * own transaction, so it is what another clerk's take left a moment ago — the screen plans
+   * within what it was shown and never sends more. Nothing was written. Two details, each figure
+   * in pounds as a plain decimal string (`'1200.50'`):
+   * `{ field: 'available', code: 'AVAILABLE', message }` — what the picked cars have together, and
+   * `{ field: 'amount', code: 'AMOUNT', message }` — the amount sent.
+   */
+  FLEET_ACCIDENT_TRANSFER_SHORT: 'FLEET_ACCIDENT_TRANSFER_SHORT',
+  /**
+   * 422 — the amount is more than the receiving file's negative: a take brings a file up to zero
+   * and never past it. The negative is the file's «المتبقي» as this save leaves its facts (a new
+   * file's figures as sent; an edit's figures over the stored file, read in the transaction),
+   * before the take; a file at zero or above has none. Nothing was written. Two details, in pounds
+   * as plain decimal strings: `{ field: 'deficit', code: 'DEFICIT', message }` — the negative
+   * (`'0.00'` when there is none), and `{ field: 'amount', code: 'AMOUNT', message }` — the amount
+   * sent.
+   */
+  FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT: 'FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT',
+
+  // ── IT vehicle device checks (docs/12-planning/it-vehicle-checks-design.md) ───────────────────
+  /**
+   * 422 — the car exists but its Fleet status is not `active` (out of service, disposed): a report
+   * is filed only on an active car. Nothing was written. A missing or deleted car is 404 instead.
+   */
+  IT_VEHICLE_NOT_ACTIVE: 'IT_VEHICLE_NOT_ACTIVE',
+  /**
+   * 409 — another user already filed a report with this `clientRequestId`. Nothing was written; the
+   * form makes a new id. The same reporter repeating it gets 200 with the report that exists.
+   */
+  IT_VEHICLE_CHECK_REQUEST_REUSED: 'IT_VEHICLE_CHECK_REQUEST_REUSED',
+  /** 422 — the report already holds `IT_VEHICLE_CHECK_MAX_PHOTOS` photos; no file was stored. */
+  IT_VEHICLE_CHECK_PHOTO_LIMIT: 'IT_VEHICLE_CHECK_PHOTO_LIMIT',
+  /**
+   * 422 — the report was filed more than `IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS` hours ago, so no
+   * photo is added to it any more; no file was stored.
+   */
+  IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED: 'IT_VEHICLE_CHECK_PHOTO_WINDOW_CLOSED',
+  /**
+   * 422 — a device is «لا يعمل» and the report carries no note (`vehicleCheckNeedsNotes`). Nothing
+   * was written. A repeat of a report already filed is answered before this rule.
+   */
+  IT_VEHICLE_CHECK_NOTES_REQUIRED: 'IT_VEHICLE_CHECK_NOTES_REQUIRED',
 
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */

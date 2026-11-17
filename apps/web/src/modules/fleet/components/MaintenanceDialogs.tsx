@@ -768,6 +768,8 @@ export const MaintenanceEditDialog = ({
   // move the next service.
   const [exitOdometer, setExitOdometer] = useState('');
   const [driverIn, setDriverIn] = useState('');
+  // «سائق الخروج» — offered once the visit is closed, like the exit counter.
+  const [driverOut, setDriverOut] = useState('');
   const [partIds, setPartIds] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   useEffect(() => {
@@ -779,6 +781,8 @@ export const MaintenanceEditDialog = ({
       setExitOdometer(visit.exitOdometer == null ? '' : String(visit.exitOdometer));
       // A legacy visit has no driver on file; the field opens empty and stays optional there.
       setDriverIn(visit.driverInEmployeeId ?? '');
+      // An old closed visit may have none on file (only the old book's spelling): it opens empty.
+      setDriverOut(visit.driverOutEmployeeId ?? '');
       setPartIds(visit.sparePartIds);
       setNotes(visit.notes ?? '');
     }
@@ -827,6 +831,11 @@ export const MaintenanceEditDialog = ({
     exitValid && odometer !== '' && Number.isInteger(odometerNumber) && exitNumber < odometerNumber;
   const exitLast = exitBracket.data?.lowerBound ?? null;
   const exitBelowLast = exitValid && exitChanged && exitLast !== null && exitNumber < exitLast;
+  // «عاوز اقدر اعدل السواق التانى اللى هو سائق الخروج». Sent only when this edit changed it, so an
+  // untouched visit is saved without asking HR about a driver nobody touched; never sent empty,
+  // because the endpoint takes a correction, never a clear.
+  const driverOutChanged =
+    visit !== null && driverOut !== '' && driverOut !== (visit.driverOutEmployeeId ?? '');
   const exitWarning = counterWarning(
     exitOdometer === '' ? null : exitNumber,
     exitBracket.data ?? null,
@@ -868,6 +877,7 @@ export const MaintenanceEditDialog = ({
         ...(closed && exitChanged ? { exitOdometer: exitOdometer === '' ? null : exitNumber } : {}),
         // Only sent when it says something: the endpoint takes a correction, never a clear.
         ...(driverIn === '' ? {} : { driverInEmployeeId: driverIn }),
+        ...(closed && driverOutChanged ? { driverOutEmployeeId: driverOut } : {}),
         notes: notes.trim() === '' ? null : notes.trim(),
         version: visit.version,
       },
@@ -1008,6 +1018,13 @@ export const MaintenanceEditDialog = ({
               <OptionalDriverField value={driverIn} onChange={setDriverIn} />
             </div>
           </DesignField>
+          {closed && (
+            <DesignField label={t('fleet.maintenance.fields.driverOut')}>
+              <div className={listBox()}>
+                <OptionalDriverField value={driverOut} onChange={setDriverOut} />
+              </div>
+            </DesignField>
+          )}
           <DesignField
             label={t('fleet.maintenance.fields.spareParts')}
             hint={t('fleet.maintenance.sparePartsHint')}

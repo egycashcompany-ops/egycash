@@ -65,9 +65,12 @@ describe('the bar', () => {
     const html = bar(ALL, '/hr-settings/recruitment-form');
     expect(links(html)).toEqual([
       'recruitment-form',
+      // «جمب نموزج التقديم» — what «نموذج رقم (1)» prints for a job.
+      'insurance-job-titles',
       'applicant-sources',
       'interview-stages',
       'evaluation-phases',
+      'hiring-requirements',
       'announcements',
       'notification-rules',
     ]);

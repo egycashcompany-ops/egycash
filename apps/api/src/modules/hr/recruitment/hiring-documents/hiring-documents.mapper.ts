@@ -1,12 +1,12 @@
 // Hiring Documents + document-type DTO mapping (Stage 6). `missingRequired` (the active
-// required type keys not yet uploaded) is computed by the service against the live catalog
-// and passed in, since it depends on more than the document alone.
+// required type keys not yet uploaded) is computed against the checklist of the employee's job,
+// which the service works out from the live catalog and passes in (A27).
 import {
   type HiringDocumentsDto,
   type HiringDocumentTypeDto,
 } from '@ecms/contracts';
 import { type HiringDocumentsDoc } from './hiring-documents.model';
-import { type HiringDocumentTypeDoc } from './hiring-document-type.model';
+import { jobScope, type HiringDocumentTypeDoc } from './hiring-document-type.model';
 
 export const toHiringDocumentTypeDto = (doc: HiringDocumentTypeDoc): HiringDocumentTypeDto => ({
   id: String(doc._id),
@@ -14,6 +14,8 @@ export const toHiringDocumentTypeDto = (doc: HiringDocumentTypeDoc): HiringDocum
   name: doc.name,
   required: doc.required,
   active: doc.active,
+  allJobs: jobScope(doc).allJobs,
+  jobTitleIds: jobScope(doc).jobTitleIds.map(String),
   version: doc.__v,
 });
 
@@ -23,10 +25,13 @@ export const computeMissingRequired = (doc: HiringDocumentsDoc, activeRequiredKe
   return activeRequiredKeys.filter((k) => !present.has(k));
 };
 
-export const toHiringDocumentsDto = (
-  doc: HiringDocumentsDoc,
-  missingRequired: string[],
-): HiringDocumentsDto => ({
+/** What the employee's job collects (A27): every type it applies to, and the required ones. */
+export interface HiringChecklist {
+  typeKeys: string[];
+  requiredKeys: string[];
+}
+
+export const toHiringDocumentsDto = (doc: HiringDocumentsDoc, checklist: HiringChecklist): HiringDocumentsDto => ({
   id: String(doc._id),
   employeeId: String(doc.employeeId),
   employeeCode: doc.employeeCode,
@@ -45,7 +50,8 @@ export const toHiringDocumentsDto = (
     uploadedBy: d.uploadedBy === null ? null : String(d.uploadedBy),
     uploadedAt: d.uploadedAt.toISOString(),
   })),
-  missingRequired,
+  missingRequired: computeMissingRequired(doc, checklist.requiredKeys),
+  typeKeys: checklist.typeKeys,
   completedAt: doc.completedAt === null ? null : doc.completedAt.toISOString(),
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),

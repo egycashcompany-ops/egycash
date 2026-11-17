@@ -45,6 +45,15 @@ interface AppDef {
    */
   previousPermission?: string;
   /**
+   * The name this row shipped with BEFORE, where the screen has been renamed since.
+   *
+   * The same narrow exception as `previousIcon`, for the label, and per language: each of `ar` and
+   * `en` is corrected only while the stored row still holds exactly this value — so an installation
+   * picks up the new name on its next boot, and a name an administrator chose (in either language)
+   * survives. Round 12 is its first use: «وعاوز اغير اسم صرف الخزينة ل محصنات الخزينة».
+   */
+  previousName?: { en: string; ar: string };
+  /**
    * The permission opening this page requires — the SAME key the client route guard checks.
    *
    * REQUIRED. Navigation is the set of applications whose key the caller holds, so a row without one
@@ -105,7 +114,10 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
       // own page now, whose button opens exactly that phase's list.
       {
         revision: 1,
-        routes: ['/evaluation-batches/phase/securityCheck', '/evaluation-batches/phase/drivingTest'],
+        routes: [
+          '/evaluation-batches/phase/securityCheck',
+          '/evaluation-batches/phase/drivingTest',
+        ],
       },
       // «الإعدادات» — these six are the tabs of `/hr-settings` now, and their old addresses
       // redirect into it.
@@ -623,7 +635,13 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
     //
     // Every `permission` below is the SAME key the client route guard checks in
     // apps/web/src/modules/operations/routes.tsx. Nothing new is declared: these are the OP-1..OP-7
-    // grants the module already registered.
+    // grants the module already registered — and, for «إدارات العمليات», the platform's
+    // `setting.edit`, which is what writes the one setting that screen edits.
+    retired: [
+      // Round 14 — «تجميع الخزينة كشاشه مفيش حاجه اسمها تجميع خزينه، شيلها خالص». Its content is
+      // «تقرير البنوك» now, and its address redirects there; the live row goes inactive, once.
+      { revision: 1, routes: ['/operations/reports/vault'] },
+    ],
     apps: [
       {
         en: 'Operations Home',
@@ -639,6 +657,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         ar: 'اليوم التشغيلي',
         route: '/operations/shipments',
         icon: 'clipboard',
+        permission: 'operationsShipment.view',
+      },
+      {
+        // «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع
+        // الشحنات»: the same board over a range of days, right beneath the day it extends.
+        en: 'Shipments History',
+        ar: 'سجل الشحنات',
+        route: '/operations/shipments/history',
+        icon: 'calendar',
         permission: 'operationsShipment.view',
       },
       {
@@ -665,6 +692,21 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsCrew.view',
       },
       {
+        // Round 14 — «انا عاوز افصل ان احدد اداره معايا ولا لا عن تجهيز الطاقم», and asked where:
+        // «شاشة لوحدها في القائمة». Which departments ARE the crew, chosen on a screen of its own,
+        // right beneath the roster that follows from it.
+        //
+        // On `setting.edit`, NOT an Operations key: the screen edits one organization setting
+        // (`operations.crewDepartmentIds`) and the platform's settings endpoint writes it only for
+        // that grant — so a planner without it would see a row that opens onto a card he cannot
+        // save, and a settings administrator is exactly who it is for.
+        en: 'Operations Departments',
+        ar: 'إدارات العمليات',
+        route: '/operations/crew-departments',
+        icon: 'sitemap',
+        permission: 'setting.edit',
+      },
+      {
         en: 'Crew Attendance',
         ar: 'حضور الطاقم',
         route: '/operations/attendance',
@@ -686,6 +728,17 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsShipment.view',
       },
       {
+        // Round 12 — «المحصنة اللى يومها هتخرج هتظهر تلقائى فى شاشة توزيع المحصنات … هتبقى العربيات على
+        // اليمين والمحصنات على الشمال وهشد المحصنة احطها على العربيه»: the day's محصنات placed on the
+        // day's vans. Right beneath the secured screen whose shipments it places. The row rides the
+        // secured screen's own read grant; saving is `operationsShipment.edit`, the delivery leg's.
+        en: 'Secured Distribution',
+        ar: 'توزيع المحصنات',
+        route: '/operations/secured/distribution',
+        icon: 'link',
+        permission: 'operationsShipment.view',
+      },
+      {
         en: 'Vault Receive',
         ar: 'استلام الخزينة',
         route: '/operations/vault/receive',
@@ -693,24 +746,35 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsVault.view',
       },
       {
-        en: 'Vault Dispatch',
-        ar: 'صرف الخزينة',
+        // Round 12 — «نفس الشاشة هنعمل زيها للخزنة هيكون فوق كل عربيه تسليم وطباعه»: the vault hands
+        // each van its load. Beneath the receive screen — what comes in, then what goes out. The
+        // vault screens' read grant; the handover itself is the dispatch's `operationsVault.dispatch`.
+        en: 'Secured Handover',
+        ar: 'تسليم المحصنات',
+        route: '/operations/vault/handover',
+        icon: 'receipt',
+        permission: 'operationsVault.view',
+      },
+      {
+        // Round 12 — «وعاوز اغير اسم صرف الخزينة ل محصنات الخزينة وتكون وظيفتها انها بتعرض اللى موجود
+        // دلوقتى فى الخزنة»: the same route, view only now (placing moved to «توزيع المحصنات», the
+        // handover to «تسليم المحصنات»). Renamed on live installations too, while the row still
+        // carries the old default.
+        en: 'Vault Shipments',
+        ar: 'محصنات الخزينة',
+        previousName: { en: 'Vault Dispatch', ar: 'صرف الخزينة' },
         route: '/operations/vault/dispatch',
         icon: 'truck',
         permission: 'operationsVault.view',
       },
       {
-        en: 'Vault Inventory',
-        ar: 'جرد الخزينة',
+        // Round 12 — «شاشة جرد الخزينة تكون سجل الخزينه المحصنات زى شاشة سجل الشحنات بالظبط واعمل فوق
+        // تقرير الخزينة»: the vault's history of محصنات, with what it holds now on top. Same route.
+        en: 'Vault History',
+        ar: 'سجل الخزينة',
+        previousName: { en: 'Vault Inventory', ar: 'جرد الخزينة' },
         route: '/operations/vault',
         icon: 'folder',
-        permission: 'operationsVault.view',
-      },
-      {
-        en: 'Vault Roll-up',
-        ar: 'تجميع الخزينة',
-        route: '/operations/reports/vault',
-        icon: 'chart',
         permission: 'operationsVault.view',
       },
       {
@@ -721,6 +785,10 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsShipment.view',
       },
       {
+        // Round 14 — «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك»: the vault roll-up that
+        // shipped as «تجميع الخزينة» (retired above) is this screen now. The stored key stays the
+        // shipments' read; the vault's readers, who had «تجميع الخزينة», see the row too, through
+        // `SHARED_NAVIGATION_ROWS` in the contracts (`OPERATIONS_BANK_REPORT_KEYS`).
         en: 'Bank Report',
         ar: 'تقرير البنوك',
         route: '/operations/reports/banks',
@@ -926,6 +994,28 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         route: '/it/catalogs',
         icon: 'folder',
         permission: 'itCatalog.manage',
+      },
+      {
+        // FR-21 — «فحص أجهزة السيارات», IT's dashboard over the reports the phone form files
+        // («الـ Dashboard مش هتكون عند الحركة .. هتبقي عند الـ IT», 2026-11-10). Right before the
+        // form, on the READ grant: a reporter who holds only the form does not see it, and a reader
+        // who does not file does not see the form. The gauge, the dashboards' glyph (as the gold
+        // vault's), which no other IT row wears.
+        en: 'Vehicle device checks',
+        ar: 'فحص أجهزة السيارات',
+        route: '/it/vehicle-checks',
+        icon: 'gauge',
+        permission: 'itVehicleCheck.view',
+      },
+      {
+        // FR-21 — «فحص أجهزة السيارة», the phone form (docs/12-planning/it-vehicle-checks-design.md
+        // §4): last in the IT list, on its own grant, so a role that holds only the form sees this
+        // one row. The car glyph, which no other IT row wears.
+        en: 'Vehicle device check',
+        ar: 'فحص أجهزة السيارة',
+        route: '/it/vehicle-checks/new',
+        icon: 'vehicle',
+        permission: 'itVehicleCheck.create',
       },
     ],
   },
@@ -1406,7 +1496,11 @@ export const retireApplications = async (def: CategoryDef, by: string): Promise<
     for (const route of entry.routes) {
       const row = await applicationRepository.findOne({ route });
       if (row === null || row.status !== 'active') continue;
-      await applicationService.update(String(row._id), { status: 'inactive', version: row.__v }, by);
+      await applicationService.update(
+        String(row._id),
+        { status: 'inactive', version: row.__v },
+        by,
+      );
     }
   }
   const current = await applicationCategoryRepository.getById(String(category._id));
@@ -1486,6 +1580,23 @@ const correctApplicationPermission = async (def: AppDef, by: string): Promise<vo
   );
 };
 
+/**
+ * Rename a row — ONLY in a language where it still carries the name this seed used to ship
+ * (`previousName`). The icon correction's rule, for the label: an administrator's own name, in
+ * either language, is left alone.
+ */
+const correctApplicationName = async (def: AppDef, by: string): Promise<void> => {
+  if (def.previousName === undefined) return;
+  const existing = await applicationRepository.findOne({ route: def.route });
+  if (existing === null) return;
+  const name = {
+    ar: existing.name.ar === def.previousName.ar ? def.ar : existing.name.ar,
+    en: existing.name.en === def.previousName.en ? def.en : existing.name.en,
+  };
+  if (name.ar === existing.name.ar && name.en === existing.name.en) return;
+  await applicationService.update(String(existing._id), { name, version: existing.__v }, by);
+};
+
 const backfillApplicationPermission = async (def: AppDef, by: string): Promise<void> => {
   const existing = await applicationRepository.findOne({ route: def.route });
   if (existing === null || (existing.permissionKey ?? null) !== null) return;
@@ -1530,8 +1641,9 @@ export const seedBootstrapNavigation = async (adminId: string): Promise<void> =>
  *   otherwise left as it is, save the `iconRevision` exception below; an application's permission
  *   key follows the null rule (filled only while null, which is what teaches pre-field installs
  *   their keys);
- * - the two corrections, `previousIcon` and `previousPermission`, rewrite a row's value only while
- *   it still equals what this seed used to ship — an administrator's own choice is never touched;
+ * - the three corrections, `previousIcon`, `previousPermission` and `previousName`, rewrite a row's
+ *   value only while it still equals what this seed used to ship — an administrator's own choice is
+ *   never touched;
  * - the one exception, deliberate and once: a module tile below its catalog `iconRevision` takes
  *   the catalog icon whatever it holds (the owner asked for those icons), and records the
  *   revision, after which its icon is the administrator's again;
@@ -1554,6 +1666,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
       await backfillApplicationPermission(app, actor);
       await backfillApplicationIcon(app, actor);
       await correctApplicationPermission(app, actor);
+      await correctApplicationName(app, actor);
     }
     // Resolve the whole group up front: where a new row belongs depends on the stored order of
     // the next EXISTING neighbour, which a forward-only walk cannot see yet.

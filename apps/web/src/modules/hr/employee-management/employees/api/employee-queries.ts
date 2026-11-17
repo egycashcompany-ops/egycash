@@ -11,6 +11,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeActionType,
   type EmployeeDto,
   type EmploymentAction,
@@ -20,6 +21,7 @@ import {
   type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
   type UpdateUser,
+  type PurgeEmployee,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listJobOffers } from '../../../recruitment/job-offers/api/job-offer-api';
@@ -138,6 +140,18 @@ export const useRegisterEmployeeDirect = () => {
   });
 };
 
+/** Registering an external person. Same cache moves as a direct registration, minus the login. */
+export const useRegisterEmployeeExternal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RegisterExternalEmployee) => api.registerEmployeeExternal(body),
+    onSuccess: (employee: EmployeeDto) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, employee.id), employee);
+      void qc.invalidateQueries({ queryKey: listKey(MODULE, FEATURE) });
+    },
+  });
+};
+
 export const useUpdateEmployeePersonal = (id: string) => {
   const qc = useQueryClient();
   return useMutation({
@@ -181,6 +195,23 @@ export const useChangeEmployeeCode = (id: string) => {
   });
 };
 
+/**
+ * The permanent delete. On success the employee no longer exists, so the detail entry is REMOVED
+ * from the cache rather than replaced — leaving it would serve a profile for somebody the server
+ * will 404 on — and every list is invalidated, because the person was on an unknown number of them.
+ */
+export const usePurgeEmployee = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PurgeEmployee) => api.purgeEmployee(id, body),
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
+      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE] });
+    },
+    onError: () => undefined,
+  });
+};
+
 export const useUpdateEmployeeOfficer = (id: string) => {
   const qc = useQueryClient();
   return useMutation({
@@ -206,6 +237,15 @@ export const useLastEmployeeCode = () =>
     queryKey: [MODULE, FEATURE, 'last-code'],
     queryFn: api.lastEmployeeCode,
     staleTime: 0,
+  });
+
+/** The last external code issued — like the hint above it, read fresh so two clerks do not clash. */
+export const useLastExternalEmployeeCode = (enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, FEATURE, 'external', 'last-code'],
+    queryFn: api.lastExternalEmployeeCode,
+    staleTime: 0,
+    enabled,
   });
 
 /** What a typed code means — asked only once it has the company's shape. */

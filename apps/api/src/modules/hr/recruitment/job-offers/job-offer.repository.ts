@@ -14,7 +14,11 @@ import { JobOfferModel, type JobOfferDoc } from './job-offer.model';
 export interface JobOfferListFilter {
   status?: readonly string[] | undefined;
   applicantId?: string | undefined;
-  branchId?: string | undefined;
+  branchId?: readonly string[] | undefined;
+  departmentId?: readonly string[] | undefined;
+  jobTitleId?: readonly string[] | undefined;
+  /** Only offers still under way: `waiting`, `draft` or `sent`. */
+  active?: boolean | undefined;
   /**
    * A6/RW15 — whether the offer already produced an Employee. The Employees Ready queue asks for
    * `false`, which is exactly the predicate `countEmployeesReady` counts, so the page's totals
@@ -169,6 +173,30 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   }
 
   /** The applicant's accepted offer, if any (the Employee-Creation gate for Stage 5). */
+  /**
+   * A28 — the jobs the candidates ready to hire (accepted, not hired yet) are taking, by department:
+   * one row per department and job, for «مستندات الوظائف».
+   */
+  async acceptedJobsByDepartment(): Promise<{ departmentId: string; jobTitleId: string }[]> {
+    const rows = await this.model
+      .aggregate<{ _id: { departmentId: Types.ObjectId | null; jobTitleId: Types.ObjectId | null } }>([
+        { $match: { isDeleted: false, status: 'accepted', hiredEmployeeId: null } },
+        // The terms accepted — what the hire copies — else the offer's own.
+        {
+          $group: {
+            _id: {
+              departmentId: { $ifNull: ['$acceptedSnapshot.terms.departmentId', '$terms.departmentId'] },
+              jobTitleId: { $ifNull: ['$acceptedSnapshot.terms.jobTitleId', '$terms.jobTitleId'] },
+            },
+          },
+        },
+      ])
+      .exec();
+    return rows
+      .filter((row) => row._id.departmentId != null && row._id.jobTitleId != null)
+      .map((row) => ({ departmentId: String(row._id.departmentId), jobTitleId: String(row._id.jobTitleId) }));
+  }
+
   async findAcceptedByApplicantId(applicantId: string): Promise<JobOfferDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;
     return this.model
@@ -199,9 +227,20 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   private buildFilter(f: JobOfferListFilter): FilterQuery<JobOfferDoc> {
     const clauses: FilterQuery<JobOfferDoc>[] = [];
     if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
+    if (f.active === true) clauses.push({ status: { $in: ['waiting', 'draft', 'sent'] } });
     if (f.applicantId !== undefined)
       clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
-    if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
+    // Where the offer is for: its terms once written; while `waiting` (no terms yet), the
+    // candidate's placement — and, for branch and department, the axis mirrored from the applicant.
+    const placed = (field: 'branchId' | 'departmentId' | 'jobTitleId', ids: readonly string[]) => {
+      const oids = { $in: ids.map((id) => new Types.ObjectId(id)) };
+      const unwritten: FilterQuery<JobOfferDoc>[] = [{ [`placementSnapshot.${field}`]: oids }];
+      if (field !== 'jobTitleId') unwritten.push({ [field]: oids });
+      return { $or: [{ [`terms.${field}`]: oids }, { terms: null, $or: unwritten }] } as FilterQuery<JobOfferDoc>;
+    };
+    if (f.branchId !== undefined) clauses.push(placed('branchId', f.branchId));
+    if (f.departmentId !== undefined) clauses.push(placed('departmentId', f.departmentId));
+    if (f.jobTitleId !== undefined) clauses.push(placed('jobTitleId', f.jobTitleId));
     if (f.hired !== undefined) {
       clauses.push(
         (f.hired

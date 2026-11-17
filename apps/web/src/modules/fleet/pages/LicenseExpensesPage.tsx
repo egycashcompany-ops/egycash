@@ -44,6 +44,7 @@ import {
 } from '../api/fleet-queries';
 import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { useVehicleHoverCard } from '../components/VehicleHoverCard';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { FigureChip, moneyChip } from '../components/FleetFigures';
@@ -140,6 +141,36 @@ export const carCodesOf = (row: MemoRow): { codes: string[]; unregistered: numbe
 /** A code as a chip: the boards' figure type, bold, Latin, in a neutral box — not a state. */
 const CODE_CHIP =
   'rounded-md border border-slate-300 bg-slate-50 px-1.5 py-px text-[15px] leading-5 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white';
+
+/** The registry car behind each of `carCodesOf`'s codes, in the same order — the car card's car. */
+const carIdsOf = (row: MemoRow): (string | null)[] =>
+  memosOf(row).flatMap((memo) =>
+    memo.vehicles.flatMap((v) => (v.code === null || v.code.trim() === '' ? [] : [v.vehicleId])),
+  );
+
+/** One of a memo's codes as its chip — and the car card's trigger, on the car the memo names. */
+const MemoCarChip = ({
+  code,
+  vehicleId,
+}: {
+  code: string;
+  vehicleId: string | null;
+}): JSX.Element => {
+  const { triggerProps, card } = useVehicleHoverCard({ vehicleId, code });
+  return (
+    <>
+      <span
+        dir="ltr"
+        data-license-expense-car-code={code}
+        className={cn(CODE_CHIP, FIGURE)}
+        {...triggerProps}
+      >
+        {code}
+      </span>
+      {card}
+    </>
+  );
+};
 /** How many cars, ahead of the chips: a round neutral figure, so it never reads as one more code. */
 const COUNT_BADGE =
   'inline-flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-slate-200 px-1.5 text-[13px] leading-none text-slate-700 dark:bg-slate-700 dark:text-slate-100';
@@ -350,6 +381,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
       // title says the same in words, for a reader who hovers.
       render: (row) => {
         const { codes, unregistered } = carCodesOf(row);
+        const ids = carIdsOf(row);
         const count = codes.length + unregistered;
         if (count === 0) return DASH;
         const typedCount = t('fleet.licenseExpenses.unregisteredCount', {
@@ -372,14 +404,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
             {/* At least the badge's height, so a lone «غير مسجلة» sits level with the figure. */}
             <span className="flex min-h-6 max-w-[17rem] flex-wrap items-center justify-center gap-1">
               {codes.map((code, index) => (
-                <span
-                  key={`${index}:${code}`}
-                  dir="ltr"
-                  data-license-expense-car-code={code}
-                  className={cn(CODE_CHIP, FIGURE)}
-                >
-                  {code}
-                </span>
+                <MemoCarChip key={`${index}:${code}`} code={code} vehicleId={ids[index] ?? null} />
               ))}
               {unregistered > 0 && (
                 <span

@@ -6,9 +6,12 @@
 // been four copies to keep in step. The screens keep what differs — where the filter state lives
 // (the standing crew remembers it in the URL, the daily board does not) — and nothing else.
 //
-// THE SPLIT DECIDES WHERE A PLANNER LOOKS, NOT WHAT THEY MAY DO. `splitPool` reads the `isCaptain`
-// flag, exactly as legacy read `leader`; a captain can still be dropped into a specialist slot,
-// and dropping anybody back onto EITHER pool takes them off the board.
+// THE SPLIT DECIDES WHERE A PLANNER LOOKS. `splitPool` reads the `isCaptain` flag, exactly as legacy
+// read `leader`, and lists the captain-specialists LAST among the captains, never among the
+// specialists (Round 23 — «لو قائد واخصائى يبقى فى القايمة بتاعت القائد بس يكونوا فى الاخر»). Which
+// slot each may take is the slot rule's (`fitsCrewSlot`, asked by the page's drop and by the save:
+// «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»). Dropping anybody back onto
+// EITHER pool takes them off the board.
 //
 // Each pool scrolls on its own and, on a wide screen, stays put while the vehicles scroll beside
 // it — with 50 captains and 100 specialists, a pool that scrolled away with the page would mean

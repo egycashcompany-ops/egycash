@@ -186,3 +186,20 @@ export const updateApplicantDocumentType = async (req: Request, res: Response): 
   const { body, params } = validated<UpdateApplicantDocumentType, unknown, { id: string }>(req);
   ok(res, toApplicantDocumentTypeDto(await applicantDocumentTypeService.update(params.id, body)));
 };
+
+// ── HR fixing a candidate's folder ──────────────────────────────────────────
+
+export const staffPutApplicantDocument = async (req: Request, res: Response): Promise<void> => {
+  const { params, body } = validated<{ licenseClass?: UploadApplicantDocument['licenseClass'] }, unknown, { applicantId: string; typeId: string }>(req);
+  ok(res, await applicantDocumentService.staffPut(authContext(req), params.applicantId, params.typeId, binaryOf(req), body.licenseClass));
+};
+
+export const staffRemoveApplicantDocument = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<unknown, unknown, { applicantId: string; typeId: string }>(req);
+  ok(res, await applicantDocumentService.staffRemove(authContext(req), params.applicantId, params.typeId));
+};
+
+export const staffReplaceApplicantCard = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<unknown, unknown, { applicantId: string; side: 'front' | 'back' | 'portrait' }>(req);
+  ok(res, await applicantDocumentService.staffReplaceCard(authContext(req), params.applicantId, params.side, binaryOf(req)));
+};

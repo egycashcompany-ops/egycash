@@ -42,6 +42,7 @@ import { VIOLATION_DRAG_TYPE, canReceive, readDraggedIds } from '../lib/violatio
 import { CatalogSelect } from './CatalogSelect';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
+import { VehicleHoverCode } from './VehicleHoverCard';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FilterField } from '../../../shared/ui/FilterField';
@@ -914,7 +915,9 @@ export const CompanyViolationsPanel = ({
                             {row.year}
                           </td>
                           <td rowSpan={4} className={`${cell} text-center font-figures`} dir="ltr">
-                            {row.code}
+                            {/* The code carries the car card — none for a group from the old
+                                book (`vehicleId` null). */}
+                            <VehicleHoverCode vehicleId={row.vehicleId} code={row.code} />
                           </td>
                         </>
                       )}

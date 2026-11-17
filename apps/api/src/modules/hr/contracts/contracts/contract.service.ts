@@ -18,6 +18,7 @@ import {
   type ListContractsQuery,
   type Paginated,
   type ContractVariableIssueDto,
+  type ContractTemplateKind,
   type ContractVariableSource,
   type PreviewContract,
   type SignatureBlock,
@@ -38,13 +39,15 @@ import { employeeRepository, employeeService } from '../../employee-management/e
 import { contractBrandingService } from '../branding';
 import { contractTypeService } from '../contract-types';
 import { contractTemplateService } from '../contract-templates';
+import { printSettings } from '../contract-templates/contract-template.model';
 import { extractPlaceholders, sanitizeTemplateHtml } from '../shared/template-html';
 import { CATALOG_KEYS, CONTRACT_VARIABLE_CATALOG } from '../shared/variable-catalog';
 import { DEFAULT_CONTRACT_NUMBER_FORMAT, nextContractNumber } from './contract-number';
 import { resolveContractVariables } from './contract-variables';
-import { renderContractHtml } from './contract-render';
+import { renderContractHtml, renderFormHtml } from './contract-render';
+import { letterheadFor } from './letterhead';
 import { contractRepository } from './contract.repository';
-import { fromOverridePairs, type ContractDoc } from './contract.model';
+import { fromOverridePairs, type ContractDoc, type ContractVariableValue } from './contract.model';
 import { APP_VERSION } from '../../../../platform/kernel/app-version';
 
 // Stamped into every generated contract's integrity line: the release that produced it, from the
@@ -110,7 +113,7 @@ class ContractService {
         );
       }
     }
-    const template = await contractTemplateService.getById(input.templateId);
+    const template = await contractTemplateService.contractTemplateById(input.templateId);
     const { format, requireApproval } = await this.settings();
     const code = await nextContractNumber(format, new Date().getUTCFullYear());
 
@@ -159,7 +162,7 @@ class ContractService {
     const set: Record<string, unknown> = {};
     if (input.typeId !== undefined) set.typeId = new Types.ObjectId(input.typeId);
     if (input.templateId !== undefined) {
-      const template = await contractTemplateService.getById(input.templateId);
+      const template = await contractTemplateService.contractTemplateById(input.templateId);
       set.templateId = new Types.ObjectId(input.templateId);
       set.templateKey = template.key;
       set.templateLanguage = template.language;
@@ -399,7 +402,7 @@ class ContractService {
     const template =
       input.templateId === undefined
         ? await contractTemplateService.getById(String(source.templateId))
-        : await contractTemplateService.getById(input.templateId);
+        : await contractTemplateService.contractTemplateById(input.templateId);
     const { format } = await this.settings();
     const code = mode === 'amend' ? source.code : await nextContractNumber(format, new Date().getUTCFullYear());
     const doc = await contractRepository.create(
@@ -596,6 +599,7 @@ class ContractService {
     // preview never requires saving first; problems are reported, never blocking.
     let source: { sections: TemplateSections; signatures: SignatureBlock[]; language: 'ar' | 'en' };
     let placeholders: string[];
+    let kind: ContractTemplateKind = 'contract';
     if (input.inlineTemplate !== undefined) {
       const sections = {
         header: sanitizeTemplateHtml(input.inlineTemplate.sections.header),
@@ -616,14 +620,22 @@ class ContractService {
         signatures: input.inlineTemplate.signatures,
         language: input.inlineTemplate.language,
       };
+      kind = input.inlineTemplate.kind;
     } else {
       if (input.templateId === undefined) {
         throw new BusinessRuleError('templateId or inlineTemplate is required'); // schema-guaranteed
       }
+      // A form previews like a contract — the editor shows both the same way (A27).
       const template = await contractTemplateService.getById(input.templateId);
       source = template;
       placeholders = template.placeholders;
+      kind = printSettings(template).kind;
     }
+    // A27 — a form previews inside the letterhead it prints in; a contract as it generates.
+    const render = async (values: ContractVariableValue[]): Promise<string> =>
+      kind === 'form'
+        ? renderFormHtml(source, values, await letterheadFor(source.language))
+        : renderContractHtml(source, values, { branding });
 
     const branding = await contractBrandingService.resolveRenderBranding(ctx, source.language);
     if (input.employeeId === undefined) {
@@ -638,7 +650,7 @@ class ContractService {
           overriddenBy: null,
         };
       });
-      return { html: renderContractHtml(source, values, { branding }), issues };
+      return { html: await render(values), issues };
     }
     const employee = await employeeService.getById(input.employeeId, scope);
     const { values, issues: resolutionIssues } = await resolveContractVariables(placeholders, {
@@ -650,7 +662,7 @@ class ContractService {
       overrides,
       overriddenBy: null,
     });
-    return { html: renderContractHtml(source, values, { branding }), issues: [...issues, ...resolutionIssues] };
+    return { html: await render(values), issues: [...issues, ...resolutionIssues] };
   }
 
   /** The immutable snapshot (A20) — every export reads THIS, never a fresh render. */

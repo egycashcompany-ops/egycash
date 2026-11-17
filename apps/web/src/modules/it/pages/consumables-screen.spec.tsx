@@ -4,6 +4,10 @@
 // movements its figures and the reader's grants allow, and the ledger reads every movement by its
 // kind — who received it, what it was installed on, why, and the memo it was signed on. The asset's
 // and the person's cards read the same ledger.
+//
+// «ممكن أنقل 5 لفرع تاني» (2026-11-11): the register's rows can be ticked and each row with stock
+// offers «تحويل إلى فرع» to the custody grant; the ledger reads a transfer's two halves by their kind,
+// each naming the other branch and that store's item.
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -111,6 +115,10 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   memoId: 'memo-1',
   memoNumber: 7,
   memoSigned: false,
+  transferId: null,
+  counterpartBranchId: null,
+  counterpartConsumableId: null,
+  counterpartConsumableCode: null,
   byUserId: 'u-it',
   notes: null,
   createdAt: '2026-10-21T08:30:00.000Z',
@@ -131,6 +139,38 @@ const SCRAPPED = movement({
   memoId: null,
   memoNumber: null,
   memoSigned: null,
+});
+
+/** «10 ماوس … أنقل 5» — the half that left this store for October's, and the half that arrived. */
+const SENT = movement({
+  id: 'm-3',
+  kind: 'transferredOut',
+  qty: 5,
+  employeeId: null,
+  employeeCode: null,
+  employeeName: null,
+  assetId: null,
+  assetCode: null,
+  assetName: null,
+  reason: null,
+  memoId: null,
+  memoNumber: null,
+  memoSigned: null,
+  transferId: 't-1',
+  counterpartBranchId: 'b-oct',
+  counterpartConsumableId: 'c-9',
+  counterpartConsumableCode: 'CON-00031',
+});
+const ARRIVED = movement({
+  ...SENT,
+  id: 'm-4',
+  consumableId: 'c-9',
+  consumableCode: 'CON-00031',
+  kind: 'transferredIn',
+  branchId: 'b-oct',
+  counterpartBranchId: 'b-hq',
+  counterpartConsumableId: 'c-1',
+  counterpartConsumableCode: 'CON-00004',
 });
 
 const page = <T,>(items: T[], pageSize = 25) => ({
@@ -154,6 +194,7 @@ const render = ({
   });
   qc.setQueryData(listKey('it', 'branchOptions'), [
     { id: 'b-hq', code: '01', name: { ar: 'المهندسين', en: 'HQ' }, parentId: null },
+    { id: 'b-oct', code: '02', name: { ar: 'أكتوبر', en: 'October' }, parentId: null },
   ]);
   qc.setQueryData(listKey('it', 'catalogs', { kind: 'consumableType', select: true }), {
     items: [
@@ -300,13 +341,21 @@ describe('the consumables register', () => {
       'issue',
       'scrap',
       'return',
+      'transfer',
       'edit',
       'movements',
     ]);
-    // Nothing on hand: nothing to issue or scrap — stock can still come in, or back.
+    // Nothing on hand: nothing to issue, scrap or send — stock can still come in, or back.
     expect(actions(rowOf(body, 'CON-00008'))).toEqual(['receive', 'return', 'edit', 'movements']);
-    // Retired: no new stock and no issue; a scrap or a return is still recorded.
-    expect(actions(rowOf(body, 'CON-00009'))).toEqual(['scrap', 'return', 'edit', 'movements']);
+    // Retired: no new stock and no issue; a scrap or a return is still recorded, and its stock may
+    // still go to another branch — emptying its shelf, as a scrap does.
+    expect(actions(rowOf(body, 'CON-00009'))).toEqual([
+      'scrap',
+      'return',
+      'transfer',
+      'edit',
+      'movements',
+    ]);
     expect(rowOf(body, 'CON-00009')).toContain(ar('it.consumables.state.inactive'));
   });
 
@@ -317,6 +366,12 @@ describe('the consumables register', () => {
     expect(html).not.toContain(ar('it.consumables.issueAction'));
     // The ledger is a read, so its way in is offered to every reader.
     expect(html).toContain('href="/it/consumables/movements"');
+  });
+
+  it('lets the rows be ticked — «تحويل إلى فرع (n)» acts on what is ticked', () => {
+    const html = store({ rows: [item(), LOW] });
+    expect(html).toContain('aria-label="select all"');
+    expect(tableBody(html).match(/aria-label="select row"/gu)).toHaveLength(2);
   });
 
   it('puts the files first, then «سجل الحركات», «صرف لموظف» and «إضافة صنف»', () => {
@@ -403,6 +458,29 @@ describe('the consumables ledger («حركات المستهلكات»)', () => {
     expect(row).toContain('انكسر الموصل');
     expect(row).not.toContain('data-receipt-print');
     expect(row).not.toContain('/it/employees/');
+  });
+
+  it('reads a transfer’s two halves by their kind, each naming the other branch and its item', () => {
+    const body = tableBody(ledger({ rows: [SENT, ARRIVED] }));
+    const out = rowOf(body, 'data-movement-qty="transferredOut"');
+    expect(out).toContain(ar('it.consumables.kind.transferredOut'));
+    expect(out).toMatch(/data-movement-qty="transferredOut"[^>]*>−٥</u);
+    expect(out).toContain('إلى فرع أكتوبر');
+    expect(out).toMatch(/<bdi[^>]*dir="ltr"[^>]*>CON-00031<\/bdi>/u);
+    // No person and no paper: the ledger is the record.
+    expect(out).not.toContain('/it/employees/');
+    expect(out).not.toContain('data-receipt-print');
+    const into = rowOf(body, 'data-movement-qty="transferredIn"');
+    expect(into).toContain(ar('it.consumables.kind.transferredIn'));
+    expect(into).toMatch(/data-movement-qty="transferredIn"[^>]*>\+٥</u);
+    expect(into).toContain('من فرع المهندسين');
+    expect(into).toContain('CON-00004');
+  });
+
+  it('offers both halves of a transfer in its kind filter', () => {
+    const html = ledger();
+    expect(html).toContain('value="transferredOut"');
+    expect(html).toContain('value="transferredIn"');
   });
 
   it('offers its files to every reader, before the way back to the store', () => {

@@ -12,11 +12,15 @@ import { Field, Input, FormActions } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { OfferPicker } from '../components/OfferPicker';
 import { useCreateEmployee } from '../api/employee-queries';
+import { useCan } from '../../../../../platform/rbac/Can';
+import { useOpenHiringDocs } from '../../../recruitment/hiring-documents/api/hiring-documents-queries';
 
 export const EmployeeCreatePage = (): JSX.Element => {
   const t = useT();
   const navigate = useNavigate();
   const create = useCreateEmployee();
+  const can = useCan();
+  const openDocs = useOpenHiringDocs();
   const [offer, setOffer] = useState<JobOfferDto | null>(null);
   const [hiringDate, setHiringDate] = useState('');
 
@@ -28,6 +32,16 @@ export const EmployeeCreatePage = (): JSX.Element => {
         ...(hiringDate === '' ? {} : { hiringDate: new Date(hiringDate) }),
       });
       toast.success(t('employees.create.done'));
+      // A27 — the next thing a new hire needs is their papers: land on their «مستندات التعيين»,
+      // opened now if missing, where the whole set prints in one go. Without the key to open it,
+      // or if opening fails, the employee's own page is where the hire lands, as before.
+      if (can('hiringDocuments.create')) {
+        const docs = await openDocs.mutateAsync(employee.id).catch(() => null);
+        if (docs !== null) {
+          navigate(`/hiring-documents/${docs.id}?hired=1`);
+          return;
+        }
+      }
       navigate(`/employees/${employee.id}`);
     } catch {
       // surfaced globally

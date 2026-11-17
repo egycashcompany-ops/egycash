@@ -18,6 +18,7 @@ import {
 } from './LifecycleDialogs';
 import { ExitDialog, RehireDialog } from './ExitRehireDialogs';
 import { ChangeCodeDialog } from './ChangeCodeDialog';
+import { PurgeEmployeeDialog } from './PurgeEmployeeDialog';
 
 type DialogKind =
   | 'promotion'
@@ -31,6 +32,7 @@ type DialogKind =
   | 'probationFail'
   | 'exit'
   | 'rehire'
+  | 'purge'
   | 'changeCode';
 
 interface Item {
@@ -53,6 +55,7 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
   const rehire = can('employee.rehire');
   const override = can('employee.rehireOverride');
   const changeCode = can('employee.changeCode');
+  const purge = can('employee.purge');
   const s = employee.status;
   const employed = s !== 'exited';
   const inProbation =
@@ -90,6 +93,9 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
   // Any status, exited included: a code is corrected because it is wrong, and a wrong code on a
   // leaver is still wrong on their contract and on the next roster file.
   if (changeCode) items.push({ kind: 'changeCode', label: t('employees.changeCode.title') });
+  // LAST, and alone. Every entry above changes what the employee IS; this one ends there having
+  // been one. Break-glass, so for almost every reader this list simply does not grow.
+  if (purge) items.push({ kind: 'purge', label: t('employees.purge.title'), danger: true });
 
   if (items.length === 0) return null;
 
@@ -119,7 +125,12 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
       )}
 
       <PromotionDialog employee={employee} open={dialog === 'promotion'} onClose={() => setDialog(null)} />
-      <TransferDialog employee={employee} open={dialog === 'transfer'} onClose={() => setDialog(null)} />
+      {/* Mounted only while open, so every opening starts from the employee as they are NOW — its
+          job title included. Kept mounted, a promotion made in between left the old title in the
+          dialog, and the transfer sent it back as a change, undoing the promotion. */}
+      {dialog === 'transfer' && (
+        <TransferDialog employee={employee} open onClose={() => setDialog(null)} />
+      )}
       <SalaryChangeDialog employee={employee} open={dialog === 'salary'} onClose={() => setDialog(null)} />
       <ManagerChangeDialog employee={employee} open={dialog === 'manager'} onClose={() => setDialog(null)} />
       <SuspendDialog employee={employee} open={dialog === 'suspend'} onClose={() => setDialog(null)} />
@@ -130,6 +141,7 @@ export const ActionsMenu = ({ employee }: { employee: EmployeeDto }): JSX.Elemen
       <ExitDialog employee={employee} open={dialog === 'exit'} onClose={() => setDialog(null)} />
       <RehireDialog employee={employee} open={dialog === 'rehire'} onClose={() => setDialog(null)} />
       <ChangeCodeDialog employee={employee} open={dialog === 'changeCode'} onClose={() => setDialog(null)} />
+      <PurgeEmployeeDialog employee={employee} open={dialog === 'purge'} onClose={() => setDialog(null)} />
     </div>
   );
 };

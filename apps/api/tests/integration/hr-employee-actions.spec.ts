@@ -26,7 +26,10 @@ import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
-import { employeeActionService } from '../../src/modules/hr/employee-management/employee-actions';
+import {
+  employeeActionRepository,
+  employeeActionService,
+} from '../../src/modules/hr/employee-management/employee-actions';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
@@ -368,6 +371,94 @@ describe('personnel actions — transfer (F1 propagation)', () => {
     expect((user.body as { data: { organization: { branchId: string | null } } }).data.organization.branchId).toBe(
       BRANCH2_ID,
     );
+  });
+
+  it('changes the job title with the placement, and the linked login follows it', async () => {
+    const emp = await hire();
+    const userId = await activateLogin(emp);
+    const fresh = await reread(emp.id);
+    const otherTitle = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-TRANSFER-1', name: { ar: 'مشرف', en: 'Supervisor' }, jobGrade: 'G6' });
+    expect(otherTitle.status).toBe(201);
+    const otherTitleId = (otherTitle.body as { data: { id: string } }).data.id;
+
+    const res = await action(emp.id, 'employment', {
+      type: 'transfer',
+      branchId: BRANCH2_ID,
+      departmentId: DEPARTMENT2_ID,
+      jobTitleId: otherTitleId,
+      version: fresh.version,
+    });
+    expect(res.status).toBe(201);
+    const after = await reread(emp.id);
+    expect(after.employment.departmentId).toBe(DEPARTMENT2_ID);
+    expect(after.employment.jobTitleId).toBe(otherTitleId);
+    // The new job carries no default salary, and a transfer states none: the pay stays as it was.
+    expect(after.employment.salary).toEqual(fresh.employment.salary);
+
+    const user = await request(app)
+      .get(`/api/v1/platform/users/${userId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      (user.body as { data: { organization: { jobTitleId: string | null } } }).data.organization.jobTitleId,
+    ).toBe(otherTitleId);
+  });
+
+  // P-HR-22 on a transfer: pay that follows the job follows the new one — and payroll's salary
+  // history (PY-8) sees that change, or every month before the transfer would be priced at the new pay.
+  it('moves pay that follows the job to the new job, and payroll sees the change', async () => {
+    const mkTitle = async (code: string, amount: number): Promise<string> => {
+      const res = await request(app)
+        .post('/api/v1/platform/job-titles')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ code, name: { ar: code, en: code }, jobGrade: 'G5', fixedSalary: { amount, currency: 'EGP' } });
+      expect(res.status).toBe(201);
+      return (res.body as { data: { id: string } }).data.id;
+    };
+    const fromTitle = await mkTitle('JT-PAY-FROM', 5000);
+    const toTitle = await mkTitle('JT-PAY-TO', 7000);
+    // No salary on the offer: the job's default is copied, and the employee follows it.
+    const emp = await hire({ jobTitleId: fromTitle, salary: null });
+    expect(emp.employment.salary).toEqual({ amount: 5000, currency: 'EGP' });
+    expect(emp.employment.salarySource).toBe('jobDefault');
+
+    const res = await action(emp.id, 'employment', {
+      type: 'transfer',
+      jobTitleId: toTitle,
+      version: emp.version,
+    });
+    expect(res.status).toBe(201);
+    const after = await reread(emp.id);
+    expect(after.employment.salary).toEqual({ amount: 7000, currency: 'EGP' });
+    expect(after.employment.salarySource).toBe('jobDefault');
+
+    const history = await employeeActionRepository.listAppliedSalaryChanges(emp.id);
+    expect(history.map((h) => [h.from, h.to])).toContainEqual([
+      { amount: 5000, currency: 'EGP' },
+      { amount: 7000, currency: 'EGP' },
+    ]);
+  });
+
+  it('accepts a transfer that changes only the job title', async () => {
+    const emp = await hire();
+    const title = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-TRANSFER-2', name: { ar: 'منسق', en: 'Coordinator' }, jobGrade: 'G4' });
+    expect(title.status).toBe(201);
+    const titleId = (title.body as { data: { id: string } }).data.id;
+
+    const res = await action(emp.id, 'employment', {
+      type: 'transfer',
+      jobTitleId: titleId,
+      version: emp.version,
+    });
+    expect(res.status).toBe(201);
+    const after = await reread(emp.id);
+    expect(after.employment.jobTitleId).toBe(titleId);
+    expect(after.employment.departmentId).toBe(emp.employment.departmentId);
   });
 
   it('refuses a transfer whose department does not belong to the target branch', async () => {

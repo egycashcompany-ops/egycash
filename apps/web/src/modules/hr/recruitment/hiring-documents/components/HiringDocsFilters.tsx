@@ -3,6 +3,7 @@
 import { HIRING_DOCUMENTS_STATUSES, type HiringDocumentsStatus } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
 
@@ -27,13 +28,12 @@ export const HiringDocsFilters = ({
 
   return (
     <FilterBar onClear={() => onChange(EMPTY_HIRING_DOCS_FILTERS)} hasActiveFilters={isActive(value)}>
-      <div className="w-full sm:w-72">
-        <SearchInput
-          value={value.search}
-          onChange={(v) => set({ search: v })}
-          placeholder={t('hiringDocs.filters.search')}
-        />
-      </div>
+      <SearchInput
+        value={value.search}
+        onChange={(v) => set({ search: v })}
+        placeholder={t('hiringDocs.filters.search')}
+        className={SEARCH_FITS_TEXT}
+      />
       <MultiSelect
         label={t('hiringDocs.filters.status')}
         value={value.status}

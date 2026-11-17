@@ -7,6 +7,7 @@
 // Cards land here in the SAME slice that ships the screen behind them (the fleet owner rule): no
 // card ever points at a route that does not exist yet.
 import { type ComponentType, type SVGProps } from 'react';
+import { OPERATIONS_BANK_REPORT_KEYS } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
@@ -16,7 +17,10 @@ import {
   CalendarIcon,
   ChartIcon,
   ClipboardIcon,
+  FolderIcon,
   InboxIcon,
+  LinkIcon,
+  ReceiptIcon,
   ShieldIcon,
   TagIcon,
   TruckIcon,
@@ -30,8 +34,18 @@ interface Shortcut {
   titleKey: string;
   descKey: string;
   icon: Icon;
-  permission: string;
+  /**
+   * The key its route checks — or, for a page several grants open, ALL of them, any one of which
+   * draws the card (Round 14's «تقرير البنوك»: the route guard's `anyOf`, the same list).
+   */
+  permission: string | readonly string[];
 }
+
+/** Whether a reader holding what `can` says may open the card's screen. */
+export const opensShortcut = (shortcut: Shortcut, can: (key: string) => boolean): boolean =>
+  typeof shortcut.permission === 'string'
+    ? can(shortcut.permission)
+    : shortcut.permission.some((key) => can(key));
 
 export const OPERATIONS_SHORTCUTS: Shortcut[] = [
   /** Legacy `/main_ops` — the desk's working set for a day. */
@@ -40,6 +54,17 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     titleKey: 'operations.nav.dailyOps',
     descKey: 'operations.cards.dailyOps',
     icon: ClipboardIcon,
+    permission: 'operationsShipment.view',
+  },
+  /**
+   * NO legacy equivalent: the day board over a from–to range — «عشان اقدر امسك الhistory بتاع
+   * الشحنات». Beside the board it extends, under the board's own grant.
+   */
+  {
+    to: '/operations/shipments/history',
+    titleKey: 'operations.nav.shipmentsHistory',
+    descKey: 'operations.cards.shipmentsHistory',
+    icon: CalendarIcon,
     permission: 'operationsShipment.view',
   },
   /** Legacy `/tashghela` — tomorrow's crews, planned a day ahead. */
@@ -66,6 +91,18 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: InboxIcon,
     permission: 'operationsShipment.view',
   },
+  /**
+   * «توزيع المحصنات» (Round 12, NO legacy equivalent) — the day's محصنات onto the day's vans. On the
+   * secured screen's own grant, as its route; saving is `operationsShipment.edit`, on the server.
+   * The sidebar's icon, so the card and the row read as one screen.
+   */
+  {
+    to: '/operations/secured/distribution',
+    titleKey: 'operations.nav.securedDistribution',
+    descKey: 'operations.cards.securedDistribution',
+    icon: LinkIcon,
+    permission: 'operationsShipment.view',
+  },
   /** Legacy `/receive_mohsana` — the treasurer's receiving queue. */
   {
     to: '/operations/vault/receive',
@@ -74,7 +111,18 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: ShieldIcon,
     permission: 'operationsVault.view',
   },
-  /** Legacy `/tash4ela_mohasana` + `/deliver_mohsana` — one list, two acts. */
+  /**
+   * «تسليم المحصنات» (Round 12, NO legacy equivalent) — the vault hands each van its load. On the
+   * vault screens' grant, as its route; the handover itself is `operationsVault.dispatch`.
+   */
+  {
+    to: '/operations/vault/handover',
+    titleKey: 'operations.nav.vaultHandover',
+    descKey: 'operations.cards.vaultHandover',
+    icon: ReceiptIcon,
+    permission: 'operationsVault.view',
+  },
+  /** «محصنات الخزينة» (Round 12, was «صرف الخزينة») — every محصنة in the vault now, view only. */
   {
     to: '/operations/vault/dispatch',
     titleKey: 'operations.nav.vaultDispatch',
@@ -82,20 +130,15 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: TruckIcon,
     permission: 'operationsVault.view',
   },
-  /** Legacy `/vault1` — what is in the vault right now. */
+  /**
+   * «سجل الخزينة» (Round 12, was «جرد الخزينة») — «تقرير الخزينة» now, and the secured history. A
+   * folder, as its sidebar row: no longer a second shield beside «استلام في الخزينة».
+   */
   {
     to: '/operations/vault',
     titleKey: 'operations.nav.vault',
     descKey: 'operations.cards.vault',
-    icon: ShieldIcon,
-    permission: 'operationsVault.view',
-  },
-  /** Legacy `/vault1_reports` — what the vault holds, rolled up by bank. */
-  {
-    to: '/operations/reports/vault',
-    titleKey: 'operations.nav.vaultReport',
-    descKey: 'operations.cards.vaultReport',
-    icon: ChartIcon,
+    icon: FolderIcon,
     permission: 'operationsVault.view',
   },
   /** Legacy `/ops_report` — the month's work by captain. */
@@ -106,13 +149,17 @@ export const OPERATIONS_SHORTCUTS: Shortcut[] = [
     icon: ChartIcon,
     permission: 'operationsShipment.view',
   },
-  /** Legacy `/ops_bank_report` — the same month, by bank. */
+  /**
+   * «تقرير البنوك» — legacy `/vault1_reports`: what the vault received in the period, by bank. Round
+   * 14 made the screen «تجميع الخزينة» was into this one («خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه
+   * تقرير بنوك»), so its card — gone — is this card, drawn for the vault's readers too.
+   */
   {
     to: '/operations/reports/banks',
     titleKey: 'operations.nav.bankReport',
     descKey: 'operations.cards.bankReport',
     icon: ChartIcon,
-    permission: 'operationsShipment.view',
+    permission: OPERATIONS_BANK_REPORT_KEYS,
   },
   /**
    * NO legacy equivalent (discovery §2.2): `/ops_attendance` never existed and `/fleet_attendance`
@@ -140,7 +187,7 @@ export const OperationsOverviewPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
 
-  const shortcuts = OPERATIONS_SHORTCUTS.filter((c) => can(c.permission)).map((c) => ({
+  const shortcuts = OPERATIONS_SHORTCUTS.filter((c) => opensShortcut(c, can)).map((c) => ({
     to: c.to,
     title: t(c.titleKey),
     description: t(c.descKey),
@@ -149,9 +196,7 @@ export const OperationsOverviewPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader
-        title={t('operations.overview.title')}
-      />
+      <PageHeader title={t('operations.overview.title')} />
       <ModuleHome
         shortcuts={shortcuts}
         kpis={[]}

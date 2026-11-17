@@ -35,11 +35,13 @@ import {
   updateApplicantSource,
   uploadNationalIdCardScan,
   withdrawApplicant,
+  purgeApplicant,
 } from './applicant.controller';
 import {
   AddApplicantAttachmentSchema,
   ApplicantAttachmentParamSchema,
   ApplicantIdParamSchema,
+  PurgeApplicantSchema,
   ApplicantSourceIdParamSchema,
   BulkApplicantsSchema,
   ConfirmApplicantIdentitySchema,
@@ -208,6 +210,16 @@ export const buildApplicantsRouter = (): Router => {
     multipartSingle(),
     validate({ body: AddApplicantAttachmentSchema, params: ApplicantIdParamSchema }),
     asyncHandler(addApplicantAttachment),
+  );
+  // «مسح نهائي» — the candidate leaves the recruitment cycle entirely, behind its own break-glass
+  // key. Declared before `/:id/attachments/:fileId` only for company; what matters is that it is a
+  // DELETE carrying the typed code in its body, which the controller checks against the record.
+  router.delete(
+    '/:id/purge',
+    authenticate,
+    authorize('applicant.purge'),
+    validate({ body: PurgeApplicantSchema, params: ApplicantIdParamSchema }),
+    asyncHandler(purgeApplicant),
   );
   router.delete(
     '/:id/attachments/:fileId',

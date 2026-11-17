@@ -88,6 +88,12 @@ export const OfferTermsSchema = z
     sectionId: objectId().nullish(),
     /** The reporting manager (a platform user). OPTIONAL — may be null/omitted. */
     managerId: objectId().nullish(),
+    /**
+     * The reporting manager by name, typed by hand when they have no account on the system («ولو
+     * مش باين مين المدير اقدر اكتبو انا مانيوال»). Shown on the offer; never notified, and never
+     * linked as the employee's manager — that needs `managerId`. Ignored when `managerId` is set.
+     */
+    managerName: z.string().trim().max(150).nullish(),
     employmentType: EmploymentTypeSchema,
     /** Compensation package. OPTIONAL — may be null/omitted. */
     salary: MoneySchema.nullish(),
@@ -148,7 +154,14 @@ export type WithdrawJobOffer = z.infer<typeof WithdrawJobOfferSchema>;
 export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
   status: listQuery(OfferStatusSchema),
   applicantId: objectId().optional(),
-  branchId: objectId().optional(),
+  /**
+   * «فلتر … واحده للاداره و واحده للوظيفه و واحده للفرع» — the branch, department and job the
+   * offer is for: its terms once written, the candidate's placement while «جاهز لعرض العمل».
+   * Departments are their branch copies; the screen expands a company department to them.
+   */
+  branchId: listQuery(objectId()),
+  departmentId: listQuery(objectId(), 500),
+  jobTitleId: listQuery(objectId()),
   /** Free-text over the offer number (`code`) and applicant code (partial, case-insensitive). */
   search: z.string().max(100).optional(),
   /**
@@ -157,6 +170,8 @@ export const ListJobOffersQuerySchema = PaginationQuerySchema.extend({
    * stage counter run the SAME server-side predicate and their totals cannot drift.
    */
   hired: booleanQuery().optional(),
+  /** «النشطة فقط»: offers still under way — ready for an offer, drafted, or sent. */
+  active: booleanQuery().optional(),
   /**
    * When the candidate answered the offer. This is the date the Employees Ready queue sorts by,
    * so it is the one a user filtering that queue means by "accepted between".
@@ -201,6 +216,8 @@ export interface OfferTermsDto {
   sectionId: string | null;
   /** null when no reporting manager was set on the offer. */
   managerId: string | null;
+  /** The manager typed by name, when they have no account; null otherwise. */
+  managerName: string | null;
   employmentType: EmploymentType;
   /** null when no salary was set on the offer. */
   salary: { amount: number; currency: string } | null;
@@ -240,7 +257,14 @@ export interface JobOfferDto extends AttemptMarkerDto {
   applicantCode: string;
   /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
   applicantName: string;
+  /** The applicant's branch, mirrored onto the offer and kept in step with a reassignment. */
   branchId: string | null;
+  /**
+   * The applicant's department, mirrored beside `branchId`. While the offer is `waiting` (no terms
+   * yet) the list's «الإدارة» shows this — the department the filter matches and «اكتب العرض»
+   * writes for — rather than the snapshot taken when the record was queued.
+   */
+  departmentId: string | null;
   status: OfferStatus;
   /** The placement in force when the offer record was materialized; immutable (RW4). */
   placement: PlacementDto;
@@ -300,6 +324,33 @@ export const ListAwaitingOfferQuerySchema = PaginationQuerySchema.extend({
   search: z.string().max(100).optional(),
 }).strict();
 export type ListAwaitingOfferQuery = z.infer<typeof ListAwaitingOfferQuerySchema>;
+
+/**
+ * «اكتب العرض» opens filled in («عاوزو يجيب المسمي الوظيفي و الاداره و الفرع و المدير المباشر
+ * اوتوماتيك … نوع التوظيف هيبقا by default دوام كامل … الراتب … المسميات الوظيفيه»): the candidate's
+ * placement, their direct manager from the organization chart, full-time, and the job's fixed
+ * salary. Every value stays editable on the form.
+ */
+export const OfferDefaultsQuerySchema = z.object({ applicantId: objectId() }).strict();
+export type OfferDefaultsQuery = z.infer<typeof OfferDefaultsQuerySchema>;
+
+export interface OfferDefaultsDto {
+  /** The candidate's placement; null where it names none. */
+  jobTitleId: string | null;
+  departmentId: string | null;
+  branchId: string | null;
+  sectionId: string | null;
+  /**
+   * The direct manager: the effective manager (acting manager inside their window, else the
+   * manager) of the candidate's section, else their department, else their branch. null: none set.
+   */
+  manager: { id: string; name: { ar: string; en: string } } | null;
+  employmentType: EmploymentType;
+  /** The fixed salary («الراتب الثابت») of the placement's job; null when it has none. */
+  salary: { amount: number; currency: string } | null;
+  /** Every active job's fixed salary — the form follows the job when it is changed. */
+  jobSalaries: { jobTitleId: string; amount: number; currency: string }[];
+}
 
 export const HrOfferEvents = {
   OfferCreated: 'hr.jobOffer.created',

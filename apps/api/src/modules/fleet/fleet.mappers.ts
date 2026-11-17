@@ -275,6 +275,8 @@ export interface MaintenanceVisitJoins {
   vehicleCode: string | null;
   /** The car's «التشغيل», read off the registry with its code. */
   operationId: string | null;
+  /** The car's «الفرع» (`vehicle.branchId`), read the same way — never the workshop's branch. */
+  branchId: string | null;
 }
 
 export const toMaintenanceVisitDto = (
@@ -285,6 +287,7 @@ export const toMaintenanceVisitDto = (
   vehicleId: vehicleIdOf(doc),
   vehicleCode: codeOr(doc, joins.vehicleCode),
   operationId: joins.operationId,
+  branchId: joins.branchId,
   inDate: iso(doc.inDate),
   outDate: doc.outDate === null ? null : iso(doc.outDate),
   workshopId: String(doc.workshopId),

@@ -56,6 +56,7 @@ import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { VehicleSetChip } from '../components/VehicleSetChip';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import {
   CLEAR_VEHICLE_SET,
@@ -209,7 +210,12 @@ export const DealershipPage = (): JSX.Element => {
       sortable: true,
       render: (row) => (
         <span className="inline-flex items-center gap-2">
-          {row.vehicleCode ?? dash}
+          {/* The code carries the car card — the car the invoice is on; none, the dash. */}
+          {row.vehicleCode === null ? (
+            dash
+          ) : (
+            <VehicleHoverCode vehicleId={row.vehicleId} code={row.vehicleCode} />
+          )}
           {row.pending && (
             <span
               data-dealership-waiting="true"

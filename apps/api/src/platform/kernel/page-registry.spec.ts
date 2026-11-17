@@ -33,9 +33,28 @@ describe('the assembled page registry', () => {
   // Correcting a branch code (`branch.changeCode`, ADR-017 amended 2026-11-03) added one key and no
   // page — it is a power over the branches screen.
   // The active users page («المستخدمين النشطين») added one page and its one key, `activeUser.view`.
-  it('declares 83 pages over 314 permissions', () => {
-    expect(pages).toHaveLength(83);
-    expect(permissions).toHaveLength(314);
+  // IT's vehicle device checks («فحص أجهزة السيارة», FR-21) added one page and its one key,
+  // `itVehicleCheck.create`.
+  // Their dashboard («فحص أجهزة السيارات») added two keys and no page, `itVehicleCheck.view` and
+  // `.delete`, on the same `it.vehicle-checks`.
+  // HR's «مسميات الوظائف لدى التأمينات» (A28) added one page and its one key, `insuranceJobTitle.manage`.
+  // HR's «مستندات مطلوبة للتعيين» added one page and its one key, `hiringRequirement.manage`. The
+  // screen behind it is still a placeholder, and the page is declared anyway: a hub tab needs a
+  // page or it can be granted to nobody deliberately, and a page needs a key or
+  // `validatePageRegistry` refuses it as `empty-page`. Borrowing `recruitmentForm.manage` would
+  // have moved no number here and left the role matrix describing the wrong screen.
+  // «مسح نهائي» adds ONE key and no page: `employee.purge` is the authority to erase a person
+  // from the system, which is a power over the employees screen rather than a screen of its own.
+  // Break-glass, and deliberately implied by nothing — holding every other employee key grants
+  // hiring, paying, transferring and dismissing; none of them grants making somebody never have
+  // been.
+  // And «مسح نهائي» for a CANDIDATE adds one more: `applicant.purge`, a power over the applicants
+  // screen rather than a screen of its own. Its own key beside `applicant.delete` on purpose —
+  // that one sets `isDeleted` and can be undone, this one erases the record, the stages, the offer,
+  // the portal login and the photographs of an ID card.
+  it('declares 86 pages over 321 permissions', () => {
+    expect(pages).toHaveLength(86);
+    expect(permissions).toHaveLength(321);
   });
 
   /**
@@ -110,10 +129,24 @@ describe('the assembled page registry', () => {
    * The active users page adds ONE key and one page: `activeUser.view`, on `platform.active-users`,
    * built in the same change as the screen it describes. Assigned, so the unassigned count does
    * not move.
+   *
+   * IT's vehicle device checks add ONE key and one page: `itVehicleCheck.create`, on
+   * `it.vehicle-checks`, built in the same change as the phone form it opens. Its `view` and
+   * `delete` arrive with the dashboard that uses them. Assigned, so the unassigned count does not
+   * move.
+   *
+   * The vehicle checks dashboard adds TWO keys and no page: `itVehicleCheck.view` (the figures, the
+   * reports, their photos) and `itVehicleCheck.delete` (a wrong report), arriving WITH the screen
+   * that uses them, as promised above. Both route to `it.vehicle-checks`, whose route is now that
+   * dashboard, so the unassigned count does not move.
    */
-  it('assigns 285 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 292 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(285);
+    // `hiringRequirement.manage` arrives WITH its page, so it lands here and the unassigned count
+    // below does not move — the same shape as `insuranceJobTitle.manage` before it.
+    // `employee.purge` routes to `hr.employees`, the screen its button sits on, so it lands here
+    // and the unassigned count below does not move.
+    expect(assigned).toHaveLength(292);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -138,7 +171,11 @@ describe('the assembled page registry', () => {
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 37, fleet: 19, it: 9 });
+    // IT's tenth page is the vehicle device checks (`it.vehicle-checks`, FR-21) — the form's page,
+    // whose route the dashboard took over (2026-11-10): one page, not a second.
+    // HR's 39th is «مستندات مطلوبة للتعيين» — a reserved settings tab whose screen is not built
+    // yet, counted because the authority over it is administered from today.
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 39, fleet: 19, it: 10 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

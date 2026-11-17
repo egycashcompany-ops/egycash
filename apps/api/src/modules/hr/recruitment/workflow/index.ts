@@ -31,6 +31,22 @@ export {
   type WorkflowApplicant,
   currentStageKind,
 } from './workflow-state';
+// How far the candidate has got, and therefore which stages are behind them.
+export {
+  assertStageCorrectable,
+  assertStageNotPassed,
+  correctableRecordIds,
+  currentOf,
+  frontierRank,
+  isCorrectable,
+  isPassed,
+  liveStageRows,
+  OPEN_STATUSES,
+  passedRecordIds,
+  stageRank,
+  STAGE_KIND,
+  type LiveStageRow,
+} from './stage-frontier';
 export { availableActions, permissionForAction, unmappedActions } from './workflow-actions';
 export { stageBindingsInOrder } from './workflow-engine';
 export { WorkflowEvents, type WorkflowEventName } from './workflow-events';

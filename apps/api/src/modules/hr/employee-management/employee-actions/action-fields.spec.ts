@@ -83,6 +83,14 @@ describe('what overlaps what', () => {
     expect(overlappingFields('transfer', 'managerChange')).toEqual(['employment.managerId']);
   });
 
+  // A transfer may name the job held in the new placement, and a promotion always names one.
+  it('a transfer meets a promotion on the job title and the salary that follows it', () => {
+    expect(overlappingFields('transfer', 'promotion')).toEqual([
+      'employment.jobTitleId',
+      'employment.salary',
+    ]);
+  });
+
   it('every status-writing action meets every other one', () => {
     expect(overlappingFields('suspend', 'leaveStart')).toContain('status');
     expect(overlappingFields('resignation', 'reinstate')).toContain('status');

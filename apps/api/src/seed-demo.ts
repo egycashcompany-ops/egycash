@@ -149,6 +149,10 @@ const HR_PERMISSIONS = [
   'applicant.view',
   'applicant.create',
   'applicant.edit',
+  // Still a live authority, even though this seed no longer exercises it: `POST verify-identity`
+  // guards on it, and that route is what verifies a PUBLIC applicant whose card did not match on
+  // OCR, and what corrects identity details afterwards. This list is what an HR demo account
+  // holds, not a list of what the seed happens to call.
   'applicant.verifyIdentity',
   'applicant.moveToOffer',
   'screening.view',
@@ -195,19 +199,6 @@ const register = async (deps: Deps, person: DemoPerson): Promise<string> => {
   } as RegisterApplicant;
   const doc = await applicantService.register(deps.ctx, input);
   return String(doc._id);
-};
-
-/** The ID gate (§ identity verification) — a real action, not a field write. */
-const verifyIdentity = async (deps: Deps, applicantId: string, nationalId: string): Promise<void> => {
-  const { applicantService } = await import('./modules/hr/recruitment/applicants');
-  const current = await applicantService.findByIdSystem(applicantId);
-  if (current === null || current.identityVerification === 'verified') return;
-  await applicantService.confirmIdentity(
-    deps.ctx,
-    applicantId,
-    { nationalId, version: current.__v },
-    orgScope(deps.ctx),
-  );
 };
 
 const orgScope = (ctx: AuthContext) => ({
@@ -437,10 +428,10 @@ export const seedDemoPipeline = async (adminId: string): Promise<DemoSeedReport>
       const applicantId = await register(deps, person);
       created[stage] += 1;
 
-      // Stage `applicants`: registered and waiting at the ID gate — nothing further.
+      // Stage `applicants`: registered, and nothing decided for them — no screening outcome, no
+      // round, no offer. There is no separate ID gate to stop at any more: registering IS the
+      // verification, so the step that used to stand here did nothing and is gone.
       if (stage === 'applicants') continue;
-
-      await verifyIdentity(deps, applicantId, person.nationalId);
       if (stage === 'screening') continue; // rests in the screening queue
 
       await acceptScreening(deps, applicantId);

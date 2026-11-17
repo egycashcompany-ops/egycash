@@ -40,6 +40,7 @@ export const listMaintenanceVisits = async (req: Request, res: Response): Promis
     toMaintenanceVisitDto(row, {
       vehicleCode: page.codes.get(String(row.vehicleId)) ?? null,
       operationId: page.operations.get(String(row.vehicleId)) ?? null,
+      branchId: page.branches.get(String(row.vehicleId)) ?? null,
     }),
   );
 };

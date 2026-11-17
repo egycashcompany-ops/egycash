@@ -13,11 +13,71 @@
 //  • An option may be SHOWN differently from what it commits (`optionLabel`): the ATM register's
 //    area filter matches the stored name (MOHNDESSEN) and shows it in the reader's language. Typing
 //    finds either.
+//  • A box may offer to ADD what was typed (`onCreate`) when no option is exactly it — the
+//    shipment form's branch picker, where a branch missing from the catalog is created on the
+//    spot. It is an explicit row the reader picks, never something leaving the box does: the box
+//    still commits only options, and the owner decides what «add» means.
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { fold } from '../lib/fold';
 import { ChevronIcon, CloseIcon } from './icons';
 import { useFieldMissing } from './required-fields';
+
+/** How much room the box spends on itself — see `density` below. */
+export type ComboboxDensity = 'default' | 'tight' | 'touch';
+
+/**
+ * Each density's classes, in one place, so exactly ONE size of each kind reaches an element (`cn`
+ * is a plain joiner with no tailwind-merge; two paddings would be settled by Tailwind's emission
+ * order). Sizes only — colours, borders and states stay the box's own.
+ *
+ * `touch` is a phone's box (IT's «فحص أجهزة السيارة», docs/12-planning/it-vehicle-checks-design.md
+ * §6.3): 16px text, so iOS does not zoom when it is tapped; 48px rows, a thumb's target; a 40px ✕
+ * with a gap before the chevron, so clearing the car does not land on the chevron; and a list of
+ * 17rem, so while a code is typed it ends above the phone's keyboard, the sixth row showing half-cut
+ * to say that the list scrolls. It wins over `tallList`.
+ */
+export const COMBOBOX_DENSITY: Record<
+  ComboboxDensity,
+  {
+    /** The text box: its gutters (the trailing one clears the ✕ and the chevron), height and type. */
+    input: string;
+    /** One row of the open list, and the «nothing found» row. */
+    option: string;
+    /** The ✕ that clears the box, and its icon. */
+    clear: string;
+    clearIcon: string;
+    /** The space between the ✕ and the chevron. */
+    trailingGap: string;
+    /** The open list's height, when this density sets one; otherwise `tallList` decides. */
+    list: string | null;
+  }
+> = {
+  default: {
+    input: 'px-3 pe-16 py-2 text-sm',
+    option: 'px-3 py-2 text-sm',
+    clear: 'rounded p-0.5',
+    clearIcon: 'h-3.5 w-3.5',
+    trailingGap: 'gap-1',
+    list: null,
+  },
+  tight: {
+    input: 'px-2 pe-12 py-2 text-sm',
+    option: 'px-3 py-2 text-sm',
+    clear: 'rounded p-0.5',
+    clearIcon: 'h-3.5 w-3.5',
+    trailingGap: 'gap-1',
+    list: null,
+  },
+  touch: {
+    input: 'px-3 pe-20 py-3 text-base',
+    option: 'flex min-h-12 items-center px-3 py-3 text-base',
+    clear: 'flex h-10 w-10 items-center justify-center rounded-lg',
+    clearIcon: 'h-5 w-5',
+    trailingGap: 'gap-2',
+    list: 'max-h-[17rem]',
+  },
+};
 
 /**
  * Pure: the option whose WHOLE text — as shown, or as committed — is what was typed, folded; none
@@ -31,6 +91,21 @@ export const exactOption = (
   const q = fold(typed);
   if (q === '') return undefined;
   return options.find((o) => fold(shown(o)) === q || fold(o) === q);
+};
+
+/**
+ * Pure: the text an «add» row would offer — the typed text, trimmed — or null when there is
+ * nothing to offer: a blank box, or text that already IS an option (picking it is the answer, and
+ * offering to create it again would make a duplicate).
+ */
+export const createOffer = (
+  options: readonly string[],
+  typed: string,
+  shown: (option: string) => string = (option) => option,
+): string | null => {
+  const text = typed.trim();
+  if (text === '') return null;
+  return exactOption(options, text, shown) === undefined ? text : null;
 };
 
 export const Combobox = ({
@@ -48,8 +123,11 @@ export const Combobox = ({
   density = 'default',
   testId,
   ariaLabel,
+  ariaDescribedBy,
   tallList = false,
   optionLabel,
+  onCreate,
+  createLabel,
 }: {
   value: string;
   options: readonly string[];
@@ -75,9 +153,10 @@ export const Combobox = ({
    * Side gutter and type size, the same two knobs `form.tsx`'s controls take and for the same
    * reason: `cn` is a plain joiner, so a `px-2` handed in as a class would sit beside this input's
    * own `px-3` and the winner would be Tailwind's emission order. A bar that has to fit its
-   * controls on one line buys the difference back here.
+   * controls on one line buys the difference back here; a phone's form takes `touch`
+   * (`COMBOBOX_DENSITY`).
    */
-  density?: 'default' | 'tight';
+  density?: ComboboxDensity;
   /**
    * A stable hook for a test that has to tell this control apart from a neighbour with the same
    * accessible name — «كود السيارة» names both the entry control and the filter on the violations
@@ -86,6 +165,8 @@ export const Combobox = ({
   testId?: string;
   /** The control's own accessible name, when no `<label>` points at it. */
   ariaLabel?: string;
+  /** The id of what describes the box beyond its name — a hint read with it. */
+  ariaDescribedBy?: string;
   /**
    * A taller open list — for a catalog the reader scrolls through as well as types into, such as
    * the whole vehicle registry, where seven rows at a time is a keyhole.
@@ -93,10 +174,19 @@ export const Combobox = ({
   tallList?: boolean;
   /** What an option READS as, when that is not the value it commits. The value by default. */
   optionLabel?: (option: string) => string;
+  /**
+   * Offer to ADD the typed text when no option is exactly it: a last row, reachable by the arrows
+   * and Enter like any option, that hands the trimmed text here and closes the list. Nothing is
+   * committed — the owner creates the thing and sets `value` to it once it exists.
+   */
+  onCreate?: (typed: string) => void;
+  /** The «add» row's words for the typed text — «+ إضافة فرع «…»». Needed with `onCreate`. */
+  createLabel?: (typed: string) => string;
 }): JSX.Element => {
   // A `Field` marked missing turns this box red, as it does an `Input`.
   const missing = useFieldMissing();
   const red = error || missing;
+  const size = COMBOBOX_DENSITY[density];
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -129,6 +219,16 @@ export const Combobox = ({
     if (remote || !open || q === '') return all;
     return all.filter((o) => fold(optionLabel?.(o) ?? o).includes(q) || fold(o).includes(q));
   }, [open, query, all, remote, optionLabel]);
+
+  // The «add» row: only with an owner who can create, and only for text no option already is.
+  const offer = onCreate === undefined || !open ? null : createOffer(all, query, shown);
+  // Rows the arrows move through: the matches, then the «add» row when there is one.
+  const rowCount = matches.length + (offer === null ? 0 : 1);
+  const create = (text: string): void => {
+    setOpen(false);
+    setQuery('');
+    onCreate?.(text);
+  };
 
   // Leaving the open box: an exact match is committed; anything else falls back to the value.
   const leave = (): void => {
@@ -186,7 +286,7 @@ export const Combobox = ({
       }
       setActive((i) => {
         const next = e.key === 'ArrowDown' ? i + 1 : i - 1;
-        return matches.length === 0 ? 0 : (next + matches.length) % matches.length;
+        return rowCount === 0 ? 0 : (next + rowCount) % rowCount;
       });
       return;
     }
@@ -194,6 +294,7 @@ export const Combobox = ({
       e.preventDefault();
       const picked = matches[active];
       if (picked !== undefined) commit(picked);
+      else if (offer !== null && active === matches.length) create(offer);
       return;
     }
     if (e.key === 'Escape' && open) {
@@ -217,6 +318,7 @@ export const Combobox = ({
         role="combobox"
         {...(testId === undefined ? {} : { 'data-vehicle-select': testId })}
         {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
+        {...(ariaDescribedBy === undefined ? {} : { 'aria-describedby': ariaDescribedBy })}
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
@@ -241,9 +343,9 @@ export const Combobox = ({
           if (!open) onBlur?.();
         }}
         className={cn(
-          'w-full rounded-lg border bg-white py-2 text-sm text-slate-800',
+          'w-full rounded-lg border bg-white text-slate-800',
           // The trailing gutter has to clear the clear-button and the chevron that sit over it.
-          density === 'tight' ? 'px-2 pe-12' : 'px-3 pe-16',
+          size.input,
           'placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50',
           'dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800',
           red
@@ -251,7 +353,12 @@ export const Combobox = ({
             : 'border-slate-300 focus:border-brand-400 dark:border-slate-700',
         )}
       />
-      <div className="pointer-events-none absolute inset-y-0 end-2 flex items-center gap-1">
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-y-0 end-2 flex items-center',
+          size.trailingGap,
+        )}
+      >
         {value !== '' && !disabled && (
           <button
             type="button"
@@ -261,9 +368,12 @@ export const Combobox = ({
               onChange('');
               setQuery('');
             }}
-            className="pointer-events-auto rounded p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            className={cn(
+              'pointer-events-auto text-slate-400 hover:text-slate-600 dark:hover:text-slate-200',
+              size.clear,
+            )}
           >
-            <CloseIcon className="h-3.5 w-3.5" />
+            <CloseIcon className={size.clearIcon} />
           </button>
         )}
         <ChevronIcon className="h-4 w-4 text-slate-400" />
@@ -276,14 +386,14 @@ export const Combobox = ({
           role="listbox"
           className={cn(
             'absolute z-30 mt-1 w-full overflow-y-auto rounded-lg border border-slate-200',
-            tallList ? 'max-h-[26rem]' : 'max-h-64',
+            size.list ?? (tallList ? 'max-h-[26rem]' : 'max-h-64'),
             // One step lighter than the page in dark mode: on a near-black background a drop
             // shadow is invisible, so the surface itself has to say "this floats above".
             'bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800',
           )}
         >
-          {matches.length === 0 && (
-            <li className="px-3 py-2 text-sm text-slate-400">{emptyText}</li>
+          {matches.length === 0 && offer === null && (
+            <li className={cn(size.option, 'text-slate-400')}>{emptyText}</li>
           )}
           {matches.map((option, i) => (
             <li
@@ -294,7 +404,8 @@ export const Combobox = ({
               onMouseDown={(e) => e.preventDefault()} // keep focus so the click reaches onClick
               onClick={() => commit(option)}
               className={cn(
-                'cursor-pointer px-3 py-2 text-sm',
+                'cursor-pointer',
+                size.option,
                 i === active ? 'bg-slate-100 dark:bg-slate-700' : '',
                 option === value
                   ? 'font-medium text-slate-900 dark:text-slate-100'
@@ -304,6 +415,23 @@ export const Combobox = ({
               {shown(option)}
             </li>
           ))}
+          {offer !== null && (
+            <li
+              role="option"
+              aria-selected={false}
+              data-combobox-create="true"
+              onMouseEnter={() => setActive(matches.length)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => create(offer)}
+              className={cn(
+                'cursor-pointer border-t border-slate-100 font-semibold text-brand-600 dark:border-slate-700 dark:text-brand-300',
+                size.option,
+                active === matches.length ? 'bg-slate-100 dark:bg-slate-700' : '',
+              )}
+            >
+              {createLabel?.(offer) ?? `+ ${offer}`}
+            </li>
+          )}
         </ul>
       )}
     </div>

@@ -24,7 +24,14 @@ import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { applicantService, resolvePlacement } from '../applicants';
 import { interviewService } from '../interviews';
 import { recruitmentTimelineService } from '../timeline';
-import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
+import {
+  assertStageCorrectable,
+  assertStageNotPassed,
+  recruitmentWorkflowEngine,
+  registerStageBinding,
+  runBulk,
+  type StageBinding,
+} from '../workflow';
 import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
@@ -215,6 +222,16 @@ class EvaluationService {
    */
   async decide(ctx: AuthContext, id: string, input: DecideEvaluation, scope: ScopeSelector): Promise<EvaluationDoc> {
     const before = await evaluationRepository.getById(id, scope);
+    // ONE ENDPOINT, TWO ACTS. A `waiting` phase is being decided for the first time, and the rule
+    // is that the candidate must still be at it. A decided phase is being CORRECTED, and the rule
+    // is that nothing may have been built on the decision yet. Phases are parallel by design, so
+    // the security check and the medical check are each judged on their own either way.
+    const applicantId = String(before.applicantId);
+    if (before.status === 'waiting') {
+      await assertStageNotPassed(applicantId, 'evaluation', before.phaseOrder, 'evaluation');
+    } else {
+      await assertStageCorrectable(applicantId, 'evaluation', before.phaseOrder, 'evaluation');
+    }
     const now = new Date();
     // The engine owns the status change and publishes the event (I13/I15). The re-decision is
     // recorded ONCE, by the timeline projection over that event — this aggregate keeps the
@@ -248,7 +265,29 @@ class EvaluationService {
       phaseKey: before.phaseKey,
       decision: input.decision,
     });
+    // The last check cleared — the medical exam, as the owner names it: «اي حد يخلص كشف الطبي يظهر
+    // … ك جاهزون لعرض العمل». The applicant moves to the Job Offer stage by that, and «عروض العمل»
+    // lists them as «جاهز لعرض العمل» until somebody writes their offer.
+    if (input.decision === 'approved' && (await this.hasClearedRequiredEvaluations(String(before.applicantId)))) {
+      await applicantService.moveToOfferOnceCleared(ctx.userId, String(before.applicantId));
+    }
     return updated;
+  }
+
+  /**
+   * Boot backfill: everybody who cleared their checks before clearing them moved them, and was
+   * never moved by hand, is moved now — so «عروض العمل» lists them as «جاهز لعرض العمل» too.
+   * Idempotent: an applicant already moved, or out of the active pipeline, is left as is.
+   *
+   * @returns how many were moved.
+   */
+  async moveClearedApplicantsToOffer(): Promise<number> {
+    let moved = 0;
+    for (const { applicantId } of await this.applicantsWithApprovals()) {
+      if (!(await this.hasClearedRequiredEvaluations(applicantId))) continue;
+      if (await applicantService.moveToOfferOnceCleared(null, applicantId)) moved += 1;
+    }
+    return moved;
   }
 
   /**

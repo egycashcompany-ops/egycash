@@ -3,7 +3,7 @@
 // Renew / Terminate), free-text search (A12) and the expiring-soon filter (D11).
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { CONTRACT_STATUSES, type ContractDto, type Locale } from '@ecms/contracts';
+import { CONTRACT_STATUSES, type ContractDto, type ContractStatus, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
@@ -19,7 +19,9 @@ import {
   toast,
   type Column,
 } from '../../../../shared/ui';
-import { Select } from '../../../../shared/ui/form';
+import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../shared/lib/list-param';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { formatDate, localized } from '../../../../shared/lib/format';
 import { useContracts, useContractTypes } from '../api/contract-queries';
 import { ContractStatusBadge } from '../components/ContractStatusBadge';
@@ -61,8 +63,12 @@ export const ContractsListPage = (): JSX.Element => {
   const [dialog, setDialog] = useState<{ mode: 'amend' | 'renew' | 'terminate'; contract: ContractDto } | null>(null);
 
   const search = sp.get('q') ?? '';
-  const status = sp.get('status') ?? '';
-  const typeId = sp.get('type') ?? '';
+  // «هنخلي كل الفلترز multi»: several statuses and several types, each ORed; a status the vocabulary
+  // lacks (an old link) is dropped.
+  const statuses = readList(sp, 'status').filter((s): s is ContractStatus =>
+    (CONTRACT_STATUSES as readonly string[]).includes(s),
+  );
+  const typeIds = readList(sp, 'type');
   const expiring = sp.get('expiring') === '1';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
 
@@ -81,8 +87,8 @@ export const ContractsListPage = (): JSX.Element => {
       page,
       pageSize: DEFAULT_PAGE_SIZE,
       ...(search === '' ? {} : { search }),
-      ...(status === '' ? {} : { status }),
-      ...(typeId === '' ? {} : { typeId }),
+      ...(statuses.length === 0 ? {} : { status: statuses }),
+      ...(typeIds.length === 0 ? {} : { typeId: typeIds }),
       ...(expiring ? { expiringWithinDays: 30 } : {}),
     }),
     [sp.toString()],
@@ -186,25 +192,30 @@ export const ContractsListPage = (): JSX.Element => {
           </div>
         }
       />
-      <FilterBar>
+      {/* «العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»: the search as wide as its hint, each filter as
+          its name, several picks each; «expiring soon» stays one tick. */}
+      <FilterBar
+        onClear={() => patch({ q: null, status: null, type: null, expiring: null })}
+        hasActiveFilters={search !== '' || statuses.length > 0 || typeIds.length > 0 || expiring}
+      >
         <SearchInput
           value={search}
           onChange={(value) => patch({ q: value })}
           placeholder={t('contracts.list.searchPlaceholder')}
-          className="w-72"
+          className={SEARCH_FITS_TEXT}
         />
-        <Select value={status} onChange={(e) => patch({ status: e.target.value })} className="w-44">
-          <option value="">{t('contracts.filters.allStatuses')}</option>
-          {CONTRACT_STATUSES.map((s) => (
-            <option key={s} value={s}>{t(`contracts.status.${s}`)}</option>
-          ))}
-        </Select>
-        <Select value={typeId} onChange={(e) => patch({ type: e.target.value })} className="w-44">
-          <option value="">{t('contracts.filters.allTypes')}</option>
-          {(types ?? []).map((x) => (
-            <option key={x.id} value={x.id}>{localized(x.name, locale)}</option>
-          ))}
-        </Select>
+        <MultiSelect
+          label={t('contracts.columns.status')}
+          value={statuses}
+          onChange={(next) => patch({ status: writeList(next) })}
+          options={CONTRACT_STATUSES.map((s) => ({ value: s, label: t(`contracts.status.${s}`) }))}
+        />
+        <MultiSelect
+          label={t('contracts.columns.type')}
+          value={typeIds}
+          onChange={(next) => patch({ type: writeList(next) })}
+          options={(types ?? []).map((x) => ({ value: x.id, label: localized(x.name, locale) }))}
+        />
         <Checkbox
           label={t('contracts.filters.expiringSoon')}
           checked={expiring}

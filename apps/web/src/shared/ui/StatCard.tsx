@@ -10,15 +10,17 @@ import { Skeleton } from './Skeleton';
 /**
  * The icon tile's colour. `neutral` is every home page's tile; the others are for a row of tiles
  * that are the PARTS of one whole — the IT dashboard's in stock / handed over / under maintenance —
- * where each wears the colour its part wears on the bars below it.
+ * where each wears the colour its part wears on the bars below it. `danger` is the vehicle checks
+ * dashboard's «سيارات بها عطل» and «أجهزة لا تعمل», red as «لا يعمل» is red on every cell below.
  */
-export type StatCardTone = 'neutral' | 'brand' | 'success' | 'warning';
+export type StatCardTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger';
 
 const ICON_TONE: Record<StatCardTone, string> = {
   neutral: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
   brand: 'bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-300',
   success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
   warning: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  danger: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300',
 };
 
 export const StatCard = ({

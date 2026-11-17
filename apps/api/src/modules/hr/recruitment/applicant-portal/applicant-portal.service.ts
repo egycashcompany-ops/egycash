@@ -20,6 +20,7 @@ import { userService, type UserDoc } from '../../../../platform/users';
 import { applicantRepository } from '../applicants/applicant.repository';
 import { type ApplicantDoc } from '../applicants/applicant.model';
 import { currentStageKind } from '../workflow';
+import { recruitmentTimelineService } from '../timeline';
 import { isTerminalStep, portalStepOf } from './portal-step';
 import {
   APPLICANT_PORTAL_PERMISSION,
@@ -108,6 +109,20 @@ class ApplicantPortalService {
       entityRef: entityRef(applicantId),
       action: 'create',
       changes: [{ field: 'portalAccount', old: null, new: applicant.code }],
+    });
+    // I5 — and the actor is the SYSTEM, truthfully: the account is opened by the event that says a
+    // candidate applied, not by a person deciding to open it. Writing `null` here is what lets the
+    // history say «النظام» instead of attributing it to whoever happened to be registering.
+    await recruitmentTimelineService.recordFileEvent({
+      applicantId,
+      applicantCode: applicant.code,
+      branchId: applicant.branchId,
+      actorUserId: null,
+      actorKind: 'system',
+      type: 'portalAccountOpened',
+      subject: { key: `applicant-${applicant.code}` },
+      discriminator: `portalAccount:${String(user._id)}`,
+      metadata: { userId: String(user._id) },
     });
     return user;
   }

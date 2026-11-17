@@ -9,6 +9,7 @@
 // (FR-2) and no endpoint sets it. In IT-1 the only operation is registration, so every asset is
 // `inStock` — the full vocabulary is declared now so IT-2 extends behaviour, not shapes.
 import { z } from 'zod';
+import { cairoYmd, isYmd } from '../common/cairo-date.js';
 import { LocalizedStringSchema } from '../common/localized.js';
 import {
   PaginationQuerySchema,
@@ -214,6 +215,12 @@ export interface ItAssetDto {
    * holder label IT prints; null while nobody holds it (or the interval cannot be read).
    */
   holder: ItAssetHolderDto | null;
+  /**
+   * A maintenance order on it is open or in progress — its status alone does not say so (an
+   * `open` order, the preventive sweep's among them, leaves it `inStock`). Custody and the move
+   * to another branch refuse such an asset, so the screen says so before it is asked.
+   */
+  hasActiveMaintenance: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -425,9 +432,7 @@ export interface ItAssetNamesDto {
  * The name filter's options follow the category filter («والبيانات اللى فى فلتر الفئات هي نفسها
  * تتفلتر بناء على الفئات»): with categories chosen, only the names of assets in them.
  */
-export const ListItAssetNamesQuerySchema = z
-  .object({ categoryId: listQuery(objectId()) })
-  .strict();
+export const ListItAssetNamesQuerySchema = z.object({ categoryId: listQuery(objectId()) }).strict();
 export type ListItAssetNamesQuery = z.infer<typeof ListItAssetNamesQuerySchema>;
 
 /**
@@ -579,6 +584,249 @@ export const DisposeItAssetSchema = z
   })
   .strict();
 export type DisposeItAsset = z.infer<typeof DisposeItAssetSchema>;
+
+// «عايز إمكانية نقل أصل أو مستهلك إلى فرع تاني» (2026-11-11): several assets at once, at once — no
+// paper, the history is the record («لا، السجل كفاية»). An asset in stock simply changes branch; one
+// held by an employee moves WITH its custody («ينتقل مع عهدته») — exactly the custody transfer to a
+// new branch in the same hands. One in maintenance or disposed is not moved.
+
+/** A move is a few shelves' worth, not the register: the screen's page, at most. */
+export const IT_ASSET_MOVE_MAX = 100;
+
+/** «نقل إلى فرع» — every asset named, to ONE branch, in one transaction: all of them or none. */
+export const MoveItAssetsToBranchSchema = z
+  .object({
+    assetIds: z.array(objectId()).min(1).max(IT_ASSET_MOVE_MAX),
+    toBranchId: objectId(),
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.assetIds.forEach((id, index) => {
+      if (seen.has(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['assetIds', index],
+          message: 'an asset is named twice',
+        });
+      }
+      seen.add(id);
+    });
+  });
+export type MoveItAssetsToBranch = z.infer<typeof MoveItAssetsToBranchSchema>;
+
+/** What a move did, asset by asset — in the order the request named them. */
+export interface ItAssetBranchMoveDto {
+  assetId: string;
+  assetCode: string;
+  fromBranchId: string;
+  toBranchId: string;
+  /** The employee who still holds it, when it moved with its custody; null for one in stock. */
+  holderEmployeeId: string | null;
+}
+
+export interface ItAssetsBranchMoveResultDto {
+  toBranchId: string;
+  moved: ItAssetBranchMoveDto[];
+}
+
+// ── Assets: bulk upload («رفع جماعي») ───────────────────────────────────────
+//
+// «في الأصول عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول للى هيتضاف
+// ويوضح لو فى تكرار أو تضارب مع بيانات موجوده» (2026-11-16). The sheet is the branches' custody
+// sheet («عهدة الأفرع», reviewed into the 2026-11 go-live): one branch per file, chosen on the
+// screen (the sheet's name «عهدة فرع X» suggests it). Every line is decided against the live
+// register exactly as that go-live decided its own — a device it does not hold is registered in
+// stock, one it holds gets only what it lacks («أكمّل الناقص بس»), one in stock in another branch
+// moves to the chosen one («يتنقل لفرع الملف»), one somebody holds elsewhere stays — and nothing is
+// written until the preview has been seen and confirmed, line by line.
+
+/** A file is one branch's register page, not the whole register. */
+export const IT_ASSET_IMPORT_MAX_ROWS = 500;
+export const IT_ASSET_IMPORT_MAX_MB = 5;
+
+/**
+ * The sheet's header row, column A onward — the branches' custody sheets', word for word. The
+ * accessories take two columns (L and M), the header naming the first only.
+ */
+export const IT_ASSET_IMPORT_COLUMNS = [
+  'النوع',
+  'اسم الصنف',
+  'سيريال (Serial)',
+  'الشركة المُصنعة',
+  'الموديل',
+  'الملصق المطبوع (Tag)',
+  'المعالج',
+  'إجمالي ذاكرة النظام',
+  'نوع النظام',
+  'إجمالي سعة الأقراص الصلبة',
+  'كارت الشاشة',
+  'المشتملات',
+] as const;
+
+/** What a line comes to — one of these, decided against the live register. */
+export const IT_ASSET_IMPORT_DECISIONS = [
+  /** Not on the register: registered in the chosen branch, in stock. */
+  'new',
+  /** On the register in the chosen branch: what it lacks is filled. */
+  'fill',
+  /** On the register in stock in another branch: moved to the chosen one (and filled). */
+  'move',
+  /** On the register in the chosen branch with nothing to fill: left as it is. */
+  'complete',
+  /** On the register, held (or in maintenance) in another branch: not moved; filled if it lacks. */
+  'heldElsewhere',
+  /** On the register where the caller may not write — reported, never touched. */
+  'outOfScope',
+  /** Its serial or tag is an earlier line's: the first line wins. */
+  'duplicateInFile',
+  /** Two devices or more answer to its identifiers: neither is guessed at. */
+  'ambiguous',
+  /** Neither serial nor tag («لو مفيش تاجات فخلاص متضيفهمش»). */
+  'noIdentifier',
+  /** A new line whose «النوع» has no category yet — one is chosen on the screen. */
+  'unknownKind',
+  /** A cell the line cannot be written with (no name, a value too long …) — `message` says which. */
+  'invalid',
+] as const;
+export const ItAssetImportDecisionSchema = z.enum(IT_ASSET_IMPORT_DECISIONS);
+export type ItAssetImportDecision = z.infer<typeof ItAssetImportDecisionSchema>;
+
+/** Doubts that leave a line OFF by default (the reviewer may still tick it). */
+export const IT_ASSET_IMPORT_WARNINGS = [
+  /** A new line one or two characters off a device of the chosen branch the file does not list. */
+  'nearSerial',
+  /** Its only label is a maker's product number (HP's «…AV»), not a serial. */
+  'productNumber',
+] as const;
+export const ItAssetImportWarningSchema = z.enum(IT_ASSET_IMPORT_WARNINGS);
+export type ItAssetImportWarning = z.infer<typeof ItAssetImportWarningSchema>;
+
+/**
+ * The text fields of the upload (multipart, beside the file `file`). Without `apply` it is a
+ * preview: nothing is written. With `apply`, the same file again, the preview's two hashes and the
+ * lines kept — refused if the file or the plan changed since (somebody registered a device in
+ * between): the reviewer confirms what they saw, never something else.
+ */
+export const ItAssetImportFieldsSchema = z
+  .object({
+    /** The branch the file is for; omitted on a first preview, the sheet's name suggests it. */
+    branchId: objectId().optional(),
+    /** JSON `{ "<النوع>": "<categoryId>" }` — the category each kind is filed under. */
+    kindCategories: z.string().max(20_000).optional(),
+    apply: z
+      .string()
+      .optional()
+      .transform((v) => v === 'true'),
+    fileSha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    planHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    /** JSON `number[]` — the sheet rows to write. */
+    rows: z.string().max(10_000).optional(),
+  })
+  .strict()
+  .superRefine((fields, ctx) => {
+    if (!fields.apply) return;
+    for (const path of ['branchId', 'fileSha256', 'planHash', 'rows'] as const) {
+      if (fields[path] === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message: `${path} is required to apply`,
+        });
+      }
+    }
+  });
+export type ItAssetImportFields = z.infer<typeof ItAssetImportFieldsSchema>;
+
+/** `kindCategories`, once parsed. */
+export const ItAssetImportKindCategoriesSchema = z.record(
+  z.string().trim().min(1).max(100),
+  objectId(),
+);
+/** `rows`, once parsed. */
+export const ItAssetImportRowsSchema = z
+  .array(z.number().int().min(2))
+  .max(IT_ASSET_IMPORT_MAX_ROWS);
+
+/** One line of the preview — what the sheet says and what would happen to it. */
+export interface ItAssetImportRowDto {
+  /** The sheet's row number (the header is row 1). */
+  row: number;
+  kind: string | null;
+  name: string | null;
+  serial: string | null;
+  tag: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  decision: ItAssetImportDecision;
+  warnings: ItAssetImportWarning[];
+  /** The register's device it answers to — only one the caller may see. */
+  asset: { id: string; assetCode: string; branchId: string; status: ItAssetStatus } | null;
+  /** `new`: what it is registered with. */
+  serialNumber: string | null;
+  externalTag: string | null;
+  categoryId: string | null;
+  /** The fields filled (`specs.processor`, `accessories`, `externalTag`, `manufacturer`, `model`). */
+  fills: string[];
+  /** Values the register already has that the sheet disagrees with — kept. */
+  kept: { field: string; register: string; sheet: string }[];
+  /** `move` / `heldElsewhere`: the branch it is registered in. */
+  fromBranchId: string | null;
+  /** `duplicateInFile`: the earlier row that takes the device. */
+  firstRow: number | null;
+  /** `nearSerial`: the device it is close to. */
+  near: { assetCode: string; serialNumber: string } | null;
+  /** `invalid` / `outOfScope` / `ambiguous`: why, in a few words. */
+  message: string | null;
+  /** Whether it can be written at all, and whether it is ticked when the preview opens. */
+  selectable: boolean;
+  selected: boolean;
+}
+
+export interface ItAssetImportPreviewDto {
+  fileSha256: string;
+  /** The plan the rows describe — sent back with `apply` so the write is the plan that was seen. */
+  planHash: string;
+  sheetName: string;
+  /** The branch planned for, and the one the sheet's name points to (null when none matches). */
+  branchId: string;
+  suggestedBranchId: string | null;
+  /** Each «النوع» of the file, the category it is filed under (null until chosen), its lines. */
+  kinds: { kind: string; categoryId: string | null; rows: number }[];
+  rows: ItAssetImportRowDto[];
+  counts: Record<ItAssetImportDecision, number>;
+}
+
+export interface ItAssetImportResultDto {
+  created: number;
+  filled: number;
+  moved: number;
+  /** Lines kept on the screen but written as nothing (complete, or decided otherwise). */
+  unchanged: number;
+  assets: {
+    row: number;
+    assetId: string;
+    assetCode: string;
+    action: 'created' | 'filled' | 'moved';
+  }[];
+}
+
+/**
+ * The branches the caller may move assets — and send consumables — to: every active branch their
+ * `itAsset.assign` reaches, judged by the server's own rule, so the pickers never offer a branch
+ * the move would refuse (the account's `branchIds` are the reach of ALL its grants, not this one).
+ */
+export interface ItMoveTargetsDto {
+  branchIds: string[];
+}
 
 /** The custody register's receipt filter: the paper signed and filed, waiting, or none at all. */
 export const IT_ASSIGNMENT_RECEIPT_STATES = ['signed', 'unsigned', 'none'] as const;
@@ -1069,8 +1317,16 @@ export interface ItTicketPriorityDto {
 const priorityCore = {
   name: LocalizedStringSchema,
   rank: z.number().int().min(0).max(1000),
-  responseMinutes: z.number().int().min(1).max(60 * 24 * 365),
-  resolutionMinutes: z.number().int().min(1).max(60 * 24 * 365),
+  responseMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(60 * 24 * 365),
+  resolutionMinutes: z
+    .number()
+    .int()
+    .min(1)
+    .max(60 * 24 * 365),
 };
 
 export const CreateItTicketPrioritySchema = z
@@ -2278,8 +2534,19 @@ export type ListItMobileLineHistoryQuery = z.infer<typeof ListItMobileLineHistor
 // so an item is a row PER BRANCH; its quantities are derived from an append-only ledger and moved
 // atomically with it, and are on no write schema. Same grants as the assets (`itAsset.*`).
 
-/** Every way stock moves: in from a delivery, out to a person, out as scrap, back from a person. */
-export const IT_CONSUMABLE_MOVEMENT_KINDS = ['received', 'issued', 'scrapped', 'returned'] as const;
+/**
+ * Every way stock moves: in from a delivery, out to a person, out as scrap, back from a person — and
+ * between two branches' stores («ممكن أنقل 5 لفرع تاني»): out of one (`transferredOut`) and into the
+ * other (`transferredIn`), the pair written together and sharing one `transferId`.
+ */
+export const IT_CONSUMABLE_MOVEMENT_KINDS = [
+  'received',
+  'issued',
+  'scrapped',
+  'returned',
+  'transferredOut',
+  'transferredIn',
+] as const;
 export const ItConsumableMovementKindSchema = z.enum(IT_CONSUMABLE_MOVEMENT_KINDS);
 export type ItConsumableMovementKind = z.infer<typeof ItConsumableMovementKindSchema>;
 
@@ -2434,6 +2701,66 @@ export const IssueItConsumablesSchema = z
   });
 export type IssueItConsumables = z.infer<typeof IssueItConsumablesSchema>;
 
+/** One item of a transfer — how many of it leave its store. */
+export const ItConsumableTransferLineSchema = z
+  .object({ consumableId: objectId(), qty: consumableQty })
+  .strict();
+export type ItConsumableTransferLine = z.infer<typeof ItConsumableTransferLineSchema>;
+
+/** A transfer carries a few shelves' worth, as a memo does — the screen's page, at most. */
+export const IT_CONSUMABLE_TRANSFER_MAX_LINES = 50;
+
+/**
+ * «تحويل إلى فرع» — «لو مثلاً فى 10 ماوس .. فممكن أنقل 5 لفرع تاني»: one or more items of ONE
+ * branch's store, each with how many, to ONE other branch, at once and with no paper («السجل
+ * كفاية»). In one transaction: every line leaves its store and reaches the other or none does. Each
+ * reaches the other store's item of the SAME name (a store holds one item per name), which is made
+ * there — same name, type and unit — when that store has none yet.
+ */
+export const TransferItConsumablesSchema = z
+  .object({
+    toBranchId: objectId(),
+    at: z.coerce.date().optional(),
+    notes: z.string().trim().max(2000).optional(),
+    lines: z.array(ItConsumableTransferLineSchema).min(1).max(IT_CONSUMABLE_TRANSFER_MAX_LINES),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.lines.forEach((line, index) => {
+      if (seen.has(line.consumableId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'consumableId'],
+          message: 'an item appears on the transfer twice',
+        });
+      }
+      seen.add(line.consumableId);
+    });
+  });
+export type TransferItConsumables = z.infer<typeof TransferItConsumablesSchema>;
+
+/** One line of a transfer, as it was written — both stores' items. */
+export interface ItConsumableTransferLineDto {
+  fromConsumableId: string;
+  fromCode: string;
+  toConsumableId: string;
+  toCode: string;
+  name: string;
+  unit: string;
+  qty: number;
+  /** The receiving store had no item of that name: this transfer made it. */
+  created: boolean;
+}
+
+export interface ItConsumableTransferResultDto {
+  transferId: string;
+  fromBranchId: string;
+  toBranchId: string;
+  at: string;
+  lines: ItConsumableTransferLineDto[];
+}
+
 export const ItConsumableIdParamSchema = z.object({ id: objectId() }).strict();
 
 /** One movement of the ledger, labelled for the register at response time. */
@@ -2462,6 +2789,13 @@ export interface ItConsumableMovementDto {
   memoNumber: number | null;
   /** Whether the memo's signed copy is filed; null when there is no memo (or it is gone). */
   memoSigned: boolean | null;
+  /** A transfer between two stores: the id both of its movements share. Null otherwise. */
+  transferId: string | null;
+  /** `transferredOut`: the branch it went to; `transferredIn`: the branch it came from. */
+  counterpartBranchId: string | null;
+  /** The other store's item of the same transfer (same name, the other branch). */
+  counterpartConsumableId: string | null;
+  counterpartConsumableCode: string | null;
   byUserId: string | null;
   notes: string | null;
   createdAt: string;
@@ -2619,3 +2953,246 @@ export interface ItDashboardActivityDto {
   items: ItDashboardActivityItemDto[];
 }
 
+// ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ──────────────────────
+//
+// «I need to create a new form for specific users to use on Mobile to inform about the car status»
+// (docs/12-planning/it-vehicle-checks-design.md). One report per send: the car, the Cairo day the
+// check is for, an answer per device, a note and up to five photos. Several reports per car per day
+// are allowed; "the latest" is the latest `checkDate`, then the latest filing time.
+//
+// A report's car, day, answers and notes never change once filed; only photos are added, by the
+// reporter, within `IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS`. `clientRequestId` makes a repeated send
+// return the report that already exists. The car list's query is the shared
+// `PaginationQuerySchema`; the items' labels live in the web's i18n, not here.
+
+/** 'YYYY-MM-DD' that is a real calendar day — refuses 2026-02-30. */
+const ymd = () => z.string().refine(isYmd, 'Expected a calendar day, YYYY-MM-DD');
+
+/**
+ * The eleven devices, in the owner's order: the screen; the eight cameras (front, right rear, left
+ * rear, rear, driver's cabin, specialists' cabin, inside safe 1, inside safe 2); the DVR; the radio
+ * (Motorola).
+ */
+export const IT_VEHICLE_CHECK_ITEMS = [
+  'screen',
+  'camera1',
+  'camera2',
+  'camera3',
+  'camera4',
+  'camera5',
+  'camera6',
+  'camera7',
+  'camera8',
+  'dvr',
+  'radio',
+] as const;
+export type ItVehicleCheckItem = (typeof IT_VEHICLE_CHECK_ITEMS)[number];
+
+/** «يعمل» / «لا يعمل». An item left unanswered is `null` (also a device the car does not have). */
+export const IT_VEHICLE_CHECK_ANSWERS = ['works', 'notWorking'] as const;
+export type ItVehicleCheckAnswer = (typeof IT_VEHICLE_CHECK_ANSWERS)[number];
+
+export const IT_VEHICLE_CHECK_MAX_PHOTOS = 5;
+/** Photos are added to one's own report within this many hours of filing it. */
+export const IT_VEHICLE_CHECK_PHOTO_WINDOW_HOURS = 24;
+export const IT_VEHICLE_CHECK_NOTES_MAX = 1000;
+
+/**
+ * «كمان عايز الملاحظة إجبارى لو فى حاجة لا تعمل» (2026-11-09): a report with any device «لا يعمل»
+ * carries a note saying what is wrong. The form asks for it before sending, and the server refuses
+ * a new report without it (`IT_VEHICLE_CHECK_NOTES_REQUIRED`).
+ */
+export const vehicleCheckNeedsNotes = (
+  items: Partial<Record<ItVehicleCheckItem, ItVehicleCheckAnswer | null>> | undefined,
+): boolean => IT_VEHICLE_CHECK_ITEMS.some((item) => items?.[item] === 'notWorking');
+
+/**
+ * «وكمان الصورة كدا كدا إجبارى فى كل الحالات» (2026-11-09): every report goes with at least one
+ * photo. The form will not send without one. The server cannot hold a report to it, because photos
+ * are uploaded after the report is filed (design §6.1). A report whose uploads all failed offers
+ * «إعادة رفع الصور» only while its sent screen stays open: «تقرير لسيارة أخرى» and the back arrow
+ * ask once before leaving it, and a reload asks while failed photos wait (a killed tab cannot).
+ */
+export const IT_VEHICLE_CHECK_MIN_PHOTOS = 1;
+export const IT_VEHICLE_CHECK_PHOTO_FILE_CATEGORY = 'it-vehicle-check-photos';
+export const IT_VEHICLE_CHECK_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const IT_VEHICLE_CHECK_PHOTO_MAX_MB = 10;
+
+const answer = z.enum(IT_VEHICLE_CHECK_ANSWERS).nullable().default(null);
+
+/**
+ * File a report. Every answer is optional — a missing key becomes `null` — and the schema requires
+ * the car, the day and the request id. The day is never after today in Cairo. The service also
+ * refuses a device «لا يعمل» with no note (`vehicleCheckNeedsNotes`, `IT_VEHICLE_CHECK_NOTES_REQUIRED`).
+ */
+export const CreateItVehicleCheckSchema = z
+  .object({
+    vehicleId: objectId(),
+    checkDate: ymd().refine((d) => d <= cairoYmd(new Date()), 'checkDate is after today in Cairo'),
+    items: z
+      .object(
+        Object.fromEntries(IT_VEHICLE_CHECK_ITEMS.map((k) => [k, answer])) as Record<
+          ItVehicleCheckItem,
+          typeof answer
+        >,
+      )
+      .strict()
+      .default({}),
+    /** Trimmed; '' is dropped by the service (an empty note is absent). */
+    notes: z.string().trim().max(IT_VEHICLE_CHECK_NOTES_MAX).optional(),
+    /** Made once per report by the form, so a repeated send is the same report. */
+    clientRequestId: z.string().uuid(),
+  })
+  .strict();
+export type CreateItVehicleCheck = z.infer<typeof CreateItVehicleCheckSchema>;
+
+export const ItVehicleCheckIdParamSchema = z.object({ id: objectId() }).strict();
+
+/** The multipart field beside `file` on a photo upload; a repeated `clientPhotoId` adds nothing. */
+export const ItVehicleCheckPhotoFieldsSchema = z
+  .object({ clientPhotoId: z.string().uuid() })
+  .strict();
+
+/** One active car in the form's dropdown, in Fleet's code order. */
+export interface ItVehicleOptionDto {
+  id: string;
+  code: string;
+}
+
+export interface ItVehicleCheckPhotoDto {
+  clientPhotoId: string;
+  fileId: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export interface ItVehicleCheckDto {
+  id: string;
+  version: number;
+  vehicleId: string;
+  /** The car's code and branch at filing: a renamed or moved car keeps its old reports readable. */
+  vehicleCode: string;
+  branchId: string | null;
+  /** YYYY-MM-DD */
+  checkDate: string;
+  items: Record<ItVehicleCheckItem, ItVehicleCheckAnswer | null>;
+  notes: string | null;
+  photos: ItVehicleCheckPhotoDto[];
+  /** The reporter's user id and display name at filing. */
+  reportedByUserId: string;
+  reportedByName: string;
+  clientRequestId: string;
+  createdAt: string;
+}
+
+// ── The vehicle checks dashboard (FR-21, 2026-11-10) ─────────────────────────────────────────────
+// «تمام نفذا الـ Dashboard بتاعت الفحص» — the approved sample, built: the reports the phone form
+// files, read back under `itVehicleCheck.view` and the reader's data scope (the car's branch at
+// filing); a wrong report deleted under `itVehicleCheck.delete`
+// (docs/12-planning/it-vehicle-checks-design.md §11).
+
+/** «لم تُفحص منذ ٧ أيام»: an active car with no report for this many Cairo days, today included. */
+export const IT_VEHICLE_CHECK_OVERDUE_DAYS = 7;
+
+/**
+ * The dashboard's window — Cairo days on `checkDate`, both ends included. Absent: the last
+ * `IT_VEHICLE_CHECK_OVERDUE_DAYS` days, today included. `to` never after today; `from` ≤ `to`.
+ */
+export const ItVehicleCheckDashboardQuerySchema = z
+  .object({
+    from: ymd().optional(),
+    to: ymd().optional(),
+    branchId: objectId().optional(),
+  })
+  .strict()
+  .refine((q) => q.from === undefined || q.to === undefined || q.from <= q.to, {
+    message: 'from is after to',
+    path: ['from'],
+  });
+export type ItVehicleCheckDashboardQuery = z.infer<typeof ItVehicleCheckDashboardQuerySchema>;
+
+/**
+ * The reports list, newest first (the latest day, then the latest filing). Every filter is ANDed:
+ * the window (Cairo days on `checkDate`), the branch at filing, one car by id, a car code typed
+ * («كود السيارة», matched anywhere in the code, letter case ignored, the reader's characters taken
+ * literally), only reports with a device «لا يعمل», and only reports where THAT device is «لا يعمل».
+ */
+export const ListItVehicleChecksQuerySchema = PaginationQuerySchema.extend({
+  from: ymd().optional(),
+  to: ymd().optional(),
+  branchId: objectId().optional(),
+  vehicleId: objectId().optional(),
+  carCode: z.string().trim().max(50).optional(),
+  faultsOnly: booleanQuery().optional(),
+  device: z.enum(IT_VEHICLE_CHECK_ITEMS).optional(),
+}).strict();
+export type ListItVehicleChecksQuery = z.infer<typeof ListItVehicleChecksQuerySchema>;
+
+/** One photo of one report, by its Files id — the bytes, for a reader of the report. */
+export const ItVehicleCheckPhotoParamSchema = z
+  .object({ id: objectId(), fileId: objectId() })
+  .strict();
+
+/** «حالة أجهزة كل سيارة — آخر تقرير»: an active car and its latest live report. */
+export interface ItVehicleCheckLatestDto {
+  reportId: string;
+  vehicleId: string;
+  vehicleCode: string;
+  /** The report's branch at filing — the data-scope anchor. */
+  branchId: string | null;
+  /** YYYY-MM-DD */
+  checkDate: string;
+  createdAt: string;
+  items: Record<ItVehicleCheckItem, ItVehicleCheckAnswer | null>;
+  photoCount: number;
+  hasNotes: boolean;
+  reportedByName: string;
+}
+
+/** «لم تُفحص منذ ٧ أيام»: an active car the reader may see, and when it was last checked. */
+export interface ItVehicleCheckOverdueDto {
+  vehicleId: string;
+  vehicleCode: string;
+  /** The car's branch NOW (Fleet's), since it has no recent report to carry one. */
+  branchId: string | null;
+  /** YYYY-MM-DD of its latest live report, or null for a car never checked. */
+  lastCheckDate: string | null;
+  /** Whole Cairo days from `lastCheckDate` to today; null for a car never checked. */
+  daysSince: number | null;
+}
+
+export interface ItVehicleCheckDashboardDto {
+  /** The window the period figures cover, YYYY-MM-DD, both ends included. */
+  from: string;
+  to: string;
+  totals: {
+    /** Reports filed for a day in the window. */
+    reports: number;
+    /** Distinct reporters of those reports. */
+    reporters: number;
+    /**
+     * Distinct cars those reports are on, counted among `activeCars` only — the tile reads «X من Y
+     * سيارة نشطة», so a car out of service or out of the reader's sight is not counted.
+     */
+    carsChecked: number;
+    /** Active cars the reader may see (Fleet's list, under the scope and the branch filter). */
+    activeCars: number;
+    /** Active cars whose latest report has a device «لا يعمل». */
+    carsWithFaults: number;
+    /** Devices «لا يعمل» summed over those latest reports. */
+    devicesNotWorking: number;
+    /** Active cars with no report in the last `overdueDays` days. */
+    overdueCars: number;
+    /** Reports in the window that hold no photo. */
+    reportsWithoutPhoto: number;
+  };
+  /** For each device, the active cars whose latest report has it «لا يعمل». */
+  faultsByDevice: Record<ItVehicleCheckItem, number>;
+  /** The latest live report of each active car the reader may see, in Fleet's code order. */
+  latest: ItVehicleCheckLatestDto[];
+  /** The overdue cars, the longest unchecked first (never checked first of all), then by code. */
+  overdue: ItVehicleCheckOverdueDto[];
+  overdueDays: number;
+}

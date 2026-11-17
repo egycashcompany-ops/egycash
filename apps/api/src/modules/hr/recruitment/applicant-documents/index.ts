@@ -9,4 +9,5 @@ export {
   APPLICANT_DOCUMENT_ENTITY_TYPE,
   ensureApplicantDocsCategory,
   hrApplicantDocumentFileAuthorizers,
+  publicApplyFilingContext,
 } from './applicant-document.files';

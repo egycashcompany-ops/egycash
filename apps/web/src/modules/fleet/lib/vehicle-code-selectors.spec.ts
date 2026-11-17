@@ -141,6 +141,10 @@ const NOT_A_CODE_SELECTOR = [
     file: 'modules/fleet/components/AlarmReasonCell.tsx',
     why: 'an id→status-and-reason lookup for the odometer’s «السيارة غير نشطة» card, read from the whole registry (every status) VehicleCodeFilter already holds; nothing is picked',
   },
+  {
+    file: 'modules/fleet/components/VehicleHoverCard.tsx',
+    why: 'the car card on a board’s code — the car named by its row’s id (or a chip’s code) in the whole registry (every status), watched and only fetched once a card opens; nothing is picked',
+  },
 ] as const;
 
 /**
@@ -361,15 +365,17 @@ describe('every Fleet car picker offers the WHOLE registry', () => {
     expect(passing).toEqual([
       // The balance transfer — every place that holds a card, a car or a label on no car.
       'modules/fleet/components/FuelTransferDialog.tsx',
+      // «تعيين السيارات» on a computer — every car on the day's board (the touch board types its
+      // codes instead: «مينفعش ابحث فى الفون او التابلت ؟»).
+      'modules/fleet/components/roster/RosterDeskBoard.tsx',
       // «مذكرة جديدة» — the cars of the kind's receipts no memo holds yet, in the period on show.
       'modules/fleet/pages/CustodyMemoEditorPage.tsx',
-      // Both rosters — every active car on the day's board.
+      // The standing roster — every active car on its board.
       'modules/fleet/pages/FixedRosterPage.tsx',
       // «التراخيص» — the «ت» licence-class cars, as the owner asked.
       'modules/fleet/pages/LicensingPage.tsx',
       // «إنذارات الصيانة» — the board of every active car.
       'modules/fleet/pages/MaintenanceAlarmsPage.tsx',
-      'modules/fleet/pages/RosterPage.tsx',
     ]);
   });
 });

@@ -17,7 +17,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '../../../../shared/lib/cn';
-import { CogIcon } from '../../../../shared/ui/icons';
+import { CogIcon, type IconProps } from '../../../../shared/ui/icons';
 
 export interface SettingsTab {
   key: string;
@@ -32,6 +32,15 @@ const BAR = cn(
   'border-slate-200/80 bg-white shadow-[0_12px_32px_-14px_rgba(15,23,42,.28),0_2px_6px_-2px_rgba(15,23,42,.06)]',
   'dark:border-[rgba(42,58,84,.65)] dark:bg-[#121a2a] dark:shadow-[0_14px_34px_-12px_rgba(0,0,0,.75),inset_0_1px_0_0_rgba(255,255,255,.05)]',
 );
+/**
+ * The small one — «جاهزون للتعيين» | «المعينون»: «ميكنش ال tggole background اخده الصفحه كلها … عاوزين
+ * يبقا اخد مساحه صغيره». As wide as its sections, no head circle, a lower row.
+ */
+const COMPACT_BAR = cn(
+  'inline-flex items-center rounded-full border p-1',
+  'border-slate-200/80 bg-white shadow-[0_6px_18px_-10px_rgba(15,23,42,.35),0_1px_3px_-1px_rgba(15,23,42,.08)]',
+  'dark:border-[rgba(42,58,84,.65)] dark:bg-[#121a2a] dark:shadow-[0_8px_20px_-10px_rgba(0,0,0,.7)]',
+);
 /** Fleet's pressed tab: brand, white text — worn by the pill, or by the link until it is measured. */
 const PRESSED = 'bg-brand-600 shadow-md shadow-brand-700/30';
 
@@ -45,6 +54,8 @@ export const SettingsTabBar = ({
   active,
   label,
   groupLabel,
+  icon: Icon = CogIcon,
+  compact = false,
 }: {
   tabs: readonly SettingsTab[];
   /** The open section's key; a key no tab carries leaves the pill hidden. */
@@ -52,6 +63,10 @@ export const SettingsTabBar = ({
   /** The bar's accessible name. */
   label: string;
   groupLabel: (group: string) => string;
+  /** The brand circle at the bar's head — the settings cog unless the page names its own. */
+  icon?: (props: IconProps) => JSX.Element;
+  /** The small bar: as wide as its sections, no head circle (`COMPACT_BAR`). */
+  compact?: boolean;
 }): JSX.Element => {
   const strip = useRef<HTMLDivElement>(null);
   const row = useRef<HTMLDivElement>(null);
@@ -102,22 +117,25 @@ export const SettingsTabBar = ({
   const measured = glide !== null;
 
   return (
-    <nav aria-label={label} data-settings-bar="true" className={BAR}>
-      <span
-        aria-hidden="true"
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-600 text-white shadow-md shadow-brand-700/30"
-      >
-        <CogIcon className="h-5 w-5" />
-      </span>
+    <nav aria-label={label} data-settings-bar="true" className={compact ? COMPACT_BAR : BAR}>
+      {!compact && (
+        <span
+          aria-hidden="true"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-600 text-white shadow-md shadow-brand-700/30"
+        >
+          <Icon className="h-5 w-5" />
+        </span>
+      )}
       {/* Centred while the sections fit; once they overflow the auto margins fall to zero, so every
           section can be scrolled to (a centred overflow would push the first ones out of reach). */}
-      <div ref={strip} className="flex min-w-0 flex-1 items-center overflow-x-auto">
+      <div ref={strip} className={cn('flex items-center', !compact && 'min-w-0 flex-1 overflow-x-auto')}>
         <div ref={row} className="relative mx-auto flex shrink-0 items-center gap-1">
           <span
             aria-hidden="true"
             data-settings-glider="true"
             className={cn(
-              'pointer-events-none absolute left-0 top-0 h-11 rounded-full',
+              'pointer-events-none absolute left-0 top-0 rounded-full',
+              compact ? 'h-8' : 'h-11',
               'transition-[transform,width] duration-[250ms] ease-out motion-reduce:transition-none',
               PRESSED,
               measured ? 'opacity-100' : 'opacity-0',
@@ -148,7 +166,8 @@ export const SettingsTabBar = ({
                       data-settings-tab={tab.key}
                       className={cn(
                         // Above the pill, which sits in the same row.
-                        'relative z-10 inline-flex h-11 shrink-0 items-center whitespace-nowrap rounded-full px-4 text-[14px] font-semibold leading-5 transition-colors duration-[250ms]',
+                        'relative z-10 inline-flex shrink-0 items-center whitespace-nowrap rounded-full font-semibold leading-5 transition-colors duration-[250ms]',
+                        compact ? 'h-8 px-3.5 text-[13px]' : 'h-11 px-4 text-[14px]',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 focus-visible:ring-offset-1',
                         on
                           ? cn('text-white', !measured && PRESSED)

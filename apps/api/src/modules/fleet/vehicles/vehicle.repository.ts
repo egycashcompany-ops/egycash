@@ -231,6 +231,21 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * `codesByIds` for the LIVE cars only (not soft-deleted, any status) — for a list that offers
+   * cars to act on, where a deleted car would be offered and then refused (its `getById` is 404).
+   * History keeps reading `codesByIds`, which a deleted car still answers.
+   */
+  async liveCodesByIds(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .select({ code: 1 })
+      .lean<{ _id: Types.ObjectId; code: string }[]>()
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.code]));
+  }
+
+  /**
    * «ضيف عمود فى الجدول ب نوع التشغيل» — the car's «التشغيل», for the visits on one page.
    *
    * The same one-lookup-per-page shape as `codesByIds`: a workshop visit does not carry its car's
@@ -250,6 +265,24 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
         String(row._id),
         row.operationId == null ? null : String(row.operationId),
       ]),
+    );
+  }
+
+  /**
+   * «عاوز الفرع اللى العربيه متعينه عليه مش الفرع اللى فيه الصيانه» — the car's «الفرع», for the
+   * visits on one page: the same one-lookup shape as `operationIdsByIds`, deleted cars included (a
+   * scrapped car's visits are still history, and its branch is still the one `idsInBranches`
+   * files them under). A car with no branch on file maps to `null`.
+   */
+  async branchIdsByIds(ids: readonly string[]): Promise<Map<string, string | null>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select({ branchId: 1 })
+      .lean<{ _id: Types.ObjectId; branchId?: Types.ObjectId | null }[]>()
+      .exec();
+    return new Map(
+      rows.map((row) => [String(row._id), row.branchId == null ? null : String(row.branchId)]),
     );
   }
 
@@ -410,20 +443,35 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
    * old dashboard repository, now through the registry's base filter: a branch-scoped reader sees
    * the cells the list shows them, and an `own` grant means what it means on the list. A car with
    * no branch (a legacy row) comes back under `branchId: null` — the «بلا فرع» column — rather
-   * than vanishing from its row's total.
+   * than vanishing from its row's total. The cells are split by the car's OPERATION too (`null` = a
+   * car with none), so the same pass also gives each branch its cars by operation kind («نقل
+   * الأموال» / «ATM» / «أخرى»); Σ over the operations of one (type, branch) is that cell.
    */
-  async activeByTypeAndBranch(
-    scope: ScopeSelector,
-  ): Promise<{ typeId: string; branchId: string | null; count: number }[]> {
+  async activeByTypeAndBranch(scope: ScopeSelector): Promise<
+    {
+      typeId: string;
+      branchId: string | null;
+      operationId: string | null;
+      count: number;
+    }[]
+  > {
     const rows = await this.model
       .aggregate<{
-        _id: { typeId: Types.ObjectId; branchId: Types.ObjectId | null };
+        _id: {
+          typeId: Types.ObjectId;
+          branchId: Types.ObjectId | null;
+          operationId: Types.ObjectId | null;
+        };
         count: number;
       }>([
         { $match: this.baseFilter(scope, { status: 'active' }) },
         {
           $group: {
-            _id: { typeId: '$typeId', branchId: { $ifNull: ['$branchId', null] } },
+            _id: {
+              typeId: '$typeId',
+              branchId: { $ifNull: ['$branchId', null] },
+              operationId: { $ifNull: ['$operationId', null] },
+            },
             count: { $sum: 1 },
           },
         },
@@ -432,6 +480,7 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
     return rows.map((row) => ({
       typeId: String(row._id.typeId),
       branchId: row._id.branchId === null ? null : String(row._id.branchId),
+      operationId: row._id.operationId === null ? null : String(row._id.operationId),
       count: row.count,
     }));
   }

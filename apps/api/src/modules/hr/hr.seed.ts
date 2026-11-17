@@ -17,7 +17,6 @@ import {
   HrPayrollTemplates,
   type CreateApplicantSource,
   type CreateEvaluationPhase,
-  type CreateHiringDocumentType,
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
@@ -29,7 +28,7 @@ import {
   ensureNationalIdCardCategory,
 } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
-import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
+import { ensureEvaluationCategory, evaluationPhaseService, evaluationService } from './recruitment/evaluations';
 import {
   registerExternalSurface,
   registerExternalWriteSurface,
@@ -41,7 +40,12 @@ import {
   applicantPortalIdentityResolver,
 } from './recruitment/applicant-portal';
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
-import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
+import {
+  ensureHiringDocsCategory,
+  hiringDocumentTypeService,
+  type HiringDocumentTypeSeed,
+} from './recruitment/hiring-documents';
+import { CIT_SPECIALISTS, CREW_LEADERS, type JobNames } from './shared/job-match';
 import {
   applicantDocumentTypeService,
   ensureApplicantDocsCategory,
@@ -50,6 +54,7 @@ import {
   ensureEmployeePhotoCategory,
   migrateEmployeeIndexes,
   migrateEmployeesToRegistry,
+  migrateExternalEmployeeNumbers,
 } from './employee-management/employees';
 import { migrateEmployeeFiles } from './employee-management/employee-file';
 import { env } from '../../infrastructure/config/env';
@@ -61,6 +66,7 @@ import { ensureAdjustmentAttachmentsCategory } from './payroll/adjustments';
 import { ensureLoanAttachmentsCategory, grantEssLoanAccess } from './employee-loans';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 import { migrateAttendance } from './attendance/attendance.migration';
+import { migrateCandidateDrafts } from './contracts/candidates';
 import {
   backfillAdjustmentDepartments,
   backfillEmployeePayItemDepartments,
@@ -238,7 +244,7 @@ const ensureOfferTemplates = async (): Promise<void> => {
 
 // The standard hiring-documents checklist (approved Recruitment spec — 7 documents, ALL required
 // for completion). The set stays admin-configurable thereafter (add / remove / toggle required).
-const HIRING_DOCUMENT_TYPES: CreateHiringDocumentType[] = [
+const HIRING_DOCUMENT_TYPES: HiringDocumentTypeSeed[] = [
   { key: 'employmentContract', name: { en: 'Employment Contract', ar: 'عقد العمل' }, required: true },
   { key: 'employmentAcceptance', name: { en: 'Employment Acceptance Acknowledgment', ar: 'إقرار قبول التعيين' }, required: true },
   { key: 'socialStatusForm', name: { en: 'Social Status Form', ar: 'استمارة الحالة الاجتماعية' }, required: true },
@@ -248,9 +254,33 @@ const HIRING_DOCUMENT_TYPES: CreateHiringDocumentType[] = [
   { key: 'companyIdCard', name: { en: 'Company ID Card', ar: 'كارنيه الشركة' }, required: true },
 ];
 
+/**
+ * A27, stage 3 — the signed weapon declaration, asked of the jobs the printed «إقرار حيازة سلاح» is
+ * for: «اجباري لقائد الطقم بس اخصائي نقل اموال بتبقا اوبشن». Two rows of the one paper — REQUIRED of
+ * crew leaders, OPTIONAL for cash-in-transit specialists (a job is never both). Each is written for
+ * the jobs carrying its name; with none yet it waits for the boot after one is created.
+ */
+const WEAPON_DECLARATIONS: { seed: HiringDocumentTypeSeed; jobs: JobNames }[] = [
+  {
+    seed: { key: 'weaponDeclaration', name: { en: 'Weapon Possession Declaration', ar: 'إقرار حيازة سلاح' }, required: true },
+    jobs: CREW_LEADERS,
+  },
+  {
+    seed: {
+      key: 'citWeaponDeclaration',
+      name: { en: 'Weapon Possession Declaration (optional)', ar: 'إقرار حيازة سلاح' },
+      required: false,
+    },
+    jobs: CIT_SPECIALISTS,
+  },
+];
+
 const ensureHiringDocumentsSeeds = async (): Promise<void> => {
   for (const type of HIRING_DOCUMENT_TYPES) {
     await hiringDocumentTypeService.ensure(type);
+  }
+  for (const { seed, jobs } of WEAPON_DECLARATIONS) {
+    await hiringDocumentTypeService.ensureForJobs(seed, jobs);
   }
   await ensureHiringDocsCategory();
   // P-HR-APP §5 — the candidate's own uploads: images AND PDF, because what is being asked for is
@@ -498,6 +528,7 @@ export const seedHrRecruitment = async (): Promise<void> => {
   for (const stage of INTERVIEW_STAGES) {
     await interviewStageService.ensure(stage);
   }
+  await interviewStageService.ensureModes();
   for (const phase of EVALUATION_PHASES) {
     await evaluationPhaseService.ensure(phase);
   }
@@ -517,10 +548,25 @@ export const seedHrRecruitment = async (): Promise<void> => {
   // Legacy recruitment documents: late-added applicant fields + denormalized applicantName
   // on the stage collections (idempotent, missing-field guarded).
   await migrateRecruitmentLegacy();
+  // «عروض العمل» lists whoever cleared their checks as «جاهز لعرض العمل»: those who cleared them
+  // before clearing moved them to the offer stage, and were never moved by hand, are moved now.
+  try {
+    const moved = await evaluationService.moveClearedApplicantsToOffer();
+    if (moved > 0) logger.info({ moved }, 'recruitment: cleared applicants moved to the offer stage');
+  } catch (error) {
+    logger.warn({ err: error }, 'recruitment: moving cleared applicants to the offer stage skipped');
+  }
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
   // ADR-017 — retire the unique index on the Global Employee Number (idempotent, guarded).
   await migrateEmployeeIndexes();
+  // An external person's number is their code, never one of the company's (see the function).
+  try {
+    const freed = await migrateExternalEmployeeNumbers();
+    if (freed > 0) logger.info({ freed }, 'employees: company numbers held by external people released');
+  } catch (error) {
+    logger.warn({ err: error }, 'employees: releasing external people\'s company numbers skipped');
+  }
   // I5 — drop the re-derived recruitment milestones from legacy Employee Files; the canonical
   // recruitment timeline is now the only history (idempotent).
   await migrateEmployeeFiles();
@@ -566,6 +612,8 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await backfillAdjustmentDepartments();
   await backfillEmployeePayItemDepartments();
   await backfillEmployeeLoanDepartments();
+  // Contracts (A28): a «عقد جديد» draft keeps what HR changed on the job's papers, not a whole list.
+  await migrateCandidateDrafts();
   // Contracts (frozen contracts design D11): the expiring-soon notice template.
   await notificationTemplateService.ensure({
     key: HrContractTemplates.ExpiringSoon,

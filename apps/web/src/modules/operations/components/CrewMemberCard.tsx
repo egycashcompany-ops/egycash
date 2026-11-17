@@ -11,10 +11,11 @@
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Badge } from '../../../shared/ui/Badge';
+import { CREW_DRAG_TYPE } from '../lib/crew-drag';
 import { CrewFlagIcons } from './CrewFlagIcons';
 
-/** The MIME type the board's drop targets accept — narrow, so a stray drag is ignored. */
-export const CREW_DRAG_TYPE = 'application/x-ecms-crew-member';
+/** The MIME type the boards' drags carry — defined once, with the crew board's drag (Round 22). */
+export { CREW_DRAG_TYPE };
 
 export const CrewMemberCard = ({
   member,

@@ -7,7 +7,8 @@ import { type EmployeeDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../../platform/localization/useT';
 import { useCan } from '../../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../../store';
-import { Field, Input, Select } from '../../../../../../shared/ui/form';
+import { Field, Input } from '../../../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../../../shared/ui/SearchableSelect';
 import { MoneyInput } from '../../../../../../shared/ui/MoneyInput';
 import { SearchInput } from '../../../../../../shared/ui/SearchInput';
 import { toast } from '../../../../../../shared/ui/toast/toast-store';
@@ -74,16 +75,14 @@ export const PromotionDialog = ({ employee, open, onClose }: DialogProps): JSX.E
       onSubmit={() => void submit()}
     >
       <Field label={t('employees.actions.promotion.newTitle')} required>
-        <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
-          <option value="">{t('common.select')}</option>
-          {jobTitles
+        <SearchableSelect
+          value={jobTitleId}
+          onChange={setJobTitleId}
+          options={jobTitles
             .filter((jt) => jt.id !== employee.employment.jobTitleId)
-            .map((jt) => (
-              <option key={jt.id} value={jt.id}>
-                {localized(jt.name, locale)}
-              </option>
-            ))}
-        </Select>
+            .map((jt) => ({ value: jt.id, label: localized(jt.name, locale) }))}
+          ariaLabel={t('employees.actions.promotion.newTitle')}
+        />
       </Field>
       {canComp && (
         <Field label={t('employees.actions.promotion.newSalary')} hint={t('offers.form.optional')}>
@@ -106,16 +105,25 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
   const [branchId, setBranchId] = useState(employee.employment.branchId);
   const [departmentId, setDepartmentId] = useState(employee.employment.departmentId);
   const [sectionId, setSectionId] = useState(employee.employment.sectionId ?? '');
+  // «إمكانية تعديل المسمي الوظيفي أيضاً» — the job held in the new placement; the current one
+  // until HR picks another.
+  const [jobTitleId, setJobTitleId] = useState(employee.employment.jobTitleId);
   const [reason, setReason] = useState('');
   const { data: branches = [] } = useBranchOptions();
   const { data: departments = [] } = useDepartmentOptions(branchId);
   const { data: sections = [] } = useSectionOptions(departmentId === '' ? undefined : departmentId);
+  const { data: jobTitles = [] } = useJobTitleReferenceOptions();
+  // The catalog offers active titles only. A title retired since the employee took it is still
+  // the one they hold, so it stays on the list, by the name their record carries, instead of the
+  // list showing its first title as if it were theirs.
+  const heldTitleRetired = !jobTitles.some((jt) => jt.id === employee.employment.jobTitleId);
 
   const submit = async (): Promise<void> => {
     const changedBranch = branchId !== employee.employment.branchId;
     const changedDept = departmentId !== employee.employment.departmentId;
     const changedSection = sectionId !== (employee.employment.sectionId ?? '');
-    if (!changedBranch && !changedDept && !changedSection) {
+    const changedJob = jobTitleId !== employee.employment.jobTitleId;
+    if (!changedBranch && !changedDept && !changedSection && !changedJob) {
       toast.error(t('employees.actions.transfer.nothingChanged'));
       return;
     }
@@ -127,6 +135,7 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
         ...(changedSection || changedDept || changedBranch
           ? { sectionId: sectionId === '' ? null : sectionId }
           : {}),
+        ...(changedJob ? { jobTitleId } : {}),
         ...(reason.trim() === '' ? {} : { reason: reason.trim() }),
         version: employee.version,
         ...common,
@@ -149,46 +158,59 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
       onSubmit={() => void submit()}
     >
       <Field label={t('offers.form.branch')} required>
-        <Select
+        <SearchableSelect
           value={branchId}
-          onChange={(e) => {
-            setBranchId(e.target.value);
+          onChange={(next) => {
+            if (next === branchId) return;
+            setBranchId(next);
             setDepartmentId('');
             setSectionId('');
           }}
-        >
-          {branches.map((b) => (
-            <option key={b.id} value={b.id}>
-              {localized(b.name, locale)}
-            </option>
-          ))}
-        </Select>
+          options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+          ariaLabel={t('offers.form.branch')}
+        />
       </Field>
       <Field label={t('offers.form.department')} required>
-        <Select
+        <SearchableSelect
           value={departmentId}
-          onChange={(e) => {
-            setDepartmentId(e.target.value);
+          onChange={(next) => {
+            if (next === departmentId) return;
+            setDepartmentId(next);
             setSectionId('');
           }}
-        >
-          <option value="">{t('common.select')}</option>
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {orgUnitLabel(d, locale)}
-            </option>
-          ))}
-        </Select>
+          options={departments.map((d) => ({ value: d.id, label: orgUnitLabel(d, locale) }))}
+          disabled={branchId === ''}
+          ariaLabel={t('offers.form.department')}
+        />
       </Field>
       <Field label={t('employees.actions.transfer.section')} hint={t('offers.form.optional')}>
-        <Select value={sectionId} onChange={(e) => setSectionId(e.target.value)}>
-          <option value="">{t('employees.actions.transfer.noSection')}</option>
-          {sections.map((sec) => (
-            <option key={sec.id} value={sec.id}>
-              {orgUnitLabel(sec, locale)}
-            </option>
-          ))}
-        </Select>
+        <SearchableSelect
+          value={sectionId}
+          onChange={setSectionId}
+          options={sections.map((sec) => ({ value: sec.id, label: orgUnitLabel(sec, locale) }))}
+          placeholder={t('employees.actions.transfer.noSection')}
+          disabled={departmentId === ''}
+          ariaLabel={t('employees.actions.transfer.section')}
+        />
+      </Field>
+      <Field label={t('offers.form.jobTitle')} required hint={t('employees.actions.transfer.jobTitleHint')}>
+        <SearchableSelect
+          value={jobTitleId}
+          onChange={setJobTitleId}
+          options={[
+            // A retired title the employee still holds stays theirs to keep.
+            ...(heldTitleRetired
+              ? [
+                  {
+                    value: employee.employment.jobTitleId,
+                    label: employee.placement.jobTitle === null ? '—' : localized(employee.placement.jobTitle.name, locale),
+                  },
+                ]
+              : []),
+            ...jobTitles.map((jt) => ({ value: jt.id, label: localized(jt.name, locale) })),
+          ]}
+          ariaLabel={t('offers.form.jobTitle')}
+        />
       </Field>
       <Field label={t('employees.actions.reason')} hint={t('offers.form.optional')}>
         <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />

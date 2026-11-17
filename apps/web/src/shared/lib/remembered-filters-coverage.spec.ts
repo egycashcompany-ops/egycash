@@ -73,9 +73,12 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/AttendancePage.tsx', ['date']],
   ['modules/fleet/pages/CatalogsPage.tsx', ['kind']],
   ['modules/fleet/pages/DealershipPage.tsx', []],
-  // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period filters are ONE
-  // state for the five period tabs (TAB_SHARED below).
-  ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab']],
+  ['modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx', []],
+  // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period opens on «هذا
+  // الشهر» on every visit — a chosen period stays in the address bar between tabs, for the rest of
+  // the visit only (DECISIONS §0c); type, operation and codes are remembered, ONE state for «أرقام
+  // الفترة» and the period parts of the five mixed panels (TAB_SHARED below).
+  ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab', 'period', 'from', 'to']],
   ['modules/fleet/pages/FuelCardsPage.tsx', []],
   ['modules/fleet/pages/FuelChargingPage.tsx', []],
   ['modules/fleet/pages/ReceiptsPage.tsx', []],
@@ -119,6 +122,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/hr/employee-management/employee-files/pages/EmployeeFilesListPage.tsx', []],
   ['modules/hr/employee-management/employees/pages/EmployeesListPage.tsx', []],
   ['modules/hr/employee-management/employees/pages/EmployeesReadyPage.tsx', []],
+  ['modules/hr/employee-management/employees/pages/HiredEmployeesPage.tsx', []],
   ['modules/hr/leave-management/pages/AllRequestsPage.tsx', []],
   ['modules/hr/medical/pages/InsuranceCardsPage.tsx', []],
   ['modules/hr/medical/pages/MedicalProfilesPage.tsx', []],
@@ -157,9 +161,42 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/it/pages/SoftwarePage.tsx', ['tab']],
   ['modules/it/pages/SparePartsPage.tsx', []],
   ['modules/it/pages/TicketsListPage.tsx', []],
+  // FR-21 — the vehicle checks dashboard: the period, the branch, the car (typed, or by id from a
+  // report), «بها عطل» and the device, all remembered.
+  ['modules/it/pages/VehicleChecksPage.tsx', []],
   ['modules/it/pages/VendorsPage.tsx', []],
+  // `date`: the old day picker's, only ever deleted — the board is always today, and an old link
+  // or bookmark sheds it.
   ['modules/operations/pages/DailyOperationsPage.tsx', ['date']],
+  // «سجل الشحنات»: the day board's filters, remembered alike; `from`/`to` open on this month to
+  // date — the range is what the screen IS, as `date` is the day board's.
+  ['modules/operations/pages/ShipmentsHistoryPage.tsx', ['from', 'to']],
+  // «الشحنات المحصنة» on the day board's board (Round 8): its filters remembered alike, the stage
+  // in «التسليم»'s place; there is no period — it is every open محصنة.
+  ['modules/operations/pages/SecuredBacklogPage.tsx', []],
+  // «شاشة الاستلام من الخزنة … زى شاشة التشغيل اليومى» (Round 9): the secured board's filters,
+  // remembered alike; `all` («الكل») is not — the screen opens on the vault's work, the shipments
+  // with the captain and today's receipts, and «الكل» is a look further for the moment.
+  ['modules/operations/pages/VaultReceivePage.tsx', ['all']],
+  // «صرف الخزينة» on the same board (Round 10): its filters remembered alike; `date` is not — the
+  // screen IS every محصنة in the vault («كله يبقى موجود فى تاريخ يتفلتر»), and a delivery day looked
+  // at once is not where the next visit starts.
+  ['modules/operations/pages/SecuredDispatchPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
+  // Round 19 — «كشف طاقم العمليات» in the boards' look: its four filters remembered as the boards'
+  // are. It reads no `date` any more — the roster is the same every day. Round 19b: `code` and
+  // `name`, the two boxes before «الاسم أو الكود» (`q`), are read only to fold an old link or a
+  // remembered view into `q`, and are taken off the address at once.
+  ['modules/operations/pages/RequirementsPage.tsx', ['code', 'name']],
+  // Round 12 — both reports gained «اسم القائد» / «اسم البنك» (`name`), remembered as the boards'
+  // filters are; `from`/`to` are not — they open on the current month, the period the report IS.
+  ['modules/operations/pages/CaptainReportPage.tsx', ['from', 'to']],
+  // Round 14 — «تقرير البنوك» is the vault roll-up that was «تجميع الخزينة» (`VaultReportPage`), moved
+  // with its filters: `name` remembered, the period not.
+  ['modules/operations/pages/BankReportPage.tsx', ['from', 'to']],
+  // Round 12 — «سجل الخزينة» is «سجل الشحنات» for the محصنات: the secured board's filters remembered
+  // alike; `from`/`to` open on this month to date, as the history's.
+  ['modules/operations/pages/VaultInventoryPage.tsx', ['from', 'to']],
   ['modules/organization/application-categories/pages/ApplicationCategoriesListPage.tsx', []],
   ['modules/organization/applications/pages/ApplicationsListPage.tsx', []],
   ['modules/organization/branches/pages/BranchesListPage.tsx', []],
@@ -210,10 +247,15 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
     'modules/operations/pages/CrewBoardPage.tsx',
     '`date` resolves server-side to tomorrow \u2014 the day the board IS',
   ],
-  ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
+  // Round 12 — «توزيع المحصنات» and «تسليم المحصنات»: the day IS the screen (its vans and its
+  // محصنات); nothing else is read from the URL.
   [
-    'modules/operations/pages/SecuredDispatchPage.tsx',
-    '`date` resolves to the due day being dispatched',
+    'modules/operations/pages/SecuredDistributionPage.tsx',
+    '`date` opens on cairoToday() — the day being distributed',
+  ],
+  [
+    'modules/operations/pages/VaultHandoverPage.tsx',
+    '`date` opens on cairoToday() — the day being handed over',
   ],
 ];
 
@@ -279,6 +321,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ],
   ['modules/hr/attendance/pages/MyAttendancePage.tsx'],
   ['modules/hr/attendance/pages/ShiftsPage.tsx'],
+  ['modules/hr/contracts/pages/CandidateContractPage.tsx'],
   ['modules/hr/contracts/pages/ContractCreatePage.tsx'],
   [
     'modules/hr/contracts/pages/ContractDetailPage.tsx',
@@ -331,30 +374,27 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/hr/recruitment/job-offers/pages/JobOfferDetailPage.tsx'],
   ['modules/hr/recruitment/job-offers/pages/JobOfferFormPage.tsx'],
   ['modules/hr/recruitment/job-requisitions/pages/JobRequisitionDetailPage.tsx'],
-  ['modules/hr/recruitment/job-requisitions/pages/JobRequisitionsListPage.tsx'],
+  [
+    'modules/hr/recruitment/job-requisitions/pages/JobRequisitionsListPage.tsx',
+    'its search, status and priority live in the page\u2019s own state, never the query string \u2014 nothing there to remember',
+  ],
   ['modules/hr/recruitment/recruitment-form/pages/PublicApplyPage.tsx'],
   ['modules/hr/recruitment/recruitment-form/pages/RecruitmentFormPage.tsx'],
   ['modules/hr/recruitment/screening/pages/ScreeningDetailPage.tsx'],
+  ['modules/hr/settings/HiringRequirementsPage.tsx'],
+  ['modules/it/mobile/VehicleCheckPage.tsx'],
   ['modules/it/pages/AssetDetailPage.tsx'],
   ['modules/it/pages/AssetScanPage.tsx'],
+  ['modules/it/pages/AssetsImportPage.tsx'],
   ['modules/it/pages/ItEmployeeHistoryPage.tsx'],
   ['modules/it/pages/LicenseDetailPage.tsx'],
   ['modules/it/pages/MaintenanceOrderDetailPage.tsx'],
   ['modules/it/pages/TicketDetailPage.tsx'],
   ['modules/operations/mobile/StopDetailPage.tsx'],
-  [
-    'modules/operations/pages/BankReportPage.tsx',
-    '`from`/`to` arrive from the link; the page renders no control for them',
-  ],
-  [
-    'modules/operations/pages/CaptainReportPage.tsx',
-    '`from`/`to` arrive from the link; the page renders no control for them',
-  ],
+  // Round 14 — «إدارات العمليات»: one setting edited in place; its search narrows the tiles in
+  // memory and is not a filter of a stored list.
+  ['modules/operations/pages/CrewDepartmentsPage.tsx'],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
-  ['modules/operations/pages/SecuredBacklogPage.tsx', 'reads only `page`'],
-  ['modules/operations/pages/VaultInventoryPage.tsx', 'reads only `page`'],
-  ['modules/operations/pages/VaultReceivePage.tsx'],
-  ['modules/operations/pages/VaultReportPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],
   ['modules/organization/application-sections/pages/OrganizeApplicationsPage.tsx'],
@@ -546,7 +586,7 @@ const TAB_SCOPED: readonly (readonly [string, string])[] = [
 const TAB_SHARED: readonly (readonly [string, string])[] = [
   [
     'modules/fleet/pages/FleetDashboardPage.tsx',
-    'the five period tabs draw one filter bar (period, type, operation, codes) over one read, R2 — «الفلاتر ثابتة بين التبويبات»',
+    '«أرقام الفترة» and the five mixed panels («الصيانة والورش»، «العدادات والكيلومترات»، «الحوادث ومطالبات التأمين»، «المخالفات المرورية والتسويات»، «الوقود والمصروفات») draw one filter bar over one read, R2 — «الفلاتر ثابتة بين التبويبات»; type, operation and codes are remembered, the period is not (it stays in the address bar between tabs)',
   ],
 ];
 
@@ -667,5 +707,18 @@ describe('the IT registers remember both of their lists', () => {
     expect(declared(text('modules/it/pages/AssetsListPage.tsx'))).toContain(
       'warrantyEndsWithinDays',
     );
+  });
+
+  // The vehicle checks dashboard keeps every filter it offers — a bare arrival from the rail or the
+  // IT home opens the view the reader left.
+  it('the vehicle checks dashboard remembers each of its filters', () => {
+    expect(declared(text('modules/it/pages/VehicleChecksPage.tsx'))).toEqual([
+      'branch',
+      'car',
+      'device',
+      'faults',
+      'period',
+      'vehicle',
+    ]);
   });
 });

@@ -70,6 +70,14 @@ export const expectedOdometerReading = async (req: Request, res: Response): Prom
 };
 
 /**
+ * Every registry car's last reading (any status) — the car card's «آخر قراءة عداد». One answer
+ * behind both the odometer's and the workshop's permission (`authorizeAny` on the route).
+ */
+export const listLatestReadings = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await fleetOdometerService.latestReadingsOfFleet());
+};
+
+/**
  * The bracket for one vehicle on one date.
  *
  * Exported from the ODOMETER module because the chain is what it answers about, and mounted on

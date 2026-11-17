@@ -11,6 +11,7 @@ import {
   type CheckInFleetMaintenance,
   type CheckOutFleetMaintenance,
   type FleetDashboardNowWorkshopDto,
+  type FleetDashboardPeriodExitsDto,
   type FleetDashboardPeriodVisitsDto,
   type FleetDashboardRecentVisitDto,
   type ListFleetMaintenanceQuery,
@@ -19,7 +20,7 @@ import {
   type UpdateFleetMaintenance,
 } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
-import { ConflictError, ValidationError } from '../../../shared/errors';
+import { ConflictError, StaleDocumentError, ValidationError } from '../../../shared/errors';
 import { getDirectoryEmployee, getSelfDirectoryEmployee } from '../../../platform/directory';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -33,6 +34,7 @@ import {
 } from '../vehicles/vehicle.repository';
 import { resolveVehicleFilterIds, type VehicleFilter } from '../vehicles/vehicle-set';
 import { fleetOdometerRepository } from '../odometer/odometer.repository';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { alarmSortsFor } from './alarm-sort';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import {
@@ -51,6 +53,8 @@ export type MaintenanceVisitPage = Paginated<FleetMaintenanceVisitRow> & {
   codes: ReadonlyMap<string, string>;
   /** The car's «التشغيل» for the same cars — «ضيف عمود فى الجدول ب نوع التشغيل». */
   operations: ReadonlyMap<string, string | null>;
+  /** The car's «الفرع» for the same cars — the branch it is assigned to, not the workshop's. */
+  branches: ReadonlyMap<string, string | null>;
 };
 
 /**
@@ -63,6 +67,8 @@ export interface MaintenanceVisitWithJoins {
   vehicleCode: string | null;
   /** The car's «التشغيل» — a fact about the CAR, read with its code. */
   operationId: string | null;
+  /** The car's «الفرع» (`vehicle.branchId`) — likewise the CAR's, read with its code. */
+  branchId: string | null;
 }
 
 /**
@@ -222,19 +228,26 @@ class FleetMaintenanceService {
   }
 
   /**
-   * The one read-side fact a visit does not carry itself: the registry's code for its vehicle.
-   * Both drivers are stored on the document now, so nothing else needs resolving.
+   * The read-side facts a visit does not carry itself — all about its CAR, read off the registry:
+   * the code, «التشغيل» and «الفرع». Both drivers are stored on the document now, so nothing else
+   * needs resolving.
    */
   private async withJoins(doc: FleetMaintenanceVisitDoc): Promise<MaintenanceVisitWithJoins> {
     const vehicleId = vehicleIdOf(doc);
     // A visit kept from the old book for a car the registry never had names its car itself.
-    if (vehicleId === null) return { doc, vehicleCode: doc.vehicleCode ?? null, operationId: null };
-    const codes = await fleetVehicleRepository.codesByIds([vehicleId]);
-    const operations = await fleetVehicleRepository.operationIdsByIds([vehicleId]);
+    if (vehicleId === null) {
+      return { doc, vehicleCode: doc.vehicleCode ?? null, operationId: null, branchId: null };
+    }
+    const [codes, operations, branches] = await Promise.all([
+      fleetVehicleRepository.codesByIds([vehicleId]),
+      fleetVehicleRepository.operationIdsByIds([vehicleId]),
+      fleetVehicleRepository.branchIdsByIds([vehicleId]),
+    ]);
     return {
       doc,
       vehicleCode: codes.get(vehicleId) ?? null,
       operationId: operations.get(vehicleId) ?? null,
+      branchId: branches.get(vehicleId) ?? null,
     };
   }
 
@@ -423,6 +436,28 @@ class FleetMaintenanceService {
     if (input.driverInEmployeeId !== undefined) {
       await this.assertDriver(input.driverInEmployeeId, 'body.driverInEmployeeId');
     }
+    // «سائق الخروج» — only on a CLOSED visit. An open one has not left yet; check-out sets it.
+    if (input.driverOutEmployeeId !== undefined && before.outDate === null) {
+      // A copy older than the stored visit saw it closed: it was reopened since. That is a stale
+      // copy to reload (409, as on every edit), not a field the editor filled in wrong.
+      if (input.version !== before.__v) throw new StaleDocumentError();
+      throw new ValidationError([
+        {
+          field: 'body.driverOutEmployeeId',
+          code: 'INVALID',
+          message: 'the exit driver of an open visit is set by check-out',
+        },
+      ]);
+    }
+    // Asked of HR only when this edit CHANGES it, so resaving a visit whose driver has since left
+    // the directory is not refused for a driver nobody touched. Lowercased: an id is hex, and the
+    // stored one always reads back lowercase.
+    if (
+      input.driverOutEmployeeId !== undefined &&
+      input.driverOutEmployeeId.toLowerCase() !== String(before.driverOutEmployeeId ?? '')
+    ) {
+      await this.assertDriver(input.driverOutEmployeeId, 'body.driverOutEmployeeId');
+    }
     // FR-4's `outDate ≥ inDate`, against the END STATE of the edit.
     //
     // Check-out enforces it once, at the moment it sets `outDate` — and `outDate` is deliberately
@@ -504,6 +539,10 @@ class FleetMaintenanceService {
     }
     if (input.driverInEmployeeId !== undefined) {
       set.driverInEmployeeId = new Types.ObjectId(input.driverInEmployeeId);
+    }
+    // `driverOutName` (the old book's spelling) is left as it is; the employee id wins on display.
+    if (input.driverOutEmployeeId !== undefined) {
+      set.driverOutEmployeeId = new Types.ObjectId(input.driverOutEmployeeId);
     }
     if (input.takenInByEmployeeId !== undefined) {
       set.takenInByEmployeeId =
@@ -598,6 +637,8 @@ class FleetMaintenanceService {
   private async carNamer(vehicleIds: readonly string[]): Promise<{
     codeOf: (vehicleId: string | null, bookCode: string | null | undefined) => string;
     deleted: (vehicleId: string | null) => boolean;
+    /** The car's make id (`typeId`); `null` for a car the registry does not hold. */
+    typeIdOf: (vehicleId: string | null) => string | null;
   }> {
     const cars = new Map(
       (await fleetVehicleRepository.findByIdsSystem([...new Set(vehicleIds)])).map((car) => [
@@ -609,16 +650,32 @@ class FleetMaintenanceService {
       codeOf: (vehicleId, bookCode) =>
         (vehicleId === null ? undefined : cars.get(vehicleId)?.code) ?? bookCode ?? '—',
       deleted: (vehicleId) => vehicleId !== null && cars.get(vehicleId)?.isDeleted === true,
+      typeIdOf: (vehicleId) => {
+        const typeId = vehicleId === null ? undefined : cars.get(vehicleId)?.typeId;
+        return typeId == null ? null : String(typeId);
+      },
     };
+  }
+
+  /**
+   * The makes' names by id — ONE read of the live makes (a handful), as the alarms board names a
+   * car's make; a make since deleted has no name. Asked only when a row will be named.
+   */
+  private async makeNames(asked: boolean): Promise<ReadonlyMap<string, LocalizedString>> {
+    if (!asked) return new Map();
+    const types = await fleetVehicleTypeRepository.listAll();
+    return new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
   }
 
   /**
    * T2.4, R-09 — «في الورشة الآن»: the open visits of ANY status, through the list's own filter
    * (`/fleet/maintenance?state=open` with the same vehicle filter lists exactly these), split by
-   * the car's status now, with the oldest stay in Cairo days.
+   * the car's status now, with the longest stays in Cairo days («أطول بقاء في الورشة الآن»: the
+   * oldest check-ins first, at most FLEET_DASHBOARD_WORKSHOP_ROWS; `oldest` is the first).
    *
    * A car deleted from the registry, or a visit kept from the old book without one, is counted in
-   * `open` — the list shows it — and in neither status part.
+   * `open` — the list shows it — and in neither status part; its stay is still listed, under the
+   * registry's code or the book's.
    */
   async openNow(input: {
     today: string;
@@ -627,13 +684,20 @@ class FleetMaintenanceService {
     const facts = await fleetMaintenanceRepository.openFacts(
       await this.filterFor({ ...listFieldsOf(input.filter), open: true }),
     );
-    // Every registry car with an open visit — the oldest one's among them — read once, deleted
-    // ones included: their visit is on the list, so the card must still name its car.
-    const cars = new Map(
-      (await fleetVehicleRepository.findByIdsSystem(facts.cars.map((car) => car.vehicleId))).map(
-        (car) => [String(car._id), car],
-      ),
-    );
+    // Every registry car with an open visit — the longest stays' among them — read once, deleted
+    // ones included: their visit is on the list, so the card must still name its car. Beside it,
+    // the listed stays' workshop and work-type names (one catalog read) and makes (one read).
+    const listedIds = [
+      ...new Set(facts.longest.flatMap((row) => [row.workshopId, row.workTypeId])),
+    ].flatMap((id) => (id === null ? [] : [id]));
+    const [carList, names, makes] = await Promise.all([
+      fleetVehicleRepository.findByIdsSystem(facts.cars.map((car) => car.vehicleId)),
+      listedIds.length === 0
+        ? Promise.resolve(new Map<string, LocalizedString>())
+        : fleetCatalogItemRepository.namesByIds(listedIds),
+      this.makeNames(facts.longest.some((row) => row.vehicleId !== null)),
+    ]);
+    const cars = new Map(carList.map((car) => [String(car._id), car]));
     let openActive = 0;
     let openOutOfService = 0;
     for (const { vehicleId, visits } of facts.cars) {
@@ -642,24 +706,44 @@ class FleetMaintenanceService {
       if (car.status === 'active') openActive += visits;
       if (car.status === 'outOfService') openOutOfService += visits;
     }
-    const oldest = facts.oldest;
+    const codeOf = (vehicleId: string | null, bookCode: string | null): string =>
+      (vehicleId === null ? undefined : cars.get(vehicleId)?.code) ?? bookCode ?? '—';
+    const nameOf = (id: string | null): LocalizedString | null =>
+      id === null ? null : (names.get(id) ?? null);
+    const longest = facts.longest.map((row) => {
+      const car = row.vehicleId === null ? undefined : cars.get(row.vehicleId);
+      const typeId = car?.typeId;
+      return {
+        visitId: row.visitId,
+        vehicleId: row.vehicleId,
+        code: codeOf(row.vehicleId, row.vehicleCode),
+        // A registry car the registry no longer serves (soft-deleted since it checked in): its file
+        // and its code lead nowhere, so the web links the open list instead of the car.
+        deleted: row.vehicleId !== null && (car === undefined || car.isDeleted),
+        typeName: typeId == null ? null : (makes.get(String(typeId)) ?? null),
+        inDate: ymdOf(row.inDate),
+        // «منذ N يومًا» — Cairo today minus the check-in day; no ceiling (owner decision 4-3).
+        days: daysBetweenYmd(ymdOf(row.inDate), input.today),
+        workshop: nameOf(row.workshopId),
+        workType: nameOf(row.workTypeId),
+      };
+    });
+    const oldest = longest[0];
     return {
       open: facts.count,
       openActive,
       openOutOfService,
       oldest:
-        oldest === null
+        oldest === undefined
           ? null
           : {
               vehicleId: oldest.vehicleId,
-              code:
-                (oldest.vehicleId === null ? undefined : cars.get(oldest.vehicleId)?.code) ??
-                oldest.vehicleCode ??
-                '—',
-              inDate: ymdOf(oldest.inDate),
-              // «منذ N أيام» — Cairo today minus the check-in day; no ceiling (owner decision 4-3).
-              days: daysBetweenYmd(ymdOf(oldest.inDate), input.today),
+              code: oldest.code,
+              inDate: oldest.inDate,
+              days: oldest.days,
+              deleted: oldest.deleted,
             },
+      longest,
     };
   }
 
@@ -702,58 +786,85 @@ class FleetMaintenanceService {
   }
 
   /**
-   * T6.3/T6.4 and tab 9, R-18 — the visits the list's filter matches (with `from`/`to`: those that
-   * CHECKED IN in the period), in one `$facet`: the state each is in now («حتى الآن», R-22), per
-   * work type, per workshop and the most-visited cars (R-17: visits desc, latest check-in desc,
-   * code asc; a car deleted from the registry is not ranked). Every bar sums to `count`. Visits
-   * carry no money (R-26), so none is computed.
+   * «الصيانة والورش», the period band — the visits the list's filter matches. The dashboard asks it
+   * by EXIT day (`outFrom`/`outTo`: the visits that LEFT the workshop in the range; never
+   * `from`/`to`), so `/fleet/maintenance?outFrom&outTo&<set>` lists exactly these rows. ONE
+   * `$facet` (R-18): the count, the mean whole-day stay check-in → check-out (the same day = 0, one
+   * decimal; `null` with no exit), per work type and per workshop (each list sums to `count`), and
+   * the cars that left most often (R-17: exits desc, latest check-in desc, code asc). Two kinds of
+   * row are not ranked, each for its own reason: a car deleted from the registry — its code opens
+   * an empty register (the list resolves live codes only) — and, BY CHOICE, an old-book visit with
+   * no registry car: the ranking names registry cars (their file, their make), though such a row's
+   * book code would open its visits in the company view. Both stay in `count` and the bars, the
+   * old-book ones also in `unregistered` (a told change from the old tab, which ranked book codes).
+   * Visits carry no money (R-26), so none is computed. `ix_out_date` serves the range.
    *
-   * `unregistered` — the visits with no registry car — is reported only when no vehicle clause
+   * `unregistered` — the exits with no registry car — is reported only when no vehicle clause
    * applies; with one, they are already outside the count (R-13).
    */
-  async visitBreakdown(query: MaintenanceFilterQuery): Promise<FleetDashboardPeriodVisitsDto> {
+  async exitBreakdown(query: MaintenanceFilterQuery): Promise<FleetDashboardPeriodExitsDto> {
     const { filter, narrowed } = await this.scopedFilter(query);
     const facts = await fleetMaintenanceRepository.breakdown(filter);
-    const [{ codeOf, deleted }, names] = await Promise.all([
-      this.carNamer(
-        facts.byVehicle.flatMap((row) => (row.vehicleId === null ? [] : [row.vehicleId])),
-      ),
+    const vehicleIds = facts.byVehicle.map((row) => row.vehicleId);
+    const [{ codeOf, deleted, typeIdOf }, names, makes] = await Promise.all([
+      this.carNamer(vehicleIds),
       fleetCatalogItemRepository.namesByIds([
-        ...new Set([...facts.byWorkType, ...facts.byWorkshop].map((row) => row.id)),
+        ...new Set([
+          ...[...facts.byWorkType, ...facts.byWorkshop].map((row) => row.id),
+          ...facts.byVehicle.flatMap((row) =>
+            row.lastWorkTypeId === null ? [] : [row.lastWorkTypeId],
+          ),
+        ]),
       ]),
+      this.makeNames(vehicleIds.length > 0),
     ]);
     const named = (rows: readonly { id: string; count: number }[]) =>
       rows
         .map((row) => ({ id: row.id, name: names.get(row.id) ?? null, count: row.count }))
         .sort(byCountThenName);
-    // A car since DELETED from the registry is not ranked: its row would open the register on its
-    // code, which the register resolves through the live registry only — an empty list (§8.11).
-    // Its visits are still in `count` and in every bar.
     const topVehicles = facts.byVehicle
       .filter((row) => !deleted(row.vehicleId))
-      .map((row) => ({
-        vehicleId: row.vehicleId,
-        code: codeOf(row.vehicleId, row.vehicleCode),
-        visits: row.visits,
-        lastInDate: ymdOf(row.lastInDate),
-      }))
+      .map((row) => {
+        const typeId = typeIdOf(row.vehicleId);
+        return {
+          vehicleId: row.vehicleId,
+          code: codeOf(row.vehicleId, null),
+          typeName: typeId === null ? null : (makes.get(typeId) ?? null),
+          visits: row.visits,
+          lastInDate: ymdOf(row.lastInDate),
+          lastWorkType:
+            row.lastWorkTypeId === null ? null : (names.get(row.lastWorkTypeId) ?? null),
+        };
+      })
       .sort(
         (a, b) =>
           b.visits - a.visits ||
           b.lastInDate.localeCompare(a.lastInDate) ||
           compareFleetVehicleCodes(a.code, b.code) ||
-          (a.vehicleId ?? '').localeCompare(b.vehicleId ?? ''),
+          a.vehicleId.localeCompare(b.vehicleId),
       )
       .slice(0, FLEET_DASHBOARD_RANK_ROWS);
+    // Over the CLOSED visits the stays were summed on — every exit is one.
+    const closed = facts.count - facts.open;
     return {
       count: facts.count,
-      closed: facts.count - facts.open,
-      open: facts.open,
+      avgStayDays: closed === 0 ? null : Math.round((facts.staySum / closed) * 10) / 10,
       byWorkType: named(facts.byWorkType),
       byWorkshop: named(facts.byWorkshop),
       topVehicles,
       unregistered: narrowed ? null : facts.unregistered,
     };
+  }
+
+  /**
+   * T6.3/T6.4, R-18 — «أرقام الفترة»: the visits the list's filter matches (asked with `from`/`to`:
+   * those that CHECKED IN in the period) and the state each is in NOW («حتى الآن», R-22), in one
+   * `$group`. `/fleet/maintenance?from&to[&state=…]&<set>` lists exactly these rows.
+   */
+  async visitStates(query: MaintenanceFilterQuery): Promise<FleetDashboardPeriodVisitsDto> {
+    const { filter } = await this.scopedFilter(query);
+    const { count, open } = await fleetMaintenanceRepository.stateCounts(filter);
+    return { count, closed: count - open, open };
   }
 
   async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {
@@ -779,13 +890,14 @@ class FleetMaintenanceService {
       sorts,
       sortDerived,
     });
-    // The page's cars, asked their codes and their operations at once.
+    // The page's cars, asked their codes, their operations and their branches at once.
     const onPage = vehicleIdsOf(page.items);
-    const [codes, operations] = await Promise.all([
+    const [codes, operations, branches] = await Promise.all([
       fleetVehicleRepository.codesByIds(onPage),
       fleetVehicleRepository.operationIdsByIds(onPage),
+      fleetVehicleRepository.branchIdsByIds(onPage),
     ]);
-    return { ...page, codes, operations };
+    return { ...page, codes, operations, branches };
   }
 }
 

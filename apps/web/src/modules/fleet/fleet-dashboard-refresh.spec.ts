@@ -29,10 +29,12 @@ import {
 } from './lib/fleet-dashboard-url';
 import { RefreshTools } from './components/fleet-dashboard/dash-shell';
 import { fleetDashboardKeys, invalidateAtCairoMidnight } from './api/fleet-dashboard-queries';
+import { vehicleContractListKey, vehicleContractSummaryKey } from './api/vehicle-contract-queries';
 import { createRealtimeInvalidator } from '../../platform/realtime/invalidator';
 import {
   THROTTLED_KEY_PREFIXES,
   isStaleOnlyKey,
+  keysForTopic,
 } from '../../platform/realtime/invalidation-registry';
 import { ar } from './fleet-dashboard-fixtures';
 
@@ -213,10 +215,22 @@ describe('the address bar is the filter state (D14)', () => {
   });
 
   it('falls back to the first visible tab for a hidden or an unknown one', () => {
-    expect(readTab('km', ['alerts', 'now', 'km'])).toBe('km');
-    expect(readTab('km', ['alerts', 'now'])).toBe('alerts');
-    expect(readTab('nonsense', ['now', 'licences'])).toBe('now');
+    expect(readTab('km', ['overview', 'today', 'km'])).toBe('km');
+    expect(readTab('km', ['overview', 'today'])).toBe('overview');
+    expect(readTab('nonsense', ['today', 'licences'])).toBe('today');
     expect(readTab(null, ['distribution'])).toBe('distribution');
+    // Nothing visible (a reader whose reads are on their way): the page's first tab.
+    expect(readTab(null, [])).toBe('overview');
+  });
+
+  it('opens an old link to a retired tab on the tab that took its content (plan D1)', () => {
+    expect(readTab('alerts', ['overview', 'today', 'km'])).toBe('overview');
+    expect(readTab('now', ['overview', 'today', 'km'])).toBe('today');
+    // The new tab hidden from this reader: the first visible one, as for any hidden tab.
+    expect(readTab('now', ['overview', 'summaries'])).toBe('overview');
+    expect(readTab('alerts', ['summaries'])).toBe('summaries');
+    // A key that merely looks like an object's own is no legacy tab.
+    expect(readTab('constructor', ['today'])).toBe('today');
   });
 });
 
@@ -251,12 +265,62 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
   it('the page refetches R1 only for a reader of R1, joining a read already in flight', () => {
     const page = source('pages/FleetDashboardPage.tsx');
     expect(page).toContain('if (reads.now) void nowQ.refetch({ cancelRefetch: false });');
+    // On the overview and «توزيع السيارات» «تحديث» also refreshes the month read — only when it
+    // is asked at all.
+    expect(page).toContain('if (month.enabled) void monthQ.refetch({ cancelRefetch: false });');
+    expect(page).toContain('enabled: monthEnabled,');
     expect(page).toContain('if (reads.period) void periodQ.refetch({ cancelRefetch: false });');
     // The period tabs' button spins and holds like the «الآن» tabs' one.
     expect(page).toContain('refreshing={periodQ.isFetching}');
     expect(source('components/fleet-dashboard/period-tabs.tsx')).toContain(
       'refreshing={props.refreshing ?? false}',
     );
+  });
+
+  it('«توزيع السيارات» asks the month read only for a reader of its km, and «تحديث» joins it to R1', () => {
+    const flat = source('pages/FleetDashboardPage.tsx').replace(/\s+/gu, ' ');
+    expect(flat).toContain(
+      "const monthEnabled = reads.period && (active === 'overview' || (active === 'distribution' && sectionPermitted('km', can)));",
+    );
+    expect(flat).toContain("useFleetDashboardPeriod(MONTH_QUERY, 'live', monthEnabled)");
+    // R1 + the month read on one button; the heading says how old the OLDER of the two is.
+    expect(flat).toContain('refreshing={nowQ.isFetching || (month.enabled && monthQ.isFetching)}');
+    expect(flat).toContain('Math.min(ownUpdatedAt, monthQ.dataUpdatedAt)');
+    // The tab adds its supply summaries to both, and refetches them with the page's «تحديث».
+    const tab = source('components/fleet-dashboard/tab-distribution.tsx');
+    expect(tab).toContain('cancelRefetch: false');
+  });
+
+  it('the five mixed panels refresh R1 and R2 together — each only for its reader — and show the older age', () => {
+    const flat = source('pages/FleetDashboardPage.tsx').replace(/\s+/gu, ' ');
+    // «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية
+    // والتسويات» and «الوقود والمصروفات» go through ONE branch.
+    expect(flat).toContain(
+      'const MIXED_PANELS = { maintenance: MaintenanceTab, km: KmTab, accidents: AccidentsTab, violations: ViolationsTab, fuel: FuelTab, }',
+    );
+    // R2 only when this tab draws its period part (a reader of R2 for another tab sees no part
+    // here): any one of its sections — «الوقود والمصروفات» draws it from the receipts OR the
+    // dealership.
+    expect(flat).toContain(
+      'const periodDrawn = reads.period && MIXED_PERIOD_SECTIONS[active].some((section) => sectionPermitted(section, can));',
+    );
+    expect(flat).toContain(
+      "const MIXED_PERIOD_SECTIONS = { maintenance: ['exits'], km: ['km'], accidents: ['accidents'], violations: ['violations'], fuel: ['opex', 'dealership'], }",
+    );
+    expect(flat).toContain(
+      'const refreshBoth = (): void => { if (reads.now) void nowQ.refetch({ cancelRefetch: false }); if (periodDrawn) refreshPeriod(); };',
+    );
+    expect(flat).toContain('onRefresh={refreshBoth}');
+    expect(flat).toContain(
+      'refreshing={(reads.now && nowQ.isFetching) || (periodDrawn && periodQ.isFetching)}',
+    );
+    expect(flat).toContain(
+      '...(reads.now && nowQ.dataUpdatedAt > 0 ? [nowQ.dataUpdatedAt] : []), ...(periodDrawn && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),',
+    );
+    expect(flat).toContain('updatedAt={stamps.length === 0 ? 0 : Math.min(...stamps)}');
+    // Each band retries its own read: «الآن» R1, the period band R2.
+    expect(flat).toContain('onRetry={refreshNow}');
+    expect(flat).toContain('onRetry: refreshPeriod,');
   });
 
   it('midnight moves the live period reads too, not only R1 (a past range is left alone)', () => {
@@ -295,6 +359,31 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     expect(moved(keys.lastMonthByType)).toBe(true);
     // A range that ended before today is the same range tomorrow.
     expect(moved(keys.oldRange)).toBe(false);
+  });
+
+  it('the supply contracts’ summaries «توزيع السيارات» reads move with R1’s day — their alarms count days', () => {
+    // `{ summary: true }` is a partial key: it matches the three summaries, never the screen's list.
+    const qc = new QueryClient();
+    const year = { from: '2026-01-01', to: '2026-12-31' };
+    const keys = {
+      all: vehicleContractSummaryKey(year),
+      red: vehicleContractSummaryKey({ ...year, alarm: ['red'] }),
+      yellow: vehicleContractSummaryKey({ ...year, alarm: ['yellow'] }),
+      list: vehicleContractListKey({ ...year, page: 1 }),
+    };
+    for (const key of Object.values(keys)) qc.setQueryData(key, { count: 1 });
+    void qc.invalidateQueries({ queryKey: vehicleContractSummaryKey({}) });
+    const moved = (key: readonly unknown[]): boolean | undefined =>
+      qc.getQueryState(key)?.isInvalidated;
+    expect(moved(keys.all)).toBe(true);
+    expect(moved(keys.red)).toBe(true);
+    expect(moved(keys.yellow)).toBe(true);
+    expect(moved(keys.list)).toBe(false);
+    // …when R1's `today` turns over (midnight moves R1), not on the first answer.
+    const flat = source('components/fleet-dashboard/tab-distribution.tsx').replace(/\s+/gu, ' ');
+    expect(flat).toContain(
+      'if (permitted && seenDay.current !== null && seenDay.current !== today) { void qc.invalidateQueries({ queryKey: vehicleContractSummaryKey({}) }); } seenDay.current = today; }, [today, permitted, qc]);',
+    );
   });
 
   it('the timer runs from R1, or from R2 for a reader who holds only the period tabs', () => {
@@ -354,6 +443,40 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     reads[1]?.answer(2);
     await settle();
     expect(qc.getQueryData(fleetDashboardKeys.now)).toBe(2);
+    invalidator.cancel();
+    stop();
+  });
+
+  it('a fine’s signal re-reads «الشهر الماضي» on screen (its fines are «قائمة»/«محصَّلة» as of now); an accident’s does not', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let reads = 0;
+    const observer = new QueryObserver(qc, {
+      queryKey: fleetDashboardKeys.period('past', { preset: 'lastMonth' }),
+      queryFn: () => {
+        reads += 1;
+        return Promise.resolve(reads);
+      },
+    });
+    const stop = observer.subscribe(() => undefined);
+    const settle = async (ms = 0): Promise<void> => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    };
+    await settle();
+    expect(reads).toBe(1);
+    const invalidator = createRealtimeInvalidator(qc, {
+      isHidden: () => false,
+      throttled: THROTTLED_KEY_PREFIXES,
+      isStaleOnly: isStaleOnlyKey,
+      throttleMs: 20,
+    });
+    // An accident (or an odometer reading) of a closed range is history: nothing moves.
+    invalidator.invalidate(keysForTopic('fleet.accident'));
+    await settle();
+    expect(reads).toBe(1);
+    // A tick on a fine of last month: the period read is re-read at once (through the throttle).
+    invalidator.invalidate(keysForTopic('fleet.violation'));
+    await settle();
+    expect(reads).toBe(2);
     invalidator.cancel();
     stop();
   });

@@ -14,10 +14,15 @@
 // Every dialog is thin. The SERVER owns the rules (more than is on hand, an inactive item, a
 // leaver, an asset the reader cannot see or a disposed one — each refused), so these shape a
 // payload and surface the API's verdict; the register only OFFERS what an item's figures allow.
+//
+// «تحويل إلى فرع» (2026-11-11) — «لو مثلاً فى 10 ماوس .. فممكن أنقل 5 لفرع تاني»: one or more items
+// of one store, each with how many, to another branch's store, at once and with no paper. Its rules
+// are `lib/consumable-transfer.ts`.
 import { useEffect, useState } from 'react';
 import {
   IT_CONSUMABLE_ISSUE_MAX_LINES,
   IT_CONSUMABLE_ISSUE_REASONS,
+  IT_CONSUMABLE_TRANSFER_MAX_LINES,
   type CreateItConsumable,
   type IssueItConsumables,
   type ItConsumableDto,
@@ -33,18 +38,29 @@ import { DataTable } from '../../../shared/ui/DataTable';
 import { Checkbox, Field, Input, Select, Textarea } from '../../../shared/ui/form';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { PlusIcon, PrinterIcon, TrashIcon } from '../../../shared/ui/icons';
+import { PlusIcon, PrinterIcon, SwapIcon, TrashIcon } from '../../../shared/ui/icons';
+import { errorMessage } from '../../../shared/lib/errors';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import {
   useCreateItConsumable,
   useIssueItConsumables,
   useItBranchOptions,
   useItConsumableMovements,
+  useItMoveTargets,
   useReceiveItConsumable,
   useReturnItConsumable,
   useScrapItConsumable,
+  useTransferItConsumables,
   useUpdateItConsumable,
 } from '../api/it-queries';
+import {
+  consumableTransferCheck,
+  consumableTransferRequest,
+  consumablesCreatedWords,
+  consumablesTransferredWords,
+  type ConsumableTransferDraftLine,
+} from '../lib/consumable-transfer';
+import { branchMoveTargets } from '../lib/branch-move-targets';
 import { AssetPicker } from './AssetPicker';
 import { ConsumablePicker } from './ConsumablePicker';
 import { useConsumableMemoPrinter } from './ConsumableMemo';
@@ -956,6 +972,243 @@ export const IssueConsumablesDialog = ({
             {t('it.consumables.replacementNote')}
           </p>
         )}
+      </section>
+
+      <Field label={t('it.assets.fields.notes')}>
+        <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </Field>
+    </Shell>
+  );
+};
+
+// ── Transfer: to another branch's store («تحويل إلى فرع») ───────────────────
+//
+// The items ticked on the register (or the one row's), all of ONE store — the register sends no
+// other set. Each row asks how many, from one to what the store holds, and starts EMPTY: «how
+// many» is answered, never assumed. An item with nothing on hand is listed and left out. The other
+// store's item of the same name receives it, and is made there when it has none — the toast says
+// which, from the server's answer. The branches offered are the ones the SERVER says the caller's
+// `itAsset.assign` reaches (`GET /it/assets/move-targets` — the consumables ride the assets'
+// grants, §2.11); it answers 403 for any other.
+
+export const TransferConsumablesDialog = ({
+  open,
+  onClose,
+  items,
+  onTransferred,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** The items as they were when the dialog opened, in the register's order. */
+  items: readonly ItConsumableDto[];
+  /** After the transfer is recorded — the register clears its selection. */
+  onTransferred?: () => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const branches = useItBranchOptions();
+  const reach = useItMoveTargets(open);
+  const transfer = useTransferItConsumables();
+  const [toBranchId, setToBranchId] = useState('');
+  const [at, setAt] = useState('');
+  const [notes, setNotes] = useState('');
+  const [lines, setLines] = useState<ConsumableTransferDraftLine<ItConsumableDto>[]>(() =>
+    items.map((item) => ({ item, qty: '' })),
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setToBranchId('');
+      setAt(nowLocal());
+      setNotes('');
+      setLines(items.map((item) => ({ item, qty: '' })));
+      setError(null);
+    }
+  }, [open, items]);
+
+  const fromBranchId = lines[0]?.item.branchId ?? '';
+  // Never back into the store the items leave, and only where the server says the custody grant
+  // reaches. Null while either list is on its way: the picker waits instead of saying there is
+  // nowhere to go.
+  const targets = branchMoveTargets(branches.data, reach.data?.branchIds, fromBranchId);
+  const noTarget = targets !== null && targets.length === 0;
+  const unread = targets === null ? (reach.error ?? branches.error) : null;
+  // A choice no longer offered is no choice: nothing is sent to it.
+  const chosen = targets?.some((branch) => branch.id === toBranchId) === true ? toBranchId : '';
+  const check = consumableTransferCheck(lines, chosen);
+  const request = consumableTransferRequest(check, chosen, at, notes);
+  const nameOf = (branchId: string): string | undefined => {
+    const branch = (branches.data ?? []).find((b) => b.id === branchId);
+    return branch === undefined ? undefined : localized(branch.name, locale);
+  };
+  const fromName = nameOf(check.fromBranchId);
+
+  const setQty = (id: string, qty: string): void =>
+    setLines((prev) => prev.map((line) => (line.item.id === id ? { ...line, qty } : line)));
+  const removeLine = (id: string): void =>
+    setLines((prev) => (prev.length === 1 ? prev : prev.filter((line) => line.item.id !== id)));
+
+  const submit = async (): Promise<void> => {
+    if (request === null) return;
+    setError(null);
+    try {
+      const result = await transfer.mutateAsync(request);
+      const branch = nameOf(result.toBranchId) ?? t('it.consumables.transfer.theBranch');
+      toast.success(
+        consumablesTransferredWords(t, locale, result.lines.length, branch),
+        consumablesCreatedWords(t, locale, result, branch) ?? undefined,
+      );
+      onTransferred?.();
+      onClose();
+    } catch (err) {
+      // Toasted once by the client's global handler; said here too, beside the rows it is about.
+      setError(message(err, t('common.error')));
+    }
+  };
+
+  return (
+    <Shell
+      open={open}
+      onClose={onClose}
+      size="lg"
+      title={t('it.consumables.transfer.title')}
+      description={
+        fromName === undefined
+          ? t('it.consumables.transfer.hint')
+          : t('it.consumables.transfer.fromStore', { branch: fromName })
+      }
+      error={error}
+      busy={transfer.isPending}
+      canSubmit={request !== null}
+      submitLabel={t('it.consumables.transfer.submit')}
+      submitIcon={<SwapIcon className="h-4 w-4" />}
+      onSubmit={() => void submit()}
+    >
+      {fromName !== undefined && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {t('it.consumables.transfer.hint')}
+        </p>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label={t('it.consumables.transfer.toBranchLabel')}
+          required
+          error={
+            noTarget
+              ? t('it.consumables.transfer.noTarget')
+              : unread !== null
+                ? errorMessage(unread, locale)
+                : check.sameBranch
+                  ? t('it.consumables.transfer.sameBranch')
+                  : undefined
+          }
+        >
+          <Select
+            value={chosen}
+            disabled={targets === null || noTarget}
+            onChange={(e) => setToBranchId(e.target.value)}
+          >
+            <option value="">
+              {targets === null && unread === null
+                ? t('common.loading')
+                : t('it.consumables.chooseBranch')}
+            </option>
+            {(targets ?? []).map((branch) => (
+              <option key={branch.id} value={branch.id}>
+                {localized(branch.name, locale)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={t('it.consumables.fields.at')}>
+          <Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
+        </Field>
+      </div>
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            {t('it.consumables.transfer.lines')}
+          </h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t('it.consumables.transfer.linesHint', {
+              max: formatNumber(IT_CONSUMABLE_TRANSFER_MAX_LINES, locale),
+            })}
+          </p>
+        </div>
+        <ol className="space-y-2">
+          {check.lines.map((line) => {
+            const draft = lines.find((d) => d.item.id === line.item.id);
+            const { item } = line;
+            const problem =
+              line.problem === 'moreThanOnHand'
+                ? t('it.consumables.errors.moreThanOnHand', {
+                    qty: formatNumber(item.onHandQty, locale),
+                  })
+                : line.problem === 'wholeNumber'
+                  ? t('it.consumables.errors.wholeNumber')
+                  : undefined;
+            return (
+              <li
+                key={item.id}
+                data-transfer-line={item.id}
+                className="flex flex-wrap items-start gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                    {item.name}{' '}
+                    <bdi className="font-mono text-xs text-slate-500" dir="ltr">
+                      {item.code}
+                    </bdi>
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {line.problem === 'nothingOnHand'
+                      ? t('it.consumables.transfer.nothingOnHand')
+                      : t('it.consumables.onHandNow', {
+                          qty: formatNumber(item.onHandQty, locale),
+                          unit: item.unit,
+                        })}
+                  </p>
+                </div>
+                {line.problem !== 'nothingOnHand' && (
+                  <div className="w-36">
+                    <Field
+                      label={t('it.consumables.fields.qty')}
+                      required
+                      hint={item.unit}
+                      error={problem}
+                    >
+                      <Input
+                        type="number"
+                        min="1"
+                        max={String(item.onHandQty)}
+                        dir="ltr"
+                        value={draft?.qty ?? ''}
+                        onChange={(e) => setQty(item.id, e.target.value)}
+                        error={problem !== undefined}
+                      />
+                    </Field>
+                  </div>
+                )}
+                {lines.length > 1 && (
+                  <button
+                    type="button"
+                    className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-red-600 dark:hover:bg-slate-800"
+                    aria-label={`${t('it.consumables.transfer.removeLine')} — ${item.name}`}
+                    title={t('it.consumables.transfer.removeLine')}
+                    onClick={() => removeLine(item.id)}
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+          {t('it.consumables.transfer.sameNameNote')}
+        </p>
       </section>
 
       <Field label={t('it.assets.fields.notes')}>

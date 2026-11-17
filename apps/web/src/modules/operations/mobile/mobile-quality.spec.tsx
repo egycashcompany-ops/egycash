@@ -32,6 +32,17 @@ const MOBILE = fileURLToPath(new URL('.', import.meta.url));
 const SOURCES = readdirSync(MOBILE).filter((f) => /\.tsx?$/.test(f) && !f.includes('.spec.'));
 const sourceOf = (file: string): string => readFileSync(`${MOBILE}${file}`, 'utf8');
 /**
+ * The phone frame. It moved from `CaptainShell.tsx` to the shared `PhoneShell` when IT's vehicle
+ * check became the second phone screen (it-vehicle-checks-design.md §6.3); `CaptainShell` is now
+ * a thin wrapper, so the frame's rules read the frame itself.
+ */
+const SHELL = fileURLToPath(new URL('../../../shared/ui/PhoneShell.tsx', import.meta.url));
+const shellSource = (): string => readFileSync(SHELL, 'utf8');
+const shellCode = (): string =>
+  shellSource()
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+/**
  * The same file with comments removed. Several rules below are about what the code DOES, and these
  * files explain at length what they deliberately do not do — `CaptainShell` says in prose that it
  * is "deliberately NOT AppShell" and uses `min-h-dvh`, "not `min-h-screen`". Matching that prose
@@ -156,14 +167,14 @@ describe('mobile-first, not a narrowed desktop', () => {
   });
 
   it('constrains the page by max-width, so a wide phone or a tablet does not stretch a line', () => {
-    expect(sourceOf('CaptainShell.tsx')).toContain('max-w-2xl');
+    expect(shellSource()).toContain('max-w-2xl');
   });
 
   it('measures the viewport with dvh, not vh', () => {
     // `vh` is the tallest the viewport ever gets; on a phone the browser chrome then covers the
     // bottom of the page, which is exactly where the action button is.
-    expect(codeOf('CaptainShell.tsx')).toContain('min-h-dvh');
-    expect(codeOf('CaptainShell.tsx')).not.toContain('min-h-screen');
+    expect(shellCode()).toContain('min-h-dvh');
+    expect(shellCode()).not.toContain('min-h-screen');
   });
 
   it('does not mount the desktop console shell', () => {
@@ -189,7 +200,7 @@ describe('accessibility and RTL', () => {
 
   it('gives every icon-only control a label', () => {
     // The back arrow is the one control on this surface with no visible text.
-    expect(sourceOf('CaptainShell.tsx')).toContain('aria-label=');
+    expect(shellSource()).toContain('aria-label=');
   });
 
   it('hides decorative glyphs from a screen reader rather than reading them out', () => {

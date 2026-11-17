@@ -19,10 +19,12 @@ import { Schema, model, type Types } from 'mongoose';
 import {
   RECRUITMENT_STAGE_KINDS,
   RECRUITMENT_TIMELINE_TYPES,
+  TIMELINE_ACTOR_KINDS,
   TIMELINE_CORRELATION_TYPES,
   type LocalizedString,
   type RecruitmentStageKind,
   type RecruitmentTimelineType,
+  type TimelineActorKind,
   type TimelineCorrelationType,
 } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
@@ -49,6 +51,15 @@ export interface RecruitmentTimelineDoc extends BaseDocFields {
   actorUserId: Types.ObjectId | null;
   /** Denormalized so history survives user renames and deactivation. */
   actorName: string;
+  /**
+   * Staff, the system, or the candidate themselves (through the applicant portal).
+   *
+   * Stored rather than derived from `actorUserId`, because the candidate HAS a user — their portal
+   * account — and a reader cannot tell it from a recruiter's by looking at the id. Entries written
+   * before this field existed read correctly without it: the mapper falls back to `system` when
+   * there is no actor and `user` when there is, which is what every one of them was.
+   */
+  actorKind?: TimelineActorKind;
   type: RecruitmentTimelineType;
   correlationType: TimelineCorrelationType;
   correlationId: string;
@@ -104,6 +115,7 @@ const timelineSchema = new Schema<RecruitmentTimelineDoc>(
     // `required`: Mongoose rejects '' for a required String, which would make its own default
     // unsavable — the bug that silently emptied this collection.
     actorName: { type: String, default: '' },
+    actorKind: { type: String, enum: TIMELINE_ACTOR_KINDS, default: undefined },
     type: { type: String, enum: RECRUITMENT_TIMELINE_TYPES, required: true },
     correlationType: { type: String, enum: TIMELINE_CORRELATION_TYPES, required: true },
     correlationId: { type: String, required: true },

@@ -1,6 +1,7 @@
 // The manifest guards: the module registers cleanly, and its surfaces are exactly what the
 // shipped slices claim. The pin-the-numbers block (pages.spec precedent) moves with every slice:
-// 14 permissions, 5 pages, 11 routes, 10 collections. B6 adds `/operations/areas` and
+// 15 permissions (Round 10 added `operationsVault.cancelReceipt`), 5 pages, 13 route prefixes,
+// 12 collections (Round 20 added `/operations/shift-types` and `operations_shift_types`). B6 adds `/operations/areas` and
 // `operations_areas` — the legacy /data_edit city list — under the EXISTING catalog grants, and
 // the vault roll-up joins the EXISTING reports prefix, so no permission or page moves.
 import { describe, expect, it } from 'vitest';
@@ -32,6 +33,7 @@ describe('operations module manifest (B6)', () => {
       'operationsShipment.delete',
       'operationsShipment.edit',
       'operationsShipment.view',
+      'operationsVault.cancelReceipt',
       'operationsVault.dispatch',
       'operationsVault.receive',
       'operationsVault.view',
@@ -54,6 +56,7 @@ describe('operations module manifest (B6)', () => {
       '/operations/mobile',
       '/operations/reports',
       '/operations/secured',
+      '/operations/shift-types',
       '/operations/shipments',
       '/operations/standing-crew',
     ]);
@@ -65,6 +68,7 @@ describe('operations module manifest (B6)', () => {
       'operations_crew_requirements',
       'operations_currencies',
       'operations_days',
+      'operations_shift_types',
       'operations_shipment_assignments',
       'operations_shipments',
       'operations_standing_crews',

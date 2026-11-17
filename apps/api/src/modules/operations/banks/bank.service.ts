@@ -11,6 +11,7 @@ import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsBankRepository } from './bank.repository';
 import { type OperationsBankDoc } from './bank.model';
+import { containsText } from '../catalog-search';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -43,9 +44,9 @@ class OperationsBankService {
     if (query.isActive !== undefined) filter.isActive = query.isActive;
     if (query.search !== undefined && query.search !== '') {
       filter.$or = [
-        { opsName: { $regex: query.search, $options: 'i' } },
-        { 'name.ar': { $regex: query.search, $options: 'i' } },
-        { 'name.en': { $regex: query.search, $options: 'i' } },
+        { opsName: containsText(query.search) },
+        { 'name.ar': containsText(query.search) },
+        { 'name.en': containsText(query.search) },
       ];
     }
     return operationsBankRepository.list({

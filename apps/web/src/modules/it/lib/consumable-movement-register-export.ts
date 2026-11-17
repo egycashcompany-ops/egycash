@@ -10,6 +10,10 @@
 // THE QUANTITY IS SIGNED BY ITS KIND, and is a number in the sheet: a receipt or a return adds to
 // the store, an issue or a scrap takes from it, so a column of one item's movements sums to what
 // the store gained over the period. On paper it is written in the reader's digits.
+//
+// «ممكن أنقل 5 لفرع تاني» (2026-11-11): a transfer between two stores is two movements sharing one
+// `transferId` — out of one store (`transferredOut`, −) and into the other (`transferredIn`, +) —
+// and each names the other side: the branch it went to or came from, and that store's item.
 import {
   IT_CONSUMABLE_ISSUE_REASONS,
   formatConsumableMemoNumber,
@@ -26,28 +30,75 @@ import { filterLine, itRegisterReport, namedFilter, type Translate } from './reg
 
 // ── What a movement says, read BY KIND — the screens' columns read these too ──
 
-/** Which way a kind moves the store: a receipt and a return add to it, an issue and a scrap take. */
+/**
+ * Which way a kind moves the store: a receipt, a return and stock arriving from another branch add
+ * to it; an issue, a scrap and stock sent to another branch take from it.
+ */
 export const MOVEMENT_SIGN: Readonly<Record<ItConsumableMovementKind, 1 | -1>> = {
   received: 1,
   issued: -1,
   scrapped: -1,
   returned: 1,
+  transferredOut: -1,
+  transferredIn: 1,
 };
 
 const isIssueReason = (value: string | null): value is ItConsumableIssueReason =>
   (IT_CONSUMABLE_ISSUE_REASONS as readonly string[]).includes(value ?? '');
 
+/** The other side of a transfer: where it went or came from, and that store's item when known. */
+export interface MovementCounterpart {
+  /** «إلى فرع المهندسين» / «من فرع أكتوبر». */
+  place: string;
+  /** The other store's item code («CON-00012») — null when the server could not name it. */
+  code: string | null;
+}
+
 /**
- * A movement's reason in words: an issue's «جديد» / «بدل تالف», a scrap's own text, nothing for a
- * receipt or a return (their notes say what there is to say).
+ * A transfer's other side in words; null for every other kind. A branch the options cannot name
+ * (closed since) is «another branch», never an id.
  */
-export const movementReason = (t: Translate, movement: ItConsumableMovementDto): string | null => {
+export const movementCounterpart = (
+  t: Translate,
+  movement: ItConsumableMovementDto,
+  branchName: ReadonlyMap<string, string>,
+): MovementCounterpart | null => {
+  if (movement.kind !== 'transferredOut' && movement.kind !== 'transferredIn') return null;
+  const named =
+    movement.counterpartBranchId === null
+      ? undefined
+      : branchName.get(movement.counterpartBranchId);
+  const branch = named ?? t('it.consumables.transfer.otherBranch');
+  const place =
+    movement.kind === 'transferredOut'
+      ? t('it.consumables.transfer.toBranch', { branch })
+      : t('it.consumables.transfer.fromBranch', { branch });
+  const code = movement.counterpartConsumableCode?.trim() ?? '';
+  return { place, code: code === '' ? null : code };
+};
+
+/**
+ * A movement's reason in words: an issue's «جديد» / «بدل تالف», a scrap's own text, a transfer's
+ * other side («إلى فرع المهندسين (CON-00012)»), nothing for a receipt or a return (their notes say
+ * what there is to say).
+ */
+export const movementReason = (
+  t: Translate,
+  movement: ItConsumableMovementDto,
+  branchName: ReadonlyMap<string, string>,
+): string | null => {
   if (movement.kind === 'issued') {
     return isIssueReason(movement.reason) ? t(`it.consumables.reason.${movement.reason}`) : null;
   }
   if (movement.kind === 'scrapped') {
     const reason = movement.reason?.trim() ?? '';
     return reason === '' ? null : reason;
+  }
+  const counterpart = movementCounterpart(t, movement, branchName);
+  if (counterpart !== null) {
+    return counterpart.code === null
+      ? counterpart.place
+      : `${counterpart.place} (${counterpart.code})`;
   }
   return null;
 };
@@ -60,8 +111,9 @@ export const movementReason = (t: Translate, movement: ItConsumableMovementDto):
 export const movementReasonAndNotes = (
   t: Translate,
   movement: ItConsumableMovementDto,
+  branchName: ReadonlyMap<string, string>,
 ): string | null => {
-  const reason = movementReason(t, movement);
+  const reason = movementReason(t, movement, branchName);
   const notes = movement.notes?.trim() ?? '';
   if (notes === '') return reason;
   return reason === null ? notes : `${reason} — ${notes}`;
@@ -94,6 +146,8 @@ export interface ConsumableMovementRegisterContext {
   locale: Locale;
   /** Type id → its name, from the `consumableType` catalog the table reads. */
   typeName: ReadonlyMap<string, string>;
+  /** Branch id → its name: the other side a transfer names. */
+  branchName: ReadonlyMap<string, string>;
   /** User id → their name, for «بواسطة»; an id it cannot name is left blank, never guessed. */
   userName: ReadonlyMap<string, string>;
 }
@@ -121,7 +175,7 @@ export const consumableMovementRegisterHeader = (t: Translate): string[] => [
  */
 export const consumableMovementRegisterLine = (
   row: ItConsumableMovementDto,
-  { t, locale, typeName, userName }: ConsumableMovementRegisterContext,
+  { t, locale, typeName, branchName, userName }: ConsumableMovementRegisterContext,
   empty: string,
 ): XlsxCell[] => [
   formatDateTime(row.at, locale),
@@ -133,7 +187,7 @@ export const consumableMovementRegisterLine = (
   row.employeeId === null ? empty : (row.employeeName ?? row.employeeId),
   row.employeeCode ?? empty,
   movementAsset(row) ?? (row.assetId === null ? empty : t('it.custody.assetUnknown')),
-  movementReasonAndNotes(t, row) ?? empty,
+  movementReasonAndNotes(t, row, branchName) ?? empty,
   row.memoNumber === null ? empty : formatConsumableMemoNumber(row.memoNumber),
   row.memoId === null
     ? empty

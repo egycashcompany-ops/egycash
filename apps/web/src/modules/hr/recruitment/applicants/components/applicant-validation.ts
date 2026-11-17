@@ -149,23 +149,15 @@ export const validateField = (name: FieldName, raw: string): string | undefined 
 };
 
 /**
- * An address is all-or-nothing: the API only stores one when line 1, the city and the governorate
- * are all present, so a half-filled address would be silently dropped. Rather than lose the typing
- * quietly, the form asks for the rest of it.
+ * Nothing in an address is required — registering an applicant needs only the name, the phone
+ * and the National ID. Whatever part of the address was filled is kept as it is (the API stores a
+ * partial address); only a postal code, when typed, must be a valid one.
  */
 const addressErrors = (
   which: 'officialAddress' | 'currentAddress',
   a: AddressForm,
 ): FieldErrors => {
   const errors: FieldErrors = {};
-  const started = [a.line1, a.city, a.governorate, a.line2, a.postalCode].some(
-    (v) => v.trim() !== '',
-  );
-  if (started) {
-    for (const part of ['line1', 'city', 'governorate'] as const) {
-      if (a[part].trim() === '') errors[`${which}.${part}`] = required;
-    }
-  }
   const postal = validateField(`${which}.postalCode`, a.postalCode);
   if (postal !== undefined) errors[`${which}.postalCode`] = postal;
   return errors;

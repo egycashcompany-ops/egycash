@@ -39,6 +39,9 @@ const FRAME = new Set([
   'DateBox',
   // A removable chip («أنواع مختارة ×») for a narrowing the reader cannot name: a button, no list.
   'VehicleSetChip',
+  // «تعيين السيارات»'s seven counters on the computer's bar — «كود السيارة» and the counter chips,
+  // as approved («اعتمد» on D1): buttons, each one tap = a filter, no list to walk.
+  'DeskCounters',
 ]);
 
 const barFiles = (): string[] =>

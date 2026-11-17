@@ -438,18 +438,28 @@ class ItConsumableService {
 
   /**
    * The labels on ONE page of the ledger — four reads per page, never four per row: the items
-   * (their store is the movement's, already read under scope), the employees through the
-   * directory, the assets THROUGH the caller's scope (an asset from a branch they cannot see is not
-   * named), and the memos with their signed state (a memo that is gone is not listed, so the row
-   * offers none).
+   * (their store is the movement's, already read under scope — and a transfer's other store's item,
+   * read with them for its code: the row already names that store, and the code is what the other
+   * shelf calls the same thing), the employees through the directory, the assets THROUGH the
+   * caller's scope (an asset from a branch they cannot see is not named), and the memos with their
+   * signed state (a memo that is gone is not listed, so the row offers none).
    */
   async movementLabels(
     rows: readonly ItConsumableMovementDoc[],
     scope: ScopeSelector,
   ): Promise<ItConsumableMovementLabels> {
     const assetIds = [...new Set(rows.flatMap((row) => idOf(row.assetId) ?? []))];
+    const itemIds = [
+      ...new Set(
+        rows.flatMap((row) => {
+          const counterpart = idOf(row.counterpartConsumableId);
+          const own = String(row.consumableId);
+          return counterpart === null ? [own] : [own, counterpart];
+        }),
+      ),
+    ];
     const [items, employees, assets, memos] = await Promise.all([
-      itConsumableRepository.findByIdsSystem(rows.map((row) => String(row.consumableId))),
+      itConsumableRepository.findByIdsSystem(itemIds),
       employeeLabels(rows.map((row) => idOf(row.employeeId))),
       assetIds.length === 0 ? [] : itAssetRepository.findManyByIds(assetIds, scope),
       itConsumableMemoRepository.findByIdsSystem(rows.flatMap((row) => idOf(row.memoId) ?? [])),

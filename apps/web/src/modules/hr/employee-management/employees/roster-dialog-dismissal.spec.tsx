@@ -30,7 +30,10 @@ describe('the roster import dialog survives a click that missed', () => {
   });
 
   it('opts out on the dialog that holds the upload, not somewhere incidental', () => {
-    const dialogTag = ROSTER.slice(ROSTER.indexOf('<Dialog'), ROSTER.indexOf('>', ROSTER.indexOf('title={t(')));
+    const dialogTag = ROSTER.slice(
+      ROSTER.indexOf('<Dialog'),
+      ROSTER.indexOf('>', ROSTER.indexOf('title={t(')),
+    );
     expect(dialogTag).toContain('dismissOnOutsideClick={false}');
     expect(dialogTag).toContain("t('employees.roster.title')");
   });
@@ -40,12 +43,16 @@ describe('the roster import dialog survives a click that missed', () => {
    * a scrollbar — and a keyboard user needs a way out that does not depend on finding a button.
    */
   it('still closes on Escape, and still has an × that closes it', () => {
-    expect(DIALOG_UI).toContain("if (e.key === 'Escape') onClose()");
+    expect(DIALOG_UI).toMatch(
+      /if \(e\.key !== 'Escape' \|\| !onTop\(\)\) return;[\s\S]*?e\.preventDefault\(\);\s*onClose\(\);/u,
+    );
     expect(DIALOG_UI).toContain("aria-label={t('common.close')}");
   });
 
   it('the shared dialog gates the outside-click listener on the flag', () => {
-    expect(DIALOG_UI).toContain('useOnClickOutside(panelRef, onClose, open && dismissOnOutsideClick)');
+    expect(DIALOG_UI).toContain(
+      'useOnClickOutside(panelRef, closeIfOnTop, open && dismissOnOutsideClick)',
+    );
   });
 
   /**
@@ -102,7 +109,7 @@ describe('the roster import dialog survives a click that missed', () => {
   it('says something different while writing than while only reading', () => {
     expect(ROSTER).toContain("'employees.roster.closeWhileBusy.applying'");
     expect(ROSTER).toContain("'employees.roster.closeWhileBusy.reading'");
-    expect(ROSTER).toContain("(run.variables?.apply.length ?? 0) > 0");
+    expect(ROSTER).toContain('(run.variables?.apply.length ?? 0) > 0');
   });
 
   it('drops the question if the work finishes while it is on screen', () => {
@@ -115,5 +122,21 @@ describe('the roster import dialog survives a click that missed', () => {
    */
   it('leaves the default alone, so no other dialog changes', () => {
     expect(DIALOG_UI).toContain('dismissOnOutsideClick = true');
+  });
+});
+
+describe('a menu opened from inside a dialog does not close it', () => {
+  const PHOTO_PICK = readFileSync(join(HERE, '../../../../shared/ui/PhotoPick.tsx'), 'utf8');
+
+  it('the shared dialog treats a press in a floating layer as inside', () => {
+    expect(DIALOG_UI).toContain("target.closest('[data-floating-layer]') !== null) return;");
+  });
+
+  it('the photo menu (camera / device), drawn on the body, is marked as a floating layer', () => {
+    const menu = PHOTO_PICK.slice(
+      PHOTO_PICK.indexOf('createPortal('),
+      PHOTO_PICK.indexOf('role="menuitem"'),
+    );
+    expect(menu).toContain('data-floating-layer=""');
   });
 });

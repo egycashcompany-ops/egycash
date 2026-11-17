@@ -1,6 +1,7 @@
 # ADR-021: IT asset custody is an append-only event chain, not a status field
 
-**Status:** Accepted · **Date:** 2026-08-09
+**Status:** Accepted, amended · **Date:** 2026-08-09 · **Amended:** 2026-11-11 (a transfer's audit
+follows its commit)
 
 > The frozen IT design (§14, 2026-08-03) reserved this as "ADR-020". ADR-020 was taken by
 > [Shared file storage](ADR-020-shared-file-storage.md) on 2026-08-05 and numbers are never reused,
@@ -92,3 +93,36 @@ The design settles this (§2.3, §4.3, D3); IT-2 is where the choice becomes cod
 - ⚠️ `it_asset_events` grows without bound and is never purged. That is the point; it is small,
   bounded in practice by the number of physical movements, and indexed on `{ assetId, at }`.
 - ⚠️ Real MongoDB transactions require a replica set (ADR-005) — already a deployment requirement.
+
+## Amendment — 2026-11-11: a transfer writes its audit after its commit
+
+**Status:** Accepted · **Amends:** the "each in one transaction … + audit" clause of the Decision
+(FR-3), for `transfer` alone — and the move to another branch, which is one. The Decision text
+above stands as written.
+
+The owner asked to move assets to another branch, several at once and a held one with its custody
+(«ينتقل مع عهدته», «كذا حاجة مرة واحدة» —
+[IT design §17, 2026-11-11](../12-planning/it-module-design.md)). The move of a held asset IS the
+custody transfer to a new branch in the same hands, so it takes the transfer's own code path, not a
+copy of it: one body, `transferInSession`, runs inside a transaction its caller owns — custody's
+`transfer` for one asset in a transaction of its own, «نقل إلى فرع» (`POST /it/assets/move-branch`)
+for up to 100 assets in ONE transaction, all of them or none.
+
+- **`transfer` and the move record their audit rows after the commit**, then their
+  `it.asset.transferred` events (the platform event already followed the commit for every custody
+  action: subscribers react to facts, and one rolled back is not). A transfer to a new holder writes
+  its receipt's `create` row, then its `transfer` row; the move writes one `transfer` row per asset,
+  in stock or held, in the order the request named them.
+- **Why.** The audit service is not part of the transaction. With one body serving both the single
+  transfer and the batch move, a row written inside it for one asset would outlive a move the
+  database then refused for a later one — an asset refused, a version conflict — and a retried
+  transaction would write it twice. So the audit of a batch follows its single commit, and the
+  single transfer, sharing that body, follows its own.
+- **Unchanged.** Hand-over (`assign`), `return` and `dispose` still write their audit row inside
+  their transaction. The custody facts themselves — the assignment rows, the asset's
+  denormalization, the `transferred` history event — stay in the one transaction for every action,
+  the transfer and the move included: a partial custody write is still impossible.
+- ⚠️ A process that stops between the commit and the audit write leaves a transfer with its history
+  event and without its audit row. Accepted: `it_asset_events` is the business record and is written
+  in the transaction; the audit row is the security record this ADR already keeps apart from it, and
+  a missing row is better than one recording a transfer that never happened.

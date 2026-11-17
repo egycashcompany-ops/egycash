@@ -12,6 +12,7 @@ import { type EmployeeDto, type EmployeePlacementUnitDto, type Locale } from '@e
 import { type Column } from '../../../../../shared/ui/DataTable';
 import { formatDate } from '../../../../../shared/lib/format';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
+import { IdCardStatusButton } from '../id-card/IdCardStatusButton';
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -26,11 +27,20 @@ export const EMPLOYEE_COLUMN_ORDER = [
   'department',
   'section',
   'jobTitle',
+  'idCard',
   'hiredAt',
   'status',
 ] as const;
 
-export const employeeColumns = (t: Translate, locale: Locale): Column<EmployeeDto>[] => [
+/**
+ * `onIdCard` opens the person's company ID card. The column sorts on how many cards the person
+ * received («الأكثر استلاماً»), the server's `idCard.receivedCount` — printing alone never counts.
+ */
+export const employeeColumns = (
+  t: Translate,
+  locale: Locale,
+  onIdCard: (e: EmployeeDto) => void = () => undefined,
+): Column<EmployeeDto>[] => [
   {
     key: 'code',
     header: t('employees.columns.code'),
@@ -41,15 +51,39 @@ export const employeeColumns = (t: Translate, locale: Locale): Column<EmployeeDt
       </span>
     ),
   },
-  { key: 'name', header: t('employees.columns.name'), render: (e) => <span>{e.personal.fullNameAr}</span> },
-  { key: 'branch', header: t('employees.columns.branch'), render: (e) => unitName(e.placement.branch, locale) },
+  {
+    key: 'name',
+    header: t('employees.columns.name'),
+    render: (e) => <span>{e.personal.fullNameAr}</span>,
+  },
+  {
+    key: 'branch',
+    header: t('employees.columns.branch'),
+    render: (e) => unitName(e.placement.branch, locale),
+  },
   {
     key: 'department',
     header: t('employees.columns.department'),
     render: (e) => unitName(e.placement.department, locale),
   },
-  { key: 'section', header: t('employees.columns.section'), render: (e) => unitName(e.placement.section, locale) },
-  { key: 'jobTitle', header: t('employees.columns.jobTitle'), render: (e) => unitName(e.placement.jobTitle, locale) },
+  {
+    key: 'section',
+    header: t('employees.columns.section'),
+    render: (e) => unitName(e.placement.section, locale),
+  },
+  {
+    key: 'jobTitle',
+    header: t('employees.columns.jobTitle'),
+    render: (e) => unitName(e.placement.jobTitle, locale),
+  },
+  {
+    key: 'idCard',
+    header: t('employees.columns.idCard'),
+    sortable: true,
+    sortKey: 'idCard.receivedCount',
+    align: 'center',
+    render: (e) => <IdCardStatusButton employee={e} onOpen={() => onIdCard(e)} />,
+  },
   {
     key: 'hiredAt',
     header: t('employees.columns.hired'),

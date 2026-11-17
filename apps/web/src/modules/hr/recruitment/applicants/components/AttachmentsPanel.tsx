@@ -23,6 +23,7 @@ import {
   useRemoveApplicantAttachment,
 } from '../api/applicant-queries';
 import { fileDownloadTicket } from '../api/applicant-api';
+import { cardSideOf } from './NationalIdCardPanel';
 
 export const AttachmentsPanel = ({
   applicantId,
@@ -33,7 +34,9 @@ export const AttachmentsPanel = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
-  const { data: files = [], isLoading, isError, error, refetch } = useApplicantAttachments(applicantId);
+  const { data: all = [], isLoading, isError, error, refetch } = useApplicantAttachments(applicantId);
+  // The National-ID card images have their own panel (named, previewed on hover).
+  const files = all.filter((f) => cardSideOf(f) === null);
   const { data: categories = [] } = useFileCategories();
   const add = useAddApplicantAttachment(applicantId);
   const remove = useRemoveApplicantAttachment(applicantId);

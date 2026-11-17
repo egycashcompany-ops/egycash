@@ -1,6 +1,14 @@
 // Reads ride `operationsShipment.view` — the branch form needs the suggestions, and anyone who
 // can see a shipment can see them. Mutations are `operationsCatalog.manage`, the one grant that
 // covers the whole reference surface (banks/bank.routes.ts precedent).
+//
+// Round 12 — the list also answers `operationsVault.view`, with the branches': the vault's receive
+// screen opens the secured screen's shipment form («اضافة ل محصنة زى شاشة الشحنات المحصنة
+// بالظبط»), whose area box reads it (bank-branches/bank-branch.routes.ts). Names only.
+//
+// Round 20 — and `operationsCrew.view`: the crew board's «الاتجاه» must be one of these areas («لازم
+// اختار من الاتجاهات اللى موجوده بتاعت البنوك»), so whoever reads the board reads the list it picks
+// from. Names only, still; writes stay the catalog's.
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -10,7 +18,7 @@ import {
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import { createArea, listAreas, updateArea } from './area.controller';
 
@@ -21,7 +29,7 @@ export const buildOperationsAreasRouter = (): Router => {
   router.get(
     '/',
     authenticate,
-    authorize('operationsShipment.view'),
+    authorizeAny('operationsShipment.view', 'operationsVault.view', 'operationsCrew.view'),
     validate({ query: ListOperationsReferenceQuerySchema }),
     asyncHandler(listAreas),
   );

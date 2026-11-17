@@ -17,6 +17,11 @@ export const listBankBranches = async (req: Request, res: Response): Promise<voi
   okPage(res, await operationsBankBranchService.list(query), toBankBranchDto);
 };
 
+export const getBankBranch = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, toBankBranchDto(await operationsBankBranchService.getById(params.id)));
+};
+
 export const createBankBranch = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<CreateOperationsBankBranch>(req);
   const doc = await operationsBankBranchService.create(body, authContext(req).userId);

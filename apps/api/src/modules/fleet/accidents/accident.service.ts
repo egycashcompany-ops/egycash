@@ -4,6 +4,7 @@
 // Recording is allowed against ANY registered vehicle including a disposed one: an accident is
 // historical paperwork about the day it happened, not a new operational fact about the car.
 import {
+  ErrorCodes,
   FleetEvents,
   calendarDayBounds,
   parseFleetSort,
@@ -15,6 +16,7 @@ import {
   type FleetDashboardRecentAccidentDto,
   compareFleetVehicleCodes,
   fleetAccidentRemaining,
+  normalizeVehicleCode,
   type FleetAccidentSummaryQuery,
   type FleetAccidentTotalsDto,
   type FleetAccidentTransferEntryDto,
@@ -25,7 +27,7 @@ import {
   type UpdateFleetAccident,
 } from '@ecms/contracts';
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
-import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
+import { AppError, BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
@@ -46,9 +48,11 @@ import {
   allocateTransfer,
   carRemaining,
   liveTransfers,
+  receivingCap,
   sumLive,
   toPiastres,
   toPounds,
+  type ReceivingFigures,
 } from './accident-transfer';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'accident', entityId: id });
@@ -110,6 +114,12 @@ const addDelta = (deltas: OutDeltas, accidentId: Types.ObjectId, amount: number)
   deltas.set(key, addMoney(deltas.get(key) ?? 0, amount));
 };
 
+/**
+ * One key per car code as the server's match reads it (`anyVehicleCode`, `sameVehicleCode`):
+ * whitespace as one space, Latin case ignored — «MG 2», «mg 2» and «MG  2 » are one key.
+ */
+const codeKey = (code: string): string => normalizeVehicleCode(code).toLowerCase();
+
 /** The whole of a transfer, stopped: it stays on the file and no figure counts it any more. */
 const voided = (
   transfer: FleetAccidentTransfer,
@@ -133,6 +143,43 @@ const nameOf = async (by: string): Promise<string | null> => {
   return name === '' ? null : name;
 };
 
+/** A figure in a refusal's details: pounds, as a plain decimal string — `'1200.50'`. */
+const figure = (piastres: number): string => toPounds(piastres).toFixed(2);
+
+/**
+ * 422 — the amount is more than the receiving file's negative (`FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT`):
+ * a take brings a file up to zero and never past it. Both figures in piastres.
+ */
+const overDeficit = (deficit: number, amount: number): AppError =>
+  new AppError(
+    ErrorCodes.FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT,
+    422,
+    `this accident is ${figure(deficit)} below zero — ${figure(amount)} is more than that`,
+    {
+      details: [
+        { field: 'deficit', code: 'DEFICIT', message: figure(deficit) },
+        { field: 'amount', code: 'AMOUNT', message: figure(amount) },
+      ],
+    },
+  );
+
+/**
+ * 422 — the cars sent have less left, together, than the amount (`FLEET_ACCIDENT_TRANSFER_SHORT`).
+ * Both figures in piastres.
+ */
+const transferShort = (available: number, amount: number): AppError =>
+  new AppError(
+    ErrorCodes.FLEET_ACCIDENT_TRANSFER_SHORT,
+    422,
+    `the chosen cars have ${figure(available)} remaining together — ${figure(amount)} is more than that`,
+    {
+      details: [
+        { field: 'available', code: 'AVAILABLE', message: figure(available) },
+        { field: 'amount', code: 'AMOUNT', message: figure(amount) },
+      ],
+    },
+  );
+
 const eventPayload = (doc: FleetAccidentDoc, code: string) => ({
   accidentId: String(doc._id),
   vehicleId: vehicleIdOf(doc),
@@ -144,25 +191,28 @@ const eventPayload = (doc: FleetAccidentDoc, code: string) => ({
 
 class FleetAccidentService {
   /**
-   * Plan one transfer onto a file of `receivingVehicleId`: read the source car's files INSIDE the
-   * transaction, refuse more than it has, and say which of its files give what — oldest first.
-   */
-  /**
    * Plan a take from ONE OR SEVERAL cars onto a file of `receivingVehicleId`.
    *
    * «يقدر يختار اكتر من عربيه بس لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من
-   * العربيه التانيه» — the cars are drawn IN THE ORDER THEY WERE PICKED: the first gives everything
-   * it has left before the second gives anything. Within each car the files give oldest first.
+   * العربيه التانيه» — the cars are drawn IN THE ORDER SENT (the screen's plan: his picks first,
+   * then the ones it completed with): the first gives everything it has left before the second
+   * gives anything. Within each car the files give oldest first.
    * One transfer per car that gave something, so each car's log names exactly what left it.
    *
-   * Every source car is locked and read INSIDE the transaction; more than all of them have
-   * together is refused, naming that total.
+   * Two caps, nothing written when either refuses (422):
+   * - the RECEIVING file's negative, from `receiving` — a take brings the file up to zero and never
+   *   past it (`FLEET_ACCIDENT_TRANSFER_OVER_DEFICIT`, owner-approved 2026-11-09);
+   * - what the source cars have together: every one is locked and read INSIDE the transaction, so
+   *   more than they have — what another clerk's take left a moment ago — is refused, naming that
+   *   total (`FLEET_ACCIDENT_TRANSFER_SHORT`).
    */
   private async planTransfers(
     input: FleetAccidentTransferInput,
     receivingVehicleId: string | null,
     /** The file taking the amount — never one of its own sources, whatever car it sat on. */
     receivingAccidentId: string | null,
+    /** Its figures as this save leaves them, before the take: what its negative is read from. */
+    receiving: ReceivingFigures,
     by: string,
     byName: string | null,
     session: ClientSession,
@@ -173,6 +223,8 @@ class FleetAccidentService {
     if (input.fromVehicleIds.includes(receivingVehicleId)) {
       throw new BusinessRuleError('a car cannot take from its own remaining');
     }
+    const cap = receivingCap(receiving, input.amount);
+    if (!cap.ok) throw overDeficit(toPiastres(cap.deficit), toPiastres(input.amount));
     const wanted = toPiastres(input.amount);
     let left = wanted;
     let total = 0;
@@ -210,11 +262,7 @@ class FleetAccidentService {
       });
       left -= take;
     }
-    if (left > 0) {
-      throw new BusinessRuleError(
-        `the chosen cars have ${toPounds(total).toFixed(2)} remaining together — ${toPounds(wanted).toFixed(2)} is more than that`,
-      );
-    }
+    if (left > 0) throw transferShort(total, wanted);
     return { transfers, out };
   }
 
@@ -307,6 +355,14 @@ class FleetAccidentService {
         transferInput,
         input.vehicleId,
         null,
+        // A new file: its negative is the figures sent — nothing has moved in or out of it yet.
+        {
+          amountCollected: input.amountCollected,
+          companyCost: input.companyCost,
+          paidAmount: input.paidAmount,
+          transferredIn: 0,
+          transferredOut: 0,
+        },
         by,
         byName,
         session,
@@ -607,6 +663,15 @@ class FleetAccidentService {
           input.transfer,
           input.vehicleId ?? vehicleIdOf(before),
           id,
+          // The edit's figures over the file as read in THIS transaction — what it already took and
+          // gave included — so two clerks adding to one file cannot both fill the same negative.
+          {
+            amountCollected: input.amountCollected ?? before.amountCollected,
+            companyCost: input.companyCost ?? before.companyCost,
+            paidAmount: input.paidAmount ?? before.paidAmount,
+            transferredIn: before.transferredIn ?? 0,
+            transferredOut: before.transferredOut ?? 0,
+          },
           by,
           byName,
           session,
@@ -635,6 +700,11 @@ class FleetAccidentService {
    * «يجب كود السيارة المأخوذ منها السيارات اللى المبلغ المتبقى بالموجب بس» — every registry car
    * whose files still owe something in total, with that total. A file kept from the old book
    * counts for the registry car carrying its code, exactly as a transfer from that car draws on it.
+   *
+   * LIVE cars only, and dropped BEFORE the code map is built: a soft-deleted car is refused by the
+   * save (`getById` → 404), so offering it would plan a take the server turns down — and a deleted
+   * car still carrying an old-book code would otherwise compete with the live car that carries it
+   * now for that code's files.
    */
   async carBalances(): Promise<FleetAccidentCarBalanceDto[]> {
     const rows = await fleetAccidentRepository.sumsPerCar();
@@ -644,9 +714,19 @@ class FleetAccidentService {
     const ids = new Set(
       rows.filter((row) => row.vehicleId !== null).map((row) => String(row.vehicleId)),
     );
-    for (const id of await fleetVehicleRepository.idsByCodes(bookCodes)) ids.add(id);
-    const codeOf = await fleetVehicleRepository.codesByIds([...ids]);
-    const idOfCode = new Map([...codeOf.entries()].map(([id, code]) => [code, id]));
+    for (const id of await fleetVehicleRepository.liveIdsByCodes(bookCodes)) ids.add(id);
+    // Only the live cars among them: a deleted car's own files then match no entry below.
+    const codeOf = await fleetVehicleRepository.liveCodesByIds([...ids]);
+    // An old-book file is matched to the live cars by the SAME rule the save's cap reads it with
+    // (`liveOfCar` → `anyVehicleCode`; `sameVehicleCode` here): whitespace read as one space, Latin
+    // case ignored. The go-live registry stores «فورتشنر 2 » and the book wrote «فورتشنر 2»; an
+    // exact key dropped that file from the car's figure while the save still counted it, so the
+    // list offered a figure the save then refused (or left out a car the save would allow).
+    const idsOfCode = new Map<string, string[]>();
+    for (const [id, code] of codeOf) {
+      const key = codeKey(code);
+      idsOfCode.set(key, [...(idsOfCode.get(key) ?? []), id]);
+    }
     const totals = new Map<
       string,
       {
@@ -658,26 +738,30 @@ class FleetAccidentService {
       }
     >();
     for (const row of rows) {
-      const id =
+      // Every live car the save would count this row for: its own car, or — for an old-book file —
+      // each live car whose code is the book's code (the save's `liveOfCar` counts it for each).
+      const owners =
         row.vehicleId !== null
-          ? String(row.vehicleId)
+          ? [String(row.vehicleId)]
           : row.vehicleCode === null
-            ? undefined
-            : idOfCode.get(row.vehicleCode);
-      if (id === undefined || !codeOf.has(id)) continue;
-      const sum = totals.get(id) ?? {
-        amountCollected: 0,
-        companyCost: 0,
-        paidAmount: 0,
-        transferredIn: 0,
-        transferredOut: 0,
-      };
-      sum.amountCollected += row.amountCollected;
-      sum.companyCost += row.companyCost;
-      sum.paidAmount += row.paidAmount;
-      sum.transferredIn += row.transferredIn;
-      sum.transferredOut += row.transferredOut;
-      totals.set(id, sum);
+            ? []
+            : (idsOfCode.get(codeKey(row.vehicleCode)) ?? []);
+      for (const id of owners) {
+        if (!codeOf.has(id)) continue;
+        const sum = totals.get(id) ?? {
+          amountCollected: 0,
+          companyCost: 0,
+          paidAmount: 0,
+          transferredIn: 0,
+          transferredOut: 0,
+        };
+        sum.amountCollected += row.amountCollected;
+        sum.companyCost += row.companyCost;
+        sum.paidAmount += row.paidAmount;
+        sum.transferredIn += row.transferredIn;
+        sum.transferredOut += row.transferredOut;
+        totals.set(id, sum);
+      }
     }
     return [...totals.entries()]
       .map(([vehicleId, sums]) => ({

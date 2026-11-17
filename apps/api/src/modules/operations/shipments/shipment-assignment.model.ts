@@ -28,7 +28,14 @@ export interface OperationsShipmentAssignmentDoc extends BaseDocFields {
   leg: OperationsShipmentLeg;
   operationsDayId: Types.ObjectId;
   captainEmployeeId: Types.ObjectId;
-  vehicleId: Types.ObjectId;
+  /**
+   * The van of the crew row the leg rides — NULL (Round 24) when that row has no van: «عاوز لو
+   * عربيه من غير كود عادى تظهر ان اوزع عليها محصنات». The crew row (`crewAssignmentId`) is what a
+   * leg rides; the van is that row's, copied here as legacy `car_num1/2` was, and written onto the
+   * row's live legs when the row is given a van (crew.service.ts `plan`). Read it with `!= null`:
+   * a leg written before Round 24 always has one, and `String(null)` would print "null".
+   */
+  vehicleId: Types.ObjectId | null;
   crewAssignmentId: Types.ObjectId;
   /** 1-based position within (operationsDayId, captainEmployeeId, leg). */
   sequence: number;
@@ -53,7 +60,7 @@ const assignmentSchema = new Schema<OperationsShipmentAssignmentDoc>(
     leg: { type: String, required: true, enum: OPERATIONS_SHIPMENT_LEGS },
     operationsDayId: { type: Schema.Types.ObjectId, required: true },
     captainEmployeeId: { type: Schema.Types.ObjectId, required: true },
-    vehicleId: { type: Schema.Types.ObjectId, required: true },
+    vehicleId: { type: Schema.Types.ObjectId, default: null },
     crewAssignmentId: { type: Schema.Types.ObjectId, required: true },
     sequence: { type: Number, required: true, min: 1 },
     executionStatus: {
@@ -80,6 +87,18 @@ assignmentSchema.index(
 assignmentSchema.index(
   { operationsDayId: 1, captainEmployeeId: 1 },
   { name: 'ix_day_captain' }, // the captain's day — what the mobile slice will read
+);
+// Every leg a shipment EVER had, the retired ones included — the action log's read (Round 12).
+// «توزيع المحصنات» takes a shipment off its van by retiring its delivery leg (soft delete), and the
+// log must still tell that leg's story; `ux_shipment_leg` is partial on live rows, so it cannot
+// serve a read that includes the retired ones without a collection scan per log opened.
+assignmentSchema.index({ shipmentId: 1, leg: 1, createdAt: 1 }, { name: 'ix_shipment_all_legs' });
+// Round 24 — the legs riding ONE CREW ROW: what follows a row given a van, and what keeps a row
+// that holds محصنات from being removed (crew.service.ts `plan`). Without it each such save scans
+// every leg ever written. Built by the deploy's index sync, like every other index here.
+assignmentSchema.index(
+  { crewAssignmentId: 1 },
+  { name: 'ix_crew_assignment_live', partialFilterExpression: { isDeleted: false } },
 );
 // No two stops share a position on one captain-day-leg. The service derives positions from the
 // payload's array index (so a duplicate cannot be expressed) — this index is the DB-level second

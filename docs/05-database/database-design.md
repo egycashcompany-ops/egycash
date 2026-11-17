@@ -290,7 +290,41 @@ text index on names + code.
 `workflow_transitions`, `hr_applicant_notes`, and file uploads for the applicant's `entityRef`,
 sorted by time.
 
-## 4. Data lifecycle & operations
+## 4. Employee management — key schemas
+
+### hr_employees › `idCard`  *(the company ID card, كارنيه الشركة)*
+```jsonc
+{ "idCard": {                            // absent until the first print — every counter reads 0
+    "printCount": 3,                     // prints: reprints, a jammed printer and second tries too
+    "firstPrintedAt": "…", "lastPrintedAt": "…", "lastPrintedBy": "…",   // → users, null for a job
+    "awaitingHandover": true,            // a printed card is waiting to be handed over
+    "receiptPrintedAt": "…",             // إقرار الاستلام printed; cleared by the handover
+    "receivedCount": 1,                  // CARDS RECEIVED — moved by the handover alone
+    "firstReceivedAt": "…", "lastReceivedAt": "…", "lastReceivedBy": "…" } }
+```
+Indexes: `ix_idCard_receivedCount` on `hr_employees` — the «الكارنيه» filters and the «الأكثر
+استلامًا أولًا» sort. **No migration and no backfill:** the sub-document is absent on everyone hired
+before it existed, and reads as never received.
+
+**Printing is not receiving.** `printCount` moves on every print; `receivedCount` moves only when
+HR confirms the employee signed the receipt and took the card. That confirm is one conditional
+`findOneAndUpdate` requiring `awaitingHandover`, so a double click, or two HR users at once, count
+one card between them and the loser is a 409.
+
+### hr_employee_id_card_prints
+```jsonc
+{ "employeeId": "…",                     // → hr_employees
+  "printNumber": 2,                      // 1 for this person's first card, 2 for the second…
+  "printedAt": "…", "printedBy": "…",    // → users; null for a system job
+  "withPhoto": true,                     // whether the card went out with a photo or an empty frame
+  "receivedNumber": 1,                   // set by the handover: its number among cards RECEIVED
+  "receivedAt": "…", "receivedBy": "…" } // null until that card is handed over
+```
+Indexes: `ix_employee_printedAt`. No `versionKey`, and no standard soft-delete: a row is written
+once per print and touched again only by the handover that marks it received. The profile's
+«الكارنيه» tab is its only reader; the counters the list needs live on the employee above.
+
+## 5. Data lifecycle & operations
 
 - **Backups:** managed MongoDB provider with point-in-time recovery; restore drills quarterly.
 - **Retention:** audit years-long; system logs weeks; soft-deleted business data purgeable only
@@ -299,4 +333,7 @@ sorted by time.
   has a rollback note.
 - **PII:** national IDs and contact data are PII — encrypted at rest by the DB provider, redacted
   from system logs, exportable/erasable per future data-protection requirements (erasure =
-  anonymization, preserving audit integrity).
+  anonymization, preserving audit integrity). A national ID is masked in every DTO with one
+  deliberate exception: `GET /hr/employees/:id/id-card` returns it whole, because it is printed on
+  the card. That read takes `employee.editPersonal` within scope and is audited as a `download`
+  every time.

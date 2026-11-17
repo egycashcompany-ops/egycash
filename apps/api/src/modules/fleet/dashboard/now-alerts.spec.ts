@@ -21,7 +21,16 @@ const NONE: AlertSources = {
 };
 
 const FULL: AlertSources = {
-  maintenanceAlarm: { red: 3, overdue: 1, yellow: 6, codes: null },
+  // The alerts read the counts alone: the table rows and the thresholds never make a line.
+  maintenanceAlarm: {
+    red: 3,
+    overdue: 1,
+    yellow: 6,
+    codes: null,
+    redKm: 300,
+    yellowKm: 1000,
+    rows: [],
+  },
   licenceVehicles: {
     warnDays: 30,
     expired: 2,
@@ -39,7 +48,8 @@ const FULL: AlertSources = {
     notRecorded: 2,
     unregistered: 1,
   },
-  fuelCards: { warnDays: 30, expired: 1, expiring: 3 },
+  // `nearest` («أقربها») feeds no alert line.
+  fuelCards: { warnDays: 30, expired: 1, expiring: 3, nearest: '2026-11-09' },
   roster: {
     date: '2026-11-01',
     licenceRule: 'flag',
@@ -62,6 +72,10 @@ const FULL: AlertSources = {
     profileInactive: 0,
     notEmployed: 0,
     licenceExpiredDrivers: 0,
+    // The «الحركة اليوم» lists raise no alert line: empty here.
+    unmannedRows: [],
+    unmannedUnassigned: 0,
+    absentDrivers: [],
   },
   fuelCharging: {
     wataniya: 0,
@@ -69,16 +83,45 @@ const FULL: AlertSources = {
     requested: { count: 4, amount: 900 },
     low: { belowYellow: 3, belowRed: 1, yellowAt: 300, redAt: 100 },
     charged24h: 0,
+    cards: 0, // No alert line reads the card count.
+    // Nor these: each company's cards and the cards on no car.
+    companyCards: { wataniya: 0, chillout: 0 },
+    unassigned: { count: 0, balance: 0 },
   },
   dealershipPending: { rows: 3 },
-  notices: { open: 9, missingAny: 3, missingLicences: 2, missingCheckImage: 2 },
+  notices: {
+    open: 9,
+    missingAny: 3,
+    missingLicences: 2,
+    missingCheckImage: 2,
+    // The rows are a display: the line reads `missingAny`, never their length.
+    rows: [
+      {
+        noticeId: 'n1',
+        template: 'misrInsurance',
+        vehicleId: 'a',
+        code: '304',
+        typeName: null,
+        noticeNumber: '11',
+        noticeDate: '2026-10-03',
+        missing: { vehicleLicense: false, driverLicense: false, checkImage: true },
+      },
+    ],
+  },
   noReading: {
     days: 3,
     stale: [
-      { vehicleId: 'a', code: '304', lastDate: '2026-10-28' },
       { vehicleId: 'b', code: '112', lastDate: '2026-10-22' },
+      { vehicleId: 'a', code: '304', lastDate: '2026-10-28' },
     ],
     neverRead: [{ vehicleId: 'c', code: '318' }],
+    staleCount: 2,
+    neverReadCount: 1,
+    staleRows: [
+      { vehicleId: 'b', code: '112', typeName: null, lastDate: '2026-10-22', days: 10 },
+      { vehicleId: 'a', code: '304', typeName: null, lastDate: '2026-10-28', days: 4 },
+    ],
+    neverReadRows: [{ vehicleId: 'c', code: '318', typeName: null }],
   },
 };
 
@@ -103,9 +146,26 @@ describe('deriveNowAlerts', () => {
     expect(deriveNowAlerts(NONE)).toEqual([]);
     const quiet: AlertSources = {
       ...FULL,
-      maintenanceAlarm: { red: 0, overdue: 0, yellow: 6, codes: null },
-      notices: { open: 9, missingAny: 0, missingLicences: 0, missingCheckImage: 0 },
-      noReading: { days: 3, stale: [], neverRead: [{ vehicleId: 'c', code: '318' }] },
+      maintenanceAlarm: {
+        red: 0,
+        overdue: 0,
+        yellow: 6,
+        codes: null,
+        redKm: 300,
+        yellowKm: 1000,
+        rows: [],
+      },
+      notices: { open: 9, missingAny: 0, missingLicences: 0, missingCheckImage: 0, rows: [] },
+      // Never-read cars are their own sub-line: they never make «بلا قراءة» fire.
+      noReading: {
+        days: 3,
+        stale: [],
+        neverRead: [{ vehicleId: 'c', code: '318' }],
+        staleCount: 0,
+        neverReadCount: 1,
+        staleRows: [],
+        neverReadRows: [{ vehicleId: 'c', code: '318', typeName: null }],
+      },
     };
     const ids = deriveNowAlerts(quiet).map((a) => a.id);
     expect(ids).not.toContain('maintenanceRed');
@@ -117,6 +177,14 @@ describe('deriveNowAlerts', () => {
     const lines = deriveNowAlerts(FULL);
     expect(lines.find((a) => a.id === 'noticesMissing')?.count).toBe(3);
     expect(lines.find((a) => a.id === 'crewAbsent')?.count).toBe(2);
+  });
+
+  it('T1.12 reads `staleCount`, never a list’s length (the ≤ 3 rows are a display)', () => {
+    const lines = deriveNowAlerts({
+      ...FULL,
+      noReading: { ...FULL.noReading!, staleCount: 7 },
+    });
+    expect(lines.find((a) => a.id === 'noReading')?.count).toBe(7);
   });
 
   it('a hidden section takes only its own lines with it (fuelCharging carries two)', () => {

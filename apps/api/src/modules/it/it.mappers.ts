@@ -29,6 +29,10 @@ import {
   type ItConsumableDto,
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
+  type ItVehicleCheckDto,
+  type ItVehicleCheckLatestDto,
+  IT_VEHICLE_CHECK_ITEMS,
+  ymdOf,
 } from '@ecms/contracts';
 import { type DirectoryEmployeeListing } from '../../platform/directory';
 import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
@@ -54,6 +58,7 @@ import { type ItMobileLineReceiptDoc } from './mobile-lines/line-receipt.model';
 import { type ItConsumableDoc } from './consumables/consumable.model';
 import { type ItConsumableMovementDoc } from './consumables/consumable-movement.model';
 import { type ItConsumableMemoDoc } from './consumables/consumable-memo.model';
+import { type ItVehicleCheckDoc } from './vehicle-checks/vehicle-check.model';
 // A pure rule, not a model: the register's «below minimum» is the store's arithmetic, said once.
 import { isBelowMin } from './consumables/consumable-stock';
 
@@ -112,12 +117,15 @@ export const toItAssetSpecsDto = (
 /**
  * Who holds each asset on ONE response — «لو متسلم اسم الشخص اللى متسلمله الحاجة» — resolved by the
  * caller and handed in: the intervals the assets point at, by id, and their employees' labels (the
- * mobile lines' shape, without the paper). The mapper only reads the maps, so the number of
- * round-trips a response costs is decided in one place.
+ * mobile lines' shape, without the paper); and which of them a maintenance order holds instead —
+ * the technician has the machine. The mapper only reads the maps, so the number of round-trips a
+ * response costs is decided in one place.
  */
 export interface ItAssetHolderLabels {
   intervals: ReadonlyMap<string, ItAssetAssignmentDoc>;
   employees: ItHolderLabels;
+  /** The ids of the assets an order open or in progress still governs (`hasActiveMaintenance`). */
+  activeMaintenance: ReadonlySet<string>;
 }
 
 /**
@@ -197,6 +205,8 @@ export const toItAssetDto = (doc: ItAssetDoc, holders: ItAssetHolderLabels): ItA
   specs: toItAssetSpecsDto(doc.specs),
   accessories: doc.accessories ?? [],
   holder: assetHolder(doc, holders),
+  // Its status alone does not say so: an `open` order leaves the asset `inStock`.
+  hasActiveMaintenance: holders.activeMaintenance.has(String(doc._id)),
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
@@ -538,9 +548,10 @@ export const toItConsumableDto = (doc: ItConsumableDoc): ItConsumableDto => ({
 
 /**
  * What a page of the ledger shows beside each movement, resolved ONCE per page by the caller and
- * handed in: the items, the employees (through the directory), the assets (under the reader's
- * scope — an asset from a branch they cannot see is not named), and the memos with their signed
- * state. The mapper only reads the maps, so what a page costs is decided in one place.
+ * handed in: the items (a transfer's other store's item among them, for its code), the employees
+ * (through the directory), the assets (under the reader's scope — an asset from a branch they cannot
+ * see is not named), and the memos with their signed state. The mapper only reads the maps, so what
+ * a page costs is decided in one place.
  */
 export interface ItConsumableMovementLabels {
   items: ReadonlyMap<string, { code: string; name: string; typeId: string }>;
@@ -569,6 +580,11 @@ export const toItConsumableMovementDto = (
   const asset = assetId === null ? undefined : labels.assets.get(assetId);
   const memoId = paperOf(idOrNull(doc.memoId), labels.memos);
   const memo = memoId === null ? undefined : labels.memos.get(memoId);
+  // A transfer's other half — the other store's item of the same name — named by its code, read
+  // with the page's items.
+  const counterpartConsumableId = idOrNull(doc.counterpartConsumableId);
+  const counterpart =
+    counterpartConsumableId === null ? undefined : labels.items.get(counterpartConsumableId);
   return {
     id: String(doc._id),
     consumableId: String(doc.consumableId),
@@ -589,6 +605,10 @@ export const toItConsumableMovementDto = (
     memoId,
     memoNumber: memo?.memoNumber ?? null,
     memoSigned: memo === undefined ? null : memo.signed,
+    transferId: idOrNull(doc.transferId),
+    counterpartBranchId: idOrNull(doc.counterpartBranchId),
+    counterpartConsumableId,
+    counterpartConsumableCode: counterpart?.code ?? null,
     byUserId: idOrNull(doc.byUserId),
     notes: doc.notes ?? null,
     createdAt: iso(doc.createdAt),
@@ -777,9 +797,7 @@ export const toItSparePartDto = (doc: ItSparePartDoc): ItSparePartDto => ({
 });
 
 /** A ledger row carries no `version`: it is append-only, so there is nothing to edit optimistically. */
-export const toItSparePartMovementDto = (
-  doc: ItSparePartMovementDoc,
-): ItSparePartMovementDto => ({
+export const toItSparePartMovementDto = (doc: ItSparePartMovementDoc): ItSparePartMovementDto => ({
   id: String(doc._id),
   partId: String(doc.partId),
   qty: doc.qty,
@@ -880,4 +898,55 @@ export const toItTechnicianDto = (person: DirectoryEmployeeListing): ItTechnicia
   fullNameAr: person.fullNameAr,
   status: person.status,
   userId: person.userId,
+});
+
+/** The eleven answers in the contract's order, unanswered (or absent from an old row) as `null`. */
+const vehicleCheckItems = (doc: ItVehicleCheckDoc): ItVehicleCheckDto['items'] =>
+  Object.fromEntries(
+    IT_VEHICLE_CHECK_ITEMS.map((key) => [key, doc.items?.[key] ?? null]),
+  ) as ItVehicleCheckDto['items'];
+
+/**
+ * A vehicle device check (FR-21). Every one of the eleven items is on the wire, in the contract's
+ * order — unanswered as `null` — and `checkDate` is the date-only day it was filed for.
+ */
+export const toItVehicleCheckDto = (doc: ItVehicleCheckDoc): ItVehicleCheckDto => ({
+  id: String(doc._id),
+  version: doc.__v,
+  vehicleId: String(doc.vehicleId),
+  vehicleCode: doc.vehicleCode,
+  branchId: idOrNull(doc.branchId),
+  checkDate: ymdOf(doc.checkDate),
+  items: vehicleCheckItems(doc),
+  notes: doc.notes ?? null,
+  photos: doc.photos.map((photo) => ({
+    clientPhotoId: photo.clientPhotoId,
+    fileId: String(photo.fileId),
+    fileName: photo.fileName,
+    mime: photo.mime,
+    size: photo.size,
+    uploadedAt: iso(photo.uploadedAt),
+  })),
+  reportedByUserId: String(doc.reportedByUserId),
+  reportedByName: doc.reportedByName,
+  clientRequestId: doc.clientRequestId,
+  createdAt: iso(doc.createdAt),
+});
+
+/**
+ * A car's latest report as one row of «حالة أجهزة كل سيارة — آخر تقرير». The report's facts at
+ * filing — its code and its branch, the data-scope anchor — and only what the row prints: the
+ * photos and the note are counted and flagged here, and read whole through «عرض التقرير».
+ */
+export const toItVehicleCheckLatestDto = (doc: ItVehicleCheckDoc): ItVehicleCheckLatestDto => ({
+  reportId: String(doc._id),
+  vehicleId: String(doc.vehicleId),
+  vehicleCode: doc.vehicleCode,
+  branchId: idOrNull(doc.branchId),
+  checkDate: ymdOf(doc.checkDate),
+  createdAt: iso(doc.createdAt),
+  items: vehicleCheckItems(doc),
+  photoCount: doc.photos.length,
+  hasNotes: (doc.notes ?? '') !== '',
+  reportedByName: doc.reportedByName,
 });

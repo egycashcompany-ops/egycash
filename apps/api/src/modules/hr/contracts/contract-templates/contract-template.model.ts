@@ -4,6 +4,7 @@
 // can always be re-read byte-identically.
 import { Schema, model, type Types } from 'mongoose';
 import {
+  type ContractTemplateKind,
   type ContractTemplateLanguage,
   type ContractTemplateStatus,
   type LocalizedString,
@@ -23,9 +24,25 @@ export interface ContractTemplateDoc extends BaseDocFields {
   sections: { header: string; body: string; footer: string };
   logoFileId: Types.ObjectId | null;
   signatures: SignatureBlock[];
+  /**
+   * A27 — the contract itself, or a hiring form printed beside it («مستندات التعيين»). These four
+   * are OPTIONAL on the stored row: one written before A27 has none of them, and the repository
+   * reads lean, so the schema defaults never fill them in. Read them through `printSettings`.
+   */
+  kind?: ContractTemplateKind;
+  /** A27 — printed for every job, or only for `jobTitleIds`. */
+  allJobs?: boolean;
+  jobTitleIds?: Types.ObjectId[];
+  /** A27 — place in the printed set, smaller first. */
+  printOrder?: number;
   /** Derived on save — placeholder keys the sections use (D5 validation + A16 resolver). */
   placeholders: string[];
   changedBy: Types.ObjectId | null;
+  /**
+   * A27 — on a row the boot wrote from the owner's papers: the paper's revision it holds (missing
+   * means 1). The boot rewrites an untouched row to a newer revision (`syncHiringTemplates`).
+   */
+  paperRevision?: number;
 }
 
 // Drafts may be incomplete while being authored (names/type/body/labels empty —
@@ -58,8 +75,14 @@ const contractTemplateSchema = new Schema<ContractTemplateDoc>(
       ],
       default: [],
     },
+    // Rows written before A27 read as what they always were: a contract, for every job.
+    kind: { type: String, enum: ['contract', 'form'], default: 'contract' },
+    allJobs: { type: Boolean, default: true },
+    jobTitleIds: { type: [Schema.Types.ObjectId], default: [] },
+    printOrder: { type: Number, default: 100 },
     placeholders: { type: [String], default: [] },
     changedBy: { type: Schema.Types.ObjectId, default: null },
+    paperRevision: { type: Number },
     ...baseFields,
   },
   baseSchemaOptions,
@@ -73,3 +96,13 @@ export const ContractTemplateModel = model<ContractTemplateDoc>(
   contractTemplateSchema,
   'hr_contract_templates',
 );
+
+/** A27's print settings, with a pre-A27 row read as what it always was: a contract, for every job. */
+export const printSettings = (
+  doc: Pick<ContractTemplateDoc, 'kind' | 'allJobs' | 'jobTitleIds' | 'printOrder'>,
+): { kind: ContractTemplateKind; allJobs: boolean; jobTitleIds: Types.ObjectId[]; printOrder: number } => ({
+  kind: doc.kind ?? 'contract',
+  allJobs: doc.allJobs ?? true,
+  jobTitleIds: doc.jobTitleIds ?? [],
+  printOrder: doc.printOrder ?? 100,
+});

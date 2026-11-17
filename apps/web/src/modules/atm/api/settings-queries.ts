@@ -58,8 +58,19 @@ export const atmBranchMovePreviewKey = (sourceBranchId: string): readonly unknow
   detailKey(MODULE, 'branchMove', sourceBranchId);
 
 // ── The maintenance mailbox ─────────────────────────────────────────────────
+/**
+ * The mailbox card's document. Read again every 20 s while the card is open: «آخر قراءة» follows the
+ * worker's minute readings, and «قراءة الآن» refused because a reading is running
+ * (`ATM_MAIL_POLL_BUSY`) promises that reading's result there «بعد لحظات». A refetch never touches
+ * a draft being edited — the form follows the server only when an editable field changes.
+ */
 export const useAtmMailboxConfig = () =>
-  useQuery({ queryKey: atmMailboxKey(), queryFn: () => api.getMailboxConfig() });
+  useQuery({
+    queryKey: atmMailboxKey(),
+    queryFn: () => api.getMailboxConfig(),
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: false,
+  });
 
 export const useSaveAtmMailboxConfig = () => {
   const client = useQueryClient();

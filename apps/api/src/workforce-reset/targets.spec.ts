@@ -101,6 +101,7 @@ describe('what the classification decides', () => {
       'hr_training_records',
       'hr_employee_actions',
       'hr_employee_files',
+      'hr_employee_id_card_prints',
       'operations_crew_assignments',
       'fleet_driver_profiles',
       'it_asset_assignments',

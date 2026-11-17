@@ -86,6 +86,12 @@ const totals: FleetFuelCardTotalsDto = {
   requestedAmount: 500,
   chargedTodayAmount: 300,
   cardCount: 4,
+  // The cards per company and the cards on no car (the dashboard's «الوقود والمصروفات» reads them;
+  // these screens count their own rows): two of each company, none on no car.
+  wataniyaCards: 2,
+  chilloutCards: 2,
+  noCarCards: 0,
+  noCarBalance: 0,
 };
 
 const ALL = [

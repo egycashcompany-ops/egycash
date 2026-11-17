@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { objectId, PaginationQuerySchema,
   listQuery,
 } from '../common/index.js';
-import { EducationLevelSchema } from './hr-recruitment.js';
+import { EducationLevelSchema, type EducationLevel } from './hr-recruitment.js';
 import {
   BulkRequestBaseSchema,
   type AttemptMarkerDto,
@@ -184,6 +184,12 @@ export interface ScreeningDto extends AttemptMarkerDto {
   applicantCode: string;
   /** Denormalized applicant display name (Arabic full name) — tables never show bare codes. */
   applicantName: string;
+  /**
+   * Read from the APPLICANT when a queue page is listed (one batched lookup per page), so the
+   * queue can show age and education as columns. Absent on single-record reads.
+   */
+  applicantBirthDate?: string | null;
+  applicantEducationLevel?: EducationLevel | null;
   /** Data-scope field: follows the applicant on reassignment (RW2 step 3). */
   branchId: string | null;
   status: ScreeningStatus;

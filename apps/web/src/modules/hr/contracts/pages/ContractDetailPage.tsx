@@ -13,6 +13,7 @@ import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
+import { PrintHiringPackButton } from '../components/PrintHiringPackButton';
 import {
   Button,
   Card,
@@ -312,6 +313,10 @@ export const ContractDetailPage = (): JSX.Element => {
       />
 
       <div className="mb-4 flex flex-wrap gap-2">
+        {/* A27 — once generated, the contract prints with every form of the employee's job. */}
+        {actionable && (
+          <PrintHiringPackButton employeeId={c.employeeId} label={t('hiringPack.printFromContract')} />
+        )}
         {c.status === 'draft' && can('contract.create') && (
           <>
             <Button size="sm" variant="secondary" onClick={() => setDialog('edit')}>

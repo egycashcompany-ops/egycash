@@ -1313,6 +1313,55 @@ describe('the organization-wide loans list (P-HR-06)', () => {
 
     await clearLive();
   }, 240_000);
+
+  // «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: the archive tab's status and
+  // type take several values, one comma list each, ORed — and a worklist tab's one status still parses.
+  it('lists by several statuses and several types at once', async () => {
+    await clearLive();
+    // A draft does not reserve the employee (D3), so an approved loan can follow it.
+    const drafted = await record({
+      type: 'advance',
+      principal: 500,
+      currency: 'EGP',
+      installmentCount: 1,
+      firstPeriod: '2026-02',
+      reason: 'several statuses: a draft advance',
+    });
+    expect(drafted.status, JSON.stringify(drafted.body)).toBe(201);
+    const draft = drafted.body.data as EmployeeLoanDto;
+    const approved = await approvedLoan({
+      type: 'loan',
+      principal: 900,
+      currency: 'EGP',
+      installmentCount: 3,
+      firstPeriod: '2026-02',
+      reason: 'several types: an approved loan',
+    });
+
+    const ids = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/employee-loans')
+        .query({ pageSize: 100, employeeId, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as EmployeeLoanDto[]).map((l) => l.id);
+    };
+
+    expect(await ids({ status: 'draft,approved' })).toEqual(
+      expect.arrayContaining([draft.id, approved.id]),
+    );
+    expect(await ids({ status: 'draft' })).not.toContain(approved.id);
+    expect(await ids({ type: 'advance,loan' })).toEqual(
+      expect.arrayContaining([draft.id, approved.id]),
+    );
+    expect(await ids({ type: 'advance' })).not.toContain(approved.id);
+    // One value is still one value — the «to disburse» tab asks exactly this.
+    const toDisburse = await ids({ status: 'approved' });
+    expect(toDisburse).toContain(approved.id);
+    expect(toDisburse).not.toContain(draft.id);
+
+    await clearLive();
+  }, 240_000);
 });
 
 /**

@@ -1,8 +1,8 @@
 // The consumables store's routes (FR-20), on the assets' own grants — no key of its own: whoever
 // keeps the devices keeps the store («same permissions as assets», the plan the owner approved).
 // Reads ride `itAsset.view`; adding an item `itAsset.create`; editing it, receiving stock and
-// scrapping `itAsset.edit`; issuing to a person and taking back from one `itAsset.assign`, the one
-// custody grant.
+// scrapping `itAsset.edit`; issuing to a person, taking back from one and transferring stock to
+// another branch's store `itAsset.assign`, the one custody grant.
 import { Router } from 'express';
 import {
   CreateItConsumableSchema,
@@ -13,6 +13,7 @@ import {
   ReceiveItConsumableSchema,
   ReturnItConsumableSchema,
   ScrapItConsumableSchema,
+  TransferItConsumablesSchema,
   UpdateItConsumableSchema,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
@@ -27,6 +28,7 @@ import {
   receiveItConsumable,
   returnItConsumable,
   scrapItConsumable,
+  transferItConsumables,
   updateItConsumable,
 } from './consumable.controller';
 
@@ -53,6 +55,15 @@ export const buildItConsumablesRouter = (): Router => {
     authorize('itAsset.assign'),
     validate({ body: IssueItConsumablesSchema }),
     asyncHandler(issueItConsumables),
+  );
+  // «تحويل إلى فرع» — stock to another branch's store. The custody grant, like the issue: no key of
+  // its own (design §7). Before the id routes too.
+  router.post(
+    '/transfer',
+    authenticate,
+    authorize('itAsset.assign'),
+    validate({ body: TransferItConsumablesSchema }),
+    asyncHandler(transferItConsumables),
   );
   router.get(
     '/:id',

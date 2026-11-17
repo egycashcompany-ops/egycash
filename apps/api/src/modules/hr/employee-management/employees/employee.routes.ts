@@ -3,7 +3,13 @@
 // never imports infrastructure directly (Module Structure §1). Literal paths (`/direct`,
 // `/rehire-check`) are declared before `/:id`. The status endpoint moved to the
 // employee-actions feature (deprecated alias over the engine).
-import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
 import multer from 'multer';
 import { ErrorCodes } from '@ecms/contracts';
 import { AppError, ValidationError } from '../../../../shared/errors';
@@ -22,15 +28,23 @@ import {
   getMyEmployeeSummary,
   getEmployeePhoto,
   getEmployeeTimeline,
+  getEmployeeIdCard,
+  recordEmployeeIdCardPrint,
+  confirmEmployeeIdCardHandover,
+  recordEmployeeIdCardReceipt,
+  listEmployeeIdCardPrints,
   linkEmployeeUser,
   listEmployees,
   listSubordinates,
   getEmployeeNationalIdCard,
   registerEmployeeDirect,
+  getLastExternalEmployeeCode,
+  registerEmployeeExternal,
   rehireCheck,
   removeEmployeePhoto,
   unlinkEmployeeUser,
   changeEmployeeCode,
+  purgeEmployee,
   updateEmployeeInsurance,
   updateEmployeeOfficer,
   updateEmployeePersonal,
@@ -40,6 +54,7 @@ import {
   CreateEmployeeLoginSchema,
   CreateEmployeeSchema,
   DirectRegisterEmployeeSchema,
+  RegisterExternalEmployeeSchema,
   EmployeeCodeCheckQuerySchema,
   EmployeeIdParamSchema,
   JobTitlePlacementQuerySchema,
@@ -47,6 +62,7 @@ import {
   ListEmployeesQuerySchema,
   RehireCheckQuerySchema,
   ChangeEmployeeCodeSchema,
+  PurgeEmployeeSchema,
   UpdateEmployeeInsuranceSchema,
   UpdateEmployeeOfficerSchema,
   UpdateEmployeePersonalSchema,
@@ -73,7 +89,13 @@ const rosterUpload = (): RequestHandler => {
         return;
       }
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        next(new AppError(ErrorCodes.VALIDATION_FAILED, 422, `File exceeds the ${ROSTER_MAX_MB} MB cap`));
+        next(
+          new AppError(
+            ErrorCodes.VALIDATION_FAILED,
+            422,
+            `File exceeds the ${ROSTER_MAX_MB} MB cap`,
+          ),
+        );
         return;
       }
       next(error);
@@ -161,6 +183,23 @@ export const buildEmployeesRouter = (): Router => {
     validate({ body: DirectRegisterEmployeeSchema }),
     asyncHandler(registerEmployeeDirect),
   );
+  // An EXTERNAL person (تعيين خارجى) — not a hire, and the smallest body in this router: a name,
+  // where they sit, and what they do. Same permission as a direct registration, because it is the
+  // same act (putting somebody in the registry) with less of it.
+  // Declared before '/:id', like the register screen's other helpers.
+  router.get(
+    '/external/last-code',
+    authenticate,
+    authorize('employee.registerDirect'),
+    asyncHandler(getLastExternalEmployeeCode),
+  );
+  router.post(
+    '/external',
+    authenticate,
+    authorize('employee.registerDirect'),
+    validate({ body: RegisterExternalEmployeeSchema }),
+    asyncHandler(registerEmployeeExternal),
+  );
   // The register screen's three helpers (declared before /:id), behind the permission to register:
   // the last code issued, what a typed code means, and where a job title's people sit in a branch.
   router.get(
@@ -232,6 +271,17 @@ export const buildEmployeesRouter = (): Router => {
     validate({ body: ChangeEmployeeCodeSchema, params: EmployeeIdParamSchema }),
     asyncHandler(changeEmployeeCode),
   );
+  // «مسح نهائي» — the only hard delete of a person in the product, behind its own break-glass key.
+  // DELETE, not PATCH: this is not a state change dressed as one. The typed code travels in the
+  // body and the controller checks it against the employee before anything is planned, so an id
+  // alone — copied from a URL, repeated by a script — cannot erase somebody.
+  router.delete(
+    '/:id/purge',
+    authenticate,
+    authorize('employee.purge'),
+    validate({ body: PurgeEmployeeSchema, params: EmployeeIdParamSchema }),
+    asyncHandler(purgeEmployee),
+  );
   // The social-insurance file and the officer profile: each replaced whole, each behind its own
   // manage permission. Neither is a personnel action — the actions engine's vocabulary is closed,
   // and re-filing an insurance number promotes nobody.
@@ -273,6 +323,44 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.editPersonal'),
     validate({ params: EmployeeIdParamSchema }),
     asyncHandler(removeEmployeePhoto),
+  );
+  // The company ID card (كارنيه الشركة). Printing it, and reading what goes on it — the national ID
+  // in full — is a personal-data edit's authority; seeing how often it was printed is seeing the
+  // employee. See `employee-id-card.ts`.
+  router.get(
+    '/:id/id-card',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(getEmployeeIdCard),
+  );
+  router.post(
+    '/:id/id-card/prints',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(recordEmployeeIdCardPrint),
+  );
+  router.post(
+    '/:id/id-card/receipts',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(recordEmployeeIdCardReceipt),
+  );
+  router.post(
+    '/:id/id-card/handovers',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(confirmEmployeeIdCardHandover),
+  );
+  router.get(
+    '/:id/id-card/prints',
+    authenticate,
+    authorize('employee.view'),
+    validate({ params: EmployeeIdParamSchema }),
+    asyncHandler(listEmployeeIdCardPrints),
   );
   // The National-ID card (front and back) carried over from the applicant file at hire.
   router.get(

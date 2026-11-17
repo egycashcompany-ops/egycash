@@ -4,7 +4,11 @@
 //
 // The figures agree with each other the way the server's do: ready = rows − in the workshop −
 // licence expired (33 = 40 − 5 − 2); the registry = available + absent + inactive + suspended +
-// licence expired (52 = 44 + 5 + 1 + 1 + 1); the matrix adds up to the active cars (40).
+// licence expired (52 = 44 + 5 + 1 + 1 + 1); the matrix adds up to the active cars (40), and each
+// branch's cars by operation kind add up to its column (Σ cash = 24, Σ ATM = 11, «أخرى» 5); the alarm
+// rows are the first 8 of the 3 red + 6 yellow (red first, the most overdue first); the longest stays
+// are the 5 oldest of the 6 open visits (the oldest first, = `oldest`); every exit bar list adds up
+// to the exits (19).
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -25,6 +29,8 @@ import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { custodyQueryKeys } from './api/fleet-queries';
 import { fleetDashboardKeys } from './api/fleet-dashboard-queries';
+import { periodLiveness } from './lib/fleet-dashboard-refresh';
+import { readPeriodFilters, toPeriodQuery } from './lib/fleet-dashboard-url';
 import { FleetDashboardPage } from './pages/FleetDashboardPage';
 
 export const ar = (key: string, params?: Record<string, string | number>): string =>
@@ -39,8 +45,55 @@ export const OP_ATM = '650000000000000000000302';
 export const SP_CASH = '650000000000000000000401';
 export const SP_ATM = '650000000000000000000402';
 export const DRIVER = '64b1f0dddddddddddddddd01';
+export const WT_TYRES = '650000000000000000000511';
+export const WT_BRAKES_FX = '650000000000000000000512';
+export const WS_COMPANY_FX = '650000000000000000000611';
+export const WS_HARAMAIN = '650000000000000000000612';
+
+const ARMOURED = { ar: 'مصفحة', en: 'Armoured' };
+const JEEP = { ar: 'جيب', en: 'Jeep' };
+const COMPANY_WS = { ar: 'ورشة الشركة', en: 'Company workshop' };
+const HARAMAIN_WS = { ar: 'ورشة الحرمين', en: 'Haramain workshop' };
+const TYRES = { ar: 'كاوتش', en: 'Tyres' };
+const BRAKES = { ar: 'فرامل', en: 'Brakes' };
+
+type AlarmRow = NonNullable<FleetDashboardNowDto['maintenanceAlarm']>['rows'][number];
+const alarmRow = (
+  code: string,
+  level: 'red' | 'yellow',
+  remainingKm: number,
+  typeName: AlarmRow['typeName'],
+  lastServiceAt: string | null,
+  inWorkshop: AlarmRow['inWorkshop'] = null,
+): AlarmRow => ({
+  vehicleId: `v${code}`,
+  code,
+  typeName,
+  level,
+  remainingKm,
+  sinceServiceKm: 10_000 - remainingKm,
+  intervalKm: 10_000,
+  lastServiceAt,
+  inWorkshop,
+});
 
 /** Cairo today, and the server's clock at 10:00 Cairo (EET, UTC+2, after the October change). */
+type FuelCardRow = NonNullable<FleetDashboardNowDto['fuelCardList']>['rows'][number];
+/** One row of «كروت تحتاج متابعة»: a wataniya card on a live car unless told otherwise. */
+const fuelCard = (
+  over: Partial<FuelCardRow> & Pick<FuelCardRow, 'cardId' | 'number' | 'code' | 'states'>,
+): FuelCardRow => ({
+  company: 'wataniya',
+  vehicleId: over.code === null ? null : `v${over.code}`,
+  typeName: over.code === null ? null : ARMOURED,
+  vehicleDeleted: false,
+  label: null,
+  balance: 1240,
+  requestedAmount: null,
+  expiresAt: '2027-06-15',
+  ...over,
+});
+
 export const TODAY = '2026-11-01';
 export const AS_OF = '2026-11-01T08:00:00.000Z';
 
@@ -48,6 +101,7 @@ export const NOW_DTO: FleetDashboardNowDto = {
   today: TODAY,
   asOf: AS_OF,
   branchId: null,
+  scopeBranches: null,
   vehicles: {
     active: 40,
     outOfService: 2,
@@ -79,14 +133,151 @@ export const NOW_DTO: FleetDashboardNowDto = {
     profileInactive: 1,
     notEmployed: 1,
     licenceExpiredDrivers: 1,
+    // The lists agree with the counts: 5 unmanned = 2 crewGap + 1 stalePlan + 2 noCrew + 0
+    // unassigned (all five listed, class then code); 5 absent = 3 «تمام» + 2 leave, crew first.
+    unmannedRows: [
+      {
+        vehicleId: 'v121',
+        code: '121',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        branch: { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } },
+        mission: { ar: 'نقل نقدية', en: 'Cash transit' },
+        why: 'crewGap',
+        absent: { employeeId: 'e-abs-1', reason: 'fleetUnavailability' },
+      },
+      {
+        vehicleId: 'v133',
+        code: '133',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        branch: { id: B2, name: { ar: 'الجيزة', en: 'Giza' } },
+        mission: null,
+        why: 'crewGap',
+        absent: { employeeId: 'e-abs-4', reason: 'hrLeave' },
+      },
+      {
+        vehicleId: 'v145',
+        code: '145',
+        typeName: { ar: 'جيب', en: 'Jeep' },
+        branch: { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } },
+        mission: null,
+        why: 'stalePlan',
+        absent: { employeeId: 'e-abs-2', reason: 'fleetUnavailability' },
+      },
+      {
+        vehicleId: 'v162',
+        code: '162',
+        typeName: { ar: 'جيب', en: 'Jeep' },
+        branch: null,
+        mission: null,
+        why: 'noCrew',
+        absent: null,
+      },
+      {
+        vehicleId: 'v170',
+        code: '170',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        branch: { id: B2, name: { ar: 'الجيزة', en: 'Giza' } },
+        mission: null,
+        why: 'noCrew',
+        absent: null,
+      },
+    ],
+    unmannedUnassigned: 0,
+    absentDrivers: [
+      {
+        employeeId: 'e-abs-1',
+        reason: 'fleetUnavailability',
+        crewVehicle: { vehicleId: 'v121', code: '121' },
+      },
+      { employeeId: 'e-abs-4', reason: 'hrLeave', crewVehicle: { vehicleId: 'v133', code: '133' } },
+      { employeeId: 'e-abs-2', reason: 'fleetUnavailability', crewVehicle: null },
+      { employeeId: 'e-abs-3', reason: 'fleetUnavailability', crewVehicle: null },
+      { employeeId: 'e-abs-5', reason: 'hrLeave', crewVehicle: null },
+    ],
   },
   workshop: {
     open: 6,
     openActive: 5,
     openOutOfService: 1,
-    oldest: { vehicleId: 'v141', code: '141', inDate: '2026-10-23', days: 9 },
+    oldest: { vehicleId: 'v141', code: '141', inDate: '2026-10-23', days: 9, deleted: false },
+    // The 5 oldest of the 6 open visits, the oldest first (`oldest` = the first).
+    longest: [
+      {
+        visitId: 'w141',
+        vehicleId: 'v141',
+        code: '141',
+        deleted: false,
+        typeName: ARMOURED,
+        inDate: '2026-10-23',
+        days: 9,
+        workshop: COMPANY_WS,
+        workType: BRAKES,
+      },
+      {
+        visitId: 'w158',
+        vehicleId: 'v158',
+        code: '158',
+        deleted: false,
+        typeName: JEEP,
+        inDate: '2026-10-26',
+        days: 6,
+        workshop: HARAMAIN_WS,
+        workType: TYRES,
+      },
+      {
+        visitId: 'w187',
+        vehicleId: 'v187',
+        code: '187',
+        deleted: false,
+        typeName: ARMOURED,
+        inDate: '2026-10-29',
+        days: 3,
+        workshop: COMPANY_WS,
+        workType: null,
+      },
+      {
+        visitId: 'w203',
+        vehicleId: 'v203',
+        code: '203',
+        deleted: false,
+        typeName: JEEP,
+        inDate: '2026-10-31',
+        days: 1,
+        workshop: null,
+        workType: BRAKES,
+      },
+      {
+        visitId: 'w1',
+        vehicleId: 'v231',
+        code: '231',
+        deleted: false,
+        typeName: ARMOURED,
+        inDate: TODAY,
+        days: 0,
+        workshop: HARAMAIN_WS,
+        workType: TYRES,
+      },
+    ],
   },
-  maintenanceAlarm: { red: 3, overdue: 1, yellow: 6, codes: null },
+  // 3 red (one past the limit) and 6 yellow; the table's 8 rows: red first, the most overdue first.
+  maintenanceAlarm: {
+    red: 3,
+    overdue: 1,
+    yellow: 6,
+    codes: null,
+    redKm: 300,
+    yellowKm: 1000,
+    rows: [
+      alarmRow('141', 'red', -120, ARMOURED, '2026-06-02', { workshop: COMPANY_WS }),
+      alarmRow('127', 'red', 140, ARMOURED, '2026-06-19'),
+      alarmRow('166', 'red', 260, JEEP, null),
+      alarmRow('112', 'yellow', 420, JEEP, '2026-07-04'),
+      alarmRow('139', 'yellow', 560, ARMOURED, '2026-07-11'),
+      alarmRow('174', 'yellow', 700, ARMOURED, '2026-07-20'),
+      alarmRow('190', 'yellow', 830, JEEP, '2026-07-28'),
+      alarmRow('214', 'yellow', 950, null, '2026-08-03'),
+    ],
+  },
   noReading: {
     days: 3,
     stale: [
@@ -94,6 +285,14 @@ export const NOW_DTO: FleetDashboardNowDto = {
       { vehicleId: 'v112', code: '112', lastDate: '2026-10-22' },
     ],
     neverRead: [{ vehicleId: 'v318', code: '318' }],
+    // The counts are the lists'; the rows the longest gap first (lastDate asc), days to TODAY.
+    staleCount: 2,
+    neverReadCount: 1,
+    staleRows: [
+      { vehicleId: 'v112', code: '112', typeName: JEEP, lastDate: '2026-10-22', days: 10 },
+      { vehicleId: 'v304', code: '304', typeName: ARMOURED, lastDate: '2026-10-28', days: 4 },
+    ],
+    neverReadRows: [{ vehicleId: 'v318', code: '318', typeName: JEEP }],
   },
   distributionVehicles: {
     branches: [
@@ -117,8 +316,16 @@ export const NOW_DTO: FleetDashboardNowDto = {
       },
     ],
     totals: { counts: { [B1]: 25, [B2]: 14 }, noBranch: 1, total: 40 },
+    branchCount: 2,
     cash: { vehicles: 24, operationIds: [OP_CASH] },
     atm: { vehicles: 11, operationIds: [OP_ATM] },
+    // Each column by operation kind (25 = 15 + 7 + 3, 14 = 8 + 4 + 2, «بلا فرع» 1 = 1 + 0 + 0).
+    kinds: {
+      [B1]: { cash: 15, atm: 7, other: 3 },
+      [B2]: { cash: 8, atm: 4, other: 2 },
+    },
+    noBranchKinds: { cash: 1, atm: 0, other: 0 },
+    other: { vehicles: 5 },
   },
   distributionDrivers: {
     total: 52,
@@ -150,13 +357,106 @@ export const NOW_DTO: FleetDashboardNowDto = {
     unregistered: 1,
   },
   papers: { insurance: 3, tax: 1 },
-  fuelCards: { warnDays: 30, expired: 1, expiring: 2 },
+  // The flagged cards («كروت تحتاج متابعة») are these figures' cards: 1 expired, 4 with a request,
+  // 3 below yellow (1 of them below red, with a request too) and 3 expiring = 10 cards, the first 8
+  // listed in the server's order (first state, then the car's code, a card on no car last); the one
+  // card on no car is the company view's alone (`unassigned`).
+  fuelCards: { warnDays: 30, expired: 1, expiring: 3, nearest: '2026-11-09' },
   fuelCharging: {
     wataniya: 84200,
     chillout: 31750,
     requested: { count: 4, amount: 6500 },
     low: { belowYellow: 3, belowRed: 1, yellowAt: 300, redAt: 100 },
     charged24h: 7500,
+    cards: 24,
+    companyCards: { wataniya: 15, chillout: 9 },
+    unassigned: { count: 1, balance: 210 },
+  },
+  fuelCardList: {
+    rows: [
+      fuelCard({
+        cardId: 'k1',
+        number: '7045112000984417',
+        code: '290',
+        expiresAt: '2026-10-28',
+        states: ['expired'],
+      }),
+      fuelCard({
+        cardId: 'k2',
+        number: '7045112000982583',
+        code: '214',
+        balance: 65,
+        requestedAmount: 2000,
+        states: ['critical', 'requested'],
+      }),
+      fuelCard({
+        cardId: 'k3',
+        number: '7045112000986390',
+        code: '122',
+        requestedAmount: 1500,
+        states: ['requested'],
+      }),
+      fuelCard({
+        cardId: 'k4',
+        number: '7045112000981724',
+        code: '167',
+        requestedAmount: 1500,
+        states: ['requested'],
+      }),
+      // A car deleted from the registry since: counted by its last branch, opened by the number.
+      fuelCard({
+        cardId: 'k5',
+        company: 'chillout',
+        number: '6011000000005068',
+        code: '305',
+        vehicleDeleted: true,
+        requestedAmount: 1500,
+        states: ['requested'],
+      }),
+      fuelCard({
+        cardId: 'k6',
+        company: 'chillout',
+        number: '6011000000009472',
+        code: '156',
+        balance: 240,
+        states: ['low'],
+      }),
+      // A card on no car: named by its label, in the company view only.
+      fuelCard({
+        cardId: 'k7',
+        company: 'chillout',
+        number: '6011000000000736',
+        code: null,
+        label: 'سفر 1',
+        balance: 210,
+        states: ['low'],
+      }),
+      fuelCard({
+        cardId: 'k8',
+        number: '7045112000980071',
+        code: '141',
+        expiresAt: '2026-11-09',
+        states: ['expiring'],
+      }),
+    ],
+    total: 10,
+  },
+  // Each company's last read sheet as it stood at its read: one with lines still undecided.
+  fuelSheets: {
+    wataniya: {
+      sheetDate: '2026-10-29',
+      readDay: '2026-10-29',
+      differing: 5,
+      undecided: 2,
+      undecidedNet: -340.5,
+    },
+    chillout: {
+      sheetDate: '2026-10-27',
+      readDay: '2026-10-28',
+      differing: 3,
+      undecided: 0,
+      undecidedNet: 0,
+    },
   },
   recentWorkshop: [
     {
@@ -200,7 +500,46 @@ export const NOW_DTO: FleetDashboardNowDto = {
       status: 'closed',
     },
   ],
-  notices: { open: 4, missingAny: 3, missingLicences: 2, missingCheckImage: 2 },
+  // The three open notices missing an attachment, the oldest notice day first and the undated
+  // (carless) one last: two miss a licence image, two the cheque image.
+  notices: {
+    open: 4,
+    missingAny: 3,
+    missingLicences: 2,
+    missingCheckImage: 2,
+    rows: [
+      {
+        noticeId: 'n1',
+        template: 'misrInsurance',
+        vehicleId: 'v207',
+        code: '207',
+        typeName: ARMOURED,
+        noticeNumber: '24117',
+        noticeDate: '2026-10-12',
+        missing: { vehicleLicense: false, driverLicense: false, checkImage: true },
+      },
+      {
+        noticeId: 'n2',
+        template: 'deltaInsurance',
+        vehicleId: 'v295',
+        code: '295',
+        typeName: JEEP,
+        noticeNumber: '24130',
+        noticeDate: '2026-10-20',
+        missing: { vehicleLicense: true, driverLicense: false, checkImage: true },
+      },
+      {
+        noticeId: 'n3',
+        template: 'misrInsurance',
+        vehicleId: null,
+        code: null,
+        typeName: null,
+        noticeNumber: '7001',
+        noticeDate: null,
+        missing: { vehicleLicense: true, driverLicense: true, checkImage: false },
+      },
+    ],
+  },
   dealershipPending: { rows: 3 },
   accidentsOpen: { count: 5, remaining: 23400 },
   violationsYear: {
@@ -213,6 +552,20 @@ export const NOW_DTO: FleetDashboardNowDto = {
       unlinked: { amount: 150, count: 1 },
     },
     total: 6450,
+  },
+  // Every year still owed: this year's (violationsYear) plus older statements and fines.
+  violationsOpen: {
+    company: { amount: 5600, count: 9 },
+    // The drivers' parts add up to their total, amount and fines: 2,300 + 500 + 250 = 3,050, 5 + 1 + 1.
+    drivers: {
+      total: { amount: 3050, count: 7 },
+      attributed: { amount: 2300, count: 5, drivers: 4 },
+      unknown: { amount: 500, count: 1 },
+      unlinked: { amount: 250, count: 1 },
+    },
+    total: { amount: 8650, count: 16 },
+    // Of them, the fines on cars the registry never had (the company view only).
+    bookOnly: { company: { amount: 1200, count: 2 }, drivers: { amount: 250, count: 1 } },
   },
   alerts: [
     { id: 'maintenanceRed', level: 'red', count: 3 },
@@ -234,12 +587,22 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
   today: TODAY,
   asOf: AS_OF,
   range: { preset: 'thisMonth', from: TODAY, to: TODAY, days: 1, granularity: 'day' },
-  vehicleScope: { count: null, typeIds: [], operationIds: [], vehicleCodes: [], branchId: null },
+  vehicleScope: {
+    count: null,
+    typeIds: [],
+    operationIds: [],
+    vehicleCodes: [],
+    branchId: null,
+    scopeBranches: null,
+  },
   km: {
     total: 4896,
     invalidRows: 0,
     perVehicleAvg: 122.4,
-    coverage: { withReadings: 40, of: 40 },
+    // 41 active, one of them in the workshop all month: of = 41 − 1 − 0; every counted car read.
+    coverage: { withReadings: 40, of: 40, active: 41, inWorkshop: 1, joinedAfter: 0 },
+    noDistance: { cars: 0, neverRead: 0, codes: [], neverReadCodes: [] },
+    invalidList: [],
     confirmedThrough: null,
     closedDays: 0,
     average: null,
@@ -252,19 +615,64 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     bottom5: [],
     withoutReadings: [],
   },
-  visits: {
-    count: 27,
-    closed: 20,
-    open: 7,
-    byWorkType: [],
-    byWorkshop: [],
-    topVehicles: [],
-    unregistered: null,
+  // By CHECK-IN day («أرقام الفترة»).
+  visits: { count: 27, closed: 20, open: 7 },
+  // By EXIT day: each bar list adds up to the 19; one old-book exit (unranked).
+  exits: {
+    count: 19,
+    avgStayDays: 2.6,
+    byWorkType: [
+      { id: WT_TYRES, name: TYRES, count: 11 },
+      { id: WT_BRAKES_FX, name: BRAKES, count: 8 },
+    ],
+    byWorkshop: [
+      { id: WS_COMPANY_FX, name: COMPANY_WS, count: 12 },
+      { id: WS_HARAMAIN, name: HARAMAIN_WS, count: 7 },
+    ],
+    topVehicles: [
+      {
+        vehicleId: 'v295',
+        code: '295',
+        typeName: JEEP,
+        visits: 2,
+        lastInDate: '2026-10-29',
+        lastWorkType: BRAKES,
+      },
+      {
+        vehicleId: 'v207',
+        code: '207',
+        typeName: ARMOURED,
+        visits: 1,
+        lastInDate: '2026-10-30',
+        lastWorkType: TYRES,
+      },
+    ],
+    unregistered: 1,
   },
-  accidents: { count: 4, open: 2, openRemaining: 1000, undated: 0 },
+  accidents: {
+    count: 4,
+    open: 2,
+    openRemaining: 1000,
+    undated: 0,
+    // The four files as they stand now: 2,500 + 600 − 2,300 + 400 − 200 = 1,000 (the closed ones owe 0).
+    totals: {
+      amountCollected: 2500,
+      companyCost: 600,
+      paidAmount: 2300,
+      transferredIn: 400,
+      transferredOut: 200,
+      remaining: 1000,
+    },
+  },
   accidentList: null,
+  // The month read of the overview and of «توزيع السيارات» draws none of the period-only parts:
+  // the period specs seed them (PERIOD_FULL, PERIOD_YEAR).
+  violations: null,
+  violationList: null,
   opex: null,
+  opexSeries: null,
   dealership: null,
+  dealershipList: null,
   unavailable: [],
 };
 
@@ -324,11 +732,23 @@ export const ALL_KEYS: readonly string[] = [...FLEET_DASHBOARD_PAGE_KEYS, 'fleet
 
 export const PERIOD_KEY = fleetDashboardKeys.period('live', { preset: 'thisMonth' });
 
+/** R2's key for the filters a dashboard URL's address bar holds — the page's own read. */
+export const pagePeriodKey = (url: string): readonly unknown[] => {
+  const query = toPeriodQuery(readPeriodFilters(new URL(url, 'http://x').searchParams));
+  return fleetDashboardKeys.period(periodLiveness(query, TODAY), query);
+};
+
+/**
+ * The caches the page reads: R1 (`now`), «هذا الشهر» with no filter (`period`, the default page key
+ * and the month read), the custody screen's reads, and — `page` — an R2 answer under the key the
+ * URL's filters make (the page's own read when the address bar holds filters), beside R1.
+ */
 export const dashboardClient = (
   seed: {
     now?: FleetDashboardNowDto | null;
     period?: FleetDashboardPeriodDto | null;
     custody?: boolean;
+    page?: { url: string; dto: FleetDashboardPeriodDto };
   } = {},
 ): QueryClient => {
   const qc = new QueryClient({
@@ -336,6 +756,7 @@ export const dashboardClient = (
   });
   if (seed.now !== null) qc.setQueryData(fleetDashboardKeys.now, seed.now ?? NOW_DTO);
   if (seed.period !== null) qc.setQueryData(PERIOD_KEY, seed.period ?? PERIOD_DTO);
+  if (seed.page !== undefined) qc.setQueryData(pagePeriodKey(seed.page.url), seed.page.dto);
   if (seed.custody !== false) seedCustody(qc);
   return qc;
 };

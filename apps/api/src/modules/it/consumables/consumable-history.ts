@@ -68,13 +68,16 @@ export const counterChanges = (
 /**
  * The audit verb of each movement. `receive` is the store's inbound verb (the spare parts'); an
  * issue to a person and a return from one are the custody pair a dispute filters on; a scrap is a
- * write-off, which is what `dispose` names.
+ * write-off, which is what `dispose` names. Both halves of a transfer between two stores are a
+ * `transfer` — the asset's own verb for a move between branches — one row on each store's item.
  */
 export const MOVEMENT_AUDIT_ACTION = {
   received: 'receive',
   issued: 'assign',
   scrapped: 'dispose',
   returned: 'return',
+  transferredOut: 'transfer',
+  transferredIn: 'transfer',
 } as const satisfies Record<ItConsumableMovementKind, string>;
 
 /** The audit row an item's registration writes — AFTER the commit that wrote it. */
@@ -183,12 +186,18 @@ export interface ConsumableMovementInput {
   reason?: string | null;
   memoId?: Types.ObjectId | null;
   notes?: string | null;
+  /** A transfer between two stores: the id its two movements share. */
+  transferId?: Types.ObjectId | null;
+  /** A transfer: the OTHER store — where it went (`transferredOut`) or came from (`transferredIn`). */
+  counterpartBranchId?: Types.ObjectId | null;
+  /** A transfer: the other store's item of the same name. */
+  counterpartConsumableId?: Types.ObjectId | null;
 }
 
 /**
  * One ledger row, every key present — null where the kind has nothing to say — so the ledger reads
- * one shape whatever moved. The row copies the item's store: an item never changes branch, so the
- * ledger is scoped with no join.
+ * one shape whatever moved. The row copies the item's store: an item never changes branch (a
+ * transfer moves STOCK between two items, one per store), so the ledger is scoped with no join.
  */
 export const consumableMovementRow = (
   input: ConsumableMovementInput,
@@ -204,6 +213,9 @@ export const consumableMovementRow = (
   reason: input.reason ?? null,
   memoId: input.memoId ?? null,
   notes: input.notes ?? null,
+  transferId: input.transferId ?? null,
+  counterpartBranchId: input.counterpartBranchId ?? null,
+  counterpartConsumableId: input.counterpartConsumableId ?? null,
 });
 
 /**

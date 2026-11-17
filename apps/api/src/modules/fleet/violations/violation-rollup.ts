@@ -5,6 +5,7 @@
 import {
   isUnknownFleetDriver,
   type FleetDashboardNowViolationsDto,
+  type FleetDashboardNowViolationsOpenDto,
   type FleetViolationRollupDto,
 } from '@ecms/contracts';
 import { type DriverFineGroup, type ViolationYearSums } from './violation.repository';
@@ -164,5 +165,84 @@ export const assembleYearDigest = (
       unlinked,
     },
     total: money(company + drivers),
+  };
+};
+
+/**
+ * «مخالفات قائمة» — every fine still owed, of EVERY year, as the fleet dashboard shows it: an amount
+ * AND a count for the company's statements and for the drivers' fines.
+ *
+ * THE ROLLUP'S OWN SUMS over the same `yearSums` rows the rollup endpoint is built from with no
+ * year asked: `company` is Σ `outstandingVehicleAmount` / Σ `outstandingVehicleCount` (a
+ * statement row counts the violations it records), the drivers' Σ `outstandingDriverAmount` /
+ * Σ `outstandingDriverCount` (one per fine). So the figure is the board's footer for the whole
+ * history by construction; a ticked (collected) row is in neither. `total` = company + drivers.
+ *
+ * THE DRIVERS' TOTAL, SPLIT as `assembleYearDigest` splits it — «مجهول» and «اسم غير مربوط» from
+ * the unattributed groups (`isUnknownFleetDriver`), `attributed` what is left of the total, amount
+ * AND count, so the three add up to the total exactly; `attributed.drivers` is the distinct
+ * employees the attributed group names («سائقون معروفون»).
+ *
+ * `bookOnly` — only when asked (the company view): of the owed figures above, those on cars the
+ * registry never had (`vehicleId` null, the old book's code rows). Such a row is in no branch, so a
+ * narrowed view never asks and gets `null`.
+ */
+export const assembleOpenDigest = (
+  sums: readonly ViolationYearSums[],
+  groups: readonly DriverFineGroup[],
+  opts: { bookOnly: boolean },
+): FleetDashboardNowViolationsOpenDto => {
+  const company = { amount: 0, count: 0 };
+  const drivers = { amount: 0, count: 0 };
+  const book = { company: { amount: 0, count: 0 }, drivers: { amount: 0, count: 0 } };
+  for (const row of sums) {
+    company.amount += row.outstandingVehicleAmount;
+    company.count += row.outstandingVehicleCount;
+    drivers.amount += row.outstandingDriverAmount;
+    drivers.count += row.outstandingDriverCount;
+    if (row.vehicleId === null) {
+      book.company.amount += row.outstandingVehicleAmount;
+      book.company.count += row.outstandingVehicleCount;
+      book.drivers.amount += row.outstandingDriverAmount;
+      book.drivers.count += row.outstandingDriverCount;
+    }
+  }
+  company.amount = money(company.amount);
+  drivers.amount = money(drivers.amount);
+  const unknown = { amount: 0, count: 0 };
+  const unlinked = { amount: 0, count: 0 };
+  let named = 0;
+  for (const group of groups) {
+    if (group.attributed) {
+      named += group.drivers;
+      continue;
+    }
+    const bucket = isUnknownFleetDriver({ driverEmployeeId: null, driverName: group.driverName })
+      ? unknown
+      : unlinked;
+    bucket.amount += group.amount;
+    bucket.count += group.count;
+  }
+  unknown.amount = money(unknown.amount);
+  unlinked.amount = money(unlinked.amount);
+  return {
+    company,
+    drivers: {
+      total: drivers,
+      attributed: {
+        amount: money(drivers.amount - unknown.amount - unlinked.amount),
+        count: drivers.count - unknown.count - unlinked.count,
+        drivers: named,
+      },
+      unknown,
+      unlinked,
+    },
+    total: { amount: money(company.amount + drivers.amount), count: company.count + drivers.count },
+    bookOnly: opts.bookOnly
+      ? {
+          company: { amount: money(book.company.amount), count: book.company.count },
+          drivers: { amount: money(book.drivers.amount), count: book.drivers.count },
+        }
+      : null,
   };
 };

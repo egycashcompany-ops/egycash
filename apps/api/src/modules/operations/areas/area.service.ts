@@ -17,6 +17,7 @@ import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsAreaRepository } from './area.repository';
 import { type OperationsAreaDoc } from './area.model';
+import { containsText } from '../catalog-search';
 
 const entityRef = (id: string) => ({
   moduleId: 'operations',
@@ -47,9 +48,9 @@ class OperationsAreaService {
     if (query.isActive !== undefined) filter.isActive = query.isActive;
     if (query.search !== undefined && query.search !== '') {
       filter.$or = [
-        { name: { $regex: query.search, $options: 'i' } },
-        { nameEn: { $regex: query.search, $options: 'i' } },
-        { governorate: { $regex: query.search, $options: 'i' } },
+        { name: containsText(query.search) },
+        { nameEn: containsText(query.search) },
+        { governorate: containsText(query.search) },
       ];
     }
     return operationsAreaRepository.list({

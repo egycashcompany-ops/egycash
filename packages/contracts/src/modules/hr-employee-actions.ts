@@ -77,10 +77,17 @@ export const EMPLOYEE_ACTION_ATTACHMENTS_FILE_CATEGORY = 'hr-employee-actions';
  */
 export const EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE = 'employeeActionAttachment';
 
-/** Action types that carry salary data and therefore obey compensation redaction. */
+/**
+ * Action types that carry salary data and therefore obey compensation redaction — and whose
+ * `employment.salary` change entries payroll walks back to price a past period (PY-8).
+ *
+ * `transfer` is here because one that names a job moves pay that follows the job (P-HR-22). Left
+ * out, payroll would never see that change and would price the months before it at the new pay.
+ */
 export const SALARY_BEARING_ACTION_TYPES: readonly EmployeeActionType[] = [
   'salaryChange',
   'promotion',
+  'transfer',
   'hire',
   'rehire',
 ];
@@ -127,6 +134,14 @@ const TransferSchema = z
     sectionId: objectId().nullish(),
     /** null clears the manager. Omitted = unchanged. */
     managerId: objectId().nullish(),
+    /**
+     * The job the employee holds in the new placement — «فى الإجراءات (نقل) على الموظف إمكانية
+     * تعديل المسمي الوظيفي أيضاً». Omitted = unchanged. A move into another department is often a
+     * move into another job, and recording it as a transfer plus a promotion would call it a
+     * promotion when nobody was promoted. No salary is stated on a transfer; pay that follows the
+     * job follows the new one, exactly as on a promotion (P-HR-22), and pay set by hand stays.
+     */
+    jobTitleId: objectId().optional(),
     reason: z.string().max(500).optional(),
     ...base,
   })

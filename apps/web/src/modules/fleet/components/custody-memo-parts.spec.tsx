@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type FleetCustodyMemoRowDto, type Locale, type MeDto } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
@@ -49,7 +50,10 @@ const draw = (node: JSX.Element, locale: Locale = 'ar'): string => {
   });
   return renderToStaticMarkup(
     <Provider store={store}>
-      <MemoryRouter>{node}</MemoryRouter>
+      {/* `CodeChip` watches the registry for its car card. */}
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>{node}</MemoryRouter>
+      </QueryClientProvider>
     </Provider>,
   );
 };

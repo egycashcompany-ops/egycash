@@ -238,15 +238,22 @@ class ItAssetService {
    * the assets point at, read by id in one go, then their employees through the directory in one
    * batch. Two reads per response, never two per row — the mobile lines' `holderLabels`. Read by id
    * without scope: the assets were already read under the caller's, and an interval is theirs.
+   *
+   * Beside them, ONE read for the page's ids says which assets an order open or in progress holds
+   * (`hasActiveMaintenance`) — the screen leaves those out of a move before it is refused.
    */
   async holderLabels(assets: readonly ItAssetDoc[]): Promise<ItAssetHolderLabels> {
-    const intervals = (
-      await itAssetAssignmentRepository.findByIdsSystem(
+    const [found, activeMaintenance] = await Promise.all([
+      itAssetAssignmentRepository.findByIdsSystem(
         assets.flatMap((asset) =>
           asset.currentAssignmentId == null ? [] : [String(asset.currentAssignmentId)],
         ),
-      )
-    ).filter((interval) => interval.returnedAt === null && !interval.isDeleted);
+      ),
+      itMaintenanceOrderRepository.activeAssetIds(assets.map((asset) => String(asset._id))),
+    ]);
+    const intervals = found.filter(
+      (interval) => interval.returnedAt === null && !interval.isDeleted,
+    );
     const employeeIds = [
       ...new Set(intervals.map((interval) => String(interval.assignedToEmployeeId))),
     ];
@@ -263,6 +270,7 @@ class ItAssetService {
           { code: employee.code, fullNameAr: employee.fullNameAr },
         ]),
       ),
+      activeMaintenance,
     };
   }
 

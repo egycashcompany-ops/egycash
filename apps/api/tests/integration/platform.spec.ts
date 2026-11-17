@@ -270,12 +270,20 @@ describe('login → permission → scoped data → audit trail', () => {
       });
     expect(denied.status).toBe(403);
 
-    const audit = await request(app)
-      .get('/api/v1/platform/audit-logs')
-      .query({ action: 'permissionDenied', entityType: 'user', entityId: bobId })
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(audit.status).toBe(200);
-    const rows = (audit.body as { data: { action: string }[] }).data;
+    // `authorize` records the denial without awaiting it (`void auditService.record(...)`), so the
+    // 403 can reach the client before the row lands; under load the read below can win that race.
+    // Wait for the row — the claim is unchanged: the denial IS audited. As fleet-dashboard.spec's
+    // denial check does.
+    let rows: { action: string }[] = [];
+    for (let attempt = 0; attempt < 20 && rows.length === 0; attempt += 1) {
+      const audit = await request(app)
+        .get('/api/v1/platform/audit-logs')
+        .query({ action: 'permissionDenied', entityType: 'user', entityId: bobId })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(audit.status).toBe(200);
+      rows = (audit.body as { data: { action: string }[] }).data;
+      if (rows.length === 0) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     expect(rows.length).toBeGreaterThan(0);
   });
 
@@ -365,7 +373,10 @@ describe('login → permission → scoped data → audit trail', () => {
     const updated = await request(app)
       .patch(`/api/v1/platform/departments/${dept.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ description: { ar: 'إدارة الموارد البشرية', en: 'HR management' }, version: dept.version });
+      .send({
+        description: { ar: 'إدارة الموارد البشرية', en: 'HR management' },
+        version: dept.version,
+      });
     expect(updated.status).toBe(200);
     const afterUpdate = (updated.body as { data: { version: number; description: unknown } }).data;
     expect(afterUpdate.description).toEqual({ ar: 'إدارة الموارد البشرية', en: 'HR management' });
@@ -395,9 +406,9 @@ describe('login → permission → scoped data → audit trail', () => {
         version: branch.version,
       });
     expect(updated.status).toBe(200);
-    expect((updated.body as { data: { address: { city: string } | null } }).data.address?.city).toBe(
-      'Cairo',
-    );
+    expect(
+      (updated.body as { data: { address: { city: string } | null } }).data.address?.city,
+    ).toBe('Cairo');
   });
 
   it('creates a section under a department with a description, and updates it (Phase 3.3)', async () => {
@@ -427,7 +438,10 @@ describe('login → permission → scoped data → audit trail', () => {
     const updated = await request(app)
       .patch(`/api/v1/platform/sections/${section.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ description: { ar: 'وصف مُحدّث', en: 'Updated description' }, version: section.version });
+      .send({
+        description: { ar: 'وصف مُحدّث', en: 'Updated description' },
+        version: section.version,
+      });
     expect(updated.status).toBe(200);
     expect((updated.body as { data: { description: unknown } }).data.description).toEqual({
       ar: 'وصف مُحدّث',
@@ -465,7 +479,9 @@ describe('login → permission → scoped data → audit trail', () => {
       });
     expect(created.status).toBe(201);
     const appDoc = (
-      created.body as { data: { id: string; version: number; sortOrder: number; categoryId: string } }
+      created.body as {
+        data: { id: string; version: number; sortOrder: number; categoryId: string };
+      }
     ).data;
     expect(appDoc.sortOrder).toBe(10);
     expect(appDoc.categoryId).toBe(hrId);
@@ -509,7 +525,9 @@ describe('login → permission → scoped data → audit trail', () => {
       .delete(`/api/v1/platform/application-categories/${hrId}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(blocked.status).toBe(422);
-    expect((blocked.body as { error: { code: string } }).error.code).toBe('APPLICATION_CATEGORY_IN_USE');
+    expect((blocked.body as { error: { code: string } }).error.code).toBe(
+      'APPLICATION_CATEGORY_IN_USE',
+    );
 
     // Once the application is removed, the category can be deleted.
     const removed = await request(app)
@@ -526,7 +544,11 @@ describe('login → permission → scoped data → audit trail', () => {
     const dept = await request(app)
       .post('/api/v1/platform/departments')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code: 'DEP-DA', name: { ar: 'إدارة التطبيقات', en: 'Apps Dept' }, branchId: branchAId });
+      .send({
+        code: 'DEP-DA',
+        name: { ar: 'إدارة التطبيقات', en: 'Apps Dept' },
+        branchId: branchAId,
+      });
     const deptId = (dept.body as { data: { id: string } }).data.id;
 
     const cat = await request(app)
@@ -580,8 +602,20 @@ describe('login → permission → scoped data → audit trail', () => {
       .get(`/api/v1/platform/departments/${deptId}/applications`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect((afterList.body as { data: unknown[] }).data.length).toBe(0);
-    expect((await request(app).get(`/api/v1/platform/departments/${deptId}`).set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
-    expect((await request(app).get(`/api/v1/platform/applications/${appId}`).set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/platform/departments/${deptId}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/platform/applications/${appId}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(200);
 
     // Removing an assignment that does not exist → 404.
     const missing = await request(app)
@@ -652,8 +686,20 @@ describe('login → permission → scoped data → audit trail', () => {
       .get(`/api/v1/platform/users/${adminId}/applications`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect((afterList.body as { data: unknown[] }).data.length).toBe(0);
-    expect((await request(app).get(`/api/v1/platform/users/${adminId}`).set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
-    expect((await request(app).get(`/api/v1/platform/applications/${appId}`).set('Authorization', `Bearer ${adminToken}`)).status).toBe(200);
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/platform/users/${adminId}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(app)
+          .get(`/api/v1/platform/applications/${appId}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+      ).status,
+    ).toBe(200);
 
     // Removing an assignment that does not exist → 404.
     const missing = await request(app)
@@ -692,7 +738,12 @@ describe('login → permission → scoped data → audit trail', () => {
         email: 'dave@ecms.local',
         firstName: { ar: 'ديف', en: 'Dave' },
         lastName: { ar: 'اختبار', en: 'Test' },
-        organization: { branchId: branchAId, departmentId: deptId, sectionId: null, jobTitleId: null },
+        organization: {
+          branchId: branchAId,
+          departmentId: deptId,
+          sectionId: null,
+          jobTitleId: null,
+        },
       });
     expect(created.status).toBe(201);
     const daveBody = (created.body as { data: { id: string; activationToken: string } }).data;
@@ -759,12 +810,7 @@ describe('login → permission → scoped data → audit trail', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         name: { ar: 'دور التنقل', en: 'Nav Role' },
-        permissionKeys: [
-          'department.view',
-          'jobTitle.view',
-          'section.view',
-          'costCenter.view',
-        ],
+        permissionKeys: ['department.view', 'jobTitle.view', 'section.view', 'costCenter.view'],
       });
     expect(role.status).toBe(201);
     const assignment = await request(app)
@@ -788,9 +834,14 @@ describe('login → permission → scoped data → audit trail', () => {
       .get('/api/v1/platform/me/applications')
       .set('Authorization', `Bearer ${daveToken}`);
     expect(nav.status).toBe(200);
-    const groups = (nav.body as {
-      data: { id: string; applications: { id: string; name: unknown; icon: string; route: string }[] }[];
-    }).data;
+    const groups = (
+      nav.body as {
+        data: {
+          id: string;
+          applications: { id: string; name: unknown; icon: string; route: string }[];
+        }[];
+      }
+    ).data;
 
     // Exactly these two categories: the role carries no permission any other application in this
     // file declares, so nothing else can appear. Categories ordered by sortOrder (HR then Ops),
@@ -864,15 +915,21 @@ describe('login → permission → scoped data → audit trail', () => {
       .send({ userId: dan.id, roleId, scope: 'department' });
     expect(assignment.status).toBe(201);
     // The hierarchical scope resolved to Dan's home department.
-    expect((assignment.body as { data: { departmentId: string | null } }).data.departmentId).toBe(deptId);
+    expect((assignment.body as { data: { departmentId: string | null } }).data.departmentId).toBe(
+      deptId,
+    );
 
-    await request(app).post('/api/v1/auth/activate').send({ token: dan.activationToken, password: PASSWORD });
+    await request(app)
+      .post('/api/v1/auth/activate')
+      .send({ token: dan.activationToken, password: PASSWORD });
     const login = await doLogin('dan@ecms.local', PASSWORD);
     expect(login.status).toBe(200);
     expect(login.body.data?.me?.permissions['user.view']).toBe('department');
     const danToken = login.body.data?.accessToken ?? '';
 
-    const list = await request(app).get('/api/v1/platform/users').set('Authorization', `Bearer ${danToken}`);
+    const list = await request(app)
+      .get('/api/v1/platform/users')
+      .set('Authorization', `Bearer ${danToken}`);
     expect(list.status).toBe(200);
     const emails = (list.body as { data: { email: string }[] }).data.map((u) => u.email);
     expect(emails).toContain('dan@ecms.local');
@@ -981,14 +1038,22 @@ describe('login → permission → scoped data → audit trail', () => {
     const dept = await request(app)
       .post('/api/v1/platform/departments')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code: 'DEP-OPT', name: { ar: 'إدارة الخيارات', en: 'Options Dept' }, branchId: branchAId });
+      .send({
+        code: 'DEP-OPT',
+        name: { ar: 'إدارة الخيارات', en: 'Options Dept' },
+        branchId: branchAId,
+      });
     expect(dept.status).toBe(201);
     const deptId = (dept.body as { data: { id: string } }).data.id;
 
     const section = await request(app)
       .post('/api/v1/platform/sections')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ code: 'SEC-OPT', name: { ar: 'قسم الخيارات', en: 'Options Section' }, departmentId: deptId });
+      .send({
+        code: 'SEC-OPT',
+        name: { ar: 'قسم الخيارات', en: 'Options Section' },
+        departmentId: deptId,
+      });
     expect(section.status).toBe(201);
 
     type Opt = { id: string; code: string; parentId: string | null };
@@ -1004,6 +1069,51 @@ describe('login → permission → scoped data → audit trail', () => {
     expect((await read('sections')).find((o) => o.code === 'SEC-OPT')?.parentId).toBe(deptId);
     // A Branch hangs under nothing, and says so rather than inventing a parent.
     expect((await read('branches')).find((o) => o.id === branchAId)?.parentId).toBeNull();
+  });
+
+  /**
+   * «الفرع اللى العربيه متعينه عليه»: a car keeps the branch it was given after that branch closes,
+   * and the Fleet car card and the maintenance board still NAME it. A picker must not offer it.
+   */
+  it('names inactive branches on `?includeInactive=true` only — a picker still sees active ones', async () => {
+    const made = await request(app)
+      .post('/api/v1/platform/branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'BR-CLOSED', name: { ar: 'فرع مغلق', en: 'Closed Branch' } });
+    expect(made.status).toBe(201);
+    const closed = (made.body as { data: { id: string; version: number } }).data;
+    const patched = await request(app)
+      .patch(`/api/v1/platform/branches/${closed.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'inactive', version: closed.version });
+    expect(patched.status).toBe(200);
+
+    type Opt = { id: string; code: string; name: { ar: string; en: string } };
+    const read = async (query: string): Promise<Opt[]> => {
+      const res = await request(app)
+        .get(`/api/v1/platform/branches/options${query}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return (res.body as { data: Opt[] }).data;
+    };
+
+    expect(
+      (await read('')).some((o) => o.id === closed.id),
+      'a picker: active only',
+    ).toBe(false);
+    expect((await read('?includeInactive=false')).some((o) => o.id === closed.id)).toBe(false);
+    const named = await read('?includeInactive=true');
+    expect(named.find((o) => o.id === closed.id)?.name.ar).toBe('فرع مغلق');
+    expect(
+      named.some((o) => o.id === branchAId),
+      'the active ones as well',
+    ).toBe(true);
+
+    // Anything else in the query is refused rather than silently ignored.
+    const odd = await request(app)
+      .get('/api/v1/platform/branches/options?includeInactive=yes')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(odd.status).toBe(400);
   });
 
   it('serves job-title dropdown options to any authenticated caller, without `jobTitle.view`', async () => {
@@ -1153,9 +1263,12 @@ describe('application sections group the sidebar without touching RBAC', () => {
     return (res.body as { data: { id: string; sortOrder: number }[] }).data;
   };
 
-  const appsOf = async (): Promise<{ id: string; sectionId: string | null; sortOrder: number }[]> => {
+  const appsOf = async (): Promise<
+    { id: string; sectionId: string | null; sortOrder: number }[]
+  > => {
     const res = await get(`/platform/applications?categoryId=${categoryId}&${ORDERED}`);
-    return (res.body as { data: { id: string; sectionId: string | null; sortOrder: number }[] }).data;
+    return (res.body as { data: { id: string; sectionId: string | null; sortOrder: number }[] })
+      .data;
   };
 
   it('sets up a category with three applications', async () => {
@@ -1252,7 +1365,9 @@ describe('application sections group the sidebar without touching RBAC', () => {
       applicationIds: [appIds[2], appIds[0], appIds[1]],
     });
     rows = await appsOf();
-    expect(rows.filter((r) => r.sectionId === targetId).map((r) => r.sortOrder)).toEqual([0, 10, 20]);
+    expect(rows.filter((r) => r.sectionId === targetId).map((r) => r.sortOrder)).toEqual([
+      0, 10, 20,
+    ]);
 
     // Move one row into the sibling section: it leaves the first bucket and joins the second.
     await patch('/platform/applications/reorder', {
@@ -1309,7 +1424,14 @@ describe('application sections group the sidebar without touching RBAC', () => {
     const before = await get('/platform/me/applications');
     expect(before.status).toBe(200);
     const routesOf = (body: unknown): string[] =>
-      (body as { data: { applications: { route: string }[]; sections: { applications: { route: string }[] }[] }[] }).data
+      (
+        body as {
+          data: {
+            applications: { route: string }[];
+            sections: { applications: { route: string }[] }[];
+          }[];
+        }
+      ).data
         .flatMap((c) => [...c.applications, ...c.sections.flatMap((s) => s.applications)])
         .map((a) => a.route)
         .sort();
@@ -1337,7 +1459,11 @@ describe('application sections group the sidebar without touching RBAC', () => {
         data: {
           id: string;
           applications: { route: string }[];
-          sections: { id: string; name: { ar: string; en: string }; applications: { route: string }[] }[];
+          sections: {
+            id: string;
+            name: { ar: string; en: string };
+            applications: { route: string }[];
+          }[];
         }[];
       }
     ).data.find((c) => c.id === categoryId);
@@ -1350,7 +1476,6 @@ describe('application sections group the sidebar without touching RBAC', () => {
     // The ungrouped one is still directly under the module — it did not disappear.
     expect(category?.applications.map((a) => a.route)).toEqual(['/sections-test/three']);
   });
-
 });
 
 describe('refresh rotation with reuse detection (ADR-006)', () => {
@@ -1813,9 +1938,15 @@ describe('rate limiting (API Standards §9)', () => {
       accounts.push(email);
     }
     for (let i = 0; i < limit; i += 1) {
-      const guess = await loginFrom('203.0.113.70', accounts[i % accounts.length] ?? '', 'Wrong#Pass1x');
+      const guess = await loginFrom(
+        '203.0.113.70',
+        accounts[i % accounts.length] ?? '',
+        'Wrong#Pass1x',
+      );
       expect(guess.status).toBe(401);
-      expect((guess.body as { error?: { code?: string } }).error?.code).toBe('AUTH_INVALID_CREDENTIALS');
+      expect((guess.body as { error?: { code?: string } }).error?.code).toBe(
+        'AUTH_INVALID_CREDENTIALS',
+      );
     }
     const right = await loginFrom('203.0.113.70', accounts[0] ?? '', PASSWORD);
     expect(right.status).toBe(429);

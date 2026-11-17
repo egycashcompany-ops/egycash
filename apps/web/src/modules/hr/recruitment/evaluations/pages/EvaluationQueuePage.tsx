@@ -3,7 +3,7 @@
 // point — all permission-gated. Filter/sort/pagination sync with the URL query string.
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { EVALUATION_STATUSES, type EvaluationDto, type Locale } from '@ecms/contracts';
+import { EVALUATION_STATUSES, type EvaluationDto, type EvaluationStatus, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
@@ -15,7 +15,9 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
-import { Select } from '../../../../../shared/ui/form';
+import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { PlusIcon } from '../../../../../shared/ui/icons';
 import { formatDate, localized } from '../../../../../shared/lib/format';
 import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
@@ -41,7 +43,10 @@ export const EvaluationQueuePage = (): JSX.Element => {
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [openDialog, setOpenDialog] = useState(false);
 
-  const status = sp.get('status') ?? '';
+  // «هنخلي كل الفلترز multi»: several statuses, ORed; a value the vocabulary lacks (an old link) is dropped.
+  const statuses = readList(sp, 'status').filter((s): s is EvaluationStatus =>
+    (EVALUATION_STATUSES as readonly string[]).includes(s),
+  );
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'createdAt:desc').split(':');
@@ -67,7 +72,13 @@ export const EvaluationQueuePage = (): JSX.Element => {
   };
 
   const params = useMemo<EvaluationListParams>(
-    () => ({ page, pageSize, sortBy: sort.by, sortDir: sort.dir, status: status || undefined }),
+    () => ({
+      page,
+      pageSize,
+      sortBy: sort.by,
+      sortDir: sort.dir,
+      status: statuses.length === 0 ? undefined : statuses,
+    }),
     [paramsKey],
   );
 
@@ -130,19 +141,15 @@ export const EvaluationQueuePage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            className="w-full sm:w-56"
-            value={status}
-            onChange={(e) => patch({ status: e.target.value || null })}
-            aria-label={t('evaluations.columns.status')}
-          >
-            <option value="">{t('evaluations.filters.allStatuses')}</option>
-            {EVALUATION_STATUSES.map((s) => (
-              <option key={s} value={s}>{t(`evaluations.status.${s}`)}</option>
-            ))}
-          </Select>
-        </div>
+        {/* The other HR queues' bar: one filter, several picks, as wide as its words. */}
+        <FilterBar onClear={() => patch({ status: null })} hasActiveFilters={statuses.length > 0}>
+          <MultiSelect
+            label={t('evaluations.columns.status')}
+            value={statuses}
+            onChange={(next) => patch({ status: writeList(next) })}
+            options={EVALUATION_STATUSES.map((s) => ({ value: s, label: t(`evaluations.status.${s}`) }))}
+          />
+        </FilterBar>
         <Can permission="evaluation.manage">
           <BulkActionBar count={selection.count} onClear={selection.clear}>
             <Button

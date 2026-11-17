@@ -2627,6 +2627,53 @@ describe('payroll adjustments (P-HR-04)', () => {
       expect(rows.every((r) => r.status === 'pendingApproval')).toBe(true);
     }, 120_000);
 
+    // «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: the ledger's status and kind
+    // take several values, one comma list each, ORed — and the queue's one status still parses.
+    it('lists by several statuses and several kinds at once', async () => {
+      const draft = await record({
+        period: '2026-09',
+        kind: 'bonus',
+        amount: 150,
+        currency: 'EGP',
+        reason: 'several statuses: a draft',
+      });
+      expect(draft.status, JSON.stringify(draft.body)).toBe(201);
+      const draftRow = draft.body.data as PayrollAdjustmentDto;
+      const penalty = await record({
+        period: '2026-09',
+        kind: 'penalty',
+        amount: 40,
+        currency: 'EGP',
+        reason: 'several kinds: a penalty',
+      });
+      expect(penalty.status, JSON.stringify(penalty.body)).toBe(201);
+      const penaltyRow = penalty.body.data as PayrollAdjustmentDto;
+      const sent = await submit(penaltyRow.id, penaltyRow.version);
+      expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+
+      const ids = async (query: Record<string, string>): Promise<string[]> => {
+        const res = await request(app)
+          .get('/api/v1/hr/payroll/adjustments')
+          .query({ pageSize: 100, employeeId, ...query })
+          .set('Authorization', `Bearer ${adminToken}`);
+        expect(res.status, JSON.stringify(res.body)).toBe(200);
+        return (res.body.data as PayrollAdjustmentDto[]).map((r) => r.id);
+      };
+
+      expect(await ids({ status: 'draft,pendingApproval' })).toEqual(
+        expect.arrayContaining([draftRow.id, penaltyRow.id]),
+      );
+      expect(await ids({ status: 'draft' })).not.toContain(penaltyRow.id);
+      expect(await ids({ kind: 'bonus,penalty' })).toEqual(
+        expect.arrayContaining([draftRow.id, penaltyRow.id]),
+      );
+      expect(await ids({ kind: 'bonus' })).not.toContain(penaltyRow.id);
+      // One value is still one value.
+      const one = await ids({ status: 'pendingApproval', kind: 'penalty' });
+      expect(one).toContain(penaltyRow.id);
+      expect(one).not.toContain(draftRow.id);
+    }, 120_000);
+
     /**
      * D7 — the labels are on THIS read and not on the employee-scoped one.
      *
@@ -3384,4 +3431,47 @@ describe('payroll run governance (P-HR-10)', () => {
     }, 240_000);
   });
 
+});
+
+// «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: the catalog's kind and status
+// take several values, one comma list each, ORed; one value still parses.
+describe('the pay-item catalog filters take several', () => {
+  it('lists by several kinds and several statuses at once', async () => {
+    const earning = await post({
+      code: 'MULTI_EARNING',
+      name: { ar: 'بند متعدد', en: 'Multi earning' },
+      kind: 'earning',
+      calcBasis: 'fixed',
+    });
+    expect(earning.status, JSON.stringify(earning.body)).toBe(201);
+    const earningItem = earning.body.data as PayItemDto;
+    const deduction = await post({
+      code: 'MULTI_DEDUCTION',
+      name: { ar: 'خصم متعدد', en: 'Multi deduction' },
+      kind: 'deduction',
+      calcBasis: 'fixed',
+    });
+    expect(deduction.status, JSON.stringify(deduction.body)).toBe(201);
+    const created = deduction.body.data as PayItemDto;
+    const archived = await patch(created.id, { status: 'archived', version: created.version });
+    expect(archived.status, JSON.stringify(archived.body)).toBe(200);
+    const deductionItem = archived.body.data as PayItemDto;
+
+    const ids = async (query: string): Promise<string[]> => {
+      const res = await get(`?pageSize=100&search=MULTI_&${query}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as PayItemDto[]).map((i) => i.id);
+    };
+
+    expect(await ids('kind=earning,deduction')).toEqual(
+      expect.arrayContaining([earningItem.id, deductionItem.id]),
+    );
+    expect(await ids('kind=earning')).not.toContain(deductionItem.id);
+    expect(await ids('status=active,archived')).toEqual(
+      expect.arrayContaining([earningItem.id, deductionItem.id]),
+    );
+    expect(await ids('status=active')).not.toContain(deductionItem.id);
+    // One value is still one value.
+    expect(await ids('kind=deduction&status=archived')).toEqual([deductionItem.id]);
+  });
 });

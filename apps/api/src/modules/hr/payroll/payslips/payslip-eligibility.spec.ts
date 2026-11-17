@@ -5,10 +5,34 @@
 // arithmetic over values, so both are settled here.
 import { describe, expect, it } from 'vitest';
 import { type CompensationEffectsDto, type CompensationLineDto } from '@ecms/contracts';
-import { employedDuring, skipReasonFor } from './payslip-eligibility';
+import { onThePayroll, employedDuring, skipReasonFor } from './payslip-eligibility';
 
 const d = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
 const MARCH = { from: d('2026-03-01'), to: d('2026-03-31') };
+
+describe('who the company pays at all', () => {
+  /**
+   * The one that would be a real incident. An external person (تعيين خارجى) is in the registry so
+   * IT can hand them a laptop, and their record looks like everybody else's — branch, department,
+   * job title, an open employment period — so every date test in this file says yes for them. If
+   * this predicate ever stops being asked, a contractor the company does not employ appears in a
+   * payroll run with a payslip attached.
+   */
+  it('leaves an external person out, however long they have been on the register', () => {
+    expect(onThePayroll({ origin: 'external' })).toBe(false);
+  });
+
+  it('pays everybody the company actually hired', () => {
+    expect(onThePayroll({ origin: 'recruitment' })).toBe(true);
+    expect(onThePayroll({ origin: 'direct' })).toBe(true);
+  });
+
+  /** The question is about the person, not the calendar: it holds for every period. */
+  it('is asked of the record alone, with no window to argue about', () => {
+    expect(employedDuring([{ from: d('2020-01-01'), to: null }], MARCH)).toBe(true);
+    expect(onThePayroll({ origin: 'external' })).toBe(false);
+  });
+});
 
 describe('who is in the batch', () => {
   it('includes someone employed for the whole month', () => {

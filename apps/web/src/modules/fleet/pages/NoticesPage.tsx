@@ -62,6 +62,17 @@ import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { openDatePicker } from '../../../shared/lib/open-date-picker';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { VehicleSetChip } from '../components/VehicleSetChip';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
+import {
+  CLEAR_VEHICLE_SET,
+  hasVehicleSet,
+  useVehicleTypeOptions,
+  vehicleSetReaders,
+  vehicleSetQuery,
+} from '../lib/vehicle-set-params';
+import { VehicleHoverCode } from '../components/VehicleHoverCard';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BreakdownCard, FigureChip } from '../components/FleetFigures';
@@ -70,7 +81,8 @@ import { monthCountOptions } from '../lib/licence-months';
 
 /**
  * «فلاتر واحصائيات تكون زى شاشه السيارات»: the vehicles screen's bar and figures, over notices.
- * Remembered across visits like every Fleet list's.
+ * Remembered across visits like every Fleet list's — the vehicle set a dashboard link narrowed the
+ * notices to («النوع» · «التشغيل» · «الفرع») included, so a remembered one is always on the bar.
  */
 const REMEMBERED_FILTERS = [
   'vehicleCodes',
@@ -80,6 +92,9 @@ const REMEMBERED_FILTERS = [
   'templates',
   'status',
   'checkImage',
+  'type',
+  'operation',
+  'branch',
 ] as const;
 
 /** The vehicles table's look — «نفس شاشه السيارات». */
@@ -116,6 +131,19 @@ export const NoticesPage = (): JSX.Element => {
   const templates = readList(sp, 'templates');
   const status = sp.get('status') ?? '';
   const checkImage = sp.get('checkImage') ?? '';
+  // The cars a dashboard figure was counted over — «النوع» · «التشغيل» · «الفرع» — resolved by the
+  // server against the registry (a notice follows its car's CURRENT branch; one with no car is in no
+  // set), so the notices here are the ones the figure counted.
+  const vehicleSet = {
+    typeIds: readList(sp, 'type'),
+    operationIds: readList(sp, 'operation'),
+    branchIds: readList(sp, 'branch'),
+  };
+  const narrowedToSet = hasVehicleSet(vehicleSet);
+  // The types list and the operations catalog are their own endpoints' (TYPE_READERS /
+  // OPERATION_READERS), not this screen's guard: never asked for without them.
+  const sets = vehicleSetReaders(can);
+  const typeOptions = useVehicleTypeOptions(narrowedToSet && sets.types);
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
     for (const [key, val] of Object.entries(updates)) {
@@ -132,6 +160,8 @@ export const NoticesPage = (): JSX.Element => {
     templates: templates.length === 0 ? undefined : templates.join(','),
     status: status === '' ? undefined : status,
     checkImage: checkImage === '' ? undefined : checkImage,
+    // Only the lists that hold something: an un-narrowed screen asks exactly what it asked before.
+    ...vehicleSetQuery(vehicleSet),
   };
   const filterKey = JSON.stringify(filters);
   // A narrower list starts again on its first page.
@@ -254,10 +284,16 @@ export const NoticesPage = (): JSX.Element => {
     {
       key: 'code',
       header: t('fleet.notices.columns.code'),
+      // The code carries the car card — the car the notice is about; none without a registry car.
       render: (row) => (
-        <span className={cn('font-bold', NUMBER_FONT)} dir="ltr">
+        <VehicleHoverCode
+          vehicleId={row.vehicleId}
+          code={row.vehicleCode}
+          className={cn('font-bold', NUMBER_FONT)}
+          dir="ltr"
+        >
           {row.vehicleCode ?? '—'}
-        </span>
+        </VehicleHoverCode>
       ),
     },
     {
@@ -561,6 +597,7 @@ export const NoticesPage = (): JSX.Element => {
                 templates: null,
                 status: null,
                 checkImage: null,
+                ...CLEAR_VEHICLE_SET,
               })
             }
           >
@@ -625,6 +662,66 @@ export const NoticesPage = (): JSX.Element => {
                 onChange={(next) => patch({ checkImage: pickOne(one(checkImage), next) })}
               />
             </FilterWithIcon>
+            {/* The vehicle set a dashboard link narrowed the notices to — shown only while it does,
+                so a remembered one is never a filter with nothing on the bar saying so. The same
+                controls the accidents register shows; a set this reader cannot name is a nameless
+                chip that still comes off. */}
+            {narrowedToSet && (
+              <>
+                {sets.types ? (
+                  <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+                    <MultiSelect
+                      clearable
+                      className="w-full"
+                      fullWidth
+                      density="tight"
+                      showSelectedValues
+                      chips
+                      label={t('fleet.vehicles.filters.short.make')}
+                      options={typeOptions}
+                      value={vehicleSet.typeIds}
+                      onChange={(ids) => patch({ type: writeList(ids) })}
+                    />
+                  </FilterWithIcon>
+                ) : (
+                  vehicleSet.typeIds.length > 0 && (
+                    <VehicleSetChip kind="type" onClear={() => patch({ type: null })} />
+                  )
+                )}
+                {sets.operations ? (
+                  <FilterWithIcon
+                    icon={FILTER_ICON.operation}
+                    tone="text-slate-600 dark:text-slate-300"
+                  >
+                    <CatalogMultiSelect
+                      kind="operation"
+                      className="w-full"
+                      fullWidth
+                      density="tight"
+                      value={vehicleSet.operationIds}
+                      onChange={(ids) => patch({ operation: writeList(ids) })}
+                      label={t('fleet.vehicles.filters.short.operation')}
+                    />
+                  </FilterWithIcon>
+                ) : (
+                  vehicleSet.operationIds.length > 0 && (
+                    <VehicleSetChip kind="operation" onClear={() => patch({ operation: null })} />
+                  )
+                )}
+                {/* `BranchFilterSelect` takes no width of its own, so its trigger is sized here. */}
+                <FilterWithIcon
+                  icon={FILTER_ICON.branch}
+                  tone="text-violet-600 dark:text-violet-300"
+                  className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+                >
+                  <BranchFilterSelect
+                    clearable
+                    value={vehicleSet.branchIds}
+                    onChange={(ids) => patch({ branch: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+              </>
+            )}
           </FilterBar>
         </div>
 

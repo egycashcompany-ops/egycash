@@ -37,6 +37,9 @@ const UNKNOWN_STATE = {
   attempt: 1,
   placement: { jobTitleId: null, departmentId: null, branchId: null, sectionId: null },
   placementLabel: { position: null, branch: null, department: null },
+  // No candidate, so no stage records to speak for — and an empty list reads as "every stage is
+  // past", which is the fail-closed answer a screen with no state should act on.
+  stageRecords: [],
   availableActions: [],
 };
 

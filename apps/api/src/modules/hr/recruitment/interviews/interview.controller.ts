@@ -9,6 +9,7 @@ import {
   type BulkInterviews,
   type BulkScheduleInterviews,
   type BulkStartInterviews,
+  type QuickDecideInterviews,
   type CancelInterview,
   type CreateInterviewStage,
   type DecideInterview,
@@ -249,6 +250,13 @@ export const bulkScheduleInterviews = async (req: Request, res: Response): Promi
   const { body } = validated<BulkScheduleInterviews>(req);
   const scope = scopeSelector(ctx, 'interview.create');
   ok(res, await withBulkWorkflowEnvelope(ctx, () => interviewService.bulkSchedule(ctx, body, scope)));
+};
+
+export const quickDecideInterviews = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<QuickDecideInterviews>(req);
+  const scope = scopeSelector(ctx, 'interview.decide');
+  ok(res, await withBulkWorkflowEnvelope(ctx, () => interviewService.quickDecide(ctx, body, scope)));
 };
 
 export const bulkStartInterviews = async (req: Request, res: Response): Promise<void> => {

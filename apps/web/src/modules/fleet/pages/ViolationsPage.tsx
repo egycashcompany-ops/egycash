@@ -72,10 +72,19 @@ const REMEMBERED_FILTERS = [
   'dsort',
   'dunknown',
   'dyear',
+  'dfrom',
+  'dto',
   'type',
   'operation',
   'branch',
 ] as const;
+
+/** A calendar day as a link writes it ('YYYY-MM-DD', a real date), or `null`. */
+const calendarDay = (raw: string | null): string | null => {
+  if (raw === null || !/^\d{4}-\d{2}-\d{2}$/u.test(raw)) return null;
+  const day = new Date(`${raw}T00:00:00.000Z`);
+  return Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== raw ? null : raw;
+};
 
 /**
  * The order the DRIVERS ledger opens in. Named because it is used twice and the two must
@@ -123,6 +132,11 @@ export const ViolationsPage = (): JSX.Element => {
     Number.isInteger(driverYearParam) && driverYearParam >= 2000 && driverYearParam <= 2100
       ? driverYearParam
       : null;
+  // The drivers' fines of a PERIOD, by the fine's day — a dashboard figure's period («مخالفات
+  // السائقين في الفترة»): its first and last day, whole days, on this half only (the company's
+  // statements carry a year, not a day). A day that is not a calendar day is no narrowing at all.
+  const driverFrom = calendarDay(sp.get('dfrom'));
+  const driverTo = calendarDay(sp.get('dto'));
   // «الحالة» on each half: '' = both, 'true' = settled, 'false' = still outstanding.
   const companySettled = sp.get('cset') ?? '';
   const driverSettled = sp.get('dset') ?? '';
@@ -326,6 +340,9 @@ export const ViolationsPage = (): JSX.Element => {
             settled={driverSettled}
             year={driverYear}
             onYearClear={() => patch({ dyear: null })}
+            from={driverFrom}
+            to={driverTo}
+            onPeriodClear={() => patch({ dfrom: null, dto: null })}
             onSettledChange={(next) => patch({ dset: next })}
             onVehicleCodesChange={(next) =>
               patch({ dcodes: next.length === 0 ? null : next.join(',') })
@@ -342,6 +359,8 @@ export const ViolationsPage = (): JSX.Element => {
                 damt: null,
                 dset: null,
                 dyear: null,
+                dfrom: null,
+                dto: null,
               })
             }
             onEdit={setEditing}

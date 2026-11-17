@@ -35,6 +35,10 @@ export const getHiringDocs = (id: string): Promise<HiringDocumentsDto> =>
 export const createHiringDocs = (body: CreateHiringDocuments): HiringDocsEnvelope =>
   postWorkflow<HiringDocumentsDto>('/hr/hiring-documents', body);
 
+/** The employee's set, opened if there is none yet — where «تعيين» lands (A27). */
+export const openHiringDocs = (employeeId: string): HiringDocsEnvelope =>
+  postWorkflow<HiringDocumentsDto>('/hr/hiring-documents/open', { employeeId });
+
 /** Upload a PDF for a document type (multipart: file + typeId + version + optional notes). */
 export const uploadHiringDoc = (id: string, form: FormData): HiringDocsEnvelope =>
   uploadWorkflow<HiringDocumentsDto>(`/hr/hiring-documents/${id}/documents`, form);

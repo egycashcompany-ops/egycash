@@ -7,16 +7,21 @@
 // anything else would "fix" one row by silently breaking its neighbor. Events fire only after
 // the transaction has committed.
 import {
+  FLEET_DASHBOARD_EXCEPTION_ROWS,
   FleetEvents,
   addDaysYmd,
   compareFleetVehicleCodes,
+  daysBetweenYmd,
   parseFleetSort,
   ymdOf,
   ymdToUtcDate,
   type CorrectFleetOdometer,
+  type FleetDashboardNeverReadCarDto,
   type FleetDashboardPeriodKmDto,
+  type FleetDashboardStaleCarDto,
   type FleetOdometerSummaryDto,
   type FleetOdometerSummaryQuery,
+  type FleetVehicleLatestReadingDto,
   type ListFleetOdometerQuery,
   type LocalizedString,
   type Paginated,
@@ -48,7 +53,7 @@ import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 import { type FleetOdometerLogDoc } from './odometer.model';
 import { planCorrection } from './correction-rules';
 import { loadServiceGaps } from './service-gap';
-import { kmBreakdownOf, missingReadingCutoff, type KmVehicle } from './km-rules';
+import { kmBreakdownOf, missingReadingCutoff, noDistanceIdsOf, type KmVehicle } from './km-rules';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'odometerLog', entityId: id });
 
@@ -137,8 +142,11 @@ export interface OdometerKmContext {
   today: string;
   /** N = `fleet.odometer.missingReadingDays`: the grace before an open row turns stale (R-15). */
   staleDays: number;
-  /** The switcher's branch (`activeBranchId`): the km by type is drawn only when one is chosen. */
-  branchId: string | null;
+  /**
+   * Whether «حسب النوع» is drawn: exactly one branch is in scope — the switcher's, or a reader's only
+   * branch (D10). The company and «كل فروعي» get the km by branch instead.
+   */
+  byType: boolean;
   /** A vehicle set narrows the period (R-13): rows without a car are then not reported apart. */
   setNarrows: boolean;
 }
@@ -149,6 +157,17 @@ export interface OdometerNoReadingDigest {
   stale: { vehicleId: string; code: string; lastDate: string }[];
   /** No chain reading ever; code order. */
   neverRead: { vehicleId: string; code: string }[];
+  /** = `stale.length`. */
+  staleCount: number;
+  /** = `neverRead.length`. */
+  neverReadCount: number;
+  /**
+   * «بلا قراءة حديثة»: at most FLEET_DASHBOARD_EXCEPTION_ROWS of `stale`, the longest gap first
+   * (lastDate asc, then code), each with its make and its days since that reading.
+   */
+  staleRows: FleetDashboardStaleCarDto[];
+  /** «لم تُقرأ أبدًا»: at most FLEET_DASHBOARD_EXCEPTION_ROWS of `neverRead`, code order. */
+  neverReadRows: FleetDashboardNeverReadCarDto[];
 }
 
 /** The vehicle half of a register filter, resolved: the ids, and the typed codes that may stand alone. */
@@ -416,6 +435,24 @@ class FleetOdometerService {
   }
 
   /**
+   * «تمام وزود اخر عداد» — every registry car's last reading, for the car card's «آخر قراءة عداد».
+   *
+   * Every car not soft-deleted, ANY status: the alarm projection reads active cars only, and a car
+   * set out of service after an accident still has its log. The reading is the alarm's own read
+   * (`latestReadings`), so an active car's figure here IS its alarm row's. A car with no reading on
+   * file has no row.
+   */
+  async latestReadingsOfFleet(): Promise<FleetVehicleLatestReadingDto[]> {
+    const ids = (await fleetVehicleRepository.idsMatching({})).map(String);
+    const latest = await fleetOdometerRepository.latestReadings(ids);
+    return [...latest.values()].map((row) => ({
+      vehicleId: row.vehicleId,
+      latestReading: row.reading,
+      latestReadingAt: row.date.toISOString(),
+    }));
+  }
+
+  /**
    * Where a counter measured on `on` would have to sit to be a point on this vehicle's chain.
    *
    * The bracket is a property of a DATE as well as a vehicle, which is what makes a back-dated
@@ -636,16 +673,22 @@ class FleetOdometerService {
         ];
       }),
     );
-    const byType = ctx.branchId !== null;
-    const typeIds = byType
-      ? [
-          ...new Set(
-            [...vehicles.values()].flatMap((car) => (car.typeId === null ? [] : [car.typeId])),
-          ),
-        ]
-      : [];
-    const types =
-      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    // The makes name every ranked and listed car, so they are read whatever `byType` says (the
+    // km by type itself stays gated): one read of the handful of types the cars carry. Beside it,
+    // which of the cars with no distance in the period were never read at all — one read, only
+    // when there are any.
+    const typeIds = [
+      ...new Set(
+        [...vehicles.values()].flatMap((car) => (car.typeId === null ? [] : [car.typeId])),
+      ),
+    ];
+    const noDistance = noDistanceIdsOf({ rows, vehicles, setIds, range });
+    const [types, everRead] = await Promise.all([
+      typeIds.length === 0 ? [] : fleetVehicleTypeRepository.findByIdsSystem(typeIds),
+      noDistance.length === 0
+        ? new Map<string, string>()
+        : fleetOdometerRepository.latestChainDates(noDistance),
+    ]);
     return kmBreakdownOf({
       rows,
       vehicles,
@@ -653,10 +696,11 @@ class FleetOdometerService {
       range,
       today: ctx.today,
       staleDays: ctx.staleDays,
-      byType,
+      byType: ctx.byType,
       setNarrows: ctx.setNarrows,
       branchNames: new Map(branches.map((b) => [String(b._id), b.name as LocalizedString])),
       typeNames: new Map(types.map((type) => [String(type._id), type.name as LocalizedString])),
+      neverReadIds: new Set(noDistance.filter((id) => !everRead.has(id))),
     });
   }
 
@@ -665,7 +709,9 @@ class FleetOdometerService {
    * workshop visit whose latest chain-reading date is before today − days; a car never read at all
    * is on its own line, never mixed in. Two bounded reads, never a whole-history `$group` for the
    * fleet: the cars read on or after the cutoff are found from the recent days alone, and only the
-   * rest — normally a handful — are asked for their latest date.
+   * rest — normally a handful — are asked for their latest date (beside their codes and makes'
+   * ids, one registry read). The whole lists keep the code order the links read; the ≤ 3 listed
+   * rows of each are named by one read of their makes.
    */
   async noReadingDigest(input: {
     today: string;
@@ -684,24 +730,68 @@ class FleetOdometerService {
       missingReadingCutoff(input.today, input.days),
     );
     const unread = outside.filter((id) => !readSince.has(id));
-    const [latest, codes] = await Promise.all([
+    const [latest, cars] = await Promise.all([
       fleetOdometerRepository.latestChainDates(unread),
-      fleetVehicleRepository.codesByIds(unread),
+      fleetVehicleRepository.findByIdsSystem(unread),
     ]);
+    const carOf = new Map(cars.map((car) => [String(car._id), car]));
     const byCode = <T extends { code: string }>(a: T, b: T): number =>
       compareFleetVehicleCodes(a.code, b.code);
-    const codeOf = (id: string): string => codes.get(id) ?? '';
+    const codeOf = (id: string): string => carOf.get(id)?.code ?? '';
+    const stale = unread
+      .flatMap((id) => {
+        const lastDate = latest.get(id);
+        return lastDate === undefined ? [] : [{ vehicleId: id, code: codeOf(id), lastDate }];
+      })
+      .sort(byCode);
+    const neverRead = unread
+      .filter((id) => !latest.has(id))
+      .map((id) => ({ vehicleId: id, code: codeOf(id) }))
+      .sort(byCode);
+    // The listed rows: the longest gap first (the oldest last reading), then the code.
+    const staleListed = [...stale]
+      .sort((a, b) =>
+        a.lastDate === b.lastDate ? byCode(a, b) : a.lastDate.localeCompare(b.lastDate),
+      )
+      .slice(0, FLEET_DASHBOARD_EXCEPTION_ROWS);
+    const neverListed = neverRead.slice(0, FLEET_DASHBOARD_EXCEPTION_ROWS);
+    // Their makes — one read of the handful of types the listed cars carry, none when none is listed.
+    const typeIdOf = (id: string): string | null => {
+      const typeId = carOf.get(id)?.typeId;
+      return typeId == null ? null : String(typeId);
+    };
+    const typeIds = [
+      ...new Set(
+        [...staleListed, ...neverListed].flatMap((row) => {
+          const typeId = typeIdOf(row.vehicleId);
+          return typeId === null ? [] : [typeId];
+        }),
+      ),
+    ];
+    const types =
+      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    const makes = new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
+    const makeOf = (id: string): LocalizedString | null => {
+      const typeId = typeIdOf(id);
+      return typeId === null ? null : (makes.get(typeId) ?? null);
+    };
     return {
-      stale: unread
-        .flatMap((id) => {
-          const lastDate = latest.get(id);
-          return lastDate === undefined ? [] : [{ vehicleId: id, code: codeOf(id), lastDate }];
-        })
-        .sort(byCode),
-      neverRead: unread
-        .filter((id) => !latest.has(id))
-        .map((id) => ({ vehicleId: id, code: codeOf(id) }))
-        .sort(byCode),
+      stale,
+      neverRead,
+      staleCount: stale.length,
+      neverReadCount: neverRead.length,
+      staleRows: staleListed.map((row) => ({
+        vehicleId: row.vehicleId,
+        code: row.code,
+        typeName: makeOf(row.vehicleId),
+        lastDate: row.lastDate,
+        days: daysBetweenYmd(row.lastDate, input.today),
+      })),
+      neverReadRows: neverListed.map((row) => ({
+        vehicleId: row.vehicleId,
+        code: row.code,
+        typeName: makeOf(row.vehicleId),
+      })),
     };
   }
 

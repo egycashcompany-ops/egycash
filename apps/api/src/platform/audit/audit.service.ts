@@ -342,6 +342,38 @@ class AuditService {
     };
   }
 
+  /**
+   * The trail of SEVERAL entities of one module, in ONE read — for a screen that tells a business
+   * object's story across the entities that record it (an Operations shipment, its legs, its vault
+   * custody), where `listAuditLogs` would take a read per entity.
+   *
+   * Every `$or` branch is an (entityType, entityId ∈ …) equality, which `ix_entityRef_at` serves on
+   * its own. The NEWEST `limit` rows are kept and handed back oldest first; `truncated` says older
+   * ones exist. Rows go out as `toAuditDto` maps them — masked, with the actor as recorded then.
+   */
+  async trailOf(
+    moduleId: string,
+    subjects: readonly { entityType: string; entityIds: readonly string[] }[],
+    limit: number,
+  ): Promise<{ rows: AuditLogDto[]; truncated: boolean }> {
+    const branches = subjects
+      .filter((subject) => subject.entityIds.length > 0)
+      .map((subject) => ({
+        'entityRef.entityType': subject.entityType,
+        'entityRef.entityId': { $in: [...new Set(subject.entityIds)] },
+      }));
+    if (branches.length === 0 || limit < 1) return { rows: [], truncated: false };
+    const found = await AuditLogModel.find({ 'entityRef.moduleId': moduleId, $or: branches })
+      // `_id` breaks a tie on `at`: two rows of one request can share a millisecond.
+      .sort({ at: -1, _id: -1 })
+      .limit(limit + 1)
+      .lean<AuditLogDoc[]>()
+      .exec();
+    const truncated = found.length > limit;
+    const kept = (truncated ? found.slice(0, limit) : found).reverse();
+    return { rows: kept.map((doc) => this.toAuditDto(doc)), truncated };
+  }
+
   toAuditDto(doc: AuditLogDoc): AuditLogDto {
     return {
       id: String(doc._id),

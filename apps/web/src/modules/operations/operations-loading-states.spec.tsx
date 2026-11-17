@@ -16,7 +16,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { type Locale, type MeDto } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type Locale, type MeDto } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
@@ -24,6 +24,7 @@ import { listKey } from '../../shared/lib/query-keys';
 import { DataTable } from '../../shared/ui/DataTable';
 import { VaultInventoryPage } from './pages/VaultInventoryPage';
 import { SecuredBacklogPage } from './pages/SecuredBacklogPage';
+import { __securedBoardKey, __vaultHeldReportKey } from './api/operations-queries';
 
 // The generic copy the eleven screens were stuck on, in both locales.
 const UNKNOWN_AR = 'حدث خطأ ما. يُرجى المحاولة مجددًا.';
@@ -115,27 +116,44 @@ describe('DataTable — a successful query is not a failure', () => {
 });
 
 describe('the Operations screens on a successful, empty response', () => {
-  it('vault inventory shows its empty copy, not the generic failure', () => {
+  // «سجل الخزينة» (Round 12 — was «جرد الخزينة»): an empty vault right now is «تقرير الخزينة»'s empty
+  // copy, never the generic failure.
+  it('the vault history’s live report shows its empty copy, not the generic failure', () => {
     const html = render(<VaultInventoryPage />, {
       permissions: ['operationsVault.view'],
-      seed: (qc) => qc.setQueryData(listKey('operations', 'vault', { page: 1, pageSize: 25 }), emptyPage),
+      seed: (qc) => {
+        qc.setQueryData(
+          listKey('operations', 'currencies', { page: 1, pageSize: MAX_PAGE_SIZE }),
+          emptyPage,
+        );
+        qc.setQueryData(__vaultHeldReportKey(), {
+          asOf: '2026-11-12T10:00:00.000Z',
+          rows: [],
+          grandTotal: {
+            shipmentCount: 0,
+            bagCount: 0,
+            cartonCount: 0,
+            boxCount: 0,
+            currencies: [],
+          },
+        });
+      },
     });
     expect(html).not.toContain(UNKNOWN_AR);
     expect(html).not.toContain(UNKNOWN_EN);
-    expect(html).toContain('الخزينة فارغة');
+    expect(html).toContain('لا توجد محصنات بالخزينة الآن');
   });
 
-  it('the secured backlog shows its empty copy, not the generic failure', () => {
+  // The secured screen is the day board's board now (`GET /operations/secured/board`): an empty
+  // open list is its empty copy too, never the generic failure.
+  it('the secured screen shows its empty copy, not the generic failure', () => {
     const html = render(<SecuredBacklogPage />, {
       path: '/operations/secured',
       permissions: ['operationsShipment.view'],
-      seed: (qc) =>
-        qc.setQueryData(
-          listKey('operations', 'securedBacklog', { page: 1, pageSize: 25, sortDir: 'desc' }),
-          emptyPage,
-        ),
+      seed: (qc) => qc.setQueryData(__securedBoardKey(), { shipments: [], crews: [] }),
     });
     expect(html).not.toContain(UNKNOWN_AR);
+    expect(html).not.toContain(UNKNOWN_EN);
     expect(html).toContain('لا توجد محصنات مفتوحة');
   });
 });

@@ -52,6 +52,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { sortRows } from '../lib/sort-rows';
 import { BoardRemaining, BoardSinceCell } from '../components/AlarmFigureCell';
+import { useVehicleHoverCard } from '../components/VehicleHoverCard';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = ['level', 'vehicleCodes', 'sort'] as const;
@@ -141,6 +142,30 @@ const BIG_TYPE = cn(
   // The headings a step darker, so the bigger words over the saturated rows still read first.
   '[&_thead_tr_th]:!text-slate-600 dark:[&_thead_tr_th]:!text-slate-300',
 );
+
+/**
+ * The car's code, bold and a size up, on the code's own element — which is also the car card's
+ * trigger («عاوز لما اماوس يقف على كود عربيه يجيب بيانات زى اما اقف على اسم السواق»).
+ */
+const AlarmCode = ({ alarm }: { alarm: FleetMaintenanceAlarmDto }): JSX.Element => {
+  const { triggerProps, card } = useVehicleHoverCard({
+    vehicleId: alarm.vehicleId,
+    code: alarm.code,
+  });
+  return (
+    <>
+      <span
+        dir="ltr"
+        data-alarm-code="true"
+        className={cn(FIGURE, ALARMS_CODE_TYPE)}
+        {...triggerProps}
+      >
+        {alarm.code}
+      </span>
+      {card}
+    </>
+  );
+};
 
 /** Two arrows round a circle — «تحديث». */
 const REFRESH_PATH = [
@@ -301,11 +326,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       align: 'center',
       sortable: true,
       header: t('fleet.odometer.columns.vehicle'),
-      render: (alarm) => (
-        <span dir="ltr" data-alarm-code="true" className={cn(FIGURE, ALARMS_CODE_TYPE)}>
-          {alarm.code}
-        </span>
-      ),
+      render: (alarm) => <AlarmCode alarm={alarm} />,
     },
     {
       key: 'level',

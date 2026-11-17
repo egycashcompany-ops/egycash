@@ -59,7 +59,10 @@ describe('the suggest-placement action has a single source', () => {
     // Only the shared card, which every stage screen already uses. If this grows, a screen has
     // started rendering the action beside the card instead of through it — which is exactly how
     // the applicant page ended up with two.
-    expect(renderers.map((f) => rel(f.path))).toEqual([rel(join(HERE, 'RecommendationCard.tsx'))]);
+    // The shared card, and the interview page's own «الوظيفة المقترحة» card — both import it.
+    expect(renderers.map((f) => rel(f.path)).sort()).toEqual(
+      [rel(join(HERE, 'RecommendationCard.tsx')), rel(resolve(HERE, '../interviews/components/ProposedRole.tsx'))].sort(),
+    );
 
     for (const file of renderers) {
       const importMatch = /import \{ SuggestPlacementButton \} from '([^']+)'/.exec(file.text);

@@ -14,6 +14,7 @@ import {
   type RescheduleEmployeeLoan,
   type SettleEmployeeLoanExternally,
 } from '@ecms/contracts';
+import { type QueryParams } from '../../../../shared/lib/api-client';
 import * as api from './employee-loans-api';
 
 const MODULE = 'hr';
@@ -85,7 +86,7 @@ export const useCancelLoan = (employeeId: string) =>
 // list the administrator is looking at, and the profile tab they are not.
 const ALL_LOANS = 'employeeLoansAll';
 
-export const useAllLoans = (params: Record<string, string | number>, enabled = true) =>
+export const useAllLoans = (params: QueryParams, enabled = true) =>
   useQuery({
     queryKey: [MODULE, ALL_LOANS, params],
     queryFn: () => api.listAllLoans(params),

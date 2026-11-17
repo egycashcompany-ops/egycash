@@ -1,19 +1,18 @@
 // Multi-filter bar for the applicants list: free-text search + status, source, intake channel,
-// identity-verification, duplicate-only and has-attachments filters. Emits a flat filter state;
+// duplicate-only and has-attachments filters. Emits a flat filter state;
 // the list page turns it into query params (empty values are dropped).
 import {
   APPLICANT_INTAKE_CHANNELS,
   APPLICANT_STATUSES,
-  IDENTITY_VERIFICATION_STATES,
   type ApplicantIntakeChannel,
   type ApplicantSourceDto,
   type ApplicantStatus,
-  type IdentityVerification,
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { localized } from '../../../../../shared/lib/format';
 import { useAppSelector } from '../../../../../store';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Checkbox } from '../../../../../shared/ui/form';
 import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
@@ -23,7 +22,6 @@ export interface ApplicantFiltersState {
   status: ApplicantStatus[];
   sourceId: string[];
   intakeChannel: ApplicantIntakeChannel[];
-  identityVerification: IdentityVerification[];
   duplicateOnly: boolean;
   hasAttachments: boolean;
 }
@@ -33,7 +31,6 @@ export const EMPTY_APPLICANT_FILTERS: ApplicantFiltersState = {
   status: [],
   sourceId: [],
   intakeChannel: [],
-  identityVerification: [],
   duplicateOnly: false,
   hasAttachments: false,
 };
@@ -43,7 +40,6 @@ const isActive = (f: ApplicantFiltersState): boolean =>
   f.status.length > 0 ||
   f.sourceId.length > 0 ||
   f.intakeChannel.length > 0 ||
-  f.identityVerification.length > 0 ||
   f.duplicateOnly ||
   f.hasAttachments;
 
@@ -66,7 +62,7 @@ export const ApplicantFilters = ({
         value={value.search}
         onChange={(search) => set({ search })}
         placeholder={t('applicants.filters.searchPlaceholder')}
-        className="w-full sm:w-72"
+        className={SEARCH_FITS_TEXT}
       />
       <MultiSelect
         label={t('applicants.filters.status')}
@@ -85,17 +81,6 @@ export const ApplicantFilters = ({
         value={value.intakeChannel}
         onChange={(intakeChannel) => set({ intakeChannel: intakeChannel as ApplicantIntakeChannel[] })}
         options={APPLICANT_INTAKE_CHANNELS.map((c) => ({ value: c, label: t(`applicants.channel.${c}`) }))}
-      />
-      <MultiSelect
-        label={t('applicants.filters.identity')}
-        value={value.identityVerification}
-        onChange={(identityVerification) =>
-          set({ identityVerification: identityVerification as IdentityVerification[] })
-        }
-        options={IDENTITY_VERIFICATION_STATES.map((v) => ({
-          value: v,
-          label: t(`applicants.identity.${v}`),
-        }))}
       />
       <Checkbox
         label={t('applicants.filters.duplicatesOnly')}

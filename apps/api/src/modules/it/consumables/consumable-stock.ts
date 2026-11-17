@@ -36,6 +36,11 @@ export const NO_STOCK: Readonly<ConsumableCounters> = {
  * but the damaged unit came back from the person broken and was never on hand, so on hand moves by
  * the new unit alone. A return does not lower `issuedQty`: that counter is everything EVER issued,
  * and what came back is its own movement on the ledger.
+ *
+ * A transfer between two branches' stores («ممكن أنقل 5 لفرع تاني») moves on hand ALONE: out of one
+ * store (`transferredOut`) and into the other (`transferredIn`). Nothing was issued to anybody and
+ * nothing was written off — the units are still the company's, on another shelf — so neither
+ * store's `issuedQty` nor `scrappedQty` moves.
  */
 export const stockEffect = (
   kind: ItConsumableMovementKind,
@@ -45,7 +50,10 @@ export const stockEffect = (
   switch (kind) {
     case 'received':
     case 'returned':
+    case 'transferredIn':
       return { onHand: qty, issued: 0, scrapped: 0 };
+    case 'transferredOut':
+      return { onHand: -qty, issued: 0, scrapped: 0 };
     case 'scrapped':
       return { onHand: -qty, issued: 0, scrapped: qty };
     case 'issued':

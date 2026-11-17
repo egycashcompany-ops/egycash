@@ -362,7 +362,7 @@ const submit = (token: string, typeId: string, extra: Record<string, string> = {
 };
 
 describe('the catalogue is data, and it is seeded (D-APP-4)', () => {
-  it('asks for the four documents everyone owes and the fifth only drivers do', async () => {
+  it('asks for the four documents everyone owes, the fifth only drivers do, and the optional licence', async () => {
     const res = await request(app)
       .get('/api/v1/hr/applicant-documents/types')
       .query({ pageSize: 50 })
@@ -375,27 +375,42 @@ describe('the catalogue is data, and it is seeded (D-APP-4)', () => {
       'militaryService',
       'nationalIdCard',
       'professionalDrivingLicense',
+      'drivingLicense',
     ]);
     const licence = types.find((t) => t.key === 'professionalDrivingLicense');
     expect(licence?.applicability).toBe('driversOnly');
     expect(licence?.licenseClassRequired).toBe(true);
+    // «صورة رخصة القيادة» — whatever licence the candidate happens to hold, offered on the public
+    // application page. Asked of EVERYONE and required of nobody, which is what keeps it a
+    // different thing from the professional licence above rather than a second copy of it.
+    const anyLicence = types.find((t) => t.key === 'drivingLicense');
+    expect(anyLicence?.applicability).toBe('all');
+    expect(anyLicence?.required).toBe(false);
+    expect(anyLicence?.licenseClassRequired).toBe(false);
   });
 });
 
 describe('handing documents in', () => {
-  it('asks this candidate for four — the licence belongs to a seat they are not in (D-APP-5)', async () => {
+  it('asks this candidate for four owed and one optional — the PROFESSIONAL licence belongs to a seat they are not in (D-APP-5)', async () => {
     const res = await request(app)
       .get('/api/v1/hr/applicant-portal/documents')
       .set('Authorization', `Bearer ${portalToken}`);
     expect(res.status).toBe(200);
     const set = data<ApplicantDocumentSetDto>(res);
     expect(set.documents).toEqual([]);
+    // `missing` is every slot ASKED of this candidate and not yet filled, which is why the
+    // optional «رخصة القيادة» is listed: it is offered to everyone. `professionalDrivingLicense`
+    // stays absent, and that is still the point of this test — it belongs to a driver's seat this
+    // candidate is not in, so they are never asked for it at all.
     expect(set.missing.map((m) => m.typeKey)).toEqual([
       'qualification',
       'birthCertificate',
       'militaryService',
       'nationalIdCard',
+      'drivingLicense',
     ]);
+    // Still incomplete, and NOT because of the optional slot: `isComplete` weighs only the
+    // required rows, so leaving the licence out would never be what holds a candidate back.
     expect(set.complete).toBe(false);
   });
 
@@ -557,5 +572,28 @@ describe('confinement — the candidate reaches their own file and nothing else 
       .set('Authorization', `Bearer ${portalToken}`)
       .send({ applicantId: applicant.id });
     expect(res.status).toBe(403);
+  });
+});
+
+// «هنخلي كل الفلترز multi»: sources filter by several kinds; and «غير نشط» asks for the inactive ones —
+// `active=false` used to be coerced to true and answered with the active sources.
+describe('the sources list filters', () => {
+  const list = (query: Record<string, string>) =>
+    request(app).get('/api/v1/hr/applicant-sources').query({ pageSize: 100, ...query }).set('Authorization', `Bearer ${adminToken}`);
+
+  it('takes several kinds at once', async () => {
+    const res = await list({ kind: 'manual,publicForm' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const kinds = data<{ kind: string }[]>(res).map((s) => s.kind);
+    expect(kinds.length).toBeGreaterThan(0);
+    for (const kind of kinds) expect(['manual', 'publicForm']).toContain(kind);
+  });
+
+  it('answers «inactive» with inactive sources only', async () => {
+    const inactive = await list({ active: 'false' });
+    expect(inactive.status).toBe(200);
+    expect(data<{ active: boolean }[]>(inactive).every((s) => !s.active)).toBe(true);
+    const active = await list({ active: 'true' });
+    expect(data<{ active: boolean }[]>(active).every((s) => s.active)).toBe(true);
   });
 });

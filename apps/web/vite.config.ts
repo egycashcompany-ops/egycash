@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -41,6 +43,14 @@ const buildId = (): string => {
   }
 };
 
+// The face finder's WebAssembly (the HR photo's «قص من صفحة A4»). The package does not export its
+// `wasm/` folder, so it is reached through this alias and bundled as plain assets — served from
+// the app's own origin, loaded only when HR opens an A4 sheet.
+const MEDIAPIPE_WASM = join(
+  dirname(createRequire(import.meta.url).resolve('@mediapipe/tasks-vision')),
+  'wasm',
+);
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', 'VITE_');
   process.env['VITE_APP_VERSION'] = env['VITE_APP_VERSION'] || platformVersion();
@@ -50,6 +60,7 @@ export default defineConfig(({ mode }) => {
     // base and — via import.meta.env.BASE_URL — the router basename. Root ('/') by default.
     base: env['VITE_BASE_PATH'] ?? '/',
     plugins: [react()],
+    resolve: { alias: { '/mediapipe-wasm': MEDIAPIPE_WASM } },
     server: {
       port: 5173,
     },

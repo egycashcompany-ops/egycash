@@ -20,6 +20,8 @@ const EnvSchema = z.object({
    */
   NATIONAL_ID_OCR_URL: z.string().url().optional(),
   NATIONAL_ID_OCR_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
+  /** The sidecar's `OCR_ACCESS_CODE`, when it runs locked (its LAN mode); sent as `X-Access-Code`. */
+  NATIONAL_ID_OCR_ACCESS_CODE: z.string().optional(),
 
   /**
    * ATM maintenance mailbox (ATM-6) — the ONE central reader that replaces the legacy's
@@ -35,7 +37,10 @@ const EnvSchema = z.object({
   ATM_MAIL_GRAPH_CLIENT_ID: z.string().min(1).optional(),
   ATM_MAIL_GRAPH_CLIENT_SECRET: z.string().min(1).optional(),
   ATM_MAIL_GRAPH_USER: z.string().min(1).optional(),
-  ATM_MAIL_GRAPH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
+  // 45 s since 2026-11-13: the mailbox listing that took a few seconds took over twenty that day,
+  // and every reading was cut off before its answer came. The reader's lease follows this value
+  // (mail-poll.service.ts `LEASE_TTL_SECONDS`), so a longer wait never lets two readings overlap.
+  ATM_MAIL_GRAPH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(45_000),
 
   /**
    * ClamAV, the scanner behind the files service's `virusScan` extension point (Security

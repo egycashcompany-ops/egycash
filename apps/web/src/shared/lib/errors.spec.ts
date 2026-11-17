@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { ErrorCodes } from '@ecms/contracts';
 import { ApiError } from './api-client';
 import { errorDiagnostic, errorMessage, hasError, validationDetails } from './errors';
 
@@ -57,6 +58,82 @@ describe('errorMessage', () => {
     expect(errorMessage(new ApiError('SOME_NEW_CODE', 'very specific', 400), 'ar')).toBe(
       'very specific',
     );
+  });
+
+  // Round 10 — the secured shipment's refusals reach a reader whose board was read before the act
+  // that changed it (the vault's ✓, a colleague's pickup ✓). The global notifier words them, so
+  // each has its own sentence in both languages, never the server's English.
+  it('words the secured shipment’s lock and pickup refusals in both languages', () => {
+    const words: string[] = [];
+    for (const code of [
+      ErrorCodes.OPERATIONS_SECURED_LOCKED,
+      ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP,
+      ErrorCodes.OPERATIONS_SECURED_ALREADY_PICKED_UP,
+      ErrorCodes.OPERATIONS_SECURED_NOT_IN_VAULT,
+    ]) {
+      const refused = new ApiError(code, 'server english', 409);
+      for (const locale of ['ar', 'en'] as const) {
+        const text = errorMessage(refused, locale);
+        expect(text, `${locale}: ${code}`).not.toBe('server english');
+        words.push(text);
+      }
+      expect(errorMessage(refused, 'ar')).toMatch(/المحصنة/);
+    }
+    expect(new Set(words).size).toBe(words.length);
+  });
+
+  // «صرف الخزينة» (Round 10) — its two dialogs say a refusal themselves (`errorMessage`): a crew
+  // from another day than the shipment's, a captain no longer on the van, a release of a shipment
+  // with no crew. Each in both languages, never the server's English.
+  it('words the dispatch screen’s crew and release refusals in both languages', () => {
+    const words: string[] = [];
+    for (const code of [
+      ErrorCodes.OPERATIONS_CREW_DAY_MISMATCH,
+      ErrorCodes.OPERATIONS_CREW_CAPTAIN_MISMATCH,
+      ErrorCodes.OPERATIONS_DELIVERY_LEG_REQUIRED,
+    ]) {
+      const refused = new ApiError(code, 'server english', 422);
+      for (const locale of ['ar', 'en'] as const) {
+        const text = errorMessage(refused, locale);
+        expect(text, `${locale}: ${code}`).not.toBe('server english');
+        words.push(text);
+      }
+    }
+    expect(new Set(words).size).toBe(words.length);
+  });
+
+  // «تسليم المحصنات» (Round 17) — the server now refuses a handover of any van but today's. The
+  // screen offers «تسليم» on today's vans only, so this reaches a page left open from another day;
+  // it must read as the screen's own rule, in the reader's language, never the server's English.
+  it('words the handover’s today-only refusal as the screen says it', () => {
+    const refused = new ApiError(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY, 'server english', 422);
+    const ar = errorMessage(refused, 'ar');
+    const en = errorMessage(refused, 'en');
+    expect(ar).not.toBe('server english');
+    expect(en).not.toBe('server english');
+    // The handover screen's own words for the rule (`operations.handover.notToday`).
+    expect(ar).toContain('التسليم يتم يوم خروج السيارة فقط');
+    expect(en).toMatch(/only on the day it goes out/);
+  });
+
+  // «لوحة التشغيلة» (Round 20) — a save refused for a type archived since it was picked, or a
+  // direction no area answers. The board marks the row; these are the words said beside it.
+  it('words the crew board’s two row refusals, each its own, never the server’s English', () => {
+    const words: string[] = [];
+    for (const code of [
+      ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE,
+      ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA,
+    ]) {
+      const refused = new ApiError(code, 'server english', 422);
+      for (const locale of ['ar', 'en'] as const) {
+        const text = errorMessage(refused, locale);
+        expect(text, `${locale}: ${code}`).not.toBe('server english');
+        words.push(text);
+      }
+    }
+    expect(new Set(words).size).toBe(words.length);
+    expect(words[0]).toContain('البيانات المرجعية');
+    expect(words[2]).toContain('المناطق');
   });
 });
 

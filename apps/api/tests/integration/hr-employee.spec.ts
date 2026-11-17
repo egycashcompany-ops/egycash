@@ -457,6 +457,41 @@ describe('employees — creation from the accepted offer snapshot', () => {
     expect(found.status).toBe(200);
     expect((found.body as { data: EmployeeDto[] }).data.map((e) => e.code)).toContain(emp.code);
   });
+
+  // «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: status, origin and the ID card
+  // take several values — one comma list each, ORed — as the placement filters already did.
+  it('filters by several statuses, origins and ID card states at once', async () => {
+    const applicant = await offerReadyApplicant();
+    const offer = await acceptedOffer(applicant.id);
+    const emp = (await createEmployee(offer.id)).body.data as EmployeeDto;
+    const codes = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/employees')
+        .query({ search: emp.code, pageSize: 20, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body as { data: EmployeeDto[] }).data.map((e) => e.code);
+    };
+
+    expect(await codes({ status: `exited,${emp.status}` })).toContain(emp.code);
+    expect(await codes({ status: 'exited,suspended' })).not.toContain(emp.code);
+    expect(await codes({ origin: 'external,recruitment' })).toContain(emp.code);
+    expect(await codes({ origin: 'external,direct' })).not.toContain(emp.code);
+    expect(await codes({ idCard: 'received,never' })).toContain(emp.code);
+    expect(await codes({ idCard: 'received,awaiting' })).not.toContain(emp.code);
+    // One value is still one value.
+    expect(await codes({ status: emp.status })).toContain(emp.code);
+  });
+
+  /** Several company departments expand to every branch copy of each — past the default cap of 50. */
+  it('takes the branch copies of several departments at once', async () => {
+    const many = Array.from({ length: 60 }, (_, i) => `64b1f0cccccccccccccc${String(i).padStart(4, '0')}`).join(',');
+    const res = await request(app)
+      .get('/api/v1/hr/employees')
+      .query({ departmentId: many, sectionId: many, pageSize: 5 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  });
 });
 
 describe('platform identity (ADR-017) — branch code, global sequence, login account', () => {
@@ -541,8 +576,12 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
         .send(body);
     const newCode = `099${emp.employeeNumber}`;
 
-    // Held by another record — `ux_code` is unique across every state.
-    expect((await change({ code: other.code, reason: 'تصحيح', version: emp.version })).status).toBe(409);
+    // Held by another record — `ux_code` is unique across every state. DUPLICATE is the code the
+    // dialog reads, and no `username` detail: it is a CODE another employee holds.
+    const held = await change({ code: other.code, reason: 'تصحيح', version: emp.version });
+    expect(held.status).toBe(409);
+    expect((held.body as { error: { code: string; details?: unknown } }).error.code).toBe('DUPLICATE');
+    expect((held.body as { error: { details?: unknown } }).error.details ?? []).toEqual([]);
     // The code the employee already has.
     expect((await change({ code: emp.code, reason: 'تصحيح', version: emp.version })).status).toBe(422);
     // Not the company's shape, and no reason.
@@ -560,6 +599,41 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
       .get(`/api/v1/platform/users/${String(emp.userId)}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect((account.body.data as { username: string | null }).username).toBe(newCode);
+  });
+
+  /**
+   * A code no employee holds can still be an ACCOUNT's sign-in name. The change is refused whole —
+   * the employee would otherwise sign in under a name somebody else has — and says that it is the
+   * sign-in name, so the dialog does not tell HR another employee holds the code.
+   */
+  it('refuses a code another account signs in with, and says it is the sign-in name', async () => {
+    const emp = await hire();
+    const signIn = `099${emp.employeeNumber}`;
+    await userService.create(
+      {
+        email: `holder-${emp.employeeNumber}@ecms.local`,
+        firstName: { ar: 'م', en: 'T' },
+        lastName: { ar: 'م', en: 'T' },
+        locale: 'en',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      null,
+      { username: signIn },
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/hr/employees/${emp.id}/code`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: signIn, reason: 'تصحيح', version: emp.version });
+
+    expect(res.status).toBe(409);
+    const error = (res.body as { error: { code: string; details?: { field?: string }[] } }).error;
+    expect(error.code).toBe('DUPLICATE');
+    expect(error.details?.map((d) => d.field)).toEqual(['username']);
+    const after = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((after.body.data as EmployeeDto).code).toBe(emp.code);
   });
 
   /**

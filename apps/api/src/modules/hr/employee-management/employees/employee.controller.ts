@@ -11,6 +11,7 @@ import {
   type CreateEmployee,
   type CreateEmployeeLogin,
   type DirectRegisterEmployee,
+  type RegisterExternalEmployee,
   type EmployeeCodeCheckQuery,
   type EmployeeLoginDto,
   type JobTitlePlacementQuery,
@@ -20,6 +21,8 @@ import {
   type UpdateEmployeeInsurance,
   type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
+  type PurgeEmployee,
+  type EmployeePurgeReportDto,
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
@@ -29,6 +32,8 @@ import { hasPermission, scopeSelector } from '../../../../shared/types';
 import { employeeService } from './employee.service';
 import { toEmployeeDto, toMyEmployeeSummaryDto, toRehireCheckResultDto } from './employee.mapper';
 import { resolvePlacements } from './employee-placement';
+import { employeeIdCardService } from './employee-id-card.service';
+import { executeEmployeePurge, planEmployeePurge } from './employee-purge';
 
 type IdParam = { id: string };
 
@@ -81,6 +86,28 @@ export const registerEmployeeDirect = async (req: Request, res: Response): Promi
   );
 };
 
+/** «أخر كود كام للموظفين الخارجيين دول» — stated under the code box on the register screen. */
+export const getLastExternalEmployeeCode = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await employeeService.lastExternalCode());
+};
+
+/** An external person — the code HR typed, their name, and where they sit. */
+export const registerEmployeeExternal = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<RegisterExternalEmployee>(req);
+  const doc = await employeeService.registerExternal(
+    ctx,
+    body,
+    scopeSelector(ctx, 'employee.registerDirect'),
+  );
+  const placement = await resolvePlacements([doc]);
+  created(
+    res,
+    toEmployeeDto(doc, visibility(req), placement.for(doc)),
+    `/api/v1/hr/employees/${String(doc._id)}`,
+  );
+};
+
 export const listEmployees = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListEmployeesQuery>(req);
@@ -120,14 +147,7 @@ export const getEmployee = async (req: Request, res: Response): Promise<void> =>
   const { params } = validated<never, never, IdParam>(req);
   const doc = await employeeService.getById(params.id, scopeSelector(ctx, 'employee.view'));
   const placement = await resolvePlacements([doc]);
-  ok(
-    res,
-    toEmployeeDto(
-      doc,
-      visibility(req),
-      placement.for(doc),
-    ),
-  );
+  ok(res, toEmployeeDto(doc, visibility(req), placement.for(doc)));
 };
 
 /** Post-hire personal-data edits — plain audited updates, not personnel actions (I4). */
@@ -173,6 +193,36 @@ export const changeEmployeeCode = async (req: Request, res: Response): Promise<v
   ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)), meta);
 };
 
+/**
+ * «مسح نهائي» — erase one employee from the system, permanently.
+ *
+ * The typed code is checked HERE against the employee the id names, before anything is planned.
+ * `planEmployeePurge` refuses on an unclassified collection or an unclassified name field, so a
+ * run that reaches `executeEmployeePurge` is one somebody has decided every part of.
+ */
+export const purgeEmployee = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<PurgeEmployee, never, IdParam>(req);
+  const plan = await planEmployeePurge(params.id);
+  if (plan.employee.code !== body.confirmCode.trim()) {
+    throw new ValidationError(
+      [{ field: 'confirmCode', code: 'MISMATCH', message: 'the typed code is not this employee’s' }],
+      'the typed code is not this employee’s',
+    );
+  }
+  const result = await executeEmployeePurge(ctx, plan);
+  const report: EmployeePurgeReportDto = {
+    code: plan.employee.code,
+    fullNameAr: plan.employee.fullNameAr,
+    rowsDeleted: result.rowsDeleted,
+    namesScrubbed: result.namesScrubbed,
+    filesRemoved: result.filesRemoved,
+    fileFailures: result.fileFailures,
+    keptCollections: plan.keptCollections,
+  };
+  ok(res, report);
+};
+
 /** Replace the officer / armed-security profile — an audited update, not a personnel action. */
 export const updateEmployeeOfficer = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
@@ -191,16 +241,25 @@ export const updateEmployeeOfficer = async (req: Request, res: Response): Promis
 export const getEmployeeNationalIdCard = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, await employeeService.nationalIdCard(ctx, params.id, scopeSelector(ctx, 'employee.view')));
+  ok(
+    res,
+    await employeeService.nationalIdCard(ctx, params.id, scopeSelector(ctx, 'employee.view')),
+  );
 };
 
 export const listSubordinates = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
   const visible = visibility(req);
-  const reports = await employeeService.subordinates(params.id, scopeSelector(ctx, 'employee.view'));
+  const reports = await employeeService.subordinates(
+    params.id,
+    scopeSelector(ctx, 'employee.view'),
+  );
   const placement = await resolvePlacements(reports);
-  ok(res, reports.map((d) => toEmployeeDto(d, visible, placement.for(d))));
+  ok(
+    res,
+    reports.map((d) => toEmployeeDto(d, visible, placement.for(d))),
+  );
 };
 
 /** Composed profile timeline: file milestones + personnel actions + audited personal edits. */
@@ -361,4 +420,70 @@ export const createEmployeeLogin = async (req: Request, res: Response): Promise<
     employeeCode,
   };
   created(res, payload, `/api/v1/platform/users/${String(user._id)}`);
+};
+
+/**
+ * The company ID card's data, the full national ID among it (see `employee-id-card.ts`). Scoped
+ * like a personal-data edit, which is the permission that may print the card.
+ */
+export const getEmployeeIdCard = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  const scope = scopeSelector(ctx, 'employee.editPersonal');
+  const doc = await employeeService.getById(params.id, scope);
+  const placement = await resolvePlacements([doc]);
+  ok(
+    res,
+    await employeeIdCardService.cardData(ctx, params.id, scope, placement.for(doc).jobTitle, doc),
+  );
+};
+
+/** One print: recorded, and the card waits for its handover. It is not counted as a card. */
+export const recordEmployeeIdCardPrint = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  created(
+    res,
+    await employeeIdCardService.recordPrint(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+    `/api/v1/hr/employees/${params.id}/id-card/prints`,
+  );
+};
+
+/** The receipt for the waiting card was printed — the handover's second step, kept on the employee. */
+export const recordEmployeeIdCardReceipt = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    await employeeIdCardService.recordReceipt(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+  );
+};
+
+/** HR confirms the employee signed the receipt and took the card — the only thing that counts a card. */
+export const confirmEmployeeIdCardHandover = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(
+    res,
+    await employeeIdCardService.confirmHandover(
+      ctx,
+      params.id,
+      scopeSelector(ctx, 'employee.editPersonal'),
+    ),
+  );
+};
+
+/** Every card printed for the employee, newest first. */
+export const listEmployeeIdCardPrints = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await employeeIdCardService.history(params.id, scopeSelector(ctx, 'employee.view')));
 };

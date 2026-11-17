@@ -45,7 +45,7 @@ import { departmentAt } from '../../shared/department-at';
 import { departmentMovesFor } from '../../shared/department-moves';
 import { periodRange } from '../compensation/compensation-rules';
 import { payrollRunRepository } from '../runs/payroll-run.repository';
-import { employedDuring, skipReasonFor } from './payslip-eligibility';
+import { onThePayroll, employedDuring, skipReasonFor } from './payslip-eligibility';
 import { PayslipModel, type PayslipDoc } from './payslip.model';
 import { payslipRepository } from './payslip.repository';
 
@@ -140,8 +140,10 @@ class PayslipService {
     const window = periodRange(run.period);
 
     const everyone = await employeeRepository.listAllSystem();
-    const population = everyone.filter((employee) =>
-      employedDuring(employmentSpansOf(employee), window),
+    // Both halves of "who is in the batch", in the order PY-7 asks them: somebody the company pays
+    // at all, and then whether they were employed during the period (`payslip-eligibility.ts`).
+    const population = everyone.filter(
+      (employee) => onThePayroll(employee) && employedDuring(employmentSpansOf(employee), window),
     );
 
     const issuedAt = new Date();

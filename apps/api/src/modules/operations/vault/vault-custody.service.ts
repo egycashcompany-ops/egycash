@@ -7,7 +7,7 @@
 // `secured/secured.service.ts`, which drives this port. Keeping the port that dumb is what makes
 // swapping in a real Treasury module a registration change rather than a rewrite.
 import { Types, type ClientSession } from 'mongoose';
-import { OperationsEvents } from '@ecms/contracts';
+import { OPERATIONS_VAULT_DENOMINATIONS, OperationsEvents, vaultSealKey } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -16,6 +16,8 @@ import {
   registerVaultCustodyProvider,
   type VaultCustodyProvider,
   type VaultCustodyView,
+  type VaultDenominationCount,
+  type VaultHeldSeal,
   type VaultReceiptInput,
 } from '../treasury-boundary';
 import { operationsVaultCustodyRepository } from './vault-custody.repository';
@@ -27,43 +29,87 @@ const entityRef = (id: string) => ({
   entityId: id,
 });
 
+const idOrNull = (id: Types.ObjectId | null | undefined): string | null =>
+  id == null ? null : String(id);
+
+/**
+ * The audited surface. A row written before Round 18 carries its two treasurers and none of the
+ * Round 18 fields; a newer row the other way round — each snapshot holds what its row holds, so an
+ * old receipt's release diff never invents fields it did not have.
+ */
 const snapshot = (doc: OperationsVaultCustodyDoc) => ({
   state: doc.state,
   receiptNumber: doc.receiptNumber,
   bagCount: doc.bagCount,
   cartonCount: doc.cartonCount,
   boxCount: doc.boxCount,
+  ...(doc.bagSealsPerBag == null ? {} : { bagSealsPerBag: doc.bagSealsPerBag }),
   bagSeals: doc.bagSeals,
   boxSeals: doc.boxSeals,
-  receivedByPrimaryId: String(doc.receivedByPrimaryId),
-  receivedBySecondaryId: String(doc.receivedBySecondaryId),
-  releasedById: doc.releasedById === null ? null : String(doc.releasedById),
+  ...(doc.denominations === undefined ? {} : { denominations: doc.denominations }),
+  ...(doc.receivedById == null ? {} : { receivedById: String(doc.receivedById) }),
+  ...(doc.receivedByPrimaryId == null
+    ? {}
+    : { receivedByPrimaryId: String(doc.receivedByPrimaryId) }),
+  ...(doc.receivedBySecondaryId == null
+    ? {}
+    : { receivedBySecondaryId: String(doc.receivedBySecondaryId) }),
+  releasedById: idOrNull(doc.releasedById),
 });
 
 export const toCustodyView = (doc: OperationsVaultCustodyDoc): VaultCustodyView => ({
   id: String(doc._id),
   shipmentId: String(doc.shipmentId),
   state: doc.state,
-  receiptNumber: doc.receiptNumber,
+  // `?? null` on every Round 18 field: a row written before carries none of them, and absent reads
+  // as "not recorded" — never as a default the receipt did not choose.
+  receiptNumber: doc.receiptNumber ?? null,
   receivedAt: doc.receivedAt,
   releasedAt: doc.releasedAt,
   bagCount: doc.bagCount,
   cartonCount: doc.cartonCount,
   boxCount: doc.boxCount,
-  receivedByPrimaryId: String(doc.receivedByPrimaryId),
-  receivedBySecondaryId: String(doc.receivedBySecondaryId),
+  bagSealsPerBag: doc.bagSealsPerBag ?? null,
+  denominations: (doc.denominations ?? []).map((line) => ({ value: line.value, count: line.count })),
+  receivedById: idOrNull(doc.receivedById),
+  receivedByPrimaryId: idOrNull(doc.receivedByPrimaryId),
+  receivedBySecondaryId: idOrNull(doc.receivedBySecondaryId),
+  // `?? null`: a row written before Round 10 carries no cancellation fields at all.
+  cancelledAt: doc.cancelledAt ?? null,
 });
 
+/**
+ * «عدد الورق من كل فئة» as stored: only the denominations with notes, smallest first — the order of
+ * the legacy form's row of boxes, whatever order the request listed them in. A count of 0 is the
+ * form's untouched box, not a fact worth keeping. (Duplicates and unknown values never get here:
+ * the contract refuses them.)
+ */
+const storedDenominations = (lines: readonly VaultDenominationCount[]): VaultDenominationCount[] =>
+  lines
+    .filter((line) => line.count > 0)
+    .sort(
+      (a, b) =>
+        OPERATIONS_VAULT_DENOMINATIONS.indexOf(a.value) -
+        OPERATIONS_VAULT_DENOMINATIONS.indexOf(b.value),
+    )
+    .map((line) => ({ value: line.value, count: line.count }));
+
 class OperationsVaultCustodyService implements VaultCustodyProvider {
-  async receive(input: VaultReceiptInput, by: string): Promise<VaultCustodyView> {
-    // Q2 NORMALIZE — the dual-control rule the legacy schema described and never enforced.
-    if (input.receivedByPrimaryId === input.receivedBySecondaryId) {
-      throw new BusinessRuleError(
-        'the two receiving treasurers must be different people',
-        'OPERATIONS_CUSTODY_DUAL_CONTROL_REQUIRED',
-      );
-    }
-    const existing = await operationsVaultCustodyRepository.findByShipment(input.shipmentId);
+  /**
+   * Take custody, received by `by` — the signed-in user (Round 18: «انا مش عاوز اى اسماء»). Q2's
+   * dual-control check is gone with the two names it compared; there is one receiver, and the
+   * token says who.
+   */
+  async receive(
+    input: VaultReceiptInput,
+    by: string,
+    session?: unknown,
+  ): Promise<VaultCustodyView> {
+    const typedSession = session as ClientSession | undefined;
+    const existing = await operationsVaultCustodyRepository.findByShipment(
+      input.shipmentId,
+      typedSession,
+    );
     if (existing !== null) {
       // Legacy re-stamped status 2 and the receive timestamp on EVERY save from the receive
       // screen (Q29, contad_app.js:1194-1240). NORMALIZE: custody is taken once.
@@ -78,27 +124,37 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
         bagCount: input.bagCount,
         cartonCount: input.cartonCount,
         boxCount: input.boxCount,
+        bagSealsPerBag: input.bagSealsPerBag,
         bagSeals: input.bagSeals,
         boxSeals: input.boxSeals,
-        receivedByPrimaryId: new Types.ObjectId(input.receivedByPrimaryId),
-        receivedBySecondaryId: new Types.ObjectId(input.receivedBySecondaryId),
+        denominations: storedDenominations(input.denominations),
+        receivedById: new Types.ObjectId(by),
         receivedAt: new Date(),
         releasedById: null,
         releasedAt: null,
       },
-      { by },
+      { by, session: typedSession },
     );
+    return toCustodyView(doc);
+  }
+
+  /**
+   * Audit + event for a receipt, run by the caller AFTER its transaction commits — the
+   * `announceRelease` shape (Round 10 moved them out of `receive`, which now joins the caller's
+   * transaction). Re-reads the row: the audit snapshot carries the seals the view leaves out.
+   */
+  async announceReceived(view: VaultCustodyView): Promise<void> {
+    const doc = await operationsVaultCustodyRepository.getById(view.id);
     await auditService.record({
-      entityRef: entityRef(String(doc._id)),
+      entityRef: entityRef(view.id),
       action: 'create',
       changes: diffChanges({}, snapshot(doc)),
     });
     await emit(OperationsEvents.VaultReceived, {
-      custodyId: String(doc._id),
-      shipmentId: String(doc.shipmentId),
+      custodyId: view.id,
+      shipmentId: view.shipmentId,
       state: doc.state,
     });
-    return toCustodyView(doc);
   }
 
   async release(shipmentId: string, by: string, session?: unknown): Promise<VaultCustodyView> {
@@ -140,6 +196,74 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
     });
   }
 
+  /**
+   * Void the HELD custody of a shipment — Round 10's cancelled receipt. ONE write, version-guarded:
+   * the cancellation stamp (when, who, why) and the soft-delete together, so there is no moment in
+   * which the row is cancelled but still read as held, or hidden without saying why.
+   *
+   * Soft-deleted rather than given a new `state`: every live read already asks `isDeleted: false`
+   * (the inventory, the roll-up, today's receipts, the reports' package counts), and `ux_shipment`
+   * is partial on it — so a cancelled receipt leaves all of them, and frees the shipment for a fresh
+   * receipt, without changing an index or teaching every reader a third state. Nothing is erased:
+   * the receipt number, counts, seals, note counts and who received it stay on the row, and
+   * `history` reads it back.
+   */
+  async cancelReceipt(
+    shipmentId: string,
+    reason: string,
+    by: string,
+    session?: unknown,
+  ): Promise<VaultCustodyView> {
+    const typedSession = session as ClientSession | undefined;
+    const current = await operationsVaultCustodyRepository.findByShipment(shipmentId, typedSession);
+    if (current?.state !== 'held') {
+      throw new BusinessRuleError(
+        current === null
+          ? 'this shipment is not in the vault'
+          : 'this shipment has already left the vault',
+        'OPERATIONS_CUSTODY_NOT_HELD',
+      );
+    }
+    const now = new Date();
+    const actor = new Types.ObjectId(by);
+    const updated = await operationsVaultCustodyRepository.updateById(
+      String(current._id),
+      {
+        cancelledAt: now,
+        cancelledById: actor,
+        cancelReason: reason,
+        isDeleted: true,
+        deletedAt: now,
+        deletedBy: actor,
+      },
+      { by, version: current.__v, session: typedSession },
+    );
+    return toCustodyView(updated);
+  }
+
+  /**
+   * Audit + event for a cancelled receipt, run by the caller AFTER its transaction commits — the
+   * `announceRelease` shape. Audited as the custody's `delete`, carrying the reason: the shipment's
+   * action log reads it as `receiptCancelled` and folds it into the shipment's own entry.
+   */
+  async announceReceiptCancelled(view: VaultCustodyView, reason: string): Promise<void> {
+    await auditService.record({
+      entityRef: entityRef(view.id),
+      action: 'delete',
+      changes: [{ field: 'cancelReason', old: null, new: reason }],
+    });
+    await emit(OperationsEvents.VaultReceiptCancelled, {
+      custodyId: view.id,
+      shipmentId: view.shipmentId,
+      reason,
+    });
+  }
+
+  async history(shipmentId: string): Promise<VaultCustodyView[]> {
+    const docs = await operationsVaultCustodyRepository.findHistoryByShipment(shipmentId);
+    return docs.map(toCustodyView);
+  }
+
   async find(shipmentId: string): Promise<VaultCustodyView | null> {
     const doc = await operationsVaultCustodyRepository.findByShipment(shipmentId);
     return doc === null ? null : toCustodyView(doc);
@@ -167,8 +291,41 @@ class OperationsVaultCustodyService implements VaultCustodyProvider {
     return { items: found.items.map(toCustodyView), total: found.meta.totalItems };
   }
 
-  async allHeld(): Promise<VaultCustodyView[]> {
-    const docs = await operationsVaultCustodyRepository.findAllHeld();
+  /**
+   * Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». ONE read of
+   * the seals the treasury holds now (`findHeldSeals` — held, not cancelled), keyed by the contract's
+   * `vaultSealKey`, then the caller's seals looked up in memory. A seal of a custody released to its
+   * van, or of a cancelled receipt, is in no held row, so it is free to come again.
+   */
+  async heldSeals(
+    seals: readonly string[],
+    options: { excludeShipmentId?: string; session?: unknown } = {},
+  ): Promise<VaultHeldSeal[]> {
+    const asked = seals.flatMap((seal, index) => {
+      const key = vaultSealKey(seal);
+      return key === null ? [] : [{ seal, index, key }];
+    });
+    if (asked.length === 0) return [];
+    const rows = await operationsVaultCustodyRepository.findHeldSeals(
+      options.excludeShipmentId,
+      options.session as ClientSession | undefined,
+    );
+    const holderOf = new Map<string, string>();
+    for (const row of rows) {
+      for (const seal of [...row.bagSeals, ...row.boxSeals]) {
+        const key = vaultSealKey(seal);
+        // The first receipt to take a seal answers for it (rows come oldest received first).
+        if (key !== null && !holderOf.has(key)) holderOf.set(key, String(row.shipmentId));
+      }
+    }
+    return asked.flatMap(({ seal, index, key }) => {
+      const shipmentId = holderOf.get(key);
+      return shipmentId === undefined ? [] : [{ seal, index, shipmentId }];
+    });
+  }
+
+  async receivedBetween(from: Date, toExclusive: Date): Promise<VaultCustodyView[]> {
+    const docs = await operationsVaultCustodyRepository.findReceivedBetween(from, toExclusive);
     return docs.map(toCustodyView);
   }
 

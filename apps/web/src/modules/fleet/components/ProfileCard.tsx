@@ -3,6 +3,7 @@
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '../../../shared/lib/cn';
+import { nameInitials } from '../lib/name-initials';
 import { BoardIcon } from './FuelCardBoard';
 
 /** The reference's surfaces, each with a light-mode counterpart. */
@@ -54,10 +55,7 @@ export const VehicleKpi = ({
         </div>
         {caption !== undefined && (
           <p
-            className={cn(
-              'mt-1 text-[11px] leading-snug',
-              captionTone ?? 'text-slate-500',
-            )}
+            className={cn('mt-1 text-[11px] leading-snug', captionTone ?? 'text-slate-500')}
             title={caption}
           >
             {caption}
@@ -240,14 +238,11 @@ export const GlassTile = ({
   </div>
 );
 
-/** The first letters of a name — «ابراهيم السيد» gives «ا س»: the article is not the name. */
-export const initialsOf = (name: string): string =>
-  name
-    .trim()
-    .split(/\s+/u)
-    .slice(0, 2)
-    .map((word) => (word.startsWith('ال') && word.length > 2 ? word.charAt(2) : word.charAt(0)))
-    .join(' ');
+/**
+ * The first letters of a name — «ابراهيم السيد» gives «ا س»: the article is not the name. A pair
+ * that reads as a rude word shows its first letter alone (`nameInitials`).
+ */
+export const initialsOf = (name: string): string => nameInitials(name, ' ');
 
 /** «2026-09-29T20:39…» → «2026/09/29» and «08:39 م», the way the reference writes a moment. */
 export const dayAndTime = (iso: string): { day: string; time: string } => {

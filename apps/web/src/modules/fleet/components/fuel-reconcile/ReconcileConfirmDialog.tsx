@@ -325,7 +325,9 @@ export const ReconcileConfirmDialog = ({
                 >
                   {line.card.name}
                 </span>
-                {line.card.vehicleCode !== null && <CodeChip code={line.card.vehicleCode} />}
+                {line.card.vehicleCode !== null && (
+                  <CodeChip code={line.card.vehicleCode} card={false} />
+                )}
               </span>
               <span className="flex flex-wrap items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-2 whitespace-nowrap">
@@ -399,7 +401,7 @@ export const ReconcileConfirmDialog = ({
                         {line.card.name}
                       </span>
                       {line.card.vehicleCode !== null ? (
-                        <CodeChip code={line.card.vehicleCode} />
+                        <CodeChip code={line.card.vehicleCode} card={false} />
                       ) : (
                         <span className="whitespace-nowrap rounded border border-violet-300 bg-violet-50 px-1.5 py-0.5 text-[12px] font-bold text-violet-800 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-300">
                           {line.card.label ?? '—'}

@@ -90,11 +90,14 @@ const workflowState = (applicantId: string): WorkflowStateDto => ({
     sectionId: null,
   },
   placementLabel: { position: null, branch: null, department: null },
+  stageRecords: [
+    { recordId: 'scr-1', key: 'screening', status: 'waiting', attempt: 1, passed: false, correctable: true },
+  ],
   availableActions: [
     { key: 'reassign', permission: 'applicant.reassign', enabled: true, reason: null },
     {
       key: 'returnToStage',
-      permission: 'applicant.returnToStage',
+      permission: 'applicantReturn.execute',
       enabled: false,
       reason: 'alreadyAtEarliestStage',
     },

@@ -23,6 +23,7 @@ import {
   listHiringDocumentTypes,
   listHiringDocumentVersions,
   listHiringDocuments,
+  openHiringDocuments,
   replaceHiringDocument,
   updateHiringDocumentType,
   uploadHiringDocument,
@@ -80,6 +81,14 @@ export const buildHiringDocumentsRouter = (): Router => {
     authorize('hiringDocuments.create'),
     validate({ body: CreateHiringDocumentsSchema }),
     asyncHandler(createHiringDocuments),
+  );
+  // The employee's set, opened if missing (A27) — declared before `/:id` like every literal.
+  router.post(
+    '/open',
+    authenticate,
+    authorize('hiringDocuments.create'),
+    validate({ body: CreateHiringDocumentsSchema }),
+    asyncHandler(openHiringDocuments),
   );
   // Bulk complete (RW17/I4) — declared before `/:id` so the literal wins over the parameter.
   router.post(

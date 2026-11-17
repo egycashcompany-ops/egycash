@@ -195,8 +195,6 @@ const applicantPermissions = declarePermissions(
       action: 'moveToOffer',
       name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' },
     },
-    // RW13 — send a candidate back to an earlier stage. Nothing is deleted; forward records are
-    // superseded and the target re-opens on a new attempt.
     // RW2 — Position/Branch stay editable until the offer is accepted, but only through this
     // explicit grant: an `applicant.edit` holder can correct data, not move a candidate.
     {
@@ -204,8 +202,57 @@ const applicantPermissions = declarePermissions(
       name: { en: 'Reassign applicant position or branch', ar: 'إعادة تعيين وظيفة أو فرع المتقدم' },
     },
     {
-      action: 'returnToStage',
-      name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
+      /**
+       * «مسح نهائي» — the candidate leaves the recruitment cycle entirely, with no undo.
+       *
+       * ITS OWN KEY, beside `applicant.delete` rather than inside it, and the distance between
+       * them is the point: `delete` sets `isDeleted` and the candidate can be brought back, which
+       * is what HR means by removing somebody from a list. This erases the record, the screening,
+       * both interview rounds, the evaluations, the offer, the portal login and the photographs of
+       * their ID card. One of those is reversible and one is not.
+       *
+       * Break-glass, and implied by nothing: holding every other applicant authority moves a
+       * candidate through the pipeline and off it. None of them makes the candidate never have
+       * applied.
+       */
+      action: 'purge',
+      name: { en: 'Permanently delete an applicant', ar: 'مسح نهائي للمتقدم' },
+      breakGlass: true,
+    },
+  ],
+  'hr.applicants',
+);
+
+/**
+ * «إرجاع إلى مرحلة سابقة» — send a candidate back to an earlier stage (RW13).
+ *
+ * ITS OWN RESOURCE, AND A NEW KEY. It used to be `applicant.returnToStage`, sitting among the
+ * ordinary applicant authorities, and it was offered as a button on the candidate's own page beside
+ * «تعديل» — which is how it came to be pressed. It is not an ordinary authority: it supersedes every
+ * record made after the target stage, re-opens that stage on a fresh attempt, and withdraws a live
+ * offer on the way. Everything it retires stays readable, so nothing is lost; but the pipeline the
+ * rest of the system reasons about is rewound, and a recruiter correcting a typo has no business
+ * next to it.
+ *
+ * A NEW KEY rather than a rename, deliberately: retiring the old one means whatever roles hold it
+ * today stop holding this, so the capability starts from nobody rather than from whoever happened
+ * to be granted the old name. The button is gone from every screen, the route still works, and the
+ * mechanism waits behind a key an administrator has to hand out on purpose.
+ *
+ * Break-glass for the same reason `applicant.purge` is: the act is not undoable by another act of
+ * the same kind. Note that the Super Admin role holds every registered key by design — the boot
+ * registry sync keeps it equal to the catalog — so «no role holds it» means no role BELOW that one.
+ */
+const applicantReturnPermissions = declarePermissions(
+  'hr',
+  'applicantReturn',
+  { en: 'return to an earlier stage', ar: 'الإرجاع لمرحلة سابقة' },
+  [],
+  [
+    {
+      action: 'execute',
+      name: { en: 'Return a candidate to an earlier stage', ar: 'إرجاع المتقدم لمرحلة سابقة' },
+      breakGlass: true,
     },
   ],
   'hr.applicants',
@@ -223,6 +270,35 @@ const recruitmentFormPermissions = declarePermissions(
     },
   ],
   'hr.application-form',
+);
+
+/**
+ * «مستندات مطلوبة للتعيين» — the documents a hire must bring.
+ *
+ * ITS OWN KEY, for a screen that is still a placeholder, and the reason is the platform's own rule
+ * rather than ambition: a hub tab needs a page, and `validatePageRegistry` refuses a page that no
+ * permission administers (`empty-page`). Borrowing `recruitmentForm.manage` would have left the
+ * role matrix saying this screen is administered by the key that administers the application form,
+ * which is not true and would stop being harmless the moment the screen does something.
+ *
+ * Nobody holds it yet, so the tab shows to nobody yet — which is the right default for a screen
+ * with nothing on it. Granting this key is what reveals it, deliberately.
+ */
+const hiringRequirementPermissions = declarePermissions(
+  'hr',
+  'hiringRequirement',
+  { en: 'hiring requirements', ar: 'مستندات التعيين' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Manage the documents required for hiring',
+        ar: 'إدارة المستندات المطلوبة للتعيين',
+      },
+    },
+  ],
+  'hr.hiring-requirements',
 );
 
 const applicantSourcePermissions = declarePermissions(
@@ -538,6 +614,24 @@ const employeePermissions = declarePermissions(
         en: 'Change employee status (deprecated alias)',
         ar: 'تغيير حالة الموظف (مسار قديم)',
       },
+    },
+    {
+      /**
+       * «مسح نهائي» — the person leaves the system, everywhere, with no undo.
+       *
+       * BREAK-GLASS, and the only hard delete of a person the product has. Everything else that
+       * ends an employment is a STATE: terminated, resigned. This is for the record that should
+       * never have existed — somebody entered twice, a test row, a wrong person — and it takes
+       * their pay and contract history with them, which is exactly why it is not `employee.delete`
+       * sitting quietly beside `edit`.
+       *
+       * It is deliberately NOT implied by any other key. Holding every other employee authority
+       * grants the power to hire, pay, transfer and dismiss; none of them grants the power to make
+       * somebody never have been.
+       */
+      action: 'purge',
+      name: { en: 'Permanently delete an employee', ar: 'مسح نهائي للموظف' },
+      breakGlass: true,
     },
   ],
   'hr.employees',
@@ -1170,6 +1264,22 @@ const contractTemplatePermissions = declarePermissions(
   'hr.contract-templates',
 );
 
+// A28 — «مسميات الوظائف لدى التأمينات»: each job's title at the insurance authority, what «نموذج رقم (1)»
+// prints. A tab of «الإعدادات», beside «نموذج التقديم».
+const insuranceJobTitlePermissions = declarePermissions(
+  'hr',
+  'insuranceJobTitle',
+  { en: 'job titles at social insurance', ar: 'مسميات الوظائف لدى التأمينات' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage the job titles at social insurance', ar: 'إدارة مسميات الوظائف لدى التأمينات' },
+    },
+  ],
+  'hr.insurance-job-titles',
+);
+
 const contractTypePermissions = declarePermissions(
   'hr',
   'contractType',
@@ -1183,9 +1293,12 @@ export const hrPermissions: PermissionDef[] = [
   ...contractPermissions,
   ...contractTemplatePermissions,
   ...contractTypePermissions,
+  ...insuranceJobTitlePermissions,
   ...applicantPermissions,
+  ...applicantReturnPermissions,
   ...applicantSourcePermissions,
   ...recruitmentFormPermissions,
+  ...hiringRequirementPermissions,
   ...screeningPermissions,
   ...interviewPermissions,
   ...interviewStagePermissions,
@@ -1271,6 +1384,13 @@ export const hrPages: PageDef[] = [
     sortOrder: 30,
   },
   {
+    id: 'hr.insurance-job-titles',
+    moduleId: 'hr',
+    name: { en: 'Job titles at social insurance', ar: 'مسميات الوظائف لدى التأمينات' },
+    route: '/hr-settings/insurance-job-titles',
+    sortOrder: 35,
+  },
+  {
     id: 'hr.screening',
     moduleId: 'hr',
     name: { en: 'Initial screening', ar: 'الفرز المبدئي' },
@@ -1304,6 +1424,17 @@ export const hrPages: PageDef[] = [
     name: { en: 'Evaluation phases', ar: 'مراحل التقييم' },
     route: '/hr-settings/evaluation-phases',
     sortOrder: 80,
+  },
+  {
+    // The tab is reserved and the screen behind it is still a placeholder, but the page is
+    // declared all the same: the role matrix administers authority PER SCREEN, so a tab missing
+    // from here is a tab nobody can be granted or refused deliberately — and `seed-navigation`
+    // refuses to let a hub tab exist without one.
+    id: 'hr.hiring-requirements',
+    moduleId: 'hr',
+    name: { en: 'Documents required for hiring', ar: 'مستندات مطلوبة للتعيين' },
+    route: '/hr-settings/hiring-requirements',
+    sortOrder: 85,
   },
   {
     id: 'hr.job-offers',
@@ -1641,6 +1772,7 @@ export const hrModule: ModuleManifest = {
     'hr_contract_templates',
     'hr_contract_types',
     'hr_contract_branding',
+    'hr_candidate_drafts',
     'hr_shifts',
     'hr_shift_assignments',
     'hr_attendance_punches',

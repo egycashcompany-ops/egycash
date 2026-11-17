@@ -15,6 +15,23 @@ describe('report range (B5)', () => {
     });
   });
 
+  it('turns the month at CAIRO’s midnight — not UTC’s, two or three hours later', () => {
+    // 00:30 in Cairo on 1 December (UTC+2) is still 30 November in UTC.
+    expect(currentMonthRange(new Date('2026-11-30T22:30:00.000Z'))).toEqual({
+      from: '2026-12-01',
+      to: '2026-12-31',
+    });
+    // 23:30 in Cairo on 30 November is November on both clocks.
+    expect(currentMonthRange(new Date('2026-11-30T21:30:00.000Z')).from).toBe('2026-11-01');
+    // Summer time (UTC+3): 00:30 in Cairo on 1 August is 21:30 UTC on 31 July.
+    expect(currentMonthRange(new Date('2026-07-31T21:30:00.000Z')).from).toBe('2026-08-01');
+    // New Year's first half hour in Cairo opens the new year's January.
+    expect(currentMonthRange(new Date('2026-12-31T22:30:00.000Z'))).toEqual({
+      from: '2027-01-01',
+      to: '2027-01-31',
+    });
+  });
+
   it('gets the last day right in a short month and in a leap February', () => {
     expect(currentMonthRange(new Date('2026-02-10T00:00:00.000Z')).to).toBe('2026-02-28');
     expect(currentMonthRange(new Date('2028-02-10T00:00:00.000Z')).to).toBe('2028-02-29');

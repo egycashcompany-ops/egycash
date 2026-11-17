@@ -14,6 +14,15 @@ class ApplicantSourceRepository extends BaseRepository<ApplicantSourceDoc> {
     const doc = await this.findById(id);
     return doc !== null && doc.active ? doc : null;
   }
+
+  /** Every active source, by name — the public «how did you hear about us» list. */
+  async listActive(): Promise<ApplicantSourceDoc[]> {
+    return this.model
+      .find({ active: true, isDeleted: false })
+      .sort({ 'name.ar': 1 })
+      .lean<ApplicantSourceDoc[]>()
+      .exec();
+  }
 }
 
 export const applicantSourceRepository = new ApplicantSourceRepository();

@@ -1,6 +1,8 @@
 // The dealership screen (التوكيل): rows opened by the workshop, invoices written by the clerk.
 import { Types, type FilterQuery } from 'mongoose';
 import {
+  ymdOf,
+  type FleetDashboardPeriodDealershipRowDto,
   type FleetDealershipInvoiceDto,
   type FleetDealershipSummaryQuery,
   type FleetDealershipTotalsDto,
@@ -23,6 +25,7 @@ import {
 } from '../vehicles/vehicle.repository';
 import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { vehicleIdOf } from '../fleet.mappers';
 import { type FleetMaintenanceVisitDoc } from '../maintenance/maintenance.model';
 import { fleetDealershipRepository } from './dealership.repository';
@@ -277,6 +280,53 @@ class FleetDealershipService {
 
   async summary(query: FleetDealershipSummaryQuery): Promise<FleetDealershipTotalsDto> {
     return this.summaryOver(query);
+  }
+
+  /**
+   * «فواتير التوكيل في الفترة» — the screen's FIRST PAGE over the query: its own order (the exit day
+   * newest first, then the newest recorded), at most `limit` rows, each car named as it is now (its
+   * code and make; a deleted car's too, its rows are history — no record link then; an old-book row
+   * by its own code). `more` = the rows left out, so `more` + the rows = `summaryOver`'s count.
+   */
+  async dashboardRows(
+    query: FleetDealershipSummaryQuery,
+    limit: number,
+  ): Promise<{ rows: FleetDashboardPeriodDealershipRowDto[]; more: number }> {
+    const page = await fleetDealershipRepository.listInvoices({
+      filter: await this.filterFor(query),
+      page: 1,
+      pageSize: limit,
+      sortBy: 'outDate',
+      sortDir: 'desc',
+    });
+    const cars = await fleetVehicleRepository.findByIdsSystem([
+      ...new Set(
+        page.items.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)])),
+      ),
+    ]);
+    const carOf = new Map(cars.map((car) => [String(car._id), car]));
+    const typeIds = [...new Set(cars.map((car) => String(car.typeId)))];
+    const types =
+      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    const makes = new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
+    const rows = page.items.map((doc): FleetDashboardPeriodDealershipRowDto => {
+      const vehicleId = doc.vehicleId == null ? null : String(doc.vehicleId);
+      const car = vehicleId === null ? undefined : carOf.get(vehicleId);
+      return {
+        id: String(doc._id),
+        vehicleId,
+        code: car?.code ?? doc.vehicleCode ?? null,
+        typeName: car?.typeId == null ? null : (makes.get(String(car.typeId)) ?? null),
+        vehicleDeleted: vehicleId !== null && (car === undefined || car.isDeleted === true),
+        // The exit day — the day the period counts the row by.
+        date: ymdOf(doc.outDate),
+        workKind: doc.workKind,
+        workTypeLabel: doc.workTypeLabel,
+        invoiceNumber: doc.invoiceNumber ?? null,
+        invoiceAmount: doc.invoiceAmount ?? null,
+      };
+    });
+    return { rows, more: Math.max(0, page.meta.totalItems - rows.length) };
   }
 
   /**

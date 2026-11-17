@@ -11,6 +11,7 @@ import {
   createJobOffer,
   getJobOffer,
   listAwaitingOffer,
+  offerDefaults,
   listJobOffers,
   rejectJobOffer,
   reviseJobOffer,
@@ -23,6 +24,7 @@ import {
   CreateJobOfferSchema,
   JobOfferIdParamSchema,
   ListAwaitingOfferQuerySchema,
+  OfferDefaultsQuerySchema,
   ListJobOffersQuerySchema,
   RejectJobOfferSchema,
   ReviseJobOfferSchema,
@@ -33,6 +35,14 @@ import {
 export const buildJobOffersRouter = (): Router => {
   const router = Router();
 
+  // What «اكتب العرض» starts from (A28) — declared before `/:id` so the literal wins.
+  router.get(
+    '/defaults',
+    authenticate,
+    authorize('jobOffer.create'),
+    validate({ query: OfferDefaultsQuerySchema }),
+    asyncHandler(offerDefaults),
+  );
   // The queue that feeds the offers screen — declared before `/:id` so the literal wins.
   router.get(
     '/awaiting',

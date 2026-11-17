@@ -12,7 +12,8 @@ import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Button, Card, CardBody, CardHeader, SearchInput, toast } from '../../../../shared/ui';
-import { Field, Input, Select } from '../../../../shared/ui/form';
+import { Field, Input } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { localized } from '../../../../shared/lib/format';
 import { ApiError } from '../../../../shared/lib/api-client';
 import { toOverridePairs } from '../api/contract-api';
@@ -119,16 +120,29 @@ export const ContractCreatePage = (): JSX.Element => {
       .catch(() => toast.error(t('contracts.create.employeeLoadFailed')));
   }, [presetEmployeeId]);
 
-  // Only keys with a PUBLISHED version can generate (A17).
+  // Only keys with a PUBLISHED version can generate (A17). Never a hiring form (A27) — a form is
+  // printed beside a contract, it is not one — and, once the employee is chosen, only the
+  // templates of the employee's job, that job's own first («قالب العقد الخاص بوظيفته»).
+  const jobTitleId = employee?.employment.jobTitleId ?? null;
   const publishable = useMemo(
     () =>
-      (templates ?? []).filter(
-        (x): x is ContractTemplateDto & { publishedTemplateId: string } =>
-          typeof x.publishedTemplateId === 'string' &&
-          (typeFilter === '' || x.contractTypeId === typeFilter),
-      ),
-    [templates, typeFilter],
+      (templates ?? [])
+        .filter(
+          (x): x is ContractTemplateDto & { publishedTemplateId: string } =>
+            typeof x.publishedTemplateId === 'string' &&
+            x.kind !== 'form' &&
+            (jobTitleId === null || x.allJobs || x.jobTitleIds.includes(jobTitleId)) &&
+            (typeFilter === '' || x.contractTypeId === typeFilter),
+        )
+        .sort((a, b) => Number(a.allJobs) - Number(b.allJobs) || a.printOrder - b.printOrder),
+    [templates, typeFilter, jobTitleId],
   );
+  // The employee's job's own contract template is chosen for them — still changeable.
+  useEffect(() => {
+    if (jobTitleId === null || templateKey !== '') return;
+    const own = publishable[0];
+    if (own !== undefined) setTemplateKey(own.key);
+  }, [jobTitleId, publishable]);
   const chosen = publishable.find((x) => x.key === templateKey) ?? null;
   // The PUBLISHED version drives placeholders, previews and the create body.
   const { data: published } = useContractTemplate(chosen?.publishedTemplateId ?? '');
@@ -224,22 +238,30 @@ export const ContractCreatePage = (): JSX.Element => {
                 </Field>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field label={t('contracts.columns.type')}>
-                    <Select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); setTemplateKey(''); }}>
-                      <option value="">{t('contracts.filters.allTypes')}</option>
-                      {(types ?? []).filter((x) => x.status === 'active').map((x) => (
-                        <option key={x.id} value={x.id}>{localized(x.name, locale)}</option>
-                      ))}
-                    </Select>
+                    <SearchableSelect
+                      value={typeFilter}
+                      onChange={(next) => {
+                        if (next === typeFilter) return;
+                        setTypeFilter(next);
+                        setTemplateKey('');
+                      }}
+                      options={(types ?? [])
+                        .filter((x) => x.status === 'active')
+                        .map((x) => ({ value: x.id, label: localized(x.name, locale) }))}
+                      placeholder={t('contracts.filters.allTypes')}
+                      ariaLabel={t('contracts.columns.type')}
+                    />
                   </Field>
                   <Field label={t('contracts.create.template')} required>
-                    <Select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)}>
-                      <option value="">{t('contracts.create.templatePick')}</option>
-                      {publishable.map((x) => (
-                        <option key={x.key} value={x.key}>
-                          {localized(x.name, locale)} ({x.language === 'ar' ? t('contracts.language.ar') : t('contracts.language.en')})
-                        </option>
-                      ))}
-                    </Select>
+                    <SearchableSelect
+                      value={templateKey}
+                      onChange={setTemplateKey}
+                      options={publishable.map((x) => ({
+                        value: x.key,
+                        label: `${localized(x.name, locale)} (${x.language === 'ar' ? t('contracts.language.ar') : t('contracts.language.en')})`,
+                      }))}
+                      placeholder={t('contracts.create.templatePick')}
+                    />
                   </Field>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

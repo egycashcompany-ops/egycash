@@ -33,7 +33,6 @@ export const FileUpload = ({
   disabled?: boolean;
 }): JSX.Element => {
   const t = useT();
-  const locale = useAppSelector((state) => state.locale.locale);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -54,6 +53,7 @@ export const FileUpload = ({
   };
 
   const remove = (index: number): void => {
+    if (disabled) return;
     const next = files.filter((_, i) => i !== index);
     setFiles(next);
     onFiles(next);
@@ -107,28 +107,53 @@ export const FileUpload = ({
         />
       </div>
 
-      {files.length > 0 && (
-        <ul className="space-y-1.5">
-          {files.map((file, i) => (
-            <li
-              key={`${file.name}-${i}`}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            >
-              <FileIcon className="h-4 w-4 shrink-0 text-slate-400" />
-              <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">{file.name}</span>
-              <span className="shrink-0 text-xs text-slate-400">{formatSize(file.size, locale)}</span>
-              <button
-                type="button"
-                onClick={() => remove(i)}
-                className="shrink-0 rounded p-1 text-slate-400 hover:text-red-500"
-                aria-label={t('common.remove')}
-              >
-                <CloseIcon className="h-4 w-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <FileUploadList files={files} disabled={disabled} onRemove={remove} />
     </div>
+  );
+};
+
+/**
+ * The files chosen, each with its ✕ — which obeys `disabled` as the drop zone does. A screen
+ * disables the picker while it sends the file; a ✕ still live then emptied the screen's file
+ * mid-request and reset what it held about the request, so the result of a write that HAD happened
+ * was lost (the assets' bulk upload, 2026-11-16). Its own component so a spec can render it with
+ * files in it (apps/web has no DOM: the picker's own list starts empty).
+ */
+export const FileUploadList = ({
+  files,
+  disabled = false,
+  onRemove,
+}: {
+  files: readonly File[];
+  disabled?: boolean;
+  onRemove: (index: number) => void;
+}): JSX.Element | null => {
+  const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
+  if (files.length === 0) return null;
+  return (
+    <ul className="space-y-1.5">
+      {files.map((file, i) => (
+        <li
+          key={`${file.name}-${i}`}
+          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+        >
+          <FileIcon className="h-4 w-4 shrink-0 text-slate-400" />
+          <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
+            {file.name}
+          </span>
+          <span className="shrink-0 text-xs text-slate-400">{formatSize(file.size, locale)}</span>
+          <button
+            type="button"
+            onClick={() => onRemove(i)}
+            disabled={disabled}
+            className="shrink-0 rounded p-1 text-slate-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-slate-400"
+            aria-label={t('common.remove')}
+          >
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 };

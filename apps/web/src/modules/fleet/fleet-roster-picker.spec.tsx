@@ -199,7 +199,10 @@ describe('the picker offers the POOL, and a pick is a drop by another name', () 
       ],
       rows,
     );
-    expect(pool.map((d) => d.employeeId), 'E1 is on car 150').toEqual([E3]);
+    expect(
+      pool.map((d) => d.employeeId),
+      'E1 is on car 150',
+    ).toEqual([E3]);
     // …and that is exactly the list the control filters, so a pick cannot take a driver off
     // another car by a route a drag would not have.
     expect(filterDrivers(pool, index, '').map((d) => d.employeeId)).toEqual([E3]);
@@ -242,7 +245,10 @@ describe('the picker offers the POOL, and a pick is a drop by another name', () 
     // Exactly what the page does with them, through the rule a drop also runs.
     const seated = assignDriver(saved, vehicleId, slot, picked);
     expect(seated.find((r) => r.vehicleId === V1)?.driver1EmployeeId).toBe(picked);
-    expect(seated.find((r) => r.vehicleId === V2)?.driver1EmployeeId, 'nobody else moved').toBeNull();
+    expect(
+      seated.find((r) => r.vehicleId === V2)?.driver1EmployeeId,
+      'nobody else moved',
+    ).toBeNull();
 
     // And a save carries that row — a seat the picker filled is a seat the server is told about.
     const pending = rowsToSave(saved, seated);
@@ -281,7 +287,9 @@ describe('a past day is shown, and edits by nothing', () => {
     expect(markup, 'no clear').not.toContain('data-clear-slot');
     expect(markup, 'no save').not.toContain('data-save-roster');
     expect(markup, 'nothing is draggable').not.toContain('draggable="true"');
-    expect(markup, 'the mission is text, not a control').not.toContain('aria-label="150 · نوع المهمة"');
+    expect(markup, 'the mission is text, not a control').not.toContain(
+      'aria-label="150 · نوع المهمة"',
+    );
   });
 
   it('does not invite a gesture it will ignore', () => {
@@ -357,7 +365,10 @@ describe('a past day is shown, and edits by nothing', () => {
 
   it('leaves TODAY exactly as it was', () => {
     const markup = renderRoster({ date: day(0), data: board(day(0)) });
-    expect(markup, 'today plans').toContain('data-save-roster');
+    expect(markup, 'today plans').toContain('data-row-actions="roster"');
+    // «اعتمد» on D1: «حفظ» lives in the unsaved bar, which shows only while there is something to
+    // save — and this untouched day has nothing.
+    expect(markup, 'with nothing to save yet').not.toContain('data-save-roster');
     expect(markup, 'and offers the picker').toContain('data-driver-picker');
     expect(markup, 'and is not labelled a record').not.toContain('data-readonly-day');
   });

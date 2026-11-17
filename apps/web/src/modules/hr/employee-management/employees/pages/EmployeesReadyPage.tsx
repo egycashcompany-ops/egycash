@@ -4,13 +4,13 @@
 // counter and this page can never disagree.
 //
 // Hiring copies the terms from the offer's immutable accepted snapshot, so this page only has to
-// get HR to the right offer.
-import { useMemo } from 'react';
+// get HR to the right offer — on «عقد جديد», where the papers print and the hire follows (A28).
+import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { type JobOfferDto, type Locale } from '@ecms/contracts';
+import { joinNameList, splitNameList, type JobOfferDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
-import { Can } from '../../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
@@ -22,13 +22,25 @@ import {
   type EmployeesReadyFiltersState,
 } from '../components/EmployeesReadyFilters';
 import { useJobOffers } from '../../../recruitment/job-offers/api/job-offer-queries';
+import {
+  NO_MATCH,
+  departmentIdsOf,
+} from '../../../recruitment/job-offers/components/OfferFilters';
+import { useOfferPlacementNames } from '../../../recruitment/job-offers/components/OfferPlacement';
+import { useDepartmentReferenceOptions } from '../../../../organization/shared/references';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
+import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
+import { BulkPrintDialog } from '../../../contracts/components/BulkPrintDialog';
+import { ReadyHeaderActions } from '../components/ReadyHeaderActions';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'af',
   'at',
   'branch',
+  'department',
+  'job',
   'q',
   'size',
 ] as const;
@@ -46,6 +58,9 @@ export const EmployeesReadyPage = (): JSX.Element => {
   const filters: EmployeesReadyFiltersState = {
     search: sp.get('q') ?? '',
     branchId: readList(sp, 'branch'),
+    // Group keys can be a unit's own name, which may hold a comma: a name list, commas escaped.
+    department: splitNameList(sp.get('department') ?? ''),
+    job: readList(sp, 'job'),
     acceptedFrom: sp.get('af') ?? '',
     acceptedTo: sp.get('at') ?? '',
   };
@@ -68,6 +83,8 @@ export const EmployeesReadyPage = (): JSX.Element => {
       {
         q: nf.search || null,
         branch: writeList(nf.branchId),
+        department: nf.department.length === 0 ? null : joinNameList(nf.department),
+        job: writeList(nf.job),
         af: nf.acceptedFrom || null,
         at: nf.acceptedTo || null,
       },
@@ -80,6 +97,11 @@ export const EmployeesReadyPage = (): JSX.Element => {
   // Keyed on the whole query string, so every filter is part of the React Query key and two
   // different filter sets can never share a cache entry.
   const paramsKey = sp.toString();
+  // A company department stands for its branch copies, in the branches picked when any are — the
+  // job offers screen's own rule. The server filters the accepted terms by them.
+  const { data: departmentOptions = [] } = useDepartmentReferenceOptions();
+  const departmentIds = departmentIdsOf(filters.department, departmentOptions, filters.branchId);
+  const placementNames = useOfferPlacementNames();
   const params = useMemo(
     () => ({
       page,
@@ -88,15 +110,28 @@ export const EmployeesReadyPage = (): JSX.Element => {
       hired: false,
       search: filters.search,
       branchId: filters.branchId,
+      // Until a department's branch copies are known, one that matches nothing — never everything.
+      departmentId:
+        filters.department.length === 0
+          ? undefined
+          : departmentIds.length > 0
+            ? departmentIds
+            : [NO_MATCH],
+      jobTitleId: filters.job,
       respondedFrom: filters.acceptedFrom,
       respondedTo: filters.acceptedTo,
       sortBy: 'respondedAt',
       sortDir: 'desc' as const,
     }),
-    [paramsKey, page, pageSize],
+    [paramsKey, page, pageSize, departmentIds.join(',')],
   );
   const { data, isLoading, isError, error, refetch } = useJobOffers(params);
   const rows = data?.items ?? [];
+  // A28 — «اعمل check box للناس … يظهرلي حاجه زي طباعه لكل المحدد»: tick people (or all on the
+  // page), then print their papers in one go, each by their own job.
+  const can = useCan();
+  const selection = useTableSelection(rows.map((o) => o.id));
+  const [printing, setPrinting] = useState(false);
 
   const columns: Column<JobOfferDto>[] = [
     {
@@ -115,6 +150,17 @@ export const EmployeesReadyPage = (): JSX.Element => {
         </span>
       ),
     },
+    // «هنزودهها تحت جمب العرض و تاريخ القبول»: the department and job the person accepted.
+    {
+      key: 'department',
+      header: t('offers.filters.department'),
+      render: (o) => placementNames.department(o),
+    },
+    {
+      key: 'job',
+      header: t('offers.filters.job'),
+      render: (o) => placementNames.job(o),
+    },
     {
       key: 'acceptedAt',
       header: t('employees.ready.columns.acceptedAt'),
@@ -130,36 +176,56 @@ export const EmployeesReadyPage = (): JSX.Element => {
       key: 'actions',
       header: '',
       align: 'end',
+      // A28 — the hire is no longer here: the candidate's papers are printed first, on «عقد جديد»,
+      // and «تعيين» sits there beside the print, off until something was printed.
       render: (o) => (
-        <Can permission="employee.create">
+        <Can permission="contract.print">
           <Button
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              navigate(`/employees/new?offerId=${o.id}`);
+              navigate(`/contracts/new?offerId=${o.id}`);
             }}
+            data-print-candidate={o.id}
           >
-            {t('employees.ready.hire')}
+            {t('employees.ready.printPapers')}
           </Button>
         </Can>
       ),
     },
   ];
 
+  // «ميكنش … السطر تكملتو تحت»: every cell and header on one line; a narrow screen scrolls sideways.
+  const oneLineColumns = columns.map((c) => ({
+    ...c,
+    className: c.className ?? 'whitespace-nowrap',
+    headerClassName: c.headerClassName ?? 'whitespace-nowrap',
+  }));
+
   return (
     <PageContainer>
       <PageHeader
         title={t('employees.ready.title')}
         breadcrumbs={[{ label: t('employees.title'), to: '/employees' }, { label: t('employees.ready.title') }]}
+        actions={<ReadyHeaderActions />}
       />
 
       <div className="space-y-4">
         <EmployeesReadyFilters value={filters} onChange={changeFilters} />
 
+        <BulkActionBar count={selection.count} onClear={selection.clear}>
+          <Can permission="contract.print">
+            <Button size="sm" onClick={() => setPrinting(true)} data-bulk-print>
+              {t('employees.ready.printSelected')}
+            </Button>
+          </Can>
+        </BulkActionBar>
+
         <DataTable
-          columns={columns}
+          columns={oneLineColumns}
           rows={rows}
           rowKey={(o) => o.id}
+          {...(can('contract.print') ? { selection } : {})}
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
@@ -174,6 +240,14 @@ export const EmployeesReadyPage = (): JSX.Element => {
           />
         )}
       </div>
+
+      <BulkPrintDialog
+        ids={selection.ids}
+        source="candidates"
+        open={printing}
+        onClose={() => setPrinting(false)}
+        onPrinted={selection.clear}
+      />
     </PageContainer>
   );
 };

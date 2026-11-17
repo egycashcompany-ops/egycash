@@ -86,11 +86,17 @@ describe('demo pipeline seed', () => {
     }
   }, 300_000);
 
-  it('leaves the `applicants` cohort at the ID gate and nowhere further', async () => {
+  // NO LONGER WAITING AT THE GATE. Registration verifies identity itself now — HR at the desk has
+  // the person and their card in hand — so this cohort, which the seed registers and then leaves
+  // alone, arrives already verified. What still distinguishes it is that nothing was DECIDED for
+  // them: no screening outcome, no round, no offer. (It is worth knowing that this makes the
+  // `applicants` and `screening` cohorts identical in state, and the seed's own `verifyIdentity`
+  // step unreachable — see the note in the merge review.)
+  it('leaves the `applicants` cohort verified by registration and nowhere further', async () => {
     const ids = await cohort('applicants');
     const mine = { applicantId: { $in: ids } };
 
-    expect(await ApplicantModel.countDocuments({ _id: { $in: ids }, identityVerification: 'unverified' }))
+    expect(await ApplicantModel.countDocuments({ _id: { $in: ids }, identityVerification: 'verified' }))
       .toBe(DEMO_COHORT_SIZE);
     // A screening row opens at registration (I11), so they sit there too — but nothing beyond.
     expect(await ScreeningModel.countDocuments({ ...mine, status: 'waiting' })).toBe(DEMO_COHORT_SIZE);

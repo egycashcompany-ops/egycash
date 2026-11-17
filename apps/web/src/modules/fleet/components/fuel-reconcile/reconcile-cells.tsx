@@ -26,7 +26,7 @@ export const CONFLICT_ICON: readonly string[] = [
 /** A card's place: its car's code, or what a card on no car is called («سفر 5», «اسبير»). */
 export const Place = ({ card }: { card: FleetFuelCardDto }): JSX.Element =>
   card.vehicleCode !== null ? (
-    <CodeChip code={card.vehicleCode} />
+    <CodeChip code={card.vehicleCode} vehicleId={card.vehicleId} />
   ) : (
     <span className="inline-flex items-center whitespace-nowrap rounded border border-violet-300 bg-violet-50 px-1.5 py-0.5 text-[13px] font-bold text-violet-800 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-300">
       {card.label ?? '—'}
@@ -150,7 +150,7 @@ export const Net = ({ value }: { value: number }): JSX.Element => (
 /** A card's place on a link — a car's code, or the label a card on no car is known by. */
 export const LinkPlace = ({ place }: { place: FleetFuelLinkPlaceDto }): JSX.Element =>
   place.vehicleCode !== null ? (
-    <CodeChip code={place.vehicleCode} />
+    <CodeChip code={place.vehicleCode} vehicleId={place.vehicleId} />
   ) : (
     <span className="inline-flex items-center whitespace-nowrap rounded border border-violet-300 bg-violet-50 px-1.5 py-0.5 text-[13px] font-bold text-violet-800 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-300">
       {place.label ?? '—'}

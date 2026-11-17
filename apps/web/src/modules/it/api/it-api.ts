@@ -55,7 +55,12 @@ import {
   type ItAssetAssignmentDto,
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
+  type ItAssetImportPreviewDto,
+  type ItAssetImportResultDto,
   type ItAssetNamesDto,
+  type ItAssetsBranchMoveResultDto,
+  type ItMoveTargetsDto,
+  type MoveItAssetsToBranch,
   type ItDashboardActivityDto,
   type ItDashboardAssetsDto,
   type ItCatalogItemDto,
@@ -86,10 +91,16 @@ import {
   type ItConsumableIssueResultDto,
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
+  type ItConsumableTransferResultDto,
+  type TransferItConsumables,
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
   type UpdateItConsumable,
+  type CreateItVehicleCheck,
+  type ItVehicleCheckDashboardDto,
+  type ItVehicleCheckDto,
+  type ItVehicleOptionDto,
   type OrgUnitOptionDto,
   type UserDto,
   type Paginated,
@@ -111,6 +122,12 @@ import {
   upload,
   type QueryParams,
 } from '../../../shared/lib/api-client';
+import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
+import {
+  assetImportFields,
+  type AssetImportApply,
+  type AssetImportRequest,
+} from '../lib/asset-import';
 
 export type ItListParams = QueryParams;
 
@@ -226,8 +243,7 @@ export const deleteAsset = (id: string): Promise<void> => del<void>(`/it/assets/
  */
 export const renderAssetLabels = (
   assetIds: readonly string[],
-): Promise<{ contentType: string; blob: Blob }> =>
-  postBinary('/it/assets/labels', { assetIds });
+): Promise<{ contentType: string; blob: Blob }> => postBinary('/it/assets/labels', { assetIds });
 
 // ── Custody (design §4.3) ───────────────────────────────────────────────────
 // Four NAMED actions, matching the API exactly. Each answers with the ASSET in its new state, so
@@ -242,6 +258,63 @@ export const transferAsset = (id: string, body: TransferItAsset): Promise<ItAsse
   post<ItAssetDto>(`/it/assets/${id}/transfer`, body);
 export const disposeAsset = (id: string, body: DisposeItAsset): Promise<ItAssetDto> =>
   post<ItAssetDto>(`/it/assets/${id}/dispose`, body);
+
+/**
+ * «نقل إلى فرع» — several assets to ONE branch in one transaction, all of them or none. One held by
+ * an employee moves with its custody («ينتقل مع عهدته»); no paper — the history is the record.
+ */
+export const moveAssetsToBranch = (
+  body: MoveItAssetsToBranch,
+): Promise<ItAssetsBranchMoveResultDto> =>
+  post<ItAssetsBranchMoveResultDto>('/it/assets/move-branch', body);
+
+/**
+ * Where «نقل إلى فرع» and «تحويل إلى فرع» may go: the active branches the caller's `itAsset.assign`
+ * reaches WHOLE — the server's own test, the one both actions apply before they write. Only the
+ * server can say it: `me` carries the reach of all the account's grants, not of this one key, so a
+ * picker built from it offered branches the action then refused with 403.
+ */
+export const moveTargets = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/assets/move-targets');
+
+// ── «رفع جماعي» — the register's bulk upload ────────────────────────────────
+// «ويكون فى Preview الأول للى هيتضاف»: ONE endpoint, posted twice with the SAME `File` — without
+// `apply` it is the preview (nothing written); with it, the lines kept and the preview's two
+// hashes, refused (409) when the file or the plan changed since, so what is written is what was
+// seen. Nothing is held on the server in between.
+
+const assetImportForm = (file: File, request: AssetImportRequest): FormData => {
+  const form = new FormData();
+  // The text fields before the file part, so the server holds them when the file arrives.
+  for (const [name, value] of assetImportFields(request)) form.append(name, value);
+  form.append('file', file);
+  return form;
+};
+
+/** Read the sheet and plan every line against the register — writes nothing. */
+export const previewAssetImport = (
+  file: File,
+  request: Omit<AssetImportRequest, 'apply'>,
+): Promise<ItAssetImportPreviewDto> =>
+  upload<ItAssetImportPreviewDto>('/it/assets/import', assetImportForm(file, request));
+
+/**
+ * The branches the upload may register in: the active branches the caller's `itAsset.create`
+ * reaches, as the server judges it (the upload answers 403 for any other) — `me` carries the reach
+ * of all the account's grants, not of this one key.
+ */
+export const assetImportBranches = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/assets/import/branches');
+
+/** Write the lines kept — only if the file and the plan are still the ones previewed. */
+export const applyAssetImport = (
+  file: File,
+  request: Omit<AssetImportRequest, 'apply' | 'branchId'> & {
+    branchId: string;
+    apply: AssetImportApply;
+  },
+): Promise<ItAssetImportResultDto> =>
+  upload<ItAssetImportResultDto>('/it/assets/import', assetImportForm(file, request));
 
 // ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
 // Printed BEFORE the hand-over (`preview` writes nothing), recorded WITH it (`handOver` opens the
@@ -288,9 +361,7 @@ export const listAssetAssignments = (
   getPage<ItAssetAssignmentDto>(`/it/assets/${id}/assignments${buildQuery(params)}`);
 
 /** The cross-asset custody register — "what is out, and who has it". */
-export const listAssignments = (
-  params: ItListParams,
-): Promise<Paginated<ItAssetAssignmentDto>> =>
+export const listAssignments = (params: ItListParams): Promise<Paginated<ItAssetAssignmentDto>> =>
   getPage<ItAssetAssignmentDto>(`/it/assignments${buildQuery(params)}`);
 
 // ── The IT home dashboard (design §11) ──────────────────────────────────────
@@ -410,6 +481,16 @@ export const issueConsumables = (body: IssueItConsumables): Promise<ItConsumable
   post<ItConsumableIssueResultDto>('/it/consumables/issue', body);
 
 /**
+ * «تحويل إلى فرع» — «ممكن أنقل 5 لفرع تاني»: items of ONE branch's store, each with how many, to ONE
+ * other branch, in one transaction. Each line reaches the other store's item of the same name, made
+ * there when it had none (`created`).
+ */
+export const transferConsumables = (
+  body: TransferItConsumables,
+): Promise<ItConsumableTransferResultDto> =>
+  post<ItConsumableTransferResultDto>('/it/consumables/transfer', body);
+
+/**
  * The ledger across items, newest first, each row labelled — the movements screen, one item's
  * movements (`consumableId`), what an asset had installed on it (`assetId`) and what a person was
  * handed or gave back (`employeeId`).
@@ -439,19 +520,80 @@ export const fetchConsumableMemoSignedCopy = (id: string): Promise<Blob> =>
 export const deleteConsumableMemoSignedCopy = (id: string): Promise<ItConsumableMemoDto> =>
   del<ItConsumableMemoDto>(`/it/consumable-memos/${id}/signed-copy`);
 
+// ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ───────────────────────
+// The phone form (docs/12-planning/it-vehicle-checks-design.md §6): IT's own list of the active
+// cars, the report, and its photos. Every call rides `itVehicleCheck.create` alone — the reporter
+// needs no Fleet grant to see the cars.
+
+/**
+ * Every active car, by code in Fleet's code order — EVERY page of IT's own list (ADR-037: a car
+ * picker shows every code, «لازم لازم تظهر كلها»). Named apart from Fleet's registry reads, so the
+ * vehicle-code census does not read it as one.
+ */
+export const fetchItVehicleCheckCars = (): Promise<Paginated<ItVehicleOptionDto>> =>
+  fetchWholeCatalog((page, pageSize) =>
+    getPage<ItVehicleOptionDto>(`/it/vehicle-checks/vehicles${buildQuery({ page, pageSize })}`),
+  );
+
+/**
+ * File one report. A repeated `clientRequestId` from the same reporter answers with the report
+ * that already exists (200) instead of filing a second one.
+ */
+export const fileVehicleCheck = (body: CreateItVehicleCheck): Promise<ItVehicleCheckDto> =>
+  post<ItVehicleCheckDto>('/it/vehicle-checks', body);
+
+/**
+ * One photo onto one's own report, within 24 hours of filing it. A repeated `clientPhotoId`
+ * answers with the report unchanged — a retry never takes a second of its five places.
+ */
+export const uploadVehicleCheckPhoto = (
+  id: string,
+  photo: { clientPhotoId: string; file: Blob; fileName: string },
+): Promise<ItVehicleCheckDto> => {
+  const form = new FormData();
+  // The id before the file, so the server has it in hand when the file part arrives.
+  form.append('clientPhotoId', photo.clientPhotoId);
+  form.append('file', photo.file, photo.fileName);
+  return upload<ItVehicleCheckDto>(`/it/vehicle-checks/${id}/photos`, form);
+};
+
+// The dashboard («الـ Dashboard مش هتكون عند الحركة .. هتبقي عند الـ IT»): the reports read back under
+// `itVehicleCheck.view` and the reader's data scope (the car's branch at filing), and a wrong one
+// deleted under `itVehicleCheck.delete`. Every figure is the server's.
+
+/** The tiles, the bars, each car's latest report and the overdue cars — under the period and branch. */
+export const getVehicleCheckDashboard = (
+  params: ItListParams,
+): Promise<ItVehicleCheckDashboardDto> =>
+  get<ItVehicleCheckDashboardDto>(`/it/vehicle-checks/dashboard${buildQuery(params)}`);
+
+/** «آخر التقارير» — newest first, under every filter of the page. */
+export const listVehicleChecks = (params: ItListParams): Promise<Paginated<ItVehicleCheckDto>> =>
+  getPage<ItVehicleCheckDto>(`/it/vehicle-checks${buildQuery(params)}`);
+
+/** One report — the side panel's. 404 outside the reader's scope, or once deleted. */
+export const getVehicleCheck = (id: string): Promise<ItVehicleCheckDto> =>
+  get<ItVehicleCheckDto>(`/it/vehicle-checks/${id}`);
+
+/** One photo's bytes, for a reader of the report — through the token, as an `<img>` cannot send it. */
+export const fetchVehicleCheckPhoto = (id: string, fileId: string): Promise<Blob> =>
+  fetchBlob(`/it/vehicle-checks/${id}/photos/${fileId}`);
+
+/** A wrong report, soft-deleted. Its photos stay filed but no reader reaches them any more. */
+export const deleteVehicleCheck = (id: string): Promise<void> =>
+  del<void>(`/it/vehicle-checks/${id}`);
+
 // ── Help desk: priorities (design §2.6 — the priority IS the SLA policy) ────
 export const listTicketPriorities = (
   params: ItListParams,
 ): Promise<Paginated<ItTicketPriorityDto>> =>
   getPage<ItTicketPriorityDto>(`/it/ticket-priorities${buildQuery(params)}`);
-export const createTicketPriority = (
-  body: CreateItTicketPriority,
-): Promise<ItTicketPriorityDto> => post<ItTicketPriorityDto>('/it/ticket-priorities', body);
+export const createTicketPriority = (body: CreateItTicketPriority): Promise<ItTicketPriorityDto> =>
+  post<ItTicketPriorityDto>('/it/ticket-priorities', body);
 export const updateTicketPriority = (
   id: string,
   body: UpdateItTicketPriority,
-): Promise<ItTicketPriorityDto> =>
-  patch<ItTicketPriorityDto>(`/it/ticket-priorities/${id}`, body);
+): Promise<ItTicketPriorityDto> => patch<ItTicketPriorityDto>(`/it/ticket-priorities/${id}`, body);
 
 // ── Help desk: tickets (design §4.4) ────────────────────────────────────────
 export const listTickets = (params: ItListParams): Promise<Paginated<ItTicketDto>> =>
@@ -466,10 +608,8 @@ export const updateTicket = (id: string, body: UpdateItTicket): Promise<ItTicket
 // Transitions. Each answers with the ticket in its new state, so nothing is re-derived here.
 export const assignTicket = (id: string, body: AssignItTicket): Promise<ItTicketDto> =>
   post<ItTicketDto>(`/it/tickets/${id}/assign`, body);
-export const changeTicketStatus = (
-  id: string,
-  body: ChangeItTicketStatus,
-): Promise<ItTicketDto> => post<ItTicketDto>(`/it/tickets/${id}/status`, body);
+export const changeTicketStatus = (id: string, body: ChangeItTicketStatus): Promise<ItTicketDto> =>
+  post<ItTicketDto>(`/it/tickets/${id}/status`, body);
 export const resolveTicket = (id: string, body: ResolveItTicket): Promise<ItTicketDto> =>
   post<ItTicketDto>(`/it/tickets/${id}/resolve`, body);
 export const closeTicket = (id: string, body: CloseItTicket): Promise<ItTicketDto> =>

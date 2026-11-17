@@ -14,9 +14,9 @@
 //
 // Deliberately not covered here, and each for a reason:
 //
-//   • the crew selects on `SecuredDispatchPage` and `ShipmentFormDialog` name a CREW. A vehicle
-//     with two captains appears twice, and the captain is what tells the two rows apart — strip it
-//     and the operator picks blind between two identical `150`s.
+//   • the crew selects on `AssignDeliveryCrewDialog` («صرف الخزينة») and `ShipmentFormDialog` name a
+//     CREW. A vehicle with two captains appears twice, and the captain is what tells the two rows
+//     apart — strip it and the operator picks blind between two identical `150`s.
 //   • the registry's `search` box is deliberately multi-field (code, plate, chassis, motor); it
 //     finds cars rather than naming one.
 //   • confirmation dialogs describing a car are not choosing one.

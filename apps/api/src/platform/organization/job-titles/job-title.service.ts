@@ -1,5 +1,7 @@
 import {
+  ErrorCodes,
   PlatformEvents,
+  type JobPlaceInput,
   type CreateJobTitle,
   type JobTitleDto,
   type JobTitlePlaceDto,
@@ -10,6 +12,11 @@ import {
 import { Types, type FilterQuery } from 'mongoose';
 import { type ScopeSelector } from '../../../shared/types';
 import { BusinessRuleError } from '../../../shared/errors';
+import { unitOfWork } from '../../kernel/unit-of-work';
+import { jobPlaceRepository } from '../job-places/job-place.repository';
+import { indexOrgChart } from '../org-chart/org-chart.groups';
+import { loadOrgChart } from '../org-chart/org-chart.load';
+import { labelPlaces, planPlaces, type PlaceKeyed } from '../org-chart/job-place-plan';
 import { diffChanges } from '../../../shared/utils/diff';
 import { auditService } from '../../audit';
 import { emit } from '../../kernel/event-bus';
@@ -22,7 +29,11 @@ import { type JobTitleDoc } from './job-title.model';
 
 const entityRef = (id: string) => ({ moduleId: 'platform', entityType: 'jobTitle', entityId: id });
 
-const snapshot = (doc: JobTitleDoc) => ({
+/**
+ * The audited shape. `places` are the job's places as labels («العمليات › الخزينة»), passed in
+ * because they are not on the job document (ADR-038) — a change of places is a change of the job.
+ */
+const snapshot = (doc: JobTitleDoc, places: readonly string[]) => ({
   code: doc.code,
   name: doc.name,
   jobGrade: doc.jobGrade,
@@ -34,8 +45,22 @@ const snapshot = (doc: JobTitleDoc) => ({
   requiresDrivingTest: doc.requiresDrivingTest ?? false,
   fixedSalary: doc.fixedSalary ?? null,
   defaultShiftIds: (doc.defaultShiftIds ?? []).map(String),
+  places: [...places],
   status: doc.status,
 });
+
+const keyed = (place: JobPlaceInput | PlaceKeyed): PlaceKeyed => ({
+  departmentCatalogId: place.departmentCatalogId,
+  sectionCatalogId: place.sectionCatalogId,
+});
+
+/** A refused place set, as the specific code the screens map (§5.5). */
+const refuse = (reasons: readonly string[]): never => {
+  throw new BusinessRuleError(
+    `A job place cannot be written: ${[...new Set(reasons)].join('; ')}`,
+    ErrorCodes.JOB_PLACE_NOT_ALLOWED,
+  );
+};
 
 /** A salary band is coherent only when both ends are present and min ≤ max. */
 const assertSalaryBand = (min: number | null, max: number | null): void => {
@@ -62,27 +87,37 @@ const outsideBand = (doc: Pick<JobTitleDoc, 'fixedSalary' | 'salaryMin' | 'salar
 
 class JobTitleService {
   async create(input: CreateJobTitle, by: string): Promise<JobTitleDoc> {
-    const doc = await jobTitleRepository.create(
-      {
-        code: input.code,
-        name: input.name,
-        jobGrade: input.jobGrade,
-        description: input.description ?? null,
-        salaryMin: input.salaryMin ?? null,
-        salaryMax: input.salaryMax ?? null,
-        requiredQualifications: input.requiredQualifications ?? null,
-        requiredExperienceYears: input.requiredExperienceYears ?? null,
-        requiresDrivingTest: input.requiresDrivingTest ?? false,
-        fixedSalary: input.fixedSalary ?? null,
-        defaultShiftIds: (input.defaultShiftIds ?? []).map((id) => new Types.ObjectId(id)),
-        status: 'active',
-      },
-      { by },
-    );
+    // One transaction: the job and its places (P-ORG-3 §5.2). The audit follows the commit, so a
+    // rolled-back create leaves no audit row and sends no realtime signal (§5.4).
+    const { doc, labels } = await unitOfWork(async (session) => {
+      const created = await jobTitleRepository.create(
+        {
+          code: input.code,
+          name: input.name,
+          jobGrade: input.jobGrade,
+          description: input.description ?? null,
+          salaryMin: input.salaryMin ?? null,
+          salaryMax: input.salaryMax ?? null,
+          requiredQualifications: input.requiredQualifications ?? null,
+          requiredExperienceYears: input.requiredExperienceYears ?? null,
+          requiresDrivingTest: input.requiresDrivingTest ?? false,
+          fixedSalary: input.fixedSalary ?? null,
+          defaultShiftIds: (input.defaultShiftIds ?? []).map((id) => new Types.ObjectId(id)),
+          status: 'active',
+        },
+        { by, session },
+      );
+      if (input.places === undefined || input.places.length === 0) return { doc: created, labels: [] as string[] };
+      const chart = await loadOrgChart({ session });
+      const plan = planPlaces([], input.places.map(keyed), indexOrgChart(chart), true);
+      if ('refused' in plan) return refuse(plan.refused.map((r) => r.reason));
+      await jobPlaceRepository.insert(String(created._id), plan.toAdd, by, session);
+      return { doc: created, labels: labelPlaces(plan.after, chart) };
+    });
     await auditService.record({
       entityRef: entityRef(String(doc._id)),
       action: 'create',
-      changes: diffChanges({}, snapshot(doc)),
+      changes: diffChanges({}, snapshot(doc, labels)),
     });
     await emit(PlatformEvents.OrgUnitChanged, {
       unitType: 'jobTitle',
@@ -116,11 +151,33 @@ class JobTitleService {
     if (input.defaultShiftIds !== undefined) {
       set.defaultShiftIds = input.defaultShiftIds.map((sid) => new Types.ObjectId(sid));
     }
-    const after = await jobTitleRepository.updateById(id, set, { by, version: input.version });
+
+    // One transaction (P-ORG-3 §5.2, §5.4): the place writes first, the job's own version-checked
+    // update LAST — so a stale `version` throws after the places were written and rolls them back.
+    const { after, labelsBefore, labelsAfter } = await unitOfWork(async (session) => {
+      const chart = await loadOrgChart({ session });
+      const stored = (await jobPlaceRepository.findLiveByJob(id, session)).map((place) => ({
+        id: String(place._id),
+        departmentCatalogId: String(place.departmentCatalogId),
+        sectionCatalogId: place.sectionCatalogId === null ? null : String(place.sectionCatalogId),
+      }));
+      const labelsBefore = labelPlaces(stored, chart);
+      let labelsAfter = labelsBefore;
+      if (input.places !== undefined) {
+        const activeAfter = (input.status ?? before.status) === 'active';
+        const plan = planPlaces(stored, input.places.map(keyed), indexOrgChart(chart), activeAfter);
+        if ('refused' in plan) return refuse(plan.refused.map((r) => r.reason));
+        await jobPlaceRepository.softDeleteByIds(plan.toRemove.map((place) => place.id), by, session);
+        await jobPlaceRepository.insert(id, plan.toAdd, by, session);
+        labelsAfter = labelPlaces(plan.after, chart);
+      }
+      const updated = await jobTitleRepository.updateById(id, set, { by, version: input.version, session });
+      return { after: updated, labelsBefore, labelsAfter };
+    });
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
-      changes: diffChanges(snapshot(before), snapshot(after)),
+      changes: diffChanges(snapshot(before, labelsBefore), snapshot(after, labelsAfter)),
     });
     await emit(PlatformEvents.OrgUnitChanged, {
       unitType: 'jobTitle',
@@ -131,7 +188,11 @@ class JobTitleService {
   }
 
   async softDelete(id: string, by: string): Promise<void> {
-    await jobTitleRepository.softDeleteById(id, { by });
+    // The job and its places go together (P-ORG-3 §5.2).
+    await unitOfWork(async (session) => {
+      await jobTitleRepository.softDeleteById(id, { by, session });
+      await jobPlaceRepository.softDeleteByJob(id, by, session);
+    });
     await auditService.record({ entityRef: entityRef(id), action: 'delete' });
     await emit(PlatformEvents.OrgUnitChanged, {
       unitType: 'jobTitle',

@@ -5,6 +5,7 @@ import { departmentService, departmentRepository } from './departments';
 import { sectionRepository } from './sections';
 import { departmentCatalogService } from './department-catalog';
 import { sectionCatalogService } from './section-catalog';
+import { jobPlaceRepository } from './job-places/job-place.repository';
 
 branchService.setHooks({
   hasChildren: (branchId) => departmentRepository.existsUnderBranch(branchId),
@@ -18,10 +19,12 @@ departmentService.setHooks({
 // import the other without closing a cycle between them (P-ORG-2).
 departmentCatalogService.setHooks({
   hasDependents: (catalogId) => departmentRepository.existsWithCatalog(catalogId),
+  hasPlaces: (catalogId) => jobPlaceRepository.citesEntry(catalogId),
   renameLinked: (catalogId, name, by) => departmentRepository.renameByCatalog(catalogId, name, by),
 });
 sectionCatalogService.setHooks({
   hasDependents: (catalogId) => sectionRepository.existsWithCatalog(catalogId),
+  hasPlaces: (catalogId) => jobPlaceRepository.citesEntry(catalogId),
   renameLinked: (catalogId, name, by) => sectionRepository.renameByCatalog(catalogId, name, by),
 });
 

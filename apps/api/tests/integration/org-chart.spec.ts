@@ -32,6 +32,7 @@ import {
   SectionModel,
 } from '../../src/platform/organization';
 import { JobTitleModel } from '../../src/platform/organization/job-titles/job-title.model';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 
@@ -296,5 +297,155 @@ describe('GET /platform/org-chart — reading (P-ORG-3 §4)', () => {
     expect(denied.status).toBe(403);
     const anonymous = await request(app).get('/api/v1/platform/org-chart');
     expect(anonymous.status).toBe(401);
+  });
+});
+
+
+describe('job places, saved with the job (P-ORG-3 §5.2)', () => {
+  const setup = async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 2));
+    const treasury = await linkedSection({ ar: 'الخزينة', en: 'Treasury' }, ops.entry._id, ops.rows);
+    const counting = await linkedSection({ ar: 'العد', en: 'Counting' }, ops.entry._id, ops.rows);
+    return {
+      ops: String(ops.entry._id),
+      treasury: String(treasury._id),
+      counting: String(counting._id),
+      opsEntry: ops,
+    };
+  };
+  const place = (departmentCatalogId: string, sectionCatalogId: string | null = null) => ({
+    departmentCatalogId,
+    sectionCatalogId,
+  });
+  const createJob = async (places: unknown[]) =>
+    request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: nextCode('JT-'), name: { ar: 'أمين خزينة', en: 'Cashier' }, jobGrade: 'G2', places });
+  const patchJob = async (id: string, body: object, token = adminToken) =>
+    request(app).patch(`/api/v1/platform/job-titles/${id}`).set('Authorization', `Bearer ${token}`).send(body);
+
+  it('creates a job with its places, and the detail lists them named', async () => {
+    const { ops, treasury } = await setup();
+    const res = await createJob([place(ops, treasury), place(ops)]);
+    expect(res.status).toBe(201);
+    const dto = data<JobTitleDto>(res);
+    expect(dto.places.map((p) => p.section?.name.en ?? 'direct').sort()).toEqual(['Treasury', 'direct']);
+    expect(dto.places.every((p) => p.shown)).toBe(true);
+    // …and the chart reads the same rows.
+    const job = (await chart()).jobs.find((j) => j.id === dto.id);
+    expect(job?.places).toHaveLength(2);
+  });
+
+  it('an update replaces the whole set; an update without places keeps it', async () => {
+    const { ops, treasury, counting } = await setup();
+    const created = data<JobTitleDto>(await createJob([place(ops, treasury)]));
+    const moved = await patchJob(created.id, { version: created.version, places: [place(ops, counting)] });
+    expect(moved.status).toBe(200);
+    expect(data<JobTitleDto>(moved).places.map((p) => p.section?.name.en)).toEqual(['Counting']);
+    const renamed = await patchJob(created.id, {
+      version: data<JobTitleDto>(moved).version,
+      name: { ar: 'أمين', en: 'Keeper' },
+    });
+    expect(data<JobTitleDto>(renamed).places.map((p) => p.section?.name.en)).toEqual(['Counting']);
+  });
+
+  it('merges duplicates — a move onto a place the job already has leaves one', async () => {
+    const { ops, treasury, counting } = await setup();
+    const created = data<JobTitleDto>(await createJob([place(ops, treasury), place(ops, counting)]));
+    const res = await patchJob(created.id, {
+      version: created.version,
+      places: [place(ops, counting), place(ops, counting)],
+    });
+    expect(res.status).toBe(200);
+    expect(await JobPlaceModel.countDocuments({ jobTitleId: created.id, isDeleted: false })).toBe(1);
+  });
+
+  it('a stale version is refused, and the places it carried are rolled back with no audit row', async () => {
+    const { ops, treasury, counting } = await setup();
+    const created = data<JobTitleDto>(await createJob([place(ops, treasury)]));
+    await patchJob(created.id, { version: created.version, jobGrade: 'G3' });
+    const audits = await AuditLogModel.countDocuments({ 'entityRef.entityId': created.id });
+    const stale = await patchJob(created.id, { version: created.version, places: [place(ops, counting)] });
+    expect(stale.status).toBe(409);
+    expect(errorCode(stale)).toBe('STALE_DOCUMENT');
+    const live = await JobPlaceModel.find({ jobTitleId: created.id, isDeleted: false }).lean();
+    expect(live.map((p) => String(p.sectionCatalogId))).toEqual([treasury]);
+    expect(await AuditLogModel.countDocuments({ 'entityRef.entityId': created.id })).toBe(audits);
+  });
+
+  it('keeps a place under a stopped section when the form sends it back, and refuses a new one there', async () => {
+    const { ops, treasury, counting } = await setup();
+    const created = data<JobTitleDto>(await createJob([place(ops, treasury)]));
+    await SectionModel.updateMany({ catalogId: new Types.ObjectId(treasury) }, { $set: { status: 'inactive' } });
+    const kept = await patchJob(created.id, {
+      version: created.version,
+      places: [place(ops, treasury), place(ops, counting)],
+    });
+    expect(kept.status).toBe(200);
+    const places = data<JobTitleDto>(kept).places;
+    expect(places.find((p) => p.section?.sectionCatalogId === treasury)?.shown).toBe(false);
+
+    const other = data<JobTitleDto>(await createJob([]));
+    const refused = await patchJob(other.id, { version: other.version, places: [place(ops, treasury)] });
+    expect(refused.status).toBe(422);
+    expect(errorCode(refused)).toBe('JOB_PLACE_NOT_ALLOWED');
+  });
+
+  it('refuses a new place under an entry with no rows, with another department\'s section, or for an inactive job', async () => {
+    const { ops, opsEntry } = await setup();
+    const empty = await departmentCatalogService.create({ code: nextCode('DC-'), name: { ar: 'فارغة', en: 'Empty' } }, adminId);
+    const sec = await linkedDepartment({ ar: 'الأمن', en: 'Security' }, branches.slice(0, 1));
+    const guards = await linkedSection({ ar: 'الحراسة', en: 'Guards' }, sec.entry._id, sec.rows);
+    void opsEntry;
+    const created = data<JobTitleDto>(await createJob([]));
+    for (const places of [[place(String(empty._id))], [place(ops, String(guards._id))]]) {
+      const res = await patchJob(created.id, { version: created.version, places });
+      expect(res.status).toBe(422);
+      expect(errorCode(res)).toBe('JOB_PLACE_NOT_ALLOWED');
+    }
+    const stopping = await patchJob(created.id, { version: created.version, status: 'inactive', places: [place(ops)] });
+    expect(stopping.status).toBe(422);
+    expect(errorCode(stopping)).toBe('JOB_PLACE_NOT_ALLOWED');
+  });
+
+  it('needs jobTitle.edit', async () => {
+    const { ops } = await setup();
+    const created = data<JobTitleDto>(await createJob([]));
+    const res = await patchJob(created.id, { version: created.version, places: [place(ops)] }, viewerToken);
+    expect(res.status).toBe(403);
+  });
+
+  it('deleting a job removes its places, and a catalog entry with places cannot be deleted', async () => {
+    const { ops, treasury } = await setup();
+    const kept = data<JobTitleDto>(await createJob([place(ops, treasury)]));
+    // Entries no branch declares, but a job is placed in: only the places stand in the way. (The
+    // place is written through the model — the API refuses a NEW place under an entry with no rows.)
+    const lone = await departmentCatalogService.create({ code: nextCode('DC-'), name: { ar: 'وحيدة', en: 'Lone' } }, adminId);
+    const loneSection = await sectionCatalogService.create(
+      { code: nextCode('SC-'), name: { ar: 'قسم وحيد', en: 'Lone section' }, departmentCatalogId: String(lone._id) },
+      adminId,
+    );
+    await JobPlaceModel.create({ jobTitleId: new Types.ObjectId(kept.id), departmentCatalogId: lone._id, sectionCatalogId: loneSection._id });
+    await expect(departmentCatalogService.softDelete(String(lone._id), adminId)).rejects.toMatchObject({
+      code: 'ORG_CATALOG_ENTRY_IN_USE',
+    });
+    await expect(sectionCatalogService.softDelete(String(loneSection._id), adminId)).rejects.toMatchObject({
+      code: 'ORG_CATALOG_ENTRY_IN_USE',
+    });
+    const res = await request(app)
+      .delete(`/api/v1/platform/job-titles/${kept.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(204);
+    expect(await JobPlaceModel.countDocuments({ jobTitleId: kept.id, isDeleted: false })).toBe(0);
+  });
+
+  it('audits the places as labels on the job', async () => {
+    const { ops, treasury } = await setup();
+    const created = data<JobTitleDto>(await createJob([]));
+    await patchJob(created.id, { version: created.version, places: [place(ops, treasury)] });
+    const update = await AuditLogModel.findOne({ 'entityRef.entityId': created.id, action: 'update' }).lean();
+    const change = update?.changes.find((c) => c.field === 'places');
+    expect(change?.new).toEqual(['العمليات › الخزينة']);
   });
 });

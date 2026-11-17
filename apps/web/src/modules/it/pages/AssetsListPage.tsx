@@ -37,6 +37,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
@@ -377,43 +378,47 @@ export const AssetsListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.assets')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.assets') }]}
-        actions={
-          <>
-            {/* The files first, the form's action after them — for every reader of the list, as
-                the labels are (§4.2). Not offered when the list failed: the file would be short. */}
-            {!isError && (
-              <RegisterExportButtons name="it-assets" onExcel={exportSheet} onPdf={exportPdf} />
-            )}
-            <Can permission="itAsset.create">
-              <Button
-                size="sm"
-                variant="secondary"
-                leftIcon={<UploadIcon className="h-4 w-4" />}
-                onClick={() => navigate('/it/assets/import')}
-                data-asset-import
-              >
-                {t('it.assets.import.action')}
-              </Button>
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => {
-                  setEditing(null);
-                  setFormOpen(true);
-                }}
-              >
-                {t('it.assets.create')}
-              </Button>
-            </Can>
-          </>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; for IT «مش عايز كل الصفحة تعمل Scroll !! عايز
+          فقط الجدول لكن الزراير والفلتر يبقوا ثابتين», 2026-11-17): on a computer the title and its
+          buttons, the filters and the selection's bar keep their place, the pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.assets')}
+          breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.assets') }]}
+          actions={
+            <>
+              {/* The files first, the form's action after them — for every reader of the list, as
+                  the labels are (§4.2). Not offered when the list failed: the file would be short. */}
+              {!isError && (
+                <RegisterExportButtons name="it-assets" onExcel={exportSheet} onPdf={exportPdf} />
+              )}
+              <Can permission="itAsset.create">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<UploadIcon className="h-4 w-4" />}
+                  onClick={() => navigate('/it/assets/import')}
+                  data-asset-import
+                >
+                  {t('it.assets.import.action')}
+                </Button>
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  onClick={() => {
+                    setEditing(null);
+                    setFormOpen(true);
+                  }}
+                >
+                  {t('it.assets.create')}
+                </Button>
+              </Can>
+            </>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() => {
@@ -530,17 +535,20 @@ export const AssetsListPage = (): JSX.Element => {
           </Can>
         </BulkActionBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(a) => a.id}
-          loading={isLoading || nameFilter.settling}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          selection={selection}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(a) => a.id}
+            loading={isLoading || nameFilter.settling}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            selection={selection}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

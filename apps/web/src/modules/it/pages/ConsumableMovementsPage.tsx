@@ -26,6 +26,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { SearchInput } from '../../../shared/ui/SearchInput';
@@ -285,34 +286,38 @@ export const ConsumableMovementsPage = (): JSX.Element => {
     }, t('it.export.preparing'));
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.consumableMovements')}
-        breadcrumbs={[
-          { label: t('it.module.title'), to: '/it' },
-          { label: t('it.nav.consumables'), to: '/it/consumables' },
-          { label: t('it.nav.consumableMovements') },
-        ]}
-        actions={
-          <>
-            {!isError && (
-              <RegisterExportButtons
-                name="it-consumable-movements"
-                onExcel={toExcel}
-                onPdf={toPdf}
-              />
-            )}
-            <Link
-              to="/it/consumables"
-              className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              {t('it.consumables.backToStore')}
-            </Link>
-          </>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; for IT «مش عايز كل الصفحة تعمل Scroll !! عايز
+          فقط الجدول لكن الزراير والفلتر يبقوا ثابتين», 2026-11-17): on a computer the title and its
+          buttons and the column filters keep their place, the pager keeps its place below, and
+          only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.consumableMovements')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.consumables'), to: '/it/consumables' },
+            { label: t('it.nav.consumableMovements') },
+          ]}
+          actions={
+            <>
+              {!isError && (
+                <RegisterExportButtons
+                  name="it-consumable-movements"
+                  onExcel={toExcel}
+                  onPdf={toPdf}
+                />
+              )}
+              <Link
+                to="/it/consumables"
+                className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {t('it.consumables.backToStore')}
+              </Link>
+            </>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() => {
@@ -444,15 +449,18 @@ export const ConsumableMovementsPage = (): JSX.Element => {
           </FilterField>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(m) => m.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          empty={t('it.consumables.movements.empty')}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(m) => m.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            empty={t('it.consumables.movements.empty')}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

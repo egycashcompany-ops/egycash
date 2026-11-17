@@ -21,6 +21,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
@@ -263,54 +264,63 @@ export const TicketsListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.tickets')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.tickets') }]}
-        actions={
-          <div className="flex items-center gap-2">
-            {can('itSlaPolicy.manage') && (
-              <Button size="sm" variant="secondary" onClick={() => navigate('/it/helpdesk-settings')}>
-                {t('it.nav.helpDeskSettings')}
-              </Button>
-            )}
-            <Can permission="itTicket.create">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setCreating(true)}
-              >
-                {t('it.tickets.create')}
-              </Button>
-            </Can>
-          </div>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»): on a computer
+          the title and its buttons, the three views and the filter bar keep their place, the pager
+          keeps its place below, and only the table's rows scroll, under a head that stays. The
+          views are one table asked three ways, so they share the one frame. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.tickets')}
+          breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.tickets') }]}
+          actions={
+            <div className="flex items-center gap-2">
+              {can('itSlaPolicy.manage') && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => navigate('/it/helpdesk-settings')}
+                >
+                  {t('it.nav.helpDeskSettings')}
+                </Button>
+              )}
+              <Can permission="itTicket.create">
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  onClick={() => setCreating(true)}
+                >
+                  {t('it.tickets.create')}
+                </Button>
+              </Can>
+            </div>
+          }
+        />
 
-      <div
-        className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
-        role="tablist"
-        aria-label={t('it.tickets.views')}
-      >
-        {VIEWS.map((v) => (
-          <button
-            key={v}
-            role="tab"
-            aria-selected={view === v}
-            type="button"
-            onClick={() => patch({ view: v === 'queue' ? null : v })}
-            className={`rounded-t-lg px-4 py-2 text-sm ${
-              view === v
-                ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            {t(`it.tickets.view.${v}`)}
-          </button>
-        ))}
-      </div>
+        <div
+          className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
+          role="tablist"
+          aria-label={t('it.tickets.views')}
+        >
+          {VIEWS.map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={view === v}
+              type="button"
+              onClick={() => patch({ view: v === 'queue' ? null : v })}
+              className={`rounded-t-lg px-4 py-2 text-sm ${
+                view === v
+                  ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              {t(`it.tickets.view.${v}`)}
+            </button>
+          ))}
+        </div>
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() => {
@@ -413,35 +423,40 @@ export const TicketsListPage = (): JSX.Element => {
           )}
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(ticket) => ticket.id}
-          loading={isLoading || personPending}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          empty={
-            // An empty QUEUE and an empty SEARCH are different problems, and a requester with no
-            // tickets is a third: each gets the sentence that fits it.
-            hasActiveFilters ? (
-              <EmptyState
-                icon={<SearchIcon className="h-10 w-10" />}
-                title={t('it.tickets.emptyFilteredTitle')}
-                description={t('it.tickets.emptyFilteredBody')}
-              />
-            ) : (
-              <EmptyState
-                icon={<InboxIcon className="h-10 w-10" />}
-                title={view === 'mine' ? t('it.tickets.emptyMineTitle') : t('it.tickets.emptyTitle')}
-                description={
-                  view === 'mine' ? t('it.tickets.emptyMineBody') : t('it.tickets.emptyBody')
-                }
-              />
-            )
-          }
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(ticket) => ticket.id}
+            loading={isLoading || personPending}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            empty={
+              // An empty QUEUE and an empty SEARCH are different problems, and a requester with no
+              // tickets is a third: each gets the sentence that fits it.
+              hasActiveFilters ? (
+                <EmptyState
+                  icon={<SearchIcon className="h-10 w-10" />}
+                  title={t('it.tickets.emptyFilteredTitle')}
+                  description={t('it.tickets.emptyFilteredBody')}
+                />
+              ) : (
+                <EmptyState
+                  icon={<InboxIcon className="h-10 w-10" />}
+                  title={
+                    view === 'mine' ? t('it.tickets.emptyMineTitle') : t('it.tickets.emptyTitle')
+                  }
+                  description={
+                    view === 'mine' ? t('it.tickets.emptyMineBody') : t('it.tickets.emptyBody')
+                  }
+                />
+              )
+            }
+            stickyHead
+          />
+        </div>
         {!personEmpty && data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

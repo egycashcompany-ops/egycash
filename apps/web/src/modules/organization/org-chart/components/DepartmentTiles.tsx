@@ -39,7 +39,9 @@ export const DepartmentTiles = ({
     folded === ''
       ? departments
       : departments.filter(
-          (d) => foldOrgUnitName(d.name.ar).includes(folded) || foldOrgUnitName(d.name.en).includes(folded),
+          (d) =>
+            foldOrgUnitName(d.name.ar).includes(folded) ||
+            foldOrgUnitName(d.name.en).includes(folded),
         );
 
   return (
@@ -49,49 +51,56 @@ export const DepartmentTiles = ({
           value={search}
           onChange={onSearch}
           placeholder={t('organization.chart.search')}
+          debounceMs={0}
           className="sm:max-w-sm"
         />
       )}
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-        {shown.map((department) => {
-          const picked = department.key === selectedKey;
-          const sections = department.sections.length;
-          return (
-            <li key={department.key} className="min-w-0">
-              <button
-                type="button"
-                aria-pressed={picked}
-                onClick={() => onSelect(department.key)}
-                className={cn(
-                  'flex h-full w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors',
-                  picked
-                    ? 'border-brand-400 bg-brand-50/70 dark:border-brand-600 dark:bg-brand-950/50'
-                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 dark:hover:bg-slate-800/60',
-                )}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                    {localized(department.name, locale)}
-                  </span>
-                  {!department.editable && department.departmentCatalogId === null && (
-                    <span className="mt-0.5 block text-xs text-amber-600 dark:text-amber-400">
-                      {t('organization.chart.notLinked')}
-                    </span>
+      {shown.length === 0 ? (
+        <p className="py-2 text-sm text-slate-500 dark:text-slate-400">{t('common.noResults')}</p>
+      ) : (
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {shown.map((department) => {
+            const picked = department.key === selectedKey;
+            const sections = department.sections.length;
+            return (
+              <li key={department.key} className="min-w-0">
+                <button
+                  type="button"
+                  aria-pressed={picked}
+                  onClick={() => onSelect(department.key)}
+                  className={cn(
+                    'flex h-full w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-start transition-colors',
+                    picked
+                      ? 'border-brand-400 bg-brand-50/70 dark:border-brand-600 dark:bg-brand-950/50'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600 dark:hover:bg-slate-800/60',
                   )}
-                </span>
-                <span className="flex shrink-0 gap-1.5">
-                  <Count>
-                    {sections === 0
-                      ? t('organization.chart.noSections')
-                      : t('organization.chart.sectionsCount', { n: sections })}
-                  </Count>
-                  <Count>{t('organization.chart.jobsCount', { n: jobCounts.get(department.key) ?? 0 })}</Count>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                      {localized(department.name, locale)}
+                    </span>
+                    {!department.editable && department.departmentCatalogId === null && (
+                      <span className="mt-0.5 block text-xs text-amber-600 dark:text-amber-400">
+                        {t('organization.chart.notLinked')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex shrink-0 gap-1.5">
+                    <Count>
+                      {sections === 0
+                        ? t('organization.chart.noSections')
+                        : t('organization.chart.sectionsCount', { n: sections })}
+                    </Count>
+                    <Count>
+                      {t('organization.chart.jobsCount', { n: jobCounts.get(department.key) ?? 0 })}
+                    </Count>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 };

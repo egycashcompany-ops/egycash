@@ -92,8 +92,8 @@ From top to bottom:
 
 1. **`PageHeader`.**
    - Breadcrumbs: «الهيكل التنظيمي» / "Organization", then the page.
-   - Description: «إدارات الشركة كلها. اختر إدارة لعرض أقسامها ووظائفها.» / "Every department of the
-     company. Pick one to see its sections and jobs."
+   - No description line: a page header carries no subtitle, an owner decision recorded in
+     `apps/web/src/platform/layout/PageContainer.tsx` (the approved sample's line is not carried over).
    - Action: «تعديل الهيكل» / "Edit structure". It is shown to anyone who holds at least one of
      `section.create`, `section.edit` or `jobTitle.edit`. In edit mode it reads «إنهاء التعديل» /
      "Done editing".
@@ -164,7 +164,8 @@ their sections and their jobs in one tree".
       the company list.";
     - the hint «يُنشأ القسم في الفروع المحددة.» / "The section is created in the ticked branches.";
     - «إضافة» / "Add", which is disabled while no branch is ticked.
-  - **The ⋮ menu on a section** (`section.edit`) offers:
+  - **Two small buttons on a section's box** (`section.edit`) — the organize board's row actions; the
+    shared UI has no menu component, and the one in the ATM module is that module's own:
     - «تغيير الاسم» / "Rename": a `Dialog` with both names.
     - «إيقاف القسم» / "Stop section": a confirming `Dialog` that says «سيتوقف عرض القسم للاختيار في كل
       الفروع، ويبقى الموظفون المسجلون فيه عليه.» / "The section stops being offered in every branch;

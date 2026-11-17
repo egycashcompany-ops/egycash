@@ -73,7 +73,14 @@ export const OrgChartPage = (): JSX.Element => {
     changePlaces.isPending ||
     chart.isFetching;
 
-  const departments = chart.data?.departments ?? [];
+  // By name in the current language (§2.1); the server's order is by the Arabic name.
+  const departments = useMemo(
+    () =>
+      [...(chart.data?.departments ?? [])].sort((a, b) =>
+        localized(a.name, locale).localeCompare(localized(b.name, locale), locale),
+      ),
+    [chart.data, locale],
+  );
   const jobs = chart.data?.jobs ?? [];
   const department = pickDepartment(departments, params.get('dept'));
   const jobCounts = useMemo(
@@ -113,7 +120,8 @@ export const OrgChartPage = (): JSX.Element => {
     canEditSection,
     busy,
     onMove: (job, from, to) => change(job, { kind: 'move', departmentCatalogId, from, to }),
-    onRemove: (job, sectionCatalogId) => change(job, { kind: 'remove', departmentCatalogId, sectionCatalogId }),
+    onRemove: (job, sectionCatalogId) =>
+      change(job, { kind: 'remove', departmentCatalogId, sectionCatalogId }),
     onAddJob: (sectionCatalogId) => setOpen({ kind: 'addJob', sectionCatalogId }),
     onAddSection: () => setOpen({ kind: 'addSection' }),
     onRename: (section) => setOpen({ kind: 'rename', section }),
@@ -121,26 +129,29 @@ export const OrgChartPage = (): JSX.Element => {
   };
 
   const close = (): void => setOpen(null);
-  const savedThenClose = { onSuccess: () => { toast.success(t('organization.chart.saved')); close(); } };
+  /** Each section act says what it did, as the organize board's do. */
+  const doneThenClose = (message: string) => ({
+    onSuccess: () => {
+      toast.success(message);
+      close();
+    },
+  });
 
   const header = (
-    <>
     <PageHeader
       title={t('organization.chart.title')}
       breadcrumbs={[
-        { label: t('organization.module.title'), to: '/organization' },
+        { label: t('organization.title'), to: '/organization' },
         { label: t('organization.chart.title') },
       ]}
       actions={
         mayEdit && departments.length > 0 ? (
-          <Button size="sm" variant={editing ? 'primary' : 'secondary'} onClick={() => setEditing((on) => !on)}>
+          <Button size="sm" onClick={() => setEditing((on) => !on)}>
             {editing ? t('organization.chart.doneEditing') : t('organization.chart.edit')}
           </Button>
         ) : undefined
       }
     />
-    <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{t('organization.chart.subtitle')}</p>
-    </>
   );
 
   if (chart.isLoading) {
@@ -169,7 +180,10 @@ export const OrgChartPage = (): JSX.Element => {
           title={t('organization.chart.empty')}
           action={
             can('department.create') ? (
-              <Link to="/organization/departments" className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300">
+              <Link
+                to="/organization/departments"
+                className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+              >
                 {t('organization.chart.goToDepartments')}
               </Link>
             ) : undefined
@@ -195,7 +209,9 @@ export const OrgChartPage = (): JSX.Element => {
 
           <Card>
             <CardHeader
-              title={t('organization.chart.structureOf', { name: localized(department.name, locale) })}
+              title={t('organization.chart.structureOf', {
+                name: localized(department.name, locale),
+              })}
               description={[
                 department.sections.length === 0
                   ? t('organization.chart.noSections')
@@ -203,11 +219,21 @@ export const OrgChartPage = (): JSX.Element => {
                 t('organization.chart.jobsCount', { n: columns.jobCount }),
                 ...(department.editable
                   ? []
-                  : [department.departmentCatalogId === null ? t('organization.chart.notEditable') : t('organization.chart.stoppedInList')]),
+                  : [
+                      department.departmentCatalogId === null
+                        ? t('organization.chart.notEditable')
+                        : t('organization.chart.stoppedInList'),
+                    ]),
               ].join(' · ')}
             />
             <CardBody>
-              <ChartBoard department={department} columns={columns} editing={editing} actions={actions} locale={locale} />
+              <ChartBoard
+                department={department}
+                columns={columns}
+                editing={editing}
+                actions={actions}
+                locale={locale}
+              />
             </CardBody>
           </Card>
         </>
@@ -220,7 +246,10 @@ export const OrgChartPage = (): JSX.Element => {
           pending={addSection.isPending}
           onClose={close}
           onSubmit={(name, branchIds) =>
-            addSection.mutate({ departmentCatalogId, name, branchIds }, savedThenClose)
+            addSection.mutate(
+              { departmentCatalogId, name, branchIds },
+              doneThenClose(t('organization.chart.sectionAdded')),
+            )
           }
         />
       )}
@@ -232,8 +261,11 @@ export const OrgChartPage = (): JSX.Element => {
           onClose={close}
           onSubmit={(name) =>
             renameSection.mutate(
-              { id: open.section.sectionCatalogId ?? '', body: { name, version: open.section.catalogVersion ?? 0 } },
-              savedThenClose,
+              {
+                id: open.section.sectionCatalogId ?? '',
+                body: { name, version: open.section.catalogVersion ?? 0 },
+              },
+              doneThenClose(t('organization.chart.sectionRenamed')),
             )
           }
         />
@@ -246,8 +278,11 @@ export const OrgChartPage = (): JSX.Element => {
           onClose={close}
           onConfirm={() =>
             stopSection.mutate(
-              { id: open.section.sectionCatalogId ?? '', body: { version: open.section.catalogVersion ?? 0 } },
-              savedThenClose,
+              {
+                id: open.section.sectionCatalogId ?? '',
+                body: { version: open.section.catalogVersion ?? 0 },
+              },
+              doneThenClose(t('organization.chart.sectionStopped')),
             )
           }
         />
@@ -263,7 +298,11 @@ export const OrgChartPage = (): JSX.Element => {
           onSubmit={(jobId) => {
             const job = jobs.find((entry) => entry.id === jobId);
             if (job === undefined) return;
-            change(job, { kind: 'add', departmentCatalogId, sectionCatalogId: open.sectionCatalogId }, close);
+            change(
+              job,
+              { kind: 'add', departmentCatalogId, sectionCatalogId: open.sectionCatalogId },
+              close,
+            );
           }}
         />
       )}

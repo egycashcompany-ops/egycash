@@ -18,7 +18,7 @@ import { ApiError } from '../../../../shared/lib/api-client';
 import { localized } from '../../../../shared/lib/format';
 import { LocalizedNameFields, StatusSelect, localizedOrNull, type LocalizedValue } from '../../shared/form-fields';
 import { useCreateJobTitle, useJobTitle, useUpdateJobTitle } from '../job-title-queries';
-import { JobPlacesField, type PlaceRow } from '../components/JobPlacesField';
+import { JobPlacesField, placeRowOf, type PlaceRow } from '../components/JobPlacesField';
 
 const numOrNull = (s: string): number | null => {
   const trimmed = s.trim();
@@ -60,15 +60,7 @@ const JobTitleFormBody = ({ existing }: { existing: JobTitleDto | null }): JSX.E
     existing?.fixedSalary == null ? '' : String(existing.fixedSalary.amount),
   );
   // Where the job sits (ADR-038): the whole set, saved with the form — the chart writes the same rows.
-  const [places, setPlaces] = useState<PlaceRow[]>(
-    (existing?.places ?? []).map((place) => ({
-      departmentCatalogId: place.department.departmentCatalogId,
-      sectionCatalogId: place.section?.sectionCatalogId ?? null,
-      departmentName: place.department.name,
-      sectionName: place.section?.name ?? null,
-      shown: place.shown,
-    })),
-  );
+  const [places, setPlaces] = useState<PlaceRow[]>((existing?.places ?? []).map(placeRowOf));
   const placesBody = places.map((place) => ({
     departmentCatalogId: place.departmentCatalogId,
     sectionCatalogId: place.sectionCatalogId,

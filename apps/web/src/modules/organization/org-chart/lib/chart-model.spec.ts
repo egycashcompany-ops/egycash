@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { type OrgChartDepartmentDto, type OrgChartDto, type OrgChartJobDto } from '@ecms/contracts';
-import { columnsOf, isPlacedAt, moveTargets, otherPlaceLabels, pickDepartment, placesAfter } from './chart-model';
+import {
+  columnsOf,
+  isPlacedAt,
+  moveTargets,
+  otherPlaceLabels,
+  pickDepartment,
+  placesAfter,
+} from './chart-model';
 
 const OPS = 'a'.repeat(24);
 const SEC = 'b'.repeat(24);
@@ -15,12 +22,39 @@ const ops: OrgChartDepartmentDto = {
   branches: [],
   linkedBranchIds: [],
   sections: [
-    { key: `catalog:${TREASURY}`, sectionCatalogId: TREASURY, editable: true, name: { ar: 'الخزينة', en: 'Treasury' }, branches: [], catalogVersion: 0 },
-    { key: 'name:قديم', sectionCatalogId: null, editable: false, name: { ar: 'قديم', en: 'Old' }, branches: [], catalogVersion: null },
-    { key: `catalog:${COUNTING}`, sectionCatalogId: COUNTING, editable: true, name: { ar: 'العد', en: 'Counting' }, branches: [], catalogVersion: 0 },
+    {
+      key: `catalog:${TREASURY}`,
+      sectionCatalogId: TREASURY,
+      editable: true,
+      name: { ar: 'الخزينة', en: 'Treasury' },
+      branches: [],
+      catalogVersion: 0,
+    },
+    {
+      key: 'name:قديم',
+      sectionCatalogId: null,
+      editable: false,
+      name: { ar: 'قديم', en: 'Old' },
+      branches: [],
+      catalogVersion: null,
+    },
+    {
+      key: `catalog:${COUNTING}`,
+      sectionCatalogId: COUNTING,
+      editable: true,
+      name: { ar: 'العد', en: 'Counting' },
+      branches: [],
+      catalogVersion: 0,
+    },
   ],
 };
-const sec: OrgChartDepartmentDto = { ...ops, key: `catalog:${SEC}`, departmentCatalogId: SEC, name: { ar: 'الأمن', en: 'Security' }, sections: [] };
+const sec: OrgChartDepartmentDto = {
+  ...ops,
+  key: `catalog:${SEC}`,
+  departmentCatalogId: SEC,
+  name: { ar: 'الأمن', en: 'Security' },
+  sections: [],
+};
 
 const job = (id: string, places: OrgChartJobDto['places']): OrgChartJobDto => ({
   id,
@@ -44,7 +78,9 @@ describe('the org chart page model (P-ORG-3)', () => {
       { departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true },
       { departmentCatalogId: SEC, sectionCatalogId: null, shown: true },
     ]);
-    const hidden = job('hidden', [{ departmentCatalogId: OPS, sectionCatalogId: COUNTING, shown: false }]);
+    const hidden = job('hidden', [
+      { departmentCatalogId: OPS, sectionCatalogId: COUNTING, shown: false },
+    ]);
     const columns = columnsOf(ops, [driver, hidden]);
     expect(columns.direct.map((j) => j.id)).toEqual(['driver']);
     expect(columns.bySection.get(TREASURY)?.map((j) => j.id)).toEqual(['driver']);
@@ -62,24 +98,30 @@ describe('the org chart page model (P-ORG-3)', () => {
       { departmentCatalogId: OPS, sectionCatalogId: COUNTING, shown: true },
       { departmentCatalogId: SEC, sectionCatalogId: null, shown: false },
     ]);
-    expect(placesAfter(driver, { kind: 'move', departmentCatalogId: OPS, from: TREASURY, to: COUNTING })).toEqual([
+    expect(
+      placesAfter(driver, { kind: 'move', departmentCatalogId: OPS, from: TREASURY, to: COUNTING }),
+    ).toEqual([
       { departmentCatalogId: OPS, sectionCatalogId: COUNTING },
       { departmentCatalogId: SEC, sectionCatalogId: null },
     ]);
-    expect(placesAfter(driver, { kind: 'remove', departmentCatalogId: OPS, sectionCatalogId: TREASURY })).toHaveLength(2);
-    expect(placesAfter(driver, { kind: 'add', departmentCatalogId: OPS, sectionCatalogId: null })).toHaveLength(4);
+    expect(
+      placesAfter(driver, { kind: 'remove', departmentCatalogId: OPS, sectionCatalogId: TREASURY }),
+    ).toHaveLength(2);
+    expect(
+      placesAfter(driver, { kind: 'add', departmentCatalogId: OPS, sectionCatalogId: null }),
+    ).toHaveLength(4);
     expect(isPlacedAt(driver, OPS, COUNTING)).toBe(true);
     expect(isPlacedAt(driver, OPS, null)).toBe(false);
   });
 
-  it('names a job\'s other places for the add dialog', () => {
+  it("names a job's other places for the add dialog", () => {
     const chart: OrgChartDto = { departments: [ops, sec], jobs: [] };
     const driver = job('driver', [
       { departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true },
       { departmentCatalogId: SEC, sectionCatalogId: null, shown: true },
     ]);
-    expect(otherPlaceLabels(driver, chart, 'ar', { departmentCatalogId: SEC, sectionCatalogId: null })).toEqual([
-      'العمليات › الخزينة',
-    ]);
+    expect(
+      otherPlaceLabels(driver, chart, 'ar', { departmentCatalogId: SEC, sectionCatalogId: null }),
+    ).toEqual(['العمليات › الخزينة']);
   });
 });

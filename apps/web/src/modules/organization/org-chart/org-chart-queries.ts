@@ -67,7 +67,8 @@ export const useAddChartSection = () => {
 export const useRenameChartSection = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: RenameChartSection }) => api.renameChartSection(id, body),
+    mutationFn: ({ id, body }: { id: string; body: RenameChartSection }) =>
+      api.renameChartSection(id, body),
     onSuccess: (chart) => afterSectionWrite(qc, chart),
   });
 };
@@ -75,7 +76,8 @@ export const useRenameChartSection = () => {
 export const useStopChartSection = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: StopChartSection }) => api.stopChartSection(id, body),
+    mutationFn: ({ id, body }: { id: string; body: StopChartSection }) =>
+      api.stopChartSection(id, body),
     onSuccess: (chart) => afterSectionWrite(qc, chart),
   });
 };
@@ -84,8 +86,15 @@ export const useStopChartSection = () => {
 export const useChangeJobPlaces = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, version, places }: { id: string; version: number; places: JobPlaceInput[] }) =>
-      updateJobTitle(id, { version, places }),
+    mutationFn: ({
+      id,
+      version,
+      places,
+    }: {
+      id: string;
+      version: number;
+      places: JobPlaceInput[];
+    }) => updateJobTitle(id, { version, places }),
     onSuccess: (job) => refreshAfterJobWrite(qc, job),
   });
 };

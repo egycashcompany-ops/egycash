@@ -21,17 +21,61 @@ const ops: OrgChartDepartmentDto = {
   branches: [{ id: 'b1', name: { ar: 'طنطا', en: 'Tanta' } }],
   linkedBranchIds: ['b1'],
   sections: [
-    { key: `catalog:${TREASURY}`, sectionCatalogId: TREASURY, editable: true, name: { ar: 'الخزينة', en: 'Treasury' }, branches: [], catalogVersion: 0 },
-    { key: 'name:قديم', sectionCatalogId: null, editable: false, name: { ar: 'قسم قديم', en: 'Old section' }, branches: [], catalogVersion: null },
+    {
+      key: `catalog:${TREASURY}`,
+      sectionCatalogId: TREASURY,
+      editable: true,
+      name: { ar: 'الخزينة', en: 'Treasury' },
+      branches: [],
+      catalogVersion: 0,
+    },
+    {
+      key: 'name:قديم',
+      sectionCatalogId: null,
+      editable: false,
+      name: { ar: 'قسم قديم', en: 'Old section' },
+      branches: [],
+      catalogVersion: null,
+    },
   ],
 };
-const movement: OrgChartDepartmentDto = { ...ops, key: 'catalog:m', departmentCatalogId: 'e'.repeat(24), name: { ar: 'الحركة', en: 'Movement' }, sections: [] };
-const legacy: OrgChartDepartmentDto = { ...movement, key: 'name:قديمة', departmentCatalogId: null, editable: false, name: { ar: 'إدارة قديمة', en: 'Legacy' } };
+const movement: OrgChartDepartmentDto = {
+  ...ops,
+  key: 'catalog:m',
+  departmentCatalogId: 'e'.repeat(24),
+  name: { ar: 'الحركة', en: 'Movement' },
+  sections: [],
+};
+const legacy: OrgChartDepartmentDto = {
+  ...movement,
+  key: 'name:قديمة',
+  departmentCatalogId: null,
+  editable: false,
+  name: { ar: 'إدارة قديمة', en: 'Legacy' },
+};
 
 const jobs: OrgChartJobDto[] = [
-  { id: 'j1', code: 'J1', name: { ar: 'أمين خزينة', en: 'Cashier' }, version: 1, places: [{ departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true }] },
-  { id: 'j2', code: 'J2', name: { ar: 'مدير العمليات', en: 'Ops manager' }, version: 1, places: [{ departmentCatalogId: OPS, sectionCatalogId: null, shown: true }] },
-  { id: 'j3', code: 'J3', name: { ar: 'سائق', en: 'Driver' }, version: 1, places: [{ departmentCatalogId: 'e'.repeat(24), sectionCatalogId: null, shown: true }] },
+  {
+    id: 'j1',
+    code: 'J1',
+    name: { ar: 'أمين خزينة', en: 'Cashier' },
+    version: 1,
+    places: [{ departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true }],
+  },
+  {
+    id: 'j2',
+    code: 'J2',
+    name: { ar: 'مدير العمليات', en: 'Ops manager' },
+    version: 1,
+    places: [{ departmentCatalogId: OPS, sectionCatalogId: null, shown: true }],
+  },
+  {
+    id: 'j3',
+    code: 'J3',
+    name: { ar: 'سائق', en: 'Driver' },
+    version: 1,
+    places: [{ departmentCatalogId: 'e'.repeat(24), sectionCatalogId: null, shown: true }],
+  },
 ];
 
 const noop = (): void => undefined;
@@ -61,13 +105,23 @@ const render = (node: JSX.Element): string => {
   );
 };
 
-const board = (department: OrgChartDepartmentDto, editing: boolean, over?: Partial<ChartActions>): string =>
+const board = (
+  department: OrgChartDepartmentDto,
+  editing: boolean,
+  over?: Partial<ChartActions>,
+): string =>
   render(
-    <ChartBoard department={department} columns={columnsOf(department, jobs)} editing={editing} actions={actions(over)} locale="ar" />,
+    <ChartBoard
+      department={department}
+      columns={columnsOf(department, jobs)}
+      editing={editing}
+      actions={actions(over)}
+      locale="ar"
+    />,
   );
 
 describe('the org chart board', () => {
-  it('draws the department, its sections, each section\'s jobs, and the direct column', () => {
+  it("draws the department, its sections, each section's jobs, and the direct column", () => {
     const html = board(ops, false);
     expect(html).toContain('العمليات');
     expect(html).toContain('الخزينة');
@@ -78,7 +132,7 @@ describe('the org chart board', () => {
     expect(html).toContain('غير مربوط بقائمة الشركة');
   });
 
-  it('hangs a department\'s jobs directly under it when it has no sections', () => {
+  it("hangs a department's jobs directly under it when it has no sections", () => {
     const html = board(movement, false);
     expect(html).toContain('سائق');
     expect(html).not.toContain('تابعة للإدارة مباشرة');
@@ -131,7 +185,7 @@ describe('the department tiles', () => {
       />,
     );
 
-  it('marks the picked tile pressed, and counts each department\'s sections and jobs', () => {
+  it("marks the picked tile pressed, and counts each department's sections and jobs", () => {
     const html = tiles(ops.key);
     expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
     expect(html).toContain('2 أقسام');

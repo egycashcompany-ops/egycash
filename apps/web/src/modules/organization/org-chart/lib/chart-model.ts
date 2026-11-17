@@ -26,7 +26,10 @@ export interface DepartmentColumns {
 }
 
 /** Each column's jobs, from the jobs' own places — only places that are shown (§4.2). */
-export const columnsOf = (department: OrgChartDepartmentDto, jobs: readonly OrgChartJobDto[]): DepartmentColumns => {
+export const columnsOf = (
+  department: OrgChartDepartmentDto,
+  jobs: readonly OrgChartJobDto[],
+): DepartmentColumns => {
   const direct: OrgChartJobDto[] = [];
   const bySection = new Map<string, OrgChartJobDto[]>();
   const entryId = lower(department.departmentCatalogId);
@@ -49,7 +52,9 @@ export const columnsOf = (department: OrgChartDepartmentDto, jobs: readonly OrgC
 };
 
 /** The places a job may move to inside its department: «directly under» first, then each editable section. */
-export const moveTargets = (department: OrgChartDepartmentDto): { sectionCatalogId: string | null }[] => [
+export const moveTargets = (
+  department: OrgChartDepartmentDto,
+): { sectionCatalogId: string | null }[] => [
   { sectionCatalogId: null },
   ...department.sections
     .filter((section) => section.editable && section.sectionCatalogId !== null)
@@ -77,9 +82,18 @@ export const placesAfter = (job: OrgChartJobDto, change: PlaceChange): JobPlaceI
   }));
   let next: JobPlaceInput[];
   if (change.kind === 'add') {
-    next = [...current, { departmentCatalogId: change.departmentCatalogId, sectionCatalogId: change.sectionCatalogId }];
+    next = [
+      ...current,
+      {
+        departmentCatalogId: change.departmentCatalogId,
+        sectionCatalogId: change.sectionCatalogId,
+      },
+    ];
   } else if (change.kind === 'remove') {
-    const target = { departmentCatalogId: change.departmentCatalogId, sectionCatalogId: change.sectionCatalogId };
+    const target = {
+      departmentCatalogId: change.departmentCatalogId,
+      sectionCatalogId: change.sectionCatalogId,
+    };
     next = current.filter((place) => !same(place, target));
   } else {
     const from = { departmentCatalogId: change.departmentCatalogId, sectionCatalogId: change.from };
@@ -96,8 +110,7 @@ export const isPlacedAt = (
   job: OrgChartJobDto,
   departmentCatalogId: string,
   sectionCatalogId: string | null,
-): boolean =>
-  job.places.some((place) => same(place, { departmentCatalogId, sectionCatalogId }));
+): boolean => job.places.some((place) => same(place, { departmentCatalogId, sectionCatalogId }));
 
 /** «العمليات › الخزينة» for each of a job's OTHER places — the add dialog's «موجودة أيضًا في». */
 export const otherPlaceLabels = (
@@ -106,7 +119,8 @@ export const otherPlaceLabels = (
   locale: Locale,
   except: { departmentCatalogId: string; sectionCatalogId: string | null },
 ): string[] => {
-  const name = (value: { ar: string; en: string }): string => (locale === 'ar' ? value.ar : value.en);
+  const name = (value: { ar: string; en: string }): string =>
+    locale === 'ar' ? value.ar : value.en;
   return job.places
     .filter((place) => !same(place, except))
     .map((place) => {
@@ -118,7 +132,9 @@ export const otherPlaceLabels = (
       const section = department.sections.find(
         (s) => s.sectionCatalogId?.toLowerCase() === place.sectionCatalogId?.toLowerCase(),
       );
-      return section === undefined ? name(department.name) : `${name(department.name)} › ${name(section.name)}`;
+      return section === undefined
+        ? name(department.name)
+        : `${name(department.name)} › ${name(section.name)}`;
     })
     .filter((label): label is string => label !== null);
 };

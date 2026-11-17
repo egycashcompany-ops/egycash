@@ -17,8 +17,12 @@ export const getOrgChart = (): Promise<OrgChartDto> => get<OrgChartDto>(BASE);
 export const addChartSection = (body: AddChartSection): Promise<OrgChartDto> =>
   post<OrgChartDto>(`${BASE}/sections`, body);
 
-export const renameChartSection = (sectionCatalogId: string, body: RenameChartSection): Promise<OrgChartDto> =>
-  patch<OrgChartDto>(`${BASE}/sections/${sectionCatalogId}`, body);
+export const renameChartSection = (
+  sectionCatalogId: string,
+  body: RenameChartSection,
+): Promise<OrgChartDto> => patch<OrgChartDto>(`${BASE}/sections/${sectionCatalogId}`, body);
 
-export const stopChartSection = (sectionCatalogId: string, body: StopChartSection): Promise<OrgChartDto> =>
-  post<OrgChartDto>(`${BASE}/sections/${sectionCatalogId}/stop`, body);
+export const stopChartSection = (
+  sectionCatalogId: string,
+  body: StopChartSection,
+): Promise<OrgChartDto> => post<OrgChartDto>(`${BASE}/sections/${sectionCatalogId}/stop`, body);

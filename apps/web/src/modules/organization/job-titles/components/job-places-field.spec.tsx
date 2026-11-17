@@ -22,7 +22,14 @@ const chart: OrgChartDto = {
       branches: [],
       linkedBranchIds: [],
       sections: [
-        { key: `catalog:${TREASURY}`, sectionCatalogId: TREASURY, editable: true, name: { ar: 'الخزينة', en: 'Treasury' }, branches: [], catalogVersion: 0 },
+        {
+          key: `catalog:${TREASURY}`,
+          sectionCatalogId: TREASURY,
+          editable: true,
+          name: { ar: 'الخزينة', en: 'Treasury' },
+          branches: [],
+          catalogVersion: 0,
+        },
       ],
     },
   ],
@@ -30,8 +37,20 @@ const chart: OrgChartDto = {
 };
 
 const rows: PlaceRow[] = [
-  { departmentCatalogId: OPS, sectionCatalogId: TREASURY, departmentName: { ar: 'العمليات', en: 'Operations' }, sectionName: { ar: 'الخزينة', en: 'Treasury' }, shown: true },
-  { departmentCatalogId: OPS, sectionCatalogId: null, departmentName: { ar: 'العمليات', en: 'Operations' }, sectionName: null, shown: false },
+  {
+    departmentCatalogId: OPS,
+    sectionCatalogId: TREASURY,
+    departmentName: { ar: 'العمليات', en: 'Operations' },
+    sectionName: { ar: 'الخزينة', en: 'Treasury' },
+    shown: true,
+  },
+  {
+    departmentCatalogId: OPS,
+    sectionCatalogId: null,
+    departmentName: { ar: 'العمليات', en: 'Operations' },
+    sectionName: null,
+    shown: false,
+  },
 ];
 
 const render = (value: PlaceRow[]): string => {
@@ -63,7 +82,9 @@ describe('the job places field', () => {
   });
 
   it('labels a place in either language', () => {
-    expect(placeLabel(rows[0] as PlaceRow, 'en', 'Directly under the department')).toBe('Operations › Treasury');
+    expect(placeLabel(rows[0] as PlaceRow, 'en', 'Directly under the department')).toBe(
+      'Operations › Treasury',
+    );
     expect(placeLabel(rows[1] as PlaceRow, 'en', 'Directly under the department')).toBe(
       'Operations › Directly under the department',
     );

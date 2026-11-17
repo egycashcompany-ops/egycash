@@ -35,18 +35,32 @@ const Footer = ({
   const t = useT();
   return (
     <div className="flex justify-end gap-2">
-      <Button variant={danger ? 'ghost' : 'secondary'} onClick={onClose}>
+      <Button
+        variant={danger ? 'ghost' : 'secondary'}
+        size={danger ? 'sm' : 'md'}
+        onClick={onClose}
+      >
         {t('common.cancel')}
       </Button>
-      <Button variant={danger ? 'danger' : 'primary'} onClick={onSubmit} loading={pending} disabled={disabled}>
+      <Button
+        variant={danger ? 'danger' : 'primary'}
+        size={danger ? 'sm' : 'md'}
+        onClick={onSubmit}
+        loading={pending}
+        disabled={disabled}
+      >
         {submitLabel}
       </Button>
     </div>
   );
 };
 
-const trimmed = (value: LocalizedValue): LocalizedValue => ({ ar: value.ar.trim(), en: value.en.trim() });
-const complete = (value: LocalizedValue): boolean => value.ar.trim() !== '' && value.en.trim() !== '';
+const trimmed = (value: LocalizedValue): LocalizedValue => ({
+  ar: value.ar.trim(),
+  en: value.en.trim(),
+});
+const complete = (value: LocalizedValue): boolean =>
+  value.ar.trim() !== '' && value.en.trim() !== '';
 
 /** «إضافة قسم»: both names, and the branches whose department row is linked — all ticked at first. */
 export const AddSectionDialog = ({
@@ -94,7 +108,12 @@ export const AddSectionDialog = ({
       }
     >
       <div className="space-y-4">
-        <LocalizedNameFields label={t('organization.chart.sectionName')} value={name} onChange={setName} required />
+        <LocalizedNameFields
+          label={t('organization.chart.sectionName')}
+          value={name}
+          onChange={setName}
+          required
+        />
         <Field label={t('organization.chart.branches')} required>
           <div className="grid gap-2 sm:grid-cols-2">
             {department.branches.map((branch) =>
@@ -107,7 +126,12 @@ export const AddSectionDialog = ({
                 />
               ) : (
                 <div key={branch.id} className="text-sm text-slate-400 dark:text-slate-500">
-                  <Checkbox checked={false} disabled label={localized(branch.name, locale)} onChange={() => undefined} />
+                  <Checkbox
+                    checked={false}
+                    disabled
+                    label={localized(branch.name, locale)}
+                    onChange={() => undefined}
+                  />
                   <p className="ms-6 text-xs">{t('organization.chart.branchNotLinked')}</p>
                 </div>
               ),
@@ -153,7 +177,12 @@ export const RenameSectionDialog = ({
         />
       }
     >
-      <LocalizedNameFields label={t('organization.chart.sectionName')} value={name} onChange={setName} required />
+      <LocalizedNameFields
+        label={t('organization.chart.sectionName')}
+        value={name}
+        onChange={setName}
+        required
+      />
     </Dialog>
   );
 };
@@ -178,7 +207,6 @@ export const StopSectionDialog = ({
       open
       onClose={onClose}
       title={t('organization.chart.stopTitle', { name: localized(section.name, locale) })}
-      description={t('organization.chart.stopBody')}
       footer={
         <Footer
           onClose={onClose}
@@ -190,7 +218,9 @@ export const StopSectionDialog = ({
         />
       }
     >
-      <span />
+      <p className="text-sm text-slate-600 dark:text-slate-300">
+        {t('organization.chart.stopBody')}
+      </p>
     </Dialog>
   );
 };
@@ -221,7 +251,10 @@ export const AddJobDialog = ({
     sectionCatalogId === null
       ? `${localized(department.name, locale)} › ${t('organization.chart.direct')}`
       : `${localized(department.name, locale)} › ${localized(
-          department.sections.find((s) => s.sectionCatalogId === sectionCatalogId)?.name ?? { ar: '', en: '' },
+          department.sections.find((s) => s.sectionCatalogId === sectionCatalogId)?.name ?? {
+            ar: '',
+            en: '',
+          },
           locale,
         )}`;
   const options = chart.jobs
@@ -231,7 +264,10 @@ export const AddJobDialog = ({
       const name = `${localized(job.name, locale)} (${job.code})`;
       return {
         value: job.id,
-        label: elsewhere.length === 0 ? name : `${name} — ${t('organization.chart.alsoIn', { places: elsewhere.join('، ') })}`,
+        label:
+          elsewhere.length === 0
+            ? name
+            : `${name} — ${t('organization.chart.alsoIn', { places: elsewhere.join(locale === 'ar' ? '، ' : ', ') })}`,
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label, locale));

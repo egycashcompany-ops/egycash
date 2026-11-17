@@ -735,11 +735,10 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   their job's papers as the same tiles: tick, print one alone, or «طباعة المحدد». The set takes the
   chosen `keys`: a print that does not ask for the contract never makes one; one that does prints
   the contract held, or makes one as «مستندات التعيين» does.
-- **«جاهزون للتعيين»'s bar: «مستندات الوظائف» and «المعينون».** The HR settings bar above the
-  ready-to-hire table, with two sections of their own addresses (`/employees/ready/job-papers`,
-  `/employees/ready/hired`); the table is the page with neither pressed, and pressing the open one
-  closes it back to the table. «مستندات الوظائف» is the editor that was a popup, now a section
-  (`contractTemplate.manage`). «المعينون» (`contract.print`) lists everybody employed now —
+- **«جاهزون للتعيين» | «المعينون», and «مستندات الوظائف».** A small sliding toggle (the HR
+  settings bar, compact) in the head of both lists (`/employees/ready`, `/employees/ready/hired`),
+  above the «مستندات الوظائف» button that opens its popup (`contractTemplate.manage`).
+  «المعينون» (`contract.print`) lists everybody employed now —
   `employed=true`, `origin=recruitment,direct`: not an external person, not someone whose service
   ended — with search and branch / department / job ticks; ticked people print through the same
   popup as candidates, each on a line of their own with their tab's papers, ONE document, each print

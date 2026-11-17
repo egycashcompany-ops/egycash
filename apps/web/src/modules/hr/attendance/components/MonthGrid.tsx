@@ -8,15 +8,25 @@ import { formatMinutes } from './minutes';
 
 const TONE: Record<AttendanceDayStatus, string> = {
   present: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
+  // Checked in and never out — a presence, so it reads green like one. It is deliberately a
+  // SOFTER green than `present`: the day counted, and the hours behind it are unknown.
+  checkedIn: 'bg-emerald-50/60 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300',
   late: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
   earlyLeave: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
   lateAndEarly: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
+  // Still being lived — drawn like the days nothing is owed for, not like an absence. Only today's
+  // cell can ever carry it: a past date resolves to `absent` when it is read.
+  pending: 'bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400',
   absent: 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200',
   incomplete: 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200',
   onLeave: 'bg-sky-50 text-sky-800 dark:bg-sky-950/40 dark:text-sky-200',
   weekend: 'bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400',
   holiday: 'bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400',
   dayOff: 'bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400',
+  // Dashed rather than filled: a cell the roster has not answered, which should not look like the
+  // settled grey of a weekend sitting next to it.
+  noSchedule:
+    'border border-dashed border-slate-300 text-slate-500 dark:border-slate-700 dark:text-slate-400',
 };
 
 /** `month` is `YYYY-MM`; the grid spans that month's real length, not a fixed 31. */

@@ -18,18 +18,40 @@ import {
 } from './hr-attendance.js';
 
 describe('closed vocabularies', () => {
-  it('pins the ten day statuses of §2 — one enum, one value per day', () => {
+  it('pins the thirteen day statuses of §2 — one enum, one value per day', () => {
+    // `checkedIn` is a deliberate contract change (owner ruling, 2026-11-17). The branch devices
+    // show 70–90% of employees scan on arrival and never scan out, so a check-in with no
+    // check-out is the ordinary working day here; it used to derive as `incomplete`, which is
+    // toned as a fault and priced at nothing. It counts as an attended day.
+    //
+    // `incomplete` STAYS in the vocabulary although nothing derives it any more: rows written
+    // before that ruling carry it, and a value that exists in the database must stay nameable by
+    // the enum that reads it. Payroll deliberately leaves it out of the attended statuses so no
+    // frozen month is restated — see `attendance-quantities.ts`.
+    //
+    // `noSchedule` is the thirteenth: nobody has said when this person works. It was reported as
+    // `dayOff` until production showed a whole branch marked «يوم راحة» on a Tuesday — a claim
+    // that the company owed them no work, which nobody had made. `dayOff` stays in the enum for
+    // the rows already carrying it, and nothing derives it any more.
+    //
+    // `pending` is the twelfth (stage 2): the day that is still being lived. It is written only
+    // for a date in progress and is payroll-neutral by construction, and once the date is past the
+    // read paths resolve it to `absent` — so it is a status that can be stored but can never be a
+    // date's final answer.
     expect([...ATTENDANCE_DAY_STATUSES]).toEqual([
       'present',
+      'checkedIn',
       'late',
       'earlyLeave',
       'lateAndEarly',
+      'pending',
       'absent',
       'onLeave',
       'weekend',
       'holiday',
       'incomplete',
       'dayOff',
+      'noSchedule',
     ]);
   });
 
@@ -40,10 +62,15 @@ describe('closed vocabularies', () => {
     // day flag, so a reviewer could not tell a decision from a keystroke.
     expect([...ATTENDANCE_PUNCH_SOURCES]).toEqual(['device', 'manual', 'regularization', 'web']);
     expect([...ATTENDANCE_PUNCH_DIRECTIONS]).toEqual(['in', 'out', 'unknown']);
+    // Stage 3 added `overriddenByManager`: a day whose status a manager DECIDED rather than the
+    // engine derived. It is a flag and not a status because the status is still a real answer
+    // about the day — the flag says where that answer came from, and that the device's punches
+    // are still standing underneath it.
     expect([...ATTENDANCE_DAY_FLAGS]).toEqual([
       'crossBranchPunch',
       'manualPunch',
       'regularizedPunch',
+      'overriddenByManager',
     ]);
   });
 
@@ -63,6 +90,17 @@ describe('closed vocabularies', () => {
       'hr.attendance.autoComputeHour',
       'hr.attendance.overtimeRequiresApproval',
       'hr.attendance.absenceNotify',
+      // The default working pattern (stage 1b) — six scalars rather than one object, because the
+      // settings screen can only edit boolean, number and string, and HR owns these hours. All
+      // six take a per-branch override; `enabled` ships false so the pattern is inert.
+      'hr.attendance.defaultPattern.enabled',
+      'hr.attendance.defaultPattern.startTime',
+      'hr.attendance.defaultPattern.endTime',
+      'hr.attendance.defaultPattern.breakMinutes',
+      'hr.attendance.defaultPattern.graceInMinutes',
+      'hr.attendance.defaultPattern.graceOutMinutes',
+      // Stage 3: how far back a manager decides alone before HR has to approve.
+      'hr.attendance.decisionApprovalAfterDays',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

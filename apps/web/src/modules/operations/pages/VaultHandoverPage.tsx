@@ -19,6 +19,11 @@
 //   · «طباعة» — the van's load on the company's report form (`lib/van-load-sheet.ts`), PROVISIONAL
 //     until the owner says what the paper is («اللى هيطبع هقولك عليه بعدين»).
 //
+// ROUND 25 — the same van card and the same small chip as «توزيع المحصنات» («وبرضو شكل المحصنة زى
+// ما كانت على الشمال تفضل زى ما هى شكلها على العربية»): the van's head, ONE captain's line led by the
+// count, the three package counts always; each محصنة bank · branch, its card on hover. «تسليم» and
+// «طباعة» stay over each van; the confirmation and the printed sheet keep the money and every detail.
+//
 // WHICH DAY. «تسليم» is TODAY's act (`handoverBlock`): the vault hands a van its load on the day the
 // van goes out. A future day stays on screen — it is the plan, and «طباعة» works there so a sheet can
 // be ready ahead — but its «تسليم» is off, with why, and the day bar says so. The confirmation names
@@ -64,20 +69,20 @@ import {
 import { BoardFigurePill, FIGURE_TONE } from '../components/BoardFigures';
 import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsBoard';
 import {
-  CardMark,
+  ChipMark,
   DAY_BAR,
   DISTRIBUTION_COLUMNS,
   DayBox,
   DistributionColumn,
   EmptyLoad,
   MoneyLine,
-  ShipmentCard,
+  ShipmentCardBody,
+  ShipmentChip,
   VAN_GRID,
   VanCard,
   dayText,
 } from '../components/SecuredDistributionParts';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
-import { boardFigures } from '../lib/day-board';
 import {
   EMPTY_DRAFT,
   captainOn,
@@ -87,8 +92,10 @@ import {
   handoverShipments,
   loadFigures,
   notYetInVault,
+  packagingRead,
   personName,
   readDistributionDate,
+  vanPackages,
 } from '../lib/secured-distribution';
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
@@ -144,6 +151,8 @@ export const VaultHandoverPage = (): JSX.Element => {
   const currencyOf = (id: string): OperationsCurrencyDto | undefined =>
     currencies.data?.items.find((currency) => currency.id === id);
   const packagingOf = (id: string) => packaging.data?.get(id);
+  // Round 25 critic — no 0 before the vault's counts are in (`vanPackages`).
+  const packagesRead = packagingRead(true, packaging);
 
   // The SAVED places — the vault moves nothing.
   const columns = distributionColumns(rows, vans, EMPTY_DRAFT);
@@ -151,9 +160,12 @@ export const VaultHandoverPage = (): JSX.Element => {
     confirming === null ? undefined : vans.find((van) => van.crewAssignmentId === confirming);
   // Round 24 — a crew without a van hands its load over like a van: «بدون سيارة (n)» on its card, on
   // the sheet and in every sentence (`lib/van-name.ts`), numbered as the board numbers it.
+  // Round 25 — the server's number among ALL the day's rows without a van (`looseNumber`).
   const looseNumbers = looseCrewNumbers(vans);
   const looseNumberOf = (crewAssignmentId: string): string | null => {
-    const number = looseNumbers.get(crewAssignmentId);
+    const number =
+      vans.find((van) => van.crewAssignmentId === crewAssignmentId)?.looseNumber ??
+      looseNumbers.get(crewAssignmentId);
     return number === undefined ? null : formatNumber(number, locale);
   };
   const vanName = (van: OperationsDayBoardVehicleCrewDto): string =>
@@ -215,44 +227,98 @@ export const VaultHandoverPage = (): JSX.Element => {
     }
   };
 
-  /** A shipment's card — read-only: where it stands, and whether the vault holds it. */
+  /**
+   * A shipment's chip — read-only: the same small chip as «توزيع المحصنات» (Round 25), its card on
+   * hover with where it stands and whether the vault holds it.
+   */
   const card = (
     row: OperationsSecuredDistributionRowDto,
     van?: OperationsDayBoardVehicleCrewDto,
   ) => {
     const captain =
       van === undefined ? null : captainOn(van, row.delivery?.captainEmployeeId ?? null);
+    // The van card shows its first captain only: a محصنة with the other one says so.
+    const otherCaptain =
+      van !== undefined && captain !== null && van.captains[0]?.employeeId !== captain.employeeId;
+    const waiting = van !== undefined && row.status !== 'inVault';
     return (
-      <ShipmentCard
+      <ShipmentChip
         key={row.id}
         row={row}
         bankName={bankNameOf(row.mainBankId)}
-        figures={boardFigures([row], currencyOf)}
-        packages={packagingOf(row.id)}
+        branchName={row.destination?.name ?? row.origin?.name ?? ''}
         marks={
           <>
             {row.overdue && (
-              <CardMark tone="overdue" data-mark="overdue">
-                {t('operations.distribution.overdue')} · {dayText(row.deliveryDate)}
-              </CardMark>
+              <ChipMark
+                tone="overdue"
+                data-mark="overdue"
+                icon={PATH.calendar}
+                label={`${t('operations.distribution.overdue')} · ${dayText(row.deliveryDate)}`}
+              />
             )}
-            {van !== undefined && row.status !== 'inVault' && (
-              <CardMark
+            {waiting && (
+              <ChipMark
                 tone="waiting"
                 data-mark="not-in-vault"
-                title={t('operations.handover.notInVaultHint')}
-              >
-                {t('operations.handover.notInVault')}
-              </CardMark>
+                icon={SHIPMENT_PATH.info}
+                label={t('operations.handover.notInVault')}
+              />
+            )}
+            {otherCaptain && (
+              <ChipMark
+                tone="captain"
+                data-mark="captain"
+                icon={SHIPMENT_PATH.person}
+                label={t('operations.distribution.withCaptain', { name: personName(captain) })}
+              />
             )}
           </>
         }
-        controls={
-          van !== undefined && van.captains.length > 1 && captain !== null ? (
-            <span className="truncate text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
-              {t('operations.distribution.withCaptain', { name: personName(captain) })}
-            </span>
-          ) : undefined
+        card={
+          <ShipmentCardBody
+            row={row}
+            bankName={bankNameOf(row.mainBankId)}
+            money={row.lines.map((line, index) => {
+              const currency = currencyOf(line.currencyId);
+              return {
+                key: `${line.currencyId}|${index}`,
+                label: currency?.name ?? currency?.code ?? '…',
+                amount: line.amount,
+              };
+            })}
+            packages={packagingOf(row.id)}
+            packagesRead={packagesRead}
+            place={
+              van === undefined
+                ? null
+                : captain === null
+                  ? vanName(van)
+                  : `${vanName(van)} · ${t('operations.distribution.withCaptain', { name: personName(captain) })}`
+            }
+            notes={[
+              ...(row.overdue
+                ? [
+                    {
+                      key: 'overdue',
+                      text: t('operations.distribution.overdueHint', {
+                        day: dayText(row.deliveryDate),
+                      }),
+                      tone: 'danger' as const,
+                    },
+                  ]
+                : []),
+              ...(waiting
+                ? [
+                    {
+                      key: 'not-in-vault',
+                      text: t('operations.handover.notInVaultHint'),
+                      tone: 'info' as const,
+                    },
+                  ]
+                : []),
+            ]}
+          />
         }
       />
     );
@@ -285,7 +351,8 @@ export const VaultHandoverPage = (): JSX.Element => {
                 looseNumber={looseNumberOf(van.crewAssignmentId)}
                 crewPlanVisible={data.crewPlanVisible}
                 day={day}
-                figures={loadFigures(load, currencyOf, packagingOf)}
+                count={load.length}
+                packages={vanPackages(packagesRead, load, packagingOf)}
                 actions={
                   <>
                     {canHandOver && (
@@ -389,7 +456,7 @@ export const VaultHandoverPage = (): JSX.Element => {
             : t('operations.distribution.allPlaced')}
         </EmptyLoad>
       ) : (
-        <div className="grid gap-2">{columns.unplaced.map((row) => card(row))}</div>
+        <div className="grid gap-1.5">{columns.unplaced.map((row) => card(row))}</div>
       )}
     </DistributionColumn>
   );

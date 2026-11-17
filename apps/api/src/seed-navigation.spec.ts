@@ -76,7 +76,8 @@ describe('the seeded navigation catalog', () => {
     //   receive screen (Operations, Round 12).
     // 138 → 138: «تجميع الخزينة» left Operations — its content is «تقرير البنوك» now, and the row is
     //   RETIRED on live installations — and «إدارات العمليات» joined it beneath the roster (−1 +1).
-    expect(rows).toHaveLength(138);
+    // 138 → 139: «شجرة الهيكل التنظيمي» joined Organization, after «الوظائف» (org-chart-design.md).
+    expect(rows).toHaveLength(139);
   });
 
   /**
@@ -165,17 +166,28 @@ describe('the seeded navigation catalog', () => {
     );
   });
 
-  it('offers the consumables right under the mobile lines, on the asset grants', () => {
-    // «شاشة تانية تحت خطوط المحمول تكون للمستهلكات» — under the lines, and keyed like them: the
-    // store has no permission of its own («same permissions as assets»).
+  it('offers the consumables right under the mobile lines, each on its own read grant', () => {
+    // «شاشة تانية تحت خطوط المحمول تكون للمستهلكات» — under the lines. Both shipped on the asset
+    // grant and have their own since 2026-11-17 («فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم
+    // فيها»): the stored rows are corrected only while they still hold `itAsset.view`.
     const itRows = rows.filter((row) => row.route.startsWith('/it'));
     const consumables = itRows.find((row) => row.route === '/it/consumables');
-    expect(consumables?.permission).toBe('itAsset.view');
+    expect(consumables).toMatchObject({
+      permission: 'itConsumable.view',
+      previousPermission: 'itAsset.view',
+    });
+    expect(itRows.find((row) => row.route === '/it/mobile-lines')).toMatchObject({
+      permission: 'itMobileLine.view',
+      previousPermission: 'itAsset.view',
+    });
     expect(itRows.indexOf(consumables as (typeof itRows)[number])).toBe(
       itRows.findIndex((row) => row.route === '/it/mobile-lines') + 1,
     );
     // The movements screen nests under it and has no row of its own.
     expect(rows.some((row) => row.route === '/it/consumables/movements')).toBe(false);
+    // The rest of IT keeps its keys: the assets, the custody register and the home stay on theirs.
+    expect(itRows.find((row) => row.route === '/it/assets')?.permission).toBe('itAsset.view');
+    expect(itRows.find((row) => row.route === '/it/custody')?.permission).toBe('itAsset.view');
   });
 
   it('offers the vehicle checks dashboard right before the phone form, on the read grant', () => {
@@ -255,8 +267,9 @@ describe('the seeded navigation catalog', () => {
 
   it('corrects a permission only where the key actually changes', () => {
     // `previousPermission` mirrors `previousIcon`: a correction that names the value it already
-    // holds would be a no-op that reads like a fix. The one shipped today is the data-edit split
+    // holds would be a no-op that reads like a fix. The first shipped was the data-edit split
     // (docs/12-planning/atm-efficiency-register.md §7.3): Machine Data is the Operations page now.
+    // IT's mobile lines and consumables followed (2026-11-17, pinned above).
     const corrected = rows.filter((row) => row.previousPermission !== undefined);
     for (const row of corrected) {
       expect(row.previousPermission, `${row.route} must actually change`).not.toBe(row.permission);

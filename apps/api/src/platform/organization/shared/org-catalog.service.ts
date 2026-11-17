@@ -10,13 +10,14 @@
 //   • `renameLinked`. A catalog entry's name is copied onto the branch rows that declare it, so a
 //     rename must reach them or the screens go back to disagreeing with each other. See the method.
 import {
+  ErrorCodes,
   PlatformEvents,
   type ListOrgUnitsQuery,
   type LocalizedString,
   type Paginated,
 } from '@ecms/contracts';
 import { type FilterQuery, Types } from 'mongoose';
-import { BusinessRuleError } from '../../../shared/errors';
+import { BusinessRuleError, ConflictError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { type BaseRepository } from '../../../shared/base/base.repository';
 import { diffChanges } from '../../../shared/utils/diff';
@@ -50,6 +51,11 @@ export interface OrgCatalogHooks<TDoc extends OrgCatalogDoc> {
   buildCreateExtras?: (input: unknown) => Promise<Partial<TDoc>>;
   /** Blocks delete while something still declares this entry. */
   hasDependents?: (id: string) => Promise<boolean>;
+  /**
+   * Blocks delete while a job place cites this entry (P-ORG-3, ADR-038). A hook of its own, with its
+   * own code, because "jobs are placed here" is a different refusal from "branches declare this".
+   */
+  hasPlaces?: (id: string) => Promise<boolean>;
   /**
    * Push a renamed catalog entry down onto the branch rows that copied its name. Returns how many
    * rows followed, which is what the audit entry records.
@@ -153,6 +159,9 @@ export class OrgCatalogService<TDoc extends OrgCatalogDoc> {
       throw new BusinessRuleError(
         'Cannot delete a catalog entry that branches still declare — remove it from those branches first',
       );
+    }
+    if (this.hooks.hasPlaces !== undefined && (await this.hooks.hasPlaces(id))) {
+      throw new ConflictError('Jobs are placed in this entry', ErrorCodes.ORG_CATALOG_ENTRY_IN_USE);
     }
     await this.repository.softDeleteById(id, { by });
     await auditService.record({ entityRef: this.entityRef(id), action: 'delete' });

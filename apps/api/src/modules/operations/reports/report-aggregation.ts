@@ -14,6 +14,7 @@ import {
   cairoDayStart,
   cairoYmd,
   ymdOf,
+  type OperationsBankBranchReportRowDto,
   type OperationsBankReportRowDto,
   type OperationsCaptainReportRowDto,
   type OperationsReportQuery,
@@ -126,6 +127,47 @@ export const bankReportRows = (
     (row) => row.bankId ?? '',
     (row, totals) => ({ bankId: row.bankId, bankName: row.bankName, totals }),
     (built) => built.bankName,
+  );
+
+/** What names a branch's row of «لوحة البنك بفروعه» (Round 25) — the catalog's facts about it. */
+export interface BranchRowFacts {
+  name: string;
+  code: string | null;
+  areaName: string | null;
+  /** The branch's own bank when it is not the dashboard's bank; else null. */
+  otherBankName: string | null;
+}
+
+/**
+ * «لوحة البنك بفروعه» (Round 25) — ONE bank's rows, keyed on a branch instead of the bank, through
+ * the SAME roll-up (`groupBy` → `addRow`): the packages once per shipment (Q26), a shipment with no
+ * money still counted (Q28), and the total accumulated alongside the rows, never summed from them
+ * (Q27). Handed exactly the shipments of the bank's row of `bankReportRows`, in the same order, its
+ * `grandTotal` IS that row's totals — the branches cannot disagree with the bank report.
+ *
+ * `branchOf` is null for a shipment whose branch no longer resolves: those share one row, kept.
+ */
+export const branchReportRows = (
+  rows: readonly ReportInputRow[],
+  branchOf: (row: ReportInputRow) => string | null,
+  factsOf: (branchId: string | null) => BranchRowFacts,
+): Grouped<OperationsBankBranchReportRowDto> =>
+  groupBy(
+    rows,
+    (row) => branchOf(row) ?? '',
+    (row, totals) => {
+      const branchId = branchOf(row);
+      const facts = factsOf(branchId);
+      return {
+        branchId,
+        branchName: facts.name,
+        branchCode: facts.code,
+        areaName: facts.areaName,
+        otherBankName: facts.otherBankName,
+        totals,
+      };
+    },
+    (built) => built.branchName,
   );
 
 /**

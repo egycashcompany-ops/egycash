@@ -7,6 +7,15 @@ import { ApiError } from './api-client';
 
 const FRIENDLY: Record<Locale, Record<string, string>> = {
   en: {
+    // P-ORG-3 — the org chart and job places (org-chart-design.md §5.5).
+    ORG_UNIT_NOT_EDITABLE:
+      'This unit cannot be edited here: it is not linked to the company list, or is stopped in it.',
+    ORG_SECTION_NAME_TAKEN: 'This department already has a section with this name.',
+    BRANCH_WITHOUT_DEPARTMENT:
+      'In one of the ticked branches the department does not exist, or is not linked to the company list.',
+    JOB_PLACE_NOT_ALLOWED:
+      'The job cannot be placed here: the job or the section is stopped, or the section is not in this department.',
+    ORG_CATALOG_ENTRY_IN_USE: 'Jobs are placed in this entry, so it cannot be deleted.',
     VALIDATION_FAILED: 'Some fields need your attention.',
     FORBIDDEN: 'You do not have permission to do that.',
     NOT_FOUND: 'That item could not be found.',
@@ -77,6 +86,9 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A secured shipment is not due on this day — it cannot be placed on this day’s vans.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'Its captain has already started this delivery in the app — it can no longer be moved or taken off his van.',
+    // Round 25 — only a row of the «محصنة» type takes a محصنة.
+    OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED:
+      'That row is not of the secured type — it takes no new secured shipment. Choose a secured row.',
     // «تسليم المحصنات» (Round 17): the server refuses a handover of any van but today's. The screen
     // offers «تسليم» on today's vans only, so this reaches a page left open from another day — or
     // past midnight — and says the same rule the screen does.
@@ -124,6 +136,14 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     UNKNOWN: 'Something went wrong. Please try again.',
   },
   ar: {
+    // P-ORG-3 — شجرة الهيكل التنظيمي ومكان الوظيفة.
+    ORG_UNIT_NOT_EDITABLE:
+      'لا يمكن تعديل هذه الإدارة أو هذا القسم من هنا: غير مربوط بقائمة الشركة أو موقوف فيها.',
+    ORG_SECTION_NAME_TAKEN: 'يوجد قسم بهذا الاسم في هذه الإدارة.',
+    BRANCH_WITHOUT_DEPARTMENT: 'الإدارة غير موجودة أو غير مربوطة بقائمة الشركة في أحد الفروع المحددة.',
+    JOB_PLACE_NOT_ALLOWED:
+      'لا يمكن وضع الوظيفة في هذا المكان: الوظيفة أو القسم موقوف، أو القسم لا يتبع هذه الإدارة.',
+    ORG_CATALOG_ENTRY_IN_USE: 'توجد وظائف موضوعة في هذا البند، فلا يمكن حذفه.',
     VALIDATION_FAILED: 'بعض الحقول تحتاج إلى مراجعة.',
     FORBIDDEN: 'ليس لديك صلاحية للقيام بذلك.',
     NOT_FOUND: 'تعذّر العثور على هذا العنصر.',
@@ -162,6 +182,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'إحدى المحصنات ليست مستحقة التسليم في هذا اليوم، فلا يمكن وضعها على سيارات هذا اليوم.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقلها أو إزالتها من سيارته ممكنًا.',
+    OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED:
+      'هذا الصف ليس من نوع محصنة، فلا يأخذ محصنات جديدة — اختر صفًا من نوع محصنة.',
     OPERATIONS_DISPATCH_NOT_TODAY:
       'التسليم يتم يوم خروج السيارة فقط — هذه السيارة ليست من سيارات اليوم.',
     OPERATIONS_UNKNOWN_SHIFT_TYPE:

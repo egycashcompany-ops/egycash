@@ -286,7 +286,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/RegisterImportPage.tsx'],
   ['modules/atm/pages/RegisterReportPage.tsx'],
   ['modules/fleet/pages/CustodyFundDashboardPage.tsx'],
-  ['modules/hr/employee-management/employees/pages/ReadyJobPapersPage.tsx'],
   ['modules/fleet/pages/CustodyMemoEditorPage.tsx'],
   ['modules/fleet/pages/CustodyPapersSetupPage.tsx'],
   ['modules/fleet/pages/DriverProfilePage.tsx'],
@@ -395,6 +394,8 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   // Round 14 — «إدارات العمليات»: one setting edited in place; its search narrows the tiles in
   // memory and is not a filter of a stored list.
   ['modules/operations/pages/CrewDepartmentsPage.tsx'],
+  // P-ORG-3: `?dept` is which department is open, not a filter; the tile search is local.
+  ['modules/organization/org-chart/pages/OrgChartPage.tsx'],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],

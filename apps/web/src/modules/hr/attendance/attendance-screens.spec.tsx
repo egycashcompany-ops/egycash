@@ -16,7 +16,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   type AttendanceDayDto,
+  type AttendanceDecisionDto,
   type AttendanceRegularizationDto,
+  type AttendanceSheetRowDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
@@ -152,13 +154,34 @@ const render = (
   );
 };
 
-const dailyFilters = { from: TODAY, to: TODAY, page: 1, pageSize: 50 };
+/**
+ * A sheet LINE, which is a person rather than a row: `day` is null for somebody the engine has
+ * written nothing for, and `status` is the resolved label the server worked out when it was read.
+ */
+const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRowDto => ({
+  employeeId: 'e-1',
+  employeeCode: 'EMP-0007',
+  employeeName: 'سارة أحمد',
+  branchId: 'b-1',
+  date: TODAY,
+  status: 'late',
+  expectedStartAt: `${TODAY}T07:00:00.000Z`,
+  expectedEndAt: `${TODAY}T15:00:00.000Z`,
+  day: day(),
+  ...over,
+});
+
+const dailyFilters = { date: TODAY, page: 1, pageSize: 50 };
+
+/** Seeds the SHEET cache — the daily sheet reads `/days/sheet`, not the day list. */
+const seedSheet =
+  (rows: AttendanceSheetRowDto[]) =>
+  (qc: QueryClient): void => {
+    qc.setQueryData(listKey('hr', 'attendanceSheet', dailyFilters), paged(rows));
+  };
 
 const sheet = (options: Parameters<typeof render>[1] = {}): string =>
-  render(<DailySheetPage />, {
-    seed: (qc) => qc.setQueryData(listKey('hr', 'attendanceDays', dailyFilters), paged([day()])),
-    ...options,
-  });
+  render(<DailySheetPage />, { seed: seedSheet([sheetRow()]), ...options });
 
 describe('the daily sheet reads quantities and offers only what the caller may do', () => {
   it('renders the derived numbers for the day', () => {
@@ -192,11 +215,7 @@ describe('the daily sheet reads quantities and offers only what the caller may d
     // Frozen: the correction flows forward as an adjustment, so no button.
     const frozen = sheet({
       permissions: ['attendance.view', 'attendance.approveOvertime'],
-      seed: (qc) =>
-        qc.setQueryData(
-          listKey('hr', 'attendanceDays', dailyFilters),
-          paged([day({ frozenAt: `${TODAY}T23:00:00.000Z` })]),
-        ),
+      seed: seedSheet([sheetRow({ day: day({ frozenAt: `${TODAY}T23:00:00.000Z` }) })]),
     });
     expect(frozen).not.toContain('Approve overtime');
     expect(frozen).toContain('Frozen');
@@ -204,11 +223,7 @@ describe('the daily sheet reads quantities and offers only what the caller may d
     // No derived surplus: nothing to release.
     const noOvertime = sheet({
       permissions: ['attendance.view', 'attendance.approveOvertime'],
-      seed: (qc) =>
-        qc.setQueryData(
-          listKey('hr', 'attendanceDays', dailyFilters),
-          paged([day({ overtimeMinutes: 0, approvedOvertimeMinutes: 0 })]),
-        ),
+      seed: seedSheet([sheetRow({ day: day({ overtimeMinutes: 0, approvedOvertimeMinutes: 0 }) })]),
     });
     expect(noOvertime).not.toContain('Approve overtime');
   });
@@ -218,6 +233,109 @@ describe('the daily sheet reads quantities and offers only what the caller may d
     expect(html).toContain('الحضور اليومي');
     expect(html).toContain('متأخر');
     expect(html).not.toContain('Daily attendance');
+  });
+
+  it('shows a person with NO day row as «لم يحضر بعد», and offers nothing to approve on them', () => {
+    // The stage-2 line: an employee nobody has recomputed today. There are no quantities to print
+    // and no version to send, so every number is a dash and the approval is not offered — but the
+    // person is on the sheet, which is the entire point of the change.
+    const html = sheet({
+      locale: 'ar',
+      permissions: ['attendance.view', 'attendance.approveOvertime'],
+      seed: seedSheet([sheetRow({ status: 'pending', day: null })]),
+    });
+    expect(html).toContain('EMP-0007');
+    expect(html).toContain('لم يحضر بعد');
+    expect(html).not.toContain('اعتماد الإضافي');
+  });
+
+  it('prints the expected hours, which no day row carries', () => {
+    const html = sheet({ permissions: ['attendance.view'] });
+    // 07:00–15:00 UTC is 09:00–17:00 in Cairo — the 24-hour business clock (R10), never the
+    // browser's zone — and the sheet is the only screen that shows it.
+    expect(html).toContain('Expected');
+    expect(html).toContain('09:00 → 17:00');
+  });
+});
+
+describe('deciding a day (stage 3)', () => {
+  const decision = (over: Partial<AttendanceDecisionDto> = {}): AttendanceDecisionDto => ({
+    id: 'dec-1',
+    employeeId: 'e-1',
+    workDate: TODAY,
+    type: 'markPresent',
+    inAt: `${TODAY}T07:00:00.000Z`,
+    outAt: null,
+    reason: 'الجهاز كان متوقفًا وتم التحقق من الحضور',
+    status: 'pendingHr',
+    overrodePunch: false,
+    decidedBy: 'u-9',
+    decidedAt: `${TODAY}T08:00:00.000Z`,
+    hrDecidedBy: null,
+    hrDecidedAt: null,
+    hrComment: null,
+    revokesId: null,
+    branchId: 'b-1',
+    version: 0,
+    createdAt: `${TODAY}T08:00:00.000Z`,
+    updatedAt: `${TODAY}T08:00:00.000Z`,
+    employeeCode: 'EMP-0007',
+    employeeName: 'سارة أحمد',
+    ...over,
+  });
+
+  const decisionsTab = (rows: AttendanceDecisionDto[], permissions: string[]): string =>
+    render(<RegularizationQueuePage />, {
+      permissions,
+      path: '/attendance/regularizations?tab=decisions',
+      seed: (qc) =>
+        qc.setQueryData(
+          listKey('hr', 'attendanceDecisions', { page: 1, pageSize: 25, status: ['pendingHr'] }),
+          paged(rows),
+        ),
+    });
+
+  it('offers Decide on the sheet only to a holder of attendance.decide', () => {
+    expect(sheet({ permissions: ['attendance.view', 'attendance.decide'] })).toContain('Decide');
+    expect(sheet({ permissions: ['attendance.view'] })).not.toContain('Decide');
+  });
+
+  it('offers Decide on a line with NO day row — the commonest case for it', () => {
+    const html = sheet({
+      permissions: ['attendance.view', 'attendance.decide'],
+      seed: seedSheet([sheetRow({ status: 'absent', day: null })]),
+    });
+    expect(html).toContain('Decide');
+  });
+
+  it('does not offer Decide on a frozen day, which the server would refuse', () => {
+    const html = sheet({
+      permissions: ['attendance.view', 'attendance.decide'],
+      seed: seedSheet([sheetRow({ day: day({ frozenAt: `${TODAY}T23:00:00.000Z` }) })]),
+    });
+    expect(html).not.toContain('Decide');
+  });
+
+  it('shows the queue with the REASON in full — it is what HR is approving', () => {
+    const html = decisionsTab([decision()], ['attendance.decideApprove']);
+    expect(html).toContain('EMP-0007');
+    expect(html).toContain('الجهاز كان متوقفًا وتم التحقق من الحضور');
+    expect(html).toContain('Awaiting HR');
+    expect(html).toContain('Approve');
+    expect(html).toContain('Reject');
+  });
+
+  it('marks a decision taken against device evidence', () => {
+    const html = decisionsTab([decision({ overrodePunch: true })], ['attendance.decideApprove']);
+    expect(html).toContain('Decided against device evidence');
+  });
+
+  it('offers no verdict to somebody holding only the deciding key', () => {
+    // `decide` makes decisions; `decideApprove` clears them. One person holding both can still not
+    // approve their own — the server enforces that, and it is proven in the API suite.
+    const html = decisionsTab([decision()], ['attendance.decide']);
+    expect(html).not.toContain('Approve');
+    expect(html).toContain('Revoke');
   });
 });
 

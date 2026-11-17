@@ -128,6 +128,10 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   // that has not run `migrate:org-catalog` yet.
   const { migrateOrgCatalogIndexes } = await import('../organization/org-catalog-indexes');
   await migrateOrgCatalogIndexes();
+  // P-ORG-3 — the job places and the one-time fill's marks. Built before the module seeds, because
+  // HR's seed runs the fill and the fill's race guard IS `ux_departmentCatalogId`.
+  const { migrateJobPlaceIndexes } = await import('../organization/job-places/job-place-indexes');
+  await migrateJobPlaceIndexes();
   // ADR-032 Gap 1 — a delegated grant became per UNIT (department in branch, or whole branch), so
   // `ux_userId_branchId` (one row per branch) would refuse the second unit in a branch. Dropped
   // when present; the schema's replacement builds beside it. Idempotent, warns rather than throws.

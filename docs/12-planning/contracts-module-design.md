@@ -735,11 +735,29 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   their job's papers as the same tiles: tick, print one alone, or «طباعة المحدد». The set takes the
   chosen `keys`: a print that does not ask for the contract never makes one; one that does prints
   the contract held, or makes one as «مستندات التعيين» does.
-- **«جاهزون للتعيين»'s bar: «مستندات الوظائف» and «المعينون».** The HR settings bar above the
-  ready-to-hire table, with two sections of their own addresses (`/employees/ready/job-papers`,
-  `/employees/ready/hired`); the table is the page with neither pressed, and pressing the open one
-  closes it back to the table. «مستندات الوظائف» is the editor that was a popup, now a section
-  (`contractTemplate.manage`). «المعينون» (`contract.print`) lists everybody employed now —
+- **«تعديل» on the employee's tab** («نخلي في امكانيه للتعديل زي معملنا قبل كدا تحت الtoggle تعديل و
+  طباعه و تحت يظهر البيانات عشان التعديل و النص التاني الفورم»). Every tile has «تعديل» and «طباعة»
+  under it, as on «عقد جديد». Below, side by side: the opened paper's values (the contract first),
+  and the paper as it prints (`POST …/employee-papers/:employeeId/preview {key}` — nothing made,
+  printed or recorded), redrawn with each change.
+  - **What is typed** is kept per employee (`hr_employee_paper_values`, one row, made at the first
+    change; `PATCH …/employee-papers/:employeeId/values {overrides, version}`, the whole list each
+    time, 409 when stale, each change audited on the employee as `paperValues.<key>`). It is used by
+    every paper of theirs that prints the value — on the tab and in «المعينون» — and by a contract
+    made from the tab. The employee's file never changes; a blank value gives the record's back.
+    Until something is typed, what was typed for them as a candidate on «عقد جديد» stands.
+  - **Never typed here:** the employee code, the contract's number and term (`contract.code`,
+    `contract.startDate`, `contract.endDate`) — the server drops them.
+  - **The contract they hold** (`locked`) shows the values it carries (`contractValues`: frozen at
+    generation, or those it would be generated with) and prints as issued — what its verification
+    code checks is what is printed. They change only by renewing or amending it.
+  - **«تاريخ بدء الاشتراك»** — form 1's start date, boxed in three rows — is one date in the form,
+    on the employee's tab and on «عقد جديد»: the start of work unless another is chosen («نسبها by
+    default التاريخ مع امكانيه التعديل»).
+- **«جاهزون للتعيين» | «المعينون», and «مستندات الوظائف».** A small sliding toggle (the HR
+  settings bar, compact) in the head of both lists (`/employees/ready`, `/employees/ready/hired`),
+  above the «مستندات الوظائف» button that opens its popup (`contractTemplate.manage`).
+  «المعينون» (`contract.print`) lists everybody employed now —
   `employed=true`, `origin=recruitment,direct`: not an external person, not someone whose service
   ended — with search and branch / department / job ticks; ticked people print through the same
   popup as candidates, each on a line of their own with their tab's papers, ONE document, each print
@@ -748,7 +766,8 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
 - **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
   `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
   `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {people: [{offerId, keys}]}`;
-  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`;
+  `GET /hr/contracts/employee-papers/:employeeId`, `PATCH …/:employeeId/values {overrides, version}`,
+  `POST …/:employeeId/preview {key}`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`;
   `POST …/employees/bulk/open {employeeIds}`, `POST …/employees/bulk/render {people: [{employeeId, keys}]}`;
   `GET /hr/contracts/job-papers`, `PATCH /hr/contracts/job-papers {lines: [{departmentId, jobTitleId, keys}]}`.
 

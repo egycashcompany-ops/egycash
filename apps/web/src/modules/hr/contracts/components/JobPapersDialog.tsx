@@ -1,4 +1,4 @@
-// «مستندات الوظائف» on «جاهزون للتعيين»'s bar (A28) — the papers each person prints, by department and job:
+// «مستندات الوظائف» on «جاهزون للتعيين» (A28) — the papers each person prints, by department and job:
 // «اعرض الادارات كدا و الوظائف اللي جوه الادارات … علي حسب الاداره و الوظيفه … فيه وظائف تتفتحلها
 // نمازج معينه و وظائف تانيه ملهاش علاقه بنمازج معينه».
 //
@@ -7,15 +7,12 @@
 // The first line of a department, «كل وظائف الإدارة», ticks or unticks a paper for every job in it at
 // once. A job nobody holds in the department yet is added to it from its foot. «حفظ» keeps the lines
 // that changed. A job prints ONE contract: ticking a contract unticks the line's other one.
-//
-// A section of its own under the bar («toggle … مستندات الوظائف و المعينون»), no longer a popup:
-// «تراجع» puts every line back as saved; after «حفظ» the lines are read again from the server.
 import { useEffect, useMemo, useState } from 'react';
 import { type JobPapersDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
+import { Dialog } from '../../../../shared/ui/Dialog';
 import { Button } from '../../../../shared/ui/Button';
-import { Card } from '../../../../shared/ui/Card';
 import { Input, SearchableSelect } from '../../../../shared/ui';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
@@ -26,7 +23,7 @@ import { PaperTile } from './PaperTile';
 type Papers = JobPapersDto['papers'];
 type Job = JobPapersDto['jobs'][number];
 
-/** A job in a department — one line of the section. */
+/** A job in a department — one line of the popup. */
 export const lineKey = (departmentId: string, jobTitleId: string): string => `${departmentId}:${jobTitleId}`;
 
 /** What is ticked on each line, by `lineKey`. */
@@ -94,10 +91,10 @@ export const changedLines = (
     }),
   );
 
-export const JobPapersPanel = (): JSX.Element => {
+export const JobPapersDialog = ({ open, onClose }: { open: boolean; onClose: () => void }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { data, isLoading } = useJobPapers(true);
+  const { data, isLoading } = useJobPapers(open);
   const save = useSaveJobPapers();
   const [chosen, setChosen] = useState<LineChoice>(new Map());
   const [added, setAdded] = useState<AddedJobs>(new Map());
@@ -105,15 +102,16 @@ export const JobPapersPanel = (): JSX.Element => {
   const [adding, setAdding] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
 
-  /** Every line as it is saved — when the section opens, after «حفظ», and on «تراجع». */
-  const reset = (from: JobPapersDto): void => {
-    setChosen(choiceOf(from));
-    setAdded(new Map());
-    setAdding({});
-  };
+  // Each time the dialog opens, every line as it is saved, every department closed.
   useEffect(() => {
-    if (data !== undefined) reset(data);
-  }, [data]);
+    if (open && data !== undefined) {
+      setChosen(choiceOf(data));
+      setAdded(new Map());
+      setOpened(new Set());
+      setAdding({});
+    }
+    if (!open) setSearch('');
+  }, [open, data]);
 
   const papers = data?.papers ?? [];
   const changed = data === undefined ? [] : changedLines(data, chosen, added);
@@ -168,6 +166,7 @@ export const JobPapersPanel = (): JSX.Element => {
     try {
       await save.mutateAsync({ lines: changed });
       toast.success(t('contracts.jobPapers.saved', { count: changed.length }));
+      onClose();
     } catch {
       // the error itself is surfaced globally
     }
@@ -189,8 +188,21 @@ export const JobPapersPanel = (): JSX.Element => {
   );
 
   return (
-    <Card className="p-4 sm:p-5">
-      <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{t('contracts.jobPapers.hint')}</p>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      size="full"
+      title={t('contracts.jobPapers.title')}
+      description={t('contracts.jobPapers.hint')}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button disabled={changed.length === 0} loading={save.isPending} onClick={() => void confirm()} data-job-papers-save>
+            {changed.length === 0 ? t('contracts.jobPapers.save') : t('contracts.jobPapers.saveCount', { count: changed.length })}
+          </Button>
+        </>
+      }
+    >
       {isLoading || data === undefined ? (
         <p className="text-sm text-slate-500">{t('common.loading')}</p>
       ) : (
@@ -211,7 +223,7 @@ export const JobPapersPanel = (): JSX.Element => {
           {shown.length === 0 ? (
             <p className="text-sm text-slate-500">{t('contracts.jobPapers.none')}</p>
           ) : (
-            <ul className="space-y-3">
+            <ul className="max-h-[65vh] space-y-3 overflow-y-auto pe-1">
               {shown.map(({ department, jobs }) => {
                 const id = department.departmentId;
                 const isOpen = searching || opened.has(id);
@@ -313,22 +325,6 @@ export const JobPapersPanel = (): JSX.Element => {
           )}
         </section>
       )}
-      {/* Kept in view at the foot of the screen while the departments scroll under it. */}
-      <div className="sticky bottom-0 z-10 -mx-4 -mb-4 mt-4 flex justify-end gap-2 rounded-b-lg border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-5 sm:-mb-5 sm:px-5 dark:border-slate-800 dark:bg-slate-900/95">
-        <Button
-          variant="ghost"
-          disabled={changed.length === 0}
-          onClick={() => {
-            if (data !== undefined) reset(data);
-          }}
-          data-job-papers-discard
-        >
-          {t('contracts.jobPapers.discard')}
-        </Button>
-        <Button disabled={changed.length === 0} loading={save.isPending} onClick={() => void confirm()} data-job-papers-save>
-          {changed.length === 0 ? t('contracts.jobPapers.save') : t('contracts.jobPapers.saveCount', { count: changed.length })}
-        </Button>
-      </div>
-    </Card>
+    </Dialog>
   );
 };

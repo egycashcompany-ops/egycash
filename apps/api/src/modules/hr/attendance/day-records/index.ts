@@ -8,6 +8,7 @@ export { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 export {
   cairoInstant,
   deriveDay,
+  punchWindowFor,
   shiftWindow,
   PUNCH_WINDOW_AFTER_MS,
   PUNCH_WINDOW_BEFORE_MS,
@@ -16,3 +17,14 @@ export {
   type EnginePunch,
   type EngineShift,
 } from './derive-day';
+export {
+  resolveDisplayStatus,
+  type DisplayStatusInput,
+} from './resolve-display-status';
+export {
+  defaultPatternForBranch,
+  expectationsForDate,
+  type DayExpectation,
+  type ExpectationSubject,
+} from './expectations';
+export { patternFrom, type DefaultPatternSettings } from './default-pattern';

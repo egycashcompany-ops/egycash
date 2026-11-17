@@ -4,10 +4,12 @@
 // in its «مركّب على» column, which links to the asset.
 //
 // A screen of its own, reached from the store's register («سجل الحركات») rather than the rail: it
-// is the store's history, under the store's grant (`itAsset.view`). Each row is labelled by the
-// server at response time — the item, the person, the asset under the reader's scope, the memo —
-// and nothing here re-derives a figure: the quantity is always positive and its kind says which
-// way it moved.
+// is the store's history, under the store's grant (`itConsumable.view`, its own since 2026-11-17).
+// Each row is labelled by the server at response time — the item, the person, the asset it went
+// into, the memo — and nothing here re-derives a figure: the quantity is always positive and its
+// kind says which way it moved. The «مركّب على» FILTER is the one thing here that reads the assets'
+// register (`/it/assets`): it is offered to a reader of the assets only, and for anyone else an
+// `asset` the link carries narrows nothing — a filter the screen does not show never narrows it.
 //
 // Every issue row carries its memo: print it again (same number) and file or view the signed copy,
 // the controls every paper of the department has. A transfer between two stores is its two rows,
@@ -26,6 +28,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { SearchInput } from '../../../shared/ui/SearchInput';
@@ -140,9 +143,11 @@ export const ConsumableMovementsPage = (): JSX.Element => {
   const kind = isKind(kindParam) ? kindParam : null;
   const typeId = sp.get('type') ?? '';
   const branchId = sp.get('branch') ?? '';
-  // Ids, so the filter survives a rename and can be linked.
+  // Ids, so the filter survives a rename and can be linked. The asset filter only for a reader of
+  // the assets — its box searches their register, and its chip resolves through it.
+  const canAssets = can('itAsset.view');
   const employeeId = sp.get('employee') ?? '';
-  const assetId = sp.get('asset') ?? '';
+  const assetId = canAssets ? (sp.get('asset') ?? '') : '';
   // Days as the date boxes write them, `YYYY-MM-DD` — what the request sends; the server reads
   // «إلى» as the whole of its day, as the custody register's does.
   const from = sp.get('from') ?? '';
@@ -185,7 +190,8 @@ export const ConsumableMovementsPage = (): JSX.Element => {
       to: to || undefined,
       search: search.trim() || undefined,
     }),
-    [paramsKey],
+    // The grant too: the asset filter applies only while the reader holds it.
+    [paramsKey, canAssets],
   );
   const { data, isLoading, isError, error, refetch } = useItConsumableMovements(params);
   const rows = data?.items ?? [];
@@ -285,34 +291,38 @@ export const ConsumableMovementsPage = (): JSX.Element => {
     }, t('it.export.preparing'));
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.consumableMovements')}
-        breadcrumbs={[
-          { label: t('it.module.title'), to: '/it' },
-          { label: t('it.nav.consumables'), to: '/it/consumables' },
-          { label: t('it.nav.consumableMovements') },
-        ]}
-        actions={
-          <>
-            {!isError && (
-              <RegisterExportButtons
-                name="it-consumable-movements"
-                onExcel={toExcel}
-                onPdf={toPdf}
-              />
-            )}
-            <Link
-              to="/it/consumables"
-              className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              {t('it.consumables.backToStore')}
-            </Link>
-          </>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; for IT «مش عايز كل الصفحة تعمل Scroll !! عايز
+          فقط الجدول لكن الزراير والفلتر يبقوا ثابتين», 2026-11-17): on a computer the title and its
+          buttons and the column filters keep their place, the pager keeps its place below, and
+          only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.consumableMovements')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.consumables'), to: '/it/consumables' },
+            { label: t('it.nav.consumableMovements') },
+          ]}
+          actions={
+            <>
+              {!isError && (
+                <RegisterExportButtons
+                  name="it-consumable-movements"
+                  onExcel={toExcel}
+                  onPdf={toPdf}
+                />
+              )}
+              <Link
+                to="/it/consumables"
+                className="inline-flex h-8 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {t('it.consumables.backToStore')}
+              </Link>
+            </>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() => {
@@ -431,28 +441,33 @@ export const ConsumableMovementsPage = (): JSX.Element => {
               }}
             />
           </FilterField>
-          <FilterField
-            label={t('it.consumables.movements.columns.installedOn')}
-            active={assetId !== ''}
-            className={cn(FIELD, 'sm:w-64')}
-          >
-            <AssetPicker
-              value={assetId}
-              onChange={(id) => patch({ asset: id || null })}
-              ariaLabel={t('it.consumables.movements.filterAsset')}
-            />
-          </FilterField>
+          {canAssets && (
+            <FilterField
+              label={t('it.consumables.movements.columns.installedOn')}
+              active={assetId !== ''}
+              className={cn(FIELD, 'sm:w-64')}
+            >
+              <AssetPicker
+                value={assetId}
+                onChange={(id) => patch({ asset: id || null })}
+                ariaLabel={t('it.consumables.movements.filterAsset')}
+              />
+            </FilterField>
+          )}
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(m) => m.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          empty={t('it.consumables.movements.empty')}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(m) => m.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            empty={t('it.consumables.movements.empty')}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

@@ -16,7 +16,10 @@
 // The line's identifiers are printed as the network writes them — Latin digits, kept whole on one
 // line: the number, the ICCID and the account are what the SIM card and the network's invoice say,
 // and the paper is checked against them digit by digit. The employee's code and national ID stay
-// in the form's own digits, exactly as on the device paper.
+// in the form's own digits, exactly as on the device paper. The national ID is the server's to
+// give: for a reader without the lines' own grant for it (`itMobileLine.viewNationalId`, since
+// 2026-11-17 — the device paper keeps `itAsset.viewNationalId`) it arrives empty, and its line is
+// left dotted for the pen.
 //
 // NO SCRIPT INSIDE THE PAGE — the tab inherits the app's Content-Security-Policy; printing and the
 // toolbar are attached by `shared/lib/print-window.ts`, every printed document's one door.

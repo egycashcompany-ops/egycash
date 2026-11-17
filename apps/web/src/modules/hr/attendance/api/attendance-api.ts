@@ -3,7 +3,9 @@
 import {
   type ApproveOvertime,
   type AttendanceDayDto,
+  type AttendanceDecisionDto,
   type AttendanceRegularizationDto,
+  type AttendanceSheetRowDto,
   type CreateAttendanceRegularization,
   type CreateShift,
   type CreateShiftAssignment,
@@ -51,9 +53,43 @@ export const searchEmployees = (search: string, pageSize = 8): Promise<Paginated
 export const listAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>
   getPage<AttendanceDayDto>(`/hr/attendance/days${buildQuery(params)}`);
 
+/**
+ * The daily sheet. A DIFFERENT ENDPOINT from the day list on purpose: this one starts from the
+ * employees and left-joins their day rows, so somebody who has not scanned is on the answer. The
+ * list above answers "which rows exist", which can never show a no-show.
+ */
+export const listAttendanceSheet = (
+  params: QueryParams,
+): Promise<Paginated<AttendanceSheetRowDto>> =>
+  getPage<AttendanceSheetRowDto>(`/hr/attendance/days/sheet${buildQuery(params)}`);
+
 /** My own days — own by construction on the server; no employee filter is accepted. */
 export const listMyAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>
   getPage<AttendanceDayDto>(`/hr/attendance/days/me${buildQuery(params)}`);
+
+/**
+ * Manager day decisions (stage 3). A decision is an INPUT to the derivation rather than an edit of
+ * it, so there is no "undo" verb here — undoing one is `revoke`, which records a second decision.
+ */
+export const listAttendanceDecisions = (
+  params: QueryParams,
+): Promise<Paginated<AttendanceDecisionDto>> =>
+  getPage<AttendanceDecisionDto>(`/hr/attendance/decisions${buildQuery(params)}`);
+
+export const createAttendanceDecision = (body: unknown): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>('/hr/attendance/decisions', body);
+
+export const decideAttendanceDecision = (
+  id: string,
+  body: unknown,
+): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>(`/hr/attendance/decisions/${id}/decide`, body);
+
+export const revokeAttendanceDecision = (
+  id: string,
+  body: unknown,
+): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>(`/hr/attendance/decisions/${id}/revoke`, body);
 
 export const listRegularizations = (
   params: QueryParams,

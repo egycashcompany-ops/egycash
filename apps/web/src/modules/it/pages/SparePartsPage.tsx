@@ -16,6 +16,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
@@ -221,27 +222,31 @@ export const SparePartsPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.spareParts')}
-        breadcrumbs={[
-          { label: t('it.module.title'), to: '/it' },
-          { label: t('it.nav.spareParts') },
-        ]}
-        actions={
-          <Can permission="itSparePart.manage">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCreating(true)}
-            >
-              {t('it.parts.add')}
-            </Button>
-          </Can>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»): on a computer
+          the title and its button and the filter bar keep their place, the pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.spareParts')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.spareParts') },
+          ]}
+          actions={
+            <Can permission="itSparePart.manage">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setCreating(true)}
+              >
+                {t('it.parts.add')}
+              </Button>
+            </Can>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={search !== '' || active !== 'true' || belowMin !== ''}
           onClear={() => {
@@ -288,23 +293,26 @@ export const SparePartsPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={data?.items ?? []}
-          rowKey={(part) => part.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          empty={
-            <EmptyState
-              icon={<LayersIcon className="h-10 w-10" />}
-              title={t('it.parts.emptyTitle')}
-              description={t('it.parts.emptyBody')}
-            />
-          }
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            rowKey={(part) => part.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            empty={
+              <EmptyState
+                icon={<LayersIcon className="h-10 w-10" />}
+                title={t('it.parts.emptyTitle')}
+                description={t('it.parts.emptyBody')}
+              />
+            }
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

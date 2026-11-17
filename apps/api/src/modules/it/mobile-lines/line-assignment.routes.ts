@@ -12,7 +12,7 @@ export const buildItMobileLineAssignmentsRouter = (): Router => {
   router.get(
     '/',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itMobileLine.view'),
     validate({ query: ListItMobileLineAssignmentsQuerySchema }),
     asyncHandler(listItMobileLineAssignments),
   );

@@ -24,11 +24,33 @@ import { type DateSpan } from './compensation-rules';
 /**
  * The statuses that mean "came to work", by name.
  *
- * `incomplete` is deliberately absent: a day whose checkout never arrived is neither attendance
- * nor absence, and deciding which it is would be a labour rule. So are `weekend`, `holiday` and
- * `dayOff` — a worked holiday counting twice is a rule nobody has granted this system either.
+ * `checkedIn` IS ONE OF THEM, by the owner's ruling (2026-11-17). On this payroll 70–90% of
+ * employees scan on arrival and never scan out, so a check-in with no check-out is what an
+ * ordinary attended day looks like here. It contributes 1 to `attendedDays` and 0 worked minutes,
+ * which is exactly what is known: they were at work, and for how long is not recorded. The labour
+ * rule that used to be missing has now been given — for the arrival, and for nothing else.
+ *
+ * `incomplete` IS STILL ABSENT, and that is now a statement about HISTORY rather than about the
+ * rule. Nothing produces it any more (`derive-day.ts` returns `checkedIn` for a single punch), so
+ * the only rows carrying it are days derived before the ruling. Adding it here would re-price
+ * every one of them, including the frozen months whose payslips are already paid — so a closed
+ * month keeps the figures it closed with, and an unfrozen day picks up the new rule the next time
+ * it is recomputed.
+ *
+ * `weekend`, `holiday`, `dayOff` and `noSchedule` stay out: a worked holiday counting twice is a
+ * rule nobody has granted this system either, and `noSchedule` — nobody has said when this person
+ * works — is a gap in the roster rather than a fact about their attendance. Pricing a gap in
+ * either direction would be inventing a labour rule out of missing configuration.
+ *
+ * `pending` (stage 2) IS IN NO GROUP HERE, AND THAT IS THE DESIGN, not an omission to be fixed
+ * later. It means "this day is still being lived and nobody has concluded it", so it is neither an
+ * attendance nor an absence, and being in no list it contributes 0 to every quantity below. Two
+ * things make that safe rather than merely tidy: a period cannot be frozen until its last day has
+ * passed (`freezePeriod` refuses), and the feed is complete-or-nothing over frozen rows — so by
+ * the time any row reaches this file the nightly pass has long since turned `pending` into the
+ * real answer. A `pending` row can never be priced, because it can never be frozen.
  */
-const ATTENDED_STATUSES = ['present', 'late', 'earlyLeave', 'lateAndEarly'] as const;
+const ATTENDED_STATUSES = ['present', 'checkedIn', 'late', 'earlyLeave', 'lateAndEarly'] as const;
 
 /** How each source reads ONE row: a day contributes 1, a minute field contributes its value. */
 const CONTRIBUTION: Record<PayItemQuantitySource, (row: AttendanceFeedRow) => number> = {

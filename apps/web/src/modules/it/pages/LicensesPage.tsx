@@ -17,6 +17,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
 import { Select } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
@@ -154,24 +155,30 @@ export const LicensesPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.licenses')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.licenses') }]}
-        actions={
-          <Can permission="itLicense.manage">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCreating(true)}
-            >
-              {t('it.licenses.add')}
-            </Button>
-          </Can>
-        }
-      />
-
-      <div className="space-y-4">
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»): on a computer
+          the title, its action and the filter bar keep their place, the pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.licenses')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.licenses') },
+          ]}
+          actions={
+            <Can permission="itLicense.manage">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setCreating(true)}
+              >
+                {t('it.licenses.add')}
+              </Button>
+            </Can>
+          }
+        />
         <FilterBar
           hasActiveFilters={state !== '' || overSeats !== ''}
           onClear={() => {
@@ -210,21 +217,24 @@ export const LicensesPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={data?.items ?? []}
-          rowKey={(l) => l.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          empty={
-            <EmptyState
-              icon={<BadgeIcon className="h-10 w-10" />}
-              title={t('it.licenses.emptyTitle')}
-              description={t('it.licenses.emptyBody')}
-            />
-          }
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            rowKey={(l) => l.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            empty={
+              <EmptyState
+                icon={<BadgeIcon className="h-10 w-10" />}
+                title={t('it.licenses.emptyTitle')}
+                description={t('it.licenses.emptyBody')}
+              />
+            }
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

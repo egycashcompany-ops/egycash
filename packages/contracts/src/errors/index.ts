@@ -60,6 +60,18 @@ export const ErrorCodes = {
 
   // organization
   ORG_UNIT_HAS_CHILDREN: 'ORG_UNIT_HAS_CHILDREN',
+  // ── The org chart and job places (P-ORG-3, ADR-038) ──────────────────────────────────────────
+  /** 422 — a chart section write under a department or section with no editable group (§4.2). */
+  ORG_UNIT_NOT_EDITABLE: 'ORG_UNIT_NOT_EDITABLE',
+  /** 409 — «إضافة قسم» / «تغيير الاسم»: the department already has a section of that name. */
+  ORG_SECTION_NAME_TAKEN: 'ORG_SECTION_NAME_TAKEN',
+  /** 422 — a ticked branch has no active row of the department linked to its company entry. */
+  BRANCH_WITHOUT_DEPARTMENT: 'BRANCH_WITHOUT_DEPARTMENT',
+  /** 422 — a new job place in a group that is not editable, for an inactive job, or with a section
+   *  outside its department. Places already stored are kept regardless. */
+  JOB_PLACE_NOT_ALLOWED: 'JOB_PLACE_NOT_ALLOWED',
+  /** 409 — a catalog entry that job places cite cannot be deleted. */
+  ORG_CATALOG_ENTRY_IN_USE: 'ORG_CATALOG_ENTRY_IN_USE',
 
   // applications
   APPLICATION_CATEGORY_IN_USE: 'APPLICATION_CATEGORY_IN_USE',
@@ -298,6 +310,14 @@ export const ErrorCodes = {
    * written. Detail: `field` 'shipmentId', `message` its id.
    */
   OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
+  /**
+   * 422 (Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس») — a distribution change put a
+   * shipment on a crew row whose «النوع» is not the seeded «محصنة» type (another type, or none),
+   * and the shipment is not already on that row. Nothing is written. Details: `field` 'shipmentId',
+   * `code` 'SHIPMENT', `message` its id; then `field` 'crewAssignmentId', `code` 'NOT_SECURED',
+   * `message` the row's id.
+   */
+  OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED: 'OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED',
   /**
    * 422 — a dispatch (`POST /operations/secured/dispatch`, the vault's «تسليم») named a van — a crew
    * row — whose operating day is not TODAY on the Cairo calendar. A van is handed over on its own

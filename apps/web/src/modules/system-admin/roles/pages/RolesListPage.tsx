@@ -45,6 +45,8 @@ import { RoleFormDialog } from '../components/RoleFormDialog';
 import { useDepartmentCatalog, useRoles } from '../api/role-queries';
 import { type RoleListParams } from '../api/role-api';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+import { cn } from '../../../../shared/lib/cn';
+import { BOARD_FRAME, BOARD_LIST_FILL } from '../../../../shared/ui/board-scroll';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -134,33 +136,36 @@ export const RolesListPage = (): JSX.Element => {
   }, [rows, catalog, locale]);
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('systemAdmin.roles.title')}
-        breadcrumbs={[{ label: t('systemAdmin.module.title') }, { label: t('systemAdmin.roles.title') }]}
-        actions={
-          <Can permission="role.create">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCreating(true)}
-            >
-              {t('systemAdmin.roles.actions.create')}
-            </Button>
-          </Can>
-        }
-      />
-
-      {creating && (
-        <RoleFormDialog
-          open
-          role={null}
-          onClose={() => setCreating(false)}
-          onCreated={(created) => navigate(created.id)}
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «ميبقاش الصفحات كلها بتعمل Scroll
+          لكن الجداول بس»): on a computer the title and the filters keep their place, the pager keeps
+          its place below, and only the department groups scroll. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('systemAdmin.roles.title')}
+          breadcrumbs={[{ label: t('systemAdmin.module.title') }, { label: t('systemAdmin.roles.title') }]}
+          actions={
+            <Can permission="role.create">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setCreating(true)}
+              >
+                {t('systemAdmin.roles.actions.create')}
+              </Button>
+            </Can>
+          }
         />
-      )}
 
-      <div className="space-y-4">
+        {creating && (
+          <RoleFormDialog
+            open
+            role={null}
+            onClose={() => setCreating(false)}
+            onCreated={(created) => navigate(created.id)}
+          />
+        )}
+
         <FilterBar>
           <SearchInput
             value={search}
@@ -186,47 +191,49 @@ export const RolesListPage = (): JSX.Element => {
           />
         </FilterBar>
 
-        {isLoading && <LoadingState />}
-        {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
-        {!isLoading && !isError && groups.length === 0 && (
-          <EmptyState title={t('systemAdmin.roles.empty')} />
-        )}
+        <div className={cn(BOARD_LIST_FILL, 'space-y-4')}>
+          {isLoading && <LoadingState />}
+          {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
+          {!isLoading && !isError && groups.length === 0 && (
+            <EmptyState title={t('systemAdmin.roles.empty')} />
+          )}
 
-        {groups.map((group) => (
-          <Card key={group.id ?? 'none'}>
-            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
-              <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {group.name}
-              </h3>
-              <span className="text-xs text-slate-400">
-                {t('systemAdmin.roles.groupCount', { count: group.roles.length })}
-              </span>
-            </div>
-            <CardBody padded={false}>
-              <ul>
-                {group.roles.map((role) => (
-                  <li key={role.id} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => navigate(role.id)}
-                      className="flex w-full items-center gap-3 px-5 py-3 text-start hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                    >
-                      <span className="min-w-0 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                        {role.name[locale]}
-                      </span>
-                      <ManagedRoleBadge managed={role.managed} />
-                      <span className="ms-auto shrink-0">
-                        <Badge size="sm" tone="neutral">
-                          {t('systemAdmin.roles.permissionCount', { count: role.permissionKeys.length })}
-                        </Badge>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </CardBody>
-          </Card>
-        ))}
+          {groups.map((group) => (
+            <Card key={group.id ?? 'none'}>
+              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {group.name}
+                </h3>
+                <span className="text-xs text-slate-400">
+                  {t('systemAdmin.roles.groupCount', { count: group.roles.length })}
+                </span>
+              </div>
+              <CardBody padded={false}>
+                <ul>
+                  {group.roles.map((role) => (
+                    <li key={role.id} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => navigate(role.id)}
+                        className="flex w-full items-center gap-3 px-5 py-3 text-start hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      >
+                        <span className="min-w-0 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                          {role.name[locale]}
+                        </span>
+                        <ManagedRoleBadge managed={role.managed} />
+                        <span className="ms-auto shrink-0">
+                          <Badge size="sm" tone="neutral">
+                            {t('systemAdmin.roles.permissionCount', { count: role.permissionKeys.length })}
+                          </Badge>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
 
         {data !== undefined && data.meta.totalPages > 1 && (
           <Pagination

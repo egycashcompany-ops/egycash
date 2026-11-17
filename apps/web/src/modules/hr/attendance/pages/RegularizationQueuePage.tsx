@@ -12,13 +12,18 @@ import { FilterBar } from '../../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../../shared/ui/MultiSelect';
 import { readList, writeList } from '../../../../shared/lib/list-param';
 import { RegularizationsTable } from '../components/RegularizationsTable';
-import { usePendingRegularizations, useRegularizations } from '../api/attendance-queries';
+import { DecisionsTable } from '../components/DecisionsTable';
+import {
+  useAttendanceDecisions,
+  usePendingRegularizations,
+  useRegularizations,
+} from '../api/attendance-queries';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = ['status'] as const;
 
-const TABS = ['queue', 'all', 'postFreeze'] as const;
+const TABS = ['queue', 'all', 'postFreeze', 'decisions'] as const;
 type Tab = (typeof TABS)[number];
 
 const isTab = (value: string | null): value is Tab => TABS.includes(value as Tab);
@@ -78,6 +83,16 @@ export const RegularizationQueuePage = (): JSX.Element => {
   const corrections = useRegularizations(
     { page, pageSize: 25, postFreeze: 'true' },
     tab === 'postFreeze' && can('attendance.decideRegularization'),
+  );
+  /**
+   * Manager day decisions awaiting HR (stage 3) — the OLD-DAY path. A manager decided a day far
+   * enough back that somebody else looks before it takes effect, so this is the list of days
+   * waiting on that second pair of eyes. It shares this screen rather than opening another,
+   * because it is the same job: a queue of attendance corrections somebody must clear.
+   */
+  const decisions = useAttendanceDecisions(
+    { page, pageSize: 25, status: ['pendingHr'] },
+    tab === 'decisions' && can('attendance.decideApprove'),
   );
 
   return (
@@ -148,6 +163,21 @@ export const RegularizationQueuePage = (): JSX.Element => {
           />
           {corrections.data !== undefined && (
             <Pagination meta={corrections.data.meta} onPageChange={setPage} />
+          )}
+        </div>
+      ) : tab === 'decisions' ? (
+        <div className="space-y-4">
+          <DecisionsTable
+            rows={decisions.data?.items ?? []}
+            loading={decisions.isLoading}
+            error={decisions.isError ? decisions.error : undefined}
+            onRetry={() => void decisions.refetch()}
+            canApprove={can('attendance.decideApprove')}
+            canRevoke={can('attendance.decide')}
+            empty={<EmptyState title={t('attendance.decision.queueEmpty')} />}
+          />
+          {decisions.data !== undefined && (
+            <Pagination meta={decisions.data.meta} onPageChange={setPage} />
           )}
         </div>
       ) : (

@@ -72,6 +72,7 @@ import { operationsDayService, utcDay } from '../days/day.service';
 import { canTransitionShipment } from '../shipments/shipment-status';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
+import { operationsShiftTypeRepository } from '../shift-types/shift-type.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { type OperationsShipmentDoc } from '../shipments/shipment.model';
 import { securedPickupOf, type SecuredPickup } from '../shipments/secured-stage';
@@ -81,6 +82,7 @@ import {
   operationsShipmentService,
   type DayBoardView,
 } from '../shipments/shipment.service';
+import { isSecuredRow, rowNotSecured } from './distribution.service';
 
 const shipmentRef = (id: string) => ({
   moduleId: 'operations',
@@ -849,8 +851,8 @@ class OperationsSecuredService {
       );
     }
 
-    // Any live crew row — a van's or (Round 24) one without a van: the same delivery leg
-    // «توزيع المحصنات» writes, so both doors take the same rows.
+    // Any live crew row of the «محصنة» type — a van's or (Round 24) one without a van: the same
+    // delivery leg «توزيع المحصنات» writes, so both doors take the same rows (Round 25, below).
     const crew = await operationsCrewAssignmentRepository.findById(input.crewAssignmentId);
     if (crew === null) throw new NotFoundError('crew assignment not found');
 
@@ -863,6 +865,20 @@ class OperationsSecuredService {
         'OPERATIONS_CREW_DAY_MISMATCH',
       );
     }
+    const existing = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      shipmentId,
+      'delivery',
+    );
+    // Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس»: the distribution save's own rule, checked
+    // where it checks it (after the day, before the captain): only a row of the «محصنة» type takes a
+    // محصنة; one whose delivery leg is ALREADY on that row keeps it (its captain switched there).
+    const securedType = await operationsShiftTypeRepository.findSecuredType();
+    if (
+      !isSecuredRow(crew, securedType === null ? null : String(securedType._id)) &&
+      (existing === null || String(existing.crewAssignmentId) !== input.crewAssignmentId)
+    ) {
+      throw rowNotSecured(shipmentId, input.crewAssignmentId);
+    }
     // The captain must be ONE OF that row's captains: legacy picked the leader from the row it
     // displayed, and a row may now display two.
     if (!isCaptainOf(crew, input.captainEmployeeId)) {
@@ -872,10 +888,6 @@ class OperationsSecuredService {
       );
     }
 
-    const existing = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
-      shipmentId,
-      'delivery',
-    );
     const set = {
       captainEmployeeId: new Types.ObjectId(input.captainEmployeeId),
       vehicleId: crew.vehicleId ?? null,

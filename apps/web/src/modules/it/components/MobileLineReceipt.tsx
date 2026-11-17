@@ -16,12 +16,16 @@ import {
 import { printMobileLineReceipt } from '../lib/mobile-line-receipt-print';
 import { ReceiptPaperActions, usePaperPrinter, type ReceiptStore } from './CustodyReceipt';
 
-/** The line acknowledgments, for the shared controls. */
+/**
+ * The line acknowledgments, for the shared controls. Their signed copy is filed and withdrawn
+ * under the lines' own custody grant (2026-11-17), as the hand-over that printed them is.
+ */
 export const LINE_RECEIPTS: ReceiptStore = {
   useReceipt: useItMobileLineReceipt,
   useUploadSignedCopy: useUploadMobileLineReceiptSignedCopy,
   useDeleteSignedCopy: useDeleteMobileLineReceiptSignedCopy,
   fetchSignedCopy: api.fetchMobileLineReceiptSignedCopy,
+  assignGrant: 'itMobileLine.assign',
 };
 
 /** The line acknowledgment's printer — the hand-over prints with it before it records anything. */

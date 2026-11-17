@@ -14,18 +14,63 @@ import { type JobValueSource } from './hr-employee.js';
 
 // ── Closed vocabularies ─────────────────────────────────────────────────────
 
-/** One enum, one value per day (§2) — no parallel set of booleans. */
+/**
+ * One enum, one value per day (§2) — no parallel set of booleans.
+ *
+ * `checkedIn` IS A PRESENCE, and that is the whole point of it. The branch devices say that 70–90%
+ * of employees scan once, when they arrive, and never scan out: on this payroll that is the normal
+ * shape of a working day, not a fault. Those days used to derive as `incomplete`, which carried a
+ * warning tone on screen and priced at nothing — so the common case looked like an error and the
+ * month came out short. `checkedIn` records exactly what is known: the person was here, from this
+ * time, and the hours are unknown. It counts as an attended day.
+ *
+ * `incomplete` STAYS, and nothing produces it any more. Rows written before this change carry it,
+ * and a value that exists in the database must keep existing in the vocabulary that reads it —
+ * dropping it would turn a year of stored days into values this enum cannot name. A recompute of
+ * an unfrozen day rewrites it to `checkedIn`; a frozen one keeps it, and is deliberately priced
+ * exactly as it was priced when the month closed (`attendance-quantities.ts`).
+ *
+ * `pending` IS THE DAY NOBODY HAS CONCLUDED YET. It is written only while a work date is still
+ * being lived: an employee who was expected today and has not scanned is not absent at ten in the
+ * morning, and a row that says `absent` at ten in the morning is a false statement that the
+ * payroll feed would carry onward. `pending` says what is actually known — expected, nothing seen
+ * so far — and it is PAYROLL-NEUTRAL BY CONSTRUCTION: it appears in no quantity group in
+ * `attendance-quantities.ts`, so it contributes zero to every quantity, and a month cannot be
+ * frozen until it has passed, by which time the nightly pass has written `absent`.
+ *
+ * `noSchedule` IS "NOBODY HAS SAID WHEN THIS PERSON WORKS", and it exists because that was being
+ * reported as «يوم راحة». An employee with no shift assignment and no default pattern used to
+ * derive `dayOff` on a Tuesday — a positive claim that the company owed them no work that day,
+ * which nobody had made. It is a gap in the schedule, not a rest day, and HR can act on it only if
+ * the screen says which one it is.
+ *
+ * A REST DAY HAS EXACTLY TWO SOURCES, and neither of them is silence: the work calendar, which
+ * yields `weekend` or `holiday`, and a shift that genuinely does not run that day. `dayOff`
+ * accordingly STAYS in the vocabulary and nothing derives it any more — the same posture as
+ * `incomplete` — because rows written before this carry it.
+ *
+ * It is payroll-neutral for the same reason `dayOff` was: in no quantity group, contributing zero.
+ *
+ * `pending` is never the FINAL answer for a date, and the read paths enforce that: once the work date is
+ * in the past a stored `pending` reads as `absent`, because the day ended and nobody arrived. This
+ * matters because the branch servers only recompute employees who scanned, so a no-show's row is
+ * never rewritten during the day and sits at `pending` until the nightly pass — the resolution is
+ * a read-time rule precisely so that gap is invisible to whoever is looking.
+ */
 export const ATTENDANCE_DAY_STATUSES = [
   'present',
+  'checkedIn',
   'late',
   'earlyLeave',
   'lateAndEarly',
+  'pending',
   'absent',
   'onLeave',
   'weekend',
   'holiday',
   'incomplete',
   'dayOff',
+  'noSchedule',
 ] as const;
 export const AttendanceDayStatusSchema = z.enum(ATTENDANCE_DAY_STATUSES);
 export type AttendanceDayStatus = z.infer<typeof AttendanceDayStatusSchema>;
@@ -73,6 +118,14 @@ export const ATTENDANCE_DAY_FLAGS = [
   'crossBranchPunch',
   'manualPunch',
   'regularizedPunch',
+  /**
+   * A manager's `markAbsent` decision (stage 3) decided this day against the evidence. The device
+   * punches are NOT deleted — they stay visible and superseded by nothing — so the flag is what
+   * tells a reviewer that the status they are reading was a judgement rather than a derivation.
+   * `markPresent` and `editTimes` need no flag of their own: they write manual punches and so
+   * already raise `manualPunch`.
+   */
+  'overriddenByManager',
 ] as const;
 export const AttendanceDayFlagSchema = z.enum(ATTENDANCE_DAY_FLAGS);
 export type AttendanceDayFlag = z.infer<typeof AttendanceDayFlagSchema>;
@@ -322,6 +375,54 @@ export const ListAttendanceDaysQuerySchema = PaginationQuerySchema.extend({
 export type ListAttendanceDaysQuery = z.infer<typeof ListAttendanceDaysQuerySchema>;
 
 /**
+ * The DAILY SHEET's own question, and it is not the day list's question.
+ *
+ * `GET /hr/attendance/days` answers "which day rows exist?" — it filters day DOCUMENTS, so an
+ * employee the engine has not written a row for today simply is not in the answer. That is the
+ * right behaviour for a list of records and the wrong behaviour for a sheet, because the sheet is
+ * read to find out WHO IS NOT HERE: the branch servers only recompute employees who scanned, so
+ * the people worth looking for are exactly the ones with no row. The sheet therefore starts from
+ * EMPLOYEES and left-joins the day rows, and no row is written for anybody to make them appear.
+ *
+ * One date only, by construction — a sheet is a day. Several branches and several sections, ORed,
+ * the same multi-filters the day list takes.
+ */
+export const ListAttendanceSheetQuerySchema = PaginationQuerySchema.extend({
+  date: z.coerce.date(),
+  branchId: listQuery(objectId()),
+  sectionId: listQuery(objectId()),
+}).strict();
+export type ListAttendanceSheetQuery = z.infer<typeof ListAttendanceSheetQuerySchema>;
+
+/**
+ * One line of the daily sheet: an EMPLOYEE, what was expected of them, and the day row if one
+ * exists yet.
+ *
+ * `status` is the RESOLVED display status, which is not always the stored one — see
+ * `resolveDisplayStatus` in the engine. Three cases produce a row here that the day list cannot:
+ * a no-show with no row at all (`pending` or `absent`, decided from the clock), a row the branch
+ * left at `pending` earlier in the day, and a past date whose `pending` row the nightly pass has
+ * not reached. `day` is null in the first of those, and a client renders the times from `day` and
+ * the label from `status` rather than reading a status off the row.
+ *
+ * `expectedStartAt` / `expectedEndAt` are resolved AT READ TIME, from the assignment or the
+ * branch's default pattern as they stand now — deliberately not stored on the row, because a
+ * stored copy goes stale the moment HR edits the pattern mid-day and would then be consulted for
+ * exactly the date it is wrong about. Both are null when nobody said when this person was due.
+ */
+export interface AttendanceSheetRowDto {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  branchId: string;
+  date: string;
+  status: AttendanceDayStatus;
+  expectedStartAt: string | null;
+  expectedEndAt: string | null;
+  day: AttendanceDayDto | null;
+}
+
+/**
  * The AT-6 CSV export — the §15.1 columns plus the two display labels, read from the day rows
  * (frozen and live alike), NEVER re-derived from punches. Range-capped like recompute: an export
  * is a report, not a dump.
@@ -519,6 +620,150 @@ export interface AttendanceRegularizationDto {
   employeeName?: string;
 }
 
+// ── Manager day decisions (§3 stage 3) ──────────────────────────────────────
+
+/**
+ * What a manager can decide about one employee-day.
+ *
+ * NONE OF THEM EDITS THE DAY ROW, AND NONE OF THEM TOUCHES A PUNCH. A decision is an INPUT to the
+ * derivation: `computeDay` loads it and the engine applies it, every time. That is what makes it
+ * survive the branch servers calling `days/recompute` every few seconds — a judgement written onto
+ * the derived row would be erased by the next recompute, which is the one thing it must not be.
+ *
+ * It also means the device's evidence is never altered to make a decision stick. `markPresent` and
+ * `editTimes` supply the times the manager vouches for and the engine derives from those instead;
+ * `markAbsent` decides the day outright. Either way the punches stay exactly as the devices
+ * recorded them, and the day carries the `overriddenByManager` flag so a reviewer can see that the
+ * status was judged rather than read. Revoking is then exact: the decision stops being live, the
+ * day is recomputed, and what the devices saw is still what they saw.
+ *
+ * Nothing about lateness or overtime is special-cased for a decision. A vouched-for arrival is
+ * late against the same grace and a vouched-for span earns overtime by the same arithmetic — the
+ * manager supplies the evidence, not the verdict.
+ *
+ * `revoke` undoes a decision by RECORDING one, never by deleting: the original row stays, marked
+ * `revoked`, and the new row says who undid it and why.
+ */
+export const ATTENDANCE_DECISION_TYPES = [
+  'markPresent',
+  'markAbsent',
+  'editTimes',
+  'revoke',
+] as const;
+export const AttendanceDecisionTypeSchema = z.enum(ATTENDANCE_DECISION_TYPES);
+export type AttendanceDecisionType = z.infer<typeof AttendanceDecisionTypeSchema>;
+
+/**
+ * `applied` is the ordinary outcome — a manager deciding a recent day acts on their own authority
+ * and it takes effect at once. `pendingHr` is the OLD-DAY path: past
+ * `hr.attendance.decisionApprovalAfterDays`, the decision is recorded but changes nothing until
+ * HR approves it. There is no `pendingManager`: the manager IS the first step here, unlike a
+ * regularization, which an employee files and a manager then judges.
+ */
+export const ATTENDANCE_DECISION_STATUSES = [
+  'applied',
+  'pendingHr',
+  'rejected',
+  'revoked',
+] as const;
+export const AttendanceDecisionStatusSchema = z.enum(ATTENDANCE_DECISION_STATUSES);
+export type AttendanceDecisionStatus = z.infer<typeof AttendanceDecisionStatusSchema>;
+
+/**
+ * A REASON IS MANDATORY on every decision, including the revocation. The whole value of this
+ * feature to a later reviewer — and the whole protection for the manager who used it — is that the
+ * record says why, in their own words, at the time.
+ *
+ * `inAt`/`outAt` carry the times for `markPresent` and `editTimes`. A `markPresent` with `inAt`
+ * alone is honest and expected: on this payroll most people scan on arrival and never scan out, so
+ * a manager vouching for an arrival should not have to invent a departure. It derives `checkedIn`,
+ * exactly as the device's own single punch does.
+ */
+export const CreateAttendanceDecisionSchema = z
+  .object({
+    employeeId: objectId(),
+    workDate: z.coerce.date(),
+    type: z.enum(['markPresent', 'markAbsent', 'editTimes']),
+    inAt: z.coerce.date().optional(),
+    outAt: z.coerce.date().optional(),
+    reason: z.string().trim().min(3).max(500),
+  })
+  .strict()
+  .refine((v) => v.type !== 'markAbsent' || (v.inAt === undefined && v.outAt === undefined), {
+    path: ['inAt'],
+    message: 'markAbsent records no times — it decides the day, it does not describe one',
+  })
+  .refine((v) => v.type === 'markAbsent' || v.inAt !== undefined, {
+    path: ['inAt'],
+    message: 'an arrival time is required',
+  })
+  .refine((v) => v.type !== 'editTimes' || v.outAt !== undefined, {
+    path: ['outAt'],
+    message: 'editTimes corrects a span — give both ends',
+  })
+  .refine((v) => v.outAt === undefined || v.inAt === undefined || v.outAt > v.inAt, {
+    path: ['outAt'],
+    message: 'the departure must be after the arrival',
+  });
+export type CreateAttendanceDecision = z.infer<typeof CreateAttendanceDecisionSchema>;
+
+export const DecideAttendanceDecisionSchema = z
+  .object({
+    verdict: z.enum(['approve', 'reject']),
+    comment: z.string().max(500).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type DecideAttendanceDecision = z.infer<typeof DecideAttendanceDecisionSchema>;
+
+/** Revoking is itself a decision, so it carries its own mandatory reason. */
+export const RevokeAttendanceDecisionSchema = z
+  .object({
+    reason: z.string().trim().min(3).max(500),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type RevokeAttendanceDecision = z.infer<typeof RevokeAttendanceDecisionSchema>;
+
+export const ListAttendanceDecisionsQuerySchema = PaginationQuerySchema.extend({
+  status: listQuery(AttendanceDecisionStatusSchema),
+  type: listQuery(AttendanceDecisionTypeSchema),
+  employeeId: objectId().optional(),
+  branchId: listQuery(objectId()),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  /** The manager whose decisions are being reviewed — the §4 accountability read. */
+  decidedBy: objectId().optional(),
+}).strict();
+export type ListAttendanceDecisionsQuery = z.infer<typeof ListAttendanceDecisionsQuerySchema>;
+
+export interface AttendanceDecisionDto {
+  id: string;
+  employeeId: string;
+  workDate: string;
+  type: AttendanceDecisionType;
+  inAt: string | null;
+  outAt: string | null;
+  reason: string;
+  status: AttendanceDecisionStatus;
+  /** True when the day held device evidence that this decision decided against (§4 warning). */
+  overrodePunch: boolean;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  hrDecidedBy: string | null;
+  hrDecidedAt: string | null;
+  hrComment: string | null;
+  /** The decision this one revokes, on a `revoke` row; null on every other row. */
+  revokesId: string | null;
+  branchId: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Display labels, enriched on the list reads — never stored on the row. */
+  employeeCode?: string;
+  employeeName?: string;
+}
+
 // ── Overtime approval (D5) ──────────────────────────────────────────────────
 
 /**
@@ -692,6 +937,43 @@ export const HrAttendanceSettingKeys = {
    * notice only — the day record itself is unaffected either way.
    */
   AbsenceNotify: 'hr.attendance.absenceNotify',
+
+  /**
+   * THE DEFAULT WORKING PATTERN (Attendance v2, stage 1b) — the expectation that applies to an
+   * employee nobody has assigned a shift to.
+   *
+   * WHY IT EXISTS. `late`, `earlyLeave` and `absent` all need somebody to have said when the
+   * person was due. Until now that could only be said per employee, through a shift assignment,
+   * and most of this workforce has none — so for most people the engine could report the times it
+   * saw and nothing else. One pattern, set once, gives the whole company those three answers
+   * without assigning shifts one by one. A REAL ASSIGNMENT ALWAYS WINS over it.
+   *
+   * WHY SIX SCALARS RATHER THAN ONE OBJECT. The settings screen picks its editor from the
+   * declared type: `boolean`, `number` and `string` are editable, and anything else falls to
+   * read-only (`editorFor` in `settings-view.ts`). An object-valued pattern would therefore be
+   * unreachable for the HR staff who are supposed to own it. Six scalars are editable today, in
+   * the screen that already exists, with no new form to build.
+   *
+   * SCOPE: organization, with a per-branch override — the mechanism the weekend setting and the
+   * notification settings already use, resolved against the employee's own branch.
+   *
+   * `enabled` DEFAULTS TO FALSE, so the pattern ships inert: until somebody fills in the hours
+   * and switches it on, every derivation behaves exactly as it did before 1b. There is
+   * deliberately no `crossesMidnight` key — it is inferred as `endTime <= startTime`, so a
+   * pattern cannot be saved in the self-contradictory state of 09:00–17:00 "crossing midnight".
+   */
+  DefaultPatternEnabled: 'hr.attendance.defaultPattern.enabled',
+  DefaultPatternStartTime: 'hr.attendance.defaultPattern.startTime',
+  DefaultPatternEndTime: 'hr.attendance.defaultPattern.endTime',
+  DefaultPatternBreakMinutes: 'hr.attendance.defaultPattern.breakMinutes',
+  DefaultPatternGraceInMinutes: 'hr.attendance.defaultPattern.graceInMinutes',
+  DefaultPatternGraceOutMinutes: 'hr.attendance.defaultPattern.graceOutMinutes',
+  /**
+   * How many days back a manager may decide a day on their own authority (stage 3). Beyond it the
+   * decision is recorded as `pendingHr` and takes effect only when HR approves it — the older the
+   * day, the more likely the correction is reconstruction rather than recollection.
+   */
+  DecisionApprovalAfterDays: 'hr.attendance.decisionApprovalAfterDays',
 } as const;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────

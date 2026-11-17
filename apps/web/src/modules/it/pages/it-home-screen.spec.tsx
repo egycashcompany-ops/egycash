@@ -344,8 +344,11 @@ const block = (html: string, attr: string, tag = 'li'): string => {
   return html.slice(open, html.indexOf(`</${tag}>`, start) + tag.length + 3);
 };
 
+/** The IT team's three registers — the assets, and the lines and the consumables on their own. */
+const KEEPER = ['itAsset.view', 'itMobileLine.view', 'itConsumable.view'];
+
 const EVERYTHING = [
-  'itAsset.view',
+  ...KEEPER,
   'itTicket.view',
   'itVendor.view',
   'itCatalog.manage',
@@ -391,13 +394,58 @@ describe('the panels, each by its grant', () => {
     ]);
   });
 
-  it('gives a reader of the assets alone the asset panels, the lines and the consumables — no help desk', () => {
-    const html = render(['itAsset.view']);
+  it('gives a keeper of the three registers the asset panels, the lines and the consumables — no help desk', () => {
+    const html = render(KEEPER);
     expect(html).toContain('data-kpis');
     expect(html).toContain(ar('it.nav.mobileLines'));
     expect(html).toContain(ar('it.dashboard.consumables.title'));
     expect(html).not.toContain('data-help-desk');
     expect(hrefs(html)).not.toContain('/it/tickets');
+  });
+
+  // «فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها» (2026-11-17): the lines and the consumables
+  // each on their own grant — a panel shows, and its page is listed, only for the reader who holds
+  // it; the asset key no longer brings either.
+  it('gives a reader of the assets alone the asset panels — not the lines or the consumables', () => {
+    const html = render(['itAsset.view']);
+    expect(html).toContain('data-kpis');
+    expect(html).not.toContain('data-line-network');
+    expect(html).not.toContain(ar('it.dashboard.consumables.title'));
+    expect(html).not.toContain('data-stock-panels');
+    const pages = hrefs(html).filter((href) => !href.includes('?'));
+    expect(pages).not.toContain('/it/mobile-lines');
+    expect(pages).not.toContain('/it/consumables');
+  });
+
+  it('gives a reader of the lines alone their panel and their page — nothing of the assets', () => {
+    const html = render(['itMobileLine.view']);
+    expect(html).toContain('data-line-network="etisalat"');
+    expect(html).not.toContain('data-kpis');
+    expect(html).not.toContain(ar('it.dashboard.consumables.title'));
+    expect(html).not.toContain(ar('it.overview.noAccessTitle'));
+    // No filter is offered — the filters are the asset register's.
+    expect(html).not.toContain(`aria-label="${ar('it.assets.columns.category')}"`);
+    expect(hrefs(html).filter((href) => !href.includes('?'))).toEqual(['/it/mobile-lines']);
+  });
+
+  it('gives a reader of the consumables alone their panel and their page — nothing of the assets', () => {
+    const html = render(['itConsumable.view']);
+    expect(text(block(html, 'data-consumable="CON-00001"'))).toContain('SSD');
+    expect(html).not.toContain('data-kpis');
+    expect(html).not.toContain('data-line-network');
+    expect(html).not.toContain(ar('it.overview.noAccessTitle'));
+    expect(hrefs(html).filter((href) => !href.includes('?'))).toEqual(['/it/consumables']);
+  });
+
+  // A reader with no filter on the page is never narrowed by one: a remembered or linked branch
+  // narrows the lines and the consumables only beside the asset panels, where it is shown.
+  it('narrows the lines and the consumables by a branch only where the filter is offered', () => {
+    const shown = render(KEEPER, `/it?branch=${B_OCT}`);
+    // October's store has nothing at its minimum (the narrowed fixture is empty).
+    expect(shown).toContain(ar('it.dashboard.consumables.empty'));
+    const unseen = render(['itConsumable.view'], `/it?branch=${B_OCT}`);
+    expect(unseen).not.toContain(ar('it.dashboard.consumables.empty'));
+    expect(text(block(unseen, 'data-consumable="CON-00001"'))).toContain('SSD');
   });
 
   it('lists only the pages a reader’s grants open', () => {
@@ -422,7 +470,7 @@ describe('the panels, each by its grant', () => {
 });
 
 describe('the figures', () => {
-  const html = render(['itAsset.view']);
+  const html = render(KEEPER);
   const words = text(html);
 
   it('are the server’s counts, in Arabic digits, each with its share of the total', () => {
@@ -552,7 +600,7 @@ describe('the filters and the URL', () => {
 });
 
 describe('every figure links to its list, carrying the filters', () => {
-  const links = hrefs(render(['itAsset.view'], `/it?category=${C_LAPTOP}&branch=${B_OCT}`));
+  const links = hrefs(render(KEEPER, `/it?category=${C_LAPTOP}&branch=${B_OCT}`));
   const has = (path: string, params: Record<string, string>): boolean =>
     links.some((href) => {
       const [p = '', q = ''] = href.split('?');
@@ -579,7 +627,7 @@ describe('every figure links to its list, carrying the filters', () => {
   });
 
   it('the lines link is never the bare path, which would restore the page’s remembered view', () => {
-    expect(hrefs(render(['itAsset.view']))).toContain('/it/mobile-lines?status=');
+    expect(hrefs(render(['itMobileLine.view']))).toContain('/it/mobile-lines?status=');
   });
 
   it('the lines and the consumables carry the branch', () => {
@@ -618,7 +666,7 @@ describe('a count on its way, and one that failed', () => {
   });
 
   it('says a figure could not be fetched, and offers to try again', () => {
-    const html = render(['itAsset.view'], '/it', { failed: true });
+    const html = render(KEEPER, '/it', { failed: true });
     expect(html).toContain(ar('it.overview.countUnavailable'));
     expect(html).toContain(ar('common.retry'));
     // The panels that do not ride the failed read still stand.

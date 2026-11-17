@@ -13,6 +13,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
@@ -170,28 +171,32 @@ export const MaintenancePlansPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.maintenancePlans')}
-        breadcrumbs={[
-          { label: t('it.module.title'), to: '/it' },
-          { label: t('it.nav.maintenance'), to: '/it/maintenance' },
-          { label: t('it.nav.maintenancePlans') },
-        ]}
-        actions={
-          <Can permission="itMaintenancePlan.manage">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCreating(true)}
-            >
-              {t('it.plans.add')}
-            </Button>
-          </Can>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»): on a computer
+          the title and its button and the filter bar keep their place, the pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.maintenancePlans')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.maintenance'), to: '/it/maintenance' },
+            { label: t('it.nav.maintenancePlans') },
+          ]}
+          actions={
+            <Can permission="itMaintenancePlan.manage">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setCreating(true)}
+              >
+                {t('it.plans.add')}
+              </Button>
+            </Can>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={active !== 'true' || due !== ''}
           onClear={() => {
@@ -227,23 +232,26 @@ export const MaintenancePlansPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={data?.items ?? []}
-          rowKey={(plan) => plan.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          empty={
-            <EmptyState
-              icon={<CalendarIcon className="h-10 w-10" />}
-              title={t('it.plans.emptyTitle')}
-              description={t('it.plans.emptyBody')}
-            />
-          }
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            rowKey={(plan) => plan.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            empty={
+              <EmptyState
+                icon={<CalendarIcon className="h-10 w-10" />}
+                title={t('it.plans.emptyTitle')}
+                description={t('it.plans.emptyBody')}
+              />
+            }
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

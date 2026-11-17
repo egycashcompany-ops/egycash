@@ -311,6 +311,8 @@ describe('«تقرير البنوك» — the legacy vault roll-up (was «تجم
       'الحقائب',
       'كرتونة',
       'صندوق',
+      // Round 25 — «فى الاخر بعد الصناديق يكون فيه سهم»: the arrow into the bank's dashboard.
+      'الفروع',
     ]);
   });
 
@@ -337,6 +339,8 @@ describe('«تقرير البنوك» — the legacy vault roll-up (was «تجم
       '38',
       '6',
       '3',
+      // The arrow (Round 25) — a drawing, named to a screen reader, no text of its own.
+      '',
     ]);
   });
 
@@ -376,6 +380,8 @@ describe('«تقرير البنوك» — the legacy vault roll-up (was «تجم
       '111',
       '22',
       '33',
+      // «الإجمالي» opens no dashboard (Round 25): its arrow cell is empty.
+      '',
     ]);
     // The board draws the total it is handed; the page hands it the server's while no name is
     // typed (`reportView`) — and the board itself never sums anything.
@@ -670,6 +676,8 @@ describe('the name filter — applied as typed, and «الإجمالي» FOLLOWS
       '38',
       '6',
       '3',
+      // «الإجمالي» opens no dashboard (Round 25).
+      '',
     ]);
   });
 
@@ -726,8 +734,10 @@ describe('«Excel | PDF» — exactly what is shown', () => {
 
   it('carries the lines the table draws, and the vault its panel too', () => {
     expect(BOARD).toContain('const lines = refusal === null ? reportTableLines(rows, total) : [];');
-    expect(BOARD).toContain(
-      'reportExportTable(lines, catalog, reportExportHeader(t, keyHeader, countHeader), nameOf)',
+    // Round 25: with the table's column after the name, when it has one (the bank dashboard's
+    // «المنطقة») — none on a report.
+    expect(BOARD).toMatch(
+      /reportExportTable\(\s*lines,\s*catalog,\s*reportExportHeader\(t, keyHeader, countHeader, detail\?\.header\),\s*nameOf,\s*detail\?\.of,\s*\)/,
     );
     expect(BOARD).toContain('vaultPanelExport(t, total, catalog)');
     expect(BANK_PAGE).toContain('withValuePanel: true,');

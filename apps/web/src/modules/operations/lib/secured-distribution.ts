@@ -46,11 +46,15 @@ export type DistributionRowFacts = Pick<
   | 'directionCrewAssignmentIds'
 >;
 
-/** The fields of a van (a crew row of the day) these rules read. */
+/**
+ * The fields of a van (a crew row of the day) these rules read. `securedType` (Round 25): false for
+ * a row of another type kept on the screen for what it already carries — it takes no new shipment.
+ * Left out, a van takes shipments (the vault's screen moves nothing).
+ */
 export type DistributionVan = Pick<
   OperationsDayBoardVehicleCrewDto,
   'crewAssignmentId' | 'vehicleCode' | 'captains' | 'direction'
->;
+> & { securedType?: boolean };
 
 /**
  * The day the URL asks for (`?date=`), or null for the server's default — TODAY in Cairo. Null as
@@ -116,9 +120,16 @@ export const isStartedLeg = (row: Pick<DistributionRowFacts, 'delivery'>): boole
 /**
  * Can this van take a shipment? Only one with a captain: a shipment goes WITH a captain (the save
  * refuses a van without one — `OPERATIONS_CREW_CAPTAIN_MISMATCH`). It is still listed, said empty.
+ * Round 25 — and only a row of the «محصنة» type: a row of another type is listed only for what it
+ * already carries (the save refuses it — `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`), and takes back
+ * only a shipment whose SAVED leg is on it (`savedAt` — its `placedCrewAssignmentId`; the save's
+ * keep rule), moved off it in the draft.
  */
-export const takesShipments = (van: Pick<DistributionVan, 'captains'>): boolean =>
-  van.captains.length > 0;
+export const takesShipments = (
+  van: Pick<DistributionVan, 'crewAssignmentId' | 'captains' | 'securedType'>,
+  savedAt: string | null = null,
+): boolean =>
+  van.captains.length > 0 && (van.securedType !== false || van.crewAssignmentId === savedAt);
 
 /** Where the shipment is on the screen now: the draft's place, else the read's. */
 export const placementOf = (
@@ -253,11 +264,11 @@ export const nextCaptain = (
  */
 export const proposeByDirection = <R extends DistributionRowFacts>(
   rows: readonly R[],
-  vans: readonly Pick<DistributionVan, 'crewAssignmentId' | 'captains'>[],
+  vans: readonly Pick<DistributionVan, 'crewAssignmentId' | 'captains' | 'securedType'>[],
   draft: DistributionDraft,
 ): DistributionDraft => {
   const taking = new Map(
-    vans.filter(takesShipments).map((van) => [van.crewAssignmentId, van] as const),
+    vans.filter((van) => takesShipments(van)).map((van) => [van.crewAssignmentId, van] as const),
   );
   const next = new Map(draft);
   for (const row of rows) {
@@ -286,7 +297,7 @@ export const proposeByDirection = <R extends DistributionRowFacts>(
  */
 export const openingDistributionHistory = <R extends DistributionRowFacts>(
   rows: readonly R[],
-  vans: readonly Pick<DistributionVan, 'crewAssignmentId' | 'captains'>[],
+  vans: readonly Pick<DistributionVan, 'crewAssignmentId' | 'captains' | 'securedType'>[],
   canEdit: boolean,
 ): UndoHistory<DistributionDraft> => {
   const start = startHistory(EMPTY_DRAFT);
@@ -532,3 +543,66 @@ export const withoutShipment = (
   next.delete(shipmentId);
   return next;
 };
+
+/**
+ * Round 25 — «اللى يظهر عدد الكراتين و الحقائب و الصناديق حتى لو ب 0 يتكتب»: the packages a van carries,
+ * EVERY kind, summed over its load from the vault's counts (`packagingOf` — the custody's, at its
+ * receipt): 0 where the vault counted none of a kind, or holds none of the load yet. Unlike
+ * `loadFigures().packages`, never null — the card writes the three counts whatever they are.
+ */
+export const loadPackages = (
+  rows: readonly Pick<DistributionRowFacts, 'id'>[],
+  packagingOf: (shipmentId: string) => Packaging | undefined,
+): Packaging => {
+  const total: Packaging = { bags: 0, cartons: 0, boxes: 0 };
+  for (const row of rows) {
+    const counted = packagingOf(row.id);
+    if (counted === undefined) continue;
+    total.bags += counted.bags;
+    total.cartons += counted.cartons;
+    total.boxes += counted.boxes;
+  }
+  return total;
+};
+
+/**
+ * Where the vault's packaging read stands for this reader: 'ready' (its counts are in, so a 0 is a
+ * real 0), 'pending' (still on its way), 'failed' (it did not answer, nothing to show) or
+ * 'forbidden' (the reader may not read the vault). A refetch that fails after a good read keeps
+ * the good read's counts: 'ready'.
+ */
+export type PackagingRead = 'ready' | 'pending' | 'failed' | 'forbidden';
+
+export const packagingRead = (
+  readable: boolean,
+  query: { data: unknown; isError: boolean },
+): PackagingRead =>
+  !readable
+    ? 'forbidden'
+    : query.data !== undefined
+      ? 'ready'
+      : query.isError
+        ? 'failed'
+        : 'pending';
+
+/**
+ * What a van card writes for its packages (Round 25 critic): the load's sum once the vault's
+ * counts are in; otherwise why not — null to a reader who cannot read the vault, 'pending' or
+ * 'failed' while the read is out or has failed. Never a 0 the screen has not read: the owner
+ * asked for the 0 to be written («حتى لو ب 0 يتكتب»), so a guessed 0 would look exactly like a real one.
+ */
+export const vanPackages = (
+  read: PackagingRead,
+  rows: readonly Pick<DistributionRowFacts, 'id'>[],
+  packagingOf: (shipmentId: string) => Packaging | undefined,
+): Packaging | null | 'pending' | 'failed' =>
+  read === 'ready' ? loadPackages(rows, packagingOf) : read === 'forbidden' ? null : read;
+
+/**
+ * Round 25 — «العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا ضيفته ف الاول»: the captain a
+ * van card shows — the FIRST put on the row (the board's stored order, `captainEmployeeIds[0]`), or
+ * null on a row with none.
+ */
+export const shownCaptain = (
+  van: Pick<DistributionVan, 'captains'>,
+): OperationsDayBoardPersonDto | null => van.captains[0] ?? null;

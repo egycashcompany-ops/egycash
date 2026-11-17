@@ -30,6 +30,7 @@ import { CostCenterFormPage } from './cost-centers/pages/CostCenterFormPage';
 import { JobTitlesListPage } from './job-titles/pages/JobTitlesListPage';
 import { JobTitleDetailPage } from './job-titles/pages/JobTitleDetailPage';
 import { JobTitleFormPage } from './job-titles/pages/JobTitleFormPage';
+import { OrgChartPage } from './org-chart/pages/OrgChartPage';
 
 export default function OrganizationRoutes(): JSX.Element {
   return (
@@ -42,6 +43,16 @@ export default function OrganizationRoutes(): JSX.Element {
           element={
             <RequirePermission permission="organization.view">
               <CompanyPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* P-ORG-3 — the company org chart (org-chart-design.md §2). */}
+        <Route
+          path="chart"
+          element={
+            <RequirePermission permission="department.view">
+              <OrgChartPage />
             </RequirePermission>
           }
         />

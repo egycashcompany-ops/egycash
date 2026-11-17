@@ -45,7 +45,8 @@ export const ConsumablePicker = ({
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [search, setSearch] = useState('');
-  const allowed = can('itAsset.view');
+  // The store's own read grant (2026-11-17) — the one `GET /it/consumables` answers to.
+  const allowed = can('itConsumable.view');
 
   const results = useQuery({
     queryKey: listKey('it', 'consumables', { picker: search, branchId }),
@@ -65,7 +66,9 @@ export const ConsumablePicker = ({
 
   if (!allowed) {
     return (
-      <p className="text-sm text-slate-500 dark:text-slate-400">{t('it.assets.pickerNoAccess')}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        {t('it.consumables.pickerNoAccess')}
+      </p>
     );
   }
 

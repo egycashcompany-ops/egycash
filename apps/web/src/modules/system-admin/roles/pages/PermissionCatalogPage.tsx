@@ -27,6 +27,8 @@ import {
 } from '../../../../shared/ui';
 import { usePermissionCatalog } from '../api/role-queries';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+import { cn } from '../../../../shared/lib/cn';
+import { BOARD_FRAME, BOARD_LIST_FILL } from '../../../../shared/ui/board-scroll';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -95,21 +97,24 @@ export const PermissionCatalogPage = (): JSX.Element => {
   const total = groups.reduce((sum, [, rows]) => sum + rows.length, 0);
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('systemAdmin.permissions.title')}
-        breadcrumbs={[
-          { label: t('systemAdmin.module.title') },
-          { label: t('systemAdmin.permissions.title') },
-        ]}
-        aside={
-          <Badge size="sm" tone="neutral">
-            {t('systemAdmin.permissions.count', { count: total })}
-          </Badge>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «ميبقاش الصفحات كلها بتعمل Scroll
+          لكن الجداول بس»): on a computer the title, its count and the filters keep their place, and
+          only the module groups scroll. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('systemAdmin.permissions.title')}
+          breadcrumbs={[
+            { label: t('systemAdmin.module.title') },
+            { label: t('systemAdmin.permissions.title') },
+          ]}
+          aside={
+            <Badge size="sm" tone="neutral">
+              {t('systemAdmin.permissions.count', { count: total })}
+            </Badge>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar>
           <SearchInput
             value={sp.get('q') ?? ''}
@@ -135,56 +140,58 @@ export const PermissionCatalogPage = (): JSX.Element => {
           />
         </FilterBar>
 
-        {isLoading && <LoadingState />}
-        {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
-        {!isLoading && !isError && total === 0 && (
-          <EmptyState title={t('systemAdmin.permissions.empty')} />
-        )}
+        <div className={cn(BOARD_LIST_FILL, 'space-y-4')}>
+          {isLoading && <LoadingState />}
+          {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
+          {!isLoading && !isError && total === 0 && (
+            <EmptyState title={t('systemAdmin.permissions.empty')} />
+          )}
 
-        {groups.map(([moduleId, rows]) => (
-          <Card key={moduleId}>
-            <CardHeader
-              title={t(`systemAdmin.roles.module.${moduleId}`)}
-              description={t('systemAdmin.roles.moduleCount', { count: rows.length })}
-            />
-            <CardBody>
-              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {rows.map((permission) => (
-                  <li
-                    key={permission.key}
-                    className="min-w-0 rounded-md border border-slate-200 p-3 dark:border-slate-800"
-                  >
-                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                      {permission.name[locale]}
-                    </p>
-                    <p className="truncate font-mono text-[11px] text-slate-400" dir="ltr">
-                      {permission.key}
-                    </p>
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {permission.breakGlass && (
-                        <Badge size="sm" tone="danger">
-                          {t('systemAdmin.roles.breakGlass')}
-                        </Badge>
-                      )}
-                      {/* Two literal calls rather than one conditional key: the i18n spec scans the
-                          source for `t('systemAdmin.…')`, and a key assembled inside the call is
-                          invisible to it. */}
-                      {can(permission.key) ? (
-                        <Badge size="sm" tone="success">
-                          {t('systemAdmin.permissions.held')}
-                        </Badge>
-                      ) : (
-                        <Badge size="sm" tone="neutral">
-                          {t('systemAdmin.roles.notHeld')}
-                        </Badge>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </CardBody>
-          </Card>
-        ))}
+          {groups.map(([moduleId, rows]) => (
+            <Card key={moduleId}>
+              <CardHeader
+                title={t(`systemAdmin.roles.module.${moduleId}`)}
+                description={t('systemAdmin.roles.moduleCount', { count: rows.length })}
+              />
+              <CardBody>
+                <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {rows.map((permission) => (
+                    <li
+                      key={permission.key}
+                      className="min-w-0 rounded-md border border-slate-200 p-3 dark:border-slate-800"
+                    >
+                      <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                        {permission.name[locale]}
+                      </p>
+                      <p className="truncate font-mono text-[11px] text-slate-400" dir="ltr">
+                        {permission.key}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {permission.breakGlass && (
+                          <Badge size="sm" tone="danger">
+                            {t('systemAdmin.roles.breakGlass')}
+                          </Badge>
+                        )}
+                        {/* Two literal calls rather than one conditional key: the i18n spec scans the
+                            source for `t('systemAdmin.…')`, and a key assembled inside the call is
+                            invisible to it. */}
+                        {can(permission.key) ? (
+                          <Badge size="sm" tone="success">
+                            {t('systemAdmin.permissions.held')}
+                          </Badge>
+                        ) : (
+                          <Badge size="sm" tone="neutral">
+                            {t('systemAdmin.roles.notHeld')}
+                          </Badge>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
       </div>
     </PageContainer>
   );

@@ -71,6 +71,7 @@ import {
 import {
   buildAttendanceAssignmentsRouter,
   buildAttendanceDaysRouter,
+  buildAttendanceDecisionsRouter,
   buildAttendanceExportRouter,
   buildAttendanceOvertimeRouter,
   buildAttendanceDevicesRouter,
@@ -800,7 +801,17 @@ const attendanceDailyPermissions = declarePermissions(
   'hr.attendance-daily',
 );
 
-// The regularization queue's own screen (AT-6): the decision grant lives there.
+// The regularization queue's own screen (AT-6): the decision grant lives there, and stage 3's two
+// day-decision grants join it, because the same screen now carries both queues.
+//
+// `decide` and `decideApprove` ARE DELIBERATELY SEPARATE, and the split is a separation of duty
+// rather than a habit. Deciding a recent day is a manager's ordinary authority; clearing the
+// OLD-day queue exists precisely so that somebody other than the deciding manager looks at it, and
+// one grant covering both would let a single person do the whole thing. The service enforces the
+// rest — nobody decides their own attendance, and nobody approves their own decision.
+//
+// NEITHER IS BREAK-GLASS, and neither ever goes on the `svc.attendance` integration role: the
+// branch servers import punches and recompute, they do not judge anybody's day.
 const attendanceQueuePermissions = declarePermissions(
   'hr',
   'attendance',
@@ -810,6 +821,14 @@ const attendanceQueuePermissions = declarePermissions(
     {
       action: 'decideRegularization',
       name: { en: 'Decide attendance regularizations', ar: 'البت في تسويات الحضور' },
+    },
+    {
+      action: 'decide',
+      name: { en: 'Decide an attendance day', ar: 'البت في يوم حضور' },
+    },
+    {
+      action: 'decideApprove',
+      name: { en: 'Approve an old-day attendance decision', ar: 'اعتماد قرار يوم حضور قديم' },
     },
   ],
   'hr.attendance-regularizations',
@@ -1707,6 +1726,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/attendance/days', router: buildAttendanceDaysRouter() },
     { prefix: '/hr/attendance/regularizations', router: buildAttendanceRegularizationsRouter() },
     { prefix: '/hr/attendance/overtime', router: buildAttendanceOvertimeRouter() },
+    { prefix: '/hr/attendance/decisions', router: buildAttendanceDecisionsRouter() },
     { prefix: '/hr/attendance/export', router: buildAttendanceExportRouter() },
     { prefix: '/hr/payroll/pay-items', router: buildPayItemsRouter() },
     { prefix: '/hr/payroll/runs', router: buildPayrollRunsRouter() },
@@ -1773,6 +1793,7 @@ export const hrModule: ModuleManifest = {
     'hr_contract_types',
     'hr_contract_branding',
     'hr_candidate_drafts',
+    'hr_employee_paper_values',
     'hr_shifts',
     'hr_shift_assignments',
     'hr_attendance_punches',

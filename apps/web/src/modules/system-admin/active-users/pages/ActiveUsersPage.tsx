@@ -36,6 +36,7 @@ import {
   type Tone,
 } from '../../../../shared/ui';
 import { Portrait } from '../../../../shared/ui/Portrait';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../../shared/ui/board-scroll';
 import { fullName } from '../../../../shared/lib/format';
 import { relativeTimeText } from '../../../../shared/lib/relative-time';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
@@ -288,26 +289,30 @@ export const ActiveUsersPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('systemAdmin.activeUsers.title')}
-        breadcrumbs={[
-          { label: t('systemAdmin.module.title') },
-          { label: t('systemAdmin.activeUsers.title') },
-        ]}
-        aside={
-          isToday && data !== undefined ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {t('systemAdmin.activeUsers.updated', {
-                time: clockTime(data.generatedAt, locale),
-                seconds: ACTIVE_USERS_REFRESH_MS / 1000,
-              })}
-            </p>
-          ) : undefined
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «عايز بردو كل الصفحات اللى فى مديول
+          الإدارة ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس»): on a computer the title, the
+          figures and the filters keep their place, and only the table's rows scroll, under a head
+          that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('systemAdmin.activeUsers.title')}
+          breadcrumbs={[
+            { label: t('systemAdmin.module.title') },
+            { label: t('systemAdmin.activeUsers.title') },
+          ]}
+          aside={
+            isToday && data !== undefined ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {t('systemAdmin.activeUsers.updated', {
+                  time: clockTime(data.generatedAt, locale),
+                  seconds: ACTIVE_USERS_REFRESH_MS / 1000,
+                })}
+              </p>
+            ) : undefined
+          }
+        />
 
-      <div className="space-y-4">
         <StatStrip items={statItems} columns={isToday ? 4 : 3} />
 
         <FilterBar
@@ -361,26 +366,29 @@ export const ActiveUsersPage = (): JSX.Element => {
           </div>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.userId}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          empty={
-            <EmptyState
-              title={t(
-                // Nobody matching THESE filters is not nobody at all — the strip above still counts.
-                filtered
-                  ? 'systemAdmin.activeUsers.noMatches'
-                  : isToday
-                    ? 'systemAdmin.activeUsers.emptyToday'
-                    : 'systemAdmin.activeUsers.emptyDay',
-              )}
-            />
-          }
-        />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.userId}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            empty={
+              <EmptyState
+                title={t(
+                  // Nobody matching THESE filters is not nobody at all — the strip above still counts.
+                  filtered
+                    ? 'systemAdmin.activeUsers.noMatches'
+                    : isToday
+                      ? 'systemAdmin.activeUsers.emptyToday'
+                      : 'systemAdmin.activeUsers.emptyDay',
+                )}
+              />
+            }
+            stickyHead
+          />
+        </div>
       </div>
     </PageContainer>
   );

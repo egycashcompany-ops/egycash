@@ -6,6 +6,7 @@ export * from './assignments';
 export * from './punches';
 export * from './day-records';
 export * from './regularizations';
+export * from './decisions';
 export * from './overtime';
 export { registerHrAttendanceSettings } from './attendance.settings';
 export { migrateAttendance } from './attendance.migration';

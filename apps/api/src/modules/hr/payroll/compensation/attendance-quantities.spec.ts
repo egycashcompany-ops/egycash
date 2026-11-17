@@ -53,6 +53,8 @@ describe('day sources', () => {
     row('2026-03-03', 'late'),
     row('2026-03-04', 'earlyLeave'),
     row('2026-03-05', 'lateAndEarly'),
+    // A check-in with no check-out: attendance here, by the owner's ruling.
+    row('2026-03-13', 'checkedIn'),
     row('2026-03-06', 'absent'),
     row('2026-03-09', 'absent'),
     row('2026-03-10', 'onLeave'),
@@ -63,8 +65,20 @@ describe('day sources', () => {
     row('2026-03-12', 'dayOff'),
   ];
 
-  it('counts the four attendance statuses and only those', () => {
-    expect(quantityFor(month, 'attendedDays', MARCH, ALWAYS_EMPLOYED)).toBe(4);
+  it('counts the five attendance statuses and only those', () => {
+    expect(quantityFor(month, 'attendedDays', MARCH, ALWAYS_EMPLOYED)).toBe(5);
+  });
+
+  // The owner's ruling (2026-11-17): on this payroll most people scan on arrival and never scan
+  // out, so a check-in IS an attended day. What it is NOT is a day with hours — the arrival is
+  // known and the departure is not, so it contributes a day and no minutes.
+  it('counts a check-in as an attended day, and as no worked minutes', () => {
+    const checkedIn = [row('2026-03-13', 'checkedIn', { workedMinutes: 0, lateMinutes: 35 })];
+    expect(quantityFor(checkedIn, 'attendedDays', MARCH, ALWAYS_EMPLOYED)).toBe(1);
+    expect(quantityFor(checkedIn, 'absentDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);
+    expect(quantityFor(checkedIn, 'workedMinutes', MARCH, ALWAYS_EMPLOYED)).toBe(0);
+    // Lateness still travels: being expected at a time is what makes it real.
+    expect(quantityFor(checkedIn, 'lateMinutes', MARCH, ALWAYS_EMPLOYED)).toBe(35);
   });
 
   it('counts absences', () => {
@@ -75,18 +89,44 @@ describe('day sources', () => {
     expect(quantityFor(month, 'leaveDays', MARCH, ALWAYS_EMPLOYED)).toBe(1);
   });
 
-  // The decision this asserts: `incomplete`, `weekend`, `holiday` and `dayOff` belong to NO group.
-  // Whether a missing checkout is attendance is a labour rule, and none has been given.
-  it('puts incomplete, weekend, holiday and dayOff in no group at all', () => {
+  // The decision this asserts: `incomplete`, `weekend`, `holiday`, `dayOff` and `noSchedule`
+  // belong to NO group. `noSchedule` is there for its own reason — nobody has said when the person
+  // works, which is a gap in the roster rather than a fact about their attendance, and pricing it
+  // in either direction would invent a labour rule out of missing configuration.
+  //
+  // `incomplete` is here for a DIFFERENT reason from the other three now. Nothing derives it any
+  // more — a single punch is `checkedIn` — so the only rows carrying it were computed before that
+  // ruling, and most of them sit in frozen months whose payslips are paid. Counting them now would
+  // restate those months. A closed month keeps the figures it closed with; an unfrozen day picks
+  // up the new rule when it is next recomputed.
+  it('puts incomplete, weekend, holiday, dayOff and noSchedule in no group at all', () => {
     const unruled = [
       row('2026-03-11', 'incomplete'),
       row('2026-03-07', 'weekend'),
       row('2026-03-08', 'holiday'),
       row('2026-03-12', 'dayOff'),
+      row('2026-03-13', 'noSchedule'),
     ];
     expect(quantityFor(unruled, 'attendedDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);
     expect(quantityFor(unruled, 'absentDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);
     expect(quantityFor(unruled, 'leaveDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);
+  });
+
+  // `pending` (stage 2) is PAYROLL-NEUTRAL BY CONSTRUCTION, and this is the test that keeps it so.
+  //
+  // It means "this day is still being lived and nobody has concluded it", which is neither an
+  // attendance nor an absence. Being in no list it contributes 0 to every source — including
+  // `absentDays`, where somebody fixing a later bug might reasonably think it belongs. It does
+  // not: a day in progress is not an absence, and the row will say what it really was by morning.
+  //
+  // Nothing of the sort can in fact reach payroll — a period cannot be frozen until its last day
+  // has passed, and the feed is complete-or-nothing over frozen rows — but a quantity rule that is
+  // safe only because of a guard two modules away deserves to be stated where it is read.
+  it('puts pending in no group either — a day in progress is not an absence', () => {
+    const inProgress = [row('2026-03-16', 'pending'), row('2026-03-17', 'pending')];
+    for (const source of PAY_ITEM_QUANTITY_SOURCES) {
+      expect(quantityFor(inProgress, source, MARCH, ALWAYS_EMPLOYED), source).toBe(0);
+    }
   });
 });
 

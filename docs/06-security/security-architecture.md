@@ -102,7 +102,9 @@ All 403s are audited (permission probing is a signal).
   The first such surface is IT's custody acknowledgment, which prints the holder's national ID:
   `itAsset.viewNationalId` decides who receives it in full (the receipt is otherwise read on
   `itAsset.view`), and HR hands it over through a directory lookup of its own rather than as a
-  field of the shared `DirectoryEmployee` shape.
+  field of the shared `DirectoryEmployee` shape. A mobile line's acknowledgment prints it too, under
+  its own grant since the lines got their own permissions (2026-11-17):
+  `itMobileLine.viewNationalId`, the paper otherwise read on `itMobileLine.view`.
 - **Files:** no static serving; authorized endpoint + short-lived signed URLs; per-category mime
   and size validation; checksum integrity; **virus scanning by ClamAV** on every upload when
   `CLAMAV_HOST` is set (`platform/files/virus-scan.processor.ts` behind the `virusScan` extension

@@ -11,6 +11,150 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: «خطوط المحمول» and «المستهلكات» have their own permissions.** «فى الصلاحيات مش لاقى حاجة لـ
+  /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها». Both screens
+  rode the asset grants, so the roles screen had no row for either. Each is now a page of the role
+  matrix, right after «الأصول», with its own keys.
+  - `itMobileLine` (page «خطوط المحمول»): view, create, edit, «تسليم واسترجاع خطوط المحمول» (`assign`)
+    and «عرض الرقم القومي للمستلم في إقرار استلام الخط» (`viewNationalId`). `itConsumable` (page
+    «المستهلكات»): view, create, edit and «صرف واسترجاع وتحويل المستهلكات» (`assign`). Each does
+    exactly what the asset key did on the same screen, within the same scope.
+  - The asset keys no longer open these two screens — their routes, the papers' signed copies and
+    their live refresh. The assets, custody, the employees screen and the home's asset figures keep
+    `itAsset.*`.
+  - Nobody loses access on deploy: once, every role and every live delegated grant holding an
+    `itAsset` key is given the matching new keys (`go-live:it-screen-grants:v1`). It adds and never
+    removes, and a key removed afterwards stays removed.
+  - `GET /it/consumables/transfer-targets`: the branches «تحويل إلى فرع» may go to, as
+    `itConsumable.assign` reaches them. The assets' `GET /it/assets/move-targets` stays on
+    `itAsset.assign`.
+  - `/it/people` (the holder boxes) opens on any of the three screens' view keys and finds people in
+    every unit any of them reaches. How many assets a person holds is counted only for a reader with
+    `itAsset.view`, and shows 0 to anyone else.
+  - Naming the asset an issued item is installed on needs `itAsset.view`; without it the asset is
+    «not found». The consumables' types list (`GET /it/catalog-items`) also opens on
+    `itConsumable.view`.
+  - The «خطوط المحمول» and «المستهلكات» menu rows move to the new view keys, only where the stored row
+    still holds `itAsset.view`.
+
+- **Administration: only the table scrolls, not the page.** «عايز بردو كل الصفحات اللى فى مديول الإدارة
+  ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس». Every page of the «الإدارة» menu now takes the
+  board frame Fleet and ATM use (`shared/ui/board-scroll.ts`). On a computer the title, tabs and
+  filters keep their place, the pager stays below, and only the table's rows scroll, under a head
+  that stays. A phone or a tablet scrolls as before.
+  - The table pages: System Users, Active Users, Notification Templates, Audit Log, Activity Log,
+    Applications and Application Categories.
+  - The pages whose list is cards: Roles, the Permission Catalog, Approval Workflows and System
+    Settings. Their list scrolls instead (`BOARD_LIST_FILL`).
+  - `BOARD_LISTVIEW_FILL` does the same for a `ListView` card.
+  - The Audit Log, whose filter bar is the tallest, takes the IT boards' lower table floor
+    (`BOARD_TABLE_FILL_LOW`). With the usual 14rem floor, a 1280×720 or 1366×768 laptop scrolled
+    the whole page, filters included.
+  - `admin-board-scroll.spec.ts` holds every page of the menu to this shape.
+  - Checked in a browser against a mocked API. At 1440×900, 1366×768 and 1280×720 the title and
+    filters stay in place on all eleven pages, and the table or list takes the height that is left.
+
+- **Organization: «شجرة الهيكل التنظيمي», and a job's place in the structure.** «HR hierarchical chart …
+  عبارة عن شارت بالشركة كلها .. فيه الإدارات والأقسام والمسميات الوظيفية … ولما أختار إدارة بالضغط على
+  كارت يجيب تحتها الشارت بتاع هيكلها التنظيمي مع إمكانية تعديل الهيكل»; «عند إضافة وظيفة جديدة لا يتم
+  اختيار القسم التابع لها أو الإدارة … والأتنين يسمعوا فى بعض». Design: `docs/12-planning/org-chart-design.md`;
+  ADR-038 (job places, which supersedes ADR-031 in part).
+  - **The page** (`/organization/chart`, `department.view`): every company department as a tile, the
+    branch copies folded into one; picking one draws its sections side by side, each with its jobs, and
+    the jobs placed directly under the department in a first column. A department with no sections
+    hangs its jobs straight from it. Phones get the same content as an indented tree.
+  - **Edit mode** saves each gesture at once: add a section in the ticked branches, rename it, stop it,
+    add a job to a place, move it (drag, or «نقل إلى»), remove it from a place. Groups not linked to the
+    company list stay read-only and say so.
+  - **The job form and detail** get «مكانها في الهيكل التنظيمي»: a department, or one of its sections;
+    several allowed. The chart and the form write the very same rows through the job's own
+    version-checked update, so each shows what the other changed.
+  - **Places are descriptive:** they block nothing and count no headcount. A new department or section
+    row is linked to the company list when created (D-ORG3-5). At the first start, each department gets
+    the places where its holders sit, once; after that they are edited by hand.
+  - The server takes `GET /platform/org-chart`, `POST /platform/org-chart/sections`,
+    `PATCH /platform/org-chart/sections/:id` and `POST /platform/org-chart/sections/:id/stop`; job
+    create and update take `places` (at most 50). New collections `job_title_places` and
+    `job_title_place_fills`, with indexes built at boot.
+
+- **IT: on a computer only the table scrolls.** «فى شاشات الـ IT مش عايز كل الصفحة تعمل Scroll !! عايز
+  فقط الجدول لكن الزراير والفلتر يبقوا ثابتين». Every IT list screen — assets, custody, consumables and
+  their movements, mobile lines, employees, catalogs, vendors, licenses, software, tickets,
+  maintenance orders and plans, spare parts — now uses the Fleet and ATM boards' frame
+  (`PageContainer fullHeight`, `BOARD_FRAME`, `DataTable stickyHead`): from `lg` the title, the
+  buttons, the figures and the filters keep their place, the pager keeps its place below, and only
+  the rows scroll under a head that stays; a phone or tablet scrolls the page as before.
+  - The IT boards' table floor is 8rem (`BOARD_TABLE_FILL_LOW`), not the shared 14rem, so on a
+    1280×720 or 1024×768 screen the rows shrink before the filters move — measured in a browser on
+    every board at 1024×768 to 1920×1080. Fleet and ATM are unchanged.
+  - The mobile lines' network cards are compact from `lg` (counts beside the name, accounts as chips,
+    «+N» past four); the pressed card's mark and ring sit inside the card.
+  - The bulk upload's lines scroll in a box of their own under a sticky head, «تأكيد» in view.
+  - Left as they were: dashboards, records, and the help desk settings (two settings cards over a
+    table of a few priorities).
+
+- **HR: «تعديل» on the employee's «طباعة العقد والمستندات».** «في شاشه الموظفين … نخلي في امكانيه
+  للتعديل زي معملنا قبل كدا تحت الtoggle تعديل و طباعه و تحت يظهر البيانات عشان التعديل و النص التاني
+  الفورم».
+  - Every paper has «تعديل» and «طباعة» under it. Below, side by side: the opened paper's values and
+    the paper as it prints, redrawn with each change.
+  - What is typed is saved as a box is left, for that employee only (`hr_employee_paper_values`), and
+    printed by every paper of theirs that prints it — on the tab and in «المعينون»'s printing for
+    many. The employee's file does not change; clearing a box gives the record's value back. Until
+    something is typed, the values typed for them as a candidate stand.
+  - The contract they hold shows its values and prints as issued; it changes only by renewing or
+    amending it. Its number and term are never typed.
+  - «تاريخ بدء الاشتراك» (form 1) is one date box, on this tab and on «عقد جديد»: the start of work
+    unless another date is chosen.
+  - Server: `PATCH /hr/contracts/employee-papers/:employeeId/values` and `POST …/preview`
+    (`contract.print`); the papers' read returns each paper's values.
+
+- **HR: «نموذج رقم (1)» carries the company's own number and address, the job's wage, and Arabic
+  figures.** «رقم المنشاه … هنثبت اول مربع و هنحط من تاني مربع الرقم دا 3338726 بالعربي من الشمال
+  لليمين و نشيل التاريخ اللي موجو في تحريرا في و عاوزين نحط الاجر داخل اشتراك و الاجر الشامل علي حسب
+  الوظيفهه … رقمها التاميني … العنوان … كل الارقام بالعربي». The scanned pages are unchanged.
+  - «رقم المنشأة»: the first of its eight boxes empty, ٣٣٣٨٧٢٦ in the other seven. Overleaf,
+    «رقمها التأميني» ٣٣٣٨٧٢٦ and «العنوان» «٩٠ د احمد عرابي المهندسين-الجيزه».
+  - «أجر /دخل الاشتراك» and «الأجر الشامل»: the job's «الراتب الثابت» from the organization chart,
+    the pounds at the end of their five boxes, the piasters in their two (variables
+    `job.fixedSalaryPounds`, `job.fixedSalaryPiasters`). A job with none leaves the boxes empty.
+  - «تحريراً في» is left for the hand; «تاريخ بدء الاشتراك» is still the start date.
+  - Overleaf, «أقر أنا …» is left for the hand too: the employee's name is no longer written there
+    («اقر انا دي سبها متكتبش فيها اسم الموظف»; revision 5).
+  - Every figure the form is filled with is printed in Arabic figures; an e-mail address keeps its own.
+  - The template sanitizer keeps rows of five and seven boxes (`c5`, `c7`) and `end`; the paper's
+    revision 4 rewrites the stored row at boot.
+
+- **System users: department, job title and roles on every row, and as filters.** «فى صفحة
+  /system/users مستخدمو النظام عايزك تزود أدوار كل واحد + الإدارة بتاعته + مسماه الوظيفي .. وطبعاً
+  هتزودهم فى الفلتر».
+  - Each row names the account's department and job title. The server resolves the names,
+    retired units included, so an account in a closed department still shows that department.
+  - Each row names the roles held now: a grant that is revoked, not yet started or already ended
+    is not one of them. Three show, and the rest fold into «+n» with all of them on hover.
+  - Three new filters, each taking several picks.
+    - The department filter lists each company department once and means every branch copy of
+      it, or only the copy in the branch chosen.
+    - Changing the branch drops a chosen department that branch does not have.
+    - A chosen department that matches nothing filters to nobody, rather than being dropped.
+    - The role filter searches the roles on the server (ADR-019).
+  - Roles, column and filter, are only for an administrator who holds `role.view`. For anyone
+    else the server sends `roles: null` and refuses a role filter with 403 rather than ignoring it.
+  - `GET /platform/users` takes `roleId`, `departmentId` and `jobTitleId` lists, and each row is
+    a `UserListItemDto`. The search box now also finds the sign-in name, which its placeholder
+    already promised; for an employee that is the employee code.
+
+- **Account setup link: «نسخ الرسالة» beside «نسخ الرابط».** «عند نسخ رابط إعداد الحساب هناك زر نسخ
+  الرابط .. عايز زر تانى جنبه يكون نسخ الرسالة». The button copies the owner's message, ready to paste
+  into WhatsApp, filled in for the person:
+  - their Arabic name and employee code (the account's sign-in name);
+  - the link itself;
+  - where to sign in afterwards: the link's own host, e.g. `ecms.egycash.com.eg`.
+
+  Only an employee's sign-in name is called «كود الموظف»; any other account is named by its
+  username, or by its email when it has none. The message is always in Arabic, whatever language
+  the screen is in. A browser that will not copy shows the message in the dialog to copy by hand.
+
 - **HR: «جاهزون للتعيين» gets the settings bar, with «مستندات الوظائف» and «المعينون».** «عاوز اعمل
   toggle switch في جاهزون للتعيين … بين مستندات الوظائف و حاجه اسمها المعينون … زي اللي موجود فيي
   الاعدادت فال hr»; «ملهاش دعوه باللي فالجدول». The bar sits above the ready-to-hire table, which is
@@ -1022,6 +1166,128 @@ its entry here in the same PR.
       - The same card on «تسليم المحصنات», under «تسليم» and «طباعة»; its sheet's head now reads in
         the card's order — the day, the time, the direction, then the captains and the specialists.
 
+  - Round 25 — «توزيع المحصنات», the owner: «عندى مشكلتين الاولى ان لو ضيفت اى عربيه بتظهر فى توزيع
+    المحصنات على طول انا عاوز اللى يظهر اللى نوعها محصنة بس ولازم اكون دايس حفظ التانية لما بعمل دراج و
+    دروب لل محصنة على العربيه مش بتتحط بتتحط فى حالة دوست على نقل الى بس غير كدا مفيش حاجه بتتغير»,
+    then the two columns' filters, the small chip and the new van card.
+    - ONLY «محصنة» ROWS, ONLY SAVED. `GET /operations/secured/distribution` lists the day's SAVED crew
+      rows (the board's unsaved draft is not in the database) whose «النوع» is the seeded «محصنة»
+      type — found by `seedKey` 'secured' (`findSecuredType`), so a rename keeps it; a live type of that
+      name stands in on an install whose seed was never inserted. A row of another type, or with no
+      type, van or none, is not offered. So nothing on the screen vanishes, a row of another type that
+      already holds the LIVE delivery leg of a listed محصنة (placed before this round, or its type
+      changed since) stays, marked: `crews` are now `OperationsSecuredDistributionCrewDto` —
+      `securedType` (false for such a row), `shiftTypeName`, and `looseNumber` (a row without a van
+      keeps the board's «بدون سيارة (n)» — its place among ALL the day's rows without a van — though
+      only the «محصنة» ones are listed); the card says «ليس من نوع محصنة ·
+      النوع «سفر»» on a dashed amber edge and takes no new محصنة. The proposals by direction
+      (`directionCrewAssignmentIds`) name the «محصنة» rows only. The save refuses a محصنة put on a row
+      that is not «محصنة» unless its delivery leg is already on that very row (its captain switched,
+      or taken off, still save): 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`, checked after the day
+      and before the captain, naming the shipment (`shipmentId`/`SHIPMENT`) and the row
+      (`crewAssignmentId`/`NOT_SECURED`), nothing written — worded in both languages. A board save now
+      stales this screen's read on the saving desk itself (`usePlanOperationsCrew`), not only through
+      the crew topic. «تسليم المحصنات» reads the same list.
+    - THE DROP. Measured with REAL OS drags (XTEST under Xvfb, Chromium's own drag loop, the real API
+      on a seeded day): the screen still had the gates Round 22 took off «لوحة التشغيلة». Only the
+      van cards and the left column answered a dragover «yes» — the grid's gaps, the column's head and
+      padding answered «no» — and Chromium applies the LAST answer it had when the hand lets go, so on
+      a slow PC a hand crossing a gap and releasing on a van was refused on the gap's stale «no»: the
+      log ends on a «yes» dragover on the van, then `dragleave` and `dragend` with `dropEffect` none,
+      no `drop` (at 6× CPU, 2–4 of 6 drops placed). And every dragover asked `dataTransfer.types` for
+      the screen's private MIME type: on a PC whose hook passes only the standard formats (Round 22's
+      finding on the owner's own machine) every van refused every time — 0 of 4 drops on a van placed, only
+      «نقل إلى…» working, exactly as he said. Now (`lib/distribution-drag.ts`): the dragged id is kept
+      in a ref by the chip's own `dragstart`, which writes the id as our type and as `text/plain`,
+      `copyMove`, and sets no state; the drag is drawn one task after the first answer; the WHOLE
+      screen accepts our drag and names no `dropEffect`; the drop reads what is under the pointer — the
+      van card anywhere (its head, the captain's line, the packages, the empty load, a chip on it), the
+      left column anywhere (its head too, folded on a phone) — and does what `resolveShipmentDrop`
+      says; a van with no captain, or a row that is not «محصنة», refuses in words — the van as the
+      toast's title and the whole reason under it (`dropRefusalToast`: a toast's title is cut to one
+      line, and «… فلا يأخذ …» had lost the end of the reason). Proven on the same
+      stack: unplaced → the head, the captain's line, a chip, the empty load; van → van; van → back to
+      the left — 6 of 6 at 1× and at 6× CPU (released the moment it arrives), and 6 of 6 with the
+      private type stripped; «حفظ», then a reload shows every drop where it was left.
+    - THE LEFT COLUMN: a filter bar on top — «البنك أو الفرع» (the billed bank by any of its names,
+      either branch, each branch's own bank; folded as the pools' search, «الاهلى» finds «الأهلي») and
+      «المنطقة» (the areas of the محصنات listed, «بلا منطقة» when one has none). Each محصنة is a SMALL
+      chip: the drag handle, the stage's mark (the badge's tone and glyph, its words on hover), «البنك ·
+      الفرع» (the branch it goes to), its marks as small icons, and «نقل إلى…» as a small icon. Its card
+      opens on hover, on a keyboard focus and on a tap on a phone: the bank and its stage, from → to
+      with each branch's bank, the area, the delivery day (and «متأخرة»), each amount by currency, the
+      packages the vault counted (or «لم تُعدّ بعد»), the vault's receipt number, the van and captain it
+      is on, and the screen's marks in words. The read carries no seals; the receipt keeps them.
+    - THE RIGHT COLUMN: a filter bar on top — «كود السيارة» («١٢» finds 112; «بدون» the crews without
+      a van), «البنك أو الفرع» (a van answers through one of its محصنات) and «المنطقة» (its direction
+      names it — either area of «المعادي - حلوان» — or one of its محصنات is of it; «بلا اتجاه»). AND-ed;
+      «المعروض ٢ من ٨» and «مسح التصفية» once one is set. View only: a van filtered out keeps its draft
+      and «حفظ» saves it.
+    - THE VAN CARD: the head as before (code or «بدون سيارة (n)» · time · direction); then ONE
+      captain's line — first the count of محصنات on it («محصنتان», «0 محصنات»), then the captain: on a
+      van with two, only the FIRST put on the row (`captainEmployeeIds[0]`). No specialists, no
+      «المصري» / «الدولار» / «عملات أخرى». Then «كراتين · حقائب · صناديق», each always, its count written
+      even when 0 (in the card's figures' face — an Arabic zero reads as a dot), summed from the vault's
+      counts; «—» with why to a reader who cannot view the vault. The محصنات on it are the same small
+      chips with the same card. A محصنة riding the OTHER captain of a two-captain van carries a small
+      captain mark («مع …»), and its «نقل إلى…» lists the van's captains first — the switch, one
+      «تراجع» step as before.
+    - «تسليم المحصنات» shares the card: the same van card and chips under «تسليم» and «طباعة»; the
+      confirmation keeps the money and the list, and the printed sheet keeps every detail.
+    - AFTER REVIEW. «حتى لو ب 0 يتكتب» — so a 0 is written only once the vault's counts are in: while
+      that read is out a van says «…», after it failed «—», each with why on hover (`packagingRead`,
+      `vanPackages`), on both screens; and the chip's card says the same rather than «لم تُعدّ بعد،
+      فهي ليست بالخزينة» about a محصنة its own badge marks «بالخزينة». The chip's card no longer
+      opens over its own «نقل إلى…» menu (the menu is a portal React counts inside the chip:
+      `hoverIsOnChip`). A محصنة saved on a kept row and moved off it in the draft goes back there by
+      a drag or by the menu, as the save allows; no other new one does. With no saved «محصنة» row on
+      the day the screen says exactly that, and where a row becomes one — not «لا توجد سيارات مخططة».
+      And the single-shipment door, `POST /operations/secured/:id/assign-delivery` (no screen mounts
+      it), keeps the same rule as the save: 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`, the leg
+      already on that row excepted.
+
+  - Round 25 — «لوحة البنك بفروعه» on «تقرير البنوك», the owner: «صفحة تقرير البنوك عاوز فى الجدول عند
+    البنك فى الاخر بعد الصناديق يكون فيه سهم ادوس عليه يفتح زى داش برود كدا للبنك بالفروع بتاعته».
+    - THE ARROW: the table's last column, «الفروع», after «صندوق» — on every bank's row (none on
+      «الإجمالي», none on a row the server could not attribute), named «فتح لوحة {البنك} بفروعه» to a
+      screen reader and as its tooltip, in a 32px brand square (the board table squeezes a cell's
+      button to 22px). The table's floor stays the nine columns' own, so the report still fits beside
+      its panel at 1280px; on a phone the arrow is at the end of the table's own sideways scroll.
+    - THE WINDOW is the vault reports' own (`ReportModalFrame`, as «تقرير الخزينة» and «لوحة تحكم» on
+      «محصنات الخزينة»): over the whole screen, Escape or × closes it, the focus kept inside and
+      handed back to the arrow — the dashboard the owner already knows, over the page it came from
+      rather than a page of its own that would lose the report's period and name filter behind it.
+      It is a link all the same: the bank is in the address (`?bank=…`, and `bankSide=destination`),
+      so a copied address opens the same bank over the same period, and Back closes it.
+    - FOR THE PAGE'S PERIOD, exactly: the same «من» / «إلى», judged as the report judges them (every
+      محصنة the vault received in the period, delivered since or not, a cancelled receipt out).
+    - WHAT IT SHOWS: the bank's seven tiles (عدد المحصنات، المصري، الدولار، عملات أخرى with its breakdown،
+      الحقائب، الكراتين، الصناديق — the bank's own row of the report, figure for figure); two charts,
+      one measure each — «المصري حسب الفرع» and «عدد المحصنات حسب الفرع»: horizontal bars in one hue,
+      the largest first, eight branches named and the rest folded into one muted «باقي الفروع (n)»
+      bar, the figure at each bar's tip and the branch's count, pound and dollar in its hover title;
+      then «بيان المحصنات لكل فرع» — the reports' table with «المنطقة» after the branch, a branch of
+      another bank saying whose («فرع تابع لـ…»), every head sortable (the pound, largest first, by
+      default), «الإجمالي» pinned — beside «إجمالي قيمة الشحنات». A bank with nothing in the period
+      keeps every section, at zero. «Excel | PDF» carry the branch table (with «المنطقة») and the
+      panel, the period, the bank and the side under the title.
+    - WHICH BRANCH: a shipment names two, so the window asks — «تُنسب كل محصنة إلى: من فرع | إلى فرع».
+      «من فرع» by default: the report counts what the vault RECEIVED, and that came from the branch it
+      was collected from. «إلى فرع» files the same محصنات under where they are delivered; the totals
+      do not move. The billed bank's own branch is the destination unless a second bank was named,
+      while the origin may be any bank's branch — so a row of another bank's branch says whose.
+    - API: `GET /operations/reports/banks/:bankId/branches?from=&to=&side=origin|destination` —
+      the bank report's readers (`OPERATIONS_BANK_REPORT_KEYS`, no grant added) and its period;
+      `OperationsBankBranchReportDto` (`rows` per branch — id, name, code, area, `otherBankName` —
+      and `total`, which IS the bank's row of `GET /operations/reports/banks`). A malformed id, a bad
+      day, an unknown `side` or key → 400; an id that names no bank → 404; a bank with nothing in the
+      period → 200, no rows, a zero total. The database narrows it — the period's receipts by their
+      indexed instant, then only this bank's live shipments by id, with only the branch ids and the
+      money projected — and the roll-up is the bank report's own (`branchReportRows` over the same
+      `groupBy`, one receipt builder for both), so the branches add up to the bank's row by
+      construction: the packages are the treasury's, behind the custody port, which a `$lookup`
+      would read behind its back.
+
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
   - `/it/vehicle-checks` in the console: six figures of a window (today, 7 or 30 days) under a branch
@@ -1647,6 +1913,19 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **A role holding a retired permission can be saved again.** «لما بعدل صلاحيات دور بيظهر كدا !
+  Unknown permission keys: applicant.returnToStage» (the role «الموارد البشرية Test»).
+  - The cause: `applicant.returnToStage` was retired on 2026-11-16 (replaced by
+    `applicantReturn.execute`). Roles that held it kept it, and every save checked ALL the role's
+    keys against the registry, so the role could not be saved at all.
+  - Now only the keys an edit ADDS must be registered, the same rule the "keys you hold" check
+    already followed. A key the role already holds may be re-sent and is kept.
+  - Delegated grants follow the same rule.
+  - Retired keys are not stripped automatically: a key can be missing from the registry only for
+    now (the automation keys while `AUTOMATION_ENABLED` is off).
+  - The role form already lists such keys at the end, as «غير معروفة», where they can be unticked
+    but not re-added.
+
 - **HR: «نموذج رقم (1)» prints on the owner's own pages.** «انا عاوز النموزج بردو شبه منا بعتو بظبط
   مفهوش اي تعديل خالص و بيتملي عادي بس الشكل اللي ادتولك بظبط». The form was drawn again in the
   system's font, and its letters were lighter and thinner than his. It now prints the two pages of
@@ -2108,6 +2387,14 @@ its entry here in the same PR.
   A licence memo refreshes the live period read; a custody memo or operation also refreshes a closed
   range, since its states are as of now. The overview is unchanged: «تراخيص قريبة» opens the new tab.
   No new permission key. No migration; data unchanged; no new index.
+
+- **HR: «جاهزون للتعيين» and «المعينون» are joined by a small toggle; «مستندات الوظائف» is a button
+  again.** «عاوز نرجع ال زرار بتاع مستندات الوظائف لوحده زي مكان و عاوز ال toggle slider يبقا بين جاهزون
+  للتعيين و المعينون و … ميكنش ال tggole background اخده الصفحه كلها لا هو عاوزين يبقا اخد مساحه صغيره
+  فوق الزرار بتاع المستندات». The full-width bar is gone. Both pages carry, in their head, the
+  settings bar in a compact form (`SettingsTabBar compact`): as wide as its two lists, no head
+  circle. Under it is «مستندات الوظائف», which opens its popup as before (`JobPapersDialog` back,
+  the section page gone; `/employees/ready/job-papers` leads to the list).
 
 - **«لوحة تحكم الحركة» at `/fleet`: two NEW tabs, «المخالفات المرورية والتسويات» and «الوقود
   والمصروفات», right after «الحوادث ومطالبات التأمين», as approved.** «خش على الاتنين اللى بعدهم» —

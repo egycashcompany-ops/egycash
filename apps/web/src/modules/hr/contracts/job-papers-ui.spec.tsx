@@ -1,4 +1,4 @@
-// «مستندات الوظائف» under «جاهزون للتعيين»'s bar (A28) — every department, the jobs in it, and beside each job
+// «مستندات الوظائف» on «جاهزون للتعيين» (A28) — every department, the jobs in it, and beside each job
 // every paper: what a line holds as it is ticked, a department's line for all its jobs, a job added,
 // and what «حفظ» sends. Read from source where the screen needs a live client.
 import { readFileSync } from 'node:fs';
@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { type JobPapersDto, type Locale } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
-import { changedLines, choiceOf, everyPaper, jobsOf, lineKey, toggled } from './components/JobPapersPanel';
+import { changedLines, choiceOf, everyPaper, jobsOf, lineKey, toggled } from './components/JobPapersDialog';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const code = (path: string): string =>
@@ -15,9 +15,10 @@ const code = (path: string): string =>
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 const READY = code('../employee-management/employees/pages/EmployeesReadyPage.tsx');
-const HUB = code('../employee-management/employees/pages/ReadyHubLayout.tsx');
+const HIRED = code('../employee-management/employees/pages/HiredEmployeesPage.tsx');
+const HEAD = code('../employee-management/employees/components/ReadyHeaderActions.tsx');
 const ROUTES = code('../employee-management/routes.tsx');
-const DIALOG = code('components/JobPapersPanel.tsx');
+const DIALOG = code('components/JobPapersDialog.tsx');
 
 const paper = (key: string, kind: 'contract' | 'form' = 'form') => ({ key, name: { ar: key, en: key }, kind });
 const job = (jobTitleId: string, keys: string[]) => ({ jobTitleId, name: { ar: jobTitleId, en: jobTitleId }, keys });
@@ -67,12 +68,19 @@ describe('«حفظ»', () => {
 });
 
 describe('«جاهزون للتعيين»', () => {
-  it('opens «مستندات الوظائف» from the bar above the page, for who may change the templates', () => {
-    expect(HUB).toContain("{ key: 'job-papers', permission: 'contractTemplate.manage', label: 'employees.readyHub.jobPapers' }");
-    expect(ROUTES).toContain('<RequirePermission permission="contractTemplate.manage">\n                  <ReadyJobPapersPage />');
-    // No longer a button on the table's own header.
-    expect(READY).not.toContain('JobPapers');
-    expect(translate('ar', 'employees.readyHub.jobPapers')).toBe('مستندات الوظائف');
+  /**
+   * «عاوز نرجع ال زرار بتاع مستندات الوظائف لوحده زي مكان»: the button in the page's head again, under
+   * the small toggle, opening its popup — on «جاهزون للتعيين» and on «المعينون».
+   */
+  it('opens «مستندات الوظائف» from a button at the top, for who may change the templates', () => {
+    expect(HEAD).toContain('<Can permission="contractTemplate.manage">');
+    expect(HEAD).toContain('onClick={() => setJobPapers(true)} data-job-papers-open');
+    expect(HEAD).toContain('<JobPapersDialog open={jobPapers} onClose={() => setJobPapers(false)} />');
+    expect(READY).toContain('actions={<ReadyHeaderActions />}');
+    expect(HIRED).toContain('actions={<ReadyHeaderActions />}');
+    // Its address of one day leads back to the list.
+    expect(ROUTES).toContain('<Route path="job-papers" element={<Navigate to="/employees/ready" replace />} />');
+    expect(translate('ar', 'employees.ready.jobPapers')).toBe('مستندات الوظائف');
   });
 
   it('opens each department to its jobs, a line for all of them first, and saves the changed lines', () => {

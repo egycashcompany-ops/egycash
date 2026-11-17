@@ -6,9 +6,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ApproveOvertime,
   type CreateAttendanceRegularization,
+  type CreateAttendanceDecision,
   type CreateShift,
   type CreateShiftAssignment,
+  type DecideAttendanceDecision,
   type DecideAttendanceRegularization,
+  type RevokeAttendanceDecision,
   type UpdateShift,
 } from '@ecms/contracts';
 import { listKey } from '../../../../shared/lib/query-keys';
@@ -18,6 +21,8 @@ const MODULE = 'hr';
 const SHIFTS = 'attendanceShifts';
 const ASSIGNMENTS = 'attendanceAssignments';
 const DAYS = 'attendanceDays';
+const SHEET = 'attendanceSheet';
+const DECISIONS = 'attendanceDecisions';
 const MY_DAYS = 'attendanceMyDays';
 const REGULARIZATIONS = 'attendanceRegularizations';
 const MY_REGULARIZATIONS = 'attendanceMyRegularizations';
@@ -82,6 +87,64 @@ export const useAttendanceDays = (params: Params, enabled = true) =>
     placeholderData: (prev) => prev,
     enabled,
   });
+
+/**
+ * The daily sheet — one date, starting from the employees. Its own cache key, because its rows are
+ * a different shape from the day list's and a no-show has no day row at all.
+ */
+export const useAttendanceSheet = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, SHEET, params),
+    queryFn: () => api.listAttendanceSheet(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * Manager day decisions (stage 3). Every mutation invalidates BOTH the decision lists and the day
+ * caches, because deciding a day is what rewrites it: the sheet behind the dialog must not keep
+ * showing the status the decision just replaced.
+ */
+const invalidateDecisions = (client: ReturnType<typeof useQueryClient>): void => {
+  void client.invalidateQueries({ queryKey: [MODULE, DECISIONS] });
+  void client.invalidateQueries({ queryKey: [MODULE, DAYS] });
+  void client.invalidateQueries({ queryKey: [MODULE, SHEET] });
+  void client.invalidateQueries({ queryKey: [MODULE, MY_DAYS] });
+};
+
+export const useAttendanceDecisions = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, DECISIONS, params),
+    queryFn: () => api.listAttendanceDecisions(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useCreateAttendanceDecision = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAttendanceDecision) => api.createAttendanceDecision(body),
+    onSuccess: () => invalidateDecisions(client),
+  });
+};
+
+export const useDecideAttendanceDecision = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: DecideAttendanceDecision }) =>
+      api.decideAttendanceDecision(id, body),
+    onSuccess: () => invalidateDecisions(client),
+  });
+};
+
+export const useRevokeAttendanceDecision = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: RevokeAttendanceDecision }) =>
+      api.revokeAttendanceDecision(id, body),
+    onSuccess: () => invalidateDecisions(client),
+  });
+};
 
 export const useMyAttendanceDays = (params: Params) =>
   useQuery({

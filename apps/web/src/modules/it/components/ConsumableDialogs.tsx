@@ -32,6 +32,7 @@ import {
 } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable } from '../../../shared/ui/DataTable';
@@ -46,7 +47,7 @@ import {
   useIssueItConsumables,
   useItBranchOptions,
   useItConsumableMovements,
-  useItMoveTargets,
+  useItConsumableTransferTargets,
   useReceiveItConsumable,
   useReturnItConsumable,
   useScrapItConsumable,
@@ -736,10 +737,15 @@ export const IssueConsumablesDialog = ({
   item: ItConsumableDto | null;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branches = useItBranchOptions();
   const issue = useIssueItConsumables();
   const printer = useConsumableMemoPrinter();
+  // «مركّب على» names one of the register's ASSETS, and its search reads `/it/assets`: offered
+  // only to a reader of the assets. The store's own grants issue an item; they do not open the
+  // register of devices (the server refuses an asset outside `itAsset.view` too).
+  const canAssets = can('itAsset.view');
   const [employeeId, setEmployeeId] = useState('');
   const [employeeLabel, setEmployeeLabel] = useState('');
   const [issuedAt, setIssuedAt] = useState('');
@@ -939,17 +945,19 @@ export const IssueConsumablesDialog = ({
                     </Field>
                   </div>
                 </div>
-                <Field
-                  label={t('it.consumables.issue.installedOn')}
-                  hint={t('it.consumables.issue.installedOnHint')}
-                >
-                  <AssetPicker
-                    value={line.assetId}
-                    withoutStatus="disposed"
-                    onChange={(assetId) => patchLine(line.key, { assetId })}
-                    ariaLabel={t('it.consumables.issue.installedOn')}
-                  />
-                </Field>
+                {canAssets && (
+                  <Field
+                    label={t('it.consumables.issue.installedOn')}
+                    hint={t('it.consumables.issue.installedOnHint')}
+                  >
+                    <AssetPicker
+                      value={line.assetId}
+                      withoutStatus="disposed"
+                      onChange={(assetId) => patchLine(line.key, { assetId })}
+                      ariaLabel={t('it.consumables.issue.installedOn')}
+                    />
+                  </Field>
+                )}
               </li>
             );
           })}
@@ -988,8 +996,8 @@ export const IssueConsumablesDialog = ({
 // many» is answered, never assumed. An item with nothing on hand is listed and left out. The other
 // store's item of the same name receives it, and is made there when it has none — the toast says
 // which, from the server's answer. The branches offered are the ones the SERVER says the caller's
-// `itAsset.assign` reaches (`GET /it/assets/move-targets` — the consumables ride the assets'
-// grants, §2.11); it answers 403 for any other.
+// `itConsumable.assign` reaches (`GET /it/consumables/transfer-targets` — the store's own custody
+// grant since 2026-11-17, §2.11, not the assets' `move-targets`); it answers 403 for any other.
 
 export const TransferConsumablesDialog = ({
   open,
@@ -1007,7 +1015,7 @@ export const TransferConsumablesDialog = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branches = useItBranchOptions();
-  const reach = useItMoveTargets(open);
+  const reach = useItConsumableTransferTargets(open);
   const transfer = useTransferItConsumables();
   const [toBranchId, setToBranchId] = useState('');
   const [at, setAt] = useState('');

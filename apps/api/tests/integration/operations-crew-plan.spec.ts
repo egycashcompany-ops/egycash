@@ -1072,18 +1072,34 @@ describe('rows WITHOUT A VAN — «صف ميكونش ليه عربيه»', () =>
 
     // Round 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: «توزيع المحصنات» lists
     // the row without a van too, AFTER the vans, naming no van (never the string "null").
-    const distribution = await request(app)
-      .get(`/api/v1/operations/secured/distribution?date=${DAY}`)
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(distribution.status, JSON.stringify(distribution.body)).toBe(200);
-    const vans = data<OperationsSecuredDistributionDto>(distribution).crews;
+    // Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس»: only a row of the «محصنة» type. looseA
+    // is «سفر», so it is not listed; made «محصنة», it is.
+    const distributionCrews = async () => {
+      const res = await request(app)
+        .get(`/api/v1/operations/secured/distribution?date=${DAY}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<OperationsSecuredDistributionDto>(res).crews;
+    };
+    expect((await distributionCrews()).map((van) => van.crewAssignmentId)).not.toContain(looseA);
+    const secured = await typeNamed('محصنة');
+    await OperationsCrewAssignmentModel.updateOne(
+      { _id: looseA },
+      { $set: { shiftTypeId: new Types.ObjectId(secured.id) } },
+    ).exec();
+    const vans = await distributionCrews();
     const loose = vans.find((van) => van.crewAssignmentId === looseA);
-    expect(loose).toMatchObject({ vehicleId: null, vehicleCode: null, drivers: [] });
+    expect(loose).toMatchObject({ vehicleId: null, vehicleCode: null, drivers: [], securedType: true });
     expect(loose?.captains.map((p) => p.employeeId)).toEqual([cap2]);
     // …after every van: the cards with a van first, then the rows without one.
     const firstLoose = vans.findIndex((van) => van.vehicleId === null);
     expect(vans.slice(firstLoose).every((van) => van.vehicleId === null)).toBe(true);
     expect(vans.every((van) => van.vehicleId !== 'null')).toBe(true);
+    // Back to «سفر», as the cases below expect it.
+    await OperationsCrewAssignmentModel.updateOne(
+      { _id: looseA },
+      { $set: { shiftTypeId: new Types.ObjectId((await typeNamed('سفر')).id) } },
+    ).exec();
 
     // The captain's day: captaincy is the day's plan, van or none — cap2 is a captain today.
     const dayRow = (await board()).day;

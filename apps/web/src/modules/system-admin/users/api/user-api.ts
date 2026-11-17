@@ -29,6 +29,7 @@ import {
   type TimelineDto,
   type UpdateUser,
   type UserDto,
+  type UserListItemDto,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -42,9 +43,12 @@ import {
 
 export type SystemUserListParams = QueryParams;
 
-/** `GET /platform/users` — branch/department/section-scoped server-side by `user.view`. */
-export const listUsers = (params: SystemUserListParams): Promise<Paginated<UserDto>> =>
-  getPage<UserDto>(`/platform/users${buildQuery(params)}`);
+/**
+ * `GET /platform/users` — branch/department/section-scoped server-side by `user.view`. Each row
+ * names its department and job title, and its roles when the caller holds `role.view`.
+ */
+export const listUsers = (params: SystemUserListParams): Promise<Paginated<UserListItemDto>> =>
+  getPage<UserListItemDto>(`/platform/users${buildQuery(params)}`);
 
 export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform/users/${id}`);
 

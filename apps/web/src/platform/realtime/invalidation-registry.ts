@@ -35,6 +35,13 @@ const shipmentSweep: readonly KeyPrefix[] = [
 const attendanceDaySweep: readonly KeyPrefix[] = [
   ['hr', 'attendanceDays'],
   ['hr', 'attendanceMyDays'],
+  // The daily sheet is a view of the same days (stage 2) — it just starts from the employees — so
+  // anything that rewrites a day has to refresh it too. It was missed when the sheet arrived:
+  // this registry guards that every TOPIC is mapped, not that every cache of a topic is swept.
+  ['hr', 'attendanceSheet'],
+  // And the decisions themselves (stage 3): approving or revoking one changes both the day and
+  // the queue it was sitting in.
+  ['hr', 'attendanceDecisions'],
 ];
 
 /**
@@ -378,6 +385,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'hr.attendancePunch': attendanceDaySweep,
   'hr.attendancePunchBatch': attendanceDaySweep,
   'hr.attendanceRegularization': attendanceDaySweep,
+  'hr.attendanceDayDecision': attendanceDaySweep,
   'hr.attendanceShift': [
     ['hr', 'attendanceShifts'],
     ['hr', 'attendanceAssignments'],
@@ -638,15 +646,22 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'platform.approvalWorkflow': [['system-admin', 'approval-workflows']],
   'platform.organization': [['org'], ['platform', 'organization']],
   'platform.branch': [['org'], ['platform', 'organization'], ['system-admin', 'branch-options']],
-  'platform.department': [['org'], ['platform', 'organization']],
-  'platform.departmentCatalog': [['org'], ['platform', 'organization']],
-  'platform.sectionCatalog': [['org'], ['platform', 'organization']],
-  'platform.section': [['org'], ['platform', 'organization']],
+  // P-ORG-3 §6.2: the organization module's own keys start with 'organization' — the two rows above
+  // matched no /organization/* query, so another user's edit refreshed nothing there.
+  'platform.department': [['org'], ['platform', 'organization'], ['organization', 'departments'], ['organization', 'org-chart']],
+  'platform.departmentCatalog': [['org'], ['platform', 'organization'], ['organization', 'departments'], ['organization', 'org-chart']],
+  'platform.sectionCatalog': [['org'], ['platform', 'organization'], ['organization', 'sections'], ['organization', 'org-chart']],
+  'platform.section': [['org'], ['platform', 'organization'], ['organization', 'sections'], ['organization', 'org-chart']],
   'platform.costCenter': [
     ['hr', 'assignableCostCenters'],
     ['platform', 'costCenters'],
   ],
-  'platform.jobTitle': [['org', 'job-titles']],
+  'platform.jobTitle': [
+    ['org', 'job-titles'],
+    ['organization', 'jobTitles'],
+    ['organization', 'job-titles'],
+    ['organization', 'org-chart'],
+  ],
   'platform.application': [['me', 'applications']],
   'platform.applicationCategory': [['me', 'applications']],
   'platform.applicationSection': [['me', 'applications']],

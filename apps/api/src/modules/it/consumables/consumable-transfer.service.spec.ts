@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   signal: vi.fn(),
   reserve: vi.fn(),
   findBranch: vi.fn(),
+  listBranches: vi.fn(),
   itemsByIds: vi.fn(),
   byBranchAndName: vi.fn(),
   moveStock: vi.fn(),
@@ -36,7 +37,7 @@ vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unit
 vi.mock('../../../platform/audit', () => ({ auditService: { record: mocks.audit } }));
 vi.mock('../../../platform/realtime', () => ({ publishAuditedChange: mocks.signal }));
 vi.mock('../../../platform/organization', () => ({
-  branchRepository: { findById: mocks.findBranch },
+  branchRepository: { findById: mocks.findBranch, listAll: mocks.listBranches },
 }));
 vi.mock('../shared/sequence', () => ({ reserveSequenceBlock: mocks.reserve }));
 vi.mock('./consumable.repository', () => ({
@@ -72,7 +73,7 @@ const ctx = {
   userId: String(new Types.ObjectId()),
   locale: 'ar',
   branchId: String(OCTOBER),
-  permissions: { 'itAsset.assign': 'organization' },
+  permissions: { 'itConsumable.assign': 'organization' },
 } as never;
 const scope = { scope: 'organization' } as never;
 
@@ -355,14 +356,33 @@ describe('a refused transfer writes nothing', () => {
     expect(mocks.signal).not.toHaveBeenCalled();
   };
 
-  it('a branch the caller’s itAsset.assign does not reach — before anything is read', async () => {
-    const keeper = { ...(ctx as object), permissions: { 'itAsset.assign': 'branch' } } as never;
+  it('a branch the caller’s itConsumable.assign does not reach — before anything is read', async () => {
+    const keeper = {
+      ...(ctx as object),
+      permissions: { 'itConsumable.assign': 'branch' },
+    } as never;
     const attempt = itConsumableTransferService.transfer(
       { toBranchId: String(TANTA), lines: [{ consumableId: String(MOUSE), qty: 1 }] } as never,
       keeper,
       scope,
     );
     await expect(attempt).rejects.toBeInstanceOf(ForbiddenError);
+    expect(mocks.itemsByIds).not.toHaveBeenCalled();
+    nothingWritten();
+  });
+
+  it('a branch only the ASSETS’ custody grant reaches — the store’s own grant decides (2026-11-17)', async () => {
+    const assetKeeper = {
+      ...(ctx as object),
+      permissions: { 'itAsset.assign': 'organization', 'itConsumable.assign': 'branch' },
+    } as never;
+    await expect(
+      itConsumableTransferService.transfer(
+        { toBranchId: String(TANTA), lines: [{ consumableId: String(MOUSE), qty: 1 }] } as never,
+        assetKeeper,
+        scope,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
     expect(mocks.itemsByIds).not.toHaveBeenCalled();
     nothingWritten();
   });
@@ -453,5 +473,44 @@ describe('a refused transfer writes nothing', () => {
       ConflictError,
     );
     nothingWritten();
+  });
+});
+
+describe('where a transfer may go — GET /it/consumables/transfer-targets', () => {
+  const CLOSED = new Types.ObjectId('6563a1b2c3d4e5f6a7b8c9e3');
+  const BRANCHES = [
+    { _id: OCTOBER, status: 'active' },
+    { _id: TANTA, status: 'active' },
+    { _id: CLOSED, status: 'inactive' },
+  ];
+
+  beforeEach(() => {
+    mocks.listBranches.mockResolvedValue(BRANCHES);
+  });
+
+  it('every active branch an organization-wide itConsumable.assign reaches, in the list’s order', async () => {
+    expect(await itConsumableTransferService.transferTargets(ctx)).toEqual({
+      branchIds: [String(OCTOBER), String(TANTA)],
+    });
+  });
+
+  it('only the home branch for a branch-scoped holder — the very test the transfer applies', async () => {
+    const keeper = {
+      ...(ctx as object),
+      permissions: { 'itConsumable.assign': 'branch' },
+    } as never;
+    expect(await itConsumableTransferService.transferTargets(keeper)).toEqual({
+      branchIds: [String(OCTOBER)],
+    });
+  });
+
+  it('asks the store’s own grant, never the assets’ — the assets’ custody grant reaches nothing here', async () => {
+    const assetKeeper = {
+      ...(ctx as object),
+      permissions: { 'itAsset.assign': 'organization' },
+    } as never;
+    expect(await itConsumableTransferService.transferTargets(assetKeeper)).toEqual({
+      branchIds: [],
+    });
   });
 });

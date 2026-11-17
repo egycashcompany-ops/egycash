@@ -126,6 +126,11 @@ let crew3 = '';
 let earlyCrew = '';
 let soonCrew = '';
 let otherCrew = '';
+/**
+ * Round 25 — the seeded «محصنة» type: «توزيع المحصنات» lists only the crew rows of that type, so
+ * every row this file plans is of it unless a case says otherwise (`planDay`, `crewBoard`).
+ */
+let securedTypeId = '';
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -264,6 +269,8 @@ const planDay = async (
     specialist2EmployeeIds?: string[];
     direction?: string;
     plannedTime?: string;
+    /** Round 25 — the row's «النوع»; the «محصنة» type unless given (null: no type). */
+    shiftTypeId?: string | null;
   }[],
 ): Promise<Map<string, string>> => {
   const roster = await request(app)
@@ -274,7 +281,7 @@ const planDay = async (
   const plan = await request(app)
     .post('/api/v1/operations/crew-board')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ date, rows });
+    .send({ date, rows: rows.map((r) => ({ shiftTypeId: securedTypeId, ...r })) });
   expect(plan.status, JSON.stringify(plan.body)).toBe(200);
   const ids = new Map<string, string>();
   for (const row of data<OperationsCrewBoardDto>(plan).rows) {
@@ -527,6 +534,15 @@ beforeAll(async () => {
     });
   expect(type.status).toBe(201);
   typeId = data<FleetVehicleTypeDto>(type).id;
+
+  // Round 25 — the seeded «محصنة» type (the boot seeds the legacy nine).
+  const types = await request(app)
+    .get('/api/v1/operations/shift-types?page=1&pageSize=100')
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(types.status, JSON.stringify(types.body)).toBe(200);
+  securedTypeId =
+    data<{ id: string; name: string }[]>(types).find((type) => type.name === 'محصنة')?.id ?? '';
+  expect(securedTypeId).not.toBe('');
 
   // Created out of code order, so the screen's van-code order is the server's doing.
   van3 = await mkVehicle('OPS-D3');
@@ -1826,11 +1842,17 @@ describe('Round 24 — a row WITHOUT A VAN takes محصنات like a van', () =>
   let second = ''; // a draft, placed on the row
   let third = ''; // in the vault, onto the row through «صرف الخزينة»'s assign dialog
 
-  const crewBoard = (body: Record<string, unknown>): request.Test =>
+  // Every row of the «محصنة» type (Round 25) unless the case says otherwise — whole rows, so a
+  // re-sent row keeps it.
+  const crewBoard = (body: { rows: Record<string, unknown>[] } & Record<string, unknown>): request.Test =>
     request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: LOOSE_DAY, ...body });
+      .send({
+        date: LOOSE_DAY,
+        ...body,
+        rows: body.rows.map((row) => ({ shiftTypeId: securedTypeId, ...row })),
+      });
   const myDay = async (): Promise<OperationsMobileDayDto> => {
     const res = await request(app)
       .get(`/api/v1/operations/mobile/my-day?date=${LOOSE_DAY}`)
@@ -2128,5 +2150,399 @@ describe('Round 24 — a row WITHOUT A VAN takes محصنات like a van', () =>
         dayBoard,
       ).shipments.find((s) => s.id === fourth)?.crew?.looseNumber,
     ).toBe(2);
+  });
+});
+
+describe('Round 25 — «اللى نوعها محصنة بس ولازم اكون دايس حفظ»: only the saved «محصنة» rows', () => {
+  /** Its own day: a row of each kind, all heading for «الهرم», so the direction would pick each. */
+  const R25_DAY = shift(57);
+  let dailyTypeId = '';
+  let travelTypeId = '';
+  let capS = ''; // the «محصنة» van's captain
+  let capD = ''; // the «يومي» van's
+  let capN = ''; // the van with no type's
+  let capT = ''; // van T: «محصنة» when the shipment was put on it, «سفر» since — two captains
+  let capT2 = '';
+  let capL = ''; // the «محصنة» row without a van
+  let capLD = ''; // the «يومي» row without a van
+  let crewS = '';
+  let crewD = '';
+  let crewN = '';
+  let crewT = '';
+  let looseS = '';
+  let looseD = '';
+  let vanT = '';
+  let legacy = ''; // in the vault, placed on T while T was «محصنة»
+  let free = ''; // in the vault, on no van
+  let freeDraft = ''; // a draft, on no van
+
+  const board = (rows: Record<string, unknown>[]): request.Test =>
+    request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: R25_DAY, rows });
+  const typeNamed = async (name: string): Promise<{ id: string; version: number }> => {
+    const res = await request(app)
+      .get('/api/v1/operations/shift-types?page=1&pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const found = data<{ id: string; name: string; version: number }[]>(res).find(
+      (type) => type.name === name,
+    );
+    expect(found, name).toBeDefined();
+    return found as { id: string; version: number };
+  };
+  const vanTRow = (shiftTypeId: string): Record<string, unknown> => ({
+    vehicleId: vanT,
+    captainEmployeeIds: [capT, capT2],
+    direction: 'الهرم',
+    shiftTypeId,
+  });
+
+  beforeAll(async () => {
+    dailyTypeId = (await typeNamed('يومي')).id;
+    travelTypeId = (await typeNamed('سفر')).id;
+    capS = await mkCaptain('قائد المحصنة');
+    capD = await mkCaptain('قائد اليومي');
+    capN = await mkCaptain('قائد بلا نوع');
+    capT = await mkCaptain('قائد السفر الأول');
+    capT2 = await mkCaptain('قائد السفر الثاني');
+    capL = await mkCaptain('قائد محصنة بلا سيارة');
+    capLD = await mkCaptain('قائد يومي بلا سيارة');
+    const vanS = await mkVehicle('OPS-R25-S');
+    const vanD = await mkVehicle('OPS-R25-D');
+    const vanN = await mkVehicle('OPS-R25-N');
+    vanT = await mkVehicle('OPS-R25-T');
+    const crews = await planDay(R25_DAY, [
+      { vehicleId: vanS, captainEmployeeIds: [capS], direction: 'الهرم' },
+      { vehicleId: vanD, captainEmployeeIds: [capD], direction: 'الهرم', shiftTypeId: dailyTypeId },
+      { vehicleId: vanN, captainEmployeeIds: [capN], direction: 'الهرم', shiftTypeId: null },
+      { vehicleId: vanT, captainEmployeeIds: [capT, capT2], direction: 'الهرم' },
+    ]);
+    crewS = crews.get(vanS) ?? '';
+    crewD = crews.get(vanD) ?? '';
+    crewN = crews.get(vanN) ?? '';
+    crewT = crews.get(vanT) ?? '';
+    // The «يومي» row without a van is added FIRST: on the board it is «بدون سيارة (1)», the
+    // «محصنة» one «(2)» — and this screen, which lists the second only, still calls it «(2)».
+    const loose = await board([
+      { vehicleId: null, captainEmployeeIds: [capLD], direction: 'الهرم', shiftTypeId: dailyTypeId },
+      { vehicleId: null, captainEmployeeIds: [capL], direction: 'الهرم', shiftTypeId: securedTypeId },
+    ]);
+    expect(loose.status, JSON.stringify(loose.body)).toBe(200);
+    [looseD, looseS] = data<OperationsCrewBoardDto>(loose).vehiclelessRows.map((row) => row.id) as [
+      string,
+      string,
+    ];
+    expect([crewS, crewD, crewN, crewT, looseS, looseD].every((id) => id !== '')).toBe(true);
+
+    legacy = (await book(R25_DAY, 'الهرم')).id;
+    await intoVault(legacy);
+    free = (await book(R25_DAY, 'الهرم')).id;
+    await intoVault(free);
+    freeDraft = (await book(R25_DAY, 'الهرم')).id;
+    // The shipment rides T while T is «محصنة»…
+    const placed = await save(
+      [{ shipmentId: legacy, crewAssignmentId: crewT, captainEmployeeId: capT, version: null }],
+      R25_DAY,
+    );
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    // …then the board makes T a «سفر» row (a whole row, saved through the board's own route).
+    const retyped = await board([vanTRow(travelTypeId)]);
+    expect(retyped.status, JSON.stringify(retyped.body)).toBe(200);
+  });
+
+  it('lists only the rows of the «محصنة» type — another type, or none, is not offered', async () => {
+    const view = await viewOf(R25_DAY);
+    const ids = view.crews.map((crew) => crew.crewAssignmentId);
+    // The vans by code (S, then T — kept, see below), then the row without a van.
+    expect(ids).toEqual([crewS, crewT, looseS]);
+    for (const absent of [crewD, crewN, looseD]) expect(ids).not.toContain(absent);
+    expect(view.crews[0]).toMatchObject({ securedType: true, shiftTypeName: 'محصنة', looseNumber: null });
+    // The board's number among ALL the day's rows without a van — not «(1)» among those listed.
+    expect(view.crews[2]).toMatchObject({ vehicleId: null, securedType: true, looseNumber: 2 });
+  });
+
+  it('keeps a row of another type that already carries one of the screen’s محصنات — marked, never proposed', async () => {
+    const view = await viewOf(R25_DAY);
+    expect(view.crews.find((crew) => crew.crewAssignmentId === crewT)).toMatchObject({
+      vehicleCode: 'OPS-R25-T',
+      securedType: false,
+      shiftTypeName: 'سفر',
+    });
+    const row = view.shipments.find((s) => s.id === legacy);
+    expect(row?.placedCrewAssignmentId).toBe(crewT);
+    // Every row heads for «الهرم»; only the «محصنة» ones are proposed.
+    for (const id of [free, freeDraft]) {
+      expect(view.shipments.find((s) => s.id === id)?.directionCrewAssignmentIds).toEqual([
+        crewS,
+        looseS,
+      ]);
+    }
+  });
+
+  it('a row saved on the board as «محصنة» shows on the next read — and leaves when it stops being one', async () => {
+    const retyped = await board([
+      { vehicleId: null, crewAssignmentId: looseD, captainEmployeeIds: [capLD], direction: 'الهرم', shiftTypeId: securedTypeId },
+    ]);
+    expect(retyped.status, JSON.stringify(retyped.body)).toBe(200);
+    // After the vans, the rows without one in the order the board added them: «يومي» first.
+    expect((await viewOf(R25_DAY)).crews.map((crew) => crew.crewAssignmentId)).toEqual([
+      crewS,
+      crewT,
+      looseD,
+      looseS,
+    ]);
+    const back = await board([
+      { vehicleId: null, crewAssignmentId: looseD, captainEmployeeIds: [capLD], direction: 'الهرم', shiftTypeId: dailyTypeId },
+    ]);
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    expect((await viewOf(R25_DAY)).crews.map((crew) => crew.crewAssignmentId)).not.toContain(
+      looseD,
+    );
+  });
+
+  it('refuses a محصنة on a row that is not «محصنة» — 422 naming the shipment and the row, nothing written', async () => {
+    for (const [crew, captain] of [
+      [crewD, capD],
+      [crewN, capN],
+      [crewT, capT],
+      [looseD, capLD],
+    ] as const) {
+      const res = await save(
+        [{ shipmentId: free, crewAssignmentId: crew, captainEmployeeId: captain, version: null }],
+        R25_DAY,
+      );
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res)).toMatchObject({
+        code: ErrorCodes.OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED,
+        details: [
+          { field: 'shipmentId', code: 'SHIPMENT', message: free },
+          { field: 'crewAssignmentId', code: 'NOT_SECURED', message: crew },
+        ],
+      });
+    }
+    // All or nothing: a good change beside a refused one writes neither.
+    const mixed = await save(
+      [
+        { shipmentId: freeDraft, crewAssignmentId: crewS, captainEmployeeId: capS, version: null },
+        { shipmentId: free, crewAssignmentId: crewD, captainEmployeeId: capD, version: null },
+      ],
+      R25_DAY,
+    );
+    expect(mixed.status).toBe(422);
+    expect(await deliveryLegOf(free)).toBeNull();
+    expect(await deliveryLegOf(freeDraft)).toBeNull();
+    // The «محصنة» rows take it.
+    const ok = await save(
+      [{ shipmentId: free, crewAssignmentId: looseS, captainEmployeeId: capL, version: null }],
+      R25_DAY,
+    );
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(String((await deliveryLegOf(free))?.crewAssignmentId)).toBe(looseS);
+  });
+
+  it('lets the shipment already on such a row stay — its captain switched, then taken off; the row then leaves the screen', async () => {
+    const versionOf = async (): Promise<number | null> =>
+      (await viewOf(R25_DAY)).shipments.find((s) => s.id === legacy)?.deliveryLegVersion ?? null;
+    const switched = await save(
+      [
+        {
+          shipmentId: legacy,
+          crewAssignmentId: crewT,
+          captainEmployeeId: capT2,
+          version: await versionOf(),
+        },
+      ],
+      R25_DAY,
+    );
+    expect(switched.status, JSON.stringify(switched.body)).toBe(200);
+    expect(data<OperationsSecuredDistributionSaveDto>(switched).changed).toBe(1);
+    expect(String((await deliveryLegOf(legacy))?.captainEmployeeId)).toBe(capT2);
+    const off = await save(
+      [
+        {
+          shipmentId: legacy,
+          crewAssignmentId: null,
+          captainEmployeeId: null,
+          version: await versionOf(),
+        },
+      ],
+      R25_DAY,
+    );
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    expect(await deliveryLegOf(legacy)).toBeNull();
+    // Nothing of the screen on T any more: T is a «سفر» row like any other — not listed, and not
+    // a place the shipment may go back to.
+    expect((await viewOf(R25_DAY)).crews.map((crew) => crew.crewAssignmentId)).not.toContain(crewT);
+    const back = await save(
+      [{ shipmentId: legacy, crewAssignmentId: crewT, captainEmployeeId: capT, version: null }],
+      R25_DAY,
+    );
+    expect(back.status).toBe(422);
+    expect(errorOf(back).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED);
+  });
+
+  it('knows the «محصنة» type by its seed, not its name — a rename keeps every row', async () => {
+    const before = await typeNamed('محصنة');
+    const renamed = await request(app)
+      .patch(`/api/v1/operations/shift-types/${before.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'محصنة مؤمنة', version: before.version });
+    expect(renamed.status, JSON.stringify(renamed.body)).toBe(200);
+    try {
+      const view = await viewOf(R25_DAY);
+      expect(view.crews.map((crew) => crew.crewAssignmentId)).toEqual([crewS, looseS]);
+      expect(view.crews[0]).toMatchObject({ securedType: true, shiftTypeName: 'محصنة مؤمنة' });
+      const placed = await save(
+        [{ shipmentId: legacy, crewAssignmentId: crewS, captainEmployeeId: capS, version: null }],
+        R25_DAY,
+      );
+      expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    } finally {
+      const now = await typeNamed('محصنة مؤمنة');
+      const back = await request(app)
+        .patch(`/api/v1/operations/shift-types/${now.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'محصنة', version: now.version });
+      expect(back.status, JSON.stringify(back.body)).toBe(200);
+    }
+  });
+});
+
+// Critic — the screen's save refuses a محصنة on a row that is not «محصنة», but the single-shipment
+// door (`POST /operations/secured/:id/assign-delivery`) took any live row of the day: a direct call
+// put a محصنة on a «يومي» van, which then showed on «توزيع المحصنات» as a kept, marked row. Both
+// doors now keep the same rule, checked in the same place (after the day, before the captain).
+describe('Round 25 — `assign-delivery` keeps the «محصنة» rule too', () => {
+  const R25B_DAY = shift(58);
+  let capS = '';
+  let capD = '';
+  let capN = '';
+  let capT = '';
+  let capT2 = '';
+  let crewS = '';
+  let crewD = '';
+  let crewN = '';
+  let crewT = '';
+  let vanT = '';
+
+  const assign = (
+    shipmentId: string,
+    crewAssignmentId: string,
+    captainEmployeeId: string,
+    version = 0,
+  ): request.Test =>
+    request(app)
+      .post(`/api/v1/operations/secured/${shipmentId}/assign-delivery`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ crewAssignmentId, captainEmployeeId, version });
+  const legVersion = async (shipmentId: string): Promise<number> =>
+    ((await deliveryLegOf(shipmentId)) as { __v: number } | null)?.__v ?? 0;
+  const typeNamed = async (name: string): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/operations/shift-types?page=1&pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const found = data<{ id: string; name: string }[]>(res).find((type) => type.name === name);
+    expect(found, name).toBeDefined();
+    return found?.id ?? '';
+  };
+
+  beforeAll(async () => {
+    capS = await mkCaptain('قائد محصنة الباب الثاني');
+    capD = await mkCaptain('قائد يومي الباب الثاني');
+    capN = await mkCaptain('قائد بلا نوع الباب الثاني');
+    capT = await mkCaptain('قائد أول الباب الثاني');
+    capT2 = await mkCaptain('قائد ثان الباب الثاني');
+    const vanS = await mkVehicle('OPS-R25B-W');
+    const vanD = await mkVehicle('OPS-R25B-X');
+    const vanN = await mkVehicle('OPS-R25B-Y');
+    vanT = await mkVehicle('OPS-R25B-Z');
+    const crews = await planDay(R25B_DAY, [
+      { vehicleId: vanS, captainEmployeeIds: [capS], direction: 'الهرم' },
+      {
+        vehicleId: vanD,
+        captainEmployeeIds: [capD],
+        direction: 'الهرم',
+        shiftTypeId: await typeNamed('يومي'),
+      },
+      { vehicleId: vanN, captainEmployeeIds: [capN], direction: 'الهرم', shiftTypeId: null },
+      { vehicleId: vanT, captainEmployeeIds: [capT, capT2], direction: 'الهرم' },
+    ]);
+    crewS = crews.get(vanS) ?? '';
+    crewD = crews.get(vanD) ?? '';
+    crewN = crews.get(vanN) ?? '';
+    crewT = crews.get(vanT) ?? '';
+    expect([crewS, crewD, crewN, crewT].every((id) => id !== '')).toBe(true);
+  });
+
+  it('refuses a row of another type, or of none — 422 naming the shipment and the row, nothing written', async () => {
+    const shipment = (await book(R25B_DAY, 'الهرم')).id;
+    await intoVault(shipment);
+    for (const [crew, captain] of [
+      [crewD, capD],
+      [crewN, capN],
+    ] as const) {
+      const res = await assign(shipment, crew, captain);
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res)).toMatchObject({
+        code: ErrorCodes.OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED,
+        details: [
+          { field: 'shipmentId', code: 'SHIPMENT', message: shipment },
+          { field: 'crewAssignmentId', code: 'NOT_SECURED', message: crew },
+        ],
+      });
+      expect(await deliveryLegOf(shipment)).toBeNull();
+    }
+    // Checked before the captain: a wrong captain on such a row is still «not «محصنة»».
+    const wrongCaptain = await assign(shipment, crewD, capS);
+    expect(errorOf(wrongCaptain).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED);
+    // A «محصنة» row takes it.
+    const ok = await assign(shipment, crewS, capS);
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(String((await deliveryLegOf(shipment))?.crewAssignmentId)).toBe(crewS);
+  });
+
+  it('lets the shipment already on a row that has since changed type stay there — its captain switched — and takes no new one', async () => {
+    const kept = (await book(R25B_DAY, 'الهرم')).id;
+    await intoVault(kept);
+    const placed = await assign(kept, crewT, capT);
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+    // The board makes T a «سفر» row (a whole row, through the board's own route).
+    const retyped = await request(app)
+      .post('/api/v1/operations/crew-board')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        date: R25B_DAY,
+        rows: [
+          {
+            vehicleId: vanT,
+            captainEmployeeIds: [capT, capT2],
+            direction: 'الهرم',
+            shiftTypeId: await typeNamed('سفر'),
+          },
+        ],
+      });
+    expect(retyped.status, JSON.stringify(retyped.body)).toBe(200);
+
+    // Already on T: the other captain of T takes it.
+    const switched = await assign(kept, crewT, capT2, await legVersion(kept));
+    expect(switched.status, JSON.stringify(switched.body)).toBe(200);
+    expect(String((await deliveryLegOf(kept))?.captainEmployeeId)).toBe(capT2);
+
+    // A محصنة not on T is refused there.
+    const fresh = (await book(R25B_DAY, 'الهرم')).id;
+    await intoVault(fresh);
+    const refused = await assign(fresh, crewT, capT);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(422);
+    expect(errorOf(refused).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED);
+    expect(await deliveryLegOf(fresh)).toBeNull();
+
+    // Moved off T onto a «محصنة» row, it cannot go back: T is a «سفر» row like any other.
+    const moved = await assign(kept, crewS, capS, await legVersion(kept));
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const back = await assign(kept, crewT, capT, await legVersion(kept));
+    expect(back.status).toBe(422);
+    expect(errorOf(back).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED);
+    expect(String((await deliveryLegOf(kept))?.crewAssignmentId)).toBe(crewS);
   });
 });

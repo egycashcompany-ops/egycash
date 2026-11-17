@@ -78,16 +78,23 @@ const HELD: ItAssetDto = {
   updatedAt: '2026-10-07T09:00:00.000Z',
 };
 
-const render = (): string => {
+const render = (also: readonly string[] = []): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
   qc.setQueryData(detailKey('it', 'assets', HELD.id), HELD);
+  const reader = {
+    ...me,
+    permissions: {
+      ...me.permissions,
+      ...Object.fromEntries(also.map((key) => [key, 'organization' as const])),
+    },
+  } as MeDto;
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
       locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
-      auth: { me, status: 'signedIn' as const },
+      auth: { me: reader, status: 'signedIn' as const },
       ui: { theme: 'light' as const, sidebarOpen: false },
     },
   });
@@ -120,5 +127,17 @@ describe('the asset page header', () => {
 
   it('wraps its row of actions on a narrow screen', () => {
     expect(row).toMatch(/class="[^"]*\bflex-wrap\b[^"]*"/u);
+  });
+});
+
+// «المستهلكات المركّبة عليه» is the store's ledger, so it rides the store's own read grant
+// (2026-11-17): a reader of the assets alone gets no card — and no read of a ledger they may not see.
+describe('the consumables installed on the asset', () => {
+  it('are shown to a reader who also holds the store’s view grant', () => {
+    expect(render(['itConsumable.view'])).toContain(ar('it.consumables.assetCard.title'));
+  });
+
+  it('are not drawn for a reader of the assets alone', () => {
+    expect(render()).not.toContain(ar('it.consumables.assetCard.title'));
   });
 });

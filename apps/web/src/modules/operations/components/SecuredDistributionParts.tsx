@@ -14,8 +14,13 @@
 //
 // Round 24c — «عاوز اصغر المكان اللى فيه المحصنات واكبر المكان اللى فيه المحصنة بالعربيه»: the vans
 // take three quarters of a wide screen and the محصنات on no van one (`DISTRIBUTION_COLUMNS`), the
-// vans' cards as many to a row as fit (`VAN_GRID` — three at 1440). The van card's head is one line
-// and its crew is drawn anew (`VanCard`).
+// vans' cards as many to a row as fit (`VAN_GRID` — three at 1440). The van card's head is one line.
+//
+// Round 25 — «عاوز المحصنة تظهر صغيره عبارة عن البنك والفرع ولما اعمل هوفر عليها يجيب بقى معلومتها»
+// and «شكل العربية بالمحصنات يتغير»: a محصنة is a small chip (`ShipmentChip` — bank · branch, its
+// card on hover), the same on the left and on a van; the van card is its head, ONE captain's line led
+// by the count, and the three package counts (`VanCard`); each column has a filter bar on top
+// (`ColumnFilterBar`).
 import {
   useEffect,
   useId,
@@ -48,24 +53,25 @@ import {
   HoverCardMissing,
   useHoverCard,
 } from '../../fleet/components/HoverCardLayer';
-import { Input } from '../../../shared/ui/form';
+import { Input, Select } from '../../../shared/ui/form';
 import { useOperationsCrewDirectory } from '../api/operations-queries';
 import { awayOf } from '../lib/crew-plan';
-import { type LoadFigures, type Packaging, personName } from '../lib/secured-distribution';
+import {
+  type LoadFigures,
+  type Packaging,
+  type PackagingRead,
+  personName,
+} from '../lib/secured-distribution';
 import { ltrIsolate } from '../lib/shipment-log';
 import { hasNoVan, vanCodeText, vanPhrase } from '../lib/van-name';
 import { CardHead, Figure, PersonIcon } from './BoardCrewCards';
 import { PLAN_ICON } from './crew-plan-icons';
 import { PlanAttendanceFact, PlanMemberCardBody } from './CrewPlanMemberCard';
-import { SecuredStageBadge } from './ShipmentBadges';
+import { SecuredStageBadge, SecuredStageMark } from './ShipmentBadges';
 import { SHIPMENT_PATH } from './shipment-icons';
 
-/** What a drag carries — our own type, so a file or a link dragged over a van is not taken. */
-export const SHIPMENT_DRAG_TYPE = 'application/x-ecms-secured-shipment';
-
-/** Does this drag carry one of the screen's shipments? */
-export const carriesShipment = (event: DragEvent): boolean =>
-  Array.from(event.dataTransfer.types).includes(SHIPMENT_DRAG_TYPE);
+/** What a drag carries — `lib/distribution-drag.ts` (Round 25), re-exported for the pages. */
+export { SHIPMENT_DRAG_TYPE } from '../lib/distribution-drag';
 
 /**
  * The two columns (Round 24c — «عاوز اصغر المكان اللى فيه المحصنات واكبر المكان اللى فيه المحصنة
@@ -153,6 +159,7 @@ export const DistributionColumn = ({
   bodyProps,
   dropHandlers,
   collapse,
+  filters,
   className,
   ...rest
 }: {
@@ -160,6 +167,8 @@ export const DistributionColumn = ({
   count: number;
   icon: readonly string[];
   extra?: ReactNode;
+  /** Round 25 — the column's filter bar, under its head (folded away with its body). */
+  filters?: ReactNode;
   children: ReactNode;
   /** The body's own props — the look of a drop on the shipments column. */
   bodyProps?: HTMLAttributes<HTMLDivElement> & Record<`data-${string}`, string | undefined>;
@@ -230,6 +239,14 @@ export const DistributionColumn = ({
         )}
         {extra}
       </header>
+      {filters !== undefined && open && (
+        <div
+          data-column-filters="true"
+          className="shrink-0 border-b border-slate-200 px-3 py-2 dark:border-slate-800"
+        >
+          {filters}
+        </div>
+      )}
       <div
         {...bodyProps}
         id={bodyId}
@@ -406,10 +423,13 @@ export const MoveMenu = ({
   label,
   choices,
   rowId,
+  compact = false,
 }: {
   label: string;
   choices: readonly MoveChoice[];
   rowId: string;
+  /** Round 25 — the chip's small icon button; the label is its tooltip and its accessible name. */
+  compact?: boolean;
 }): JSX.Element => {
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<{ top: number; left: number; up: boolean } | null>(null);
@@ -492,10 +512,14 @@ export const MoveMenu = ({
           if (open) setPlace(null);
           setOpen((value) => !value);
         }}
-        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-bold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:border-slate-600 dark:bg-[#111827] dark:text-slate-200 dark:hover:bg-brand-500/15 dark:hover:text-brand-100"
+        {...(compact ? { 'aria-label': label, title: label } : {})}
+        className={cn(
+          'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-300 bg-white text-[11px] font-bold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:border-slate-600 dark:bg-[#111827] dark:text-slate-200 dark:hover:bg-brand-500/15 dark:hover:text-brand-100',
+          compact ? 'h-6 w-6 justify-center' : 'px-2 py-1',
+        )}
       >
         <BoardIcon d={[...PATH.truck]} className="h-3.5 w-3.5" />
-        {label}
+        {!compact && label}
       </button>
       {open &&
         place !== null &&
@@ -659,207 +683,129 @@ const PersonCardBody = ({
 };
 
 /**
- * A specialist slot: its label, then who — each name on a line of its own, cut to the chip — or a
- * quiet «غير معيَّن» in a dashed chip, never a bare «—» that reads like a missing figure.
+ * THE PACKAGES a van carries out — «اللى يظهر عدد الكراتين و الحقائب و الصناديق حتى لو ب 0 يتكتب»
+ * (Round 25): the three kinds, in the owner's order, EACH ALWAYS, its count written even when 0 — the
+ * vault's own counts (custody), summed over the load. `packages` null: the reader cannot read the
+ * vault's counts — each says «—», with why on hover, rather than a 0 that would be a guess. The same
+ * while the vault's read is out ('pending', «…») or has failed ('failed', «—»): a 0 is written only
+ * once the counts are in (`vanPackages`).
  */
-const SpecialistSlot = ({
-  slot,
-  people,
-  seatOf,
-  day,
-  mayReadDirectory,
+export const PackageCounts = ({
+  packages,
 }: {
-  slot: 'specialist1' | 'specialist2';
-  people: readonly OperationsDayBoardPersonDto[];
-  seatOf: (slotLabel: string) => string;
-  day: string;
-  mayReadDirectory: boolean;
+  packages: Packaging | null | 'pending' | 'failed';
 }): JSX.Element => {
   const t = useT();
-  const label = t(`operations.crew.slot.${slot}`);
-  const empty = people.length === 0;
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const counted = typeof packages === 'object' && packages !== null ? packages : null;
+  const kinds = [
+    ['cartons', PATH.box, counted?.cartons],
+    ['bags', SHIPMENT_PATH.bag, counted?.bags],
+    ['boxes', SHIPMENT_PATH.cube, counted?.boxes],
+  ] as const;
+  const why =
+    packages === null
+      ? t('operations.distribution.packagesUnknown')
+      : packages === 'pending'
+        ? t('operations.distribution.packagesPending')
+        : packages === 'failed'
+          ? t('operations.distribution.packagesFailed')
+          : null;
   return (
     <div
-      data-van-slot={slot}
-      data-van-slot-count={people.length}
-      className={cn(
-        'flex min-w-0 flex-col gap-0.5 rounded-md border px-2 py-1',
-        empty
-          ? 'border-dashed border-slate-300 dark:border-slate-600/70'
-          : 'border-slate-200 bg-white dark:border-slate-700/70 dark:bg-[#0f1a3a]',
-      )}
+      data-van-packages={
+        counted !== null
+          ? `${counted.cartons}/${counted.bags}/${counted.boxes}`
+          : packages === null
+            ? 'unknown'
+            : packages
+      }
+      className="grid grid-cols-3 gap-1"
+      {...(why === null ? {} : { title: why })}
+      {...(packages === 'pending' ? { 'aria-busy': true } : {})}
     >
-      <span className="flex items-center gap-1 text-[10px] font-bold leading-4 text-slate-500 dark:text-slate-400">
+      {kinds.map(([kind, icon, value]) => (
         <span
-          aria-hidden
+          key={kind}
+          data-van-package={kind}
           className={cn(
-            'h-1.5 w-1.5 shrink-0 rounded-full',
-            empty ? 'bg-slate-300 dark:bg-slate-600' : 'bg-rose-500 dark:bg-rose-400',
+            'flex min-w-0 items-center justify-center gap-1 rounded-md border px-1 py-0.5 text-[11px] font-bold',
+            value !== undefined && value > 0
+              ? 'border-slate-200 bg-white text-slate-700 dark:border-slate-700/70 dark:bg-[#0a1233] dark:text-slate-200'
+              : 'border-slate-200/80 bg-slate-50 text-slate-500 dark:border-slate-700/50 dark:bg-white/[0.02] dark:text-slate-400',
           )}
-        />
-        {label}
-      </span>
-      {empty ? (
-        <span
-          data-slot-empty="true"
-          className="truncate text-[12px] font-semibold leading-5 text-slate-400 dark:text-slate-500"
         >
-          {t('operations.distribution.slotEmpty')}
+          <BoardIcon d={[...icon]} className="h-3 w-3 shrink-0" />
+          <span
+            dir="ltr"
+            className={cn(
+              NUM,
+              'text-[12px] font-black',
+              value !== undefined && value > 0
+                ? 'text-slate-900 dark:text-white'
+                : 'text-slate-500 dark:text-slate-400',
+            )}
+          >
+            {/* The figures' face, as the money and the code: a «0» reads as zero, where an Arabic
+                zero reads as one more dot. */}
+            {value !== undefined ? formatAmount(value, locale) : packages === 'pending' ? '…' : '—'}
+          </span>
+          <span className="truncate">{t(`operations.distribution.${kind}`)}</span>
         </span>
-      ) : (
-        people.map((person) => (
-          <PersonName
-            key={person.employeeId}
-            person={person}
-            seat={seatOf(label)}
-            day={day}
-            mayReadDirectory={mayReadDirectory}
-            className="block text-[12px] font-bold leading-5 text-slate-800 dark:text-slate-100"
-          />
-        ))
-      )}
+      ))}
     </div>
   );
 };
 
 /**
- * THE CREW, as the van card draws it (Round 24c — «واحسن الاسماء بتاعت القادة والاخصائيين»): the
- * captain(s) first and loudest — each on a green line of his own with the captain's mark, the
- * board's green for a captain — then «أخصائي 1» and «أخصائي 2» side by side as two labelled chips.
- * A van with no captain says so in red, where the captain would be: it takes no محصنات.
- * Without the crew plan's grant (`crewPlanVisible`) the server sends no specialist, so the two
- * chips are not drawn — rather than drawn «غير معيَّن» over people who ride.
- */
-const VanCrew = ({
-  van,
-  vanName,
-  crewPlanVisible,
-  day,
-}: {
-  van: OperationsDayBoardVehicleCrewDto;
-  /** «السيارة 104», «الطاقم بدون سيارة (1)» — where a person card says he sits. */
-  vanName: string;
-  crewPlanVisible: boolean;
-  day: string;
-}): JSX.Element => {
-  const t = useT();
-  const seatOf = (slotLabel: string): string => `${vanName} · ${slotLabel}`;
-  const captainSeat = seatOf(t('operations.crew.slot.captain'));
-  return (
-    <div
-      data-van-crew={van.crewAssignmentId}
-      className="grid gap-1.5 rounded-lg border border-slate-200 bg-slate-50/80 p-1.5 dark:border-slate-700/60 dark:bg-white/[0.03]"
-    >
-      {van.captains.length === 0 ? (
-        <div
-          data-van-captain="none"
-          className="flex items-center gap-1.5 rounded-md border border-dashed border-rose-300 bg-rose-50 px-2 py-1 text-[12px] font-bold leading-5 text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300"
-        >
-          <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0">{t('operations.distribution.noCaptain')}</span>
-        </div>
-      ) : (
-        <div
-          className="grid gap-1"
-          {...(van.captains.length > 1
-            ? { role: 'group', 'aria-label': t('operations.distribution.captains') }
-            : {})}
-        >
-          {van.captains.map((captain) => (
-            <div
-              key={captain.employeeId}
-              data-van-captain={captain.employeeId}
-              className="flex min-w-0 items-center gap-2 rounded-md bg-emerald-50 px-1.5 py-1 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30"
-            >
-              <span
-                data-captain-mark="true"
-                className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-600 py-0.5 pe-2 ps-1.5 text-[10px] font-black leading-4 text-white dark:bg-emerald-700"
-              >
-                <BoardIcon d={[...PLAN_ICON.rank]} className="h-3 w-3" width={2.4} />
-                {t('operations.crewPlan.role.captain')}
-              </span>
-              <PersonName
-                person={captain}
-                seat={captainSeat}
-                day={day}
-                mayReadDirectory={crewPlanVisible}
-                className="text-[13px] font-black leading-5 text-slate-900 dark:text-white"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-      {crewPlanVisible ? (
-        <div className="grid grid-cols-2 gap-1.5">
-          <SpecialistSlot
-            slot="specialist1"
-            people={van.specialist1}
-            seatOf={seatOf}
-            day={day}
-            mayReadDirectory={crewPlanVisible}
-          />
-          <SpecialistSlot
-            slot="specialist2"
-            people={van.specialist2}
-            seatOf={seatOf}
-            day={day}
-            mayReadDirectory={crewPlanVisible}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-/**
- * THE VAN — the crew board's row for the day: its number, planned time and direction, its
- * captain(s) and both specialists, what it carries (how many, how much), then its load. The card is
- * the drop target (`drop`); while a shipment is dragged every van that can take one shows it, and
- * the one under the pointer lights up.
+ * THE VAN — the crew board's row for the day, as the owner asked it drawn on Round 25: «شكل العربية
+ * بالمحصنات يتغير … العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا ضيفته ف الاول الصف نفسه
+ * بتاع القائد يكون قبله عدد المحصنات اللى على العربيه بعد كدا مش عاوز يظهر اخصائيين ولا اجمالى المصرى
+ * ولا اجمالى الدولار ولا اجمالى العملات اللى يظهر عدد الكراتين و الحقائب و الصناديق حتى لو ب 0 يتكتب
+ * وبرضو شكل المحصنة زى ما كانت على الشمال تفضل زى ما هى شكلها على العربية»:
+ *   · THE HEAD stays one line (Round 24c): the code (or «بدون سيارة (n)»), the time, the direction;
+ *   · THE CAPTAIN'S LINE: first the count of محصنات on the van (a badge, «٣ محصنات»), then the
+ *     captain — the FIRST one put on the row (`captains[0]`, the board's stored order) when it has
+ *     two; «بلا قائد» in red when it has none. No specialists, no money;
+ *   · THE PACKAGES: «كراتين», «حقائب», «صناديق», each always, 0 written (`PackageCounts`);
+ *   · THE LOAD: the محصنات on it as the same small chips as the left column (`ShipmentChip`).
+ * A row of another type kept for what it carries (`securedType` false) says so under its head.
  *
- * Round 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: a crew row WITHOUT A VAN is
- * a card like any other — «بدون سيارة (n)» where the code goes (`looseNumber`, the board's own
- * numbering), the no-van mark for the truck, everything else a van's.
- *
- * Round 24c — «عاوز احسن شكل الكارد العربيه بالمحصنة يعنى عاوز انقل الاتجاه بعد كود السيارة والوقت
- * واحسن الاسماء بتاعت القادة والاخصائيين»:
- *   · THE HEAD IS ONE LINE: the code (or «بدون سيارة (n)»), the time, then the direction — moved up
- *     from the band it had under the head. A long direction is cut, whole on hover. The count of
- *     محصنات stays, first on the line of what the van carries (the money, the packages): at three
- *     cards to a row a head holding the count as well cut «المعادي» itself to «…الم».
- *   · THE CREW (`VanCrew`): the captain first, on his own green line with the captain's mark; the two
- *     specialists as labelled chips; an empty slot «غير معيَّن», quietly; each name cut to its chip
- *     and whole on the board's person card.
+ * THE WHOLE CARD IS A DROP TARGET (`data-drop-van`): the page's frame takes the drag and reads the
+ * mark under the pointer at the drop — the head, the captain's line, the packages, the empty load and
+ * a chip on it all mean this van (`lib/distribution-drag.ts`).
  */
 export const VanCard = ({
   van,
   looseNumber = null,
   crewPlanVisible,
   day,
-  figures,
+  count,
+  packages,
   actions,
   drop,
   children,
   footer,
 }: {
-  van: OperationsDayBoardVehicleCrewDto;
+  van: OperationsDayBoardVehicleCrewDto & { securedType?: boolean; shiftTypeName?: string | null };
   /** A crew without a van: its number among the day's («بدون سيارة (n)»), as the page writes it. */
   looseNumber?: string | null;
+  /** The crew plan's grant — the captain's card reads the day's crew directory under it. */
   crewPlanVisible: boolean;
-  /** The screen's day, 'YYYY-MM-DD' — the person cards read the crew directory of that day. */
+  /** The screen's day, 'YYYY-MM-DD' — the person card reads the crew directory of that day. */
   day: string;
-  figures: LoadFigures;
+  /** How many محصنات are on it now (the draft's). */
+  count: number;
+  /** The vault's counts over its load; null when the reader cannot read them, 'pending' or
+   *  'failed' while the vault's read is out or has failed (`vanPackages`). */
+  packages: Packaging | null | 'pending' | 'failed';
   /** Above the van — the vault's «تسليم» and «طباعة». */
   actions?: ReactNode;
   drop?: {
-    /** A shipment is being dragged and this van can take it. */
+    /** A shipment is being dragged and this van would take it. */
     armed: boolean;
-    /** It is under the pointer. */
-    over: boolean;
-    handlers: Pick<
-      HTMLAttributes<HTMLElement>,
-      'onDragOver' | 'onDragEnter' | 'onDragLeave' | 'onDrop'
-    >;
+    /** It is under the pointer: `place` — it lands here; `refuse` — this van says no. */
+    over: 'place' | 'refuse' | null;
   };
   children: ReactNode;
   /** Under the load — the vault's «not in the vault yet» note. */
@@ -867,32 +813,39 @@ export const VanCard = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const noCaptain = van.captains.length === 0;
+  const captain = van.captains[0] ?? null;
   const noVan = hasNoVan(van);
   const name = vanPhrase(t, van, looseNumber);
+  const kept = van.securedType === false;
   const time = van.plannedTime === null || van.plannedTime === '' ? null : van.plannedTime;
   const direction =
     van.direction === null || van.direction.trim() === '' ? null : van.direction.trim();
   const directionText = direction ?? t('operations.distribution.noDirection');
+  const typeName = van.shiftTypeName ?? null;
   return (
     <article
       data-distribution-van={van.crewAssignmentId}
+      data-drop-van={van.crewAssignmentId}
       data-no-van={noVan ? 'true' : undefined}
-      data-drop-over={drop?.over === true ? 'true' : undefined}
+      data-not-secured={kept ? 'true' : undefined}
+      data-drop-over={drop?.over ?? undefined}
       data-drop-armed={drop?.armed === true ? 'true' : undefined}
       aria-label={name}
-      {...drop?.handlers}
       className={cn(
         // `relative`: the head's screen-reader words (`sr-only`, absolute) stay inside the card — and so
         // inside the column that scrolls — rather than lengthen the page below it.
         'relative flex min-w-0 flex-col gap-2 rounded-xl border bg-white p-2.5 shadow-sm transition-[box-shadow,border-color,background-color] dark:bg-[#111827]',
-        'border-slate-200 dark:border-[#24305a]',
+        kept
+          ? 'border-dashed border-amber-400 dark:border-amber-500/60'
+          : 'border-slate-200 dark:border-[#24305a]',
         drop?.armed === true &&
-          !drop.over &&
+          drop.over === null &&
           'border-dashed border-brand-300 dark:border-brand-500/50',
-        drop?.over === true &&
+        drop?.over === 'place' &&
           'border-brand-500 bg-brand-50 shadow-lg shadow-brand-500/20 ring-2 ring-brand-500 dark:border-brand-400 dark:bg-brand-500/10 dark:ring-brand-400',
-        noCaptain && 'opacity-80',
+        drop?.over === 'refuse' &&
+          'border-rose-500 bg-rose-50 ring-2 ring-rose-500 dark:border-rose-400 dark:bg-rose-500/10 dark:ring-rose-400',
+        (captain === null || kept) && 'opacity-90',
       )}
     >
       {actions !== undefined && (
@@ -952,31 +905,84 @@ export const VanCard = ({
           </span>
         </div>
       </header>
-      <VanCrew van={van} vanName={name} crewPlanVisible={crewPlanVisible} day={day} />
-      <div data-van-figures={van.crewAssignmentId}>
-        <MoneyLine
-          figures={figures}
-          packages={figures.packages}
-          showZero
-          lead={
-            <span
-              data-van-count={figures.count}
-              className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-brand-500/15 px-2 py-0.5 text-[11px] font-black text-brand-700 dark:text-brand-200"
-            >
-              <BoardIcon d={[...SHIPMENT_PATH.shipment]} className="h-3 w-3 shrink-0" />
-              {/* «4 محصنات», «11 محصنة» — the count's own form (`pluralKey`). */}
-              {t(pluralKey('operations.distribution.loadCount', locale, figures.count), {
-                count: formatNumber(figures.count, locale),
-              })}
-            </span>
+      {kept && (
+        // Round 25 — a row of another type, listed only for what it already carries.
+        <p
+          data-van-not-secured={typeName ?? ''}
+          title={
+            typeName === null
+              ? t('operations.distribution.notSecuredHintNoType')
+              : t('operations.distribution.notSecuredHint', { type: typeName })
           }
-        />
-      </div>
+          className="flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold leading-4 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+        >
+          <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
+          <span className="min-w-0">
+            {t('operations.distribution.notSecured')}
+            {typeName !== null && (
+              <span className="font-semibold">
+                {' '}
+                · {t('operations.distribution.typeIs', { type: typeName })}
+              </span>
+            )}
+          </span>
+        </p>
+      )}
+      {/* THE CAPTAIN'S LINE: the count first, then the first captain. */}
       <div
+        data-van-captain-line={van.crewAssignmentId}
         className={cn(
-          'flex min-h-[3.5rem] flex-col gap-2 rounded-lg border border-dashed p-2 transition-colors',
+          'flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 ring-1 ring-inset',
+          captain === null
+            ? 'bg-rose-50 ring-rose-200 dark:bg-rose-500/10 dark:ring-rose-500/30'
+            : 'bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30',
+        )}
+      >
+        <span
+          data-van-count={count}
+          className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-black text-white dark:bg-brand-500"
+        >
+          <BoardIcon d={[...SHIPMENT_PATH.shipment]} className="h-3 w-3 shrink-0" />
+          {/* «4 محصنات», «11 محصنة» — the count's own form (`pluralKey`), its figure in the face of
+              the card's other figures (the code, the time), so «0 محصنات» says zero. */}
+          {t(pluralKey('operations.distribution.loadCount', locale, count), {
+            count: formatAmount(count, locale),
+          })}
+        </span>
+        {captain === null ? (
+          <span
+            data-van-captain="none"
+            className="flex min-w-0 items-center gap-1 text-[12px] font-bold leading-5 text-rose-700 dark:text-rose-300"
+          >
+            <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">{t('operations.distribution.noCaptain')}</span>
+          </span>
+        ) : (
+          <span data-van-captain={captain.employeeId} className="flex min-w-0 items-center gap-1.5">
+            <span
+              data-captain-mark="true"
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-600 py-0.5 pe-2 ps-1.5 text-[10px] font-black leading-4 text-white dark:bg-emerald-700"
+            >
+              <BoardIcon d={[...PLAN_ICON.rank]} className="h-3 w-3" width={2.4} />
+              {t('operations.crewPlan.role.captain')}
+            </span>
+            <PersonName
+              person={captain}
+              seat={`${name} · ${t('operations.crew.slot.captain')}`}
+              day={day}
+              mayReadDirectory={crewPlanVisible}
+              className="text-[13px] font-black leading-5 text-slate-900 dark:text-white"
+            />
+          </span>
+        )}
+      </div>
+      <PackageCounts packages={packages} />
+      <div
+        data-van-load={van.crewAssignmentId}
+        className={cn(
+          'flex min-h-[3rem] flex-col gap-1.5 rounded-lg border border-dashed p-1.5 transition-colors',
           'border-slate-200 dark:border-slate-700/70',
-          drop?.over === true && 'border-brand-400 dark:border-brand-400/70',
+          drop?.over === 'place' && 'border-brand-400 dark:border-brand-400/70',
         )}
       >
         {children}
@@ -993,60 +999,321 @@ export const EmptyLoad = ({ children }: { children: ReactNode }): JSX.Element =>
   </p>
 );
 
+/** One amount of a محصنة, as its card lists it — the currency by name, the figure. */
+export interface ChipMoneyLine {
+  key: string;
+  label: string;
+  amount: number;
+}
+
 /**
- * THE SHIPMENT — what the board's row prints, on a card: the bank, from → to, the area (the
- * direction it is matched on), the money, the stage. `marks` are what the screen has to say about
- * it (proposed, unsaved, overdue, started, refused), `controls` its acts (the captain switch, «نقل
- * إلى…»), `drag` makes it draggable.
+ * What a محصنة's card says — «ولما اعمل هوفر عليها يجيب بقى معلومتها» (Round 25): everything the chip
+ * no longer prints. The bank and its stage; from → to; the area; the delivery day (an overdue one
+ * says so); each amount by currency; the packages the vault counted (or that it holds none of it
+ * yet); the vault's receipt number; the van and captain it is on; and what the screen has to say
+ * about it in words (proposed, unsaved, started, refused, re-dated by the save, not in the vault).
+ * The read carries no seals: the receipt keeps them, and they are not repeated here.
  */
-export const ShipmentCard = ({
+export const ShipmentCardBody = ({
   row,
   bankName,
-  figures,
+  money,
   packages,
-  marks,
-  controls,
-  drag,
-  tone,
+  packagesRead,
+  place,
+  notes,
 }: {
   row: OperationsSecuredDistributionRowDto;
   bankName: string;
-  figures: Pick<LoadFigures, 'egp' | 'usd' | 'othersSum'>;
-  packages?: Packaging | null | undefined;
+  money: readonly ChipMoneyLine[];
+  packages: Packaging | undefined;
+  /** The vault's packaging read (`packagingRead`): 'forbidden' — the reader cannot read the vault's
+   *  counts, the line is left out; 'pending' / 'failed' — the line says so, never «not in the
+   *  vault»; 'ready' — `packages` undefined means the vault holds none of it. */
+  packagesRead: PackagingRead;
+  /** «السيارة 104 · مع …», or null on no van. */
+  place: string | null;
+  notes: readonly { key: string; text: string; tone: 'info' | 'warn' | 'danger' }[];
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <div data-secured-card={row.id}>
+      <CardHead
+        icon={<BoardIcon d={[...SHIPMENT_PATH.bank]} className="h-3.5 w-3.5" />}
+        sub={row.securedStage === null ? undefined : <SecuredStageBadge stage={row.securedStage} />}
+      >
+        {bankName === '' ? <HoverCardMissing /> : bankName}
+      </CardHead>
+      <dl className={HOVER_CARD_FACTS}>
+        <HoverCardFact label={t('operations.distribution.card.from')}>
+          {row.origin === null ? (
+            <HoverCardMissing />
+          ) : (
+            <>
+              {row.origin.name}
+              <span className="font-semibold text-slate-500 dark:text-slate-400">
+                {' '}
+                · {row.origin.bankName}
+              </span>
+            </>
+          )}
+        </HoverCardFact>
+        <HoverCardFact label={t('operations.distribution.card.to')}>
+          {row.destination === null ? (
+            <HoverCardMissing />
+          ) : (
+            <>
+              {row.destination.name}
+              <span className="font-semibold text-slate-500 dark:text-slate-400">
+                {' '}
+                · {row.destination.bankName}
+              </span>
+            </>
+          )}
+        </HoverCardFact>
+        <HoverCardFact label={t('operations.shipment.area')}>
+          {row.areaName ?? t('operations.distribution.noArea')}
+        </HoverCardFact>
+        <HoverCardFact label={t('operations.distribution.card.deliveryDay')}>
+          {dayText(row.deliveryDate)}
+          {row.overdue && (
+            <span className="font-black text-rose-600 dark:text-rose-400">
+              {' '}
+              · {t('operations.distribution.overdue')}
+            </span>
+          )}
+        </HoverCardFact>
+        <HoverCardFact label={t('operations.distribution.card.amounts')}>
+          {money.length === 0 ? (
+            <HoverCardMissing />
+          ) : (
+            <span className="flex flex-col">
+              {money.map((line) => (
+                <span key={line.key} data-card-money={line.key}>
+                  <span dir="ltr" className={cn(NUM, 'font-black')}>
+                    {formatAmount(line.amount, locale)}
+                  </span>{' '}
+                  {line.label}
+                </span>
+              ))}
+            </span>
+          )}
+        </HoverCardFact>
+        {packagesRead !== 'forbidden' && (
+          <HoverCardFact label={t('operations.distribution.card.packages')}>
+            {packagesRead !== 'ready' ? (
+              <span
+                data-card-packages={packagesRead}
+                className="text-slate-500 dark:text-slate-400"
+              >
+                {t(
+                  packagesRead === 'pending'
+                    ? 'operations.distribution.packagesPending'
+                    : 'operations.distribution.packagesFailed',
+                )}
+              </span>
+            ) : packages === undefined ? (
+              <span className="text-slate-500 dark:text-slate-400">
+                {t('operations.distribution.card.notCounted')}
+              </span>
+            ) : (
+              <span data-card-packages={`${packages.cartons}/${packages.bags}/${packages.boxes}`}>
+                {(['cartons', 'bags', 'boxes'] as const)
+                  .map(
+                    (kind) =>
+                      `${formatAmount(packages[kind], locale)} ${t(`operations.distribution.${kind}`)}`,
+                  )
+                  .join(' · ')}
+              </span>
+            )}
+          </HoverCardFact>
+        )}
+        {row.vaultReceiptNumber !== null && row.vaultReceiptNumber !== '' && (
+          <HoverCardFact label={t('operations.distribution.card.receipt')}>
+            <Figure>{row.vaultReceiptNumber}</Figure>
+          </HoverCardFact>
+        )}
+        <HoverCardFact label={t('operations.distribution.card.on')}>
+          {place ?? t('operations.distribution.unplaced')}
+        </HoverCardFact>
+      </dl>
+      {notes.length > 0 && (
+        <ul className="mt-2 space-y-1 border-t border-slate-100 pt-2 text-[12px] font-bold leading-5 dark:border-slate-700/60">
+          {notes.map((note) => (
+            <li
+              key={note.key}
+              data-card-note={note.key}
+              className={cn(
+                note.tone === 'danger'
+                  ? 'text-rose-700 dark:text-rose-300'
+                  : note.tone === 'warn'
+                    ? 'text-amber-800 dark:text-amber-200'
+                    : 'text-slate-600 dark:text-slate-300',
+              )}
+            >
+              {note.text}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+/** A chip's small mark — an icon with its words on hover and for a screen reader. */
+export const ChipMark = ({
+  tone,
+  icon,
+  label,
+  ...rest
+}: {
+  tone:
+    'proposed' | 'moved' | 'overdue' | 'started' | 'refused' | 'reschedule' | 'waiting' | 'captain';
+  icon: readonly string[];
+  label: string;
+} & Record<`data-${string}`, string>): JSX.Element => (
+  <span
+    {...rest}
+    title={label}
+    className={cn(
+      'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ring-1 ring-inset',
+      {
+        proposed:
+          'bg-amber-100 text-amber-800 ring-amber-300 dark:bg-amber-400/15 dark:text-amber-200 dark:ring-amber-300/40',
+        moved:
+          'bg-brand-100 text-brand-700 ring-brand-300 dark:bg-brand-500/20 dark:text-brand-200 dark:ring-brand-400/40',
+        overdue:
+          'bg-rose-100 text-rose-700 ring-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-400/40',
+        refused: 'bg-rose-600 text-white ring-rose-700 dark:bg-rose-500 dark:ring-rose-300/60',
+        started:
+          'bg-slate-200 text-slate-700 ring-slate-300 dark:bg-slate-700/60 dark:text-slate-200 dark:ring-slate-500/50',
+        reschedule:
+          'bg-violet-100 text-violet-700 ring-violet-300 dark:bg-violet-500/15 dark:text-violet-200 dark:ring-violet-400/40',
+        waiting:
+          'bg-slate-100 text-slate-600 ring-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-600/60',
+        captain:
+          'bg-emerald-100 text-emerald-800 ring-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-200 dark:ring-emerald-400/40',
+      }[tone],
+    )}
+  >
+    <BoardIcon d={[...icon]} className="h-3 w-3" />
+    <span className="sr-only">{label}</span>
+  </span>
+);
+
+/**
+ * THE محصنة, SMALL — «عاوز المحصنة تظهر صغيره عبارة عن البنك والفرع ولما اعمل هوفر عليها يجيب بقى
+ * معلومتها» (Round 25), the same chip on the left and on a van («وبرضو شكل المحصنة زى ما كانت على
+ * الشمال تفضل زى ما هى شكلها على العربية»): the drag handle, the stage's mark, the bank · the branch it
+ * goes to, the screen's marks as small icons, and «نقل إلى…» as a small icon (`move`). Everything
+ * else is on its card (`card`), opened by a hover, a keyboard focus, or a tap on a phone.
+ *
+ * `drag` makes the whole chip draggable; its `dragstart` writes the drag and nothing else (the page's
+ * `startDrag`, `lib/distribution-drag.ts`).
+ */
+/**
+ * Is a pointer coming onto the chip a hover on the chip itself (Round 25 critic)? Its «نقل إلى…» menu
+ * is drawn in a portal, yet React counts the menu inside the chip, so a pointer coming into the
+ * menu from outside fired the chip's mouseenter — and 300ms later the chip's card opened OVER the
+ * menu's vans. Not a hover on the chip: a pointer whose target is outside the chip's own box (the
+ * menu), or any pointer while the chip's menu is open (its button says `aria-expanded="true"`).
+ */
+export const hoverIsOnChip = (
+  chip: Pick<Element, 'contains' | 'querySelector'>,
+  target: EventTarget | null,
+): boolean =>
+  chip.contains(target as Node | null) &&
+  chip.querySelector('[data-move-open][aria-expanded="true"]') === null;
+
+export const ShipmentChip = ({
+  row,
+  bankName,
+  branchName,
+  marks,
+  move,
+  drag,
+  tone,
+  card,
+}: {
+  row: OperationsSecuredDistributionRowDto;
+  bankName: string;
+  branchName: string;
   marks?: ReactNode;
-  controls?: ReactNode;
+  move?: ReactNode;
   drag?: {
     dragging: boolean;
     onDragStart: (event: DragEvent<HTMLElement>) => void;
     onDragEnd: () => void;
   };
-  /** The card's edge: a proposal (amber, dashed), an unsaved move (brand), a refusal (rose). */
+  /** The chip's edge: a proposal (amber, dashed), an unsaved move (brand), a refusal (rose). */
   tone?: 'proposed' | 'moved' | 'refused' | undefined;
+  /** What its card says (`ShipmentCardBody`). */
+  card: ReactNode;
 }): JSX.Element => {
-  const t = useT();
+  const hover = useHoverCard(true);
+  // A phone has no hover: a TAP on the chip (not on its «نقل إلى…») opens the card, a tap anywhere
+  // else closes it.
+  const [tapped, setTapped] = useState(false);
+  const pointer = useRef<string>('mouse');
+  useEffect(() => {
+    if (!tapped) return undefined;
+    const away = (event: PointerEvent): void => {
+      if (hover.anchor.current?.contains(event.target as Node) === true) return;
+      setTapped(false);
+    };
+    const escape = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape') setTapped(false);
+    };
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', away, true);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [tapped, hover.anchor]);
+  const { onDragStart: closeOnDrag, onMouseEnter: hoverIn, ...trigger } = hover.triggerProps;
   return (
-    <div
-      data-distribution-shipment={row.id}
-      data-shipment-tone={tone ?? 'saved'}
-      draggable={drag !== undefined}
-      onDragStart={drag?.onDragStart}
-      onDragEnd={drag?.onDragEnd}
-      className={cn(
-        'group relative flex min-w-0 flex-col gap-1.5 rounded-lg border bg-white px-2.5 py-2 text-start shadow-sm dark:bg-[#0f1a3a]',
-        'border-slate-200 dark:border-[#2b3b6b]',
-        tone === 'proposed' &&
-          'border-dashed border-amber-500 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-400/[0.06]',
-        tone === 'moved' &&
-          'border-brand-400 bg-brand-50/60 dark:border-brand-400/60 dark:bg-brand-500/[0.08]',
-        tone === 'refused' &&
-          'border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400',
-        drag !== undefined && 'cursor-grab active:cursor-grabbing',
-        drag?.dragging === true && 'opacity-40',
-      )}
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+    <>
+      <div
+        {...trigger}
+        onMouseEnter={(event) => {
+          if (!hoverIsOnChip(event.currentTarget, event.target)) return;
+          hoverIn?.();
+        }}
+        data-distribution-shipment={row.id}
+        data-shipment-tone={tone ?? 'saved'}
+        aria-label={`${bankName === '' ? '…' : bankName} · ${branchName === '' ? '…' : branchName}`}
+        draggable={drag !== undefined}
+        onDragStart={(event) => {
+          closeOnDrag?.();
+          setTapped(false);
+          drag?.onDragStart(event);
+        }}
+        onDragEnd={drag?.onDragEnd}
+        onPointerDown={(event) => {
+          pointer.current = event.pointerType;
+        }}
+        onClick={(event) => {
+          if (pointer.current !== 'touch') return;
+          if ((event.target as Element).closest('button') !== null) return;
+          setTapped((open) => !open);
+        }}
+        className={cn(
+          'group relative flex min-h-[2rem] min-w-0 items-center gap-1 rounded-lg border bg-white py-0.5 pe-0.5 ps-1 text-start shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:bg-[#0f1a3a]',
+          'border-slate-200 dark:border-[#2b3b6b]',
+          tone === 'proposed' &&
+            'border-dashed border-amber-500 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-400/[0.06]',
+          tone === 'moved' &&
+            'border-brand-400 bg-brand-50/60 dark:border-brand-400/60 dark:bg-brand-500/[0.08]',
+          tone === 'refused' &&
+            'border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400',
+          drag !== undefined && 'cursor-grab active:cursor-grabbing',
+          drag?.dragging === true && 'opacity-40',
+        )}
+      >
         {drag !== undefined && (
-          <span aria-hidden className="text-slate-300 dark:text-slate-600">
+          <span aria-hidden className="shrink-0 text-slate-300 dark:text-slate-600">
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
               <circle cx="9" cy="6" r="1.6" />
               <circle cx="15" cy="6" r="1.6" />
@@ -1057,42 +1324,167 @@ export const ShipmentCard = ({
             </svg>
           </span>
         )}
-        <span className="flex min-w-0 items-center gap-1 text-[14px] font-black text-slate-900 dark:text-white">
-          <BoardIcon
-            d={[...SHIPMENT_PATH.bank]}
-            className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-300"
-          />
-          <span className="truncate">{bankName === '' ? '…' : bankName}</span>
+        {row.securedStage !== null && <SecuredStageMark stage={row.securedStage} />}
+        <span data-chip-text="true" className="min-w-0 flex-1 truncate text-[12.5px] leading-5">
+          <span className="font-black text-slate-900 dark:text-white">
+            {bankName === '' ? '…' : bankName}
+          </span>
+          <span aria-hidden className="text-slate-400 dark:text-slate-500">
+            {' '}
+            ·{' '}
+          </span>
+          <span data-chip-branch="true" className="font-bold text-slate-600 dark:text-slate-300">
+            {branchName === '' ? '…' : branchName}
+          </span>
         </span>
-        {row.securedStage !== null && <SecuredStageBadge stage={row.securedStage} />}
         {marks}
-        {controls !== undefined && (
-          <span className="ms-auto flex items-center gap-1">{controls}</span>
-        )}
+        {move}
       </div>
-      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-bold text-slate-600 dark:text-slate-300">
-        <span className="min-w-0 truncate" title={t('operations.shipment.origin')}>
-          {row.origin?.name ?? '…'}
+      {(hover.open || tapped) && (
+        <HoverCardLayer id={hover.id} anchor={hover.anchor} mark="secured-shipment">
+          {card}
+        </HoverCardLayer>
+      )}
+    </>
+  );
+};
+
+/** A magnifying glass — the search boxes' icon. */
+const SEARCH_ICON = ['M21 21l-4.35-4.35', 'M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z'];
+
+/**
+ * A column's filter bar (Round 25) — «احط فلتر فوق»: its boxes in a row that wraps, in the boards'
+ * filter colours, and «مسح التصفية» with what the filter leaves («المعروض ٣ من ١٢») once one is set.
+ */
+export const ColumnFilterBar = ({
+  children,
+  active,
+  shown,
+  total,
+  onClear,
+  ...rest
+}: {
+  children: ReactNode;
+  active: boolean;
+  shown: number;
+  total: number;
+  onClear: () => void;
+} & Record<`data-${string}`, string>): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <div
+      {...rest}
+      role="search"
+      className={cn(
+        'flex flex-wrap items-center gap-1.5',
+        '[&_input]:!border-slate-300 dark:[&_input]:!border-slate-700/80 [&_input]:!bg-white dark:[&_input]:!bg-[#080C14] [&_input]:!text-slate-900 dark:[&_input]:!text-slate-100',
+        '[&_select]:!border-slate-300 dark:[&_select]:!border-slate-700/80 [&_select]:!bg-white dark:[&_select]:!bg-[#080C14] [&_select]:!text-slate-900 dark:[&_select]:!text-slate-100',
+      )}
+    >
+      {children}
+      {active && (
+        <span className="flex w-full min-w-0 items-center justify-between gap-2">
+          <span
+            data-filter-shown={`${shown}/${total}`}
+            className="text-[11px] font-bold text-slate-500 dark:text-slate-400"
+          >
+            {t('operations.distribution.filter.shown', {
+              shown: formatNumber(shown, locale),
+              total: formatNumber(total, locale),
+            })}
+          </span>
+          <button
+            type="button"
+            data-filter-clear="true"
+            onClick={onClear}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:text-brand-300"
+          >
+            <BoardIcon d={['M6 18L18 6M6 6l12 12']} className="h-3 w-3" />
+            {t('operations.distribution.filter.clear')}
+          </button>
         </span>
-        <span aria-hidden className="text-slate-400 rtl:-scale-x-100">
-          →
-        </span>
-        <span className="min-w-0 truncate" title={t('operations.shipment.destination')}>
-          {row.destination?.name ?? '…'}
-        </span>
-        <span
-          data-shipment-area={row.areaName ?? ''}
-          className="ms-auto inline-flex items-center gap-1 rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          title={t('operations.shipment.area')}
-        >
-          <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3 w-3 rtl:-scale-x-100" />
-          {row.areaName ?? t('operations.distribution.noArea')}
-        </span>
-      </div>
-      <MoneyLine figures={figures} packages={packages} />
+      )}
     </div>
   );
 };
+
+/** A typed filter — its icon at the start, the label as the placeholder and for a screen reader. */
+export const FilterTextBox = ({
+  label,
+  value,
+  onChange,
+  icon = SEARCH_ICON,
+  ltr = false,
+  className,
+  ...rest
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  icon?: readonly string[];
+  /** A code: typed left to right. */
+  ltr?: boolean;
+  className?: string;
+} & Record<`data-${string}`, string>): JSX.Element => (
+  <FilterWithIcon icon={icon} className={cn('min-w-0 flex-1 basis-[9rem]', className)}>
+    <Input
+      {...rest}
+      type="search"
+      density="tight"
+      dir={ltr ? 'ltr' : undefined}
+      aria-label={label}
+      title={label}
+      placeholder={label}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={cn('!py-1.5 text-[13px]', ltr && '[[dir=rtl]_&]:text-right')}
+    />
+  </FilterWithIcon>
+);
+
+/** The area filter — the areas present, «كل المناطق» first; a native list: a phone opens its own. */
+export const FilterAreaSelect = ({
+  label,
+  allLabel,
+  value,
+  options,
+  onChange,
+  className,
+  ...rest
+}: {
+  label: string;
+  allLabel: string;
+  value: string;
+  options: readonly { value: string; label: string }[];
+  onChange: (value: string) => void;
+  className?: string;
+} & Record<`data-${string}`, string>): JSX.Element => (
+  <div className={cn('relative min-w-0 flex-1 basis-[8rem]', className)}>
+    <Select
+      {...rest}
+      density="tight"
+      aria-label={label}
+      title={label}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="!py-1.5 text-[13px] ps-6"
+    >
+      <option value="">{allLabel}</option>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </Select>
+    <span className="pointer-events-none absolute start-0 top-0 z-[1] flex h-full items-center ps-2">
+      <BoardIcon
+        d={[...FILTER_ICON.map]}
+        className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400"
+      />
+    </span>
+  </div>
+);
 
 /** The delivery day a card names (an overdue one's), year first inside Arabic. */
 export const dayText = (iso: string | null): string =>

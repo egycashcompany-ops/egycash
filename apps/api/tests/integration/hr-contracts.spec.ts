@@ -56,6 +56,8 @@ const FAR_END_DATE = '2028-07-31';
 let JOB_TITLE_ID = '';
 let BRANCH_ID = '';
 let DEPARTMENT_ID = '';
+/** «مستندات الوظائف» keys a department by its company entry; a new one is linked to an entry when created (D-ORG3-5). */
+let DEPARTMENT_KEY = '';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminId = '';
@@ -286,6 +288,7 @@ beforeAll(async () => {
     .send({ branchId: BRANCH_ID, code: 'DEP-OPS-1', name: { ar: 'العمليات', en: 'Ops' } });
   expect(depRes.status).toBe(201);
   DEPARTMENT_ID = (depRes.body as { data: { id: string } }).data.id;
+  DEPARTMENT_KEY = (depRes.body as { data: { catalogId: string | null } }).data.catalogId ?? DEPARTMENT_ID;
   const titleRes = await request(app)
     .post('/api/v1/platform/job-titles')
     .set('Authorization', `Bearer ${adminToken}`)
@@ -1153,6 +1156,85 @@ describe('«مستندات التعيين» — the printed hiring set (A27)', (
   });
 
   /**
+   * «تعديل» on the employee's tab (A28) — «نخلي في امكانيه للتعديل زي معملنا قبل كدا». What is typed in
+   * for the employee is kept for them, previewed and printed by their papers; the contract's own term
+   * is never typed; the contract they hold shows what it carries and prints as issued.
+   */
+  it('keeps what is typed in for an employee\'s papers, prints it, and shows the contract they hold as issued (A28)', async () => {
+    const employee = await employeeIn(jobId);
+    const papersOf = async (): Promise<EmployeePapersDto> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return res.body.data as EmployeePapersDto;
+    };
+    const save = (overrides: { key: string; value: string }[], version: number, token = adminToken) =>
+      request(app)
+        .patch(`/api/v1/hr/contracts/employee-papers/${employee.id}/values`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ overrides, version });
+    const preview = (key: string) =>
+      request(app)
+        .post(`/api/v1/hr/contracts/employee-papers/${employee.id}/preview`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ key });
+    const LICENSE = 'employee.weaponLicenseExpiry';
+
+    const before = await papersOf();
+    expect(before.valuesVersion).toBe(0);
+    expect(before.valuesUpdatedAt).toBeNull();
+    expect(before.papers[0]).toMatchObject({ key: contractTemplate.key, kind: 'contract', locked: false });
+    expect(before.papers.find((p) => p.key === jobForm.key)?.placeholders).toContain(LICENSE);
+    expect(before.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '', overridden: false });
+    expect(before.contractValues).toEqual([]);
+
+    // Typed in: kept and marked. The contract's own term is never typed.
+    const saved = await save([{ key: LICENSE, value: ' 31/12/2027 ' }, { key: 'contract.startDate', value: '01/01/2020' }], 0);
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    const after = saved.body.data as EmployeePapersDto;
+    expect(after.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '31/12/2027', overridden: true });
+    expect(after.values.find((v) => v.key === 'contract.startDate')).toMatchObject({ value: '15/11/2026', overridden: false });
+    expect(after.valuesUpdatedAt).not.toBeNull();
+
+    // Previewed and printed as typed; a preview records nothing, and a contract not held yet shows as
+    // it would be made.
+    const shown = await preview(jobForm.key);
+    expect(shown.status, JSON.stringify(shown.body)).toBe(200);
+    expect((shown.body.data as { html: string }).html).toContain('إقرار موظف المستندات — رخصة 31/12/2027');
+    const printed = (
+      await request(app)
+        .post('/api/v1/hr/contracts/hiring-pack')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeId: employee.id, keys: [jobForm.key] })
+    ).body.data as HiringPackDto;
+    expect(printed.html).toContain('إقرار موظف المستندات — رخصة 31/12/2027');
+    expect(((await preview(contractTemplate.key)).body.data as { html: string }).html).toContain(
+      'عقد موظف المستندات من 15/11/2026 إلى 14/11/2027',
+    );
+    expect((await papersOf()).contract).toBeNull();
+
+    // A page out of date is refused; a blank value gives the record's own back.
+    expect((await save([], 7)).status).toBe(409);
+    const cleared = (await save([{ key: LICENSE, value: '' }], after.valuesVersion)).body.data as EmployeePapersDto;
+    expect(cleared.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '', overridden: false });
+
+    // Once made, the contract is the one they hold: shown as issued, never typed into.
+    expect(((await pack(employee.id)).body.data as HiringPackDto).contract?.created).toBe(true);
+    const held = await papersOf();
+    expect(held.papers[0]).toMatchObject({ key: contractTemplate.key, locked: true });
+    expect(held.papers[0]?.placeholders).toContain('employee.fullName');
+    expect(held.contractValues.find((v) => v.key === 'contract.endDate')?.value).toBe('14/11/2027');
+    expect(((await preview(contractTemplate.key)).body.data as { html: string }).html).toContain(
+      'عقد موظف المستندات من 15/11/2026 إلى 14/11/2027',
+    );
+
+    // A paper not theirs is refused; so is somebody who may not print.
+    expect((await preview(otherJobForm.key)).status).toBe(400);
+    expect((await save([], held.valuesVersion, aliceToken)).status).toBe(403);
+  });
+
+  /**
    * «المعينون» (A28) — «كل اللي موجودين من موظفين فالشركه و بردو checkbox عشان لو هطبع لناس كتير فنفس
    * الوقت». Each ticked employee with their own papers, as their tab lists them; ONE document; a paper
    * not theirs never printed for them; one who cannot be printed for reported, the others printed.
@@ -1383,10 +1465,10 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     const before = res.body.data as JobPapersDto;
     expect(before.papers[0]?.key).toBe(key('contract'));
     expect(before.papers.map((p) => p.key)).toEqual(expect.arrayContaining([...ALL_JOBS, key('weapon'), key('card.atm-specialist')]));
-    const ops = before.departments.find((d) => d.departmentId === DEPARTMENT_ID);
+    const ops = before.departments.find((d) => d.departmentId === DEPARTMENT_KEY);
     expect(ops?.name.ar).toBe('العمليات');
     // His papers as the templates tick them: the weapon declaration only offered, so not ticked.
-    expect(lineOf(before, DEPARTMENT_ID, specialistJob)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
+    expect(lineOf(before, DEPARTMENT_KEY, specialistJob)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
     // Every active job, to add one to a department.
     expect(before.jobs.find((j) => j.jobTitleId === crewLeaderJob)?.keys).toContain(key('weapon'));
 
@@ -1398,9 +1480,9 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
       key('card.atm-specialist'),
       key('card.atm-crew-leader'),
     ];
-    const saved = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys }] });
+    const saved = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys }] });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    expect(lineOf(saved.body.data as JobPapersDto, DEPARTMENT_ID, specialistJob)).toEqual(keys);
+    expect(lineOf(saved.body.data as JobPapersDto, DEPARTMENT_KEY, specialistJob)).toEqual(keys);
 
     // The employee's papers and their printed set follow what was saved for their department and job.
     const papers = (
@@ -1413,16 +1495,16 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect(((await pack(employee.id)).body.data as HiringPackDto).documents.map((d) => d.key)).toEqual(keys);
 
     // A job added to a department nobody holds it in yet is listed there from now on.
-    const added = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: crewLeaderJob, keys: [key('contract'), key('weapon')] }] });
-    expect(lineOf(added.body.data as JobPapersDto, DEPARTMENT_ID, crewLeaderJob)).toEqual([key('contract'), key('weapon')]);
+    const added = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: crewLeaderJob, keys: [key('contract'), key('weapon')] }] });
+    expect(lineOf(added.body.data as JobPapersDto, DEPARTMENT_KEY, crewLeaderJob)).toEqual([key('contract'), key('weapon')]);
 
     // Saved again as it was: back to its templates' papers.
-    const back = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys: lineOf(before, DEPARTMENT_ID, specialistJob) }] });
-    expect(lineOf(back.body.data as JobPapersDto, DEPARTMENT_ID, specialistJob)).toEqual(lineOf(before, DEPARTMENT_ID, specialistJob));
+    const back = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys: lineOf(before, DEPARTMENT_KEY, specialistJob) }] });
+    expect(lineOf(back.body.data as JobPapersDto, DEPARTMENT_KEY, specialistJob)).toEqual(lineOf(before, DEPARTMENT_KEY, specialistJob));
 
     // An unpublished paper, an unknown department, an empty request and a user without the permission
     // are refused.
-    const line = (over: object) => ({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys, ...over }] });
+    const line = (over: object) => ({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys, ...over }] });
     expect((await save(line({ keys: ['not.a.paper'] }))).status).toBe(400);
     expect((await save(line({ departmentId: '64b1f0cccccccccccccccc0e' }))).status).toBe(404);
     expect((await save({ lines: [] })).status).toBe(400);
@@ -1462,10 +1544,10 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     const employee = await employeeIn(specialistJob);
     const html = ((await pack(employee.id)).body.data as HiringPackDto).html;
     expect(html).toContain('فني صيانة ماكينات');
-    // Each group of the code at its own boxes on his scanned page.
+    // Each group of the code at its own boxes on his scanned page, in Arabic figures.
     expect(html).toContain(
-      '<span class="at f1-occ1"><span class="cells c3"><i>7</i><i>4</i><i>2</i></span></span>' +
-        '<span class="at f1-occ2"><span class="cells c3"><i>1</i><i>1</i><i>5</i></span></span>',
+      '<span class="at f1-occ1"><span class="cells c3"><i>٧</i><i>٤</i><i>٢</i></span></span>' +
+        '<span class="at f1-occ2"><span class="cells c3"><i>١</i><i>١</i><i>٥</i></span></span>',
     );
     expect(html).toContain('بوظيفة ( أخصائى صراف آلى )');
 

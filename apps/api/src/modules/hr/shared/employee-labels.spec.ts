@@ -100,6 +100,7 @@ describe('a label is looked up, never kept', () => {
     expect(controllers.map(rel).sort()).toEqual(
       [
         'attendance/day-records/day-record.controller.ts',
+      'attendance/decisions/decision.controller.ts',
         'attendance/regularizations/regularization.controller.ts',
         'employee-loans/employee-loan.controller.ts',
         'payroll/adjustments/payroll-adjustment.controller.ts',

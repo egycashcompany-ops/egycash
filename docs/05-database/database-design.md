@@ -140,6 +140,27 @@ Indexes: `ux_code` (partial on `isDeleted:false`), `ix_status`, and on sections
 unique, and partial on `{isDeleted:false, catalogId:{$type:"objectId"}}` so that rows naming no entry
 are outside the constraint. `departments._id` remains the department data scope; nothing moves.
 Existing data is linked by `npm run migrate:org-catalog` (dry run by default), never at boot.
+Since P-ORG-3 ([ADR-038](../03-decisions/ADR-038-job-titles-placed-in-the-structure.md)) a row
+created through the department or section service without a `catalogId` is linked when created: to the
+one active entry its name folds to, or to a new entry for a new name. It stays unlinked when that is
+ambiguous, when an unlinked row of that name already exists, or when the step fails. Existing rows are
+never linked by any write except the operator command.
+
+### job_title_places  *(organization-wide, ADR-038)*
+```jsonc
+// A job title's place in the company structure. Descriptive: no headcount, no seat.
+{ "jobTitleId": "…", "departmentCatalogId": "…",
+  "sectionCatalogId": "…" | null }        // null = directly under the department
+```
+Indexes: `ux_jobTitleId_departmentCatalogId_sectionCatalogId` (unique, partial on `isDeleted:false`),
+`ix_departmentCatalogId`, `ix_sectionCatalogId` — built at boot (`migrateJobPlaceIndexes`).
+
+### job_title_place_fills  *(organization-wide, ADR-038)*
+```jsonc
+// One row per company department filled once from where its holders sit.
+{ "departmentCatalogId": "…", "at": "<Date>", "placed": 0 }
+```
+Index: `ux_departmentCatalogId` (unique) — the fill's race guard, built at boot.
 
 ### settings_values
 ```jsonc

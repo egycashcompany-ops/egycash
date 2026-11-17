@@ -32,3 +32,13 @@ export const BOARD_TABLE_FILL =
  */
 export const BOARD_LIST_FILL =
   'lg:min-h-[14rem] lg:flex-1 lg:overflow-y-auto lg:overscroll-contain';
+
+/**
+ * A `ListView` card inside `BOARD_TABLE_FILL`. `ListView` draws the toolbar, the table and the
+ * pager as ONE card and takes no class of its own, so this reaches its `<section>` from outside:
+ * the card becomes a column, its toolbar and its pager keep their height, and the table — the
+ * card's one child holding a `<table>` — takes what is left and scrolls under its head. A phone or
+ * a tablet scrolls the page as before.
+ */
+export const BOARD_LISTVIEW_FILL =
+  'lg:flex lg:flex-col lg:[&>section]:flex lg:[&>section]:min-h-0 lg:[&>section]:flex-1 lg:[&>section]:flex-col lg:[&>section>div:has(>table)]:min-h-0 lg:[&>section>div:has(>table)]:flex-1';

@@ -27,6 +27,7 @@ import {
   type Column,
 } from '../../../../shared/ui';
 import { Select } from '../../../../shared/ui/form';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../../shared/ui/board-scroll';
 import { EmptyState } from '../../../../shared/ui/states/EmptyState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../../shared/lib/errors';
@@ -135,67 +136,76 @@ export const TemplatesListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('systemAdmin.templates.title')}
-        actions={
-          can('notificationTemplate.create') ? (
-            <Button
-              onClick={() => {
-                setDraft(emptyDraft());
-                setCreating(true);
-              }}
-            >
-              {t('systemAdmin.templates.create')}
-            </Button>
-          ) : null
-        }
-      />
-
-      <FilterBar>
-        <Select
-          aria-label={t('systemAdmin.templates.fields.status')}
-          value={status}
-          onChange={(e) => setParam('status', e.target.value)}
-        >
-          <option value="">{t('systemAdmin.templates.filters.allStatuses')}</option>
-          {TEMPLATE_STATUSES.map((value) => (
-            <option key={value} value={value}>
-              {t(`systemAdmin.templates.status.${value}`)}
-            </option>
-          ))}
-        </Select>
-        <Select
-          aria-label={t('systemAdmin.templates.fields.category')}
-          value={category}
-          onChange={(e) => setParam('category', e.target.value)}
-        >
-          <option value="">{t('systemAdmin.templates.filters.allCategories')}</option>
-          {NOTIFICATION_CATEGORIES.map((value) => (
-            <option key={value} value={value}>
-              {t(`systemAdmin.templates.category.${value}`)}
-            </option>
-          ))}
-        </Select>
-      </FilterBar>
-
-      <DataTable
-        columns={columns}
-        rows={query.data?.items ?? []}
-        rowKey={(row) => row.id}
-        loading={query.isLoading}
-        error={query.error}
-        onRetry={() => void query.refetch()}
-        onRowClick={(row) => navigate(row.id)}
-        empty={<EmptyState title={t('systemAdmin.templates.empty')} />}
-      />
-
-      {query.data !== undefined && (
-        <Pagination
-          meta={query.data.meta}
-          onPageChange={(next) => setParam('page', String(next))}
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «عايز بردو كل الصفحات اللى فى مديول
+          الإدارة ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس»): on a computer the title, its
+          action and the filters keep their place, the pager keeps its place below, and only the
+          table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('systemAdmin.templates.title')}
+          actions={
+            can('notificationTemplate.create') ? (
+              <Button
+                onClick={() => {
+                  setDraft(emptyDraft());
+                  setCreating(true);
+                }}
+              >
+                {t('systemAdmin.templates.create')}
+              </Button>
+            ) : null
+          }
         />
-      )}
+
+        <FilterBar>
+          <Select
+            aria-label={t('systemAdmin.templates.fields.status')}
+            value={status}
+            onChange={(e) => setParam('status', e.target.value)}
+          >
+            <option value="">{t('systemAdmin.templates.filters.allStatuses')}</option>
+            {TEMPLATE_STATUSES.map((value) => (
+              <option key={value} value={value}>
+                {t(`systemAdmin.templates.status.${value}`)}
+              </option>
+            ))}
+          </Select>
+          <Select
+            aria-label={t('systemAdmin.templates.fields.category')}
+            value={category}
+            onChange={(e) => setParam('category', e.target.value)}
+          >
+            <option value="">{t('systemAdmin.templates.filters.allCategories')}</option>
+            {NOTIFICATION_CATEGORIES.map((value) => (
+              <option key={value} value={value}>
+                {t(`systemAdmin.templates.category.${value}`)}
+              </option>
+            ))}
+          </Select>
+        </FilterBar>
+
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={query.data?.items ?? []}
+            rowKey={(row) => row.id}
+            loading={query.isLoading}
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            onRowClick={(row) => navigate(row.id)}
+            empty={<EmptyState title={t('systemAdmin.templates.empty')} />}
+            stickyHead
+          />
+        </div>
+
+        {query.data !== undefined && (
+          <Pagination
+            meta={query.data.meta}
+            onPageChange={(next) => setParam('page', String(next))}
+          />
+        )}
+      </div>
 
       <TemplateFormDialog
         open={creating}

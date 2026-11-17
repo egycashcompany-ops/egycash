@@ -11,6 +11,20 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administration: only the table scrolls, not the page.** «عايز بردو كل الصفحات اللى فى مديول الإدارة
+  ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس». Every page of the «الإدارة» menu now takes the
+  board frame Fleet and ATM use (`shared/ui/board-scroll.ts`). On a computer the title, tabs and
+  filters keep their place, the pager stays below, and only the table's rows scroll, under a head
+  that stays. A phone or a tablet scrolls as before.
+  - The table pages: System Users, Active Users, Notification Templates, Audit Log, Activity Log,
+    Applications and Application Categories.
+  - The pages whose list is cards: Roles, the Permission Catalog, Approval Workflows and System
+    Settings. Their list scrolls instead (`BOARD_LIST_FILL`).
+  - `BOARD_LISTVIEW_FILL` does the same for a `ListView` card.
+  - `admin-board-scroll.spec.ts` holds every page of the menu to this shape.
+  - Checked in a browser against a mocked API. At 1440×900 the page never scrolls on any of the
+    eleven, and the table or list takes the height that is left.
+
 - **HR: «نموذج رقم (1)» carries the company's own number and address, the job's wage, and Arabic
   figures.** «رقم المنشاه … هنثبت اول مربع و هنحط من تاني مربع الرقم دا 3338726 بالعربي من الشمال
   لليمين و نشيل التاريخ اللي موجو في تحريرا في و عاوزين نحط الاجر داخل اشتراك و الاجر الشامل علي حسب

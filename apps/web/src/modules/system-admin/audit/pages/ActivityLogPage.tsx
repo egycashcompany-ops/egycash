@@ -16,6 +16,7 @@ import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { DataTable, FilterBar, Pagination, type Column } from '../../../../shared/ui';
 import { Input } from '../../../../shared/ui/form';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../../shared/ui/board-scroll';
 import { EmptyState } from '../../../../shared/ui/states/EmptyState';
 import { formatDateTime } from '../../../../shared/lib/format';
 import { useActivityLogs } from '../api/audit-api';
@@ -74,46 +75,56 @@ export const ActivityLogPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('systemAdmin.activity.title')}
-      />
-
-      {/* Exactly the two the endpoint accepts. Offering more would be a control that produces a
-          400, which reads on screen as "the log is broken". */}
-      <FilterBar>
-        <Input
-          aria-label={t('systemAdmin.activity.fields.entityType')}
-          placeholder={t('systemAdmin.audit.filters.entityTypePlaceholder')}
-          dir="ltr"
-          value={filters.entityType ?? ''}
-          onChange={(e) => set('entityType', e.target.value)}
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «عايز بردو كل الصفحات اللى فى
+          مديول الإدارة ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس»): on a computer the title
+          and the filters keep their place, the pager keeps its place below, and only the table's
+          rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('systemAdmin.activity.title')}
         />
-        <Input
-          aria-label={t('systemAdmin.activity.fields.entityId')}
-          placeholder={t('systemAdmin.audit.filters.entityIdPlaceholder')}
-          dir="ltr"
-          value={filters.entityId ?? ''}
-          onChange={(e) => set('entityId', e.target.value)}
-        />
-      </FilterBar>
 
-      <DataTable
-        columns={columns}
-        rows={query.data?.items ?? []}
-        rowKey={(row) => row.id}
-        loading={query.isLoading}
-        // `DataTable` shows its error state for anything that is not `undefined`, and TanStack's
-        // `error` is `null` when nothing failed — passing it straight through put every load in a
-        // permanent error state. `isError` is the question actually being asked.
-        error={query.isError ? query.error : undefined}
-        onRetry={() => void query.refetch()}
-        empty={<EmptyState title={t('systemAdmin.activity.empty')} />}
-      />
+        {/* Exactly the two the endpoint accepts. Offering more would be a control that produces a
+            400, which reads on screen as "the log is broken". */}
+        <FilterBar>
+          <Input
+            aria-label={t('systemAdmin.activity.fields.entityType')}
+            placeholder={t('systemAdmin.audit.filters.entityTypePlaceholder')}
+            dir="ltr"
+            value={filters.entityType ?? ''}
+            onChange={(e) => set('entityType', e.target.value)}
+          />
+          <Input
+            aria-label={t('systemAdmin.activity.fields.entityId')}
+            placeholder={t('systemAdmin.audit.filters.entityIdPlaceholder')}
+            dir="ltr"
+            value={filters.entityId ?? ''}
+            onChange={(e) => set('entityId', e.target.value)}
+          />
+        </FilterBar>
 
-      {query.data !== undefined && (
-        <Pagination meta={query.data.meta} onPageChange={(next) => set('page', String(next))} />
-      )}
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={query.data?.items ?? []}
+            rowKey={(row) => row.id}
+            loading={query.isLoading}
+            // `DataTable` shows its error state for anything that is not `undefined`, and
+            // TanStack's `error` is `null` when nothing failed — passing it straight through put
+            // every load in a permanent error state. `isError` is the question actually being
+            // asked.
+            error={query.isError ? query.error : undefined}
+            onRetry={() => void query.refetch()}
+            empty={<EmptyState title={t('systemAdmin.activity.empty')} />}
+            stickyHead
+          />
+        </div>
+
+        {query.data !== undefined && (
+          <Pagination meta={query.data.meta} onPageChange={(next) => set('page', String(next))} />
+        )}
+      </div>
     </PageContainer>
   );
 };

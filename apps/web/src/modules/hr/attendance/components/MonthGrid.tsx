@@ -23,6 +23,10 @@ const TONE: Record<AttendanceDayStatus, string> = {
   weekend: 'bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400',
   holiday: 'bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400',
   dayOff: 'bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400',
+  // Dashed rather than filled: a cell the roster has not answered, which should not look like the
+  // settled grey of a weekend sitting next to it.
+  noSchedule:
+    'border border-dashed border-slate-300 text-slate-500 dark:border-slate-700 dark:text-slate-400',
 };
 
 /** `month` is `YYYY-MM`; the grid spans that month's real length, not a fixed 31. */

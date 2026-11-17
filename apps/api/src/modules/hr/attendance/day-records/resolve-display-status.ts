@@ -83,8 +83,8 @@ export interface DisplayStatusInput {
  *     written for them.
  *
  *  6. **No expectation at all means no expectation.** With neither an assignment nor a pattern,
- *     nobody said this person was due, so an empty day is `dayOff` and not a failure to attend —
- *     the same answer the engine gives for the same reason.
+ *     nobody has said when this person works, so the day is `noSchedule` — not a failure to
+ *     attend, and equally not a rest day. The same answer the engine gives, for the same reason.
  */
 export const resolveDisplayStatus = (input: DisplayStatusInput): AttendanceDayStatus | null => {
   const { stored, workDate, today, expectedEnd, calendar, now } = input;
@@ -103,8 +103,10 @@ export const resolveDisplayStatus = (input: DisplayStatusInput): AttendanceDaySt
   // 2 — the date has passed and nobody arrived.
   if (past) return 'absent';
 
-  // 6 — nobody said when they were due.
-  if (expectedEnd === null) return 'dayOff';
+  // 6 — nobody said when they were due. A GAP, NOT A REST DAY: the weekend and the holidays have
+  // already answered above, so on a working day this means the schedule is missing, and saying
+  // «يوم راحة» would both be false and hide the thing HR has to fix.
+  if (expectedEnd === null) return 'noSchedule';
 
   // 5 — still winnable, or not.
   return now < expectedEnd ? 'pending' : 'absent';

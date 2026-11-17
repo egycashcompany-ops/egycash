@@ -117,6 +117,8 @@ const panel = (
   options: { locale?: Locale; permissions?: string[] } = {},
 ): string => render(<UserSecurityActions user={user(over)} />, options);
 
+const RECIPIENT = { nameAr: 'سارة أحمد', username: '0101469', email: null };
+
 const LINK: SetupLinkDto = {
   url: 'https://ecms.example.com/activate?token=abc123def456',
   expiresAt: '2026-08-13T09:00:00.000Z',
@@ -180,7 +182,7 @@ describe('the setup-link button is offered only where it would work', () => {
 });
 
 describe('the dialog tells the administrator what they are holding', () => {
-  const markup = render(<SetupLinkPanel link={LINK} userName="Sara Ahmed" />, {
+  const markup = render(<SetupLinkPanel link={LINK} userName="Sara Ahmed" recipient={RECIPIENT} />, {
     permissions: ['user.setupLink'],
   });
 
@@ -221,11 +223,18 @@ describe('the dialog tells the administrator what they are holding', () => {
     expect(markup).toContain('for="setup-link-url"');
   });
 
+  // «عايز زر تانى جنبه يكون نسخ الرسالة» — the message, beside the link.
+  it('offers the message beside the link', () => {
+    expect(markup).toContain('Copy message');
+    expect(markup).toContain('Copy link');
+    expect(markup.indexOf('Copy message')).toBeLessThan(markup.indexOf('Copy link'));
+  });
+
 });
 
 describe('both locales', () => {
   it.each(['en', 'ar'] as const)('resolves every key the dialog asks for — %s', (locale) => {
-    const markup = render(<SetupLinkPanel link={LINK} userName="Sara Ahmed" />, {
+    const markup = render(<SetupLinkPanel link={LINK} userName="Sara Ahmed" recipient={RECIPIENT} />, {
       locale,
       permissions: ['user.setupLink'],
     });

@@ -1153,6 +1153,85 @@ describe('«مستندات التعيين» — the printed hiring set (A27)', (
   });
 
   /**
+   * «تعديل» on the employee's tab (A28) — «نخلي في امكانيه للتعديل زي معملنا قبل كدا». What is typed in
+   * for the employee is kept for them, previewed and printed by their papers; the contract's own term
+   * is never typed; the contract they hold shows what it carries and prints as issued.
+   */
+  it('keeps what is typed in for an employee\'s papers, prints it, and shows the contract they hold as issued (A28)', async () => {
+    const employee = await employeeIn(jobId);
+    const papersOf = async (): Promise<EmployeePapersDto> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return res.body.data as EmployeePapersDto;
+    };
+    const save = (overrides: { key: string; value: string }[], version: number, token = adminToken) =>
+      request(app)
+        .patch(`/api/v1/hr/contracts/employee-papers/${employee.id}/values`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ overrides, version });
+    const preview = (key: string) =>
+      request(app)
+        .post(`/api/v1/hr/contracts/employee-papers/${employee.id}/preview`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ key });
+    const LICENSE = 'employee.weaponLicenseExpiry';
+
+    const before = await papersOf();
+    expect(before.valuesVersion).toBe(0);
+    expect(before.valuesUpdatedAt).toBeNull();
+    expect(before.papers[0]).toMatchObject({ key: contractTemplate.key, kind: 'contract', locked: false });
+    expect(before.papers.find((p) => p.key === jobForm.key)?.placeholders).toContain(LICENSE);
+    expect(before.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '', overridden: false });
+    expect(before.contractValues).toEqual([]);
+
+    // Typed in: kept and marked. The contract's own term is never typed.
+    const saved = await save([{ key: LICENSE, value: ' 31/12/2027 ' }, { key: 'contract.startDate', value: '01/01/2020' }], 0);
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    const after = saved.body.data as EmployeePapersDto;
+    expect(after.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '31/12/2027', overridden: true });
+    expect(after.values.find((v) => v.key === 'contract.startDate')).toMatchObject({ value: '15/11/2026', overridden: false });
+    expect(after.valuesUpdatedAt).not.toBeNull();
+
+    // Previewed and printed as typed; a preview records nothing, and a contract not held yet shows as
+    // it would be made.
+    const shown = await preview(jobForm.key);
+    expect(shown.status, JSON.stringify(shown.body)).toBe(200);
+    expect((shown.body.data as { html: string }).html).toContain('إقرار موظف المستندات — رخصة 31/12/2027');
+    const printed = (
+      await request(app)
+        .post('/api/v1/hr/contracts/hiring-pack')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeId: employee.id, keys: [jobForm.key] })
+    ).body.data as HiringPackDto;
+    expect(printed.html).toContain('إقرار موظف المستندات — رخصة 31/12/2027');
+    expect(((await preview(contractTemplate.key)).body.data as { html: string }).html).toContain(
+      'عقد موظف المستندات من 15/11/2026 إلى 14/11/2027',
+    );
+    expect((await papersOf()).contract).toBeNull();
+
+    // A page out of date is refused; a blank value gives the record's own back.
+    expect((await save([], 7)).status).toBe(409);
+    const cleared = (await save([{ key: LICENSE, value: '' }], after.valuesVersion)).body.data as EmployeePapersDto;
+    expect(cleared.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '', overridden: false });
+
+    // Once made, the contract is the one they hold: shown as issued, never typed into.
+    expect(((await pack(employee.id)).body.data as HiringPackDto).contract?.created).toBe(true);
+    const held = await papersOf();
+    expect(held.papers[0]).toMatchObject({ key: contractTemplate.key, locked: true });
+    expect(held.papers[0]?.placeholders).toContain('employee.fullName');
+    expect(held.contractValues.find((v) => v.key === 'contract.endDate')?.value).toBe('14/11/2027');
+    expect(((await preview(contractTemplate.key)).body.data as { html: string }).html).toContain(
+      'عقد موظف المستندات من 15/11/2026 إلى 14/11/2027',
+    );
+
+    // A paper not theirs is refused; so is somebody who may not print.
+    expect((await preview(otherJobForm.key)).status).toBe(400);
+    expect((await save([], held.valuesVersion, aliceToken)).status).toBe(403);
+  });
+
+  /**
    * «المعينون» (A28) — «كل اللي موجودين من موظفين فالشركه و بردو checkbox عشان لو هطبع لناس كتير فنفس
    * الوقت». Each ticked employee with their own papers, as their tab lists them; ONE document; a paper
    * not theirs never printed for them; one who cannot be printed for reported, the others printed.

@@ -146,6 +146,7 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_employee_pay_items: { action: 'purge', why: 'somebody’s recurring pay item' },
   hr_contracts: { action: 'purge', why: 'somebody’s employment contract' },
   hr_candidate_drafts: { action: 'purge', why: 'the papers somebody was printed and hired with' },
+  hr_employee_paper_values: { action: 'purge', why: 'the values typed in for somebody\'s papers' },
   hr_employee_loans: { action: 'purge', why: 'somebody’s loan' },
   hr_loan_installments: { action: 'purge', why: 'an installment of somebody’s loan' },
   hr_loan_repayments: { action: 'purge', why: 'a repayment of somebody’s loan' },

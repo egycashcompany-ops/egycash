@@ -270,7 +270,8 @@ const FORM_ONE: HiringPaper = {
   // 2: the job as the insurance authority names it, and its occupation code («مسميات الوظائف لدى التأمينات»).
   // 3: printed on his own scanned pages, the values written on them — «الشكل اللي ادتولك بظبط».
   // 4: the establishment's number and address fixed, the job's wage in its two boxes, no date written.
-  revision: 4,
+  // 5: the declaration overleaf left for the hand — «اقر انا دي سبها متكتبش فيها اسم الموظف».
+  revision: 5,
   sections: {
     header: '',
     body: [
@@ -306,12 +307,12 @@ const FORM_ONE: HiringPaper = {
         at('f1-email', '{{employee.email}}') +
         // «تحريراً في:  /  /» is left for the hand.
         '</div>',
-      // Overleaf: «إرشادات» and «إقرار» — the company, and his name in the declaration.
+      // Overleaf: the company, its insurance number and address. «أقر أنا» is left for the hand —
+      // «اقر انا دي سبها متكتبش فيها اسم الموظف».
       '<div class="scan f1p2">' +
         at('f2-co', '{{company.name}}') +
         at('f2-ins', ESTABLISHMENT_NUMBER) +
         at('f2-addr', ESTABLISHMENT_ADDRESS) +
-        at('f2-name', '{{employee.fullName}}') +
         '</div>',
     ].join('\n'),
     footer: '',

@@ -266,8 +266,8 @@ describe('«نموذج رقم (1)» — the social-insurance registration', () =
       '<span class="at f1-occ1"><span class="cells c3">{{job.occupationCode1}}</span></span>' +
         '<span class="at f1-occ2"><span class="cells c3">{{job.occupationCode2}}</span></span>',
     );
-    // A newer revision: the boot rewrites the row it wrote before the fixed values.
-    expect(FORM.revision).toBe(4);
+    // A newer revision: the boot rewrites the row it wrote before.
+    expect(FORM.revision).toBe(5);
   });
 
   it('writes each digit in its own box, left to right, in Arabic figures, and leaves the rest of a row empty', () => {
@@ -323,6 +323,15 @@ describe('«نموذج رقم (1)» — the social-insurance registration', () =
     expect(html).toContain(`<span class="at f1-est">${boxes('٣٣٣٨٧٢٦')}</span>`);
     expect(html).toContain('<span class="at f2-ins">٣٣٣٨٧٢٦</span>');
     expect(html).toContain('<span class="at f2-addr">٩٠ د احمد عرابي المهندسين-الجيزه</span>');
+  });
+
+  // «في الصفحه التانيه فالنموزج اقر انا دي سبها متكتبش فيها اسم الموظف».
+  it('leaves «أقر أنا» overleaf for the hand — his name only on the first page', () => {
+    const overleaf = FORM.sections.body.slice(FORM.sections.body.indexOf('<div class="scan f1p2">'));
+    expect(overleaf).not.toContain('{{employee.fullName}}');
+    expect(overleaf).not.toContain('f2-name');
+    expect(html).toContain('<span class="at f1-name">أحمد محمد علي</span>');
+    expect(html.match(/أحمد محمد علي/g)).toHaveLength(1);
   });
 
   // «و نشيل التاريخ اللي موجو في تحريرا في».

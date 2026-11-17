@@ -37,8 +37,10 @@ import { type DateSpan } from './compensation-rules';
  * month keeps the figures it closed with, and an unfrozen day picks up the new rule the next time
  * it is recomputed.
  *
- * `weekend`, `holiday` and `dayOff` stay out: a worked holiday counting twice is a rule nobody has
- * granted this system either.
+ * `weekend`, `holiday`, `dayOff` and `noSchedule` stay out: a worked holiday counting twice is a
+ * rule nobody has granted this system either, and `noSchedule` — nobody has said when this person
+ * works — is a gap in the roster rather than a fact about their attendance. Pricing a gap in
+ * either direction would be inventing a labour rule out of missing configuration.
  *
  * `pending` (stage 2) IS IN NO GROUP HERE, AND THAT IS THE DESIGN, not an omission to be fixed
  * later. It means "this day is still being lived and nobody has concluded it", so it is neither an

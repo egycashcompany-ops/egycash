@@ -3,7 +3,7 @@
 //
 // The resolution order is the specification, first match wins:
 //   not employed → no row · leave → onLeave · holiday → holiday · weekend → weekend ·
-//   no shift → what the device saw (dayOff · checkedIn · present) ·
+//   no shift → what the device saw (noSchedule · checkedIn · present) ·
 //   no punches → pending while the day is still being lived, else absent ·
 //   one punch → checkedIn · else compute.
 //
@@ -239,7 +239,12 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // shift and an arrival at dawn. Night work gets a real shift or a pattern, where
   // `crossesMidnight` answers it properly.
   if (input.shift === null) {
-    if (punches.length === 0) return { ...empty, status: 'dayOff', flags };
+    // NOT `dayOff`, which is what this returned until production showed an entire branch marked
+    // «يوم راحة» on a Tuesday. A rest day is a positive claim that the company owed this person no
+    // work, and nobody had made it: the weekend and the holidays are already decided above, so
+    // reaching here on a working day means only that NOBODY HAS SAID WHEN THIS PERSON WORKS.
+    // `noSchedule` says that, which is a gap HR can close; «يوم راحة» said the opposite and hid it.
+    if (punches.length === 0) return { ...empty, status: 'noSchedule', flags };
     if (punches.length === 1) {
       return { ...empty, status: 'checkedIn', firstInAt: (punches[0] as EnginePunch).at, flags };
     }

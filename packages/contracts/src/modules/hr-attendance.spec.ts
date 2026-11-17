@@ -18,7 +18,7 @@ import {
 } from './hr-attendance.js';
 
 describe('closed vocabularies', () => {
-  it('pins the twelve day statuses of §2 — one enum, one value per day', () => {
+  it('pins the thirteen day statuses of §2 — one enum, one value per day', () => {
     // `checkedIn` is a deliberate contract change (owner ruling, 2026-11-17). The branch devices
     // show 70–90% of employees scan on arrival and never scan out, so a check-in with no
     // check-out is the ordinary working day here; it used to derive as `incomplete`, which is
@@ -28,6 +28,11 @@ describe('closed vocabularies', () => {
     // before that ruling carry it, and a value that exists in the database must stay nameable by
     // the enum that reads it. Payroll deliberately leaves it out of the attended statuses so no
     // frozen month is restated — see `attendance-quantities.ts`.
+    //
+    // `noSchedule` is the thirteenth: nobody has said when this person works. It was reported as
+    // `dayOff` until production showed a whole branch marked «يوم راحة» on a Tuesday — a claim
+    // that the company owed them no work, which nobody had made. `dayOff` stays in the enum for
+    // the rows already carrying it, and nothing derives it any more.
     //
     // `pending` is the twelfth (stage 2): the day that is still being lived. It is written only
     // for a date in progress and is payroll-neutral by construction, and once the date is past the
@@ -46,6 +51,7 @@ describe('closed vocabularies', () => {
       'holiday',
       'incomplete',
       'dayOff',
+      'noSchedule',
     ]);
   });
 

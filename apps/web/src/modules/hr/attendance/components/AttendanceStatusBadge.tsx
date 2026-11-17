@@ -1,4 +1,4 @@
-// The twelve day statuses (§3) and the six regularization statuses (§7), toned the way Leave tones
+// The thirteen day statuses (§3) and the six regularization statuses (§7), toned the way Leave tones
 // its own: a warning is something waiting on a human, a danger is a refusal or an absence, and a
 // neutral is a day nobody owes anything for.
 import {
@@ -29,6 +29,11 @@ const DAY_TONE: Record<AttendanceDayStatus, Tone> = {
   weekend: 'neutral',
   holiday: 'neutral',
   dayOff: 'neutral',
+  // A GAP, and toned as one rather than as a rest day. It is neutral and not a danger because the
+  // employee has done nothing wrong — the roster is incomplete — but the LABEL has to say which of
+  // the two it is, because «يوم راحة» on a working day reads as a settled answer and this is an
+  // open question for HR.
+  noSchedule: 'neutral',
   // HISTORICAL. Nothing derives this any more — a single punch is `checkedIn` — so it appears only
   // on days computed before that ruling, and keeps the tone it had while it meant something.
   incomplete: 'danger',

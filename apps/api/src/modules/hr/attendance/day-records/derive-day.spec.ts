@@ -106,10 +106,10 @@ describe('the resolution order — first match wins', () => {
     expect(row?.lateMinutes).toBe(0);
   });
 
-  it('holiday beats weekend beats dayOff beats absent', () => {
+  it('holiday beats weekend beats noSchedule beats absent', () => {
     expect(deriveDay(base({ holiday: true, weekend: true }))?.status).toBe('holiday');
     expect(deriveDay(base({ weekend: true }))?.status).toBe('weekend');
-    expect(deriveDay(base({ shift: null }))?.status).toBe('dayOff');
+    expect(deriveDay(base({ shift: null }))?.status).toBe('noSchedule');
     expect(deriveDay(base())?.status).toBe('absent');
   });
 
@@ -142,7 +142,10 @@ describe('no shift and no default pattern — report what the devices saw', () =
   const noShift = (punches: EnginePunch[]) => deriveDay(base({ shift: null, punches }));
 
   it('no punches at all is still a day nobody owes anything for', () => {
-    expect(noShift([])?.status).toBe('dayOff');
+    // NOT `dayOff`: nobody has said when this person works, which is a gap in the roster and not
+    // a rest day the company granted. Production showed a whole branch marked «يوم راحة» on a
+    // Tuesday before this was split.
+    expect(noShift([])?.status).toBe('noSchedule');
   });
 
   it('one punch is a check-in, and nothing is late with no expected start', () => {
@@ -211,10 +214,11 @@ describe('pending — an expected day nobody has concluded yet', () => {
     });
   });
 
-  it('never applies without an expectation: no shift and no pattern stays dayOff all day', () => {
-    // Nobody said when this person was due, so there is no hour for them to be "not yet in" by.
-    expect(deriveDay(base({ shift: null, now: at(10) }))?.status).toBe('dayOff');
-    expect(deriveDay(base({ shift: null, now: at(23) }))?.status).toBe('dayOff');
+  it('never applies without an expectation: no shift and no pattern is noSchedule all day', () => {
+    // Nobody said when this person was due, so there is no hour for them to be "not yet in" by —
+    // and equally no grounds to call the day a rest day.
+    expect(deriveDay(base({ shift: null, now: at(10) }))?.status).toBe('noSchedule');
+    expect(deriveDay(base({ shift: null, now: at(23) }))?.status).toBe('noSchedule');
   });
 
   it('never outranks the calendar or a punch', () => {

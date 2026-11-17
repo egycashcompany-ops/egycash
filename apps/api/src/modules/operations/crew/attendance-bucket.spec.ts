@@ -25,6 +25,10 @@ describe('attendance buckets (B5)', () => {
     expect(attendanceBucket('weekend')).toBe('notScheduled');
     expect(attendanceBucket('holiday')).toBe('notScheduled');
     expect(attendanceBucket('dayOff')).toBe('notScheduled');
+    // Somebody nobody has scheduled derives `noSchedule` where they used to derive `dayOff`. The
+    // board's question — can I count on this person today — has the same answer either way, so it
+    // must not drift into `unknown` when the status was renamed.
+    expect(attendanceBucket('noSchedule')).toBe('notScheduled');
   });
 
   it('treats "no answer" and "attendance could not decide" the same, and never as present', () => {

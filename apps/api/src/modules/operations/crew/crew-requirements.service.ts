@@ -61,9 +61,14 @@ export const attendanceBucket = (
       return 'absent';
     case 'onLeave':
       return 'onLeave';
+    // `noSchedule` sits with these deliberately. An employee with no shift and no default pattern
+    // derives it where they used to derive `dayOff`, and the board's question — can I count on
+    // this person today — has the same answer either way. Letting it fall through to `default`
+    // would quietly move every unscheduled employee into `unknown`.
     case 'weekend':
     case 'holiday':
     case 'dayOff':
+    case 'noSchedule':
       return 'notScheduled';
     default:
       return 'unknown';

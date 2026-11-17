@@ -1827,6 +1827,19 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **A role holding a retired permission can be saved again.** «لما بعدل صلاحيات دور بيظهر كدا !
+  Unknown permission keys: applicant.returnToStage» (the role «الموارد البشرية Test»).
+  - The cause: `applicant.returnToStage` was retired on 2026-11-16 (replaced by
+    `applicantReturn.execute`). Roles that held it kept it, and every save checked ALL the role's
+    keys against the registry, so the role could not be saved at all.
+  - Now only the keys an edit ADDS must be registered, the same rule the "keys you hold" check
+    already followed. A key the role already holds may be re-sent and is kept.
+  - Delegated grants follow the same rule.
+  - Retired keys are not stripped automatically: a key can be missing from the registry only for
+    now (the automation keys while `AUTOMATION_ENABLED` is off).
+  - The role form already lists such keys at the end, as «غير معروفة», where they can be unticked
+    but not re-added.
+
 - **HR: «نموذج رقم (1)» prints on the owner's own pages.** «انا عاوز النموزج بردو شبه منا بعتو بظبط
   مفهوش اي تعديل خالص و بيتملي عادي بس الشكل اللي ادتولك بظبط». The form was drawn again in the
   system's font, and its letters were lighter and thinner than his. It now prints the two pages of

@@ -26,7 +26,7 @@ import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Badge, Button, DataTable, Dialog, FilterBar, Pagination, type Column } from '../../../../shared/ui';
 import { Input, Select } from '../../../../shared/ui/form';
-import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../../shared/ui/board-scroll';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../../shared/ui/board-scroll';
 import { EmptyState } from '../../../../shared/ui/states/EmptyState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../../shared/lib/errors';
@@ -168,7 +168,9 @@ export const AuditLogPage = (): JSX.Element => {
           />
         </FilterBar>
 
-        <div className={BOARD_TABLE_FILL}>
+        {/* The lower floor: this page's filter bar is the tallest of the menu, and on a laptop's 720
+            or 768 px the 14rem floor made the whole page scroll, the filters with it. */}
+        <div className={BOARD_TABLE_FILL_LOW}>
           <DataTable
             columns={columns}
             rows={query.data?.items ?? []}

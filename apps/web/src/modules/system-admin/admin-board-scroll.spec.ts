@@ -42,7 +42,9 @@ describe('every Administration page scrolls its table, not itself', () => {
 
   it.each(TABLE_PAGES)('%s: the table takes the height left, under a head that stays', (path) => {
     const code = source(path);
-    expect(code).toContain('className={BOARD_TABLE_FILL}');
+    // `BOARD_TABLE_FILL_LOW` where the filter bar is tall enough for the 14rem floor to push the
+    // whole page into scrolling on a laptop's 720 or 768 px (the audit log).
+    expect(code).toMatch(/className=\{BOARD_TABLE_FILL(?:_LOW)?\}/);
     expect(code).toMatch(/<DataTable[\s\S]*?\bstickyHead\b/);
   });
 

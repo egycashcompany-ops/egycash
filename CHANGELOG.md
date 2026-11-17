@@ -21,9 +21,12 @@ its entry here in the same PR.
   - The pages whose list is cards: Roles, the Permission Catalog, Approval Workflows and System
     Settings. Their list scrolls instead (`BOARD_LIST_FILL`).
   - `BOARD_LISTVIEW_FILL` does the same for a `ListView` card.
+  - The Audit Log, whose filter bar is the tallest, takes the IT boards' lower table floor
+    (`BOARD_TABLE_FILL_LOW`). With the usual 14rem floor, a 1280×720 or 1366×768 laptop scrolled
+    the whole page, filters included.
   - `admin-board-scroll.spec.ts` holds every page of the menu to this shape.
-  - Checked in a browser against a mocked API. At 1440×900 the page never scrolls on any of the
-    eleven, and the table or list takes the height that is left.
+  - Checked in a browser against a mocked API. At 1440×900, 1366×768 and 1280×720 the title and
+    filters stay in place on all eleven pages, and the table or list takes the height that is left.
 
 - **IT: on a computer only the table scrolls.** «فى شاشات الـ IT مش عايز كل الصفحة تعمل Scroll !! عايز
   فقط الجدول لكن الزراير والفلتر يبقوا ثابتين». Every IT list screen — assets, custody, consumables and

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { type Locale } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
-import { renewalTerm } from './components/EmployeePapersTab';
+import { EMPLOYEE_READ_ONLY, renewalTerm } from './components/EmployeePapersTab';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const code = (path: string): string =>
@@ -50,8 +50,13 @@ describe('printing', () => {
     expect(TAB.indexOf('openPrintWindow(')).toBeLessThan(TAB.indexOf('print.mutateAsync('));
   });
 
-  it('starts with every paper ticked but one the job is only offered', () => {
+  it('starts with every paper ticked but one the job is only offered — and a save leaves the ticks be', () => {
     expect(TAB).toContain('setChosen(new Set(data.papers.filter((p) => !p.optional).map((p) => p.key)))');
+    expect(TAB).toContain('}, [papersKey]);');
+  });
+
+  it('prints what was just typed as typed', () => {
+    expect(TAB.indexOf('await chain.current;')).toBeLessThan(TAB.indexOf('print.mutateAsync('));
   });
 
   it('names everything in both languages', () => {
@@ -59,5 +64,43 @@ describe('printing', () => {
     for (const locale of ['ar', 'en'] as Locale[]) {
       for (const key of used) expect(translate(locale, key), `${locale} ${key}`).not.toBe(key);
     }
+  });
+});
+
+/**
+ * «في شاشه الموظفين لما بندخل علي شخص … نخلي في امكانيه للتعديل زي معملنا قبل كدا تحت الtoggle تعديل
+ * و طباعه و تحت يظهر البيانات عشان التعديل و النص التاني الفورم».
+ */
+describe('«تعديل» on the employee\'s papers', () => {
+  it('puts «تعديل» and «طباعة» under every paper, the opened one marked', () => {
+    expect(TAB).toContain('onEdit={() => setOpened(p.key)}');
+    expect(TAB).toContain('active={active?.key === p.key}');
+    // The contract opens first.
+    expect(TAB).toContain('const active = papers.find((p) => p.key === opened) ?? papers[0] ?? null;');
+  });
+
+  it('shows below, side by side, the paper\'s values to change and the paper as it prints', () => {
+    expect(TAB).toContain('<div className="grid gap-4 lg:grid-cols-2">');
+    expect(TAB.indexOf('<PaperValuesForm')).toBeLessThan(TAB.indexOf('data-employee-preview'));
+    expect(TAB).toContain('.mutateAsync(active.key)');
+    expect(TAB).toContain('}, [active?.key, shape]);');
+  });
+
+  it('saves each change for the employee, one after another, each with the version the last returned', () => {
+    expect(TAB).toContain('chain.current = chain.current.then(');
+    expect(TAB).toContain('version: current.valuesVersion');
+    expect(TAB).toContain('onSave={saveValue}');
+  });
+
+  it('shows the contract they hold as issued — its values never typed in here', () => {
+    expect(TAB).toContain('values={active.locked ? data.contractValues : data.values}');
+    expect(TAB).toContain('disabled={active.locked}');
+    expect(TAB).toContain("t('employeePapers.lockedHint', { code: held.code })");
+    expect([...EMPLOYEE_READ_ONLY].sort()).toEqual(['contract.code', 'contract.endDate', 'contract.startDate', 'employee.employeeCode']);
+  });
+
+  it('marks a value typed in for the employee, not the candidate', () => {
+    expect(TAB).toContain("overriddenHint={t('employeePapers.overridden')}");
+    expect(translate('ar', 'employeePapers.overridden')).toBe('مُدخلة لهذا الموظف');
   });
 });

@@ -11,6 +11,22 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR: «تعديل» on the employee's «طباعة العقد والمستندات».** «في شاشه الموظفين … نخلي في امكانيه
+  للتعديل زي معملنا قبل كدا تحت الtoggle تعديل و طباعه و تحت يظهر البيانات عشان التعديل و النص التاني
+  الفورم».
+  - Every paper has «تعديل» and «طباعة» under it. Below, side by side: the opened paper's values and
+    the paper as it prints, redrawn with each change.
+  - What is typed is saved as a box is left, for that employee only (`hr_employee_paper_values`), and
+    printed by every paper of theirs that prints it — on the tab and in «المعينون»'s printing for
+    many. The employee's file does not change; clearing a box gives the record's value back. Until
+    something is typed, the values typed for them as a candidate stand.
+  - The contract they hold shows its values and prints as issued; it changes only by renewing or
+    amending it. Its number and term are never typed.
+  - «تاريخ بدء الاشتراك» (form 1) is one date box, on this tab and on «عقد جديد»: the start of work
+    unless another date is chosen.
+  - Server: `PATCH /hr/contracts/employee-papers/:employeeId/values` and `POST …/preview`
+    (`contract.print`); the papers' read returns each paper's values.
+
 - **HR: «نموذج رقم (1)» carries the company's own number and address, the job's wage, and Arabic
   figures.** «رقم المنشاه … هنثبت اول مربع و هنحط من تاني مربع الرقم دا 3338726 بالعربي من الشمال
   لليمين و نشيل التاريخ اللي موجو في تحريرا في و عاوزين نحط الاجر داخل اشتراك و الاجر الشامل علي حسب

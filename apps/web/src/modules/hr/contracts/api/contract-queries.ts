@@ -20,6 +20,7 @@ import {
   type SignContractBlock,
   type TerminateContract,
   type UpdateCandidateDraft,
+  type UpdateEmployeePaperValues,
   type UpdateContractBranding,
   type UpdateContractDraft,
   type UpdateContractTemplate,
@@ -153,6 +154,19 @@ export const useEmployeePapers = (employeeId: string) =>
     queryKey: ['hr', 'contracts', 'employeePapers', employeeId],
     queryFn: () => api.employeePapers(employeeId),
   });
+
+/** «تعديل» on the employee's tab — keep what was typed in; the tab is drawn from what comes back. */
+export const useSaveEmployeePaperValues = (employeeId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateEmployeePaperValues) => api.saveEmployeePaperValues(employeeId, body),
+    onSuccess: (papers) => client.setQueryData(['hr', 'contracts', 'employeePapers', employeeId], papers),
+  });
+};
+
+/** One of the employee's papers as it would print now — «تعديل»'s side. */
+export const usePreviewEmployeePaper = (employeeId: string) =>
+  useMutation({ mutationFn: (key: string) => api.previewEmployeePaper(employeeId, key) });
 
 /** Print the chosen papers of an employee — the contract made first if they hold none. */
 export const usePrintEmployeePapers = () => {

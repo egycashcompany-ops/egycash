@@ -30,6 +30,7 @@ import { fleetAccidentService } from '../accidents/accident.service';
 import { fleetDealershipService } from '../dealership/dealership.service';
 import { culpritIdsOf } from '../fleet.mappers';
 import { DEALERSHIP_BACKFILL_FROM } from '../go-live/dealership-backfill-plan';
+import { fleetLicenseExpenseService } from '../license-expenses/license-expense.service';
 import { fleetMaintenanceService } from '../maintenance/maintenance.service';
 import { fleetOdometerService } from '../odometer/odometer.service';
 import { fleetReceiptService } from '../receipts/receipt.service';
@@ -217,6 +218,8 @@ const periodSections = (
       maintenance: totals.maintenanceTotal,
       litres: Math.round(totals.fuelLitres),
       unpricedFuel: totals.fuelUnpriced,
+      // «N إيصالًا» on «العهدة»'s «مصروفات العهدة»: the custody-paid receipts of the same rows.
+      custodyCount: totals.custodyCount,
     };
   }),
 
@@ -225,6 +228,14 @@ const periodSections = (
   opexSeries: section('opexSeries', 'company+set', async () => ({
     buckets: await fleetReceiptService.seriesOver(dated(p), p.granularity),
   })),
+
+  // «العهدة» — «منها حتى الآن»: the SAME custody receipts `opex.custody` counts (the receipts
+  // screen's own query: the paper day in the range, codes / type / operation, the branch by the
+  // receipt's car), put where their memo stands NOW (a held replenishment's memo still waits);
+  // Σ = `opex.custody`, to the piastre.
+  custodyStates: section('custodyStates', 'company+set', () =>
+    fleetReceiptService.custodyStatesOver(dated(p)),
+  ),
 
   // T6.9, R-20/R-21 — rows by the car's exit day; the data starts at the backfill's first day.
   dealership: section('dealership', 'company+set', async () => {
@@ -241,6 +252,17 @@ const periodSections = (
   // (its own order), then «+M».
   dealershipList: section('dealershipList', 'company+set', () =>
     fleetDealershipService.dashboardRows(dated(p), FLEET_DASHBOARD_DEALERSHIP_ROWS),
+  ),
+
+  // «التراخيص والتجديدات» — «مصروفات التراخيص في الفترة»: the licence-expense register over the
+  // RANGE ONLY (the memo day, the register's own whole-day rule). The vehicle set never reaches a
+  // memo — it carries no branch, no car type, no operation and no amount per car — so this section
+  // reads the whole company whatever `p.filter` says (PAGELESS: its key never opens the page).
+  licenceSpend: section('licenceSpend', 'company+set', () =>
+    fleetLicenseExpenseService.periodSpend({
+      from: ymdToUtcDate(p.range.from),
+      to: ymdToUtcDate(p.range.to),
+    }),
   ),
 });
 

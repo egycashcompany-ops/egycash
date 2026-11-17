@@ -637,6 +637,7 @@ describe('drivers — registryDigest and the list filters it shares', () => {
       branchIds,
       cashSpecIds: [],
       atmSpecIds: [],
+      nearestLimit: 6,
     });
 
   it('every bucket equals the /fleet/drivers total for its link', async () => {
@@ -688,13 +689,17 @@ describe('drivers — registryDigest and the list filters it shares', () => {
   it('no branch to cover (`[]`) is nobody — never the whole registry', async () => {
     const out = await digest([]);
     expect(out.total).toBe(0);
-    expect(out.licence).toEqual({
+    expect(out.licence).toMatchObject({
       expired: 0,
       expiring: 0,
       soon: 0,
       notRecorded: 0,
       unregistered: 0,
+      nearest: { rows: [], total: 0 },
     });
+    // Twelve months, every one empty — never the whole registry's.
+    expect(out.licence.months).toHaveLength(12);
+    expect(out.licence.months.every((month) => month.count === 0)).toBe(true);
   });
 });
 

@@ -10,6 +10,7 @@ import {
   FLEET_CUSTODY_MEMO_STATES,
   FLEET_CUSTODY_STALE_DAYS,
   type FleetCustodyDashboardDto,
+  type FleetCustodyHeldLetterDto,
   type FleetCustodyLedgerRowDto,
   type FleetCustodyMemoRowDto,
   type FleetCustodyMemoState,
@@ -18,6 +19,7 @@ import {
   type FleetCustodySource,
 } from '@ecms/contracts';
 import { sumMoney } from './custody-fund-forms';
+import { custodyStepRows } from './custody-hold';
 
 const DAY_MS = 86_400_000;
 
@@ -88,6 +90,32 @@ export const custodyWaitingShares = (
 export const custodySettleWaiting = (
   parts: readonly Pick<FleetCustodySettleCandidateDto, 'total'>[],
 ): number => sumMoney(parts.map((part) => part.total));
+
+// ── What the dashboard's «العهدة» tab counts (here, never in a `tab-*` file) ──────────────────
+
+/** «إيصالات لم تدخل أي مذكرة بعد» — the receipts in no memo yet, every kind together. */
+export const custodyOutsideReceipts = (
+  outside: readonly Pick<FleetCustodyOutsideKindDto, 'count'>[],
+): number => outside.reduce((sum, line) => sum + line.count, 0);
+
+/** «N مصروفات تراخيص» — the licensing memos waiting for «تسوية العهدة». */
+export const custodySettleCount = (parts: readonly FleetCustodySettleCandidateDto[]): number =>
+  parts.length;
+
+/** «في مذكرات لم تُستعَض بعد · N مذكرات» — the memos no replenishment has taken yet. */
+export const custodyPendingCount = (memos: readonly Pick<FleetCustodyMemoRowDto, 'id'>[]): number =>
+  memos.length;
+
+/** «خطاب … · N مذكرات» — the memos one held replenishment took. */
+export const custodyLetterMemos = (letter: Pick<FleetCustodyHeldLetterDto, 'memos'>): number =>
+  letter.memos.length;
+
+/**
+ * «إجمالي العهدة بعد كل عملية» on the dashboard's tab — the custody board's own steps
+ * (`custodyStepRows`): oldest first, the held and cancelled lines left out (they move nothing),
+ * the last line kept carrying «الآن».
+ */
+export const custodyDoneRows = custodyStepRows;
 
 // ── Where a line of «سجل العهدة» leads ─────────────────────────────────────────────────────────
 

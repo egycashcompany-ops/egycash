@@ -14,11 +14,15 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { type FleetLicensingRowDto, type Locale, type MeDto } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
-import { LicensingPage, inMonth, matchesPaper, paperStage } from './LicensingPage';
+import { translate } from '../../../platform/localization/i18n';
+import { LicensingPage, inMonth, matchesPaper, openPaperOf, paperStage } from './LicensingPage';
 
 /** The two tints the board paints, as the cell writes them — never the bare shade. */
 // «اللون الاصفر دا مش ممكن نغيره»: a paper still out is violet now.
@@ -217,7 +221,9 @@ describe('who may tick', () => {
     const html = render({ permissions: ['fleetLicensing.view'] });
     const at = html.indexOf('data-licensing-mark="150:insuranceHandover"');
     expect(at, 'the square is drawn').toBeGreaterThan(-1);
-    expect(html.slice(html.lastIndexOf('<button', at), html.indexOf('>', at))).toContain('disabled');
+    expect(html.slice(html.lastIndexOf('<button', at), html.indexOf('>', at))).toContain(
+      'disabled',
+    );
   });
 });
 
@@ -338,13 +344,114 @@ describe('the filters narrow the board', () => {
   });
 });
 
+describe('the dashboard’s papers figure — `paper=insurance|tax`, that paper’s OPEN papers alone', () => {
+  // «أوراق لم تُستلم بعد» on «التراخيص والتجديدات» counts each paper whose ONE square of two is
+  // ticked (`paperStage === 'open'`, R-11); its link must list exactly those cars. The squares' own
+  // filters (`ins` / `tax`) ask ANY of the picked squares, which is another reading.
+  const fleet = [
+    // Insurance handed in, not back: open.
+    row({ vehicleId: 'v1', code: '150', insuranceHandover: true }),
+    // Insurance handed in and back: done, not open.
+    row({ vehicleId: 'v2', code: '151', insuranceHandover: true, insuranceReceipt: true }),
+    // A lone «استلام» is half done (open); its tax is open too.
+    row({ vehicleId: 'v3', code: '214', insuranceReceipt: true, taxHandover: true }),
+    // Nothing ticked.
+    row({ vehicleId: 'v4', code: '301' }),
+  ];
+  const shown = (html: string): string[] =>
+    [...html.matchAll(/data-licensing-row="([^"]+)"/g)].map((m) => m[1] as string);
+  const ar = (key: string): string => translate('ar', key);
+
+  it('lists the cars whose insurance paper is open, and only those', () => {
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?paper=insurance' }))).toEqual([
+      '150',
+      '214',
+    ]);
+  });
+
+  it('reads the tax paper by its own squares', () => {
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?paper=tax' }))).toEqual(['214']);
+  });
+
+  it('lists exactly the cars the rule counts open — the number the dashboard links from', () => {
+    for (const paper of ['insurance', 'tax'] as const) {
+      const rule = openPaperOf(paper);
+      expect(rule).not.toBeNull();
+      const counted = fleet
+        .filter((r) => rule !== null && paperStage(r, rule) === 'open')
+        .map((r) => r.code);
+      expect(shown(render({ rows: fleet, path: `/fleet/licensing?paper=${paper}` }))).toEqual(
+        counted,
+      );
+    }
+  });
+
+  it('ignores a value it does not know', () => {
+    expect(openPaperOf('both')).toBeNull();
+    expect(openPaperOf(null)).toBeNull();
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?paper=both' }))).toEqual([
+      '150',
+      '151',
+      '214',
+      '301',
+    ]);
+  });
+
+  it('narrows the rows it was handed — with the other filters, never instead of them', () => {
+    expect(
+      shown(render({ rows: fleet, path: '/fleet/licensing?paper=insurance&vehicleCodes=214' })),
+    ).toEqual(['214']);
+    // The count beside the filters is the narrowed board's (written as the registry writes it).
+    const html = render({ rows: fleet, path: '/fleet/licensing?paper=insurance' });
+    const at = html.indexOf('data-licensing-count');
+    expect(html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at))).toContain('٢');
+  });
+
+  it('shows ONE removable chip naming the paper, and none without the parameter', () => {
+    const html = render({ rows: fleet, path: '/fleet/licensing?paper=insurance' });
+    expect(html.split('data-licensing-paper=').length - 1).toBe(1);
+    const at = html.indexOf('data-licensing-paper="insurance"');
+    const chip = html.slice(html.lastIndexOf('<button', at), html.indexOf('</button>', at));
+    expect(chip).toContain(ar('fleet.licensing.paperOpen.insurance'));
+    expect(chip).toContain(`aria-label="${ar('common.remove')} `);
+    expect(render({ rows: fleet, path: '/fleet/licensing?paper=tax' })).toContain(
+      'data-licensing-paper="tax"',
+    );
+    expect(render({ rows: fleet })).not.toContain('data-licensing-paper');
+    expect(render({ rows: fleet, path: '/fleet/licensing?paper=both' })).not.toContain(
+      'data-licensing-paper',
+    );
+  });
+
+  it('counts as a filter: the reset is offered, and an emptied board says «no match»', () => {
+    const html = render({ rows: fleet, path: '/fleet/licensing?paper=insurance' });
+    expect(html).toContain(`aria-label="${ar('common.filters.clear')}"`);
+    const empty = render({ rows: [fleet[1] ?? row()], path: '/fleet/licensing?paper=insurance' });
+    expect(empty).toContain(ar('fleet.licensing.noMatches'));
+  });
+
+  it('is remembered with the board’s other filters, cleared with them, read in its own source', () => {
+    const src = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'LicensingPage.tsx'),
+      'utf8',
+    );
+    const remembered = /const REMEMBERED_FILTERS = \[([^\]]*)\] as const;/u.exec(src)?.[1] ?? '';
+    expect(remembered).toContain("'paper'");
+    expect(src).toContain("openPaperOf(sp.get('paper'))");
+    const clear = src.slice(src.indexOf('const clearFilters'), src.indexOf('const hasFilters'));
+    expect(clear).toContain('paper: null');
+  });
+});
+
 describe('the licence expiry', () => {
   it('is a column on the board — the date the whole errand is about', () => {
     const html = render({ rows: [row({ licenseExpiresAt: '2027-03-15T00:00:00.000Z' })] });
     expect(html, 'the heading').toContain('تاريخ انتهاء الترخيص');
     // Written the way the vehicles board writes a licence — «2027/03/15» — with its state beside it.
     expect(html, 'and the date itself').toContain('2027/03/15');
-    expect(html, 'and the word for its state').toMatch(/data-licensing-expiry="(valid|soon|expired)"/u);
+    expect(html, 'and the word for its state').toMatch(
+      /data-licensing-expiry="(valid|soon|expired)"/u,
+    );
   });
 
   it('narrows by the MONTH it expires in', () => {

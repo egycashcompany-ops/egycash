@@ -21,6 +21,12 @@ export interface DeletedOperationsQuery {
   pageSize: number;
 }
 
+/** A replenishment waiting for its transfer, as «استعاضة معلّقة» prints it. */
+export type HeldReplenishment = Pick<
+  FleetCustodyOperationDoc,
+  '_id' | 'date' | 'from' | 'to' | 'amount'
+>;
+
 /** What a held replenishment becomes: transferred, or cancelled. */
 export type LeaveHeld =
   | { status: 'done'; transfer: FleetCustodyOperationTransferDoc }
@@ -40,6 +46,21 @@ class FleetCustodyOperationRepository extends BaseRepository<FleetCustodyOperati
       .sort({ date: 1, createdAt: 1, _id: 1 })
       .session(session ?? null)
       .lean<FleetCustodyOperationDoc[]>()
+      .exec();
+  }
+
+  /**
+   * «استعاضة معلّقة» — every live replenishment still waiting for its transfer, the oldest letter
+   * first (its day, then the order they were recorded in), through `ix_custody_operation_kind`. Only
+   * what the held card prints of the letter: its day, its period and its amount — its memos are
+   * read live (`heldRows`).
+   */
+  async heldReplenishments(): Promise<HeldReplenishment[]> {
+    return this.model
+      .find({ isDeleted: false, kind: 'replenish', status: 'held' })
+      .select({ date: 1, from: 1, to: 1, amount: 1 })
+      .sort({ date: 1, createdAt: 1, _id: 1 })
+      .lean<HeldReplenishment[]>()
       .exec();
   }
 

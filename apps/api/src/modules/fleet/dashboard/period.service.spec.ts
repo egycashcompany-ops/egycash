@@ -20,7 +20,13 @@ const fn = (): Mock => vi.fn();
 const odometer = { kmBreakdown: fn() };
 const maintenance = { visitStates: fn(), exitBreakdown: fn() };
 const accidents = { summaryOver: fn(), undatedCount: fn(), list: fn() };
-const receipts = { summaryOver: fn(), firstReceiptDate: fn(), seriesOver: fn() };
+const receipts = {
+  summaryOver: fn(),
+  firstReceiptDate: fn(),
+  seriesOver: fn(),
+  custodyStatesOver: fn(),
+};
+const licenceExpenses = { periodSpend: fn() };
 const dealership = { summaryOver: fn(), dashboardRows: fn() };
 const violations = { periodDigest: fn(), dashboardRows: fn() };
 const vehicles = { findByIdsSystem: fn() };
@@ -34,6 +40,9 @@ vi.mock('../maintenance/maintenance.service', () => ({ fleetMaintenanceService: 
 vi.mock('../accidents/accident.service', () => ({ fleetAccidentService: accidents }));
 vi.mock('../receipts/receipt.service', () => ({ fleetReceiptService: receipts }));
 vi.mock('../dealership/dealership.service', () => ({ fleetDealershipService: dealership }));
+vi.mock('../license-expenses/license-expense.service', () => ({
+  fleetLicenseExpenseService: licenceExpenses,
+}));
 vi.mock('../violations/violation.service', () => ({ fleetViolationService: violations }));
 vi.mock('../vehicles/vehicle.repository', () => ({ fleetVehicleRepository: vehicles }));
 vi.mock('../vehicle-types/vehicle-type.repository', () => ({
@@ -143,6 +152,17 @@ const VIOLATION_ROW = {
   amount: 300,
   collected: false,
 };
+const CUSTODY_STATES = { replenished: 120.1, pending: 50.05, outside: 30.05 };
+/** «مصروفات التراخيص في الفترة»: renewal + extension = visa + cash = total. */
+const LICENCE_SPEND = {
+  count: 3,
+  cars: 5,
+  visa: 900.5,
+  cash: 100,
+  renewal: 700,
+  extension: 300.5,
+  total: 1000.5,
+};
 const DEALER_ROW = {
   id: '650000000000000000000a01',
   vehicleId: V1,
@@ -220,8 +240,12 @@ beforeEach(() => {
     maintenanceTotal: 20,
     fuelLitres: 87.6,
     fuelUnpriced: 1,
+    custodyCount: 4,
   });
   receipts.seriesOver.mockResolvedValue(SERIES);
+  // Where the period's custody spend stands now: Σ = custodyTotal (200.2).
+  receipts.custodyStatesOver.mockResolvedValue(CUSTODY_STATES);
+  licenceExpenses.periodSpend.mockResolvedValue(LICENCE_SPEND);
   dealership.dashboardRows.mockResolvedValue({ rows: [DEALER_ROW], more: 4 });
   violations.periodDigest.mockResolvedValue(VIOLATIONS);
   violations.dashboardRows.mockResolvedValue({ rows: [VIOLATION_ROW], more: 2 });
@@ -263,13 +287,18 @@ const USES: Record<FleetDashboardPeriodSection, readonly Mock[]> = {
   violationList: [violations.dashboardRows],
   opex: [receipts.summaryOver, receipts.firstReceiptDate],
   opexSeries: [receipts.seriesOver],
+  custodyStates: [receipts.custodyStatesOver],
   dealership: [dealership.summaryOver],
   dealershipList: [dealership.dashboardRows],
+  licenceSpend: [licenceExpenses.periodSpend],
 };
 const EVERY_STUB = [...new Set(Object.values(USES).flat())];
 
+/** The keys of R2 that answer a section on their own — the custody fund's never does. */
+const SECTION_KEYS = ALL_KEYS.filter((key) => key !== 'fleetCustody.view');
+
 describe('R2 — the gating matrix', () => {
-  it.each(ALL_KEYS)('with only %s, exactly its sections answer', async (key) => {
+  it.each(SECTION_KEYS)('with only %s, exactly its sections answer', async (key) => {
     const dto = await fleetDashboardPeriodService.read(ctxWith([key]), NOW, parse({}));
     const covered = FLEET_DASHBOARD_PERIOD_SECTIONS.filter((s) =>
       fleetDashboardGateKeys(s).every((k) => k === key),
@@ -281,6 +310,34 @@ describe('R2 — the gating matrix', () => {
     }
     const asked = new Set(covered.flatMap((s) => USES[s]));
     for (const stub of EVERY_STUB) expect(stub.mock.calls.length > 0).toBe(asked.has(stub));
+  });
+
+  it('fleetCustody.view alone answers no section — «منها حتى الآن» needs the receipts’ key too', async () => {
+    const dto = await fleetDashboardPeriodService.read(
+      ctxWith(['fleetCustody.view']),
+      NOW,
+      parse({}),
+    );
+    for (const s of FLEET_DASHBOARD_PERIOD_SECTIONS) expect(dto[s], s).toBeNull();
+    for (const stub of EVERY_STUB) expect(stub).not.toHaveBeenCalled();
+    expect(dto.unavailable).toEqual([]);
+  });
+
+  it('custodyStates answers beside opex only with BOTH the receipts’ and the fund’s keys', async () => {
+    const both = await fleetDashboardPeriodService.read(
+      ctxWith(['fleetReceipt.view', 'fleetCustody.view']),
+      NOW,
+      parse({}),
+    );
+    expect(both.custodyStates).toEqual(CUSTODY_STATES);
+    expect(both.opex).not.toBeNull();
+    const receiptsOnly = await fleetDashboardPeriodService.read(
+      ctxWith(['fleetReceipt.view']),
+      NOW,
+      parse({}),
+    );
+    expect(receiptsOnly.custodyStates).toBeNull();
+    expect(receiptsOnly.opex).not.toBeNull();
   });
 });
 
@@ -483,6 +540,13 @@ describe('R2 — screen-shaped calls (D9)', () => {
     expect(violations.dashboardRows).toHaveBeenCalledWith(shaped, 6);
     expect(receipts.seriesOver).toHaveBeenCalledWith(shaped, 'day');
     expect(dealership.dashboardRows).toHaveBeenCalledWith(shaped, 6);
+    // «منها حتى الآن»: the SAME query as `opex` (the custody receipts it counts).
+    expect(receipts.custodyStatesOver).toHaveBeenCalledWith(shaped);
+    // «مصروفات التراخيص»: the range ONLY — no type, operation or branch reaches a memo.
+    expect(licenceExpenses.periodSpend).toHaveBeenCalledWith({
+      from: day('2026-10-01'),
+      to: day('2026-10-15'),
+    });
     expect(accidents.list).toHaveBeenCalledWith({
       ...shaped,
       page: 1,
@@ -522,6 +586,9 @@ describe('R2 — screen-shaped calls (D9)', () => {
     expect(violations.periodDigest).toHaveBeenCalledWith(both);
     expect(receipts.seriesOver).toHaveBeenCalledWith(both, 'day');
     expect(dealership.dashboardRows).toHaveBeenCalledWith(both, 6);
+    expect(receipts.custodyStatesOver).toHaveBeenCalledWith(both);
+    // The licence memos stay the whole company under «كل فروعي» too.
+    expect(licenceExpenses.periodSpend).toHaveBeenCalledWith({ from: day(TODAY), to: day(TODAY) });
     // Two branches are not «a branch»: the km come by branch, not by type.
     expect(odometer.kmBreakdown).toHaveBeenCalledWith(
       { from: TODAY, to: TODAY, branchIds: [B1, B2] },
@@ -651,7 +718,12 @@ describe('R2 — the figures as their modules give them', () => {
       // Whole litres of the priced fuel receipts; the one with no litre price is named apart.
       litres: 88,
       unpricedFuel: 1,
+      // «N إيصالًا» on «مصروفات العهدة» — the receipts' own count of the custody-paid rows.
+      custodyCount: 4,
     });
+    // «منها حتى الآن» and «مصروفات التراخيص في الفترة»: as their modules answer.
+    expect(dto.custodyStates).toEqual(CUSTODY_STATES);
+    expect(dto.licenceSpend).toEqual(LICENCE_SPEND);
     const opex = dto.opex;
     expect(
       Math.round(

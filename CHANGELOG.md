@@ -2301,6 +2301,93 @@ its entry here in the same PR.
 
 ### Changed
 
+- **«لوحة تحكم الحركة» at `/fleet`: «العهدة», a NEW tab right after «الوقود والمصروفات», and
+  «التراخيص والتجديدات», which replaces the old «التراخيص» body under the same key, as approved.**
+  «اعتمد سامبل العهدة» and «اعمل اللى بتفضلوا» (the custody), «أ جدول بالسواقين» and «اعتمد» (the
+  licences), then «اعمل «العهدة» و«التراخيص والتجديدات»». The bar now has twelve tabs: نظرة عامة ·
+  الحركة اليوم · توزيع السيارات · الصيانة والورش · العدادات والكيلومترات · الحوادث ومطالبات التأمين
+  · المخالفات المرورية والتسويات · الوقود والمصروفات · العهدة · التراخيص والتجديدات · أرقام الفترة ·
+  ملخصات; no old tab is retired, and «أرقام الفترة» and «ملخصات» are unchanged. The new key is
+  `?tab=custody`; an old `?tab=licences` link opens the new body. Every pill now shows its full name
+  (the licences pill no longer shortens to «التراخيص»). «العهدة» has no count; the red count on
+  «التراخيص والتجديدات» is the expired car licences plus the expired driver licences (its two red
+  cards), and it now hides at 0 (it showed a grey «0»). Both tabs show a «الآن» part and a period
+  part, each with its own loading and error, under one «تحديث». «العهدة» is «لوحة تحكم العهدة»
+  restyled, with the same formula, titles and reads. Its «الآن» part covers the whole company since
+  the fund's first day: the band says «من بداية العهدة» and, when a branch or «كل فروعي» is chosen,
+  «الشركة كلها». It holds:
+  - the five-tile equation (− + − =);
+  - «تنتظر الاستعاضة» (held, in memos not replenished, outside the memos; at most 6 memos, then «و N
+    أخرى»; each outside kind with its age);
+  - «استعاضة معلّقة» (every letter waiting for its transfer, with its memos; the age is the oldest
+    letter's);
+  - «تنتظر التسوية» (at most 6 licence parts with their cars and visa / cash; «فتح» only for a reader
+    of «مصروفات التراخيص»);
+  - «تنبيهات العهدة» (only the lines that fire: amber when late, red only for a fund below zero or
+    settlements over the fund; «لا توجد تنبيهات الآن» otherwise);
+  - «إجمالي العهدة بعد كل عملية» (the last 100 operations, held and cancelled ones not drawn, red
+    below zero);
+  - «آخر عمليات العهدة» (the newest 6).
+
+  Its period part follows the branch through each receipt's car, under the full page bar:
+  «مصروفات العهدة» (the receipts' count, and «منها حتى الآن»: «تمت الاستعاضة» / «في مذكرات لم
+  تُستعَض» / «خارج المذكرات») beside «مصروفات العهدة حسب النوع» (صيانة · وقود من العهدة · كاوتش ·
+  غسيل, with one-decimal shares). A sentence says these are the fuel tab's custody columns and are
+  never added to them. Each figure opens «سجل العهدة» by operation or record, «المذكرات» by state or
+  kind, «لوحة تحكم العهدة» (what waits for replenishment), the licence expenses waiting for
+  settlement, or the custody spend (`/fleet/custody-expenses` when only codes narrow the period, else
+  `/fleet/receipts`); the three «منها حتى الآن» figures are plain (no list holds a state over a
+  period). Ages count whole days as the custody screens do. «آخر عمليات العهدة» counts a
+  settlement's cars as the sample does («سيارتين»، «سيارة واحدة»), and its table starts at 1024 px.
+
+  «التراخيص والتجديدات», «الآن»:
+  - six cards, the cars' row over the drivers' row (each row its own grid, three a row from 1024 px,
+    six in a line from 1800 px): expired; expiring within the warning days of «إعدادات الحركة», plus
+    «ومن … إلى 60 يومًا»; «أوراق لم تُستلم بعد» (تأمينات / ضرائب); expired driver licences (up to 3
+    names); expiring; «بيانات رخص ناقصة» («رخصة غير مسجّلة» / «بلا ملف سائق»);
+  - a line to the fuel tab for the cards' expiry, for a reader of the fuel cards;
+  - a note, when narrowed, that drivers follow their HR branch;
+  - «التراخيص المستحقة للتجديد — 12 شهرًا»: cars and drivers per month from this month, never summed;
+    each column opens its month's list;
+  - «أقرب تراخيص السيارات» (make, licence class, and a papers column for a licensing-board reader,
+    «تعذّرت القراءة» when the board cannot be read);
+  - «أقرب رخص السائقين» (names, licence type, «الملف موقوف» on a suspended file); both tables from
+    1024 px, rows below.
+
+  Its period part is company-wide, under the period choices alone (a licence memo has no branch, car
+  type or operation): «مصروفات التراخيص في الفترة» («عدد المذكرات», «السيارات») and «تفصيل مصروفات
+  الفترة» (renewal / extension and visa / cash, plain), with a note that what waits for settlement is
+  on «العهدة».
+
+  Every figure of the old body has a home:
+  - «آخر ما سُجّل» (the last 30 days' workshop visits and accidents) is in no approved screen and is
+    retired, with R1 `recentWorkshop` / `recentAccidents`, `FLEET_DASHBOARD_RECENT_DAYS` / `_ROWS` and
+    their links; the accidents are in «حوادث الفترة», the visits on «الصيانة والورش»;
+  - the fuel cards' expiry stays on «الوقود والمصروفات» alone;
+  - the open papers now open «لوحة التراخيص» on that paper's open papers alone: `/fleet/licensing`
+    reads `paper=insurance|tax`, remembered and shown as one removable chip. It opened the whole board.
+
+  Access:
+  - a reader of «لوحة التراخيص» alone keeps `/fleet` and this tab (the papers only, no R2);
+  - a reader of the licence expenses alone gets no page (new `FLEET_DASHBOARD_PAGELESS_SECTIONS`);
+  - a custody-only reader still sends no R2 (R2 is asked only when a period section is fully
+    permitted and some tab the reader sees draws it — the licence expenses only beside this tab), and
+    the overview asks «هذا الشهر» only of a reader of one of its four figures;
+  - a reader of the fuel cards alone no longer sees the licences tab;
+  - the two new R2 keys never widen a branch reader's figures to the whole company.
+
+  New read fields:
+  - R1 licence rows `typeName` / `licenceClass` / `papers` (their `expiresAt` is now the day), and
+    `licenceVehicles.papersFailed` when the board's lookup fails;
+  - R1 `licenceVehicles.months`, `licenceDrivers.months` / `list`;
+  - R2 `opex.custodyCount`, `custodyStates`, `licenceSpend`;
+  - the fund summary's `held.letters`;
+  - the receipts summary's `custodyCount`.
+
+  A licence memo refreshes the live period read; a custody memo or operation also refreshes a closed
+  range, since its states are as of now. The overview is unchanged: «تراخيص قريبة» opens the new tab.
+  No new permission key. No migration; data unchanged; no new index.
+
 - **HR: «جاهزون للتعيين» and «المعينون» are joined by a small toggle; «مستندات الوظائف» is a button
   again.** «عاوز نرجع ال زرار بتاع مستندات الوظائف لوحده زي مكان و عاوز ال toggle slider يبقا بين جاهزون
   للتعيين و المعينون و … ميكنش ال tggole background اخده الصفحه كلها لا هو عاوزين يبقا اخد مساحه صغيره

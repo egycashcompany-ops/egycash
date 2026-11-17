@@ -73,6 +73,15 @@ describe('closed vocabularies', () => {
       'hr.attendance.autoComputeHour',
       'hr.attendance.overtimeRequiresApproval',
       'hr.attendance.absenceNotify',
+      // The default working pattern (stage 1b) — six scalars rather than one object, because the
+      // settings screen can only edit boolean, number and string, and HR owns these hours. All
+      // six take a per-branch override; `enabled` ships false so the pattern is inert.
+      'hr.attendance.defaultPattern.enabled',
+      'hr.attendance.defaultPattern.startTime',
+      'hr.attendance.defaultPattern.endTime',
+      'hr.attendance.defaultPattern.breakMinutes',
+      'hr.attendance.defaultPattern.graceInMinutes',
+      'hr.attendance.defaultPattern.graceOutMinutes',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

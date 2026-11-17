@@ -10929,6 +10929,16 @@ const en: Record<string, string> = {
     'Block roster assignments with expired licences',
   'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'Default branch for new vehicles',
   'systemAdmin.settings.keys.hr.attendance.absenceNotify': 'Notify employees of recorded absences',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.enabled':
+    'Apply the default working hours',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.startTime': 'Default start time',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.endTime': 'Default end time',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.breakMinutes':
+    'Default break (minutes)',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.graceInMinutes':
+    'Lateness grace (minutes)',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.graceOutMinutes':
+    'Early-leave grace (minutes)',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
     'Nightly attendance calculation hour (0–23)',
   'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'Overtime requires approval',
@@ -11038,6 +11048,18 @@ const en: Record<string, string> = {
     'The branch preselected when a new vehicle is added. Type the branch name as it is registered, in Arabic or English; if no active branch matches, none is preselected.',
   'systemAdmin.settings.descriptions.hr.attendance.absenceNotify':
     'When on, an employee is notified the next morning when a day is recorded as an absence, so a mistake can be corrected early. The attendance record itself is not affected.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.enabled':
+    'When on, employees who have no shift assigned are measured against the default hours below, so lateness, early leave and absence are calculated for them. An employee who does have a shift assigned always follows that shift instead. Leave this off until the hours below are correct.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.startTime':
+    'The time the working day is expected to begin, on a 24-hour clock, for example 09:00. A branch may set its own time, which replaces this one for that branch.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.endTime':
+    'The time the working day is expected to end, on a 24-hour clock, for example 17:00. A time at or before the start time means the day continues past midnight, for example 22:00 to 06:00.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.breakMinutes':
+    'Minutes of unpaid break subtracted from the hours worked. Zero subtracts nothing.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.graceInMinutes':
+    'Minutes after the start time that are not counted as lateness. Arriving later than this is recorded as late by the full number of minutes after the start time, not after the grace.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.graceOutMinutes':
+    'Minutes before the end time that are not counted as leaving early. Zero means any departure before the end time is recorded as early leave.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
     'The hour, Cairo time on a 24-hour clock, at which the previous day\'s attendance is calculated for every employee. For example, 2 runs it shortly after 2:00 am.',
   'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':
@@ -25601,6 +25623,17 @@ const ar: Record<string, string> = {
     'منع تعيين السائق أو السيارة برخصة منتهية',
   'systemAdmin.settings.keys.fleet.vehicle.defaultBranchName': 'الفرع الافتراضي للسيارات الجديدة',
   'systemAdmin.settings.keys.hr.attendance.absenceNotify': 'إشعار الموظف بتسجيل غيابه',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.enabled':
+    'تطبيق مواعيد العمل الافتراضية',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.startTime':
+    'موعد بداية العمل الافتراضي',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.endTime': 'موعد نهاية العمل الافتراضي',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.breakMinutes':
+    'مدة الراحة الافتراضية بالدقائق',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.graceInMinutes':
+    'سماح التأخير بالدقائق',
+  'systemAdmin.settings.keys.hr.attendance.defaultPattern.graceOutMinutes':
+    'سماح الانصراف المبكر بالدقائق',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
   'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'اشتراط اعتماد العمل الإضافي',
   'systemAdmin.settings.keys.hr.attendance.selfPunchEnabled':
@@ -25710,6 +25743,18 @@ const ar: Record<string, string> = {
     'الفرع الذي يُختار تلقائيًا عند إضافة سيارة جديدة. اكتب اسم الفرع كما هو مسجَّل بالعربية أو الإنجليزية، وإذا لم يطابق فرعًا نشطًا فلا يُختار أي فرع.',
   'systemAdmin.settings.descriptions.hr.attendance.absenceNotify':
     'عند التفعيل، يصل إلى الموظف إشعار في صباح اليوم التالي إذا سُجّل يومه غيابًا، ليتمكن من تصحيح الخطأ مبكرًا. لا يغيّر هذا الإعداد سجل الحضور نفسه.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.enabled':
+    'عند التفعيل، تُقاس مواعيد الموظفين غير المسندة إليهم ورديات على المواعيد الافتراضية الموضحة أدناه، فيُحتسب لهم التأخير والانصراف المبكر والغياب. أما الموظف المسندة إليه وردية فتظل ورديته هي المرجع دائمًا. يُفضَّل إبقاء هذا الإعداد متوقفًا حتى يتم ضبط المواعيد أدناه.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.startTime':
+    'الموعد المتوقع لبداية يوم العمل، بنظام 24 ساعة، مثل 09:00. ويمكن لكل فرع تحديد موعد خاص به يحل محل هذا الموعد في ذلك الفرع.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.endTime':
+    'الموعد المتوقع لنهاية يوم العمل، بنظام 24 ساعة، مثل 17:00. وإذا كان الموعد مساويًا لموعد البداية أو قبله، فهذا يعني أن يوم العمل يمتد إلى ما بعد منتصف الليل، مثل من 22:00 إلى 06:00.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.breakMinutes':
+    'عدد دقائق الراحة غير المدفوعة التي تُخصم من ساعات العمل المحتسبة. والقيمة صفر لا تخصم شيئًا.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.graceInMinutes':
+    'عدد الدقائق بعد موعد البداية التي لا تُحتسب تأخيرًا. وإذا تجاوز الحضور هذه المدة، يُسجّل التأخير بكامل الدقائق المحسوبة من موعد البداية، لا من نهاية مدة السماح.',
+  'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.graceOutMinutes':
+    'عدد الدقائق قبل موعد النهاية التي لا تُحتسب انصرافًا مبكرًا. والقيمة صفر تعني أن أي انصراف قبل موعد النهاية يُسجّل انصرافًا مبكرًا.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
     'الساعة، بتوقيت القاهرة وبنظام 24 ساعة، التي يُحتسب فيها حضور اليوم السابق لجميع الموظفين. مثلًا، القيمة 2 تعني بعد الساعة الثانية صباحًا بقليل.',
   'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':

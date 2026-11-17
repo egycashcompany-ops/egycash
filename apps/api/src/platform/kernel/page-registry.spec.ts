@@ -52,9 +52,12 @@ describe('the assembled page registry', () => {
   // screen rather than a screen of its own. Its own key beside `applicant.delete` on purpose —
   // that one sets `isDeleted` and can be undone, this one erases the record, the stages, the offer,
   // the portal login and the photographs of an ID card.
-  it('declares 86 pages over 321 permissions', () => {
+  // Stage 3's two day-decision keys arrive WITH the screen that uses them — they route to
+  // `hr.attendance-regularizations`, which gained a fourth tab for the queue — so both land in the
+  // assigned count below and the unassigned one does not move.
+  it('declares 86 pages over 323 permissions', () => {
     expect(pages).toHaveLength(86);
-    expect(permissions).toHaveLength(321);
+    expect(permissions).toHaveLength(323);
   });
 
   /**
@@ -140,13 +143,13 @@ describe('the assembled page registry', () => {
    * that uses them, as promised above. Both route to `it.vehicle-checks`, whose route is now that
    * dashboard, so the unassigned count does not move.
    */
-  it('assigns 292 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 294 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     // `hiringRequirement.manage` arrives WITH its page, so it lands here and the unassigned count
     // below does not move — the same shape as `insuranceJobTitle.manage` before it.
     // `employee.purge` routes to `hr.employees`, the screen its button sits on, so it lands here
     // and the unassigned count below does not move.
-    expect(assigned).toHaveLength(292);
+    expect(assigned).toHaveLength(294);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.

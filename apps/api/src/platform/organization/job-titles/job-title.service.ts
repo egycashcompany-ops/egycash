@@ -2,6 +2,7 @@ import {
   PlatformEvents,
   type CreateJobTitle,
   type JobTitleDto,
+  type JobTitlePlaceDto,
   type OrgUnitOptionDto,
   type Paginated,
   type UpdateJobTitle,
@@ -14,6 +15,7 @@ import { auditService } from '../../audit';
 import { emit } from '../../kernel/event-bus';
 import { collectOptions } from '../shared/all-options';
 import { resolveShiftLabels } from '../shift-label-seams';
+import { orgChartService } from '../org-chart/org-chart.service';
 import { jobTitleRepository } from './job-title.repository';
 import { type ListJobTitlesQuery } from './job-title.validation';
 import { type JobTitleDoc } from './job-title.model';
@@ -213,9 +215,16 @@ class JobTitleService {
    */
   async toDtos(docs: readonly JobTitleDoc[]): Promise<JobTitleDto[]> {
     const ids = [...new Set(docs.flatMap((doc) => (doc.defaultShiftIds ?? []).map(String)))];
+    // The job's places (ADR-038), named and judged shown/hidden by the chart's own fold — one load
+    // for the page, as the shift names are one seam call. Started first so the two run together.
+    const placesLoading = orgChartService.placesOf(docs.map((doc) => String(doc._id)));
+    // Marked handled now: if the labels fail first, this must not surface as an unhandled rejection.
+    // Awaiting it below still rethrows its own failure.
+    placesLoading.catch(() => undefined);
     const labels = await resolveShiftLabels(ids);
+    const places = await placesLoading;
     return docs.map((doc) => {
-      const dto = this.toDto(doc);
+      const dto = this.toDto(doc, places.get(String(doc._id)) ?? []);
       return {
         ...dto,
         defaultShifts: dto.defaultShiftIds.map((id) => ({ id, name: labels.get(id) ?? null })),
@@ -227,10 +236,15 @@ class JobTitleService {
   async toDtoNamed(doc: JobTitleDoc): Promise<JobTitleDto> {
     const [dto] = await this.toDtos([doc]);
     // `toDtos` returns one entry per input; the fallback exists only to satisfy the type.
-    return dto ?? this.toDto(doc);
+    return dto ?? this.toDto(doc, []);
   }
 
-  toDto(doc: JobTitleDoc): JobTitleDto {
+  /**
+   * The job as a DTO, with its places passed in. They are an argument rather than an empty default
+   * because the job form sends `places` back as a whole set: a `[]` that meant "not loaded" would
+   * read as "remove them all" (P-ORG-3 §5.2). Only `toDtos` loads them, for a page at once.
+   */
+  toDto(doc: JobTitleDoc, places: JobTitlePlaceDto[]): JobTitleDto {
     return {
       id: String(doc._id),
       code: doc.code,
@@ -249,6 +263,7 @@ class JobTitleService {
       // async and only it batches the seam call. A caller reaching this method directly gets ids
       // and honest nulls rather than a silent per-row query.
       defaultShifts: (doc.defaultShiftIds ?? []).map((id) => ({ id: String(id), name: null })),
+      places,
       status: doc.status,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),

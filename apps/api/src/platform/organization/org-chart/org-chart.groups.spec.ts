@@ -105,7 +105,7 @@ describe('the org chart read model (P-ORG-3 §4)', () => {
     input.sectionEntries = [treasury];
     input.departmentRows = [opsRow];
     input.sectionRows = [sectionRow({ branchId: 'b0', departmentId: opsRow.id, catalogId: treasury.id, status: 'inactive' })];
-    input.jobs = [{ id: 'j1', code: 'J1', name: { ar: 'أمين خزينة', en: 'Cashier' }, version: 4 }];
+    input.jobs = [{ id: 'j1', code: 'J1', name: { ar: 'أمين خزينة', en: 'Cashier' }, version: 4, status: 'active' }];
     input.places = [
       { id: 'p1', jobTitleId: 'j1', departmentCatalogId: ops.id, sectionCatalogId: treasury.id },
       { id: 'p2', jobTitleId: 'j1', departmentCatalogId: ops.id, sectionCatalogId: null },

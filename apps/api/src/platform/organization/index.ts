@@ -79,3 +79,5 @@ export {
   type SectionCatalogDoc,
 } from './section-catalog';
 export { effectiveManagerId } from './shared/org-unit';
+export { buildOrgChartRouter, orgChartService } from './org-chart';
+export { JobPlaceModel, JobPlaceFillModel, migrateJobPlaceIndexes } from './job-places';

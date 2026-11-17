@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JobPlacesInputSchema, type JobTitlePlaceDto } from './org-chart.js';
 import {
   objectId,
   AddressSchema,
@@ -102,7 +103,9 @@ export type CreateSection = z.infer<typeof CreateSectionSchema>;
 
 // Job Titles are an organization-wide catalog (ADR-015): they carry the *definition* of a role —
 // grade, salary band, and hiring requirements — but they do NOT belong to a Branch/Department/
-// Section. Where a job sits is carried by the record that holds the title, not by the title.
+// Section. Where a PERSON sits is carried by the record that holds the title. Where the JOB is found
+// in the company structure is its job places (ADR-038, `places` below): descriptive, several allowed,
+// keyed on the company catalog, never a gate on registering anyone.
 // Only `jobGrade` is required; salary/description/qualifications/experience are
 // optional so a title can be created quickly and enriched over time.
 /**
@@ -150,7 +153,13 @@ const salaryBandOk = (v: {
 const salaryBandError = { message: 'salaryMax must be ≥ salaryMin', path: ['salaryMax'] };
 
 export const CreateJobTitleSchema = z
-  .object({ code: orgUnitBase.code, name: LocalizedStringSchema, ...jobTitleRichFields })
+  .object({
+    code: orgUnitBase.code,
+    name: LocalizedStringSchema,
+    ...jobTitleRichFields,
+    /** The job's places in the structure, as a whole set (ADR-038). Omitted: none. */
+    places: JobPlacesInputSchema.optional(),
+  })
   .strict()
   .refine(salaryBandOk, salaryBandError);
 export type CreateJobTitle = z.infer<typeof CreateJobTitleSchema>;
@@ -198,6 +207,8 @@ export const UpdateJobTitleSchema = z
     requiresDrivingTest: z.boolean().optional(),
     fixedSalary: JobFixedSalarySchema.nullable().optional(),
     defaultShiftIds: z.array(objectId()).max(50).optional(),
+    /** The WHOLE set of job places (ADR-038). Omitted: unchanged, as for every optional field. */
+    places: JobPlacesInputSchema.optional(),
     version: z.number().int().min(0),
   })
   .strict()
@@ -495,6 +506,12 @@ export interface JobTitleDto {
    * is what a reader displays. The same shape the payroll queue uses for employee labels (D7).
    */
   defaultShifts: JobShiftLabelDto[];
+  /**
+   * Where the job is found in the company structure (ADR-038), named from the catalog entries.
+   * A place under a stopped department or section is listed with `shown: false` (kept, not lost),
+   * so a form that sends the set back keeps it.
+   */
+  places: JobTitlePlaceDto[];
   status: 'active' | 'inactive';
   version: number;
   createdAt: string;

@@ -55,6 +55,7 @@ export interface ChartJob {
   code: string;
   name: LocalizedString;
   version: number;
+  status: 'active' | 'inactive';
 }
 
 export interface ChartPlace {
@@ -250,7 +251,7 @@ export const toOrgChartDto = (input: ChartInput, index: ChartIndex = indexOrgCha
     list.push(place);
     placesByJob.set(place.jobTitleId, list);
   }
-  const jobs: OrgChartJobDto[] = input.jobs.map((job) => ({
+  const jobs: OrgChartJobDto[] = input.jobs.filter((job) => job.status === 'active').map((job) => ({
     id: job.id,
     code: job.code,
     name: job.name,

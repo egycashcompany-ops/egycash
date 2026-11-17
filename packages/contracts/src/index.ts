@@ -15,6 +15,7 @@ export * from './platform/rbac.js';
 export * from './platform/approvals.js';
 export * from './platform/organization.js';
 export * from './platform/org-unit-groups.js';
+export * from './platform/org-chart.js';
 export * from './platform/application.js';
 export * from './platform/department-application.js';
 export * from './platform/navigation-hubs.js';

@@ -141,6 +141,13 @@ export const AUDIT_ACTIONS = [
   'attendanceRegularization',
   'attendanceRegularizationDecision',
   'attendanceOvertimeApproval',
+  // Stage 3 — a MANAGER judging a day, which is a different act from an employee requesting a
+  // correction and must be filterable on its own. Three verbs because three different people are
+  // accountable for three different things: the manager who decided, the HR approver who let an
+  // old-day decision take effect, and whoever later undid one.
+  'attendanceDecision',
+  'attendanceDecisionApproval',
+  'attendanceDecisionRevoke',
   // Gold vault (module port). `receive` and `transfer` already say exactly what confirming a
   // receiving receipt and an ownership transfer do, so only two verbs are new:
   //   · `deliver` — confirming a delivery order, the moment metal physically leaves the vault.

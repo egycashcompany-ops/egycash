@@ -8,6 +8,7 @@ export { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 export {
   cairoInstant,
   deriveDay,
+  punchWindowFor,
   shiftWindow,
   PUNCH_WINDOW_AFTER_MS,
   PUNCH_WINDOW_BEFORE_MS,

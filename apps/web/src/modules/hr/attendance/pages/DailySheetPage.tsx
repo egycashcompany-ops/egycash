@@ -14,7 +14,7 @@
 // minutes rather than valuing them, and it appears only for a caller holding the key.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type AttendanceDayDto, type Locale } from '@ecms/contracts';
+import { type AttendanceDayDto, type AttendanceSheetRowDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Can, useCan } from '../../../../platform/rbac/Can';
@@ -27,6 +27,7 @@ import { readList, writeList } from '../../../../shared/lib/list-param';
 import { localized, orgUnitLabel } from '../../../../shared/lib/format';
 import { useBranchOptions, useSectionOptions } from '../../../organization/shared/references';
 import { SheetTable } from '../components/SheetTable';
+import { DayDecisionDialog } from '../components/DayDecisionDialog';
 import { OvertimeApprovalDialog } from '../components/OvertimeApprovalDialog';
 import { downloadAttendanceExport } from '../api/attendance-api';
 import { useAttendanceSheet } from '../api/attendance-queries';
@@ -63,6 +64,7 @@ export const DailySheetPage = (): JSX.Element => {
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
   const [approving, setApproving] = useState<AttendanceDayDto | null>(null);
+  const [deciding, setDeciding] = useState<AttendanceSheetRowDto | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -162,19 +164,28 @@ export const DailySheetPage = (): JSX.Element => {
         error={days.isError ? days.error : undefined}
         onRetry={() => void days.refetch()}
         empty={<EmptyState title={t('attendance.daily.empty')} />}
-        rowActions={(row) =>
-          // The approval is offered only where it can succeed: a derived surplus, an unfrozen
-          // row, and the key in hand. A line with no day row has nothing to approve — there is no
-          // version to send and no overtime to release.
-          can('attendance.approveOvertime') &&
-          row.day !== null &&
-          row.day.overtimeMinutes > 0 &&
-          row.day.frozenAt === null ? (
-            <Button size="sm" variant="secondary" onClick={() => setApproving(row.day)}>
-              {t('attendance.overtime.approve')}
-            </Button>
-          ) : null
-        }
+        rowActions={(row) => (
+          <span className="flex gap-2">
+            {/* Deciding needs no day row — the commonest case for it is somebody with no row at
+                all — but a frozen day is refused by the server, so it is not offered. */}
+            {can('attendance.decide') && (row.day === null || row.day.frozenAt === null) && (
+              <Button size="sm" variant="secondary" onClick={() => setDeciding(row)}>
+                {t('attendance.decision.action')}
+              </Button>
+            )}
+            {/* The approval is offered only where it can succeed: a derived surplus, an unfrozen
+                row, and the key in hand. A line with no day row has nothing to approve — there is
+                no version to send and no overtime to release. */}
+            {can('attendance.approveOvertime') &&
+              row.day !== null &&
+              row.day.overtimeMinutes > 0 &&
+              row.day.frozenAt === null && (
+                <Button size="sm" variant="secondary" onClick={() => setApproving(row.day)}>
+                  {t('attendance.overtime.approve')}
+                </Button>
+              )}
+          </span>
+        )}
       />
 
       {days.data !== undefined && (
@@ -183,6 +194,10 @@ export const DailySheetPage = (): JSX.Element => {
 
       {approving !== null && (
         <OvertimeApprovalDialog day={approving} onClose={() => setApproving(null)} />
+      )}
+
+      {deciding !== null && (
+        <DayDecisionDialog row={deciding} onClose={() => setDeciding(null)} />
       )}
     </PageContainer>
   );

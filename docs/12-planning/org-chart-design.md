@@ -6,7 +6,7 @@
 section a job belongs to, and the form and the chart must stay in step (§1.1). His words are quoted from
 his messages in the Claude Code session of 2026-11-17. The decision this rests on is
 [ADR-038](../03-decisions/ADR-038-job-titles-placed-in-the-structure.md). §11 will record the
-fresh-context design review: two rounds were run on earlier drafts, and this version answers them.
+fresh-context design review that checked this document over three rounds.
 
 ## 0. Terms
 
@@ -200,7 +200,8 @@ their sections and their jobs in one tree".
   "jobTitleId": "<ObjectId job_titles>",
   "departmentCatalogId": "<ObjectId department_catalog>",
   "sectionCatalogId": "<ObjectId section_catalog> | null", // null: directly under the department
-  "isDeleted": false, "createdBy": "<ObjectId users> | null", "updatedBy": "<ObjectId users> | null",
+  "isDeleted": false, "deletedAt": "<Date> | null", "deletedBy": "<ObjectId users> | null",
+  "createdBy": "<ObjectId users> | null", "updatedBy": "<ObjectId users> | null",
   "createdAt": "<Date>", "updatedAt": "<Date>", "__v": 0
 }
 ```
@@ -260,7 +261,9 @@ indexes before any module seed runs, so the fill (§7) never runs without them. 
   - Making a row active again (on the sections or departments page) brings back the same group, with
     its places. A catalog group's key is its entry, so the reactivated row lands in the same group:
     directly when it is linked, or by fold.
-- **Editable:** a catalog group whose entry is active can be edited, subject to the keys in §1.3.
+- **Editable:** a group that is shown, is a catalog group, and whose entry is active. Only an editable
+  group takes new job places or section writes, subject to the keys in §1.3. "Stopped" in this design
+  means not shown.
 - **Read-only:**
   - A name group is read-only. It has no entry, so it cannot hold job places. Linking it is the
     operator's command (§5.1, §9).
@@ -270,8 +273,8 @@ indexes before any module seed runs, so the fill (§7) never runs without them. 
 
 ### 4.3 Cost
 
-- **What a read loads:** all department and section rows, both catalogs, the live job places and the
-  active jobs.
+- **What a read loads:** all department and section rows, both catalogs, the branches (for their
+  names), the live job places and the active jobs.
 - **Size:** on this deployment that is about 71 department rows (ADR-031), a few hundred section rows,
   147 jobs and a few hundred places. That is well under a megabyte, folded in memory, and costs one
   `find` per collection.
@@ -297,6 +300,7 @@ OrgChartDto = {
     editable: boolean;                 // §4.2
     name: { ar: string; en: string };  // the entry's name, else the group's oldest row's
     branches: { id: string; name: { ar: string; en: string } }[]; // branches with an active row
+    linkedBranchIds: string[];         // branches whose active row is linked to the entry (§5.3)
     sections: {
       key: string; sectionCatalogId: string | null; editable: boolean;
       name: { ar: string; en: string };
@@ -371,9 +375,10 @@ as well.
 - **From the chart,** each change is one `PATCH /api/v1/platform/job-titles/:id` carrying
   `{version, places}`: the job's current set from `jobs` (§4.4), with the one change applied (an add, a
   removal, or a move within the same department).
-- **Catalog entries cited by places:** such an entry cannot be deleted. The catalogs' `hasDependents`
-  hooks (`apps/api/src/platform/organization/index.ts`) also count live places, and the refusal says
-  so: «لا يمكن حذف هذا البند: توجد وظائف موضوعة فيه.» / "Jobs are placed in this entry."
+- **Catalog entries cited by places:** such an entry cannot be deleted. `OrgCatalogHooks` gains
+  `hasPlaces(id)`, wired in `apps/api/src/platform/organization/index.ts` to count live places. A delete
+  it blocks fails with its own code, `ORG_CATALOG_ENTRY_IN_USE` (409, "Jobs are placed in this entry").
+  No screen deletes catalog entries, so the message is not translated.
 
 ### 5.3 Section writes from the chart
 
@@ -414,7 +419,9 @@ editable (§4.2).
    folding with the group and split away from it.
 
 **Stop:**
-1. Set the section entry, and every active row of the section group, to inactive.
+1. Set every active row of the section group to inactive. The section entry stays active, so the
+   section can come back: a row made active again on the sections page brings the group back editable,
+   with its places. A row created again under that name links to the same entry (§5.6).
 2. The audit entry lists the rows this stop deactivated.
 3. Job places are kept (§4.2).
 
@@ -435,14 +442,18 @@ editable (§4.2).
     made stale by a chart rename.
 - **Shared pure rules.** None of these writes calls `OrgCatalogService` or `OrgUnitService`, because
   those take no session and audit inline. They share the same rules as pure functions instead:
-  - **`sectionRowFields(department, entry, id)`** in `sections/section-row.ts` returns `branchId`,
-    `departmentId`, `catalogId`, `path`, `description` and, when there is an entry, the entry's `name`.
-    `section.service.ts` keeps its reads and checks and calls this function to build the row.
+  - **`sectionRowFields(department, entryId, id)`** in
+    `apps/api/src/platform/organization/sections/section-row.ts` returns `branchId`, `departmentId`,
+    `catalogId` and `path`. `section.service.ts` keeps its reads, its checks and its own
+    `name: catalog.name` line (`org-catalog-guards.spec.ts` pins it), and calls this function for the
+    rest.
   - **`catalogNameClash(name, entries)`** in `shared/org-catalog-names.ts` is the exact,
     case-insensitive ar/en match. The catalog services keep their database query, which applies the
     same rule. A spec feeds both the same cases.
   - **`nextFreeCode(prefix, taken)`** moves from `apps/api/src/workforce-import/org.ts` to
-    `platform/organization/shared/next-free-code.ts`. The importer imports it from there, through the
+    `platform/organization/shared/next-free-code.ts`, exported from the `platform/organization` barrel.
+    `workforce-import/org.ts` imports it from there and re-exports it, so `org.spec.ts` keeps its import.
+    The importer imports it from there, through the
     `platform/organization` barrel.
 - **Audit after commit.** The `unitOfWork` callback returns the audit entries and events it built, so a
   retry rebuilds them. After commit they are written with `auditService.recordMany`, and the
@@ -467,12 +478,13 @@ existing `DUPLICATE` and `BUSINESS_RULE_VIOLATION` keep their meanings.
 
 | Code | HTTP | When | Message (ar / en) |
 |---|---|---|---|
-| `ORG_UNIT_NOT_EDITABLE` | 422 | A write names a name group, or a group whose entry is inactive (§4.2) | «لا يمكن تعديل هذه الإدارة أو هذا القسم من هنا: غير مربوط بقائمة الشركة أو موقوف فيها.» / "This unit cannot be edited here: it is not linked to the company list, or is stopped in it." |
+| `ORG_UNIT_NOT_EDITABLE` | 422 | A section write whose department or section entry has no editable group: no active rows, or an inactive entry (§4.2) | «لا يمكن تعديل هذه الإدارة أو هذا القسم من هنا: غير مربوط بقائمة الشركة أو موقوف فيها.» / "This unit cannot be edited here: it is not linked to the company list, or is stopped in it." |
 | `ORG_SECTION_NAME_TAKEN` | 409 | §5.3 step 1 | «يوجد قسم بهذا الاسم في هذه الإدارة.» / "This department already has a section with this name." |
 | `BRANCH_WITHOUT_DEPARTMENT` | 422 | §5.3 step 2 | «الإدارة غير موجودة أو غير مربوطة بقائمة الشركة في أحد الفروع المحددة.» / "In one of the ticked branches the department does not exist, or is not linked to the company list." |
-| `JOB_PLACE_NOT_ALLOWED` | 422 | §5.2: a new place in a group that is not editable, for an inactive job, or with a section outside its department | «لا يمكن وضع الوظيفة في هذا المكان: الوظيفة أو القسم موقوف، أو القسم لا يتبع هذه الإدارة.» / "The job cannot be placed here: the job or the section is stopped, or the section is not in this department." |
+| `JOB_PLACE_NOT_ALLOWED` | 422 | §5.2: a new place whose entry has no editable group, for an inactive job, or with a section outside its department | «لا يمكن وضع الوظيفة في هذا المكان: الوظيفة أو القسم موقوف، أو القسم لا يتبع هذه الإدارة.» / "The job cannot be placed here: the job or the section is stopped, or the section is not in this department." |
 | `STALE_DOCUMENT` | 409 | A job or section entry `version` that is not current | (shared: refresh and retry) |
-| `NOT_FOUND` | 404 | A well-formed id that names no entry or job | (shared) |
+| `NOT_FOUND` | 404 | A well-formed id that names no job, or a section write's id that names no section entry | (shared) |
+| `ORG_CATALOG_ENTRY_IN_USE` | 409 | Deleting a catalog entry that job places cite (§5.2) | "Jobs are placed in this entry" (no screen deletes entries) |
 | `VALIDATION_FAILED` | 400 | A malformed id or body | (shared) |
 | `FORBIDDEN` | 403 | The key from §1.3 is missing | (shared) |
 
@@ -493,7 +505,8 @@ result is exactly today's unlinked row, never an entry without its row.
      - the branch (for a section, the department row) already has a live row linked to the match;
      - a **live unlinked row** of that name already exists in scope, other than the new one. That group
        stays with the operator command, which must not find an entry it did not plan (ADR-031).
-     - (a section only) its department row is unlinked;
+     - (a section only) its department row is unlinked, or its department entry is inactive, which
+       the section catalog's create path also refuses;
      - an entry of any status has exactly the same Arabic or English name (the catalog's own clash
        rule, `catalogNameClash`), while none folds the same;
      - anything in the step fails. The failure is logged at warn level.
@@ -600,23 +613,30 @@ It returns `null` when there was nothing to do.
    - Otherwise it becomes a place in the department group's entry. The section narrows it only when
      the section row is still in that department group and its group is a catalog group. Otherwise the
      job goes directly under the department.
-6. **Write, in one transaction:**
-   - insert the places that are not already stored;
-   - insert one mark per department entry from step 2, including the ones that received nothing.
+6. **Write, in one transaction.** Step 2 runs inside the transaction callback, reading through its
+   session. Then:
+   - insert one mark per department entry from step 2 **first**, including the ones that will receive
+     nothing;
+   - then insert the places that are not already stored.
 
    Either everything commits or nothing does.
-   - **Indexes:** they exist before this point (§3.3).
-   - **Racing processes:** the API and the worker both run the seed. If they race, `ux_departmentCatalogId`
-     lets only one commit. The other gets a duplicate-key error on that index, which is the lost race
-     logged at info.
+   - **Indexes:** before step 2, the function checks that `ux_departmentCatalogId` exists
+     (`listIndexes`). If the boot index step (§3.3) failed to build it, the fill logs an error and does
+     not run.
+   - **Racing processes:** every `bootPlatform` caller runs the seed: the API, the worker and the CLIs.
+     When two race, the marks collide first. Either `withTransaction` retries on the write conflict,
+     and step 2 then finds the marks and returns `null`, or the insert fails with a duplicate key. The
+     fill treats any duplicate-key error as the lost race and logs it at info.
 7. **Audit:** after commit, one `update` entry for each job that gained places, through `recordMany`.
 
 **What is guaranteed:**
 - **Once per department.** A department is filled once: at the first start where it has an active
   catalog group, which on release day is every linked department. A place a user removes from a
   department that has been filled is never put back.
-- **Departments linked later.** A department the operator links later is filled at the next start,
-  from whoever sits in it by then, unless someone has already edited its places (step 4). A department
+- **Departments linked later.** A department entry that first gains an active row later (the operator
+  links a group that had no entry) is filled at the next start, from whoever sits in it by then, unless
+  its places were already edited (step 4). Rows linked later to an entry that is already marked add no
+  places. A department
   created after release is marked when its entry is created (§5.6), because nobody sits in it yet.
 - **Failed fills.** A failed fill writes nothing, and the next start tries again. A department edited by
   hand before its fill commits keeps those edits (step 4).
@@ -642,7 +662,7 @@ It returns `null` when there was nothing to do.
 | **Places can drift from where people sit** (D-ORG3-1) | The chart can say a job is in Treasury while its holder is registered in Counting. | None, by design. A report of such differences would be a separate request. |
 | **«مستندات الوظائف» shows a different list.** Job papers list the jobs people **hold** in each department. | The two HR screens can list different jobs for one department. | They answer different questions: what papers to print for the jobs held there, and which jobs belong there. Making the popup read places is a separate request. Its reader's missing `supersededAt` filter is also left to that feature. |
 | **A section added later in another branch** | The chart has no «add to branch». | A branch added later gets its section rows from the sections page. With §5.6 they are linked at creation, so they join the group. |
-| **A stopped section is restarted one row at a time** on the sections page, and places do not follow D-ORG3-3's add-and-stop workaround. | Restarting takes one edit per row, and a new section starts with no places. | The stop's audit entry lists the rows it deactivated (§5.3). Jobs are added again in the chart. |
+| **A stopped section is restarted one row at a time** on the sections page, and places do not follow D-ORG3-3's add-and-stop workaround. | Restarting takes one edit per branch. A new section starts with no places. | Stop leaves the section entry active (§5.3), so each restarted row brings the group back editable, with its places. Stop's audit entry lists the rows it deactivated. |
 | **Realtime reach** (§6.2) | Some users see others' edits only on their next load. | Topic keys are unchanged. |
 
 ## 10. Delivery plan
@@ -656,7 +676,7 @@ One PR carries these documents and the code, as was done for ADR-036 and ADR-037
 |---|---|
 | `docs/12-planning/org-chart-design.md` | Create (this file) |
 | `docs/03-decisions/ADR-038-job-titles-placed-in-the-structure.md` | Create |
-| `docs/03-decisions/README.md` | Modify: add the ADR-038 row, and the missing ADR-029 row |
+| `docs/03-decisions/README.md` | Modify: the ADR-038 row (added as Proposed with the draft, set to Accepted with §11), the ADR-029 row the index lacked, and a "superseded in part by ADR-038" note on ADR-031's row |
 | `docs/02-architecture/organization-structure.md` | Modify. In its §2, add that job titles carry job places keyed on the catalog. In its §7.4, name `job_title_places` as the many-to-many link. In its §3, list the chart page. |
 | `docs/05-database/database-design.md` | Modify: add `job_title_places` and `job_title_place_fills` beside the catalogs, and add to the catalog paragraph that new rows are linked at creation (§5.6). |
 
@@ -683,9 +703,10 @@ stays green.
 
 | File | Change |
 |---|---|
-| `apps/api/src/platform/organization/job-titles/job-title.service.ts` | Modify: create, update and delete in `unitOfWork` with places; `snapshot(doc, labels)`; audit after commit (§5.2, §5.4) |
-| `apps/api/src/platform/organization/index.ts` | Modify: `hasDependents` counts places, with its own message (§5.2) |
-| `apps/api/src/platform/organization/shared/org-catalog.service.ts` | Modify: `softDelete` passes the dependents' reason through, so the message can name places |
+| `apps/api/src/platform/organization/job-titles/job-title.service.ts` | Modify: create, update and delete in `unitOfWork` with places. Inside the callback the place writes go first and the job's own `updateById` with `version` last, so a stale version rolls the places back. `snapshot(doc, labels)`; audit after commit (§5.2, §5.4). |
+| `apps/api/src/platform/organization/job-places/job-place.repository.ts` | Create: the session-aware place reads and writes (`insertMany`, soft-delete by ids). They live here because `job-defaults-guards.spec.ts` forbids `updateMany` in `job-title.service.ts`. |
+| `apps/api/src/platform/organization/index.ts` | Modify: wire `hasPlaces` (§5.2) |
+| `apps/api/src/platform/organization/shared/org-catalog.service.ts` | Modify: the optional `hasPlaces` hook; `softDelete` refuses with `ORG_CATALOG_ENTRY_IN_USE` |
 | `apps/api/tests/integration/org-chart.spec.ts` | Modify: the job-place cases |
 
 **Step 4: section writes and linking at creation.**
@@ -697,7 +718,10 @@ stays green.
 | `apps/api/src/platform/organization/departments/department.service.ts` | Modify: linking at creation (§5.6) |
 | `apps/api/src/platform/organization/shared/org-catalog-names.ts`, `org-catalog-names.spec.ts` | Create: `catalogNameClash`, checked against both catalog services' rule |
 | `apps/api/src/platform/organization/shared/next-free-code.ts` | Create: moved |
-| `apps/api/src/workforce-import/org.ts` | Modify: import `nextFreeCode` from the barrel |
+| `apps/api/src/workforce-import/org.ts` | Modify: import `nextFreeCode` from the barrel and re-export it (its spec imports it from `./org`) |
+| `apps/api/src/platform/organization/index.ts` | Modify: export `nextFreeCode` and `sectionRowFields` |
+| `apps/api/src/platform/organization/shared/org-unit.ts` | Modify: the optional `afterCreate` hook (§5.6) |
+| `apps/api/tests/integration/org-catalog.spec.ts`, `apps/api/tests/integration/operations-crew-departments.spec.ts` | Modify: rows that stand for "never linked" legacy data are inserted through the model (`DepartmentModel.create` / `SectionModel.create`), as `org-catalog.spec.ts` already inserts employees, because the services now link at creation (§5.6) |
 | `apps/api/src/platform/organization/org-chart/org-chart.sections.ts` | Create (§5.3, §5.4) |
 | `apps/api/src/platform/organization/org-chart/org-chart.routes.ts`, `org-chart.controller.ts` | Modify: the three writes |
 | `apps/api/tests/integration/org-chart.spec.ts` | Modify: the section and creation-linking cases |
@@ -752,20 +776,21 @@ on the form, the one-time fill, linking at creation and the realtime fix.
   - Duplicates in a request are merged, and a move onto an existing place leaves one.
   - A stale `version` gets `STALE_DOCUMENT`.
   - A stopped place that is sent back survives.
-  - These each get `JOB_PLACE_NOT_ALLOWED`: a new place in a stopped group, in a name group, with a
+  - These each get `JOB_PLACE_NOT_ALLOWED`: a new place in a stopped group, under an entry with no rows, with a
     section from another department, or on an inactive job.
   - Without `jobTitle.edit`, 403.
   - Delete removes the places.
   - A department entry with places cannot be deleted, and the message names jobs.
   - The audit shows the place labels.
-  - A forced failure inside the transaction (the job's `version` changes between load and write) leaves
-    no place and no audit row.
+  - An update with new places and a stale `version` gets `STALE_DOCUMENT`, and leaves no place and no
+    audit row (the job's own write is last in the transaction).
 - **Sections (Step 4)**
   - Three of four branches make three linked section rows with distinct codes.
   - A branch where the department row is unlinked gets `BRANCH_WITHOUT_DEPARTMENT`.
   - `ORG_SECTION_NAME_TAKEN` on a fold match and on an exact English match.
   - `BRANCH_WITHOUT_DEPARTMENT`, with nothing written.
-  - `ORG_UNIT_NOT_EDITABLE` under a name group and under an inactive entry.
+  - `ORG_UNIT_NOT_EDITABLE` under a department entry whose rows are all inactive, and under an inactive
+    entry. Unlinked fixtures are inserted through the model (§5.6).
   - Without `section.create`, 403.
   - Rename reaches linked and unlinked rows alike, and gets `ORG_SECTION_NAME_TAKEN` on a sibling's fold.
   - Stop lists the rows it deactivated and keeps the places.
@@ -784,4 +809,60 @@ on the form, the one-time fill, linking at creation and the realtime fix.
 
 ## 11. Review
 
-To be recorded at Step 1, before code.
+**2026-11-17, Full preset** (`.claude/skills/design-review`), on three drafts of this document and
+ADR-038.
+
+**Reviewers.** Every reviewer ran as its own `egm-*` subagent; none needed the fallback.
+- **Round 1, first draft:**
+  - A: zoom-out
+  - B: comprehension
+  - C: design, structural, style
+- **Round 2, second draft:**
+  - D: zoom-out
+  - E: implementation readiness, codebase details, style
+- **Round 3, third draft:** the one re-run each stage allows.
+  - D: zoom-out
+  - E: implementation readiness and codebase details, combined into one reviewer
+- **Timing.** D and E ran in parallel each time, not one after the other. D's fixes did not touch the
+  delivery plan that E reads.
+- **Working files.** Kept in the session scratchpad, outside the repository.
+
+**What changed the design:**
+- **Linking existing rows was dropped (round 2 into round 3).** Round 1 found that an entry created
+  without linking its rows breaks `migrate:org-catalog` (a Blocker). The fix then tried was to link a
+  group's rows on the first write that needs them. Checking that against `rbac.service.ts`
+  `resolveReach` showed that linking an existing department row widens every «department everywhere»
+  role grant to it. It also re-keys the department's lines in «مستندات الوظائف». So no write links an
+  existing row (§5.1). Unlinked groups are read-only, and new rows are linked when created (§5.6).
+- **New rows linked when created.** This changes what the departments and sections pages do. The owner
+  was asked in Arabic, with the access effect explained. His answer, «أيوه، يتربط تلقائيًا», is
+  D-ORG3-5. That makes it the review's one escalation.
+- **One write path for job places**, the job's own save (§5.2), replacing three endpoints of their own.
+- **Transactions load first through the session and plan in memory.** Round 2 found reads that could
+  not see the transaction's own writes, a Blocker (§5.4).
+- **The fill is per department, in one transaction, marks first** (§7):
+  - a department linked later is filled at its next start;
+  - hand edits are never overwritten;
+  - a lost race is a duplicate key or a retry.
+- **Indexes are built at boot** (§3.3), because `autoIndex` is off in production.
+- **Specific error codes** (§5.5), and formal Arabic strings.
+- **The realtime registry rows gain the organization module's keys** (§6.2). The review found that
+  today's rows match no `/organization/*` query.
+- **Stop leaves the section entry active** (§5.3), so a restarted section is editable again.
+
+**Findings by outcome.**
+- **Merged** across rounds into about 120 distinct findings.
+- **Fixed** in the document: about 95. Each round's fixes came before the next round.
+- **Contested,** with evidence in the code (3):
+  - "reuse `jobsByDepartmentSystem` for the fill": job papers group it by department only, so a section
+    key would change that screen (§7 step 3);
+  - "a single global fill flag is enough": departments linked later would never fill (§8);
+  - "`sync-indexes.models.ts` must register the models": they are reached from `./app` (§10 Step 5).
+- **Accepted,** recorded and not changed: the remaining nits about wording a zero-context reader needs,
+  such as glossing every P-code.
+- **Declined:** implementation detail in the high-level sections (class names, method names). They stay
+  where they help the implementer.
+- **Dropped under the skill's rule (d):** none. Every claim about existing code that a reviewer raised
+  was checked against the code. Where the code disagreed with the document, the document was fixed.
+- **Open:** none. The duplicate-name race when two users add one section at once is recorded as a
+  limit in §9, with its follow-up.

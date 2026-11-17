@@ -1,8 +1,6 @@
 # ADR-038: A job title names its places in the company structure, descriptively and possibly more than one, keyed on the catalog
 
-**Status:** Proposed; it becomes Accepted when the design review in
-[org-chart-design.md](../12-planning/org-chart-design.md) §11 is recorded. The owner approved the
-behaviour on 2026-11-17. · **Date:** 2026-11-17 · **Relates to:**
+**Status:** Accepted (design review recorded in [org-chart-design.md](../12-planning/org-chart-design.md) §11; the owner approved the behaviour on 2026-11-17) · **Date:** 2026-11-17 · **Relates to:**
 [ADR-015](ADR-015-single-organization-model.md) (job titles are one organization-wide catalog),
 [ADR-030](ADR-030-requisition-names-its-placement.md) (no seat, vacancy or headcount entity),
 [ADR-031](ADR-031-org-units-defined-once-declared-per-branch.md) (the company catalog of departments

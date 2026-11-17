@@ -15,6 +15,12 @@ import { SHIPMENT_PATH } from './shipment-icons';
 
 const PILL =
   'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white py-1 pe-3 ps-1 dark:border-slate-800 dark:bg-[#111827]';
+/**
+ * A smaller pill (Round 26b) — «توزيع المحصنات»'s figures share their row with the day and the acts,
+ * truly in its middle, at 1280 as at 1440: the same parts, a step smaller.
+ */
+const COMPACT_PILL =
+  'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white py-0.5 pe-2.5 ps-0.5 dark:border-slate-800 dark:bg-[#111827]';
 
 /** The tones of the figures, by what they count. */
 export const FIGURE_TONE = {
@@ -30,19 +36,40 @@ const PillBody = ({
   label,
   value,
   unit,
+  compact = false,
 }: {
   icon: readonly string[];
   tone: string;
   label: string;
   value: string;
   unit?: string | undefined;
+  compact?: boolean;
 }): JSX.Element => (
   <>
-    <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg', tone)}>
-      <BoardIcon d={[...icon]} className="h-4 w-4" />
+    <span
+      className={cn(
+        'flex items-center justify-center rounded-lg',
+        compact ? 'h-6 w-6' : 'h-7 w-7',
+        tone,
+      )}
+    >
+      <BoardIcon d={[...icon]} className={compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
     </span>
-    <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{label}</span>
-    <span className={cn('text-[15px] font-black text-slate-900 dark:text-white', NUM)}>
+    <span
+      className={cn(
+        'font-bold text-slate-500 dark:text-slate-400',
+        compact ? 'text-[11px]' : 'text-xs',
+      )}
+    >
+      {label}
+    </span>
+    <span
+      className={cn(
+        'font-black text-slate-900 dark:text-white',
+        compact ? 'text-[14px]' : 'text-[15px]',
+        NUM,
+      )}
+    >
       {value}
     </span>
     {unit !== undefined && unit !== '' && (
@@ -60,6 +87,7 @@ export const BoardFigurePill = ({
   unit,
   onClick,
   title,
+  compact = false,
   children,
   ...rest
 }: {
@@ -70,11 +98,13 @@ export const BoardFigurePill = ({
   unit?: string;
   onClick?: () => void;
   title?: string;
+  /** A step smaller — where the figures share their row (Round 26b). */
+  compact?: boolean;
   children?: ReactNode;
 } & Record<`data-${string}`, string>): JSX.Element =>
   onClick === undefined ? (
-    <span className={PILL} title={title} {...rest}>
-      <PillBody icon={icon} tone={tone} label={label} value={value} unit={unit} />
+    <span className={compact ? COMPACT_PILL : PILL} title={title} {...rest}>
+      <PillBody icon={icon} tone={tone} label={label} value={value} unit={unit} compact={compact} />
       {children}
     </span>
   ) : (
@@ -84,12 +114,12 @@ export const BoardFigurePill = ({
       title={title}
       aria-haspopup="dialog"
       className={cn(
-        PILL,
+        compact ? COMPACT_PILL : PILL,
         'cursor-pointer transition hover:border-amber-400/70 hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 dark:hover:bg-amber-500/10',
       )}
       {...rest}
     >
-      <PillBody icon={icon} tone={tone} label={label} value={value} unit={unit} />
+      <PillBody icon={icon} tone={tone} label={label} value={value} unit={unit} compact={compact} />
       {children}
     </button>
   );

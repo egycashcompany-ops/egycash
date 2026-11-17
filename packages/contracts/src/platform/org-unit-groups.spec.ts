@@ -6,6 +6,7 @@
 // branch of it out — so the rule is pinned here, once, for both.
 import { describe, expect, it } from 'vitest';
 import {
+  healGroupKeys,
   expandOrgUnitSelection,
   foldOrgUnitName,
   orgUnitGroupKeys,
@@ -147,5 +148,37 @@ describe('expandOrgUnitSelection', () => {
       ),
     ).toHaveLength(1);
     expect(expandOrgUnitSelection([], population, active)).toEqual([]);
+  });
+});
+
+describe('healGroupKeys', () => {
+  const ops = { key: 'catalog:e1', name: { ar: 'نقل الأموال', en: 'Cash' } };
+  const hr = { key: 'catalog:e2', name: { ar: 'الموارد البشرية', en: 'HR' } };
+
+  it('turns a name key saved before the department was linked into its catalog key', () => {
+    // Saved with the unfolded spelling (`groupKeyOf`) or the folded one (`orgUnitGroupKeys`).
+    expect(healGroupKeys(['name:نقل الاموال'], [ops, hr])).toEqual(['catalog:e1']);
+    expect(healGroupKeys(['name:نقل الأموال', 'catalog:e2'], [ops, hr])).toEqual(['catalog:e1', 'catalog:e2']);
+  });
+
+  it('changes nothing when every key still matches, or the key is not a name key', () => {
+    expect(healGroupKeys(['catalog:e1'], [ops, hr])).toBeNull();
+    expect(healGroupKeys(['unit:x'], [ops, hr])).toBeNull();
+    expect(healGroupKeys([], [ops])).toBeNull();
+  });
+
+  it('turns a name two entries now carry into both — what the name chose before', () => {
+    // «الخزينة» under two departments: one name choice before linking, two section entries after.
+    const treasuryOps = { key: 'catalog:s1', name: { ar: 'الخزينة', en: 'Treasury' } };
+    const treasuryHq = { key: 'catalog:s2', name: { ar: 'الخزينه', en: 'Treasury' } };
+    expect(healGroupKeys(['name:الخزينة'], [treasuryOps, treasuryHq, hr])).toEqual(['catalog:s1', 'catalog:s2']);
+  });
+
+  it('keeps a name key no choice answers to', () => {
+    expect(healGroupKeys(['name:الأمن'], [ops, hr])).toBeNull();
+  });
+
+  it('does not list a department twice when its old and new keys were both saved', () => {
+    expect(healGroupKeys(['catalog:e1', 'name:نقل الأموال'], [ops])).toEqual(['catalog:e1']);
   });
 });

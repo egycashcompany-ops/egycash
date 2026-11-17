@@ -59,6 +59,25 @@
 //     with ONE captain's line led by the count, and the three package counts (`VanCard`). A van
 //     with two captains shows the first; who a محصنة goes with is switched in its «نقل إلى…».
 //
+// ROUND 26 — the owner on this screen:
+//   · «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات»: each column's filter boxes on its title's
+//     line (`DistributionColumn`'s head) — the left column's compact (`filtersFit="narrow"`);
+//   · «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين»: resting on a
+//     van's head or captain's line opens its card (`VanCard` — every captain, both specialist slots,
+//     the drivers, the counts); never during a drag nor over an open «نقل إلى…» menu;
+//   · «عاوزك تضيف الوان»: the counts each in their colour — the page's figures too.
+//
+// ROUND 26b — the owner on Round 26's screens:
+//   · «لا استنى الالوان مش عجبانى بتاعت العربيه» → «لون واحد لكل العربيات»: no van wears a colour of
+//     its own any more — every van card one calm look (`VanCard`), every chip on it plain;
+//   · «عاوز يبقى فى فرق فى الالوان بين الصندوق و الحقائب و الكراتين»: each count a tile of its own hue;
+//   · «وعاوز اضيف اسم القائد فى الفلاتر بعد العربيه»: the vans' head has a captain's box after
+//     «كود السيارة» (`lib/distribution-filter.ts`);
+//   · «عاوز اخلى التاريخ يكون مكان الاحصائيات والاحصائيات تكون فى النص»: the top row is the day at the
+//     start, the figures in the middle, the acts at the end (`TopRow`); the hint under it;
+//   · «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل»: the van card redrawn — the
+//     captain in a frame of his own, the counts in a row of their own (`VanCard`).
+//
 // WHO. The screen is `operationsShipment.view`'s; moving and saving are `operationsShipment.edit`'s
 // (assign-delivery's grant — distributing IS assigning the delivery leg, for many at once). A reader
 // without it sees the day's plan as it stands, with nothing to drag.
@@ -103,15 +122,16 @@ import {
   useSaveSecuredDistribution,
   useVaultPackaging,
 } from '../api/operations-queries';
-import { BoardFigurePill, FIGURE_TONE } from '../components/BoardFigures';
+import { BoardFigurePill } from '../components/BoardFigures';
+import { COLUMN_WARN, COUNT_LOOK, VANS_FIGURE } from '../components/distribution-look';
 import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsBoard';
 import {
   CardMark,
   ChipMark,
   ColumnFilterBar,
-  DAY_BAR,
   DISTRIBUTION_COLUMNS,
   DayBox,
+  DayNote,
   DistributionColumn,
   EmptyLoad,
   FilterAreaSelect,
@@ -119,8 +139,11 @@ import {
   MoveMenu,
   ShipmentCardBody,
   ShipmentChip,
+  TOP_FIGURES,
+  TopRow,
   VAN_GRID,
   VanCard,
+  countText,
   dayText,
   type ChipMoneyLine,
   type MoveChoice,
@@ -173,6 +196,7 @@ import {
   matchesVanFilter,
   shipmentAreaOptions,
   vanAreaOptions,
+  vanCaptainMatch,
   type UnplacedFilter,
   type VanFilter,
 } from '../lib/distribution-filter';
@@ -186,6 +210,7 @@ import {
   type UndoWhat,
 } from '../lib/crew-undo';
 import { hasNoVan, looseCrewNumbers, vanCodeText, vanPhrase } from '../lib/van-name';
+import { PACKAGE_KINDS } from '../lib/van-card';
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 
@@ -305,6 +330,9 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const packagesRead = packagingRead(canReadVault, packaging);
 
   const columns = distributionColumns(rows, vans, draft);
+  // Round 26 — the day's packages (every محصنة listed, as the vault counted them), for the page's
+  // figures; null to a reader who cannot read the vault.
+  const dayPackages = vanPackages(packagesRead, rows, packagingOf);
   const vanById = new Map(vans.map((van) => [van.crewAssignmentId, van]));
   // Round 24 — the crews without a van, numbered as the board numbers them («بدون سيارة (n)»).
   // Round 25: the server's own number (`looseNumber`, among ALL the day's rows without a van) —
@@ -359,7 +387,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
     else
       toast.success(
         t(pluralKey('operations.distribution.autoDone', locale, added), {
-          count: formatNumber(added, locale),
+          count: countText(added, locale),
         }),
       );
   };
@@ -378,11 +406,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
       toast.success(
         result.rescheduled > 0
           ? t(pluralKey('operations.distribution.savedRescheduled', locale, result.changed), {
-              count: formatNumber(result.changed, locale),
-              rescheduled: formatNumber(result.rescheduled, locale),
+              count: countText(result.changed, locale),
+              rescheduled: countText(result.rescheduled, locale),
             })
           : t(pluralKey('operations.distribution.saved', locale, result.changed), {
-              count: formatNumber(result.changed, locale),
+              count: countText(result.changed, locale),
             }),
       );
     } catch (error) {
@@ -728,6 +756,9 @@ export const SecuredDistributionPage = (): JSX.Element => {
         bankName={bankNameOf(row.mainBankId)}
         branchName={row.destination?.name ?? row.origin?.name ?? ''}
         tone={wasRefused ? 'refused' : proposed ? 'proposed' : moved ? 'moved' : undefined}
+        // R27 critic — the look of the column it is drawn in: a place naming a van the read no
+        // longer lists is on no van (`distributionColumns`), as «تسليم المحصنات» already draws it.
+        unplaced={van === undefined}
         marks={
           <>
             {row.overdue && (
@@ -841,6 +872,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
       bankWordsOf,
     }),
   );
+  // R26b critic — the captain box found a van by a captain its card does not show: name him on it.
+  const captainMatchOf = (van: OperationsSecuredDistributionCrewDto) => {
+    const at = vanCaptainMatch(van, vanFilter.captain);
+    return at === null || at === 0 ? null : (van.captains[at] ?? null);
+  };
   const areaLabel = (option: { value: string; label: string }, none: string) =>
     option.value === NO_AREA ? { ...option, label: none } : option;
   const unplacedAreaOptions = shipmentAreaOptions(columns.unplaced, unplacedFilter.area).map(
@@ -853,6 +889,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
   // ── The page ───────────────────────────────────────────────────────────────────────────────────
 
   const loaded = data !== undefined;
+  /** Any محصنة on no van — the column's head and the page's figure wear the rose (Round 27). */
+  const waiting = loaded && columns.unplaced.length > 0;
   const failed = !tooLarge && hasError(board.error) && !loaded;
 
   // RIGHT (first in RTL): the vans — three quarters of a wide screen (Round 24c).
@@ -875,8 +913,19 @@ export const SecuredDistributionPage = (): JSX.Element => {
               data-filter="van-code"
               label={t('operations.distribution.filter.vanCode')}
               icon={FILTER_ICON.car}
+              fit="code"
               value={vanFilter.code}
               onChange={(code) => setVanFilter((current) => ({ ...current, code }))}
+            />
+            {/* Round 26b — «وعاوز اضيف اسم القائد فى الفلاتر بعد العربيه»: right after the code. */}
+            <FilterTextBox
+              data-filter="van-captain"
+              label={t('operations.distribution.filter.captain')}
+              placeholder={t('operations.distribution.filter.captainShort')}
+              icon={FILTER_ICON.person}
+              fit="name"
+              value={vanFilter.captain}
+              onChange={(captain) => setVanFilter((current) => ({ ...current, captain }))}
             />
             <FilterTextBox
               data-filter="van-search"
@@ -918,6 +967,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 day={day}
                 count={load.length}
                 packages={vanPackages(packagesRead, load, packagingOf)}
+                takesNone={!takesShipments(van)}
+                captainMatch={captainMatchOf(van)}
                 {...(canEdit
                   ? {
                       drop: {
@@ -933,7 +984,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                   : {})}
               >
                 {load.length === 0 ? (
-                  <EmptyLoad>
+                  <EmptyLoad tone={takesShipments(van) ? (canEdit ? 'drop' : 'empty') : 'refuse'}>
                     {takesShipments(van)
                       ? canEdit
                         ? t('operations.distribution.dropHere')
@@ -968,6 +1019,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
       icon={SHIPMENT_PATH.shipment}
       data-distribution-column="unplaced"
       data-drop-unplaced="true"
+      filtersFit="narrow"
+      warn={waiting}
       {...(wide
         ? {}
         : { collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) } })}
@@ -983,21 +1036,27 @@ export const SecuredDistributionPage = (): JSX.Element => {
         loaded && columns.unplaced.length > 0 ? (
           <ColumnFilterBar
             data-filter-bar="unplaced"
+            narrow
             active={isUnplacedFiltering(unplacedFilter)}
             shown={unplacedShown.length}
             total={columns.unplaced.length}
             onClear={() => setUnplacedFilter(EMPTY_UNPLACED_FILTER)}
           >
+            {/* Round 26 — beside the title in a quarter of the screen: compact boxes, shorter words
+                in them; each keeps its whole name for a screen reader and on hover. */}
             <FilterTextBox
               data-filter="unplaced-search"
               label={t('operations.distribution.filter.search')}
+              placeholder={t('operations.distribution.filter.searchShort')}
+              fit="narrow"
               value={unplacedFilter.search}
               onChange={(search) => setUnplacedFilter((current) => ({ ...current, search }))}
             />
             <FilterAreaSelect
               data-filter="unplaced-area"
               label={t('operations.distribution.filter.area')}
-              allLabel={t('operations.distribution.filter.allAreas')}
+              allLabel={t('operations.distribution.filter.allAreasShort')}
+              fit="narrow"
               value={unplacedFilter.area}
               options={unplacedAreaOptions}
               onChange={(area) => setUnplacedFilter((current) => ({ ...current, area }))}
@@ -1047,110 +1106,159 @@ export const SecuredDistributionPage = (): JSX.Element => {
   return (
     <PageContainer fullHeight>
       <div className={BOARD_FRAME} data-distribution-page="true" {...screenDrop}>
-        {/* The boards' toolbar: the figures at the start, the acts at the end. */}
-        <div
-          className="flex flex-wrap items-center justify-between gap-2"
+        {/* Round 26b — «عاوز اخلى التاريخ يكون مكان الاحصائيات والاحصائيات تكون فى النص»: the day at
+            the start, the figures in the middle, the acts at the end (`TopRow`). */}
+        <TopRow
           data-distribution-toolbar="true"
-        >
-          <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <BoardFigurePill
-              icon={PATH.truck}
-              tone={FIGURE_TONE.pound}
-              label={t('operations.distribution.vans')}
-              value={loaded ? formatNumber(vans.length, locale) : '…'}
-              data-figure="vans"
+          day={
+            <DayBox
+              label={t('operations.distribution.day')}
+              value={day}
+              min={minDay}
+              onChange={setDay}
             />
-            <BoardFigurePill
-              icon={SHIPMENT_PATH.shipment}
-              tone={FIGURE_TONE.count}
-              label={t('operations.distribution.shipments')}
-              value={loaded ? formatNumber(rows.length, locale) : '…'}
-              data-figure="shipments"
-            />
-            <BoardFigurePill
-              icon={SHIPMENT_PATH.shipment}
-              tone={FIGURE_TONE.others}
-              label={t('operations.distribution.unplaced')}
-              value={loaded ? formatNumber(columns.unplaced.length, locale) : '…'}
-              data-figure="unplaced"
-            />
-          </div>
-          {canEdit && (
-            <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
-              <button
-                type="button"
-                data-distribution-auto="true"
-                disabled={!loaded}
-                onClick={autoDistribute}
-                title={t('operations.distribution.autoHint')}
-                className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
+          }
+          figures={
+            <div role="status" data-distribution-figures="true" className={TOP_FIGURES}>
+              <BoardFigurePill
+                compact
+                icon={PATH.truck}
+                tone={VANS_FIGURE}
+                label={t('operations.distribution.vans')}
+                value={loaded ? countText(vans.length, locale) : '…'}
+                data-figure="vans"
+              />
+              {/* The counts in their own colours, as on every van: the محصنات cyan, then the
+                  vault's packages over the day's محصنات. */}
+              <BoardFigurePill
+                compact
+                icon={COUNT_LOOK.shipments.icon}
+                tone={COUNT_LOOK.shipments.square}
+                label={t('operations.distribution.shipments')}
+                value={loaded ? countText(rows.length, locale) : '…'}
+                data-figure="shipments"
+              />
+              {/* R27 critic — one number, one colour: while any wait, the rose of the column's
+                  head (its warning, its count); none waiting, the محصنات' own cyan. */}
+              <BoardFigurePill
+                compact
+                icon={waiting ? PATH.warn : COUNT_LOOK.shipments.icon}
+                tone={waiting ? COLUMN_WARN.figure : COUNT_LOOK.shipments.square}
+                label={t('operations.distribution.unplaced')}
+                value={loaded ? countText(columns.unplaced.length, locale) : '…'}
+                data-figure="unplaced"
+              />
+              {dayPackages !== null &&
+                PACKAGE_KINDS.map((kind) => (
+                  <BoardFigurePill
+                    key={kind}
+                    compact
+                    icon={COUNT_LOOK[kind].icon}
+                    tone={COUNT_LOOK[kind].square}
+                    label={t(`operations.distribution.${kind}`)}
+                    value={
+                      !loaded || dayPackages === 'pending'
+                        ? '…'
+                        : dayPackages === 'failed'
+                          ? '—'
+                          : countText(dayPackages[kind], locale)
+                    }
+                    data-figure={kind}
+                  />
+                ))}
+            </div>
+          }
+          end={
+            canEdit ? (
+              <span
+                data-distribution-acts="true"
+                className="flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:justify-end"
               >
-                <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3.5 w-3.5 rtl:-scale-x-100" />
-                {t('operations.distribution.auto')}
-              </button>
-              {/* «تراجع» — the LAST operation only (Round 24); its tooltip says which. */}
-              <button
-                type="button"
-                data-distribution-discard="true"
-                data-distribution-undo={String(history.past.length)}
-                disabled={lastMove === null}
-                title={undoTitle}
-                aria-label={undoTitle}
-                aria-keyshortcuts="Control+Z Meta+Z"
-                onClick={undoLast}
-                className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
-              >
-                <BoardIcon d={[...SHIPMENT_PATH.undo]} className="h-3.5 w-3.5" />
-                {t('operations.distribution.discard')}
-              </button>
-              <button
-                type="button"
-                data-distribution-save={changes.length}
-                disabled={!dirty || save.isPending}
-                aria-busy={save.isPending}
-                onClick={() => void onSave()}
-                className={cn(
-                  dirty ? ADD_BUTTON : BRAND_BUTTON,
-                  'disabled:cursor-not-allowed disabled:opacity-50',
-                )}
-              >
-                {save.isPending ? (
-                  <Spinner className="h-3.5 w-3.5" />
-                ) : (
-                  <BoardIcon d={[...SHIPMENT_PATH.check]} className="h-3.5 w-3.5" width={2.5} />
-                )}
-                {t('operations.distribution.save', { count: formatNumber(changes.length, locale) })}
-              </button>
-            </span>
-          )}
-        </div>
+                {/* R26b critic — every act keeps its words at every width: the row measures itself
+                    and puts the figures on a line of their own rather than cut an act to its icon
+                    (`TopRow`). */}
+                <button
+                  type="button"
+                  data-distribution-auto="true"
+                  disabled={!loaded}
+                  onClick={autoDistribute}
+                  title={t('operations.distribution.autoHint')}
+                  aria-label={t('operations.distribution.auto')}
+                  className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
+                >
+                  <BoardIcon
+                    d={[...SHIPMENT_PATH.route]}
+                    className="h-3.5 w-3.5 rtl:-scale-x-100"
+                  />
+                  <span data-act-words="auto">{t('operations.distribution.auto')}</span>
+                </button>
+                {/* «تراجع» — the LAST operation only (Round 24); its tooltip says which. */}
+                <button
+                  type="button"
+                  data-distribution-discard="true"
+                  data-distribution-undo={String(history.past.length)}
+                  disabled={lastMove === null}
+                  title={undoTitle}
+                  aria-label={undoTitle}
+                  aria-keyshortcuts="Control+Z Meta+Z"
+                  onClick={undoLast}
+                  className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
+                >
+                  <BoardIcon d={[...SHIPMENT_PATH.undo]} className="h-3.5 w-3.5" />
+                  <span data-act-words="undo">{t('operations.distribution.discard')}</span>
+                </button>
+                <button
+                  type="button"
+                  data-distribution-save={changes.length}
+                  disabled={!dirty || save.isPending}
+                  aria-busy={save.isPending}
+                  onClick={() => void onSave()}
+                  className={cn(
+                    dirty ? ADD_BUTTON : BRAND_BUTTON,
+                    'disabled:cursor-not-allowed disabled:opacity-50',
+                  )}
+                >
+                  {save.isPending ? (
+                    <Spinner className="h-3.5 w-3.5" />
+                  ) : (
+                    <BoardIcon d={[...SHIPMENT_PATH.check]} className="h-3.5 w-3.5" width={2.5} />
+                  )}
+                  {t('operations.distribution.save', { count: countText(changes.length, locale) })}
+                </button>
+              </span>
+            ) : undefined
+          }
+        />
 
-        {/* The day, and what the marks on the cards mean. */}
-        <div className={DAY_BAR} data-distribution-bar="true">
-          <DayBox
-            label={t('operations.distribution.day')}
-            value={day}
-            min={minDay}
-            onChange={setDay}
+        {/* What the marks on the cards mean — a slim line under the top row, and the proposals not
+            saved yet at its end. */}
+        <DayNote
+          data-distribution-bar="true"
+          end={
+            canEdit && proposedCount > 0 ? (
+              <CardMark tone="proposed" data-proposed-count={String(proposedCount)}>
+                {t('operations.distribution.proposedCount', {
+                  count: countText(proposedCount, locale),
+                })}
+              </CardMark>
+            ) : undefined
+          }
+        >
+          <BoardIcon
+            d={[...SHIPMENT_PATH.info]}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500"
           />
-          <p className="w-full min-w-0 text-xs font-bold leading-5 text-slate-500 sm:w-auto sm:flex-1 dark:text-slate-400">
+          <p className="min-w-0 text-xs font-bold leading-5 text-slate-500 dark:text-slate-400">
             {canEdit
               ? t('operations.distribution.dragHint')
               : t('operations.distribution.viewOnly')}
           </p>
-          {canEdit && proposedCount > 0 && (
-            <CardMark tone="proposed" data-proposed-count={String(proposedCount)}>
-              {t('operations.distribution.proposedCount', {
-                count: formatNumber(proposedCount, locale),
-              })}
-            </CardMark>
-          )}
-        </div>
+        </DayNote>
 
         {tooLarge ? (
           <BoardRefusal>
             {t('operations.distribution.tooLarge', {
-              max: formatNumber(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, locale),
+              max: countText(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, locale),
             })}
           </BoardRefusal>
         ) : failed ? (
@@ -1194,7 +1302,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
         }
       >
         <p className="text-[15px] font-semibold leading-7 text-slate-700 dark:text-slate-200">
-          {t('operations.distribution.leaveBody', { count: formatNumber(changes.length, locale) })}
+          {t('operations.distribution.leaveBody', { count: countText(changes.length, locale) })}
         </p>
       </DesignDialog>
     </PageContainer>

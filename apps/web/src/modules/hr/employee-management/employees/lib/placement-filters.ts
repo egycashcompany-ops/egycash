@@ -17,7 +17,7 @@
 // filter are ORed (any of these sites), the four filters ANDed, as the registry query reads them.
 // The three lists are fetched once each and narrowed here, instead of one permission-gated request
 // per selection.
-import { type OrgUnitOptionDto } from '@ecms/contracts';
+import { type OrgUnitGroupChoice, type OrgUnitOptionDto } from '@ecms/contracts';
 
 /**
  * The four placement filters, each a list — `[]` meaning "not narrowed by this one".
@@ -64,6 +64,10 @@ export interface UnitGroup {
  */
 export const groupKeyOf = (unit: OrgUnitOptionDto): string =>
   unit.catalogId === null ? `name:${unit.name.ar.trim()}` : `catalog:${unit.catalogId}`;
+
+/** Every unit as the choice a filter remembers it by — for `useHealedGroupKeys`. */
+export const groupChoicesOf = (units: readonly OrgUnitOptionDto[]): OrgUnitGroupChoice[] =>
+  units.map((unit) => ({ key: groupKeyOf(unit), name: unit.name }));
 
 const fold = (units: readonly OrgUnitOptionDto[]): UnitGroup[] => {
   const groups = new Map<string, UnitGroup>();

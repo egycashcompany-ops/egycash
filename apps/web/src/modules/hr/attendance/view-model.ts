@@ -14,6 +14,8 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { type EmployeeDay, type SheetRow, type TimeSpan, type ViewStatus } from './views';
+// One `cairoToday` for the module, and it lives beside the period helpers that default to it.
+export { cairoToday } from './components/period';
 
 /** One formatter, made once. `h23` so midnight reads 00 and never 24. */
 const cairoClock = new Intl.DateTimeFormat('en-GB', {
@@ -43,19 +45,6 @@ const MINUTES_IN_DAY = 1440;
  */
 const after = (first: number | null, second: number): number =>
   first !== null && second < first ? second + MINUTES_IN_DAY : second;
-
-/** Cairo today as `YYYY-MM-DD` — the company's calendar, not the browser's zone (R10). */
-export const cairoToday = (now: Date = new Date()): string => {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Cairo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const part = (type: 'year' | 'month' | 'day'): string =>
-    parts.find((p) => p.type === type)?.value ?? '';
-  return `${part('year')}-${part('month')}-${part('day')}`;
-};
 
 /** Minutes after Cairo midnight, right now. */
 export const cairoNowMinutes = (now: Date = new Date()): number => cairoMinutes(now.toISOString());

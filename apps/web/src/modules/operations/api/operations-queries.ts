@@ -622,6 +622,10 @@ export const useSetOperationsStandingCrew = () => {
   return useMutation({
     mutationFn: (body: SetOperationsStandingCrew) => api.setStandingCrew(body),
     onSuccess: invalidate,
+    // «الطاقم الثابت»'s «حفظ» owns this one's errors too (Round 27 review), as the board owns its
+    // own: it words the clash, rings the person a WRONG_SLOT names, and says which vehicles its
+    // DELETEs already took out — the global notifier toasted the same refusal a second time beside it.
+    onError: formOwnsTheError,
   });
 };
 
@@ -630,6 +634,10 @@ export const useRemoveOperationsStandingCrew = () => {
   return useMutation({
     mutationFn: (vehicleId: string) => api.removeStandingCrew(vehicleId),
     onSuccess: invalidate,
+    // «الطاقم الثابت»'s «حفظ» owns this one's errors (Round 27): a vehicle another desk already took
+    // out answers 404 and is DONE there (`sendStandingSave`) — the global notifier would toast «not
+    // found» over a save that succeeded; any other refusal the page words, with the server's reason.
+    onError: formOwnsTheError,
   });
 };
 

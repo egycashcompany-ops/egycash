@@ -47,3 +47,26 @@ export const crewPlanSheet = (
     row.notes ?? '',
   ]),
 });
+
+/**
+ * Round 27 — «الطاقم الثابت»'s «Excel»: the same sheet without what a dateless list has none of (the
+ * type and the notes) — the vehicle, the three slots, the direction and the time, of the rows the
+ * filters leave, from the draft.
+ */
+export const standingCrewSheet = (
+  t: Translate,
+  rows: readonly PlanRow[],
+  memberOf: (employeeId: string) => OperationsCrewMemberDto | undefined,
+): XlsxSheet => ({
+  name: t('operations.standingCrew.title'),
+  serialHeader: t('operations.reportBoard.serial'),
+  header: crewPlanExportHeader(t).slice(0, 6),
+  rows: rows.map((row) => [
+    row.vehicleCode ?? '',
+    ...CREW_SLOTS.map((slot) =>
+      row.slots[slot].map((id) => memberOf(id)?.fullNameAr ?? '—').join(' / '),
+    ),
+    row.direction ?? '',
+    row.plannedTime ?? '',
+  ]),
+});

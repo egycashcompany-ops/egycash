@@ -34,10 +34,18 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { listKey } from '../../../shared/lib/query-keys';
-import { formatNumber } from '../../../shared/lib/format';
+import { formatAmount, formatNumber } from '../../../shared/lib/format';
 import { ApiError } from '../../../shared/lib/api-client';
 import { HISTORY_TOO_LARGE, cairoToday } from '../lib/shipment-history';
 import { __securedDistributionKey } from '../api/operations-queries';
+import {
+  CHIP_LOOK,
+  COLUMN_WARN,
+  COUNT_LOOK,
+  VAN_CARD,
+  VAN_LOOK,
+  VAN_STATE_STRIPE,
+} from '../components/distribution-look';
 import { SecuredDistributionPage } from './SecuredDistributionPage';
 import { VaultHandoverPage } from './VaultHandoverPage';
 
@@ -372,16 +380,20 @@ describe('«توزيع المحصنات» — the desk', () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
-  it('says on each van its number, time and direction, then ONE captain’s line — the count first, the FIRST captain', () => {
+  it('says on each van its number, time and direction, then the count, then the FIRST captain in his own frame', () => {
     const v104 = vanOf(html, 'cr-104');
     expect(v104).toContain('data-van-code="104"');
     expect(v104).toContain('08:30');
     expect(v104).toContain('data-van-direction="مدينة نصر"');
     // Round 25 — «العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا ضيفته ف الاول»: the first
-    // captain on the row only; «الصف نفسه بتاع القائد يكون قبله عدد المحصنات»: the count before him.
+    // captain on the row only, the count of محصنات before him («الصف نفسه بتاع القائد يكون قبله عدد
+    // المحصنات»). Round 26b — «وافصل الاليطار بتاع القائد عن المحصنة»: each in a frame of its own.
+    const crew = v104.slice(v104.indexOf('data-van-crew='));
+    expect(crew).toMatch(/^data-van-crew="cr-104"[^>]*><span data-van-count="2"/);
+    expect(crew.indexOf('data-van-count="2"')).toBeLessThan(crew.indexOf('data-van-captain="c2"'));
     const line = v104.slice(v104.indexOf('data-van-captain-line='));
-    expect(line).toMatch(/^data-van-captain-line="cr-104"[^>]*><span data-van-count="2"/);
-    expect(line.indexOf('data-van-count')).toBeLessThan(line.indexOf('data-van-captain="c2"'));
+    expect(line).toMatch(/^data-van-captain-line="cr-104"[^>]*><span data-van-captain="c2"/);
+    expect(line.slice(0, line.indexOf('data-van-packages='))).not.toContain('data-van-count');
     expect(v104).toContain('شادي محمد أحمد');
     expect(v104).not.toContain('data-van-captain="c3"');
     expect(vanOf(html, 'cr-104').slice(0, v104.indexOf('data-van-load='))).not.toContain(
@@ -427,7 +439,11 @@ describe('«توزيع المحصنات» — the desk', () => {
       html.indexOf('data-distribution-save="2"') + 600,
     );
     expect(save).not.toMatch(/disabled=""/);
-    expect(html).toContain(ar('operations.distribution.save', { count: formatNumber(2, 'ar') }));
+    // R26 critic — a count on this screen in the figures' face, as the page's bar writes it.
+    expect(html).toContain(ar('operations.distribution.save', { count: '2' }));
+    expect(html).not.toContain(
+      ar('operations.distribution.save', { count: formatNumber(2, 'ar') }),
+    );
     expect(html).toContain(`data-proposed-count="2"`);
   });
 
@@ -575,7 +591,8 @@ describe('«تسليم المحصنات» — the vault', () => {
     const v101 = vanOf(html, 'cr-101');
     expect(v101).toContain('data-handover-open="cr-101"');
     expect(v101).toContain('data-handover-print="cr-101"');
-    expect(v101).toContain(ar('operations.handover.handover', { count: formatNumber(1, 'ar') }));
+    // R26 critic — «تسليم (1)» over the van's «1 محصنة»: one numeral system on the card.
+    expect(v101).toContain(ar('operations.handover.handover', { count: '1' }));
     // The one still with its captain is listed, marked, and said not to go.
     expect(cardOf(html, 's-captain')).toContain('data-mark="not-in-vault"');
     expect(v101).toContain('data-handover-held="1"');
@@ -612,7 +629,7 @@ describe('«تسليم المحصنات» — the vault', () => {
       });
       expect(refusal).toContain(
         ar('operations.distribution.tooLarge', {
-          max: formatNumber(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, 'ar'),
+          max: formatAmount(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, 'ar'),
         }),
       );
       expect(refusal).not.toContain('data-distribution-van=');
@@ -833,13 +850,15 @@ describe('Round 24c — the widths, and the van card', () => {
   it('gives the vans three quarters of a wide screen and the shipments on no van one', () => {
     for (const html of [desk, vault]) {
       expect(html).toContain('lg:grid-cols-[minmax(0,3fr)_minmax(17rem,1fr)]');
-      // As many van cards to a row as fit — not two at most.
-      expect(html).toContain('grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))]');
+      // As many van cards to a row as fit — not two at most; R26 critic: four at the most.
+      expect(html).toContain(
+        'grid-cols-[repeat(auto-fill,minmax(min(100%,max(17.5rem,calc((100%_-_2.25rem)/4))),1fr))]',
+      );
       expect(html).not.toContain('xl:grid-cols-2');
     }
   });
 
-  it('puts code · time · direction on ONE line, the count on the captain’s line — no band of its own for the direction', () => {
+  it('puts code · time · direction on ONE line, the count in the counts’ row — no band of its own for the direction', () => {
     const card = vanOf(desk, 'cr-101');
     const head = card.slice(card.indexOf('data-van-head="true"'), card.indexOf('</header>'));
     const code = head.indexOf('data-van-code="101"');
@@ -851,9 +870,9 @@ describe('Round 24c — the widths, and the van card', () => {
     // The whole direction on hover; the line cuts it.
     expect(head).toContain(`title="${ar('operations.crew.direction')}: المعادي - حلوان"`);
     expect(head).toMatch(/class="min-w-0 truncate">المعادي - حلوان</);
-    // The count stays — first on the captain's line (Round 25), so the head keeps its room.
+    // The count is not in the head — it opens the captain's row (Round 25), in its own frame.
     expect(head).not.toContain('data-van-count');
-    expect(card).toMatch(/data-van-captain-line="cr-101"[^>]*><span data-van-count="2"/);
+    expect(card).toMatch(/data-van-crew="cr-101"[^>]*><span data-van-count="2"/);
   });
 
   it('marks the captain on his line, after the count; no specialist slot at all (Round 25)', () => {
@@ -895,7 +914,7 @@ describe('Round 24c — the widths, and the van card', () => {
     expect(card).toContain('data-handover-print="cr-loose-1"');
     expect(card.indexOf('data-handover-print')).toBeLessThan(card.indexOf('data-van-head="true"'));
     expect(card).toContain('data-van-captain="c9"');
-    expect(card).toMatch(/data-van-captain-line="cr-loose-1"[^>]*><span data-van-count="0"/);
+    expect(card).toMatch(/data-van-crew="cr-loose-1"[^>]*><span data-van-count="0"/);
     expect(card).toContain('data-van-packages="0/0/0"');
     expect(card).not.toContain('data-van-slot');
   });
@@ -997,8 +1016,11 @@ describe('Round 25 — the screen', () => {
     const bar = left.slice(left.indexOf('data-filter-bar="unplaced"'));
     expect(bar).toContain('data-filter="unplaced-search"');
     expect(bar).toContain('data-filter="unplaced-area"');
-    expect(bar).toContain(`placeholder="${ar('operations.distribution.filter.search')}"`);
-    expect(bar).toContain(`>${ar('operations.distribution.filter.allAreas')}<`);
+    // Round 26 — beside the title in a quarter of the screen: the box says less, its name stays whole
+    // for a screen reader and on hover.
+    expect(bar).toContain(`aria-label="${ar('operations.distribution.filter.search')}"`);
+    expect(bar).toContain(`placeholder="${ar('operations.distribution.filter.searchShort')}"`);
+    expect(bar).toContain(`>${ar('operations.distribution.filter.allAreasShort')}<`);
     // The areas of the محصنات on the left: «الجيزة» and «العباسية».
     expect(bar).toMatch(/<option value="[^"]+">الجيزة<\/option>/);
     expect(bar).toMatch(/<option value="[^"]+">العباسية<\/option>/);
@@ -1007,6 +1029,7 @@ describe('Round 25 — the screen', () => {
     expect(vans).toContain('data-filter="van-search"');
     expect(vans).toContain('data-filter="van-area"');
     expect(vans).toContain(`placeholder="${ar('operations.distribution.filter.vanCode')}"`);
+    expect(vans).toContain(`>${ar('operations.distribution.filter.allAreas')}<`);
     // Before anything is typed, nothing is hidden and nothing offers to clear.
     expect(desk).not.toContain('data-filter-clear');
     // The vans' filter bar sits above the vans, under the column's head.
@@ -1120,4 +1143,334 @@ describe('Round 25 — the screen', () => {
       /const securedDistributionPrefix: readonly unknown\[\] = \[\s*\.\.\.featureKey\(MODULE, 'dayBoard'\),\s*'securedDistribution',\s*\]/,
     );
   });
+});
+
+// Round 26 — the owner: «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات», «لما اقف على العربية يطلع
+// كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين», «عاوزك تضيف الوان عشان حاسس ان مش اقدر اميز
+// اوى العربيه والمحصنات اللى عليها والاعداد وكدا».
+describe('Round 26 — the screens', () => {
+  const desk = render({
+    path: '/operations/secured/distribution',
+    permissions: [...DESK, 'operationsVault.view'],
+    data: answer(),
+  });
+  const vault = render({
+    path: '/operations/vault/handover',
+    permissions: [...VAULT, 'operationsCrew.view'],
+    data: answer(),
+  });
+
+  it('puts each column’s filter boxes on its title’s line — inside its head', () => {
+    for (const column of ['vans', 'unplaced']) {
+      const at = desk.indexOf(`data-distribution-column="${column}"`);
+      const head = desk.slice(at, desk.indexOf('</header>', at));
+      expect(head, column).toContain(`data-filter-bar="${column}"`);
+      expect(head.indexOf('data-column-title="true"')).toBeLessThan(
+        head.indexOf('data-filter-bar'),
+      );
+    }
+    // The left column takes a drop on its head still: the head is inside its mark.
+    const left = desk.slice(desk.indexOf('data-distribution-column="unplaced"') - 300);
+    expect(left).toMatch(
+      /<section[^>]*data-distribution-column="unplaced"[^>]*data-drop-unplaced="true"/,
+    );
+  });
+
+  it('Round 26b — «لون واحد لكل العربيات»: every van the same look on both screens, no colour of its own', () => {
+    // Round 26 painted each van by its place in the day's list; the owner: «لا استنى الالوان مش
+    // عجبانى بتاعت العربيه». Every card now wears the same stripe, band and code pill.
+    const classes = (html: string, id: string, mark: string): string =>
+      new RegExp(`${mark}[^>]*? class="([^"]*)"`).exec(vanOf(html, id))?.[1] ?? '';
+    const looks = [desk, vault].flatMap((html) =>
+      VANS.map((van) =>
+        [
+          classes(html, van.crewAssignmentId, 'data-van-band="true"'),
+          classes(html, van.crewAssignmentId, `data-van-code="${van.vehicleCode}"`),
+        ].join(' | '),
+      ),
+    );
+    expect(new Set(looks).size).toBe(1);
+    expect(looks[0]).toContain(VAN_LOOK.pill);
+    for (const html of [desk, vault]) expect(html).not.toContain('data-van-accent');
+    // Round 27 — the van's blue stripe on every van with a captain; 130 has none: the design's rose
+    // edge, its stripe rose — on both screens.
+    for (const html of [desk, vault]) {
+      for (const van of VANS) {
+        const none = van.captains.length === 0;
+        expect(
+          classes(html, van.crewAssignmentId, 'data-van-stripe="true"'),
+          van.vehicleCode ?? '',
+        ).toContain(none ? VAN_STATE_STRIPE.noCaptain : VAN_LOOK.stripe);
+        expect(
+          classes(html, van.crewAssignmentId, `data-distribution-van="${van.crewAssignmentId}"`),
+          van.vehicleCode ?? '',
+        ).toContain(none ? VAN_CARD.noCaptain : VAN_CARD.rest);
+      }
+    }
+  });
+
+  it('paints no chip in a van’s colour — on a van as on the left, a chip is plain', () => {
+    for (const id of ['s-maadi', 's-captain', 's-104', 's-giza', 's-abbassia']) {
+      expect(cardOf(desk, id), id).not.toContain('data-chip-accent');
+      expect(cardOf(desk, id), id).not.toContain('data-chip-stripe');
+    }
+    expect(cardOf(vault, 's-captain')).not.toContain('data-chip-accent');
+    // The saved one on 101 is the design's quiet row with its cyan dot; the proposal keeps its
+    // dashed amber (Round 27d: a lighter amber-400, was amber-500).
+    expect(cardOf(desk, 's-captain')).toContain(CHIP_LOOK.van);
+    expect(cardOf(desk, 's-captain')).toContain('data-chip-dot="van"');
+    expect(cardOf(desk, 's-maadi')).toContain('border-dashed border-amber-400');
+  });
+
+  it('Round 27 — a محصنة on no van: the design’s waiting row, on both screens; its column’s head rose', () => {
+    for (const html of [desk, vault]) {
+      const left = leftOf(html);
+      const chips = left.match(/data-shipment-tone="saved"[^>]*class="[^"]*"/g) ?? [];
+      expect(chips.length).toBeGreaterThan(0);
+      for (const one of chips) expect(one).toContain(CHIP_LOOK.unplaced);
+      expect(left).toContain('data-chip-dot="unplaced"');
+      // Its head: the rose warning icon and the rose count — work still to do.
+      const head = left.slice(0, left.indexOf('</header>'));
+      expect(head).toContain('data-column-icon="warn"');
+      expect(head).toContain(COLUMN_WARN.count);
+    }
+    // No chip on a van wears it.
+    for (const id of ['s-captain', 's-104']) {
+      expect(cardOf(desk, id), id).not.toContain(CHIP_LOOK.unplaced);
+    }
+    // The vans' column keeps its calm head.
+    const vansHead = desk.slice(
+      desk.indexOf('data-distribution-column="vans"'),
+      desk.indexOf('</header>', desk.indexOf('data-distribution-column="vans"')),
+    );
+    expect(vansHead).toContain('data-column-icon="plain"');
+    expect(vansHead).not.toContain(COLUMN_WARN.count);
+  });
+
+  it('R27 critic — a محصنة placed on a crew the read no longer lists wears the waiting row too, on both screens', () => {
+    // `distributionColumns` puts a row whose place names a van the read no longer lists (re-planned
+    // meanwhile) in the left column, so it never disappears: the chip's look follows the column it
+    // is drawn in, not its place — the desk drew it as a row on a van (a solid edge, a cyan dot).
+    const GONE = shipment('s-gone', {
+      areaName: 'العباسية',
+      delivery: leg('cr-gone', 'c9'),
+      deliveryLegVersion: 4,
+      placedCrewAssignmentId: 'cr-gone',
+    });
+    const data = answer({ shipments: [...ROWS, GONE] });
+    for (const html of [
+      render({ path: '/operations/secured/distribution', permissions: DESK, data }),
+      render({ path: '/operations/vault/handover', permissions: VAULT, data }),
+    ]) {
+      expect(leftOf(html)).toContain('data-distribution-shipment="s-gone"');
+      const chip = cardOf(html, 's-gone');
+      expect(chip).toContain(CHIP_LOOK.unplaced);
+      expect(chip).toContain('data-chip-dot="unplaced"');
+      expect(chip).not.toContain('data-chip-dot="van"');
+    }
+  });
+
+  it('R27 critic — the top «بلا سيارة» figure wears its column head’s rose while any wait; the محصنات’ cyan when none', () => {
+    // One number, one colour: the column's head counts the waiting محصنات in a rose pill beside a
+    // rose warning — the page's bar wrote the same number on the محصنات' cyan.
+    const pill = (html: string): string => {
+      const at = html.indexOf('data-figure="unplaced"');
+      expect(at).toBeGreaterThan(-1);
+      const next = html.indexOf('data-figure="', at + 10);
+      return html.slice(html.lastIndexOf('<span', at), next === -1 ? at + 1500 : next);
+    };
+    for (const html of [desk, vault]) {
+      expect(pill(html)).toContain(COLUMN_WARN.figure);
+      expect(pill(html)).not.toContain(COUNT_LOOK.shipments.square);
+    }
+    // Every محصنة on a van — nothing waits: the figure is the محصنات' own cyan, as its head is calm.
+    const placed = answer({ shipments: [WITH_CAPTAIN, ON_104] });
+    for (const html of [
+      render({ path: '/operations/secured/distribution', permissions: DESK, data: placed }),
+      render({ path: '/operations/vault/handover', permissions: VAULT, data: placed }),
+    ]) {
+      expect(pill(html)).toContain(COUNT_LOOK.shipments.square);
+      expect(pill(html)).not.toContain(COLUMN_WARN.figure);
+      expect(leftOf(html)).toContain('data-column-icon="plain"');
+    }
+  });
+
+  it('opens the van’s card from its head and its captain’s line, on both screens', () => {
+    for (const html of [desk, vault]) {
+      const card = vanOf(html, 'cr-104');
+      expect(card).toMatch(/data-van-hover="cr-104" role="group"/);
+      const zone = card.slice(card.indexOf('data-van-hover='), card.indexOf('data-van-packages='));
+      expect(zone).toContain('data-van-head="true"');
+      expect(zone).toContain('data-van-captain-line="cr-104"');
+    }
+  });
+
+  it('counts on the page’s bar in the counts’ own colours — the محصنات cyan, then the day’s packages', () => {
+    const bar = desk.slice(
+      desk.indexOf('data-distribution-toolbar'),
+      desk.indexOf('data-distribution-bar'),
+    );
+    for (const figure of ['shipments', 'unplaced', 'cartons', 'bags', 'boxes']) {
+      expect(bar, figure).toContain(`data-figure="${figure}"`);
+    }
+    // Round 27d — the square's tint /10 (was /15): the pill neutral, only its small square tinted.
+    expect(bar).toMatch(
+      /bg-cyan-500\/10 text-cyan-700[\s\S]*data-figure="shipments"|data-figure="shipments"[\s\S]*bg-cyan-500\/10 text-cyan-700/,
+    );
+    // Round 27 — the owner's colours: كراتين amber, حقائب blue, صناديق purple: each its own.
+    for (const [figure, hue] of [
+      ['cartons', 'amber'],
+      ['bags', 'blue'],
+      ['boxes', 'purple'],
+    ] as const) {
+      expect(bar).toMatch(
+        new RegExp(`data-figure="${figure}"[^>]*>\\s*<span class="[^"]*bg-${hue}-500/10`),
+      );
+    }
+    // s-maadi is the one counted: 4 bags, 1 box.
+    expect(bar).toMatch(/data-figure="bags"[\s\S]*?>4</);
+    expect(bar).toMatch(/data-figure="cartons"[\s\S]*?>0</);
+    // A reader who cannot read the vault: no package figures at all — never a guessed 0.
+    const blind = render({
+      path: '/operations/secured/distribution',
+      permissions: DESK,
+      data: answer(),
+    });
+    expect(blind).not.toContain('data-figure="bags"');
+    expect(blind).toContain('data-figure="shipments"');
+  });
+});
+
+// Round 26b — the owner on Round 26's screens: «عاوز اخلى التاريخ يكون مكان الاحصائيات والاحصائيات
+// تكون فى النص» (the top row), «وعاوز اضيف اسم القائد فى الفلاتر بعد العربيه» (the captain's box).
+describe('Round 26b — the top row, and the captain’s box', () => {
+  const desk = render({
+    path: '/operations/secured/distribution',
+    permissions: [...DESK, 'operationsVault.view'],
+    data: answer(),
+  });
+  const vault = render({
+    path: '/operations/vault/handover',
+    permissions: [...VAULT, 'operationsCrew.view'],
+    data: answer(),
+  });
+  /** The top row's markup — from its mark to the line under it. */
+  const rowOf = (html: string, mark: string, under: string): string =>
+    html.slice(html.indexOf(mark), html.indexOf(under));
+
+  it('the desk’s top row: the DAY first, the figures in the MIDDLE, the acts LAST', () => {
+    const row = rowOf(desk, 'data-distribution-toolbar', 'data-distribution-bar');
+    const at = [
+      row.indexOf('data-top-row="day"'),
+      row.indexOf('data-distribution-day="true"'),
+      row.indexOf('data-top-row="figures"'),
+      row.indexOf('data-figure="vans"'),
+      row.indexOf('data-figure="boxes"'),
+      row.indexOf('data-top-row="end"'),
+      row.indexOf('data-distribution-auto="true"'),
+      row.indexOf('data-distribution-save='),
+    ];
+    expect(at.every((i) => i > -1)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    // The day is no longer in the line under it.
+    expect(desk.slice(desk.indexOf('data-distribution-bar'))).not.toContain(
+      'data-distribution-day',
+    );
+  });
+
+  it('the figures stand TRULY in the middle on one line — two sides of EQUAL width; else a line of their own', () => {
+    // R26b critic — not `minmax(max-content,1fr)` from a fixed 68rem: a side wider than its share
+    // pushed the figures off the middle (29px at 1225 in Arabic) or split them inside the row.
+    expect(PARTS).not.toContain('minmax(max-content,1fr)');
+    expect(PARTS).not.toMatch(/@container\(min-width:68rem\)/);
+    // One line: two sides of one width (each at least the wider of the day and the acts — the row
+    // MEASURES them, `lib/top-row.ts`), the figures between them.
+    expect(PARTS).toContain("line: 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]',");
+    expect(PARTS).toContain("line: 'col-start-2 row-start-1',");
+    expect(PARTS).toContain("line: 'col-start-3 row-start-1 justify-end',");
+    // Else the day and the acts on the first line, the figures centred on the next; a phone: each
+    // its own line.
+    expect(PARTS).toContain("split: 'col-span-2 col-start-1 row-start-2',");
+    expect(PARTS).toContain("stack: 'col-start-1 row-start-2',");
+    expect(PARTS).toContain('topRowLayout(widths, was)');
+    expect(PARTS).toContain(
+      "export const TOP_FIGURES = 'flex min-w-0 flex-wrap items-center justify-center gap-1.5';",
+    );
+    // Drawn as `split` until measured (before the first paint) — the layout that cannot overlap.
+    expect(desk).toMatch(/data-distribution-toolbar="true" data-top-row-layout="split"/);
+    expect(desk).toMatch(/data-top-row="figures" class="min-w-0 justify-self-center col-span-2/);
+  });
+
+  it('every act keeps its words at every width — none is cut to its icon to hold the middle', () => {
+    // R26b critic — «تراجع» was its icon alone from 1208 to 1367 (Arabic) and to 1495 (English), and
+    // «Auto-distribute» a bare arrow from 1208 to 1431: the row now gives the figures a line of their
+    // own instead.
+    for (const act of ['auto', 'undo'] as const) {
+      expect(DIST).toContain(`<span data-act-words="${act}">{t(`);
+    }
+    expect(DIST).not.toMatch(/data-act-words="[a-z]+"\s+className=/);
+    const undo = desk.slice(desk.indexOf('data-distribution-discard="true"'));
+    expect(undo.slice(0, undo.indexOf('</button>'))).toMatch(
+      new RegExp(`<span data-act-words="undo">${ar('operations.distribution.discard')}</span>`),
+    );
+    const auto = desk.slice(desk.indexOf('data-distribution-auto="true"'));
+    expect(auto.slice(0, auto.indexOf('</button>'))).toContain(
+      `<span data-act-words="auto">${ar('operations.distribution.auto')}</span>`,
+    );
+  });
+
+  it('the hint and the proposals not saved are a slim line under the row — no band of their own', () => {
+    const bar = desk.slice(desk.indexOf('data-distribution-bar'));
+    expect(bar.slice(0, 200)).toMatch(/data-distribution-bar="true" class="flex min-w-0 flex-wrap/);
+    expect(bar).toContain(ar('operations.distribution.dragHint'));
+    expect(bar.indexOf(ar('operations.distribution.dragHint'))).toBeLessThan(
+      bar.indexOf('data-proposed-count="2"'),
+    );
+    expect(DIST).not.toContain('DAY_BAR');
+  });
+
+  it('«تسليم المحصنات» the same: its day first, its figures in the middle; its acts stay on each van', () => {
+    const row = rowOf(vault, 'data-handover-toolbar', 'data-handover-bar');
+    const at = [
+      row.indexOf('data-top-row="day"'),
+      row.indexOf('data-distribution-day="true"'),
+      row.indexOf('data-top-row="figures"'),
+      row.indexOf('data-figure="ready"'),
+    ];
+    expect(at.every((i) => i > -1)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(row).not.toContain('data-top-row="end"');
+    expect(HANDOVER).not.toContain('DAY_BAR');
+  });
+
+  it('the vans’ head: «اسم القائد» right after «كود السيارة», before the bank or branch and the area', () => {
+    const at = desk.indexOf('data-distribution-column="vans"');
+    const head = desk.slice(at, desk.indexOf('</header>', at));
+    const order = ['van-code', 'van-captain', 'van-search', 'van-area'].map((box) =>
+      head.indexOf(`data-filter="${box}"`),
+    );
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // Its whole name for a screen reader and on hover; shorter words in the box.
+    const box = head.slice(head.indexOf('data-filter="van-captain"') - 400);
+    expect(box).toContain(`aria-label="${ar('operations.distribution.filter.captain')}"`);
+    expect(box).toContain(`title="${ar('operations.distribution.filter.captain')}"`);
+    expect(box).toContain(`placeholder="${ar('operations.distribution.filter.captainShort')}"`);
+    // AND-ed with the rest, counted in «المعروض … من …», cleared by «مسح التصفية».
+    expect(DIST).toContain(
+      'onChange={(captain) => setVanFilter((current) => ({ ...current, captain }))}',
+    );
+    expect(DIST).toContain('onClear={() => setVanFilter(EMPTY_VAN_FILTER)}');
+    expect(DIST).toMatch(/matchesVanFilter\(van, load, vanFilter, \{/);
+  });
+
+  for (const locale of ['ar', 'en'] as const) {
+    it(`[${locale}] the captain’s box speaks both languages — its short words shorter than its name`, () => {
+      const whole = translate(locale, 'operations.distribution.filter.captain');
+      const short = translate(locale, 'operations.distribution.filter.captainShort');
+      expect(whole).not.toBe('operations.distribution.filter.captain');
+      expect(short).not.toBe('operations.distribution.filter.captainShort');
+      expect(short.length).toBeLessThan(whole.length);
+    });
+  }
 });

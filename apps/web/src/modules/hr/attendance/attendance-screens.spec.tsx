@@ -32,8 +32,7 @@ import { DailySheetPage } from './pages/DailySheetPage';
 import { MyAttendancePage } from './pages/MyAttendancePage';
 import { RegularizationQueuePage } from './pages/RegularizationQueuePage';
 import { EmployeeMonthPage } from './pages/EmployeeMonthPage';
-import { periodRange } from './components/period';
-import { cairoToday } from './view-model';
+import { cairoToday, periodRange } from './components/period';
 
 /** What all three employee screens open on, and therefore the key their rows are seeded under. */
 const PERIOD = periodRange('thisMonth');
@@ -41,8 +40,8 @@ const PERIOD = periodRange('thisMonth');
 const DAYS_PAGE = 100;
 
 // The COMPANY's today (Africa/Cairo, R10), which is what the screens ask for. Read off UTC it is
-// the wrong day for the two hours every night between Cairo midnight and UTC midnight — and the
-// seeded cache key would then miss, leaving every assertion looking at an empty screen.
+// the wrong day for the two hours every night between Cairo midnight and UTC midnight: the page
+// asks for one date, the seeded rows sit on another, and every assertion looks at an empty screen.
 const TODAY = cairoToday();
 
 const day = (over: Partial<AttendanceDayDto> = {}): AttendanceDayDto => ({

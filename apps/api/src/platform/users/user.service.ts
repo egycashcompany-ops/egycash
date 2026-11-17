@@ -16,6 +16,9 @@ import {
   type ExternalSubjectDto,
   type UserDto,
   type UserKind,
+  type UserListItemDto,
+  type UserPlacementRefDto,
+  type UserRoleRefDto,
   type PasswordPolicyDto,
   type UserStatus,
 } from '@ecms/contracts';
@@ -33,6 +36,7 @@ import { settingsService } from '../settings';
 import { emit, nudgeOutboxRelay } from '../kernel/event-bus';
 import { unitOfWork } from '../kernel/unit-of-work';
 import { departmentRepository } from '../organization/departments/department.repository';
+import { jobTitleRepository } from '../organization/job-titles/job-title.repository';
 import { roleAssignmentRepository, roleRepository } from '../rbac/rbac.repository';
 import { sectionRepository } from '../organization/sections/section.repository';
 import { userRepository } from './user.repository';
@@ -652,11 +656,30 @@ class UserService {
     return null;
   }
 
-  async list(query: ListUsersQuery, scope: ScopeSelector): Promise<Paginated<UserDoc>> {
+  /**
+   * The accounts in the caller's scope, filtered. `holderIds`, when given, is who holds the roles
+   * the caller asked for — resolved by the controller from RBAC, which this service does not ask —
+   * and narrows the list to them (an empty list narrows it to nothing).
+   */
+  async list(
+    query: ListUsersQuery,
+    scope: ScopeSelector,
+    holderIds?: readonly string[],
+  ): Promise<Paginated<UserDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.status !== undefined) filter.status = query.status;
     if (query.branchId !== undefined)
       filter['organization.branchId'] = new Types.ObjectId(query.branchId);
+    if (query.departmentId !== undefined)
+      filter['organization.departmentId'] = {
+        $in: query.departmentId.map((id) => new Types.ObjectId(id)),
+      };
+    if (query.jobTitleId !== undefined)
+      filter['organization.jobTitleId'] = {
+        $in: query.jobTitleId.map((id) => new Types.ObjectId(id)),
+      };
+    if (holderIds !== undefined)
+      filter._id = { $in: holderIds.map((id) => new Types.ObjectId(id)) };
     // `kind` is derived, so it narrows on the two fields it is derived FROM. `system` is the
     // absence of both, which is why it cannot be expressed as one equality.
     if (query.kind === 'employee') filter.employeeId = { $ne: null };
@@ -1242,6 +1265,43 @@ class UserService {
       return linkValid ? 'invitationSent' : 'expired';
     }
     return 'activated';
+  }
+
+  /**
+   * Rows of the System Users list: each account, with the names of its department and job title
+   * (retired units included — see `findByIdsSystem`) and the roles it holds, when the caller may
+   * see roles (`rolesByUser` null when not).
+   */
+  async toListItems(
+    docs: readonly UserDoc[],
+    rolesByUser: ReadonlyMap<string, UserRoleRefDto[]> | null,
+  ): Promise<UserListItemDto[]> {
+    const departmentIds = docs.flatMap((d) =>
+      d.organization.departmentId === null ? [] : [String(d.organization.departmentId)],
+    );
+    const jobTitleIds = docs.flatMap((d) =>
+      d.organization.jobTitleId === null ? [] : [String(d.organization.jobTitleId)],
+    );
+    const [departments, jobTitles] = await Promise.all([
+      departmentRepository.findByIdsSystem(departmentIds),
+      jobTitleRepository.findByIdsSystem(jobTitleIds),
+    ]);
+    const departmentName = new Map(departments.map((d) => [String(d._id), d.name]));
+    const jobTitleName = new Map(jobTitles.map((j) => [String(j._id), j.name]));
+    const ref = (
+      id: Types.ObjectId | null,
+      names: ReadonlyMap<string, { ar: string; en: string }>,
+    ): UserPlacementRefDto | null => {
+      if (id === null) return null;
+      const name = names.get(String(id));
+      return name === undefined ? null : { id: String(id), name: { ar: name.ar, en: name.en } };
+    };
+    return docs.map((doc) => ({
+      ...this.toDto(doc),
+      roles: rolesByUser === null ? null : (rolesByUser.get(String(doc._id)) ?? []),
+      department: ref(doc.organization.departmentId, departmentName),
+      jobTitle: ref(doc.organization.jobTitleId, jobTitleName),
+    }));
   }
 
   toDto(doc: UserDoc): UserDto {

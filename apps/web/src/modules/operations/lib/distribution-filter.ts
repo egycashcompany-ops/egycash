@@ -8,7 +8,9 @@
 //     either branch with its own bank — and the area, chosen among the areas those محصنات name;
 //   · THE RIGHT (the vans): the van's code (or «بدون سيارة (n)»), the bank or branch (a van answers
 //     when one of the محصنات on it does), and the area (a van answers when its direction names it, or
-//     one of its محصنات is of it).
+//     one of its محصنات is of it). Round 26b — «وعاوز اضيف اسم القائد فى الفلاتر بعد العربيه»: the
+//     captain's name, after the code — a van answers when ANY of its captains does, by his name or
+//     his employee code (the card shows the first; the box finds him whichever he is).
 // Every box folds as the pools' search does («الاهلى» finds «الأهلي», «١٠٤» finds 104); the boxes of a
 // bar are AND-ed. VIEW ONLY: a filtered-out van keeps what the person put on it, and «حفظ» saves every
 // change, seen or not; a محصنة hidden on the left is still moved by «نقل إلى…» or proposed.
@@ -29,6 +31,8 @@ export interface UnplacedFilter {
 export interface VanFilter {
   /** A van's code, as typed. Blank — every van. */
   code: string;
+  /** A captain's name (or employee code), as typed — Round 26b. Blank — every van. */
+  captain: string;
   /** A bank or a branch, as typed: a van answers through its محصنات. */
   search: string;
   /** A folded area, `NO_AREA` (a van with no direction), or '' — every van. */
@@ -36,13 +40,16 @@ export interface VanFilter {
 }
 
 export const EMPTY_UNPLACED_FILTER: UnplacedFilter = { search: '', area: '' };
-export const EMPTY_VAN_FILTER: VanFilter = { code: '', search: '', area: '' };
+export const EMPTY_VAN_FILTER: VanFilter = { code: '', captain: '', search: '', area: '' };
 
 export const isUnplacedFiltering = (filter: UnplacedFilter): boolean =>
   filter.search.trim() !== '' || filter.area !== '';
 
 export const isVanFiltering = (filter: VanFilter): boolean =>
-  filter.code.trim() !== '' || filter.search.trim() !== '' || filter.area !== '';
+  filter.code.trim() !== '' ||
+  filter.captain.trim() !== '' ||
+  filter.search.trim() !== '' ||
+  filter.area !== '';
 
 /** The facts of a محصنة the filters read — the specs build rows with no more. */
 export interface FilterShipment {
@@ -118,6 +125,8 @@ export const shipmentAreaOptions = (
 export interface FilterVan {
   vehicleCode: string | null;
   direction: string | null;
+  /** Its captains, in the order put on the row — every one, not only the one the card shows. */
+  captains?: readonly { fullNameAr: string | null; code: string | null }[];
 }
 
 /**
@@ -127,6 +136,21 @@ export interface FilterVan {
 export const vanMatchesCode = (van: FilterVan, code: string, name: string): boolean => {
   if (fold(code) === '') return true;
   return foldIncludes(van.vehicleCode ?? '', code) || foldIncludes(name, code);
+};
+
+/**
+ * Does the van answer the captain box (Round 26b)? ANY of its captains — the first, the one the card
+ * shows, or the second — by his name or his employee code, folded as every box here is («احمد» finds
+ * «أحمد», «مصطفي» «مصطفى», «الشناويه» «الشناوية», «br-107» «BR-107»). A van with no captain answers no
+ * typed name.
+ */
+export const vanMatchesCaptain = (van: FilterVan, captain: string): boolean => {
+  if (fold(captain) === '') return true;
+  return (van.captains ?? []).some(
+    (one) =>
+      foldIncludes(one.fullNameAr ?? '', captain) ||
+      (one.code !== null && one.code !== '' && foldIncludes(one.code, captain)),
+  );
 };
 
 /**
@@ -146,7 +170,10 @@ export const vanMatchesArea = (
   return parts.some((part) => part.value === area) || load.some((row) => areaOf(row) === area);
 };
 
-/** One van against the right bar, AND-ed: its code, then the bank or branch of its محصنات, then the area. */
+/**
+ * One van against the right bar, AND-ed: its code, its captains (Round 26b), the bank or branch of its
+ * محصنات, the area.
+ */
 export const matchesVanFilter = (
   van: FilterVan,
   load: readonly FilterShipment[],
@@ -159,6 +186,7 @@ export const matchesVanFilter = (
   },
 ): boolean =>
   vanMatchesCode(van, filter.code, context.name) &&
+  vanMatchesCaptain(van, filter.captain) &&
   (fold(filter.search) === '' ||
     load.some((row) => shipmentMatchesSearch(row, filter.search, context.bankWordsOf))) &&
   vanMatchesArea(van, load, filter.area, context.areaNames);

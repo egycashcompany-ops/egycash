@@ -21,6 +21,14 @@
 // card on hover), the same on the left and on a van; the van card is its head, ONE captain's line led
 // by the count, and the three package counts (`VanCard`); each column has a filter bar on top
 // (`ColumnFilterBar`).
+//
+// Round 26b — «لون واحد لكل العربيات»: every van card wears ONE calm look (`VAN_LOOK` — a slate code
+// pill, a thin slate stripe, a very light slate band), the chips on it plain as on the left. «عاوز
+// يبقى فى فرق فى الالوان بين الصندوق و الحقائب و الكراتين»: each count a filled tinted tile of its own
+// hue and icon (`CountTile`). «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل»: the van
+// card is redrawn — its head (code · time · direction), the captain in a frame of his own, the four
+// counts in a row of their own, the load in a bounded place of its own (`VanCard`). The page's top
+// row is the day at the start, the figures in the middle, the acts at the end (`TopRow`).
 import {
   useEffect,
   useId,
@@ -70,20 +78,18 @@ import {
   vanHoverAllowed,
   vanTapAllowed,
   type CountKind,
-  type VanAccent,
-} from '../lib/van-accent';
+} from '../lib/van-card';
 import { hasNoVan, vanCodeText, vanPhrase } from '../lib/van-name';
 import { CardHead, Figure, PersonIcon } from './BoardCrewCards';
 import { PLAN_ICON } from './crew-plan-icons';
 import { PlanAttendanceFact, PlanMemberCardBody } from './CrewPlanMemberCard';
 import {
-  CAPTAIN_BAND,
+  CAPTAIN_FRAME,
   CAPTAIN_MARK,
   COUNT_LOOK,
-  COUNT_ZERO,
   HEAD_PILL,
-  SHIPMENTS_BADGE,
-  VAN_ACCENT_LOOK,
+  LOAD_LOOK,
+  VAN_LOOK,
 } from './distribution-look';
 import { SecuredStageBadge, SecuredStageMark } from './ShipmentBadges';
 import { SHIPMENT_PATH } from './shipment-icons';
@@ -104,8 +110,8 @@ export const DISTRIBUTION_COLUMNS =
  * The vans' cards: as many to a row as fit at 17.5rem or more — three at 1440, four on a 1920
  * screen, two at 1024 and 1280, one on a phone (`min(100%, …)`: a card never wider than its column).
  * R26 critic — and never more than FOUR: a card is at least a quarter of the column (less its three
- * gaps), so a 2560 screen lays four wider cards, not six — the card above is one to four places
- * back, which the colours' order keeps apart (`lib/van-accent.ts`).
+ * gaps), so a 2560 screen lays four wider cards, not six (Round 26b: every van wears one look now,
+ * and four wide cards still read better than six narrow ones).
  */
 export const VAN_GRID =
   'grid grid-cols-[repeat(auto-fill,minmax(min(100%,max(17.5rem,calc((100%_-_2.25rem)/4))),1fr))] items-start gap-3';
@@ -118,13 +124,92 @@ export const VAN_GRID =
 export const countText = (value: number, locale: Locale): string => formatAmount(value, locale);
 
 /**
- * The day's bar — the boards' filter surface (`DARK_FILTER_BAR`'s box and input colours) holding the
- * day, and what the screen has to say about it. Not the boards' one-row layout: it holds one box,
- * not nine that share a row.
+ * The day's input, in the boards' filter colours (`DARK_FILTER_BAR`'s box and input colours) — on
+ * whatever row holds it (Round 26b: the page's top row).
  */
-export const DAY_BAR = cn(
-  'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-[#111827]',
-  '[&_input]:!border-slate-300 dark:[&_input]:!border-slate-700/80 [&_input]:!bg-slate-50 dark:[&_input]:!bg-[#080C14] [&_input]:!text-slate-900 dark:[&_input]:!text-slate-100',
+export const DAY_INPUT =
+  '[&_input]:!border-slate-300 dark:[&_input]:!border-slate-700/80 [&_input]:!bg-white dark:[&_input]:!bg-[#080C14] [&_input]:!text-slate-900 dark:[&_input]:!text-slate-100';
+
+/**
+ * THE PAGE'S TOP ROW (Round 26b — «عاوز اخلى التاريخ يكون مكان الاحصائيات والاحصائيات تكون فى النص»):
+ * the day («يوم التسليم») at the start, the figures in the MIDDLE, the acts («حفظ», «تراجع», «توزيع
+ * تلقائي») at the end. The row is a container, and lays itself out by the room it has:
+ *   · wide (`TOP_ROW_ONE_LINE`, 1440 and 1280 — measured, Arabic and English): one line of three
+ *     columns, the two sides of equal share (`minmax(max-content,1fr)`), so the figures stand truly
+ *     in the middle and never under the day or the buttons;
+ *   · narrower: the day and the acts on the first line, the figures on a line of their own, centred;
+ *   · a phone: the day, the figures, the acts — each on its own line, nothing sideways.
+ * `end` is optional (the vault's screen has its acts on each van): the middle stays the middle.
+ */
+const TOP_ROW_ONE_LINE = '[@container(min-width:68rem)]';
+export const TopRow = ({
+  day,
+  figures,
+  end,
+  ...rest
+}: {
+  day: ReactNode;
+  figures: ReactNode;
+  end?: ReactNode;
+} & Record<`data-${string}`, string>): JSX.Element => (
+  <div className="[container-type:inline-size]">
+    <div
+      {...rest}
+      className={cn(
+        'grid grid-cols-1 items-center gap-x-3 gap-y-2.5',
+        '[@container(min-width:36rem)]:grid-cols-[auto_minmax(0,1fr)]',
+        `${TOP_ROW_ONE_LINE}:grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)]`,
+        DAY_INPUT,
+      )}
+    >
+      <div
+        data-top-row="day"
+        className="col-start-1 row-start-1 flex min-w-0 justify-center [@container(min-width:36rem)]:justify-start"
+      >
+        {day}
+      </div>
+      <div
+        data-top-row="figures"
+        className={cn(
+          'col-start-1 row-start-2 min-w-0 justify-self-center',
+          '[@container(min-width:36rem)]:col-span-2',
+          `${TOP_ROW_ONE_LINE}:col-span-1 ${TOP_ROW_ONE_LINE}:col-start-2 ${TOP_ROW_ONE_LINE}:row-start-1`,
+        )}
+      >
+        {figures}
+      </div>
+      {end !== undefined && (
+        <div
+          data-top-row="end"
+          className={cn(
+            'col-start-1 row-start-3 flex min-w-0 justify-center',
+            '[@container(min-width:36rem)]:col-start-2 [@container(min-width:36rem)]:row-start-1 [@container(min-width:36rem)]:justify-end',
+            `${TOP_ROW_ONE_LINE}:col-start-3`,
+          )}
+        >
+          {end}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+/** The figures of the top row — centred, wrapping to centred lines when the row is narrow. */
+export const TOP_FIGURES = 'flex min-w-0 flex-wrap items-center justify-center gap-1.5';
+
+/**
+ * Under the top row (Round 26b): what the screen has to say about the day — a slim line, no band of
+ * its own — and, at its end, the marks of the work not saved yet.
+ */
+export const DayNote = ({
+  children,
+  end,
+  ...rest
+}: { children: ReactNode; end?: ReactNode } & Record<`data-${string}`, string>): JSX.Element => (
+  <div {...rest} className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 px-1">
+    <div className="flex min-w-0 flex-1 basis-[16rem] items-start gap-1.5">{children}</div>
+    {end}
+  </div>
 );
 
 /**
@@ -480,8 +565,6 @@ export interface MoveChoice {
   /** Offered but not takeable (a van with no captain), with why. */
   disabledReason?: string;
   danger?: boolean;
-  /** Round 26 — the van's colour: its swatch before its name, as on its card. */
-  accent?: VanAccent | null;
   onSelect: () => void;
 }
 
@@ -640,9 +723,6 @@ export const MoveMenu = ({
                       : 'text-slate-900 dark:text-white',
                   )}
                 >
-                  {choice.accent !== undefined && choice.accent !== null && (
-                    <VanSwatch accent={choice.accent} />
-                  )}
                   {choice.label}
                 </span>
                 {choice.sub !== undefined && choice.sub !== '' && (
@@ -801,41 +881,100 @@ const PersonCardBody = ({
 };
 
 /**
- * THE COUNT OF محصنات on a van — «الصف نفسه بتاع القائد يكون قبله عدد المحصنات» (Round 25): a badge in
- * the محصنات's colour (Round 26 — indigo, its icon; a 0 grey), «4 محصنات», «11 محصنة» — the count's own
- * form (`pluralKey`), its figure in the face of the card's other figures (the code, the time), so
- * «0 محصنات» says zero. The same badge on the van's card.
+ * ONE COUNT, as a TILE (Round 26b — «عاوز يبقى فى فرق فى الالوان بين الصندوق و الحقائب و الكراتين»):
+ * a FILLED tinted tile of its kind's own hue — its icon and its figure on the first line, its name
+ * under them — the same on the van card and on the van's card (`COUNT_LOOK`): محصنات blue, كراتين
+ * orange, حقائب cyan, صناديق fuchsia. A 0 keeps its hue, muted — a lighter ground, a lighter figure;
+ * so do «…» (still reading) and «—» (not to be read). `said`: what a screen reader hears instead of
+ * the two lines, and the tile's tooltip — the محصنات' own Arabic form («محصنتان», «3 محصنات»).
  */
-export const ShipmentsCount = ({
-  count,
+export const CountTile = ({
+  kind,
+  value,
+  word,
+  said,
+  className,
   ...rest
-}: { count: number } & Record<`data-${string}`, string>): JSX.Element => {
-  const t = useT();
+}: {
+  kind: CountKind;
+  /** The count — or «…» / «—» when there is none to write yet. */
+  value: number | '…' | '—';
+  /** The words under the figure — the kind's name. */
+  word: string;
+  /** The whole count in words, for a screen reader and on hover. */
+  said?: string;
+  className?: string;
+} & Record<`data-${string}`, string>): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const some = typeof value === 'number' && value > 0;
+  const look = COUNT_LOOK[kind];
+  const hidden = said === undefined ? {} : { 'aria-hidden': true as const };
   return (
     <span
       {...rest}
-      data-count-kind="shipments"
+      data-count-kind={kind}
+      data-count-zero={some ? undefined : 'true'}
+      {...(said === undefined ? {} : { title: said })}
       className={cn(
-        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-black ring-1 ring-inset',
-        count > 0 ? SHIPMENTS_BADGE.some : SHIPMENTS_BADGE.zero,
+        'flex min-w-0 flex-col items-center justify-center rounded-lg px-1 pb-1 pt-1.5 ring-1 ring-inset',
+        some ? look.chip : look.zero,
+        className,
       )}
     >
-      <BoardIcon
-        d={[...COUNT_LOOK.shipments.icon]}
-        className={cn('h-3 w-3 shrink-0', COUNT_LOOK.shipments.mark, count === 0 && 'opacity-70')}
-      />
-      {t(pluralKey('operations.distribution.loadCount', locale, count), {
-        count: countText(count, locale),
-      })}
+      <span {...hidden} className="flex max-w-full items-center gap-1">
+        <BoardIcon d={[...look.icon]} className={cn('h-3.5 w-3.5 shrink-0', look.mark)} />
+        {/* The figures' face, as the money and the code: a «0» reads as zero, where an Arabic zero
+            reads as one more dot. */}
+        <span
+          dir="ltr"
+          className={cn(
+            NUM,
+            'text-[15px] font-black leading-5',
+            some ? look.figure : look.zeroFigure,
+          )}
+        >
+          {typeof value === 'number' ? countText(value, locale) : value}
+        </span>
+      </span>
+      <span {...hidden} className="max-w-full truncate text-[10.5px] font-bold leading-4">
+        {word}
+      </span>
+      {said !== undefined && <span className="sr-only">{said}</span>}
     </span>
   );
 };
 
 /**
- * ONE COUNT, in its own colour and icon (Round 26 — «والاعداد»): محصنات, كراتين, حقائب or صناديق, the
- * same chip on the van card, the van's card and a محصنة's card (`COUNT_LOOK`). A 0 is written, in
- * grey with its icon dimmer; so are «…» (still reading) and «—» (not to be read).
+ * THE COUNT OF محصنات on a van — «الصف نفسه بتاع القائد يكون قبله عدد المحصنات» (Round 25), in its own
+ * tile since Round 26b («وافصل الاليطار بتاع القائد عن المحصنة»): first of the van's four counts, no
+ * longer in the captain's frame. Its figure, then the count's own Arabic form of the word
+ * («محصنة · محصنتان · محصنات», `pluralKey`); the whole phrase («محصنتان», «3 محصنات») to a screen reader
+ * and on hover. The same tile on the van's card.
+ */
+export const ShipmentsCount = ({
+  count,
+  className,
+  ...rest
+}: { count: number; className?: string } & Record<`data-${string}`, string>): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <CountTile
+      {...rest}
+      kind="shipments"
+      value={count}
+      word={t(pluralKey('operations.distribution.loadWord', locale, count))}
+      said={t(pluralKey('operations.distribution.loadCount', locale, count), {
+        count: countText(count, locale),
+      })}
+      {...(className === undefined ? {} : { className })}
+    />
+  );
+};
+
+/**
+ * ONE COUNT, inline — the same colours as the tile (`COUNT_LOOK`), on one line, where a fact holds
+ * it: the packages on a محصنة's card. A 0 muted in its own hue, as on the tile.
  */
 export const CountChip = ({
   kind,
@@ -853,26 +992,22 @@ export const CountChip = ({
 } & Record<`data-${string}`, string>): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const some = typeof value === 'number' && value > 0;
+  const look = COUNT_LOOK[kind];
   return (
     <span
       {...rest}
       data-count-kind={kind}
       data-count-zero={some ? undefined : 'true'}
       className={cn(
-        'flex min-w-0 items-center justify-center gap-1 rounded-md px-1 py-0.5 text-[11px] font-bold ring-1 ring-inset',
-        some ? COUNT_LOOK[kind].chip : COUNT_ZERO,
+        'inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold ring-1 ring-inset',
+        some ? look.chip : look.zero,
         className,
       )}
     >
-      <BoardIcon
-        d={[...COUNT_LOOK[kind].icon]}
-        className={cn('h-3 w-3 shrink-0', COUNT_LOOK[kind].mark, !some && 'opacity-70')}
-      />
-      {/* The figures' face, as the money and the code: a «0» reads as zero, where an Arabic zero
-          reads as one more dot. */}
+      <BoardIcon d={[...look.icon]} className={cn('h-3 w-3 shrink-0', look.mark)} />
       <span
         dir="ltr"
-        className={cn(NUM, 'text-[12px] font-black', some && COUNT_LOOK[kind].figure)}
+        className={cn(NUM, 'text-[12px] font-black', some ? look.figure : look.zeroFigure)}
       >
         {typeof value === 'number' ? countText(value, locale) : value}
       </span>
@@ -887,12 +1022,17 @@ export const CountChip = ({
  * vault's own counts (custody), summed over the load. `packages` null: the reader cannot read the
  * vault's counts — each says «—», with why on hover, rather than a 0 that would be a guess. The same
  * while the vault's read is out ('pending', «…») or has failed ('failed', «—»): a 0 is written only
- * once the counts are in (`vanPackages`). Round 26: each kind in its own colour (`CountChip`).
+ * once the counts are in (`vanPackages`). Round 26b: each a tile of its own hue (`CountTile`).
+ * `of` — whose marks the tiles carry: the van card's (`data-van-package`) or the van's card's.
  */
 export const PackageCounts = ({
   packages,
+  of = 'van',
+  className,
 }: {
   packages: Packaging | null | 'pending' | 'failed';
+  of?: 'van' | 'card';
+  className?: string;
 }): JSX.Element => {
   const t = useT();
   const counted = typeof packages === 'object' && packages !== null ? packages : null;
@@ -913,53 +1053,60 @@ export const PackageCounts = ({
             ? 'unknown'
             : packages
       }
-      className="grid grid-cols-3 gap-1"
+      className={cn('grid grid-cols-3 gap-1.5', className)}
       {...(why === null ? {} : { title: why })}
       {...(packages === 'pending' ? { 'aria-busy': true } : {})}
     >
       {PACKAGE_KINDS.map((kind) => (
-        <CountChip
+        <CountTile
           key={kind}
           kind={kind}
-          data-van-package={kind}
+          {...(of === 'van' ? { 'data-van-package': kind } : { 'data-van-card-count-of': kind })}
           value={counted !== null ? counted[kind] : packages === 'pending' ? '…' : '—'}
-        >
-          {t(`operations.distribution.${kind}`)}
-        </CountChip>
+          word={t(`operations.distribution.${kind}`)}
+        />
       ))}
     </div>
   );
 };
 
 /**
- * The van's swatch — its accent alone, beside its name on a card (the van's own, a محصنة's «على»).
- * The words beside it say which van; the swatch is never the only sign.
+ * A VAN'S FOUR COUNTS, in a row of their own (Round 26b): the محصنات first, then كراتين, حقائب,
+ * صناديق — four tiles of one width, aligned (the packages' three span three of the row's four
+ * columns, with the row's own gap). The same row on the van card and on the van's card.
  */
-export const VanSwatch = ({ accent }: { accent: VanAccent }): JSX.Element => (
-  <span
-    aria-hidden
-    data-van-swatch={accent}
-    className={cn(
-      'inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/20',
-      VAN_ACCENT_LOOK[accent].bar,
-    )}
-  />
+export const VanCounts = ({
+  count,
+  packages,
+  of,
+}: {
+  count: number;
+  packages: Packaging | null | 'pending' | 'failed';
+  of: 'van' | 'card';
+}): JSX.Element => (
+  <div data-van-counts={of} className="grid grid-cols-4 gap-1.5">
+    <ShipmentsCount
+      count={count}
+      {...(of === 'van'
+        ? { 'data-van-count': String(count) }
+        : { 'data-van-card-count-of': 'shipments' })}
+    />
+    <PackageCounts packages={packages} of={of} className="col-span-3" />
+  </div>
 );
 
 /**
- * The van's code as the card draws it (Round 26): a pill in the van's own colour — solid, its words
- * in the colour that reads on it — with the van's drawing; «بدون سيارة (n)» for a crew without one.
- * Neutral where the van has no accent.
+ * The van's code as the card draws it (Round 26b — «لون واحد لكل العربيات»): ONE pill for every van,
+ * solid slate with white words (`VAN_LOOK`), the van's drawing before its code; «بدون سيارة (n)» for a
+ * crew without one, in the same pill.
  */
 export const VanCodePill = ({
   van,
   looseNumber,
-  accent,
   size = 'md',
 }: {
   van: OperationsDayBoardVehicleCrewDto;
   looseNumber: string | null;
-  accent: VanAccent | null;
   size?: 'sm' | 'md';
 }): JSX.Element => {
   const t = useT();
@@ -969,16 +1116,15 @@ export const VanCodePill = ({
       dir={noVan ? undefined : 'ltr'}
       data-van-code={van.vehicleCode ?? ''}
       className={cn(
-        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 font-black',
-        size === 'md' ? 'py-0.5 leading-6' : 'py-px leading-5',
-        accent === null
-          ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white'
-          : VAN_ACCENT_LOOK[accent].pill,
+        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg font-black',
+        size === 'md' ? 'px-2 py-0.5 leading-7' : 'px-1.5 py-px leading-5',
+        VAN_LOOK.pill,
+        VAN_LOOK.ring,
       )}
     >
       <BoardIcon
         d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]}
-        className="h-3.5 w-3.5 shrink-0"
+        className={cn('shrink-0', size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5')}
       />
       <span
         className={cn(
@@ -986,7 +1132,7 @@ export const VanCodePill = ({
             ? size === 'md'
               ? 'text-[13px]'
               : 'text-[12px]'
-            : cn(size === 'md' ? 'text-[16px]' : 'text-[13px]', NUM),
+            : cn(size === 'md' ? 'text-[17px]' : 'text-[13px]', NUM),
         )}
       >
         {vanCodeText(t, van, looseNumber)}
@@ -995,7 +1141,7 @@ export const VanCodePill = ({
   );
 };
 
-/** The van's planned time, in its own calm colour (Round 26 — `HEAD_PILL`); nothing when it has none. */
+/** The van's planned time — calm and neutral (Round 26b, `HEAD_PILL`); nothing when it has none. */
 const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Element | null => {
   const t = useT();
   const time = van.plannedTime === null || van.plannedTime === '' ? null : van.plannedTime;
@@ -1005,11 +1151,11 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
       data-van-time={time}
       title={chipTitle(t('operations.crew.plannedTime'), time)}
       className={cn(
-        'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold ring-1 ring-inset',
+        'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-black ring-1 ring-inset',
         HEAD_PILL.time,
       )}
     >
-      <BoardIcon d={[...PLAN_ICON.clock]} className="h-3 w-3" />
+      <BoardIcon d={[...PLAN_ICON.clock]} className="h-3 w-3 text-slate-500 dark:text-slate-400" />
       <span dir="ltr" className={NUM}>
         {time}
       </span>
@@ -1018,7 +1164,7 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
 };
 
 /**
- * The van's direction, in its own calm colour (Round 26 — `HEAD_PILL`); «بلا اتجاه» in grey. On the
+ * The van's direction — calm and neutral (Round 26b, `HEAD_PILL`); «بلا اتجاه», quieter. On the
  * card's one line it is cut, whole on hover and to a screen reader; on the van's card (`wrap`) it is
  * written whole.
  */
@@ -1044,7 +1190,10 @@ const DirectionPill = ({
           : cn('font-black', HEAD_PILL.direction),
       )}
     >
-      <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3 w-3 shrink-0 rtl:-scale-x-100" />
+      <BoardIcon
+        d={[...SHIPMENT_PATH.route]}
+        className="h-3 w-3 shrink-0 text-slate-500 rtl:-scale-x-100 dark:text-slate-400"
+      />
       <span className="sr-only">{t('operations.crew.direction')}: </span>
       <span className={wrap ? 'min-w-0 break-words' : 'min-w-0 truncate'}>{directionText}</span>
     </span>
@@ -1053,29 +1202,26 @@ const DirectionPill = ({
 
 /**
  * THE VAN'S CARD (Round 26) — «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه
- * والسواقيين»: the van (its code in its colour, or «بدون سيارة (n)»), the time, the direction; then
+ * والسواقيين»: the van (its code in the van's pill, or «بدون سيارة (n)»), the time, the direction; then
  * everyone on it, slot by slot (`vanCrewGroups`) — القادة (every one, in the order put on the row, the
  * first marked as the one the card shows), «أخصائي 1», «أخصائي 2» (everyone in each) and السائقون (by
  * name, Fleet's duty row) — each slot saying «لا يوجد» when empty, or that the reader may not see it;
- * then what the van carries, in the counts' own colours.
+ * then what the van carries — the van card's own four counts (`VanCounts`).
  */
 export const VanCrewCardBody = ({
   van,
   looseNumber,
-  accent,
   crewPlanVisible,
   count,
   packages,
 }: {
   van: OperationsDayBoardVehicleCrewDto & { securedType?: boolean; shiftTypeName?: string | null };
   looseNumber: string | null;
-  accent: VanAccent | null;
   crewPlanVisible: boolean;
   count: number;
   packages: Packaging | null | 'pending' | 'failed';
 }): JSX.Element => {
   const t = useT();
-  const counted = typeof packages === 'object' && packages !== null ? packages : null;
   const label = {
     captains: t('operations.distribution.captains'),
     specialist1: t('operations.crew.slot.specialist1'),
@@ -1083,10 +1229,9 @@ export const VanCrewCardBody = ({
     drivers: t('operations.board.card.drivers'),
   } as const;
   return (
-    <div data-van-card={van.crewAssignmentId} data-van-card-accent={accent ?? undefined}>
+    <div data-van-card={van.crewAssignmentId}>
       <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        {accent !== null && <VanSwatch accent={accent} />}
-        <VanCodePill van={van} looseNumber={looseNumber} accent={accent} size="sm" />
+        <VanCodePill van={van} looseNumber={looseNumber} size="sm" />
         <TimePill van={van} />
         {van.securedType === false && (
           <span className="min-w-0 truncate text-[11px] font-bold text-amber-800 dark:text-amber-200">
@@ -1147,24 +1292,12 @@ export const VanCrewCardBody = ({
           </HoverCardFact>
         ))}
       </dl>
-      {/* What it carries — the van card's own count badge, then the packages, each in its colour. */}
+      {/* What it carries — the van card's own four counts, each in its hue. */}
       <div
         data-van-card-counts="true"
-        className="mt-2 space-y-1 border-t border-slate-100 pt-2 dark:border-slate-700/60"
+        className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-700/60"
       >
-        <ShipmentsCount count={count} data-van-card-count-of="shipments" />
-        <div className="grid grid-cols-3 gap-1">
-          {PACKAGE_KINDS.map((kind) => (
-            <CountChip
-              key={kind}
-              kind={kind}
-              data-van-card-count-of={kind}
-              value={counted !== null ? counted[kind] : packages === 'pending' ? '…' : '—'}
-            >
-              {t(`operations.distribution.${kind}`)}
-            </CountChip>
-          ))}
-        </div>
+        <VanCounts count={count} packages={packages} of="card" />
       </div>
     </div>
   );
@@ -1203,29 +1336,36 @@ const onPersonName = (target: EventTarget | null): boolean =>
   target instanceof Element && target.closest('[data-van-person]') !== null;
 
 /**
- * THE VAN — the crew board's row for the day, as the owner asked it drawn on Round 25: «شكل العربية
- * بالمحصنات يتغير … العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا ضيفته ف الاول الصف نفسه
- * بتاع القائد يكون قبله عدد المحصنات اللى على العربيه بعد كدا مش عاوز يظهر اخصائيين ولا اجمالى المصرى
- * ولا اجمالى الدولار ولا اجمالى العملات اللى يظهر عدد الكراتين و الحقائب و الصناديق حتى لو ب 0 يتكتب
- * وبرضو شكل المحصنة زى ما كانت على الشمال تفضل زى ما هى شكلها على العربية»:
- *   · THE HEAD stays one line (Round 24c): the code (or «بدون سيارة (n)»), the time, the direction;
- *   · THE CAPTAIN'S LINE: first the count of محصنات on the van (a badge, «٣ محصنات»), then the
- *     captain — the FIRST one put on the row (`captains[0]`, the board's stored order) when it has
- *     two; «بلا قائد» in red when it has none. No specialists, no money;
- *   · THE PACKAGES: «كراتين», «حقائب», «صناديق», each always, 0 written (`PackageCounts`);
- *   · THE LOAD: the محصنات on it as the same small chips as the left column (`ShipmentChip`).
- * A row of another type kept for what it carries (`securedType` false) says so under its head.
+ * THE VAN — the crew board's row for the day.
  *
- * Round 26 — «عاوزك تضيف الوان»: the van wears its ACCENT (`accent`, `lib/van-accent.ts`) — a stripe
- * at its start edge, its head on a band of it, its code in a pill of it — and every chip on it wears
- * the same; the counts wear their own colours. «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين
- * اللى على العربيه والسواقيين»: resting on the head or the captain's line (not on a chip — a chip has
- * its card — and not on the captain's own name, which opens his) opens the van's card
- * (`VanCrewCardBody`) after the usual beat; a keyboard focus opens it at once, a tap on a phone too.
- * Never while a drag is on or a «نقل إلى…» menu is open (`vanHoverAllowed`).
+ * Round 25 — «شكل العربية بالمحصنات يتغير … العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا
+ * ضيفته ف الاول الصف نفسه بتاع القائد يكون قبله عدد المحصنات اللى على العربيه بعد كدا مش عاوز يظهر
+ * اخصائيين ولا اجمالى المصرى ولا اجمالى الدولار ولا اجمالى العملات اللى يظهر عدد الكراتين و الحقائب و
+ * الصناديق حتى لو ب 0 يتكتب وبرضو شكل المحصنة زى ما كانت على الشمال تفضل زى ما هى شكلها على العربية»:
+ * the first captain only, no specialist, no money, the three packages always, the load as the same
+ * small chips as the left column.
+ *
+ * Round 26b — «لون واحد لكل العربيات» and «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه
+ * بالكامل»: ONE look for every van, and the card redrawn in four parts, top to bottom —
+ *   · THE HEAD, on the van's very light band: its code in the van's slate pill (or «بدون سيارة
+ *     (n)»), the time, the direction — one line (Round 24c); a thin slate stripe at the card's start;
+ *   · THE CAPTAIN, in a frame of his own: «قائد» and his name — the FIRST put on the row
+ *     (`captains[0]`) — cut to the frame, his person card on it; «بلا قائد» in the refusal's rose;
+ *   · THE COUNTS, in a row of their own: the محصنات, then كراتين, حقائب, صناديق — four tiles of one
+ *     width, each its own hue (`VanCounts`);
+ *   · THE LOAD, a bounded place of its own: the chips on it plain, as on the left; empty, it says
+ *     where to drop («اسحب المحصنات إلى هنا») — or, on a van that takes nothing, why, in rose.
+ * A row of another type kept for what it carries (`securedType` false) keeps its dashed amber edge
+ * and says so under its head.
+ *
+ * «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين» (Round 26):
+ * resting on the head or the captain's frame (not on a chip — a chip has its card — and not on the
+ * captain's own name, which opens his) opens the van's card (`VanCrewCardBody`) after the usual beat;
+ * a keyboard focus opens it at once, a tap on a phone too. Never while a drag is on or a «نقل إلى…»
+ * menu is open (`vanHoverAllowed`).
  *
  * THE WHOLE CARD IS A DROP TARGET (`data-drop-van`): the page's frame takes the drag and reads the
- * mark under the pointer at the drop — the head, the captain's line, the packages, the empty load and
+ * mark under the pointer at the drop — the head, the captain's frame, the counts, the empty load and
  * a chip on it all mean this van (`lib/distribution-drag.ts`). The van's card is a layer that takes
  * no pointer, so it never stands between the hand and the drop.
  */
@@ -1236,7 +1376,6 @@ export const VanCard = ({
   day,
   count,
   packages,
-  accent = null,
   actions,
   drop,
   children,
@@ -1254,8 +1393,6 @@ export const VanCard = ({
   /** The vault's counts over its load; null when the reader cannot read them, 'pending' or
    *  'failed' while the vault's read is out or has failed (`vanPackages`). */
   packages: Packaging | null | 'pending' | 'failed';
-  /** Round 26 — the van's colour (`vanAccents`); null draws it neutral. */
-  accent?: VanAccent | null;
   /** Above the van — the vault's «تسليم» and «طباعة». */
   actions?: ReactNode;
   drop?: {
@@ -1274,15 +1411,16 @@ export const VanCard = ({
   const name = vanPhrase(t, van, looseNumber);
   const kept = van.securedType === false;
   const typeName = van.shiftTypeName ?? null;
-  const look = accent === null ? null : VAN_ACCENT_LOOK[accent];
+  // A van that takes nothing new — no captain, or a row of another type: its empty load says why.
+  const refusing = captain === null || kept;
 
-  // The van's card — on the head and the captain's line (Round 26).
+  // The van's card — on the head and the captain's frame (Round 26).
   useEffect(watchDrags, []);
   const hover = useHoverCard(true, {
     when: () => vanHoverAllowed({ dragging: dragOn, menuOpen: moveMenuOpen(), onPerson: false }),
   });
   const { tapped, setTapped, pointer } = useTapCard(hover.anchor);
-  // The pointer moved inside the head or the captain's line: onto the captain's own name, his card
+  // The pointer moved inside the head or the captain's frame: onto the captain's own name, his card
   // takes over; anywhere else, the van's card waits its beat (again, if the name had it).
   const rest = (target: EventTarget | null): void => {
     if (onPersonName(target)) hover.dismiss();
@@ -1295,18 +1433,16 @@ export const VanCard = ({
       data-drop-van={van.crewAssignmentId}
       data-no-van={noVan ? 'true' : undefined}
       data-not-secured={kept ? 'true' : undefined}
-      data-van-accent={accent ?? undefined}
       data-drop-over={drop?.over ?? undefined}
       data-drop-armed={drop?.armed === true ? 'true' : undefined}
       aria-label={name}
       className={cn(
-        // `relative`: the head's screen-reader words (`sr-only`, absolute) and the accent's stripe
-        // stay inside the card; `overflow-hidden` cuts the stripe to the card's round corners.
-        'relative flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border bg-white p-2.5 shadow-sm transition-[box-shadow,border-color,background-color] dark:bg-[#111827]',
-        look !== null && 'ps-3.5',
+        // `relative`: the head's screen-reader words (`sr-only`, absolute) and the stripe stay inside
+        // the card; `overflow-hidden` cuts the stripe and the band to the card's round corners.
+        'relative flex min-w-0 flex-col overflow-hidden rounded-xl border bg-white shadow-sm shadow-slate-900/[0.04] transition-[box-shadow,border-color,background-color] dark:bg-[#111827] dark:shadow-black/30',
         kept
           ? 'border-dashed border-amber-400 dark:border-amber-500/60'
-          : 'border-slate-200 dark:border-[#24305a]',
+          : 'border-slate-200 dark:border-slate-700/70',
         drop?.armed === true &&
           drop.over === null &&
           'border-dashed border-brand-300 dark:border-brand-500/50',
@@ -1314,23 +1450,20 @@ export const VanCard = ({
           'border-brand-500 bg-brand-50 shadow-lg shadow-brand-500/20 ring-2 ring-brand-500 dark:border-brand-400 dark:bg-brand-500/10 dark:ring-brand-400',
         drop?.over === 'refuse' &&
           'border-rose-500 bg-rose-50 ring-2 ring-rose-500 dark:border-rose-400 dark:bg-rose-500/10 dark:ring-rose-400',
-        (captain === null || kept) && 'opacity-90',
       )}
     >
-      {look !== null && (
-        // The van's colour at its start edge — the palette's own dot (`SHIFT_TYPE_TONE`).
-        <span
-          aria-hidden
-          data-van-stripe={accent ?? ''}
-          className={cn('pointer-events-none absolute inset-y-0 start-0 w-[5px]', look.bar)}
-        />
-      )}
+      {/* The van's one colour at its start edge — the same on every van. */}
+      <span
+        aria-hidden
+        data-van-stripe="true"
+        className={cn('pointer-events-none absolute inset-y-0 start-0 z-[1] w-[3px]', VAN_LOOK.stripe)}
+      />
       {actions !== undefined && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-2 dark:border-slate-800">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 py-2 pe-2.5 ps-3.5 dark:border-slate-800">
           {actions}
         </div>
       )}
-      {/* The head and the captain's line: resting on them opens the van's card. */}
+      {/* The head and the captain's frame: resting on them opens the van's card. */}
       <div
         {...hover.triggerProps}
         data-van-hover={van.crewAssignmentId}
@@ -1348,106 +1481,114 @@ export const VanCard = ({
           if (!vanTapAllowed({ touch: pointer.current === 'touch', onPerson })) return;
           setTapped((open) => !open);
         }}
-        className="flex min-w-0 flex-col gap-2 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60"
+        className="flex min-w-0 flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/60"
       >
         <header
-          data-van-band={accent ?? 'none'}
+          data-van-band="true"
           className={cn(
-            'flex min-w-0 items-center rounded-lg px-1.5 py-1',
-            look?.band ?? 'bg-slate-100/80 dark:bg-white/[0.04]',
+            'flex min-w-0 items-center border-b border-slate-200/80 py-2 pe-2.5 ps-3.5 dark:border-slate-700/60',
+            VAN_LOOK.band,
           )}
         >
           {/* ONE line: code · time · direction — nothing else, so the direction has the room. */}
           <div data-van-head="true" className="flex min-w-0 flex-1 items-center gap-1.5">
-            <VanCodePill van={van} looseNumber={looseNumber} accent={accent} />
+            <VanCodePill van={van} looseNumber={looseNumber} />
             <TimePill van={van} />
             <DirectionPill van={van} />
           </div>
         </header>
-        {kept && (
-          // Round 25 — a row of another type, listed only for what it already carries.
-          <p
-            data-van-not-secured={typeName ?? ''}
-            title={
-              typeName === null
-                ? t('operations.distribution.notSecuredHintNoType')
-                : t('operations.distribution.notSecuredHint', { type: typeName })
-            }
-            className="flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold leading-4 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
-          >
-            <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
-            <span className="min-w-0">
-              {t('operations.distribution.notSecured')}
-              {typeName !== null && (
-                <span className="font-semibold">
-                  {' '}
-                  · {t('operations.distribution.typeIs', { type: typeName })}
-                </span>
-              )}
-            </span>
-          </p>
-        )}
-        {/* THE CAPTAIN'S LINE: the count first, then the first captain. */}
-        <div
-          data-van-captain-line={van.crewAssignmentId}
-          className={cn(
-            'flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 ring-1 ring-inset',
-            captain === null ? CAPTAIN_BAND.none : CAPTAIN_BAND.some,
-          )}
-        >
-          <ShipmentsCount count={count} data-van-count={String(count)} />
-          {captain === null ? (
-            <span
-              data-van-captain="none"
-              className="flex min-w-0 items-center gap-1 text-[12px] font-bold leading-5 text-rose-700 dark:text-rose-300"
+        <div className="flex min-w-0 flex-col gap-2 pe-2.5 ps-3.5 pt-2.5">
+          {kept && (
+            // Round 25 — a row of another type, listed only for what it already carries.
+            <p
+              data-van-not-secured={typeName ?? ''}
+              title={
+                typeName === null
+                  ? t('operations.distribution.notSecuredHintNoType')
+                  : t('operations.distribution.notSecuredHint', { type: typeName })
+              }
+              className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold leading-4 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
             >
               <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
-              <span className="min-w-0 truncate">{t('operations.distribution.noCaptain')}</span>
-            </span>
-          ) : (
-            <span
-              data-van-captain={captain.employeeId}
-              className="flex min-w-0 items-center gap-1.5"
-            >
-              <span
-                data-captain-mark="true"
-                className={cn(
-                  'inline-flex shrink-0 items-center gap-0.5 rounded-full py-0.5 pe-2 ps-1.5 text-[10px] font-black leading-4',
-                  CAPTAIN_MARK,
+              <span className="min-w-0">
+                {t('operations.distribution.notSecured')}
+                {typeName !== null && (
+                  <span className="font-semibold">
+                    {' '}
+                    · {t('operations.distribution.typeIs', { type: typeName })}
+                  </span>
                 )}
-              >
-                <BoardIcon d={[...PLAN_ICON.rank]} className="h-3 w-3" width={2.4} />
-                {t('operations.crewPlan.role.captain')}
               </span>
-              <PersonName
-                person={captain}
-                seat={`${name} · ${t('operations.crew.slot.captain')}`}
-                day={day}
-                mayReadDirectory={crewPlanVisible}
-                className="text-[13px] font-black leading-5 text-slate-900 dark:text-white"
-              />
-            </span>
+            </p>
           )}
+          {/* THE CAPTAIN — in a frame of his own (Round 26b): his mark and his name, no count. */}
+          <div
+            data-van-captain-line={van.crewAssignmentId}
+            className={cn(
+              'flex min-h-[2.25rem] min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 ring-1 ring-inset',
+              captain === null ? CAPTAIN_FRAME.none : CAPTAIN_FRAME.some,
+            )}
+          >
+            {captain === null ? (
+              <span
+                data-van-captain="none"
+                className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-black leading-5 text-rose-700 dark:text-rose-300"
+              >
+                <BoardIcon d={[...PATH.warn]} className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 truncate">
+                  {t('operations.distribution.noCaptainShort')}
+                </span>
+              </span>
+            ) : (
+              <span
+                data-van-captain={captain.employeeId}
+                className="flex min-w-0 flex-1 items-center gap-2"
+              >
+                <span
+                  data-captain-mark="true"
+                  className={cn(
+                    'inline-flex shrink-0 items-center gap-1 rounded-md py-0.5 pe-2 ps-1.5 text-[11px] font-black leading-4',
+                    CAPTAIN_MARK,
+                  )}
+                >
+                  <BoardIcon d={[...PLAN_ICON.rank]} className="h-3.5 w-3.5" width={2.4} />
+                  {t('operations.crewPlan.role.captain')}
+                </span>
+                <PersonName
+                  person={captain}
+                  seat={`${name} · ${t('operations.crew.slot.captain')}`}
+                  day={day}
+                  mayReadDirectory={crewPlanVisible}
+                  className="text-[13.5px] font-black leading-5 text-slate-900 dark:text-white"
+                />
+              </span>
+            )}
+          </div>
         </div>
       </div>
-      <PackageCounts packages={packages} />
-      <div
-        data-van-load={van.crewAssignmentId}
-        className={cn(
-          'flex min-h-[3rem] flex-col gap-1.5 rounded-lg border border-dashed p-1.5 transition-colors',
-          'border-slate-200 dark:border-slate-700/70',
-          drop?.over === 'place' && 'border-brand-400 dark:border-brand-400/70',
-        )}
-      >
-        {children}
+      <div className="flex min-w-0 flex-col gap-2 pb-2.5 pe-2.5 ps-3.5 pt-2">
+        {/* THE COUNTS — a row of their own: the محصنات, then the three packages. */}
+        <VanCounts count={count} packages={packages} of="van" />
+        {/* THE LOAD — a bounded place of its own; the chips on it plain, as on the left. */}
+        <div
+          data-van-load={van.crewAssignmentId}
+          className={cn(
+            'flex min-h-[3.25rem] flex-col gap-1.5 rounded-lg border p-1.5 transition-colors',
+            count === 0 && refusing ? LOAD_LOOK.refuse : LOAD_LOOK.area,
+            count === 0 && 'border-dashed',
+            drop?.over === 'place' &&
+              'border-brand-400 bg-brand-50/70 dark:border-brand-400/70 dark:bg-brand-500/10',
+          )}
+        >
+          {children}
+        </div>
+        {footer}
       </div>
-      {footer}
       {(hover.open || tapped) && (
         <HoverCardLayer id={hover.id} anchor={hover.anchor} mark="secured-van">
           <VanCrewCardBody
             van={van}
             looseNumber={looseNumber}
-            accent={accent}
             crewPlanVisible={crewPlanVisible}
             count={count}
             packages={packages}
@@ -1458,10 +1599,34 @@ export const VanCard = ({
   );
 };
 
-/** A load's empty place — what to do with it, said where the shipments would be. */
-export const EmptyLoad = ({ children }: { children: ReactNode }): JSX.Element => (
-  <p className="flex flex-1 items-center justify-center px-2 py-3 text-center text-xs font-bold text-slate-400 dark:text-slate-500">
-    {children}
+/** A crossed circle — a van that takes nothing. */
+const REFUSE_ICON = ['M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636'];
+/** An arrow into a tray — where a dragged محصنة lands. */
+const DROP_ICON = ['M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2', 'M12 4v11', 'M8 11l4 4 4-4'];
+
+/**
+ * A load's (or a column's) empty place — what to do with it, said where the shipments would be.
+ * Round 26b: `drop` — the van takes a drag here (its arrow); `refuse` — the van takes nothing, said in
+ * the refusal's rose; `empty` — nothing to do.
+ */
+export const EmptyLoad = ({
+  children,
+  tone = 'empty',
+}: {
+  children: ReactNode;
+  tone?: 'empty' | 'drop' | 'refuse';
+}): JSX.Element => (
+  <p
+    data-empty-load={tone}
+    className={cn(
+      'flex flex-1 items-center justify-center gap-1.5 px-2 py-3 text-center text-xs font-bold',
+      tone === 'refuse' ? 'text-rose-700 dark:text-rose-300' : LOAD_LOOK.empty,
+    )}
+  >
+    {tone !== 'empty' && (
+      <BoardIcon d={tone === 'refuse' ? REFUSE_ICON : DROP_ICON} className="h-4 w-4 shrink-0" />
+    )}
+    <span className="min-w-0">{children}</span>
   </p>
 );
 
@@ -1487,7 +1652,6 @@ export const ShipmentCardBody = ({
   packages,
   packagesRead,
   place,
-  placeAccent = null,
   notes,
 }: {
   row: OperationsSecuredDistributionRowDto;
@@ -1500,14 +1664,12 @@ export const ShipmentCardBody = ({
   packagesRead: PackagingRead;
   /** «السيارة 104 · مع …», or null on no van. */
   place: string | null;
-  /** Round 26 — the colour of the van it is on: a swatch beside «على» (null: on no van). */
-  placeAccent?: VanAccent | null;
   notes: readonly { key: string; text: string; tone: 'info' | 'warn' | 'danger' }[];
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
-    <div data-secured-card={row.id} data-card-van-accent={placeAccent ?? undefined}>
+    <div data-secured-card={row.id}>
       <CardHead
         icon={<BoardIcon d={[...SHIPMENT_PATH.bank]} className="h-3.5 w-3.5" />}
         sub={row.securedStage === null ? undefined : <SecuredStageBadge stage={row.securedStage} />}
@@ -1607,19 +1769,7 @@ export const ShipmentCardBody = ({
           </HoverCardFact>
         )}
         <HoverCardFact label={t('operations.distribution.card.on')}>
-          {place === null ? (
-            t('operations.distribution.unplaced')
-          ) : (
-            // Round 26 — the van's swatch beside its name: the chip's colour, said in words too.
-            <span className="inline-flex min-w-0 items-baseline gap-1.5">
-              {placeAccent !== null && (
-                <span className="translate-y-px self-center">
-                  <VanSwatch accent={placeAccent} />
-                </span>
-              )}
-              <span className="min-w-0">{place}</span>
-            </span>
-          )}
+          {place === null ? t('operations.distribution.unplaced') : place}
         </HoverCardFact>
       </dl>
       {notes.length > 0 && (
@@ -1718,7 +1868,6 @@ export const ShipmentChip = ({
   move,
   drag,
   tone,
-  accent = null,
   card,
 }: {
   row: OperationsSecuredDistributionRowDto;
@@ -1733,12 +1882,6 @@ export const ShipmentChip = ({
   };
   /** The chip's edge: a proposal (amber, dashed), an unsaved move (brand), a refusal (rose). */
   tone?: 'proposed' | 'moved' | 'refused' | undefined;
-  /**
-   * Round 26 — the colour of the van it is on (null on the left: neutral). Its stripe at the chip's
-   * start and a thin ground of it — but a proposal and an unsaved move keep their own ground and
-   * edge (R26 critic): the van's colour is then the stripe alone.
-   */
-  accent?: VanAccent | null;
   /** What its card says (`ShipmentCardBody`). */
   card: ReactNode;
 }): JSX.Element => {
@@ -1757,7 +1900,6 @@ export const ShipmentChip = ({
         }}
         data-distribution-shipment={row.id}
         data-shipment-tone={tone ?? 'saved'}
-        data-chip-accent={accent ?? undefined}
         aria-label={`${bankName === '' ? '…' : bankName} · ${branchName === '' ? '…' : branchName}`}
         draggable={drag !== undefined}
         onDragStart={(event) => {
@@ -1777,17 +1919,14 @@ export const ShipmentChip = ({
         className={cn(
           'group relative flex min-h-[2rem] min-w-0 items-center gap-1 overflow-hidden rounded-lg border py-0.5 pe-0.5 text-start shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60',
           'border-slate-200 dark:border-[#2b3b6b]',
-          // ONE ground. R26 critic: a proposal and an unsaved move keep their OWN ground on a van
-          // too (the van's colour is then its stripe alone) — on an orange van, a proposal's amber
-          // was gone but for its dashed edge. Else the van's colour, thin; else plain.
-          accent !== null ? 'ps-2' : 'ps-1',
+          // ONE ground (Round 26b — «لون واحد لكل العربيات»): a chip on a van is plain, as on the
+          // left; a proposal and an unsaved move keep their own ground and edge wherever they are.
+          'ps-1',
           tone === 'proposed'
             ? 'bg-amber-50 dark:bg-amber-400/[0.06]'
             : tone === 'moved'
               ? 'bg-brand-50/60 dark:bg-brand-500/[0.08]'
-              : accent !== null
-                ? VAN_ACCENT_LOOK[accent].chip
-                : 'bg-white dark:bg-[#0f1a3a]',
+              : 'bg-white dark:bg-[#0f1a3a]',
           tone === 'proposed' && 'border-dashed border-amber-500 dark:border-amber-400/60',
           tone === 'moved' && 'border-brand-400 dark:border-brand-400/60',
           tone === 'refused' &&
@@ -1796,17 +1935,6 @@ export const ShipmentChip = ({
           drag?.dragging === true && 'opacity-40',
         )}
       >
-        {accent !== null && (
-          // The van's colour at the chip's start — the palette's own dot, as the van's stripe.
-          <span
-            aria-hidden
-            data-chip-stripe={accent}
-            className={cn(
-              'pointer-events-none absolute inset-y-0 start-0 w-[3px]',
-              VAN_ACCENT_LOOK[accent].bar,
-            )}
-          />
-        )}
         {drag !== undefined && (
           <span aria-hidden className="shrink-0 text-slate-300 dark:text-slate-600">
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">

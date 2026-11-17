@@ -7,13 +7,20 @@
 import { Router } from 'express';
 import {
   OPERATIONS_BANK_REPORT_KEYS,
+  OperationsBankBranchReportParamsSchema,
+  OperationsBankBranchReportQuerySchema,
   OperationsReportQuerySchema,
   OperationsVaultHeldReportQuerySchema,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
 import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
-import { getBankReport, getCaptainReport, getVaultHeldReport } from './report.controller';
+import {
+  getBankBranchReport,
+  getBankReport,
+  getCaptainReport,
+  getVaultHeldReport,
+} from './report.controller';
 
 export const buildOperationsReportsRouter = (): Router => {
   const router = Router();
@@ -44,6 +51,20 @@ export const buildOperationsReportsRouter = (): Router => {
     authorizeAny(...OPERATIONS_BANK_REPORT_KEYS),
     validate({ query: OperationsReportQuerySchema }),
     asyncHandler(getBankReport),
+  );
+  // «لوحة البنك بفروعه» (Round 25) — the arrow at the end of a bank's row of «تقرير البنوك»: «يفتح زى
+  // داش برود كدا للبنك بالفروع بتاعته». The bank report's own readers and period (plus which of the
+  // shipment's two branches files it, `side`); no grant of its own — it is a closer look at a row
+  // the reader can already see.
+  router.get(
+    '/banks/:bankId/branches',
+    authenticate,
+    authorizeAny(...OPERATIONS_BANK_REPORT_KEYS),
+    validate({
+      params: OperationsBankBranchReportParamsSchema,
+      query: OperationsBankBranchReportQuerySchema,
+    }),
+    asyncHandler(getBankBranchReport),
   );
   // «تقرير الخزينة» (Round 12) — what the vault holds NOW, per bank, on top of «سجل الخزينة»: the
   // vault screens' grant and the bank report's table, with no period («بس مفيش فتر من الى هيكون

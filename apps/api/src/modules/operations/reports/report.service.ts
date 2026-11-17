@@ -23,6 +23,8 @@
 // therefore contributes zero packages — exactly as in legacy, where those fields were null and
 // `$ifNull`'d to 0.
 import {
+  type OperationsBankBranchReportDto,
+  type OperationsBankBranchReportQuery,
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
   type OperationsReportQuery,
@@ -30,14 +32,17 @@ import {
 } from '@ecms/contracts';
 import { fromMinorUnits, ymdToUtcDate } from '@ecms/contracts';
 import { getDirectoryEmployee } from '../../../platform/directory';
+import { NotFoundError } from '../../../shared/errors';
+import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { type OperationsShipmentLine } from '../shipments/shipment.model';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
-import { vaultCustody } from '../treasury-boundary';
+import { vaultCustody, type VaultCustodyView } from '../treasury-boundary';
 import {
   bankReportRows,
+  branchReportRows,
   captainReportRows,
   defaultReportRange,
   explicitReportRange,
@@ -49,6 +54,35 @@ const resolveRange = (query: OperationsReportQuery): { from: Date; toExclusive: 
   query.from !== undefined && query.to !== undefined
     ? explicitReportRange(query.from, query.to)
     : defaultReportRange(new Date());
+
+/**
+ * One vault receipt as a row of the bank roll-up — «تقرير البنوك» and, since Round 25, its bank's
+ * «لوحة البنك بفروعه». One builder for both, so a receipt cannot mean one thing in the bank's row and
+ * another in its branch's.
+ */
+const receivedRow = (
+  custody: VaultCustodyView,
+  lines: readonly OperationsShipmentLine[],
+  bankId: string,
+  bankName: string,
+  currencyName: ReadonlyMap<string, string>,
+): ReportInputRow => ({
+  shipmentId: custody.shipmentId,
+  // The bank report is not keyed on a captain; custody is the treasury's, not a route's.
+  captainEmployeeId: null,
+  captainName: '',
+  bankId,
+  bankName,
+  // Packages come from CUSTODY, counted once per shipment — the same fix as the reports.
+  bagCount: custody.bagCount,
+  cartonCount: custody.cartonCount,
+  boxCount: custody.boxCount,
+  lines: lines.map((line) => ({
+    currencyId: String(line.currencyId),
+    currencyName: currencyName.get(String(line.currencyId)) ?? '',
+    amount: fromMinorUnits(line.amountMinor),
+  })),
+});
 
 class OperationsReportService {
   /**
@@ -191,23 +225,9 @@ class OperationsReportService {
         bankNames.set(bankId, bank?.opsName ?? '');
       }
 
-      rows.push({
-        shipmentId: custody.shipmentId,
-        // The bank report is not keyed on a captain; custody is the treasury's, not a route's.
-        captainEmployeeId: null,
-        captainName: '',
-        bankId,
-        bankName: bankNames.get(bankId) ?? '',
-        // Packages come from CUSTODY, counted once per shipment — the same fix as the reports.
-        bagCount: custody.bagCount,
-        cartonCount: custody.cartonCount,
-        boxCount: custody.boxCount,
-        lines: shipment.lines.map((line: OperationsShipmentLine) => ({
-          currencyId: String(line.currencyId),
-          currencyName: currencyName.get(String(line.currencyId)) ?? '',
-          amount: fromMinorUnits(line.amountMinor),
-        })),
-      });
+      rows.push(
+        receivedRow(custody, shipment.lines, bankId, bankNames.get(bankId) ?? '', currencyName),
+      );
     }
 
     const { rows: built, grandTotal } = bankReportRows(rows);
@@ -218,6 +238,106 @@ class OperationsReportService {
       to: ymdToUtcDate(range.to).toISOString(),
       rows: built,
       grandTotal,
+    };
+  }
+
+  /**
+   * «لوحة البنك بفروعه» (Round 25) — ONE bank of «تقرير البنوك», broken down by its branches: «عاوز فى
+   * الجدول عند البنك فى الاخر بعد الصناديق يكون فيه سهم ادوس عليه يفتح زى داش برود كدا للبنك بالفروع
+   * بتاعته».
+   *
+   * THE SAME SHIPMENTS AS THE BANK'S ROW of `bankReport`, read the same way: the period's vault
+   * receipts (`receivedBetween` — a cancelled receipt is not one), their live shipments, those billed
+   * to this bank. The database does the narrowing — the receipts by their indexed instant, the
+   * shipments by id, bank and `isDeleted`, with only the branch ids and the money projected
+   * (`findBankBranchFacts`) — so the answer carries this bank's محصنات and nothing else.
+   *
+   * WHY THE ROLL-UP ITSELF IS NOT A PIPELINE. The packages are the treasury's, behind the custody port
+   * (treasury-boundary.ts): a `$lookup` from the shipments into the custody collection would read
+   * another owner's collection behind its back. And the branches must add up to the bank's row figure
+   * for figure, which only ONE roll-up can promise: the rows go through `branchReportRows` — the same
+   * `groupBy` / `addRow` as `bankReportRows` — in the receipts' order, so `total` IS the bank row.
+   *
+   * WHICH BRANCH: `side` — «من فرع» (`origin`, the default: where the محصنة was collected, so where
+   * what the vault received came from) or «إلى فرع» (`destination`). A branch of another bank says
+   * which (`otherBankName`).
+   */
+  async bankBranchReport(
+    bankId: string,
+    query: OperationsBankBranchReportQuery,
+    now: Date = new Date(),
+  ): Promise<OperationsBankBranchReportDto> {
+    // Any bank the report can show a row for — a bank retired since keeps its history.
+    const [bank] = await operationsBankRepository.findByIdsSystem([bankId]);
+    if (bank === undefined) throw new NotFoundError('no such bank');
+
+    const range = vaultReceiptRange(query, now);
+    const received = await vaultCustody().receivedBetween(range.start, range.endExclusive);
+    const shipments = await operationsShipmentRepository.findBankBranchFacts(
+      received.map((custody) => custody.shipmentId),
+      bankId,
+    );
+    const byId = new Map(shipments.map((doc) => [String(doc._id), doc]));
+
+    const currencies = (
+      await operationsCurrencyRepository.list({ filter: {}, page: 1, pageSize: 500 })
+    ).items;
+    const currencyName = new Map(currencies.map((c) => [String(c._id), c.name]));
+
+    // The branches named in ONE read, retired ones included (the shipment still names them), and
+    // the banks of those that are another bank's in one more.
+    const branchIdOf = new Map(
+      shipments.map((doc) => [
+        String(doc._id),
+        String(query.side === 'destination' ? doc.destinationBranchId : doc.originBranchId),
+      ]),
+    );
+    const branches = await operationsBankBranchRepository.findByIdsSystem([
+      ...new Set(branchIdOf.values()),
+    ]);
+    const branchById = new Map(branches.map((b) => [String(b._id), b]));
+    const otherBankIds = [
+      ...new Set(branches.map((b) => String(b.bankId)).filter((id) => id !== bankId)),
+    ];
+    const otherBanks = await operationsBankRepository.findByIdsSystem(otherBankIds);
+    const otherBankName = new Map(otherBanks.map((b) => [String(b._id), b.opsName]));
+
+    const rows: ReportInputRow[] = [];
+    // In the receipts' order — the order `bankReport` adds this bank's receipts in.
+    for (const custody of received) {
+      const shipment = byId.get(custody.shipmentId);
+      if (shipment === undefined) continue; // another bank's, deleted, or a broken reference
+      rows.push(receivedRow(custody, shipment.lines, bankId, bank.opsName, currencyName));
+    }
+
+    const { rows: built, grandTotal } = branchReportRows(
+      rows,
+      (row) => {
+        const id = branchIdOf.get(row.shipmentId);
+        return id !== undefined && branchById.has(id) ? id : null;
+      },
+      (branchId) => {
+        const branch = branchId === null ? undefined : branchById.get(branchId);
+        if (branch === undefined) {
+          return { name: '', code: null, areaName: null, otherBankName: null };
+        }
+        const ownBank = String(branch.bankId);
+        return {
+          name: branch.name,
+          code: branch.code,
+          areaName: branch.opsAreaName,
+          otherBankName: ownBank === bankId ? null : (otherBankName.get(ownBank) ?? ''),
+        };
+      },
+    );
+    return {
+      from: ymdToUtcDate(range.from).toISOString(),
+      to: ymdToUtcDate(range.to).toISOString(),
+      side: query.side,
+      bankId,
+      bankName: bank.opsName,
+      rows: built,
+      total: grandTotal,
     };
   }
 

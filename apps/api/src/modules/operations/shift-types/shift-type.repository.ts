@@ -29,6 +29,25 @@ class OperationsShiftTypeRepository extends BaseRepository<OperationsShiftTypeDo
       .exec();
   }
 
+  /**
+   * Round 25 — THE «محصنة» TYPE, the only one whose crew rows take محصنات on «توزيع المحصنات»: the
+   * seeded one by its key (`seedKey` 'secured'), whatever the owner has renamed it to since. On an
+   * install where that seed was never inserted (`ux_name` held by a «محصنة» typed by hand before the
+   * boot seeded — `seedOperationsShiftTypes` skips it), the live type of that name. Null when there
+   * is neither.
+   */
+  async findSecuredType(): Promise<OperationsShiftTypeDoc | null> {
+    const seeded = await this.model
+      .findOne({ seedKey: 'secured', isDeleted: false })
+      .lean<OperationsShiftTypeDoc>()
+      .exec();
+    if (seeded !== null) return seeded;
+    return this.model
+      .findOne({ name: 'محصنة', isDeleted: false })
+      .lean<OperationsShiftTypeDoc>()
+      .exec();
+  }
+
   /** The currencies' `writeOrder`: each id its position, the version left alone. */
   async writeOrder(ids: readonly Types.ObjectId[], by: string): Promise<void> {
     if (ids.length === 0) return;

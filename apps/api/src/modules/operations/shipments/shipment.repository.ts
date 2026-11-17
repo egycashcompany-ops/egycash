@@ -344,6 +344,28 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   }
 
   /**
+   * Round 25 — «لوحة البنك بفروعه»: of a set of shipments (the period's vault receipts), the LIVE
+   * ones billed to ONE bank, and only the fields its branch roll-up reads. The narrowing is the
+   * database's — `_id` in the set (the primary index), the bank and `isDeleted` on top — so a
+   * bank's dashboard carries that bank's محصنات of the period and nothing else across the wire.
+   */
+  async findBankBranchFacts(
+    ids: string[],
+    bankId: string,
+  ): Promise<
+    Pick<OperationsShipmentDoc, '_id' | 'originBranchId' | 'destinationBranchId' | 'lines'>[]
+  > {
+    if (ids.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: ids }, mainBankId: new Types.ObjectId(bankId), isDeleted: false })
+      .select({ originBranchId: 1, destinationBranchId: 1, lines: 1 })
+      .lean<
+        Pick<OperationsShipmentDoc, '_id' | 'originBranchId' | 'destinationBranchId' | 'lines'>[]
+      >()
+      .exec();
+  }
+
+  /**
    * COMPLETED shipments in a range, for the reports — the legacy report `$match` (:4877/:4919).
    *
    * The two types are attributed by DIFFERENT dates: a daily shipment belongs to the month it was

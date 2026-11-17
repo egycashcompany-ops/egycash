@@ -1455,6 +1455,72 @@ export interface OperationsBankReportDto {
   grandTotal: OperationsReportTotalsDto;
 }
 
+// ── «لوحة البنك بفروعه» (Round 25) — one bank of «تقرير البنوك», broken down by its branches ──────
+//
+// THE OWNER: «صفحة تقرير البنوك عاوز فى الجدول عند البنك فى الاخر بعد الصناديق يكون فيه سهم ادوس عليه
+// يفتح زى داش برود كدا للبنك بالفروع بتاعته». The arrow at the end of a bank's row opens that bank's
+// dashboard over the SAME period the page shows; this is what it reads.
+//
+// `GET /operations/reports/banks/:bankId/branches?from=&to=&side=` — the bank report's own readers
+// (`OPERATIONS_BANK_REPORT_KEYS`) and its own period (`from` / `to`, each falling back on its own to
+// Cairo's current month, judged on the vault receipt's Cairo day). The same shipments as the bank's
+// row of `GET /operations/reports/banks`: every محصنة billed to the bank (its MAIN bank) that the
+// vault received in the period and kept (a cancelled receipt is not one), delivered since or not,
+// deleted shipments left out — each filed under exactly ONE branch, so the branches add up to the
+// bank's row figure for figure (`total` IS that row).
+//
+// WHICH BRANCH (`side`). A shipment names two: «من فرع», where it was collected and so where the
+// vault's محصنة came from (`origin`, the default), and «إلى فرع», where it is delivered
+// (`destination`). The billed bank's own branch is the destination unless a second bank was named,
+// while the origin may be a branch of any bank (shipment.service.ts) — so a row whose branch belongs
+// to ANOTHER bank says which (`otherBankName`), and is still this bank's money.
+//
+// A bank id that names no bank → 404. A bank with nothing received in the period → 200, no rows and
+// a zero total. The dashboard's figures are this answer and nothing else.
+export const OPERATIONS_BANK_BRANCH_REPORT_SIDES = ['origin', 'destination'] as const;
+export type OperationsBankBranchReportSide = (typeof OPERATIONS_BANK_BRANCH_REPORT_SIDES)[number];
+
+export const OperationsBankBranchReportParamsSchema = z.object({ bankId: objectId() }).strict();
+export type OperationsBankBranchReportParams = z.infer<
+  typeof OperationsBankBranchReportParamsSchema
+>;
+
+export const OperationsBankBranchReportQuerySchema = OperationsReportQuerySchema.extend({
+  /** Which of the shipment's two branches files it — «من فرع» by default. */
+  side: z.enum(OPERATIONS_BANK_BRANCH_REPORT_SIDES).default('origin'),
+}).strict();
+export type OperationsBankBranchReportQuery = z.infer<typeof OperationsBankBranchReportQuerySchema>;
+
+export interface OperationsBankBranchReportRowDto {
+  /** Null only for shipments whose branch no longer resolves — reported, never dropped. */
+  branchId: string | null;
+  branchName: string;
+  branchCode: string | null;
+  /** The branch's operations area («المنطقة», legacy `area`) as the catalog holds it. */
+  areaName: string | null;
+  /** The branch's own bank when it is NOT this bank (an origin may be any bank's); else null. */
+  otherBankName: string | null;
+  totals: OperationsReportTotalsDto;
+}
+
+export interface OperationsBankBranchReportDto {
+  /** The first day of the period (UTC midnight of the Cairo calendar day), inclusive. */
+  from: string;
+  /** The last day of the period, inclusive. */
+  to: string;
+  side: OperationsBankBranchReportSide;
+  bankId: string;
+  /** The bank's operations name — the bank report's own `bankName` for it. */
+  bankName: string;
+  /** One per branch, branch name ascending (a screen orders them its own way). */
+  rows: OperationsBankBranchReportRowDto[];
+  /**
+   * The bank's own figures — exactly its row of `GET /operations/reports/banks` for the same period
+   * (the same shipments through the same roll-up), kept apart from `rows` as every report's total is.
+   */
+  total: OperationsReportTotalsDto;
+}
+
 /**
  * «تقرير الخزينة» — WHAT THE VAULT HOLDS NOW, per bank (Round 12): «اعمل فوق تقرير الخزينة يكون نفس
  * الداتا اللى فى بيان الشحنات لكل بنك ونفس الشكل وكل حاجه بس مفيش فتر من الى هيكون لحظى على ف
@@ -2917,6 +2983,9 @@ export interface OperationsShipmentAssignmentDto {
  * Round 24: the crew row may be one WITHOUT A VAN — the same delivery leg «توزيع المحصنات» writes,
  * so both doors accept the same rows. (The daily PICKUP leg — `pickup` on the shipment form,
  * `AssignShipmentPickupLegSchema` — still takes a van's row only: 404 for a row without a van.)
+ * Round 25: and both keep the «محصنة» rule — a row not of that type takes no محصنة unless its
+ * delivery leg is already on that row: 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`, checked after
+ * the day and before the captain, naming the shipment and the row.
  */
 export const AssignSecuredDeliveryLegSchema = z
   .object({
@@ -3269,12 +3338,34 @@ export interface OperationsSecuredDistributionRowDto extends OperationsDayBoardS
   placedCrewAssignmentId: string | null;
   /**
    * AUTO BY DIRECTION — «المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى»: the crew rows of `crews`
-   * that have at least one captain and whose `direction` names this shipment's `areaName`
+   * of the «محصنة» type (`securedType`, Round 25) that have at least one captain and whose `direction`
+   * names this shipment's `areaName`
    * (`operationsDirectionMatchesArea`), in `crews` order. The screen PROPOSES the shipment onto the
    * van when it is unplaced and this holds EXACTLY ONE id — on load, and again on «توزيع تلقائي»;
    * with none or several it is left for the person. A proposal is the screen's until «حفظ».
    */
   directionCrewAssignmentIds: string[];
+}
+
+/**
+ * A crew row on «توزيع المحصنات» / «تسليم المحصنات» — the boards' van card, plus (Round 25) whether
+ * the row's «النوع» is the seeded «محصنة» type.
+ */
+export interface OperationsSecuredDistributionCrewDto extends OperationsDayBoardVehicleCrewDto {
+  /**
+   * True for a row of the «محصنة» type — the only rows that take محصنات. False for a row of another
+   * type (or none) listed only because it already carries one of this screen's shipments: the screen
+   * marks it («ليس من نوع محصنة») and offers it no new one.
+   */
+  securedType: boolean;
+  /** The row's «النوع» by name (the catalog's Arabic name), or null when it has none. */
+  shiftTypeName: string | null;
+  /**
+   * A row WITHOUT A VAN: its number among ALL the day's rows without a van, in the order they were
+   * added — «لوحة التشغيلة»'s «بدون سيارة (n)», whatever their type — so the screen names it as the
+   * board does even though it lists the «محصنة» rows only. Null on a van's row.
+   */
+  looseNumber: number | null;
 }
 
 export interface OperationsSecuredDistributionDto {
@@ -3301,8 +3392,15 @@ export interface OperationsSecuredDistributionDto {
    *
    * Order: the vans by van code (numbers in number order; a van Fleet cannot name last), THEN the
    * rows without a van in the order they were added on the board.
+   *
+   * Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس ولازم اكون دايس حفظ»: only SAVED crew rows
+   * (the board's unsaved draft is not in the database) whose «النوع» is the seeded «محصنة» type
+   * (`seedKey` 'secured' — a rename keeps it), van or none. A row of another type, or with no type,
+   * is not listed — UNLESS it already holds the live delivery leg of a shipment listed here (placed
+   * before Round 25, or its type changed since): then it stays, `securedType` false, so nothing on
+   * it vanishes; it takes no NEW shipment (the save answers `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`).
    */
-  crews: OperationsDayBoardVehicleCrewDto[];
+  crews: OperationsSecuredDistributionCrewDto[];
   /**
    * THE MAHSANAT (the left column, and each van's load): every SECURED shipment, not deleted, that is
    *   · due on the day (`deliveryDate` = `date`) and not yet out — status `draft` (any stage:
@@ -3370,7 +3468,11 @@ export type SecuredDistributionChange = z.infer<typeof SecuredDistributionChange
  *     `OPERATIONS_CREW_DAY_MISMATCH` when it is a crew row of another day; 422 `OPERATIONS_CREW_CAPTAIN_MISMATCH` when the captain is not one of
  *     its captains (a van with two captains takes either — the screen sends the one chosen on the
  *     van card, the first by default). Round 24: a crew row WITHOUT A VAN of the day is a van here
- *     like any other — same checks, and the leg it gets has `vehicleId` null.
+ *     like any other — same checks, and the leg it gets has `vehicleId` null. Round 25: 422
+ *     `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED` when the row's «النوع» is not the seeded «محصنة»
+ *     type (another type, or none) and the shipment's delivery leg is not already on that row —
+ *     checked after the day, before the captain; a second detail names the row (`field`
+ *     'crewAssignmentId', `code` 'NOT_SECURED', `message` its id).
  * Every refusal names the shipment: `details` = [{ field: 'shipmentId', code: 'SHIPMENT', message:
  * <its id> }] (the 404 of a missing crew row and `STALE_DOCUMENT` included), so the screen can mark
  * its card. Then the day itself: 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` for a day before today

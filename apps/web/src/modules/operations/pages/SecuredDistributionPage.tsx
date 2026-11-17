@@ -59,6 +59,15 @@
 //     with ONE captain's line led by the count, and the three package counts (`VanCard`). A van
 //     with two captains shows the first; who a محصنة goes with is switched in its «نقل إلى…».
 //
+// ROUND 26 — the owner on this screen:
+//   · «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات»: each column's filter boxes on its title's
+//     line (`DistributionColumn`'s head) — the left column's compact (`filtersFit="narrow"`);
+//   · «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين»: resting on a
+//     van's head or captain's line opens its card (`VanCard` — every captain, both specialist slots,
+//     the drivers, the counts); never during a drag nor over an open «نقل إلى…» menu;
+//   · «عاوزك تضيف الوان»: each van its accent by its place in the day's whole list (`vanAccents`),
+//     every chip on it the same, the counts each in theirs — the page's figures too.
+//
 // WHO. The screen is `operationsShipment.view`'s; moving and saving are `operationsShipment.edit`'s
 // (assign-delivery's grant — distributing IS assigning the delivery leg, for many at once). A reader
 // without it sees the day's plan as it stands, with nothing to drag.
@@ -103,7 +112,8 @@ import {
   useSaveSecuredDistribution,
   useVaultPackaging,
 } from '../api/operations-queries';
-import { BoardFigurePill, FIGURE_TONE } from '../components/BoardFigures';
+import { BoardFigurePill } from '../components/BoardFigures';
+import { COUNT_LOOK, VANS_FIGURE } from '../components/distribution-look';
 import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsBoard';
 import {
   CardMark,
@@ -121,6 +131,7 @@ import {
   ShipmentChip,
   VAN_GRID,
   VanCard,
+  countText,
   dayText,
   type ChipMoneyLine,
   type MoveChoice,
@@ -186,6 +197,7 @@ import {
   type UndoWhat,
 } from '../lib/crew-undo';
 import { hasNoVan, looseCrewNumbers, vanCodeText, vanPhrase } from '../lib/van-name';
+import { PACKAGE_KINDS, vanAccents } from '../lib/van-accent';
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 
@@ -305,6 +317,9 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const packagesRead = packagingRead(canReadVault, packaging);
 
   const columns = distributionColumns(rows, vans, draft);
+  // Round 26 — the day's packages (every محصنة listed, as the vault counted them), for the page's
+  // figures; null to a reader who cannot read the vault.
+  const dayPackages = vanPackages(packagesRead, rows, packagingOf);
   const vanById = new Map(vans.map((van) => [van.crewAssignmentId, van]));
   // Round 24 — the crews without a van, numbered as the board numbers them («بدون سيارة (n)»).
   // Round 25: the server's own number (`looseNumber`, among ALL the day's rows without a van) —
@@ -316,6 +331,10 @@ export const SecuredDistributionPage = (): JSX.Element => {
   };
   const vanName = (van: OperationsSecuredDistributionCrewDto): string =>
     vanPhrase(t, van, looseNumberOf(van.crewAssignmentId));
+  // Round 26 — each van's colour, by its place in the day's WHOLE list (never the filtered one).
+  const accents = vanAccents(vans);
+  const accentOf = (crewAssignmentId: string | null) =>
+    crewAssignmentId === null ? null : (accents.get(crewAssignmentId) ?? null);
   const proposedCount = changes.filter((change) => draft.get(change.shipmentId)?.proposed).length;
 
   const rowById = new Map(rows.map((row) => [row.id, row]));
@@ -359,7 +378,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
     else
       toast.success(
         t(pluralKey('operations.distribution.autoDone', locale, added), {
-          count: formatNumber(added, locale),
+          count: countText(added, locale),
         }),
       );
   };
@@ -378,11 +397,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
       toast.success(
         result.rescheduled > 0
           ? t(pluralKey('operations.distribution.savedRescheduled', locale, result.changed), {
-              count: formatNumber(result.changed, locale),
-              rescheduled: formatNumber(result.rescheduled, locale),
+              count: countText(result.changed, locale),
+              rescheduled: countText(result.rescheduled, locale),
             })
           : t(pluralKey('operations.distribution.saved', locale, result.changed), {
-              count: formatNumber(result.changed, locale),
+              count: countText(result.changed, locale),
             }),
       );
     } catch (error) {
@@ -606,6 +625,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
           key: `captain|${captain.employeeId}`,
           label: t('operations.distribution.withCaptain', { name: personName(captain) }),
           sub: t('operations.distribution.captainOn', { van: vanName(current) }),
+          accent: accentOf(current.crewAssignmentId),
           current: captain.employeeId === placement.captainEmployeeId,
           onSelect: () => switchCaptain(row, current, captain.employeeId),
         });
@@ -618,6 +638,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
         sub: [van.captains[0] === undefined ? '' : personName(van.captains[0]), van.direction ?? '']
           .filter((part) => part !== '')
           .join(' — '),
+        accent: accentOf(van.crewAssignmentId),
         current: van.crewAssignmentId === at,
         ...(takesShipments(van, row.placedCrewAssignmentId)
           ? {}
@@ -728,6 +749,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
         bankName={bankNameOf(row.mainBankId)}
         branchName={row.destination?.name ?? row.origin?.name ?? ''}
         tone={wasRefused ? 'refused' : proposed ? 'proposed' : moved ? 'moved' : undefined}
+        accent={van === undefined ? null : accentOf(van.crewAssignmentId)}
         marks={
           <>
             {row.overdue && (
@@ -814,6 +836,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                   ? vanName(van)
                   : `${vanName(van)} · ${t('operations.distribution.withCaptain', { name: personName(captain) })}`
             }
+            placeAccent={van === undefined ? null : accentOf(van.crewAssignmentId)}
             notes={notes}
           />
         }
@@ -875,6 +898,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
               data-filter="van-code"
               label={t('operations.distribution.filter.vanCode')}
               icon={FILTER_ICON.car}
+              fit="code"
               value={vanFilter.code}
               onChange={(code) => setVanFilter((current) => ({ ...current, code }))}
             />
@@ -918,6 +942,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 day={day}
                 count={load.length}
                 packages={vanPackages(packagesRead, load, packagingOf)}
+                accent={accentOf(van.crewAssignmentId)}
                 {...(canEdit
                   ? {
                       drop: {
@@ -968,6 +993,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
       icon={SHIPMENT_PATH.shipment}
       data-distribution-column="unplaced"
       data-drop-unplaced="true"
+      filtersFit="narrow"
       {...(wide
         ? {}
         : { collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) } })}
@@ -983,21 +1009,27 @@ export const SecuredDistributionPage = (): JSX.Element => {
         loaded && columns.unplaced.length > 0 ? (
           <ColumnFilterBar
             data-filter-bar="unplaced"
+            narrow
             active={isUnplacedFiltering(unplacedFilter)}
             shown={unplacedShown.length}
             total={columns.unplaced.length}
             onClear={() => setUnplacedFilter(EMPTY_UNPLACED_FILTER)}
           >
+            {/* Round 26 — beside the title in a quarter of the screen: compact boxes, shorter words
+                in them; each keeps its whole name for a screen reader and on hover. */}
             <FilterTextBox
               data-filter="unplaced-search"
               label={t('operations.distribution.filter.search')}
+              placeholder={t('operations.distribution.filter.searchShort')}
+              fit="narrow"
               value={unplacedFilter.search}
               onChange={(search) => setUnplacedFilter((current) => ({ ...current, search }))}
             />
             <FilterAreaSelect
               data-filter="unplaced-area"
               label={t('operations.distribution.filter.area')}
-              allLabel={t('operations.distribution.filter.allAreas')}
+              allLabel={t('operations.distribution.filter.allAreasShort')}
+              fit="narrow"
               value={unplacedFilter.area}
               options={unplacedAreaOptions}
               onChange={(area) => setUnplacedFilter((current) => ({ ...current, area }))}
@@ -1055,25 +1087,44 @@ export const SecuredDistributionPage = (): JSX.Element => {
           <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5">
             <BoardFigurePill
               icon={PATH.truck}
-              tone={FIGURE_TONE.pound}
+              tone={VANS_FIGURE}
               label={t('operations.distribution.vans')}
-              value={loaded ? formatNumber(vans.length, locale) : '…'}
+              value={loaded ? countText(vans.length, locale) : '…'}
               data-figure="vans"
             />
+            {/* Round 26 — the counts in their own colours, as on every van: the محصنات indigo,
+                then the vault's packages over the day's محصنات. */}
             <BoardFigurePill
-              icon={SHIPMENT_PATH.shipment}
-              tone={FIGURE_TONE.count}
+              icon={COUNT_LOOK.shipments.icon}
+              tone={COUNT_LOOK.shipments.square}
               label={t('operations.distribution.shipments')}
-              value={loaded ? formatNumber(rows.length, locale) : '…'}
+              value={loaded ? countText(rows.length, locale) : '…'}
               data-figure="shipments"
             />
             <BoardFigurePill
-              icon={SHIPMENT_PATH.shipment}
-              tone={FIGURE_TONE.others}
+              icon={COUNT_LOOK.shipments.icon}
+              tone={COUNT_LOOK.shipments.square}
               label={t('operations.distribution.unplaced')}
-              value={loaded ? formatNumber(columns.unplaced.length, locale) : '…'}
+              value={loaded ? countText(columns.unplaced.length, locale) : '…'}
               data-figure="unplaced"
             />
+            {dayPackages !== null &&
+              PACKAGE_KINDS.map((kind) => (
+                <BoardFigurePill
+                  key={kind}
+                  icon={COUNT_LOOK[kind].icon}
+                  tone={COUNT_LOOK[kind].square}
+                  label={t(`operations.distribution.${kind}`)}
+                  value={
+                    !loaded || dayPackages === 'pending'
+                      ? '…'
+                      : dayPackages === 'failed'
+                        ? '—'
+                        : countText(dayPackages[kind], locale)
+                  }
+                  data-figure={kind}
+                />
+              ))}
           </div>
           {canEdit && (
             <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
@@ -1119,7 +1170,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 ) : (
                   <BoardIcon d={[...SHIPMENT_PATH.check]} className="h-3.5 w-3.5" width={2.5} />
                 )}
-                {t('operations.distribution.save', { count: formatNumber(changes.length, locale) })}
+                {t('operations.distribution.save', { count: countText(changes.length, locale) })}
               </button>
             </span>
           )}
@@ -1141,7 +1192,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
           {canEdit && proposedCount > 0 && (
             <CardMark tone="proposed" data-proposed-count={String(proposedCount)}>
               {t('operations.distribution.proposedCount', {
-                count: formatNumber(proposedCount, locale),
+                count: countText(proposedCount, locale),
               })}
             </CardMark>
           )}
@@ -1150,7 +1201,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
         {tooLarge ? (
           <BoardRefusal>
             {t('operations.distribution.tooLarge', {
-              max: formatNumber(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, locale),
+              max: countText(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, locale),
             })}
           </BoardRefusal>
         ) : failed ? (
@@ -1194,7 +1245,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
         }
       >
         <p className="text-[15px] font-semibold leading-7 text-slate-700 dark:text-slate-200">
-          {t('operations.distribution.leaveBody', { count: formatNumber(changes.length, locale) })}
+          {t('operations.distribution.leaveBody', { count: countText(changes.length, locale) })}
         </p>
       </DesignDialog>
     </PageContainer>

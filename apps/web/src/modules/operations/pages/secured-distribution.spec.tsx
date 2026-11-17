@@ -34,7 +34,7 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { listKey } from '../../../shared/lib/query-keys';
-import { formatNumber } from '../../../shared/lib/format';
+import { formatAmount, formatNumber } from '../../../shared/lib/format';
 import { ApiError } from '../../../shared/lib/api-client';
 import { HISTORY_TOO_LARGE, cairoToday } from '../lib/shipment-history';
 import { __securedDistributionKey } from '../api/operations-queries';
@@ -427,7 +427,11 @@ describe('«توزيع المحصنات» — the desk', () => {
       html.indexOf('data-distribution-save="2"') + 600,
     );
     expect(save).not.toMatch(/disabled=""/);
-    expect(html).toContain(ar('operations.distribution.save', { count: formatNumber(2, 'ar') }));
+    // R26 critic — a count on this screen in the figures' face, as the page's bar writes it.
+    expect(html).toContain(ar('operations.distribution.save', { count: '2' }));
+    expect(html).not.toContain(
+      ar('operations.distribution.save', { count: formatNumber(2, 'ar') }),
+    );
     expect(html).toContain(`data-proposed-count="2"`);
   });
 
@@ -575,7 +579,8 @@ describe('«تسليم المحصنات» — the vault', () => {
     const v101 = vanOf(html, 'cr-101');
     expect(v101).toContain('data-handover-open="cr-101"');
     expect(v101).toContain('data-handover-print="cr-101"');
-    expect(v101).toContain(ar('operations.handover.handover', { count: formatNumber(1, 'ar') }));
+    // R26 critic — «تسليم (1)» over the van's «1 محصنة»: one numeral system on the card.
+    expect(v101).toContain(ar('operations.handover.handover', { count: '1' }));
     // The one still with its captain is listed, marked, and said not to go.
     expect(cardOf(html, 's-captain')).toContain('data-mark="not-in-vault"');
     expect(v101).toContain('data-handover-held="1"');
@@ -612,7 +617,7 @@ describe('«تسليم المحصنات» — the vault', () => {
       });
       expect(refusal).toContain(
         ar('operations.distribution.tooLarge', {
-          max: formatNumber(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, 'ar'),
+          max: formatAmount(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, 'ar'),
         }),
       );
       expect(refusal).not.toContain('data-distribution-van=');
@@ -833,8 +838,10 @@ describe('Round 24c — the widths, and the van card', () => {
   it('gives the vans three quarters of a wide screen and the shipments on no van one', () => {
     for (const html of [desk, vault]) {
       expect(html).toContain('lg:grid-cols-[minmax(0,3fr)_minmax(17rem,1fr)]');
-      // As many van cards to a row as fit — not two at most.
-      expect(html).toContain('grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))]');
+      // As many van cards to a row as fit — not two at most; R26 critic: four at the most.
+      expect(html).toContain(
+        'grid-cols-[repeat(auto-fill,minmax(min(100%,max(17.5rem,calc((100%_-_2.25rem)/4))),1fr))]',
+      );
       expect(html).not.toContain('xl:grid-cols-2');
     }
   });
@@ -997,8 +1004,11 @@ describe('Round 25 — the screen', () => {
     const bar = left.slice(left.indexOf('data-filter-bar="unplaced"'));
     expect(bar).toContain('data-filter="unplaced-search"');
     expect(bar).toContain('data-filter="unplaced-area"');
-    expect(bar).toContain(`placeholder="${ar('operations.distribution.filter.search')}"`);
-    expect(bar).toContain(`>${ar('operations.distribution.filter.allAreas')}<`);
+    // Round 26 — beside the title in a quarter of the screen: the box says less, its name stays whole
+    // for a screen reader and on hover.
+    expect(bar).toContain(`aria-label="${ar('operations.distribution.filter.search')}"`);
+    expect(bar).toContain(`placeholder="${ar('operations.distribution.filter.searchShort')}"`);
+    expect(bar).toContain(`>${ar('operations.distribution.filter.allAreasShort')}<`);
     // The areas of the محصنات on the left: «الجيزة» and «العباسية».
     expect(bar).toMatch(/<option value="[^"]+">الجيزة<\/option>/);
     expect(bar).toMatch(/<option value="[^"]+">العباسية<\/option>/);
@@ -1007,6 +1017,7 @@ describe('Round 25 — the screen', () => {
     expect(vans).toContain('data-filter="van-search"');
     expect(vans).toContain('data-filter="van-area"');
     expect(vans).toContain(`placeholder="${ar('operations.distribution.filter.vanCode')}"`);
+    expect(vans).toContain(`>${ar('operations.distribution.filter.allAreas')}<`);
     // Before anything is typed, nothing is hidden and nothing offers to clear.
     expect(desk).not.toContain('data-filter-clear');
     // The vans' filter bar sits above the vans, under the column's head.
@@ -1119,5 +1130,94 @@ describe('Round 25 — the screen', () => {
     expect(QUERIES).toMatch(
       /const securedDistributionPrefix: readonly unknown\[\] = \[\s*\.\.\.featureKey\(MODULE, 'dayBoard'\),\s*'securedDistribution',\s*\]/,
     );
+  });
+});
+
+// Round 26 — the owner: «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات», «لما اقف على العربية يطلع
+// كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين», «عاوزك تضيف الوان عشان حاسس ان مش اقدر اميز
+// اوى العربيه والمحصنات اللى عليها والاعداد وكدا».
+describe('Round 26 — the screens', () => {
+  const desk = render({
+    path: '/operations/secured/distribution',
+    permissions: [...DESK, 'operationsVault.view'],
+    data: answer(),
+  });
+  const vault = render({
+    path: '/operations/vault/handover',
+    permissions: [...VAULT, 'operationsCrew.view'],
+    data: answer(),
+  });
+  const accentOf = (html: string, id: string): string | null =>
+    /data-van-accent="([a-z]+)"/.exec(vanOf(html, id))?.[1] ?? null;
+
+  it('puts each column’s filter boxes on its title’s line — inside its head', () => {
+    for (const column of ['vans', 'unplaced']) {
+      const at = desk.indexOf(`data-distribution-column="${column}"`);
+      const head = desk.slice(at, desk.indexOf('</header>', at));
+      expect(head, column).toContain(`data-filter-bar="${column}"`);
+      expect(head.indexOf('data-column-title="true"')).toBeLessThan(
+        head.indexOf('data-filter-bar'),
+      );
+    }
+    // The left column takes a drop on its head still: the head is inside its mark.
+    const left = desk.slice(desk.indexOf('data-distribution-column="unplaced"') - 300);
+    expect(left).toMatch(
+      /<section[^>]*data-distribution-column="unplaced"[^>]*data-drop-unplaced="true"/,
+    );
+  });
+
+  it('gives each van its colour by its place in the day’s list — the same on both screens', () => {
+    // R26 critic — the order starts navy, orange, olive, sky, fuchsia (no count's colour first).
+    const expected = ['navy', 'orange', 'olive', 'sky', 'fuchsia'];
+    VANS.forEach((van, at) => {
+      expect(accentOf(desk, van.crewAssignmentId), van.crewAssignmentId).toBe(expected[at]);
+      expect(accentOf(vault, van.crewAssignmentId), van.crewAssignmentId).toBe(expected[at]);
+    });
+  });
+
+  it('paints every chip on a van in its van’s colour; the chips on no van stay plain', () => {
+    // 101 carries «المعادي» (proposed) and the one with its captain.
+    for (const id of ['s-maadi', 's-captain']) {
+      expect(cardOf(desk, id), id).toContain('data-chip-accent="navy"');
+    }
+    expect(cardOf(desk, 's-104')).toContain('data-chip-accent="orange"');
+    for (const id of ['s-giza', 's-abbassia']) {
+      expect(cardOf(desk, id), id).not.toContain('data-chip-accent');
+    }
+    expect(cardOf(vault, 's-captain')).toContain('data-chip-accent="navy"');
+  });
+
+  it('opens the van’s card from its head and its captain’s line, on both screens', () => {
+    for (const html of [desk, vault]) {
+      const card = vanOf(html, 'cr-104');
+      expect(card).toMatch(/data-van-hover="cr-104" role="group"/);
+      const zone = card.slice(card.indexOf('data-van-hover='), card.indexOf('data-van-packages='));
+      expect(zone).toContain('data-van-head="true"');
+      expect(zone).toContain('data-van-captain-line="cr-104"');
+    }
+  });
+
+  it('counts on the page’s bar in the counts’ own colours — the محصنات indigo, then the day’s packages', () => {
+    const bar = desk.slice(
+      desk.indexOf('data-distribution-toolbar'),
+      desk.indexOf('data-distribution-bar'),
+    );
+    for (const figure of ['shipments', 'unplaced', 'cartons', 'bags', 'boxes']) {
+      expect(bar, figure).toContain(`data-figure="${figure}"`);
+    }
+    expect(bar).toMatch(
+      /bg-indigo-500\/15 text-indigo-700[\s\S]*data-figure="shipments"|data-figure="shipments"[\s\S]*bg-indigo-500\/15 text-indigo-700/,
+    );
+    // s-maadi is the one counted: 4 bags, 1 box.
+    expect(bar).toMatch(/data-figure="bags"[\s\S]*?>4</);
+    expect(bar).toMatch(/data-figure="cartons"[\s\S]*?>0</);
+    // A reader who cannot read the vault: no package figures at all — never a guessed 0.
+    const blind = render({
+      path: '/operations/secured/distribution',
+      permissions: DESK,
+      data: answer(),
+    });
+    expect(blind).not.toContain('data-figure="bags"');
+    expect(blind).toContain('data-figure="shipments"');
   });
 });

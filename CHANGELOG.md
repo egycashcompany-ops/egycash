@@ -1174,6 +1174,105 @@ its entry here in the same PR.
       construction: the packages are the treasury's, behind the custody port, which a `$lookup`
       would read behind its back.
 
+  - Round 26 — «توزيع المحصنات» (and «تسليم المحصنات», which shares its van card), the owner on the
+    Round 25 screen: «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات — لما اقف على العربية يطلع كارت
+    بقى بالقادة والاخصائيين اللى على العربيه والسواقيين — عاوزك تضيف الوان عشان حاسس ان مش اقدر اميز اوى
+    العربيه والمحصنات اللى عليها والاعداد وكدا».
+    - THE FILTERS BESIDE THE TITLES: each column's boxes are on its title's line — «السيارات (n)» then
+      «كود السيارة», «البنك أو الفرع», «كل المناطق»; «بلا سيارة (n)» then its two boxes — one head, no
+      filter row. The left column's quarter keeps them compact: «بحث» and «المناطق» in the boxes (each
+      keeps its whole name, «البنك أو الفرع» / «المنطقة», for a screen reader and on hover), 12px, and
+      a head narrower than its title and two boxes drops the column's drawing (a container query) —
+      so the title and both boxes share one line at 1440, 1366, 1280 and 1024 (measured: 85 + 117 px at
+      1440, 65 + 97 at 1280). On a phone the fold stays: the boxes take a line of their own under the
+      toggle, and go with the body when it folds. A filter in use says «المعروض 2 من 8 · مسح التصفية» at
+      the end of the vans' line and under the left's boxes (wrapping there, never past the column's
+      edge). The head is still inside the left column's
+      drop mark: a drop on it, or on its boxes, takes a محصنة off its van.
+    - THE VAN'S CARD: resting on a van — its head (code · time · direction) or its captain's line —
+      opens a card after the usual beat (`HoverCardLayer`, kind `secured-van`): the van (its code in its
+      colour, or «بدون سيارة (n)»), the time and the whole direction; «القادة» — every captain, in the
+      order put on the row, the first marked «المعروض على البطاقة»; «أخصائي 1» and «أخصائي 2» — everyone in
+      each; «السائقون» — by name, Fleet's duty row; each slot «لا يوجد» when empty, «يظهر لمن يملك صلاحية
+      عرض لوحة التشغيلة» when the read withheld it (a reader without `operationsCrew.view`), «بدون سيارة —
+      لا سائقين» on a crew with no van; then what it carries — the محصنات badge and the three packages,
+      in their colours. Every fact was already in the read (`crews`: captains, specialist1,
+      specialist2, drivers, direction, plannedTime): no server change, no grant. A keyboard focus opens
+      it at once, a tap on a phone too; it is never cut at the screen's edge (288px, kept 8px inside at
+      390). Not on a chip (a chip keeps its own card) and not on the captain's own name, which keeps
+      his person card (as a name does on every board); never while a drag is on (a `dragstart` /
+      `dragend` watch on the window, and Chromium sends no mouse events during one), never over an
+      open «نقل إلى…» menu (Round 25's F2 rule): the shared hook takes a `when` it asks as the pointer
+      comes and again when the beat ends. The card is a layer that takes no pointer, and the head is
+      inside the van's drop mark: a drop anywhere on the card still lands.
+    - THE COLOURS: each van wears an ACCENT — one of «لوحة التشغيلة»'s twenty palette colours, no new
+      palette — by its place among the day's «محصنة» rows (the same list on both screens, so a van is the
+      same colour on «تسليم المحصنات»; a filter hides cards, it never repaints them), through an order
+      of the palette in which neighbours (next to each other, or one above the other at two, three or
+      FOUR a row — «السيارات» lays four a row at 1920, the owner's own screen) never share a hue family,
+      never look alike (CIEDE2000 17 or more between their stripes, 20 or more over a day's first
+      twelve) and alternate dark and light; amber, rose and emerald — a proposal, a refusal, the
+      captain — come last, and their near twins brown, crimson and slate after the eighth
+      (`lib/van-accent.ts`). The accent is a stripe at the card's start
+      edge (the palette's own dot), its head on a thin band of it, and its code in a solid pill of it
+      with white or near-black words, whichever reads; every chip ON that van wears the same stripe and
+      a thin ground of it, and the chip's card — and «نقل إلى…», each van in its list — names the van
+      beside its swatch. A chip on no van stays
+      plain; a proposal (and an unsaved move) keeps its own ground and edge — dashed amber «مقترحة» —
+      and wears the van's colour as its stripe only. THE COUNTS each have their colour and icon, the
+      same on the van card, the van's card, a chip's card and the page's figures: محصنات indigo (the
+      badge before the captain; the page's «محصنات اليوم» and «بلا سيارة»), كراتين amber, حقائب teal,
+      صناديق fuchsia — each on a light ground of its own, ringed in its colour, its icon and figure in
+      it, never solid as a van's code is; a 0 is written in grey, its icon dimmer. The page's bar
+      gains the day's three package totals (the vault's counts; «…» while read, «—» if it failed, none
+      to a reader who cannot read the vault) and writes its figures in the figures' face, «0» never a
+      dot. THE HEAD: the time in sky, the direction in violet, each on a ground of its own; the
+      captain's line stays green on any van, its «قائد» now emerald-700 (5.5:1; emerald-600 was 3.8:1).
+      Every pair of words and ground is measured against Tailwind's own colours in both themes
+      (`distribution-colours.spec.ts`): 4.5:1 or better for every word, 3:1 for every count's icon. The
+      printed sheet stays black on white.
+    - THE INDEPENDENT CHECK (real OS drags under Xvfb on the real API, at 1×, at 6× CPU and at 6× with
+      only the standard formats carried: 23 of 23 each — every part of the new card, van to van, van to
+      the left's title, count, search box, area list and body, «حفظ» and a reload matching the server;
+      a card open in none of the 63 drags): the first
+      order kept three-a-row neighbours apart but put crimson over brown (ΔE00 13) and violet over navy
+      four apart — one above the other at 1920; the order from the seventh colour on is now fuchsia,
+      lime, navy, teal, brown, pink, olive, cyan, violet, amber, rose, emerald, slate, plum (the first
+      six, and so every day of up to six vans, unchanged). «مسح التصفية» ran 16px past the left column's
+      edge at 1024 with a filter in use; it wraps under «المعروض …» now.
+    - THE CRITIC'S PASS — nine findings, each fixed with a test seen failing first:
+      - «عاوزك تضيف الوان … اميز اوى العربيه»: a colour must STAY on its van. It was the van's place in
+        the whole list, and a row of another type is listed only while it carries (Round 25) — a
+        «حفظ» that took 106 «سفر»'s last محصنة, a hand-over, or the vault's poll dropped it and every
+        van after it changed colour. The «محصنة» rows (listed all day) now take the places among
+        themselves, a kept row a colour after them, never gold, amber or brown (its own dashed amber
+        edge and notice say «kept»). Only a change to the board's own «محصنة» rows moves the colours
+        after it — as it moves the cards: a colour keyed on the van alone would stay, but could put
+        two alike side by side, which is what the colours are for.
+      - «والاعداد»: a count was drawn like a van — the محصنات badge was solid indigo-600, the very pill
+        of the first van's code right above it, every day. A count is now a light ground of its own,
+        ringed in its colour, its icon and figure in it (0 muted); the order starts navy, orange,
+        olive, sky, fuchsia, teal, indigo, gold, brown, pink, forest, cyan, violet, lime, crimson,
+        emerald, slate, amber, plum, rose — no count's colour first, brown (amber-800) and crimson
+        (red-700, beside a refusal's rose) after the eighth — no order the specs allow keeps them
+        later (an exhaustive search). A proposal on a van keeps its own amber ground (on an orange
+        van only its dashed edge was left).
+      - «السيارات» lays at most FOUR a row: auto-fill put six at 2560, the card above six places back,
+        which the order does not keep apart; four wider cards now.
+      - «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات»: the left's boxes went back under the title
+        with a three-figure count («بلا سيارة 113») or the English words, at 1024–1440. Its bar now
+        takes what the line leaves and never wraps, its two boxes shrinking together on one row
+        (measured, Arabic and English, 3 and 113, 1024–1920: one line everywhere; 52 + 82 px at 1024
+        with 113 in Arabic, 37 + 58 in English); «المعروض … · مسح التصفية» under them may break each
+        part onto a line of its own and never runs past the column's edge. The column's drawing gives
+        way only to that narrow bar: «تسليم المحصنات»'s left column, which has none, keeps it.
+      - On a phone, a tap on the captain's name opened the VAN's card; it now opens his own, as resting
+        on it does (one tap rule for the chip, the van and the name).
+      - One numeral system: the page's bar wrote «السيارات 8» and the column's head «السيارات ٨». Every
+        count on both screens — the heads, «المعروض 3 من 12», «حفظ (2)», «تسليم (1)», the dialogs and
+        notices — is in the figures' face now, as the van card's counts and the money are; only a
+        crew's NAME, «بدون سيارة (١)», keeps the board's own words.
+
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
   - `/it/vehicle-checks` in the console: six figures of a window (today, 7 or 30 days) under a branch

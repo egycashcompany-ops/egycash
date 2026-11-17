@@ -11558,6 +11558,14 @@ const en: Record<string, string> = {
   'operations.distribution.filter.clear': 'Clear the filter',
   'operations.distribution.filter.shown': 'Showing {{shown}} of {{total}}',
   'operations.distribution.filter.none': 'Nothing matches the filter',
+  // Round 26 — the filters beside the titles, the van's card, its colours and counts.
+  'operations.distribution.filter.searchShort': 'Search',
+  'operations.distribution.filter.allAreasShort': 'Areas',
+  'operations.distribution.vanCard.label': 'Who is on {{van}} and what it carries',
+  'operations.distribution.vanCard.shown': 'On the card',
+  'operations.distribution.vanCard.none': 'None',
+  'operations.distribution.vanCard.hidden': 'Shown to those who may view the crew board',
+  'operations.distribution.vanCard.noVan': 'No vehicle — no drivers',
   'operations.handover.popupBlocked':
     'The browser blocked the print window — allow pop-ups for this site.',
   'operations.handover.done.one': '{{van}}: 1 shipment handed over — it has left the vault.',
@@ -26187,6 +26195,13 @@ const ar: Record<string, string> = {
   'operations.distribution.filter.clear': 'مسح التصفية',
   'operations.distribution.filter.shown': 'المعروض {{shown}} من {{total}}',
   'operations.distribution.filter.none': 'لا شيء يطابق التصفية',
+  'operations.distribution.filter.searchShort': 'بحث',
+  'operations.distribution.filter.allAreasShort': 'المناطق',
+  'operations.distribution.vanCard.label': 'المعيّنون على {{van}} وما تحمله',
+  'operations.distribution.vanCard.shown': 'المعروض على البطاقة',
+  'operations.distribution.vanCard.none': 'لا يوجد',
+  'operations.distribution.vanCard.hidden': 'يظهر لمن يملك صلاحية عرض لوحة التشغيلة',
+  'operations.distribution.vanCard.noVan': 'بدون سيارة — لا سائقين',
   'operations.handover.popupBlocked':
     'منع المتصفح فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع.',
   'operations.handover.done.one': 'سُلّمت محصنة واحدة إلى {{van}} وغادرت الخزينة.',

@@ -24,6 +24,11 @@
 // count, the three package counts always; each محصنة bank · branch, its card on hover. «تسليم» and
 // «طباعة» stay over each van; the confirmation and the printed sheet keep the money and every detail.
 //
+// ROUND 26 — the same van card, now in colour and with its hover card («لما اقف على العربية يطلع كارت
+// بقى بالقادة والاخصائيين اللى على العربيه والسواقيين»): each van wears the accent it wears on «توزيع
+// المحصنات» (its place in the same list), every chip on it the same, the counts each in theirs. The
+// printed sheet stays black on white.
+//
 // WHICH DAY. «تسليم» is TODAY's act (`handoverBlock`): the vault hands a van its load on the day the
 // van goes out. A future day stays on screen — it is the plan, and «طباعة» works there so a sheet can
 // be ready ahead — but its «تسليم» is off, with why, and the day bar says so. The confirmation names
@@ -66,7 +71,8 @@ import {
   useOperationsSecuredDistribution,
   useVaultPackaging,
 } from '../api/operations-queries';
-import { BoardFigurePill, FIGURE_TONE } from '../components/BoardFigures';
+import { BoardFigurePill } from '../components/BoardFigures';
+import { COUNT_LOOK, VANS_FIGURE } from '../components/distribution-look';
 import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsBoard';
 import {
   ChipMark,
@@ -80,6 +86,7 @@ import {
   ShipmentChip,
   VAN_GRID,
   VanCard,
+  countText,
   dayText,
 } from '../components/SecuredDistributionParts';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
@@ -101,6 +108,7 @@ import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
 import { vanLoadSheet } from '../lib/van-load-sheet';
 import { hasNoVan, looseCrewNumbers, vanPhrase } from '../lib/van-name';
+import { PACKAGE_KINDS, vanAccents } from '../lib/van-accent';
 import { PLAN_ICON } from '../components/crew-plan-icons';
 
 export const VaultHandoverPage = (): JSX.Element => {
@@ -170,6 +178,12 @@ export const VaultHandoverPage = (): JSX.Element => {
   };
   const vanName = (van: OperationsDayBoardVehicleCrewDto): string =>
     vanPhrase(t, van, looseNumberOf(van.crewAssignmentId));
+  // Round 26 — each van's colour, by its place in the day's list: the same as on «توزيع المحصنات»,
+  // which reads the same list. The printed sheet stays black on white.
+  const accents = vanAccents(vans);
+  const accentOf = (crewAssignmentId: string) => accents.get(crewAssignmentId) ?? null;
+  // The day's packages, as the vault counted them — the page's figures.
+  const dayPackages = vanPackages(packagesRead, rows, packagingOf);
 
   const print = (
     van: OperationsDayBoardVehicleCrewDto,
@@ -210,7 +224,7 @@ export const VaultHandoverPage = (): JSX.Element => {
       await dispatch.mutateAsync(body);
       toast.success(
         t(pluralKey('operations.handover.done', locale, body.shipmentIds.length), {
-          count: formatNumber(body.shipmentIds.length, locale),
+          count: countText(body.shipmentIds.length, locale),
           van: vanName(van),
         }),
       );
@@ -247,6 +261,7 @@ export const VaultHandoverPage = (): JSX.Element => {
         row={row}
         bankName={bankNameOf(row.mainBankId)}
         branchName={row.destination?.name ?? row.origin?.name ?? ''}
+        accent={van === undefined ? null : accentOf(van.crewAssignmentId)}
         marks={
           <>
             {row.overdue && (
@@ -296,6 +311,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                   ? vanName(van)
                   : `${vanName(van)} · ${t('operations.distribution.withCaptain', { name: personName(captain) })}`
             }
+            placeAccent={van === undefined ? null : accentOf(van.crewAssignmentId)}
             notes={[
               ...(row.overdue
                 ? [
@@ -353,6 +369,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                 day={day}
                 count={load.length}
                 packages={vanPackages(packagesRead, load, packagingOf)}
+                accent={accentOf(van.crewAssignmentId)}
                 actions={
                   <>
                     {canHandOver && (
@@ -377,7 +394,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                       >
                         <BoardIcon d={[...PATH.truck]} className="h-3.5 w-3.5" />
                         {t('operations.handover.handover', {
-                          count: formatNumber(ready.length, locale),
+                          count: countText(ready.length, locale),
                         })}
                       </button>
                     )}
@@ -403,7 +420,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                         className="mt-0.5 h-3.5 w-3.5 shrink-0"
                       />
                       {t(pluralKey('operations.handover.heldNote', locale, held.length), {
-                        count: formatNumber(held.length, locale),
+                        count: countText(held.length, locale),
                       })}
                     </p>
                   ) : undefined
@@ -476,18 +493,19 @@ export const VaultHandoverPage = (): JSX.Element => {
           <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5">
             <BoardFigurePill
               icon={PATH.truck}
-              tone={FIGURE_TONE.pound}
+              tone={VANS_FIGURE}
               label={t('operations.distribution.vans')}
-              value={loaded ? formatNumber(vans.length, locale) : '…'}
+              value={loaded ? countText(vans.length, locale) : '…'}
               data-figure="vans"
             />
+            {/* Round 26 — the counts in their own colours, as on every van. */}
             <BoardFigurePill
-              icon={SHIPMENT_PATH.shipment}
-              tone={FIGURE_TONE.count}
+              icon={COUNT_LOOK.shipments.icon}
+              tone={COUNT_LOOK.shipments.square}
               label={t('operations.handover.ready')}
               value={
                 loaded
-                  ? formatNumber(
+                  ? countText(
                       vans.reduce(
                         (sum, van) => sum + handoverShipments(rows, van.crewAssignmentId).length,
                         0,
@@ -499,12 +517,29 @@ export const VaultHandoverPage = (): JSX.Element => {
               data-figure="ready"
             />
             <BoardFigurePill
-              icon={SHIPMENT_PATH.shipment}
-              tone={FIGURE_TONE.others}
+              icon={COUNT_LOOK.shipments.icon}
+              tone={COUNT_LOOK.shipments.square}
               label={t('operations.distribution.unplaced')}
-              value={loaded ? formatNumber(columns.unplaced.length, locale) : '…'}
+              value={loaded ? countText(columns.unplaced.length, locale) : '…'}
               data-figure="unplaced"
             />
+            {dayPackages !== null &&
+              PACKAGE_KINDS.map((kind) => (
+                <BoardFigurePill
+                  key={kind}
+                  icon={COUNT_LOOK[kind].icon}
+                  tone={COUNT_LOOK[kind].square}
+                  label={t(`operations.distribution.${kind}`)}
+                  value={
+                    !loaded || dayPackages === 'pending'
+                      ? '…'
+                      : dayPackages === 'failed'
+                        ? '—'
+                        : countText(dayPackages[kind], locale)
+                  }
+                  data-figure={kind}
+                />
+              ))}
           </div>
         </div>
 
@@ -535,7 +570,7 @@ export const VaultHandoverPage = (): JSX.Element => {
         {tooLarge ? (
           <BoardRefusal>
             {t('operations.distribution.tooLarge', {
-              max: formatNumber(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, locale),
+              max: countText(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS, locale),
             })}
           </BoardRefusal>
         ) : failed ? (
@@ -570,7 +605,7 @@ export const VaultHandoverPage = (): JSX.Element => {
                 busy={dispatch.isPending}
                 disabled={confirmLoad.length === 0 || !handoverToday}
                 label={t(pluralKey('operations.handover.confirm', locale, confirmLoad.length), {
-                  count: formatNumber(confirmLoad.length, locale),
+                  count: countText(confirmLoad.length, locale),
                 })}
                 data-handover-confirm-save="true"
               />
@@ -591,7 +626,7 @@ export const VaultHandoverPage = (): JSX.Element => {
             />
             <span>
               {t('operations.handover.confirmBody', {
-                count: formatNumber(confirmLoad.length, locale),
+                count: countText(confirmLoad.length, locale),
                 van: vanName(confirmVan),
                 // The day it leaves on, named before the click — it can only be today.
                 day: dayText(day),
@@ -620,7 +655,7 @@ export const VaultHandoverPage = (): JSX.Element => {
             >
               <p>
                 {t(pluralKey('operations.handover.heldNote', locale, confirmHeld.length), {
-                  count: formatNumber(confirmHeld.length, locale),
+                  count: countText(confirmHeld.length, locale),
                 })}
               </p>
               <ul className="space-y-0.5 text-xs font-bold">

@@ -26,7 +26,6 @@ import {
 } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
-import { formatNumber } from '../../../shared/lib/format';
 import { type Packaging, type PackagingRead } from '../lib/secured-distribution';
 import {
   ColumnFilterBar,
@@ -510,8 +509,9 @@ describe('Round 25 — a column’s filter bar', () => {
     expect(html).toContain('data-filter-shown="2/7"');
     expect(html).toContain(
       tr('ar', 'operations.distribution.filter.shown', {
-        shown: formatNumber(2, 'ar'),
-        total: formatNumber(7, 'ar'),
+        // R26 critic — the figures' face, as the column's own count and the page's bar.
+        shown: '2',
+        total: '7',
       }),
     );
     expect(html).toContain(`>${tr('ar', 'operations.distribution.filter.clear')}<`);
@@ -522,7 +522,10 @@ describe('the columns', () => {
   it('three quarters for the vans on a wide screen, as many cards to a row as fit', () => {
     expect(DISTRIBUTION_COLUMNS).toContain('lg:grid-cols-[minmax(0,3fr)_minmax(17rem,1fr)]');
     expect(DISTRIBUTION_COLUMNS).not.toContain('2fr');
-    expect(VAN_GRID).toContain('grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))]');
+    // R26 critic — at most four a row: a card is at least a quarter of the column.
+    expect(VAN_GRID).toContain(
+      'grid-cols-[repeat(auto-fill,minmax(min(100%,max(17.5rem,calc((100%_-_2.25rem)/4))),1fr))]',
+    );
   });
 
   const column = (open: boolean | null): string =>

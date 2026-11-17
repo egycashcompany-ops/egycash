@@ -30,6 +30,7 @@ import {
   type HTMLAttributes,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -41,7 +42,7 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { cn } from '../../../shared/lib/cn';
-import { formatAmount, formatNumber } from '../../../shared/lib/format';
+import { formatAmount } from '../../../shared/lib/format';
 import { pluralKey } from '../../../shared/lib/plural';
 import { useAppSelector } from '../../../store';
 import { FILTER_ICON, FilterWithIcon } from '../../fleet/components/FilterWithIcon';
@@ -63,10 +64,27 @@ import {
   personName,
 } from '../lib/secured-distribution';
 import { ltrIsolate } from '../lib/shipment-log';
+import {
+  PACKAGE_KINDS,
+  vanCrewGroups,
+  vanHoverAllowed,
+  vanTapAllowed,
+  type CountKind,
+  type VanAccent,
+} from '../lib/van-accent';
 import { hasNoVan, vanCodeText, vanPhrase } from '../lib/van-name';
 import { CardHead, Figure, PersonIcon } from './BoardCrewCards';
 import { PLAN_ICON } from './crew-plan-icons';
 import { PlanAttendanceFact, PlanMemberCardBody } from './CrewPlanMemberCard';
+import {
+  CAPTAIN_BAND,
+  CAPTAIN_MARK,
+  COUNT_LOOK,
+  COUNT_ZERO,
+  HEAD_PILL,
+  SHIPMENTS_BADGE,
+  VAN_ACCENT_LOOK,
+} from './distribution-look';
 import { SecuredStageBadge, SecuredStageMark } from './ShipmentBadges';
 import { SHIPMENT_PATH } from './shipment-icons';
 
@@ -85,9 +103,19 @@ export const DISTRIBUTION_COLUMNS =
 /**
  * The vans' cards: as many to a row as fit at 17.5rem or more — three at 1440, four on a 1920
  * screen, two at 1024 and 1280, one on a phone (`min(100%, …)`: a card never wider than its column).
+ * R26 critic — and never more than FOUR: a card is at least a quarter of the column (less its three
+ * gaps), so a 2560 screen lays four wider cards, not six — the card above is one to four places
+ * back, which the colours' order keeps apart (`lib/van-accent.ts`).
  */
 export const VAN_GRID =
-  'grid grid-cols-[repeat(auto-fill,minmax(min(100%,17.5rem),1fr))] items-start gap-3';
+  'grid grid-cols-[repeat(auto-fill,minmax(min(100%,max(17.5rem,calc((100%_-_2.25rem)/4))),1fr))] items-start gap-3';
+
+/**
+ * A count on these screens (R26 critic) — in the figures' face, Latin digits (`formatAmount`), as
+ * the money, the van's code and the van card's counts are: one numeral system on the page, and a 0
+ * that reads as zero, never as a dot. A crew's NAME («بدون سيارة (n)») keeps the board's own words.
+ */
+export const countText = (value: number, locale: Locale): string => formatAmount(value, locale);
 
 /**
  * The day's bar — the boards' filter surface (`DARK_FILTER_BAR`'s box and input colours) holding the
@@ -149,6 +177,13 @@ export const DayBox = ({
  * Round 24c — `collapse`: below the computer's width the column's head is a button that folds its
  * body away (`aria-expanded`), so a long list of محصنات on no van never buries the vans on a phone.
  * Folded, the column still takes a drop on its head (`dropHandlers` are the whole section's).
+ *
+ * Round 26 — «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات»: the filter bar is ON the head's
+ * line, right after the title and its count — one row, no row of its own. `filtersFit` says how
+ * much room the boxes need before they wrap under the title: `wide` (the vans' three boxes) or
+ * `narrow` (the left column's two compact boxes, which share its quarter with the title at 1280 as
+ * at 1440). A foldable column (a phone) puts them on a line of their own under its toggle. Folded,
+ * the bar folds away with the body.
  */
 export const DistributionColumn = ({
   title,
@@ -160,6 +195,7 @@ export const DistributionColumn = ({
   dropHandlers,
   collapse,
   filters,
+  filtersFit = 'wide',
   className,
   ...rest
 }: {
@@ -167,8 +203,10 @@ export const DistributionColumn = ({
   count: number;
   icon: readonly string[];
   extra?: ReactNode;
-  /** Round 25 — the column's filter bar, under its head (folded away with its body). */
+  /** The column's filter bar, on the head's line beside the title (Round 26). */
   filters?: ReactNode;
+  /** How much of the head's line the bar needs before it wraps under the title. */
+  filtersFit?: 'wide' | 'narrow';
   children: ReactNode;
   /** The body's own props — the look of a drop on the shipments column. */
   bodyProps?: HTMLAttributes<HTMLDivElement> & Record<`data-${string}`, string | undefined>;
@@ -184,19 +222,30 @@ export const DistributionColumn = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const bodyId = useId();
   const open = collapse === undefined || collapse.open;
+  const narrowBar = filters !== undefined && filtersFit === 'narrow';
   const head = (
     <>
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/15 text-brand-600 dark:text-brand-300">
-        <BoardIcon d={[...icon]} className="h-4 w-4" />
-      </span>
-      <h2 className="text-[15px] font-black text-slate-900 dark:text-white">{title}</h2>
+      {/* Round 26 — a head narrower than its title and two boxes (the left column at 1280–1440)
+          gives the boxes the room of its drawing; the title and the count stay. R26 critic: only
+          a head that HAS the narrow boxes — the hand-over's left column has none, and keeps it. */}
       <span
         className={cn(
-          'rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-black text-slate-700 dark:bg-slate-700/60 dark:text-slate-200',
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-500/15 text-brand-600 dark:text-brand-300',
+          narrowBar && '[@container(max-width:20.5rem)]:hidden',
+        )}
+      >
+        <BoardIcon d={[...icon]} className="h-4 w-4" />
+      </span>
+      <h2 className="whitespace-nowrap text-[15px] font-black text-slate-900 dark:text-white">
+        {title}
+      </h2>
+      <span
+        className={cn(
+          'shrink-0 rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-black text-slate-700 dark:bg-slate-700/60 dark:text-slate-200',
           NUM,
         )}
       >
-        {formatNumber(count, locale)}
+        {countText(count, locale)}
       </span>
     </>
   );
@@ -211,13 +260,21 @@ export const DistributionColumn = ({
       )}
     >
       <header
+        data-column-head="true"
         className={cn(
-          'flex shrink-0 flex-wrap items-center gap-2 px-4 py-3',
+          'flex shrink-0 flex-wrap items-start gap-x-2 gap-y-2 px-3 py-2.5 [container-type:inline-size]',
           open && 'border-b border-slate-200 dark:border-slate-800',
         )}
       >
         {collapse === undefined ? (
-          head
+          // As tall as the filter boxes beside it: the title stays on their line when the words of
+          // a filter in use take a line of their own under them.
+          <div
+            data-column-title="true"
+            className="flex min-h-[2.125rem] shrink-0 items-center gap-1.5"
+          >
+            {head}
+          </div>
         ) : (
           <button
             type="button"
@@ -225,7 +282,7 @@ export const DistributionColumn = ({
             aria-expanded={open}
             aria-controls={bodyId}
             onClick={collapse.onToggle}
-            className="-m-1 flex min-w-0 flex-1 items-center gap-2 rounded-lg p-1 text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60"
+            className="-m-1 flex min-w-0 flex-1 items-center gap-1.5 rounded-lg p-1 text-start focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60"
           >
             {head}
             <BoardIcon
@@ -237,16 +294,29 @@ export const DistributionColumn = ({
             />
           </button>
         )}
-        {extra}
+        {extra !== undefined && (
+          <div className="ms-auto flex min-h-[2.125rem] min-w-0 items-center">{extra}</div>
+        )}
+        {filters !== undefined && open && (
+          // ON the title's line (Round 26): the bar takes what the line has left. The vans' wide
+          // bar wraps under the title only when that is less than its three boxes need; the left's
+          // narrow bar NEVER wraps (R26 critic: a fixed basis sent it under the title again with a
+          // three-figure count or the English words) — its two boxes shrink to share what is left.
+          <div
+            data-column-filters={filtersFit}
+            className={cn(
+              'flex min-w-0 flex-1',
+              collapse !== undefined
+                ? 'basis-full'
+                : filtersFit === 'narrow'
+                  ? 'basis-0'
+                  : 'basis-[26rem]',
+            )}
+          >
+            {filters}
+          </div>
+        )}
       </header>
-      {filters !== undefined && open && (
-        <div
-          data-column-filters="true"
-          className="shrink-0 border-b border-slate-200 px-3 py-2 dark:border-slate-800"
-        >
-          {filters}
-        </div>
-      )}
       <div
         {...bodyProps}
         id={bodyId}
@@ -410,6 +480,8 @@ export interface MoveChoice {
   /** Offered but not takeable (a van with no captain), with why. */
   disabledReason?: string;
   danger?: boolean;
+  /** Round 26 — the van's colour: its swatch before its name, as on its card. */
+  accent?: VanAccent | null;
   onSelect: () => void;
 }
 
@@ -568,6 +640,9 @@ export const MoveMenu = ({
                       : 'text-slate-900 dark:text-white',
                   )}
                 >
+                  {choice.accent !== undefined && choice.accent !== null && (
+                    <VanSwatch accent={choice.accent} />
+                  )}
                   {choice.label}
                 </span>
                 {choice.sub !== undefined && choice.sub !== '' && (
@@ -596,6 +671,40 @@ const chipTitle = (label: string, value: string): string => `${label}: ${value}`
  * (`crewPlanVisible`) — and only when a card first opens. Without the grant, or before the list
  * answers, the card says what the screen itself knows: the whole name, the code, where he sits.
  */
+/**
+ * A phone has no hover: a TAP on a card's trigger opens (or closes) it, a press anywhere else — or
+ * Escape — closes it. The chip (Round 25), the van (Round 26) and — R26 critic — the captain's name
+ * share this one rule. `pointer` is the last press's kind: only a touch toggles; a mouse's click is
+ * the hover's business.
+ */
+const useTapCard = (
+  anchor: RefObject<HTMLElement | null>,
+): {
+  tapped: boolean;
+  setTapped: (next: boolean | ((open: boolean) => boolean)) => void;
+  pointer: { current: string };
+} => {
+  const [tapped, setTapped] = useState(false);
+  const pointer = useRef<string>('mouse');
+  useEffect(() => {
+    if (!tapped) return undefined;
+    const away = (event: PointerEvent): void => {
+      if (anchor.current?.contains(event.target as Node) === true) return;
+      setTapped(false);
+    };
+    const escape = (event: globalThis.KeyboardEvent): void => {
+      if (event.key === 'Escape') setTapped(false);
+    };
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', away, true);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [tapped, anchor]);
+  return { tapped, setTapped, pointer };
+};
+
 const PersonName = ({
   person,
   seat,
@@ -612,6 +721,8 @@ const PersonName = ({
   className?: string;
 }): JSX.Element => {
   const hover = useHoverCard(true);
+  // R26 critic — on a phone, a tap on his name opens his card, as resting on it does on a computer.
+  const { tapped, setTapped, pointer } = useTapCard(hover.anchor);
   return (
     <>
       <span
@@ -621,10 +732,17 @@ const PersonName = ({
           className,
         )}
         {...hover.triggerProps}
+        onPointerDown={(event) => {
+          pointer.current = event.pointerType;
+        }}
+        onClick={() => {
+          if (pointer.current !== 'touch') return;
+          setTapped((open) => !open);
+        }}
       >
         {personName(person)}
       </span>
-      {hover.open && (
+      {(hover.open || tapped) && (
         <HoverCardLayer id={hover.id} anchor={hover.anchor} mark="crew-plan">
           <PersonCardBody
             person={person}
@@ -683,12 +801,93 @@ const PersonCardBody = ({
 };
 
 /**
+ * THE COUNT OF محصنات on a van — «الصف نفسه بتاع القائد يكون قبله عدد المحصنات» (Round 25): a badge in
+ * the محصنات's colour (Round 26 — indigo, its icon; a 0 grey), «4 محصنات», «11 محصنة» — the count's own
+ * form (`pluralKey`), its figure in the face of the card's other figures (the code, the time), so
+ * «0 محصنات» says zero. The same badge on the van's card.
+ */
+export const ShipmentsCount = ({
+  count,
+  ...rest
+}: { count: number } & Record<`data-${string}`, string>): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <span
+      {...rest}
+      data-count-kind="shipments"
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-black ring-1 ring-inset',
+        count > 0 ? SHIPMENTS_BADGE.some : SHIPMENTS_BADGE.zero,
+      )}
+    >
+      <BoardIcon
+        d={[...COUNT_LOOK.shipments.icon]}
+        className={cn('h-3 w-3 shrink-0', COUNT_LOOK.shipments.mark, count === 0 && 'opacity-70')}
+      />
+      {t(pluralKey('operations.distribution.loadCount', locale, count), {
+        count: countText(count, locale),
+      })}
+    </span>
+  );
+};
+
+/**
+ * ONE COUNT, in its own colour and icon (Round 26 — «والاعداد»): محصنات, كراتين, حقائب or صناديق, the
+ * same chip on the van card, the van's card and a محصنة's card (`COUNT_LOOK`). A 0 is written, in
+ * grey with its icon dimmer; so are «…» (still reading) and «—» (not to be read).
+ */
+export const CountChip = ({
+  kind,
+  value,
+  children,
+  className,
+  ...rest
+}: {
+  kind: CountKind;
+  /** The count — or «…» / «—» when there is none to write yet. */
+  value: number | '…' | '—';
+  /** The words after the figure — the kind's name. */
+  children: ReactNode;
+  className?: string;
+} & Record<`data-${string}`, string>): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const some = typeof value === 'number' && value > 0;
+  return (
+    <span
+      {...rest}
+      data-count-kind={kind}
+      data-count-zero={some ? undefined : 'true'}
+      className={cn(
+        'flex min-w-0 items-center justify-center gap-1 rounded-md px-1 py-0.5 text-[11px] font-bold ring-1 ring-inset',
+        some ? COUNT_LOOK[kind].chip : COUNT_ZERO,
+        className,
+      )}
+    >
+      <BoardIcon
+        d={[...COUNT_LOOK[kind].icon]}
+        className={cn('h-3 w-3 shrink-0', COUNT_LOOK[kind].mark, !some && 'opacity-70')}
+      />
+      {/* The figures' face, as the money and the code: a «0» reads as zero, where an Arabic zero
+          reads as one more dot. */}
+      <span
+        dir="ltr"
+        className={cn(NUM, 'text-[12px] font-black', some && COUNT_LOOK[kind].figure)}
+      >
+        {typeof value === 'number' ? countText(value, locale) : value}
+      </span>
+      <span className="truncate">{children}</span>
+    </span>
+  );
+};
+
+/**
  * THE PACKAGES a van carries out — «اللى يظهر عدد الكراتين و الحقائب و الصناديق حتى لو ب 0 يتكتب»
  * (Round 25): the three kinds, in the owner's order, EACH ALWAYS, its count written even when 0 — the
  * vault's own counts (custody), summed over the load. `packages` null: the reader cannot read the
  * vault's counts — each says «—», with why on hover, rather than a 0 that would be a guess. The same
  * while the vault's read is out ('pending', «…») or has failed ('failed', «—»): a 0 is written only
- * once the counts are in (`vanPackages`).
+ * once the counts are in (`vanPackages`). Round 26: each kind in its own colour (`CountChip`).
  */
 export const PackageCounts = ({
   packages,
@@ -696,13 +895,7 @@ export const PackageCounts = ({
   packages: Packaging | null | 'pending' | 'failed';
 }): JSX.Element => {
   const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
   const counted = typeof packages === 'object' && packages !== null ? packages : null;
-  const kinds = [
-    ['cartons', PATH.box, counted?.cartons],
-    ['bags', SHIPMENT_PATH.bag, counted?.bags],
-    ['boxes', SHIPMENT_PATH.cube, counted?.boxes],
-  ] as const;
   const why =
     packages === null
       ? t('operations.distribution.packagesUnknown')
@@ -724,38 +917,290 @@ export const PackageCounts = ({
       {...(why === null ? {} : { title: why })}
       {...(packages === 'pending' ? { 'aria-busy': true } : {})}
     >
-      {kinds.map(([kind, icon, value]) => (
-        <span
+      {PACKAGE_KINDS.map((kind) => (
+        <CountChip
           key={kind}
+          kind={kind}
           data-van-package={kind}
-          className={cn(
-            'flex min-w-0 items-center justify-center gap-1 rounded-md border px-1 py-0.5 text-[11px] font-bold',
-            value !== undefined && value > 0
-              ? 'border-slate-200 bg-white text-slate-700 dark:border-slate-700/70 dark:bg-[#0a1233] dark:text-slate-200'
-              : 'border-slate-200/80 bg-slate-50 text-slate-500 dark:border-slate-700/50 dark:bg-white/[0.02] dark:text-slate-400',
-          )}
+          value={counted !== null ? counted[kind] : packages === 'pending' ? '…' : '—'}
         >
-          <BoardIcon d={[...icon]} className="h-3 w-3 shrink-0" />
-          <span
-            dir="ltr"
-            className={cn(
-              NUM,
-              'text-[12px] font-black',
-              value !== undefined && value > 0
-                ? 'text-slate-900 dark:text-white'
-                : 'text-slate-500 dark:text-slate-400',
-            )}
-          >
-            {/* The figures' face, as the money and the code: a «0» reads as zero, where an Arabic
-                zero reads as one more dot. */}
-            {value !== undefined ? formatAmount(value, locale) : packages === 'pending' ? '…' : '—'}
-          </span>
-          <span className="truncate">{t(`operations.distribution.${kind}`)}</span>
-        </span>
+          {t(`operations.distribution.${kind}`)}
+        </CountChip>
       ))}
     </div>
   );
 };
+
+/**
+ * The van's swatch — its accent alone, beside its name on a card (the van's own, a محصنة's «على»).
+ * The words beside it say which van; the swatch is never the only sign.
+ */
+export const VanSwatch = ({ accent }: { accent: VanAccent }): JSX.Element => (
+  <span
+    aria-hidden
+    data-van-swatch={accent}
+    className={cn(
+      'inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-black/10 dark:ring-white/20',
+      VAN_ACCENT_LOOK[accent].bar,
+    )}
+  />
+);
+
+/**
+ * The van's code as the card draws it (Round 26): a pill in the van's own colour — solid, its words
+ * in the colour that reads on it — with the van's drawing; «بدون سيارة (n)» for a crew without one.
+ * Neutral where the van has no accent.
+ */
+export const VanCodePill = ({
+  van,
+  looseNumber,
+  accent,
+  size = 'md',
+}: {
+  van: OperationsDayBoardVehicleCrewDto;
+  looseNumber: string | null;
+  accent: VanAccent | null;
+  size?: 'sm' | 'md';
+}): JSX.Element => {
+  const t = useT();
+  const noVan = hasNoVan(van);
+  return (
+    <span
+      dir={noVan ? undefined : 'ltr'}
+      data-van-code={van.vehicleCode ?? ''}
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 font-black',
+        size === 'md' ? 'py-0.5 leading-6' : 'py-px leading-5',
+        accent === null
+          ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white'
+          : VAN_ACCENT_LOOK[accent].pill,
+      )}
+    >
+      <BoardIcon
+        d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]}
+        className="h-3.5 w-3.5 shrink-0"
+      />
+      <span
+        className={cn(
+          noVan
+            ? size === 'md'
+              ? 'text-[13px]'
+              : 'text-[12px]'
+            : cn(size === 'md' ? 'text-[16px]' : 'text-[13px]', NUM),
+        )}
+      >
+        {vanCodeText(t, van, looseNumber)}
+      </span>
+    </span>
+  );
+};
+
+/** The van's planned time, in its own calm colour (Round 26 — `HEAD_PILL`); nothing when it has none. */
+const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Element | null => {
+  const t = useT();
+  const time = van.plannedTime === null || van.plannedTime === '' ? null : van.plannedTime;
+  if (time === null) return null;
+  return (
+    <span
+      data-van-time={time}
+      title={chipTitle(t('operations.crew.plannedTime'), time)}
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold ring-1 ring-inset',
+        HEAD_PILL.time,
+      )}
+    >
+      <BoardIcon d={[...PLAN_ICON.clock]} className="h-3 w-3" />
+      <span dir="ltr" className={NUM}>
+        {time}
+      </span>
+    </span>
+  );
+};
+
+/**
+ * The van's direction, in its own calm colour (Round 26 — `HEAD_PILL`); «بلا اتجاه» in grey. On the
+ * card's one line it is cut, whole on hover and to a screen reader; on the van's card (`wrap`) it is
+ * written whole.
+ */
+const DirectionPill = ({
+  van,
+  wrap = false,
+}: {
+  van: OperationsDayBoardVehicleCrewDto;
+  wrap?: boolean;
+}): JSX.Element => {
+  const t = useT();
+  const direction =
+    van.direction === null || van.direction.trim() === '' ? null : van.direction.trim();
+  const directionText = direction ?? t('operations.distribution.noDirection');
+  return (
+    <span
+      data-van-direction={van.direction ?? ''}
+      title={chipTitle(t('operations.crew.direction'), directionText)}
+      className={cn(
+        'inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] ring-1 ring-inset',
+        direction === null
+          ? cn('font-bold', HEAD_PILL.none)
+          : cn('font-black', HEAD_PILL.direction),
+      )}
+    >
+      <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3 w-3 shrink-0 rtl:-scale-x-100" />
+      <span className="sr-only">{t('operations.crew.direction')}: </span>
+      <span className={wrap ? 'min-w-0 break-words' : 'min-w-0 truncate'}>{directionText}</span>
+    </span>
+  );
+};
+
+/**
+ * THE VAN'S CARD (Round 26) — «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه
+ * والسواقيين»: the van (its code in its colour, or «بدون سيارة (n)»), the time, the direction; then
+ * everyone on it, slot by slot (`vanCrewGroups`) — القادة (every one, in the order put on the row, the
+ * first marked as the one the card shows), «أخصائي 1», «أخصائي 2» (everyone in each) and السائقون (by
+ * name, Fleet's duty row) — each slot saying «لا يوجد» when empty, or that the reader may not see it;
+ * then what the van carries, in the counts' own colours.
+ */
+export const VanCrewCardBody = ({
+  van,
+  looseNumber,
+  accent,
+  crewPlanVisible,
+  count,
+  packages,
+}: {
+  van: OperationsDayBoardVehicleCrewDto & { securedType?: boolean; shiftTypeName?: string | null };
+  looseNumber: string | null;
+  accent: VanAccent | null;
+  crewPlanVisible: boolean;
+  count: number;
+  packages: Packaging | null | 'pending' | 'failed';
+}): JSX.Element => {
+  const t = useT();
+  const counted = typeof packages === 'object' && packages !== null ? packages : null;
+  const label = {
+    captains: t('operations.distribution.captains'),
+    specialist1: t('operations.crew.slot.specialist1'),
+    specialist2: t('operations.crew.slot.specialist2'),
+    drivers: t('operations.board.card.drivers'),
+  } as const;
+  return (
+    <div data-van-card={van.crewAssignmentId} data-van-card-accent={accent ?? undefined}>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        {accent !== null && <VanSwatch accent={accent} />}
+        <VanCodePill van={van} looseNumber={looseNumber} accent={accent} size="sm" />
+        <TimePill van={van} />
+        {van.securedType === false && (
+          <span className="min-w-0 truncate text-[11px] font-bold text-amber-800 dark:text-amber-200">
+            {t('operations.distribution.notSecured')}
+          </span>
+        )}
+      </div>
+      <p className="mt-1.5 flex min-w-0">
+        <DirectionPill van={van} wrap />
+      </p>
+      <dl className={HOVER_CARD_FACTS}>
+        {vanCrewGroups(van, crewPlanVisible).map((group) => (
+          <HoverCardFact key={group.slot} label={label[group.slot]}>
+            {group.state === 'people' ? (
+              <ul
+                data-van-card-slot={group.slot}
+                data-van-card-count={group.people.length}
+                className="space-y-0.5"
+              >
+                {group.people.map((one) => (
+                  <li
+                    key={one.employeeId}
+                    data-van-card-person={one.employeeId}
+                    className="flex min-w-0 flex-wrap items-baseline gap-x-1.5"
+                  >
+                    {/* A person the directory cannot name is «…» — never a raw id. */}
+                    <span className="min-w-0 break-words">{one.name ?? '…'}</span>
+                    {one.code !== null && (
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        <Figure>{one.code}</Figure>
+                      </span>
+                    )}
+                    {one.shown && group.people.length > 1 && (
+                      <span
+                        data-van-card-shown="true"
+                        className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 text-[10px] font-black leading-4 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200"
+                      >
+                        <BoardIcon d={[...PLAN_ICON.rank]} className="h-2.5 w-2.5" width={2.4} />
+                        {t('operations.distribution.vanCard.shown')}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span
+                data-van-card-slot={group.slot}
+                data-van-card-state={group.state}
+                className="font-semibold text-slate-500 dark:text-slate-400"
+              >
+                {group.state === 'hidden'
+                  ? t('operations.distribution.vanCard.hidden')
+                  : group.state === 'noVan'
+                    ? t('operations.distribution.vanCard.noVan')
+                    : t('operations.distribution.vanCard.none')}
+              </span>
+            )}
+          </HoverCardFact>
+        ))}
+      </dl>
+      {/* What it carries — the van card's own count badge, then the packages, each in its colour. */}
+      <div
+        data-van-card-counts="true"
+        className="mt-2 space-y-1 border-t border-slate-100 pt-2 dark:border-slate-700/60"
+      >
+        <ShipmentsCount count={count} data-van-card-count-of="shipments" />
+        <div className="grid grid-cols-3 gap-1">
+          {PACKAGE_KINDS.map((kind) => (
+            <CountChip
+              key={kind}
+              kind={kind}
+              data-van-card-count-of={kind}
+              value={counted !== null ? counted[kind] : packages === 'pending' ? '…' : '—'}
+            >
+              {t(`operations.distribution.${kind}`)}
+            </CountChip>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Round 26 — is a drag on anywhere on the page? Chromium sends no mouse events while one is, and the
+ * van's card asks this as well before it opens (`vanHoverAllowed`): a card never floats over the vans
+ * the hand is aiming at. Watched once, on the window, from the first van card drawn.
+ */
+let dragOn = false;
+let dragsWatched = false;
+const watchDrags = (): void => {
+  if (dragsWatched || typeof window === 'undefined') return;
+  dragsWatched = true;
+  window.addEventListener('dragstart', () => (dragOn = true), true);
+  window.addEventListener('dragend', () => (dragOn = false), true);
+  window.addEventListener('drop', () => (dragOn = false), true);
+  // A chip gone from the page mid-drag never delivers its `dragend`: a pointer moving with no
+  // button held means the drag is over (the page's own rule for its drag).
+  window.addEventListener(
+    'pointermove',
+    (event) => {
+      if (event.buttons === 0) dragOn = false;
+    },
+    { passive: true },
+  );
+};
+
+/** Is a «نقل إلى…» menu open on the page? (Round 25's F2 rule — no card over its vans.) */
+const moveMenuOpen = (): boolean =>
+  typeof document !== 'undefined' && document.querySelector('[data-move-menu]') !== null;
+
+/** Is the pointer on a captain's own name — which opens his person card, not the van's? */
+const onPersonName = (target: EventTarget | null): boolean =>
+  target instanceof Element && target.closest('[data-van-person]') !== null;
 
 /**
  * THE VAN — the crew board's row for the day, as the owner asked it drawn on Round 25: «شكل العربية
@@ -771,9 +1216,18 @@ export const PackageCounts = ({
  *   · THE LOAD: the محصنات on it as the same small chips as the left column (`ShipmentChip`).
  * A row of another type kept for what it carries (`securedType` false) says so under its head.
  *
+ * Round 26 — «عاوزك تضيف الوان»: the van wears its ACCENT (`accent`, `lib/van-accent.ts`) — a stripe
+ * at its start edge, its head on a band of it, its code in a pill of it — and every chip on it wears
+ * the same; the counts wear their own colours. «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين
+ * اللى على العربيه والسواقيين»: resting on the head or the captain's line (not on a chip — a chip has
+ * its card — and not on the captain's own name, which opens his) opens the van's card
+ * (`VanCrewCardBody`) after the usual beat; a keyboard focus opens it at once, a tap on a phone too.
+ * Never while a drag is on or a «نقل إلى…» menu is open (`vanHoverAllowed`).
+ *
  * THE WHOLE CARD IS A DROP TARGET (`data-drop-van`): the page's frame takes the drag and reads the
  * mark under the pointer at the drop — the head, the captain's line, the packages, the empty load and
- * a chip on it all mean this van (`lib/distribution-drag.ts`).
+ * a chip on it all mean this van (`lib/distribution-drag.ts`). The van's card is a layer that takes
+ * no pointer, so it never stands between the hand and the drop.
  */
 export const VanCard = ({
   van,
@@ -782,6 +1236,7 @@ export const VanCard = ({
   day,
   count,
   packages,
+  accent = null,
   actions,
   drop,
   children,
@@ -799,6 +1254,8 @@ export const VanCard = ({
   /** The vault's counts over its load; null when the reader cannot read them, 'pending' or
    *  'failed' while the vault's read is out or has failed (`vanPackages`). */
   packages: Packaging | null | 'pending' | 'failed';
+  /** Round 26 — the van's colour (`vanAccents`); null draws it neutral. */
+  accent?: VanAccent | null;
   /** Above the van — the vault's «تسليم» and «طباعة». */
   actions?: ReactNode;
   drop?: {
@@ -812,29 +1269,41 @@ export const VanCard = ({
   footer?: ReactNode;
 }): JSX.Element => {
   const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
   const captain = van.captains[0] ?? null;
   const noVan = hasNoVan(van);
   const name = vanPhrase(t, van, looseNumber);
   const kept = van.securedType === false;
-  const time = van.plannedTime === null || van.plannedTime === '' ? null : van.plannedTime;
-  const direction =
-    van.direction === null || van.direction.trim() === '' ? null : van.direction.trim();
-  const directionText = direction ?? t('operations.distribution.noDirection');
   const typeName = van.shiftTypeName ?? null;
+  const look = accent === null ? null : VAN_ACCENT_LOOK[accent];
+
+  // The van's card — on the head and the captain's line (Round 26).
+  useEffect(watchDrags, []);
+  const hover = useHoverCard(true, {
+    when: () => vanHoverAllowed({ dragging: dragOn, menuOpen: moveMenuOpen(), onPerson: false }),
+  });
+  const { tapped, setTapped, pointer } = useTapCard(hover.anchor);
+  // The pointer moved inside the head or the captain's line: onto the captain's own name, his card
+  // takes over; anywhere else, the van's card waits its beat (again, if the name had it).
+  const rest = (target: EventTarget | null): void => {
+    if (onPersonName(target)) hover.dismiss();
+    else hover.arm();
+  };
+
   return (
     <article
       data-distribution-van={van.crewAssignmentId}
       data-drop-van={van.crewAssignmentId}
       data-no-van={noVan ? 'true' : undefined}
       data-not-secured={kept ? 'true' : undefined}
+      data-van-accent={accent ?? undefined}
       data-drop-over={drop?.over ?? undefined}
       data-drop-armed={drop?.armed === true ? 'true' : undefined}
       aria-label={name}
       className={cn(
-        // `relative`: the head's screen-reader words (`sr-only`, absolute) stay inside the card — and so
-        // inside the column that scrolls — rather than lengthen the page below it.
-        'relative flex min-w-0 flex-col gap-2 rounded-xl border bg-white p-2.5 shadow-sm transition-[box-shadow,border-color,background-color] dark:bg-[#111827]',
+        // `relative`: the head's screen-reader words (`sr-only`, absolute) and the accent's stripe
+        // stay inside the card; `overflow-hidden` cuts the stripe to the card's round corners.
+        'relative flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border bg-white p-2.5 shadow-sm transition-[box-shadow,border-color,background-color] dark:bg-[#111827]',
+        look !== null && 'ps-3.5',
         kept
           ? 'border-dashed border-amber-400 dark:border-amber-500/60'
           : 'border-slate-200 dark:border-[#24305a]',
@@ -848,133 +1317,118 @@ export const VanCard = ({
         (captain === null || kept) && 'opacity-90',
       )}
     >
+      {look !== null && (
+        // The van's colour at its start edge — the palette's own dot (`SHIFT_TYPE_TONE`).
+        <span
+          aria-hidden
+          data-van-stripe={accent ?? ''}
+          className={cn('pointer-events-none absolute inset-y-0 start-0 w-[5px]', look.bar)}
+        />
+      )}
       {actions !== undefined && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 pb-2 dark:border-slate-800">
           {actions}
         </div>
       )}
-      <header className="flex min-w-0 items-center">
-        {/* ONE line: code · time · direction — nothing else, so the direction has the room. */}
-        <div data-van-head="true" className="flex min-w-0 flex-1 items-center gap-1.5">
-          <span
-            aria-hidden
-            className={cn(
-              'flex h-6 w-6 shrink-0 items-center justify-center rounded-md',
-              noVan
-                ? 'bg-sky-500/15 text-sky-600 dark:text-sky-300'
-                : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
-            )}
-          >
-            <BoardIcon d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]} className="h-3.5 w-3.5" />
-          </span>
-          <span
-            dir={noVan ? undefined : 'ltr'}
-            data-van-code={van.vehicleCode ?? ''}
-            className={cn(
-              'shrink-0 whitespace-nowrap font-black leading-6 text-slate-900 dark:text-white',
-              noVan ? 'text-[14px]' : cn('text-[17px]', NUM),
-            )}
-          >
-            {vanCodeText(t, van, looseNumber)}
-          </span>
-          {time !== null && (
-            <span
-              data-van-time={time}
-              title={chipTitle(t('operations.crew.plannedTime'), time)}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-            >
-              <BoardIcon d={[...PLAN_ICON.clock]} className="h-3 w-3" />
-              <span dir="ltr" className={NUM}>
-                {time}
-              </span>
-            </span>
-          )}
-          <span
-            data-van-direction={van.direction ?? ''}
-            title={chipTitle(t('operations.crew.direction'), directionText)}
-            className={cn(
-              'inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-black',
-              direction === null
-                ? 'bg-slate-100 font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                : 'bg-indigo-50 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-200',
-            )}
-          >
-            <BoardIcon d={[...SHIPMENT_PATH.route]} className="h-3 w-3 shrink-0 rtl:-scale-x-100" />
-            <span className="sr-only">{t('operations.crew.direction')}: </span>
-            <span className="min-w-0 truncate">{directionText}</span>
-          </span>
-        </div>
-      </header>
-      {kept && (
-        // Round 25 — a row of another type, listed only for what it already carries.
-        <p
-          data-van-not-secured={typeName ?? ''}
-          title={
-            typeName === null
-              ? t('operations.distribution.notSecuredHintNoType')
-              : t('operations.distribution.notSecuredHint', { type: typeName })
-          }
-          className="flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold leading-4 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
-        >
-          <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0">
-            {t('operations.distribution.notSecured')}
-            {typeName !== null && (
-              <span className="font-semibold">
-                {' '}
-                · {t('operations.distribution.typeIs', { type: typeName })}
-              </span>
-            )}
-          </span>
-        </p>
-      )}
-      {/* THE CAPTAIN'S LINE: the count first, then the first captain. */}
+      {/* The head and the captain's line: resting on them opens the van's card. */}
       <div
-        data-van-captain-line={van.crewAssignmentId}
-        className={cn(
-          'flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 ring-1 ring-inset',
-          captain === null
-            ? 'bg-rose-50 ring-rose-200 dark:bg-rose-500/10 dark:ring-rose-500/30'
-            : 'bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30',
-        )}
+        {...hover.triggerProps}
+        data-van-hover={van.crewAssignmentId}
+        role="group"
+        aria-label={t('operations.distribution.vanCard.label', { van: name })}
+        onMouseEnter={(event) => rest(event.target)}
+        onMouseOver={(event) => rest(event.target)}
+        onPointerDown={(event) => {
+          pointer.current = event.pointerType;
+        }}
+        onClick={(event) => {
+          // R26 critic — a tap on the captain's name is his card's: the van's closes, if open.
+          const onPerson = onPersonName(event.target);
+          if (onPerson) setTapped(false);
+          if (!vanTapAllowed({ touch: pointer.current === 'touch', onPerson })) return;
+          setTapped((open) => !open);
+        }}
+        className="flex min-w-0 flex-col gap-2 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60"
       >
-        <span
-          data-van-count={count}
-          className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-black text-white dark:bg-brand-500"
+        <header
+          data-van-band={accent ?? 'none'}
+          className={cn(
+            'flex min-w-0 items-center rounded-lg px-1.5 py-1',
+            look?.band ?? 'bg-slate-100/80 dark:bg-white/[0.04]',
+          )}
         >
-          <BoardIcon d={[...SHIPMENT_PATH.shipment]} className="h-3 w-3 shrink-0" />
-          {/* «4 محصنات», «11 محصنة» — the count's own form (`pluralKey`), its figure in the face of
-              the card's other figures (the code, the time), so «0 محصنات» says zero. */}
-          {t(pluralKey('operations.distribution.loadCount', locale, count), {
-            count: formatAmount(count, locale),
-          })}
-        </span>
-        {captain === null ? (
-          <span
-            data-van-captain="none"
-            className="flex min-w-0 items-center gap-1 text-[12px] font-bold leading-5 text-rose-700 dark:text-rose-300"
+          {/* ONE line: code · time · direction — nothing else, so the direction has the room. */}
+          <div data-van-head="true" className="flex min-w-0 flex-1 items-center gap-1.5">
+            <VanCodePill van={van} looseNumber={looseNumber} accent={accent} />
+            <TimePill van={van} />
+            <DirectionPill van={van} />
+          </div>
+        </header>
+        {kept && (
+          // Round 25 — a row of another type, listed only for what it already carries.
+          <p
+            data-van-not-secured={typeName ?? ''}
+            title={
+              typeName === null
+                ? t('operations.distribution.notSecuredHintNoType')
+                : t('operations.distribution.notSecuredHint', { type: typeName })
+            }
+            className="flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold leading-4 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
           >
             <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
-            <span className="min-w-0 truncate">{t('operations.distribution.noCaptain')}</span>
-          </span>
-        ) : (
-          <span data-van-captain={captain.employeeId} className="flex min-w-0 items-center gap-1.5">
-            <span
-              data-captain-mark="true"
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-emerald-600 py-0.5 pe-2 ps-1.5 text-[10px] font-black leading-4 text-white dark:bg-emerald-700"
-            >
-              <BoardIcon d={[...PLAN_ICON.rank]} className="h-3 w-3" width={2.4} />
-              {t('operations.crewPlan.role.captain')}
+            <span className="min-w-0">
+              {t('operations.distribution.notSecured')}
+              {typeName !== null && (
+                <span className="font-semibold">
+                  {' '}
+                  · {t('operations.distribution.typeIs', { type: typeName })}
+                </span>
+              )}
             </span>
-            <PersonName
-              person={captain}
-              seat={`${name} · ${t('operations.crew.slot.captain')}`}
-              day={day}
-              mayReadDirectory={crewPlanVisible}
-              className="text-[13px] font-black leading-5 text-slate-900 dark:text-white"
-            />
-          </span>
+          </p>
         )}
+        {/* THE CAPTAIN'S LINE: the count first, then the first captain. */}
+        <div
+          data-van-captain-line={van.crewAssignmentId}
+          className={cn(
+            'flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 ring-1 ring-inset',
+            captain === null ? CAPTAIN_BAND.none : CAPTAIN_BAND.some,
+          )}
+        >
+          <ShipmentsCount count={count} data-van-count={String(count)} />
+          {captain === null ? (
+            <span
+              data-van-captain="none"
+              className="flex min-w-0 items-center gap-1 text-[12px] font-bold leading-5 text-rose-700 dark:text-rose-300"
+            >
+              <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 truncate">{t('operations.distribution.noCaptain')}</span>
+            </span>
+          ) : (
+            <span
+              data-van-captain={captain.employeeId}
+              className="flex min-w-0 items-center gap-1.5"
+            >
+              <span
+                data-captain-mark="true"
+                className={cn(
+                  'inline-flex shrink-0 items-center gap-0.5 rounded-full py-0.5 pe-2 ps-1.5 text-[10px] font-black leading-4',
+                  CAPTAIN_MARK,
+                )}
+              >
+                <BoardIcon d={[...PLAN_ICON.rank]} className="h-3 w-3" width={2.4} />
+                {t('operations.crewPlan.role.captain')}
+              </span>
+              <PersonName
+                person={captain}
+                seat={`${name} · ${t('operations.crew.slot.captain')}`}
+                day={day}
+                mayReadDirectory={crewPlanVisible}
+                className="text-[13px] font-black leading-5 text-slate-900 dark:text-white"
+              />
+            </span>
+          )}
+        </div>
       </div>
       <PackageCounts packages={packages} />
       <div
@@ -988,6 +1442,18 @@ export const VanCard = ({
         {children}
       </div>
       {footer}
+      {(hover.open || tapped) && (
+        <HoverCardLayer id={hover.id} anchor={hover.anchor} mark="secured-van">
+          <VanCrewCardBody
+            van={van}
+            looseNumber={looseNumber}
+            accent={accent}
+            crewPlanVisible={crewPlanVisible}
+            count={count}
+            packages={packages}
+          />
+        </HoverCardLayer>
+      )}
     </article>
   );
 };
@@ -1021,6 +1487,7 @@ export const ShipmentCardBody = ({
   packages,
   packagesRead,
   place,
+  placeAccent = null,
   notes,
 }: {
   row: OperationsSecuredDistributionRowDto;
@@ -1033,12 +1500,14 @@ export const ShipmentCardBody = ({
   packagesRead: PackagingRead;
   /** «السيارة 104 · مع …», or null on no van. */
   place: string | null;
+  /** Round 26 — the colour of the van it is on: a swatch beside «على» (null: on no van). */
+  placeAccent?: VanAccent | null;
   notes: readonly { key: string; text: string; tone: 'info' | 'warn' | 'danger' }[];
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   return (
-    <div data-secured-card={row.id}>
+    <div data-secured-card={row.id} data-card-van-accent={placeAccent ?? undefined}>
       <CardHead
         icon={<BoardIcon d={[...SHIPMENT_PATH.bank]} className="h-3.5 w-3.5" />}
         sub={row.securedStage === null ? undefined : <SecuredStageBadge stage={row.securedStage} />}
@@ -1118,13 +1587,16 @@ export const ShipmentCardBody = ({
                 {t('operations.distribution.card.notCounted')}
               </span>
             ) : (
-              <span data-card-packages={`${packages.cartons}/${packages.bags}/${packages.boxes}`}>
-                {(['cartons', 'bags', 'boxes'] as const)
-                  .map(
-                    (kind) =>
-                      `${formatAmount(packages[kind], locale)} ${t(`operations.distribution.${kind}`)}`,
-                  )
-                  .join(' · ')}
+              // Round 26 — each kind in its own colour, as on the van.
+              <span
+                data-card-packages={`${packages.cartons}/${packages.bags}/${packages.boxes}`}
+                className="flex flex-wrap gap-1"
+              >
+                {PACKAGE_KINDS.map((kind) => (
+                  <CountChip key={kind} kind={kind} value={packages[kind]}>
+                    {t(`operations.distribution.${kind}`)}
+                  </CountChip>
+                ))}
               </span>
             )}
           </HoverCardFact>
@@ -1135,7 +1607,19 @@ export const ShipmentCardBody = ({
           </HoverCardFact>
         )}
         <HoverCardFact label={t('operations.distribution.card.on')}>
-          {place ?? t('operations.distribution.unplaced')}
+          {place === null ? (
+            t('operations.distribution.unplaced')
+          ) : (
+            // Round 26 — the van's swatch beside its name: the chip's colour, said in words too.
+            <span className="inline-flex min-w-0 items-baseline gap-1.5">
+              {placeAccent !== null && (
+                <span className="translate-y-px self-center">
+                  <VanSwatch accent={placeAccent} />
+                </span>
+              )}
+              <span className="min-w-0">{place}</span>
+            </span>
+          )}
         </HoverCardFact>
       </dl>
       {notes.length > 0 && (
@@ -1234,6 +1718,7 @@ export const ShipmentChip = ({
   move,
   drag,
   tone,
+  accent = null,
   card,
 }: {
   row: OperationsSecuredDistributionRowDto;
@@ -1248,30 +1733,19 @@ export const ShipmentChip = ({
   };
   /** The chip's edge: a proposal (amber, dashed), an unsaved move (brand), a refusal (rose). */
   tone?: 'proposed' | 'moved' | 'refused' | undefined;
+  /**
+   * Round 26 — the colour of the van it is on (null on the left: neutral). Its stripe at the chip's
+   * start and a thin ground of it — but a proposal and an unsaved move keep their own ground and
+   * edge (R26 critic): the van's colour is then the stripe alone.
+   */
+  accent?: VanAccent | null;
   /** What its card says (`ShipmentCardBody`). */
   card: ReactNode;
 }): JSX.Element => {
   const hover = useHoverCard(true);
   // A phone has no hover: a TAP on the chip (not on its «نقل إلى…») opens the card, a tap anywhere
-  // else closes it.
-  const [tapped, setTapped] = useState(false);
-  const pointer = useRef<string>('mouse');
-  useEffect(() => {
-    if (!tapped) return undefined;
-    const away = (event: PointerEvent): void => {
-      if (hover.anchor.current?.contains(event.target as Node) === true) return;
-      setTapped(false);
-    };
-    const escape = (event: globalThis.KeyboardEvent): void => {
-      if (event.key === 'Escape') setTapped(false);
-    };
-    document.addEventListener('pointerdown', away, true);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('pointerdown', away, true);
-      document.removeEventListener('keydown', escape);
-    };
-  }, [tapped, hover.anchor]);
+  // else closes it (`useTapCard`).
+  const { tapped, setTapped, pointer } = useTapCard(hover.anchor);
   const { onDragStart: closeOnDrag, onMouseEnter: hoverIn, ...trigger } = hover.triggerProps;
   return (
     <>
@@ -1283,6 +1757,7 @@ export const ShipmentChip = ({
         }}
         data-distribution-shipment={row.id}
         data-shipment-tone={tone ?? 'saved'}
+        data-chip-accent={accent ?? undefined}
         aria-label={`${bankName === '' ? '…' : bankName} · ${branchName === '' ? '…' : branchName}`}
         draggable={drag !== undefined}
         onDragStart={(event) => {
@@ -1300,18 +1775,38 @@ export const ShipmentChip = ({
           setTapped((open) => !open);
         }}
         className={cn(
-          'group relative flex min-h-[2rem] min-w-0 items-center gap-1 rounded-lg border bg-white py-0.5 pe-0.5 ps-1 text-start shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:bg-[#0f1a3a]',
+          'group relative flex min-h-[2rem] min-w-0 items-center gap-1 overflow-hidden rounded-lg border py-0.5 pe-0.5 text-start shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60',
           'border-slate-200 dark:border-[#2b3b6b]',
-          tone === 'proposed' &&
-            'border-dashed border-amber-500 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-400/[0.06]',
-          tone === 'moved' &&
-            'border-brand-400 bg-brand-50/60 dark:border-brand-400/60 dark:bg-brand-500/[0.08]',
+          // ONE ground. R26 critic: a proposal and an unsaved move keep their OWN ground on a van
+          // too (the van's colour is then its stripe alone) — on an orange van, a proposal's amber
+          // was gone but for its dashed edge. Else the van's colour, thin; else plain.
+          accent !== null ? 'ps-2' : 'ps-1',
+          tone === 'proposed'
+            ? 'bg-amber-50 dark:bg-amber-400/[0.06]'
+            : tone === 'moved'
+              ? 'bg-brand-50/60 dark:bg-brand-500/[0.08]'
+              : accent !== null
+                ? VAN_ACCENT_LOOK[accent].chip
+                : 'bg-white dark:bg-[#0f1a3a]',
+          tone === 'proposed' && 'border-dashed border-amber-500 dark:border-amber-400/60',
+          tone === 'moved' && 'border-brand-400 dark:border-brand-400/60',
           tone === 'refused' &&
             'border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400',
           drag !== undefined && 'cursor-grab active:cursor-grabbing',
           drag?.dragging === true && 'opacity-40',
         )}
       >
+        {accent !== null && (
+          // The van's colour at the chip's start — the palette's own dot, as the van's stripe.
+          <span
+            aria-hidden
+            data-chip-stripe={accent}
+            className={cn(
+              'pointer-events-none absolute inset-y-0 start-0 w-[3px]',
+              VAN_ACCENT_LOOK[accent].bar,
+            )}
+          />
+        )}
         {drag !== undefined && (
           <span aria-hidden className="shrink-0 text-slate-300 dark:text-slate-600">
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
@@ -1353,8 +1848,12 @@ export const ShipmentChip = ({
 const SEARCH_ICON = ['M21 21l-4.35-4.35', 'M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z'];
 
 /**
- * A column's filter bar (Round 25) — «احط فلتر فوق»: its boxes in a row that wraps, in the boards'
- * filter colours, and «مسح التصفية» with what the filter leaves («المعروض ٣ من ١٢») once one is set.
+ * A column's filter bar (Round 25) — «احط فلتر فوق»: its boxes in the boards' filter colours, and
+ * «مسح التصفية» with what the filter leaves («المعروض ٣ من ١٢») once one is set.
+ *
+ * Round 26 — the bar sits ON the column's head line, beside the title (`DistributionColumn`). Its
+ * boxes share that line; `narrow` (the left column's quarter) keeps them compact, and the words of a
+ * filter in use take a line of their own under them there — beside them on the vans' wide head.
  */
 export const ColumnFilterBar = ({
   children,
@@ -1362,6 +1861,7 @@ export const ColumnFilterBar = ({
   shown,
   total,
   onClear,
+  narrow = false,
   ...rest
 }: {
   children: ReactNode;
@@ -1369,6 +1869,8 @@ export const ColumnFilterBar = ({
   shown: number;
   total: number;
   onClear: () => void;
+  /** The left column's quarter: compact boxes on one row; «المعروض … · مسح التصفية» under them. */
+  narrow?: boolean;
 } & Record<`data-${string}`, string>): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -1377,31 +1879,64 @@ export const ColumnFilterBar = ({
       {...rest}
       role="search"
       className={cn(
-        'flex flex-wrap items-center gap-1.5',
+        'flex min-w-0 flex-1 flex-wrap items-center gap-1.5',
         '[&_input]:!border-slate-300 dark:[&_input]:!border-slate-700/80 [&_input]:!bg-white dark:[&_input]:!bg-[#080C14] [&_input]:!text-slate-900 dark:[&_input]:!text-slate-100',
         '[&_select]:!border-slate-300 dark:[&_select]:!border-slate-700/80 [&_select]:!bg-white dark:[&_select]:!bg-[#080C14] [&_select]:!text-slate-900 dark:[&_select]:!text-slate-100',
       )}
     >
-      {children}
+      {narrow ? (
+        // R26 critic — the left's two boxes on ONE row, whatever room the title leaves them: they
+        // shrink together rather than stack (the bar beside the title never wraps under it).
+        <div
+          data-filter-boxes="true"
+          className="flex w-full min-w-0 flex-nowrap items-center gap-1.5"
+        >
+          {children}
+        </div>
+      ) : (
+        children
+      )}
       {active && (
-        <span className="flex w-full min-w-0 items-center justify-between gap-2">
+        <span
+          data-filter-active={narrow ? 'narrow' : 'wide'}
+          className={cn(
+            // Narrow (the left's quarter): as wide as its two boxes — «مسح التصفية» wraps under
+            // «المعروض …» rather than run past the column's edge (1024–1280); R26 critic: and each
+            // may break onto a second line of its own when even alone it is wider than the bar
+            // (three-figure counts, the English words).
+            narrow
+              ? 'flex w-full min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5'
+              : 'flex min-w-0 items-center gap-2 ms-auto shrink-0',
+          )}
+        >
           <span
             data-filter-shown={`${shown}/${total}`}
-            className="text-[11px] font-bold text-slate-500 dark:text-slate-400"
+            className={cn(
+              narrow ? 'min-w-0 break-words' : 'whitespace-nowrap',
+              'text-[11px] font-bold text-slate-500 dark:text-slate-400',
+            )}
           >
             {t('operations.distribution.filter.shown', {
-              shown: formatNumber(shown, locale),
-              total: formatNumber(total, locale),
+              shown: countText(shown, locale),
+              total: countText(total, locale),
             })}
           </span>
           <button
             type="button"
             data-filter-clear="true"
             onClick={onClear}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:text-brand-300"
+            className={cn(
+              narrow
+                ? 'inline-flex min-w-0 items-start gap-1 rounded-md px-1.5 py-0.5 text-start'
+                : 'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5',
+              'text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60 dark:text-brand-300',
+            )}
           >
-            <BoardIcon d={['M6 18L18 6M6 6l12 12']} className="h-3 w-3" />
-            {t('operations.distribution.filter.clear')}
+            <BoardIcon
+              d={['M6 18L18 6M6 6l12 12']}
+              className={cn('h-3 w-3 shrink-0', narrow && 'mt-0.5')}
+            />
+            <span className="min-w-0">{t('operations.distribution.filter.clear')}</span>
           </button>
         </span>
       )}
@@ -1409,13 +1944,19 @@ export const ColumnFilterBar = ({
   );
 };
 
-/** A typed filter — its icon at the start, the label as the placeholder and for a screen reader. */
+/**
+ * A typed filter — its icon at the start, the label for a screen reader and on hover. Round 26:
+ * `placeholder` — shorter words in the box itself where the head's line is narrow (the label stays
+ * its name); `fit` — how wide it may grow beside the title.
+ */
 export const FilterTextBox = ({
   label,
   value,
   onChange,
   icon = SEARCH_ICON,
   ltr = false,
+  placeholder,
+  fit = 'wide',
   className,
   ...rest
 }: {
@@ -1425,9 +1966,24 @@ export const FilterTextBox = ({
   icon?: readonly string[];
   /** A code: typed left to right. */
   ltr?: boolean;
+  /** The words in the empty box — the label when left out. */
+  placeholder?: string;
+  /** `narrow` — the left column's compact box; `code` — a code, short; `wide` — a name. */
+  fit?: 'wide' | 'code' | 'narrow';
   className?: string;
 } & Record<`data-${string}`, string>): JSX.Element => (
-  <FilterWithIcon icon={icon} className={cn('min-w-0 flex-1 basis-[9rem]', className)}>
+  <FilterWithIcon
+    icon={icon}
+    className={cn(
+      'min-w-0 flex-1',
+      fit === 'narrow'
+        ? 'basis-[3.5rem]'
+        : fit === 'code'
+          ? 'basis-[7.5rem] lg:max-w-[11rem]'
+          : 'basis-[9rem] lg:max-w-[17rem]',
+      className,
+    )}
+  >
     <Input
       {...rest}
       type="search"
@@ -1435,21 +1991,34 @@ export const FilterTextBox = ({
       dir={ltr ? 'ltr' : undefined}
       aria-label={label}
       title={label}
-      placeholder={label}
+      placeholder={placeholder ?? label}
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className={cn('!py-1.5 text-[13px]', ltr && '[[dir=rtl]_&]:text-right')}
+      className={cn(
+        '!py-1.5 placeholder:text-slate-500 dark:placeholder:text-slate-400',
+        // R26 critic — the left's narrow box beside a three-figure count: its words get the room
+        // of the browser's own «×» (the bar's «مسح التصفية» clears it) and of the end padding.
+        fit === 'narrow'
+          ? '!pe-1.5 !text-[12px] [&::-webkit-search-cancel-button]:hidden'
+          : 'text-[13px]',
+        ltr && '[[dir=rtl]_&]:text-right',
+      )}
     />
   </FilterWithIcon>
 );
 
-/** The area filter — the areas present, «كل المناطق» first; a native list: a phone opens its own. */
+/**
+ * The area filter — the areas present, «كل المناطق» first; a native list: a phone opens its own.
+ * Round 26 — `fit` as `FilterTextBox`'s; in the narrow head the list keeps every word, and the box
+ * cuts what it shows with an ellipsis (its label is its name, and its tooltip says the area chosen).
+ */
 export const FilterAreaSelect = ({
   label,
   allLabel,
   value,
   options,
   onChange,
+  fit = 'wide',
   className,
   ...rest
 }: {
@@ -1458,33 +2027,46 @@ export const FilterAreaSelect = ({
   value: string;
   options: readonly { value: string; label: string }[];
   onChange: (value: string) => void;
+  fit?: 'wide' | 'narrow';
   className?: string;
-} & Record<`data-${string}`, string>): JSX.Element => (
-  <div className={cn('relative min-w-0 flex-1 basis-[8rem]', className)}>
-    <Select
-      {...rest}
-      density="tight"
-      aria-label={label}
-      title={label}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="!py-1.5 text-[13px] ps-6"
+} & Record<`data-${string}`, string>): JSX.Element => {
+  const chosen = options.find((option) => option.value === value)?.label ?? allLabel;
+  return (
+    <div
+      className={cn(
+        'relative min-w-0 flex-1',
+        fit === 'narrow' ? 'basis-[5.5rem]' : 'basis-[8rem] lg:max-w-[14rem]',
+        className,
+      )}
     >
-      <option value="">{allLabel}</option>
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </Select>
-    <span className="pointer-events-none absolute start-0 top-0 z-[1] flex h-full items-center ps-2">
-      <BoardIcon
-        d={[...FILTER_ICON.map]}
-        className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400"
-      />
-    </span>
-  </div>
-);
+      <Select
+        {...rest}
+        density="tight"
+        aria-label={label}
+        title={value === '' ? label : `${label}: ${chosen}`}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(
+          '!py-1.5 ps-6 [text-overflow:ellipsis]',
+          fit === 'narrow' ? '!text-[12px]' : 'text-[13px]',
+        )}
+      >
+        <option value="">{allLabel}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </Select>
+      <span className="pointer-events-none absolute start-0 top-0 z-[1] flex h-full items-center ps-2">
+        <BoardIcon
+          d={[...FILTER_ICON.map]}
+          className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400"
+        />
+      </span>
+    </div>
+  );
+};
 
 /** The delivery day a card names (an overdue one's), year first inside Arabic. */
 export const dayText = (iso: string | null): string =>

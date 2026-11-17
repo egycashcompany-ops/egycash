@@ -1757,3 +1757,12 @@ starts only on an explicit owner GO.
     counts, kinds and lines, «تأكيد (n)»). §2.2, §4.1, §7, §10 and §12 amended. Contracts:
     `IT_ASSET_IMPORT_*`, `ItAssetImportFieldsSchema`, `ItAssetImportRowDto`,
     `ItAssetImportPreviewDto`, `ItAssetImportResultDto`; `ItMoveTargetsDto` reused for the branches.
+- **Only the table scrolls** (2026-11-17) — owner request: «فى شاشات الـ IT مش عايز كل الصفحة تعمل
+  Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين». Web only: every IT list screen takes the
+  boards' frame Fleet and ATM already use (`shared/ui/board-scroll.ts`): from `lg` the page fills the
+  screen, the title, actions, figures and filters keep their place, the pager keeps its place below,
+  and only the rows scroll under a sticky head; a phone or tablet scrolls the page as before. The IT
+  boards' table floor is 8rem (`BOARD_TABLE_FILL_LOW`) so a laptop screen shrinks the rows rather
+  than scroll the board — checked in a browser on every board from 1024×768 to 1920×1080. The
+  mobile lines' network cards are compact from `lg`; the bulk upload's lines scroll in their own box.
+  Dashboards, records and the help desk settings page keep scrolling as pages.

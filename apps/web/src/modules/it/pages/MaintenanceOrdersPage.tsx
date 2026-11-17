@@ -16,6 +16,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
@@ -158,38 +159,42 @@ export const MaintenanceOrdersPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.maintenance')}
-        breadcrumbs={[
-          { label: t('it.module.title'), to: '/it' },
-          { label: t('it.nav.maintenance') },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            {can('itMaintenance.view') && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => navigate('/it/maintenance-plans')}
-              >
-                {t('it.nav.maintenancePlans')}
-              </Button>
-            )}
-            <Can permission="itMaintenance.create">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setCreating(true)}
-              >
-                {t('it.maintenance.create')}
-              </Button>
-            </Can>
-          </div>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»): on a computer
+          the title and its buttons and the filter bar keep their place, the pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.maintenance')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.maintenance') },
+          ]}
+          actions={
+            <div className="flex items-center gap-2">
+              {can('itMaintenance.view') && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => navigate('/it/maintenance-plans')}
+                >
+                  {t('it.nav.maintenancePlans')}
+                </Button>
+              )}
+              <Can permission="itMaintenance.create">
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  onClick={() => setCreating(true)}
+                >
+                  {t('it.maintenance.create')}
+                </Button>
+              </Can>
+            </div>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() => patch({ q: null, status: null, kind: null, active: null })}
@@ -239,31 +244,34 @@ export const MaintenanceOrdersPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(order) => order.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          empty={
-            hasActiveFilters ? (
-              <EmptyState
-                icon={<SearchIcon className="h-10 w-10" />}
-                title={t('it.maintenance.emptyFilteredTitle')}
-                description={t('it.maintenance.emptyFilteredBody')}
-              />
-            ) : (
-              <EmptyState
-                icon={<InboxIcon className="h-10 w-10" />}
-                title={t('it.maintenance.emptyTitle')}
-                description={t('it.maintenance.emptyBody')}
-              />
-            )
-          }
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(order) => order.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            empty={
+              hasActiveFilters ? (
+                <EmptyState
+                  icon={<SearchIcon className="h-10 w-10" />}
+                  title={t('it.maintenance.emptyFilteredTitle')}
+                  description={t('it.maintenance.emptyFilteredBody')}
+                />
+              ) : (
+                <EmptyState
+                  icon={<InboxIcon className="h-10 w-10" />}
+                  title={t('it.maintenance.emptyTitle')}
+                  description={t('it.maintenance.emptyBody')}
+                />
+              )
+            }
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

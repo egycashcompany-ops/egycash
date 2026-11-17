@@ -16,6 +16,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { Select } from '../../../shared/ui/form';
@@ -142,47 +143,56 @@ export const ItCatalogsPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.catalogs')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.catalogs') }]}
-        actions={
-          <Can permission="itCatalog.manage">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCreating(true)}
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»), as on ATM's
+          data-edit screen: on a computer the title, its action, the tabs and the filter bar keep
+          their place, the pager keeps its place below, and only the table's rows scroll, under a
+          head that stays. Every kind is the same table (the tab only changes what it lists), so
+          the page is one frame. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.catalogs')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.catalogs') },
+          ]}
+          actions={
+            <Can permission="itCatalog.manage">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setCreating(true)}
+              >
+                {t('it.catalogs.addItem')}
+              </Button>
+            </Can>
+          }
+        />
+
+        <div
+          className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
+          role="tablist"
+          aria-label={t('it.nav.catalogs')}
+        >
+          {IT_CATALOG_KINDS.map((k) => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={kind === k}
+              type="button"
+              onClick={() => patch({ kind: k === 'assetCategory' ? null : k })}
+              className={`rounded-t-lg px-4 py-2 text-sm ${
+                kind === k
+                  ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
             >
-              {t('it.catalogs.addItem')}
-            </Button>
-          </Can>
-        }
-      />
+              {t(`it.catalogs.kind.${k}`)}
+            </button>
+          ))}
+        </div>
 
-      <div
-        className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
-        role="tablist"
-        aria-label={t('it.nav.catalogs')}
-      >
-        {IT_CATALOG_KINDS.map((k) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={kind === k}
-            type="button"
-            onClick={() => patch({ kind: k === 'assetCategory' ? null : k })}
-            className={`rounded-t-lg px-4 py-2 text-sm ${
-              kind === k
-                ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
-                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            {t(`it.catalogs.kind.${k}`)}
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-4">
         <FilterBar hasActiveFilters={active !== ''} onClear={() => patch({ active: null })}>
           <Select
             aria-label={t('it.assets.columns.status')}
@@ -196,16 +206,19 @@ export const ItCatalogsPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={data?.items ?? []}
-          rowKey={(r) => r.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            rowKey={(r) => r.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

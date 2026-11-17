@@ -20,10 +20,12 @@ export const TIMELINE_PAGE_SIZE = 25;
 
 const usersKey = featureKey(MODULE, FEATURE);
 
-export const useSystemUsers = (params: SystemUserListParams) =>
+/** `enabled` holds the list while a filter's ids are still being worked out (see the page). */
+export const useSystemUsers = (params: SystemUserListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, FEATURE, params),
     queryFn: () => api.listUsers(params),
+    enabled,
   });
 
 export const useSystemUser = (id: string) =>

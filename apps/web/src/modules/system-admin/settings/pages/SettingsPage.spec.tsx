@@ -129,6 +129,7 @@ const SHAPES: Record<string, { type: string; defaultValue: unknown }> = {
   [HrAttendanceSettingKeys.DefaultPatternGraceInMinutes]: { type: 'number', defaultValue: 15 },
   [HrAttendanceSettingKeys.DefaultPatternGraceOutMinutes]: { type: 'number', defaultValue: 0 },
   [HrAttendanceSettingKeys.DecisionApprovalAfterDays]: { type: 'number', defaultValue: 7 },
+  [HrAttendanceSettingKeys.DecisionWeeklyReviewThreshold]: { type: 'number', defaultValue: 20 },
   [OperationsSettingKeys.CashTransferOperationIds]: { type: 'array', defaultValue: [] },
   [OperationsSettingKeys.CrewDepartmentIds]: { type: 'array', defaultValue: [] },
   // Structures of ids and rows: each has its own screen, and this one links there.
@@ -267,9 +268,9 @@ const sectionAround = (markup: string, key: string): string | null => {
 };
 
 describe('the fixture tracks the real registry', () => {
-  it('covers every declared setting key, and there are sixty-seven of them', () => {
-    expect(DECLARED_KEYS).toHaveLength(67);
-    expect(new Set(DECLARED_KEYS).size).toBe(67);
+  it('covers every declared setting key, and there are sixty-eight of them', () => {
+    expect(DECLARED_KEYS).toHaveLength(68);
+    expect(new Set(DECLARED_KEYS).size).toBe(68);
     const uncovered = DECLARED_KEYS.filter((key) => SHAPES[key] === undefined);
     expect(uncovered, 'a setting was declared without a shape in this fixture').toEqual([]);
   });
@@ -462,7 +463,7 @@ describe('every setting reaches the screen', () => {
   });
 
   it('shows a count of what is displayed against the total', () => {
-    expect(markup).toContain('Showing 67 of 67');
+    expect(markup).toContain('Showing 68 of 68');
   });
 });
 
@@ -684,22 +685,22 @@ describe('the filters are addressable', () => {
     const markup = render({ search: '?q=auth.lockout' });
     expect(markup).toContain(SettingKeys.LockoutMaxAttempts);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 2 of 67');
+    expect(markup).toContain('Showing 2 of 68');
   });
 
   it('reads the department from the URL, and selects its tab', () => {
     const markup = render({ search: '?dept=fleet' });
     expect(markup).toContain(FleetSettingKeys.AlarmRedKm);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 21 of 67');
+    expect(markup).toContain('Showing 21 of 68');
     expect(markup).toMatch(new RegExp(`role="tab" aria-selected="true"[^>]*>${translate('en', 'systemAdmin.settings.departments.fleet')}`));
   });
 
   it('falls back to all for a department the screen has nothing for', () => {
-    expect(render({ search: '?dept=warehouse' })).toContain('Showing 67 of 67');
+    expect(render({ search: '?dept=warehouse' })).toContain('Showing 68 of 68');
     // A real department with no setting today (or a stale remembered one) is not a dead end.
     const other = render({ search: '?dept=other' });
-    expect(other).toContain('Showing 67 of 67');
+    expect(other).toContain('Showing 68 of 68');
     expect(other).toMatch(/role="tab" aria-selected="true"[^>]*>All/);
   });
 

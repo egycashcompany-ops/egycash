@@ -2372,6 +2372,17 @@ const en: Record<string, string> = {
   'attendance.flag.crossBranchPunch': 'Cross-branch punch',
   'attendance.flag.overriddenByManager': 'Decided by a manager',
   'attendance.queue.tab.decisions': 'Day decisions',
+  'attendance.queue.tab.changes': 'Change log',
+  'attendance.changes.from': 'From',
+  'attendance.changes.to': 'To',
+  'attendance.changes.empty': 'No day was changed in this period.',
+  'attendance.changes.decidedBy': 'Decided by',
+  'attendance.changes.approvedBy': 'Approved by {{name}}',
+  'attendance.changes.onThisMonth': 'Changes recorded on this month',
+  'attendance.signals.title': 'Who changed days in this period',
+  'attendance.signals.hint':
+    'A count above {{threshold}} is highlighted as worth a look, not as a fault — a broken reader produces many legitimate changes.',
+  'attendance.signals.overrode': '{{count}} against device evidence',
   'attendance.decision.revokeReason': 'Why is this decision being revoked?',
   'attendance.decision.action': 'Decide',
   'attendance.decision.title': 'Decide this day',
@@ -11093,6 +11104,8 @@ const en: Record<string, string> = {
     'Early-leave grace (minutes)',
   'systemAdmin.settings.keys.hr.attendance.decisionApprovalAfterDays':
     'Days a manager may decide an attendance day alone',
+  'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
+    'Weekly changes by one manager before review flags them',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
     'Nightly attendance calculation hour (0–23)',
   'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'Overtime requires approval',
@@ -11216,6 +11229,8 @@ const en: Record<string, string> = {
     'Minutes before the end time that are not counted as leaving early. Zero means any departure before the end time is recorded as early leave.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionApprovalAfterDays':
     'How far back a supervisor may decide a day on their own authority. An older day is recorded and takes effect only after HR approves it.',
+  'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
+    'The number of attendance days one supervisor may change in a week before the change log highlights them for a look. Nothing is blocked or refused by it — a broken reader produces many legitimate changes.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
     'The hour, Cairo time on a 24-hour clock, at which the previous day\'s attendance is calculated for every employee. For example, 2 runs it shortly after 2:00 am.',
   'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':
@@ -17417,6 +17432,17 @@ const ar: Record<string, string> = {
   'attendance.flag.crossBranchPunch': 'بصمة من فرع آخر',
   'attendance.flag.overriddenByManager': 'قرار من المسؤول',
   'attendance.queue.tab.decisions': 'قرارات الأيام',
+  'attendance.queue.tab.changes': 'سجل التغييرات',
+  'attendance.changes.from': 'من',
+  'attendance.changes.to': 'إلى',
+  'attendance.changes.empty': 'لم يُعدَّل أي يوم في هذه الفترة.',
+  'attendance.changes.decidedBy': 'صاحب القرار',
+  'attendance.changes.approvedBy': 'اعتمده {{name}}',
+  'attendance.changes.onThisMonth': 'التغييرات المسجَّلة على هذا الشهر',
+  'attendance.signals.title': 'من عدّل أيامًا في هذه الفترة',
+  'attendance.signals.hint':
+    'يُميَّز العدد الذي يتجاوز {{threshold}} للاطّلاع عليه، لا بوصفه مخالفة؛ فالجهاز المعطّل ينتج تعديلات كثيرة ومشروعة.',
+  'attendance.signals.overrode': '{{count}} مخالفة لبصمات الجهاز',
   'attendance.decision.revokeReason': 'ما سبب إلغاء هذا القرار؟',
   'attendance.decision.action': 'اتخاذ قرار',
   'attendance.decision.title': 'اتخاذ قرار بشأن هذا اليوم',
@@ -25942,6 +25968,8 @@ const ar: Record<string, string> = {
     'سماح الانصراف المبكر بالدقائق',
   'systemAdmin.settings.keys.hr.attendance.decisionApprovalAfterDays':
     'عدد الأيام التي يبتّ فيها المسؤول منفردًا',
+  'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
+    'عدد التعديلات الأسبوعية قبل تمييزها للمراجعة',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
   'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'اشتراط اعتماد العمل الإضافي',
   'systemAdmin.settings.keys.hr.attendance.selfPunchEnabled':
@@ -26065,6 +26093,8 @@ const ar: Record<string, string> = {
     'عدد الدقائق قبل موعد النهاية التي لا تُحتسب انصرافًا مبكرًا. والقيمة صفر تعني أن أي انصراف قبل موعد النهاية يُسجّل انصرافًا مبكرًا.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionApprovalAfterDays':
     'المدة التي يجوز خلالها للمسؤول أن يبتّ في يوم حضور بسلطته وحده. وما كان أقدم من ذلك يُسجَّل القرار بشأنه ولا يسري إلا بعد اعتماد الموارد البشرية.',
+  'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
+    'عدد أيام الحضور التي يجوز لمسؤول واحد تعديلها في الأسبوع قبل أن يُميّزها سجل التغييرات للاطّلاع عليها. ولا يترتب على تجاوز هذا العدد منع ولا رفض؛ فالجهاز المعطّل ينتج تعديلات كثيرة ومشروعة.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
     'الساعة، بتوقيت القاهرة وبنظام 24 ساعة، التي يُحتسب فيها حضور اليوم السابق لجميع الموظفين. مثلًا، القيمة 2 تعني بعد الساعة الثانية صباحًا بقليل.',
   'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':

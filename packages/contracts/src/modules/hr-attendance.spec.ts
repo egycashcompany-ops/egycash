@@ -101,6 +101,9 @@ describe('closed vocabularies', () => {
       'hr.attendance.defaultPattern.graceOutMinutes',
       // Stage 3: how far back a manager decides alone before HR has to approve.
       'hr.attendance.decisionApprovalAfterDays',
+      // Stage 4: the volume above which the review screen flags a manager for a LOOK. It blocks
+      // nothing — a broken reader produces many legitimate changes — so it is a prompt, not a cap.
+      'hr.attendance.decisionWeeklyReviewThreshold',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

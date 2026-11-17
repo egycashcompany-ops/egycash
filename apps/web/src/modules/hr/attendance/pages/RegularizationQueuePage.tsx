@@ -2,28 +2,39 @@
 // tab fed by `/pending-decisions` (my direct reports' MANAGER step, plus the HR step within my
 // scope), and an "all" tab fed by the scoped list. Approving at the manager step advances to
 // pendingHr, never to approved; the server enforces that, and no button here can bypass it.
+import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type AttendanceRegularizationStatus } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
-import { EmptyState, Pagination } from '../../../../shared/ui';
+import { Button, EmptyState, Pagination } from '../../../../shared/ui';
 import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { Input } from '../../../../shared/ui/form';
 import { MultiSelect } from '../../../../shared/ui/MultiSelect';
 import { readList, writeList } from '../../../../shared/lib/list-param';
 import { RegularizationsTable } from '../components/RegularizationsTable';
 import { DecisionsTable } from '../components/DecisionsTable';
+import { DecisionSignals } from '../components/DecisionSignals';
+import { downloadDecisionsExport } from '../api/attendance-api';
 import {
   useAttendanceDecisions,
+  useAttendanceDecisionSignals,
   usePendingRegularizations,
   useRegularizations,
 } from '../api/attendance-queries';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 
-/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['status'] as const;
+/**
+ * Remembered across visits: this screen's filters. `page` is derived, never kept.
+ *
+ * The change log's window (`from`/`to`, stage 4) is remembered too — a reviewer who narrowed to
+ * last month and came back to the screen should find last month, not silently be shown the last
+ * thirty days under a heading that does not say which.
+ */
+const REMEMBERED_FILTERS = ['status', 'from', 'to'] as const;
 
-const TABS = ['queue', 'all', 'postFreeze', 'decisions'] as const;
+const TABS = ['queue', 'all', 'postFreeze', 'decisions', 'changes'] as const;
 type Tab = (typeof TABS)[number];
 
 const isTab = (value: string | null): value is Tab => TABS.includes(value as Tab);
@@ -65,6 +76,12 @@ export const RegularizationQueuePage = (): JSX.Element => {
   const statuses = readList(sp, 'status').filter((s): s is AttendanceRegularizationStatus =>
     (STATUSES as readonly string[]).includes(s),
   );
+  // The review window, in the URL like every other filter here. Defaults to the last thirty days:
+  // long enough to show a pattern, short enough that the aggregate stays cheap.
+  const today = new Date();
+  const isoDay = (d: Date): string => d.toISOString().slice(0, 10);
+  const changesTo = sp.get('to') ?? isoDay(today);
+  const changesFrom = sp.get('from') ?? isoDay(new Date(today.getTime() - 29 * 86_400_000));
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
 
@@ -94,6 +111,33 @@ export const RegularizationQueuePage = (): JSX.Element => {
     { page, pageSize: 25, status: ['pendingHr'] },
     tab === 'decisions' && can('attendance.decideApprove'),
   );
+
+  /**
+   * «سجل التغييرات» (stage 4 §4) — the HISTORY, which is a different question from the queue above
+   * it. The queue asks "what needs me now"; this asks "what has been changed, by whom, and how
+   * often against the devices". It shares this screen because it is the same job and the same
+   * reader, and it rides `attendance.decideApprove` — HR's key — rather than inventing a grant
+   * nobody has been given yet.
+   */
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const changesWindow = { from: changesFrom, to: changesTo };
+  const changes = useAttendanceDecisions(
+    { page, pageSize: 25, ...changesWindow },
+    tab === 'changes' && can('attendance.decideApprove'),
+  );
+  const signals = useAttendanceDecisionSignals(
+    changesWindow,
+    tab === 'changes' && can('attendance.decideApprove'),
+  );
+
+  const runChangesExport = (): void => {
+    setExporting(true);
+    setExportError(null);
+    downloadDecisionsExport(changesWindow)
+      .catch((error: unknown) => setExportError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setExporting(false));
+  };
 
   return (
     <PageContainer>
@@ -163,6 +207,60 @@ export const RegularizationQueuePage = (): JSX.Element => {
           />
           {corrections.data !== undefined && (
             <Pagination meta={corrections.data.meta} onPageChange={setPage} />
+          )}
+        </div>
+      ) : tab === 'changes' ? (
+        <div className="space-y-4">
+          <DecisionSignals data={signals.data} />
+          <FilterBar
+            onClear={() => patch({ from: null, to: null })}
+            hasActiveFilters={sp.get('from') !== null || sp.get('to') !== null}
+          >
+            <label className="flex items-center gap-1.5 text-sm text-slate-500">
+              <span className="hidden whitespace-nowrap sm:inline">{t('attendance.changes.from')}</span>
+              <Input
+                type="date"
+                value={changesFrom}
+                onChange={(e) => patch({ from: e.target.value })}
+                aria-label={t('attendance.changes.from')}
+                dir="ltr"
+                className="w-auto"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-sm text-slate-500">
+              <span className="hidden whitespace-nowrap sm:inline">{t('attendance.changes.to')}</span>
+              <Input
+                type="date"
+                value={changesTo}
+                onChange={(e) => patch({ to: e.target.value })}
+                aria-label={t('attendance.changes.to')}
+                dir="ltr"
+                className="w-auto"
+              />
+            </label>
+            {can('attendance.export') && (
+              <Button size="sm" variant="secondary" loading={exporting} onClick={runChangesExport}>
+                {t('attendance.daily.export')}
+              </Button>
+            )}
+          </FilterBar>
+          {exportError !== null && (
+            <p role="alert" className="text-sm text-red-600">
+              {exportError}
+            </p>
+          )}
+          <DecisionsTable
+            rows={changes.data?.items ?? []}
+            loading={changes.isLoading}
+            error={changes.isError ? changes.error : undefined}
+            onRetry={() => void changes.refetch()}
+            canApprove={false}
+            canRevoke={can('attendance.decide')}
+            showDecidedBy
+            empty={<EmptyState title={t('attendance.changes.empty')} />}
+          />
+          {changes.data !== undefined && (
+            <Pagination meta={changes.data.meta} onPageChange={setPage} />
           )}
         </div>
       ) : tab === 'decisions' ? (

@@ -76,6 +76,7 @@ import { UserFormDialog } from '../components/UserFormDialog';
 import { useBranchOptions, useSystemUsers } from '../api/user-queries';
 import { type SystemUserListParams } from '../api/user-api';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+import { useHealedGroupKeys } from '../../../../shared/lib/useHealedGroupKeys';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -130,6 +131,19 @@ export const UsersListPage = (): JSX.Element => {
   const departments = useMemo(
     () => departmentChoices(departmentOptions, branch),
     [departmentOptions, branch],
+  );
+  // A department remembered from before it was linked to the company list, re-keyed — against
+  // every department, not only the chosen branch's.
+  useHealedGroupKeys(
+    [sp, setSp],
+    [
+      {
+        param: 'dept',
+        choices: departmentChoices(departmentOptions, null),
+        read: splitNameList,
+        write: (keys) => (keys.length === 0 ? null : joinNameList(keys)),
+      },
+    ],
   );
   const departmentIds = useMemo(
     () => departmentIdsFor(departmentOptions, branch, departmentKeys),

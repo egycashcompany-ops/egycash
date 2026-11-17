@@ -22,6 +22,7 @@ import { LoadingState } from '../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
+import { useHealedGroupKeys } from '../../../../shared/lib/useHealedGroupKeys';
 import {
   useAddChartSection,
   useChangeJobPlaces,
@@ -82,6 +83,18 @@ export const OrgChartPage = (): JSX.Element => {
     [chart.data, locale],
   );
   const jobs = chart.data?.jobs ?? [];
+  // A link to a department from before it was linked to the company list still opens it.
+  useHealedGroupKeys(
+    [params, setParams],
+    [
+      {
+        param: 'dept',
+        choices: departments,
+        read: (raw) => (raw === '' ? [] : [raw]),
+        write: (keys) => keys[0] ?? null,
+      },
+    ],
+  );
   const department = pickDepartment(departments, params.get('dept'));
   const jobCounts = useMemo(
     () => new Map(departments.map((d) => [d.key, columnsOf(d, jobs).jobCount])),

@@ -20,6 +20,17 @@
 // oldest member's code and spelling, and points every member at it. Sections the same, one entry
 // per (company-wide department, name). Nothing is deleted and nobody moves.
 //
+// AN ENTRY THE LIST ALREADY HAS IS JOINED, not duplicated: one given by hand on «قائمة الشركة», or
+// one a department created since P-ORG-3 linked itself to. Its rows take that entry instead.
+//
+// «مستندات الوظائف» MOVE WITH THEIR DEPARTMENT. They keep a department's lines under `catalogId ??
+// row id`, so a line saved on a branch copy would go unread once the copy is linked. Each line moves
+// to the entry; where two copies held a line for the same job, the one saved last is kept, and the
+// dry run prints every pair that disagreed.
+//
+// AFTER `--write`, RESTART THE SERVICE: the next start fills the org chart's job places for the
+// departments just linked (P-ORG-3 §7).
+//
 // EXCEPT WHERE A HUMAN SAYS SO. `--merge LOSER=WINNER` names two department rows in ONE branch that
 // are the same unit — either because their names already fold together (which the new unique index
 // cannot allow) or because they are the same department spelled two different ways on purpose. That
@@ -125,10 +136,33 @@ const main = async (): Promise<void> => {
       alreadyLinked: report.plan.alreadyLinked,
       merges: report.plan.merges.map((m) => `${m.loserCode} into ${m.winnerCode}`),
       referencesToRepoint: report.references.map((r) => `${r.collection}.${r.path} x${r.rows}`),
+      companyListBefore: report.existing,
+      joinedExisting: report.joined,
+      jobPapers: { moves: report.papers.moves, retired: report.papers.retired, conflicts: report.papers.conflicts.length },
       reportPath,
     },
     'org catalog — what this would do',
   );
+
+  // The plan itself, one line per company entry, in the log as well as the file: on a deployed
+  // service the log is what an operator can read, and the file dies with the container.
+  for (const entry of report.plan.departments) {
+    logger.info(
+      { department: entry.name.ar, code: entry.code, rows: entry.memberCodes },
+      'org catalog: department entry',
+    );
+  }
+  for (const entry of report.plan.sections) {
+    logger.info(
+      { section: entry.name.ar, under: entry.parentKey, code: entry.code, rows: entry.memberCodes },
+      'org catalog: section entry',
+    );
+  }
+  // A line that loses to another for the same job: what HR set on one branch copy is replaced by
+  // what it set on another. Printed one by one so it is read before `--write`, not after.
+  for (const conflict of report.papers.conflicts) {
+    logger.warn(conflict, 'org catalog: «مستندات الوظائف» — two copies disagreed; the one saved last is kept');
+  }
 
   // Printed rather than left in the file: a refusal is the one thing an operator must read, and
   // scrolling a JSON file to find out why nothing happened is how a refusal gets ignored.
@@ -146,8 +180,13 @@ const main = async (): Promise<void> => {
     logger.info('DRY RUN — nothing written. Re-run with --write to apply exactly this plan.');
   } else {
     logger.info(
-      { created: report.created, linked: report.linked, merged: report.merged },
-      'org catalog: applied',
+      {
+        created: report.created,
+        linked: report.linked,
+        merged: report.merged,
+        jobPapers: { moved: report.papers.moves, retired: report.papers.retired },
+      },
+      'org catalog: applied — restart the service so the org chart fills the newly linked departments',
     );
   }
 

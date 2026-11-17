@@ -28,6 +28,7 @@ import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Select } from '../../../../../shared/ui/form';
 import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
+import { useHealedGroupKeys } from '../../../../../shared/lib/useHealedGroupKeys';
 import { SEARCH_FITS_TEXT } from '../../../recruitment/job-offers/components/OfferFilters';
 import { PlusIcon, UploadIcon } from '../../../../../shared/ui/icons';
 import { useEmployees } from '../api/employee-queries';
@@ -42,6 +43,7 @@ import { employeeColumns } from '../lib/employee-columns';
 import {
   departmentGroupsIn,
   departmentIdsFor,
+  groupChoicesOf,
   hasPlacementFilter,
   prunePlacement,
   sectionGroupsIn,
@@ -167,6 +169,14 @@ export const EmployeesListPage = (): JSX.Element => {
   const { data: branchOptions = [] } = useBranchOptions();
   const { data: departmentOptions = [] } = useDepartmentReferenceOptions();
   const { data: sectionOptions = [] } = useSectionReferenceOptions();
+  // A department or section remembered from before it was linked to the company list, re-keyed.
+  useHealedGroupKeys(
+    [sp, setSp],
+    [
+      { param: 'dept', choices: groupChoicesOf(departmentOptions), read: splitNameList, write: joinNameList },
+      { param: 'section', choices: groupChoicesOf(sectionOptions), read: splitNameList, write: joinNameList },
+    ],
+  );
   const { data: jobTitleOptions = [] } = useJobTitleReferenceOptions();
 
   // The ids a chosen group stands for, narrowed to the chosen site. Memoised so the query key does

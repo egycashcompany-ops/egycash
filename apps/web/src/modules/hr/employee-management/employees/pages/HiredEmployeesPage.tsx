@@ -14,6 +14,8 @@ import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
+import { useHealedGroupKeys } from '../../../../../shared/lib/useHealedGroupKeys';
+import { groupChoicesOf } from '../lib/placement-filters';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
@@ -81,6 +83,18 @@ export const HiredEmployeesPage = (): JSX.Element => {
     );
 
   const { data: departments = [] } = useDepartmentReferenceOptions();
+  // A department remembered from before it was linked to the company list, re-keyed.
+  useHealedGroupKeys(
+    [sp, setSp],
+    [
+      {
+        param: 'department',
+        choices: groupChoicesOf(departments),
+        read: (raw) => readList(new URLSearchParams({ department: raw }), 'department'),
+        write: writeList,
+      },
+    ],
+  );
   const departmentIds = departmentIdsOf(filters.department, departments, filters.branch);
   const paramsKey = sp.toString();
   const params = useMemo<EmployeeListParams>(

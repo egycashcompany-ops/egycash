@@ -1913,6 +1913,25 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Linking the departments to the company list keeps «مستندات الوظائف» and the saved filters.** The
+  org chart showed every department «غير مربوطة», because production's departments were never linked
+  (`migrate:org-catalog` was never run). Before running it:
+  - **«مستندات الوظائف» move with their department.** They are kept under `catalogId ?? row id`, so a
+    line saved on a branch copy would no longer be read once the copy is linked. The command moves each
+    line to the department's entry. Where two copies held a line for the same job, the one saved last
+    is kept, and the dry run names every pair that disagreed.
+  - **An entry the company list already has is joined, not duplicated**: one added by hand, or one a
+    department created since P-ORG-3 linked itself to. A branch that would end up with two copies of it
+    is refused, with the `--merge` that resolves it.
+  - **The plan is printed to the log**, one line per company department and section, so the dry run
+    can be read on the deployed service, where the report file does not survive.
+  - **A department or section filter remembered from before linking still works.** The employees list,
+    «جاهزون للتعيين», «المعينون», job offers, System Users and the org chart remembered an unlinked
+    department by its name; the address bar is now updated to the key the same department has after
+    linking, instead of the list showing everyone, or nobody.
+  - The attendance screens' test read «today» in UTC, which is the next day in Cairo for two hours
+    each night; it now reads the company's day, as the sheet does.
+
 - **A role holding a retired permission can be saved again.** «لما بعدل صلاحيات دور بيظهر كدا !
   Unknown permission keys: applicant.returnToStage» (the role «الموارد البشرية Test»).
   - The cause: `applicant.returnToStage` was retired on 2026-11-16 (replaced by

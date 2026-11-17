@@ -137,3 +137,53 @@ export const expandOrgUnitSelection = (
   }
   return out;
 };
+
+/** One choice a filter offers: its group key and the name it shows. */
+export interface OrgUnitGroupChoice {
+  key: string;
+  name: { ar: string; en: string };
+}
+
+/**
+ * Saved filter keys of a department or section that has since been LINKED to the company list.
+ *
+ * A list remembers a chosen department by its group key — in the address bar and in the browser
+ * (`useRememberedFilters`). An unlinked group's key is its NAME (`name:…`, by `orgUnitGroupKeys` or
+ * the HR lists' `groupKeyOf`); once `migrate:org-catalog` links its rows, the same department answers
+ * to `catalog:<id>` and the saved key matches nothing, so the list quietly shows everyone, or nobody.
+ * Each such key is replaced by the keys of EVERY choice whose Arabic name folds the same — what the
+ * name key meant: a section name shared by two departments was one choice before linking and is one
+ * entry per department after it. A key that still matches, that is not a name key, or that no
+ * choice answers to is kept as it is.
+ *
+ * Returns the keys to save instead, or null when nothing needed replacing.
+ */
+export const healGroupKeys = (
+  selected: readonly string[],
+  choices: readonly OrgUnitGroupChoice[],
+): string[] | null => {
+  if (selected.length === 0 || choices.length === 0) return null;
+  const present = new Set(choices.map((choice) => choice.key));
+  let changed = false;
+  const out: string[] = [];
+  const keep = (key: string): void => {
+    if (!out.includes(key)) out.push(key);
+  };
+  for (const key of selected) {
+    if (present.has(key) || !key.startsWith('name:')) {
+      keep(key);
+      continue;
+    }
+    const folded = foldOrgUnitName(key.slice('name:'.length));
+    const matches = new Set(
+      choices.filter((choice) => foldOrgUnitName(choice.name.ar) === folded).map((choice) => choice.key),
+    );
+    if (matches.size === 0 || folded === '') {
+      keep(key);
+      continue;
+    }
+    changed = true;
+    for (const match of matches) keep(match);
+  }
+  return changed ? out : null;
+};

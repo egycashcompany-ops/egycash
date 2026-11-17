@@ -6,18 +6,47 @@
 // and no quantities, so handing `DaysTable` a synthesized row would mean inventing all three and
 // teaching three other screens about a case none of them has.
 //
-// What the sheet adds, and the day table has nowhere to put: the hours the person was EXPECTED,
-// resolved when the page was read rather than stored, and a status that may not be the one on the
-// row — «لم يحضر بعد» until the hour they were due, «غائب» after it.
+// WHAT THE REDESIGN CHANGED (stage 6). The row leads with a FACE and a name rather than a code,
+// because a supervisor reads this screen looking for people they know by sight. The scheduled
+// hours sit beside the actual ones so the comparison the screen exists for — due at nine, scanned
+// at ten past — is one glance and not a subtraction. And a quantity nobody has measured prints as
+// a dash: a confident `0:00` in the late column of somebody who has not arrived is a lie the old
+// table told on every unscanned row.
 import { type AttendanceSheetRowDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { DataTable, type Column } from '../../../../shared/ui';
 import { AttendanceDayStatusBadge } from './AttendanceStatusBadge';
+import { SheetAvatar } from './SheetAvatar';
 import { cairoTime, formatMinutes } from './minutes';
 
 /** A quantity nobody has measured prints as a dash, never as a confident zero. */
 const unknown = '—';
+
+/** The employee cell, shared by the table and the phone-width cards below it. */
+export const SheetIdentity = ({ row }: { row: AttendanceSheetRowDto }): JSX.Element => (
+  <span className="flex items-center gap-2.5">
+    <SheetAvatar
+      employeeId={row.employeeId}
+      photoFileId={row.employeePhotoFileId}
+      name={row.employeeName}
+    />
+    <span className="min-w-0">
+      <span className="block truncate font-medium text-slate-800 dark:text-slate-100">
+        {row.employeeName}
+      </span>
+      <span className="block truncate font-mono text-xs text-slate-500" dir="ltr">
+        {row.employeeCode}
+      </span>
+    </span>
+  </span>
+);
+
+/** `09:00 → 17:00`, or a dash when nobody has said when this person is due. */
+export const expectedSpan = (row: AttendanceSheetRowDto, locale: Locale): string =>
+  row.expectedStartAt === null
+    ? unknown
+    : `${cairoTime(row.expectedStartAt, locale)} → ${cairoTime(row.expectedEndAt, locale)}`;
 
 export const SheetTable = ({
   rows,
@@ -42,28 +71,7 @@ export const SheetTable = ({
     {
       key: 'employee',
       header: t('attendance.days.employee'),
-      render: (r) => (
-        <span>
-          {r.employeeName}{' '}
-          <span className="font-mono text-xs text-slate-500" dir="ltr">
-            {r.employeeCode}
-          </span>
-        </span>
-      ),
-    },
-    {
-      // What was expected of them today, as the assignment or the branch pattern stands NOW.
-      // Blank means nobody has said when this person is due — which is why their empty day reads
-      // as a day off rather than as an absence.
-      key: 'expected',
-      header: t('attendance.daily.expected'),
-      render: (r) => (
-        <span dir="ltr" className="text-xs text-slate-500">
-          {r.expectedStartAt === null
-            ? unknown
-            : `${cairoTime(r.expectedStartAt, locale)} → ${cairoTime(r.expectedEndAt, locale)}`}
-        </span>
-      ),
+      render: (r) => <SheetIdentity row={r} />,
     },
     {
       key: 'status',
@@ -71,10 +79,22 @@ export const SheetTable = ({
       render: (r) => <AttendanceDayStatusBadge status={r.status} />,
     },
     {
+      // What was expected of them today, as the assignment or the branch pattern stands NOW.
+      // Blank means nobody has said when this person is due — which is why their empty day reads
+      // as «لا يوجد جدول» rather than as an absence.
+      key: 'expected',
+      header: t('attendance.daily.expected'),
+      render: (r) => (
+        <span dir="ltr" className="whitespace-nowrap text-xs text-slate-500">
+          {expectedSpan(r, locale)}
+        </span>
+      ),
+    },
+    {
       key: 'span',
       header: t('attendance.days.span'),
       render: (r) => (
-        <span dir="ltr" className="text-xs">
+        <span dir="ltr" className="whitespace-nowrap text-xs">
           {r.day === null
             ? unknown
             : `${cairoTime(r.day.firstInAt, locale)} → ${cairoTime(r.day.lastOutAt, locale)}`}
@@ -82,29 +102,26 @@ export const SheetTable = ({
       ),
     },
     {
-      key: 'worked',
-      header: t('attendance.days.worked'),
-      render: (r) => (
-        <strong dir="ltr">
-          {r.day === null ? unknown : formatMinutes(r.day.workedMinutes, locale)}
-        </strong>
-      ),
-    },
-    {
       key: 'late',
       header: t('attendance.days.late'),
-      render: (r) => (
-        <span dir="ltr">{r.day === null ? unknown : formatMinutes(r.day.lateMinutes, locale)}</span>
-      ),
+      render: (r) =>
+        r.day === null || r.day.lateMinutes === 0 ? (
+          <span className="text-slate-400">{unknown}</span>
+        ) : (
+          <span dir="ltr" className="font-medium text-amber-700 dark:text-amber-400">
+            {formatMinutes(r.day.lateMinutes, locale)}
+          </span>
+        ),
     },
     {
+      // Approved over derived: only the first number ever reaches Payroll (D5).
       key: 'overtime',
       header: t('attendance.days.overtime'),
       render: (r) =>
-        r.day === null ? (
-          <span dir="ltr">{unknown}</span>
+        r.day === null || r.day.overtimeMinutes === 0 ? (
+          <span className="text-slate-400">{unknown}</span>
         ) : (
-          <span dir="ltr" className="text-xs">
+          <span dir="ltr" className="whitespace-nowrap text-xs">
             <strong>{formatMinutes(r.day.approvedOvertimeMinutes, locale)}</strong>
             <span className="text-slate-500">
               {' / '}
@@ -154,6 +171,11 @@ export const SheetTable = ({
       rowKey={(r) => r.employeeId}
       loading={loading ?? false}
       error={error}
+      // `dense` is the mode built for rows carrying avatars and chips: those set the row height on
+      // their own, so the usual padding only pushes rows off the screen.
+      dense
+      embedded
+      hoverable
       {...(onRetry === undefined ? {} : { onRetry })}
       {...(empty === undefined ? {} : { empty })}
     />

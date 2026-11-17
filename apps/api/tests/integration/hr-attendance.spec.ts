@@ -20,6 +20,7 @@ import {
   type AttendanceDecisionDto,
   type AttendanceDecisionSignalsDto,
   type AttendanceSheetRowDto,
+  type AttendanceSheetSummaryDto,
   type EmployeeDto,
   type ImportPunchesResultDto,
   type ShiftDto,
@@ -951,6 +952,89 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     const longAgo = new Date(Date.UTC(2023, 5, 15));
     const rows = (await sheet(longAgo)).rows;
     expect(rows.find((r) => r.employeeId === emp.id)).toBeUndefined();
+  });
+
+  it('COUNTS THE WHOLE DAY, not the page — the cards would otherwise lie (stage 6)', async () => {
+    const scanned = await inBranch();
+    await inBranch();
+    await inBranch();
+    const today = cairoToday();
+    await switchPatternOn();
+    await recompute(scanned.id, today);
+
+    // ONE ROW PER PAGE. A count taken from the page would say "1"; the property under test is
+    // that both the page meta and the summary describe the whole day instead. The branch's exact
+    // headcount is whatever this block has registered by now, which is deliberately not asserted
+    // — tying the test to it would make it fail every time a sibling test added an employee.
+    const paged = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&pageSize=1`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(paged.status).toBe(200);
+    expect((paged.body.data as AttendanceSheetRowDto[])).toHaveLength(1);
+    const total = (paged.body.meta as { totalItems: number }).totalItems;
+    expect(total).toBeGreaterThanOrEqual(3);
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const summary = res.body.data as AttendanceSheetSummaryDto;
+    // The cards and the table agree about how many people the day covers.
+    expect(summary.total).toBe(total);
+    // Every status is counted separately — the screen does the grouping, not the server.
+    const counted = Object.values(summary.byStatus).reduce((sum, n) => sum + n, 0);
+    expect(counted).toBe(total);
+  });
+
+  it('filters by the RESOLVED status, which is not a stored field', async () => {
+    const emp = await inBranch();
+    await inBranch();
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    // With the pattern off and no assignment, every one of them has no schedule — a status that
+    // exists nowhere in the database and can only be filtered after it is worked out.
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=noSchedule&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = res.body.data as AttendanceSheetRowDto[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.status === 'noSchedule')).toBe(true);
+
+    // And a status nobody on this date holds narrows to nothing rather than to everybody.
+    const none = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=onLeave&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((none.body.data as AttendanceSheetRowDto[])).toHaveLength(0);
+  });
+
+  it('searches by name or code', async () => {
+    const emp = await inBranch();
+    const today = cairoToday();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&search=${emp.code}&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = res.body.data as AttendanceSheetRowDto[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.employeeId).toBe(emp.id);
+    // The summary narrows with it, so the cards describe what the table is showing.
+    const summary = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&search=${emp.code}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((summary.body.data as AttendanceSheetSummaryDto).total).toBe(1);
   });
 
   it('is governed by attendance.view, like the list it is a view of', async () => {

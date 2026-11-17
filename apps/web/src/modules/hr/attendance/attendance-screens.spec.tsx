@@ -162,6 +162,7 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   employeeId: 'e-1',
   employeeCode: 'EMP-0007',
   employeeName: 'سارة أحمد',
+  employeePhotoFileId: null,
   branchId: 'b-1',
   date: TODAY,
   status: 'late',
@@ -187,8 +188,12 @@ describe('the daily sheet reads quantities and offers only what the caller may d
   it('renders the derived numbers for the day', () => {
     const html = sheet({ permissions: ['attendance.view'] });
     expect(html).toContain('EMP-0007');
-    // worked 460 → 7:40, late 20 → 0:20, overtime approved 30 / derived 90.
-    expect(html).toContain('7:40');
+    // late 20 → 0:20, overtime approved 30 / derived 90.
+    //
+    // WORKED HOURS ARE NO LONGER A COLUMN HERE (stage 6, the owner's column list). The sheet
+    // answers "who is in, and are they on time" — the span it already shows is where the hours
+    // come from, and on a payroll where most people never scan out the figure was 0:00 on the
+    // majority of rows anyway. The employee's month still carries it.
     expect(html).toContain('0:20');
     expect(html).toContain('0:30');
     expect(html).toContain('1:30');

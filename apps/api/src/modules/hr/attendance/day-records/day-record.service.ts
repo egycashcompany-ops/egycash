@@ -14,6 +14,10 @@ import {
   type AttendanceSheetRowDto,
   type ListAttendanceDaysQuery,
   type ListAttendanceSheetQuery,
+  type AttendanceSheetSummaryDto,
+  type AttendanceSheetSummaryQuery,
+  type AttendanceDayStatus,
+  ATTENDANCE_DAY_STATUSES,
   type Paginated,
   type RecomputeAttendanceDays,
 } from '@ecms/contracts';
@@ -45,6 +49,13 @@ import { dayRecordRepository } from './day-record.repository';
 import { monthRange, toFeedRow } from './attendance-feed';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
+
+/**
+ * The most employees one sheet read will resolve. A guard against a filter nobody meant — every
+ * branch at once — rather than an expected limit: the target is about 1,300 per branch, and a
+ * sheet is always one date.
+ */
+const SHEET_CAP = 10_000;
 
 /** Leave that covers a day for the engine: decided-and-running, or already lived. */
 const COVERING_LEAVE_STATUSES = ['approved', 'active', 'completed'] as const;
@@ -154,17 +165,35 @@ class DayRecordService {
    * the day list and the CSV export remain the record for people who are no longer employed, and
    * they are unchanged.
    */
-  async sheet(
-    query: ListAttendanceSheetQuery,
+  /**
+   * EVERY line of one branch-day, resolved — the single pass both the page and the counts are
+   * built from.
+   *
+   * IT RESOLVES THE WHOLE DAY RATHER THAN A PAGE, and that is forced by what the sheet shows. The
+   * display status is not a stored field: it is worked out from the clock, the calendar and the
+   * hour each person was due. So a count of absences, and a filter on "show me the absences",
+   * cannot be a database query — they can only be read off the resolved set. Paging first would
+   * give a card that says "3 absent" when it means "3 absent on this page".
+   *
+   * The cost is bounded by what a sheet IS: one date, one branch, the people in it. The queries
+   * are three regardless of headcount — employees, their day rows, their expectations — and the
+   * target is about 1,300 employees per branch. `SHEET_CAP` is a guard against a filter nobody
+   * meant (every branch at once), not an expected limit.
+   */
+  private async resolveSheetDay(
+    query: {
+      date: Date;
+      branchId?: readonly string[] | undefined;
+      sectionId?: readonly string[] | undefined;
+      search?: string | undefined;
+    },
     scope?: ScopeSelector,
-  ): Promise<Paginated<AttendanceSheetRowDto>> {
+  ): Promise<AttendanceSheetRowDto[]> {
     const workDate = toDateOnly(query.date);
-    const branchFilter = query.branchId === undefined ? [] : query.branchId;
-    const sectionFilter = query.sectionId === undefined ? [] : query.sectionId;
+    const branchFilter = query.branchId === undefined ? [] : [...query.branchId];
+    const sectionFilter = query.sectionId === undefined ? [] : [...query.sectionId];
 
     let employees: EmployeeDoc[];
-    let meta: Paginated<AttendanceDayDoc>['meta'];
-
     if (scope !== undefined && scope.scope === 'own') {
       // Mirrors `list()`: own scope answers for the caller and never widens, and a filter that
       // excludes them is answered with nothing rather than with themselves anyway.
@@ -175,33 +204,27 @@ class DayRecordService {
         (sectionFilter.length > 0 &&
           !sectionFilter.includes(String(own.employment.sectionId ?? '')));
       employees = excluded ? [] : [own];
-      meta = {
-        page: query.page,
-        pageSize: query.pageSize,
-        totalItems: employees.length,
-        totalPages: employees.length === 0 ? 0 : 1,
-      };
     } else {
       const page = await employeeRepository.listEmployees({
         filter: {
           employed: true,
           ...(branchFilter.length === 0 ? {} : { branchId: branchFilter }),
           ...(sectionFilter.length === 0 ? {} : { sectionId: sectionFilter }),
+          // Name or code, matched by the directory's own rule — Arabic normalized, so a search
+          // typed without diacritics still finds the person.
+          ...(query.search === undefined ? {} : { search: query.search }),
         },
-        page: query.page,
-        pageSize: query.pageSize,
+        page: 1,
+        pageSize: SHEET_CAP,
         sortBy: 'code',
-        sortDir: query.sortDir ?? 'asc',
+        sortDir: 'asc',
         ...(scope === undefined ? {} : { scope }),
       });
       employees = page.items;
-      meta = page.meta;
     }
+    if (employees.length === 0) return [];
 
-    if (employees.length === 0) return { items: [], meta };
-
-    const ids = employees.map((employee) => String(employee._id));
-    // THE CALENDAR IS READ ONCE FOR THE WHOLE PAGE — it is organization-wide (the owner's ruling
+    // THE CALENDAR IS READ ONCE FOR THE WHOLE DAY — it is organization-wide (the owner's ruling
     // that the weekend stays global), so one answer serves every line. Without it a line with no
     // row would read «لم يحضر بعد» on a Friday morning for the entire company.
     const [dayRows, expectations, holidays, weekendDays] = await Promise.all([
@@ -230,14 +253,14 @@ class DayRecordService {
           ? 'weekend'
           : 'working';
 
-    // ONE reading of the clock for the whole page, so two lines of the same sheet cannot land on
-    // opposite sides of an expected end.
+    // ONE reading of the clock for the whole day, so two lines of the same sheet cannot land on
+    // opposite sides of an expected end — and so the cards cannot disagree with the rows beneath.
     const now = new Date();
     const today = cairoToday();
 
-    const items: AttendanceSheetRowDto[] = [];
-    for (const employeeId of ids) {
-      const employee = employees.find((e) => String(e._id) === employeeId) as EmployeeDoc;
+    const rows: AttendanceSheetRowDto[] = [];
+    for (const employee of employees) {
+      const employeeId = String(employee._id);
       const day = dayByEmployee.get(employeeId) ?? null;
       const expectation = expectations.get(employeeId) ?? null;
       const status = resolveDisplayStatus({
@@ -252,10 +275,14 @@ class DayRecordService {
       // for them, most often because they were not employed on it. The line is left out rather
       // than filled in with a claim nobody made.
       if (status === null) continue;
-      items.push({
+      rows.push({
         employeeId,
         employeeCode: employee.code,
         employeeName: employee.personal.fullNameAr,
+        employeePhotoFileId:
+          employee.personal.photoFileId === null || employee.personal.photoFileId === undefined
+            ? null
+            : String(employee.personal.photoFileId),
         branchId: String(employee.employment.branchId),
         date: dateOnlyIso(workDate),
         status,
@@ -264,7 +291,66 @@ class DayRecordService {
         day: day === null ? null : toAttendanceDayDto(day),
       });
     }
-    return { items, meta };
+    return rows;
+  }
+
+  /**
+   * THE DAILY SHEET (stage 2, redesigned in stage 6) — and it starts from EMPLOYEES, not day rows.
+   *
+   * WHY IT IS NOT JUST `list()` WITH `from = to`. `listDays` filters day DOCUMENTS, so an employee
+   * the engine has written no row for is absent from the ANSWER rather than shown as absent from
+   * WORK. On this deployment that is not an edge case: the branch servers call `days/recompute`
+   * only for the employees who scanned, so the people a supervisor opens this screen to find — the
+   * ones who have not turned up — are precisely the ones with no row to find.
+   *
+   * NOTHING IS WRITTEN. Minting rows to make people visible would mean 1,300 writes per branch for
+   * a date that is not over yet, every time somebody opened a screen — and each of those rows
+   * would then have to be corrected when the person walked in.
+   *
+   * KNOWN AND DELIBERATE: the page is the CURRENTLY employed, so a sheet for a date in the past
+   * does not list somebody who has since left. The sheet is a live operational screen; the day
+   * list and the CSV export remain the record for people who are no longer employed.
+   */
+  async sheet(
+    query: ListAttendanceSheetQuery,
+    scope?: ScopeSelector,
+  ): Promise<Paginated<AttendanceSheetRowDto>> {
+    const resolved = await this.resolveSheetDay(query, scope);
+    // The quick filter, applied AFTER resolution because that is the only place the status exists.
+    const wanted = query.status === undefined ? [] : query.status;
+    const filtered =
+      wanted.length === 0 ? resolved : resolved.filter((row) => wanted.includes(row.status));
+
+    const from = (query.page - 1) * query.pageSize;
+    return {
+      items: filtered.slice(from, from + query.pageSize),
+      meta: {
+        page: query.page,
+        pageSize: query.pageSize,
+        totalItems: filtered.length,
+        totalPages: Math.ceil(filtered.length / query.pageSize),
+      },
+    };
+  }
+
+  /**
+   * The sheet's counts — over the WHOLE day, which is the only way a card reading "18 absent" can
+   * be true while the table below it shows fifty rows of thirteen hundred.
+   *
+   * Every status is counted separately and nothing is grouped here. The screen decides that
+   * `late` belongs beside `present` or apart from it; a count the server had already blended
+   * could not be unblended by a reader who wanted the other grouping.
+   */
+  async sheetSummary(
+    query: AttendanceSheetSummaryQuery,
+    scope?: ScopeSelector,
+  ): Promise<AttendanceSheetSummaryDto> {
+    const resolved = await this.resolveSheetDay(query, scope);
+    const byStatus = Object.fromEntries(
+      ATTENDANCE_DAY_STATUSES.map((status) => [status, 0]),
+    ) as Record<AttendanceDayStatus, number>;
+    for (const row of resolved) byStatus[row.status] += 1;
+    return { date: dateOnlyIso(toDateOnly(query.date)), total: resolved.length, byStatus };
   }
 
   /**

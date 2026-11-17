@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { type Locale } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
 import { oneYearFromIso } from './pages/CandidateContractPage';
+import { isoOfParts, partsOfIso, START_PARTS } from './components/PaperValuesForm';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const code = (path: string): string =>
@@ -63,7 +64,29 @@ describe('the candidate\'s page', () => {
     expect(FORM).toContain('onBlur={() => {');
     // The employee code is shown, never typed: the hire gives the one kept at the first print.
     expect(FORM).toContain("new Set(['employee.employeeCode'])");
-    expect(FORM).toContain('disabled={disabled || READ_ONLY_VALUES.has(v.key)}');
+    expect(FORM).toContain('readOnly = READ_ONLY_VALUES,');
+    expect(FORM).toContain('const fixed = readOnly.has(v.key);');
+    expect(FORM).toContain('disabled={disabled || fixed}');
+  });
+
+  // «نسبها by default التاريخ مع امكانيه التعديل».
+  it('shows the start date form 1 boxes in three rows as one date, «تاريخ بدء الاشتراك», the record\'s unless another is chosen', () => {
+    expect(isoOfParts('5', '11', '2026')).toBe('2026-11-05');
+    expect(isoOfParts('15', '11', '2026')).toBe('2026-11-15');
+    expect(isoOfParts('', '', '')).toBe('');
+    expect(isoOfParts('15', '11', '26')).toBe('');
+    expect(partsOfIso('2026-12-01')).toEqual([
+      { key: 'employment.startDay', value: '01' },
+      { key: 'employment.startMonth', value: '12' },
+      { key: 'employment.startYear', value: '2026' },
+    ]);
+    // Cleared: the three parts blank, which gives the record's own date back.
+    expect(partsOfIso('').map((p) => p.value)).toEqual(['', '', '']);
+    expect(START_PARTS).toEqual(['employment.startDay', 'employment.startMonth', 'employment.startYear']);
+    expect(FORM).toContain('type="date"');
+    expect(FORM).toContain("label={t('contracts.candidate.startDate')}");
+    // The candidate's page keeps the three parts at once.
+    expect(PAGE).toContain('for (const change of changes) kept.set(change.key, change.value);');
   });
 
   it('saves every change to the server as it is made, one after another', () => {

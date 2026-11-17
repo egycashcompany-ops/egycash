@@ -3,7 +3,7 @@
 // list → profile hub (tabs + personnel actions), hire-from-offer, Direct Registration (D4).
 // Employee Files mount separately (files-routes.tsx) — same module, own sidebar app.
 // Default export so React.lazy can import it.
-import { Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
@@ -12,8 +12,6 @@ import { EmployeeProfilePage } from './employees/pages/EmployeeProfilePage';
 import { MyProfilePage } from './employees/pages/MyProfilePage';
 import { EmployeeCreatePage } from './employees/pages/EmployeeCreatePage';
 import { EmployeesReadyPage } from './employees/pages/EmployeesReadyPage';
-import { ReadyHubLayout } from './employees/pages/ReadyHubLayout';
-import { ReadyJobPapersPage } from './employees/pages/ReadyJobPapersPage';
 import { HiredEmployeesPage } from './employees/pages/HiredEmployeesPage';
 import { DirectRegisterPage } from './employees/pages/DirectRegisterPage';
 
@@ -48,26 +46,20 @@ export default function EmployeeManagementRoutes(): JSX.Element {
             }
           />
           {/*
-            A6/RW15 — accepted offers not yet converted into an Employee; above them (A28) the bar
-            with «مستندات الوظائف» and «المعينون», each a section of its own address.
+            A6/RW15 — accepted offers not yet converted into an Employee; beside them (A28)
+            «المعينون», the two joined by the small toggle in their heads (`ReadyHeaderActions`).
           */}
           <Route
             path="ready"
             element={
               <RequirePermission permission="employee.create">
-                <ReadyHubLayout />
+                <Outlet />
               </RequirePermission>
             }
           >
             <Route index element={<EmployeesReadyPage />} />
-            <Route
-              path="job-papers"
-              element={
-                <RequirePermission permission="contractTemplate.manage">
-                  <ReadyJobPapersPage />
-                </RequirePermission>
-              }
-            />
+            {/* «مستندات الوظائف» is a popup again; its address of one day leads back to the list. */}
+            <Route path="job-papers" element={<Navigate to="/employees/ready" replace />} />
             <Route
               path="hired"
               element={

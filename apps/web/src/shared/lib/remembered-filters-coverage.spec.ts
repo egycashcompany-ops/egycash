@@ -286,7 +286,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/RegisterImportPage.tsx'],
   ['modules/atm/pages/RegisterReportPage.tsx'],
   ['modules/fleet/pages/CustodyFundDashboardPage.tsx'],
-  ['modules/hr/employee-management/employees/pages/ReadyJobPapersPage.tsx'],
   ['modules/fleet/pages/CustodyMemoEditorPage.tsx'],
   ['modules/fleet/pages/CustodyPapersSetupPage.tsx'],
   ['modules/fleet/pages/DriverProfilePage.tsx'],

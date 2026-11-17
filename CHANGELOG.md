@@ -2022,6 +2022,14 @@ its entry here in the same PR.
 
 ### Changed
 
+- **HR: «جاهزون للتعيين» and «المعينون» are joined by a small toggle; «مستندات الوظائف» is a button
+  again.** «عاوز نرجع ال زرار بتاع مستندات الوظائف لوحده زي مكان و عاوز ال toggle slider يبقا بين جاهزون
+  للتعيين و المعينون و … ميكنش ال tggole background اخده الصفحه كلها لا هو عاوزين يبقا اخد مساحه صغيره
+  فوق الزرار بتاع المستندات». The full-width bar is gone. Both pages carry, in their head, the
+  settings bar in a compact form (`SettingsTabBar compact`): as wide as its two lists, no head
+  circle. Under it is «مستندات الوظائف», which opens its popup as before (`JobPapersDialog` back,
+  the section page gone; `/employees/ready/job-papers` leads to the list).
+
 - **«لوحة تحكم الحركة» at `/fleet`: two NEW tabs, «المخالفات المرورية والتسويات» and «الوقود
   والمصروفات», right after «الحوادث ومطالبات التأمين», as approved.** «خش على الاتنين اللى بعدهم» —
   «اعمل اللى انت بتفضله» and «اعتمد» (the fines) — «اعمل الافضل» and «تمام» (the fuel). The bar now

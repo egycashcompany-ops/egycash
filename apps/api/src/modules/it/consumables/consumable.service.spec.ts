@@ -87,14 +87,14 @@ const EMPLOYEE = String(new Types.ObjectId());
 /** The one transaction every write runs in — so «inside it» is an assertion, not a hope. */
 const SESSION = { transaction: 'consumables' };
 
-/** Holds `itAsset.*` over ONE branch — the home one. */
+/** Holds `itConsumable.*` over ONE branch — the home one. */
 const ctx = {
   userId: String(new Types.ObjectId()),
   locale: 'ar',
   branchId: HOME,
   departmentId: null,
   sectionId: null,
-  permissions: { 'itAsset.create': 'branch', 'itAsset.edit': 'branch' },
+  permissions: { 'itConsumable.create': 'branch', 'itConsumable.edit': 'branch' },
   identity: { displayName: { ar: 'فني', en: 'Technician' } },
 } as never;
 const scope = { scope: 'branch', userId: 'u', branchId: HOME } as never;
@@ -186,9 +186,20 @@ describe('adding an item to a store', () => {
     expect(mocks.audit).not.toHaveBeenCalled();
   });
 
-  it('refuses a branch the caller’s itAsset.create does not reach — nothing is written', async () => {
+  it('refuses a branch the caller’s itConsumable.create does not reach — nothing is written', async () => {
     await expect(
       itConsumableService.create({ ...input, branchId: ELSEWHERE }, ctx),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(mocks.unitOfWork).not.toHaveBeenCalled();
+  });
+
+  it('refuses a branch only the ASSETS’ grant reaches — the store’s own grant decides', async () => {
+    const assetKeeper = {
+      ...(ctx as object),
+      permissions: { 'itAsset.create': 'organization', 'itConsumable.create': 'branch' },
+    } as never;
+    await expect(
+      itConsumableService.create({ ...input, branchId: ELSEWHERE }, assetKeeper),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(mocks.unitOfWork).not.toHaveBeenCalled();
   });

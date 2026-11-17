@@ -11,6 +11,32 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: «خطوط المحمول» and «المستهلكات» have their own permissions.** «فى الصلاحيات مش لاقى حاجة لـ
+  /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها». Both screens
+  rode the asset grants, so the roles screen had no row for either. Each is now a page of the role
+  matrix, right after «الأصول», with its own keys.
+  - `itMobileLine` (page «خطوط المحمول»): view, create, edit, «تسليم واسترجاع خطوط المحمول» (`assign`)
+    and «عرض الرقم القومي للمستلم في إقرار استلام الخط» (`viewNationalId`). `itConsumable` (page
+    «المستهلكات»): view, create, edit and «صرف واسترجاع وتحويل المستهلكات» (`assign`). Each does
+    exactly what the asset key did on the same screen, within the same scope.
+  - The asset keys no longer open these two screens — their routes, the papers' signed copies and
+    their live refresh. The assets, custody, the employees screen and the home's asset figures keep
+    `itAsset.*`.
+  - Nobody loses access on deploy: once, every role and every live delegated grant holding an
+    `itAsset` key is given the matching new keys (`go-live:it-screen-grants:v1`). It adds and never
+    removes, and a key removed afterwards stays removed.
+  - `GET /it/consumables/transfer-targets`: the branches «تحويل إلى فرع» may go to, as
+    `itConsumable.assign` reaches them. The assets' `GET /it/assets/move-targets` stays on
+    `itAsset.assign`.
+  - `/it/people` (the holder boxes) opens on any of the three screens' view keys and finds people in
+    every unit any of them reaches. How many assets a person holds is counted only for a reader with
+    `itAsset.view`, and shows 0 to anyone else.
+  - Naming the asset an issued item is installed on needs `itAsset.view`; without it the asset is
+    «not found». The consumables' types list (`GET /it/catalog-items`) also opens on
+    `itConsumable.view`.
+  - The «خطوط المحمول» and «المستهلكات» menu rows move to the new view keys, only where the stored row
+    still holds `itAsset.view`.
+
 - **Administration: only the table scrolls, not the page.** «عايز بردو كل الصفحات اللى فى مديول الإدارة
   ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس». Every page of the «الإدارة» menu now takes the
   board frame Fleet and ATM use (`shared/ui/board-scroll.ts`). On a computer the title, tabs and

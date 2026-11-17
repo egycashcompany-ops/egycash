@@ -1,8 +1,11 @@
 // Where «نقل إلى فرع» (assets) and «تحويل إلى فرع» (consumables) may go — one rule for both
-// pickers, since both actions ride the one custody grant (`itAsset.assign`, §2.11).
+// pickers. Each action rides its own register's custody grant (§2.11): the assets' move
+// `itAsset.assign`, the consumables' transfer `itConsumable.assign` since 2026-11-17, when the
+// store got grants of its own — so each picker is handed the reach of ITS grant, never the other's.
 //
-// The SERVER says which branches: `GET /it/assets/move-targets` answers the branches the grant
-// reaches whole — the very test both actions apply before they write, and answer 403 when it fails.
+// The SERVER says which branches: `GET /it/assets/move-targets` and
+// `GET /it/consumables/transfer-targets` answer the branches each grant reaches whole — the very
+// test each action applies before it writes, and answers 403 when it fails.
 // The screen cannot work it out itself: `me` carries the reach of ALL the account's grants, so a
 // picker built from it offered a branch only another grant reaches, or the branch a
 // department-scoped grant merely sits in — and the action then refused it.

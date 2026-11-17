@@ -50,7 +50,16 @@ const me = (permissions: string[]): MeDto =>
     external: null,
   }) as unknown as MeDto;
 
-const ALL = ['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.assign'];
+// The lines' own grants (2026-11-17) — and no asset key: «فى الـ IT ظبط صلاحيات الشاشات عشان أقدر
+// أتحكم فيها», so the screen is proven to work for a reader who holds only these.
+const ALL = [
+  'itMobileLine.view',
+  'itMobileLine.create',
+  'itMobileLine.edit',
+  'itMobileLine.assign',
+];
+/** Every asset key — none of which opens anything on the lines' screen any more. */
+const ASSET_KEYS = ['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.assign'];
 
 const line = (over: Partial<ItMobileLineDto> = {}): ItMobileLineDto => ({
   id: 'l-1',
@@ -371,7 +380,8 @@ describe('the register’s rows', () => {
   });
 
   it('names an employee holder with a link to their history, and a car by its code and plate', () => {
-    const body = tableBody(render({ rows: [HELD, IN_CAR] }));
+    // A reader of the assets as well: the person's IT history is the assets' screen.
+    const body = tableBody(render({ permissions: [...ALL, 'itAsset.view'], rows: [HELD, IN_CAR] }));
     expect(body).toContain('href="/it/employees/e-1"');
     expect(body).toContain('محمد أحمد علي');
     expect(body).toContain('0100052');
@@ -400,7 +410,7 @@ describe('the register’s rows', () => {
   });
 
   it('a reader holding only the view grant may look at the history, and nothing else', () => {
-    const html = render({ permissions: ['itAsset.view'], rows: [line(), HELD, STOPPED] });
+    const html = render({ permissions: ['itMobileLine.view'], rows: [line(), HELD, STOPPED] });
     const body = tableBody(html);
     expect([...body.matchAll(/data-line-action="([^"]+)"/gu)].map((m) => m[1])).toEqual([
       'history',
@@ -408,5 +418,60 @@ describe('the register’s rows', () => {
       'history',
     ]);
     expect(html).not.toContain(ar('it.mobileLines.create'));
+  });
+
+  // The lines' actions ride the lines' keys alone: every asset key together gives none of them,
+  // and the acknowledgment's signed copy is filed on the lines' custody grant, not the assets'.
+  it('offers nothing on an asset key — every action and the paper’s upload ride the lines’ own', () => {
+    const actions = (html: string): string[] =>
+      [...tableBody(html).matchAll(/data-line-action="([^"]+)"/gu)].map((m) => m[1] ?? '');
+    const assetsOnly = render({
+      permissions: ['itMobileLine.view', ...ASSET_KEYS],
+      rows: [line(), HELD, STOPPED],
+    });
+    expect(actions(assetsOnly)).toEqual(['history', 'history', 'history']);
+    expect(assetsOnly).not.toContain(ar('it.mobileLines.create'));
+    expect(assetsOnly).not.toContain('data-receipt-upload');
+    const own = render({ rows: [HELD] });
+    expect(actions(own)).toEqual(['return', 'edit', 'history']);
+    expect(own).toContain('data-receipt-upload="r-1"');
+    expect(own).toContain(ar('it.mobileLines.create'));
+  });
+
+  it('gives each action to its own key: hand over and return on assign; suspend, reactivate and edit on edit', () => {
+    const actions = (permissions: string[]): string[] =>
+      [
+        ...tableBody(
+          render({
+            permissions: ['itMobileLine.view', ...permissions],
+            rows: [line(), HELD, STOPPED],
+          }),
+        ).matchAll(/data-line-action="([^"]+)"/gu),
+      ].map((m) => m[1] ?? '');
+    expect(actions(['itMobileLine.assign'])).toEqual([
+      'handOver',
+      'history',
+      'return',
+      'history',
+      'history',
+    ]);
+    expect(actions(['itMobileLine.edit'])).toEqual([
+      'suspend',
+      'edit',
+      'history',
+      'edit',
+      'history',
+      'reactivate',
+      'edit',
+      'history',
+    ]);
+  });
+
+  // The person's IT history is the assets' screen: a keeper of the lines alone reads the holder's
+  // name as text rather than a link to «no access».
+  it('names an employee holder as text to a reader who does not hold the assets', () => {
+    const body = tableBody(render({ rows: [HELD] }));
+    expect(body).toContain('محمد أحمد علي');
+    expect(body).not.toContain('href="/it/employees/');
   });
 });

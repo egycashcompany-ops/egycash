@@ -11,7 +11,7 @@ import { itConsumableMemoService } from './consumable-memo.service';
 
 type IdParam = { id: string };
 
-const custodyScope = (req: Request) => scopeSelector(authContext(req), 'itAsset.view');
+const custodyScope = (req: Request) => scopeSelector(authContext(req), 'itConsumable.view');
 
 export const getItConsumableMemo = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);

@@ -13,7 +13,9 @@
 // URL-synced like every IT register — a filtered view is a link, and the filters are remembered
 // across visits. Everything on a row is a server fact: the status follows from the named actions
 // alone, and each action is offered only where the line's status allows it and the reader's grant
-// does — the same `itAsset.*` grants as the assets, which a line is handed over under.
+// does — the lines' own grants (`itMobileLine.*`) since 2026-11-17, «فى الـ IT ظبط صلاحيات الشاشات
+// عشان أقدر أتحكم فيها»; they shipped on the assets'. A holder's name opens their IT history, which
+// is the assets' screen, so it is a link for a reader of the assets and plain text for anyone else.
 //
 // Excel and PDF, before the screen's own action, as on the other registers: every line the filters
 // match, in the table's order (`lib/mobile-line-register-export.ts`).
@@ -520,7 +522,7 @@ export const MobileLinesPage = (): JSX.Element => {
         const name = holder.employeeName ?? holder.employeeId ?? '—';
         return (
           <span className="flex flex-col leading-tight" data-line-holder="employee">
-            {holder.employeeId === null ? (
+            {holder.employeeId === null || !can('itAsset.view') ? (
               <span>{name}</span>
             ) : (
               <Link to={`/it/employees/${holder.employeeId}`} className="hover:underline">
@@ -565,7 +567,7 @@ export const MobileLinesPage = (): JSX.Element => {
             />
           )}
           {line.status === 'inStock' &&
-            can('itAsset.assign') &&
+            can('itMobileLine.assign') &&
             action(
               line,
               'handOver',
@@ -573,7 +575,7 @@ export const MobileLinesPage = (): JSX.Element => {
               <UsersIcon className="h-4 w-4" />,
             )}
           {line.status === 'inStock' &&
-            can('itAsset.edit') &&
+            can('itMobileLine.edit') &&
             action(
               line,
               'suspend',
@@ -581,7 +583,7 @@ export const MobileLinesPage = (): JSX.Element => {
               <PauseIcon className="h-4 w-4" />,
             )}
           {line.status === 'assigned' &&
-            can('itAsset.assign') &&
+            can('itMobileLine.assign') &&
             action(
               line,
               'return',
@@ -589,14 +591,14 @@ export const MobileLinesPage = (): JSX.Element => {
               <ResetIcon className="h-4 w-4" />,
             )}
           {line.status === 'suspended' &&
-            can('itAsset.edit') &&
+            can('itMobileLine.edit') &&
             action(
               line,
               'reactivate',
               t('it.mobileLines.actions.reactivate'),
               <PlayIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.edit') &&
+          {can('itMobileLine.edit') &&
             action(line, 'edit', t('it.mobileLines.edit'), <EditIcon className="h-4 w-4" />)}
           {action(
             line,
@@ -633,7 +635,7 @@ export const MobileLinesPage = (): JSX.Element => {
               {!isError && (
                 <RegisterExportButtons name="it-mobile-lines" onExcel={toExcel} onPdf={toPdf} />
               )}
-              <Can permission="itAsset.create">
+              <Can permission="itMobileLine.create">
                 <Button
                   size="sm"
                   leftIcon={<PlusIcon className="h-4 w-4" />}

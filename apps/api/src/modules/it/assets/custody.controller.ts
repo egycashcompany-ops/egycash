@@ -77,8 +77,9 @@ export const moveItAssetsToBranch = async (req: Request, res: Response): Promise
 };
 
 /**
- * The branches the caller may move assets — and send consumables — to: the server's own reach of
- * `itAsset.assign`, so both dialogs offer only branches their action would accept.
+ * The branches the caller may move assets to: the server's own reach of `itAsset.assign`, so the
+ * dialog offers only branches the move would accept. (The consumables' transfer has its own list,
+ * under its own grant.)
  */
 export const listItMoveTargets = async (req: Request, res: Response): Promise<void> => {
   ok(res, await itAssetCustodyService.moveTargets(authContext(req)));

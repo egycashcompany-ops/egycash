@@ -269,7 +269,8 @@ export const toItAssetAssignmentDto = (
 };
 
 /**
- * «بطاقة رقم قومي» on the way out: the full number for a caller holding `itAsset.viewNationalId`,
+ * «بطاقة رقم قومي» on the way out: the full number for a caller holding the paper's own grant —
+ * `itAsset.viewNationalId` on a device receipt, `itMobileLine.viewNationalId` on a line's —
  * withheld from anyone else (Security Architecture §3) — paired with the flag that tells «not
  * shown to you» from «HR has none», the employee mapper's `…Visible` convention.
  */

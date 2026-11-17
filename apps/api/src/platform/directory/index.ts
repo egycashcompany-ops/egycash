@@ -283,6 +283,14 @@ export interface DirectoryEmployeeQuery {
   sortBy?: 'name' | 'code' | undefined;
   sortDir?: 'asc' | 'desc' | undefined;
   scope?: ScopeSelector | undefined;
+  /**
+   * A person ANY of these selectors reaches — for a register several grants open, each with its
+   * own reach (IT's people: the assets', the lines' or the consumables' read grant). The union is
+   * exact: each selector is applied as the repository applies one, and their filters are OR-ed, so
+   * no grant's reach is traded for another's. EMPTY is nobody, never everybody. Applied together
+   * with `scope` when both are given.
+   */
+  anyOfScopes?: readonly ScopeSelector[] | undefined;
   page: number;
   pageSize: number;
 }
@@ -309,7 +317,12 @@ export const searchDirectoryEmployees = async (
   query: DirectoryEmployeeQuery,
 ): Promise<Paginated<DirectoryEmployeeListing>> => {
   const lookup = employeeSearchLookup;
-  if (lookup === null || query.departmentIds?.length === 0 || query.employeeIds?.length === 0) {
+  if (
+    lookup === null ||
+    query.departmentIds?.length === 0 ||
+    query.employeeIds?.length === 0 ||
+    query.anyOfScopes?.length === 0
+  ) {
     return {
       items: [],
       meta: { page: query.page, pageSize: query.pageSize, totalItems: 0, totalPages: 1 },

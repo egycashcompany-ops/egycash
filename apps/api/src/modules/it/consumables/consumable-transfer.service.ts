@@ -16,6 +16,7 @@ import { Types } from 'mongoose';
 import {
   type ItConsumableTransferLineDto,
   type ItConsumableTransferResultDto,
+  type ItMoveTargetsDto,
   type TransferItConsumables,
 } from '@ecms/contracts';
 import {
@@ -28,6 +29,7 @@ import { keyReachesBranch, type AuthContext, type ScopeSelector } from '../../..
 import { branchRepository } from '../../../platform/organization';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { reserveSequenceBlock } from '../shared/sequence';
+import { moveTargetBranchIds } from '../assets/asset-move';
 import { CONSUMABLE_SEQUENCE_KEY, formatConsumableCode } from './consumable-number';
 import { beforeStockEffect, stockEffect, type StockEffect } from './consumable-stock';
 import { itConsumableRepository } from './consumable.repository';
@@ -47,6 +49,12 @@ import {
 } from './consumable-transfer';
 import { type ItConsumableDoc } from './consumable.model';
 import { type ItConsumableMovementDoc } from './consumable-movement.model';
+
+/**
+ * The grant a transfer is gated on, reached through and judged by — one name, so the branch list
+ * the dialog offers (`transferTargets`) and the test the transfer applies cannot drift apart.
+ */
+const TRANSFER_GRANT = 'itConsumable.assign';
 
 const isDuplicateKey = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
@@ -68,9 +76,28 @@ interface WrittenLine {
 
 class ItConsumableTransferService {
   /**
+   * Where «تحويل إلى فرع» may go for this caller: every active branch of the organisation their
+   * `itConsumable.assign` reaches as a whole — `moveTargetBranchIds`, the assets' own rule, asked
+   * of the store's grant, and the same `keyReachesBranch` test `transfer` applies to the branch it
+   * is given — so a picker built from it offers nothing the transfer would refuse. In the branch
+   * options' order (by code). The assets' list (`/it/assets/move-targets`) stays on the assets'
+   * custody grant, for the assets alone.
+   */
+  async transferTargets(ctx: AuthContext): Promise<ItMoveTargetsDto> {
+    const branches = await branchRepository.listAll();
+    return {
+      branchIds: moveTargetBranchIds(
+        ctx,
+        TRANSFER_GRANT,
+        branches.map((branch) => ({ id: String(branch._id), status: branch.status })),
+      ),
+    };
+  }
+
+  /**
    * Move every line's quantity from the one store its items are in to `toBranchId`'s.
    *
-   * Refused before anything is written: a branch the caller's `itAsset.assign` does not reach
+   * Refused before anything is written: a branch the caller's `itConsumable.assign` does not reach
    * (403), an item they cannot see (404 — read under that grant's scope), items of two stores or a
    * transfer to the store they are in (422), a branch that is not there or not active (400). Inside
    * the transaction, refusing the whole transfer: more than a store holds, and a receiving item
@@ -86,8 +113,8 @@ class ItConsumableTransferService {
     // upper-case hex, and an upper-case copy of the items' own store must read as «the same store»
     // — not slip past it and write a transfer from a shelf to itself.
     const toBranchId = input.toBranchId.toLowerCase();
-    if (!keyReachesBranch(ctx, 'itAsset.assign', toBranchId)) {
-      throw new ForbiddenError('itAsset.assign does not reach this branch');
+    if (!keyReachesBranch(ctx, TRANSFER_GRANT, toBranchId)) {
+      throw new ForbiddenError(`${TRANSFER_GRANT} does not reach this branch`);
     }
 
     const found = await itConsumableRepository.findManyByIds(

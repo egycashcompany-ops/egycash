@@ -43,6 +43,7 @@ import { startItAssetSpecsGoLive } from './modules/it/go-live/asset-specs';
 import { startItBranchCustodyGoLive } from './modules/it/go-live/branch-custody';
 import { startItConsumableTypesGoLive } from './modules/it/go-live/consumable-types';
 import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
+import { startItScreenGrantsGoLive } from './modules/it/go-live/screen-grants';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -139,6 +140,12 @@ const main = async (): Promise<void> => {
   // after the types it is filed under — started second, so it waits for them (see each file).
   startItConsumableTypesGoLive();
   startItConsumablesOpeningGoLive();
+  // «فى الصلاحيات مش لاقى حاجة لـ /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات
+  // عشان أقدر أتحكم فيها» — the two screens now have keys of their own; every role and delegated
+  // grant that ran them through the asset keys is given the matching new keys, once, so nobody
+  // loses a screen the moment this deploy lands (see the file). The api ONLY, unlike the steps
+  // above: the copy must land as close as it can to the new code serving the screens.
+  startItScreenGrantsGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

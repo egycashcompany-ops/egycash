@@ -820,9 +820,11 @@ export interface ItAssetImportResultDto {
 }
 
 /**
- * The branches the caller may move assets — and send consumables — to: every active branch their
- * `itAsset.assign` reaches, judged by the server's own rule, so the pickers never offer a branch
- * the move would refuse (the account's `branchIds` are the reach of ALL its grants, not this one).
+ * The branches the caller may move assets — or send consumables — to: every active branch the
+ * action's own grant reaches (`itAsset.assign` at `GET /it/assets/move-targets`,
+ * `itConsumable.assign` at `GET /it/consumables/transfer-targets`), judged by the server's own
+ * rule, so the pickers never offer a branch the action would refuse (the account's `branchIds` are
+ * the reach of ALL its grants, not this one).
  */
 export interface ItMoveTargetsDto {
   branchIds: string[];
@@ -1045,10 +1047,11 @@ export interface ItCustodyReceiptDocumentDto {
   /** «بوظيفة». */
   jobTitle: { ar: string; en: string } | null;
   /**
-   * «بطاقة رقم قومي» — the FULL number, for a caller holding `itAsset.viewNationalId` (Security
-   * Architecture §3: a national ID is shown in full only behind a sensitive-data grant). Null
-   * otherwise, or when HR has none — `nationalIdVisible` tells the two apart, and either way the
-   * paper leaves the line for the pen.
+   * «بطاقة رقم قومي» — the FULL number, for a caller holding the paper's own grant —
+   * `itAsset.viewNationalId` on a device receipt, `itMobileLine.viewNationalId` on a line's
+   * (Security Architecture §3: a national ID is shown in full only behind a sensitive-data grant).
+   * Null otherwise, or when HR has none — `nationalIdVisible` tells the two apart, and either way
+   * the paper leaves the line for the pen.
    */
   nationalId: string | null;
   nationalIdVisible: boolean;
@@ -1092,11 +1095,13 @@ export const ItCustodyReceiptIdParamSchema = z.object({ id: objectId() }).strict
 // ونفس الموضوع فى الفلاتر فى كل الشاشات لكن فى حاله اضافه اى حاجه لازم يكون المواظفيين يكونوا
 // موجودين».
 //
-// Custody references employees (§9.1), and any employee in the company may hold an asset — so IT
-// names people it does not own. It used to ask HR's employee endpoint under HR's `employee.view`,
-// which is the whole HR file: letting a technician see who holds a laptop meant handing them
-// «الموظفون». IT now answers under its OWN grant, through the platform directory, with exactly what
-// its screens print — a name, a code, a placement, a status — and nothing a register does not.
+// Custody references employees (§9.1), and any employee in the company may hold an asset, a line or
+// a consumable — so IT names people it does not own. It used to ask HR's employee endpoint under
+// HR's `employee.view`, which is the whole HR file: letting a technician see who holds a laptop
+// meant handing them «الموظفون». IT now answers under its OWN grants — any of the three registers'
+// read grants (`itAsset.view`, `itMobileLine.view`, `itConsumable.view`) — through the platform
+// directory, with exactly what its screens print — a name, a code, a placement, a status — and
+// nothing a register does not.
 //
 // IT still owns none of it (§9.1): nothing here is stored or written by IT, and every fact is
 // HR's, read fresh. What changed is which grant a reader needs to see the names IT already showed.
@@ -1139,7 +1144,12 @@ export interface ItPersonDto {
    * have custody but no tickets.
    */
   userId: string | null;
-  /** Assets this person holds right now — open custody intervals the reader may see. */
+  /**
+   * Assets this person holds right now — open custody intervals the reader may see, counted within
+   * the reader's `itAsset.view`. A reader without it (one who opened the list on the lines' or the
+   * consumables' grant) may see none, so every person reads 0 for them: the list does not tell
+   * them how many devices anybody holds.
+   */
   openCustodyCount: number;
 }
 
@@ -2154,9 +2164,10 @@ export type ItAssetWarrantyExpiredPayload = z.infer<typeof ItAssetWarrantyExpire
 // The company's SIM lines on its three networks' business accounts: a register of its own, beside
 // the assets rather than inside them — a line is a number on a network's account, not a device
 // with a serial, a category and a specifications table. It is handed over and returned the way a
-// device is, on the same grants (`itAsset.*`, page «الأصول»), and an employee signs the same
-// department form for it («إقرار استلام», the F-14 series); a tracker SIM is held by a CAR instead,
-// written as the car's code and plate the way the network's sheet names it.
+// device is — on grants of its own since 2026-11-17 (`itMobileLine.*`, page «خطوط المحمول»; the
+// asset grants carried it before) — and an employee signs the same department form for it («إقرار
+// استلام», the F-14 series); a tracker SIM is held by a CAR instead, written as the car's code and
+// plate the way the network's sheet names it.
 //
 // As with assets, `status` and `currentAssignmentId` are on no write schema: they follow from the
 // named actions (hand over / return / suspend / reactivate) and nothing else.
@@ -2532,7 +2543,8 @@ export type ListItMobileLineHistoryQuery = z.infer<typeof ListItMobileLineHistor
 // only through a maintenance order (FR-9), a consumable is handed to a person — on a memo they sign
 // — and may be named as installed on one of the register's assets. Each branch keeps its own stock,
 // so an item is a row PER BRANCH; its quantities are derived from an append-only ledger and moved
-// atomically with it, and are on no write schema. Same grants as the assets (`itAsset.*`).
+// atomically with it, and are on no write schema. Its own grants since 2026-11-17
+// (`itConsumable.*`, page «المستهلكات»); the asset grants carried it before.
 
 /**
  * Every way stock moves: in from a delivery, out to a person, out as scrap, back from a person — and

@@ -351,7 +351,7 @@ describe('the people and technicians the IT client reads exist on the API', () =
 // FR-19 — the mobile lines: the register, its custody intervals, and the line acknowledgments.
 // The three routers are found by the function each exports, not by a file name, and each is read
 // on its own — `declared()` over a whole file would mix two routers kept in one.
-describe('the mobile lines the IT client calls exist on the API, on the assets’ grants', () => {
+describe('the mobile lines the IT client calls exist on the API, on the lines’ own grants', () => {
   const DIR = resolve(API_SRC, 'mobile-lines');
   const router = (name: string): string => {
     const files = existsSync(DIR) ? readdirSync(DIR).filter((f) => f.endsWith('.routes.ts')) : [];
@@ -438,32 +438,47 @@ describe('the mobile lines the IT client calls exist on the API, on the assets�
     expect(CLIENT).toContain('`/it/mobile-line-receipts/${id}/signed-copy`');
   });
 
-  // «no new permission keys»: a line is read, registered, edited and handed over under exactly
-  // the grants an asset is — reads on view, the hand-over and return on the ONE custody grant,
-  // suspend and reactivate on edit, and the paper's writes on the custody grant like a device's.
-  it('every route rides the gate the asset beside it rides', () => {
+  // «فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها» (2026-11-17): the lines' own keys, each
+  // action exactly what the same route rode under the asset key before — reads on view, the
+  // hand-over and return on the ONE custody grant, suspend and reactivate on edit, and the paper's
+  // writes on the custody grant like a device's.
+  it('every route rides the lines’ own gate, the action the asset key gave it before', () => {
     const expected: [string, string, string, string][] = [
-      [LINES, 'get', '/', 'itAsset.view'],
-      [LINES, 'get', '/summary', 'itAsset.view'],
-      [LINES, 'post', '/', 'itAsset.create'],
-      [LINES, 'get', '/:id', 'itAsset.view'],
-      [LINES, 'patch', '/:id', 'itAsset.edit'],
-      [LINES, 'get', '/:id/history', 'itAsset.view'],
-      [LINES, 'post', '/:id/assign', 'itAsset.assign'],
-      [LINES, 'post', '/:id/return', 'itAsset.assign'],
-      [LINES, 'post', '/:id/suspend', 'itAsset.edit'],
-      [LINES, 'post', '/:id/reactivate', 'itAsset.edit'],
-      [INTERVALS, 'get', '/', 'itAsset.view'],
-      [RECEIPTS, 'post', '/preview', 'itAsset.assign'],
-      [RECEIPTS, 'get', '/:id', 'itAsset.view'],
-      [RECEIPTS, 'post', '/:id/print', 'itAsset.view'],
-      [RECEIPTS, 'get', '/:id/signed-copy', 'itAsset.view'],
-      [RECEIPTS, 'post', '/:id/signed-copy', 'itAsset.assign'],
-      [RECEIPTS, 'delete', '/:id/signed-copy', 'itAsset.assign'],
+      [LINES, 'get', '/', 'itMobileLine.view'],
+      [LINES, 'get', '/summary', 'itMobileLine.view'],
+      [LINES, 'post', '/', 'itMobileLine.create'],
+      [LINES, 'get', '/:id', 'itMobileLine.view'],
+      [LINES, 'patch', '/:id', 'itMobileLine.edit'],
+      [LINES, 'get', '/:id/history', 'itMobileLine.view'],
+      [LINES, 'post', '/:id/assign', 'itMobileLine.assign'],
+      [LINES, 'post', '/:id/return', 'itMobileLine.assign'],
+      [LINES, 'post', '/:id/suspend', 'itMobileLine.edit'],
+      [LINES, 'post', '/:id/reactivate', 'itMobileLine.edit'],
+      [INTERVALS, 'get', '/', 'itMobileLine.view'],
+      [RECEIPTS, 'post', '/preview', 'itMobileLine.assign'],
+      [RECEIPTS, 'get', '/:id', 'itMobileLine.view'],
+      [RECEIPTS, 'post', '/:id/print', 'itMobileLine.view'],
+      [RECEIPTS, 'get', '/:id/signed-copy', 'itMobileLine.view'],
+      [RECEIPTS, 'post', '/:id/signed-copy', 'itMobileLine.assign'],
+      [RECEIPTS, 'delete', '/:id/signed-copy', 'itMobileLine.assign'],
     ];
     for (const [routes, verb, path, permission] of expected) {
       expect(gates(routes, verb, path), `${verb} ${path}`).toEqual([permission]);
     }
+  });
+
+  // No «either key» fallback: an asset key that still opened a line route would make the roles
+  // screen's row for the lines mean nothing. Every route each router declares, read one by one.
+  it('no route rides an asset key — only the lines’ own, all declared in the manifest', () => {
+    for (const routes of [LINES, INTERVALS, RECEIPTS]) {
+      for (const route of declared(routes)) {
+        const [verb = '', path = ''] = route.split(' ');
+        const keys = gates(routes, verb, path);
+        expect(keys.length, route).toBeGreaterThan(0);
+        for (const key of keys) expect(key, route).toMatch(/^itMobileLine\./u);
+      }
+    }
+    expect(MANIFEST).toContain("'itMobileLine'");
   });
 
   it('declares no filter the contract does not', () => {
@@ -492,7 +507,7 @@ describe('the mobile lines the IT client calls exist on the API, on the assets�
 // and the memo an issue writes. Each router is found through the manifest — the builder a prefix
 // mounts, then that builder's own body in whichever routes file declares it — so this reads the
 // API's wiring rather than a file name it guessed, and `declared()` never mixes two routers.
-describe('the consumables the IT client calls exist on the API, on the assets’ grants', () => {
+describe('the consumables the IT client calls exist on the API, on the store’s own grants', () => {
   const routeFiles = (dir: string): string[] =>
     readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
       const full = resolve(dir, entry.name);
@@ -543,15 +558,22 @@ describe('the consumables the IT client calls exist on the API, on the assets’
         // «تحويل إلى فرع»: one store's items, each with how many, to another branch's store — ONE
         // action for the whole transfer, as the issue is for its memo.
         'post /transfer',
+        // …and where it may go: the branches the store's custody grant reaches, as only the server
+        // can judge them (2026-11-17 — the assets' `move-targets` judges the assets' grant).
+        'get /transfer-targets',
         'post /:id/receive',
         'post /:id/scrap',
         'post /:id/return',
       ]),
     );
+    // A literal segment registered after '/:id' would be read as an item id — and 400.
+    expect(ITEMS.indexOf("'/transfer-targets'")).toBeGreaterThan(-1);
+    expect(ITEMS.indexOf("'/transfer-targets'")).toBeLessThan(ITEMS.indexOf("'/:id'"));
     expect(CLIENT).toContain('getPage<ItConsumableDto>(`/it/consumables${buildQuery(params)}`)');
     expect(CLIENT).toContain("post<ItConsumableDto>('/it/consumables'");
     expect(CLIENT).toContain("post<ItConsumableIssueResultDto>('/it/consumables/issue'");
     expect(CLIENT).toContain("post<ItConsumableTransferResultDto>('/it/consumables/transfer'");
+    expect(CLIENT).toContain("get<ItMoveTargetsDto>('/it/consumables/transfer-targets')");
     expect(CLIENT).toContain('`/it/consumables/${id}`');
     for (const action of ['receive', 'scrap', 'return']) {
       expect(CLIENT, `client never calls /${action}`).toContain(`/it/consumables/\${id}/${action}`);
@@ -578,32 +600,66 @@ describe('the consumables the IT client calls exist on the API, on the assets’
     expect(CLIENT).toContain('`/it/consumable-memos/${id}/signed-copy`');
   });
 
-  // «same permissions as assets», no key of its own: reads (and the memo's reprint) on view, adding
-  // an item on create, editing it, receiving and scrapping on edit, and the custody surface — the
-  // issue, the return, the memo's signed copy — on the ONE custody grant.
-  it('every route rides the gate the asset beside it rides', () => {
+  // The store's own keys since 2026-11-17 («فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها»),
+  // each action exactly what the same route rode under the asset key before: reads (and the memo's
+  // reprint) on view, adding an item on create, editing it, receiving and scrapping on edit, and
+  // the custody surface — the issue, the return, the memo's signed copy, the transfer and where it
+  // may go — on the ONE custody grant.
+  it('every route rides the store’s own gate, the action the asset key gave it before', () => {
     const expected: [string, string, string, string][] = [
-      [ITEMS, 'get', '/', 'itAsset.view'],
-      [ITEMS, 'post', '/', 'itAsset.create'],
-      [ITEMS, 'get', '/:id', 'itAsset.view'],
-      [ITEMS, 'patch', '/:id', 'itAsset.edit'],
-      [ITEMS, 'get', '/:id/movements', 'itAsset.view'],
-      [ITEMS, 'post', '/issue', 'itAsset.assign'],
-      // No key of its own: a transfer rides the custody grant the issue and the return ride.
-      [ITEMS, 'post', '/transfer', 'itAsset.assign'],
-      [ITEMS, 'post', '/:id/receive', 'itAsset.edit'],
-      [ITEMS, 'post', '/:id/scrap', 'itAsset.edit'],
-      [ITEMS, 'post', '/:id/return', 'itAsset.assign'],
-      [LEDGER, 'get', '/', 'itAsset.view'],
-      [MEMOS, 'get', '/:id', 'itAsset.view'],
-      [MEMOS, 'post', '/:id/print', 'itAsset.view'],
-      [MEMOS, 'get', '/:id/signed-copy', 'itAsset.view'],
-      [MEMOS, 'post', '/:id/signed-copy', 'itAsset.assign'],
-      [MEMOS, 'delete', '/:id/signed-copy', 'itAsset.assign'],
+      [ITEMS, 'get', '/', 'itConsumable.view'],
+      [ITEMS, 'post', '/', 'itConsumable.create'],
+      [ITEMS, 'get', '/:id', 'itConsumable.view'],
+      [ITEMS, 'patch', '/:id', 'itConsumable.edit'],
+      [ITEMS, 'get', '/:id/movements', 'itConsumable.view'],
+      [ITEMS, 'post', '/issue', 'itConsumable.assign'],
+      // A transfer rides the custody grant the issue and the return ride — and so does the list
+      // of where it may go, judged by that very grant.
+      [ITEMS, 'post', '/transfer', 'itConsumable.assign'],
+      [ITEMS, 'get', '/transfer-targets', 'itConsumable.assign'],
+      [ITEMS, 'post', '/:id/receive', 'itConsumable.edit'],
+      [ITEMS, 'post', '/:id/scrap', 'itConsumable.edit'],
+      [ITEMS, 'post', '/:id/return', 'itConsumable.assign'],
+      [LEDGER, 'get', '/', 'itConsumable.view'],
+      [MEMOS, 'get', '/:id', 'itConsumable.view'],
+      [MEMOS, 'post', '/:id/print', 'itConsumable.view'],
+      [MEMOS, 'get', '/:id/signed-copy', 'itConsumable.view'],
+      [MEMOS, 'post', '/:id/signed-copy', 'itConsumable.assign'],
+      [MEMOS, 'delete', '/:id/signed-copy', 'itConsumable.assign'],
     ];
     for (const [routes, verb, path, permission] of expected) {
       expect(gates(routes, verb, path), `${verb} ${path}`).toEqual([permission]);
     }
+  });
+
+  // No «either key» fallback: an asset key that still opened a store route would make the roles
+  // screen's row for the consumables mean nothing. Every route each router declares, one by one.
+  it('no route rides an asset key — only the store’s own, all declared in the manifest', () => {
+    for (const routes of [ITEMS, LEDGER, MEMOS]) {
+      for (const route of declared(routes)) {
+        const [verb = '', path = ''] = route.split(' ');
+        const keys = gates(routes, verb, path);
+        expect(keys.length, route).toBeGreaterThan(0);
+        for (const key of keys) expect(key, route).toMatch(/^itConsumable\./u);
+      }
+    }
+    expect(MANIFEST).toContain("'itConsumable'");
+  });
+
+  // The transfer dialog asks the store's own list — never the assets' `move-targets`, which
+  // answers for `itAsset.assign` and would offer a store keeper the reach of a grant they may not
+  // hold (or 403 them outright).
+  it('the transfer dialog asks where the STORE’s grant reaches, under its own query key', () => {
+    const queries = readFileSync(resolve(HERE, 'api/it-queries.ts'), 'utf8');
+    const hook =
+      /export const useItConsumableTransferTargets = [\s\S]*?\n {2}\}\);/.exec(queries)?.[0] ?? '';
+    expect(hook).toContain('queryFn: api.consumableTransferTargets');
+    expect(hook).toContain("listKey(MODULE, 'consumableTransferTargets')");
+    const dialogs = readFileSync(resolve(HERE, 'components/ConsumableDialogs.tsx'), 'utf8');
+    const transfer =
+      /export const TransferConsumablesDialog = [\s\S]*?\n};/.exec(dialogs)?.[0] ?? '';
+    expect(transfer).toContain('useItConsumableTransferTargets(open)');
+    expect(transfer).not.toContain('useItMoveTargets');
   });
 
   // The client's params are an open record and the schemas are strict, so a filter name only one
@@ -617,7 +673,9 @@ describe('the consumables the IT client calls exist on the API, on the assets’
       new RegExp(`${name} = PaginationQuerySchema\\.extend\\(\\{([\\s\\S]*?)\\}\\)`).exec(
         CONTRACTS,
       )?.[1] ?? '';
-    const request = /const params = useMemo\(\s*\(\) => \(\{([\s\S]*?)\}\),\s*\[paramsKey\]/;
+    // The memo's keys may carry a line of comment and more than the URL (the ledger's grant).
+    const request =
+      /const params = useMemo\(\s*\(\) => \(\{([\s\S]*?)\}\),\s*(?:\/\/[^\n]*\n\s*)*\[paramsKey[^\]]*\]/;
     const sent = (page: string): string[] => {
       const body = request.exec(readFileSync(resolve(HERE, page), 'utf8'))?.[1] ?? '';
       // Paging and the sort travel on the shared pagination schema.
@@ -908,14 +966,16 @@ describe('the permissions the API enforces are the ones the UI gates on', () => 
   });
 
   // Catalogs split their gates, and the split is load-bearing in BOTH directions. Reading serves
-  // two callers: the asset form's category dropdown (`itAsset.view`) and the catalogs screen
-  // itself (`itCatalog.manage`, design §7) — gating the read on the first alone locked the catalog
-  // administrator out of the very list they manage. Writing stays `itCatalog.manage`. Pinned here
-  // so a later tightening fails this test instead of silently emptying every dropdown in the
-  // module, or re-breaking the admin.
-  it('catalogs: read takes EITHER grant, writes need itCatalog.manage', () => {
+  // three callers: the asset form's category dropdown (`itAsset.view`), the consumables screens'
+  // type list (`itConsumable.view`, the store's own read grant since 2026-11-17) and the catalogs
+  // screen itself (`itCatalog.manage`, design §7) — gating the read on the first alone locked the
+  // catalog administrator out of the very list they manage, and would leave a store keeper without
+  // the assets a type filter that 403s. Writing stays `itCatalog.manage`. Pinned here so a later
+  // tightening fails this test instead of silently emptying every dropdown in the module, or
+  // re-breaking the admin.
+  it('catalogs: read takes ANY of the three grants, writes need itCatalog.manage', () => {
     const list = /router\.get\(\s*'\/'[\s\S]*?\);/.exec(CATALOG_ROUTES)?.[0] ?? '';
-    expect(list).toContain("authorizeAny('itAsset.view', 'itCatalog.manage')");
+    expect(list).toContain("authorizeAny('itAsset.view', 'itConsumable.view', 'itCatalog.manage')");
     for (const verb of ['post', 'patch']) {
       const write = new RegExp(`router\\.${verb}\\([\\s\\S]*?\\);`).exec(CATALOG_ROUTES)?.[0] ?? '';
       expect(write).toContain("authorize('itCatalog.manage')");
@@ -1338,9 +1398,31 @@ describe('people ride IT’s grants, never HR’s', () => {
   const route = (router: string): string =>
     new RegExp(`export const ${router} = [\\s\\S]*?\\n};`).exec(PEOPLE_ROUTES)?.[0] ?? '';
 
-  it('the people register rides the custody grant — the register already names every holder', () => {
+  // Three registers name holders — the assets, the lines and the consumables — and since
+  // 2026-11-17 each has its own read grant: ANY of the three opens the people (`authorizeAny`), so
+  // a lines or store keeper finds whom to hand a line or a mouse to without the assets.
+  it('the people register rides ANY register’s read grant — each already names every holder', () => {
     const people = route('buildItPeopleRouter');
-    expect(people.match(/authorize\('itAsset\.view'\)/g)).toHaveLength(2);
+    expect(people.match(/authorizeAny\(\.\.\.IT_PEOPLE_GRANTS\)/g)).toHaveLength(2);
+    expect(people).not.toMatch(/authorize\('/u);
+    const controller = readFileSync(resolve(API_SRC, 'people/people.controller.ts'), 'utf8');
+    const grants = (source: string): string[] =>
+      [
+        ...(/IT_PEOPLE_GRANTS[^=]*=\s*\[([^\]]*)\]/.exec(source)?.[1] ?? '').matchAll(/'([^']+)'/g),
+      ].map((m) => m[1] ?? '');
+    expect(grants(controller)).toEqual(['itAsset.view', 'itMobileLine.view', 'itConsumable.view']);
+    // …a person found when ANY held grant reaches them, each in its own scope — never one key's
+    // units standing for the others'.
+    expect(controller).toMatch(
+      /IT_PEOPLE_GRANTS\.filter\(\(key\) => hasPermission\(ctx, key\)\)\.map\(/u,
+    );
+    const service = readFileSync(resolve(API_SRC, 'people/people.service.ts'), 'utf8');
+    expect(service.match(/anyOfScopes: scopes/g)).toHaveLength(2);
+    // The holder box asks under the very same rule, so it neither offers a search the server
+    // refuses nor hides one it allows.
+    const picker = readFileSync(resolve(HERE, 'components/EmployeePicker.tsx'), 'utf8');
+    expect(grants(picker)).toEqual(grants(controller));
+    expect(picker).toContain('IT_PEOPLE_GRANTS.some((grant) => can(grant))');
   });
 
   it('the technicians ride the help desk’s work grants — a requester does not get the list', () => {

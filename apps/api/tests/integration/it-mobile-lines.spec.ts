@@ -5,7 +5,10 @@
 // printed first and recorded with the hand-over under that number, a car holding a tracker SIM on
 // no paper, the register's holder resolved from the open interval, the network cards counting the
 // same lines the table lists, the history in order, a leaver refused through HR's own answer, the
-// one F-14 series refusing a number the other kind of paper already carries, and the branch scope.
+// one F-14 series refusing a number the other kind of paper already carries, the branch scope —
+// and, since 2026-11-17, the lines' OWN grants: `itMobileLine.*` opens the screen, `itAsset.*` no
+// longer does, a lines keeper finds the people they hand lines to without learning what devices
+// anybody holds, and the paper's national ID answers to the lines' own sensitive-data grant.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -24,6 +27,7 @@ import {
   type ItMobileLineReceiptDocumentDto,
   type ItMobileLineReceiptDto,
   type ItMobileLinesSummaryDto,
+  type ItPersonDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -40,7 +44,15 @@ const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
-let branchAToken: string; // itAsset.view at BRANCH scope, placed in branch A — nothing else
+let branchAToken: string; // itMobileLine.view at BRANCH scope, placed in branch A — nothing else
+// itMobileLine.view + .assign at BRANCH scope, placed in branch A — and nothing else at all
+let linesKeeperToken: string;
+// The same, plus the ASSETS' national-ID grant — which reveals nothing on a line's paper
+let linesKeeperAssetIdToken: string;
+// The same keeper, plus the lines' own `itMobileLine.viewNationalId`
+let linesIdReaderToken: string;
+// Every asset grant at ORGANIZATION scope — and no lines grant: the screen is closed to it
+let assetsOnlyToken: string;
 let branchAId: string;
 let branchBId: string;
 let branchCId: string; // the network cards' own branch, so no other test moves its counts
@@ -194,12 +206,55 @@ beforeAll(async () => {
   branchCId = await mkBranch('92', 'فرع ج', 'Branch C');
 
   const viewerRole = await rbacService.createRole(
-    { name: { en: 'Lines viewer', ar: 'مطالع خطوط' }, permissionKeys: ['itAsset.view'] },
+    { name: { en: 'Lines viewer', ar: 'مطالع خطوط' }, permissionKeys: ['itMobileLine.view'] },
     adminId,
   );
   const viewerId = await mkUser('lines-viewer@ecms.local', branchAId);
   await rbacService.ensureAssignment(viewerId, String(viewerRole._id), 'branch');
   branchAToken = await login('lines-viewer@ecms.local');
+
+  /** A role of `keys` assigned at `scope` to a new account placed in `branchId`; its token. */
+  const holder = async (
+    email: string,
+    name: { en: string; ar: string },
+    keys: string[],
+    scope: 'branch' | 'organization',
+    branchId: string | null,
+  ): Promise<string> => {
+    const role = await rbacService.createRole({ name, permissionKeys: keys }, adminId);
+    const userId = await mkUser(email, branchId);
+    await rbacService.ensureAssignment(userId, String(role._id), scope);
+    return login(email);
+  };
+  linesKeeperToken = await holder(
+    'lines-keeper@ecms.local',
+    { en: 'Lines keeper', ar: 'أمين خطوط' },
+    ['itMobileLine.view', 'itMobileLine.assign'],
+    'branch',
+    branchAId,
+  );
+  linesKeeperAssetIdToken = await holder(
+    'lines-keeper-asset-id@ecms.local',
+    { en: 'Lines keeper, asset ID grant', ar: 'أمين خطوط برقم الأصول' },
+    ['itMobileLine.view', 'itMobileLine.assign', 'itAsset.viewNationalId'],
+    'branch',
+    branchAId,
+  );
+  linesIdReaderToken = await holder(
+    'lines-id-reader@ecms.local',
+    { en: 'Lines keeper, line ID grant', ar: 'أمين خطوط برقم الخطوط' },
+    ['itMobileLine.view', 'itMobileLine.assign', 'itMobileLine.viewNationalId'],
+    'branch',
+    branchAId,
+  );
+  // Every key the lines rode until 2026-11-17, organization-wide — and none of their own.
+  assetsOnlyToken = await holder(
+    'lines-assets-only@ecms.local',
+    { en: 'Assets keeper', ar: 'أمين أصول' },
+    ['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.assign', 'itAsset.viewNationalId'],
+    'organization',
+    null,
+  );
 
   await plantEmployee(EMPLOYEE, '0101002', 'وليد صفوت جلال', 'active');
   await plantEmployee(LEAVER, '0100001', 'شريف ممدوح فاروق', 'exited');
@@ -674,5 +729,108 @@ describe('scope', () => {
       403,
     );
     expect((await api.post(`/mobile-lines/${inA.id}/suspend`, {}, branchAToken)).status).toBe(403);
+  });
+});
+
+// «فى الصلاحيات مش لاقى حاجة لـ /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات عشان
+// أقدر أتحكم فيها» (2026-11-17): the lines answer to `itMobileLine.*` and to nothing else.
+describe('the lines’ own grants', () => {
+  it('refuses a role holding only the asset grants — on every surface of the lines', async () => {
+    const line = await register();
+    const refused = [
+      await api.get('/mobile-lines', assetsOnlyToken),
+      await api.get('/mobile-lines/summary', assetsOnlyToken),
+      await api.get(`/mobile-lines/${line.id}`, assetsOnlyToken),
+      await api.get(`/mobile-lines/${line.id}/history`, assetsOnlyToken),
+      await api.get('/mobile-line-assignments', assetsOnlyToken),
+      await api.post(
+        '/mobile-lines',
+        { network: 'orange', phoneNumber: nextNumber(), branchId: branchAId },
+        assetsOnlyToken,
+      ),
+      await api.post(
+        '/mobile-line-receipts/preview',
+        { lineId: line.id, employeeId: String(EMPLOYEE) },
+        assetsOnlyToken,
+      ),
+      await handOver(line.id, { employeeId: String(EMPLOYEE) }, assetsOnlyToken),
+      await api.post(`/mobile-lines/${line.id}/suspend`, {}, assetsOnlyToken),
+    ];
+    expect(refused.map((res) => res.status)).toEqual(refused.map(() => 403));
+    expect(data<ItMobileLineDto>(await api.get(`/mobile-lines/${line.id}`)).status).toBe('inStock');
+    // The assets themselves stay theirs.
+    expect((await api.get('/assets', assetsOnlyToken)).status).toBe(200);
+  });
+
+  it('lets a lines keeper (view + assign, nothing else) find a person and hand a line over', async () => {
+    // The person holds a device — a fact of the ASSET register, which this keeper may not read.
+    const phone = data<ItAssetDto>(
+      await api.post('/assets', { name: 'Samsung A05', categoryId, branchId: branchAId }),
+    );
+    expect(
+      (await api.post(`/assets/${phone.id}/assign`, { employeeId: String(EMPLOYEE) })).status,
+    ).toBe(200);
+    const asAdmin = data<ItPersonDto[]>(await api.get('/people?search=0101002'));
+    expect(
+      asAdmin.find((p) => p.employeeId === String(EMPLOYEE))?.openCustodyCount,
+    ).toBeGreaterThan(0);
+
+    // The holder box: found, on the lines' grant — and told nothing of the devices they hold.
+    const found = await api.get('/people?search=0101002&status=employed', linesKeeperToken);
+    expect(found.status).toBe(200);
+    const person = data<ItPersonDto[]>(found).find((p) => p.employeeId === String(EMPLOYEE));
+    expect(person).toMatchObject({ code: '0101002', openCustodyCount: 0 });
+    const one = await api.get(`/people/${String(EMPLOYEE)}`, linesKeeperToken);
+    expect(one.status).toBe(200);
+    expect(data<ItPersonDto>(one).openCustodyCount).toBe(0);
+
+    // The hand-over itself.
+    const line = await register();
+    const handed = await handOver(line.id, { employeeId: String(EMPLOYEE) }, linesKeeperToken);
+    expect(handed.status).toBe(200);
+    expect(data<ItMobileLineAssignResultDto>(handed).line.status).toBe('assigned');
+
+    // And the assets stay closed to them.
+    expect((await api.get('/assets', linesKeeperToken)).status).toBe(403);
+    expect((await api.get('/assignments', linesKeeperToken)).status).toBe(403);
+  });
+
+  it('shows the holder’s national ID on a line’s paper only behind itMobileLine.viewNationalId', async () => {
+    const line = await register();
+    const preview = async (token: string): Promise<ItMobileLineReceiptDocumentDto> => {
+      const res = await api.post(
+        '/mobile-line-receipts/preview',
+        { lineId: line.id, employeeId: String(EMPLOYEE) },
+        token,
+      );
+      expect(res.status).toBe(200);
+      return data<ItMobileLineReceiptDocumentDto>(res);
+    };
+    expect(await preview(linesKeeperToken)).toMatchObject({
+      nationalId: null,
+      nationalIdVisible: false,
+    });
+    // The device receipt's grant is the device receipt's: it reveals nothing on a line's paper.
+    expect(await preview(linesKeeperAssetIdToken)).toMatchObject({
+      nationalId: null,
+      nationalIdVisible: false,
+    });
+    expect(await preview(linesIdReaderToken)).toMatchObject({
+      nationalId: '28001010101010',
+      nationalIdVisible: true,
+    });
+
+    // The same on the paper recorded with the hand-over and read back.
+    const handed = await handOver(line.id, { employeeId: String(EMPLOYEE) }, linesIdReaderToken);
+    expect(handed.status).toBe(200);
+    const receiptId = data<ItMobileLineAssignResultDto>(handed).receipt?.id ?? '';
+    const asReader = data<ItMobileLineReceiptDto>(
+      await api.get(`/mobile-line-receipts/${receiptId}`, linesIdReaderToken),
+    );
+    expect(asReader).toMatchObject({ nationalId: '28001010101010', nationalIdVisible: true });
+    const asKeeper = data<ItMobileLineReceiptDto>(
+      await api.get(`/mobile-line-receipts/${receiptId}`, linesKeeperAssetIdToken),
+    );
+    expect(asKeeper).toMatchObject({ nationalId: null, nationalIdVisible: false });
   });
 });

@@ -27,17 +27,17 @@ export const resolveMobileLineReceiptCategoryId = async (): Promise<string> => {
 };
 
 /**
- * Reads need `itAsset.view`, writes `itAsset.assign` — the custody screen's own grants — and the
- * paper must be one the caller can see, under the branch scope every custody read uses.
+ * Reads need `itMobileLine.view`, writes `itMobileLine.assign` — the lines screen's own grants —
+ * and the paper must be one the caller can see, under the branch scope every custody read uses.
  */
 export const mobileLineReceiptFileAuthorizer: FileEntityAuthorizer = {
   entityType: 'mobileLineReceipt',
   async authorize({ ctx, entityId, intent }): Promise<boolean> {
-    const permission = intent === 'write' ? 'itAsset.assign' : 'itAsset.view';
+    const permission = intent === 'write' ? 'itMobileLine.assign' : 'itMobileLine.view';
     if (!hasPermission(ctx, permission)) return false;
     const receipt = await itMobileLineReceiptRepository.findById(
       entityId,
-      scopeSelector(ctx, 'itAsset.view'),
+      scopeSelector(ctx, 'itMobileLine.view'),
     );
     return receipt !== null;
   },

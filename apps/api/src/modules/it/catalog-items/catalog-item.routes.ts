@@ -1,7 +1,7 @@
-// Catalogs (design §7): reads take EITHER `itAsset.view` (the asset form needs the category list)
-// or `itCatalog.manage` (the catalogs screen manages these rows and must be able to read them);
-// mutations are the settings surface, `itCatalog.manage` — one grant for both kinds, the
-// `fleetCatalog.manage` precedent.
+// Catalogs (design §7): reads take `itAsset.view` (the asset form needs the category list),
+// `itConsumable.view` (the consumables screens need the types list) or `itCatalog.manage` (the
+// catalogs screen manages these rows and must be able to read them); mutations are the settings
+// surface, `itCatalog.manage` — one grant for every kind, the `fleetCatalog.manage` precedent.
 import { Router } from 'express';
 import { z } from 'zod';
 import {
@@ -33,10 +33,16 @@ export const buildItCatalogRouter = (): Router => {
   //                          permission boundary, it is a broken one.
   // This widens nothing: `itCatalog.manage` already authorizes creating and editing these very
   // rows, so being able to read them adds no capability its holder did not already have.
+  //   * `itConsumable.view` — since the consumables got their own grants (2026-11-17), the store,
+  //                          its movements page and the add-item form filter and label by the
+  //                          `consumableType` rows read here; a store keeper given the store
+  //                          without the assets would otherwise open a screen whose type list
+  //                          403'd. It widens nothing either: every holder had `itAsset.view`, and
+  //                          with it this list, until that day — and the rows are names.
   router.get(
     '/',
     authenticate,
-    authorizeAny('itAsset.view', 'itCatalog.manage'),
+    authorizeAny('itAsset.view', 'itConsumable.view', 'itCatalog.manage'),
     validate({ query: ListItCatalogQuerySchema }),
     asyncHandler(listItCatalogItems),
   );

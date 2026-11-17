@@ -7,3 +7,10 @@ export {
   buildDelegationsRouter,
 } from './rbac.routes';
 export { delegationService } from './delegation.service';
+export {
+  keysAdded,
+  type DelegatedGrantsCopied,
+  type GrantAlongsidePair,
+  type GrantsAlongsideResult,
+  type RoleGrantsCopied,
+} from './grant-alongside';

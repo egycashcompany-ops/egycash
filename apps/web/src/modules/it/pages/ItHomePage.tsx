@@ -11,13 +11,17 @@
 // page of rows here. Every figure opens the list it counts, under the same filters
 // (`lib/it-dashboard.ts`), so none of them has to be taken on trust.
 //
-// EVERY PANEL RIDES ITS OWN GRANT. The asset panels, the lines and the consumables ride
-// `itAsset.view`, the help desk's counts `itTicket.view`; a query never fires for a panel the reader
-// may not see, a reader with some grants sees only those panels, and a reader with none gets one
-// honest empty state instead of a wall of errors. A count that FAILED says so; it never reads as 0.
+// EVERY PANEL RIDES ITS OWN GRANT. The asset panels ride `itAsset.view`, the lines
+// `itMobileLine.view`, the consumables `itConsumable.view` (each its own since 2026-11-17, «فى الـ IT
+// ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها»), the help desk's counts `itTicket.view`; a query never
+// fires for a panel the reader may not see, a reader with some grants sees only those panels, and a
+// reader with none gets one honest empty state instead of a wall of errors. A count that FAILED
+// says so; it never reads as 0.
 //
 // THE FILTERS are the asset register's own params — `category` (several, comma-joined) and `branch`
-// (one) — remembered across visits like every register's.
+// (one) — remembered across visits like every register's. They are offered to a reader of the
+// assets, and the branch narrows the lines and the consumables beside them too; a reader who is
+// offered no filter has nothing narrowed out of sight.
 //
 // No sentence under the title, though the sample had one: a page header carries no subtitle, by the
 // owner's standing decision (`page-header-has-no-subtitle.spec.ts`). What it said — which categories
@@ -308,16 +312,6 @@ const AssetDashboard = ({
   const query = useMemo(() => dashboardQuery(filters), [filters]);
   const assets = useItDashboardAssets(query);
   const activity = useItDashboardActivity(query);
-  // The lines carry no category; the branch narrows them as it narrows everything else here.
-  const lines = useItMobileLinesSummary(branchId === '' ? {} : { branchId });
-  const consumables = useItConsumables({
-    pageSize: CONSUMABLE_ROWS,
-    belowMin: true,
-    active: true,
-    sortBy: 'onHandQty',
-    sortDir: 'asc',
-    ...(branchId === '' ? {} : { branchId }),
-  });
 
   const categories = useItCatalog('assetCategory');
   const branches = useItBranchOptions();
@@ -457,94 +451,6 @@ const AssetDashboard = ({
           {byState(activity, (data) => (
             <ActivityRows items={data.items} names={names} />
           ))}
-        </Panel>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel
-          title={t('it.nav.mobileLines')}
-          action={<PanelLink to={mobileLinesLink(branchId)}>{t('it.dashboard.viewAll')}</PanelLink>}
-        >
-          {byState(lines, (data) => {
-            const byNetwork = new Map(data.networks.map((entry) => [entry.network, entry]));
-            return (
-              <div className="grid gap-3 sm:grid-cols-3">
-                {IT_MOBILE_NETWORKS.map((network) => {
-                  const figures = byNetwork.get(network);
-                  return (
-                    <div
-                      key={network}
-                      data-line-network={network}
-                      className="flex min-w-0 flex-col gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800"
-                    >
-                      <span className="flex items-center gap-2">
-                        {/* The logos the lines page wears — the network's name beside its mark. */}
-                        <MobileNetworkLogo network={network} decorative />
-                        <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                          {t(`it.mobileLines.network.${network}`)}
-                        </span>
-                      </span>
-                      <span className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">
-                        {formatNumber(figures?.total ?? 0, locale)}
-                      </span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {IT_MOBILE_LINE_STATUSES.map(
-                          (status) =>
-                            `${t(`it.mobileLines.status.${status}`)} ${formatNumber(figures?.[status] ?? 0, locale)}`,
-                        ).join(' · ')}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </Panel>
-        <Panel
-          title={t('it.dashboard.consumables.title')}
-          action={
-            <PanelLink to={consumablesLink(branchId)}>
-              {consumables.data === undefined || consumables.data.meta.totalItems === 0
-                ? t('it.dashboard.viewAll')
-                : t('it.dashboard.viewAllCount', {
-                    count: formatNumber(consumables.data.meta.totalItems, locale),
-                  })}
-            </PanelLink>
-          }
-        >
-          {byState(consumables, (data) =>
-            data.items.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
-                {t('it.dashboard.consumables.empty')}
-              </p>
-            ) : (
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {data.items.map((item) => (
-                  <li
-                    key={item.id}
-                    data-consumable={item.code}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5"
-                  >
-                    <span
-                      className="min-w-[5rem] font-mono text-xs text-slate-500 dark:text-slate-400"
-                      dir="ltr"
-                    >
-                      {item.code}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                      {item.name}
-                    </span>
-                    <span className="text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-300">
-                      {t('it.consumables.columns.onHand')} {formatNumber(item.onHandQty, locale)}
-                    </span>
-                    <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                      {t('it.consumables.columns.minQty')} {formatNumber(item.minQty, locale)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ),
-          )}
         </Panel>
       </div>
     </div>
@@ -893,6 +799,121 @@ const ActivityRows = ({
   );
 };
 
+// ── The lines and the consumables ────────────────────────────────────────────
+// Each on its own register's read grant: the page draws a panel only for a reader who holds it, so
+// a panel's query fires only for one who may see what it counts.
+
+/** «خطوط المحمول» — each network with its logo, its lines in all and in each state. */
+const LinesPanel = ({ branchId }: { branchId: string }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The lines carry no category; the branch narrows them as it narrows the asset panels.
+  const lines = useItMobileLinesSummary(branchId === '' ? {} : { branchId });
+  return (
+    <Panel
+      title={t('it.nav.mobileLines')}
+      action={<PanelLink to={mobileLinesLink(branchId)}>{t('it.dashboard.viewAll')}</PanelLink>}
+    >
+      {byState(lines, (data) => {
+        const byNetwork = new Map(data.networks.map((entry) => [entry.network, entry]));
+        return (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {IT_MOBILE_NETWORKS.map((network) => {
+              const figures = byNetwork.get(network);
+              return (
+                <div
+                  key={network}
+                  data-line-network={network}
+                  className="flex min-w-0 flex-col gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800"
+                >
+                  <span className="flex items-center gap-2">
+                    {/* The logos the lines page wears — the network's name beside its mark. */}
+                    <MobileNetworkLogo network={network} decorative />
+                    <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      {t(`it.mobileLines.network.${network}`)}
+                    </span>
+                  </span>
+                  <span className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">
+                    {formatNumber(figures?.total ?? 0, locale)}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {IT_MOBILE_LINE_STATUSES.map(
+                      (status) =>
+                        `${t(`it.mobileLines.status.${status}`)} ${formatNumber(figures?.[status] ?? 0, locale)}`,
+                    ).join(' · ')}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </Panel>
+  );
+};
+
+/** The consumables at their minimum — «a few rows», lowest stock first, the rest one link away. */
+const ConsumablesPanel = ({ branchId }: { branchId: string }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const consumables = useItConsumables({
+    pageSize: CONSUMABLE_ROWS,
+    belowMin: true,
+    active: true,
+    sortBy: 'onHandQty',
+    sortDir: 'asc',
+    ...(branchId === '' ? {} : { branchId }),
+  });
+  return (
+    <Panel
+      title={t('it.dashboard.consumables.title')}
+      action={
+        <PanelLink to={consumablesLink(branchId)}>
+          {consumables.data === undefined || consumables.data.meta.totalItems === 0
+            ? t('it.dashboard.viewAll')
+            : t('it.dashboard.viewAllCount', {
+                count: formatNumber(consumables.data.meta.totalItems, locale),
+              })}
+        </PanelLink>
+      }
+    >
+      {byState(consumables, (data) =>
+        data.items.length === 0 ? (
+          <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+            {t('it.dashboard.consumables.empty')}
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {data.items.map((item) => (
+              <li
+                key={item.id}
+                data-consumable={item.code}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5"
+              >
+                <span
+                  className="min-w-[5rem] font-mono text-xs text-slate-500 dark:text-slate-400"
+                  dir="ltr"
+                >
+                  {item.code}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                  {item.name}
+                </span>
+                <span className="text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                  {t('it.consumables.columns.onHand')} {formatNumber(item.onHandQty, locale)}
+                </span>
+                <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                  {t('it.consumables.columns.minQty')} {formatNumber(item.minQty, locale)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ),
+      )}
+    </Panel>
+  );
+};
+
 // ── The help desk ────────────────────────────────────────────────────────────
 
 /**
@@ -947,6 +968,9 @@ export const ItHomePage = (): JSX.Element => {
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const canAssets = can('itAsset.view');
+  // «خطوط المحمول» and «المستهلكات» — each on its own read grant since 2026-11-17.
+  const canLines = can('itMobileLine.view');
+  const canConsumables = can('itConsumable.view');
   const canVendors = can('itVendor.view');
   const canCatalogs = can('itCatalog.manage');
   const canTickets = can('itTicket.view');
@@ -961,6 +985,8 @@ export const ItHomePage = (): JSX.Element => {
   // `itSoftware.view` has a screen to reach, so leaving them on «no access» would be a lie.
   const anything =
     canAssets ||
+    canLines ||
+    canConsumables ||
     canVendors ||
     canCatalogs ||
     canTickets ||
@@ -995,10 +1021,15 @@ export const ItHomePage = (): JSX.Element => {
           { to: '/it/custody', label: t('it.nav.custody'), icon: ClipboardIcon },
           { to: '/it/assets/scan', label: t('it.nav.scan'), icon: QrIcon },
           { to: '/it/employees', label: t('it.nav.employees'), icon: UsersIcon },
-          // The SIM lines and the consumables ride the assets' grants, so they sit with them.
-          { to: '/it/mobile-lines', label: t('it.nav.mobileLines'), icon: PhoneIcon },
-          { to: '/it/consumables', label: t('it.nav.consumables'), icon: InboxIcon },
         ]
+      : []),
+    // The SIM lines and the consumables sit beside the assets, as in the rail — each on its own
+    // grant, so a reader may hold one without the assets or the other.
+    ...(canLines
+      ? [{ to: '/it/mobile-lines', label: t('it.nav.mobileLines'), icon: PhoneIcon }]
+      : []),
+    ...(canConsumables
+      ? [{ to: '/it/consumables', label: t('it.nav.consumables'), icon: InboxIcon }]
       : []),
     ...(canTickets ? [{ to: '/it/tickets', label: t('it.nav.tickets'), icon: ChatIcon }] : []),
     ...(canMaintenance
@@ -1026,8 +1057,9 @@ export const ItHomePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.dashboard.title')}
-        // The filters on the title's line, as the sample has them — they narrow the asset panels
-        // only, so they are offered only to a reader who sees those.
+        // The filters on the title's line, as the sample has them — the asset register's, so they
+        // are offered only to a reader who sees its panels (the branch narrows the lines and the
+        // consumables beside them too).
         {...(canAssets
           ? {
               toolbar: (
@@ -1056,6 +1088,15 @@ export const ItHomePage = (): JSX.Element => {
               onToggleCategory={(id) => setCategories(toggleCategory(categoryIds, id))}
               onPickBranch={(id) => patch({ branch: pickBranch(branchId, id) || null })}
             />
+          )}
+
+          {(canLines || canConsumables) && (
+            <div className="grid gap-4 lg:grid-cols-2" data-stock-panels="">
+              {/* The branch only where the filter that sets it is offered: a reader who is shown
+                  no filter has nothing narrowed out of sight by a remembered one. */}
+              {canLines && <LinesPanel branchId={canAssets ? branchId : ''} />}
+              {canConsumables && <ConsumablesPanel branchId={canAssets ? branchId : ''} />}
+            </div>
           )}
 
           {canTickets && <HelpDeskCounts />}

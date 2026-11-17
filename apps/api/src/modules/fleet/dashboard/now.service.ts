@@ -12,9 +12,8 @@
 import {
   FLEET_DASHBOARD_ALARM_ROWS,
   FLEET_DASHBOARD_FUEL_CARD_ROWS,
+  FLEET_DASHBOARD_LICENCE_MONTHS,
   FLEET_DASHBOARD_LICENCE_ROWS,
-  FLEET_DASHBOARD_RECENT_DAYS,
-  FLEET_DASHBOARD_RECENT_ROWS,
   FLEET_DASHBOARD_TODAY_ROWS,
   FLEET_DRIVER_UNAVAILABLE_REASONS,
   FLEET_LICENCE_GREY_DAYS,
@@ -49,7 +48,10 @@ import { hasPermission, type AuthContext, type ScopeSelector } from '../../../sh
 import { fleetAccidentService } from '../accidents/accident.service';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetDealershipService } from '../dealership/dealership.service';
-import { fleetDriverProfileService } from '../driver-profiles/driver-profile.service';
+import {
+  fleetDriverProfileService,
+  monthKeysFrom,
+} from '../driver-profiles/driver-profile.service';
 import { fleetFuelCardService } from '../fuel-cards/fuel-card.service';
 import { fleetFuelReconcileService } from '../fuel-cards/reconcile/fuel-reconcile.service';
 import { fleetLicensingService } from '../licensing/licensing.service';
@@ -109,10 +111,6 @@ const catalog = (d: DashboardContext, kind: 'operation' | 'driverSpecialization'
 const dayStart = (ymd: string): Date => calendarDayBounds(ymd, ymd).from;
 const dayEnd = (ymd: string): Date => calendarDayBounds(ymd, ymd).before;
 
-/** The R-12 window's first day: the last 30 Cairo days, today included. */
-const recentSince = (d: DashboardContext): string =>
-  addDaysYmd(d.today, 1 - FLEET_DASHBOARD_RECENT_DAYS);
-
 /** The drivers registry's digest (R-08, R-10) — T3.4/T3.6/T3.8 and T1.3/T4.5 read the same call. */
 const driverRegistry = (d: DashboardContext) =>
   d.memo('driverRegistry', async () => {
@@ -129,6 +127,7 @@ const driverRegistry = (d: DashboardContext) =>
       branchIds: d.branchIds,
       cashSpecIds,
       atmSpecIds,
+      nearestLimit: FLEET_DASHBOARD_LICENCE_ROWS,
     });
     return { warnDays, cashSpecIds, atmSpecIds, digest };
   });
@@ -754,7 +753,9 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     };
   }),
 
-  // T1.2, T4.1–T4.4 — ACTIVE cars (Q-15) in the three disjoint windows of R-10.
+  // T1.2, T4.1–T4.4 — ACTIVE cars (Q-15) in the three disjoint windows of R-10; «أقرب تراخيص
+  // السيارات» (each row named: its make, its licence class, and — for a board car, to a reader of the
+  // board — its two papers) and «التراخيص المستحقة للتجديد — 12 شهرًا» (the cars' columns).
   licenceVehicles: section('licenceVehicles', 'screen', async (d) => {
     const scope = d.scope('fleetVehicle.view');
     const warnDays = await d.setting<number>(FleetSettingKeys.VehicleLicenseWarnDays);
@@ -768,7 +769,8 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         },
         scope,
       );
-    const [expired, expiring, soon, outOfServiceExpired, nearest] = await Promise.all([
+    const monthKeys = monthKeysFrom(d.today, FLEET_DASHBOARD_LICENCE_MONTHS);
+    const [expired, expiring, soon, outOfServiceExpired, nearest, byMonth] = await Promise.all([
       count('active', null, w.expired.to),
       count('active', w.expiring.from, w.expiring.to),
       w.soon === null ? Promise.resolve(0) : count('active', w.soon.from, w.soon.to),
@@ -778,11 +780,57 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         addDaysYmd(d.today, FLEET_LICENCE_GREY_DAYS),
         FLEET_DASHBOARD_LICENCE_ROWS,
       ),
+      fleetVehicleRepository.licenceMonthCounts(
+        scope,
+        monthKeys[0] ?? d.today.slice(0, 7),
+        monthKeys.at(-1) ?? d.today.slice(0, 7),
+      ),
     ]);
-    const list = nearest.rows.map((row) => ({
-      ...row,
-      days: daysBetweenYmd(d.today, ymdOf(row.expiresAt)),
-    }));
+    // Only the listed rows are named: the makes (the memoised type list), their licence classes
+    // (one catalog read) and — only for a reader of the licensing board — their papers (the
+    // board's own READ-ONLY rule). A lookup that fails costs its names (or the papers: `null`, no
+    // column), never the counts.
+    const classIds = [
+      ...new Set(
+        nearest.rows.flatMap((row) => (row.licenseClassId === null ? [] : [row.licenseClassId])),
+      ),
+    ];
+    const [types, classNames, papers] = await Promise.all([
+      nearest.rows.length === 0 ? Promise.resolve([]) : namesOnly('types', typeList(d), []),
+      classIds.length === 0
+        ? Promise.resolve(new Map<string, LocalizedString>())
+        : namesOnly(
+            'licenceClasses',
+            fleetCatalogItemRepository.namesByIds(classIds),
+            new Map<string, LocalizedString>(),
+          ),
+      nearest.rows.length === 0 || !d.permits('papers')
+        ? Promise.resolve(null)
+        : namesOnly(
+            'licencePapers',
+            fleetLicensingService.paperStagesFor(
+              d.scope('fleetLicensing.view'),
+              nearest.rows.map((row) => row.vehicleId),
+            ),
+            null,
+          ),
+    ]);
+    const typeNames = new Map(
+      types.map((type) => [String(type._id), type.name as LocalizedString]),
+    );
+    const list = nearest.rows.map((row) => {
+      const expiresAt = ymdOf(row.expiresAt);
+      return {
+        vehicleId: row.vehicleId,
+        code: row.code,
+        expiresAt,
+        days: daysBetweenYmd(d.today, expiresAt),
+        typeName: row.typeId === null ? null : (typeNames.get(row.typeId) ?? null),
+        licenceClass:
+          row.licenseClassId === null ? null : (classNames.get(row.licenseClassId) ?? null),
+        papers: papers?.get(row.vehicleId) ?? null,
+      };
+    });
     return {
       warnDays,
       expired,
@@ -791,13 +839,42 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
       outOfServiceExpired,
       list,
       more: nearest.total - list.length,
+      months: monthKeys.map((key) => ({ key, count: byMonth.get(key) ?? 0 })),
     };
   }),
 
-  // T1.3, T4.5 — the same registry digest, its licence windows.
+  // T1.3, T4.5 — the same registry digest: its licence windows, the files by expiry month, and
+  // «أقرب رخص السائقين» (the nearest files; the browser names each driver from `/fleet/people`).
   licenceDrivers: section('licenceDrivers', 'company+set', async (d) => {
     const { warnDays, digest } = await driverRegistry(d);
-    return { warnDays, ...digest.licence };
+    const { months, nearest, ...counts } = digest.licence;
+    const typeIds = [
+      ...new Set(
+        nearest.rows.flatMap((row) => (row.licenceTypeId === null ? [] : [row.licenceTypeId])),
+      ),
+    ];
+    const typeNames =
+      typeIds.length === 0
+        ? new Map<string, LocalizedString>()
+        : await namesOnly(
+            'licenceTypes',
+            fleetCatalogItemRepository.namesByIds(typeIds),
+            new Map<string, LocalizedString>(),
+          );
+    const rows = nearest.rows.map((row) => ({
+      profileId: row.profileId,
+      employeeId: row.employeeId,
+      expiresAt: row.expiresAt,
+      days: daysBetweenYmd(d.today, row.expiresAt),
+      licenceType: row.licenceTypeId === null ? null : (typeNames.get(row.licenceTypeId) ?? null),
+      active: row.active,
+    }));
+    return {
+      warnDays,
+      ...counts,
+      months,
+      list: { rows, more: nearest.total - rows.length },
+    };
   }),
 
   // T4.6, R-11 — open papers through the licensing module's READ-ONLY count (never the writing GET).
@@ -884,24 +961,6 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         ? {}
         : { cardIds: await fleetFuelCardService.cardIdsOf(branchFilter(d)) },
     ),
-  ),
-
-  // T4.8, R-12 — the most recently written visits of the last 30 Cairo days.
-  recentWorkshop: section('recentWorkshop', 'company+set', (d) =>
-    fleetMaintenanceService.recentWritten({
-      sinceYmd: recentSince(d),
-      limit: FLEET_DASHBOARD_RECENT_ROWS,
-      filter: branchFilter(d),
-    }),
-  ),
-
-  // T4.9, R-12 — the same over accidents; date only, undated files never recent.
-  recentAccidents: section('recentAccidents', 'company+set', (d) =>
-    fleetAccidentService.recentWritten({
-      sinceYmd: recentSince(d),
-      limit: FLEET_DASHBOARD_RECENT_ROWS,
-      filter: branchFilter(d),
-    }),
   ),
 
   // T1.10 and «إخطارات ينقصها مرفق» — the open notices (their count, the two parts, the union

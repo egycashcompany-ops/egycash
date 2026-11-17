@@ -25,6 +25,7 @@ import {
   LINK_CODES_CAP,
   PATH_ONLY,
   custodyDashboardLink,
+  custodyLinks,
   nowLinks,
   echoTabFilters,
   periodLinks,
@@ -172,13 +173,12 @@ const everyLink = (): DashLink[] => {
       L.vehiclesBy({ operationIds: ['o1', 'o2'] }, 'distributionVehicles.cash'),
       L.drivers(),
       L.driversBySpec(['s1'], 'distributionDrivers.cash'),
-      L.licensing('insurance'),
-      L.licensing('tax'),
-      L.visitDay('231', TODAY, true),
-      L.visitDay('295', '2026-10-31', false),
-      L.accidentDay('154', TODAY),
-      L.accidentsRecent(30),
-      L.visitsRecent(30),
+      L.papersOpen('insurance'),
+      L.papersOpen('tax'),
+      L.vehicleLicenceMonth('2026-11'),
+      L.driverLicenceMonth('2027-02'),
+      L.driverLicencesWithin60(),
+      L.driver('p520', 'licenceDrivers.row'),
       L.accidentsOpen(),
       L.violationsCompany(2026),
       L.violationsDrivers(2026),
@@ -237,9 +237,23 @@ const everyLink = (): DashLink[] => {
       P.opex(),
       P.opex('opex.card', 'card'),
       P.opexCustody(),
+      P.custodySpend('opex.custody'),
+      P.custodySpend('opex.custody.tyres', 'tyres'),
+      P.licenceSpend('licenceSpend.total'),
       P.dealership(),
     );
   }
+  // «العهدة»'s «الآن» links: no echo (the custody screens read no branch and keep no period).
+  all.push(
+    custodyLinks.log('charge', 'custodyFund.charged'),
+    custodyLinks.log(null, 'custodyFund.log'),
+    custodyLinks.open('op1', 'custodyFund.letter'),
+    custodyLinks.memos({ status: 'pending' }, 'custodyFund.inMemos'),
+    custodyLinks.memos({ kind: 'wash' }, 'custodyFund.outside.wash'),
+    custodyLinks.days('2026-10-06', '2026-10-11', 'custodyFund.recent'),
+    custodyLinks.licenceWaiting('renewal', 'custodyFund.settlePart'),
+    custodyLinks.licenceWaiting(null, 'custodyFund.settle'),
+  );
   const sp = new URLSearchParams('tab=overview&period=last30&type=t1');
   for (const tab of ['today', 'distribution', 'maintenance', 'accidents', 'period'] as const) {
     all.push(tabLink(tab, `${tab === 'today' ? 'roster' : 'visits'}.tab`, sp, [tab]));
@@ -257,7 +271,7 @@ describe('every link the dashboard can make', () => {
   it('is never a bare list link — only a record or a screen that keeps no filter goes without a query', () => {
     const bare = links.filter((link) => !link.to.includes('?'));
     const allowed = (to: string): boolean =>
-      PATH_ONLY.includes(to) || /^\/fleet\/vehicles\/[^/?]+$/u.test(to);
+      PATH_ONLY.includes(to) || /^\/fleet\/(?:vehicles|drivers)\/[^/?]+$/u.test(to);
     expect(bare.filter((link) => !allowed(link.to)).map((l) => l.to)).toEqual([]);
     expect(PATH_ONLY).toEqual(['/fleet/custody/dashboard', '/fleet/fuel-cards/reconcile']);
   });
@@ -282,6 +296,8 @@ describe('every link the dashboard can make', () => {
       // A year's fines carry the year; every year's owed fines carry what is still owed (on the
       // company half, the drivers' half, or both); a period's drivers' fines carry the FINE's days.
       ['/fleet/violations', ['year', 'cset', 'dset', 'dfrom']],
+      // A licence memo counts by its day; «تنتظر التسوية» is what waits now, whatever its day.
+      ['/fleet/license-expenses', ['from', 'status']],
     ];
     for (const link of links) {
       const { pathname, params } = parse(link);
@@ -298,16 +314,61 @@ describe('every link the dashboard can make', () => {
   });
 });
 
-describe('a recent workshop row (T4.8, R-12)', () => {
-  it('opens an open visit on its check-in day and a closed one on its check-out day', () => {
-    // The row's date is its business day: the check-in while open, the check-out once closed. The
-    // screen's `from`/`to` bound the check-in, so a closed row must travel as `outFrom`/`outTo`.
-    expect(NOW.visitDay('231', TODAY, true).to).toBe(
-      `/fleet/maintenance?vehicleCodes=231&from=${TODAY}&to=${TODAY}`,
+describe('the links of «التراخيص والتجديدات» (exact URLs, plan §8 and D20)', () => {
+  it('opens the OPEN papers of a kind on the licensing board — never the bare page, never `sort`', () => {
+    expect(NOW.papersOpen('insurance')).toEqual({
+      to: '/fleet/licensing?paper=insurance',
+      metric: 'papers.insurance',
+    });
+    expect(NOW_BRANCH.papersOpen('tax')).toEqual({
+      to: '/fleet/licensing?paper=tax',
+      metric: 'papers.tax',
+    });
+  });
+
+  it('opens a month’s column: the active cars by their licence month, the drivers by its two bounds', () => {
+    expect(NOW_BRANCH.vehicleLicenceMonth('2026-11')).toEqual({
+      to: '/fleet/vehicles?status=active&licenseMonths=2026-11',
+      metric: 'licenceVehicles.month',
+    });
+    expect(NOW.driverLicenceMonth('2027-02')).toEqual({
+      to: '/fleet/drivers?licExpFrom=2027-02-01&licExpBefore=2027-02-28',
+      metric: 'licenceDrivers.month',
+    });
+    expect(NOW_BRANCH.driverLicenceMonth('2026-12').to).toBe(
+      '/fleet/drivers?licExpFrom=2026-12-01&licExpBefore=2026-12-31&branch=b1',
     );
-    expect(NOW.visitDay('295', '2026-10-31', false).to).toBe(
-      '/fleet/maintenance?vehicleCodes=295&outFrom=2026-10-31&outTo=2026-10-31',
+    expect(NOW_MINE.driverLicenceMonth('2028-02').to).toBe(
+      '/fleet/drivers?licExpFrom=2028-02-01&licExpBefore=2028-02-29&branch=b1,b2',
     );
+  });
+
+  it('opens «عرض الباقي» of the drivers up to today+60, and a driver’s file as a record', () => {
+    expect(NOW_ONE.driverLicencesWithin60()).toEqual({
+      to: `/fleet/drivers?licExpBefore=${addDaysYmd(TODAY, 60)}&branch=b1`,
+      metric: 'licenceDrivers.more',
+    });
+    expect(NOW.driver('p520', 'licenceDrivers.row')).toEqual({
+      to: '/fleet/drivers/p520',
+      metric: 'licenceDrivers.row',
+    });
+  });
+
+  it('opens the period’s licence memos over the range alone — a memo has no branch, type or codes', () => {
+    const P = periodLinks({
+      range: RANGE,
+      vehicleScope: { ...NO_SET, typeIds: ['t1'], branchId: 'b1', scopeBranches: [B1_NAMED] },
+    });
+    expect(P.licenceSpend('licenceSpend.total')).toEqual({
+      to: `/fleet/license-expenses?from=${RANGE.from}&to=${RANGE.to}`,
+      metric: 'licenceSpend.total',
+    });
+  });
+
+  it('no longer has a builder for the retired «آخر ما سُجّل» or the board’s sorted page', () => {
+    const builders = Object.keys(NOW);
+    for (const name of ['licensing', 'visitDay', 'accidentDay', 'accidentsRecent', 'visitsRecent'])
+      expect(builders, name).not.toContain(name);
   });
 });
 
@@ -360,19 +421,16 @@ describe('the branch and the vehicle set travel as filters', () => {
       NOW_BRANCH.drivers(),
       NOW_BRANCH.driverLicencesExpired(),
       NOW_BRANCH.violationsUnknown(2026),
-      // «سجل الحوادث» / «سجل الزيارات»: the lists above them are the branch's.
-      NOW_BRANCH.accidentsRecent(30),
-      NOW_BRANCH.visitsRecent(30),
+      // The drivers follow their HR branch: every drivers' licence list is the branch's.
+      NOW_BRANCH.driverLicenceMonth('2026-12'),
+      NOW_BRANCH.driverLicencesWithin60(),
     ]) {
       expect(parse(link).params.get('branch'), link.to).toBe('b1');
     }
-    expect(parse(NOW.accidentsRecent(30)).params.has('branch')).toBe(false);
-    expect(parse(NOW.visitsRecent(30)).params.has('branch')).toBe(false);
-    expect(Object.fromEntries(parse(NOW_BRANCH.visitsRecent(30)).params)).toEqual({
-      from: addDaysYmd(TODAY, -29),
-      to: TODAY,
-      branch: 'b1',
-    });
+    expect(parse(NOW.driverLicencesWithin60()).params.has('branch')).toBe(false);
+    // A car column rides the vehicles screen's own scope, as every cars' licence window does (the
+    // figure is counted in the screen's scope, the active branch included): no `branch` param.
+    expect(parse(NOW_BRANCH.vehicleLicenceMonth('2026-11')).params.has('branch')).toBe(false);
     // The notices and the fuel cards follow the car's branch (plan D10): every one of their links
     // carries it — the cards' and the charging screen's.
     for (const link of [
@@ -460,7 +518,7 @@ describe('the branch the figures cover (plan D12): the switcher, else the reader
         L.driverLicencesExpired(),
         L.violationsOpen(),
         L.violationsCompany(2026),
-        L.visitsRecent(30),
+        L.driverLicencesWithin60(),
       ]) {
         expect(parse(link).params.get('branch'), link.to).toBe(branch);
       }
@@ -741,6 +799,49 @@ describe('the custody figures', () => {
     const sections: FleetDashboardSection[] = ['custodyFund'];
     const link = custodyDashboardLink('custodyFund.total');
     expect(link.to).toBe(FLEET_DASHBOARD_GATES[sections[0] as FleetDashboardSection].path);
+  });
+
+  it('open «سجل العهدة» on one register, every operation newest first, or one operation (D13)', () => {
+    expect(custodyLinks.log('replenish', 'custodyFund.replenished')).toEqual({
+      to: '/fleet/custody/log?op=replenish',
+      metric: 'custodyFund.replenished',
+    });
+    expect(custodyLinks.log(null, 'custodyFund.total').to).toBe(
+      '/fleet/custody/log?sort=date:desc',
+    );
+    expect(custodyLinks.open('op-held', 'custodyFund.letter').to).toBe(
+      '/fleet/custody/log?open=op-held',
+    );
+  });
+
+  it('open «المذكرات» by status or kind, a «صرف» run on its days, the licences by part — never `?fund=`', () => {
+    expect(custodyLinks.memos({ status: 'held' }, 'custodyFund.held').to).toBe(
+      '/fleet/custody/memos?status=held',
+    );
+    expect(custodyLinks.memos({ kind: 'fuel' }, 'custodyFund.outside.fuel').to).toBe(
+      '/fleet/custody/memos?kind=fuel',
+    );
+    expect(custodyLinks.days('2026-10-06', '2026-10-11', 'custodyFund.recent').to).toBe(
+      '/fleet/custody-expenses?from=2026-10-06&to=2026-10-11',
+    );
+    expect(custodyLinks.licenceWaiting('extension', 'custodyFund.settlePart').to).toBe(
+      '/fleet/license-expenses?kind=extension&status=waiting',
+    );
+    expect(custodyLinks.licenceWaiting(null, 'custodyFund.settle').to).toBe(
+      '/fleet/license-expenses?status=waiting',
+    );
+  });
+
+  it('open the period’s custody spend on «مصروفات العهدة» when nothing but codes narrows, else the receipts (D20)', () => {
+    const plain = periodLinks({ range: RANGE, vehicleScope: { ...NO_SET, vehicleCodes: ['133'] } });
+    expect(plain.custodySpend('opex.custody.wash', 'wash').to).toBe(
+      `/fleet/custody-expenses?source=wash&from=${RANGE.from}&to=${RANGE.to}&vehicleCodes=133`,
+    );
+    expect(plain.custodySpend('opex.custody')).toEqual(plain.opexCustody());
+    const mine = periodLinks({ range: RANGE, vehicleScope: MINE_SET });
+    expect(mine.custodySpend('opex.custody.maintenance', 'maintenance').to).toBe(
+      `/fleet/receipts?from=${RANGE.from}&to=${RANGE.to}&branch=b1,b2&kind=maintenance&source=custody`,
+    );
   });
 });
 

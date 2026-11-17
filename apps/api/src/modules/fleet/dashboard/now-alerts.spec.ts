@@ -39,6 +39,8 @@ const FULL: AlertSources = {
     outOfServiceExpired: 1,
     list: [],
     more: 0,
+    // The 12 months and the drivers' list feed no alert line.
+    months: [],
   },
   licenceDrivers: {
     warnDays: 30,
@@ -47,6 +49,8 @@ const FULL: AlertSources = {
     soon: 0,
     notRecorded: 2,
     unregistered: 1,
+    months: [],
+    list: { rows: [], more: 0 },
   },
   // `nearest` («أقربها») feeds no alert line.
   fuelCards: { warnDays: 30, expired: 1, expiring: 3, nearest: '2026-11-09' },

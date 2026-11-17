@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FLEET_DASHBOARD_GATES,
   FLEET_DASHBOARD_NOW_KEYS,
+  FLEET_DASHBOARD_PAGELESS_SECTIONS,
   FLEET_DASHBOARD_PAGE_KEYS,
   FLEET_DASHBOARD_PART_SECTIONS,
   FLEET_DASHBOARD_PERIOD_KEYS,
@@ -38,9 +39,14 @@ const routeGuards = (): Map<string, string[]> => {
 
 const GUARDS = routeGuards();
 const SECTIONS = Object.keys(FLEET_DASHBOARD_GATES) as FleetDashboardSection[];
-/** The sections that open the page: every gate but a PART's (drawn only inside a tab already seen). */
+/**
+ * The sections that open the page: every gate but a PART's (drawn only inside a tab already seen)
+ * and a PAGELESS one's (it reads R2, beside a tab another section already shows).
+ */
 const PAGE_SECTIONS = SECTIONS.filter(
-  (section) => !(FLEET_DASHBOARD_PART_SECTIONS as readonly string[]).includes(section),
+  (section) =>
+    !(FLEET_DASHBOARD_PART_SECTIONS as readonly string[]).includes(section) &&
+    !(FLEET_DASHBOARD_PAGELESS_SECTIONS as readonly string[]).includes(section),
 );
 
 describe('every gate names the guard of the screen it links to', () => {
@@ -60,7 +66,7 @@ describe('every gate names the guard of the screen it links to', () => {
 });
 
 describe('the home route', () => {
-  it('opens for a reader holding ANY key of any section — the union of the gates, parts left out', () => {
+  it('opens for a reader holding ANY key of any section — the union of the gates, parts and PAGELESS left out', () => {
     expect(GUARDS.get('index')).toEqual(['anyOf:FLEET_DASHBOARD_PAGE_KEYS']);
     expect(ROUTES).toContain("import { FLEET_DASHBOARD_PAGE_KEYS } from '@ecms/contracts';");
     const union = new Set(PAGE_SECTIONS.flatMap((section) => fleetDashboardGateKeys(section)));
@@ -79,6 +85,15 @@ describe('the home route', () => {
       period: false,
       custody: false,
     });
+  });
+
+  it('never opens on the licence expenses’ key alone — PAGELESS: it reads R2, it opens no page', () => {
+    expect(FLEET_DASHBOARD_PAGELESS_SECTIONS).toEqual(['licenceSpend']);
+    expect(GUARDS.get('license-expenses')).toEqual(['fleetLicenseExpense.view']);
+    expect(fleetDashboardGateKeys('licenceSpend')).toEqual(['fleetLicenseExpense.view']);
+    expect(FLEET_DASHBOARD_PERIOD_KEYS).toContain('fleetLicenseExpense.view');
+    expect(FLEET_DASHBOARD_PAGE_KEYS).not.toContain('fleetLicenseExpense.view');
+    expect(FLEET_DASHBOARD_NOW_KEYS).not.toContain('fleetLicenseExpense.view');
   });
 
   it('gains no key from the overview’s two new sections — no new permission key', () => {
@@ -124,6 +139,37 @@ describe('the home route', () => {
     );
     expect([...FLEET_DASHBOARD_PAGE_KEYS].sort()).toEqual([...before].sort());
   });
+
+  it('gains no key from «العهدة» and «التراخيص والتجديدات» — the R2 union grows by two, the page by none', () => {
+    // «العهدة»'s period states are the receipts' AND the custody fund's (the custody spend
+    // screen's guard); «مصروفات التراخيص» is the licence register's, PAGELESS.
+    expect([...fleetDashboardGateKeys('custodyStates')].sort()).toEqual([
+      'fleetCustody.view',
+      'fleetReceipt.view',
+    ]);
+    expect(FLEET_DASHBOARD_GATES.custodyStates).toMatchObject({
+      read: 'period',
+      page: ['fleetCustody.view'],
+      path: '/fleet/custody-expenses',
+    });
+    expect(FLEET_DASHBOARD_GATES.licenceSpend).toMatchObject({
+      read: 'period',
+      path: '/fleet/license-expenses',
+    });
+    const before = new Set(
+      PAGE_SECTIONS.filter((section) => section !== 'custodyStates').flatMap((section) =>
+        fleetDashboardGateKeys(section),
+      ),
+    );
+    expect([...FLEET_DASHBOARD_PAGE_KEYS].sort()).toEqual([...before].sort());
+    for (const key of ['fleetCustody.view', 'fleetLicenseExpense.view'])
+      expect(FLEET_DASHBOARD_PERIOD_KEYS).toContain(key);
+    // «آخر ما سُجّل» is retired: its two sections are gone, and their keys stay the page's.
+    expect(SECTIONS).not.toContain('recentWorkshop');
+    expect(SECTIONS).not.toContain('recentAccidents');
+    for (const key of ['fleetMaintenance.view', 'fleetAccident.view'])
+      expect(FLEET_DASHBOARD_PAGE_KEYS).toContain(key);
+  });
 });
 
 describe('a reader asks only for what a gate lets them see', () => {
@@ -166,11 +212,32 @@ describe('a reader asks only for what a gate lets them see', () => {
     expect([...FLEET_DASHBOARD_PERIOD_KEYS].sort()).toEqual([...period].sort());
   });
 
-  it('mounts the custody hooks only with `fleetCustody.view`', () => {
+  it('mounts the custody hooks only with `fleetCustody.view` — and sends no R2 on it alone (plan D5)', () => {
+    // The custody key is an R2 key now (`custodyStates`), but it answers no section without the
+    // receipts': R2 goes out only when some period section is fully permitted.
+    expect(FLEET_DASHBOARD_PERIOD_KEYS).toContain('fleetCustody.view');
     expect(dashboardReads(holding('fleetCustody.view'))).toEqual({
       now: false,
       period: false,
       custody: true,
+    });
+    expect(dashboardReads(holding('fleetCustody.view', 'fleetReceipt.view'))).toEqual({
+      now: false,
+      period: true,
+      custody: true,
+    });
+  });
+
+  it('sends R2 for a licence-expense reader’s one section, a licensing-only reader R1 alone', () => {
+    expect(dashboardReads(holding('fleetLicenseExpense.view'))).toEqual({
+      now: false,
+      period: true,
+      custody: false,
+    });
+    expect(dashboardReads(holding('fleetLicensing.view'))).toEqual({
+      now: true,
+      period: false,
+      custody: false,
     });
   });
 

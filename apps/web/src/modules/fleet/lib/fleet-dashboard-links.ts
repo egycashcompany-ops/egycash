@@ -1,17 +1,18 @@
 // «لوحة تحكم الحركة» — ONE builder for the link behind every figure of the dashboard's tabs (plan R-28,
 // unified.md §6.2): «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» · «الصيانة والورش» ·
 // «العدادات والكيلومترات» · «الحوادث ومطالبات التأمين» · «المخالفات المرورية والتسويات» ·
-// «الوقود والمصروفات» and the three old tabs («أرقام الفترة» · «ملخصات» · «التراخيص»). A
-// figure on the dashboard opens the screen that shows the same number: this file knows each screen's OWN
-// parameter names and fills them from the server's echo only — `today`, the `range` of a period, the
-// `vehicleScope` filters, the active `branchId` and the reader's `scopeBranches` — never from the
-// browser clock and never from a list the browser assembled.
+// «الوقود والمصروفات» · «العهدة» · «التراخيص والتجديدات», and the two old tabs («أرقام الفترة» ·
+// «ملخصات»). A figure on the dashboard opens the screen that shows the same number: this file knows
+// each screen's OWN parameter names and fills them from the server's echo only — `today`, the `range`
+// of a period, the `vehicleScope` filters, the active `branchId` and the reader's `scopeBranches` —
+// never from the browser clock and never from a list the browser assembled.
 //
 // THREE RULES THE LINK CENSUS HOLDS IT TO:
 //   · NO BARE LIST LINK. A list screen opened without a query restores the reader's remembered
 //     filters, so it would show another number. Every list link names at least one parameter. The
-//     exceptions are not lists: a record (`/fleet/vehicles/:id`), and the two screens that keep no
-//     filter to remember — «لوحة تحكم العهدة» and «مطابقة أرصدة الكروت» (`PATH_ONLY` below).
+//     exceptions are not lists: a record (`/fleet/vehicles/:id`, `/fleet/drivers/:id`), and the two
+//     screens that keep no filter to remember — «لوحة تحكم العهدة» and «مطابقة أرصدة الكروت»
+//     (`PATH_ONLY` below).
 //   · FILTERS TRAVEL AS FILTERS. A type, an operation or a branch goes as `type` / `operation` /
 //     `branch` — never turned into a list of codes, so a 60-car type still has its link. The branch
 //     is the switcher's branch when it names one, else the reader's own branches (one, or «كل فروعي»
@@ -27,12 +28,15 @@
 import {
   FLEET_LICENCE_GREY_DAYS,
   addDaysYmd,
+  type FleetCustodyLedgerOp,
+  type FleetCustodySource,
   type FleetDashboardNowAlarmDto,
   type FleetDashboardNowFuelCardRowDto,
   type FleetDashboardPeriodDto,
   type FleetDashboardTab,
   type FleetDashboardVehicleScopeDto,
   type FleetDealershipWorkKind,
+  type FleetLicenseExpenseKind,
 } from '@ecms/contracts';
 
 /** A figure's link: where it goes, and which figure it is (`data-metric="<section>.<field>"`). */
@@ -87,6 +91,38 @@ export const custodyDashboardLink = (metric: string): DashLink => ({
   to: '/fleet/custody/dashboard',
   metric,
 });
+
+/**
+ * «العهدة» (plan D13) — the custody screens' own parameters, and no echo: those screens read no
+ * branch and keep no period (the «الآن» band is the whole company since the fund's first day).
+ * Never `?fund=`, never `letter=1`, never a bare list.
+ */
+export const custodyLinks = {
+  /** «سجل العهدة» on one register (`op`), or — `null` — every operation, newest first. */
+  log: (op: FleetCustodyLedgerOp | null, metric: string): DashLink =>
+    op === null
+      ? at('custody/log', { sort: 'date:desc' }, metric)
+      : at('custody/log', { op }, metric),
+  /** One operation opened in «سجل العهدة» (a held letter, a row of «آخر عمليات العهدة»). */
+  open: (id: string, metric: string): DashLink => at('custody/log', { open: id }, metric),
+  /** «المذكرات» by status (held / pending) or by the kind of receipts they hold. */
+  memos: (
+    q: { status?: 'pending' | 'held'; kind?: FleetCustodySource },
+    metric: string,
+  ): DashLink => at('custody/memos', { status: q.status, kind: q.kind }, metric),
+  /** A «صرف» run of «آخر عمليات العهدة»: «مصروفات العهدة» over its days. */
+  days: (from: string, to: string, metric: string): DashLink =>
+    at('custody-expenses', { from, to }, metric),
+  /** «تنتظر التسوية»: the licence memos waiting for «تسوية العهدة» — one part, or all. */
+  licenceWaiting: (kind: FleetLicenseExpenseKind | null, metric: string): DashLink =>
+    at('license-expenses', { kind, status: 'waiting' }, metric),
+};
+
+/** 'YYYY-MM' → its last day, 'YYYY-MM-DD' (a month's own bounds, UTC — no clock involved). */
+const lastDayOf = (ym: string): string => {
+  const [year, month] = ym.split('-').map(Number) as [number, number];
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+};
 
 /** The page's own filter params — the ones a tab link carries over as they stand (plan D15). */
 export const TAB_LINK_PARAMS = [
@@ -247,6 +283,23 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
     /** «بلا تاريخ» (D18). «غير مسجّلين» has no list (named exception): no builder. */
     driverLicencesNotRecorded: (): DashLink =>
       at('drivers', { licExp: 'none', ...br }, 'licenceDrivers.notRecorded'),
+    /** «عرض الباقي» of «أقرب رخص السائقين»: every driver expired or expiring up to today+60. */
+    driverLicencesWithin60: (): DashLink =>
+      driverLicence('licenceDrivers.more', null, addDaysYmd(today, FLEET_LICENCE_GREY_DAYS)),
+    /** A driver's file — a record, as `/fleet/vehicles/:id` is. */
+    driver: (profileId: string, metric: string): DashLink => ({
+      to: `/fleet/drivers/${encodeURIComponent(profileId)}`,
+      metric,
+    }),
+    /**
+     * A column of «التراخيص المستحقة للتجديد — 12 شهرًا»: the active cars whose licence runs out in
+     * that month (the registry's own month filter), and the drivers whose licence does, by the
+     * month's first and last day (with the figures' branch).
+     */
+    vehicleLicenceMonth: (ym: string): DashLink =>
+      at('vehicles', { status: 'active', licenseMonths: [ym] }, 'licenceVehicles.month'),
+    driverLicenceMonth: (ym: string): DashLink =>
+      driverLicence('licenceDrivers.month', `${ym}-01`, lastDayOf(ym)),
     /**
      * T1.4. The fuel cards follow the branch of each card's CURRENT car (plan D10): every fuel link
      * carries the figures' branch, which the cards and charging screens read (a card on no car is in
@@ -429,41 +482,13 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
       return at('vehicle-contracts', { from: `${year}-01-01`, to: `${year}-12-31`, alarm }, metric);
     },
 
-    // Tab 4 — licences and recent records.
-    /** T4.6 (D17): the licensing board's own stats bar, never the bare page. */
-    licensing: (paper: 'insurance' | 'tax'): DashLink =>
-      at('licensing', { sort: 'asc' }, `papers.${paper}`),
+    // «التراخيص والتجديدات».
     /**
-     * T4.8: the visit's business day on the maintenance screen (R-12) — its check-in day while open,
-     * its check-out day once closed (`outFrom`/`outTo`, the bounds that filter on the check-out).
+     * «أوراق لم تُستلم بعد» (plan D20): the licensing board on the OPEN papers of that kind only
+     * (`paper`, the stage the dashboard counts), never the bare page.
      */
-    visitDay: (code: string, day: string, open: boolean): DashLink =>
-      at(
-        'maintenance',
-        open
-          ? { vehicleCodes: [code], from: day, to: day }
-          : { vehicleCodes: [code], outFrom: day, outTo: day },
-        'recentWorkshop.row',
-      ),
-    /** T4.9 / T10.1: the accident's day on the accidents screen. */
-    accidentDay: (code: string, day: string, metric = 'recentAccidents.row'): DashLink =>
-      at('accidents', { vehicleCodes: [code], from: day, to: day }, metric),
-    /**
-     * The two «سجل …» foot links of «آخر ما سُجّل» — the 30-day window the list shows, and its
-     * branch: the lists are narrowed to the chosen branch on the server, so the screens are too.
-     */
-    accidentsRecent: (days: number): DashLink =>
-      at(
-        'accidents',
-        { from: addDaysYmd(today, 1 - days), to: today, ...br },
-        'recentAccidents.all',
-      ),
-    visitsRecent: (days: number): DashLink =>
-      at(
-        'maintenance',
-        { from: addDaysYmd(today, 1 - days), to: today, ...br },
-        'recentWorkshop.all',
-      ),
+    papersOpen: (paper: 'insurance' | 'tax'): DashLink =>
+      at('licensing', { paper }, `papers.${paper}`),
 
     // Tab 5 — summaries.
     /** T5.10. */
@@ -534,6 +559,19 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
   const dates = { from: range.from, to: range.to };
   const over = (screen: string, metric: string, extra: Record<string, Param> = {}) =>
     at(screen, { ...dates, ...set, ...extra }, metric);
+  const onlyCodes =
+    vehicleScope.typeIds.length === 0 &&
+    vehicleScope.operationIds.length === 0 &&
+    vehicleScope.branchId === null &&
+    vehicleScope.scopeBranches === null;
+  const custodySpend = (metric: string, kind?: FleetCustodySource): DashLink =>
+    onlyCodes
+      ? at(
+          'custody-expenses',
+          { source: kind, ...dates, vehicleCodes: vehicleScope.vehicleCodes },
+          metric,
+        )
+      : over('receipts', metric, { kind, source: 'custody' });
   return {
     /** T6.1 and «العدادات والكيلومترات»: the odometer register over the range and the set. */
     km: (metric = 'km.total'): DashLink => over('odometer', metric),
@@ -596,17 +634,18 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
     /** «مصروف الوقود»: the fuel receipts (card + custody) of the range. */
     opexFuel: (): DashLink => over('receipts', 'opex.fuel', { kind: 'fuel' }),
     /** D20: the custody part — the spend screen when nothing but codes narrows, else the receipts. */
-    opexCustody: (): DashLink =>
-      vehicleScope.typeIds.length === 0 &&
-      vehicleScope.operationIds.length === 0 &&
-      vehicleScope.branchId === null &&
-      vehicleScope.scopeBranches === null
-        ? at(
-            'custody-expenses',
-            { ...dates, vehicleCodes: vehicleScope.vehicleCodes },
-            'opex.custody',
-          )
-        : over('receipts', 'opex.custody', { source: 'custody' }),
+    opexCustody: (): DashLink => custodySpend('opex.custody'),
+    /**
+     * «العهدة»'s period figures (D20): «مصروفات العهدة» (a kind of its own for a bar) on the spend
+     * screen when nothing but codes narrows — it reads no type, operation or branch — else the
+     * custody receipts under the whole set.
+     */
+    custodySpend,
+    /**
+     * «مصروفات التراخيص في الفترة»: the licence memos dated in the range — the range only, as the
+     * figure counts it (a memo has no branch, type or operation).
+     */
+    licenceSpend: (metric: string): DashLink => at('license-expenses', { ...dates }, metric),
     /** T6.9 (+ «بانتظار تسجيل القيمة»: `state=pending`). */
     dealership: (metric = 'dealership.amount', state?: 'pending'): DashLink =>
       over('dealership', metric, { state }),

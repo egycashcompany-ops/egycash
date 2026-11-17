@@ -10,12 +10,19 @@
 // (card receipts are fuel only, so fuel = card + it), the fuel receipts with no litre price (in the
 // money, never in the litres) — and `seriesOver`: the same rows by the receipt's PAPER day or
 // month, EVERY slot of the range, an empty one marked, adding up to the totals.
+//
+// And the fleet dashboard's «مصروفات العهدة» (R2 `opex.custodyCount`, `custodyStates`): the
+// custody-paid receipts counted in the same `$group`, and the same custody receipts put where their
+// memo stands NOW («لوحة تحكم المصروفات»'s `memoStates` rule — a held memo is still waiting), summed
+// in whole piastres so the three parts ARE `custodyTotal`.
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose, { Types } from 'mongoose';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FleetReceiptModel } from './receipt.model';
 import { fleetReceiptRepository } from './receipt.repository';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { FleetCustodyMemoModel } from '../custody/custody-memo.model';
+import { fleetCustodyMemoRepository } from '../custody/custody-memo.repository';
 
 const ID = (n: number): string => `64b0000000000000000000${String(n).padStart(2, '0')}`;
 const CODE_IDS = [ID(1), ID(2)];
@@ -61,7 +68,7 @@ describe('summaryOver — the /summary computation, byte for byte', () => {
     const query = { vehicleCodes: ['150'], source: 'card' as const };
     const a = await fleetReceiptService.summary(query);
     const b = await fleetReceiptService.summaryOver(query);
-    expect(a).toMatchObject({ count: 4, cardTotal: 900, custodyTotal: 50.25 });
+    expect(a).toMatchObject({ count: 4, cardTotal: 900, custodyTotal: 50.25, custodyCount: 1 });
     expect(b).toEqual(a);
     expect(json(sent[1])).toBe(json(sent[0]));
   });
@@ -272,5 +279,124 @@ describe('the split, the litres and the series — over a real store', () => {
     expect(Math.round(sum * 100) / 100).toBe(
       Math.round((totals.cardTotal + totals.custodyTotal) * 100) / 100,
     );
+  });
+});
+
+describe('custodyCount and custodyStatesOver — «مصروفات العهدة» and where it stands now', () => {
+  let server: MongoMemoryServer;
+  const day = (ymd: string): Date => new Date(`${ymd}T00:00:00.000Z`);
+  const OCT = { from: day('2026-10-01'), to: day('2026-10-31') };
+  const memo = (no: number, over: Record<string, unknown> = {}) => ({
+    _id: new Types.ObjectId(),
+    no,
+    kind: 'fuel',
+    name: '',
+    date: day('2026-10-02'),
+    from: day('2026-10-01'),
+    to: day('2026-10-31'),
+    lines: [],
+    signatures: { blocks: [], note: '' },
+    replenishmentId: null,
+    replenishedAt: null,
+    isDeleted: false,
+    ...over,
+  });
+  const done = memo(1, { replenishmentId: new Types.ObjectId(), replenishmentHeld: false });
+  // From before the hold: no `replenishmentHeld` at all — replenished.
+  const legacy = memo(2, { replenishmentId: new Types.ObjectId() });
+  const held = memo(3, { replenishmentId: new Types.ObjectId(), replenishmentHeld: true });
+  const pending = memo(4);
+  const deleted = memo(5, { isDeleted: true });
+  const receipt = (over: Record<string, unknown>) => ({
+    _id: new Types.ObjectId(),
+    vehicleId: new Types.ObjectId(ID(1)),
+    date: day('2026-10-10'),
+    kind: 'fuel',
+    source: 'custody',
+    amount: 0,
+    memoId: null,
+    isDeleted: false,
+    ...over,
+  });
+
+  beforeAll(async () => {
+    server = await MongoMemoryServer.create();
+    await mongoose.connect(server.getUri('ecms-receipt-custody-states'));
+    await FleetCustodyMemoModel.collection.insertMany([done, legacy, held, pending, deleted]);
+    await FleetReceiptModel.collection.insertMany([
+      receipt({ memoId: done._id, amount: 100.1 }),
+      receipt({ memoId: done._id, amount: 0.2, kind: 'maintenance' }),
+      receipt({ memoId: legacy._id, amount: 50, kind: 'tyres' }),
+      receipt({ memoId: held._id, amount: 30.05, kind: 'wash' }),
+      receipt({ memoId: pending._id, amount: 20 }),
+      // On a memo since deleted — «خارج المذكرات», as the dashboard's rule reads it.
+      receipt({ memoId: deleted._id, amount: 7 }),
+      receipt({ amount: 0.1 }),
+      receipt({ amount: 0.2, kind: 'maintenance' }),
+      // On a car the typed codes do not name.
+      receipt({ memoId: pending._id, amount: 3, vehicleId: new Types.ObjectId(ID(5)) }),
+      // Never counted: a card receipt, one outside October, a deleted one.
+      receipt({ source: 'card', amount: 400 }),
+      receipt({ memoId: done._id, amount: 999, date: day('2026-11-01') }),
+      receipt({ memoId: pending._id, amount: 1000, isDeleted: true }),
+    ]);
+  });
+
+  afterAll(async () => {
+    await mongoose.disconnect();
+    await server.stop();
+  });
+
+  it('counts the custody-paid receipts in the same group — a card receipt is never one', async () => {
+    const out = await fleetReceiptService.summaryOver(OCT);
+    expect(out).toMatchObject({ count: 10, custodyCount: 9, custodyTotal: 210.65 });
+    expect((await fleetReceiptService.summaryOver({ ...OCT, source: 'custody' })).count).toBe(9);
+  });
+
+  it('puts each custody receipt where its memo stands now: a held memo is still waiting', async () => {
+    expect(await fleetReceiptService.custodyStatesOver(OCT)).toEqual({
+      replenished: 150.3,
+      pending: 53.05,
+      outside: 7.3,
+    });
+  });
+
+  it('Σ states = custodyTotal to the piastre, over the same query — whatever source was asked', async () => {
+    const piastres = (n: number): number => Math.round(n * 100);
+    for (const query of [
+      OCT,
+      { ...OCT, vehicleCodes: ['150'] },
+      { ...OCT, source: 'card' as const },
+    ]) {
+      const states = await fleetReceiptService.custodyStatesOver(query);
+      const { custodyTotal } = await fleetReceiptService.summaryOver({
+        ...query,
+        source: 'custody',
+      });
+      expect(
+        piastres(states.replenished) + piastres(states.pending) + piastres(states.outside),
+      ).toBe(piastres(custodyTotal));
+    }
+    // The typed cars narrow it as they narrow the screen.
+    expect(
+      await fleetReceiptService.custodyStatesOver({ ...OCT, vehicleCodes: ['150'] }),
+    ).toMatchObject({ pending: 50.05 });
+  });
+
+  it('reads the memos once, the ones the receipts name — and none when no receipt names one', async () => {
+    const spy = vi.spyOn(fleetCustodyMemoRepository, 'statusesByIds');
+    await fleetReceiptService.custodyStatesOver(OCT);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect([...(spy.mock.calls[0]?.[0] ?? [])].sort()).toEqual(
+      [done, legacy, held, pending, deleted].map((row) => String(row._id)).sort(),
+    );
+    spy.mockClear();
+    expect(
+      await fleetReceiptService.custodyStatesOver({
+        from: day('2026-12-01'),
+        to: day('2026-12-31'),
+      }),
+    ).toEqual({ replenished: 0, pending: 0, outside: 0 });
+    expect(spy.mock.calls[0]?.[0]).toEqual([]);
   });
 });

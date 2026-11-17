@@ -1,0 +1,17 @@
+{
+  "extends": "/home/user/egycash-fx/packages/config/tsconfig.web.json",
+  "compilerOptions": {
+    "types": [],
+    "noEmit": true
+  },
+  "files": [
+    "/home/user/egycash-fx/node_modules/vite/client.d.ts",
+    "/home/user/egycash-fx/apps/web/src/zz-fixed-sample.tsx",
+    "/home/user/egycash-fx/apps/web/src/zz-fixed-sample-page.tsx",
+    "/home/user/egycash-fx/apps/web/src/zz-fixed-sample-desk.tsx",
+    "/home/user/egycash-fx/apps/web/src/zz-fixed-sample-touch.tsx",
+    "/home/user/egycash-fx/apps/web/src/zz-fixed-sample-parts.tsx",
+    "/home/user/egycash-fx/apps/web/src/zz-fixed-sample-model.ts",
+    "/home/user/egycash-fx/apps/web/src/zz-fixed-sample-data.ts"
+  ]
+}

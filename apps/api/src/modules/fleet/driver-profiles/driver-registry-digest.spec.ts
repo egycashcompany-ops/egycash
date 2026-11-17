@@ -4,7 +4,10 @@
 // `/fleet/drivers?licExpBefore=<today>`, «خلال 30 يومًا» the total with both bounds, «بلا تاريخ» the
 // total of `?licExp=none`, and the branch is `?branch=`. So each figure here is checked against the
 // REGISTRY LIST itself — `listRoster` with the link's query, over the same roster — not against
-// numbers written down beside it.
+// numbers written down beside it. «التراخيص والتجديدات» adds two more promises of the same kind:
+// each month's column is the total of `?licExpFrom=<its first day>&licExpBefore=<its last day>`, and
+// «أقرب رخص السائقين» lists the very files `?licExpBefore=<today + 60>` keeps (suspended included),
+// nearest first.
 import { Types } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { calendarDayBounds, licenceWindows, type ListFleetDriversQuery } from '@ecms/contracts';
@@ -27,6 +30,7 @@ const W = 30;
 const MAADI = new Types.ObjectId().toString();
 const GIZA = new Types.ObjectId().toString();
 const CASH_SPEC = new Types.ObjectId();
+const FIRST_GRADE = new Types.ObjectId();
 const ATM_SPEC = new Types.ObjectId();
 const OTHER_SPEC = new Types.ObjectId();
 
@@ -75,7 +79,10 @@ beforeEach(() => {
   roster.employees = e;
   profiles = [
     // Expired — ON the expiry day (Q-02), even stamped mid-morning by an import.
-    profile(e[0]!, { licenseExpiresAt: at('2026-11-01T10:00:00.000Z') }),
+    profile(e[0]!, {
+      licenseExpiresAt: at('2026-11-01T10:00:00.000Z'),
+      licenseTypeId: FIRST_GRADE,
+    }),
     profile(e[1]!, { licenseExpiresAt: at('2026-10-01T00:00:00.000Z'), isActive: false }),
     // Expiring: the day after today, and the last day of the window.
     profile(e[2]!, { licenseExpiresAt: at('2026-11-02T00:00:00.000Z') }),
@@ -125,6 +132,7 @@ const digest = (branchIds: readonly string[] | null) =>
     branchIds,
     cashSpecIds: [String(CASH_SPEC)],
     atmSpecIds: [String(ATM_SPEC)],
+    nearestLimit: 6,
   });
 
 /** The registry LIST's total for a link's query — what the linked screen prints. */
@@ -149,7 +157,7 @@ const between = (from: string, to: string) => {
 describe('registryDigest — the whole company', () => {
   it('counts each licence bucket exactly as the list link does', async () => {
     const out = await digest(null);
-    expect(out.licence).toEqual({
+    expect(out.licence).toMatchObject({
       expired: 3,
       expiring: 3,
       soon: 2,
@@ -199,7 +207,7 @@ describe('registryDigest — the reader’s branches are HR branches, as `?branc
     const out = await digest([GIZA]);
     expect(out.total).toBe(3);
     expect(out.total).toBe(await listTotal({ branchId: [GIZA] }));
-    expect(out.licence).toEqual({
+    expect(out.licence).toMatchObject({
       expired: 1,
       expiring: 1,
       soon: 0,
@@ -228,14 +236,108 @@ describe('registryDigest — the reader’s branches are HR branches, as `?branc
   it('a reader with no branch to cover (`[]`) gets nobody — never the whole registry', async () => {
     const out = await digest([]);
     expect(out.total).toBe(0);
-    expect(out.licence).toEqual({
+    expect(out.licence).toMatchObject({
       expired: 0,
       expiring: 0,
       soon: 0,
       notRecorded: 0,
       unregistered: 0,
+      nearest: { rows: [], total: 0 },
     });
+    expect(out.licence.months.every((month) => month.count === 0)).toBe(true);
     expect(out.cash).toEqual({ drivers: 0, legacy: 0 });
+  });
+});
+
+describe('registryDigest — «التراخيص المستحقة للتجديد» and «أقرب رخص السائقين»', () => {
+  it('12 month keys from today’s month, zeros kept, each the total of its month’s link', async () => {
+    const out = await digest(null);
+    expect(out.licence.months.map((month) => month.key)).toEqual([
+      '2026-11',
+      '2026-12',
+      '2027-01',
+      '2027-02',
+      '2027-03',
+      '2027-04',
+      '2027-05',
+      '2027-06',
+      '2027-07',
+      '2027-08',
+      '2027-09',
+      '2027-10',
+    ]);
+    // November: e0 (stamped mid-morning on the 1st), e2, e11; December: e3, e4, e5; January: e6.
+    expect(out.licence.months.slice(0, 4).map((month) => month.count)).toEqual([3, 3, 1, 0]);
+    for (const month of out.licence.months) {
+      const year = Number(month.key.slice(0, 4));
+      const last = new Date(Date.UTC(year, Number(month.key.slice(5, 7)), 0)).getUTCDate();
+      expect(month.count, month.key).toBe(
+        await listTotal(
+          between(`${month.key}-01`, `${month.key}-${String(last).padStart(2, '0')}`),
+        ),
+      );
+    }
+  });
+
+  it('a month key rolls over the year: December’s twelve run to November', async () => {
+    const out = await fleetDriverProfileService.registryDigest({
+      today: '2026-12-31',
+      warnDays: W,
+      branchIds: null,
+      cashSpecIds: [],
+      atmSpecIds: [],
+      nearestLimit: 0,
+    });
+    expect(out.licence.months[0]?.key).toBe('2026-12');
+    expect(out.licence.months.at(-1)?.key).toBe('2027-11');
+    expect(out.licence.nearest.rows).toEqual([]);
+  });
+
+  it('lists the files up to today + 60, the longest-expired first — the suspended one flagged', async () => {
+    const out = await digest(null);
+    const { nearest } = out.licence;
+    expect(nearest.rows.map((row) => row.employeeId)).toEqual(
+      [1, 10, 0, 2, 11, 3].map((i) => roster.employees[i]!.employeeId),
+    );
+    expect(nearest.rows[0]).toEqual({
+      profileId: String(profiles[1]!._id),
+      employeeId: roster.employees[1]!.employeeId,
+      expiresAt: '2026-10-01',
+      licenceTypeId: null,
+      active: false,
+    });
+    expect(nearest.rows[2]).toMatchObject({
+      expiresAt: '2026-11-01',
+      licenceTypeId: String(FIRST_GRADE),
+      active: true,
+    });
+  });
+
+  it('total = the link’s total = expired + expiring + soon (suspended included)', async () => {
+    for (const branchIds of [null, [GIZA], [MAADI, GIZA]]) {
+      const out = await digest(branchIds);
+      const { licence } = out;
+      expect(licence.nearest.total).toBe(licence.expired + licence.expiring + licence.soon);
+      expect(licence.nearest.total).toBe(
+        await listTotal({
+          licenseExpiresBefore: calendarDayBounds('2026-12-31', '2026-12-31').before,
+          ...(branchIds === null ? {} : { branchId: [...branchIds] }),
+        }),
+      );
+      expect(licence.nearest.rows.length).toBe(Math.min(6, licence.nearest.total));
+    }
+    expect((await digest([GIZA])).licence.nearest.rows.map((row) => row.employeeId)).toEqual([
+      roster.employees[10]!.employeeId,
+      roster.employees[11]!.employeeId,
+    ]);
+  });
+
+  it('a seat-holder with no profile, or no date on file, is never one of the rows', async () => {
+    const out = await digest(null);
+    const listed = new Set(out.licence.nearest.rows.map((row) => row.employeeId));
+    for (const i of [7, 8, 9, 12, 13]) {
+      expect(listed.has(roster.employees[i]!.employeeId)).toBe(false);
+    }
   });
 });
 

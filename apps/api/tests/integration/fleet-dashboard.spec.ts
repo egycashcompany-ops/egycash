@@ -18,7 +18,12 @@
 //   5. «المخالفات المرورية والتسويات» and «الوقود والمصروفات»: each part opens with its own key (a
 //      violations-only reader now reads the period), and under a branch the fuel cards follow their
 //      CURRENT car (a deleted car's card counts in its last branch, a card on no car in the company
-//      view only) and the old book's carless fines are named apart in the company view only.
+//      view only) and the old book's carless fines are named apart in the company view only;
+//   6. «العهدة» and «التراخيص والتجديدات»: a licensing-only reader keeps R1 (the papers alone) and no
+//      R2; a licence-expense-only reader reads R2 (`licenceSpend` alone) and no R1; the custody fund's
+//      key adds «منها حتى الآن» (`custodyStates`) beside the receipts' and answers nothing alone;
+//      under a branch the custody spend follows the receipt's car, the licence memos stay the
+//      company's, and the cars' licence rows and months narrow to the branch's cars.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -52,6 +57,9 @@ import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 import { FleetFuelCardModel } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
 import { FleetViolationModel } from '../../src/modules/fleet/violations/violation.model';
+import { FleetReceiptModel } from '../../src/modules/fleet/receipts/receipt.model';
+import { FleetCustodyMemoModel } from '../../src/modules/fleet/custody/custody-memo.model';
+import { FleetLicenseExpenseModel } from '../../src/modules/fleet/license-expenses/license-expense.model';
 
 const NOW = new Date('2026-10-31T23:30:00.000Z');
 /** No exit in the range under a vehicle set: zeros, no mean, and no «غير مسجّلة» line. */
@@ -142,8 +150,6 @@ const NOW_SECTIONS: readonly FleetDashboardNowSection[] = [
   'fuelCharging',
   'fuelCardList',
   'fuelSheets',
-  'recentWorkshop',
-  'recentAccidents',
   'notices',
   'dealershipPending',
   'accidentsOpen',
@@ -160,8 +166,10 @@ const PERIOD_SECTIONS: readonly FleetDashboardPeriodSection[] = [
   'violationList',
   'opex',
   'opexSeries',
+  'custodyStates',
   'dealership',
   'dealershipList',
+  'licenceSpend',
 ];
 const present = (dto: object, keys: readonly string[]): string[] =>
   keys.filter((key) => (dto as Record<string, unknown>)[key] !== null);
@@ -572,7 +580,9 @@ describe('the doors — real roles (R-28, §5.5)', () => {
   it('a workshop clerk gets the workshop sections only — no alarm line without the alarms screen', async () => {
     const clerk = await reader(['fleetMaintenance.view']);
     const now = await nowOf(clerk.token);
-    expect(present(now, NOW_SECTIONS)).toEqual(['workshop', 'recentWorkshop']);
+    // «آخر ما سُجّل» is retired: the clerk's only R1 section is the workshop.
+    expect(present(now, NOW_SECTIONS)).toEqual(['workshop']);
+    expect(now).not.toHaveProperty('recentWorkshop');
     expect(now.alerts.map((a) => a.id)).not.toContain('maintenanceRed');
     expect(present(await periodOf(clerk.token), PERIOD_SECTIONS)).toEqual(['visits', 'exits']);
   });
@@ -610,6 +620,7 @@ describe('the doors — real roles (R-28, §5.5)', () => {
   it('the receipts reader gets «مصروف التشغيل» and its days; the dealership reader its card and its rows', async () => {
     const receipts = await reader(['fleetReceipt.view']);
     expect((await call('/fleet/dashboard/now', receipts.token)).status).toBe(403);
+    // «منها حتى الآن» (`custodyStates`) needs the custody fund's key beside the receipts'.
     expect(present(await periodOf(receipts.token), PERIOD_SECTIONS)).toEqual([
       'opex',
       'opexSeries',
@@ -1024,5 +1035,288 @@ describe('«المخالفات المرورية والتسويات» — the dri
 describe('the old landing read is retired (P1-13)', () => {
   it('GET /fleet/dashboard answers 404', async () => {
     expect((await call('/fleet/dashboard', adminToken)).status).toBe(404);
+  });
+});
+
+describe('«العهدة» and «التراخيص والتجديدات» — their reads, their doors, their branch', () => {
+  const day = (ymd: string): Date => new Date(`${ymd}T00:00:00.000Z`);
+  const stamp = { isDeleted: false, schemaVersion: 1, createdBy: null, updatedBy: null };
+  let boardCar: FleetVehicleDto; // B1, active, a «ت» licence running out on 20 December
+  let barqashT: string;
+
+  beforeAll(async () => {
+    // Three custody memos — one transferred, one held, one waiting for its «استعاضة» — each a line
+    // of its receipt (a receipt is on one memo at most: `ux_custody_memo_receipt`).
+    const rDone = new Types.ObjectId();
+    const rHeld = new Types.ObjectId();
+    const rWaiting = new Types.ObjectId();
+    const lineOf = (receiptId: Types.ObjectId) => [
+      { receiptId, mission: '', statement: '', note: '' },
+    ];
+    const memo = (no: number, over: Record<string, unknown>) => ({
+      ...stamp,
+      _id: new Types.ObjectId(),
+      no,
+      kind: 'maintenance',
+      name: '',
+      date: day('2026-10-25'),
+      from: day('2026-10-01'),
+      to: day('2026-10-31'),
+      lines: [],
+      signatures: { blocks: [], note: '' },
+      replenishmentId: null,
+      replenishedAt: null,
+      lockSeq: 0,
+      deletedAt: null,
+      createdAt: day('2026-10-25'),
+      updatedAt: day('2026-10-25'),
+      __v: 0,
+      ...over,
+    });
+    const done = memo(901, {
+      lines: lineOf(rDone),
+      replenishmentId: new Types.ObjectId(),
+      replenishedAt: day('2026-10-28'),
+      replenishmentHeld: false,
+    });
+    const held = memo(902, {
+      kind: 'fuel',
+      lines: lineOf(rHeld),
+      replenishmentId: new Types.ObjectId(),
+      replenishedAt: day('2026-10-29'),
+      replenishmentHeld: true,
+    });
+    const waiting = memo(903, { kind: 'tyres', lines: lineOf(rWaiting) });
+    await FleetCustodyMemoModel.collection.insertMany([done, held, waiting]);
+    const receipt = (
+      car: FleetVehicleDto,
+      over: {
+        kind: string;
+        amount: number;
+        memoId?: Types.ObjectId;
+        source?: string;
+        _id?: Types.ObjectId;
+      },
+    ) => ({
+      ...stamp,
+      vehicleId: new Types.ObjectId(car.id),
+      driverEmployeeId: null,
+      driverName: 'سائق',
+      cardId: null,
+      fuelType: over.kind === 'fuel' ? 'diesel' : null,
+      pricePerLitre: null,
+      litres: null,
+      odometer: null,
+      company: null,
+      image: null,
+      deletedAt: null,
+      date: day('2026-10-22'),
+      source: 'custody',
+      memoId: null,
+      ...over,
+    });
+    await FleetReceiptModel.create([
+      receipt(car1, { _id: rDone, kind: 'maintenance', amount: 100, memoId: done._id }),
+      receipt(car1, { _id: rHeld, kind: 'fuel', amount: 40.5, memoId: held._id }),
+      receipt(car2, { _id: rWaiting, kind: 'tyres', amount: 20, memoId: waiting._id }),
+      receipt(car2, { kind: 'wash', amount: 9.5 }),
+      // A card's fuel: in `opex`, never in the custody spend.
+      receipt(car1, { kind: 'fuel', amount: 70, source: 'card' }),
+    ]);
+    // Licence-expense memos: two of October (one with both memos, a hand-typed plate) and one of
+    // September — no branch, no car type, no operation reaches any of them.
+    const line = (amount: number, paidBy: 'visa' | 'cash', count = 1) => ({
+      itemId: null,
+      label: 'بند',
+      amount,
+      count,
+      paidBy,
+      receipt: false,
+    });
+    const expense = (date: string, over: Record<string, unknown>) => ({
+      ...stamp,
+      date: day(date),
+      renewal: null,
+      extension: null,
+      signatures: { agent: '', director: '', generalManager: '' },
+      deletedAt: null,
+      ...over,
+    });
+    await FleetLicenseExpenseModel.create([
+      expense('2026-10-05', {
+        renewal: {
+          vehicles: [
+            { vehicleId: new Types.ObjectId(car1.id), plate: '' },
+            { vehicleId: null, plate: 'ب ح 12' },
+          ],
+          items: [line(100, 'visa'), line(50, 'cash', 2)],
+        },
+        extension: {
+          vehicles: [{ vehicleId: new Types.ObjectId(car2.id), plate: '' }],
+          items: [line(30, 'cash')],
+        },
+      }),
+      expense('2026-09-30', {
+        renewal: {
+          vehicles: [{ vehicleId: new Types.ObjectId(car2.id), plate: '' }],
+          items: [line(999, 'visa')],
+        },
+      }),
+    ]);
+    // A board car («ت») of B1 whose licence runs out on 20 December.
+    barqashT = ok<FleetCatalogItemDto>(
+      await send('post', '/fleet/catalog-items', {
+        kind: 'licenseClass',
+        name: { ar: 'برقاش ت', en: 'Barqash T' },
+      }),
+      201,
+    ).id;
+    boardCar = ok<FleetVehicleDto>(
+      await send('post', '/fleet/vehicles', {
+        code: '899',
+        typeId: T1,
+        plateNumber: 'ع ت 99',
+        chassisNumber: 'ECH-99',
+        motorNumber: 'EMO-99',
+        joinedAt: '2025-01-01T00:00:00.000Z',
+        licenseExpiresAt: '2026-12-20T00:00:00.000Z',
+        licenseClassId: barqashT,
+        radio: { issi: 'EISSI-99' },
+        branchId: B1,
+      }),
+      201,
+    );
+  }, 120_000);
+
+  it('a licensing-only reader keeps R1 — the papers alone — and has no R2', async () => {
+    const board = await reader(['fleetLicensing.view']);
+    expect(present(await nowOf(board.token), NOW_SECTIONS)).toEqual(['papers']);
+    expect((await call('/fleet/dashboard/period', board.token)).status).toBe(403);
+  });
+
+  it('a licence-expense-only reader reads «مصروفات التراخيص» and nothing else; no R1', async () => {
+    const spend = await reader(['fleetLicenseExpense.view']);
+    expect((await call('/fleet/dashboard/now', spend.token)).status).toBe(403);
+    const period = await periodOf(spend.token);
+    expect(present(period, PERIOD_SECTIONS)).toEqual(['licenceSpend']);
+    expect(period.licenceSpend).toEqual({
+      count: 1,
+      cars: 3,
+      visa: 100,
+      cash: 130,
+      renewal: 200,
+      extension: 30,
+      total: 230,
+    });
+  });
+
+  it('the custody fund’s key adds «منها حتى الآن» beside the receipts’, and answers nothing alone', async () => {
+    const both = await reader(['fleetReceipt.view', 'fleetCustody.view']);
+    expect((await call('/fleet/dashboard/now', both.token)).status).toBe(403);
+    const period = await periodOf(both.token);
+    expect(present(period, PERIOD_SECTIONS)).toEqual(['opex', 'opexSeries', 'custodyStates']);
+    const fund = await reader(['fleetCustody.view']);
+    expect((await call('/fleet/dashboard/now', fund.token)).status).toBe(403);
+    // Admitted to R2 (its key is in the union), answered with nothing: the web sends it no R2.
+    const alone = await periodOf(fund.token);
+    expect(present(alone, PERIOD_SECTIONS)).toEqual([]);
+    expect(alone.unavailable).toEqual([]);
+  });
+
+  it('the company: «مصروفات العهدة», its receipts and where they stand now — Σ = the custody spend', async () => {
+    const period = await periodOf(adminToken);
+    expect(period.opex?.custody).toBe(170);
+    expect(period.opex?.custodyCount).toBe(4);
+    // The held memo's money is not back yet: it waits, with the memo no «استعاضة» took.
+    expect(period.custodyStates).toEqual({ replenished: 100, pending: 60.5, outside: 9.5 });
+    const states = period.custodyStates;
+    expect((states?.replenished ?? 0) + (states?.pending ?? 0) + (states?.outside ?? 0)).toBe(
+      period.opex?.custody,
+    );
+    const screen = ok<{ count: number; custodyTotal: number }>(
+      await call('/fleet/receipts/summary', adminToken, {
+        from: OCT.from,
+        to: OCT.to,
+        source: 'custody',
+      }),
+    );
+    expect(period.opex?.custodyCount).toBe(screen.count);
+  });
+
+  it('a branch: the custody spend follows the receipt’s car; the licence memos stay the company’s', async () => {
+    const company = await periodOf(adminToken);
+    for (const [branch, expected] of [
+      [B1, { replenished: 100, pending: 40.5, outside: 0 }],
+      [B2, { replenished: 0, pending: 20, outside: 9.5 }],
+    ] as const) {
+      const period = await periodOf(adminToken, OCT, branch);
+      expect(period.custodyStates, branch).toEqual(expected);
+      expect(expected.replenished + expected.pending + expected.outside).toBe(period.opex?.custody);
+      expect(period.opex?.custodyCount).toBe(2);
+      expect(period.licenceSpend).toEqual(company.licenceSpend);
+    }
+    // «كل فروعي»: both branches' custody receipts, the licence memos unchanged.
+    const both = await multiReader([
+      'fleetReceipt.view',
+      'fleetCustody.view',
+      'fleetLicenseExpense.view',
+    ]);
+    const reach = await periodOf(both.token);
+    expect(reach.custodyStates).toEqual(company.custodyStates);
+    expect(reach.licenceSpend).toEqual(company.licenceSpend);
+  });
+
+  it('the cars’ licences: each row named, the board’s papers on a «ت» car, 12 months from November', async () => {
+    const now = await nowOf(adminToken);
+    const row = now.licenceVehicles?.list.find((r) => r.vehicleId === boardCar.id);
+    expect(row).toEqual({
+      vehicleId: boardCar.id,
+      code: '899',
+      expiresAt: '2026-12-20',
+      days: 49,
+      typeName: { ar: 'مصفحة', en: 'Armored' },
+      licenceClass: { ar: 'برقاش ت', en: 'Barqash T' },
+      papers: { insurance: 'none', tax: 'none' },
+    });
+    // A car with no licence class is off the board: no papers, no class.
+    const plain = now.licenceVehicles?.list.find((r) => r.vehicleId === car1.id);
+    expect(plain).toMatchObject({ licenceClass: null, papers: null, expiresAt: '2026-10-15' });
+    expect(now.licenceVehicles?.months.map((m) => m.key)).toEqual([
+      '2026-11',
+      '2026-12',
+      '2027-01',
+      '2027-02',
+      '2027-03',
+      '2027-04',
+      '2027-05',
+      '2027-06',
+      '2027-07',
+      '2027-08',
+      '2027-09',
+      '2027-10',
+    ]);
+    expect(now.licenceVehicles?.months.find((m) => m.key === '2026-12')?.count).toBe(1);
+    expect(now.licenceVehicles?.months.reduce((a, m) => a + m.count, 0)).toBe(1);
+    // A reader of the registry alone: the row is named, its papers are not.
+    const registry = await reader(['fleetVehicle.view']);
+    const theirs = (await nowOf(registry.token)).licenceVehicles?.list.find(
+      (r) => r.vehicleId === boardCar.id,
+    );
+    expect(theirs?.licenceClass).toEqual({ ar: 'برقاش ت', en: 'Barqash T' });
+    expect(theirs?.papers).toBeNull();
+  });
+
+  it('under a branch the licence rows and months are that branch’s cars', async () => {
+    const b1 = await nowOf(adminToken, B1);
+    const b2 = await nowOf(adminToken, B2);
+    expect(b1.licenceVehicles?.list.map((r) => r.code).sort()).toEqual([car1.code, '899'].sort());
+    expect(b2.licenceVehicles?.list.map((r) => r.code)).toEqual([car2.code]);
+    expect(b1.licenceVehicles?.months.find((m) => m.key === '2026-12')?.count).toBe(1);
+    expect(b2.licenceVehicles?.months.every((m) => m.count === 0)).toBe(true);
+    // A branch-scoped registry reader of B2 sees the same as the switcher.
+    const dispatcher = await reader(['fleetVehicle.view'], 'branch', B2);
+    expect((await nowOf(dispatcher.token)).licenceVehicles?.months).toEqual(
+      b2.licenceVehicles?.months,
+    );
   });
 });

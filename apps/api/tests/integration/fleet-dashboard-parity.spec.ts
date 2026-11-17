@@ -13,6 +13,13 @@
 // drivers' violations = attributed + unknown + unlinked; the licence buckets are disjoint; the
 // «الحركة اليوم» rows are the board's own ready-and-unmanned rows; and a reader reaching two branches
 // («كل فروعي») reads every figure its links reproduce with `branchIds=a,b`.
+//
+// «العهدة» and «التراخيص والتجديدات» (the last block, on a world grown by custody memos, a held and a
+// transferred «استعاضة» and licence-expense memos): `opex.custodyCount` = the receipts screen's
+// custody count; `custodyStates` Σ = `opex.custody`; `licenceSpend` = the licence-expense register's
+// summary over the same days; each licence month column = its list link's total; the drivers' list
+// = `/fleet/drivers?licExpBefore=<today + 60>`; and the held letters = «المذكرات» `status=held` —
+// for the company AND under B2.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -30,7 +37,13 @@ import {
   calendarDayBounds,
   compareFleetVehicleCodes,
   platformPermissions,
+  ConfirmFleetCustodyTransferSchema,
+  CreateFleetCustodyMemoSchema,
+  CreateFleetCustodyReplenishmentSchema,
+  CreateFleetLicenseExpenseSchema,
   type FleetCatalogItemDto,
+  type FleetCustodyFundSummaryDto,
+  type FleetCustodyMemoRowDto,
   type FleetDealershipInvoiceDto,
   type FleetDashboardNowDto,
   type FleetDashboardPeriodDto,
@@ -61,6 +74,11 @@ import { FleetAccidentModel } from '../../src/modules/fleet/accidents/accident.m
 import { FleetViolationModel } from '../../src/modules/fleet/violations/violation.model';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
+import { FleetReceiptModel } from '../../src/modules/fleet/receipts/receipt.model';
+import { fleetCustodyMemoService } from '../../src/modules/fleet/custody/custody-memo.service';
+import { fleetCustodyFundService } from '../../src/modules/fleet/custody/custody-fund.service';
+import { fleetCustodyHoldService } from '../../src/modules/fleet/custody/custody-fund-hold';
+import { fleetLicenseExpenseService } from '../../src/modules/fleet/license-expenses/license-expense.service';
 import { nextNationalId } from './helpers/national-id';
 
 /** Cairo's 2026-11-01, 01:30 — the UTC date is still the 31st (R-01). */
@@ -1074,7 +1092,7 @@ describe('R1 parity — the overview’s action centre (the old «التنبيه
   });
 });
 
-describe('R1 parity — tab 4 «التراخيص وآخر ما سُجّل»', () => {
+describe('R1 parity — tab «التراخيص والتجديدات», the counts', () => {
   it('T1.2/T4.1–T4.3 = the vehicles list with first/last-instant bounds — the 10:00Z stamp is expired today', async () => {
     const lic = now.licenceVehicles;
     expect(lic?.expired).toBe(
@@ -1136,26 +1154,6 @@ describe('R1 parity — tab 4 «التراخيص وآخر ما سُجّل»', ()
       notRecorded: 1,
       unregistered: 1,
     });
-  });
-
-  it('T4.8/T4.9: each recent row opens its own list (code + its day)', async () => {
-    expect(now.recentWorkshop?.length).toBeGreaterThan(0);
-    for (const row of now.recentWorkshop ?? []) {
-      expect(row.date >= '2026-10-03').toBe(true);
-      const query = row.open
-        ? { vehicleCodes: row.code, from: row.date, to: row.date }
-        : { vehicleCodes: row.code, outFrom: row.date, outTo: row.date };
-      expect(await total('/fleet/maintenance', query), row.code).toBeGreaterThan(0);
-    }
-    expect((now.recentWorkshop ?? []).map((row) => row.code)).not.toContain(v7.code);
-    const accidents = now.recentAccidents ?? [];
-    expect(accidents.map((row) => [row.code, row.date])).toContainEqual([v1.code, '2026-10-30']);
-    for (const row of accidents) {
-      expect(
-        await total('/fleet/accidents', { vehicleCodes: row.code, from: row.date, to: row.date }),
-        row.code,
-      ).toBeGreaterThan(0);
-    }
   });
 });
 
@@ -2223,5 +2221,303 @@ describe('R1 parity — the alarm table on cars in alarm (red, yellow, one in th
     expect(b2.workshop?.longest.length).toBe(
       await total('/fleet/maintenance', { open: true, branchIds: B2 }),
     );
+  });
+});
+
+describe('«العهدة» and «التراخيص والتجديدات» parity — the company and B2', () => {
+  const MONTHS = [
+    '2026-11',
+    '2026-12',
+    '2027-01',
+    '2027-02',
+    '2027-03',
+    '2027-04',
+    '2027-05',
+    '2027-06',
+    '2027-07',
+    '2027-08',
+    '2027-09',
+    '2027-10',
+  ];
+  const lastDayOf = (key: string): string => {
+    const days = new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(5, 7)), 0));
+    return `${key}-${String(days.getUTCDate()).padStart(2, '0')}`;
+  };
+  const views: { label: string; branch?: string; q: Record<string, string> }[] = [
+    { label: 'company', q: {} },
+    { label: 'B2', branch: '', q: {} },
+  ];
+  let company: FleetDashboardPeriodDto;
+  let b2: FleetDashboardPeriodDto;
+  let nowCo: FleetDashboardNowDto;
+  let nowB2: FleetDashboardNowDto;
+  let heldLetter: string;
+
+  beforeAll(async () => {
+    views[1] = { label: 'B2', branch: B2, q: { branchIds: B2 } };
+    // One more custody receipt, on v2 (B2): its tyres, the memo a transferred «استعاضة» takes.
+    ok(
+      await send('post', '/fleet/receipts', {
+        date: '2026-10-20',
+        vehicleId: v2.id,
+        kind: 'tyres',
+        amount: 80,
+        driverName: 'سائق',
+      }),
+      201,
+    );
+    const receiptOf = async (vehicleId: string, kind: string): Promise<string> => {
+      const found = await FleetReceiptModel.findOne({
+        vehicleId: new Types.ObjectId(vehicleId),
+        kind,
+        source: 'custody',
+        isDeleted: false,
+      })
+        .lean()
+        .exec();
+      expect(found, `${kind} on ${vehicleId}`).not.toBeNull();
+      return String(found?._id);
+    };
+    const actor = adminId;
+    const memo = async (kind: string, receiptId: string) =>
+      fleetCustodyMemoService.create(
+        CreateFleetCustodyMemoSchema.parse({ kind, lines: [{ receiptId }] }),
+        actor,
+      );
+    // v1's wash: a memo a held «استعاضة» took — still waiting for the money.
+    const washMemo = await memo('wash', await receiptOf(v1.id, 'wash'));
+    const held = await fleetCustodyFundService.replenish(
+      CreateFleetCustodyReplenishmentSchema.parse({ date: '2026-10-25', memoIds: [washMemo.id] }),
+      actor,
+    );
+    heldLetter = held.id;
+    // v2's tyres: replenished, the transfer confirmed.
+    const tyresMemo = await memo('tyres', await receiptOf(v2.id, 'tyres'));
+    const done = await fleetCustodyFundService.replenish(
+      CreateFleetCustodyReplenishmentSchema.parse({ date: '2026-10-26', memoIds: [tyresMemo.id] }),
+      actor,
+    );
+    await fleetCustodyHoldService.confirmTransfer(
+      done.id,
+      ConfirmFleetCustodyTransferSchema.parse({ date: '2026-10-27' }),
+      actor,
+    );
+    // v3's fuel: on a memo no «استعاضة» took yet. The deleted v7's wash stays on no memo.
+    await memo('fuel', await receiptOf(v3.id, 'fuel'));
+
+    // Licence-expense memos of October — one with both memos and a hand-typed plate — and one of
+    // November, out of the range.
+    const half = (
+      vehicleIds: string[],
+      plates: string[],
+      lines: [number, 'visa' | 'cash', number][],
+    ) => ({
+      vehicles: [
+        ...vehicleIds.map((vehicleId) => ({ vehicleId, plate: '' })),
+        ...plates.map((plate) => ({ vehicleId: null, plate })),
+      ],
+      items: lines.map(([amount, paidBy, count]) => ({
+        itemId: null,
+        label: 'بند',
+        amount,
+        count,
+        paidBy,
+        receipt: true,
+      })),
+    });
+    const SIGNATURES = { agent: 'أ', director: 'ب', generalManager: 'ج' };
+    for (const [date, renewal, extension] of [
+      [
+        '2026-10-03',
+        half(
+          [v1.id],
+          ['ب ح 12'],
+          [
+            [100, 'visa', 2],
+            [50, 'cash', 1],
+          ],
+        ),
+        half([v2.id], [], [[30, 'cash', 1]]),
+      ],
+      ['2026-10-31', null, half([v3.id], [], [[70.5, 'visa', 1]])],
+      ['2026-11-01', half([v1.id], [], [[999, 'visa', 1]]), null],
+    ] as const) {
+      await fleetLicenseExpenseService.create(
+        CreateFleetLicenseExpenseSchema.parse({ date, renewal, extension, signatures: SIGNATURES }),
+        actor,
+      );
+    }
+
+    company = ok<FleetDashboardPeriodDto>(await get('/fleet/dashboard/period', OCT));
+    b2 = ok<FleetDashboardPeriodDto>(await get('/fleet/dashboard/period', OCT, B2));
+    nowCo = ok<FleetDashboardNowDto>(await get('/fleet/dashboard/now'));
+    nowB2 = ok<FleetDashboardNowDto>(await get('/fleet/dashboard/now', {}, B2));
+  }, 120_000);
+
+  const periodOfView = (label: string) => (label === 'company' ? company : b2);
+  const nowOfView = (label: string) => (label === 'company' ? nowCo : nowB2);
+  const piastres = (n: number): number => Math.round(n * 100);
+
+  it('«N إيصالًا» = the receipts screen’s custody count over the same days and branch', async () => {
+    for (const { label, branch, q } of views) {
+      const screen = ok<{ count: number; custodyTotal: number }>(
+        await get(
+          '/fleet/receipts/summary',
+          { from: OCT.from, to: OCT.to, source: 'custody', ...q },
+          branch,
+        ),
+      );
+      const dto = periodOfView(label);
+      expect(dto.opex?.custodyCount, label).toBe(screen.count);
+      expect(dto.opex?.custody, label).toBe(screen.custodyTotal);
+    }
+    // v1's wash (50), v3's fuel (120), v2's tyres (80) and the deleted v7's wash (35).
+    expect(company.opex?.custodyCount).toBe(4);
+    // B2: v2's tyres and v7's wash (its last branch).
+    expect(b2.opex?.custodyCount).toBe(2);
+  });
+
+  it('«منها حتى الآن» = where those receipts stand now; Σ = «مصروفات العهدة», to the piastre', () => {
+    expect(company.custodyStates).toEqual({ replenished: 80, pending: 170, outside: 35 });
+    expect(b2.custodyStates).toEqual({ replenished: 80, pending: 0, outside: 35 });
+    for (const dto of [company, b2]) {
+      const s = dto.custodyStates;
+      expect(
+        piastres(s?.replenished ?? 0) + piastres(s?.pending ?? 0) + piastres(s?.outside ?? 0),
+      ).toBe(piastres(dto.opex?.custody ?? -1));
+    }
+  });
+
+  it('«مصروفات التراخيص في الفترة» = the licence-expense register over the same days — the same under B2', async () => {
+    const strip = ok<{ count: number; cars: number; visaTotal: number; cashTotal: number }>(
+      await get('/fleet/license-expenses/summary', { from: OCT.from, to: OCT.to }),
+    );
+    expect(company.licenceSpend).toMatchObject({
+      count: strip.count,
+      cars: strip.cars,
+      visa: strip.visaTotal,
+      cash: strip.cashTotal,
+    });
+    expect(company.licenceSpend).toEqual({
+      count: 2,
+      cars: 4,
+      visa: 270.5,
+      cash: 80,
+      renewal: 250,
+      extension: 100.5,
+      total: 350.5,
+    });
+    // No branch reaches a memo: B2 reads the company's.
+    expect(b2.licenceSpend).toEqual(company.licenceSpend);
+  });
+
+  it('each cars’ month column = /fleet/vehicles?status=active&licenseExpiryMonths=<month>', async () => {
+    for (const { label, branch } of views) {
+      const months = nowOfView(label).licenceVehicles?.months ?? [];
+      expect(
+        months.map((m) => m.key),
+        label,
+      ).toEqual(MONTHS);
+      for (const month of months) {
+        expect(month.count, `${label} ${month.key}`).toBe(
+          await total('/fleet/vehicles', {
+            status: 'active',
+            licenseExpiryMonths: month.key,
+            ...(branch === undefined ? {} : { branchId: branch }),
+          }),
+        );
+      }
+    }
+    // November: v1 (B1, run out TODAY — this month's column holds it) and v2 (B2, the 20th);
+    // December: v3 (B1, the 15th).
+    expect(nowCo.licenceVehicles?.months.slice(0, 2).map((m) => m.count)).toEqual([2, 1]);
+    expect(nowB2.licenceVehicles?.months.slice(0, 2).map((m) => m.count)).toEqual([1, 0]);
+  });
+
+  it('each drivers’ month column = /fleet/drivers over its first and last day (HR branch)', async () => {
+    for (const { label, branch } of views) {
+      const months = nowOfView(label).licenceDrivers?.months ?? [];
+      expect(
+        months.map((m) => m.key),
+        label,
+      ).toEqual(MONTHS);
+      for (const month of months) {
+        expect(month.count, `${label} ${month.key}`).toBe(
+          await total('/fleet/drivers', {
+            licenseExpiresFrom: first(`${month.key}-01`),
+            licenseExpiresBefore: last(lastDayOf(month.key)),
+            ...(branch === undefined ? {} : { branchId: branch }),
+          }),
+        );
+      }
+    }
+    // The B2 driver expiring on 20 November.
+    expect(nowCo.licenceDrivers?.months[0]?.count).toBe(1);
+  });
+
+  it('«أقرب رخص السائقين» = /fleet/drivers?licExpBefore=<today + 60>, the longest-expired first', async () => {
+    for (const { label, branch } of views) {
+      const lic = nowOfView(label).licenceDrivers;
+      const query = {
+        licenseExpiresBefore: last('2026-12-31'),
+        ...(branch === undefined ? {} : { branchId: branch }),
+      };
+      expect((lic?.list.rows.length ?? 0) + (lic?.list.more ?? 0), label).toBe(
+        await total('/fleet/drivers', query),
+      );
+      expect((lic?.list.rows.length ?? 0) + (lic?.list.more ?? 0), label).toBe(
+        (lic?.expired ?? 0) + (lic?.expiring ?? 0) + (lic?.soon ?? 0),
+      );
+      const listed = ok<{ employeeId: string }[]>(
+        await get('/fleet/drivers', { ...query, pageSize: 100 }),
+      );
+      for (const row of lic?.list.rows ?? []) {
+        expect(
+          listed.map((d) => d.employeeId),
+          label,
+        ).toContain(row.employeeId);
+        expect(row.days, label).toBe(
+          Math.round(
+            (new Date(`${row.expiresAt}T00:00:00.000Z`).getTime() -
+              new Date(`${TODAY}T00:00:00.000Z`).getTime()) /
+              86_400_000,
+          ),
+        );
+        expect(row.active).toBe(true);
+      }
+      const days = (lic?.list.rows ?? []).map((row) => row.expiresAt);
+      expect(days).toEqual([...days].sort());
+    }
+    // The company: the expired one of 20 October, then the B2 driver of 20 November.
+    expect(nowCo.licenceDrivers?.list.rows.map((row) => [row.expiresAt, row.days])).toEqual([
+      ['2026-10-20', -12],
+      ['2026-11-20', 19],
+    ]);
+  });
+
+  it('«أقرب تراخيص السيارات»: each row named from its car — the make, no class, no papers', async () => {
+    for (const row of nowCo.licenceVehicles?.list ?? []) {
+      const car = ok<FleetVehicleDto>(await get(`/fleet/vehicles/${row.vehicleId}`));
+      expect(row.code).toBe(car.code);
+      expect(row.expiresAt).toBe(car.licenseExpiresAt.slice(0, 10));
+      expect(row.typeName?.ar).toBe(car.typeId === T1 ? 'مصفحة' : row.typeName?.ar);
+      expect(row.typeName).not.toBeNull();
+      // No car of this world carries a licence class: none on the board, so no papers either.
+      expect(row.licenceClass).toBeNull();
+      expect(row.papers).toBeNull();
+    }
+  });
+
+  it('«استعاضة معلّقة»: the held letters = «المذكرات» status=held, the oldest first', async () => {
+    const fund = ok<FleetCustodyFundSummaryDto>(await get('/fleet/custody/fund/summary'));
+    const held = ok<FleetCustodyMemoRowDto[]>(
+      await get('/fleet/custody/memos', { status: 'held', pageSize: 100 }),
+    );
+    expect(fund.held.letters.map((letter) => letter.id)).toEqual([heldLetter]);
+    expect(fund.held.letters.flatMap((l) => l.memos.map((m) => m.id)).sort()).toEqual(
+      held.map((row) => row.id).sort(),
+    );
+    expect(fund.held.letters[0]).toMatchObject({ date: '2026-10-25', amount: 50, receipts: 1 });
+    expect(fund.held).toMatchObject({ count: 1, amount: 50, memos: 1, receipts: 1 });
   });
 });

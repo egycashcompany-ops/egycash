@@ -830,6 +830,51 @@ describe('the licensing-expenses board — its arrows and «الإحصائيات
     expect(withExtension).toMatchObject({ count: 2, cars: 5 });
   });
 
+  it('«مصروفات التراخيص في الفترة» (the dashboard’s licenceSpend) is GET /summary over the same days, split twice', async () => {
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Spend reader', ar: 'قارئ المصروفات' },
+        permissionKeys: ['fleetLicenseExpense.view'],
+      },
+      ACTOR,
+    );
+    const { user } = await userService.create(
+      {
+        email: 'license-spend-reader@ecms.local',
+        firstName: { ar: 'ق', en: 'S' },
+        lastName: { ar: 'ر', en: 'R' },
+        locale: 'en',
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      },
+      null,
+    );
+    await userService.forceActivate(String(user._id));
+    await rbacService.ensureAssignment(String(user._id), String(role._id), 'organization');
+    const token = authService.signAccessToken(String(user._id), new Types.ObjectId().toString(), 0);
+    const res = await request(app)
+      .get('/api/v1/fleet/license-expenses/summary')
+      .query(MONTH)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const strip = (
+      res.body as { data: { count: number; cars: number; visaTotal: number; cashTotal: number } }
+    ).data;
+    const spend = await fleetLicenseExpenseService.periodSpend({
+      from: new Date(`${MONTH.from}T00:00:00.000Z`),
+      to: new Date(`${MONTH.to}T00:00:00.000Z`),
+    });
+    expect({ count: spend.count, cars: spend.cars, visa: spend.visa, cash: spend.cash }).toEqual({
+      count: strip.count,
+      cars: strip.cars,
+      visa: strip.visaTotal,
+      cash: strip.cashTotal,
+    });
+    // By memo: the renewals 100 + 10 + 110 + 0.1, the extensions 400 + 0.2.
+    expect(spend).toMatchObject({ renewal: 220.1, extension: 400.2, total: 620.3 });
+    expect(Math.round((spend.renewal + spend.extension) * 100)).toBe(Math.round(spend.total * 100));
+    expect(Math.round((spend.visa + spend.cash) * 100)).toBe(Math.round(spend.total * 100));
+  });
+
   it('leaves a deleted memo out of the figures, as out of the table', async () => {
     await fleetLicenseExpenseService.remove(ids.tie, ACTOR);
     const totals = await fleetLicenseExpenseService.summary(

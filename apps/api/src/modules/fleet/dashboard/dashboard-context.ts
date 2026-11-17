@@ -12,8 +12,10 @@
 // widest grant among the two reads' keys — the whole company (`null`) for an organization or `own`
 // grant, else the branches that grant reaches (several = «كل فروعي»), else the home branch. The
 // branch switcher only narrows INSIDE that answer, so a stale header (a branch the reader cannot
-// see) is ignored instead of widening or moving the figures. The custody fund's key is the
-// browser's own read ('web') and is not in either union.
+// see) is ignored instead of widening or moving the figures. Two keys of the R2 union never decide
+// it (`UNSCOPED_KEYS`): the custody fund's (its «الآن» is the browser's own read, company-wide; its
+// R2 part `custodyStates` follows the receipt's car under the receipts' key) and the licence
+// expenses' (a memo has no branch: `licenceSpend` is always the whole company).
 import {
   FLEET_DASHBOARD_NOW_KEYS,
   FLEET_DASHBOARD_PERIOD_KEYS,
@@ -62,10 +64,19 @@ export interface DashboardContext {
   readonly setting: <T>(key: string) => Promise<T>;
 }
 
-/** The two reads' keys: what a dashboard figure may be counted under. */
-const DASHBOARD_KEYS: readonly string[] = [
+/**
+ * Keys a section is gated on that never decide what the figures cover: an organization-wide grant
+ * of either must not widen a branch reader's figures to the whole company.
+ */
+const UNSCOPED_KEYS: ReadonlySet<string> = new Set([
+  'fleetCustody.view',
+  'fleetLicenseExpense.view',
+]);
+
+/** The two reads' keys that decide what the dashboard's figures cover (`dashboardBranches`). */
+export const DASHBOARD_KEYS: readonly string[] = [
   ...new Set([...FLEET_DASHBOARD_NOW_KEYS, ...FLEET_DASHBOARD_PERIOD_KEYS]),
-];
+].filter((key) => !UNSCOPED_KEYS.has(key));
 
 /**
  * The reader's branches under the widest of the dashboard's grants — `null` for the whole company

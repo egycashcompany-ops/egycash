@@ -10,8 +10,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   FLEET_DASHBOARD_GATES,
+  FLEET_DASHBOARD_NOW_KEYS,
   FLEET_DASHBOARD_PAGE_KEYS,
   FLEET_DASHBOARD_PART_SECTIONS,
+  FLEET_DASHBOARD_PERIOD_KEYS,
   fleetDashboardGateKeys,
   type FleetDashboardSection,
 } from '@ecms/contracts';
@@ -92,6 +94,36 @@ describe('the home route', () => {
     );
     expect([...FLEET_DASHBOARD_PAGE_KEYS].sort()).toEqual([...before].sort());
   });
+
+  it('gains no key from the two new tabs’ sections — each is gated as the screen it opens', () => {
+    // «المخالفات المرورية والتسويات»: the period's fines and their rows are the register's.
+    for (const section of ['violations', 'violationList'] as const) {
+      expect(fleetDashboardGateKeys(section)).toEqual(fleetDashboardGateKeys('violationsYear'));
+      expect(FLEET_DASHBOARD_GATES[section].read).toBe('period');
+    }
+    // «الوقود والمصروفات»: the flagged cards on the charging screen, the sheet card on the
+    // reconcile screen (both behind the charging guard), the day series as the receipts, the
+    // invoices' rows as the dealership.
+    expect(fleetDashboardGateKeys('fuelCardList')).toEqual(fleetDashboardGateKeys('fuelCharging'));
+    expect(fleetDashboardGateKeys('fuelSheets')).toEqual(fleetDashboardGateKeys('fuelCharging'));
+    expect(FLEET_DASHBOARD_GATES.fuelSheets.path).toBe('/fleet/fuel-cards/reconcile');
+    expect(fleetDashboardGateKeys('opexSeries')).toEqual(fleetDashboardGateKeys('opex'));
+    expect(fleetDashboardGateKeys('dealershipList')).toEqual(fleetDashboardGateKeys('dealership'));
+    const before = new Set(
+      PAGE_SECTIONS.filter(
+        (section) =>
+          ![
+            'violations',
+            'violationList',
+            'fuelCardList',
+            'fuelSheets',
+            'opexSeries',
+            'dealershipList',
+          ].includes(section),
+      ).flatMap((section) => fleetDashboardGateKeys(section)),
+    );
+    expect([...FLEET_DASHBOARD_PAGE_KEYS].sort()).toEqual([...before].sort());
+  });
 });
 
 describe('a reader asks only for what a gate lets them see', () => {
@@ -115,6 +147,23 @@ describe('a reader asks only for what a gate lets them see', () => {
       period: true,
       custody: false,
     });
+  });
+
+  it('sends R2 too for a violations-only reader — the period’s fines are its own (PERIOD_KEYS)', () => {
+    expect(FLEET_DASHBOARD_PERIOD_KEYS).toContain('fleetViolation.view');
+    expect(FLEET_DASHBOARD_NOW_KEYS).toContain('fleetViolation.view');
+    expect(dashboardReads(holding('fleetViolation.view'))).toEqual({
+      now: true,
+      period: true,
+      custody: false,
+    });
+    // The R2 union is exactly the period gates' keys.
+    const period = new Set(
+      SECTIONS.filter((section) => FLEET_DASHBOARD_GATES[section].read === 'period').flatMap(
+        (section) => fleetDashboardGateKeys(section),
+      ),
+    );
+    expect([...FLEET_DASHBOARD_PERIOD_KEYS].sort()).toEqual([...period].sort());
   });
 
   it('mounts the custody hooks only with `fleetCustody.view`', () => {

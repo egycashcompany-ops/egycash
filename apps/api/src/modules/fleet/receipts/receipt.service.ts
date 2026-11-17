@@ -11,6 +11,8 @@
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
   FLEET_FUEL_PRICE_KEY,
+  addDaysYmd,
+  ymdOf,
   type CreateFleetReceipt,
   type FleetFuelCardCompany,
   type FleetFuelType,
@@ -140,6 +142,32 @@ interface ReceiptFacts {
   company: FleetFuelCardCompany | null;
 }
 
+/**
+ * Every slot key of `from` … `to` (both 'YYYY-MM-DD', inclusive), in order: each day, or each
+ * month ('YYYY-MM') the range touches. Exported for its spec.
+ */
+export const seriesKeys = (from: string, to: string, unit: 'day' | 'month'): string[] => {
+  const keys: string[] = [];
+  if (to < from) return keys;
+  if (unit === 'day') {
+    for (let day = from; day <= to; day = addDaysYmd(day, 1)) keys.push(day);
+    return keys;
+  }
+  let year = Number(from.slice(0, 4));
+  let month = Number(from.slice(5, 7));
+  const last = to.slice(0, 7);
+  for (;;) {
+    const key = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
+    if (key > last) return keys;
+    keys.push(key);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+};
+
 class FleetReceiptService {
   // ── Reading ───────────────────────────────────────────────────────────────
 
@@ -190,6 +218,25 @@ class FleetReceiptService {
    */
   async summaryOver(query: FleetReceiptSummaryQuery): Promise<FleetReceiptTotalsDto> {
     return fleetReceiptRepository.totals(await this.filterFor(query));
+  }
+
+  /**
+   * «مصروف التشغيل يومًا بيوم» (or «شهرًا بشهر») — the same rows as `summaryOver` by the receipt's
+   * paper day or month, EVERY slot of `from` … `to` in order (inclusive), `hasRows: false` where no
+   * receipt is: Σ amount = the summary's card + custody, Σ count = its count.
+   */
+  async seriesOver(
+    query: FleetReceiptSummaryQuery & { from: Date; to: Date },
+    unit: 'day' | 'month',
+  ): Promise<{ key: string; hasRows: boolean; amount: number; count: number }[]> {
+    const rows = await fleetReceiptRepository.series(await this.filterFor(query), unit);
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    return seriesKeys(ymdOf(query.from), ymdOf(query.to), unit).map((key) => {
+      const row = byKey.get(key);
+      return row === undefined
+        ? { key, hasRows: false, amount: 0, count: 0 }
+        : { key, hasRows: row.count > 0, amount: row.amount, count: row.count };
+    });
   }
 
   /**

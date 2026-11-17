@@ -6,6 +6,7 @@
 // one instant, while `/summary` keeps the request's own, as it always had. Since batch 3 (D5) the
 // figure is the CAIRO day of that clock — from its midnight to the next — not the 24 hours before
 // it, so the window both tests read is that day's `[start, end)`.
+import { Types } from 'mongoose';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetFuelCardModel, FleetFuelCardMovementModel } from './fuel-card.model';
 import { fleetFuelCardRepository } from './fuel-card.repository';
@@ -40,10 +41,20 @@ describe('cardFilter — the expiry window', () => {
   });
 });
 
+const MATCHED = [new Types.ObjectId('64b000000000000000000071')];
+
 /** Drive the real `summary` against stubbed aggregations; hand back what each was asked. */
 const drive = async (run: () => Promise<unknown>) => {
   let cards: { $match?: unknown }[] = [];
-  let moves: { $match?: { at?: { $gte?: Date; $lt?: Date } } }[] = [];
+  let moves: { $match?: { at?: { $gte?: Date; $lt?: Date }; cardId?: unknown } }[] = [];
+  let distinct: unknown = null;
+  vi.spyOn(FleetFuelCardModel, 'distinct').mockImplementation(((
+    _field: string,
+    filter: unknown,
+  ) => {
+    distinct = filter;
+    return { exec: async () => MATCHED };
+  }) as unknown as typeof FleetFuelCardModel.distinct);
   vi.spyOn(FleetFuelCardModel, 'aggregate').mockImplementation(((sent: never[]) => {
     cards = sent;
     return { exec: async () => [] };
@@ -53,7 +64,7 @@ const drive = async (run: () => Promise<unknown>) => {
     return { exec: async () => [{ amount: 150 }] };
   }) as unknown as typeof FleetFuelCardMovementModel.aggregate);
   const result = await run();
-  return { cards, moves, result };
+  return { cards, moves, distinct, result };
 };
 
 describe('summary(query, now) — «شُحن اليوم» is measured from the clock passed in', () => {
@@ -88,5 +99,33 @@ describe('summary(query, now) — «شُحن اليوم» is measured from the c
     expect(match).toContain('"$gte":"2026-11-02T00:00:00.000Z"');
     expect(match).toContain('"$lte":"2026-12-01T23:59:59.999Z"');
     expect(match).toContain('"isDeleted":false');
+  });
+});
+
+describe('«شُحن اليوم» follows the same cards as every figure beside it', () => {
+  const now = new Date('2026-11-01T08:00:00.000Z');
+
+  it('with no filter: every charge of the day, no card list read', async () => {
+    const { moves, distinct } = await drive(() => fleetFuelCardService.summary({}, now));
+    expect(distinct).toBeNull();
+    expect(moves[0]?.$match?.cardId).toBeUndefined();
+  });
+
+  it('under any filter: only the charges of the matched live cards', async () => {
+    const { moves, distinct } = await drive(() =>
+      fleetFuelCardService.summary({ company: 'wataniya' }, now),
+    );
+    expect(json(distinct)).toContain('"company":"wataniya"');
+    expect(json(distinct)).toContain('"isDeleted":false');
+    expect(moves[0]?.$match?.cardId).toEqual({ $in: MATCHED });
+  });
+
+  it('`charged: false` asks the counts only — no charge read at all', async () => {
+    const { moves, distinct, result } = await drive(() =>
+      fleetFuelCardService.summary({ company: 'chillout' }, now, { charged: false }),
+    );
+    expect(moves).toEqual([]);
+    expect(distinct).toBeNull();
+    expect((result as { chargedTodayAmount: number }).chargedTodayAmount).toBe(0);
   });
 });

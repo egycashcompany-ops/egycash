@@ -28,6 +28,7 @@ import { Types } from 'mongoose';
 import {
   ErrorCodes,
   type DecideFleetFuelReconcile,
+  type FleetDashboardNowFuelSheetDto,
   type FleetFuelCardCompany,
   type FleetFuelReconcileDto,
   type FleetFuelReconcileResultDto,
@@ -45,6 +46,7 @@ import { readFuelSheet } from './read-fuel-sheet';
 import { compareFuelSheet, hasNameToCheck, type ReconcileMatch } from './compare-fuel-sheet';
 import { compareCardLinks, linkResolver, placeVerdict, type LinkPlace } from './compare-card-links';
 import { fleetFuelReconciliationRepository } from './fuel-reconcile.repository';
+import { sheetDigest, type FuelSheetSession } from './fuel-sheet-digest';
 import { type FleetFuelReconcileCharge, type FleetFuelReconcileLine } from './fuel-reconcile.model';
 import {
   cancelPlanOf,
@@ -537,6 +539,26 @@ class FleetFuelReconcileService {
       cancelledAmount: cancelled.reduce((sum, charge) => sum + piastres(charge.amount), 0) / 100,
       approvedRequest: approved,
     }));
+  }
+
+  /**
+   * «مطابقة شيت شركة الوقود» — each company's LAST read sheet as it stood at its read
+   * (`sheetDigest`), `null` for a company no sheet of which was ever read. `cardIds` narrows the
+   * lines to those cards (a branch's cards, by their current car); the sheet's day stays the
+   * company's. Two reads, one per company, through `ix_fuel_reconcile_company_read`.
+   */
+  async lastSheets(
+    opts: { cardIds?: readonly string[] } = {},
+  ): Promise<Record<FleetFuelCardCompany, FleetDashboardNowFuelSheetDto | null>> {
+    const cardIds = opts.cardIds === undefined ? undefined : new Set(opts.cardIds);
+    const [wataniya, chillout] = await Promise.all(
+      (['wataniya', 'chillout'] as const).map((company) =>
+        fleetFuelReconciliationRepository.latestOfCompany(company),
+      ),
+    );
+    const digest = (session: FuelSheetSession | null | undefined) =>
+      session == null ? null : sheetDigest(session, cardIds);
+    return { wataniya: digest(wataniya), chillout: digest(chillout) };
   }
 }
 

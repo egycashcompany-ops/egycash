@@ -17,6 +17,8 @@ import { formatDate } from '../../../shared/lib/format';
 import { HistoryIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import { cn } from '../../../shared/lib/cn';
 import {
   useAllFuelCards,
@@ -57,7 +59,7 @@ import {
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 
-const REMEMBERED_FILTERS = ['vehicleCodes', 'company', 'state'] as const;
+const REMEMBERED_FILTERS = ['vehicleCodes', 'company', 'state', 'branch'] as const;
 const STATE_LABEL: Record<ChargingState, string> = {
   requested: 'fleet.fuelCards.filters.requested',
   // «شُحنت اليوم»: today's Cairo date, as the row's green (`chargedToday`).
@@ -279,6 +281,10 @@ export const FuelChargingPage = (): JSX.Element => {
   const states = readChargingStates(sp.get('state'));
   // One state the server can narrow by: the totals then count exactly the cards shown, as before.
   const onlyState = states.length === 1 ? states[0] : undefined;
+  // «الفرع» a dashboard figure was counted over: the branch of each card's CURRENT car (a car
+  // deleted since by its last branch). The server narrows the list AND the totals above it —
+  // «شُحن اليوم» too, to the charges of the cards shown; a card on no car is in no branch.
+  const branchIds = readList(sp, 'branch');
   const paramsKey = sp.toString();
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -304,6 +310,7 @@ export const FuelChargingPage = (): JSX.Element => {
       company: company || undefined,
       requested: onlyState === 'requested' ? true : undefined,
       balanceBelow: onlyState === 'low' ? yellow : undefined,
+      branchIds: branchIds.length > 0 ? branchIds : undefined,
     }),
     [paramsKey, yellow],
   );
@@ -496,8 +503,8 @@ export const FuelChargingPage = (): JSX.Element => {
         {/* «الفلاتر … تكون زى شاشه السيارات»: the same dark bar, one row on a computer. */}
         <div className={DARK_FILTER_BAR}>
           <FilterBar
-            hasActiveFilters={vehicleCodes.length > 0 || cardFiltered}
-            onClear={() => patch({ vehicleCodes: null, company: null, state: null })}
+            hasActiveFilters={vehicleCodes.length > 0 || cardFiltered || branchIds.length > 0}
+            onClear={() => patch({ vehicleCodes: null, company: null, state: null, branch: null })}
           >
             <FilterWithIcon
               icon={FILTER_ICON.car}
@@ -559,6 +566,24 @@ export const FuelChargingPage = (): JSX.Element => {
                 }
               />
             </FilterWithIcon>
+            {/* «الفرع» a dashboard link narrowed the cards to — shown only while it does, so a
+                remembered one is never a filter with nothing on the bar saying so; it comes off
+                here or with «مسح». `BranchFilterSelect` takes no width of its own. */}
+            {branchIds.length > 0 && (
+              <div data-fuel-branch-filter={branchIds.join(',')} className="contents">
+                <FilterWithIcon
+                  icon={FILTER_ICON.branch}
+                  tone="text-violet-600 dark:text-violet-300"
+                  className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+                >
+                  <BranchFilterSelect
+                    clearable
+                    value={branchIds}
+                    onChange={(ids) => patch({ branch: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+              </div>
+            )}
           </FilterBar>
         </div>
 

@@ -6,7 +6,9 @@
 //      written — a charge, a back-dated line, a +X/−X; read again and it goes through;
 //   3. two decisions at once on one card: exactly one line;
 //   4. the card log names who made each line and the sheet behind a sheet line, which is never
-//      changed or removed.
+//      changed or removed;
+//   5. the fleet dashboard's «مطابقة شيت شركة الوقود» reads the company's LAST read sheet as at its
+//      read: its decisions move it, a later card movement never does.
 //
 // Reading the sheet (grants, the comparison, the upload's refusals) is in
 // `fleet-fuel-reconcile.spec.ts`; both share `helpers/fuel-reconcile-world.ts`.
@@ -15,6 +17,8 @@ import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
+  cairoYmd,
+  type FleetDashboardNowDto,
   type FleetFuelCardTotalsDto,
   type FleetFuelReconcileResultDto,
 } from '@ecms/contracts';
@@ -23,6 +27,7 @@ import {
   FleetFuelCardModel,
   FleetFuelCardMovementModel,
 } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
+import { FleetFuelReconciliationModel } from '../../src/modules/fleet/fuel-cards/reconcile/fuel-reconcile.model';
 import {
   CARDS,
   auth,
@@ -35,10 +40,12 @@ import {
   mkCard,
   movementCount,
   read,
+  readSheet,
   rowOf,
   useFuelReconcileWorld,
   world,
 } from './helpers/fuel-reconcile-world';
+import { FUEL_SHEET_HEADER } from './helpers/fuel-sheet-workbook';
 
 useFuelReconcileWorld('reconcile-decide');
 const { tokens } = world;
@@ -299,5 +306,74 @@ describe('the card log', () => {
       ).status,
     ).toBe(400);
     expect((await card(a._id)).balance).toBe(45);
+  });
+});
+
+describe('the dashboard’s «مطابقة شيت شركة الوقود» — the last read sheet, as at its read', () => {
+  const sheets = async () =>
+    data<FleetDashboardNowDto>(
+      await request(world.app)
+        .get('/api/v1/fleet/dashboard/now')
+        .set(...auth(tokens.clerk)),
+    ).fuelSheets;
+
+  it('a decision moves it; a later card movement never does; a company never read is null', async () => {
+    expect(await sheets()).toEqual({ wataniya: null, chillout: null });
+    const a = await mkCard('wataniya', 'EGYCASH-S1', 100);
+    const b = await mkCard('wataniya', 'EGYCASH-S2', 300);
+    const c = await mkCard('wataniya', 'EGYCASH-S3', 50);
+    // a +50.25 and b −50 differ; c is equal — not a line.
+    const dto = await readSheet(
+      'wataniya',
+      [FUEL_SHEET_HEADER, rowOf(a, 150.25), rowOf(b, 250), rowOf(c, 50)],
+      {
+        sheetDate: '2026-10-04',
+      },
+    );
+    const stored = await FleetFuelReconciliationModel.findById(dto.id).lean().exec();
+    const readDay = cairoYmd(stored?.readAt as Date);
+    expect(await sheets()).toEqual({
+      wataniya: {
+        sheetDate: '2026-10-04',
+        readDay,
+        differing: 2,
+        undecided: 2,
+        undecidedNet: 0.25,
+      },
+      chillout: null,
+    });
+
+    const applied = await decide(dto.id, 'apply', [String(a._id)]);
+    expect(applied.status, applied.text).toBe(200);
+    expect((await sheets())?.wataniya).toMatchObject({ undecided: 1, undecidedNet: -50 });
+
+    // b moves after the read: the figures stay those of the read.
+    await charge(b._id, 200);
+    expect((await sheets())?.wataniya).toMatchObject({
+      differing: 2,
+      undecided: 1,
+      undecidedNet: -50,
+    });
+
+    const rejected = await decide(dto.id, 'reject', [String(b._id)]);
+    expect(rejected.status, rejected.text).toBe(200);
+    expect((await sheets())?.wataniya).toMatchObject({ undecided: 0, undecidedNet: 0 });
+  });
+
+  it('a newer sheet of the company replaces the older one; a sheet read without its date falls back to the read day', async () => {
+    const a = await mkCard('chillout', 'EGYCASHTCS-S1', 100);
+    const b = await mkCard('chillout', 'EGYCASHTCS-S2', 200);
+    await readSheet('chillout', [FUEL_SHEET_HEADER, rowOf(a, 90), rowOf(b, 200)], {
+      sheetDate: '2026-10-01',
+    });
+    const newer = await read('chillout', [rowOf(a, 100), rowOf(b, 260)]);
+    const stored = await FleetFuelReconciliationModel.findById(newer.id).lean().exec();
+    expect((await sheets())?.chillout).toEqual({
+      sheetDate: null,
+      readDay: cairoYmd(stored?.readAt as Date),
+      differing: 1,
+      undecided: 1,
+      undecidedNet: 60,
+    });
   });
 });

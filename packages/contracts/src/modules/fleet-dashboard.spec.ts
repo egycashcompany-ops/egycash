@@ -7,8 +7,11 @@ import {
   FLEET_DASHBOARD_ACCIDENT_ROWS,
   FLEET_DASHBOARD_ALARM_ROWS,
   FLEET_DASHBOARD_ALERTS,
+  FLEET_DASHBOARD_DEALERSHIP_ROWS,
   FLEET_DASHBOARD_DEFAULT_PRESET,
   FLEET_DASHBOARD_EXCEPTION_ROWS,
+  FLEET_DASHBOARD_FUEL_CARD_ROWS,
+  FLEET_DASHBOARD_FUEL_CARD_STATES,
   FLEET_DASHBOARD_GATES,
   FLEET_DASHBOARD_MAX_CUSTOM_DAYS,
   FLEET_DASHBOARD_NOTICE_ROWS,
@@ -27,6 +30,7 @@ import {
   FLEET_DASHBOARD_TAB_READS,
   FLEET_DASHBOARD_TAB_SECTIONS,
   FLEET_DASHBOARD_TODAY_ROWS,
+  FLEET_DASHBOARD_VIOLATION_ROWS,
   FLEET_DASHBOARD_WORKSHOP_ROWS,
   FLEET_LICENCE_GREY_DAYS,
   FLEET_LICENSING_PAPERS,
@@ -37,15 +41,24 @@ import {
   paperStage,
   periodGranularity,
   periodOf,
+  type FleetDashboardFuelCardState,
   type FleetDashboardNowAlarmDto,
   type FleetDashboardNowDistributionVehiclesDto,
   type FleetDashboardNowDto,
+  type FleetDashboardNowFuelCardRowDto,
+  type FleetDashboardNowFuelChargingDto,
+  type FleetDashboardNowFuelSheetDto,
   type FleetDashboardNowNoReadingDto,
+  type FleetDashboardNowViolationsOpenDto,
   type FleetDashboardNowWorkshopDto,
+  type FleetDashboardOpexBucketDto,
   type FleetDashboardPeriodAccidentRowDto,
+  type FleetDashboardPeriodDealershipRowDto,
   type FleetDashboardPeriodDto,
   type FleetDashboardPeriodExitsDto,
   type FleetDashboardPeriodKmDto,
+  type FleetDashboardPeriodViolationRowDto,
+  type FleetDashboardPeriodViolationsDto,
   type FleetDashboardPeriodVisitsDto,
   type FleetDashboardRead,
   type FleetDashboardSection,
@@ -57,9 +70,11 @@ import {
   FleetAccidentSummaryQuerySchema,
   FleetDealershipSummaryQuerySchema,
   FleetFuelCardSummaryQuerySchema,
+  type FleetFuelCardTotalsDto,
   FleetNoticesSummaryQuerySchema,
   FleetOdometerSummaryQuerySchema,
   FleetReceiptSummaryQuerySchema,
+  type FleetReceiptTotalsDto,
   FleetSettingKeys,
   FleetViolationRollupQuerySchema,
   ListFleetAccidentsQuerySchema,
@@ -443,6 +458,8 @@ const TABLE: Record<
   papers: ['now', 'fleetLicensing.view', 'fleetLicensing.view', '/fleet/licensing'],
   fuelCards: ['now', 'fleetFuelCard.view', 'fleetFuelCard.view', '/fleet/fuel-cards'],
   fuelCharging: ['now', 'fleetFuelCard.view', 'fleetFuelCharge.view', '/fleet/fuel-cards/charging'],
+  fuelCardList: ['now', 'fleetFuelCard.view', 'fleetFuelCharge.view', '/fleet/fuel-cards/charging'],
+  fuelSheets: ['now', 'fleetFuelCard.view', 'fleetFuelCharge.view', '/fleet/fuel-cards/reconcile'],
   recentAccidents: ['now', 'fleetAccident.view', 'fleetAccident.view', '/fleet/accidents'],
   accidentsOpen: ['now', 'fleetAccident.view', 'fleetAccident.view', '/fleet/accidents'],
   notices: ['now', 'fleetNotice.view', 'fleetNotice.view', '/fleet/notices'],
@@ -454,8 +471,12 @@ const TABLE: Record<
   exits: ['period', 'fleetMaintenance.view', 'fleetMaintenance.view', '/fleet/maintenance'],
   accidents: ['period', 'fleetAccident.view', 'fleetAccident.view', '/fleet/accidents'],
   accidentList: ['period', 'fleetAccident.view', 'fleetAccident.view', '/fleet/accidents'],
+  violations: ['period', 'fleetViolation.view', 'fleetViolation.view', '/fleet/violations'],
+  violationList: ['period', 'fleetViolation.view', 'fleetViolation.view', '/fleet/violations'],
   opex: ['period', 'fleetReceipt.view', 'fleetReceipt.view', '/fleet/receipts'],
+  opexSeries: ['period', 'fleetReceipt.view', 'fleetReceipt.view', '/fleet/receipts'],
   dealership: ['period', 'fleetDealership.view', 'fleetDealership.view', '/fleet/dealership'],
+  dealershipList: ['period', 'fleetDealership.view', 'fleetDealership.view', '/fleet/dealership'],
   custodyFund: ['web', 'fleetCustody.view', 'fleetCustody.view', '/fleet/custody/dashboard'],
   supplyContracts: [
     'web',
@@ -499,6 +520,14 @@ describe('the gate table', () => {
       'fleetFuelCharge.view',
     ]);
     expect(fleetDashboardGateKeys('fuelCards')).toEqual(['fleetFuelCard.view']);
+    // «كروت تحتاج متابعة» and the sheet card open the charging and reconcile screens, both under
+    // the charging key: the same two keys.
+    for (const section of ['fuelCardList', 'fuelSheets'] as const) {
+      expect(sorted(fleetDashboardGateKeys(section)), section).toEqual([
+        'fleetFuelCard.view',
+        'fleetFuelCharge.view',
+      ]);
+    }
   });
 
   it('the unions equal the table, the PART sections left out', () => {
@@ -544,11 +573,42 @@ describe('the gate table', () => {
     }
   });
 
-  it('the two new sections reuse keys already gating a section: no union changes', () => {
-    // `violationsOpen` sits beside `violationsYear`, `exits` beside `visits` — the same keys, so
-    // the routes' authorizeAny and the index route's guard are what they were.
+  it('the new sections reuse keys already gating a section: only the R2 union grew, by `fleetViolation.view`', () => {
+    // `violationsOpen` sits beside `violationsYear`, `exits` beside `visits`; `fuelCardList` and
+    // `fuelSheets` beside `fuelCharging`; `opexSeries` beside `opex`, `dealershipList` beside
+    // `dealership` — the same keys. `violations` / `violationList` bring `fleetViolation.view` to the
+    // R2 union (a violations-only reader now reads R2); it already gated R1 and the page, so the
+    // `/now` authorizeAny and the index route's guard are what they were.
     expect(FLEET_DASHBOARD_GATES.violationsOpen).toEqual(FLEET_DASHBOARD_GATES.violationsYear);
     expect(FLEET_DASHBOARD_GATES.exits).toEqual(FLEET_DASHBOARD_GATES.visits);
+    expect(FLEET_DASHBOARD_GATES.fuelCardList).toEqual(FLEET_DASHBOARD_GATES.fuelCharging);
+    expect(FLEET_DASHBOARD_GATES.opexSeries).toEqual(FLEET_DASHBOARD_GATES.opex);
+    expect(FLEET_DASHBOARD_GATES.dealershipList).toEqual(FLEET_DASHBOARD_GATES.dealership);
+    expect(FLEET_DASHBOARD_GATES.violations).toEqual({
+      ...FLEET_DASHBOARD_GATES.violationsOpen,
+      read: 'period',
+    });
+    expect(FLEET_DASHBOARD_GATES.violationList).toEqual(FLEET_DASHBOARD_GATES.violations);
+    // NOW and PAGE: byte-identical to before (same keys, same order).
+    expect([...FLEET_DASHBOARD_NOW_KEYS]).toEqual([
+      'fleetVehicle.view',
+      'fleetRoster.view',
+      'fleetMaintenance.view',
+      'fleetOdometer.view',
+      'fleetDriver.view',
+      'fleetLicensing.view',
+      'fleetFuelCard.view',
+      'fleetFuelCharge.view',
+      'fleetAccident.view',
+      'fleetNotice.view',
+      'fleetDealership.view',
+      'fleetViolation.view',
+    ]);
+    expect([...FLEET_DASHBOARD_PAGE_KEYS]).toEqual([
+      ...FLEET_DASHBOARD_NOW_KEYS,
+      'fleetReceipt.view',
+      'fleetCustody.view',
+    ]);
     expect(sorted(FLEET_DASHBOARD_NOW_KEYS)).toEqual([
       'fleetAccident.view',
       'fleetDealership.view',
@@ -569,6 +629,7 @@ describe('the gate table', () => {
       'fleetMaintenance.view',
       'fleetOdometer.view',
       'fleetReceipt.view',
+      'fleetViolation.view',
     ]);
     expect(sorted(FLEET_DASHBOARD_PAGE_KEYS)).toEqual(
       sorted([...FLEET_DASHBOARD_NOW_KEYS, ...FLEET_DASHBOARD_PERIOD_KEYS, 'fleetCustody.view']),
@@ -583,7 +644,7 @@ describe('the gate table', () => {
 });
 
 describe('tabs and their sections', () => {
-  it('nine tabs in the strip’s order: the six rebuilt ones, then the old three where their replacements will stand', () => {
+  it('eleven tabs in the strip’s order: the six rebuilt ones, the two new ones, then the old three where their replacements will stand', () => {
     expect(FLEET_DASHBOARD_TABS).toEqual([
       'overview',
       'today',
@@ -591,10 +652,17 @@ describe('tabs and their sections', () => {
       'maintenance',
       'km',
       'accidents',
+      'violations',
+      'fuel',
       'period',
       'summaries',
       'licences',
     ]);
+    // The two new tabs stand right after «الحوادث ومطالبات التأمين», before the old three.
+    expect(FLEET_DASHBOARD_TABS.indexOf('violations')).toBe(
+      FLEET_DASHBOARD_TABS.indexOf('accidents') + 1,
+    );
+    expect(FLEET_DASHBOARD_TABS.slice(-3)).toEqual(['period', 'summaries', 'licences']);
     // The retired `alerts` and `now` keys are gone (the web maps a link to them onto overview / today),
     // and so is `ranking`: «ترتيب السيارات» lives inside «العدادات والكيلومترات» (a link opens `km`).
     expect(FLEET_DASHBOARD_TABS).not.toContain('alerts');
@@ -613,6 +681,8 @@ describe('tabs and their sections', () => {
       maintenance: ['now', 'period'],
       km: ['now', 'period'],
       accidents: ['now', 'period'],
+      violations: ['now', 'period'],
+      fuel: ['now', 'period'],
       period: ['period'],
       summaries: ['now', 'web'],
       licences: ['now'],
@@ -622,13 +692,13 @@ describe('tabs and their sections', () => {
       expect(FLEET_DASHBOARD_TABS, tab).toContain(tab);
       expect(FLEET_DASHBOARD_TAB_READS[tab], tab).toEqual(['period']);
     }
-    // The MIXED tabs left them: R1 «الآن» parts + R2 parts under the page filters…
-    const mixed = ['maintenance', 'km', 'accidents'] as const;
+    // The five MIXED tabs: R1 «الآن» parts + R2 parts under the page filters…
+    const mixed = ['maintenance', 'km', 'accidents', 'violations', 'fuel'] as const;
     for (const tab of mixed) {
       expect(FLEET_DASHBOARD_PERIOD_TABS, tab).not.toContain(tab);
       expect(FLEET_DASHBOARD_TAB_READS[tab], tab).toEqual(['now', 'period']);
     }
-    // …so the tabs drawn under the page filters are «أرقام الفترة», plus the three mixed tabs.
+    // …so the tabs drawn under the page filters are «أرقام الفترة», plus the five mixed tabs.
     expect(
       sorted(
         FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_READS[tab].includes('period')),
@@ -713,6 +783,17 @@ describe('tabs and their sections', () => {
       km: ['km', 'noReading'],
       maintenance: ['maintenanceAlarm', 'workshop', 'dealershipPending', 'exits'],
       accidents: ['accidentsOpen', 'notices', 'accidents', 'accidentList'],
+      violations: ['violationsOpen', 'violations', 'violationList'],
+      fuel: [
+        'fuelCards',
+        'fuelCharging',
+        'fuelCardList',
+        'fuelSheets',
+        'opex',
+        'opexSeries',
+        'dealership',
+        'dealershipList',
+      ],
     });
   });
 
@@ -798,18 +879,107 @@ describe('tabs and their sections', () => {
     expect(sections).not.toContain('recentAccidents');
   });
 
-  it('the two rebuilt tabs add no section and no gate: the unions are what they were', () => {
-    expect(FLEET_DASHBOARD_NOW_SECTIONS).toContain('noReading');
-    expect(FLEET_DASHBOARD_NOW_SECTIONS).toContain('notices');
-    expect(FLEET_DASHBOARD_NOW_SECTIONS).toContain('accidentsOpen');
+  it('«المخالفات المرورية والتسويات»: every year’s owed fines now, the drivers’ fines of the period — one key', () => {
+    const sections = FLEET_DASHBOARD_TAB_SECTIONS.violations;
+    expect(sections.map((s) => FLEET_DASHBOARD_GATES[s].read)).toEqual(['now', 'period', 'period']);
+    for (const section of sections) {
+      expect([...fleetDashboardGateKeys(section)], section).toEqual(['fleetViolation.view']);
+    }
+    // «ملخصات» keeps the Cairo year (`violationsYear`), untouched; the overview the owed total.
+    expect(sections).not.toContain('violationsYear');
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.summaries).toContain('violationsYear');
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.overview).toContain('violationsOpen');
+    // The period's violations are this tab's alone; no old tab gains them.
+    expect(
+      FLEET_DASHBOARD_TABS.filter((tab) =>
+        FLEET_DASHBOARD_TAB_SECTIONS[tab].some((s) => s === 'violations' || s === 'violationList'),
+      ),
+    ).toEqual(['violations']);
+  });
+
+  it('«الوقود والمصروفات» shows for any one of its parts, each under its own gate', () => {
+    // A receipts-only reader sees the spend alone; a dealership-only reader the invoices alone; a
+    // `fleetFuelCard.view`-only reader the expiry KPI alone (`fuelCards`).
+    const sections = FLEET_DASHBOARD_TAB_SECTIONS.fuel;
+    expect(sections.map((s) => FLEET_DASHBOARD_GATES[s].read)).toEqual([
+      'now',
+      'now',
+      'now',
+      'now',
+      'period',
+      'period',
+      'period',
+      'period',
+    ]);
+    expect(sections.map((section) => sorted(fleetDashboardGateKeys(section)))).toEqual([
+      ['fleetFuelCard.view'],
+      ['fleetFuelCard.view', 'fleetFuelCharge.view'],
+      ['fleetFuelCard.view', 'fleetFuelCharge.view'],
+      ['fleetFuelCard.view', 'fleetFuelCharge.view'],
+      ['fleetReceipt.view'],
+      ['fleetReceipt.view'],
+      ['fleetDealership.view'],
+      ['fleetDealership.view'],
+    ]);
+    const visibleTo = (held: readonly string[]): FleetDashboardSection[] =>
+      sections.filter((section) =>
+        fleetDashboardGateKeys(section).every((key) => held.includes(key)),
+      );
+    expect(visibleTo(['fleetReceipt.view'])).toEqual(['opex', 'opexSeries']);
+    expect(visibleTo(['fleetDealership.view'])).toEqual(['dealership', 'dealershipList']);
+    expect(visibleTo(['fleetFuelCard.view'])).toEqual(['fuelCards']);
+    // The old tabs keep their reads of the same fields: «أرقام الفترة» the spend and the invoices,
+    // «ملخصات» the charging summary, «التراخيص» the expiry; the overview all of them.
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.period).toEqual(
+      expect.arrayContaining(['opex', 'dealership']),
+    );
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.summaries).toContain('fuelCharging');
+    expect(FLEET_DASHBOARD_TAB_SECTIONS.licences).toContain('fuelCards');
+    // The new parts are this tab's alone.
+    for (const section of ['fuelCardList', 'fuelSheets', 'opexSeries', 'dealershipList'] as const) {
+      expect(
+        FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_SECTIONS[tab].includes(section)),
+        section,
+      ).toEqual(['fuel']);
+    }
+  });
+
+  it('the two new tabs add two R1 and four R2 sections, in DTO order, and no key to the page', () => {
+    expect([...FLEET_DASHBOARD_NOW_SECTIONS]).toEqual([
+      'vehicles',
+      'roster',
+      'workshop',
+      'maintenanceAlarm',
+      'noReading',
+      'distributionVehicles',
+      'distributionDrivers',
+      'licenceVehicles',
+      'licenceDrivers',
+      'papers',
+      'fuelCards',
+      'fuelCharging',
+      'fuelCardList',
+      'fuelSheets',
+      'recentWorkshop',
+      'recentAccidents',
+      'notices',
+      'dealershipPending',
+      'accidentsOpen',
+      'violationsYear',
+      'violationsOpen',
+    ]);
     expect([...FLEET_DASHBOARD_PERIOD_SECTIONS]).toEqual([
       'km',
       'visits',
       'exits',
       'accidents',
       'accidentList',
+      'violations',
+      'violationList',
       'opex',
+      'opexSeries',
       'dealership',
+      'dealershipList',
     ]);
     expect(sorted(FLEET_DASHBOARD_PAGE_KEYS)).toEqual([
       'fleetAccident.view',
@@ -853,6 +1023,27 @@ describe('tabs and their sections', () => {
     expect(FLEET_DASHBOARD_ACCIDENT_ROWS).toBe(6);
     // «أعلى 5» / «أقل 5» keep the ranking rule.
     expect(FLEET_DASHBOARD_RANK_ROWS).toBe(5);
+  });
+
+  it('caps the lists of «المخالفات المرورية والتسويات» and «الوقود والمصروفات» with their own constants', () => {
+    // «مخالفات السائقين في الفترة» before «عرض الباقي (N) في السجل».
+    expect(FLEET_DASHBOARD_VIOLATION_ROWS).toBe(6);
+    // «كروت تحتاج متابعة» before «تُعرض هنا أول 8 كروت…».
+    expect(FLEET_DASHBOARD_FUEL_CARD_ROWS).toBe(8);
+    // «فواتير التوكيل في الفترة» before «عرض الباقي (N) في شاشة التوكيل».
+    expect(FLEET_DASHBOARD_DEALERSHIP_ROWS).toBe(6);
+  });
+
+  it('orders the states of a card to follow up by urgency', () => {
+    expect([...FLEET_DASHBOARD_FUEL_CARD_STATES]).toEqual([
+      'expired',
+      'critical',
+      'requested',
+      'low',
+      'expiring',
+    ]);
+    const states: FleetDashboardFuelCardState[] = [...FLEET_DASHBOARD_FUEL_CARD_STATES];
+    expect(new Set(states).size).toBe(states.length);
   });
 });
 
@@ -1216,6 +1407,298 @@ describe('the shapes of «العدادات والكيلومترات» and «ال
   });
 });
 
+describe('the shapes of «المخالفات المرورية والتسويات» and «الوقود والمصروفات»', () => {
+  const name = { ar: 'س', en: 'S' };
+  const sum = (values: readonly number[]): number => values.reduce((total, v) => total + v, 0);
+
+  it('violations now: the drivers’ parts tie to their total, the carless rows are the company view’s', () => {
+    const open: FleetDashboardNowViolationsOpenDto = {
+      company: { amount: 14650, count: 30 },
+      drivers: {
+        total: { amount: 9850, count: 18 },
+        attributed: { amount: 7600, count: 14, drivers: 9 },
+        unknown: { amount: 1350, count: 3 },
+        unlinked: { amount: 900, count: 1 },
+      },
+      total: { amount: 24500, count: 48 },
+      bookOnly: { company: { amount: 600, count: 2 }, drivers: { amount: 0, count: 0 } },
+    };
+    const { drivers } = open;
+    const parts = [drivers.attributed, drivers.unknown, drivers.unlinked];
+    expect(sum(parts.map((p) => p.amount))).toBe(drivers.total.amount);
+    expect(sum(parts.map((p) => p.count))).toBe(drivers.total.count);
+    // «سائقون معروفون» is a distinct count of drivers: never more than their fines.
+    expect(drivers.attributed.drivers).toBeLessThanOrEqual(drivers.attributed.count);
+    expect(open.total.count).toBe(open.company.count + drivers.total.count);
+    expect(open.total.amount).toBe(open.company.amount + drivers.total.amount);
+    // The carless rows are inside the owed figures.
+    expect(open.bookOnly?.company.count).toBeLessThanOrEqual(open.company.count);
+    expect(open.bookOnly?.drivers.count).toBeLessThanOrEqual(drivers.total.count);
+    // Narrowed to branches: no carless line at all.
+    const branch: FleetDashboardNowViolationsOpenDto = { ...open, bookOnly: null };
+    expect(branch.bookOnly).toBeNull();
+  });
+
+  it('violations period: owed + collected = the period, the types sum to it with «غير محدد» last, rows a day each', () => {
+    const violations: FleetDashboardPeriodViolationsDto = {
+      count: 8,
+      amount: 3450,
+      owed: { count: 6, amount: 2550 },
+      collected: { count: 2, amount: 900 },
+      byType: [
+        { violationTypeId: ID_A, name, unspecified: false, count: 3, amount: 1500 },
+        { violationTypeId: ID_B, name: null, unspecified: false, count: 3, amount: 1200 },
+        { violationTypeId: 'c'.repeat(24), name, unspecified: true, count: 2, amount: 750 },
+      ],
+    };
+    expect(violations.owed.count + violations.collected.count).toBe(violations.count);
+    expect(violations.owed.amount + violations.collected.amount).toBe(violations.amount);
+    expect(sum(violations.byType.map((bar) => bar.count))).toBe(violations.count);
+    expect(sum(violations.byType.map((bar) => bar.amount))).toBe(violations.amount);
+    expect(violations.byType.at(-1)?.unspecified).toBe(true);
+    expect(violations.byType.filter((bar) => bar.unspecified)).toHaveLength(1);
+    const row: FleetDashboardPeriodViolationRowDto = {
+      violationId: ID_A,
+      vehicleId: ID_A,
+      code: '150',
+      typeName: name,
+      vehicleDeleted: false,
+      date: '2026-11-10',
+      driverEmployeeId: ID_B,
+      driverName: 'س',
+      violationTypeId: ID_A,
+      violationType: name,
+      unspecified: false,
+      amount: 500,
+      collected: false,
+    };
+    const oldBook: FleetDashboardPeriodViolationRowDto = {
+      ...row,
+      violationId: ID_B,
+      vehicleId: null,
+      code: '9001',
+      typeName: null,
+      date: '2026-11-03',
+      driverEmployeeId: null,
+      driverName: 'مجهول',
+      collected: true,
+    };
+    const list: NonNullable<FleetDashboardPeriodDto['violationList']> = {
+      rows: [row, oldBook],
+      more: 6,
+    };
+    expect(list.rows.length).toBeLessThanOrEqual(FLEET_DASHBOARD_VIOLATION_ROWS);
+    expect(list.rows.length + list.more).toBe(violations.count);
+    // Newest fine day first; a day, never a time.
+    expect(list.rows.map((r) => r.date)).toEqual(
+      list.rows
+        .map((r) => r.date)
+        .sort()
+        .reverse(),
+    );
+    for (const r of list.rows) expect(r.date, r.violationId).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Only a registry car can have been deleted since.
+    expect(oldBook.vehicleDeleted).toBe(false);
+  });
+
+  it('fuel now: per-company cards sum to the cards, the no-car cards are the company view’s, the KPI names its nearest day', () => {
+    const charging: FleetDashboardNowFuelChargingDto = {
+      wataniya: 296480,
+      chillout: 189770,
+      requested: { count: 5, amount: 37500 },
+      low: { belowYellow: 7, belowRed: 2, yellowAt: 500, redAt: 200 },
+      charged24h: 15000,
+      cards: 142,
+      companyCards: { wataniya: 90, chillout: 52 },
+      unassigned: { count: 6, balance: 9870 },
+    };
+    expect(charging.companyCards.wataniya + charging.companyCards.chillout).toBe(charging.cards);
+    expect(charging.unassigned?.count).toBeLessThanOrEqual(charging.cards);
+    const branch: FleetDashboardNowFuelChargingDto = { ...charging, unassigned: null };
+    expect(branch.unassigned).toBeNull();
+    const fuelCards: NonNullable<FleetDashboardNowDto['fuelCards']> = {
+      warnDays: 30,
+      expired: 2,
+      expiring: 3,
+      nearest: '2026-11-20',
+    };
+    expect(fuelCards.nearest).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const none: NonNullable<FleetDashboardNowDto['fuelCards']> = {
+      ...fuelCards,
+      expiring: 0,
+      nearest: null,
+    };
+    expect(none.nearest).toBeNull();
+  });
+
+  it('fuel now: the cards to follow up — urgency order, a card on no car last, the total a field', () => {
+    const card = (
+      over: Partial<FleetDashboardNowFuelCardRowDto>,
+    ): FleetDashboardNowFuelCardRowDto => ({
+      cardId: ID_A,
+      company: 'wataniya',
+      number: '7080123456784417',
+      vehicleId: ID_A,
+      code: '150',
+      typeName: name,
+      vehicleDeleted: false,
+      label: null,
+      balance: 1200,
+      requestedAmount: null,
+      expiresAt: '2027-03-31',
+      states: ['expiring'],
+      ...over,
+    });
+    const rows: FleetDashboardNowFuelCardRowDto[] = [
+      card({ states: ['expired'], expiresAt: '2026-11-01' }),
+      card({ code: '151', states: ['critical', 'requested'], balance: 90, requestedAmount: 2000 }),
+      card({ code: '152', company: 'chillout', states: ['low'], balance: 380 }),
+      // On a car deleted since: counted by its last branch, no record link.
+      card({ code: '153', vehicleDeleted: true, states: ['expiring'] }),
+      card({
+        vehicleId: null,
+        code: null,
+        typeName: null,
+        label: 'سفر 1',
+        states: ['low'],
+        balance: 300,
+      }),
+    ];
+    const list: NonNullable<FleetDashboardNowDto['fuelCardList']> = { rows, total: 11 };
+    expect(list.rows.length).toBeLessThanOrEqual(
+      Math.min(list.total, FLEET_DASHBOARD_FUEL_CARD_ROWS),
+    );
+    const rank = (state: FleetDashboardFuelCardState): number =>
+      FLEET_DASHBOARD_FUEL_CARD_STATES.indexOf(state);
+    for (const row of list.rows) {
+      expect(row.states.length, row.number).toBeGreaterThan(0);
+      // Each row's states in urgency order; `critical` and `low` never both.
+      expect(row.states.map(rank)).toEqual([...row.states.map(rank)].sort((a, b) => a - b));
+      expect(row.states.includes('critical') && row.states.includes('low')).toBe(false);
+      if (row.vehicleId === null) {
+        expect(row.label, row.number).not.toBeNull();
+        expect(row.vehicleDeleted).toBe(false);
+      }
+    }
+    // The cars by their most urgent state; the no-car cards last.
+    const onCars = list.rows.filter((row) => row.vehicleId !== null);
+    expect(onCars.map((row) => rank(row.states[0] ?? 'expiring'))).toEqual(
+      onCars.map((row) => rank(row.states[0] ?? 'expiring')).sort((a, b) => a - b),
+    );
+    expect(list.rows.at(-1)?.vehicleId).toBeNull();
+  });
+
+  it('fuel now: one sheet per company as at its read, `null` for a company never read', () => {
+    const read: FleetDashboardNowFuelSheetDto = {
+      sheetDate: '2026-11-09',
+      readDay: '2026-11-10',
+      differing: 9,
+      undecided: 3,
+      undecidedNet: -1365.5,
+    };
+    const old: FleetDashboardNowFuelSheetDto = {
+      sheetDate: null,
+      readDay: '2026-11-05',
+      differing: 4,
+      undecided: 0,
+      undecidedNet: 0,
+    };
+    const sheets: NonNullable<FleetDashboardNowDto['fuelSheets']> = {
+      wataniya: read,
+      chillout: old,
+    };
+    const neverRead: NonNullable<FleetDashboardNowDto['fuelSheets']> = {
+      wataniya: read,
+      chillout: null,
+    };
+    expect(Object.keys(sheets).sort()).toEqual(['chillout', 'wataniya']);
+    for (const sheet of [read, old]) {
+      expect(sheet.undecided).toBeLessThanOrEqual(sheet.differing);
+      if (sheet.undecided === 0) expect(sheet.undecidedNet).toBe(0);
+    }
+    expect(neverRead.chillout).toBeNull();
+  });
+
+  it('fuel period: the spend splits by kind, the series sums to it, the invoices are a page of their count', () => {
+    const opex: NonNullable<FleetDashboardPeriodDto['opex']> = {
+      card: 116350,
+      custody: 81950,
+      fuel: 142500,
+      total: 198300,
+      count: 574,
+      dataFrom: '2025-01-01',
+      fuelCustody: 26150,
+      tyres: 28450,
+      wash: 9650,
+      maintenance: 17700,
+      litres: 8890,
+      unpricedFuel: 2,
+    };
+    expect(opex.card + opex.fuelCustody + opex.tyres + opex.wash + opex.maintenance).toBe(
+      opex.total,
+    );
+    expect(opex.card + opex.custody).toBe(opex.total);
+    expect(opex.card + opex.fuelCustody).toBe(opex.fuel);
+    expect(Number.isInteger(opex.litres)).toBe(true);
+    const buckets: FleetDashboardOpexBucketDto[] = [
+      { key: '2026-11-01', hasRows: true, amount: 98300, count: 300 },
+      // An empty slot (no receipt that day), never a zero column.
+      { key: '2026-11-02', hasRows: false, amount: 0, count: 0 },
+      { key: '2026-11-03', hasRows: true, amount: 100000, count: 274 },
+    ];
+    const series: NonNullable<FleetDashboardPeriodDto['opexSeries']> = { buckets };
+    expect(sum(series.buckets.map((b) => b.amount))).toBe(opex.total);
+    expect(sum(series.buckets.map((b) => b.count))).toBe(opex.count);
+    expect(series.buckets.map((b) => b.key)).toEqual(series.buckets.map((b) => b.key).sort());
+    for (const b of series.buckets.filter((bucket) => !bucket.hasRows)) {
+      expect(b.amount, b.key).toBe(0);
+      expect(b.count, b.key).toBe(0);
+    }
+    const dealership: NonNullable<FleetDashboardPeriodDto['dealership']> = {
+      amount: 96750,
+      rows: 8,
+      pending: 1,
+      dataFrom: '2025-01-01',
+    };
+    const row: FleetDashboardPeriodDealershipRowDto = {
+      id: ID_A,
+      vehicleId: ID_A,
+      code: '221',
+      typeName: name,
+      vehicleDeleted: false,
+      date: '2026-11-10',
+      workKind: 'repair',
+      workTypeLabel: 'إصلاح',
+      invoiceNumber: '5531',
+      invoiceAmount: null,
+    };
+    const oldBook: FleetDashboardPeriodDealershipRowDto = {
+      ...row,
+      id: ID_B,
+      vehicleId: null,
+      code: '9001',
+      typeName: null,
+      date: '2026-11-04',
+      workKind: 'maintenance',
+      workTypeLabel: 'صيانة',
+      invoiceAmount: 4200,
+    };
+    const list: NonNullable<FleetDashboardPeriodDto['dealershipList']> = {
+      rows: [row, oldBook],
+      more: 6,
+    };
+    expect(list.rows.length).toBeLessThanOrEqual(FLEET_DASHBOARD_DEALERSHIP_ROWS);
+    expect(list.rows.length + list.more).toBe(dealership.rows);
+    // The exit day, never `outDate` (the dashboard never names that field), never a time.
+    expect(Object.keys(row)).not.toContain('outDate');
+    for (const r of list.rows) expect(r.date, r.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // «بانتظار تسجيل القيمة» is a row with no value yet.
+    expect(list.rows.filter((r) => r.invoiceAmount === null).length).toBeLessThanOrEqual(
+      dealership.pending,
+    );
+  });
+});
+
 describe('the alerts of the overview’s action centre', () => {
   it('names a real now section for every alert, each id once, red before orange', () => {
     const ids = FLEET_DASHBOARD_ALERTS.map((alert) => alert.id);
@@ -1286,6 +1769,77 @@ describe('the fleet contracts the dashboard links through (plan §2.2)', () => {
       const result = schema.safeParse({ expiresFrom: '2026-11-02', expiresBefore: '2026-12-01' });
       expect(result.success).toBe(true);
     }
+  });
+
+  it('lets the fuel cards list and summary ask a branch (the card’s current car), and still refuse unknowns', () => {
+    for (const [name, schema] of Object.entries({
+      ListFleetFuelCardsQuerySchema,
+      FleetFuelCardSummaryQuerySchema,
+    })) {
+      const result = schema.safeParse({ branchIds: `${ID_A},${ID_B}`, company: 'wataniya' });
+      expect(result.success, name).toBe(true);
+      if (result.success) expect(result.data.branchIds, name).toEqual([ID_A, ID_B]);
+      expect(schema.safeParse({ branchIds: 'nope' }).success, name).toBe(false);
+      // Branch only: the fuel cards take no type or operation set.
+      expect(schema.safeParse({ typeIds: ID_A }).success, name).toBe(false);
+      expect(schema.safeParse({ branch: ID_A }).success, name).toBe(false);
+    }
+  });
+
+  it('the fuel and receipt totals carry the new figures', () => {
+    const cards: FleetFuelCardTotalsDto = {
+      wataniyaBalance: 296480,
+      chilloutBalance: 189770,
+      requestedCount: 5,
+      requestedAmount: 37500,
+      chargedTodayAmount: 15000,
+      cardCount: 142,
+      wataniyaCards: 90,
+      chilloutCards: 52,
+      noCarCards: 6,
+      noCarBalance: 9870,
+    };
+    expect(cards.wataniyaCards + cards.chilloutCards).toBe(cards.cardCount);
+    const receipts: FleetReceiptTotalsDto = {
+      count: 574,
+      custodyTotal: 81950,
+      cardTotal: 116350,
+      fuelTotal: 142500,
+      fuelLitres: 8890.4,
+      tyresTotal: 28450,
+      washTotal: 9650,
+      maintenanceTotal: 17700,
+      fuelCustodyTotal: 26150,
+      fuelUnpriced: 2,
+    };
+    expect(receipts.fuelTotal - receipts.fuelCustodyTotal).toBe(receipts.cardTotal);
+  });
+
+  it('lets the violations list ask the fine’s day (from/to), beside its other filters', () => {
+    const result = ListFleetViolationsQuerySchema.safeParse({
+      kind: 'driver',
+      from: '2026-11-01',
+      to: '2026-11-15',
+      collected: 'false',
+      violationTypeId: ID_A,
+      vehicleCodes: '150',
+      branchIds: ID_B,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.from).toBeInstanceOf(Date);
+      expect(result.data.from?.toISOString()).toBe('2026-11-01T00:00:00.000Z');
+      expect(result.data.to?.toISOString()).toBe('2026-11-15T00:00:00.000Z');
+      expect(result.data.collected).toBe(false);
+    }
+    // Each end alone is a question too.
+    expect(ListFleetViolationsQuerySchema.safeParse({ from: '2026-11-01' }).success).toBe(true);
+    expect(ListFleetViolationsQuerySchema.safeParse({ to: '2026-11-15' }).success).toBe(true);
+    expect(ListFleetViolationsQuerySchema.safeParse({ from: 'not a day' }).success).toBe(false);
+    // Still strict: the web's own names never reach the API.
+    expect(ListFleetViolationsQuerySchema.safeParse({ dfrom: '2026-11-01' }).success).toBe(false);
+    // The rollup has no day: a statement carries a year only.
+    expect(FleetViolationRollupQuerySchema.safeParse({ from: '2026-11-01' }).success).toBe(false);
   });
 
   it('gives every period screen the vehicle-set filter, list and total alike', () => {

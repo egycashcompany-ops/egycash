@@ -122,7 +122,8 @@ describe('the throttled prefixes in the registry', () => {
         'fleet.receipt',
       ]),
     );
-    // The period tabs count km, visits, accidents, card/custody spend and dealership rows.
+    // The period tabs count km, visits, accidents, card/custody spend and dealership rows — and
+    // the drivers' fines of the period («المخالفات المرورية والتسويات»: a tick moves «قائمة»).
     expect(carrying(LIVE).sort()).toEqual(
       [
         'fleet.accident',
@@ -133,8 +134,11 @@ describe('the throttled prefixes in the registry', () => {
         'fleet.receipt',
         'fleet.vehicle',
         'fleet.vehicleType',
+        'fleet.violation',
       ].sort(),
     );
+    // A grievance moves no counted figure: «الآن» only.
+    expect(carrying(LIVE)).not.toContain('fleet.violationGrievance');
     // The custody rows reach tab 1's custody line through the custody hooks' own key, not R1.
     expect(carrying(NOW)).not.toContain('fleet.custodyOperation');
   });

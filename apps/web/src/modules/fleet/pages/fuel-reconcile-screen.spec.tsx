@@ -210,6 +210,10 @@ const totals = (over: Partial<FleetFuelCardTotalsDto>): FleetFuelCardTotalsDto =
   requestedAmount: 0,
   chargedTodayAmount: 0,
   cardCount: 0,
+  wataniyaCards: 0,
+  chilloutCards: 0,
+  noCarCards: 0,
+  noCarBalance: 0,
   ...over,
 });
 

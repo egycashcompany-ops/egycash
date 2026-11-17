@@ -199,6 +199,12 @@ const WIRED: readonly Wired[] = [
       // «العدادات والكيلومترات» (it holds the old «ترتيب السيارات»): the longest gap, the top and
       // bottom five, the cars that cannot be ranked and the exceptions.
       ['tab-km.tsx', 'km'],
+      // «المخالفات المرورية والتسويات»: the period's fines — the car chip, linked to its record for
+      // a registry reader.
+      ['tab-violations.tsx', 'violations'],
+      // «الوقود والمصروفات»: the cards that need follow-up, and the period's dealership invoices.
+      ['tab-fuel-now.tsx', 'fuel (cards that need follow-up)'],
+      ['tab-fuel-period.tsx', 'fuel (dealership invoices of the period)'],
     ] as const
   ).map(([file, tab]) => ({
     file: `components/fleet-dashboard/${file}`,

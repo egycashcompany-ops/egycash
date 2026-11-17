@@ -3,10 +3,11 @@
 // What this file pins: every KPI reads its own field and opens the list that shows the same number;
 // the action centre has one row per alert line that fired, red above amber, each with ONE «فتح» (the
 // line's first list, none when there is no exact list); the hub's lines open the tab that shows the
-// same figure — keeping the page's own filters, never a period of their own — or the register; the
-// month card is «هذا الشهر» whatever the page's filters say, and links over its own read's echo; the
-// company-wide figures wear «الشركة كلها» only while the rest are narrowed (the notices follow the
-// car's branch, so their line never does); nothing the owner ruled
+// same figure — keeping the page's own filters, never a period of their own (the month figures open
+// theirs on the month read's own slice); the month card is «هذا الشهر» whatever the page's filters
+// say, and links over its own read's echo; the company-wide figures (the custody fund) wear «الشركة
+// كلها» only while the rest are narrowed (the notices and the fuel cards follow the car's branch, so
+// their lines never do, and their links carry the branch); nothing the owner ruled
 // out is drawn. It also carries the pins of the retired «التنبيهات» tab that still hold.
 //
 // Rendered through the real page over seeded caches (`renderDashboard`), the fleet-dashboard way; the
@@ -60,8 +61,15 @@ const NOW: FleetDashboardNowDto = {
   distributionVehicles: { ...need(NOW_DTO.distributionVehicles), branchCount: 2 },
   violationsOpen: {
     company: { amount: 14650, count: 30 },
-    drivers: { total: { amount: 9850, count: 18 } },
+    // The drivers' parts tie to their total (the overview reads `total.count` alone).
+    drivers: {
+      total: { amount: 9850, count: 18 },
+      attributed: { amount: 7600, count: 14, drivers: 9 },
+      unknown: { amount: 1350, count: 3 },
+      unlinked: { amount: 900, count: 1 },
+    },
     total: { amount: 24500, count: 48 },
+    bookOnly: { company: { amount: 1150, count: 2 }, drivers: { amount: 300, count: 1 } },
   },
   unavailable: [],
 };
@@ -83,7 +91,22 @@ const MONTH: FleetDashboardPeriodDto = {
   exits: { ...need(PERIOD_DTO.exits), count: 21 },
   // The month's accidents: the overview draws their count alone.
   accidents: { ...need(PERIOD_DTO.accidents), count: 4 },
-  opex: { card: 9000, custody: 3500, fuel: 8200, total: 12500, count: 40, dataFrom: null },
+  // The month's receipts: fuel = card + fuelCustody (card receipts are fuel only), total = card +
+  // custody = card + fuelCustody + tyres + wash + maintenance. The overview draws `fuel` / `total`.
+  opex: {
+    card: 6000,
+    custody: 6500,
+    fuel: 8200,
+    total: 12500,
+    count: 40,
+    dataFrom: null,
+    fuelCustody: 2200,
+    tyres: 1800,
+    wash: 700,
+    maintenance: 1800,
+    litres: 470,
+    unpricedFuel: 0,
+  },
   unavailable: [],
 };
 
@@ -576,7 +599,8 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
       'workshop.tab': 'maintenance',
       'maintenanceAlarm.tab': 'maintenance',
       'accidents.tab': 'accidents',
-      'opex.tab': 'period',
+      'violationsOpen.tab': 'violations',
+      'opex.tab': 'fuel',
       'licenceVehicles.tab': 'licences',
     };
     for (const [metric, target] of Object.entries(tabOf)) {
@@ -630,7 +654,7 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
     );
   });
 
-  it('«حوادث الشهر» opens the accidents tab; «مخالفات قائمة N مخالفة» the register, every year', () => {
+  it('«حوادث الشهر» opens the accidents tab; «مخالفات قائمة N مخالفة» the violations tab', () => {
     expect(text(hubLine(html, 'accidents'))).toContain('4 حوادث');
     // The figure is the month read's (no page filter): its tab opens on that slice — «هذا الشهر»,
     // no type, operation or codes — so the accidents tab shows the same number.
@@ -640,22 +664,25 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
     const violations = hubLine(html, 'violations');
     expect(text(violations)).toContain(ar('fleet.dash.overview.hub.incidents.violations'));
     expect(text(violations)).toContain('48 مخالفة');
-    const [href = ''] = hrefOf(violations, 'violationsOpen.total');
-    expect(parse(href).pathname).toBe('/fleet/violations');
-    expect(parse(href).params.get('cset')).toBe('false');
-    expect(parse(href).params.has('year')).toBe(false);
+    // Every year's fines still owed: the tab «المخالفات المرورية والتسويات», whose «إجمالي المخالفات
+    // القائمة» is this number (no period of its own: the «الآن» band reads none).
+    expect(hrefOf(violations, 'violationsOpen.tab')).toEqual(['/fleet?tab=violations']);
+    expect(hrefOf(violations, 'violationsOpen.total')).toEqual([]);
   });
 
-  it('«مصروف الوقود» is the month’s fuel receipts, opening them; no km average is drawn', () => {
+  it('«مصروف الوقود» is the month’s fuel receipts, opening the fuel tab on the month; no km average', () => {
     const fuel = hubLine(html, 'fuelSpend');
     expect(text(fuel)).toContain('8,200.00');
-    const [href = ''] = hrefOf(fuel, 'opex.fuel');
-    const { pathname, params } = parse(href);
-    expect(pathname).toBe('/fleet/receipts');
-    expect(params.get('kind')).toBe('fuel');
-    expect(params.get('from')).toBe(TODAY);
-    expect(params.get('to')).toBe(TODAY);
+    // The figure is the month read's (no page filter): the fuel tab opens on that slice, where
+    // «الوقود كله» is the same number; the card's foot opens the tab with the page's filters.
+    expect(hrefOf(fuel, 'opex.fuel.month')).toEqual(['/fleet?tab=fuel&period=thisMonth']);
+    expect(hrefOf(fuel, 'opex.fuel')).toEqual([]);
     expect(hubCard(html, 'fuel').match(/data-dash-hub-line=/gu)).toHaveLength(1);
+    const filtered = page(`/fleet?tab=overview&period=last30&type=${T1}`);
+    expect(hrefOf(hubLine(filtered, 'fuelSpend'), 'opex.fuel.month')).toEqual([
+      '/fleet?tab=fuel&period=thisMonth',
+    ]);
+    expect(hrefOf(filtered, 'opex.tab')).toEqual([`/fleet?tab=fuel&period=last30&type=${T1}`]);
   });
 
   it('the company (and «كل فروعي») sees the branches and the largest; one branch its cars and largest type', () => {
@@ -922,11 +949,13 @@ describe('«نظرة عامة» — scope, readers and the ruled-out words', () 
     const several = page('/fleet?tab=overview', {
       now: { ...NOW, scopeBranches: [CAIRO_BRANCH, GIZA_BRANCH] },
     });
-    for (const id of ['fuelCardExpired', 'fuelRequests', 'fuelLow', 'custody']) {
-      expect(row(several, id), id).toContain('data-company-wide="true"');
-    }
-    // The notices follow the car's branch (the server narrows them): no tag on their line.
+    expect(row(several, 'custody')).toContain('data-company-wide="true"');
+    // The notices and the fuel cards follow the car's branch (the server narrows them): no tag on
+    // their lines, and their «فتح» carries the figures' branches.
     for (const id of [
+      'fuelCardExpired',
+      'fuelRequests',
+      'fuelLow',
       'maintenanceRed',
       'vehicleLicenceExpired',
       'driverLicenceExpired',
@@ -937,11 +966,33 @@ describe('«نظرة عامة» — scope, readers and the ruled-out words', () 
     ]) {
       expect(row(several, id), id).not.toContain('data-company-wide');
     }
-    for (const id of ['fuel', 'custody'])
-      expect(kpi(several, id), id).toContain('data-company-wide="true"');
-    for (const id of ['readiness', 'unmanned', 'workshop', 'urgent']) {
+    expect(kpi(several, 'custody')).toContain('data-company-wide="true"');
+    for (const id of ['fuel', 'readiness', 'unmanned', 'workshop', 'urgent']) {
       expect(kpi(several, id), id).not.toContain('data-company-wide');
     }
+  });
+
+  it('opens the fuel cards and top-ups of the figures’ branches: the lines and the balances carry them', () => {
+    const several = page('/fleet?tab=overview', {
+      now: { ...NOW, scopeBranches: [CAIRO_BRANCH, GIZA_BRANCH] },
+    });
+    const branches = `${B1},${GIZA_BRANCH.id}`;
+    expect(hrefOf(row(several, 'fuelCardExpired'), 'fuelCards.expired')).toEqual([
+      `/fleet/fuel-cards?expiresBefore=${TODAY}&branch=${branches}`,
+    ]);
+    expect(hrefOf(row(several, 'fuelRequests'), 'fuelCharging.requested')).toEqual([
+      `/fleet/fuel-cards/charging?state=requested&branch=${branches}`,
+    ]);
+    expect(hrefOf(row(several, 'fuelLow'), 'fuelCharging.low')).toEqual([
+      `/fleet/fuel-cards/charging?state=low&branch=${branches}`,
+    ]);
+    expect(hrefOf(kpi(several, 'fuel'), 'fuelCharging.wataniya')).toEqual([
+      `/fleet/fuel-cards/charging?company=wataniya&branch=${branches}`,
+    ]);
+    // The company view: no branch at all.
+    expect(hrefOf(row(page(), 'fuelLow'), 'fuelCharging.low')).toEqual([
+      '/fleet/fuel-cards/charging?state=low',
+    ]);
   });
 
   it('shows the custody-only reader the custody card and line alone, and asks neither read', () => {

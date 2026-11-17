@@ -2679,6 +2679,14 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
    */
   collected: booleanQuery().optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
+  /**
+   * The FINE's day from (`$gte`), WHOLE days: the server takes the start of this calendar day — an
+   * old-book row may be stored off midnight. A company statement carries a year and no day, so a
+   * period lists driver rows only. The dashboard's «مخالفات السائقين في الفترة» names its range so.
+   */
+  from: z.coerce.date().optional(),
+  /** The FINE's day up to (inclusive), WHOLE days: the server takes the end of this calendar day. */
+  to: z.coerce.date().optional(),
   ...vehicleSetFilters(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;
@@ -3691,6 +3699,11 @@ const fuelCardFilters = {
   requested: booleanQuery().optional(),
   /** Only cards whose balance is below this. */
   balanceBelow: z.coerce.number().nonnegative().optional(),
+  /**
+   * «الفرع» — the branch of the card's CURRENT car (a car deleted since by its last branch), ORed.
+   * A card on no car («سفر»، «اسبير») matches no branch, so it drops out under this filter.
+   */
+  branchIds: listQuery(objectId()),
 };
 export const ListFleetFuelCardsQuerySchema = PaginationQuerySchema.extend({
   ...fuelCardFilters,
@@ -3768,6 +3781,12 @@ export interface FleetFuelCardTotalsDto {
    */
   chargedTodayAmount: number;
   cardCount: number;
+  /** The cards of each company; `wataniyaCards + chilloutCards = cardCount`. */
+  wataniyaCards: number;
+  chilloutCards: number;
+  /** Cards on no car («سفر»، «اسبير»): how many, and Σ their balance (inside the totals above). */
+  noCarCards: number;
+  noCarBalance: number;
 }
 
 /** «طلب رصيد» — write the amount; `null` takes the request back (the ✕). */
@@ -4964,6 +4983,10 @@ export interface FleetReceiptTotalsDto {
   tyresTotal: number;
   washTotal: number;
   maintenanceTotal: number;
+  /** Fuel paid from the custody (kind fuel ∧ source custody); `fuelTotal − fuelCustodyTotal` = by card. */
+  fuelCustodyTotal: number;
+  /** Fuel receipts with no litre price: counted in `fuelTotal`, never in `fuelLitres`. */
+  fuelUnpriced: number;
 }
 
 /**

@@ -290,19 +290,21 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     expect(tab).toContain('cancelRefetch: false');
   });
 
-  it('the three mixed panels refresh R1 and R2 together — each only for its reader — and show the older age', () => {
+  it('the five mixed panels refresh R1 and R2 together — each only for its reader — and show the older age', () => {
     const flat = source('pages/FleetDashboardPage.tsx').replace(/\s+/gu, ' ');
-    // «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين» go through ONE branch.
+    // «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية
+    // والتسويات» and «الوقود والمصروفات» go through ONE branch.
     expect(flat).toContain(
-      'const MIXED_PANELS = { maintenance: MaintenanceTab, km: KmTab, accidents: AccidentsTab, }',
+      'const MIXED_PANELS = { maintenance: MaintenanceTab, km: KmTab, accidents: AccidentsTab, violations: ViolationsTab, fuel: FuelTab, }',
     );
     // R2 only when this tab draws its period part (a reader of R2 for another tab sees no part
-    // here): its section per tab.
+    // here): any one of its sections — «الوقود والمصروفات» draws it from the receipts OR the
+    // dealership.
     expect(flat).toContain(
-      'const periodDrawn = reads.period && sectionPermitted(MIXED_PERIOD_SECTION[active], can);',
+      'const periodDrawn = reads.period && MIXED_PERIOD_SECTIONS[active].some((section) => sectionPermitted(section, can));',
     );
     expect(flat).toContain(
-      "const MIXED_PERIOD_SECTION = { maintenance: 'exits', km: 'km', accidents: 'accidents', }",
+      "const MIXED_PERIOD_SECTIONS = { maintenance: ['exits'], km: ['km'], accidents: ['accidents'], violations: ['violations'], fuel: ['opex', 'dealership'], }",
     );
     expect(flat).toContain(
       'const refreshBoth = (): void => { if (reads.now) void nowQ.refetch({ cancelRefetch: false }); if (periodDrawn) refreshPeriod(); };',

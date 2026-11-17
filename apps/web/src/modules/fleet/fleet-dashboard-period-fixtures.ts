@@ -9,7 +9,10 @@
 //   the average = the closed km of 10/03 … 10/30 ÷ 28 closed calendar days;
 //   visits.count = closed + open (CHECK-IN day, «أرقام الفترة»);
 //   Σ exits.byWorkType = Σ exits.byWorkshop = exits.count (EXIT day, «الصيانة والورش»);
-//   opex.total = card + custody (and the dealership figure is never added to it);
+//   opex.total = card + custody = card + fuelCustody + tyres + wash + maintenance, fuel = card +
+//   fuelCustody, Σ opexSeries = total and count (and the dealership figure is never added to it);
+//   violations.count = owed + collected = Σ byType («غير محدد» last), violationList.more = count − rows;
+//   dealershipList.more = dealership.rows − rows;
 //   km.coverage.of = active − inWorkshop − joinedAfter, noDistance.cars = of − withReadings;
 //   accidents.totals.remaining = collected + company − paid + in − out (= the open files' rest).
 import { createElement } from 'react';
@@ -21,7 +24,10 @@ import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import {
   addDaysYmd,
   type FleetDashboardKmBucketDto,
+  type FleetDashboardOpexBucketDto,
+  type FleetDashboardPeriodDealershipRowDto,
   type FleetDashboardPeriodDto,
+  type FleetDashboardPeriodViolationRowDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
@@ -103,6 +109,93 @@ const CAIRO_KM = Math.round(KM_TOTAL * 0.45);
 const GIZA_KM = Math.round(KM_TOTAL * 0.35);
 const NO_BRANCH_KM = Math.round(KM_TOTAL * 0.12);
 export const UNREGISTERED_KM = KM_TOTAL - CAIRO_KM - GIZA_KM - NO_BRANCH_KM;
+
+// ── «مصروف التشغيل يومًا بيوم»: every day of the 30, two of them (Fridays) with no receipt ──────
+
+/** The receipts' amount and count of each day, 10/03 … 11/01; Σ = opex.total 112,450 and count 210. */
+const OPEX_DAYS = [
+  [4150, 7],
+  [4400, 6],
+  [3350, 10],
+  [3450, 8],
+  [5000, 6],
+  [4750, 7],
+  [0, 0],
+  [3250, 6],
+  [4500, 9],
+  [3350, 7],
+  [3400, 10],
+  [4500, 6],
+  [5750, 10],
+  [950, 1],
+  [5150, 10],
+  [3300, 10],
+  [5000, 9],
+  [3300, 7],
+  [3250, 10],
+  [5850, 7],
+  [0, 0],
+  [4050, 9],
+  [3600, 10],
+  [3500, 10],
+  [4100, 9],
+  [5750, 6],
+  [3450, 9],
+  [1450, 1],
+  [5000, 5],
+  [4900, 5],
+] as const;
+export const OPEX_BUCKETS: FleetDashboardOpexBucketDto[] = OPEX_DAYS.map(([amount, count], i) => ({
+  key: day(i),
+  hasRows: count > 0,
+  amount,
+  count,
+}));
+
+// ── «مخالفات السائقين في الفترة» ───────────────────────────────────────────────────────────────
+
+export const VT_SPEED = '650000000000000000000701';
+export const VT_WRONG_WAY = '650000000000000000000702';
+export const VT_PHONE = '650000000000000000000703';
+export const VT_BELT = '650000000000000000000704';
+export const VT_UNSPECIFIED = '650000000000000000000709';
+const SPEED = { ar: 'سرعة', en: 'Speeding' };
+const WRONG_WAY = { ar: 'سير عكس الاتجاه', en: 'Wrong way' };
+const PHONE = { ar: 'تليفون', en: 'Phone' };
+const BELT = { ar: 'حزام', en: 'Seatbelt' };
+const UNSPECIFIED = { ar: 'غير محدد (مخالفات السائقين)', en: 'Unspecified (drivers)' };
+
+const fine = (
+  over: Partial<FleetDashboardPeriodViolationRowDto> &
+    Pick<FleetDashboardPeriodViolationRowDto, 'violationId' | 'code' | 'date' | 'amount'>,
+): FleetDashboardPeriodViolationRowDto => ({
+  vehicleId: `v${over.code}`,
+  typeName: SPRINTER,
+  vehicleDeleted: false,
+  driverEmployeeId: null,
+  driverName: null,
+  violationTypeId: VT_SPEED,
+  violationType: SPEED,
+  unspecified: false,
+  collected: false,
+  ...over,
+});
+
+// ── «فواتير التوكيل في الفترة» ─────────────────────────────────────────────────────────────────
+
+const invoice = (
+  over: Partial<FleetDashboardPeriodDealershipRowDto> &
+    Pick<FleetDashboardPeriodDealershipRowDto, 'id' | 'code' | 'date'>,
+): FleetDashboardPeriodDealershipRowDto => ({
+  vehicleId: `v${over.code}`,
+  typeName: SPRINTER,
+  vehicleDeleted: false,
+  workKind: 'repair',
+  workTypeLabel: 'إصلاح',
+  invoiceNumber: null,
+  invoiceAmount: null,
+  ...over,
+});
 
 export const PERIOD_FULL: FleetDashboardPeriodDto = {
   today: TODAY,
@@ -251,6 +344,102 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       remaining: 9800,
     },
   },
+  // The drivers' fines by the FINE's day: 17 still owed + 6 collected = 23; the types add up to them.
+  violations: {
+    count: 23,
+    amount: 9350,
+    owed: { count: 17, amount: 6900 },
+    collected: { count: 6, amount: 2450 },
+    byType: [
+      { violationTypeId: VT_SPEED, name: SPEED, unspecified: false, count: 9, amount: 3600 },
+      {
+        violationTypeId: VT_WRONG_WAY,
+        name: WRONG_WAY,
+        unspecified: false,
+        count: 6,
+        amount: 3000,
+      },
+      { violationTypeId: VT_PHONE, name: PHONE, unspecified: false, count: 4, amount: 1200 },
+      { violationTypeId: VT_BELT, name: BELT, unspecified: false, count: 2, amount: 400 },
+      // The catalog's «غير محدد» always last.
+      {
+        violationTypeId: VT_UNSPECIFIED,
+        name: UNSPECIFIED,
+        unspecified: true,
+        count: 2,
+        amount: 1150,
+      },
+    ],
+  },
+  // The register's first page of them, newest first: 6 of 23.
+  violationList: {
+    rows: [
+      fine({
+        violationId: 'f1',
+        code: '214',
+        date: '2026-10-31',
+        driverEmployeeId: DRIVER,
+        driverName: 'محمود عبد العزيز سالم',
+        amount: 400,
+      }),
+      fine({
+        violationId: 'f2',
+        code: '305',
+        typeName: ATEGO,
+        date: '2026-10-29',
+        driverName: 'مجهول',
+        violationTypeId: VT_PHONE,
+        violationType: PHONE,
+        amount: 300,
+      }),
+      // A car deleted from the registry since: its fine stays, with no record to open.
+      fine({
+        violationId: 'f3',
+        code: '144',
+        date: '2026-10-27',
+        vehicleDeleted: true,
+        driverEmployeeId: DRIVER_2,
+        driverName: 'كريم السيد إبراهيم',
+        violationTypeId: VT_WRONG_WAY,
+        violationType: WRONG_WAY,
+        amount: 500,
+        collected: true,
+      }),
+      // A name the old book wrote, linked to no HR record.
+      fine({
+        violationId: 'f4',
+        code: '167',
+        typeName: ATEGO,
+        date: '2026-10-22',
+        driverName: 'حسام الدين فاروق',
+        amount: 400,
+      }),
+      // An old-book code on a car the registry never had.
+      fine({
+        violationId: 'f5',
+        code: '295',
+        vehicleId: null,
+        typeName: null,
+        date: '2026-10-14',
+        violationTypeId: VT_UNSPECIFIED,
+        violationType: UNSPECIFIED,
+        unspecified: true,
+        amount: 575,
+      }),
+      fine({
+        violationId: 'f6',
+        code: '136',
+        date: '2026-10-05',
+        driverEmployeeId: DRIVER,
+        driverName: 'محمود عبد العزيز سالم',
+        violationTypeId: VT_BELT,
+        violationType: BELT,
+        amount: 200,
+        collected: true,
+      }),
+    ],
+    more: 17,
+  },
   accidentList: {
     // Newest first; each with its «بيان» as recorded and its car's make (the old-book file has none).
     rows: [
@@ -313,8 +502,70 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     total: 112450,
     count: 210,
     dataFrom: '2026-09-14',
+    // By kind: 64,600 + 6,700 + 9,800 + 4,350 + 27,000 = 112,450; fuel = 64,600 + 6,700. About
+    // 3,905 litres at each receipt's day price; 2 fuel receipts with no litre price are outside them.
+    fuelCustody: 6700,
+    tyres: 9800,
+    wash: 4350,
+    maintenance: 27000,
+    litres: 3905,
+    unpricedFuel: 2,
   },
+  opexSeries: { buckets: OPEX_BUCKETS },
   dealership: { amount: 38900, rows: 9, pending: 3, dataFrom: '2026-09-01' },
+  // The dealership screen's first page (exit day newest first): 6 of 9, two of the 3 pending.
+  dealershipList: {
+    rows: [
+      invoice({ id: 'd1', code: '263', date: '2026-10-31' }),
+      invoice({
+        id: 'd2',
+        code: '142',
+        typeName: ATEGO,
+        date: '2026-10-30',
+        workTypeLabel: 'إصلاح (سمكرة)',
+        invoiceNumber: '60417',
+        invoiceAmount: 3850,
+      }),
+      // One visit's «صيانة» and «إصلاح»: two rows, as the register orders them.
+      invoice({
+        id: 'd3',
+        code: '221',
+        date: '2026-10-29',
+        invoiceNumber: '60389',
+        invoiceAmount: 1960,
+      }),
+      invoice({
+        id: 'd4',
+        code: '221',
+        date: '2026-10-29',
+        workKind: 'maintenance',
+        workTypeLabel: 'صيانة',
+        invoiceNumber: '60388',
+        invoiceAmount: 2780,
+      }),
+      // A car deleted from the registry since: no record link.
+      invoice({
+        id: 'd5',
+        code: '231',
+        date: '2026-10-22',
+        vehicleDeleted: true,
+        workKind: 'maintenance',
+        workTypeLabel: 'صيانة',
+      }),
+      // An old-book row on a car the registry never had: its code alone.
+      invoice({
+        id: 'd6',
+        code: '318 ق',
+        vehicleId: null,
+        typeName: null,
+        date: '2026-10-15',
+        workTypeLabel: 'إصلاح (تغيير زجاج)',
+        invoiceNumber: '60352',
+        invoiceAmount: 1640,
+      }),
+    ],
+    more: 3,
+  },
   unavailable: [],
 };
 
@@ -322,6 +573,47 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
 export const PERIOD_YEAR: FleetDashboardPeriodDto = {
   ...PERIOD_FULL,
   range: { preset: 'thisYear', from: '2026-01-01', to: TODAY, days: 305, granularity: 'month' },
+  // The receipts start on 09/14 (`dataFrom`): January … August are empty slots, never zero
+  // columns. 51,600 + 115,700 + 4,900 = 172,200 = card + fuelCustody + tyres + wash + maintenance.
+  opex: {
+    card: 98900,
+    custody: 73300,
+    fuel: 109200,
+    total: 172200,
+    count: 314,
+    dataFrom: '2026-09-14',
+    fuelCustody: 10300,
+    tyres: 15100,
+    wash: 6700,
+    maintenance: 41200,
+    litres: 5980,
+    unpricedFuel: 3,
+  },
+  opexSeries: {
+    buckets: [
+      '2026-01',
+      '2026-02',
+      '2026-03',
+      '2026-04',
+      '2026-05',
+      '2026-06',
+      '2026-07',
+      '2026-08',
+      '2026-09',
+      '2026-10',
+      '2026-11',
+    ].map((key): FleetDashboardOpexBucketDto => {
+      const [amount, count] =
+        key === '2026-09'
+          ? [51600, 96]
+          : key === '2026-10'
+            ? [115700, 213]
+            : key === '2026-11'
+              ? [4900, 5]
+              : [0, 0];
+      return { key, hasRows: count > 0, amount, count };
+    }),
+  },
   km: {
     ...(PERIOD_FULL.km as NonNullable<FleetDashboardPeriodDto['km']>),
     buckets: [

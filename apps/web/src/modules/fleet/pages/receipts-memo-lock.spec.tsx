@@ -110,6 +110,8 @@ const TOTALS: FleetReceiptTotalsDto = {
   tyresTotal: 4200,
   washTotal: 0,
   maintenanceTotal: 0,
+  fuelCustodyTotal: 0,
+  fuelUnpriced: 0,
 };
 const FILTERS = {
   from: undefined,

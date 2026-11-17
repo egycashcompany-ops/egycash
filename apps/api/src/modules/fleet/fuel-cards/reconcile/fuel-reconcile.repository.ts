@@ -1,10 +1,11 @@
 import { Types, type ClientSession } from 'mongoose';
-import { type FleetFuelReconcileDecision } from '@ecms/contracts';
+import { type FleetFuelCardCompany, type FleetFuelReconcileDecision } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import {
   FleetFuelReconciliationModel,
   type FleetFuelReconciliationDoc,
 } from './fuel-reconcile.model';
+import { type FuelSheetSession } from './fuel-sheet-digest';
 
 class FleetFuelReconciliationRepository extends BaseRepository<FleetFuelReconciliationDoc> {
   constructor() {
@@ -18,6 +19,28 @@ class FleetFuelReconciliationRepository extends BaseRepository<FleetFuelReconcil
       .findOne({ _id: new Types.ObjectId(id), isDeleted: false })
       .session(session)
       .lean<FleetFuelReconciliationDoc>()
+      .exec();
+  }
+
+  /**
+   * The company's LATEST read sheet (by `readAt`, through `ix_fuel_reconcile_company_read`) — only
+   * what the dashboard's «مطابقة شيت شركة الوقود» reads of it: its day, its read instant and each
+   * balance line's card, figures and decision. `null` when no sheet of the company was ever read.
+   */
+  async latestOfCompany(company: FleetFuelCardCompany): Promise<FuelSheetSession | null> {
+    return this.model
+      .findOne({ company, isDeleted: false })
+      .sort({ readAt: -1, _id: -1 })
+      .select({
+        sheetDate: 1,
+        readAt: 1,
+        'lines.cardId': 1,
+        'lines.sheetBalance': 1,
+        'lines.systemBalance': 1,
+        'lines.decision': 1,
+        'lines.inRepair': 1,
+      })
+      .lean<FuelSheetSession>()
       .exec();
   }
 

@@ -17,6 +17,7 @@ import {
   addDaysYmd,
   licenceWindows,
   type FleetDashboardNowAlarmDto,
+  type FleetDashboardNowFuelCardRowDto,
   type FleetDashboardSection,
   type FleetDashboardVehicleScopeDto,
 } from '@ecms/contracts';
@@ -88,6 +89,23 @@ const ALARM = (
   redKm: 300,
   yellowKm: 1000,
   rows: [],
+});
+
+/** A row of «كروت تحتاج متابعة»: a wataniya card on car 214 unless told otherwise. */
+const CARD = (over: Partial<FleetDashboardNowFuelCardRowDto>): FleetDashboardNowFuelCardRowDto => ({
+  cardId: 'k1',
+  company: 'wataniya',
+  number: '7045112000984417',
+  vehicleId: 'v214',
+  code: '214',
+  typeName: null,
+  vehicleDeleted: false,
+  label: null,
+  balance: 1240,
+  requestedAmount: null,
+  expiresAt: '2027-06-15',
+  states: ['expired'],
+  ...over,
 });
 
 /** Every link the builder can emit, each builder called with representative arguments. */
@@ -166,6 +184,18 @@ const everyLink = (): DashLink[] => {
       L.violationsDrivers(2026),
       L.violationsUnknown(2026),
       L.reconcile(),
+      L.reconcile('fuelSheets.reconcile'),
+      L.violationsOpen('violationsOpen.totalAll'),
+      L.violationsOpenCompany(),
+      L.violationsOpenDrivers(),
+      L.violationsOpenDrivers('violationsOpen.driversAll'),
+      L.violationsOpenUnknown(),
+      L.chargingStates(['requested', 'low']),
+      L.fuelCardsDue(30),
+      L.fuelCardRow(CARD({})),
+      L.fuelCardRow(CARD({ states: ['critical', 'requested'] })),
+      L.fuelCardRow(CARD({ vehicleId: null, code: null, label: 'سفر 1', states: ['low'] })),
+      L.fuelCardRow(CARD({ vehicleDeleted: true, states: ['requested'] })),
     );
   }
   for (const scope of [
@@ -197,6 +227,13 @@ const everyLink = (): DashLink[] => {
       P.accidents(),
       P.accidents('accidents.open', 'open'),
       P.accidentDay('154', '2026-10-05'),
+      P.violations('violations.count'),
+      P.violations('violations.owed', { dset: 'false' }),
+      P.violations('violations.byType', { dtype: 'vt1' }),
+      P.violationRow({ code: '214', date: '2026-10-12', violationTypeId: 'vt1' }),
+      P.opexKind('opex.card', 'fuel', 'card'),
+      P.opexKind('opex.tyres', 'tyres'),
+      P.dealershipRow({ code: '221', date: '2026-10-29', workKind: 'maintenance' }),
       P.opex(),
       P.opex('opex.card', 'card'),
       P.opexCustody(),
@@ -242,8 +279,9 @@ describe('every link the dashboard can make', () => {
       ['/fleet/dealership', ['from', 'to', 'state']],
       ['/fleet/accidents', ['from', 'to', 'status']],
       ['/fleet/maintenance', ['from', 'to', 'state', 'outFrom']],
-      // A year's fines carry the year; «مخالفات قائمة» (every year) carries what is still owed.
-      ['/fleet/violations', ['year', 'cset']],
+      // A year's fines carry the year; every year's owed fines carry what is still owed (on the
+      // company half, the drivers' half, or both); a period's drivers' fines carry the FINE's days.
+      ['/fleet/violations', ['year', 'cset', 'dset', 'dfrom']],
     ];
     for (const link of links) {
       const { pathname, params } = parse(link);
@@ -335,9 +373,15 @@ describe('the branch and the vehicle set travel as filters', () => {
       to: TODAY,
       branch: 'b1',
     });
-    // The company-wide sources take no branch (fuel); the notices follow the car's branch.
-    expect(parse(NOW_BRANCH.charging('low')).params.has('branch')).toBe(false);
+    // The notices and the fuel cards follow the car's branch (plan D10): every one of their links
+    // carries it — the cards' and the charging screen's.
     for (const link of [
+      NOW_BRANCH.charging('low'),
+      NOW_BRANCH.chargingCompany('wataniya'),
+      NOW_BRANCH.chargingStates(['requested', 'low']),
+      NOW_BRANCH.fuelCardsExpired(),
+      NOW_BRANCH.fuelCardsExpiring(30),
+      NOW_BRANCH.fuelCardsDue(30),
       NOW_BRANCH.noticesOpen(),
       NOW_BRANCH.noticesCheckImage(),
       NOW_BRANCH.noticesOpenAll(),
@@ -420,9 +464,14 @@ describe('the branch the figures cover (plan D12): the switcher, else the reader
       ]) {
         expect(parse(link).params.get('branch'), link.to).toBe(branch);
       }
-      // The company-wide sources still take no branch; the notices are the branch's cars'.
-      expect(parse(L.charging('low')).params.has('branch')).toBe(false);
+      // The notices and the fuel cards are the branch's cars'.
       for (const link of [
+        L.charging('low'),
+        L.chargingCompany('chillout'),
+        L.fuelCardsExpired(),
+        L.violationsOpenCompany(),
+        L.violationsOpenDrivers(),
+        L.violationsOpenUnknown(),
         L.noticesOpen(),
         L.noticesCheckImage(),
         L.noticesOpenAll('notices.all'),
@@ -757,5 +806,152 @@ describe('the links of «العدادات والكيلومترات» and «ال�
     });
     expect(P.vehiclesByCodes([], 'km.noDistance')).toBeNull();
     expect(P.vehiclesByCodes(ids(51, 0x300), 'km.noDistance')).toBeNull();
+  });
+});
+
+describe('the links of «المخالفات المرورية والتسويات» (exact URLs, plan §7)', () => {
+  it('opens every year’s owed fines — the company half, the drivers’ half, «مجهول», both — with no year', () => {
+    expect(NOW.violationsOpen()).toEqual({
+      to: '/fleet/violations?cset=false&dset=false',
+      metric: 'violationsOpen.total',
+    });
+    expect(NOW.violationsOpen('violationsOpen.totalAll').metric).toBe('violationsOpen.totalAll');
+    expect(NOW.violationsOpenCompany()).toEqual({
+      to: '/fleet/violations?cset=false',
+      metric: 'violationsOpen.company',
+    });
+    expect(NOW.violationsOpenDrivers()).toEqual({
+      to: '/fleet/violations?dset=false',
+      metric: 'violationsOpen.drivers',
+    });
+    expect(NOW.violationsOpenDrivers('violationsOpen.driversAll').metric).toBe(
+      'violationsOpen.driversAll',
+    );
+    expect(NOW.violationsOpenUnknown()).toEqual({
+      to: '/fleet/violations?dunknown=true&dset=false',
+      metric: 'violationsOpen.unknown',
+    });
+    expect(NOW_BRANCH.violationsOpenDrivers().to).toBe('/fleet/violations?dset=false&branch=b1');
+    for (const link of [
+      NOW.violationsOpen(),
+      NOW.violationsOpenCompany(),
+      NOW.violationsOpenDrivers(),
+      NOW.violationsOpenUnknown(),
+    ]) {
+      expect(parse(link).params.has('year'), link.to).toBe(false);
+      expect(parse(link).params.has('dyear'), link.to).toBe(false);
+    }
+  });
+
+  it('opens the period’s drivers’ fines by the FINE’s days on the drivers’ half — never `from` / `vehicleCodes`', () => {
+    const P = periodLinks({
+      range: RANGE,
+      vehicleScope: {
+        ...NO_SET,
+        typeIds: ['t1'],
+        operationIds: ['o1'],
+        vehicleCodes: ['133', '141'],
+        branchId: 'b1',
+        scopeBranches: [B1_NAMED],
+      },
+    });
+    const head = `/fleet/violations?dfrom=${RANGE.from}&dto=${RANGE.to}&dcodes=133,141&type=t1&operation=o1&branch=b1`;
+    expect(P.violations('violations.count')).toEqual({ to: head, metric: 'violations.count' });
+    expect(P.violations('violations.owed', { dset: 'false' }).to).toBe(`${head}&dset=false`);
+    expect(P.violations('violations.byType', { dtype: 'vt1' }).to).toBe(`${head}&dtype=vt1`);
+    for (const name of ['from', 'to', 'vehicleCodes', 'year', 'dyear'])
+      expect(parse(P.violations('violations.count')).params.has(name), name).toBe(false);
+    // The company view at «كل فروعي»: the reader's two branches, no set.
+    expect(
+      periodLinks({ range: RANGE, vehicleScope: MINE_SET }).violations('violations.amount').to,
+    ).toBe(`/fleet/violations?dfrom=${RANGE.from}&dto=${RANGE.to}&branch=b1,b2`);
+  });
+
+  it('opens a fine’s «فتح» on its car, its day and its type — this fine and any that share them', () => {
+    const P = periodLinks({ range: RANGE, vehicleScope: MINE_SET });
+    expect(P.violationRow({ code: '295', date: '2026-10-14', violationTypeId: 'vt9' })).toEqual({
+      to: '/fleet/violations?dcodes=295&dfrom=2026-10-14&dto=2026-10-14&dtype=vt9',
+      metric: 'violationList.row',
+    });
+  });
+});
+
+describe('the links of «الوقود والمصروفات» (exact URLs, plan §7 and D17)', () => {
+  it('opens the balances, the requests, the low cards and the expiring ones of the figures’ branch', () => {
+    expect(NOW.chargingCompany('wataniya')).toEqual({
+      to: '/fleet/fuel-cards/charging?company=wataniya',
+      metric: 'fuelCharging.wataniya',
+    });
+    expect(NOW_BRANCH.charging('requested')).toEqual({
+      to: '/fleet/fuel-cards/charging?state=requested&branch=b1',
+      metric: 'fuelCharging.requested',
+    });
+    expect(NOW_MINE.charging('charged').to).toBe(
+      '/fleet/fuel-cards/charging?state=charged&branch=b1,b2',
+    );
+    expect(NOW_BRANCH.fuelCardsExpired()).toEqual({
+      to: `/fleet/fuel-cards?expiresBefore=${TODAY}&branch=b1`,
+      metric: 'fuelCards.expired',
+    });
+    expect(NOW_BRANCH.fuelCardsExpiring(30).to).toBe(
+      `/fleet/fuel-cards?expiresFrom=${addDaysYmd(TODAY, 1)}&expiresBefore=${addDaysYmd(TODAY, 30)}&branch=b1`,
+    );
+    expect(NOW.chargingStates(['requested', 'low'])).toEqual({
+      to: '/fleet/fuel-cards/charging?state=requested,low',
+      metric: 'fuelCardList.chargingStates',
+    });
+    expect(NOW_BRANCH.fuelCardsDue(30)).toEqual({
+      to: `/fleet/fuel-cards?expiresBefore=${addDaysYmd(TODAY, 30)}&branch=b1`,
+      metric: 'fuelCardList.expiry',
+    });
+    expect(NOW.reconcile('fuelSheets.reconcile')).toEqual({
+      to: '/fleet/fuel-cards/reconcile',
+      metric: 'fuelSheets.reconcile',
+    });
+    expect(NOW.reconcile().metric).toBe('fuelCharging.reconcile');
+  });
+
+  it('opens a card’s «فتح» by what leads it — its car and company, or its number — never the branch', () => {
+    // Led by an expiry state: the cards list on its car and company.
+    expect(NOW_BRANCH.fuelCardRow(CARD({ states: ['expired'] }))).toEqual({
+      to: '/fleet/fuel-cards?vehicleCodes=214&company=wataniya',
+      metric: 'fuelCardList.row',
+    });
+    expect(NOW.fuelCardRow(CARD({ company: 'chillout', states: ['expiring'] })).to).toBe(
+      '/fleet/fuel-cards?vehicleCodes=214&company=chillout',
+    );
+    // Led by a balance or a request: the charging screen on them.
+    for (const states of [['critical', 'requested'], ['requested'], ['low']] as const) {
+      expect(NOW_MINE.fuelCardRow(CARD({ states: [...states] })).to, states.join()).toBe(
+        '/fleet/fuel-cards/charging?vehicleCodes=214&company=wataniya',
+      );
+    }
+    // On no car, or on a car deleted since (the screens find live cars by code): by the number.
+    expect(
+      NOW_BRANCH.fuelCardRow(
+        CARD({ vehicleId: null, code: null, label: 'سفر 1', states: ['low'] }),
+      ),
+    ).toEqual({ to: '/fleet/fuel-cards?number=7045112000984417', metric: 'fuelCardList.row' });
+    expect(NOW.fuelCardRow(CARD({ vehicleDeleted: true, states: ['requested'] })).to).toBe(
+      '/fleet/fuel-cards?number=7045112000984417',
+    );
+  });
+
+  it('opens a kind of the period’s receipts, and a dealership row on its car, its exit day and its work', () => {
+    const P = periodLinks({
+      range: RANGE,
+      vehicleScope: { ...NO_SET, typeIds: ['t1'], branchId: 'b1', scopeBranches: [B1_NAMED] },
+    });
+    expect(P.opexKind('opex.card', 'fuel', 'card')).toEqual({
+      to: `/fleet/receipts?from=${RANGE.from}&to=${RANGE.to}&type=t1&branch=b1&kind=fuel&source=card`,
+      metric: 'opex.card',
+    });
+    expect(P.opexKind('opex.wash', 'wash').to).toBe(
+      `/fleet/receipts?from=${RANGE.from}&to=${RANGE.to}&type=t1&branch=b1&kind=wash`,
+    );
+    expect(P.dealershipRow({ code: '221', date: '2026-10-29', workKind: 'repair' })).toEqual({
+      to: '/fleet/dealership?vehicleCodes=221&from=2026-10-29&to=2026-10-29&work=repair',
+      metric: 'dealershipList.row',
+    });
   });
 });

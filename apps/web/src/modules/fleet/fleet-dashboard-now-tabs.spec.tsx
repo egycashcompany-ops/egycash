@@ -3,7 +3,9 @@
 // «نظرة عامة» and «الحركة اليوم» — which took the retired «التنبيهات» and «الحركة الآن»
 // (fleet-dashboard-tab-overview.spec.tsx, fleet-dashboard-tab-today.spec.tsx), «توزيع السيارات» and
 // «الصيانة والورش» — rebuilt under their old keys (fleet-dashboard-tab-distribution.spec.tsx, which
-// carries the old tab 3's pins, and fleet-dashboard-tab-maintenance.spec.tsx).
+// carries the old tab 3's pins, and fleet-dashboard-tab-maintenance.spec.tsx); «العدادات
+// والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات» and «الوقود والمصروفات»
+// have theirs (fleet-dashboard-tab-{km,accidents,violations,fuel}.spec.tsx).
 //
 // What this file pins is that each figure reads the field it is about, opens the screen that shows
 // the same number (through the one link builder), says what the approved sample says, and draws
@@ -15,9 +17,11 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { FLEET_DASHBOARD_TABS, addDaysYmd } from '@ecms/contracts';
+import { FLEET_DASHBOARD_TABS, FLEET_DASHBOARD_TAB_READS, addDaysYmd } from '@ecms/contracts';
 import {
   ALL_KEYS,
+  B1,
+  B2,
   DRIVER,
   NOW_DTO,
   TODAY,
@@ -25,6 +29,7 @@ import {
   dashboardClient,
   renderDashboard,
 } from './fleet-dashboard-fixtures';
+import { PERIOD_FULL } from './fleet-dashboard-period-fixtures';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DASH = join(HERE, 'components/fleet-dashboard');
@@ -204,6 +209,48 @@ describe('tab 5 — the summaries', () => {
   });
 });
 
+// ── The fuel parts of the old tabs follow the car's branch (plan D10, D23) ─────────────────────
+
+describe('«ملخصات» and «التراخيص» under a branch — the fuel parts are the branch’s, the custody parts the company’s', () => {
+  const CAIRO = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
+  const GIZA = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
+  const narrowed = { now: { ...NOW_DTO, branchId: B1, scopeBranches: [CAIRO] } };
+  const mine = { now: { ...NOW_DTO, scopeBranches: [CAIRO, GIZA] } };
+
+  it('«ملخصات»: no «الشركة كلها» on the fuel card or column, still on the custody ones; the fuel links carry the branch', () => {
+    for (const seed of [narrowed, mine]) {
+      const html = tab('summaries', seed);
+      const fuelCard = part(html, 'data-summary-card="fuel"', /data-summary-card="/u);
+      const fuelColumn = part(html, 'data-summary-column="fuel"', /data-summary-column="/u);
+      const custodyCard = part(html, 'data-summary-card="custody"', /data-summary-card="/u);
+      const custodyColumn = part(html, 'data-summary-column="custody"', /data-summary-column="/u);
+      expect(fuelCard).not.toBe('');
+      expect(fuelColumn).not.toBe('');
+      expect(fuelCard).not.toContain('data-company-wide');
+      expect(fuelColumn).not.toContain('data-company-wide');
+      expect(custodyCard).toContain('data-company-wide="true"');
+      expect(custodyColumn).toContain('data-company-wide="true"');
+      const branch = seed === narrowed ? B1 : `${B1},${B2}`;
+      for (const href of hrefOf(html, 'fuelCharging.wataniya'))
+        expect(new URLSearchParams(href.split('?')[1]).get('branch'), href).toBe(branch);
+    }
+  });
+
+  it('«التراخيص»: the papers and cards panel carries no «الشركة كلها»; its expiring cards open the branch’s', () => {
+    const html = tab('licences', narrowed);
+    const papers = part(html, 'data-licences-card="papers-cards"', /data-licences-card="/u);
+    expect(papers).not.toBe('');
+    expect(papers).not.toContain('data-company-wide');
+    const expiring = hrefOf(papers, 'fuelCards.expiring');
+    expect(expiring.length).toBeGreaterThan(0);
+    for (const href of expiring) {
+      expect(href).toBe(
+        `/fleet/fuel-cards?expiresFrom=${addDaysYmd(TODAY, 1)}&expiresBefore=${addDaysYmd(TODAY, 30)}&branch=${B1}`,
+      );
+    }
+  });
+});
+
 // ── The source: nothing counted, nothing ruled out ────────────────────────────────────────────
 
 describe('the dashboard’s tabs count nothing in the browser and draw no ruled-out piece', () => {
@@ -236,7 +283,7 @@ describe('the dashboard’s tabs count nothing in the browser and draw no ruled-
     }
   });
 
-  it('draws no Phase-2 piece, and nothing the owner ruled out, on any of the ten tabs', () => {
+  it('draws no Phase-2 piece, and nothing the owner ruled out, on any of the eleven tabs', () => {
     const SUPPLY = ['عقود التوريد', 'عقد توريد'];
     const RULED_OUT = [
       'ترتيب السائقين',
@@ -252,7 +299,12 @@ describe('the dashboard’s tabs count nothing in the browser and draw no ruled-
     for (const permissions of [ALL_KEYS, [...ALL_KEYS, 'fleetVehicleContract.view']]) {
       const supplyReader = permissions.includes('fleetVehicleContract.view');
       for (const key of FLEET_DASHBOARD_TABS) {
-        const html = tab(key, {}, permissions);
+        // A tab that draws the page's R2 is seeded with every period section, so its period part
+        // is scanned too.
+        const seed = FLEET_DASHBOARD_TAB_READS[key].includes('period')
+          ? { page: { url: `/fleet?tab=${key}`, dto: PERIOD_FULL } }
+          : {};
+        const html = tab(key, seed, permissions);
         const body = text(html);
         for (const word of RULED_OUT) expect(body, `${key}: ${word}`).not.toContain(word);
         // The year's supply contracts: on «توزيع السيارات» alone, and for their reader alone.

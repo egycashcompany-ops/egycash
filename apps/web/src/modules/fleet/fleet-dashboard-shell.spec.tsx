@@ -21,6 +21,7 @@ import {
   dashboardClient,
   renderDashboard,
 } from './fleet-dashboard-fixtures';
+import { PERIOD_FULL } from './fleet-dashboard-period-fixtures';
 import { REMEMBERED_FILTERS, dashboardView } from './pages/FleetDashboardPage';
 import { alertLines, alertSummary, tabBadges, visibleTabs } from './lib/fleet-dashboard-tabs';
 
@@ -76,7 +77,7 @@ describe('the frame', () => {
     expect(html.match(/role="tablist"/gu)).toHaveLength(1);
   });
 
-  it('shows all nine tabs, in the bar’s order, to a reader with every key', () => {
+  it('shows all eleven tabs, in the bar’s order, to a reader with every key', () => {
     expect(barTabs(html)).toEqual([
       'overview',
       'today',
@@ -84,14 +85,19 @@ describe('the frame', () => {
       'maintenance',
       'km',
       'accidents',
+      'violations',
+      'fuel',
       'period',
       'summaries',
       'licences',
     ]);
     expect(ar('fleet.dash.shell.tab.km')).toBe('العدادات والكيلومترات');
     expect(ar('fleet.dash.shell.tab.accidents')).toBe('الحوادث ومطالبات التأمين');
-    expect(html).toContain(`>${ar('fleet.dash.shell.tab.km')}<`);
-    expect(html).toContain(`>${ar('fleet.dash.shell.tab.accidents')}<`);
+    // The two new tabs, right after «الحوادث ومطالبات التأمين», as the approved bar names them.
+    expect(ar('fleet.dash.shell.tab.violations')).toBe('المخالفات المرورية والتسويات');
+    expect(ar('fleet.dash.shell.tab.fuel')).toBe('الوقود والمصروفات');
+    for (const tab of ['km', 'accidents', 'violations', 'fuel'])
+      expect(html, tab).toContain(`>${ar(`fleet.dash.shell.tab.${tab}`)}<`);
   });
 
   it('presses «نظرة عامة» on a clean address, in the system’s indigo', () => {
@@ -200,6 +206,45 @@ describe('the frame', () => {
     expect(period).toBeGreaterThan(now);
     expect(bar).toBeGreaterThan(period);
     expect(body.indexOf('data-acc-kpi="period"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «المخالفات المرورية والتسويات» as a panel of R1 and R2 both, the bar between its bands', () => {
+    const url = '/fleet?tab=violations&period=last30';
+    const html = renderDashboard({
+      url,
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(html)).toBe('violations');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.violations')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="violations"'));
+    const now = body.indexOf('data-viol-band="now"');
+    const period = body.indexOf('data-viol-band="period"');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(now).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(now);
+    expect(bar).toBeGreaterThan(period);
+    expect(body.indexOf('data-viol-kpi="period"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «الوقود والمصروفات» as a panel of R1 and R2 both, the bar between its bands', () => {
+    const url = '/fleet?tab=fuel&period=last30';
+    const html = renderDashboard({
+      url,
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(html)).toBe('fuel');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.fuel')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="fuel"'));
+    const now = body.indexOf('data-fuel-band="now"');
+    const period = body.indexOf('data-fuel-band="period"');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(now).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(now);
+    expect(bar).toBeGreaterThan(period);
+    expect(body.indexOf('data-fuel-opex="card"')).toBeGreaterThan(bar);
+    expect(body.indexOf('data-fuel-dealer="card"')).toBeGreaterThan(bar);
   });
 
   it('opens an old `?tab=distribution` / `?tab=maintenance` / `?tab=km` / `?tab=accidents` link on the rebuilt body (keys kept)', () => {
@@ -323,6 +368,68 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
     expect(accidents).toContain('data-acc-kpi="files"');
     expect(accidents).toContain('data-acc-band="period"');
     expect(accidents).not.toContain('data-acc-kpi="notices"');
+  });
+
+  it('shows a violations-only reader «المخالفات المرورية والتسويات» with both bands — and SENDS R2 for it', () => {
+    const url = '/fleet?tab=violations&period=last30';
+    const client = dashboardClient({ period: null, page: { url, dto: PERIOD_FULL } });
+    const html = renderDashboard({ url, permissions: ['fleetViolation.view'], client });
+    expect(barTabs(html)).toContain('violations');
+    expect(barTabs(html)).not.toContain('fuel');
+    expect(html).toContain('data-viol-band="now"');
+    expect(html).toContain('data-viol-band="period"');
+    expect(html).toContain('data-viol-kpi="period"');
+    // The page's R2 is asked for this reader (PERIOD_KEYS holds `fleetViolation.view`).
+    const asked = client
+      .getQueryCache()
+      .findAll({ queryKey: ['fleet', 'dashboard', 'period'] })
+      .filter((query) => !query.isDisabled());
+    expect(asked.length).toBeGreaterThan(0);
+  });
+
+  it('shows a receipts-only reader «الوقود والمصروفات» with its receipts part alone, beside «أرقام الفترة»', () => {
+    const url = '/fleet?tab=fuel&period=last30';
+    const client = dashboardClient({ now: null, period: null, page: { url, dto: PERIOD_FULL } });
+    const html = renderDashboard({ url, permissions: ['fleetReceipt.view'], client });
+    // The overview's month card, the fuel tab and «أرقام الفترة»: the three that draw the receipts.
+    expect(barTabs(html)).toEqual(['overview', 'fuel', 'period']);
+    expect(html).not.toContain('data-fuel-band="now"');
+    expect(html).toContain('data-fuel-band="period"');
+    expect(html).toContain('data-fuel-opex="card"');
+    expect(html).not.toContain('data-fuel-dealer="card"');
+  });
+
+  it('shows a fuel-card-only reader «الوقود والمصروفات» with the expiry card alone — no period band', () => {
+    const html = renderDashboard({
+      url: '/fleet?tab=fuel',
+      permissions: ['fleetFuelCard.view'],
+      client: dashboardClient({ period: null }),
+    });
+    expect(barTabs(html)).toEqual(['overview', 'fuel', 'licences']);
+    expect([...html.matchAll(/data-fuel-kpi="([a-z]+)"/gu)].map((m) => m[1])).toEqual(['expiring']);
+    expect(html).not.toContain('data-fuel-band="period"');
+    expect(html).not.toContain('data-period-filters');
+  });
+
+  it('keeps each band of the two new tabs on its own read — R1 on its way never blanks R2, nor the other way', () => {
+    for (const [tab, now, period] of [
+      ['violations', 'data-viol-cards="now"', 'data-viol-kpi="period"'],
+      ['fuel', 'data-fuel-kpis', 'data-fuel-opex="card"'],
+    ] as const) {
+      const url = `/fleet?tab=${tab}&period=last30`;
+      const r1Pending = renderDashboard({
+        url,
+        client: dashboardClient({ now: null, page: { url, dto: PERIOD_FULL } }),
+      });
+      expect(r1Pending, tab).toContain(`data-dash-tab-body="${tab}"`);
+      expect(r1Pending, tab).toContain('data-read-band="loading"');
+      expect(r1Pending, tab).not.toContain(now);
+      expect(r1Pending, tab).toContain(period);
+      const r2Pending = renderDashboard({ url, client: dashboardClient({ period: null }) });
+      expect(r2Pending, tab).toContain(now);
+      expect(r2Pending, tab).not.toContain(period);
+      expect(r2Pending, tab).toContain('data-period-filters="true"');
+    }
   });
 
   it('keeps each band of «الصيانة والورش» on its own read — R1 on its way never blanks the period', () => {
@@ -473,6 +580,12 @@ describe('the counts on the bar (plan §5.10)', () => {
     // none): the old count of the period's accidents went with the old body.
     expect(badge(html, 'km')).toBeUndefined();
     expect(badge(html, 'accidents')).toBeUndefined();
+    // Nor do «المخالفات المرورية والتسويات» and «الوقود والمصروفات» (the approved bar draws none).
+    expect(badge(html, 'violations')).toBeUndefined();
+    expect(badge(html, 'fuel')).toBeUndefined();
+    const all = tabBadges({ can: () => true, now: NOW_DTO, period: PERIOD_FULL });
+    expect(all.violations).toBeUndefined();
+    expect(all.fuel).toBeUndefined();
     expect(
       tabBadges({ can: () => true, now: NOW_DTO, period: PERIOD_DTO }).accidents,
     ).toBeUndefined();

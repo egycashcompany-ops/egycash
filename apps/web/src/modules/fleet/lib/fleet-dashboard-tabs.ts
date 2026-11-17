@@ -125,8 +125,9 @@ export interface TabBadge {
 /**
  * «الحركة اليوم» carries the ready cars without a driver today (amber, plain at 0); «الصيانة والورش»
  * the cars that reached the service limit (red, and only when there are some — it hides at 0 and
- * with its section); «نظرة عامة», «توزيع السيارات», «العدادات والكيلومترات» and «الحوادث ومطالبات
- * التأمين» have no count (the approved bar draws none); «التراخيص» keeps its own.
+ * with its section); «نظرة عامة», «توزيع السيارات», «العدادات والكيلومترات», «الحوادث ومطالبات
+ * التأمين», «المخالفات المرورية والتسويات» and «الوقود والمصروفات» have no count (the approved bar
+ * draws none); «التراخيص» keeps its own.
  */
 export const tabBadges = (
   answers: DashboardAnswers,

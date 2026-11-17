@@ -19,22 +19,29 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
 import {
   FLEET_DASHBOARD_ALARM_ROWS,
+  FLEET_DASHBOARD_DEALERSHIP_ROWS,
+  FLEET_DASHBOARD_FUEL_CARD_ROWS,
   FLEET_DASHBOARD_NOW_KEYS,
   FLEET_DASHBOARD_PERIOD_KEYS,
+  FLEET_DASHBOARD_VIOLATION_ROWS,
   FLEET_DASHBOARD_WORKSHOP_ROWS,
+  FLEET_UNKNOWN_DRIVER_NAME,
   SettingKeys,
   calendarDayBounds,
   compareFleetVehicleCodes,
   platformPermissions,
   type FleetCatalogItemDto,
+  type FleetDealershipInvoiceDto,
   type FleetDashboardNowDto,
   type FleetDashboardPeriodDto,
+  type FleetFuelCardDto,
   type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
   type FleetNoticeDto,
   type FleetRosterDayDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
+  type FleetViolationDto,
   type FleetViolationRollupDto,
 } from '@ecms/contracts';
 import mongoose, { Types } from 'mongoose';
@@ -172,6 +179,8 @@ let workshopId: string;
 let workTypeId: string;
 let vehicleSide: string;
 let driverSide: string;
+/** A second drivers' type — «مخالفات الفترة حسب النوع» orders two bars. */
+let driverSide2: string;
 let counter = 0;
 const NAMES = ['أحمد', 'محمود', 'كريم', 'سامي', 'ياسر', 'حسن', 'طارق', 'وليد', 'هشام', 'عادل'];
 
@@ -382,6 +391,7 @@ beforeAll(async () => {
   workTypeId = await mkCatalog('workType', 'صيانة');
   vehicleSide = await mkCatalog('violationType', 'رسوم اللوحة', { violationSide: 'company' });
   driverSide = await mkCatalog('violationType', 'سرعة اللوحة', { violationSide: 'driver' });
+  driverSide2 = await mkCatalog('violationType', 'عكس الاتجاه اللوحة', { violationSide: 'driver' });
   const specCash = await mkCatalog('driverSpecialization', 'نقل اموال');
   const specAtm = await mkCatalog('driverSpecialization', 'ATM');
 
@@ -644,6 +654,31 @@ beforeAll(async () => {
 
   const del = await send('delete', `/fleet/vehicles/${v7.id}`);
   expect([200, 204]).toContain(del.status);
+
+  // «مخالفات السائقين في الفترة» — three drivers' fines of October, written as the ledger stores
+  // them: v1's by dA, ALREADY collected (in the period, never owed — R1 unchanged by it); v2's by
+  // «مجهول», owed, of the second type; and one on v7 — deleted above, its fine stays — by a name
+  // the book wrote, owed. Their days sit off midnight on purpose (old-book rows): whole days.
+  for (const [car, day, employee, name, type, amount, collected] of [
+    [v1, '2026-10-05T00:00:00.000Z', dA, null, driverSide, 40, true],
+    [v2, '2026-10-20T21:00:00.000Z', null, FLEET_UNKNOWN_DRIVER_NAME, driverSide2, 25, false],
+    [v7, '2026-10-07T00:00:00.000Z', null, 'سائق من الدفتر', driverSide, 15, false],
+  ] as const) {
+    await FleetViolationModel.create({
+      ...legacy,
+      kind: 'driver',
+      vehicleId: new Types.ObjectId(car.id),
+      violationTypeId: new Types.ObjectId(type),
+      amount,
+      year: null,
+      count: null,
+      unitValue: null,
+      date: new Date(day),
+      driverEmployeeId: employee === null ? null : new Types.ObjectId(employee),
+      driverName: name,
+      collected,
+    });
+  }
 
   now = ok<FleetDashboardNowDto>(await get('/fleet/dashboard/now'));
   oct = ok<FleetDashboardPeriodDto>(await get('/fleet/dashboard/period', OCT));
@@ -920,12 +955,18 @@ describe('R1 parity — the overview’s action centre (the old «التنبيه
         expiresBefore: last('2026-12-01'),
       }),
     );
+    // «أقربها» = the first card of the expiring cards' own list, by expiry.
+    const window = { expiresFrom: first('2026-11-02'), expiresBefore: last('2026-12-01') };
+    const [soonest] = ok<FleetFuelCardDto[]>(
+      await get('/fleet/fuel-cards', { ...window, sortBy: 'expiresAt', sortDir: 'asc' }),
+    );
     expect(now.fuelCards).toEqual({
       warnDays: 30,
       expired: expired.cardCount,
       expiring: expiring.cardCount,
+      nearest: soonest?.expiresAt?.slice(0, 10) ?? null,
     });
-    expect(now.fuelCards).toMatchObject({ expired: 1, expiring: 1 });
+    expect(now.fuelCards).toMatchObject({ expired: 1, expiring: 1, nearest: '2026-11-15' });
   });
 
   it('T1.7/T1.8/T5.1–T5.5 = the charging screen’s summary', async () => {
@@ -943,7 +984,17 @@ describe('R1 parity — the overview’s action centre (the old «التنبيه
       low: { belowYellow: low.cardCount, belowRed: red.cardCount, yellowAt: 300, redAt: 100 },
       charged24h: all['chargedTodayAmount'],
       cards: all['cardCount'],
+      companyCards: { wataniya: all['wataniyaCards'], chillout: all['chilloutCards'] },
+      // The company view names the cards on no car (none on this fixture).
+      unassigned: { count: all['noCarCards'], balance: all['noCarBalance'] },
     });
+    // Each company's cards = the cards screen filtered to it.
+    expect(now.fuelCharging?.companyCards).toEqual({
+      wataniya: await total('/fleet/fuel-cards', { company: 'wataniya' }),
+      chillout: await total('/fleet/fuel-cards', { company: 'chillout' }),
+    });
+    expect(now.fuelCharging?.companyCards).toEqual({ wataniya: 3, chillout: 0 });
+    expect(now.fuelCharging?.unassigned).toEqual({ count: 0, balance: 0 });
     expect(now.fuelCharging?.requested).toEqual({ count: 1, amount: 200 });
     expect(now.fuelCharging?.charged24h).toBe(500);
     // «موزعة على N كارتًا» = the cards screen's own count.
@@ -1233,10 +1284,12 @@ describe('R1 parity — tabs 3 and 5', () => {
         collected: false,
       }),
     );
+    // October adds an owed «مجهول» (25) and an owed book name on the deleted v7 (15); dA's
+    // October fine is collected, so it is in neither.
     expect(v?.drivers).toMatchObject({
       attributed: 30,
-      unknown: { amount: 10, count: 1 },
-      unlinked: { amount: 77, count: 1 },
+      unknown: { amount: 35, count: 2 },
+      unlinked: { amount: 92, count: 2 },
     });
   });
 
@@ -1259,13 +1312,99 @@ describe('R1 parity — tabs 3 and 5', () => {
     expect(v?.drivers.total.count).toBe(
       await total('/fleet/violations', { kind: 'driver', collected: false }),
     );
-    // Last year's statement (2 × 150) is in it; this year's «ملخصات» figure is not.
+    // The drivers' part split by whom (§7, Q1 أ) — each part the register's own list, every year:
+    // «مجهول» = `unknownDriver=true`, the known drivers = the linked rows (and how many people).
+    const owed = ok<FleetViolationDto[]>(
+      await get('/fleet/violations', { kind: 'driver', collected: false, pageSize: 100 }),
+    );
+    expect(owed).toHaveLength(v?.drivers.total.count ?? -1);
+    const unknownRows = ok<FleetViolationDto[]>(
+      await get('/fleet/violations', {
+        kind: 'driver',
+        collected: false,
+        unknownDriver: true,
+        pageSize: 100,
+      }),
+    );
+    const linked = owed.filter((row) => row.driverEmployeeId !== null);
+    const money = (rows: readonly FleetViolationDto[]) =>
+      Math.round(rows.reduce((acc, row) => acc + row.amount, 0) * 100) / 100;
+    expect(v?.drivers.unknown).toEqual({ amount: money(unknownRows), count: unknownRows.length });
+    expect(v?.drivers.attributed).toEqual({
+      amount: money(linked),
+      count: linked.length,
+      drivers: new Set(linked.map((row) => row.driverEmployeeId)).size,
+    });
+    const parts = v?.drivers;
+    expect(
+      Math.round(
+        ((parts?.attributed.amount ?? 0) +
+          (parts?.unknown.amount ?? 0) +
+          (parts?.unlinked.amount ?? 0)) *
+          100,
+      ) / 100,
+    ).toBe(parts?.total.amount);
+    expect(
+      (parts?.attributed.count ?? 0) + (parts?.unknown.count ?? 0) + (parts?.unlinked.count ?? 0),
+    ).toBe(parts?.total.count);
+    // Last year's statement (2 × 150) is in it; this year's «ملخصات» figure is not. October adds
+    // 25 («مجهول») and 15 (a book name on the deleted v7); dA's collected 40 is in no owed figure.
     expect(v).toEqual({
       company: { amount: 500, count: 3 },
-      drivers: { total: { amount: 117, count: 3 } },
-      total: { amount: 617, count: 6 },
+      drivers: {
+        total: { amount: 157, count: 5 },
+        attributed: { amount: 30, count: 1, drivers: 1 },
+        unknown: { amount: 35, count: 2 },
+        unlinked: { amount: 92, count: 2 },
+      },
+      total: { amount: 657, count: 8 },
+      // The company view: no fine on a car the registry never had on this fixture.
+      bookOnly: { company: { amount: 0, count: 0 }, drivers: { amount: 0, count: 0 } },
     });
     expect(now.violationsYear?.company).toBe(200);
+  });
+
+  it('«كروت تحتاج متابعة» = the flagged cards of the cards and charging screens, the most urgent first', async () => {
+    // Flagged = expired · below the red line · a request waiting · below the yellow line · expiring
+    // in the window — each the screen's own filter; the list is their union, in urgency order.
+    const ids = async (query: Record<string, unknown>) =>
+      ok<FleetFuelCardDto[]>(await get('/fleet/fuel-cards', { ...query, pageSize: 100 })).map(
+        (card) => card.id,
+      );
+    const expired = await ids({ expiresBefore: last(TODAY) });
+    const red = await ids({ balanceBelow: 100 });
+    const requested = await ids({ requested: true });
+    const low = await ids({ balanceBelow: 300 });
+    const expiring = await ids({
+      expiresFrom: first('2026-11-02'),
+      expiresBefore: last('2026-12-01'),
+    });
+    const flagged = new Set([...expired, ...red, ...requested, ...low, ...expiring]);
+    const list = now.fuelCardList;
+    expect(list?.total).toBe(flagged.size);
+    expect(list?.rows.length).toBe(Math.min(flagged.size, FLEET_DASHBOARD_FUEL_CARD_ROWS));
+    for (const row of list?.rows ?? []) {
+      expect(flagged.has(row.cardId)).toBe(true);
+      expect(row.states.includes('expired')).toBe(expired.includes(row.cardId));
+      expect(row.states.includes('critical')).toBe(red.includes(row.cardId));
+      expect(row.states.includes('requested')).toBe(requested.includes(row.cardId));
+      // «رصيد منخفض» never repeats «يوشك على النفاد».
+      expect(row.states.includes('low')).toBe(
+        low.includes(row.cardId) && !red.includes(row.cardId),
+      );
+      expect(row.states.includes('expiring')).toBe(expiring.includes(row.cardId));
+    }
+    // v1's card expired today (and is empty), v3's waits for a top-up (empty), v2's expires on the 15th.
+    expect(list?.rows.map((row) => [row.code, row.states])).toEqual([
+      [v1.code, ['expired', 'critical']],
+      [v3.code, ['critical', 'requested']],
+      [v2.code, ['expiring']],
+    ]);
+    expect(list?.rows.every((row) => !row.vehicleDeleted && row.label === null)).toBe(true);
+  });
+
+  it('«مطابقة شيت شركة الوقود»: no sheet of either company was ever read — both null, never zeros', () => {
+    expect(now.fuelSheets).toEqual({ wataniya: null, chillout: null });
   });
 
   it('T4.6 = the licensing papers counted read-only (none open on this fixture)', () => {
@@ -1337,6 +1476,85 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
     expect(b2.notices?.open).toBe(0);
     expect(now.notices?.open).toBe(1);
     expect(b2.alerts.map((a) => a.id)).not.toContain('noticesMissing');
+  });
+
+  it('the fuel figures follow the card’s CURRENT car’s branch: the screens with branchIds=B2', async () => {
+    const q = { branchIds: B2 };
+    const all = ok<Record<string, number>>(await get('/fleet/fuel-cards/summary', q));
+    const low = ok<{ cardCount: number }>(
+      await get('/fleet/fuel-cards/summary', { ...q, balanceBelow: 300 }),
+    );
+    const red = ok<{ cardCount: number }>(
+      await get('/fleet/fuel-cards/summary', { ...q, balanceBelow: 100 }),
+    );
+    expect(b2.fuelCharging).toEqual({
+      wataniya: all['wataniyaBalance'],
+      chillout: all['chilloutBalance'],
+      requested: { count: all['requestedCount'], amount: all['requestedAmount'] },
+      low: { belowYellow: low.cardCount, belowRed: red.cardCount, yellowAt: 300, redAt: 100 },
+      charged24h: all['chargedTodayAmount'],
+      cards: all['cardCount'],
+      companyCards: { wataniya: all['wataniyaCards'], chillout: all['chilloutCards'] },
+      // A branch never names the cards on no car.
+      unassigned: null,
+    });
+    // B2's one card is v2's: charged 500 today, no request; the company has three.
+    expect(b2.fuelCharging).toMatchObject({ cards: 1, charged24h: 500, requested: { count: 0 } });
+    expect(b2.fuelCharging?.cards).toBe(await total('/fleet/fuel-cards', q));
+    const window = { expiresFrom: first('2026-11-02'), expiresBefore: last('2026-12-01') };
+    const expired = ok<{ cardCount: number }>(
+      await get('/fleet/fuel-cards/summary', { ...q, expiresBefore: last(TODAY) }),
+    );
+    const expiring = ok<{ cardCount: number }>(
+      await get('/fleet/fuel-cards/summary', { ...q, ...window }),
+    );
+    const [soonest] = ok<FleetFuelCardDto[]>(
+      await get('/fleet/fuel-cards', { ...q, ...window, sortBy: 'expiresAt', sortDir: 'asc' }),
+    );
+    expect(b2.fuelCards).toEqual({
+      warnDays: 30,
+      expired: expired.cardCount,
+      expiring: expiring.cardCount,
+      nearest: soonest?.expiresAt?.slice(0, 10) ?? null,
+    });
+    expect(b2.fuelCards).toMatchObject({ expired: 0, expiring: 1, nearest: '2026-11-15' });
+    expect(b2.fuelCardList?.rows.map((row) => row.code)).toEqual([v2.code]);
+    expect(b2.fuelCardList?.total).toBe(1);
+    expect(b2.fuelSheets).toEqual({ wataniya: null, chillout: null });
+    // The overview's expired line is the company's only (v1's card is B1's).
+    expect(b2.alerts.map((a) => a.id)).not.toContain('fuelCardExpired');
+  });
+
+  it('«مخالفات قائمة» under B2: the drivers’ parts = the register with branchIds=B2; no book rows apart', async () => {
+    const owed = ok<FleetViolationDto[]>(
+      await get('/fleet/violations', {
+        kind: 'driver',
+        collected: false,
+        branchIds: B2,
+        pageSize: 100,
+      }),
+    );
+    const unknownCount = await total('/fleet/violations', {
+      kind: 'driver',
+      collected: false,
+      unknownDriver: true,
+      branchIds: B2,
+    });
+    const v = b2.violationsOpen;
+    expect(v?.drivers.total.count).toBe(owed.length);
+    expect(v?.drivers.unknown.count).toBe(unknownCount);
+    expect(v?.drivers.attributed.drivers).toBe(
+      new Set(owed.flatMap((row) => (row.driverEmployeeId === null ? [] : [row.driverEmployeeId])))
+        .size,
+    );
+    // v2's two «مجهول» fines (June and October) and the deleted v7's book name — B2's cars.
+    expect(v?.drivers).toEqual({
+      total: { amount: 50, count: 3 },
+      attributed: { amount: 0, count: 0, drivers: 0 },
+      unknown: { amount: 35, count: 2 },
+      unlinked: { amount: 15, count: 1 },
+    });
+    expect(v?.bookOnly).toBeNull();
   });
 
   it('the alarm and no-reading lines narrow to the branch’s cars, the link carrying their codes', async () => {
@@ -1505,10 +1723,10 @@ const periodParity = async (
     count: rec.count,
   });
   // «مصروف الوقود» = the receipts screen filtered to fuel.
-  const fuel = ok<{ fuelTotal: number }>(
+  const fuel = ok<Record<string, number>>(
     await get('/fleet/receipts/summary', { ...q, kind: 'fuel' }, branch),
   );
-  expect(dto.opex?.fuel).toBe(fuel.fuelTotal);
+  expect(dto.opex?.fuel).toBe(fuel['fuelTotal']);
   const deal = ok<{ count: number; pending: number; dealershipTotal: number }>(
     await get('/fleet/dealership/summary', q, branch),
   );
@@ -1518,6 +1736,97 @@ const periodParity = async (
     pending: deal.pending,
     dataFrom: '2026-09-01',
   });
+  // «فواتير التوكيل في الفترة» = the dealership screen's first page, same ids, same order.
+  const dealRows = ok<FleetDealershipInvoiceDto[]>(
+    await get(
+      '/fleet/dealership',
+      { ...q, page: 1, pageSize: FLEET_DASHBOARD_DEALERSHIP_ROWS },
+      branch,
+    ),
+  );
+  expect(dto.dealershipList?.rows.map((row) => row.id)).toEqual(dealRows.map((row) => row.id));
+  expect(dto.dealershipList?.rows.map((row) => row.date)).toEqual(
+    dealRows.map((row) => row.outDate.slice(0, 10)),
+  );
+  expect((dto.dealershipList?.more ?? 0) + (dto.dealershipList?.rows.length ?? 0)).toBe(deal.count);
+  // «مصروف التشغيل حسب النوع» — each bar the receipts screen filtered to that kind (and source).
+  const recOf = async (extra: Record<string, unknown>) =>
+    ok<Record<string, number>>(await get('/fleet/receipts/summary', { ...q, ...extra }, branch));
+  const byCard = await recOf({ kind: 'fuel', source: 'card' });
+  const byCustody = await recOf({ kind: 'fuel', source: 'custody' });
+  const tyres = await recOf({ kind: 'tyres' });
+  const wash = await recOf({ kind: 'wash' });
+  const maint = await recOf({ kind: 'maintenance' });
+  const sumOf = (t: Record<string, number>) =>
+    Math.round(((t['cardTotal'] ?? 0) + (t['custodyTotal'] ?? 0)) * 100) / 100;
+  expect(dto.opex).toMatchObject({
+    card: sumOf(byCard),
+    fuelCustody: sumOf(byCustody),
+    tyres: sumOf(tyres),
+    wash: sumOf(wash),
+    maintenance: sumOf(maint),
+    litres: Math.round(fuel['fuelLitres'] ?? 0),
+    unpricedFuel: fuel['fuelUnpriced'],
+  });
+  const opex = dto.opex;
+  expect(
+    Math.round(
+      ((opex?.card ?? 0) +
+        (opex?.fuelCustody ?? 0) +
+        (opex?.tyres ?? 0) +
+        (opex?.wash ?? 0) +
+        (opex?.maintenance ?? 0)) *
+        100,
+    ) / 100,
+  ).toBe(opex?.total);
+  // «مصروف التشغيل يومًا بيوم»: every day of the range, Σ = the total; a day with receipts = the
+  // receipts screen of that one day.
+  const buckets = dto.opexSeries?.buckets ?? [];
+  expect(buckets.length).toBe(dto.range.days);
+  expect(Math.round(buckets.reduce((acc, b) => acc + b.amount, 0) * 100) / 100).toBe(opex?.total);
+  expect(buckets.reduce((acc, b) => acc + b.count, 0)).toBe(opex?.count);
+  for (const bucket of buckets.filter((b) => b.hasRows)) {
+    const one = await recOf({ from: bucket.key, to: bucket.key });
+    expect(bucket.amount, bucket.key).toBe(sumOf(one));
+    expect(bucket.count, bucket.key).toBe(one['count']);
+  }
+  // «مخالفات السائقين في الفترة» = the register's drivers' half over the same days and set.
+  const vq = { ...q, kind: 'driver' };
+  const viol = dto.violations;
+  expect(viol?.count).toBe(await total('/fleet/violations', vq, branch));
+  expect(viol?.owed.count).toBe(
+    await total('/fleet/violations', { ...vq, collected: false }, branch),
+  );
+  expect(viol?.collected.count).toBe(
+    await total('/fleet/violations', { ...vq, collected: true }, branch),
+  );
+  for (const bar of viol?.byType ?? []) {
+    expect(bar.count).toBe(
+      await total('/fleet/violations', { ...vq, violationTypeId: bar.violationTypeId }, branch),
+    );
+  }
+  expect((viol?.byType ?? []).reduce((acc, bar) => acc + bar.count, 0)).toBe(viol?.count);
+  // …and its first page, newest fine day first.
+  const violRows = ok<FleetViolationDto[]>(
+    await get(
+      '/fleet/violations',
+      {
+        ...vq,
+        sortBy: 'date',
+        sortDir: 'desc',
+        page: 1,
+        pageSize: FLEET_DASHBOARD_VIOLATION_ROWS,
+      },
+      branch,
+    ),
+  );
+  expect(dto.violationList?.rows.map((row) => row.violationId)).toEqual(
+    violRows.map((row) => row.id),
+  );
+  expect(dto.violationList?.rows.map((row) => [row.date, row.amount, row.collected])).toEqual(
+    violRows.map((row) => [row.date?.slice(0, 10), row.amount, row.collected]),
+  );
+  expect((dto.violationList?.more ?? 0) + (dto.violationList?.rows.length ?? 0)).toBe(viol?.count);
 };
 
 const kmInvariants = (dto: FleetDashboardPeriodDto) => {
@@ -1633,6 +1942,70 @@ describe('R2 parity — the company view of October', () => {
     });
     // «أرقام الفترة» keeps the CHECK-IN day: v4 (Oct 25, open), v2 and v7 (closed).
     expect(oct.visits).toEqual({ count: 3, closed: 2, open: 1 });
+    // «مخالفات السائقين في الفترة»: dA's (Oct 5, collected), the deleted v7's book name (Oct 7,
+    // owed) and v2's «مجهول» (stored at 21:00Z on Oct 20 — its whole day counts); the statements
+    // (a year, no day) and the fines of May–July never.
+    expect(oct.violations).toEqual({
+      count: 3,
+      amount: 80,
+      owed: { count: 2, amount: 40 },
+      collected: { count: 1, amount: 40 },
+      byType: [
+        {
+          violationTypeId: driverSide,
+          name: expect.objectContaining({ ar: 'سرعة اللوحة' }) as unknown,
+          unspecified: false,
+          count: 2,
+          amount: 55,
+        },
+        {
+          violationTypeId: driverSide2,
+          name: expect.objectContaining({ ar: 'عكس الاتجاه اللوحة' }) as unknown,
+          unspecified: false,
+          count: 1,
+          amount: 25,
+        },
+      ],
+    });
+    // Newest fine day first; the deleted car keeps its code and loses its record link.
+    expect(
+      oct.violationList?.rows.map((r) => [r.code, r.date, r.vehicleDeleted, r.collected]),
+    ).toEqual([
+      [v2.code, '2026-10-20', false, false],
+      [v7.code, '2026-10-07', true, false],
+      [v1.code, '2026-10-05', false, true],
+    ]);
+    expect(oct.violationList?.rows.map((r) => [r.driverEmployeeId, r.driverName])).toEqual([
+      [null, FLEET_UNKNOWN_DRIVER_NAME],
+      [null, 'سائق من الدفتر'],
+      [dA, null],
+    ]);
+    expect(oct.violationList?.more).toBe(0);
+    // «مصروف التشغيل حسب النوع»: the custody fuel (120) and the two washes (50 + the deleted v7's
+    // 35); no card receipt, no tyres, no workshop paper.
+    expect(oct.opex).toMatchObject({
+      card: 0,
+      fuelCustody: 120,
+      tyres: 0,
+      wash: 85,
+      maintenance: 0,
+    });
+    expect(
+      oct.opexSeries?.buckets.filter((b) => b.hasRows).map((b) => [b.key, b.amount, b.count]),
+    ).toEqual([
+      ['2026-10-07', 35, 1],
+      ['2026-10-15', 50, 1],
+      ['2026-10-16', 120, 1],
+    ]);
+    // The dealership rows the two October exits opened (v2's, the deleted v7's): page 1 of the
+    // screen, as `periodParity` holds; never an empty table here.
+    expect(oct.dealershipList?.rows.length).toBeGreaterThan(0);
+    expect(oct.opexSeries?.buckets[0]).toEqual({
+      key: '2026-10-01',
+      hasRows: false,
+      amount: 0,
+      count: 0,
+    });
   });
 
   it('holds the invariants: km = Σ buckets = Σ branches + unregistered; Σ bars = exits', () => {
@@ -1683,6 +2056,9 @@ describe('R2 parity — the vehicle set travels as filters', () => {
     expect(b2.vehicleScope.scopeBranches?.map((b) => b.id)).toEqual([B2]);
     await periodParity(b2, { branchIds: B2 }, B2);
     kmInvariants(b2);
+    // The drivers' fines of B2's cars: v2's «مجهول» and the deleted v7's (by its last branch).
+    expect(b2.violations).toMatchObject({ count: 2, amount: 40, owed: { count: 2, amount: 40 } });
+    expect(b2.violationList?.rows.map((r) => r.code)).toEqual([v2.code, v7.code]);
     // One branch in scope: «حسب النوع» is drawn and sums to the km.
     expect((b2.km?.byType ?? []).reduce((a, t) => a + t.km, 0)).toBe(b2.km?.total);
   });

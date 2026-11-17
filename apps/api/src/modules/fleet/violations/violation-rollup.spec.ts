@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assembleOpenDigest, assembleRollups } from './violation-rollup';
-import { type ViolationYearSums } from './violation.repository';
+import { type DriverFineGroup, type ViolationYearSums } from './violation.repository';
 
 const codes = new Map([
   ['v1', 'V1'],
@@ -396,68 +396,180 @@ describe('assembleOpenDigest — «مخالفات قائمة»: every year still
     collectedCount: 0,
     ...over,
   });
+  const group = (over: Partial<DriverFineGroup>): DriverFineGroup => ({
+    attributed: false,
+    driverName: null,
+    amount: 0,
+    count: 0,
+    drivers: 0,
+    ...over,
+  });
+  const zero = { amount: 0, count: 0 };
+  const noSplit = { attributed: { ...zero, drivers: 0 }, unknown: zero, unlinked: zero };
+  const company = { bookOnly: false };
 
   it('sums the outstanding halves of several cars and several YEARS — never only this year', () => {
-    const out = assembleOpenDigest([
-      // A statement row counts the violations it records (its `count`): 4 here.
-      sums({ year: 2026, outstandingVehicleAmount: 400, outstandingVehicleCount: 4 }),
-      // Last year's car is still owed: it is in the figure.
-      sums({
-        vehicleId: 'v2',
-        year: 2025,
-        outstandingVehicleAmount: 250.5,
-        outstandingVehicleCount: 1,
-      }),
-      // The drivers' fines count one per row.
-      sums({ year: 2024, outstandingDriverAmount: 150, outstandingDriverCount: 3 }),
-    ]);
+    const out = assembleOpenDigest(
+      [
+        // A statement row counts the violations it records (its `count`): 4 here.
+        sums({ year: 2026, outstandingVehicleAmount: 400, outstandingVehicleCount: 4 }),
+        // Last year's car is still owed: it is in the figure.
+        sums({
+          vehicleId: 'v2',
+          year: 2025,
+          outstandingVehicleAmount: 250.5,
+          outstandingVehicleCount: 1,
+        }),
+        // The drivers' fines count one per row.
+        sums({ year: 2024, outstandingDriverAmount: 150, outstandingDriverCount: 3 }),
+      ],
+      [group({ attributed: true, amount: 150, count: 3, drivers: 2 })],
+      company,
+    );
     expect(out).toEqual({
       company: { amount: 650.5, count: 5 },
-      drivers: { total: { amount: 150, count: 3 } },
+      drivers: {
+        total: { amount: 150, count: 3 },
+        attributed: { amount: 150, count: 3, drivers: 2 },
+        unknown: zero,
+        unlinked: zero,
+      },
       total: { amount: 800.5, count: 8 },
+      bookOnly: null,
     });
   });
 
   it('a collected (ticked) row is outside the figure: only the outstanding parts are read', () => {
-    const out = assembleOpenDigest([
-      sums({
-        vehicleCount: 6,
-        vehicleAmount: 600,
-        driverCount: 2,
-        driverAmount: 200,
-        // 2 statements and 1 driver fine collected since.
-        outstandingVehicleAmount: 400,
-        outstandingVehicleCount: 4,
-        outstandingDriverAmount: 100,
-        outstandingDriverCount: 1,
-        rowCount: 3,
-        collectedCount: 1,
-      }),
-    ]);
+    const out = assembleOpenDigest(
+      [
+        sums({
+          vehicleCount: 6,
+          vehicleAmount: 600,
+          driverCount: 2,
+          driverAmount: 200,
+          // 2 statements and 1 driver fine collected since.
+          outstandingVehicleAmount: 400,
+          outstandingVehicleCount: 4,
+          outstandingDriverAmount: 100,
+          outstandingDriverCount: 1,
+          rowCount: 3,
+          collectedCount: 1,
+        }),
+      ],
+      [group({ driverName: 'مجهول', amount: 100, count: 1 })],
+      company,
+    );
     expect(out.company).toEqual({ amount: 400, count: 4 });
     expect(out.drivers.total).toEqual({ amount: 100, count: 1 });
     expect(out.total).toEqual({ amount: 500, count: 5 });
   });
 
   it('money to the piastre: no binary tail from `$sum`, and a −0 is a plain 0', () => {
-    const out = assembleOpenDigest([
-      sums({ outstandingVehicleAmount: 0.1, outstandingDriverAmount: 0.1 }),
-      sums({ vehicleId: 'v2', outstandingVehicleAmount: 0.2, outstandingDriverAmount: 0.2 }),
-    ]);
+    const out = assembleOpenDigest(
+      [
+        sums({ outstandingVehicleAmount: 0.1, outstandingDriverAmount: 0.1 }),
+        sums({ vehicleId: 'v2', outstandingVehicleAmount: 0.2, outstandingDriverAmount: 0.2 }),
+      ],
+      [],
+      company,
+    );
     expect(out.company.amount).toBe(0.3);
     expect(out.drivers.total.amount).toBe(0.3);
     expect(out.total.amount).toBe(0.6);
     expect(
-      Object.is(assembleOpenDigest([sums({ outstandingVehicleAmount: -0 })]).company.amount, 0),
+      Object.is(
+        assembleOpenDigest([sums({ outstandingVehicleAmount: -0 })], [], company).company.amount,
+        0,
+      ),
     ).toBe(true);
   });
 
   it('nothing owed — and no rows at all — is zeros, never a missing figure', () => {
-    const zero = { amount: 0, count: 0 };
-    expect(assembleOpenDigest([])).toEqual({
+    expect(assembleOpenDigest([], [], company)).toEqual({
       company: zero,
-      drivers: { total: zero },
+      drivers: { total: zero, ...noSplit },
       total: zero,
+      bookOnly: null,
     });
+    expect(assembleOpenDigest([], [], { bookOnly: true }).bookOnly).toEqual({
+      company: zero,
+      drivers: zero,
+    });
+  });
+
+  it('splits the drivers’ total EXACTLY: attributed + «مجهول» + «اسم غير مربوط», amount AND count', () => {
+    const out = assembleOpenDigest(
+      [
+        sums({ year: 2026, outstandingDriverAmount: 1000.25, outstandingDriverCount: 9 }),
+        sums({
+          vehicleId: 'v2',
+          year: 2023,
+          outstandingDriverAmount: 500,
+          outstandingDriverCount: 3,
+        }),
+      ],
+      [
+        // Every year's attributed fines are ONE group; `drivers` = its distinct employees.
+        group({ attributed: true, amount: 900, count: 7, drivers: 4 }),
+        group({ driverName: null, amount: 100, count: 1 }), // no name → «مجهول»
+        group({ driverName: ' مجهول ', amount: 200, count: 2 }), // the book's word, spaced
+        group({ driverName: 'محمد عبد الله', amount: 300.25, count: 2 }), // a name nobody linked
+      ],
+      company,
+    );
+    expect(out.drivers).toEqual({
+      total: { amount: 1500.25, count: 12 },
+      attributed: { amount: 900, count: 7, drivers: 4 },
+      unknown: { amount: 300, count: 3 },
+      unlinked: { amount: 300.25, count: 2 },
+    });
+    const { attributed, unknown, unlinked, total } = out.drivers;
+    expect(attributed.amount + unknown.amount + unlinked.amount).toBeCloseTo(total.amount, 10);
+    expect(attributed.count + unknown.count + unlinked.count).toBe(total.count);
+  });
+
+  it('the distinct drivers are the attributed group’s — an unattributed group names nobody', () => {
+    const out = assembleOpenDigest(
+      [sums({ outstandingDriverAmount: 60, outstandingDriverCount: 3 })],
+      [
+        group({ attributed: true, amount: 40, count: 2, drivers: 1 }),
+        group({ driverName: 'اسم', amount: 20, count: 1, drivers: 0 }),
+      ],
+      company,
+    );
+    expect(out.drivers.attributed).toEqual({ amount: 40, count: 2, drivers: 1 });
+  });
+
+  it('bookOnly — only when asked: the owed parts of the carless (old-book) rows, company and drivers', () => {
+    const rows = [
+      sums({ outstandingVehicleAmount: 400, outstandingVehicleCount: 4 }),
+      // Two cars the registry never had — named by the book's code.
+      sums({
+        vehicleId: null,
+        vehicleCode: 'B-1',
+        year: 2024,
+        outstandingVehicleAmount: 150,
+        outstandingVehicleCount: 3,
+        outstandingDriverAmount: 75.5,
+        outstandingDriverCount: 1,
+      }),
+      sums({
+        vehicleId: null,
+        vehicleCode: 'B-2',
+        year: 2025,
+        outstandingDriverAmount: 24.5,
+        outstandingDriverCount: 2,
+      }),
+    ];
+    const asked = assembleOpenDigest(rows, [], { bookOnly: true });
+    expect(asked.bookOnly).toEqual({
+      company: { amount: 150, count: 3 },
+      drivers: { amount: 100, count: 3 },
+    });
+    // They are INSIDE the totals, never beside them.
+    expect(asked.company).toEqual({ amount: 550, count: 7 });
+    expect(asked.drivers.total).toEqual({ amount: 100, count: 3 });
+    // A narrowed view never asks: such a row is in no branch.
+    expect(assembleOpenDigest(rows, [], { bookOnly: false }).bookOnly).toBeNull();
   });
 });

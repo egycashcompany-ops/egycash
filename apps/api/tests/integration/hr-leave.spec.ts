@@ -445,23 +445,28 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
   });
 
   it('releases the reservation on rejection (§4)', async () => {
-    const before = await annualBalance(emp.id);
     const day = await countableOffset(emp.id, typeId('ANNUAL'), 45);
+    // The days are reserved in the leave year of the day asked — from mid-November on, today + 45
+    // is next year's, so the balance read is that year's, never the calendar's current one.
+    const year = Number(dayOffsetIso(day).slice(0, 4));
+    const before = await annualBalance(emp.id, year);
     const res = await submit(
       { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
     );
     expect(res.status).toBe(201);
     const created = res.body.data as LeaveRequestDto;
-    expect((await annualBalance(emp.id)).reserved).toBeGreaterThan(before.reserved);
+    expect((await annualBalance(emp.id, year)).reserved).toBeGreaterThan(before.reserved);
     const rejected = await decide(created.id, 'reject', created.version, managerAuth.token);
     expect(rejected.status).toBe(200);
-    expect((await annualBalance(emp.id)).reserved).toBe(before.reserved);
+    expect((await annualBalance(emp.id, year)).reserved).toBe(before.reserved);
   });
 
   it('lets the requester cancel a pending request, releasing days', async () => {
-    const before = await annualBalance(emp.id);
     const day = await countableOffset(emp.id, typeId('ANNUAL'), 60);
+    // As above: the balance of the leave year the day falls in.
+    const year = Number(dayOffsetIso(day).slice(0, 4));
+    const before = await annualBalance(emp.id, year);
     const res = await submit(
       { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
@@ -474,7 +479,7 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
       .send({ version: created.version });
     expect(cancelled.status).toBe(200);
     expect((cancelled.body.data as LeaveRequestDto).status).toBe('cancelled');
-    expect((await annualBalance(emp.id)).reserved).toBe(before.reserved);
+    expect((await annualBalance(emp.id, year)).reserved).toBe(before.reserved);
   });
 
   it('scopes self-service reads to OWN requests and balances (C1-R)', async () => {

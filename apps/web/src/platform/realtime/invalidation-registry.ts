@@ -48,7 +48,7 @@ const FLEET_DASHBOARD_NOW: KeyPrefix = ['fleet', 'dashboard', 'now'];
 const FLEET_DASHBOARD_LIVE: KeyPrefix = ['fleet', 'dashboard', 'period', 'live'];
 /** The rows whose writes move a figure of both reads (a «الآن» count and a period total). */
 const fleetDashboardBoth: readonly KeyPrefix[] = [FLEET_DASHBOARD_NOW, FLEET_DASHBOARD_LIVE];
-/** The rows whose writes move only a «الآن» figure (roster, licences, notices, fuel, violations). */
+/** The rows whose writes move only a «الآن» figure (roster, licences, notices, fuel cards). */
 const fleetDashboardNow: readonly KeyPrefix[] = [FLEET_DASHBOARD_NOW];
 
 /** Every prefix realtime refreshes through the throttle rather than the plain sweep. */
@@ -491,7 +491,9 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ...fleetDashboardBoth,
   ],
   'fleet.accident': [['fleet', 'accidents'], ['fleet', 'vehicles'], ...fleetDashboardBoth],
-  'fleet.violation': [['fleet', 'violations'], ['fleet', 'drivers'], ...fleetDashboardNow],
+  // A fine moves «الآن»'s owed totals AND the period's drivers' fines (a tick turns «قائمة» into
+  // «محصَّلة»; a new fine or a moved day changes the period's count) — both reads.
+  'fleet.violation': [['fleet', 'violations'], ['fleet', 'drivers'], ...fleetDashboardBoth],
   'fleet.violationGrievance': [['fleet', 'violations'], ...fleetDashboardNow],
   // The board — and tab 4's paper counts, which read the same papers.
   'fleet.vehicleLicensing': [['fleet', 'licensing'], ...fleetDashboardNow],

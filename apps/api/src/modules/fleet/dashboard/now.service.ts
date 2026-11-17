@@ -11,6 +11,7 @@
 // owning module already derived — it never re-spells a filter.
 import {
   FLEET_DASHBOARD_ALARM_ROWS,
+  FLEET_DASHBOARD_FUEL_CARD_ROWS,
   FLEET_DASHBOARD_LICENCE_ROWS,
   FLEET_DASHBOARD_RECENT_DAYS,
   FLEET_DASHBOARD_RECENT_ROWS,
@@ -50,6 +51,7 @@ import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository'
 import { fleetDealershipService } from '../dealership/dealership.service';
 import { fleetDriverProfileService } from '../driver-profiles/driver-profile.service';
 import { fleetFuelCardService } from '../fuel-cards/fuel-card.service';
+import { fleetFuelReconcileService } from '../fuel-cards/reconcile/fuel-reconcile.service';
 import { fleetLicensingService } from '../licensing/licensing.service';
 import { computeAlarms } from '../maintenance/maintenance-alarm';
 import { fleetMaintenanceService } from '../maintenance/maintenance.service';
@@ -88,6 +90,13 @@ const branchSet = (d: DashboardContext) =>
  */
 const branchFilter = (d: DashboardContext): { branchIds?: string[] } =>
   d.branchIds === null ? {} : { branchIds: [...d.branchIds] };
+
+/** The charging screen's two balance lines (yellow, red), each read once per request. */
+const fuelThresholds = (d: DashboardContext): Promise<[number, number]> =>
+  Promise.all([
+    d.setting<number>(FleetSettingKeys.FuelCardBalanceYellow),
+    d.setting<number>(FleetSettingKeys.FuelCardBalanceRed),
+  ]);
 
 /** The vehicle types, read once per request (the matrix and the roster rows name them). */
 const typeList = (d: DashboardContext) =>
@@ -796,33 +805,39 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     fleetLicensingService.openPaperCounts(d.scope('fleetLicensing.view')),
   ),
 
-  // T1.4, T4.7 — expired cards, and the cards expiring after today within the warning window.
+  // T1.4, T4.7 — expired cards, and the cards expiring after today within the warning window, and
+  // the earliest of those («أقربها») — over the cards whose CURRENT car is in the reader's branches
+  // (a card on no car: the company view only), the very `branch` the cards screen's link carries.
   fuelCards: section('fuelCards', 'company+set', async (d) => {
     const warnDays = await d.setting<number>(FleetSettingKeys.FuelCardExpiryWarnDays);
-    const [expired, expiring] = await Promise.all([
-      fleetFuelCardService.summary({ expiresBefore: dayEnd(d.today) }, d.now),
+    const window = {
+      ...branchFilter(d),
+      expiresFrom: dayStart(addDaysYmd(d.today, 1)),
+      expiresBefore: dayEnd(addDaysYmd(d.today, warnDays)),
+    };
+    const counts = { charged: false };
+    const [expired, expiring, nearest] = await Promise.all([
       fleetFuelCardService.summary(
-        {
-          expiresFrom: dayStart(addDaysYmd(d.today, 1)),
-          expiresBefore: dayEnd(addDaysYmd(d.today, warnDays)),
-        },
+        { ...branchFilter(d), expiresBefore: dayEnd(d.today) },
         d.now,
+        counts,
       ),
+      fleetFuelCardService.summary(window, d.now, counts),
+      fleetFuelCardService.nearestExpiry(window),
     ]);
-    return { warnDays, expired: expired.cardCount, expiring: expiring.cardCount };
+    return { warnDays, expired: expired.cardCount, expiring: expiring.cardCount, nearest };
   }),
 
-  // T1.7, T1.8, T5.1–T5.5 — the charging screen's figures; «شُحن اليوم» (the Cairo day, batch 3's
-  // D5) on the request clock.
+  // T1.7, T1.8, T5.1–T5.5 — the charging screen's figures over the same cards (the reader's
+  // branches by the card's CURRENT car); «شُحن اليوم» (the Cairo day, batch 3's D5) on the request
+  // clock, asked once — of the summary that shows it.
   fuelCharging: section('fuelCharging', 'company+set', async (d) => {
-    const [yellowAt, redAt] = await Promise.all([
-      d.setting<number>(FleetSettingKeys.FuelCardBalanceYellow),
-      d.setting<number>(FleetSettingKeys.FuelCardBalanceRed),
-    ]);
+    const [yellowAt, redAt] = await fuelThresholds(d);
+    const counts = { charged: false };
     const [all, belowYellow, belowRed] = await Promise.all([
-      fleetFuelCardService.summary({}, d.now),
-      fleetFuelCardService.summary({ balanceBelow: yellowAt }, d.now),
-      fleetFuelCardService.summary({ balanceBelow: redAt }, d.now),
+      fleetFuelCardService.summary(branchFilter(d), d.now),
+      fleetFuelCardService.summary({ ...branchFilter(d), balanceBelow: yellowAt }, d.now, counts),
+      fleetFuelCardService.summary({ ...branchFilter(d), balanceBelow: redAt }, d.now, counts),
     ]);
     return {
       wataniya: all.wataniyaBalance,
@@ -835,10 +850,40 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         redAt,
       },
       charged24h: all.chargedTodayAmount,
-      // «موزعة على N كارتًا» — the cards the same summary counted.
+      // «موزعة على N كارتًا» — the cards the same summary counted, and each company's.
       cards: all.cardCount,
+      companyCards: { wataniya: all.wataniyaCards, chillout: all.chilloutCards },
+      // The cards on no car («سفر»، «اسبير») are in no branch: the company view alone names them.
+      unassigned:
+        d.branchIds === null ? { count: all.noCarCards, balance: all.noCarBalance } : null,
     };
   }),
+
+  // «كروت تحتاج متابعة» — the same cards flagged any way (expired, nearly empty, a request, low,
+  // expiring), the most urgent first, ≤ 8, and how many there are — the fuel-card module's order.
+  fuelCardList: section('fuelCardList', 'company+set', async (d) => {
+    const [warnDays, [yellowAt, redAt]] = await Promise.all([
+      d.setting<number>(FleetSettingKeys.FuelCardExpiryWarnDays),
+      fuelThresholds(d),
+    ]);
+    return fleetFuelCardService.attentionList(branchFilter(d), {
+      today: d.today,
+      warnDays,
+      yellowAt,
+      redAt,
+      limit: FLEET_DASHBOARD_FUEL_CARD_ROWS,
+    });
+  }),
+
+  // «مطابقة شيت شركة الوقود» — each company's last read sheet as it stood at its read; under a
+  // branch, the lines of the branch's cards (by their current car).
+  fuelSheets: section('fuelSheets', 'company+set', async (d) =>
+    fleetFuelReconcileService.lastSheets(
+      d.branchIds === null
+        ? {}
+        : { cardIds: await fleetFuelCardService.cardIdsOf(branchFilter(d)) },
+    ),
+  ),
 
   // T4.8, R-12 — the most recently written visits of the last 30 Cairo days.
   recentWorkshop: section('recentWorkshop', 'company+set', (d) =>
@@ -885,10 +930,12 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     }),
   ),
 
-  // «مخالفات قائمة» (the overview) — EVERY year's fines still owed, amount and count, as the rollup
-  // without a year sums them; «ملخصات» keeps the Cairo year's above.
+  // «مخالفات قائمة» (the overview, «المخالفات المرورية والتسويات») — EVERY year's fines still owed,
+  // amount and count, as the rollup without a year sums them, the drivers' part split by whom they
+  // are on; «ملخصات» keeps the Cairo year's above. The old book's carless rows apart only in the
+  // company view (such a row is in no branch).
   violationsOpen: section('violationsOpen', 'company+set', (d) =>
-    fleetViolationService.openDigest({ filter: branchFilter(d) }),
+    fleetViolationService.openDigest({ filter: branchFilter(d), bookOnly: d.branchIds === null }),
   ),
 };
 

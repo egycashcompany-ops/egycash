@@ -3,15 +3,17 @@
 //   /fleet?tab=<tab>&period=<preset>&from&to&type=<id,…>&operation=<id,…>&vehicleCodes=<code,…>
 //
 // `tab` names the panel and is never remembered (a link names its tab). The rest is ONE filter state
-// shared by «أرقام الفترة» and the period parts of «الصيانة والورش», «العدادات والكيلومترات» and
-// «الحوادث ومطالبات التأمين» (each draws the same filter bar): switching tabs keeps it (it stays in
-// the address bar), the R1 tabs ignore it, and only R2's
+// shared by «أرقام الفترة» and the period parts of «الصيانة والورش», «العدادات والكيلومترات»,
+// «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات» and «الوقود والمصروفات» (each draws the
+// same filter bar): switching tabs keeps it (it stays in the address bar), the R1 tabs ignore it,
+// and only R2's
 // query key carries it. Of it, only type / operation / codes are remembered across visits; the period
 // opens on «هذا الشهر» on every visit (DECISIONS §0c). The overview and «توزيع السيارات» read «هذا
 // الشهر» apart, with no page filter at all (the month card; the km by branch). «توزيع السيارات»,
 // «الصيانة والورش», «العدادات والكيلومترات» (`km`) and «الحوادث ومطالبات التأمين» (`accidents`) were
 // rebuilt under their own keys, so an old link to any of them opens the new body — no entry in
-// LEGACY_TABS for them.
+// LEGACY_TABS for them; «المخالفات المرورية والتسويات» (`violations`) and «الوقود والمصروفات»
+// (`fuel`) are new tabs with no old key.
 import {
   FLEET_DASHBOARD_DEFAULT_PRESET,
   FLEET_DASHBOARD_MAX_CUSTOM_DAYS,

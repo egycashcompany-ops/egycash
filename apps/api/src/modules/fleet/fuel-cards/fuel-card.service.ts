@@ -3,7 +3,15 @@
 import { readFile } from 'node:fs/promises';
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
+  FLEET_DASHBOARD_FUEL_CARD_STATES,
+  addDaysYmd,
+  calendarDayBounds,
+  compareFleetVehicleCodes,
+  ymdOf,
   type ApproveFleetFuelCharge,
+  type FleetDashboardFuelCardState,
+  type FleetDashboardNowFuelCardRowDto,
+  type LocalizedString,
   type CreateFleetFuelCard,
   type FleetFuelCardDto,
   type FleetFuelCardMovementDto,
@@ -33,8 +41,10 @@ import { type AuthContext, hasPermission } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
-import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { fleetVehicleRepository, intersectVehicleIds } from '../vehicles/vehicle.repository';
+import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { actorNamesOf } from '../fleet-actor-name';
 import { fleetFuelCardMovementRepository, fleetFuelCardRepository } from './fuel-card.repository';
@@ -210,14 +220,26 @@ class FleetFuelCardService {
     return { doc, vehicleCode: codes.get(String(doc.vehicleId)) ?? null };
   }
 
+  /**
+   * The cards a query names. «الفرع» is the branch of the card's CURRENT car, resolved the way every
+   * screen resolves a vehicle set (`resolveVehicleFilterIds`: deleted cars included, by their last
+   * branch) and intersected with the typed codes; a card on no car has no car in any branch, so it
+   * drops out under a branch — the `vehicleId $in` clause never matches null. `[]` narrows to
+   * nothing.
+   */
   private async filterFor(
     query: FleetFuelCardSummaryQuery,
   ): Promise<FilterQuery<FleetFuelCardDoc>> {
+    const [byCode, byBranch] = await Promise.all([
+      query.vehicleCodes === undefined
+        ? undefined
+        : fleetVehicleRepository.idsByCodes(query.vehicleCodes),
+      query.branchIds === undefined
+        ? undefined
+        : resolveVehicleFilterIds({ branchIds: query.branchIds }),
+    ]);
     return fleetFuelCardRepository.cardFilter({
-      vehicleIds:
-        query.vehicleCodes === undefined
-          ? undefined
-          : await fleetVehicleRepository.idsByCodes(query.vehicleCodes),
+      vehicleIds: intersectVehicleIds(byCode, byBranch),
       company: query.company,
       number: query.number,
       expiresBefore: query.expiresBefore,
@@ -249,8 +271,120 @@ class FleetFuelCardService {
   async summary(
     query: FleetFuelCardSummaryQuery,
     now: Date = new Date(),
+    /** `charged: false` — the caller reads the counts only; «شُحن اليوم» is not asked (0). */
+    opts: { charged?: boolean } = {},
   ): Promise<FleetFuelCardTotalsDto> {
-    return fleetFuelCardRepository.totals(await this.filterFor(query), now);
+    return fleetFuelCardRepository.totals(await this.filterFor(query), now, opts);
+  }
+
+  /** The live cards a query names, by id — e.g. a branch's cards, by their current car. */
+  async cardIdsOf(query: FleetFuelCardSummaryQuery): Promise<string[]> {
+    return (await fleetFuelCardRepository.idsOf(await this.filterFor(query))).map(String);
+  }
+
+  /**
+   * «أقربها» — the earliest expiry day among the cards the query names (its `expiresFrom` …
+   * `expiresBefore` is the window, as the expiring cards' own link sends it), 'YYYY-MM-DD'; `null`
+   * when none expires in it.
+   */
+  async nearestExpiry(query: FleetFuelCardSummaryQuery): Promise<string | null> {
+    const at = await fleetFuelCardRepository.nearestExpiry(await this.filterFor(query));
+    return at === null ? null : ymdOf(at);
+  }
+
+  /**
+   * «كروت تحتاج متابعة» — every card the query names that needs follow-up, with its states, the
+   * most urgent first: expired (on or before `today`) → «يوشك على النفاد» (below the red line) → a
+   * «طلب رصيد» waiting → a low balance (below the yellow line, not already red) → expiring after
+   * today within `warnDays` — the same bounds the cards' and the charging screens' own links send.
+   * Within a state, the car's code («150» before «151»), the cards on no car last by their label.
+   * At most `limit` rows; `total` = every flagged card. Each row's car is named as it is now — a
+   * deleted car too (the card still sits on it): no record link then.
+   */
+  async attentionList(
+    query: FleetFuelCardSummaryQuery,
+    rules: { today: string; warnDays: number; yellowAt: number; redAt: number; limit: number },
+  ): Promise<{ rows: FleetDashboardNowFuelCardRowDto[]; total: number }> {
+    const bounds = {
+      expiredBefore: calendarDayBounds(rules.today, rules.today).before,
+      expiringFrom: calendarDayBounds(addDaysYmd(rules.today, 1), addDaysYmd(rules.today, 1)).from,
+      expiringBefore: calendarDayBounds(
+        addDaysYmd(rules.today, rules.warnDays),
+        addDaysYmd(rules.today, rules.warnDays),
+      ).before,
+    };
+    const docs = await fleetFuelCardRepository.flagged(await this.filterFor(query), {
+      ...bounds,
+      yellowAt: rules.yellowAt,
+      redAt: rules.redAt,
+    });
+    const statesOf = (doc: FleetFuelCardDoc): FleetDashboardFuelCardState[] => {
+      const at = doc.expiresAt?.getTime() ?? null;
+      const red = doc.balance < rules.redAt;
+      const on: Record<FleetDashboardFuelCardState, boolean> = {
+        expired: at !== null && at <= bounds.expiredBefore.getTime(),
+        critical: red,
+        requested: doc.requestedAmount != null,
+        low: doc.balance < rules.yellowAt && !red,
+        expiring:
+          at !== null &&
+          at >= bounds.expiringFrom.getTime() &&
+          at <= bounds.expiringBefore.getTime(),
+      };
+      return FLEET_DASHBOARD_FUEL_CARD_STATES.filter((state) => on[state]);
+    };
+    const cars = new Map(
+      (
+        await fleetVehicleRepository.findByIdsSystem([
+          ...new Set(docs.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)]))),
+        ])
+      ).map((car) => [String(car._id), car]),
+    );
+    const flagged = docs
+      .map((doc) => {
+        const car = doc.vehicleId == null ? undefined : cars.get(String(doc.vehicleId));
+        return { doc, car, states: statesOf(doc) };
+      })
+      .filter((card) => card.states.length > 0);
+    const rank = (states: readonly FleetDashboardFuelCardState[]): number =>
+      FLEET_DASHBOARD_FUEL_CARD_STATES.indexOf(states[0] as FleetDashboardFuelCardState);
+    flagged.sort((a, b) => {
+      const byState = rank(a.states) - rank(b.states);
+      if (byState !== 0) return byState;
+      const aCode = a.car?.code ?? null;
+      const bCode = b.car?.code ?? null;
+      if ((aCode === null) !== (bCode === null)) return aCode === null ? 1 : -1;
+      const byCode =
+        aCode !== null && bCode !== null
+          ? compareFleetVehicleCodes(aCode, bCode)
+          : (a.doc.label ?? '').localeCompare(b.doc.label ?? '', 'ar');
+      return byCode !== 0 ? byCode : String(a.doc._id).localeCompare(String(b.doc._id));
+    });
+    const shown = flagged.slice(0, rules.limit);
+    const typeIds = [
+      ...new Set(shown.flatMap(({ car }) => (car?.typeId == null ? [] : [String(car.typeId)]))),
+    ];
+    const types =
+      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    const makes = new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
+    const rows = shown.map(({ doc, car, states }): FleetDashboardNowFuelCardRowDto => {
+      const vehicleId = doc.vehicleId == null ? null : String(doc.vehicleId);
+      return {
+        cardId: String(doc._id),
+        company: doc.company,
+        number: doc.number,
+        vehicleId,
+        code: car?.code ?? null,
+        typeName: car?.typeId == null ? null : (makes.get(String(car.typeId)) ?? null),
+        vehicleDeleted: vehicleId !== null && (car === undefined || car.isDeleted === true),
+        label: vehicleId === null ? (doc.label ?? null) : null,
+        balance: round(doc.balance),
+        requestedAmount: doc.requestedAmount == null ? null : round(doc.requestedAmount),
+        expiresAt: doc.expiresAt == null ? null : ymdOf(doc.expiresAt),
+        states,
+      };
+    });
+    return { rows, total: flagged.length };
   }
 
   async get(id: string): Promise<FuelCardWithCode> {

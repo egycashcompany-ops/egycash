@@ -8,7 +8,11 @@
 // keeps its place below, and only the table's rows scroll — under a head that stays. A phone or a
 // tablet scrolls the page as before.
 //
-// Used with `<PageContainer fullHeight>` and `<DataTable stickyHead>`.
+// Used with `<PageContainer fullHeight>` and `<DataTable stickyHead>`. Since «عايز بردو كل الصفحات
+// اللى فى مديول الإدارة ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس» (2026-11-17), every page of
+// the Administration menu too — and for its screens whose list is cards rather than a table (roles,
+// the permission catalog, approval workflows, settings), `BOARD_LIST_FILL` is the same give for a
+// list region.
 
 /**
  * The page's column: everything stacked, the give handed to the table on a computer. It scrolls
@@ -20,3 +24,11 @@ export const BOARD_FRAME = 'flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto';
 /** The table's wrapper: it takes the height that is left, and its own rows scroll. */
 export const BOARD_TABLE_FILL =
   'lg:flex lg:min-h-[14rem] lg:flex-1 lg:flex-col [&>div]:min-h-0 lg:[&>div]:flex-1';
+
+/**
+ * A list region that is not a `DataTable` — cards, grouped rows — taking the height that is left
+ * and scrolling on its own on a computer, as `BOARD_TABLE_FILL` does for a table. A phone or a
+ * tablet scrolls the page as before.
+ */
+export const BOARD_LIST_FILL =
+  'lg:min-h-[14rem] lg:flex-1 lg:overflow-y-auto lg:overscroll-contain';

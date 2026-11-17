@@ -55,6 +55,7 @@ import {
   type Column,
 } from '../../../../shared/ui';
 import { MultiSelect } from '../../../../shared/ui/MultiSelect';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../../../shared/ui/board-scroll';
 import { readList, writeList } from '../../../../shared/lib/list-param';
 import { formatDate, fullName } from '../../../../shared/lib/format';
 import { PlusIcon } from '../../../../shared/ui/icons';
@@ -308,33 +309,37 @@ export const UsersListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('systemAdmin.users.title')}
-        breadcrumbs={[{ label: t('systemAdmin.module.title') }, { label: t('systemAdmin.users.title') }]}
-        actions={
-          <Can permission="user.create">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCreating(true)}
-            >
-              {t('systemAdmin.users.actions.create')}
-            </Button>
-          </Can>
-        }
-      />
-
-      {creating && (
-        <UserFormDialog
-          open
-          user={null}
-          onClose={() => setCreating(false)}
-          onCreated={(created) => navigate(created.id)}
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «عايز بردو كل الصفحات اللى فى مديول
+          الإدارة ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس»): on a computer the title, its
+          action and the filters keep their place, the pager keeps its place below, and only the
+          table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('systemAdmin.users.title')}
+          breadcrumbs={[{ label: t('systemAdmin.module.title') }, { label: t('systemAdmin.users.title') }]}
+          actions={
+            <Can permission="user.create">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setCreating(true)}
+              >
+                {t('systemAdmin.users.actions.create')}
+              </Button>
+            </Can>
+          }
         />
-      )}
 
-      <div className="space-y-4">
+        {creating && (
+          <UserFormDialog
+            open
+            user={null}
+            onClose={() => setCreating(false)}
+            onCreated={(created) => navigate(created.id)}
+          />
+        )}
+
         <FilterBar>
           <SearchInput
             value={search}
@@ -412,18 +417,21 @@ export const UsersListPage = (): JSX.Element => {
           )}
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(u) => u.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          onRowClick={(u) => navigate(u.id)}
-          empty={<EmptyState title={t('systemAdmin.users.empty')} />}
-        />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(u) => u.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            onRowClick={(u) => navigate(u.id)}
+            empty={<EmptyState title={t('systemAdmin.users.empty')} />}
+            stickyHead
+          />
+        </div>
 
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination

@@ -100,8 +100,10 @@ export const expectationsForDate = async (
   const out = new Map<string, DayExpectation | null>();
   if (employees.length === 0) return out;
 
-  // One query for every assignment that could cover the date. The interval test is repeated in
-  // Mongo only to narrow what comes back; `pickAssignmentForDate` is what decides.
+  // One query for every assignment that could cover the date — an indexed range scan on
+  // `ix_employee_fromDate` ({ employeeId, fromDate }), which the `$in` and the `$lte` use as they
+  // stand, so no new index is needed for this read. The interval test is repeated in Mongo only to
+  // narrow what comes back; `pickAssignmentForDate` is what decides.
   const rows = await ShiftAssignmentModel.find({
     employeeId: { $in: employees.map((e) => new Types.ObjectId(e.id)) },
     isDeleted: false,

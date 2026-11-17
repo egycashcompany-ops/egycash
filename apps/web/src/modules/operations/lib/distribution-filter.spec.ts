@@ -1,6 +1,6 @@
 // Round 25 — the two filter bars of «توزيع المحصنات»: «احط فلتر فوق يبقى خانة اقدر ابحث عن البنك او الفرع
 // و خانة للمنطقة» (the محصنات on no van) and «خانة اقدر ابحث عن كود العربيه و خانة البنك او الفرع و خانة
-// للمنطقة» (the vans).
+// للمنطقة» (the vans). Round 26b — «وعاوز اضيف اسم القائد فى الفلاتر بعد العربيه»: the captain's box.
 import { describe, expect, it } from 'vitest';
 import { foldOperationsAreaName } from '@ecms/contracts';
 import {
@@ -16,6 +16,7 @@ import {
   shipmentMatchesSearch,
   vanAreaOptions,
   vanMatchesArea,
+  vanMatchesCaptain,
   vanMatchesCode,
   type FilterShipment,
 } from './distribution-filter';
@@ -142,18 +143,23 @@ describe('the right bar — the vans', () => {
       matchesVanFilter(
         V104,
         [MAADI],
-        { code: '104', search: 'المعادي', area: foldOperationsAreaName('حلوان') },
+        { code: '104', captain: '', search: 'المعادي', area: foldOperationsAreaName('حلوان') },
         context,
       ),
     ).toBe(true);
     expect(
-      matchesVanFilter(V104, [MAADI], { code: '125', search: 'المعادي', area: '' }, context),
+      matchesVanFilter(
+        V104,
+        [MAADI],
+        { code: '125', captain: '', search: 'المعادي', area: '' },
+        context,
+      ),
     ).toBe(false);
     expect(isVanFiltering(EMPTY_VAN_FILTER)).toBe(false);
     expect(
       matchesVanFilter(LOOSE, [], EMPTY_VAN_FILTER, { name: 'بدون سيارة (1)', bankWordsOf }),
     ).toBe(true);
-    expect(isVanFiltering({ code: '1', search: '', area: '' })).toBe(true);
+    expect(isVanFiltering({ code: '1', captain: '', search: '', area: '' })).toBe(true);
   });
 
   it('offers every area the directions and the loads name, once — «بلا اتجاه» when a van has none', () => {
@@ -163,5 +169,82 @@ describe('the right bar — the vans', () => {
     ]);
     expect(options.map((option) => option.label)).toEqual(['المعادي', 'الهرم', 'حلوان', '']);
     expect(options.at(-1)?.value).toBe(NO_AREA);
+  });
+});
+
+describe('Round 26b — the captain’s box, after the van’s code', () => {
+  // Two captains on 112: the card shows the first (عبد الرحمن); the box finds the van by either.
+  const V112 = {
+    vehicleCode: '112',
+    direction: 'الجيزة',
+    captains: [
+      { fullNameAr: 'عبد الرحمن محمد الشناوي', code: 'BR-107' },
+      { fullNameAr: 'مصطفى إبراهيم حسين', code: 'BR-108' },
+    ],
+  };
+  const V125 = { vehicleCode: '125', direction: 'حلوان', captains: [] };
+  const LOOSE = {
+    vehicleCode: null,
+    direction: null,
+    captains: [{ fullNameAr: 'أحمد فتحي السيد', code: null }],
+  };
+  const context = { name: '112', bankWordsOf };
+  const only = (captain: string) => ({ ...EMPTY_VAN_FILTER, captain });
+
+  it('finds a van by its FIRST captain — or by its SECOND, whom the card does not show', () => {
+    expect(vanMatchesCaptain(V112, 'الشناوي')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'مصطفى')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'إبراهيم حسين')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'كريم')).toBe(false);
+    expect(matchesVanFilter(V112, [], only('مصطفى'), context)).toBe(true);
+    expect(matchesVanFilter(V112, [], only('كريم'), context)).toBe(false);
+  });
+
+  it('by his employee code too — the hyphen and the Latin case as typed or not', () => {
+    expect(vanMatchesCaptain(V112, 'BR-108')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'br108')).toBe(true);
+    expect(vanMatchesCaptain(V112, '107')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'BR-109')).toBe(false);
+    // A captain with no code is found by his name only.
+    expect(vanMatchesCaptain(LOOSE, 'احمد')).toBe(true);
+  });
+
+  it('folds the Arabic as every box here does — alef, ya and ta marbuta forms, the hamza', () => {
+    expect(vanMatchesCaptain(V112, 'مصطفي')).toBe(true); // ى typed as ي
+    expect(vanMatchesCaptain(V112, 'ابراهيم')).toBe(true); // إ typed as ا
+    expect(vanMatchesCaptain(LOOSE, 'احمد فتحى')).toBe(true); // أ and ي both folded
+    expect(
+      vanMatchesCaptain(
+        { vehicleCode: '1', direction: null, captains: [{ fullNameAr: 'رحمة', code: null }] },
+        'رحمه',
+      ),
+    ).toBe(true); // ة typed as ه
+    expect(vanMatchesCaptain(V112, '  الشناوى  ')).toBe(true);
+  });
+
+  it('a van with no captain answers no typed name — and every name when the box is blank', () => {
+    expect(vanMatchesCaptain(V125, 'أحمد')).toBe(false);
+    expect(vanMatchesCaptain(V125, '')).toBe(true);
+    expect(vanMatchesCaptain(V125, '   ')).toBe(true);
+    // A van read without its captains (an older shape) answers no typed name either.
+    expect(vanMatchesCaptain({ vehicleCode: '9', direction: null }, 'أحمد')).toBe(false);
+  });
+
+  it('AND-ed with the code, the bank or branch and the area — every box must hold', () => {
+    const giza = foldOperationsAreaName('الجيزة');
+    const all = { code: '112', captain: 'مصطفى', search: 'الأهلي', area: giza };
+    expect(matchesVanFilter(V112, [MAADI], all, context)).toBe(true);
+    expect(matchesVanFilter(V112, [MAADI], { ...all, captain: 'كريم' }, context)).toBe(false);
+    expect(matchesVanFilter(V112, [MAADI], { ...all, code: '104' }, context)).toBe(false);
+    expect(matchesVanFilter(V112, [HARAM], { ...all, search: 'الأهلي' }, context)).toBe(false);
+    expect(
+      matchesVanFilter(V112, [MAADI], { ...all, area: foldOperationsAreaName('حلوان') }, context),
+    ).toBe(false);
+  });
+
+  it('a name typed is a filter in use — «المعروض … من …» and «مسح التصفية» count it; the empty bar has none', () => {
+    expect(isVanFiltering(only('مصطفى'))).toBe(true);
+    expect(isVanFiltering(only('  '))).toBe(false);
+    expect(EMPTY_VAN_FILTER.captain).toBe('');
   });
 });

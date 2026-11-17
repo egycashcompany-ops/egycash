@@ -124,8 +124,19 @@ export const VAN_GRID =
 export const countText = (value: number, locale: Locale): string => formatAmount(value, locale);
 
 /**
- * The day's input, in the boards' filter colours (`DARK_FILTER_BAR`'s box and input colours) — on
- * whatever row holds it (Round 26b: the page's top row).
+ * The day's bar — the boards' filter surface (`DARK_FILTER_BAR`'s box and input colours) holding the
+ * day, and what the screen has to say about it. Not the boards' one-row layout: it holds one box,
+ * not nine that share a row. «لوحة التشغيلة»'s day bar (Round 26b: «توزيع المحصنات» and «تسليم
+ * المحصنات» put their day on the top row instead — `TopRow`).
+ */
+export const DAY_BAR = cn(
+  'flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-[#111827]',
+  '[&_input]:!border-slate-300 dark:[&_input]:!border-slate-700/80 [&_input]:!bg-slate-50 dark:[&_input]:!bg-[#080C14] [&_input]:!text-slate-900 dark:[&_input]:!text-slate-100',
+);
+
+/**
+ * The day's input in the boards' filter colours, on the page's top row (Round 26b) — which stands on
+ * the page's own ground, so the box is white (the bar's was slate-50 on its white).
  */
 export const DAY_INPUT =
   '[&_input]:!border-slate-300 dark:[&_input]:!border-slate-700/80 [&_input]:!bg-white dark:[&_input]:!bg-[#080C14] [&_input]:!text-slate-900 dark:[&_input]:!text-slate-100';
@@ -2096,19 +2107,26 @@ export const FilterTextBox = ({
   ltr?: boolean;
   /** The words in the empty box — the label when left out. */
   placeholder?: string;
-  /** `narrow` — the left column's compact box; `code` — a code, short; `wide` — a name. */
-  fit?: 'wide' | 'code' | 'narrow';
+  /**
+   * `narrow` — the left column's compact box; `code` — a code, short; `name` — a person's name
+   * (Round 26b, the captain's box); `wide` — a bank or a branch.
+   */
+  fit?: 'wide' | 'name' | 'code' | 'narrow';
   className?: string;
 } & Record<`data-${string}`, string>): JSX.Element => (
   <FilterWithIcon
     icon={icon}
     className={cn(
       'min-w-0 flex-1',
+      // Round 26b — four boxes beside «السيارات (n)»: their bases sum to what the vans' head has
+      // beside its title at 1280 (Arabic and English), so the line holds; each shrinks with the rest.
       fit === 'narrow'
         ? 'basis-[3.5rem]'
         : fit === 'code'
-          ? 'basis-[7.5rem] lg:max-w-[11rem]'
-          : 'basis-[9rem] lg:max-w-[17rem]',
+          ? 'basis-[6.5rem] lg:max-w-[10rem]'
+          : fit === 'name'
+            ? 'basis-[8rem] lg:max-w-[14rem]'
+            : 'basis-[8rem] lg:max-w-[16rem]',
       className,
     )}
   >

@@ -11652,6 +11652,15 @@ const en: Record<string, string> = {
   'operations.distribution.vanCard.none': 'None',
   'operations.distribution.vanCard.hidden': 'Shown to those who may view the crew board',
   'operations.distribution.vanCard.noVan': 'No vehicle — no drivers',
+  // Round 26b — one look for every van; the captain's own frame; the counts' tiles; the captain's box.
+  'operations.distribution.noCaptainShort': 'No captain',
+  'operations.distribution.loadWord.one': 'secured',
+  'operations.distribution.loadWord.two': 'secured',
+  'operations.distribution.loadWord.few': 'secured',
+  'operations.distribution.loadWord.many': 'secured',
+  'operations.distribution.loadWord.other': 'secured',
+  'operations.distribution.filter.captain': 'Captain’s name or code',
+  'operations.distribution.filter.captainShort': 'Captain name',
   'operations.handover.popupBlocked':
     'The browser blocked the print window — allow pop-ups for this site.',
   'operations.handover.done.one': '{{van}}: 1 shipment handed over — it has left the vault.',
@@ -26374,6 +26383,15 @@ const ar: Record<string, string> = {
   'operations.distribution.vanCard.none': 'لا يوجد',
   'operations.distribution.vanCard.hidden': 'يظهر لمن يملك صلاحية عرض لوحة التشغيلة',
   'operations.distribution.vanCard.noVan': 'بدون سيارة — لا سائقين',
+  // Round 26b — لون واحد لكل السيارات؛ إطار القائد وحده؛ خانات الأعداد؛ خانة القائد.
+  'operations.distribution.noCaptainShort': 'بلا قائد',
+  'operations.distribution.loadWord.one': 'محصنة',
+  'operations.distribution.loadWord.two': 'محصنتان',
+  'operations.distribution.loadWord.few': 'محصنات',
+  'operations.distribution.loadWord.many': 'محصنة',
+  'operations.distribution.loadWord.other': 'محصنة',
+  'operations.distribution.filter.captain': 'اسم القائد أو كوده',
+  'operations.distribution.filter.captainShort': 'اسم القائد',
   'operations.handover.popupBlocked':
     'منع المتصفح فتح نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع.',
   'operations.handover.done.one': 'سُلّمت محصنة واحدة إلى {{van}} وغادرت الخزينة.',

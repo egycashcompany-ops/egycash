@@ -35,6 +35,13 @@ const shipmentSweep: readonly KeyPrefix[] = [
 const attendanceDaySweep: readonly KeyPrefix[] = [
   ['hr', 'attendanceDays'],
   ['hr', 'attendanceMyDays'],
+  // The daily sheet is a view of the same days (stage 2) — it just starts from the employees — so
+  // anything that rewrites a day has to refresh it too. It was missed when the sheet arrived:
+  // this registry guards that every TOPIC is mapped, not that every cache of a topic is swept.
+  ['hr', 'attendanceSheet'],
+  // And the decisions themselves (stage 3): approving or revoking one changes both the day and
+  // the queue it was sitting in.
+  ['hr', 'attendanceDecisions'],
 ];
 
 /**
@@ -376,6 +383,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'hr.attendancePunch': attendanceDaySweep,
   'hr.attendancePunchBatch': attendanceDaySweep,
   'hr.attendanceRegularization': attendanceDaySweep,
+  'hr.attendanceDayDecision': attendanceDaySweep,
   'hr.attendanceShift': [
     ['hr', 'attendanceShifts'],
     ['hr', 'attendanceAssignments'],

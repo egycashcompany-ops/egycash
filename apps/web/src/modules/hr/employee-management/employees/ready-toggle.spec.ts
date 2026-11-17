@@ -27,9 +27,10 @@ describe('the small toggle between «جاهزون للتعيين» and «الم�
     expect(HEAD).toContain("can('contract.print')");
   });
 
-  it('sits above the «مستندات الوظائف» button, not across the page', () => {
+  // «خلي ال toggle جمب المستندات مش فوقو و متخلهوش لازق فيه».
+  it('sits beside the «مستندات الوظائف» button, with room between them, not across the page', () => {
     expect(HEAD.indexOf('<SettingsTabBar')).toBeLessThan(HEAD.indexOf('data-job-papers-open'));
-    expect(HEAD).toContain('flex flex-col items-end gap-2');
+    expect(HEAD).toContain('flex flex-wrap items-center gap-x-5 gap-y-2');
     // As wide as its two lists: no full-width strip, no head circle.
     expect(BAR).toContain("'inline-flex items-center rounded-full border p-1'");
     expect(BAR).toContain('{!compact && (');

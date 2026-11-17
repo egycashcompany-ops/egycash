@@ -3,7 +3,8 @@
 // كلها لا هو عاوزين يبقا اخد مساحه صغيره فوق الزرار بتاع المستندات».
 //
 // A small sliding toggle — the HR settings bar in its compact form — between the two lists, each a
-// link with its own address; under it «مستندات الوظائف», the button that opens its popup, as before.
+// link with its own address; beside it, with room between («جمب المستندات مش فوقو و متخلهوش لازق
+// فيه»), «مستندات الوظائف», the button that opens its popup, as before.
 // «المعينون» is offered only to who may print; the button only to who may change the templates.
 import { useState } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -33,7 +34,7 @@ export const ReadyHeaderActions = (): JSX.Element => {
   ];
 
   return (
-    <div className="flex flex-col items-end gap-2" data-ready-actions>
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2" data-ready-actions>
       {tabs.length > 1 && (
         <SettingsTabBar
           compact

@@ -5,6 +5,7 @@ import {
   type AttendanceDayDto,
   type ExportAttendanceQuery,
   type ListAttendanceDaysQuery,
+  type ListAttendanceSheetQuery,
   type RecomputeAttendanceDays,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../../platform/web';
@@ -27,6 +28,19 @@ export const listAttendanceDays = async (req: Request, res: Response): Promise<v
       ...labelFields(labels, String(doc.employeeId)),
     }),
   );
+};
+
+/**
+ * The daily sheet. Same permission and same data scope as the day list — it is the same question
+ * about the same rows — but the ANSWER starts from employees, so somebody who has not scanned
+ * appears on it. The service already fills the employee labels from the documents it paged
+ * through, so there is no second label fetch here.
+ */
+export const listAttendanceSheet = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListAttendanceSheetQuery, never>(req);
+  const page = await dayRecordService.sheet(query, scopeSelector(ctx, 'attendance.view'));
+  okPage(res, page, (row) => row);
 };
 
 export const listMyAttendanceDays = async (req: Request, res: Response): Promise<void> => {

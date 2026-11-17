@@ -4,7 +4,8 @@
 // The resolution order is the specification, first match wins:
 //   not employed → no row · leave → onLeave · holiday → holiday · weekend → weekend ·
 //   no shift → what the device saw (dayOff · checkedIn · present) ·
-//   no punches → absent · one punch → checkedIn · else compute.
+//   no punches → pending while the day is still being lived, else absent ·
+//   one punch → checkedIn · else compute.
 //
 // TWO THINGS THIS FILE USED TO GET WRONG ABOUT THIS COMPANY, both fixed here:
 //
@@ -100,6 +101,13 @@ export interface DeriveDayInput {
   /** Punches attributed to this work date, superseded ones already excluded, any order. */
   punches: EnginePunch[];
   employeeBranchId: string;
+  /**
+   * The instant the derivation is being made at — INJECTED, never read from the clock, because
+   * this file's contract is "same inputs, byte-identical output" and a function that reads the
+   * clock has no such contract. It decides one thing only: whether an expected day with no
+   * punches is still in progress (`pending`) or over (`absent`).
+   */
+  now: Date;
 }
 
 export interface DerivedDay {
@@ -249,8 +257,23 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
     };
   }
 
-  // 6 — expected, and no evidence of presence.
-  if (punches.length === 0) return { ...empty, status: 'absent', flags };
+  // 6 — expected, and no evidence of presence. WHICH OF THE TWO ANSWERS depends on the clock,
+  // and only here does this file consult it.
+  //
+  // Somebody due at 09:00 who has not scanned is NOT ABSENT AT TEN IN THE MORNING. They are a day
+  // nobody has concluded: `pending`. The distinction is not cosmetic — a row is written by whoever
+  // recomputes, the branch servers recompute all day long, and the payroll feed carries `status`
+  // onward, so an `absent` minted at ten o'clock is a false statement sitting in the database
+  // about a person who is very likely to walk in at ten past. `pending` is payroll-neutral by
+  // construction (it is in no quantity group) and the nightly pass turns it into the real answer
+  // once the day is over.
+  //
+  // The cut is the expected END, not the start: the day stops being winnable when the shift it
+  // belonged to has finished, not when it began.
+  if (punches.length === 0) {
+    const { end } = shiftWindow(input.workDate, input.shift);
+    return { ...empty, status: input.now < end ? 'pending' : 'absent', flags };
+  }
 
   // 7 — checked in, never checked out: the ordinary working day here, not an anomaly. The hours
   // are genuinely unknown, so `workedMinutes` stays 0 and nothing is early leave or overtime —

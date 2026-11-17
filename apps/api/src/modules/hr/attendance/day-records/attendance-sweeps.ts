@@ -35,13 +35,20 @@ const noticeKey = (kind: string, doc: AttendanceDayDoc): string =>
   `hr.attendance.${kind}:${String(doc.employeeId)}:${dateOnlyIso(doc.workDate)}`;
 
 /**
- * Yesterday's rows of one status. A FROZEN day is skipped: its period has already been closed for
- * payroll, so a notice inviting a correction would be inviting one that cannot land (§4 — a frozen
- * row never moves; corrections after a freeze flow forward as adjustments).
+ * Yesterday's rows of the given statuses. A FROZEN day is skipped: its period has already been
+ * closed for payroll, so a notice inviting a correction would be inviting one that cannot land
+ * (§4 — a frozen row never moves; corrections after a freeze flow forward as adjustments).
  */
-const previousDayRows = async (status: 'absent' | 'incomplete'): Promise<AttendanceDayDoc[]> => {
+const previousDayRows = async (
+  statuses: readonly ('absent' | 'incomplete' | 'pending')[],
+): Promise<AttendanceDayDoc[]> => {
   const workDate = addDays(cairoToday(), -1);
-  return AttendanceDayModel.find({ workDate, status, frozenAt: null, isDeleted: false })
+  return AttendanceDayModel.find({
+    workDate,
+    status: { $in: [...statuses] },
+    frozenAt: null,
+    isDeleted: false,
+  })
     .lean<AttendanceDayDoc[]>()
     .exec();
 };
@@ -76,7 +83,7 @@ class AttendanceSweepService {
    * then this is a no-op, said out loud here so nobody reads its silence as a bug.
    */
   async sweepMissingCheckouts(): Promise<number> {
-    const rows = await previousDayRows('incomplete');
+    const rows = await previousDayRows(['incomplete']);
     let notified = 0;
     for (const doc of rows) {
       try {
@@ -115,7 +122,14 @@ class AttendanceSweepService {
       return 0;
     }
 
-    const rows = await previousDayRows('absent');
+    // `pending` COUNTS AS YESTERDAY'S ABSENCE, because by now that is what it means and what
+    // every screen shows for it: the date has passed with nobody arriving, and the read-time
+    // resolution turns a past `pending` into `absent` for exactly that reason. The row exists in
+    // that state when the day was last recomputed while it was still being lived — a branch
+    // recompute in the afternoon — and the nightly pass has not reached it, which is precisely
+    // the case where the person would otherwise be told nothing at all. Screen and notice have
+    // to agree about the same row, or one of them is lying.
+    const rows = await previousDayRows(['absent', 'pending']);
     let notified = 0;
     for (const doc of rows) {
       try {

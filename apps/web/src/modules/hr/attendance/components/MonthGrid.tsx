@@ -14,6 +14,9 @@ const TONE: Record<AttendanceDayStatus, string> = {
   late: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
   earlyLeave: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
   lateAndEarly: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
+  // Still being lived — drawn like the days nothing is owed for, not like an absence. Only today's
+  // cell can ever carry it: a past date resolves to `absent` when it is read.
+  pending: 'bg-slate-50 text-slate-500 dark:bg-slate-900 dark:text-slate-400',
   absent: 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200',
   incomplete: 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200',
   onLeave: 'bg-sky-50 text-sky-800 dark:bg-sky-950/40 dark:text-sky-200',

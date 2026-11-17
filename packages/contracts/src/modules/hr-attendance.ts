@@ -29,6 +29,20 @@ import { type JobValueSource } from './hr-employee.js';
  * dropping it would turn a year of stored days into values this enum cannot name. A recompute of
  * an unfrozen day rewrites it to `checkedIn`; a frozen one keeps it, and is deliberately priced
  * exactly as it was priced when the month closed (`attendance-quantities.ts`).
+ *
+ * `pending` IS THE DAY NOBODY HAS CONCLUDED YET. It is written only while a work date is still
+ * being lived: an employee who was expected today and has not scanned is not absent at ten in the
+ * morning, and a row that says `absent` at ten in the morning is a false statement that the
+ * payroll feed would carry onward. `pending` says what is actually known — expected, nothing seen
+ * so far — and it is PAYROLL-NEUTRAL BY CONSTRUCTION: it appears in no quantity group in
+ * `attendance-quantities.ts`, so it contributes zero to every quantity, and a month cannot be
+ * frozen until it has passed, by which time the nightly pass has written `absent`.
+ *
+ * It is never the FINAL answer for a date, and the read paths enforce that: once the work date is
+ * in the past a stored `pending` reads as `absent`, because the day ended and nobody arrived. This
+ * matters because the branch servers only recompute employees who scanned, so a no-show's row is
+ * never rewritten during the day and sits at `pending` until the nightly pass — the resolution is
+ * a read-time rule precisely so that gap is invisible to whoever is looking.
  */
 export const ATTENDANCE_DAY_STATUSES = [
   'present',
@@ -36,6 +50,7 @@ export const ATTENDANCE_DAY_STATUSES = [
   'late',
   'earlyLeave',
   'lateAndEarly',
+  'pending',
   'absent',
   'onLeave',
   'weekend',
@@ -336,6 +351,54 @@ export const ListAttendanceDaysQuerySchema = PaginationQuerySchema.extend({
   status: AttendanceDayStatusSchema.optional(),
 }).strict();
 export type ListAttendanceDaysQuery = z.infer<typeof ListAttendanceDaysQuerySchema>;
+
+/**
+ * The DAILY SHEET's own question, and it is not the day list's question.
+ *
+ * `GET /hr/attendance/days` answers "which day rows exist?" — it filters day DOCUMENTS, so an
+ * employee the engine has not written a row for today simply is not in the answer. That is the
+ * right behaviour for a list of records and the wrong behaviour for a sheet, because the sheet is
+ * read to find out WHO IS NOT HERE: the branch servers only recompute employees who scanned, so
+ * the people worth looking for are exactly the ones with no row. The sheet therefore starts from
+ * EMPLOYEES and left-joins the day rows, and no row is written for anybody to make them appear.
+ *
+ * One date only, by construction — a sheet is a day. Several branches and several sections, ORed,
+ * the same multi-filters the day list takes.
+ */
+export const ListAttendanceSheetQuerySchema = PaginationQuerySchema.extend({
+  date: z.coerce.date(),
+  branchId: listQuery(objectId()),
+  sectionId: listQuery(objectId()),
+}).strict();
+export type ListAttendanceSheetQuery = z.infer<typeof ListAttendanceSheetQuerySchema>;
+
+/**
+ * One line of the daily sheet: an EMPLOYEE, what was expected of them, and the day row if one
+ * exists yet.
+ *
+ * `status` is the RESOLVED display status, which is not always the stored one — see
+ * `resolveDisplayStatus` in the engine. Three cases produce a row here that the day list cannot:
+ * a no-show with no row at all (`pending` or `absent`, decided from the clock), a row the branch
+ * left at `pending` earlier in the day, and a past date whose `pending` row the nightly pass has
+ * not reached. `day` is null in the first of those, and a client renders the times from `day` and
+ * the label from `status` rather than reading a status off the row.
+ *
+ * `expectedStartAt` / `expectedEndAt` are resolved AT READ TIME, from the assignment or the
+ * branch's default pattern as they stand now — deliberately not stored on the row, because a
+ * stored copy goes stale the moment HR edits the pattern mid-day and would then be consulted for
+ * exactly the date it is wrong about. Both are null when nobody said when this person was due.
+ */
+export interface AttendanceSheetRowDto {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  branchId: string;
+  date: string;
+  status: AttendanceDayStatus;
+  expectedStartAt: string | null;
+  expectedEndAt: string | null;
+  day: AttendanceDayDto | null;
+}
 
 /**
  * The AT-6 CSV export — the §15.1 columns plus the two display labels, read from the day rows

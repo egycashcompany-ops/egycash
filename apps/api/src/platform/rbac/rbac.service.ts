@@ -735,12 +735,19 @@ class RbacService {
         input.departmentCatalogId === null ? null : new Types.ObjectId(input.departmentCatalogId);
     }
     if (input.permissionKeys !== undefined) {
-      this.assertKnownPermissionKeys(input.permissionKeys);
       // Only what the edit ADDS is checked. Removing a grant is a narrowing and always allowed, and
       // re-sending an untouched list must not refuse an administrator who is renaming a role that
       // happens to carry a permission they do not hold — they gain nothing by leaving it there, and
       // assigning that role to anyone still runs the full check.
       const added = input.permissionKeys.filter((key) => !before.permissionKeys.includes(key));
+      // The same for a key the registry no longer declares: it may not be ADDED, but a role already
+      // holding one may be saved with it. «الموارد البشرية Test» held `applicant.returnToStage`
+      // when that key was retired, and every later save of the role was refused for it — while the
+      // screen, which shows only registered keys, gave no way to untick it. Not dropped here:
+      // a key can be absent from the registry only for now (the automation keys while
+      // AUTOMATION_ENABLED is off), and a save must not strip it. The role form names such keys and
+      // removes them when the administrator says so.
+      this.assertKnownPermissionKeys(added);
       if (actor !== undefined) this.assertKeysHeld(actor, added, 'add');
       set.permissionKeys = [...new Set(input.permissionKeys)];
     }

@@ -31,6 +31,7 @@ import {
   useSettingDefinitions,
 } from '../../../../platform/settings/settings-api';
 import { cn } from '../../../../shared/lib/cn';
+import { BOARD_FRAME, BOARD_LIST_FILL } from '../../../../shared/ui/board-scroll';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { FilterBar } from '../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
@@ -121,108 +122,117 @@ export const SettingsPage = (): JSX.Element => {
     countRows(searched.filter((group) => group.department === id));
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('systemAdmin.settings.title')}
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «ميبقاش الصفحات كلها بتعمل Scroll
+          لكن الجداول بس»): on a computer the title, the department tabs and the search keep their
+          place, and only the settings groups scroll. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('systemAdmin.settings.title')}
+        />
 
-      {definitions.isError ? (
-        // `GET /settings/definitions` is the half of the screen that carries `setting.view`; a
-        // failure here is "we could not read the registry", never "there is nothing to configure".
-        <ErrorState error={definitions.error} onRetry={() => void definitions.refetch()} />
-      ) : definitions.isLoading ? (
-        <LoadingState label={t('common.loading')} />
-      ) : (
-        <div className="space-y-4">
-          <div
-            role="tablist"
-            aria-label={t('systemAdmin.settings.departmentsLabel')}
-            className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={department === ''}
-              className={tabClass(department === '')}
-              onClick={() => setParam('dept', '')}
+        {definitions.isError ? (
+          // `GET /settings/definitions` is the half of the screen that carries `setting.view`; a
+          // failure here is "we could not read the registry", never "there is nothing to configure".
+          <ErrorState error={definitions.error} onRetry={() => void definitions.refetch()} />
+        ) : definitions.isLoading ? (
+          <LoadingState label={t('common.loading')} />
+        ) : (
+          <>
+            <div
+              role="tablist"
+              aria-label={t('systemAdmin.settings.departmentsLabel')}
+              className="flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"
             >
-              {t('systemAdmin.settings.departments.all')}
-              <span className="text-xs text-slate-500 dark:text-slate-400">{countRows(searched)}</span>
-            </button>
-            {groups.map((group) => (
               <button
-                key={group.department}
                 type="button"
                 role="tab"
-                aria-selected={department === group.department}
-                className={tabClass(department === group.department)}
-                onClick={() => setParam('dept', group.department)}
+                aria-selected={department === ''}
+                className={tabClass(department === '')}
+                onClick={() => setParam('dept', '')}
               >
-                {t(`systemAdmin.settings.departments.${group.department}`)}
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {matchesIn(group.department)}
-                </span>
+                {t('systemAdmin.settings.departments.all')}
+                <span className="text-xs text-slate-500 dark:text-slate-400">{countRows(searched)}</span>
               </button>
-            ))}
-          </div>
+              {groups.map((group) => (
+                <button
+                  key={group.department}
+                  type="button"
+                  role="tab"
+                  aria-selected={department === group.department}
+                  className={tabClass(department === group.department)}
+                  onClick={() => setParam('dept', group.department)}
+                >
+                  {t(`systemAdmin.settings.departments.${group.department}`)}
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {matchesIn(group.department)}
+                  </span>
+                </button>
+              ))}
+            </div>
 
-          <FilterBar
-            hasActiveFilters={query !== '' || department !== ''}
-            onClear={() => setSp(new URLSearchParams(), { replace: true })}
-          >
-            <SearchInput
-              value={query}
-              onChange={(value) => setParam('q', value)}
-              placeholder={t('systemAdmin.settings.searchPlaceholder')}
-            />
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              {t('systemAdmin.settings.count', { shown, total })}
-            </span>
-          </FilterBar>
+            <FilterBar
+              hasActiveFilters={query !== '' || department !== ''}
+              onClear={() => setSp(new URLSearchParams(), { replace: true })}
+            >
+              <SearchInput
+                value={query}
+                onChange={(value) => setParam('q', value)}
+                placeholder={t('systemAdmin.settings.searchPlaceholder')}
+              />
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {t('systemAdmin.settings.count', { shown, total })}
+              </span>
+            </FilterBar>
 
-          {!canEdit && (
-            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-              {t('systemAdmin.settings.readOnly')}
-            </p>
-          )}
+            {!canEdit && (
+              <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                {t('systemAdmin.settings.readOnly')}
+              </p>
+            )}
 
-          {visible.length === 0 ? (
-            <EmptyState title={t('systemAdmin.settings.empty')} />
-          ) : (
-            visible.map((group) => (
-              <section
-                key={group.department}
-                data-settings-department={group.department}
-                aria-label={t(`systemAdmin.settings.departments.${group.department}`)}
-                className="space-y-3"
-              >
-                {/* Under «all», each department is introduced; under its own tab the tab says it. */}
-                {department === '' && (
-                  <h2 className="flex items-center gap-2 pt-2 text-base font-semibold text-slate-800 dark:text-slate-100">
-                    {t(`systemAdmin.settings.departments.${group.department}`)}
-                    <CountPill count={countRows([group])} />
-                  </h2>
-                )}
-                {group.sections.map((section) => (
-                  <Card key={section.id}>
-                    <CardHeader
-                      title={t(`systemAdmin.settings.sections.${group.department}.${section.id}`)}
-                      actions={<CountPill count={section.rows.length} />}
-                    />
-                    <CardBody>
-                      <div data-settings-section={`${group.department}.${section.id}`}>
-                        {section.rows.map((row) => (
-                          <SettingRow key={row.key} row={row} canEdit={canEdit} />
-                        ))}
-                      </div>
-                    </CardBody>
-                  </Card>
-                ))}
-              </section>
-            ))
-          )}
-        </div>
-      )}
+            <div className={cn(BOARD_LIST_FILL, 'space-y-4')}>
+              {visible.length === 0 ? (
+                <EmptyState title={t('systemAdmin.settings.empty')} />
+              ) : (
+                visible.map((group) => (
+                  <section
+                    key={group.department}
+                    data-settings-department={group.department}
+                    aria-label={t(`systemAdmin.settings.departments.${group.department}`)}
+                    className="space-y-3"
+                  >
+                    {/* Under «all», each department is introduced; under its own tab the tab says it. */}
+                    {department === '' && (
+                      <h2 className="flex items-center gap-2 pt-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+                        {t(`systemAdmin.settings.departments.${group.department}`)}
+                        <CountPill count={countRows([group])} />
+                      </h2>
+                    )}
+                    {group.sections.map((section) => (
+                      <Card key={section.id}>
+                        <CardHeader
+                          title={t(
+                            `systemAdmin.settings.sections.${group.department}.${section.id}`,
+                          )}
+                          actions={<CountPill count={section.rows.length} />}
+                        />
+                        <CardBody>
+                          <div data-settings-section={`${group.department}.${section.id}`}>
+                            {section.rows.map((row) => (
+                              <SettingRow key={row.key} row={row} canEdit={canEdit} />
+                            ))}
+                          </div>
+                        </CardBody>
+                      </Card>
+                    ))}
+                  </section>
+                ))
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </PageContainer>
   );
 };

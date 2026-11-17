@@ -11,6 +11,23 @@ its entry here in the same PR.
 
 ### Added
 
+- **Administration: only the table scrolls, not the page.** «عايز بردو كل الصفحات اللى فى مديول الإدارة
+  ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس». Every page of the «الإدارة» menu now takes the
+  board frame Fleet and ATM use (`shared/ui/board-scroll.ts`). On a computer the title, tabs and
+  filters keep their place, the pager stays below, and only the table's rows scroll, under a head
+  that stays. A phone or a tablet scrolls as before.
+  - The table pages: System Users, Active Users, Notification Templates, Audit Log, Activity Log,
+    Applications and Application Categories.
+  - The pages whose list is cards: Roles, the Permission Catalog, Approval Workflows and System
+    Settings. Their list scrolls instead (`BOARD_LIST_FILL`).
+  - `BOARD_LISTVIEW_FILL` does the same for a `ListView` card.
+  - The Audit Log, whose filter bar is the tallest, takes the IT boards' lower table floor
+    (`BOARD_TABLE_FILL_LOW`). With the usual 14rem floor, a 1280×720 or 1366×768 laptop scrolled
+    the whole page, filters included.
+  - `admin-board-scroll.spec.ts` holds every page of the menu to this shape.
+  - Checked in a browser against a mocked API. At 1440×900, 1366×768 and 1280×720 the title and
+    filters stay in place on all eleven pages, and the table or list takes the height that is left.
+
 - **Organization: «شجرة الهيكل التنظيمي», and a job's place in the structure.** «HR hierarchical chart …
   عبارة عن شارت بالشركة كلها .. فيه الإدارات والأقسام والمسميات الوظيفية … ولما أختار إدارة بالضغط على
   كارت يجيب تحتها الشارت بتاع هيكلها التنظيمي مع إمكانية تعديل الهيكل»; «عند إضافة وظيفة جديدة لا يتم
@@ -1869,6 +1886,19 @@ its entry here in the same PR.
   replaced, and a note names the asset the data came from.
 
 ### Fixed
+
+- **A role holding a retired permission can be saved again.** «لما بعدل صلاحيات دور بيظهر كدا !
+  Unknown permission keys: applicant.returnToStage» (the role «الموارد البشرية Test»).
+  - The cause: `applicant.returnToStage` was retired on 2026-11-16 (replaced by
+    `applicantReturn.execute`). Roles that held it kept it, and every save checked ALL the role's
+    keys against the registry, so the role could not be saved at all.
+  - Now only the keys an edit ADDS must be registered, the same rule the "keys you hold" check
+    already followed. A key the role already holds may be re-sent and is kept.
+  - Delegated grants follow the same rule.
+  - Retired keys are not stripped automatically: a key can be missing from the registry only for
+    now (the automation keys while `AUTOMATION_ENABLED` is off).
+  - The role form already lists such keys at the end, as «غير معروفة», where they can be unticked
+    but not re-added.
 
 - **HR: «نموذج رقم (1)» prints on the owner's own pages.** «انا عاوز النموزج بردو شبه منا بعتو بظبط
   مفهوش اي تعديل خالص و بيتملي عادي بس الشكل اللي ادتولك بظبط». The form was drawn again in the

@@ -1394,7 +1394,7 @@ its entry here in the same PR.
       21.4 or more from the van's slate, the captain's emerald, a proposal's amber and a refusal's
       rose (the night shades chosen for it: an orange-500 mark is 26 from a proposal's amber-400);
       every figure and word 4.5:1, every icon 3:1. A 0 keeps its hue, muted — a lighter ground, a
-      lighter figure (3:1 or better) — never one grey for all three.
+      quieter figure, still 4.5:1 (it is 15px text) — never one grey for all three.
     - «اسم القائد» in the vans' head, right after «كود السيارة»: a van answers when ANY of its captains
       does — the first, whom the card shows, or the second — by his name or his employee code, folded
       as every box here («مصطفي» finds «مصطفى», «br108» «BR-108»); AND-ed with the rest, in «المعروض …
@@ -1412,6 +1412,15 @@ its entry here in the same PR.
       `van-accent.spec.ts` and the accent and neighbour tests in `distribution-colours.spec.ts`); in
       their place, the one look (the same classes on every van, both screens), the counts' distances
       and contrasts, the captain's frame apart from the counts, the top row's order, the captain's box.
+    - R26b verify (computed styles in a real browser, the real API): (1) a 0's figure was 3:1 — «0
+      كراتين» read at 3.4:1 and «0 حقائب» at 3.5:1 by day, below AA for 15px text: the four zeros'
+      figures are the 700 shades by day now (4.9–6.2:1), still quieter than a count's (8:1), and the
+      spec asks 4.5:1. (2) A state's edge was lost by day: `cn` does not merge and the built CSS
+      writes `border-slate-200` / `bg-white` after the amber, brand and rose utilities, so the plain
+      colours beside a state's won — a proposal's dashed edge was grey, not amber; a move's brand and a
+      refusal's rose edge on a chip, a drag's dashed «takes it», «here» and «no» edge and ground on a
+      van and on its load, were the plain card's (by night too, the van's edge since 26b's slate).
+      Each now wears ONE edge and ONE ground at a time (spec: one of each per state).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

@@ -13,7 +13,8 @@
 //     almost no colour of its own — far from every colour that means something;
 //   · THE COUNTS — four hues, FILLED, 20 or more apart (CIEDE2000) as solid marks and 10 or more as
 //     grounds, in both themes, and as far from the van, the captain, a proposal and a refusal; every
-//     figure and word at 4.5:1, every icon at 3:1; a 0 its own hue muted (its figure 3:1 or better);
+//     figure and word at 4.5:1, every icon at 3:1; a 0 its own hue muted — its figure quieter, still
+//     4.5:1 (it is 15px text; R26b verify: the 600 shades left «0 كراتين» at 3.4:1 by day);
 //   · THE CAPTAIN'S FRAME, THE LOAD — their words at 4.5:1.
 import { describe, expect, it } from 'vitest';
 import colors from 'tailwindcss/colors';
@@ -333,7 +334,7 @@ describe('the counts — four hues, unmistakably apart (Round 26b)', () => {
     }
   });
 
-  it('a 0 keeps its hue, muted — a lighter ground, a lighter figure (3:1 or better), its words 4.5:1', () => {
+  it('a 0 keeps its hue, muted — a lighter ground, a quieter figure — its figure and words still 4.5:1', () => {
     for (const kind of COUNT_KINDS) {
       const { chip, zero, figure, zeroFigure, mark } = COUNT_LOOK[kind];
       // Lighter by day, thinner by night.
@@ -349,7 +350,9 @@ describe('the counts — four hues, unmistakably apart (Round 26b)', () => {
           const on0 = ground(zero, dark, under);
           const on = ground(chip, dark, under);
           const quiet = contrast(words(zeroFigure, dark), on0);
-          expect(quiet, `${kind} 0 figure`).toBeGreaterThanOrEqual(3);
+          // R26b verify — the figure is 15px text, not large text: AA is 4.5:1 for it too (3:1 let
+          // «0 كراتين» read at 3.4:1 and «0 حقائب» at 3.5:1 by day).
+          expect(quiet, `${kind} 0 figure`).toBeGreaterThanOrEqual(4.5);
           // Quieter than a count's figure — muted, never louder.
           expect(quiet, `${kind} 0 figure`).toBeLessThan(contrast(words(figure, dark), on));
           expect(contrast(words(mark, dark), on0), `${kind} 0 icon`).toBeGreaterThanOrEqual(3);

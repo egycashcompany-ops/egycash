@@ -1447,17 +1447,22 @@ export const VanCard = ({
       className={cn(
         // `relative`: the head's screen-reader words (`sr-only`, absolute) and the stripe stay inside
         // the card; `overflow-hidden` cuts the stripe and the band to the card's round corners.
-        'relative flex min-w-0 flex-col overflow-hidden rounded-xl border bg-white shadow-sm shadow-slate-900/[0.04] transition-[box-shadow,border-color,background-color] dark:bg-[#111827] dark:shadow-black/30',
-        kept
-          ? 'border-dashed border-amber-400 dark:border-amber-500/60'
-          : 'border-slate-200 dark:border-slate-700/70',
-        drop?.armed === true &&
-          drop.over === null &&
-          'border-dashed border-brand-300 dark:border-brand-500/50',
-        drop?.over === 'place' &&
-          'border-brand-500 bg-brand-50 shadow-lg shadow-brand-500/20 ring-2 ring-brand-500 dark:border-brand-400 dark:bg-brand-500/10 dark:ring-brand-400',
-        drop?.over === 'refuse' &&
-          'border-rose-500 bg-rose-50 ring-2 ring-rose-500 dark:border-rose-400 dark:bg-rose-500/10 dark:ring-rose-400',
+        'relative flex min-w-0 flex-col overflow-hidden rounded-xl border transition-[box-shadow,border-color,background-color]',
+        // ONE edge and ONE ground at a time (R26b verify): `cn` does not merge, and the board's CSS
+        // writes `border-slate-200` / `bg-white` AFTER the brand and rose utilities — beside them, the
+        // plain card's colours won, and a drag's «here» and «no» lost their edge and ground by day.
+        drop?.over === 'place'
+          ? 'border-brand-500 bg-brand-50 shadow-lg shadow-brand-500/20 ring-2 ring-brand-500 dark:border-brand-400 dark:bg-brand-500/10 dark:ring-brand-400'
+          : drop?.over === 'refuse'
+            ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-500 dark:border-rose-400 dark:bg-rose-500/10 dark:ring-rose-400'
+            : cn(
+                'bg-white shadow-sm shadow-slate-900/[0.04] dark:bg-[#111827] dark:shadow-black/30',
+                kept
+                  ? 'border-dashed border-amber-400 dark:border-amber-500/60'
+                  : drop?.armed === true
+                    ? 'border-dashed border-brand-300 dark:border-brand-500/50'
+                    : 'border-slate-200 dark:border-slate-700/70',
+              ),
       )}
     >
       {/* The van's one colour at its start edge — the same on every van. */}
@@ -1585,10 +1590,13 @@ export const VanCard = ({
           data-van-load={van.crewAssignmentId}
           className={cn(
             'flex min-h-[3.25rem] flex-col gap-1.5 rounded-lg border p-1.5 transition-colors',
-            count === 0 && takesNone ? LOAD_LOOK.refuse : LOAD_LOOK.area,
+            // One look at a time — see the card's own edge above.
+            drop?.over === 'place'
+              ? LOAD_LOOK.place
+              : count === 0 && takesNone
+                ? LOAD_LOOK.refuse
+                : LOAD_LOOK.area,
             count === 0 && 'border-dashed',
-            drop?.over === 'place' &&
-              'border-brand-400 bg-brand-50/70 dark:border-brand-400/70 dark:bg-brand-500/10',
           )}
         >
           {children}
@@ -1930,20 +1938,19 @@ export const ShipmentChip = ({
           setTapped((open) => !open);
         }}
         className={cn(
-          'group relative flex min-h-[2rem] min-w-0 items-center gap-1 overflow-hidden rounded-lg border py-0.5 pe-0.5 text-start shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60',
-          'border-slate-200 dark:border-[#2b3b6b]',
+          'group relative flex min-h-[2rem] min-w-0 items-center gap-1 overflow-hidden rounded-lg border py-0.5 ps-1 pe-0.5 text-start shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60',
           // ONE ground (Round 26b — «لون واحد لكل العربيات»): a chip on a van is plain, as on the
           // left; a proposal and an unsaved move keep their own ground and edge wherever they are.
-          'ps-1',
+          // ONE edge too (R26b verify): `cn` does not merge, and the board's CSS writes
+          // `border-slate-200` AFTER amber, brand and rose — the plain edge beside a tone's hid a
+          // proposal's dashed amber, a move's brand and a refusal's rose by day.
           tone === 'proposed'
-            ? 'bg-amber-50 dark:bg-amber-400/[0.06]'
+            ? 'bg-amber-50 dark:bg-amber-400/[0.06] border-dashed border-amber-500 dark:border-amber-400/60'
             : tone === 'moved'
-              ? 'bg-brand-50/60 dark:bg-brand-500/[0.08]'
-              : 'bg-white dark:bg-[#0f1a3a]',
-          tone === 'proposed' && 'border-dashed border-amber-500 dark:border-amber-400/60',
-          tone === 'moved' && 'border-brand-400 dark:border-brand-400/60',
-          tone === 'refused' &&
-            'border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400',
+              ? 'bg-brand-50/60 dark:bg-brand-500/[0.08] border-brand-400 dark:border-brand-400/60'
+              : tone === 'refused'
+                ? 'bg-white dark:bg-[#0f1a3a] border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400'
+                : 'bg-white dark:bg-[#0f1a3a] border-slate-200 dark:border-[#2b3b6b]',
           drag !== undefined && 'cursor-grab active:cursor-grabbing',
           drag?.dragging === true && 'opacity-40',
         )}

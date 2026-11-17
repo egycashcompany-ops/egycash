@@ -21,7 +21,8 @@
 //     in both themes (the dark shades are chosen for that: a blue-400 mark beside a cyan-300, an
 //     orange-500 one far from a proposal's amber-400), and as far from the van's slate, the captain's
 //     emerald, a proposal's amber and a refusal's rose. A 0 keeps its hue, muted: a lighter ground, a
-//     lighter figure (3:1 or better), never one grey for all.
+//     quieter figure — still 4.5:1, the figure is 15px text (R26b verify: the 600 shades left «0 كراتين»
+//     at 3.4:1 by day) — never one grey for all.
 //   · THE HEAD: the time and the direction calm and neutral — each a white pill ringed in slate, its
 //     own icon (a clock, a route) — so the head is the van's alone (Round 26's sky and violet would
 //     now sit beside a cyan and a fuchsia count).
@@ -54,7 +55,7 @@ export const VAN_LOOK = {
  *   · `chip` — a count of 1 or more: a FILLED tinted ground, its ring, its words;
  *   · `figure` — its figure on that ground; `mark` — its icon;
  *   · `zero` — a count of 0 (or «…» / «—»): the same hue, muted — a lighter ground and ring;
- *   · `zeroFigure` — its figure then: lighter, 3:1 or better.
+ *   · `zeroFigure` — its figure then: quieter than a count's, still 4.5:1 (it is text — R26b verify).
  */
 export interface CountLook {
   icon: readonly string[];
@@ -77,7 +78,7 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
     figure: 'text-blue-900 dark:text-blue-50',
     mark: 'text-blue-600 dark:text-blue-400',
     zero: 'bg-blue-50 text-blue-700 ring-blue-100 dark:bg-blue-500/[0.06] dark:text-blue-300 dark:ring-blue-400/15',
-    zeroFigure: 'text-blue-600 dark:text-blue-400',
+    zeroFigure: 'text-blue-700 dark:text-blue-400',
   },
   cartons: {
     icon: PATH.box,
@@ -87,7 +88,7 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
     figure: 'text-orange-900 dark:text-orange-50',
     mark: 'text-orange-600 dark:text-orange-500',
     zero: 'bg-orange-50 text-orange-700 ring-orange-100 dark:bg-orange-400/[0.06] dark:text-orange-300 dark:ring-orange-400/15',
-    zeroFigure: 'text-orange-600 dark:text-orange-400',
+    zeroFigure: 'text-orange-700 dark:text-orange-400',
   },
   bags: {
     icon: SHIPMENT_PATH.bag,
@@ -97,7 +98,7 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
     figure: 'text-cyan-900 dark:text-cyan-50',
     mark: 'text-cyan-600 dark:text-cyan-300',
     zero: 'bg-cyan-50 text-cyan-700 ring-cyan-100 dark:bg-cyan-400/[0.07] dark:text-cyan-300 dark:ring-cyan-400/15',
-    zeroFigure: 'text-cyan-600 dark:text-cyan-400',
+    zeroFigure: 'text-cyan-700 dark:text-cyan-400',
   },
   boxes: {
     icon: SHIPMENT_PATH.cube,
@@ -107,7 +108,7 @@ export const COUNT_LOOK: Record<CountKind, CountLook> = {
     figure: 'text-fuchsia-900 dark:text-fuchsia-50',
     mark: 'text-fuchsia-600 dark:text-fuchsia-400',
     zero: 'bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-100 dark:bg-fuchsia-600/[0.08] dark:text-fuchsia-300 dark:ring-fuchsia-400/15',
-    zeroFigure: 'text-fuchsia-600 dark:text-fuchsia-400',
+    zeroFigure: 'text-fuchsia-700 dark:text-fuchsia-400',
   },
 };
 
@@ -138,10 +139,13 @@ export const CAPTAIN_FRAME = {
 /**
  * The van's load — a bounded place of its own under the counts, the chips on it plain as on the
  * left: `area` its ground and edge; `empty` the words of an empty load; `refuse` the place of a van
- * that takes nothing (no captain, or a row of another type).
+ * that takes nothing (no captain, or a row of another type); `place` — a dragged محصنة lands here.
+ * ONE of them at a time (R26b verify): the board's CSS writes `border-slate-200` and `bg-slate-50`
+ * after the brand utilities, so `area` beside `place` hid the drop's edge and ground by day.
  */
 export const LOAD_LOOK = {
   area: 'border-slate-200 bg-slate-50 dark:border-slate-700/60 dark:bg-[#0b1226]',
+  place: 'border-brand-400 bg-brand-50/70 dark:border-brand-400/70 dark:bg-brand-500/10',
   empty: 'text-slate-500 dark:text-slate-400',
   refuse:
     'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/[0.06] dark:text-rose-300',

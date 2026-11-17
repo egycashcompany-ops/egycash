@@ -728,6 +728,82 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     expect(moved).toContain('border-brand-400');
   });
 
+  it('R26b verify — ONE edge colour and ONE ground at a time: the plain look never sits beside a tone’s or a drag’s', () => {
+    // `cn` does not merge, and the built CSS writes `border-slate-200` and `bg-white` AFTER the
+    // amber, brand and rose utilities: a plain colour beside a state's wins. Measured in the browser
+    // before the fix, by day: a proposal's dashed edge grey, not amber; a move's brand edge, a
+    // refusal's rose edge, a drag's «here» / «no» edge and ground on the van and its load — all lost.
+    const COLOUR = String.raw`(?:white|slate|brand|amber|rose|\[#[0-9a-f]+\])(?:-\d+)?(?:\/\S+)?`;
+    const one = (label: string, classes: string): void => {
+      const list = classes.split(/\s+/);
+      for (const [part, re] of [
+        ['edge', new RegExp(`^border-${COLOUR}$`)],
+        ['night edge', new RegExp(`^dark:border-${COLOUR}$`)],
+        ['ground', new RegExp(`^bg-${COLOUR}$`)],
+        ['night ground', new RegExp(`^dark:bg-${COLOUR}$`)],
+      ] as const) {
+        const found = list.filter((c) => re.test(c));
+        expect(found, `${label} — ${part}: ${found.join(' ')}`).toHaveLength(1);
+      }
+    };
+    // The chip, each tone — and each tone's own edge is the one it keeps.
+    for (const [tone, edge] of [
+      [undefined, 'border-slate-200'],
+      ['proposed', 'border-amber-500'],
+      ['moved', 'border-brand-400'],
+      ['refused', 'border-rose-500'],
+    ] as const) {
+      const classes = classOf(
+        render(
+          <ShipmentChip
+            row={ROW}
+            bankName="الأهلي"
+            branchName="فرع المعادي"
+            tone={tone}
+            card={<p>card</p>}
+          />,
+        ),
+        `data-shipment-tone="${tone ?? 'saved'}"`,
+      );
+      one(`chip ${tone ?? 'plain'}`, classes);
+      expect(classes.split(/\s+/)).toContain(edge);
+    }
+    // The van and its load — at rest, kept, armed, and with a drag over it.
+    const drawn = (
+      van: OperationsDayBoardVehicleCrewDto & { securedType?: boolean },
+      drop?: { armed: boolean; over: 'place' | 'refuse' | null },
+    ): string =>
+      render(
+        <VanCard
+          van={van}
+          crewPlanVisible
+          day="2026-11-17"
+          count={2}
+          packages={PACKAGES}
+          {...(drop === undefined ? {} : { drop })}
+        >
+          <p>load</p>
+        </VanCard>,
+      );
+    const kept = VANS[2] as OperationsDayBoardVehicleCrewDto & { securedType?: boolean };
+    for (const [label, van, drop, edge] of [
+      ['at rest', VAN, undefined, 'border-slate-200'],
+      ['kept', kept, undefined, 'border-amber-400'],
+      ['armed', VAN, { armed: true, over: null }, 'border-brand-300'],
+      ['place', VAN, { armed: true, over: 'place' }, 'border-brand-500'],
+      ['refuse', VAN, { armed: false, over: 'refuse' }, 'border-rose-500'],
+    ] as const) {
+      const html = drawn(van, drop);
+      const article = classOf(html, `data-distribution-van="${van.crewAssignmentId}"`);
+      one(`van ${label}`, article);
+      expect(article.split(/\s+/)).toContain(edge);
+      one(`load ${label}`, classOf(html, `data-van-load="${van.crewAssignmentId}"`));
+    }
+    const over = drawn(VAN, { armed: true, over: 'place' });
+    expect(classOf(over, 'data-van-load="cr-112"')).toContain(LOAD_LOOK.place);
+    expect(classOf(over, 'data-van-load="cr-112"')).not.toContain(LOAD_LOOK.area);
+  });
+
   it('a chip’s card names its van in words — no swatch — and counts its packages in their hues', () => {
     const html = render(
       <ShipmentCardBody

@@ -526,9 +526,17 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     van: OperationsDayBoardVehicleCrewDto & { securedType?: boolean; shiftTypeName?: string },
     count = 2,
     load: ReactElement = <p>load</p>,
+    takesNone = false,
   ) =>
     render(
-      <VanCard van={van} crewPlanVisible day="2026-11-17" count={count} packages={PACKAGES}>
+      <VanCard
+        van={van}
+        crewPlanVisible
+        day="2026-11-17"
+        count={count}
+        packages={PACKAGES}
+        takesNone={takesNone}
+      >
         {load}
       </VanCard>,
     );
@@ -662,9 +670,17 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
       VANS[1] as OperationsDayBoardVehicleCrewDto,
       0,
       <EmptyLoad tone="refuse">no</EmptyLoad>,
+      true,
     );
     expect(classOf(refusing, 'data-van-load="cr-125"')).toContain(LOAD_LOOK.refuse);
     expect(refusing).toMatch(/data-empty-load="refuse" class="[^"]*text-rose-700/);
+    // The vault's screen moves nothing: the same van there, empty, is a plain empty load.
+    const vault = card(VANS[1] as OperationsDayBoardVehicleCrewDto, 0, <EmptyLoad>none</EmptyLoad>);
+    expect(classOf(vault, 'data-van-load="cr-125"')).toContain(LOAD_LOOK.area);
+    expect(classOf(vault, 'data-van-load="cr-125"')).not.toContain(LOAD_LOOK.refuse);
+    // The desk says which vans take nothing — its own rule (`takesShipments`).
+    expect(DIST).toContain('takesNone={!takesShipments(van)}');
+    expect(HANDOVER).not.toContain('takesNone');
     // A kept row of another type keeps its dashed amber edge and its notice.
     const kept = card(VANS[2] as OperationsDayBoardVehicleCrewDto);
     expect(kept).toMatch(/^<article[^>]*class="[^"]*border-dashed border-amber-400/);

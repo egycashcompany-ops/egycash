@@ -1293,7 +1293,9 @@ its entry here in the same PR.
       open «نقل إلى…» menu (Round 25's F2 rule): the shared hook takes a `when` it asks as the pointer
       comes and again when the beat ends. The card is a layer that takes no pointer, and the head is
       inside the van's drop mark: a drop anywhere on the card still lands.
-    - THE COLOURS: each van wears an ACCENT — one of «لوحة التشغيلة»'s twenty palette colours, no new
+    - THE COLOURS (the per-van accent below was taken back in Round 26b — every van now wears ONE look;
+      the counts keep colours of their own, re-chosen there): each van wore an ACCENT — one of «لوحة
+      التشغيلة»'s twenty palette colours, no new
       palette — by its place among the day's «محصنة» rows (the same list on both screens, so a van is the
       same colour on «تسليم المحصنات»; a filter hides cards, it never repaints them), through an order
       of the palette in which neighbours (next to each other, or one above the other at two, three or
@@ -1360,6 +1362,56 @@ its entry here in the same PR.
         count on both screens — the heads, «المعروض 3 من 12», «حفظ (2)», «تسليم (1)», the dialogs and
         notices — is in the figures' face now, as the van card's counts and the money are; only a
         crew's NAME, «بدون سيارة (١)», keeps the board's own words.
+  - Round 26b — the owner on Round 26's screens: «لا استنى الالوان مش عجبانى بتاعت العربيه», and, asked
+    how he wants it, «لون واحد لكل العربيات»; then «عاوز يبقى فى فرق فى الالوان بين الصندوق و الحقائب و
+    الكراتين», «وعاوز اضيف اسم القائد فى الفلاتر بعد العربيه», «عاوز اخلى التاريخ يكون مكان الاحصائيات
+    والاحصائيات تكون فى النص» and «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل».
+    - ONE LOOK FOR EVERY VAN: the colour per van is gone — its order, its stripes, bands and code
+      pills, every chip painted in its van's colour, the swatches on the chip's card, the van's card
+      and in «نقل إلى…» (`lib/van-accent.ts` is gone; what it held besides the colours — the counts'
+      kinds and the van's hover card — is `lib/van-card.ts`). Every van card wears the same calm look,
+      slate, the boards' blue-grey ink: its code in a solid slate pill (white words, 10:1, the same
+      pill in both themes), a thin slate stripe at its start edge, its head on a very light slate band.
+      Slate is the one family here with almost no colour of its own (CIEDE2000 chroma 14): the van
+      reads as the card's title, and every colour that MEANS something stays free and far from it —
+      21 or more from each count. A chip on a van is the left's plain chip in the van's bounded load;
+      a proposal keeps its dashed amber, an unsaved move its own edge, a kept row of another type its
+      dashed amber edge and notice. The time and the direction are calm neutral pills now (Round
+      26's sky and violet would sit beside a cyan and a fuchsia count).
+    - THE VAN CARD, REDRAWN, in four parts top to bottom: THE HEAD (code · time · direction, one
+      line, on its band); THE CAPTAIN in a frame of his own — «قائد» and his name, cut to the frame,
+      his person card on it; «بلا قائد» in the refusal's rose — no count shares it; THE COUNTS in a
+      row of their own — the محصنات first, then كراتين, حقائب, صناديق, four tiles of one width, each
+      its figure over its word (the محصنات' own Arabic form, «محصنتان», whole to a screen reader and on
+      hover); THE LOAD, a bounded place of its own — empty, «اسحب المحصنات إلى هنا» with its arrow,
+      or, on a van that takes nothing, why, in rose. Still ONE drop target (`data-drop-van`), its
+      hover card still on the head and the captain's frame (not on the counts, not on his name). The
+      same card on «تسليم المحصنات».
+    - THE COUNTS, APART: each a FILLED tile (a real ground of its hue, not a ring on white), its own
+      icon, the same on the van card, the van's card, a chip's card and the page's figures — محصنات
+      blue, كراتين orange, حقائب cyan, صناديق fuchsia. Measured (`distribution-colours.spec.ts`): their
+      marks 22.8 or more apart (CIEDE2000) by day and 25.8 by night, their grounds 12.7 and 13.1, and
+      21.4 or more from the van's slate, the captain's emerald, a proposal's amber and a refusal's
+      rose (the night shades chosen for it: an orange-500 mark is 26 from a proposal's amber-400);
+      every figure and word 4.5:1, every icon 3:1. A 0 keeps its hue, muted — a lighter ground, a
+      lighter figure (3:1 or better) — never one grey for all three.
+    - «اسم القائد» in the vans' head, right after «كود السيارة»: a van answers when ANY of its captains
+      does — the first, whom the card shows, or the second — by his name or his employee code, folded
+      as every box here («مصطفي» finds «مصطفى», «br108» «BR-108»); AND-ed with the rest, in «المعروض …
+      من …», cleared by «مسح التصفية». The head's four boxes share the title's line at 1440 and 1280,
+      Arabic and English (measured), and wrap below that.
+    - THE TOP ROW: the day («يوم التسليم») at the start, the figures in the middle, «حفظ / تراجع /
+      توزيع تلقائي» at the end — the row a container of two equal sides, so the figures stand truly in
+      its middle (0–1px off, measured at 1440 and 1280, both languages; the figures a step smaller,
+      and where the acts' words would push them off the middle — 1280 — «تراجع», and in English «توزيع
+      تلقائي», show their icon alone, their names kept); narrower, the figures take a centred line of
+      their own; at 390 the day, the figures, the acts stack, nothing sideways. The hint and «n مقترحة
+      لم تُحفظ» are a slim line under it — no band. «تسليم المحصنات» the same, its acts on each van.
+    - Specs: Round 26's colour specs went with the colours (the order's neighbours, every palette
+      colour's pill, a chip on each van's ground, the stable and kept-row colour rules — 13 in
+      `van-accent.spec.ts` and the accent and neighbour tests in `distribution-colours.spec.ts`); in
+      their place, the one look (the same classes on every van, both screens), the counts' distances
+      and contrasts, the captain's frame apart from the counts, the top row's order, the captain's box.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

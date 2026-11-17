@@ -145,9 +145,9 @@ export const DAY_INPUT =
  * THE PAGE'S TOP ROW (Round 26b — «عاوز اخلى التاريخ يكون مكان الاحصائيات والاحصائيات تكون فى النص»):
  * the day («يوم التسليم») at the start, the figures in the MIDDLE, the acts («حفظ», «تراجع», «توزيع
  * تلقائي») at the end. The row is a container, and lays itself out by the room it has:
- *   · wide (`TOP_ROW_ONE_LINE`, 1440 and 1280 — measured, Arabic and English): one line of three
- *     columns, the two sides of equal share (`minmax(max-content,1fr)`), so the figures stand truly
- *     in the middle and never under the day or the buttons;
+ *   · wide (the row 68rem or more — 1440 and 1280, measured, Arabic and English): one line of
+ *     three columns, the two sides of equal share (`minmax(max-content,1fr)`), so the figures stand
+ *     truly in the middle and never under the day or the buttons;
  *   · narrower: the day and the acts on the first line, the figures on a line of their own, centred;
  *   · a phone: the day, the figures, the acts — each on its own line, nothing sideways.
  * `end` is optional (the vault's screen has its acts on each van): the middle stays the middle.
@@ -1379,6 +1379,7 @@ export const VanCard = ({
   day,
   count,
   packages,
+  takesNone = false,
   actions,
   drop,
   children,
@@ -1396,6 +1397,12 @@ export const VanCard = ({
   /** The vault's counts over its load; null when the reader cannot read them, 'pending' or
    *  'failed' while the vault's read is out or has failed (`vanPackages`). */
   packages: Packaging | null | 'pending' | 'failed';
+  /**
+   * The van takes no محصنة here (no captain, or a row of another type — the desk's `takesShipments`):
+   * its empty load is drawn in the refusal's rose, as its words say why. The vault's screen moves
+   * nothing, and leaves it out.
+   */
+  takesNone?: boolean;
   /** Above the van — the vault's «تسليم» and «طباعة». */
   actions?: ReactNode;
   drop?: {
@@ -1414,8 +1421,6 @@ export const VanCard = ({
   const name = vanPhrase(t, van, looseNumber);
   const kept = van.securedType === false;
   const typeName = van.shiftTypeName ?? null;
-  // A van that takes nothing new — no captain, or a row of another type: its empty load says why.
-  const refusing = captain === null || kept;
 
   // The van's card — on the head and the captain's frame (Round 26).
   useEffect(watchDrags, []);
@@ -1580,7 +1585,7 @@ export const VanCard = ({
           data-van-load={van.crewAssignmentId}
           className={cn(
             'flex min-h-[3.25rem] flex-col gap-1.5 rounded-lg border p-1.5 transition-colors',
-            count === 0 && refusing ? LOAD_LOOK.refuse : LOAD_LOOK.area,
+            count === 0 && takesNone ? LOAD_LOOK.refuse : LOAD_LOOK.area,
             count === 0 && 'border-dashed',
             drop?.over === 'place' &&
               'border-brand-400 bg-brand-50/70 dark:border-brand-400/70 dark:bg-brand-500/10',

@@ -956,6 +956,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 day={day}
                 count={load.length}
                 packages={vanPackages(packagesRead, load, packagingOf)}
+                takesNone={!takesShipments(van)}
                 {...(canEdit
                   ? {
                       drop: {

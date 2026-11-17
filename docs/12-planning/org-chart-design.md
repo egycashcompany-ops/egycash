@@ -47,6 +47,7 @@ fresh-context design review: two rounds were run on earlier drafts, and this ver
 | D-ORG3-2 | **The chart starts filled from reality, once.** Each job is placed where its holders sit: employees who have not exited, and accepted offers not yet hired. From then on, places are edited by hand. A department is filled only once, so a place a user removes is not put back (§7 gives the exact guarantee). | An empty chart means placing every job by hand: 147 titles in ADR-031's export of 2026-09-07. A fill on every start would undo users' edits. |
 | D-ORG3-3 | **A section never moves to another department.** A section can be added, renamed or stopped. A section created under the wrong department is added again under the right one and the old one is stopped. People change section through the existing «نقل» (transfer) action. | A move changes the department of everyone in that section, in every branch at once. `UpdateSectionCatalogSchema` (`packages/contracts/src/platform/organization.ts`) does not allow it. |
 | D-ORG3-4 | **A section added from the chart is created in the branches that have the department.** All of them are ticked at first, and any can be unticked, but at least one must stay ticked. | Employees are registered on their own branch's section row, so a section with no rows could not be chosen anywhere. |
+| D-ORG3-5 | **A department or section added on its own page is linked to the company list when it is created** (§5.6), so it appears in the chart and can be edited there at once. The owner chose this when the review raised it: «أيوه، يتربط تلقائيًا» ("yes, link it automatically"). He was told that whoever holds that department "in every branch" will then reach the new branch's copy too. | Without it, every department or section added after release would be read-only in the chart until an operator ran `migrate:org-catalog`. |
 
 ### 1.3 Defaults proposed with the decisions
 
@@ -63,7 +64,8 @@ These were stated in the same proposal, and the owner's answer approved them.
   approved sample. It shows no headcount: the owner said «متعملش حاجه زياده عن اللي قلتلك عليه» ("don't
   add anything beyond what I told you").
 - **Behind the scenes.** Branch copies that are not linked to the company list are folded by name, so
-  no department appears twice. Writes link nothing (§5.1).
+  no department appears twice. No write links an existing row (§5.1); new rows are linked when they are
+  created (D-ORG3-5, §5.6).
 
 ### 1.4 Not in this phase
 
@@ -474,27 +476,50 @@ existing `DUPLICATE` and `BUSINESS_RULE_VIOLATION` keep their meanings.
 | `VALIDATION_FAILED` | 400 | A malformed id or body | (shared) |
 | `FORBIDDEN` | 403 | The key from §1.3 is missing | (shared) |
 
-### 5.6 New rows are linked when they are created
+### 5.6 New rows are linked when they are created (D-ORG3-5)
 
-`department.service.ts` and `section.service.ts`, in `buildCreateExtras`, gain one step, which runs only
-when the request names no `catalogId`:
+A create through `department.service.ts` or `section.service.ts` that names no `catalogId` gains one
+step, **after** the row is created as it is today. The order matters: if the step fails or refuses, the
+result is exactly today's unlinked row, never an entry without its row.
 
-- **Department:**
-  - Find the active department entries whose Arabic name folds like the new row's (English when the
-    Arabic is empty).
-  - Exactly one, with no live row of this branch linked to it: link the row to it and take its name, as
-    an explicit `catalogId` would.
-  - None: create an entry through `departmentCatalogService.create`, with the row's name and code. When
-    the row's code is taken among entries, use the next free `DEP-####` over the union of entry and row
-    codes. Then link the row.
-  - Two or more matches, or a branch that already has a linked row for that entry: leave the row
-    unlinked, as today.
-- **Section:** the same, under the department row's entry, and only when that department row is linked.
-  Otherwise the row stays unlinked, as today.
+1. **The row is created** by the existing path, unlinked, as today.
+2. **Find the entry**, in one `unitOfWork` loading through its session. For a department, the scope is
+   the company's department entries. For a section, it is the section entries of its department row's
+   entry. Within the scope, find the **active** entries whose name folds like the row's: Arabic, else
+   English (the `orgUnitGroupKeys` rule).
+3. **Decide:**
+   - **Leave the row unlinked, as today**, when any of these holds:
+     - two or more entries match;
+     - the branch (for a section, the department row) already has a live row linked to the match;
+     - a **live unlinked row** of that name already exists in scope, other than the new one. That group
+       stays with the operator command, which must not find an entry it did not plan (ADR-031).
+     - (a section only) its department row is unlinked;
+     - an entry of any status has exactly the same Arabic or English name (the catalog's own clash
+       rule, `catalogNameClash`), while none folds the same;
+     - anything in the step fails. The failure is logged at warn level.
+   - **One match:** set the row's `catalogId` to it. The row keeps the name it was given, which already
+     folds like the entry's.
+   - **No match:** create an entry with the row's name and the row's code, then set the row's
+     `catalogId`. The row has just claimed that code among rows. If an entry already holds it, `ux_code`
+     refuses the insert and the step falls back to the unlinked row. For a
+     new **department** entry, also insert its fill mark (§7) with `placed: 0`: a department that
+     exists from this moment has nobody in it to fill from.
+4. **Audit after commit,** through `recordMany`:
+   - `platform.department` / `platform.section` `update` with `catalogId`;
+   - when an entry was created, `platform.departmentCatalog` / `platform.sectionCatalog` `create`.
 
-These creates are not transactional today, and this does not make them so. If the row then fails, the
-entry stays without rows. That is harmless: it is not shown (§4.2), and the next create with that name
-reuses it. The importer passes `catalogId` and is unaffected.
+   The create's answer is the row as it stands after this step.
+
+**Who is affected.** `OrgUnitService.create` gains an optional `afterCreate` hook; only these two
+services set it. The importer passes `catalogId`, so this step is skipped for it. The seeds create
+through the services, so a fresh install's departments start linked, which is ADR-031's intent. Specs
+that create rows without `catalogId` and assert `catalogId: null` change with it (§10 Step 4 lists
+them).
+
+**Why this need not be one transaction with the row, while §5.3 must be.** Add section writes an entry
+and a row in each of N branches. Half of that would leave a section that exists in some branches, a
+state no screen can repair. Here the only half-state is the row without its link, and that is the
+state every row was in before this design.
 
 ## 6. Keeping the chart and the job form in step
 
@@ -562,7 +587,11 @@ It returns `null` when there was nothing to do.
      `acceptedSnapshot.terms.*` first and `terms.*` otherwise. This is a new
      `jobOfferRepository.jobUnitsAcceptedSystem()`. The existing `acceptedJobsByDepartment()`, which
      lacks the `supersededAt` filter, is left for its own owner (§9).
-4. **Resolve each triple.**
+4. **Departments already edited.** A department entry that already has any `job_title_places` row,
+   live or deleted, has been edited by hand. It gets its mark with `placed: 0` and nothing is inserted
+   for it, so the users' edits win. That is the case for an entry the operator linked while the server
+   was running, if someone edited it before the next start.
+5. **Resolve each triple.**
    - It is **skipped** (counted in `skipped`, one per distinct triple) when:
      - the department row is gone;
      - the department row is in a name group;
@@ -571,7 +600,7 @@ It returns `null` when there was nothing to do.
    - Otherwise it becomes a place in the department group's entry. The section narrows it only when
      the section row is still in that department group and its group is a catalog group. Otherwise the
      job goes directly under the department.
-5. **Write, in one transaction:**
+6. **Write, in one transaction:**
    - insert the places that are not already stored;
    - insert one mark per department entry from step 2, including the ones that received nothing.
 
@@ -580,17 +609,17 @@ It returns `null` when there was nothing to do.
    - **Racing processes:** the API and the worker both run the seed. If they race, `ux_departmentCatalogId`
      lets only one commit. The other gets a duplicate-key error on that index, which is the lost race
      logged at info.
-6. **Audit:** after commit, one `update` entry for each job that gained places, through `recordMany`.
+7. **Audit:** after commit, one `update` entry for each job that gained places, through `recordMany`.
 
 **What is guaranteed:**
 - **Once per department.** A department is filled once: at the first start where it has an active
   catalog group, which on release day is every linked department. A place a user removes from a
   department that has been filled is never put back.
-- **Departments linked later.** A department the operator links later, or one created linked after
-  release (§5.6), is filled at the next start, from whoever sits in it by then.
-- **Failed fills.** A failed fill writes nothing, and the next start tries again. Nobody can edit a
-  department's places before its first fill commits. Its places come only from this fill, or from edits
-  made after it.
+- **Departments linked later.** A department the operator links later is filled at the next start,
+  from whoever sits in it by then, unless someone has already edited its places (step 4). A department
+  created after release is marked when its entry is created (§5.6), because nobody sits in it yet.
+- **Failed fills.** A failed fill writes nothing, and the next start tries again. A department edited by
+  hand before its fill commits keeps those edits (step 4).
 
 ## 8. Alternatives considered
 

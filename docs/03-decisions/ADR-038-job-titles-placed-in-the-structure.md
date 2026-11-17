@@ -6,7 +6,9 @@ behaviour on 2026-11-17. · **Date:** 2026-11-17 · **Relates to:**
 [ADR-015](ADR-015-single-organization-model.md) (job titles are one organization-wide catalog),
 [ADR-030](ADR-030-requisition-names-its-placement.md) (no seat, vacancy or headcount entity),
 [ADR-031](ADR-031-org-units-defined-once-declared-per-branch.md) (the company catalog of departments
-and sections; this ADR changes how new rows are created against it)
+and sections) · **Supersedes in part:** ADR-031's "a deployment that never defines a catalog runs exactly
+as it does today" — new rows are now linked when created, so the first department created starts the
+catalog
 
 ## Context
 
@@ -58,14 +60,21 @@ flow checks them, and they count nothing.**
   - So neither the chart nor the job form ever sets `catalogId` on an existing row. A department or
     section that is not linked to a catalog entry is shown read-only in the chart.
   - Linking existing rows remains ADR-031's operator command, a deliberate change to who reaches what.
-- **New rows are linked when they are created (narrows ADR-031).**
+- **New rows are linked when they are created (supersedes ADR-031 in part).** The owner chose this
+  when the design review raised it: «أيوه، يتربط تلقائيًا» ("yes, link it automatically").
   - ADR-031 left `catalogId` optional, and the department and section forms never send one, so every
     row they made was unlinked. Now, when a create names no `catalogId`, the service links the new row
-    to the single active entry its name folds to, or creates an entry for a new name.
+    to the single active entry its name folds to, or creates an entry for a new name. The row is
+    created first, as before. Linking is a second step, so a step that fails or refuses leaves exactly
+    the unlinked row of today. It never leaves an entry without its row.
   - This runs under `department.create` / `section.create`, the keys ADR-031 already gives catalog
     writes.
-  - When the match is ambiguous, or the branch already has a row linked to that entry, the row stays
-    unlinked, as before.
+  - The row stays unlinked, as before, when:
+    - the match is ambiguous;
+    - the branch already has a row linked to that entry;
+    - an unlinked row of that name already exists. That group stays with the operator command, which
+      must not meet an entry it did not plan.
+    - an entry exactly clashes by name.
   - The effect on access is the one ADR-031 and ADR-032 intended: a branch that declares a department
     joins "that department everywhere" from the day the row is created.
 - **Filled once per department, from reality.**
@@ -73,6 +82,8 @@ flow checks them, and they count nothing.**
     holders and accepted candidates sit.
   - Its mark row (`job_title_place_fills`, unique per department entry) is written in the same
     transaction.
+  - A department whose places were already edited by hand is marked without being filled.
+  - A department created after release is marked when its entry is created.
   - Once a department is marked, it is never filled again, so a place removed afterwards is not put
     back.
   - The fill links no row and creates no entry.

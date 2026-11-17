@@ -27,6 +27,20 @@ its entry here in the same PR.
   - Server: `PATCH /hr/contracts/employee-papers/:employeeId/values` and `POST …/preview`
     (`contract.print`); the papers' read returns each paper's values.
 
+- **HR: «نموذج رقم (1)» carries the company's own number and address, the job's wage, and Arabic
+  figures.** «رقم المنشاه … هنثبت اول مربع و هنحط من تاني مربع الرقم دا 3338726 بالعربي من الشمال
+  لليمين و نشيل التاريخ اللي موجو في تحريرا في و عاوزين نحط الاجر داخل اشتراك و الاجر الشامل علي حسب
+  الوظيفهه … رقمها التاميني … العنوان … كل الارقام بالعربي». The scanned pages are unchanged.
+  - «رقم المنشأة»: the first of its eight boxes empty, ٣٣٣٨٧٢٦ in the other seven. Overleaf,
+    «رقمها التأميني» ٣٣٣٨٧٢٦ and «العنوان» «٩٠ د احمد عرابي المهندسين-الجيزه».
+  - «أجر /دخل الاشتراك» and «الأجر الشامل»: the job's «الراتب الثابت» from the organization chart,
+    the pounds at the end of their five boxes, the piasters in their two (variables
+    `job.fixedSalaryPounds`, `job.fixedSalaryPiasters`). A job with none leaves the boxes empty.
+  - «تحريراً في» is left for the hand; «تاريخ بدء الاشتراك» is still the start date.
+  - Every figure the form is filled with is printed in Arabic figures; an e-mail address keeps its own.
+  - The template sanitizer keeps rows of five and seven boxes (`c5`, `c7`) and `end`; the paper's
+    revision 4 rewrites the stored row at boot.
+
 - **System users: department, job title and roles on every row, and as filters.** «فى صفحة
   /system/users مستخدمو النظام عايزك تزود أدوار كل واحد + الإدارة بتاعته + مسماه الوظيفي .. وطبعاً
   هتزودهم فى الفلتر».

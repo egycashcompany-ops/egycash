@@ -37,6 +37,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-026](ADR-026-role-administration-guards.md) | Administering roles cannot exceed the administrator | Accepted |
 | [ADR-027](ADR-027-external-identities.md) | People outside the company get ECMS accounts, confined to one surface | Accepted |
 | [ADR-028](ADR-028-active-branch-narrowing.md) | One control in the command bar narrows the whole application to a branch | Accepted |
+| [ADR-029](ADR-029-realtime-invalidation-over-the-audit-chokepoint.md) | Realtime screens by invalidation signals over the audit chokepoint | Accepted |
 | [ADR-030](ADR-030-requisition-names-its-placement.md) | A Job Requisition names the placement it wants filled — there is no vacancy entity | Accepted |
 | [ADR-031](ADR-031-org-units-defined-once-declared-per-branch.md) | A department is defined once for the company and declared per branch — the rows stay, because `departments._id` is a data scope | Accepted |
 | [ADR-032](ADR-032-delegated-grants-per-site.md) | A manager hands out, per unit, what they hold there — reach is a set of units (whole branches, department copies) per permission key; a delegated grant is a list of keys for one account over one department in one branch, or a whole branch, and the ceiling compares units, not ranks | Accepted (amended) |
@@ -45,6 +46,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-035](ADR-035-passkey-sign-in.md) | Sign-in with a passkey (fingerprint / Face ID): discoverable, user-verifying, attestation none; counts as the second factor (amends R13); staff and opted-in external modules (gold customers), never applicants; RP ID from configuration; password + TOTP step-up to add one; single-use server challenges; every password-path barrier kept; reset/suspend/archive remove passkeys | Accepted; §9 superseded by ADR-036 |
 | [ADR-036](ADR-036-passkey-switch-keeps-own-list-and-removal.md) | With passkeys switched off, the server refuses sign-in, adding and renaming; people can still see and remove their own (`GET` answers `meta.enabled`) | Accepted |
 | [ADR-037](ADR-037-vehicle-code-pickers-list-every-active-car.md) | A vehicle-code picker lists every car it may offer — the owner's «لازم تظهر كلها»; still paged on the wire (`fetchWholeCatalog`), `{ id, code }` rows outside Fleet | Accepted |
+| [ADR-038](ADR-038-job-titles-placed-in-the-structure.md) | A job title names where it sits in the company structure — a department, or a section of it, several allowed — descriptively (enforces nothing, counts nothing), keyed on the company catalog entries, written from the job form and the org chart alike; filled once from where holders sit | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),

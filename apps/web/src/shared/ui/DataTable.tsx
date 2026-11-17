@@ -17,6 +17,13 @@ export interface Column<T> {
   key: string;
   header: string;
   /**
+   * Drawn INSTEAD of `header`, for the rare column whose heading is a drawing rather than a word —
+   * the attendance timeline's hour scale, whose labels have to sit at the positions the row's
+   * marks use. `header` stays required and keeps doing its other two jobs: it names the column in
+   * the list's accessible name, and it is what the column-width memory is keyed on.
+   */
+  headerNode?: ReactNode;
+  /**
    * `index` is the row's position in THIS page, 0-based — a serial column turns it into a number
    * a reader can call a row by. It is deliberately page-local: the table is handed one page and
    * knows nothing about the paging around it, so a column that must count from the start of the
@@ -525,7 +532,7 @@ export const DataTable = <T,>({
                         active && 'text-slate-700 dark:text-slate-200',
                       )}
                     >
-                      {c.header}
+                      {c.headerNode ?? c.header}
                       <ChevronIcon
                         className={cn(
                           'h-3.5 w-3.5 transition-transform',
@@ -546,7 +553,7 @@ export const DataTable = <T,>({
                       )}
                     </button>
                   ) : (
-                    c.header
+                    (c.headerNode ?? c.header)
                   )}
                 </th>
               );

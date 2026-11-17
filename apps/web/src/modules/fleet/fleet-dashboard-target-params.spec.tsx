@@ -56,7 +56,8 @@ import { VehicleContractsPage } from './pages/VehicleContractsPage';
 import { vehicleContractSummaryKey } from './api/vehicle-contract-queries';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { NoticesPage } from './pages/NoticesPage';
-import { paperStage } from './pages/LicensingPage';
+import { openPaperOf, paperStage } from './pages/LicensingPage';
+import { nowLinks } from './lib/fleet-dashboard-links';
 
 // The fuel-card board's dialogs portal into `document.body`, which this suite has no DOM for.
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -1276,5 +1277,39 @@ describe('/fleet/licensing reads its papers with the contracts’ rule', () => {
     expect(page).toContain('paperStage as licensingPaperStage');
     expect(page).toContain('=>\n  licensingPaperStage(row, paper);');
     expect(page, 'the old body is gone').not.toContain("if (out && back) return 'done';");
+  });
+
+  // «أوراق لم تُستلم بعد» on «التراخيص والتجديدات» (plan D20, critic C5): the figure counts each
+  // paper whose ONE square of two is ticked; its link names the paper, and the board lists exactly
+  // those cars (the rendered cases are licensing-screen.spec.tsx's).
+  it('reads the dashboard’s `paper` as that paper’s OPEN papers — remembered, read in its own source, shown as a removable chip', () => {
+    for (const paper of PAPERS) {
+      expect(
+        nowLinks({ today: TODAY, branchId: null, scopeBranches: null }).papersOpen(paper.key),
+      ).toEqual({
+        to: `/fleet/licensing?paper=${paper.key}`,
+        metric: `papers.${paper.key}`,
+      });
+      const rule = openPaperOf(paper.key);
+      expect(rule?.key).toBe(paper.key);
+      for (const out of [false, true]) {
+        for (const back of [false, true]) {
+          const r = row({ [paper.handover]: out, [paper.receipt]: back });
+          // The board keeps a row exactly when the contracts count it as open.
+          expect(rule !== null && paperStage(r, rule) === 'open').toBe(
+            contractsPaperStage(r, paper) === 'open',
+          );
+        }
+      }
+    }
+    expect(openPaperOf('both')).toBeNull();
+    expect(openPaperOf(null)).toBeNull();
+    expect(remembered('LicensingPage.tsx')).toContain('paper');
+    expect(readsInSource('LicensingPage.tsx', 'paper')).toBe(true);
+    const page = source('LicensingPage.tsx');
+    expect(page).toContain("(openPaper === null || paperStage(row, openPaper) === 'open')");
+    expect(page).toContain('data-licensing-paper={openPaper.key}');
+    expect(page).toContain('onClick={() => patch({ paper: null })}');
+    expect(page).toContain('openPaper !== null;');
   });
 });

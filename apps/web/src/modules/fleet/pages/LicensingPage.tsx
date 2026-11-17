@@ -86,6 +86,7 @@ const REMEMBERED_FILTERS = [
   'month',
   'ins',
   'tax',
+  'paper',
   'sort',
 ] as const;
 
@@ -123,6 +124,16 @@ export const matchesPaper = (
   if (chosen.length === 0) return true;
   return chosen.some((step) => (step === 'handover' ? row[paper.handover] : row[paper.receipt]));
 };
+
+/**
+ * «أوراق لم تُستلم بعد» — the dashboard's papers figure opens the board on ONE paper's OPEN papers
+ * (`paper=insurance|tax`): the cars whose paper has exactly one of its two squares ticked
+ * (`paperStage === 'open'`, R-11 — the rule the figure counts with), so the board lists the number
+ * the dashboard showed. The squares' own filters (`ins` / `tax`) ask ANY of the picked squares,
+ * which is not that reading. Any other value is ignored.
+ */
+export const openPaperOf = (value: string | null): Paper | null =>
+  PAPERS.find((paper) => paper.key === value) ?? null;
 
 /**
  * HOW FAR THIS PAPER HAS GOT, which is the only thing the colour says.
@@ -186,6 +197,7 @@ export const LicensingPage = (): JSX.Element => {
   const chassis = sp.get('chassis') ?? '';
   const insurance = readList(sp, 'ins');
   const tax = readList(sp, 'tax');
+  const openPaper = openPaperOf(sp.get('paper'));
   // The months the licences run out in — «زى شاشه السيارات»: several at once, each with its count
   // of cars, picked from a list. A link from before carries one month; it reads as a list of one.
   const months = readList(sp, 'month');
@@ -216,6 +228,7 @@ export const LicensingPage = (): JSX.Element => {
       month: null,
       ins: null,
       tax: null,
+      paper: null,
     });
   const hasFilters =
     vehicleCodes.length > 0 ||
@@ -223,7 +236,8 @@ export const LicensingPage = (): JSX.Element => {
     chassis !== '' ||
     months.length > 0 ||
     insurance.length > 0 ||
-    tax.length > 0;
+    tax.length > 0 ||
+    openPaper !== null;
 
   const all = board.data ?? [];
   /**
@@ -244,7 +258,8 @@ export const LicensingPage = (): JSX.Element => {
           contains(row.chassisNumber, chassis) &&
           (months.length === 0 || months.some((m) => inMonth(row.licenseExpiresAt, m))) &&
           matchesPaper(row, PAPERS[0], insurance) &&
-          matchesPaper(row, PAPERS[1], tax),
+          matchesPaper(row, PAPERS[1], tax) &&
+          (openPaper === null || paperStage(row, openPaper) === 'open'),
       ),
     [
       all,
@@ -254,6 +269,7 @@ export const LicensingPage = (): JSX.Element => {
       months.join(','),
       insurance.join(','),
       tax.join(','),
+      openPaper,
     ],
   );
 
@@ -560,6 +576,19 @@ export const LicensingPage = (): JSX.Element => {
                 fullWidth
               />
             </FilterWithIcon>
+            {/* The dashboard's papers figure: one removable chip, never a control of its own. */}
+            {openPaper !== null && (
+              <button
+                type="button"
+                data-licensing-paper={openPaper.key}
+                onClick={() => patch({ paper: null })}
+                aria-label={`${t('common.remove')} ${t(`fleet.licensing.paperOpen.${openPaper.key}`)}`}
+                className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-violet-300 bg-violet-50 px-2 text-sm font-medium text-violet-700 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300 dark:hover:bg-violet-900"
+              >
+                {t(`fleet.licensing.paperOpen.${openPaper.key}`)}
+                <span aria-hidden="true">×</span>
+              </button>
+            )}
           </FilterBar>
         </div>
 

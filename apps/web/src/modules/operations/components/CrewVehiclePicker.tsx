@@ -57,6 +57,11 @@ export interface VehiclePickerProps {
   onPick: (choice: VehicleChoice) => void;
   /** `back`: put the focus back on the cell (Escape, the ✕) — not after a press elsewhere. */
   onClose: (back: boolean) => void;
+  /**
+   * Round 27 — the same list on «الطاقم الثابت»'s «إضافة سيارة»: its own head and its own word for
+   * «nothing left to offer». The board's words when left out.
+   */
+  words?: { title: string; subtitle: string; none: string; search: string };
 }
 
 export const CrewVehiclePicker = ({
@@ -68,6 +73,7 @@ export const CrewVehiclePicker = ({
   choices,
   onPick,
   onClose,
+  words,
 }: VehiclePickerProps): JSX.Element | null => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
@@ -136,8 +142,9 @@ export const CrewVehiclePicker = ({
     close.current(true);
   };
 
-  const title = t('operations.crewPlan.vehicles.title');
-  const subtitle = t('operations.crewPlan.picker.row', { row: rowName });
+  const title = words?.title ?? t('operations.crewPlan.vehicles.title');
+  const searchWord = words?.search ?? t('operations.crewPlan.vehicles.search');
+  const subtitle = words?.subtitle ?? t('operations.crewPlan.picker.row', { row: rowName });
 
   const searchBox = (
     <div className="relative">
@@ -159,10 +166,10 @@ export const CrewVehiclePicker = ({
         aria-controls={`${id}-list`}
         aria-autocomplete="list"
         aria-activedescendant={activeKey === null ? undefined : optionId(activeKey)}
-        aria-label={t('operations.crewPlan.vehicles.search')}
+        aria-label={searchWord}
         autoComplete="off"
         inputMode="search"
-        placeholder={t('operations.crewPlan.vehicles.search')}
+        placeholder={searchWord}
         value={search}
         data-vehicle-search="true"
         onChange={(event) => {
@@ -258,7 +265,7 @@ export const CrewVehiclePicker = ({
       {listed.length === 0 && (
         <p className="px-2 py-6 text-center text-[12.5px] font-bold text-slate-500 dark:text-slate-400">
           {search.trim() === ''
-            ? t('operations.crewPlan.noEmptyVehicle')
+            ? (words?.none ?? t('operations.crewPlan.noEmptyVehicle'))
             : t('operations.crewPlan.vehicles.noMatch')}
         </p>
       )}

@@ -391,8 +391,45 @@ export const ListAttendanceSheetQuerySchema = PaginationQuerySchema.extend({
   date: z.coerce.date(),
   branchId: listQuery(objectId()),
   sectionId: listQuery(objectId()),
+  /**
+   * The quick status filter, on the RESOLVED status — which is not a stored field, so the server
+   * resolves the whole branch-day before paging rather than filtering rows in the database. That
+   * is also what makes the summary counts exact instead of per-page.
+   */
+  status: listQuery(AttendanceDayStatusSchema),
+  /** Name or code, matched the way the employee directory matches them. */
+  search: z.string().trim().min(1).max(100).optional(),
 }).strict();
 export type ListAttendanceSheetQuery = z.infer<typeof ListAttendanceSheetQuerySchema>;
+
+/**
+ * The sheet's counts, over the WHOLE filtered day rather than the page on screen — which is the
+ * only way a card reading "18 absent" can be true while the table shows fifty of thirteen hundred.
+ *
+ * It is a sibling endpoint rather than a field on the list because `Paginated.meta` is a shared
+ * shape the whole product returns, and widening it for one screen would change every list in the
+ * system. The two reads are cached separately and refresh together.
+ *
+ * Every status gets its own count, and the screen groups them: nothing here decides that `late`
+ * is "present", because a count the server has already blended cannot be unblended by a reader
+ * who wants the other grouping.
+ */
+export const AttendanceSheetSummaryQuerySchema = z
+  .object({
+    date: z.coerce.date(),
+    branchId: listQuery(objectId()),
+    sectionId: listQuery(objectId()),
+    search: z.string().trim().min(1).max(100).optional(),
+  })
+  .strict();
+export type AttendanceSheetSummaryQuery = z.infer<typeof AttendanceSheetSummaryQuerySchema>;
+
+export interface AttendanceSheetSummaryDto {
+  date: string;
+  /** Everybody the sheet covers for this date, before any status filter. */
+  total: number;
+  byStatus: Record<AttendanceDayStatus, number>;
+}
 
 /**
  * One line of the daily sheet: an EMPLOYEE, what was expected of them, and the day row if one
@@ -414,6 +451,8 @@ export interface AttendanceSheetRowDto {
   employeeId: string;
   employeeCode: string;
   employeeName: string;
+  /** The employee's photo, for the row's avatar; null is the ordinary case, not an error. */
+  employeePhotoFileId: string | null;
   branchId: string;
   date: string;
   status: AttendanceDayStatus;
@@ -762,7 +801,74 @@ export interface AttendanceDecisionDto {
   /** Display labels, enriched on the list reads — never stored on the row. */
   employeeCode?: string;
   employeeName?: string;
+  /**
+   * Who decided, and who approved it, by name. Resolved on the read like the employee labels and
+   * for the same reason: a decision is answerable to a PERSON, and a screen showing an opaque id
+   * cannot be used to hold anybody to it.
+   */
+  decidedByName?: LocalizedString;
+  hrDecidedByName?: LocalizedString;
 }
+
+/**
+ * The §4 accountability read: who has been deciding days, how often, and how often against the
+ * devices.
+ *
+ * `flagged` is a PROMPT TO LOOK, not a verdict and not a limit. Nothing is blocked by crossing the
+ * threshold — a manager whose fingerprint reader broke will legitimately cross it, and that is
+ * precisely the week somebody should look at. The count and the threshold are both returned so the
+ * screen can say how far over, rather than only that it is.
+ */
+export interface AttendanceDecisionSignalDto {
+  decidedBy: string;
+  /** Localized, because a person's name is shown in the reader's language everywhere else. */
+  decidedByName: LocalizedString;
+  total: number;
+  /** Of those, the ones taken on a day that DID hold device evidence at the time. */
+  overrodePunch: number;
+  flagged: boolean;
+}
+
+export interface AttendanceDecisionSignalsDto {
+  from: string;
+  to: string;
+  /** Scaled from the weekly setting to the window actually asked about. */
+  threshold: number;
+  managers: AttendanceDecisionSignalDto[];
+}
+
+/** The decisions CSV — its own permission and its own audit row, like the attendance export. */
+export const ExportAttendanceDecisionsQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    employeeId: objectId().optional(),
+    branchId: listQuery(objectId()),
+    status: listQuery(AttendanceDecisionStatusSchema),
+    type: listQuery(AttendanceDecisionTypeSchema),
+    decidedBy: objectId().optional(),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the export window is capped at 92 days',
+  });
+export type ExportAttendanceDecisionsQuery = z.infer<typeof ExportAttendanceDecisionsQuerySchema>;
+
+export const AttendanceDecisionSignalsQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    branchId: listQuery(objectId()),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the review window is capped at 92 days',
+  });
+export type AttendanceDecisionSignalsQuery = z.infer<typeof AttendanceDecisionSignalsQuerySchema>;
 
 // ── Overtime approval (D5) ──────────────────────────────────────────────────
 
@@ -974,6 +1080,13 @@ export const HrAttendanceSettingKeys = {
    * day, the more likely the correction is reconstruction rather than recollection.
    */
   DecisionApprovalAfterDays: 'hr.attendance.decisionApprovalAfterDays',
+  /**
+   * How many decisions a single manager may record in a week before the review screen flags them
+   * (stage 4). It is a PROMPT TO LOOK, never a limit: nothing is blocked, refused or undone by it.
+   * A manager whose devices are broken will legitimately cross it, which is exactly the case
+   * somebody should see.
+   */
+  DecisionWeeklyReviewThreshold: 'hr.attendance.decisionWeeklyReviewThreshold',
 } as const;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────

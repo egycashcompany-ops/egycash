@@ -25,9 +25,11 @@ import {
   type CreateFleetCustodyReplenishment,
   type CreateFleetCustodySettlement,
   type FleetCustodyFundSummaryDto,
+  type FleetCustodyHeldLetterDto,
   type FleetCustodyLedgerRowDto,
   type FleetCustodyLedgerSummaryQuery,
   type FleetCustodyLedgerTotalsDto,
+  type FleetCustodyMemoRowDto,
   type FleetCustodyOperationDto,
   type FleetCustodyPaperSignatures,
   type FleetCustodyReplenishCandidatesDto,
@@ -82,7 +84,10 @@ import {
   type FleetCustodyOperationMemoDoc,
   type FleetCustodyOperationPartDoc,
 } from './custody-operation.model';
-import { fleetCustodyOperationRepository } from './custody-operation.repository';
+import {
+  fleetCustodyOperationRepository,
+  type HeldReplenishment,
+} from './custody-operation.repository';
 
 /** The fund's lock document — written first by every operation, so two never interleave. */
 export const CUSTODY_FUND_LOCK = 'custodyFund';
@@ -281,23 +286,68 @@ const readReceiptGroups = async (): Promise<LedgerReceiptGroup[]> => {
   }));
 };
 
+/**
+ * «استعاضة معلّقة» — each replenishment still waiting for its transfer (`operations`, oldest letter
+ * first) with the memos it holds (`memos`, the «المذكرات» list's `status=held` rows, `no` ascending),
+ * matched by the memo's own `replenishment.id`. A letter's `amount` is the operation's own (what its
+ * letter printed, the same figure `held.amount` sums); its `receipts` are Σ its memos' live receipts
+ * — a held memo is frozen, so they are the ones the letter took.
+ */
+export const heldLettersOf = (
+  operations: readonly HeldReplenishment[],
+  memos: readonly FleetCustodyMemoRowDto[],
+): FleetCustodyHeldLetterDto[] => {
+  const byLetter = new Map<string, FleetCustodyMemoRowDto[]>();
+  for (const memo of memos) {
+    if (memo.replenishment === null) continue;
+    const list = byLetter.get(memo.replenishment.id) ?? [];
+    list.push(memo);
+    byLetter.set(memo.replenishment.id, list);
+  }
+  return operations.map((operation) => {
+    const id = String(operation._id);
+    const own = [...(byLetter.get(id) ?? [])].sort((a, b) => a.no - b.no);
+    return {
+      id,
+      date: dayKey(operation.date),
+      from: dayOrNull(operation.from),
+      to: dayOrNull(operation.to),
+      amount: fromPiastres(toPiastres(operation.amount)),
+      receipts: own.reduce((total, memo) => total + memo.receipts, 0),
+      memos: own.map((memo) => ({
+        id: memo.id,
+        no: memo.no,
+        kind: memo.kind,
+        name: memo.name,
+        date: memo.date,
+        receipts: memo.receipts,
+        total: memo.total,
+      })),
+    };
+  });
+};
+
 class FleetCustodyFundService {
   // ── Reading ───────────────────────────────────────────────────────────────────────────────
 
   /** The fund's figures — the ledger's tiles, the tabs' badges, the dialogs' «الآن». Unfiltered. */
   async summary(): Promise<FleetCustodyFundSummaryDto> {
-    const [terms, memos, outside, deleted] = await Promise.all([
+    const [terms, memos, outside, deleted, heldOperations, heldMemos] = await Promise.all([
       readCustodyFundTerms(),
       fleetCustodyMemoService.counts(),
       fleetCustodyMemoService.outside(),
       fleetCustodyOperationRepository.countDeleted(),
+      // «استعاضة معلّقة»'s letters: the held replenishments and the memos they hold.
+      fleetCustodyOperationRepository.heldReplenishments(),
+      fleetCustodyMemoService.heldRows(),
     ]);
     return {
       fundTotal: terms.fundTotal,
       charged: terms.charged,
       spent: terms.spent,
       replenished: terms.replenished,
-      held: terms.held,
+      // Each held replenishment with its memos, the oldest letter first.
+      held: { ...terms.held, letters: heldLettersOf(heldOperations, heldMemos) },
       cancelled: terms.cancelled,
       settled: terms.settled,
       // The ledger's operation rows — a held and a cancelled replenishment are rows too.

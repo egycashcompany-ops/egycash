@@ -682,15 +682,21 @@ describe('Round 23 — «الطاقم الثابت»: the same slot rule, and th
   const page = read('../pages/StandingCrewPage.tsx');
 
   it('refuses a drop into a slot the person’s role does not fit, in the day board’s own words', () => {
-    const drop = page.slice(page.indexOf('const drop ='), page.indexOf('const addVehicle ='));
-    expect(drop).toContain('if (!fits(employeeId, slot)) {');
-    expect(drop).toContain('t(`operations.crewPlan.drop.${why}`)');
-    expect(drop).toContain('t(`operations.crewPlan.drop.${why}Why`, { name })');
-    // A captain moving with his crew leaves behind a companion the slot no longer fits.
-    expect(drop).toContain('assignCaptainWithCrew(prev, vehicleId, position, employeeId, fits)');
+    // Round 27 — the board's twin: every way of seating somebody asks the board's own rule
+    // (`resolveDrop`, which refuses a slot his role does not fit), and a refusal is said by the
+    // board's own words, «لا يُعيَّن …» then whom the slot takes.
     expect(page).toContain(
-      'fitsCrewSlot(crewRoleOf(memberOf(employeeId)?.requirements ?? null), slot)',
+      'target === null ? null : resolveDrop(rows, target, employeeId, roleOf(employeeId), null);',
     );
+    const drop = page.slice(page.indexOf('onDrop: (event) => {'), page.indexOf(': {};'));
+    expect(drop).toContain('decide(targetAt(event.target), employeeId)');
+    expect(drop).toContain('sayRefusal(decision, employeeId)');
+    const say = page.slice(page.indexOf('const sayRefusal ='), page.indexOf('const phone ='));
+    expect(say).toContain('t(`operations.crewPlan.drop.${decision.reason}`, vars)');
+    expect(say).toContain('`operations.crewPlan.drop.${decision.reason}Why`');
+    // A captain moving with his crew leaves behind a companion the slot no longer fits.
+    expect(page).toContain('(current) => placeWithCrew(current, key, slot, employeeId, fits).rows');
+    expect(page).toContain('fitsCrewSlot(roleOf(employeeId), slot)');
   });
 
   it('says the save’s slot refusal in its own words', () => {

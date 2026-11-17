@@ -510,6 +510,8 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     maintenance: 27000,
     litres: 3905,
     unpricedFuel: 2,
+    // 88 of the 210 receipts were paid from the custody (47,850.00).
+    custodyCount: 88,
   },
   opexSeries: { buckets: OPEX_BUCKETS },
   dealership: { amount: 38900, rows: 9, pending: 3, dataFrom: '2026-09-01' },
@@ -566,6 +568,18 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     ],
     more: 3,
   },
+  // Where the 47,850.00 of custody receipts stands now: 28,400 + 9,850 + 9,600.
+  custodyStates: { replenished: 28400, pending: 9850, outside: 9600 },
+  // The licence memos of the range, the whole company: renewal + extension = visa + cash = 12,400.
+  licenceSpend: {
+    count: 5,
+    cars: 14,
+    visa: 9300,
+    cash: 3100,
+    renewal: 10200,
+    extension: 2200,
+    total: 12400,
+  },
   unavailable: [],
 };
 
@@ -588,6 +602,20 @@ export const PERIOD_YEAR: FleetDashboardPeriodDto = {
     maintenance: 41200,
     litres: 5980,
     unpricedFuel: 3,
+    // 131 of the 314 receipts were paid from the custody (73,300.00).
+    custodyCount: 131,
+  },
+  // 52,100 + 11,600 + 9,600 = the year's 73,300.00 of custody receipts.
+  custodyStates: { replenished: 52100, pending: 11600, outside: 9600 },
+  // The year's licence memos: 81,350 + 15,400 = 72,600 + 24,150 = 96,750.
+  licenceSpend: {
+    count: 41,
+    cars: 118,
+    visa: 72600,
+    cash: 24150,
+    renewal: 81350,
+    extension: 15400,
+    total: 96750,
   },
   opexSeries: {
     buckets: [

@@ -8,12 +8,14 @@ import {
   ExportAttendanceQuerySchema,
   ListAttendanceDaysQuerySchema,
   ListAttendanceSheetQuerySchema,
+  AttendanceSheetSummaryQuerySchema,
   RecomputeAttendanceDaysSchema,
 } from '@ecms/contracts';
 import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
+  attendanceSheetSummary,
   exportAttendance,
   listAttendanceDays,
   listAttendanceSheet,
@@ -33,6 +35,14 @@ export const buildAttendanceDaysRouter = (): Router => {
   // Before `/` so the literal path is matched as one, and on this router because it answers the
   // same question `attendance.view` already governs — a sheet is a day list that starts from the
   // people rather than from the rows, not a second kind of access.
+  // Before `/sheet`, so the longer literal path is not swallowed by it.
+  router.get(
+    '/sheet/summary',
+    authenticate,
+    authorize('attendance.view'),
+    validate({ query: AttendanceSheetSummaryQuerySchema }),
+    asyncHandler(attendanceSheetSummary),
+  );
   router.get(
     '/sheet',
     authenticate,

@@ -22,7 +22,9 @@ const SHIFTS = 'attendanceShifts';
 const ASSIGNMENTS = 'attendanceAssignments';
 const DAYS = 'attendanceDays';
 const SHEET = 'attendanceSheet';
+const SHEET_SUMMARY = 'attendanceSheetSummary';
 const DECISIONS = 'attendanceDecisions';
+const DECISION_SIGNALS = 'attendanceDecisionSignals';
 const MY_DAYS = 'attendanceMyDays';
 const REGULARIZATIONS = 'attendanceRegularizations';
 const MY_REGULARIZATIONS = 'attendanceMyRegularizations';
@@ -107,8 +109,10 @@ export const useAttendanceSheet = (params: Params, enabled = true) =>
  */
 const invalidateDecisions = (client: ReturnType<typeof useQueryClient>): void => {
   void client.invalidateQueries({ queryKey: [MODULE, DECISIONS] });
+  void client.invalidateQueries({ queryKey: [MODULE, DECISION_SIGNALS] });
   void client.invalidateQueries({ queryKey: [MODULE, DAYS] });
   void client.invalidateQueries({ queryKey: [MODULE, SHEET] });
+  void client.invalidateQueries({ queryKey: [MODULE, SHEET_SUMMARY] });
   void client.invalidateQueries({ queryKey: [MODULE, MY_DAYS] });
 };
 
@@ -116,6 +120,14 @@ export const useAttendanceDecisions = (params: Params, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, DECISIONS, params),
     queryFn: () => api.listAttendanceDecisions(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useAttendanceDecisionSignals = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, DECISION_SIGNALS, params),
+    queryFn: () => api.attendanceDecisionSignals(params),
     placeholderData: (prev) => prev,
     enabled,
   });
@@ -145,6 +157,18 @@ export const useRevokeAttendanceDecision = () => {
     onSuccess: () => invalidateDecisions(client),
   });
 };
+
+/**
+ * The band above the sheet. Its own query so the counts survive a page change — paging the table
+ * must not blank the five numbers above it and then redraw them a moment later.
+ */
+export const useAttendanceSheetSummary = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, SHEET_SUMMARY, params),
+    queryFn: () => api.attendanceSheetSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
 
 export const useMyAttendanceDays = (params: Params) =>
   useQuery({

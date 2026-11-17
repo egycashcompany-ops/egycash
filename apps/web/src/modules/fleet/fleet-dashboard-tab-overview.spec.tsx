@@ -33,6 +33,7 @@ import { readPeriodFilters, toPeriodQuery } from './lib/fleet-dashboard-url';
 import { alertLines } from './lib/fleet-dashboard-tabs';
 import { OverviewTab } from './components/fleet-dashboard/tab-overview';
 import { type MonthRead } from './components/fleet-dashboard/dash-shell';
+import { type CustodyFigures } from './components/fleet-dashboard/custody-fund-line';
 import {
   ALL_KEYS,
   B1,
@@ -106,6 +107,8 @@ const MONTH: FleetDashboardPeriodDto = {
     maintenance: 1800,
     litres: 470,
     unpricedFuel: 0,
+    // The custody-paid receipts of the 40 (the overview reads none).
+    custodyCount: 22,
   },
   unavailable: [],
 };
@@ -188,7 +191,7 @@ const parse = (href: string): { pathname: string; params: URLSearchParams } => {
 
 // ── The tab itself, for the month card's states a seeded cache cannot hold ─────────────────────
 
-const CUSTODY = {
+const CUSTODY: CustodyFigures = {
   lines: 1,
   fundTotal: 159974.54,
   waiting: 0,
@@ -197,6 +200,10 @@ const CUSTODY = {
   error: false,
   updatedAt: 1,
   refetch: () => undefined,
+  // «العهدة»'s own parts (its «الآن» band): the overview draws none of them.
+  detail: null,
+  failure: null,
+  fetching: false,
 };
 const MONTH_READ: MonthRead = {
   data: MONTH,
@@ -510,8 +517,11 @@ describe('«نظرة عامة» — the action centre', () => {
   });
 
   it('counts EXACTLY the custody dashboard’s banner lines, from the one hook (D3)', () => {
-    expect(row(html, 'custody')).toContain('data-dash-action-count="1"');
-    expect(text(row(html, 'custody'))).toContain('1 تنبيه');
+    // The seeded custody screen fires three of its five lines: a kind with receipts outside the
+    // memos past 30 days (b), a memo not replenished past 30 days (c) and a licence part waiting
+    // for its settlement past 30 days (d) — the fund is positive (a) and covers the parts (e).
+    expect(row(html, 'custody')).toContain('data-dash-action-count="3"');
+    expect(text(row(html, 'custody'))).toContain('3 تنبيهات');
     expect(hrefOf(row(html, 'custody'), 'custodyFund.lines')).toEqual(['/fleet/custody/dashboard']);
   });
 
@@ -538,7 +548,18 @@ describe('«نظرة عامة» — the action centre', () => {
         ...NOW,
         licenceVehicles: {
           ...lic,
-          list: [{ vehicleId: 'v500', code: '500', expiresAt: `${TODAY}T00:00:00.000Z`, days: 0 }],
+          // The row's make, class and papers: the overview reads none of them.
+          list: [
+            {
+              vehicleId: 'v500',
+              code: '500',
+              expiresAt: TODAY,
+              days: 0,
+              typeName: null,
+              licenceClass: null,
+              papers: null,
+            },
+          ],
         },
       },
     });

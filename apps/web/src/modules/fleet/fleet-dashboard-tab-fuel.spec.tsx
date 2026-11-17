@@ -236,6 +236,8 @@ const OPEX: Opex = {
   maintenance: 17_700,
   litres: 8_890,
   unpricedFuel: 0,
+  // The custody-paid receipts of the 574 («العهدة»'s; the fuel tab reads none).
+  custodyCount: 236,
 };
 
 /** EVERY day of the last 30 days; 10/10 had no receipt (an empty slot), today is the last. */

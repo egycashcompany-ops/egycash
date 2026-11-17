@@ -18,7 +18,9 @@ import {
   type AttendanceDayDto,
   type AttendanceRegularizationDto,
   type AttendanceDecisionDto,
+  type AttendanceDecisionSignalsDto,
   type AttendanceSheetRowDto,
+  type AttendanceSheetSummaryDto,
   type EmployeeDto,
   type ImportPunchesResultDto,
   type ShiftDto,
@@ -952,6 +954,89 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     expect(rows.find((r) => r.employeeId === emp.id)).toBeUndefined();
   });
 
+  it('COUNTS THE WHOLE DAY, not the page — the cards would otherwise lie (stage 6)', async () => {
+    const scanned = await inBranch();
+    await inBranch();
+    await inBranch();
+    const today = cairoToday();
+    await switchPatternOn();
+    await recompute(scanned.id, today);
+
+    // ONE ROW PER PAGE. A count taken from the page would say "1"; the property under test is
+    // that both the page meta and the summary describe the whole day instead. The branch's exact
+    // headcount is whatever this block has registered by now, which is deliberately not asserted
+    // — tying the test to it would make it fail every time a sibling test added an employee.
+    const paged = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&pageSize=1`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(paged.status).toBe(200);
+    expect((paged.body.data as AttendanceSheetRowDto[])).toHaveLength(1);
+    const total = (paged.body.meta as { totalItems: number }).totalItems;
+    expect(total).toBeGreaterThanOrEqual(3);
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const summary = res.body.data as AttendanceSheetSummaryDto;
+    // The cards and the table agree about how many people the day covers.
+    expect(summary.total).toBe(total);
+    // Every status is counted separately — the screen does the grouping, not the server.
+    const counted = Object.values(summary.byStatus).reduce((sum, n) => sum + n, 0);
+    expect(counted).toBe(total);
+  });
+
+  it('filters by the RESOLVED status, which is not a stored field', async () => {
+    const emp = await inBranch();
+    await inBranch();
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    // With the pattern off and no assignment, every one of them has no schedule — a status that
+    // exists nowhere in the database and can only be filtered after it is worked out.
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=noSchedule&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = res.body.data as AttendanceSheetRowDto[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.status === 'noSchedule')).toBe(true);
+
+    // And a status nobody on this date holds narrows to nothing rather than to everybody.
+    const none = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=onLeave&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((none.body.data as AttendanceSheetRowDto[])).toHaveLength(0);
+  });
+
+  it('searches by name or code', async () => {
+    const emp = await inBranch();
+    const today = cairoToday();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&search=${emp.code}&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = res.body.data as AttendanceSheetRowDto[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.employeeId).toBe(emp.id);
+    // The summary narrows with it, so the cards describe what the table is showing.
+    const summary = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&search=${emp.code}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((summary.body.data as AttendanceSheetSummaryDto).total).toBe(1);
+  });
+
   it('is governed by attendance.view, like the list it is a view of', async () => {
     const res = await request(app)
       .get(`/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(cairoToday())}`)
@@ -1270,6 +1355,126 @@ describe('manager day decisions (stage 3)', () => {
       outsiderToken,
     );
     expect(res.status).toBe(403);
+  });
+
+  it('reports WHO has been deciding days, and how often against the devices (stage 4)', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    // One day with device evidence, one without — the two shapes the signal distinguishes.
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    await recompute(emp.id, workday);
+    await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason: 'لم يكن على رأس العمل',
+    });
+
+    const other = await regEmployee();
+    const quietDay = addDays(workday, -1);
+    await decide({
+      employeeId: other.id,
+      workDate: dateOnlyIso(quietDay),
+      type: 'markPresent',
+      inAt: cairoInstant(quietDay, '09:00').toISOString(),
+      reason: 'الجهاز كان متوقفًا',
+    });
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/decisions/signals?from=${dateOnlyIso(addDays(workday, -5))}&to=${dateOnlyIso(workday)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const data = res.body.data as AttendanceDecisionSignalsDto;
+    const mine = data.managers.find((m) => m.total >= 2);
+    expect(mine).toBeDefined();
+    // One of the two went against a punch; the other had nothing to go against.
+    expect(mine?.overrodePunch).toBeGreaterThanOrEqual(1);
+    expect(mine?.overrodePunch).toBeLessThan(mine?.total ?? 0);
+    // A prompt, not a verdict: two decisions are nowhere near the threshold.
+    expect(mine?.flagged).toBe(false);
+    expect(data.threshold).toBeGreaterThan(0);
+  });
+
+  it('leaves revocations OUT of the counts — undoing is not a second decision', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    const made = await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason: 'قرار سيُلغى',
+    });
+    const decision = made.body.data as AttendanceDecisionDto;
+
+    const window = `from=${dateOnlyIso(addDays(workday, -2))}&to=${dateOnlyIso(workday)}&branchId=${BRANCH_ID}`;
+    const before = await request(app)
+      .get(`/api/v1/hr/attendance/decisions/signals?${window}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const countBefore = (before.body.data as AttendanceDecisionSignalsDto).managers.reduce(
+      (sum, m) => sum + m.total,
+      0,
+    );
+
+    await request(app)
+      .post(`/api/v1/hr/attendance/decisions/${decision.id}/revoke`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'تراجع عن القرار', version: decision.version });
+
+    const after = await request(app)
+      .get(`/api/v1/hr/attendance/decisions/signals?${window}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const countAfter = (after.body.data as AttendanceDecisionSignalsDto).managers.reduce(
+      (sum, m) => sum + m.total,
+      0,
+    );
+    // The revocation wrote a row; it must not make the manager look busier for undoing their own
+    // mistake than they would have looked leaving it standing.
+    expect(countAfter).toBe(countBefore);
+  });
+
+  it('exports the decisions as CSV, behind attendance.export, with the reason in a column', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    const reason = 'سبب يظهر في الملف';
+    await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason,
+    });
+
+    const range = `from=${dateOnlyIso(addDays(workday, -2))}&to=${dateOnlyIso(workday)}&employeeId=${emp.id}`;
+    const res = await request(app)
+      .get(`/api/v1/hr/attendance/decisions/export?${range}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('employeeCode,employeeName,workDate,type,status');
+    expect(res.text).toContain(reason);
+    expect(res.text).toContain(emp.code);
+
+    // Its own key: a caller who may read the screen but not take files off the system is refused.
+    const refused = await request(app)
+      .get(`/api/v1/hr/attendance/decisions/export?${range}`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect(refused.status).toBe(403);
+  });
+
+  it('caps the review and export windows, like every other range read here', async () => {
+    const wide = `from=2026-01-01&to=2026-06-01`;
+    for (const path of ['signals', 'export']) {
+      const res = await request(app)
+        .get(`/api/v1/hr/attendance/decisions/${path}?${wide}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, path).toBe(400);
+    }
   });
 
   it('refuses a markAbsent that tries to carry times, and a markPresent with none', async () => {

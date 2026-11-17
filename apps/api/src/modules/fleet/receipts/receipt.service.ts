@@ -19,6 +19,7 @@ import {
   type FleetReceiptDto,
   type FleetReceiptMemoLinkDto,
   type FleetReceiptSummaryQuery,
+  type FleetDashboardPeriodCustodyStatesDto,
   type FleetReceiptTotalsDto,
   type ListFleetReceiptsQuery,
   type Paginated,
@@ -43,6 +44,7 @@ import { fleetFuelCardRepository } from '../fuel-cards/fuel-card.repository';
 import { fleetFuelCardService } from '../fuel-cards/fuel-card.service';
 import { type FleetFuelCardDoc } from '../fuel-cards/fuel-card.model';
 import { fleetCustodyMemoRepository } from '../custody/custody-memo.repository';
+import { custodyMemoStateOf } from '../custody/custody-dashboard';
 import {
   assertReceiptChangeAllowed,
   assertReceiptRemovable,
@@ -218,6 +220,35 @@ class FleetReceiptService {
    */
   async summaryOver(query: FleetReceiptSummaryQuery): Promise<FleetReceiptTotalsDto> {
     return fleetReceiptRepository.totals(await this.filterFor(query));
+  }
+
+  /**
+   * «منها حتى الآن» on the fleet dashboard's «مصروفات العهدة» (R2 `custodyStates`): the custody-paid
+   * receipts the SAME query matches (`filterFor` — codes ∩ type / operation / branch, deleted cars
+   * included — with the custody source, whatever source was asked), each put where its memo stands
+   * NOW — «لوحة تحكم المصروفات»'s `memoStates` rule (`custodyMemoStateOf`): replenished; on a memo
+   * still waiting (a held replenishment's included — its money is not back yet); or on none (or on a
+   * memo since deleted). Summed in whole piastres, so Σ = `summaryOver(query).custodyTotal`.
+   */
+  async custodyStatesOver(
+    query: FleetReceiptSummaryQuery,
+  ): Promise<FleetDashboardPeriodCustodyStatesDto> {
+    const groups = await fleetReceiptRepository.custodyByMemo(
+      await this.filterFor({ ...query, source: 'custody' }),
+    );
+    const statuses = await fleetCustodyMemoRepository.statusesByIds(
+      groups.flatMap((group) => (group.memoId === null ? [] : [group.memoId])),
+    );
+    const piastres = { replenished: 0, pending: 0, outside: 0 };
+    for (const group of groups) {
+      piastres[custodyMemoStateOf(group.memoId, statuses)] += group.piastres;
+    }
+    const pounds = (value: number): number => (value === 0 ? 0 : value / 100);
+    return {
+      replenished: pounds(piastres.replenished),
+      pending: pounds(piastres.pending),
+      outside: pounds(piastres.outside),
+    };
   }
 
   /**

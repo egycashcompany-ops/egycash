@@ -4,8 +4,10 @@ import {
   type ApproveOvertime,
   type AttendanceDayDto,
   type AttendanceDecisionDto,
+  type AttendanceDecisionSignalsDto,
   type AttendanceRegularizationDto,
   type AttendanceSheetRowDto,
+  type AttendanceSheetSummaryDto,
   type CreateAttendanceRegularization,
   type CreateShift,
   type CreateShiftAssignment,
@@ -63,6 +65,15 @@ export const listAttendanceSheet = (
 ): Promise<Paginated<AttendanceSheetRowDto>> =>
   getPage<AttendanceSheetRowDto>(`/hr/attendance/days/sheet${buildQuery(params)}`);
 
+/**
+ * The sheet's counts over the WHOLE day. A sibling read rather than a field on the list, because
+ * the page envelope's `meta` is a shape every list in the product returns.
+ */
+export const attendanceSheetSummary = (
+  params: QueryParams,
+): Promise<AttendanceSheetSummaryDto> =>
+  get<AttendanceSheetSummaryDto>(`/hr/attendance/days/sheet/summary${buildQuery(params)}`);
+
 /** My own days — own by construction on the server; no employee filter is accepted. */
 export const listMyAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>
   getPage<AttendanceDayDto>(`/hr/attendance/days/me${buildQuery(params)}`);
@@ -90,6 +101,18 @@ export const revokeAttendanceDecision = (
   body: unknown,
 ): Promise<AttendanceDecisionDto> =>
   post<AttendanceDecisionDto>(`/hr/attendance/decisions/${id}/revoke`, body);
+
+/** Who has been deciding days over a window, and how often against the devices (stage 4). */
+export const attendanceDecisionSignals = (
+  params: QueryParams,
+): Promise<AttendanceDecisionSignalsDto> =>
+  get<AttendanceDecisionSignalsDto>(`/hr/attendance/decisions/signals${buildQuery(params)}`);
+
+export const downloadDecisionsExport = (params: QueryParams): Promise<void> =>
+  downloadBlob(
+    `/hr/attendance/decisions/export${buildQuery(params)}`,
+    `attendance-decisions-${new Date().toISOString().slice(0, 10)}.csv`,
+  );
 
 export const listRegularizations = (
   params: QueryParams,

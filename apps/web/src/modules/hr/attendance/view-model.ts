@@ -1,0 +1,187 @@
+// From what the API answers to what the views draw.
+//
+// The views are presentational and take minutes after Cairo midnight; the API answers instants and
+// the thirteen-value day vocabulary. This is the one place the two meet, so the daily sheet, the
+// employee page, the profile tab and My Attendance cannot drift into three different readings of
+// the same row.
+//
+// NOTHING IS INVENTED HERE. A time nobody recorded stays `null`, a day the engine has concluded
+// nothing about says so, and no figure is computed that the server did not send.
+import {
+  type AttendanceDayDto,
+  type AttendanceDayStatus,
+  type AttendanceSheetRowDto,
+  type Locale,
+} from '@ecms/contracts';
+import { type EmployeeDay, type SheetRow, type TimeSpan, type ViewStatus } from './views';
+
+/** One formatter, made once. `h23` so midnight reads 00 and never 24. */
+const cairoClock = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Cairo',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** Minutes past Cairo midnight for an instant — the business clock, never the browser's. */
+export const cairoMinutes = (iso: string): number => {
+  const parts = cairoClock.formatToParts(new Date(iso));
+  const part = (type: 'hour' | 'minute'): number =>
+    Number(parts.find((p) => p.type === type)?.value ?? '0');
+  return part('hour') * 60 + part('minute');
+};
+
+const MINUTES_IN_DAY = 1440;
+
+/**
+ * The second of two Cairo times, counted PAST midnight when it falls before the first.
+ *
+ * A night shift is keyed to the date it started (D3), so its check-out at one in the morning
+ * belongs to the previous day's line. Read plainly it would draw a bar running backwards across
+ * the whole morning; counted as 25:10 it draws forwards, and the views already understand
+ * "> 1440" as "after midnight".
+ */
+const after = (first: number | null, second: number): number =>
+  first !== null && second < first ? second + MINUTES_IN_DAY : second;
+
+/** Cairo today as `YYYY-MM-DD` — the company's calendar, not the browser's zone (R10). */
+export const cairoToday = (now: Date = new Date()): string => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Cairo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const part = (type: 'year' | 'month' | 'day'): string =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+};
+
+/** Minutes after Cairo midnight, right now. */
+export const cairoNowMinutes = (now: Date = new Date()): number => cairoMinutes(now.toISOString());
+
+/**
+ * The day vocabulary as the views name it.
+ *
+ * `checkedIn` splits on the date: ON TODAY it means somebody is at work and has not scanned out
+ * yet, which is an ordinary live state; on a PAST date the same stored value means the day ended
+ * with no check-out, which is a different thing to tell a reader. The engine has one value for
+ * both because the fact is the same; the screen has two because the question is not.
+ */
+export const toViewStatus = (status: AttendanceDayStatus, isToday: boolean): ViewStatus => {
+  switch (status) {
+    case 'present':
+      return 'present';
+    case 'late':
+      return 'late';
+    case 'earlyLeave':
+      return 'earlyLeave';
+    case 'lateAndEarly':
+      return 'lateAndEarly';
+    case 'checkedIn':
+      return isToday ? 'checkedIn' : 'incomplete';
+    case 'incomplete':
+      return 'incomplete';
+    case 'pending':
+      return 'notYetIn';
+    case 'absent':
+      return 'absent';
+    case 'onLeave':
+      return 'onLeave';
+    case 'weekend':
+    case 'dayOff':
+      return 'dayOff';
+    case 'holiday':
+      return 'holiday';
+    case 'noSchedule':
+      return 'noSchedule';
+  }
+};
+
+/** What was expected of somebody, in the views' minutes — null when nobody said. */
+const expectedSpan = (startAt: string | null, endAt: string | null): TimeSpan | null => {
+  if (startAt === null || endAt === null) return null;
+  const start = cairoMinutes(startAt);
+  return { start, end: after(start, cairoMinutes(endAt)) };
+};
+
+/** The row's own marks: the flags the engine raised, and the freeze. Already localized. */
+const marksOf = (day: AttendanceDayDto | null, label: (key: string) => string): string[] => {
+  if (day === null) return [];
+  return [
+    ...day.flags.map((flag) => label(`attendance.flag.${flag}`)),
+    ...(day.frozenAt === null ? [] : [label('attendance.days.frozen')]),
+  ];
+};
+
+/** One line of the daily sheet. `actions` are the page's own buttons, passed through untouched. */
+export const toSheetRow = (
+  row: AttendanceSheetRowDto,
+  options: {
+    today: string;
+    locale: Locale;
+    label: (key: string) => string;
+    actions?: React.ReactNode;
+  },
+): SheetRow => {
+  const day = row.day;
+  const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
+  return {
+    id: row.employeeId,
+    name: row.employeeName,
+    code: row.employeeCode,
+    // Initials, deliberately: a page of fifty faces is fifty authenticated image requests, and the
+    // photo answers nothing this screen is opened to ask.
+    photoUrl: null,
+    department: row.employeeDepartment === null ? null : row.employeeDepartment[options.locale],
+    status: toViewStatus(row.status, row.date.slice(0, 10) === options.today),
+    expected: expectedSpan(row.expectedStartAt, row.expectedEndAt),
+    inAt,
+    outAt: day?.lastOutAt == null ? null : after(inAt, cairoMinutes(day.lastOutAt)),
+    lateMinutes: day?.lateMinutes ?? 0,
+    overtimeApproved: day?.approvedOvertimeMinutes ?? 0,
+    overtimeDerived: day?.overtimeMinutes ?? 0,
+    tags: marksOf(day, options.label),
+    ...(options.actions === undefined ? {} : { actions: options.actions }),
+  };
+};
+
+/**
+ * One day of an employee's period.
+ *
+ * `day` is null for a date the engine has concluded nothing about — before the hire, after the
+ * exit, or a day the nightly pass has not reached. The calendar needs a cell for every date in the
+ * period or its weeks stop lining up, so the date is kept and says «لا يوجد سجل» rather than
+ * borrowing the look of a rest day.
+ */
+export const toEmployeeDay = (
+  date: string,
+  day: AttendanceDayDto | null,
+  options: { today: string; label: (key: string) => string; action?: React.ReactNode },
+): EmployeeDay => {
+  const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
+  return {
+    date,
+    status: day === null ? 'noRecord' : toViewStatus(day.status, date === options.today),
+    inAt,
+    outAt: day?.lastOutAt == null ? null : after(inAt, cairoMinutes(day.lastOutAt)),
+    // The sheet carries the expectation; the day list does not, and inventing one here would be a
+    // second derivation of the hours the server already resolves.
+    expected: null,
+    // Hours that were measured, or null — never a confident zero against a day with no check-out.
+    worked: day === null || day.workedMinutes === 0 ? null : day.workedMinutes,
+    lateMinutes: day?.lateMinutes ?? 0,
+    tags: marksOf(day, options.label),
+    ...(options.action === undefined ? {} : { action: options.action }),
+  };
+};
+
+/** Every date from `from` to `to` inclusive, oldest first — the calendar's contiguous run. */
+export const datesBetween = (from: string, to: string): string[] => {
+  const out: string[] = [];
+  const last = Date.parse(`${to}T00:00:00.000Z`);
+  for (let at = Date.parse(`${from}T00:00:00.000Z`); at <= last; at += MINUTES_IN_DAY * 60_000) {
+    out.push(new Date(at).toISOString().slice(0, 10));
+  }
+  return out;
+};

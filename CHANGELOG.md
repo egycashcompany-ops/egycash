@@ -1288,6 +1288,367 @@ its entry here in the same PR.
       construction: the packages are the treasury's, behind the custody port, which a `$lookup`
       would read behind its back.
 
+  - Round 26 — «توزيع المحصنات» (and «تسليم المحصنات», which shares its van card), the owner on the
+    Round 25 screen: «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات — لما اقف على العربية يطلع كارت
+    بقى بالقادة والاخصائيين اللى على العربيه والسواقيين — عاوزك تضيف الوان عشان حاسس ان مش اقدر اميز اوى
+    العربيه والمحصنات اللى عليها والاعداد وكدا».
+    - THE FILTERS BESIDE THE TITLES: each column's boxes are on its title's line — «السيارات (n)» then
+      «كود السيارة», «البنك أو الفرع», «كل المناطق»; «بلا سيارة (n)» then its two boxes — one head, no
+      filter row. The left column's quarter keeps them compact: «بحث» and «المناطق» in the boxes (each
+      keeps its whole name, «البنك أو الفرع» / «المنطقة», for a screen reader and on hover), 12px, and
+      a head narrower than its title and two boxes drops the column's drawing (a container query) —
+      so the title and both boxes share one line at 1440, 1366, 1280 and 1024 (measured: 85 + 117 px at
+      1440, 65 + 97 at 1280). On a phone the fold stays: the boxes take a line of their own under the
+      toggle, and go with the body when it folds. A filter in use says «المعروض 2 من 8 · مسح التصفية» at
+      the end of the vans' line and under the left's boxes (wrapping there, never past the column's
+      edge). The head is still inside the left column's
+      drop mark: a drop on it, or on its boxes, takes a محصنة off its van.
+    - THE VAN'S CARD: resting on a van — its head (code · time · direction) or its captain's line —
+      opens a card after the usual beat (`HoverCardLayer`, kind `secured-van`): the van (its code in its
+      colour, or «بدون سيارة (n)»), the time and the whole direction; «القادة» — every captain, in the
+      order put on the row, the first marked «المعروض على البطاقة»; «أخصائي 1» and «أخصائي 2» — everyone in
+      each; «السائقون» — by name, Fleet's duty row; each slot «لا يوجد» when empty, «يظهر لمن يملك صلاحية
+      عرض لوحة التشغيلة» when the read withheld it (a reader without `operationsCrew.view`), «بدون سيارة —
+      لا سائقين» on a crew with no van; then what it carries — the محصنات badge and the three packages,
+      in their colours. Every fact was already in the read (`crews`: captains, specialist1,
+      specialist2, drivers, direction, plannedTime): no server change, no grant. A keyboard focus opens
+      it at once, a tap on a phone too; it is never cut at the screen's edge (288px, kept 8px inside at
+      390). Not on a chip (a chip keeps its own card) and not on the captain's own name, which keeps
+      his person card (as a name does on every board); never while a drag is on (a `dragstart` /
+      `dragend` watch on the window, and Chromium sends no mouse events during one), never over an
+      open «نقل إلى…» menu (Round 25's F2 rule): the shared hook takes a `when` it asks as the pointer
+      comes and again when the beat ends. The card is a layer that takes no pointer, and the head is
+      inside the van's drop mark: a drop anywhere on the card still lands.
+    - THE COLOURS (the per-van accent below was taken back in Round 26b — every van now wears ONE look;
+      the counts keep colours of their own, re-chosen there): each van wore an ACCENT — one of «لوحة
+      التشغيلة»'s twenty palette colours, no new
+      palette — by its place among the day's «محصنة» rows (the same list on both screens, so a van is the
+      same colour on «تسليم المحصنات»; a filter hides cards, it never repaints them), through an order
+      of the palette in which neighbours (next to each other, or one above the other at two, three or
+      FOUR a row — «السيارات» lays four a row at 1920, the owner's own screen) never share a hue family,
+      never look alike (CIEDE2000 17 or more between their stripes, 20 or more over a day's first
+      twelve) and alternate dark and light; amber, rose and emerald — a proposal, a refusal, the
+      captain — come last, and their near twins brown, crimson and slate after the eighth
+      (`lib/van-accent.ts`). The accent is a stripe at the card's start
+      edge (the palette's own dot), its head on a thin band of it, and its code in a solid pill of it
+      with white or near-black words, whichever reads; every chip ON that van wears the same stripe and
+      a thin ground of it, and the chip's card — and «نقل إلى…», each van in its list — names the van
+      beside its swatch. A chip on no van stays
+      plain; a proposal (and an unsaved move) keeps its own ground and edge — dashed amber «مقترحة» —
+      and wears the van's colour as its stripe only. THE COUNTS each have their colour and icon, the
+      same on the van card, the van's card, a chip's card and the page's figures: محصنات indigo (the
+      badge before the captain; the page's «محصنات اليوم» and «بلا سيارة»), كراتين amber, حقائب teal,
+      صناديق fuchsia — each on a light ground of its own, ringed in its colour, its icon and figure in
+      it, never solid as a van's code is; a 0 is written in grey, its icon dimmer. The page's bar
+      gains the day's three package totals (the vault's counts; «…» while read, «—» if it failed, none
+      to a reader who cannot read the vault) and writes its figures in the figures' face, «0» never a
+      dot. THE HEAD: the time in sky, the direction in violet, each on a ground of its own; the
+      captain's line stays green on any van, its «قائد» now emerald-700 (5.5:1; emerald-600 was 3.8:1).
+      Every pair of words and ground is measured against Tailwind's own colours in both themes
+      (`distribution-colours.spec.ts`): 4.5:1 or better for every word, 3:1 for every count's icon. The
+      printed sheet stays black on white.
+    - THE INDEPENDENT CHECK (real OS drags under Xvfb on the real API, at 1×, at 6× CPU and at 6× with
+      only the standard formats carried: 23 of 23 each — every part of the new card, van to van, van to
+      the left's title, count, search box, area list and body, «حفظ» and a reload matching the server;
+      a card open in none of the 63 drags): the first
+      order kept three-a-row neighbours apart but put crimson over brown (ΔE00 13) and violet over navy
+      four apart — one above the other at 1920; the order from the seventh colour on is now fuchsia,
+      lime, navy, teal, brown, pink, olive, cyan, violet, amber, rose, emerald, slate, plum (the first
+      six, and so every day of up to six vans, unchanged). «مسح التصفية» ran 16px past the left column's
+      edge at 1024 with a filter in use; it wraps under «المعروض …» now.
+    - THE CRITIC'S PASS — nine findings, each fixed with a test seen failing first:
+      - «عاوزك تضيف الوان … اميز اوى العربيه»: a colour must STAY on its van. It was the van's place in
+        the whole list, and a row of another type is listed only while it carries (Round 25) — a
+        «حفظ» that took 106 «سفر»'s last محصنة, a hand-over, or the vault's poll dropped it and every
+        van after it changed colour. The «محصنة» rows (listed all day) now take the places among
+        themselves, a kept row a colour after them, never gold, amber or brown (its own dashed amber
+        edge and notice say «kept»). Only a change to the board's own «محصنة» rows moves the colours
+        after it — as it moves the cards: a colour keyed on the van alone would stay, but could put
+        two alike side by side, which is what the colours are for.
+      - «والاعداد»: a count was drawn like a van — the محصنات badge was solid indigo-600, the very pill
+        of the first van's code right above it, every day. A count is now a light ground of its own,
+        ringed in its colour, its icon and figure in it (0 muted); the order starts navy, orange,
+        olive, sky, fuchsia, teal, indigo, gold, brown, pink, forest, cyan, violet, lime, crimson,
+        emerald, slate, amber, plum, rose — no count's colour first, brown (amber-800) and crimson
+        (red-700, beside a refusal's rose) after the eighth — no order the specs allow keeps them
+        later (an exhaustive search). A proposal on a van keeps its own amber ground (on an orange
+        van only its dashed edge was left).
+      - «السيارات» lays at most FOUR a row: auto-fill put six at 2560, the card above six places back,
+        which the order does not keep apart; four wider cards now.
+      - «عاوز الفلاتر دول يكونوا جمبب السيارات و بلا سيارات»: the left's boxes went back under the title
+        with a three-figure count («بلا سيارة 113») or the English words, at 1024–1440. Its bar now
+        takes what the line leaves and never wraps, its two boxes shrinking together on one row
+        (measured, Arabic and English, 3 and 113, 1024–1920: one line everywhere; 52 + 82 px at 1024
+        with 113 in Arabic, 37 + 58 in English); «المعروض … · مسح التصفية» under them may break each
+        part onto a line of its own and never runs past the column's edge. The column's drawing gives
+        way only to that narrow bar: «تسليم المحصنات»'s left column, which has none, keeps it.
+      - On a phone, a tap on the captain's name opened the VAN's card; it now opens his own, as resting
+        on it does (one tap rule for the chip, the van and the name).
+      - One numeral system: the page's bar wrote «السيارات 8» and the column's head «السيارات ٨». Every
+        count on both screens — the heads, «المعروض 3 من 12», «حفظ (2)», «تسليم (1)», the dialogs and
+        notices — is in the figures' face now, as the van card's counts and the money are; only a
+        crew's NAME, «بدون سيارة (١)», keeps the board's own words.
+  - Round 26b — the owner on Round 26's screens: «لا استنى الالوان مش عجبانى بتاعت العربيه», and, asked
+    how he wants it, «لون واحد لكل العربيات»; then «عاوز يبقى فى فرق فى الالوان بين الصندوق و الحقائب و
+    الكراتين», «وعاوز اضيف اسم القائد فى الفلاتر بعد العربيه», «عاوز اخلى التاريخ يكون مكان الاحصائيات
+    والاحصائيات تكون فى النص» and «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل».
+    - ONE LOOK FOR EVERY VAN: the colour per van is gone — its order, its stripes, bands and code
+      pills, every chip painted in its van's colour, the swatches on the chip's card, the van's card
+      and in «نقل إلى…» (`lib/van-accent.ts` is gone; what it held besides the colours — the counts'
+      kinds and the van's hover card — is `lib/van-card.ts`). Every van card wears the same calm look,
+      slate, the boards' blue-grey ink: its code in a solid slate pill (white words, 10:1, the same
+      pill in both themes), a thin slate stripe at its start edge, its head on a very light slate band.
+      Slate is the one family here with almost no colour of its own (CIEDE2000 chroma 14): the van
+      reads as the card's title, and every colour that MEANS something stays free and far from it —
+      21 or more from each count. A chip on a van is the left's plain chip in the van's bounded load;
+      a proposal keeps its dashed amber, an unsaved move its own edge, a kept row of another type its
+      dashed amber edge and notice. The time and the direction are calm neutral pills now (Round
+      26's sky and violet would sit beside a cyan and a fuchsia count).
+    - THE VAN CARD, REDRAWN, top to bottom: THE HEAD (code · time · direction, one line, on its
+      band); THE CAPTAIN'S ROW — Round 25's order kept («الصف نفسه بتاع القائد يكون قبله عدد
+      المحصنات»): the count of محصنات FIRST, in a tile of its own (its figure over its word, the
+      محصنات' own Arabic form, «محصنتان», whole to a screen reader and on hover), then the captain in
+      a frame of his own — «قائد» over his name, cut to the frame, his person card on it; «بلا قائد»
+      in the refusal's rose — no count inside it; THE PACKAGES under it, كراتين, حقائب, صناديق, in the
+      same three columns (the count as wide as a package's tile, the captain's frame as two); THE
+      LOAD, a bounded place of its own — empty, «اسحب المحصنات إلى هنا» with its arrow, or, on a van
+      that takes nothing, why, in rose. Still ONE drop target (`data-drop-van`), its hover card on the
+      head and the captain's row (not on the packages, not on his name). The same card on «تسليم
+      المحصنات».
+    - THE COUNTS, APART: each a FILLED tile (a real ground of its hue, not a ring on white), its own
+      icon, the same on the van card, the van's card, a chip's card and the page's figures — محصنات
+      blue, كراتين orange, حقائب cyan, صناديق fuchsia. Measured (`distribution-colours.spec.ts`): their
+      marks 22.8 or more apart (CIEDE2000) by day and 25.8 by night, their grounds 12.7 and 13.1, and
+      21.4 or more from the van's slate, the captain's emerald, a proposal's amber and a refusal's
+      rose (the night shades chosen for it: an orange-500 mark is 26 from a proposal's amber-400);
+      every figure and word 4.5:1, every icon 3:1. A 0 keeps its hue, muted — a lighter ground, a
+      quieter figure, still 4.5:1 (it is 15px text) — never one grey for all three.
+    - «اسم القائد» in the vans' head, right after «كود السيارة»: a van answers when ANY of its captains
+      does — the first, whom the card shows, or the second — by his name or his employee code, folded
+      as every box here («مصطفي» finds «مصطفى», «br108» «BR-108»); AND-ed with the rest, in «المعروض …
+      من …», cleared by «مسح التصفية». The head's four boxes share the title's line at 1440 and 1280,
+      Arabic and English (measured), and wrap below that.
+    - THE TOP ROW: the day («يوم التسليم») at the start, the figures in the middle, «حفظ / تراجع /
+      توزيع تلقائي» at the end — on ONE line only where the figures stand exactly in its middle with
+      every act's words: the row measures its three parts and puts two sides of equal width around
+      the figures; where that does not fit, the day and the acts keep the first line and the figures
+      take a centred line of their own; at 390 the day, the figures, the acts stack, nothing
+      sideways. The hint and «n مقترحة لم تُحفظ» are a slim line under it — no band. «تسليم
+      المحصنات» the same, its acts on each van (with none, the figures sit beside the day where they
+      fit there but not in the middle).
+    - Specs: Round 26's colour specs went with the colours (the order's neighbours, every palette
+      colour's pill, a chip on each van's ground, the stable and kept-row colour rules — 13 in
+      `van-accent.spec.ts` and the accent and neighbour tests in `distribution-colours.spec.ts`); in
+      their place, the one look (the same classes on every van, both screens), the counts' distances
+      and contrasts, the captain's frame apart from the counts, the top row's order, the captain's box.
+    - R26b verify (computed styles in a real browser, the real API): (1) a 0's figure was 3:1 — «0
+      كراتين» read at 3.4:1 and «0 حقائب» at 3.5:1 by day, below AA for 15px text: the four zeros'
+      figures are the 700 shades by day now (4.9–6.2:1), still quieter than a count's (8:1), and the
+      spec asks 4.5:1. (2) A state's edge was lost by day: `cn` does not merge and the built CSS
+      writes `border-slate-200` / `bg-white` after the amber, brand and rose utilities, so the plain
+      colours beside a state's won — a proposal's dashed edge was grey, not amber; a move's brand and a
+      refusal's rose edge on a chip, a drag's dashed «takes it», «here» and «no» edge and ground on a
+      van and on its load, were the plain card's (by night too, the van's edge since 26b's slate).
+      Each now wears ONE edge and ONE ground at a time (spec: one of each per state).
+    - R26b critic: (1) the top row went to one line at a fixed 68rem with sides at least their own
+      content — from there to the width the parts really need (1162px in Arabic) the figures stood up
+      to 29px off the middle or split inside the row, and to hold them «تراجع» (and in English «توزيع
+      تلقائي», a bare arrow) lost its words from 1208 up to 1495: the row now measures itself
+      (`lib/top-row.ts`) — one line only where the figures are exactly in the middle with every word,
+      else their own centred line; measured 0px off at every width from 390 to 1920, Arabic and
+      English, both screens, with three-figure counts too, no act ever cut. (2) The redraw had put
+      the count of محصنات AFTER the captain, against Round 25's «الصف نفسه بتاع القائد يكون قبله عدد
+      المحصنات»: it opens his row again, each in its own frame. (3) «تسليم»'s confirmation wrote the
+      packages in one grey pill, the bags first and a 0 kind left out: the van's own coloured
+      counts now, كراتين، حقائب، صناديق, each always. (4) A package's word follows its count, as the
+      محصنات' does — «1 كرتونة», «2 حقيبتان», «11 صندوقًا», not «1 صناديق» beside «1 محصنة»; «Secured»
+      capitalised beside «Cartons». (5) A 4-figure count («1,251») ran past its tile: a step smaller,
+      its icon wrapping over it. (6) The captain's box folds spaces too — «عبدالرحمن» finds «عبد الرحمن»,
+      «br 108» «BR-108» — and a van found by the captain its card does not show says so under the
+      captain's row («يطابق البحث: كريم سمير علي — قائد آخر على السيارة») while the box holds it.
+      (7) By night the van's code pill was a dark slab on a dark band (1.5:1): its edge is a
+      slate-400 line now, 3.5:1 on the band. The vault's top row with no acts puts its figures beside
+      the day where they fit (1024) rather than alone on a second line.
+  - Round 27 — «الطاقم الثابت», the owner: «عاوزك تخلى شاشة الطاقم الثابت نفس شكل لوحة التشغيل بقى
+    فاهم». The screen is «لوحة التشغيلة»'s twin, minus the day (web only; no server change):
+    - THE SAME LOOK, from the same pieces: the board's frame, its toolbar (the role legend and the
+      hint, or the chip picked up; then «لوحة التشغيلة», «إضافة سيارة», Excel, «تراجع», «حفظ (n)»), its
+      bar, its table (السيارة | قائد الطاقم | أخصائي 1 | أخصائي 2 | الاتجاه | التوقيت | إزالة), its
+      slots and chips, and the two pools at the end with the captain-specialists last — dark and
+      light, at 390 the pools before the table and nothing sideways. What the two pages share is one
+      source now: `CrewPlanFrame` (the table's and the bar's looks, the count chip, the grid, the
+      toolbar's start, «المعروض N من M», «إخراج …» and the drop's `targetAt`, which the board imports
+      too — its look unchanged, pixel for pixel) and `CrewPlanSlot` (the board's slot, drawn as a
+      component). The old screen's cards, dashed boxes and per-box drop (`CrewPools`,
+      `CrewMemberCard`) are no longer on it.
+    - THE SAME HANDS: Round 22's drop (who is dragged kept from the chip's own dragstart, the whole
+      frame accepting, the drop deciding — a slot, anywhere on a vehicle's row, back on a pool;
+      a full slot said); «+ اختيار قائد» / «+ اختيار أخصائي» and the «+» beside a half-full slot's ✕
+      open the slot's list; a chip pressed, then «ضع هنا»; the person's card on every chip; Round
+      23's refusal in the board's words; «تراجع» one operation a press, its tooltip saying which,
+      Ctrl+Z (⌘Z) outside a box; the vehicle, person and direction filters; the board's bin takes a
+      vehicle out as a step of the draft (no confirm, no instant delete). «إضافة سيارة» opens the
+      board's list of cars (Round 24's `CrewVehiclePicker`) on the vehicles that may still join —
+      searchable by code, a vehicle taken out here offered again — where a bare <select> was. The
+      bar counts the vehicles and their crews («السيارات»، «طاقم مكتمل»، «طاقم ناقص»، «بدون طاقم»),
+      each a filter; a vehicle added and not saved is tagged «جديدة» under its code.
+    - WHAT STAYS ITS OWN: no day — where the board has «يوم التشغيلة» the bar says «بلا يوم — تُحمِّله
+      لوحة كل يوم» —, no notes, no type, no row colour. No day's marks either: the roster answers
+      absent / on leave (and which van holds whom) for ONE day, the server's today when asked
+      without one, and the standing save has no attendance gate — so the screen reads the roster
+      without them, nobody is faded or refused for it, and the person's card drops its attendance
+      line, the van's card its drivers (both the day's). The day's board still leaves an away man
+      off when it loads this list. A captain put in another vehicle's «قائد الطاقم» still brings the
+      specialists riding with him, where they fit and there is room («يسحب الأخصائيين اللى معاه» —
+      one «تراجع» takes the whole move back). «حفظ (n)» takes the vehicles out first (one DELETE
+      each), then sends the changed rows in ONE PUT whose body is `toStandingPayloadRows`' as before.
+    - Proof: real OS drags (XTEST, headed Chromium, the real API on mongodb-memory-server) — pool →
+      captain slot, pool → specialist slot, a chip to another vehicle's slot, a captain moving with
+      his crew, a captain refused on a specialist's slot; «حفظ» then a reload equal to the server —
+      6/6 at 1× and 6/6 at 6× CPU; a vehicle taken out, one of its captains seated elsewhere and a
+      vehicle added saved in one press (the DELETE first). Specs: `standing-crew.spec.ts` (the rows,
+      the save's body, the add list, the day's facts dropped, the counters, the drop, the filters,
+      «تراجع», a rebase, the captain's crew) and `standing-crew-page.spec.tsx` (the shared pieces, the
+      hands, what stays its own, every new word in both languages).
+    - Verification fix: a vehicle another desk had already taken out answered «حفظ»'s DELETE with
+      404, and the save stopped there on every press — the rest of the draft (a captain seated on
+      another vehicle) could not be saved without a reload that threw it away. A 404 is the end
+      state asked for, so it now counts as done (`sendStandingSave`), the list is read again, and
+      the PUT goes out; any other refused DELETE still stops the save, in ONE toast naming the
+      vehicle and the server's reason (the remove hook no longer also fires the global notifier).
+      Proved on the real stack with two desks, the socket on and off.
+    - Review fixes (each with a spec that fails before and passes after; 25/25 on the real stack, the
+      real OS drags 9/9 at 1× and 6× again):
+      - A vehicle another desk took out is no longer brought back. The board's rebase keeps a row
+        the planner touched after its server row is gone, and the standing PUT upserts by vehicle,
+        so the next «حفظ» put that vehicle and its crew back in the fleet without a word. The page
+        now rebases through `rebaseStandingDraft`, which drops such a row (in every step of «تراجع»
+        too), and says so: «أُخرجت 249 من الطاقم الثابت», with why, and that «إضافة سيارة» brings
+        it back.
+      - A save that stopped part-way says what went through: the DELETEs commit first, so a PUT
+        refused behind them now adds «وقد حُفظ قبل ذلك إخراج 253 من الطاقم الثابت، ولم تُحفظ بقية
+        التغييرات» (`removedBeforeStop`; also beside a refused DELETE that followed others).
+      - One toast a refusal: the PUT hook keeps the global notifier quiet too, as the board's does.
+        The clash sentence («قد يكون أحد الأفراد له مكان ثابت على مركبة أخرى») is used only for the
+        real clash (`isCrewClash`, 409); a 500, offline, a 404 or a 400 speak in their own words.
+      - A WRONG_SLOT 422 rings the person on the row the server names (`planRefusal` over
+        `standingPutRows`, the PUT's own order), the row marked and brought into view, as on the
+        board; moving or freeing him, undoing or taking the row out, or saving again clears it.
+      - A captain whose crew moves with him (a drop, a pick in a slot's list, «ضع هنا») is said, by
+        name: «انتقل القائد ومعه طاقمه — انتقل … إلى 251 · قائد الطاقم ومعه: …».
+      - The slots and the direction box fill their columns (the board's width is their floor): 7
+        columns share the table where the board has 9, and each slot column had ~55px dead space.
+      - A reader without the plan permission gets no «إزالة» column (it had a header over empty
+        cells).
+      - `mergeStandingRows`, `newStandingRow`, `toStandingRows`, `CrewPools` and `CrewMemberCard`
+        are no longer used by any page; their specs stay until the owner agrees to retire them, and
+        the no-resurrection promise is now tested on the page's own rebase path.
+  - Round 27 — the owner's colours. He sent a design of the van card (dark) and said: «بص، انا عاوز
+    يكون الديزاين الكارد بتاع العربية يكون زي ده كده، بس هتجيب المحصنة قبل القائد، يعني تكون مكان
+    المحصنة قبل القائد، والكارت بتاع القائد خليه زي ما انت ما كنت عامله كده، نفس الشكل القديم، والوان
+    الكراتين والحقائب والصناديق زي الديزاين الجديد ده، وشكل المحصنات اللي في الجنب على اليمين اللي هي
+    المحصنة قبل ما تتعين تكون نفس اللي انا بعتهولك ده بس بالشكل القديم. يعني انا عايز ناخد الالوان
+    نطبقها على الديزاين الموجود، ما نعملش شبه الديزاين ده. فهمت؟» (web only; no new words, no server
+    change):
+    - WHAT STAYS: Round 26b's card, shape for shape — the head (code · time · direction), the count of
+      محصنات BEFORE the captain, the captain's own emerald frame with «قائد» and his name (unchanged,
+      class for class; only its «بلا قائد» state is a firmer rose, the design's «بلا قائد» box), the
+      packages under them, the bounded load, the small chips, the columns where they were. None of the design's own pieces were copied (its captain card, «تعيين قائد», status
+      pills, footer, waiting-time pills).
+    - THE COLOURS, all in `distribution-look.ts`: the card the design's deep navy by night (white by
+      day), a subtle edge, a soft shadow; the van's code in a blue-outlined pill on a soft blue tint,
+      its number white by night (navy by day), its truck in sky, a soft blue glow; the time a neutral
+      outlined pill; the direction a sky-outlined one with its arrow in sky; the stripe the van's blue.
+    - THE COUNTS, OUTLINED as he drew them — a 1px edge of the kind's colour on a thin tint of it, the
+      icon, figure and word in it: محصنات cyan (the design's teal-cyan, kept on the cyan side: teal
+      would sit 10 from the captain's emerald frame beside it, CIEDE2000; cyan stands 25 or more away),
+      كراتين amber, حقائب blue, صناديق purple; the محصنات' tile glows softly by night. A 0 keeps its
+      colour and edge, plainly quieter (a thinner ground, quieter words and figure, and by night a
+      fainter edge than a count's firm one). The same on the van card, the
+      van's card, a chip's card, the page's figures, «تسليم»'s confirmation and «تسليم المحصنات».
+    - THE STATES on the card's edge: a van «بلا قائد» wears a rose edge and a soft rose glow, its
+      stripe rose, its «بلا قائد» frame and its refusal rose-tinted; a kept row of another type keeps
+      its dashed edge, now amber with an amber glow, its stripe and notice amber. Each still says
+      itself in words. A drag's «takes it / here / no» edges are Round 25's.
+    - THE CHIPS: on a van, the design's quiet dark row with a small cyan dot at its start (a محصنة, the
+      محصنات' colour); a proposal keeps its dashed amber (the design's «in progress» row), with an amber
+      dot; on NO van («بلا سيارة», the design's «رحلات بلا سيارة»), the same chip on a rose tint with a
+      dashed rose edge, a rose dot and rose-tinted words — on both screens; the column's head a rose
+      warning icon and a rose count while it holds any (at 1280–1440, where the icon gives way to
+      the narrow filter bar as before, the warning moves into the count; the vault's head, with no
+      filters, always shows the icon), and the page's «بلا سيارة» figure in the same rose. The dot is
+      drawn only (`aria-hidden`); every mark, drop region and drag is unchanged.
+    - BY DAY (the design is dark only): every role keeps its hue — a light tint of it, an edge of it,
+      dark words.
+    - Measured (`distribution-colours.spec.ts`, rewritten for these colours): every word 4.5:1 or
+      better on its own ground, both themes (the counts' words 8.1–13.4, figures 8.7–13.5, a 0's
+      figure 4.7–8.2 and 2.6 or more under its count's); every icon 3:1 (3.4–10.9); every coloured
+      edge 3:1 against what it stands on — the tiles' (3.0–7.4), the code pill's and the direction's on the band, «بلا قائد» and the kept
+      row's on their column, a waiting chip's dashed rose; the counts' icons 20 or more apart, their
+      edges 15, their grounds 10 by day and 7 by night (Round 26b asked 10 of a FILLED ground; the
+      design's own tinted grounds are 8.4 apart at their closest — the edge and the icon carry the hue
+      now); every count 20 or more from the captain's «قائد» and a refusal's rose. كراتين share a
+      proposal's amber and حقائب the van's blue, as the design paints them — told apart by shape (a
+      tile is never dashed; a proposal always is). Look assertions changed with the look: the van is
+      blue (not slate), its stripe a state's colour on a card that wears one, a kept row's edge
+      amber-600, a plain chip `CHIP_LOOK.van`, the page's figures cyan/amber/blue/purple; new: a chip on
+      no van, the column's rose head, the states' edges and glows.
+    - Proof: real OS drags (XTEST under Xvfb, headed Chromium, the real API) at 1× and at 6× CPU — 26
+      of 26 each: Round 26b's 24, plus a drop on a chip's cyan dot on a van and on a waiting chip's rose
+      dot in the left column; «حفظ» and a reload match the server; no card open during a drag.
+    - The critic's round, each with a spec that failed before: a محصنة placed on a crew the read no
+      longer lists sits in the left column, and now wears the waiting row there too (the desk drew it
+      as a row on a van; «تسليم المحصنات» already did it right); a kept row with NO captain keeps its
+      dashed shape in the «بلا قائد» rose (it had lost the dashed edge); a 0 plainly quieter (its
+      figure 2.5:1 or more under a count's, its words under a count's — by night they were louder —
+      its ground at most 0.6 as far from the card, and by night its edge 1:1 or more under the
+      count's firmer /80); the warning in the count where the column's icon gives way; the page's
+      «بلا سيارة» figure rose like the column's head while any wait (cyan when none); the counts'
+      grounds measured on every ground they stand on (a `slice(0, 2)` had dropped two) and the three
+      packages on «تسليم»'s confirmation too, where bags and boxes stood 6.5 apart (now 7.6: bags
+      /[0.22], boxes /[0.24] by night); `CAPTAIN_FRAME.none` pinned; stale comments fixed.
+  - Round 27d — calmer colours. The owner, on Round 27's screens: «اعملى نسخة واحدة بس من الشاشة بس
+    تكون بالوان اهدى متبعتش كل دا». The same hues in the same roles (محصنات cyan, كراتين amber, حقائب
+    blue, صناديق purple, «بلا قائد» rose, a kept row dashed amber, a waiting chip dashed rose with its
+    rose dot, the captain's emerald frame, the van's blue code), only calmer — colours only, in
+    `distribution-look.ts`; no shape, mark, drag or data change (web only; no new words):
+    - No glow or halo on the board: the code pill's blue glow, the محصنات' cyan glow, «بلا قائد»'s rose
+      glow and 3px halo, the kept row's amber glow and halo, the waiting column's rose glow — gone; a
+      card keeps only its neutral soft shadow. The app's shared brand buttons on these screens
+      («حفظ», «تسليم» and the confirmation's) keep the app's own brand shadow, as everywhere else.
+    - The counts: the faintest tint of their hue (x-50 by day, x-400/[0.08] by night) under a faint
+      edge of it (x-300 by day, x-400/35 by night); the icon and the figure in deep tones of the hue,
+      the word neutral slate. A 0 is neutral grey throughout — only its icon keeps a faint hue,
+      plainly fainter than its count's — so a count stands out and a 0 sits back.
+    - The head: the code on a soft blue tint, its number slate (near-white by night), a faint blue
+      edge; the time and the direction one neutral pill, the direction's arrow blue. The stripes
+      lighter.
+    - The states: «بلا قائد» and a kept row a quiet 1px edge (rose-500 / dashed amber-600 by day,
+      rose-400/60 / amber-400/50 by night — still 3:1 on their column); the «بلا قائد» frame, the
+      refusal, the kept notice fainter.
+    - The chips: on a van a neutral row with its small cyan dot; on no van a faint rose ground, a light
+      dashed rose edge, a rose dot, neutral words; a proposal a lighter dashed amber. The «بلا سيارة»
+      head: a rose icon, a neutral count (its warning glyph rose where the icon gives way). The page's
+      figures: neutral pills, only their small squares tinted, all at /10.
+    - Measured (`distribution-colours.spec.ts`): every word still 4.5:1 or better and every icon and
+      dot 3:1, both themes; the two states' edges 3:1 on their column; no coloured glow in the
+      board's own colours — the look's tokens and every class the two screens write themselves (a
+      new check; the shared brand buttons are outside it); a 0's icon 1:1 or more under its count's
+      (a new check). Thresholds LOWERED on purpose — not colours retuned — each documented where it
+      is measured, each one a fainter tint or edge cannot keep: the edges that only draw a shape (a
+      tile's, a 0's, the code pill's, the head pills', a waiting chip's) are no longer held to 3:1 —
+      they are held to «quiet» (2.75:1 or less) and «still drawn» (a CIEDE2000 floor), WCAG 1.4.11
+      asking nothing of a container's outline; the tiles' edges 10 apart by night (was 15) and their
+      grounds 5 by day / 2.5 by night (was 10 / 7) — the icons still 20 apart; the محصنات' ground 4
+      from the captain's frame by day (was 5); by night a 0's edge 0.5 under its count's (was 1);
+      the three packages' 0s told apart by their icons (20 or more apart) now that their figures are
+      grey. A 0's figure stays 2.5:1 under its count's, as before: by day the cyan and amber figures
+      are x-900 (the four figures 8:1 to 9:1 alike), the bags' icon blue-900 and the boxes'
+      purple-600 (the boxes' 0 had worn its count's own purple-500, as loud as the count). Literal
+      values retuned in `distribution-round26.spec.tsx` and `secured-distribution.spec.tsx`: a
+      waiting chip's edge rose-300 (was rose-500), a proposal's amber-400 on amber-50/70 (was
+      amber-500 on amber-50), the page's figure squares /10 (was /15).
+
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».
   - `/it/vehicle-checks` in the console: six figures of a window (today, 7 or 30 days) under a branch
@@ -1936,8 +2297,6 @@ its entry here in the same PR.
     «جاهزون للتعيين», «المعينون», job offers, System Users and the org chart remembered an unlinked
     department by its name; the address bar is now updated to the key the same department has after
     linking, instead of the list showing everyone, or nobody.
-  - The attendance screens' test read «today» in UTC, which is the next day in Cairo for two hours
-    each night; it now reads the company's day, as the sheet does.
 
 - **A role holding a retired permission can be saved again.** «لما بعدل صلاحيات دور بيظهر كدا !
   Unknown permission keys: applicant.returnToStage» (the role «الموارد البشرية Test»).

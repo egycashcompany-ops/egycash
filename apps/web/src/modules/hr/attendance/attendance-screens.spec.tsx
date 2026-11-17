@@ -37,8 +37,8 @@ const PERIOD = periodRange('thisMonth');
 /** One page of days — the screens ask for the server's maximum (`MAX_PAGE_SIZE`). */
 const DAYS_PAGE = 100;
 
-// The company's day, as the sheet itself reads it (`cairoToday`): the UTC date is a different day for
-// the two hours after midnight in Cairo, and the sheet then shows a day these rows are not on.
+// The sheet opens on Cairo's day (`cairoToday`), not UTC's: from 22:00 UTC Cairo is already on the
+// next date, and a UTC «today» put every stub row on a day the page never asked for.
 const TODAY = cairoToday();
 
 const day = (over: Partial<AttendanceDayDto> = {}): AttendanceDayDto => ({

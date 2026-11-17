@@ -927,6 +927,18 @@ const SHIFT_TYPE_KEYS = [
   ),
 ];
 
+/**
+ * Round 26 — «توزيع المحصنات»: the filters' shorter words beside the titles, and the van's card
+ * («لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين»).
+ */
+const ROUND26_DISTRIBUTION_KEYS = [
+  'operations.distribution.filter.searchShort',
+  'operations.distribution.filter.allAreasShort',
+  ...['label', 'shown', 'none', 'hidden', 'noVan'].map(
+    (key) => `operations.distribution.vanCard.${key}`,
+  ),
+];
+
 const ALL_KEYS = [
   ...SHELL_KEYS,
   ...CATALOG_KEYS,
@@ -939,6 +951,7 @@ const ALL_KEYS = [
   ...ROUND12_REPORT_AND_VAULT_KEYS,
   ...AREA_KEYS,
   ...DISTRIBUTION_KEYS,
+  ...ROUND26_DISTRIBUTION_KEYS,
   ...DISPATCH_DASHBOARD_KEYS,
   ...CREW_PLAN_KEYS,
   ...SHIFT_TYPE_KEYS,

@@ -23,6 +23,7 @@ import { StrokeIcon } from '../../../shared/ui/StrokeIcon';
 import { PLAN_FLAGS, type PlanFlag, type PlanPool, type PlanPoolQuery } from '../lib/crew-plan';
 import { CrewPlanChip } from './CrewPlanChip';
 import { FLAG_PATH, useFlagTip } from './crew-plan-icons';
+import { scopedKey, useCrewPlanScope } from './crew-plan-scope';
 
 /** The pool's colour along its top, as legacy's green and red columns. */
 const ACCENT: Record<PlanPool, string> = {
@@ -119,6 +120,7 @@ export const CrewPlanPool = ({
   className?: string;
 }): JSX.Element => {
   const t = useT();
+  const scope = useCrewPlanScope();
   const locale = useAppSelector((state) => state.locale.locale);
   const title = t(`operations.crewPlan.pools.${pool}`);
   const narrowed = query.search.trim() !== '' || query.flags.length > 0;
@@ -214,7 +216,7 @@ export const CrewPlanPool = ({
         {returnSelected}
         {drop.armed && (
           <p className="py-1 text-center text-[11.5px] font-bold text-brand-600 dark:text-brand-300">
-            {t('operations.crewPlan.pools.dropBack')}
+            {t(scopedKey(scope, 'operations.crewPlan.pools.dropBack'))}
           </p>
         )}
         {ready && listed.length === 0 && (

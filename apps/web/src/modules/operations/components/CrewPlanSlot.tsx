@@ -9,6 +9,11 @@
 //     refuse it turns red with why — full, or (Round 23) «للقادة فقط» / «للأخصائيين فقط». The page's
 //     frame takes the drag's events (`lib/crew-drag.ts`, Round 22); the slot only marks where it is
 //     (`data-slot-zone`), and draws what the frame decided.
+//   · ITS WIDTH: the board's slot width is its FLOOR, and it fills its column (`min-w-full`). The
+//     standing table has 7 columns where the board has 9, so the table's width gives each column
+//     more; at a fixed width every slot column carried ~55px of dead space (Round 27 review). The
+//     fixed width still sizes the column (a percentage min-width adds nothing to a column's own
+//     width), so the columns share the table as before — the slot and its chips now reach across.
 // What a slot DOES is the page's: `decide` (the drop's rule, `resolveDrop`) answers every question
 // asked here, so a drop, a pick and «ضع هنا» cannot disagree.
 import { type DragEvent } from 'react';
@@ -114,7 +119,7 @@ export const CrewPlanSlot = ({
       data-slot-zone={zone}
       data-drop-over={isOver ? 'accept' : refused ? 'refuse' : undefined}
       className={cn(
-        'relative flex min-h-[2.25rem] w-[8.75rem] flex-col gap-1 rounded-lg p-0.5 transition-colors min-[1440px]:w-[9.75rem] min-[1750px]:w-[10.5rem] min-[1900px]:w-[12.25rem]',
+        'relative flex min-h-[2.25rem] w-[8.75rem] min-w-full flex-col gap-1 rounded-lg p-0.5 transition-colors min-[1440px]:w-[9.75rem] min-[1750px]:w-[10.5rem] min-[1900px]:w-[12.25rem]',
         seats.length === 0 && 'border border-dashed border-slate-300/80 dark:border-slate-700/70',
         armed &&
           'outline-dashed outline-2 -outline-offset-1 outline-brand-300/80 dark:outline-brand-500/45',

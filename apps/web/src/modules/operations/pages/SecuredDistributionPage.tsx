@@ -123,7 +123,7 @@ import {
   useVaultPackaging,
 } from '../api/operations-queries';
 import { BoardFigurePill } from '../components/BoardFigures';
-import { COUNT_LOOK, VANS_FIGURE } from '../components/distribution-look';
+import { COLUMN_WARN, COUNT_LOOK, VANS_FIGURE } from '../components/distribution-look';
 import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsBoard';
 import {
   CardMark,
@@ -756,6 +756,9 @@ export const SecuredDistributionPage = (): JSX.Element => {
         bankName={bankNameOf(row.mainBankId)}
         branchName={row.destination?.name ?? row.origin?.name ?? ''}
         tone={wasRefused ? 'refused' : proposed ? 'proposed' : moved ? 'moved' : undefined}
+        // R27 critic — the look of the column it is drawn in: a place naming a van the read no
+        // longer lists is on no van (`distributionColumns`), as «تسليم المحصنات» already draws it.
+        unplaced={van === undefined}
         marks={
           <>
             {row.overdue && (
@@ -886,6 +889,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
   // ── The page ───────────────────────────────────────────────────────────────────────────────────
 
   const loaded = data !== undefined;
+  /** Any محصنة on no van — the column's head and the page's figure wear the rose (Round 27). */
+  const waiting = loaded && columns.unplaced.length > 0;
   const failed = !tooLarge && hasError(board.error) && !loaded;
 
   // RIGHT (first in RTL): the vans — three quarters of a wide screen (Round 24c).
@@ -1015,6 +1020,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
       data-distribution-column="unplaced"
       data-drop-unplaced="true"
       filtersFit="narrow"
+      warn={waiting}
       {...(wide
         ? {}
         : { collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) } })}
@@ -1122,7 +1128,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 value={loaded ? countText(vans.length, locale) : '…'}
                 data-figure="vans"
               />
-              {/* The counts in their own colours, as on every van: the محصنات blue, then the
+              {/* The counts in their own colours, as on every van: the محصنات cyan, then the
                   vault's packages over the day's محصنات. */}
               <BoardFigurePill
                 compact
@@ -1132,10 +1138,12 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 value={loaded ? countText(rows.length, locale) : '…'}
                 data-figure="shipments"
               />
+              {/* R27 critic — one number, one colour: while any wait, the rose of the column's
+                  head (its warning, its count); none waiting, the محصنات' own cyan. */}
               <BoardFigurePill
                 compact
-                icon={COUNT_LOOK.shipments.icon}
-                tone={COUNT_LOOK.shipments.square}
+                icon={waiting ? PATH.warn : COUNT_LOOK.shipments.icon}
+                tone={waiting ? COLUMN_WARN.figure : COUNT_LOOK.shipments.square}
                 label={t('operations.distribution.unplaced')}
                 value={loaded ? countText(columns.unplaced.length, locale) : '…'}
                 data-figure="unplaced"

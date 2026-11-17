@@ -758,9 +758,14 @@ describe('Round 27 review — a vehicle taken out on the server is not brought b
 
   it('through «تراجع» too: no step of the history brings the vehicle back', () => {
     let history = startHistory<CrewDraft>({ rows: SERVER, standingKeys: null });
-    history = record(history, { rows: draft, standingKeys: null }, { kind: 'free' }, {
-      same: sameCrewDraft,
-    });
+    history = record(
+      history,
+      { rows: draft, standingKeys: null },
+      { kind: 'free' },
+      {
+        same: sameCrewDraft,
+      },
+    );
     const rebased = rebaseHistory(
       history,
       (state) => ({ ...state, rows: rebaseStandingDraft(state.rows, SERVER, next) }),
@@ -819,11 +824,9 @@ describe('Round 27 review — a refused PUT, read as the board reads its own', (
   });
 
   it('the PUT’s rows in its own order — what `ROW_INDEX` counts', () => {
-    const edited = patchRow(
-      placeMember(SERVER, 'van:v-501', 'captain', 'cap-z'),
-      'van:v-213',
-      { plannedTime: '09:00' },
-    );
+    const edited = patchRow(placeMember(SERVER, 'van:v-501', 'captain', 'cap-z'), 'van:v-213', {
+      plannedTime: '09:00',
+    });
     const sent = standingPutRows(edited, SERVER);
     expect(sent.map((one) => one.key)).toEqual(['van:v-213', 'van:v-501']);
     expect(standingSave(edited, SERVER).put.map((one) => one.vehicleId)).toEqual(
@@ -832,11 +835,9 @@ describe('Round 27 review — a refused PUT, read as the board reads its own', (
   });
 
   it('a WRONG_SLOT 422 names the person on the row the page rings', () => {
-    const edited = patchRow(
-      placeMember(SERVER, 'van:v-501', 'captain', 'cap-z'),
-      'van:v-213',
-      { plannedTime: '09:00' },
-    );
+    const edited = patchRow(placeMember(SERVER, 'van:v-501', 'captain', 'cap-z'), 'van:v-213', {
+      plannedTime: '09:00',
+    });
     const sent = standingPutRows(edited, SERVER);
     const refused = new ApiError('OPERATIONS_CREW_MEMBER_WRONG_SLOT', 'not a captain', 422, [
       { field: 'employeeId', code: 'NOT_A_CAPTAIN', message: 'cap-z' },

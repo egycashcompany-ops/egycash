@@ -44,7 +44,20 @@ import {
   VanCrewCardBody,
   tileFigureSize,
 } from './SecuredDistributionParts';
-import { CAPTAIN_FRAME, COUNT_LOOK, HEAD_PILL, LOAD_LOOK, VAN_LOOK } from './distribution-look';
+import {
+  CAPTAIN_FRAME,
+  CHIP_DOT,
+  CHIP_LOOK,
+  CHIP_WORDS,
+  COLUMN_WARN,
+  COUNT_LOOK,
+  HEAD_PILL,
+  KEPT_NOTICE,
+  LOAD_LOOK,
+  VAN_CARD,
+  VAN_LOOK,
+  VAN_STATE_STRIPE,
+} from './distribution-look';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -134,6 +147,7 @@ describe('A — the filters on the title’s line', () => {
   const column = (
     filtersFit: 'wide' | 'narrow',
     collapse: { open: boolean } | null = null,
+    warn = false,
   ): string =>
     render(
       <DistributionColumn
@@ -142,6 +156,7 @@ describe('A — the filters on the title’s line', () => {
         icon={['M0 0']}
         data-distribution-column="unplaced"
         filtersFit={filtersFit}
+        warn={warn}
         {...(collapse === null
           ? {}
           : { collapse: { open: collapse.open, onToggle: () => undefined } })}
@@ -236,6 +251,33 @@ describe('A — the filters on the title’s line', () => {
     expect(bare).not.toContain('[@container(max-width:20.5rem)]:hidden');
     expect(column('wide')).not.toContain('[@container(max-width:20.5rem)]:hidden');
     expect(column('narrow')).toContain('[@container(max-width:20.5rem)]:hidden');
+  });
+
+  it('R27 critic — a head holding waiting محصنات keeps its warning where its drawing gives way: in its count', () => {
+    // At 1280–1440 the narrow boxes take the drawing's room, and the rose warning went with it — on
+    // the desk, at the widths it is needed most. The count now carries a small warning shown only
+    // then; wider, the drawing is the warning and the count has none (never two).
+    const html = column('narrow', null, true);
+    const head = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+    expect(head).toContain('data-column-icon="warn"');
+    expect(head).toContain('[@container(max-width:20.5rem)]:hidden');
+    const glyph = /<span aria-hidden="true" data-column-warn-glyph="true" class="([^"]*)"/.exec(
+      head,
+    );
+    expect(glyph?.[1]).toBeDefined();
+    expect(glyph?.[1]?.split(/\s+/)).toEqual(
+      expect.arrayContaining(['hidden', '[@container(max-width:20.5rem)]:inline-flex']),
+    );
+    // Inside the rose count, after the drawing.
+    expect(head.indexOf('data-column-warn-glyph')).toBeGreaterThan(
+      head.indexOf('data-column-icon="warn"'),
+    );
+    expect(
+      head.slice(head.lastIndexOf('<span', head.indexOf('data-column-warn-glyph')) - 400),
+    ).toContain(COLUMN_WARN.count);
+    // A head whose drawing never gives way (no narrow boxes) keeps it alone; a calm head has none.
+    expect(column('wide', null, true)).not.toContain('data-column-warn-glyph');
+    expect(column('narrow')).not.toContain('data-column-warn-glyph');
   });
 
   it('R26 critic — every count on these screens in the figures’ face: «113», never «١١٣» beside a «113»', () => {
@@ -374,7 +416,7 @@ describe('B — the van’s card', () => {
     it(`[${locale}] the van, its time and its direction head the card — the van’s one pill, no swatch`, () => {
       const html = vanCard({}, { locale });
       const head = html.slice(0, html.indexOf('<dl'));
-      // Round 26b — no colour of its own, so no swatch: the van's one slate pill.
+      // Round 26b — no colour of its own, so no swatch: the van's one pill (Round 27: the owner's blue).
       expect(html).not.toContain('data-van-swatch');
       expect(head).toContain('data-van-code="112"');
       expect(head).toContain(VAN_LOOK.pill);
@@ -572,22 +614,31 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     { ...VAN, crewAssignmentId: 'cr-loose', vehicleId: null, vehicleCode: null },
   ];
 
-  it('every van wears the same stripe, band and code pill — whichever van, whatever its place', () => {
+  it('every van wears the same band and code pill — whichever van; the same stripe unless a state paints it', () => {
     // «لون واحد لكل العربيات»: the look is the same classes on every card, and none is a van's own.
     const looks = VANS.map((van) => {
       const html = card(van);
       expect(html).not.toContain('data-van-accent');
       return [
-        classOf(html, 'data-van-stripe="true"'),
         classOf(html, 'data-van-band="true"'),
         classOf(html, `data-van-code="${van.vehicleCode ?? ''}"`),
       ];
     });
     for (const look of looks) expect(look).toEqual(looks[0]);
-    const [stripe, band, pill] = looks[0] as [string, string, string];
-    expect(stripe).toContain(VAN_LOOK.stripe);
+    const [band, pill] = looks[0] as [string, string];
     expect(band).toContain(VAN_LOOK.band);
     expect(pill).toContain(VAN_LOOK.pill);
+    expect(pill).toContain(VAN_LOOK.ring);
+    // Round 27 — the stripe: the van's blue on every van at rest (112, the crew without a van); a
+    // state's colour where the card's edge wears one — «بلا قائد» rose (125), a kept row amber (106).
+    const stripe = (van: OperationsDayBoardVehicleCrewDto): string =>
+      classOf(card(van), 'data-van-stripe="true"');
+    expect(stripe(VANS[0] as OperationsDayBoardVehicleCrewDto)).toContain(VAN_LOOK.stripe);
+    expect(stripe(VANS[3] as OperationsDayBoardVehicleCrewDto)).toContain(VAN_LOOK.stripe);
+    expect(stripe(VANS[1] as OperationsDayBoardVehicleCrewDto)).toContain(
+      VAN_STATE_STRIPE.noCaptain,
+    );
+    expect(stripe(VANS[2] as OperationsDayBoardVehicleCrewDto)).toContain(VAN_STATE_STRIPE.kept);
     // The card cuts the stripe and the band to its round corners.
     expect(card(VAN)).toMatch(
       /^<article[^>]*class="relative flex min-w-0 flex-col overflow-hidden rounded-xl/,
@@ -705,10 +756,40 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     // The desk says which vans take nothing — its own rule (`takesShipments`).
     expect(DIST).toContain('takesNone={!takesShipments(van)}');
     expect(HANDOVER).not.toContain('takesNone');
-    // A kept row of another type keeps its dashed amber edge and its notice.
+    // A kept row of another type keeps its dashed amber edge (Round 27: with the design's amber glow)
+    // and its notice, amber.
     const kept = card(VANS[2] as OperationsDayBoardVehicleCrewDto);
-    expect(kept).toMatch(/^<article[^>]*class="[^"]*border-dashed border-amber-400/);
+    expect(classOf(kept, 'data-distribution-van="cr-106"')).toContain(VAN_CARD.kept);
+    expect(VAN_CARD.kept).toContain('border-dashed');
     expect(kept).toContain('data-van-not-secured="سفر"');
+    expect(classOf(kept, 'data-van-not-secured="سفر"')).toContain(KEPT_NOTICE.strip);
+    // «بلا قائد»: the design's rose edge on the whole card — and it says so in words on it.
+    const none = card(VANS[1] as OperationsDayBoardVehicleCrewDto, 0);
+    expect(classOf(none, 'data-distribution-van="cr-125"')).toContain(VAN_CARD.noCaptain);
+    expect(none).toContain(`>${tr('ar', 'operations.distribution.noCaptainShort')}<`);
+    expect(classOf(card(VAN), 'data-distribution-van="cr-112"')).toContain(VAN_CARD.rest);
+  });
+
+  it('R27 critic — a kept row with NO captain: the «بلا قائد» rose, in the kept row’s dashed shape', () => {
+    // Both states at once: the rose of «بلا قائد» (it takes nothing at all) wins the colour, and
+    // Round 25's dashed edge still says «kept for what it carries» — neither is lost to the other.
+    const both = card({ ...(VANS[2] as OperationsDayBoardVehicleCrewDto), captains: [] }, 0);
+    const article = classOf(both, 'data-distribution-van="cr-106"');
+    expect(article).toContain(VAN_CARD.noCaptain);
+    expect(article.split(/\s+/)).toContain('border-dashed');
+    expect(classOf(both, 'data-van-stripe="true"')).toContain(VAN_STATE_STRIPE.noCaptain);
+    // Each still says itself in words.
+    expect(both).toContain('data-van-not-secured="سفر"');
+    expect(both).toContain(`>${tr('ar', 'operations.distribution.noCaptainShort')}<`);
+    // A row of the «محصنة» type with no captain stays solid; a kept row with one stays amber.
+    const none = classOf(
+      card(VANS[1] as OperationsDayBoardVehicleCrewDto, 0),
+      'data-distribution-van="cr-125"',
+    );
+    expect(none.split(/\s+/)).not.toContain('border-dashed');
+    expect(
+      classOf(card(VANS[2] as OperationsDayBoardVehicleCrewDto), 'data-distribution-van="cr-106"'),
+    ).toContain(VAN_CARD.kept);
   });
 
   const ROW = {
@@ -724,22 +805,46 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     vaultReceiptNumber: null,
     lines: [],
   } as unknown as OperationsSecuredDistributionRowDto;
-  const chip = (tone?: 'proposed' | 'moved') =>
+  const chip = (tone?: 'proposed' | 'moved', unplaced = false) =>
     render(
       <ShipmentChip
         row={ROW}
         bankName="الأهلي"
         branchName="فرع المعادي"
         tone={tone}
+        unplaced={unplaced}
         card={<p>card</p>}
       />,
     );
 
-  it('a chip on a van is plain — the same chip as on the left, no van’s colour on it', () => {
+  it('a chip on a van is the design’s quiet row — no van’s colour on it, a cyan dot at its start', () => {
     const html = chip();
     expect(html).not.toContain('data-chip-accent');
     expect(html).not.toContain('data-chip-stripe');
-    expect(html).toContain('bg-white dark:bg-[#0f1a3a]');
+    expect(classOf(html, 'data-shipment-tone="saved"')).toContain(CHIP_LOOK.van);
+    // The dot comes before the words, drawn only — a screen reader hears the bank and the branch.
+    expect(html).toMatch(/<span aria-hidden="true" data-chip-dot="van" class="[^"]*bg-cyan-600/);
+    expect(html.indexOf('data-chip-dot=')).toBeLessThan(html.indexOf('data-chip-text='));
+    expect(html).toContain(CHIP_WORDS.plain.bank);
+  });
+
+  it('Round 27 — a chip on NO van: the design’s waiting row — a dashed rose edge on a rose tint, a rose dot, rose words', () => {
+    const html = chip(undefined, true);
+    // The same chip, the same marks: its tone is still «saved» — only its colours say where it is.
+    expect(html).toContain('data-shipment-tone="saved"');
+    const classes = classOf(html, 'data-shipment-tone="saved"');
+    expect(classes).toContain(CHIP_LOOK.unplaced);
+    expect(classes).toContain('border-dashed border-rose-500');
+    expect(html).toContain(
+      `data-chip-dot="unplaced" class="h-2 w-2 shrink-0 rounded-full ${CHIP_DOT.unplaced}"`,
+    );
+    expect(html).toContain(CHIP_WORDS.unplaced.bank);
+    expect(html).toContain(CHIP_WORDS.unplaced.branch);
+    // A state's own look wins on no van too — an unsaved move back keeps its edge.
+    const back = chip('moved', true);
+    expect(classOf(back, 'data-shipment-tone="moved"')).toContain(CHIP_LOOK.moved);
+    expect(back).not.toContain('border-rose-500');
+    expect(back).toContain('data-chip-dot="moved"');
   });
 
   it('a proposal keeps its «مقترحة» look — dashed amber on its own amber ground; an unsaved move its own', () => {
@@ -747,6 +852,7 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     expect(html).toContain('data-shipment-tone="proposed"');
     expect(html).toContain('border-dashed border-amber-500');
     expect(html).toContain('bg-amber-50 dark:bg-amber-400/[0.06]');
+    expect(html).toContain('data-chip-dot="proposed"');
     const moved = chip('moved');
     expect(moved).toContain('bg-brand-50/60 dark:bg-brand-500/[0.08]');
     expect(moved).toContain('border-brand-400');
@@ -770,12 +876,14 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
         expect(found, `${label} — ${part}: ${found.join(' ')}`).toHaveLength(1);
       }
     };
-    // The chip, each tone — and each tone's own edge is the one it keeps.
-    for (const [tone, edge] of [
-      [undefined, 'border-slate-200'],
-      ['proposed', 'border-amber-500'],
-      ['moved', 'border-brand-400'],
-      ['refused', 'border-rose-500'],
+    // The chip, each tone — and each tone's own edge is the one it keeps; on no van too (Round 27).
+    for (const [tone, unplaced, edge] of [
+      [undefined, false, 'border-slate-200'],
+      [undefined, true, 'border-rose-500'],
+      ['proposed', false, 'border-amber-500'],
+      ['moved', false, 'border-brand-400'],
+      ['moved', true, 'border-brand-400'],
+      ['refused', false, 'border-rose-500'],
     ] as const) {
       const classes = classOf(
         render(
@@ -784,12 +892,13 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
             bankName="الأهلي"
             branchName="فرع المعادي"
             tone={tone}
+            unplaced={unplaced}
             card={<p>card</p>}
           />,
         ),
         `data-shipment-tone="${tone ?? 'saved'}"`,
       );
-      one(`chip ${tone ?? 'plain'}`, classes);
+      one(`chip ${tone ?? 'plain'}${unplaced ? ' on no van' : ''}`, classes);
       expect(classes.split(/\s+/)).toContain(edge);
     }
     // The van and its load — at rest, kept, armed, and with a drag over it.
@@ -810,9 +919,22 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
         </VanCard>,
       );
     const kept = VANS[2] as OperationsDayBoardVehicleCrewDto & { securedType?: boolean };
+    const noCaptain = VANS[1] as OperationsDayBoardVehicleCrewDto & { securedType?: boolean };
+    const keptNone: OperationsDayBoardVehicleCrewDto & { securedType?: boolean } = {
+      ...kept,
+      captains: [],
+    };
     for (const [label, van, drop, edge] of [
       ['at rest', VAN, undefined, 'border-slate-200'],
-      ['kept', kept, undefined, 'border-amber-400'],
+      ['kept', kept, undefined, 'border-amber-600'],
+      ['no captain', noCaptain, undefined, 'border-rose-500'],
+      ['kept, no captain', keptNone, undefined, 'border-rose-500'],
+      [
+        'no captain, a drag refused over it',
+        noCaptain,
+        { armed: false, over: 'refuse' },
+        'border-rose-500',
+      ],
       ['armed', VAN, { armed: true, over: null }, 'border-brand-300'],
       ['place', VAN, { armed: true, over: 'place' }, 'border-brand-500'],
       ['refuse', VAN, { armed: false, over: 'refuse' }, 'border-rose-500'],

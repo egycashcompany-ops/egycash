@@ -30,6 +30,12 @@
 // then the captain, each in a frame of its own), the packages under it, the load in a bounded place
 // of its own (`VanCard`). The page's top row is the day at the start, the figures in the middle, the
 // acts at the end (`TopRow`).
+//
+// Round 27 — the owner's colours on that same card («يعني انا عايز ناخد الالوان نطبقها على الديزاين
+// الموجود، ما نعملش شبه الديزاين ده»): the van's code in a blue-outlined pill on a soft blue tint, its
+// stripe blue; the counts OUTLINED tiles — محصنات cyan, كراتين amber, حقائب blue, صناديق purple; «بلا
+// قائد» a rose edge, a kept row a dashed amber one; a chip on no van rose and dashed. Every colour is
+// in `distribution-look.ts`; the shapes above are unchanged.
 import {
   useCallback,
   useEffect,
@@ -90,10 +96,18 @@ import { PlanAttendanceFact, PlanMemberCardBody } from './CrewPlanMemberCard';
 import {
   CAPTAIN_FRAME,
   CAPTAIN_MARK,
+  CHIP_DOT,
+  CHIP_LOOK,
+  CHIP_WORDS,
+  COLUMN_WARN,
   COUNT_LOOK,
   HEAD_PILL,
+  KEPT_NOTICE,
   LOAD_LOOK,
+  VAN_CARD,
   VAN_LOOK,
+  VAN_STATE_STRIPE,
+  type ChipTone,
 } from './distribution-look';
 import { SecuredStageBadge, SecuredStageMark } from './ShipmentBadges';
 import { SHIPMENT_PATH } from './shipment-icons';
@@ -358,6 +372,7 @@ export const DistributionColumn = ({
   collapse,
   filters,
   filtersFit = 'wide',
+  warn = false,
   className,
   ...rest
 }: {
@@ -365,6 +380,11 @@ export const DistributionColumn = ({
   count: number;
   icon: readonly string[];
   extra?: ReactNode;
+  /**
+   * Round 27 — the column holds work still to do (the محصنات on no van — the owner's design's
+   * «رحلات بلا سيارة»): its head's icon a rose warning, its count a rose pill (`COLUMN_WARN`).
+   */
+  warn?: boolean;
   /** The column's filter bar, on the head's line beside the title (Round 26). */
   filters?: ReactNode;
   /** How much of the head's line the bar needs before it wraps under the title. */
@@ -391,22 +411,39 @@ export const DistributionColumn = ({
           gives the boxes the room of its drawing; the title and the count stay. R26 critic: only
           a head that HAS the narrow boxes — the hand-over's left column has none, and keeps it. */}
       <span
+        data-column-icon={warn ? 'warn' : 'plain'}
         className={cn(
-          'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand-500/15 text-brand-600 dark:text-brand-300',
+          'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+          warn ? COLUMN_WARN.icon : 'bg-brand-500/15 text-brand-600 dark:text-brand-300',
           narrowBar && '[@container(max-width:20.5rem)]:hidden',
         )}
       >
-        <BoardIcon d={[...icon]} className="h-4 w-4" />
+        <BoardIcon d={warn ? [...PATH.warn] : [...icon]} className="h-4 w-4" />
       </span>
       <h2 className="whitespace-nowrap text-[15px] font-black text-slate-900 dark:text-white">
         {title}
       </h2>
       <span
         className={cn(
-          'shrink-0 rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-black text-slate-700 dark:bg-slate-700/60 dark:text-slate-200',
+          'shrink-0 rounded-full px-2 py-0.5 text-xs font-black',
+          warn
+            ? COLUMN_WARN.count
+            : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200',
+          warn && narrowBar && 'inline-flex items-center gap-0.5',
           NUM,
         )}
       >
+        {/* R27 critic — where the narrow boxes take the drawing's room (1280–1440), the warning
+            stays, in the count: shown only then, so it is never said twice. */}
+        {warn && narrowBar && (
+          <span
+            aria-hidden
+            data-column-warn-glyph="true"
+            className="hidden [@container(max-width:20.5rem)]:inline-flex"
+          >
+            <BoardIcon d={[...PATH.warn]} className="h-3 w-3" />
+          </span>
+        )}
         {countText(count, locale)}
       </span>
     </>
@@ -947,9 +984,10 @@ const PersonCardBody = ({
 
 /**
  * ONE COUNT, as a TILE (Round 26b — «عاوز يبقى فى فرق فى الالوان بين الصندوق و الحقائب و الكراتين»):
- * a FILLED tinted tile of its kind's own hue — its icon and its figure on the first line, its name
- * under them — the same on the van card and on the van's card (`COUNT_LOOK`): محصنات blue, كراتين
- * orange, حقائب cyan, صناديق fuchsia. A 0 keeps its hue, muted — a lighter ground, a lighter figure;
+ * a tile of its kind's own hue (Round 27 — OUTLINED, the owner's colours) — its icon and its figure
+ * on the first line, its name under them — the same on the van card and on the van's card
+ * (`COUNT_LOOK`): محصنات cyan, كراتين amber, حقائب blue, صناديق purple. A 0 keeps its hue and its
+ * edge, quieter — a thinner ground, a quieter figure;
  * so do «…» (still reading) and «—» (not to be read). `said`: what a screen reader hears instead of
  * the two lines, and the tile's tooltip — the محصنات' own Arabic form («محصنتان», «3 محصنات»).
  */
@@ -1190,8 +1228,8 @@ export const VanCounts = ({
 
 /**
  * The van's code as the card draws it (Round 26b — «لون واحد لكل العربيات»): ONE pill for every van,
- * solid slate with white words (`VAN_LOOK`), the van's drawing before its code; «بدون سيارة (n)» for a
- * crew without one, in the same pill.
+ * (Round 27 — the owner's blue: a soft blue tint, a blue edge, `VAN_LOOK`), the van's drawing before
+ * its code; «بدون سيارة (n)» for a crew without one, in the same pill.
  */
 export const VanCodePill = ({
   van,
@@ -1217,7 +1255,7 @@ export const VanCodePill = ({
     >
       <BoardIcon
         d={noVan ? [...PLAN_ICON.noVan] : [...PATH.truck]}
-        className={cn('shrink-0', size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5')}
+        className={cn('shrink-0', size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5', VAN_LOOK.icon)}
       />
       <span
         className={cn(
@@ -1248,7 +1286,7 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
         HEAD_PILL.time,
       )}
     >
-      <BoardIcon d={[...PLAN_ICON.clock]} className="h-3 w-3 text-slate-500 dark:text-slate-400" />
+      <BoardIcon d={[...PLAN_ICON.clock]} className={cn('h-3 w-3', HEAD_PILL.timeIcon)} />
       <span dir="ltr" className={NUM}>
         {time}
       </span>
@@ -1257,9 +1295,9 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
 };
 
 /**
- * The van's direction — calm and neutral (Round 26b, `HEAD_PILL`); «بلا اتجاه», quieter. On the
- * card's one line it is cut, whole on hover and to a screen reader; on the van's card (`wrap`) it is
- * written whole.
+ * The van's direction — sky-outlined with its arrow (Round 27, `HEAD_PILL`); «بلا اتجاه», quieter
+ * and neutral. On the card's one line it is cut, whole on hover and to a screen reader; on the van's
+ * card (`wrap`) it is written whole.
  */
 const DirectionPill = ({
   van,
@@ -1285,7 +1323,10 @@ const DirectionPill = ({
     >
       <BoardIcon
         d={[...SHIPMENT_PATH.route]}
-        className="h-3 w-3 shrink-0 text-slate-500 rtl:-scale-x-100 dark:text-slate-400"
+        className={cn(
+          'h-3 w-3 shrink-0 rtl:-scale-x-100',
+          direction === null ? HEAD_PILL.timeIcon : HEAD_PILL.directionIcon,
+        )}
       />
       <span className="sr-only">{t('operations.crew.direction')}: </span>
       <span className={wrap ? 'min-w-0 break-words' : 'min-w-0 truncate'}>{directionText}</span>
@@ -1440,8 +1481,9 @@ const onPersonName = (target: EventTarget | null): boolean =>
  *
  * Round 26b — «لون واحد لكل العربيات» and «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه
  * بالكامل»: ONE look for every van, and the card redrawn in four parts, top to bottom —
- *   · THE HEAD, on the van's very light band: its code in the van's slate pill (or «بدون سيارة
- *     (n)»), the time, the direction — one line (Round 24c); a thin slate stripe at the card's start;
+ *   · THE HEAD, on the van's very light band: its code in the van's one pill (or «بدون سيارة
+ *     (n)»), the time, the direction — one line (Round 24c); a thin stripe at the card's start
+ *     (Round 27 — the owner's blue: a blue-outlined pill on a soft blue tint, the stripe blue);
  *   · THE CAPTAIN'S ROW — Round 25's order, «الصف نفسه بتاع القائد يكون قبله عدد المحصنات» (R26b
  *     critic: the redraw had put the count after him): the count of محصنات FIRST, in its own tile,
  *     then the captain in a frame of his own — «قائد» over his name, the FIRST put on the row
@@ -1451,7 +1493,8 @@ const onPersonName = (target: EventTarget | null): boolean =>
  *   · THE LOAD, a bounded place of its own: the chips on it plain, as on the left; empty, it says
  *     where to drop («اسحب المحصنات إلى هنا») — or, on a van that takes nothing, why, in rose.
  * A row of another type kept for what it carries (`securedType` false) keeps its dashed amber edge
- * and says so under its head.
+ * and says so under its head. Round 27 — a van «بلا قائد» wears a rose edge and stripe (`VAN_CARD`);
+ * a kept row with no captain, the rose in the kept row's dashed shape (R27 critic).
  *
  * «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين» (Round 26):
  * resting on the head or the captain's row (not on a chip — a chip has its card — and not on the
@@ -1550,27 +1593,34 @@ export const VanCard = ({
         // ONE edge and ONE ground at a time (R26b verify): `cn` does not merge, and the board's CSS
         // writes `border-slate-200` / `bg-white` AFTER the brand and rose utilities — beside them, the
         // plain card's colours won, and a drag's «here» and «no» lost their edge and ground by day.
+        // Round 27 — the owner's colours: «بلا قائد» a rose edge and glow, a kept row its dashed amber
+        // with an amber glow (`VAN_CARD`); each also says itself in words on the card. R27 critic —
+        // both at once: the rose, in the kept row's dashed shape.
         drop?.over === 'place'
-          ? 'border-brand-500 bg-brand-50 shadow-lg shadow-brand-500/20 ring-2 ring-brand-500 dark:border-brand-400 dark:bg-brand-500/10 dark:ring-brand-400'
+          ? VAN_CARD.place
           : drop?.over === 'refuse'
-            ? 'border-rose-500 bg-rose-50 ring-2 ring-rose-500 dark:border-rose-400 dark:bg-rose-500/10 dark:ring-rose-400'
-            : cn(
-                'bg-white shadow-sm shadow-slate-900/[0.04] dark:bg-[#111827] dark:shadow-black/30',
-                kept
-                  ? 'border-dashed border-amber-400 dark:border-amber-500/60'
-                  : drop?.armed === true
-                    ? 'border-dashed border-brand-300 dark:border-brand-500/50'
-                    : 'border-slate-200 dark:border-slate-700/70',
-              ),
+            ? VAN_CARD.refuse
+            : captain === null
+              ? cn(VAN_CARD.noCaptain, kept && VAN_CARD.keptShape)
+              : kept
+                ? VAN_CARD.kept
+                : drop?.armed === true
+                  ? VAN_CARD.armed
+                  : VAN_CARD.rest,
       )}
     >
-      {/* The van's one colour at its start edge — the same on every van. */}
+      {/* The van's one colour at its start edge — the same on every van; a state's (Round 27 —
+          «بلا قائد» rose, a kept row amber) on a card whose edge wears it. */}
       <span
         aria-hidden
         data-van-stripe="true"
         className={cn(
           'pointer-events-none absolute inset-y-0 start-0 z-[1] w-[3px]',
-          VAN_LOOK.stripe,
+          captain === null
+            ? VAN_STATE_STRIPE.noCaptain
+            : kept
+              ? VAN_STATE_STRIPE.kept
+              : VAN_LOOK.stripe,
         )}
       />
       {actions !== undefined && (
@@ -1622,9 +1672,15 @@ export const VanCard = ({
                   ? t('operations.distribution.notSecuredHintNoType')
                   : t('operations.distribution.notSecuredHint', { type: typeName })
               }
-              className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-bold leading-4 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100"
+              className={cn(
+                'flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-bold leading-4',
+                KEPT_NOTICE.strip,
+              )}
             >
-              <BoardIcon d={[...PATH.warn]} className="h-3.5 w-3.5 shrink-0" />
+              <BoardIcon
+                d={[...PATH.warn]}
+                className={cn('h-3.5 w-3.5 shrink-0', KEPT_NOTICE.icon)}
+              />
               <span className="min-w-0">
                 {t('operations.distribution.notSecured')}
                 {typeName !== null && (
@@ -1760,7 +1816,7 @@ export const EmptyLoad = ({
     data-empty-load={tone}
     className={cn(
       'flex flex-1 items-center justify-center gap-1.5 px-2 py-3 text-center text-xs font-bold',
-      tone === 'refuse' ? 'text-rose-700 dark:text-rose-300' : LOAD_LOOK.empty,
+      tone === 'refuse' ? LOAD_LOOK.refuseWords : LOAD_LOOK.empty,
     )}
   >
     {tone !== 'empty' && (
@@ -2008,6 +2064,7 @@ export const ShipmentChip = ({
   move,
   drag,
   tone,
+  unplaced = false,
   card,
 }: {
   row: OperationsSecuredDistributionRowDto;
@@ -2022,6 +2079,12 @@ export const ShipmentChip = ({
   };
   /** The chip's edge: a proposal (amber, dashed), an unsaved move (brand), a refusal (rose). */
   tone?: 'proposed' | 'moved' | 'refused' | undefined;
+  /**
+   * Round 27 — it stands on NO van (the «بلا سيارة» column): a rose-tinted ground, a dashed rose
+   * edge, a rose dot, its words rose-tinted — the owner's design's waiting rows. A state's own look
+   * (a move back, a refusal) wins.
+   */
+  unplaced?: boolean;
   /** What its card says (`ShipmentCardBody`). */
   card: ReactNode;
 }): JSX.Element => {
@@ -2030,6 +2093,8 @@ export const ShipmentChip = ({
   // else closes it (`useTapCard`).
   const { tapped, setTapped, pointer } = useTapCard(hover.anchor);
   const { onDragStart: closeOnDrag, onMouseEnter: hoverIn, ...trigger } = hover.triggerProps;
+  const look: ChipTone = tone ?? (unplaced ? 'unplaced' : 'van');
+  const words = look === 'unplaced' ? CHIP_WORDS.unplaced : CHIP_WORDS.plain;
   return (
     <>
       <div
@@ -2058,18 +2123,12 @@ export const ShipmentChip = ({
         }}
         className={cn(
           'group relative flex min-h-[2rem] min-w-0 items-center gap-1 overflow-hidden rounded-lg border py-0.5 ps-1 pe-0.5 text-start shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/60',
-          // ONE ground (Round 26b — «لون واحد لكل العربيات»): a chip on a van is plain, as on the
-          // left; a proposal and an unsaved move keep their own ground and edge wherever they are.
-          // ONE edge too (R26b verify): `cn` does not merge, and the board's CSS writes
+          // ONE ground and ONE edge (R26b verify): `cn` does not merge, and the board's CSS writes
           // `border-slate-200` AFTER amber, brand and rose — the plain edge beside a tone's hid a
-          // proposal's dashed amber, a move's brand and a refusal's rose by day.
-          tone === 'proposed'
-            ? 'bg-amber-50 dark:bg-amber-400/[0.06] border-dashed border-amber-500 dark:border-amber-400/60'
-            : tone === 'moved'
-              ? 'bg-brand-50/60 dark:bg-brand-500/[0.08] border-brand-400 dark:border-brand-400/60'
-              : tone === 'refused'
-                ? 'bg-white dark:bg-[#0f1a3a] border-rose-500 ring-1 ring-rose-500 dark:border-rose-400 dark:ring-rose-400'
-                : 'bg-white dark:bg-[#0f1a3a] border-slate-200 dark:border-[#2b3b6b]',
+          // proposal's dashed amber, a move's brand and a refusal's rose by day. Round 27 — the
+          // owner's colours (`CHIP_LOOK`): a dark row on a van, a dashed rose one on no van; a
+          // proposal and an unsaved move keep their own wherever they are.
+          CHIP_LOOK[look],
           drag !== undefined && 'cursor-grab active:cursor-grabbing',
           drag?.dragging === true && 'opacity-40',
         )}
@@ -2087,15 +2146,20 @@ export const ShipmentChip = ({
           </span>
         )}
         {row.securedStage !== null && <SecuredStageMark stage={row.securedStage} />}
+        {/* Round 27 — the design's small dot at the row's start; drawn only (its edge and marks
+            already say it). */}
+        <span
+          aria-hidden
+          data-chip-dot={look}
+          className={cn('h-2 w-2 shrink-0 rounded-full', CHIP_DOT[look])}
+        />
         <span data-chip-text="true" className="min-w-0 flex-1 truncate text-[12.5px] leading-5">
-          <span className="font-black text-slate-900 dark:text-white">
-            {bankName === '' ? '…' : bankName}
-          </span>
-          <span aria-hidden className="text-slate-400 dark:text-slate-500">
+          <span className={cn('font-black', words.bank)}>{bankName === '' ? '…' : bankName}</span>
+          <span aria-hidden className={words.dot}>
             {' '}
             ·{' '}
           </span>
-          <span data-chip-branch="true" className="font-bold text-slate-600 dark:text-slate-300">
+          <span data-chip-branch="true" className={cn('font-bold', words.branch)}>
             {branchName === '' ? '…' : branchName}
           </span>
         </span>

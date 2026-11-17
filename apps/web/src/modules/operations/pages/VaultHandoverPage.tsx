@@ -76,7 +76,7 @@ import {
   useVaultPackaging,
 } from '../api/operations-queries';
 import { BoardFigurePill } from '../components/BoardFigures';
-import { COUNT_LOOK, VANS_FIGURE } from '../components/distribution-look';
+import { COLUMN_WARN, COUNT_LOOK, VANS_FIGURE } from '../components/distribution-look';
 import { ADD_BUTTON, BRAND_BUTTON, BoardRefusal } from '../components/ShipmentsBoard';
 import {
   ChipMark,
@@ -170,6 +170,8 @@ export const VaultHandoverPage = (): JSX.Element => {
 
   // The SAVED places — the vault moves nothing.
   const columns = distributionColumns(rows, vans, EMPTY_DRAFT);
+  /** Any محصنة on no van — the column's head and the page's figure wear the rose (Round 27). */
+  const waiting = loaded && columns.unplaced.length > 0;
   const confirmVan =
     confirming === null ? undefined : vans.find((van) => van.crewAssignmentId === confirming);
   // Round 24 — a crew without a van hands its load over like a van: «بدون سيارة (n)» on its card, on
@@ -263,6 +265,7 @@ export const VaultHandoverPage = (): JSX.Element => {
         row={row}
         bankName={bankNameOf(row.mainBankId)}
         branchName={row.destination?.name ?? row.origin?.name ?? ''}
+        unplaced={van === undefined}
         marks={
           <>
             {row.overdue && (
@@ -452,6 +455,7 @@ export const VaultHandoverPage = (): JSX.Element => {
       count={columns.unplaced.length}
       icon={SHIPMENT_PATH.shipment}
       data-handover-column="unplaced"
+      warn={waiting}
       {...(wide
         ? {}
         : { collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) } })}
@@ -526,10 +530,12 @@ export const VaultHandoverPage = (): JSX.Element => {
                 }
                 data-figure="ready"
               />
+              {/* R27 critic — one number, one colour: while any wait, the rose of the column's
+                  head (its warning, its count); none waiting, the محصنات' own cyan. */}
               <BoardFigurePill
                 compact
-                icon={COUNT_LOOK.shipments.icon}
-                tone={COUNT_LOOK.shipments.square}
+                icon={waiting ? PATH.warn : COUNT_LOOK.shipments.icon}
+                tone={waiting ? COLUMN_WARN.figure : COUNT_LOOK.shipments.square}
                 label={t('operations.distribution.unplaced')}
                 value={loaded ? countText(columns.unplaced.length, locale) : '…'}
                 data-figure="unplaced"

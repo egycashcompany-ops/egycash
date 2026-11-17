@@ -589,3 +589,135 @@ describe('Round 27 — every new word in Arabic and English', () => {
     expect(t('operations.standingCrew.plan.card.seat')).toBe('في الطاقم الثابت');
   });
 });
+
+// ── Round 27 review — the critic's findings, on the page ──────────────────────────────────────────
+// The rules are tested on their own in lib/standing-crew.spec.ts; here, that the page goes through
+// them, says what they found, and draws what the board draws.
+describe('Round 27 review — the page', () => {
+  const save = PAGE.slice(PAGE.indexOf('const save = async'), PAGE.indexOf('const exportExcel'));
+
+  it('F1: rebases through `rebaseStandingDraft` — never the board’s bare rebase — and says what it dropped', () => {
+    expect(PAGE).toContain('rebaseStandingDraft(state.rows, base, serverRows)');
+    expect(PAGE).not.toMatch(/\brebaseDraft\(/u);
+    expect(PAGE).toContain('standingEditsLost(history.now.rows, base, serverRows)');
+    // Said once, after the render (never a toast from the render itself).
+    const said = PAGE.slice(PAGE.indexOf('useEffect(() => {\n    if (lostOnServer.length === 0)'));
+    expect(said).toContain("t('operations.standingCrew.goneOnServer.title'");
+    expect(said.indexOf('setLostOnServer([])')).toBeGreaterThan(0);
+  });
+
+  it('F2: a save that stopped says which vehicles it had already taken out', () => {
+    expect(save).toContain('removedBeforeStop({ removeVehicleIds }, outcome)');
+    expect(save).toContain("t('operations.standingCrew.partlySaved'");
+    // Beside the refused DELETE, beside a person the PUT's refusal names, beside any other refusal.
+    expect(save.match(/withPartly\(/gu)?.length).toBe(3);
+  });
+
+  it('F3: the PUT, like the DELETE, keeps the global notifier quiet — one toast a refusal', () => {
+    const queries = read('../api/operations-queries.ts');
+    const putHook = queries.slice(
+      queries.indexOf('export const useSetOperationsStandingCrew'),
+      queries.indexOf('export const useRemoveOperationsStandingCrew'),
+    );
+    expect(putHook).toContain('onError: formOwnsTheError,');
+  });
+
+  it('F4: the clash sentence only for the clash; anything else in the failure’s own words', () => {
+    expect(save.replace(/\s+/gu, ' ')).toContain(
+      "isCrewClash(failure) ? t('operations.standingCrew.saveFailed') : errorMessage(failure, locale), withPartly(null),",
+    );
+  });
+
+  it('F5: the slot and the direction box fill their column, the board’s width their floor', () => {
+    const SLOT = read('../components/CrewPlanSlot.tsx');
+    expect(SLOT).toContain('w-[8.75rem] min-w-full');
+    expect(PAGE).toContain('w-[7.5rem] min-w-full');
+  });
+
+  it('F6: a reader without the plan permission gets no «إزالة» column at all', () => {
+    const actions = PAGE.slice(
+      PAGE.indexOf("key: 'actions'") - 200,
+      PAGE.indexOf("key: 'actions'"),
+    );
+    expect(actions).toContain('...(canPlan');
+  });
+
+  it('F7: a captain’s crew moved with him is SAID, by name — whatever moved him', () => {
+    const place = PAGE.slice(PAGE.indexOf('const place = ('), PAGE.indexOf('const free = ('));
+    expect(place).toContain('if (step.companions.length > 0) {');
+    expect(place).toContain("t('operations.standingCrew.movedWithCrew.title')");
+    expect(place).toContain("t('operations.standingCrew.movedWithCrew.body', {");
+    expect(place).toContain('names: listed(step.companions.map(');
+  });
+
+  it('F8: a WRONG_SLOT refusal rings the person on the row the server names, as on the board', () => {
+    expect(save).toContain('const sent = standingPutRows(rows, serverRows);');
+    expect(save).toContain('planRefusal(failure, sent)');
+    expect(save).toContain('setRefusal({ ...named, message });');
+    expect(PAGE).toContain(
+      'refused: refusal?.key === row.key && refusal.person?.employeeId === employeeId',
+    );
+    expect(PAGE).not.toContain('refused: false');
+    expect(PAGE).toContain("'data-row-refused': refusal.field");
+    // Moving him, taking him off, taking the row out or back, or saving again settles it.
+    expect(PAGE.match(/settleRefusedPerson\(employeeId\)/gu)?.length).toBe(2);
+    expect(PAGE).toContain('setRefusal((current) => (current?.key === row.key ? null : current));');
+    expect(PAGE).toContain('touched.includes(current.key) ? null : current');
+  });
+
+  it('F8: the ring is drawn on the chip the slot is told about', () => {
+    const html = render(
+      standing(
+        <CrewPlanSlot
+          rowKey="van:v-213"
+          rowName="213"
+          slot="captain"
+          seats={[{ member: CAPTAIN, wrong: null, refused: true, seatedAt: null }]}
+          canPlan
+          selected={null}
+          dragging={null}
+          overDecision={null}
+          decide={() => null}
+          listOpen={false}
+          onSelect={() => undefined}
+          onRemove={() => undefined}
+          onOpenList={() => undefined}
+          onPlace={() => undefined}
+          onDragStart={() => undefined}
+          onDragEnd={() => undefined}
+        />,
+      ),
+    );
+    expect(html).toContain('data-refused');
+  });
+
+  it('every new word in Arabic and English, formal', () => {
+    for (const key of [
+      'operations.standingCrew.movedWithCrew.title',
+      'operations.standingCrew.movedWithCrew.body',
+      'operations.standingCrew.goneOnServer.title',
+      'operations.standingCrew.goneOnServer.body',
+      'operations.standingCrew.partlySaved',
+    ]) {
+      const ar = translate('ar', key);
+      const en = translate('en', key);
+      expect(ar, key).not.toBe(key);
+      expect(en, key).not.toBe(key);
+      expect(ar).toMatch(/[؀-ۿ]/u);
+    }
+    expect(
+      t('operations.standingCrew.movedWithCrew.body', {
+        name: 'احمد',
+        where: '250 · قائد الطاقم',
+        names: 'عمرو، اسلام',
+      }),
+    ).toBe('انتقل احمد إلى 250 · قائد الطاقم ومعه: عمرو، اسلام.');
+    // A toast's title is ONE line (`truncate`): the codes lead, the why is in its body.
+    expect(t('operations.standingCrew.goneOnServer.title', { codes: '249' })).toBe(
+      'أُخرجت 249 من الطاقم الثابت',
+    );
+    expect(t('operations.standingCrew.partlySaved', { codes: '276' })).toBe(
+      'وقد حُفظ قبل ذلك إخراج 276 من الطاقم الثابت، ولم تُحفظ بقية التغييرات.',
+    );
+  });
+});

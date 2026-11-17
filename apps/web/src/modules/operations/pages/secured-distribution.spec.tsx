@@ -38,6 +38,14 @@ import { formatAmount, formatNumber } from '../../../shared/lib/format';
 import { ApiError } from '../../../shared/lib/api-client';
 import { HISTORY_TOO_LARGE, cairoToday } from '../lib/shipment-history';
 import { __securedDistributionKey } from '../api/operations-queries';
+import {
+  CHIP_LOOK,
+  COLUMN_WARN,
+  COUNT_LOOK,
+  VAN_CARD,
+  VAN_LOOK,
+  VAN_STATE_STRIPE,
+} from '../components/distribution-look';
 import { SecuredDistributionPage } from './SecuredDistributionPage';
 import { VaultHandoverPage } from './VaultHandoverPage';
 
@@ -1176,15 +1184,29 @@ describe('Round 26 — the screens', () => {
     const looks = [desk, vault].flatMap((html) =>
       VANS.map((van) =>
         [
-          classes(html, van.crewAssignmentId, 'data-van-stripe="true"'),
           classes(html, van.crewAssignmentId, 'data-van-band="true"'),
           classes(html, van.crewAssignmentId, `data-van-code="${van.vehicleCode}"`),
         ].join(' | '),
       ),
     );
     expect(new Set(looks).size).toBe(1);
-    expect(looks[0]).toContain('bg-slate-700');
+    expect(looks[0]).toContain(VAN_LOOK.pill);
     for (const html of [desk, vault]) expect(html).not.toContain('data-van-accent');
+    // Round 27 — the van's blue stripe on every van with a captain; 130 has none: the design's rose
+    // edge, its stripe rose — on both screens.
+    for (const html of [desk, vault]) {
+      for (const van of VANS) {
+        const none = van.captains.length === 0;
+        expect(
+          classes(html, van.crewAssignmentId, 'data-van-stripe="true"'),
+          van.vehicleCode ?? '',
+        ).toContain(none ? VAN_STATE_STRIPE.noCaptain : VAN_LOOK.stripe);
+        expect(
+          classes(html, van.crewAssignmentId, `data-distribution-van="${van.crewAssignmentId}"`),
+          van.vehicleCode ?? '',
+        ).toContain(none ? VAN_CARD.noCaptain : VAN_CARD.rest);
+      }
+    }
   });
 
   it('paints no chip in a van’s colour — on a van as on the left, a chip is plain', () => {
@@ -1193,9 +1215,84 @@ describe('Round 26 — the screens', () => {
       expect(cardOf(desk, id), id).not.toContain('data-chip-stripe');
     }
     expect(cardOf(vault, 's-captain')).not.toContain('data-chip-accent');
-    // The saved one on 101 is the left's own plain chip; the proposal keeps its dashed amber.
-    expect(cardOf(desk, 's-captain')).toContain('bg-white dark:bg-[#0f1a3a]');
+    // The saved one on 101 is the design's quiet row with its cyan dot; the proposal keeps its
+    // dashed amber.
+    expect(cardOf(desk, 's-captain')).toContain(CHIP_LOOK.van);
+    expect(cardOf(desk, 's-captain')).toContain('data-chip-dot="van"');
     expect(cardOf(desk, 's-maadi')).toContain('border-dashed border-amber-500');
+  });
+
+  it('Round 27 — a محصنة on no van: the design’s waiting row, on both screens; its column’s head rose', () => {
+    for (const html of [desk, vault]) {
+      const left = leftOf(html);
+      const chips = left.match(/data-shipment-tone="saved"[^>]*class="[^"]*"/g) ?? [];
+      expect(chips.length).toBeGreaterThan(0);
+      for (const one of chips) expect(one).toContain(CHIP_LOOK.unplaced);
+      expect(left).toContain('data-chip-dot="unplaced"');
+      // Its head: the rose warning icon and the rose count — work still to do.
+      const head = left.slice(0, left.indexOf('</header>'));
+      expect(head).toContain('data-column-icon="warn"');
+      expect(head).toContain(COLUMN_WARN.count);
+    }
+    // No chip on a van wears it.
+    for (const id of ['s-captain', 's-104']) {
+      expect(cardOf(desk, id), id).not.toContain(CHIP_LOOK.unplaced);
+    }
+    // The vans' column keeps its calm head.
+    const vansHead = desk.slice(
+      desk.indexOf('data-distribution-column="vans"'),
+      desk.indexOf('</header>', desk.indexOf('data-distribution-column="vans"')),
+    );
+    expect(vansHead).toContain('data-column-icon="plain"');
+    expect(vansHead).not.toContain(COLUMN_WARN.count);
+  });
+
+  it('R27 critic — a محصنة placed on a crew the read no longer lists wears the waiting row too, on both screens', () => {
+    // `distributionColumns` puts a row whose place names a van the read no longer lists (re-planned
+    // meanwhile) in the left column, so it never disappears: the chip's look follows the column it
+    // is drawn in, not its place — the desk drew it as a row on a van (a solid edge, a cyan dot).
+    const GONE = shipment('s-gone', {
+      areaName: 'العباسية',
+      delivery: leg('cr-gone', 'c9'),
+      deliveryLegVersion: 4,
+      placedCrewAssignmentId: 'cr-gone',
+    });
+    const data = answer({ shipments: [...ROWS, GONE] });
+    for (const html of [
+      render({ path: '/operations/secured/distribution', permissions: DESK, data }),
+      render({ path: '/operations/vault/handover', permissions: VAULT, data }),
+    ]) {
+      expect(leftOf(html)).toContain('data-distribution-shipment="s-gone"');
+      const chip = cardOf(html, 's-gone');
+      expect(chip).toContain(CHIP_LOOK.unplaced);
+      expect(chip).toContain('data-chip-dot="unplaced"');
+      expect(chip).not.toContain('data-chip-dot="van"');
+    }
+  });
+
+  it('R27 critic — the top «بلا سيارة» figure wears its column head’s rose while any wait; the محصنات’ cyan when none', () => {
+    // One number, one colour: the column's head counts the waiting محصنات in a rose pill beside a
+    // rose warning — the page's bar wrote the same number on the محصنات' cyan.
+    const pill = (html: string): string => {
+      const at = html.indexOf('data-figure="unplaced"');
+      expect(at).toBeGreaterThan(-1);
+      const next = html.indexOf('data-figure="', at + 10);
+      return html.slice(html.lastIndexOf('<span', at), next === -1 ? at + 1500 : next);
+    };
+    for (const html of [desk, vault]) {
+      expect(pill(html)).toContain(COLUMN_WARN.figure);
+      expect(pill(html)).not.toContain(COUNT_LOOK.shipments.square);
+    }
+    // Every محصنة on a van — nothing waits: the figure is the محصنات' own cyan, as its head is calm.
+    const placed = answer({ shipments: [WITH_CAPTAIN, ON_104] });
+    for (const html of [
+      render({ path: '/operations/secured/distribution', permissions: DESK, data: placed }),
+      render({ path: '/operations/vault/handover', permissions: VAULT, data: placed }),
+    ]) {
+      expect(pill(html)).toContain(COUNT_LOOK.shipments.square);
+      expect(pill(html)).not.toContain(COLUMN_WARN.figure);
+      expect(leftOf(html)).toContain('data-column-icon="plain"');
+    }
   });
 
   it('opens the van’s card from its head and its captain’s line, on both screens', () => {
@@ -1208,7 +1305,7 @@ describe('Round 26 — the screens', () => {
     }
   });
 
-  it('counts on the page’s bar in the counts’ own colours — the محصنات blue, then the day’s packages', () => {
+  it('counts on the page’s bar in the counts’ own colours — the محصنات cyan, then the day’s packages', () => {
     const bar = desk.slice(
       desk.indexOf('data-distribution-toolbar'),
       desk.indexOf('data-distribution-bar'),
@@ -1217,13 +1314,13 @@ describe('Round 26 — the screens', () => {
       expect(bar, figure).toContain(`data-figure="${figure}"`);
     }
     expect(bar).toMatch(
-      /bg-blue-500\/15 text-blue-700[\s\S]*data-figure="shipments"|data-figure="shipments"[\s\S]*bg-blue-500\/15 text-blue-700/,
+      /bg-cyan-500\/15 text-cyan-700[\s\S]*data-figure="shipments"|data-figure="shipments"[\s\S]*bg-cyan-500\/15 text-cyan-700/,
     );
-    // Round 26b — كراتين orange, حقائب cyan, صناديق fuchsia: each its own.
+    // Round 27 — the owner's colours: كراتين amber, حقائب blue, صناديق purple: each its own.
     for (const [figure, hue] of [
-      ['cartons', 'orange'],
-      ['bags', 'cyan'],
-      ['boxes', 'fuchsia'],
+      ['cartons', 'amber'],
+      ['bags', 'blue'],
+      ['boxes', 'purple'],
     ] as const) {
       expect(bar).toMatch(
         new RegExp(`data-figure="${figure}"[^>]*>\\s*<span class="[^"]*bg-${hue}-500/15`),

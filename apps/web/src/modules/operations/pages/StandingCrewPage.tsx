@@ -121,10 +121,11 @@ import {
   crewShortfall,
   discardRow,
   freeMember,
+  isCrewClash,
   listPool,
   patchRow,
+  planRefusal,
   planRowCard,
-  rebaseDraft,
   seatOf,
   wrongSlotOf,
   type CrewRole,
@@ -132,6 +133,7 @@ import {
   type PlanFlag,
   type PlanPool,
   type PlanPoolQuery,
+  type PlanRefusal,
   type PlanRow,
 } from '../lib/crew-plan';
 import {
@@ -179,10 +181,14 @@ import {
   STANDING_CREW_STATES,
   newStandingPlanRow,
   placeWithCrew,
+  rebaseStandingDraft,
+  removedBeforeStop,
   sendStandingSave,
   standingCounts,
   standingCrewState,
+  standingEditsLost,
   standingMember,
+  standingPutRows,
   standingSave,
   standingVehicleChoices,
   toStandingPlanRows,
@@ -240,21 +246,29 @@ const StandingCrewBoard = (): JSX.Element => {
   // ── The draft ────────────────────────────────────────────────────────────────────────────────
   // The server's list is the truth; the draft starts from it and keeps its history, so «تراجع»
   // takes back ONE operation a press (`lib/crew-undo.ts`). A NEW answer — another desk's save, a
-  // reconnect, this screen's own save read back — is REBASED under the unsaved work (`rebaseDraft`,
-  // the board's): a row the planner did not touch takes the answer, one he changed keeps his
-  // version, a vehicle he took out stays out, and one new on the server is added.
+  // reconnect, this screen's own save read back — is REBASED under the unsaved work (the board's
+  // `rebaseDraft`, through `rebaseStandingDraft`): a row the planner did not touch takes the answer,
+  // one he changed keeps his version, a vehicle he took out stays out, and one new on the server is
+  // added. A vehicle taken out ON THE SERVER is never brought back — not even one he had changed:
+  // the standing PUT upserts by vehicle, and would put it and its crew back in the fleet (Round 27
+  // review). Its dropped edit is SAID (`standingEditsLost`), once, after the render.
   const [history, setHistory] = useState<UndoHistory<CrewDraft>>(() =>
     startHistory({ rows: serverRows, standingKeys: null }),
   );
   const rows = history.now.rows;
   const [seen, setSeen] = useState<readonly PlanRow[]>(serverRows);
+  const [lostOnServer, setLostOnServer] = useState<readonly string[]>([]);
   if (seen !== serverRows) {
     setSeen(serverRows);
     const base = seen;
+    const lost = standingEditsLost(history.now.rows, base, serverRows);
+    if (lost.length > 0) {
+      setLostOnServer(lost.map((row) => row.vehicleCode ?? row.vehicleId ?? '…'));
+    }
     setHistory((current) =>
       rebaseHistory(
         current,
-        (state) => ({ ...state, rows: rebaseDraft(state.rows, base, serverRows) }),
+        (state) => ({ ...state, rows: rebaseStandingDraft(state.rows, base, serverRows) }),
         sameCrewDraft,
       ),
     );
@@ -278,6 +292,26 @@ const StandingCrewBoard = (): JSX.Element => {
   const pending = standingSave(rows, serverRows);
   const dirty = pending.count > 0;
   const guard = useUnsavedGuard({ dirty });
+  /** A list of vehicle codes or names, in the reader's language. */
+  const listed = (items: readonly string[]): string => items.join(locale === 'ar' ? '، ' : ', ');
+
+  // A vehicle another desk took out while this one held an unsaved change of it: the change is gone
+  // with the vehicle — said, never dropped without a word.
+  useEffect(() => {
+    if (lostOnServer.length === 0) return;
+    toast.warning(
+      t('operations.standingCrew.goneOnServer.title', { codes: listed(lostOnServer) }),
+      t('operations.standingCrew.goneOnServer.body'),
+    );
+    setLostOnServer([]);
+    // Only a new list of vehicles is a new thing to say: the words are read when it is said.
+  }, [lostOnServer]);
+
+  /** The last save's refusal (Round 23: a person in a slot not his role's) — on his row, ringed. */
+  const [refusal, setRefusal] = useState<(PlanRefusal & { message: string }) | null>(null);
+  /** The save named this person: moving him, or taking him off, answers it. */
+  const settleRefusedPerson = (employeeId: string): void =>
+    setRefusal((current) => (current?.person?.employeeId === employeeId ? null : current));
 
   // ── The people ───────────────────────────────────────────────────────────────────────────────
   const members = useMemo(
@@ -551,12 +585,26 @@ const StandingCrewBoard = (): JSX.Element => {
         : { kind: 'place', vars: { name, where } },
       (current) => placeWithCrew(current, key, slot, employeeId, fits).rows,
     );
+    // His crew came with him — from a drop, a pick in a slot's list, or «ضع هنا»: SAID, by name. The
+    // slot's list says only that picking him moves HIM, and his old vehicle is left without them.
+    if (step.companions.length > 0) {
+      toast.info(
+        t('operations.standingCrew.movedWithCrew.title'),
+        t('operations.standingCrew.movedWithCrew.body', {
+          name,
+          where,
+          names: listed(step.companions.map((companion) => shownMember(companion).fullNameAr)),
+        }),
+      );
+    }
+    settleRefusedPerson(employeeId);
     setSelected(null);
   };
   const free = (employeeId: string): void => {
     applyRows({ kind: 'free', vars: { name: shownMember(employeeId).fullNameAr } }, (current) =>
       freeMember(current, employeeId),
     );
+    settleRefusedPerson(employeeId);
     setSelected(null);
   };
   const patch = (
@@ -570,10 +618,12 @@ const StandingCrewBoard = (): JSX.Element => {
       mergeKeyOf(kind, key),
     );
   };
-  const takeOut = (row: PlanRow): void =>
+  const takeOut = (row: PlanRow): void => {
     applyRows({ kind: 'removeVehicle', vars: { code: rowName(row) } }, (current) =>
       discardRow(current, row.key),
     );
+    setRefusal((current) => (current?.key === row.key ? null : current));
+  };
   const selectChip = (employeeId: string): void => {
     setPicker(null);
     setSelected((current) => (current === employeeId ? null : employeeId));
@@ -627,6 +677,7 @@ const StandingCrewBoard = (): JSX.Element => {
     setSelected(null);
     setPicker(null);
     setAdding(false);
+    setRefusal((current) => (current !== null && touched.includes(current.key) ? null : current));
     toast.info(t('operations.crewPlan.undo.done', { what: undoWords }));
     const first = touched.find((key) => lastOperation.before.rows.some((row) => row.key === key));
     if (first !== undefined) {
@@ -670,10 +721,16 @@ const StandingCrewBoard = (): JSX.Element => {
   // changed rows in one PUT (`sendStandingSave`). Each answer is read back and rebased under the
   // draft, so a failure half-way leaves exactly what is still to save. A vehicle another desk took
   // out first is done, not a failure: its DELETE re-read nothing, so the list is read here.
+  // The page owns every failure (both hooks keep the global notifier quiet): ONE toast each.
   const save = async (): Promise<void> => {
     if (!dirty || saving) return;
     const { put, removeVehicleIds, count } = pending;
+    // The rows the PUT is written from, in its order: a refusal names its row by its place there.
+    const sent = standingPutRows(rows, serverRows);
+    const codeOf = (vehicleId: string): string =>
+      serverRows.find((row) => row.vehicleId === vehicleId)?.vehicleCode ?? vehicleId;
     setSaving(true);
+    setRefusal(null);
     try {
       const outcome = await sendStandingSave(
         { removeVehicleIds, put },
@@ -683,25 +740,56 @@ const StandingCrewBoard = (): JSX.Element => {
         },
       );
       if (outcome.alreadyGone.length > 0) await standing.refetch();
+      // The vehicles taken out before the save stopped ARE out — the re-read drops them from the
+      // table and from «تراجع». Said beside the failure, or «تعذّر» reads as «nothing was saved».
+      const out = removedBeforeStop({ removeVehicleIds }, outcome);
+      const partly =
+        out.length === 0
+          ? null
+          : t('operations.standingCrew.partlySaved', { codes: listed(out.map(codeOf)) });
+      const withPartly = (line: string | null): string | undefined =>
+        [line, partly].filter((part): part is string => part !== null).join(' ') || undefined;
       if (outcome.kind === 'removeFailed') {
-        const code =
-          serverRows.find((row) => row.vehicleId === outcome.vehicleId)?.vehicleCode ?? '';
-        // The page owns this refusal (the hook keeps the global notifier quiet): one toast, with
-        // the server's reason beside the vehicle.
+        // The server's reason beside the vehicle.
         toast.error(
           t('operations.standingCrew.removeFailed'),
-          `${code} — ${errorMessage(outcome.failure, locale)}`,
+          withPartly(`${codeOf(outcome.vehicleId)} — ${errorMessage(outcome.failure, locale)}`),
         );
         return;
       }
       if (outcome.kind === 'putFailed') {
         const failure = outcome.failure;
-        // Round 23: a seat not its person's role — said in its own words. Anything else is what
-        // the list refuses most: one person on two vehicles.
-        toast.error(
+        // Round 23: somebody newly in a slot not his role's (another desk changed his flags on
+        // «متطلبات الطاقم» since the roster was read). The server names him and his row — by its
+        // place in the PUT — and, as on the board, he is RINGED there, his row brought into view.
+        const named =
           failure instanceof ApiError && failure.code === 'OPERATIONS_CREW_MEMBER_WRONG_SLOT'
-            ? errorMessage(failure, locale)
-            : t('operations.standingCrew.saveFailed'),
+            ? planRefusal(failure, sent)
+            : null;
+        if (named !== null && named.person !== undefined) {
+          const message = t(`operations.crewPlan.refused.${named.person.reason}`, {
+            name: shownMember(named.person.employeeId).fullNameAr,
+          });
+          setRefusal({ ...named, message });
+          toast.error(errorMessage(failure, locale), withPartly(message));
+          // A filter hiding the row it names would hide the answer: the filters go.
+          if (!shown.some((row) => row.key === named.key)) clearFilters();
+          requestAnimationFrame(() =>
+            document
+              .querySelector(`[data-plan-row="${named.key}"]`)
+              ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+          );
+          return;
+        }
+        // The list's own sentence ONLY for what it is about — one person on two vehicles, the
+        // end-state 409 (`isCrewClash`, the board's test). Anything else — offline, a 500, a 404, a
+        // vehicle the server does not know — in the failure's own words: never as a double booking
+        // it is not, which would send the planner hunting for a duplicate that does not exist.
+        toast.error(
+          isCrewClash(failure)
+            ? t('operations.standingCrew.saveFailed')
+            : errorMessage(failure, locale),
+          withPartly(null),
         );
         return;
       }
@@ -797,7 +885,8 @@ const StandingCrewBoard = (): JSX.Element => {
               wrong: byId.has(employeeId)
                 ? wrongSlotOf(crewRoleOf(member.requirements), slot)
                 : null,
-              refused: false,
+              // The last save named him on this row (Round 23) — ringed, as on the board.
+              refused: refusal?.key === row.key && refusal.person?.employeeId === employeeId,
               seatedAt: placedAt(employeeId)?.long ?? null,
             };
           })}
@@ -823,7 +912,9 @@ const StandingCrewBoard = (): JSX.Element => {
       key: 'direction',
       header: t('operations.crewPlan.columns.direction'),
       render: (row) => (
-        <div className="w-[7.5rem] min-[1440px]:w-[8rem] min-[1750px]:w-[10rem]">
+        // The board's width as its floor (`min-w-full`): its own column is wider here — 7 columns
+        // share the table's width where the board has 9 — and the box fills it, not dead space.
+        <div className="w-[7.5rem] min-w-full min-[1440px]:w-[8rem] min-[1750px]:w-[10rem]">
           <DirectionPicker
             rowKey={row.key}
             value={row.direction}
@@ -847,29 +938,33 @@ const StandingCrewBoard = (): JSX.Element => {
         />
       ),
     },
-    {
-      key: 'actions',
-      header: t('operations.standingCrew.columns.actions'),
-      render: (row) => {
-        const label = t('operations.standingCrew.removeVehicle', { code: rowName(row) });
-        return (
-          <span className="flex h-8 items-center gap-1" data-row-actions-line="true">
-            {canPlan && (
-              <button
-                type="button"
-                data-row-discard={row.key}
-                aria-label={label}
-                title={label}
-                onClick={() => takeOut(row)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-rose-600 transition hover:border-rose-400 hover:bg-rose-50 dark:border-slate-700 dark:bg-[#0a1233] dark:text-rose-400 dark:hover:bg-rose-500/10"
-              >
-                <BoardIcon d={PATH.trash} className="h-4 w-4" />
-              </button>
-            )}
-          </span>
-        );
-      },
-    },
+    // «إزالة» — the bin, for a planner only. A reader without the plan permission gets no column
+    // at all: a header over empty cells is not the board, whose last column always holds something.
+    ...(canPlan
+      ? [
+          {
+            key: 'actions',
+            header: t('operations.standingCrew.columns.actions'),
+            render: (row: PlanRow) => {
+              const label = t('operations.standingCrew.removeVehicle', { code: rowName(row) });
+              return (
+                <span className="flex h-8 items-center gap-1" data-row-actions-line="true">
+                  <button
+                    type="button"
+                    data-row-discard={row.key}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => takeOut(row)}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-rose-600 transition hover:border-rose-400 hover:bg-rose-50 dark:border-slate-700 dark:bg-[#0a1233] dark:text-rose-400 dark:hover:bg-rose-500/10"
+                  >
+                    <BoardIcon d={PATH.trash} className="h-4 w-4" />
+                  </button>
+                </span>
+              );
+            },
+          } satisfies Column<PlanRow>,
+        ]
+      : []),
   ];
 
   // ── The page ─────────────────────────────────────────────────────────────────────────────────
@@ -1182,6 +1277,8 @@ const StandingCrewBoard = (): JSX.Element => {
                   ({
                     'data-plan-row': row.key,
                     ...(row.crewId === null ? { 'data-standing-added': 'true' } : {}),
+                    // The row the last save's refusal names, as the board marks its own.
+                    ...(refusal?.key === row.key ? { 'data-row-refused': refusal.field } : {}),
                   }) as HTMLAttributes<HTMLTableRowElement>
                 }
                 stickyHead

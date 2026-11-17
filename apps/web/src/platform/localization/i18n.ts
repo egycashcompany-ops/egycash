@@ -11873,6 +11873,15 @@ const en: Record<string, string> = {
   'operations.standingCrew.plan.pools.dropBack': 'Drop here to take them off the standing crew',
   'operations.standingCrew.plan.pools.returnPicked': 'Take {{name}} off the standing crew',
   'operations.standingCrew.plan.picker.seated': 'In the standing crew — picking moves them here',
+  // Round 27 review — what a save or another desk did, said rather than left to be found.
+  // A toast's title is one line: short there, the names and the why in its body.
+  'operations.standingCrew.movedWithCrew.title': 'The captain moved with his crew',
+  'operations.standingCrew.movedWithCrew.body': '{{name}} moved to {{where}} with {{names}}.',
+  'operations.standingCrew.goneOnServer.title': '{{codes}} taken out of the standing crew',
+  'operations.standingCrew.goneOnServer.body':
+    'It was removed on another screen before your changes to it were saved, so it is off this list and «Save» will not send it. To bring it back, add it with «Add a vehicle».',
+  'operations.standingCrew.partlySaved':
+    'Taking {{codes}} out of the standing crew was saved before that; the rest of the changes were not.',
   'operations.crew.direction': 'Direction',
   'operations.crew.plannedTime': 'Planned time',
   'operations.crew.slot.captain': 'Captain',
@@ -26661,6 +26670,15 @@ const ar: Record<string, string> = {
   'operations.standingCrew.plan.pools.dropBack': 'أفلِته هنا لإخراجه من الطاقم الثابت',
   'operations.standingCrew.plan.pools.returnPicked': 'إخراج {{name}} من الطاقم الثابت',
   'operations.standingCrew.plan.picker.seated': 'في الطاقم الثابت — اختياره ينقله إلى هنا',
+  // مراجعة الجولة 27 — ما فعله الحفظ أو شاشة أخرى، يُقال ولا يُترك ليُكتشف.
+  // عنوان الإشعار سطر واحد: قصير، والأسماء والسبب في نصه.
+  'operations.standingCrew.movedWithCrew.title': 'انتقل القائد ومعه طاقمه',
+  'operations.standingCrew.movedWithCrew.body': 'انتقل {{name}} إلى {{where}} ومعه: {{names}}.',
+  'operations.standingCrew.goneOnServer.title': 'أُخرجت {{codes}} من الطاقم الثابت',
+  'operations.standingCrew.goneOnServer.body':
+    'أُخرجت في شاشة أخرى قبل حفظ تعديلاتك عليها، فرُفعت من هذه القائمة ولن يُرسلها «حفظ». لإعادتها أضِفها من «إضافة سيارة».',
+  'operations.standingCrew.partlySaved':
+    'وقد حُفظ قبل ذلك إخراج {{codes}} من الطاقم الثابت، ولم تُحفظ بقية التغييرات.',
   'operations.crew.direction': 'الاتجاه',
   'operations.crew.plannedTime': 'الوقت المخطط',
   'operations.crew.slot.captain': 'القائد',

@@ -1,7 +1,8 @@
 // A line's acknowledgment (F-14) — the device receipt's routes for the one-line paper. Printing it
-// before the hand-over, and filing or withdrawing the signed copy, ride `itAsset.assign`, the one
-// custody grant; reading it back and printing it again ride `itAsset.view`, because the paper
-// shows nothing the register does not (its national ID aside, which has its own grant).
+// before the hand-over, and filing or withdrawing the signed copy, ride `itMobileLine.assign`, the
+// one custody grant; reading it back and printing it again ride `itMobileLine.view`, because the
+// paper shows nothing the register does not (its national ID aside, which has its own grant,
+// `itMobileLine.viewNationalId`).
 import { Router } from 'express';
 import { ItCustodyReceiptIdParamSchema, PreviewItMobileLineReceiptSchema } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
@@ -23,14 +24,14 @@ export const buildItMobileLineReceiptsRouter = (): Router => {
   router.post(
     '/preview',
     authenticate,
-    authorize('itAsset.assign'),
+    authorize('itMobileLine.assign'),
     validate({ body: PreviewItMobileLineReceiptSchema }),
     asyncHandler(previewItMobileLineReceipt),
   );
   router.get(
     '/:id',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itMobileLine.view'),
     validate({ params: ItCustodyReceiptIdParamSchema }),
     asyncHandler(getItMobileLineReceipt),
   );
@@ -38,21 +39,21 @@ export const buildItMobileLineReceiptsRouter = (): Router => {
   router.post(
     '/:id/print',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itMobileLine.view'),
     validate({ params: ItCustodyReceiptIdParamSchema }),
     asyncHandler(printItMobileLineReceipt),
   );
   router.get(
     '/:id/signed-copy',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itMobileLine.view'),
     validate({ params: ItCustodyReceiptIdParamSchema }),
     asyncHandler(getItMobileLineReceiptSignedCopy),
   );
   router.post(
     '/:id/signed-copy',
     authenticate,
-    authorize('itAsset.assign'),
+    authorize('itMobileLine.assign'),
     signedCopyUpload(),
     validate({ params: ItCustodyReceiptIdParamSchema }),
     asyncHandler(uploadItMobileLineReceiptSignedCopy),
@@ -60,7 +61,7 @@ export const buildItMobileLineReceiptsRouter = (): Router => {
   router.delete(
     '/:id/signed-copy',
     authenticate,
-    authorize('itAsset.assign'),
+    authorize('itMobileLine.assign'),
     validate({ params: ItCustodyReceiptIdParamSchema }),
     asyncHandler(deleteItMobileLineReceiptSignedCopy),
   );

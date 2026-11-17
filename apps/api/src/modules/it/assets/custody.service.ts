@@ -761,11 +761,11 @@ class ItAssetCustodyService {
   }
 
   /**
-   * Where «نقل إلى فرع» — and the consumables' «تحويل إلى فرع», which rides the same grant — may go
-   * for this caller: every active branch of the organisation their `itAsset.assign` reaches as a
-   * whole (`moveTargetBranchIds`). The same branch list and the same test `moveToBranch` and the
-   * transfer apply to the branch they are given, so a picker built from it offers nothing either
-   * would refuse. In the branch options' order (by code).
+   * Where «نقل إلى فرع» may go for this caller: every active branch of the organisation their
+   * `itAsset.assign` reaches as a whole (`moveTargetBranchIds`). The same branch list and the same
+   * test `moveToBranch` applies to the branch it is given, so a picker built from it offers nothing
+   * the move would refuse. In the branch options' order (by code). The consumables' «تحويل إلى
+   * فرع» asks the same rule of its own grant (`GET /it/consumables/transfer-targets`).
    */
   async moveTargets(ctx: AuthContext): Promise<ItMoveTargetsDto> {
     const branches = await branchRepository.listAll();

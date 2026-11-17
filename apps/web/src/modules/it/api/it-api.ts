@@ -155,10 +155,12 @@ export const listJobTitleOptions = (): Promise<OrgUnitOptionDto[]> =>
 
 // ── People: the employees IT names ──────────────────────────────────────────
 //
-// HR's facts, read by IT's OWN endpoint under IT's own grant (`itAsset.view`) — never HR's own
-// employee list under `employee.view`, which is the whole HR file. «يظهرله اسم الموظف من الاتش
-// ار كل المواظفين سواء اللى مشى او اللى موجود»: a technician names the people they hand laptops
-// to without being handed «الموظفون».
+// HR's facts, read by IT's OWN endpoint under IT's own grants — the read grant of any register that
+// names a holder (`itAsset.view`, `itMobileLine.view` or `itConsumable.view`, `IT_PEOPLE_GRANTS`) —
+// never HR's own employee list under `employee.view`, which is the whole HR file. «يظهرله اسم
+// الموظف من الاتش ار كل المواظفين سواء اللى مشى او اللى موجود»: a technician names the people they
+// hand laptops, lines or a mouse to without being handed «الموظفون». What each person holds of the
+// ASSETS (`openCustodyCount`) is counted only for a reader of the assets — 0 for anyone else.
 
 /** The employees register and the people behind every holder / requester filter. */
 export const listPeople = (params: ItListParams): Promise<Paginated<ItPersonDto>> =>
@@ -269,10 +271,11 @@ export const moveAssetsToBranch = (
   post<ItAssetsBranchMoveResultDto>('/it/assets/move-branch', body);
 
 /**
- * Where «نقل إلى فرع» and «تحويل إلى فرع» may go: the active branches the caller's `itAsset.assign`
- * reaches WHOLE — the server's own test, the one both actions apply before they write. Only the
- * server can say it: `me` carries the reach of all the account's grants, not of this one key, so a
- * picker built from it offered branches the action then refused with 403.
+ * Where «نقل إلى فرع» may take assets: the active branches the caller's `itAsset.assign` reaches
+ * WHOLE — the server's own test, the one the move applies before it writes. Only the server can
+ * say it: `me` carries the reach of all the account's grants, not of this one key, so a picker
+ * built from it offered branches the action then refused with 403. The consumables' «تحويل إلى
+ * فرع» asks its own (`consumableTransferTargets`), under its own grant.
  */
 export const moveTargets = (): Promise<ItMoveTargetsDto> =>
   get<ItMoveTargetsDto>('/it/assets/move-targets');
@@ -489,6 +492,15 @@ export const transferConsumables = (
   body: TransferItConsumables,
 ): Promise<ItConsumableTransferResultDto> =>
   post<ItConsumableTransferResultDto>('/it/consumables/transfer', body);
+
+/**
+ * Where that transfer may go: the active branches the caller's `itConsumable.assign` reaches WHOLE,
+ * by the very test the transfer applies before it writes — the assets' `moveTargets` under the
+ * store's own custody grant (2026-11-17), so a keeper of the store who holds no asset grant is
+ * offered every branch they may send to, and nothing the transfer would refuse.
+ */
+export const consumableTransferTargets = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/consumables/transfer-targets');
 
 /**
  * The ledger across items, newest first, each row labelled — the movements screen, one item's

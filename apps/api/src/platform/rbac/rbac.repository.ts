@@ -1,4 +1,4 @@
-import { Types, type FilterQuery, type PipelineStage } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
 import { BaseRepository } from '../../shared/base/base.repository';
 import { PermissionModel, type PermissionDoc } from './permission.model';
 import { RoleModel, type RoleDoc } from './role.model';
@@ -53,6 +53,43 @@ class RoleRepository extends BaseRepository<RoleDoc> {
     return this.model
       .find({ permissionKeys: permissionKey, isDeleted: false })
       .lean<RoleDoc[]>()
+      .exec();
+  }
+
+  /** Live roles carrying any of `keys`, read inside the caller's transaction (`grantAlongside`). */
+  async findHoldingAny(keys: readonly string[], session: ClientSession): Promise<RoleDoc[]> {
+    if (keys.length === 0) return [];
+    return this.model
+      .find({ permissionKeys: { $in: [...keys] }, isDeleted: false })
+      .session(session)
+      .lean<RoleDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Union `add` into one live role's keys — atomically, and only while it still carries every key
+   * of `because` (the filter names them). Strictly additive (`$addToSet`), a SYSTEM write
+   * (`updatedBy` null), and it moves the version (`__v`) the role editor sends back, so a form
+   * opened before this write is refused with the usual conflict instead of saving over it. Null
+   * when the role no longer matches.
+   */
+  async addPermissionKeys(
+    id: Types.ObjectId,
+    because: readonly string[],
+    add: readonly string[],
+    session: ClientSession,
+  ): Promise<RoleDoc | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, isDeleted: false, permissionKeys: { $all: [...because] } },
+        {
+          $addToSet: { permissionKeys: { $each: [...add] } },
+          $set: { updatedBy: null },
+          $inc: { __v: 1 },
+        },
+        { new: true, session },
+      )
+      .lean<RoleDoc>()
       .exec();
   }
 }

@@ -914,22 +914,26 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'itAsset.view',
       },
       {
-        // FR-19 — the company's SIM lines on their three networks, under the asset grants: whoever
-        // keeps the devices keeps the lines.
+        // FR-19 — the company's SIM lines on their three networks, under their own read grant since
+        // 2026-11-17 («فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها»). They shipped on the
+        // asset grant: corrected only while the stored row still holds it (`previousPermission`).
         en: 'Mobile Lines',
         ar: 'خطوط المحمول',
         route: '/it/mobile-lines',
         icon: 'phone',
-        permission: 'itAsset.view',
+        permission: 'itMobileLine.view',
+        previousPermission: 'itAsset.view',
       },
       {
-        // FR-20 — «شاشة تانية تحت خطوط المحمول تكون للمستهلكات»: right under the lines, on the
-        // asset grants like them. The tray — a store's stock — is a glyph no other IT row wears.
+        // FR-20 — «شاشة تانية تحت خطوط المحمول تكون للمستهلكات»: right under the lines, and like
+        // them on its own read grant since 2026-11-17, corrected the same way. The tray — a store's
+        // stock — is a glyph no other IT row wears.
         en: 'Consumables',
         ar: 'المستهلكات',
         route: '/it/consumables',
         icon: 'inbox',
-        permission: 'itAsset.view',
+        permission: 'itConsumable.view',
+        previousPermission: 'itAsset.view',
       },
       {
         // Everybody HR has, current and departed, each opening their whole IT history. Under the

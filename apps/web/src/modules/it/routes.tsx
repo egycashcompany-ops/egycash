@@ -25,13 +25,18 @@
 //   /it/licenses/:id       itLicense.view                                        IT-5
 //   /it/employees          itAsset.view   (HR's people, current and departed)    owner request
 //   /it/employees/:id      itAsset.view   (one person's custody and tickets)     owner request
-//   /it/mobile-lines       itAsset.view   (the SIM lines and who holds them)     FR-19
-//   /it/consumables        itAsset.view   (each branch's store of consumables)    FR-20
-//   /it/consumables/movements  itAsset.view   (the store's ledger, no nav row)    FR-20
+//   /it/mobile-lines       itMobileLine.view   (the SIM lines and who holds them) FR-19
+//   /it/consumables        itConsumable.view   (each branch's store)              FR-20
+//   /it/consumables/movements  itConsumable.view   (the store's ledger, no nav row) FR-20
 //   /it/vehicle-checks     itVehicleCheck.view   (the reports' dashboard)            FR-21
 //   /it/vehicle-checks/new itVehicleCheck.create (the phone form, OUTSIDE AppShell) FR-21
 // The custody, ticket, maintenance and installation ACTIONS are not routes — they are dialogs on
 // the record, which is where the decision is actually taken. Dashboards get their routes with IT-6.
+//
+// The lines and the consumables shipped on the assets' grants (`itAsset.*`). Since 2026-11-17 each
+// screen has its own — «فى الصلاحيات مش لاقى حاجة لـ /consumables ولا /mobile-lines !! فى الـ IT
+// ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها» — so the roles screen gives each one on its own, apart
+// from the assets and from each other; the asset keys no longer open either.
 //
 // `/it/vehicle-checks/new` («فحص أجهزة السيارة», docs/12-planning/it-vehicle-checks-design.md) is
 // the ONE route here that does not sit inside `AppShell`: it is a phone form, and a topbar, a
@@ -135,23 +140,24 @@ export default function ItRoutes(): JSX.Element {
             </RequirePermission>
           }
         />
-        {/* «خطوط المحمول» — on the assets' grants: a line is handed over and returned the way a
-            device is, and signed for on the same form. */}
+        {/* «خطوط المحمول» — on the lines' own read grant: a line is handed over and returned the
+            way a device is, and signed for on the same form, but who may keep the lines is the
+            owner's choice apart from who keeps the devices. */}
         <Route
           path="mobile-lines"
           element={
-            <RequirePermission permission="itAsset.view">
+            <RequirePermission permission="itMobileLine.view">
               <MobileLinesPage />
             </RequirePermission>
           }
         />
-        {/* «المستهلكات» (FR-20) — on the assets' grants too: whoever keeps the devices keeps the
-            store. The ledger is a second route under it, reached from the register, with no row
-            of its own in the rail. */}
+        {/* «المستهلكات» (FR-20) — on the store's own read grant. The ledger is a second route
+            under it, on the same grant, reached from the register, with no row of its own in the
+            rail. */}
         <Route
           path="consumables"
           element={
-            <RequirePermission permission="itAsset.view">
+            <RequirePermission permission="itConsumable.view">
               <ConsumablesPage />
             </RequirePermission>
           }
@@ -159,7 +165,7 @@ export default function ItRoutes(): JSX.Element {
         <Route
           path="consumables/movements"
           element={
-            <RequirePermission permission="itAsset.view">
+            <RequirePermission permission="itConsumable.view">
               <ConsumableMovementsPage />
             </RequirePermission>
           }

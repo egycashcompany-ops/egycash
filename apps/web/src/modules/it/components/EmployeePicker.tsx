@@ -2,10 +2,13 @@
 // list to filter it.
 //
 // Custody references employees, which the design makes a live HR integration (§9.1). The names
-// are HR's, read through IT's OWN endpoint (`/it/people`) under IT's own grant, `itAsset.view` —
-// not HR's list under `employee.view`, which is the whole HR file and which a technician used to
-// need before they could see who they were handing a laptop to. Without `itAsset.view` the box
-// says so rather than searching into a 403 the user cannot interpret.
+// are HR's, read through IT's OWN endpoint (`/it/people`) under IT's own grants — not HR's list
+// under `employee.view`, which is the whole HR file and which a technician used to need before they
+// could see who they were handing a laptop to. Three registers hand things to people — the assets,
+// the mobile lines and the consumables — and since 2026-11-17 each has its own read grant, so ANY
+// of the three opens the list (`IT_PEOPLE_GRANTS`, the server's own rule): a lines keeper finds
+// whom to hand a line to without being given the assets. Without any of them the box says so
+// rather than searching into a 403 the user cannot interpret.
 //
 // Resolve-by-id is the CALLER's: a filter arriving on a link resolves its chip through
 // `useItPerson`, and a custody dialog always opens on a fresh choice.
@@ -29,6 +32,12 @@ import { CloseIcon } from '../../../shared/ui/icons';
 import { listKey } from '../../../shared/lib/query-keys';
 import * as api from '../api/it-api';
 
+/**
+ * The read grants of the registers that name a holder — ANY of them opens `/it/people`, as the
+ * route's `authorizeAny` says (`apps/api/src/modules/it/people/people.controller.ts`).
+ */
+export const IT_PEOPLE_GRANTS = ['itAsset.view', 'itMobileLine.view', 'itConsumable.view'] as const;
+
 export const EmployeePicker = ({
   value,
   valueLabel,
@@ -51,7 +60,7 @@ export const EmployeePicker = ({
   const t = useT();
   const can = useCan();
   const [search, setSearch] = useState('');
-  const allowed = can('itAsset.view');
+  const allowed = IT_PEOPLE_GRANTS.some((grant) => can(grant));
 
   const results = useQuery({
     // The population is part of the key: a search's wider answer must never be served from the

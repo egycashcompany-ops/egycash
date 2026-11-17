@@ -70,10 +70,17 @@ interface IssuedLine {
 }
 
 class ItConsumableIssueService {
+  /**
+   * `scope` is the store's (the caller's `itConsumable.view`); `assetScope` is the ASSET register's
+   * — the caller's own `itAsset.view`, or null without it. An «installed on» names a device, and
+   * the store's grant must not become a way to find devices the caller cannot read: without the
+   * asset grant every asset id is «not found», exactly as one outside its scope is.
+   */
   async issue(
     input: IssueItConsumables,
     ctx: AuthContext,
     scope: ScopeSelector,
+    assetScope: ScopeSelector | null,
   ): Promise<ItConsumableIssueResult> {
     const issuedAt = input.issuedAt ?? new Date();
 
@@ -104,12 +111,14 @@ class ItConsumableIssueService {
       );
     }
 
-    // 3. «مركّب على» — an asset the caller can see, and one that still exists as a device.
+    // 3. «مركّب على» — an asset the caller can see under their ASSET grant, and one that still
+    //    exists as a device. No `itAsset.view`, no asset: the register is not asked at all.
     const assetIds = [...new Set(input.lines.flatMap((line) => line.assetId ?? []))];
     const assets = new Map(
-      (assetIds.length === 0 ? [] : await itAssetRepository.findManyByIds(assetIds, scope)).map(
-        (asset) => [String(asset._id), asset],
-      ),
+      (assetIds.length === 0 || assetScope === null
+        ? []
+        : await itAssetRepository.findManyByIds(assetIds, assetScope)
+      ).map((asset) => [String(asset._id), asset]),
     );
     for (const assetId of assetIds) {
       const asset = assets.get(assetId);

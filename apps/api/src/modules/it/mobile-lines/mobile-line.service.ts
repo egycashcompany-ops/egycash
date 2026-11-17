@@ -221,13 +221,14 @@ class ItMobileLineService {
   }
 
   /**
-   * Register a line — in stock, held by nobody. Only into a branch the caller's `itAsset.create`
-   * reaches: the scope that would hide another branch's lines from them must not let them file one
-   * there. A number or an ICCID already on the register is the unique indexes' conflict (409).
+   * Register a line — in stock, held by nobody. Only into a branch the caller's
+   * `itMobileLine.create` reaches: the scope that would hide another branch's lines from them must
+   * not let them file one there. A number or an ICCID already on the register is the unique
+   * indexes' conflict (409).
    */
   async register(input: CreateItMobileLine, ctx: AuthContext): Promise<ItMobileLineDoc> {
-    if (!keyReachesBranch(ctx, 'itAsset.create', input.branchId)) {
-      throw new ForbiddenError('itAsset.create does not reach this branch');
+    if (!keyReachesBranch(ctx, 'itMobileLine.create', input.branchId)) {
+      throw new ForbiddenError('itMobileLine.create does not reach this branch');
     }
     await ensureItMobileLineCollections();
     const at = new Date();
@@ -270,8 +271,8 @@ class ItMobileLineService {
 
   /**
    * Edit the register's facts. The line as it ENDS UP may not be an eSIM with a card serial (an
-   * edit can change either half alone), and a new branch must be one the caller's `itAsset.edit`
-   * reaches.
+   * edit can change either half alone), and a new branch must be one the caller's
+   * `itMobileLine.edit` reaches.
    *
    * A line somebody holds MAY move branch — «عايزك تفتح إنى أعدل الفرع عادي لخط من خطوط الموبايل
    * لأن ممكن القائد يغير الفرع بتاعه»: its holder moved, and the line goes with them. Its OPEN
@@ -290,8 +291,8 @@ class ItMobileLineService {
       input.branchId !== undefined && input.branchId !== String(before.branchId)
         ? input.branchId
         : null;
-    if (toBranch !== null && !keyReachesBranch(ctx, 'itAsset.edit', toBranch)) {
-      throw new ForbiddenError('itAsset.edit does not reach this branch');
+    if (toBranch !== null && !keyReachesBranch(ctx, 'itMobileLine.edit', toBranch)) {
+      throw new ForbiddenError('itMobileLine.edit does not reach this branch');
     }
     const simKind = input.simKind ?? before.simKind;
     const simSerial = input.simSerial === undefined ? (before.simSerial ?? null) : input.simSerial;

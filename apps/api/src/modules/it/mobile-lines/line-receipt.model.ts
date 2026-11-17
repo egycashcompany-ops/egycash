@@ -41,7 +41,7 @@ export interface ItMobileLineReceiptDoc extends BaseDocFields {
   jobTitle: Name | null;
   /**
    * RAW, as HR stores it — the paper prints it. Leaves the API only for a caller holding
-   * `itAsset.viewNationalId` (Security Architecture §3).
+   * `itMobileLine.viewNationalId` (Security Architecture §3).
    */
   nationalId: string | null;
   section: Name | null;

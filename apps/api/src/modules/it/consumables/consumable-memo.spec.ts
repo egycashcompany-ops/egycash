@@ -2,8 +2,9 @@
 //
 // What is pinned: a reprint is the same paper under the same number and writes nothing; the signed
 // copy is filed once and versioned after, withdrawn on request, each audited on the memo; and the
-// platform's own file endpoints ask the issue's grants — `itAsset.view` to read, `itAsset.assign`
-// to write — over a memo the caller can see.
+// platform's own file endpoints ask the issue's grants — `itConsumable.view` to read,
+// `itConsumable.assign` to write — over a memo the caller can see, and the asset grants open
+// nothing here any more (2026-11-17).
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConflictError, NotFoundError } from '../../../shared/errors';
@@ -160,9 +161,9 @@ describe('the platform’s file endpoints ask the issue’s grants', () => {
       permissions,
     }) as never;
 
-  it('reads on itAsset.view, writes on itAsset.assign — over a memo the caller can see', async () => {
+  it('reads on itConsumable.view, writes on itConsumable.assign — over a memo the caller can see', async () => {
     expect(consumableMemoFileAuthorizer.entityType).toBe('consumableMemo');
-    const viewer = caller({ 'itAsset.view': 'branch' });
+    const viewer = caller({ 'itConsumable.view': 'branch' });
     expect(
       await consumableMemoFileAuthorizer.authorize({ ctx: viewer, entityId: MEMO, intent: 'read' }),
     ).toBe(true);
@@ -174,7 +175,7 @@ describe('the platform’s file endpoints ask the issue’s grants', () => {
       }),
     ).toBe(false);
 
-    const keeper = caller({ 'itAsset.view': 'branch', 'itAsset.assign': 'branch' });
+    const keeper = caller({ 'itConsumable.view': 'branch', 'itConsumable.assign': 'branch' });
     expect(
       await consumableMemoFileAuthorizer.authorize({
         ctx: keeper,
@@ -192,5 +193,18 @@ describe('the platform’s file endpoints ask the issue’s grants', () => {
     expect(
       await consumableMemoFileAuthorizer.authorize({ ctx: keeper, entityId: MEMO, intent: 'read' }),
     ).toBe(false);
+  });
+
+  it('opens nothing on the asset grants — not even a memo the caller could otherwise see', async () => {
+    const assetKeeper = caller({
+      'itAsset.view': 'organization',
+      'itAsset.assign': 'organization',
+    });
+    for (const intent of ['read', 'write'] as const) {
+      expect(
+        await consumableMemoFileAuthorizer.authorize({ ctx: assetKeeper, entityId: MEMO, intent }),
+      ).toBe(false);
+    }
+    expect(mocks.findMemo).not.toHaveBeenCalled();
   });
 });

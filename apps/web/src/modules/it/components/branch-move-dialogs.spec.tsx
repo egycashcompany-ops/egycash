@@ -3,7 +3,9 @@
 // custody, which the dialog says; a disposed one or one under maintenance stays, and why), and every
 // ticked item is a row asking how many — empty until answered, bounded by what the store holds —
 // with the store it leaves never offered as where it goes. Where they may go is what the SERVER
-// says the custody grant reaches (`GET /it/assets/move-targets`), never what `me` suggests.
+// says each action's own custody grant reaches, never what `me` suggests — the assets' move on
+// `itAsset.assign` (`GET /it/assets/move-targets`), the store's transfer on `itConsumable.assign`
+// (`GET /it/consumables/transfer-targets`, 2026-11-17), each asked under its own key.
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -45,7 +47,12 @@ const me = {
   branchId: null,
   branchIds: [],
   employeeId: null,
-  permissions: { 'itAsset.view': 'organization', 'itAsset.assign': 'organization' },
+  permissions: {
+    'itAsset.view': 'organization',
+    'itAsset.assign': 'organization',
+    'itConsumable.view': 'organization',
+    'itConsumable.assign': 'organization',
+  },
   isPrivileged: false,
   flags: {},
   totpEnabled: true,
@@ -54,12 +61,19 @@ const me = {
 
 const ALL = ['b-hq', 'b-oct', 'b-alex'];
 
+/** Where each dialog's answer is cached: the assets' move and the store's transfer, apart. */
+type ReachKey = 'moveTargets' | 'consumableTransferTargets';
+
 /**
  * The dialog as rendered once the branch options are in and the server has said which branches
- * the custody grant reaches (`reach`) — or before it has answered (`null`). The account is
- * org-wide on every key: whatever `me` suggests, only the server's answer is offered.
+ * the custody grant reaches (`reach`, under `key`) — or before it has answered (`null`). The
+ * account is org-wide on every key: whatever `me` suggests, only the server's answer is offered.
  */
-const render = (element: JSX.Element, reach: string[] | null = ALL): string => {
+const render = (
+  element: JSX.Element,
+  reach: string[] | null = ALL,
+  key: ReachKey = 'moveTargets',
+): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
@@ -69,7 +83,7 @@ const render = (element: JSX.Element, reach: string[] | null = ALL): string => {
     { id: 'b-alex', code: '03', name: { ar: 'الإسكندرية', en: 'Alexandria' }, parentId: null },
   ]);
   if (reach !== null) {
-    qc.setQueryData<ItMoveTargetsDto>(listKey('it', 'moveTargets'), { branchIds: reach });
+    qc.setQueryData<ItMoveTargetsDto>(listKey('it', key), { branchIds: reach });
   }
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
@@ -222,6 +236,9 @@ const item = (over: Partial<ItConsumableDto>): ItConsumableDto =>
     ...over,
   }) as ItConsumableDto;
 
+/** The store's answer — `GET /it/consumables/transfer-targets`, under its own key. */
+const STORE: ReachKey = 'consumableTransferTargets';
+
 describe('«تحويل إلى فرع» — the items', () => {
   const html = render(
     <TransferConsumablesDialog
@@ -229,6 +246,8 @@ describe('«تحويل إلى فرع» — the items', () => {
       onClose={() => {}}
       items={[item({}), item({ id: 'c-3', code: 'CON-00008', name: 'Power Cable', onHandQty: 0 })]}
     />,
+    ALL,
+    STORE,
   );
 
   it('names the store the items leave, and never offers it as where they go', () => {
@@ -257,7 +276,7 @@ describe('«تحويل إلى فرع» — the items', () => {
   });
 });
 
-describe('«تحويل إلى فرع» — only the branches the server says the custody grant reaches', () => {
+describe('«تحويل إلى فرع» — only the branches the server says the store’s custody grant reaches', () => {
   const dialog = <TransferConsumablesDialog open onClose={() => {}} items={[item({})]} />;
   const submitDisabled = new RegExp(
     `<button[^>]*disabled=""[^>]*>[\\s\\S]*?${ar('it.consumables.transfer.submit')}`,
@@ -265,8 +284,8 @@ describe('«تحويل إلى فرع» — only the branches the server says the
   );
 
   it('offers the branches the server names, never the store left — whatever `me` reaches', () => {
-    // `me` is org-wide on every key; the custody grant reaches two branches.
-    const html = render(dialog, ['b-hq', 'b-oct']);
+    // `me` is org-wide on every key; the store's custody grant reaches two branches.
+    const html = render(dialog, ['b-hq', 'b-oct'], STORE);
     expect(html).toContain('<option value="b-oct"');
     expect(html).not.toContain('<option value="b-hq"');
     expect(html).not.toContain('<option value="b-alex"');
@@ -276,7 +295,7 @@ describe('«تحويل إلى فرع» — only the branches the server says the
   it('with no other branch in reach, says so and leaves nothing to send', () => {
     // A branch-scoped grant over the store the items leave, and a department-scoped one.
     for (const reach of [['b-hq'], []]) {
-      const html = render(dialog, reach);
+      const html = render(dialog, reach, STORE);
       expect(html).toContain(ar('it.consumables.transfer.noTarget'));
       expect(html).not.toContain('<option value="b-oct"');
       expect(html).toMatch(/<select[^>]*disabled=""/u);
@@ -285,11 +304,20 @@ describe('«تحويل إلى فرع» — only the branches the server says the
   });
 
   it('waits for the server’s answer — no «no branch» before it, nothing to choose or send', () => {
-    const html = render(dialog, null);
+    const html = render(dialog, null, STORE);
     expect(html).not.toContain(ar('it.consumables.transfer.noTarget'));
     expect(html).toContain(ar('common.loading'));
     expect(html).not.toContain('<option value="b-');
     expect(html).toMatch(/<select[^>]*disabled=""/u);
+    expect(html).toMatch(submitDisabled);
+  });
+
+  // Two grants, two reaches: the assets' answer is for `itAsset.assign`, and a store keeper may
+  // hold that over other branches — or not at all. The transfer never reads it.
+  it('never offers the reach of the ASSETS’ custody grant — it waits for the store’s own', () => {
+    const html = render(dialog, ALL, 'moveTargets');
+    expect(html).toContain(ar('common.loading'));
+    expect(html).not.toContain('<option value="b-');
     expect(html).toMatch(submitDisabled);
   });
 });

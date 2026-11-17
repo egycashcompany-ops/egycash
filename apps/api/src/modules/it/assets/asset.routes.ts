@@ -94,9 +94,9 @@ export const buildItAssetsRouter = (): Router => {
     validate({ body: MoveItAssetsToBranchSchema }),
     asyncHandler(moveItAssetsToBranch),
   );
-  // Where that move — and the consumables' transfer, the same grant — may go: the branches
-  // `itAsset.assign` reaches as the server judges it, not the account's reach over all its grants.
-  // Before '/:id' like every literal segment here.
+  // Where that move may go: the branches `itAsset.assign` reaches as the server judges it, not the
+  // account's reach over all its grants (the consumables' transfer asks its own grant, at
+  // `/it/consumables/transfer-targets`). Before '/:id' like every literal segment here.
   router.get(
     '/move-targets',
     authenticate,

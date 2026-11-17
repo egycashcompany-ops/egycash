@@ -311,6 +311,14 @@ export const ErrorCodes = {
    */
   OPERATIONS_DISTRIBUTION_LEG_STARTED: 'OPERATIONS_DISTRIBUTION_LEG_STARTED',
   /**
+   * 422 (Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس») — a distribution change put a
+   * shipment on a crew row whose «النوع» is not the seeded «محصنة» type (another type, or none),
+   * and the shipment is not already on that row. Nothing is written. Details: `field` 'shipmentId',
+   * `code` 'SHIPMENT', `message` its id; then `field` 'crewAssignmentId', `code` 'NOT_SECURED',
+   * `message` the row's id.
+   */
+  OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED: 'OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED',
+  /**
    * 422 — a dispatch (`POST /operations/secured/dispatch`, the vault's «تسليم») named a van — a crew
    * row — whose operating day is not TODAY on the Cairo calendar. A van is handed over on its own
    * day: «تسليم المحصنات» offers «تسليم» on today's vans only, and the server holds the same line, so

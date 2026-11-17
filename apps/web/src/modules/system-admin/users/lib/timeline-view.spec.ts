@@ -65,7 +65,9 @@ describe('paging stops exactly when the history runs out', () => {
 
 describe('the tab and the query use these rules rather than restating them', () => {
   it('renders the panel this file chose', () => {
-    expect(TAB).toContain('const panel = timelinePanel({ isLoading, isError, loaded: entries.length })');
+    expect(TAB).toContain(
+      'const panel = timelinePanel({ isLoading, isError, loaded: entries.length })',
+    );
     expect(TAB).toContain("panel === 'error' ? (");
     expect(TAB).toContain('<ErrorState error={error} onRetry={() => void refetch()} />');
     // The failure mode this guards: an `isError` branch that fell through to EmptyState.

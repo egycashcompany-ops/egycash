@@ -34,6 +34,36 @@ its entry here in the same PR.
     create and update take `places` (at most 50). New collections `job_title_places` and
     `job_title_place_fills`, with indexes built at boot.
 
+- **System users: department, job title and roles on every row, and as filters.** «فى صفحة
+  /system/users مستخدمو النظام عايزك تزود أدوار كل واحد + الإدارة بتاعته + مسماه الوظيفي .. وطبعاً
+  هتزودهم فى الفلتر».
+  - Each row names the account's department and job title. The server resolves the names,
+    retired units included, so an account in a closed department still shows that department.
+  - Each row names the roles held now: a grant that is revoked, not yet started or already ended
+    is not one of them. Three show, and the rest fold into «+n» with all of them on hover.
+  - Three new filters, each taking several picks.
+    - The department filter lists each company department once and means every branch copy of
+      it, or only the copy in the branch chosen.
+    - Changing the branch drops a chosen department that branch does not have.
+    - A chosen department that matches nothing filters to nobody, rather than being dropped.
+    - The role filter searches the roles on the server (ADR-019).
+  - Roles, column and filter, are only for an administrator who holds `role.view`. For anyone
+    else the server sends `roles: null` and refuses a role filter with 403 rather than ignoring it.
+  - `GET /platform/users` takes `roleId`, `departmentId` and `jobTitleId` lists, and each row is
+    a `UserListItemDto`. The search box now also finds the sign-in name, which its placeholder
+    already promised; for an employee that is the employee code.
+
+- **Account setup link: «نسخ الرسالة» beside «نسخ الرابط».** «عند نسخ رابط إعداد الحساب هناك زر نسخ
+  الرابط .. عايز زر تانى جنبه يكون نسخ الرسالة». The button copies the owner's message, ready to paste
+  into WhatsApp, filled in for the person:
+  - their Arabic name and employee code (the account's sign-in name);
+  - the link itself;
+  - where to sign in afterwards: the link's own host, e.g. `ecms.egycash.com.eg`.
+
+  Only an employee's sign-in name is called «كود الموظف»; any other account is named by its
+  username, or by its email when it has none. The message is always in Arabic, whatever language
+  the screen is in. A browser that will not copy shows the message in the dialog to copy by hand.
+
 - **HR: «جاهزون للتعيين» gets the settings bar, with «مستندات الوظائف» and «المعينون».** «عاوز اعمل
   toggle switch في جاهزون للتعيين … بين مستندات الوظائف و حاجه اسمها المعينون … زي اللي موجود فيي
   الاعدادت فال hr»; «ملهاش دعوه باللي فالجدول». The bar sits above the ready-to-hire table, which is
@@ -1044,6 +1074,128 @@ its entry here in the same PR.
         before the list answers, the card says the whole name, the code and where he sits.
       - The same card on «تسليم المحصنات», under «تسليم» and «طباعة»; its sheet's head now reads in
         the card's order — the day, the time, the direction, then the captains and the specialists.
+
+  - Round 25 — «توزيع المحصنات», the owner: «عندى مشكلتين الاولى ان لو ضيفت اى عربيه بتظهر فى توزيع
+    المحصنات على طول انا عاوز اللى يظهر اللى نوعها محصنة بس ولازم اكون دايس حفظ التانية لما بعمل دراج و
+    دروب لل محصنة على العربيه مش بتتحط بتتحط فى حالة دوست على نقل الى بس غير كدا مفيش حاجه بتتغير»,
+    then the two columns' filters, the small chip and the new van card.
+    - ONLY «محصنة» ROWS, ONLY SAVED. `GET /operations/secured/distribution` lists the day's SAVED crew
+      rows (the board's unsaved draft is not in the database) whose «النوع» is the seeded «محصنة»
+      type — found by `seedKey` 'secured' (`findSecuredType`), so a rename keeps it; a live type of that
+      name stands in on an install whose seed was never inserted. A row of another type, or with no
+      type, van or none, is not offered. So nothing on the screen vanishes, a row of another type that
+      already holds the LIVE delivery leg of a listed محصنة (placed before this round, or its type
+      changed since) stays, marked: `crews` are now `OperationsSecuredDistributionCrewDto` —
+      `securedType` (false for such a row), `shiftTypeName`, and `looseNumber` (a row without a van
+      keeps the board's «بدون سيارة (n)» — its place among ALL the day's rows without a van — though
+      only the «محصنة» ones are listed); the card says «ليس من نوع محصنة ·
+      النوع «سفر»» on a dashed amber edge and takes no new محصنة. The proposals by direction
+      (`directionCrewAssignmentIds`) name the «محصنة» rows only. The save refuses a محصنة put on a row
+      that is not «محصنة» unless its delivery leg is already on that very row (its captain switched,
+      or taken off, still save): 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`, checked after the day
+      and before the captain, naming the shipment (`shipmentId`/`SHIPMENT`) and the row
+      (`crewAssignmentId`/`NOT_SECURED`), nothing written — worded in both languages. A board save now
+      stales this screen's read on the saving desk itself (`usePlanOperationsCrew`), not only through
+      the crew topic. «تسليم المحصنات» reads the same list.
+    - THE DROP. Measured with REAL OS drags (XTEST under Xvfb, Chromium's own drag loop, the real API
+      on a seeded day): the screen still had the gates Round 22 took off «لوحة التشغيلة». Only the
+      van cards and the left column answered a dragover «yes» — the grid's gaps, the column's head and
+      padding answered «no» — and Chromium applies the LAST answer it had when the hand lets go, so on
+      a slow PC a hand crossing a gap and releasing on a van was refused on the gap's stale «no»: the
+      log ends on a «yes» dragover on the van, then `dragleave` and `dragend` with `dropEffect` none,
+      no `drop` (at 6× CPU, 2–4 of 6 drops placed). And every dragover asked `dataTransfer.types` for
+      the screen's private MIME type: on a PC whose hook passes only the standard formats (Round 22's
+      finding on the owner's own machine) every van refused every time — 0 of 4 drops on a van placed, only
+      «نقل إلى…» working, exactly as he said. Now (`lib/distribution-drag.ts`): the dragged id is kept
+      in a ref by the chip's own `dragstart`, which writes the id as our type and as `text/plain`,
+      `copyMove`, and sets no state; the drag is drawn one task after the first answer; the WHOLE
+      screen accepts our drag and names no `dropEffect`; the drop reads what is under the pointer — the
+      van card anywhere (its head, the captain's line, the packages, the empty load, a chip on it), the
+      left column anywhere (its head too, folded on a phone) — and does what `resolveShipmentDrop`
+      says; a van with no captain, or a row that is not «محصنة», refuses in words — the van as the
+      toast's title and the whole reason under it (`dropRefusalToast`: a toast's title is cut to one
+      line, and «… فلا يأخذ …» had lost the end of the reason). Proven on the same
+      stack: unplaced → the head, the captain's line, a chip, the empty load; van → van; van → back to
+      the left — 6 of 6 at 1× and at 6× CPU (released the moment it arrives), and 6 of 6 with the
+      private type stripped; «حفظ», then a reload shows every drop where it was left.
+    - THE LEFT COLUMN: a filter bar on top — «البنك أو الفرع» (the billed bank by any of its names,
+      either branch, each branch's own bank; folded as the pools' search, «الاهلى» finds «الأهلي») and
+      «المنطقة» (the areas of the محصنات listed, «بلا منطقة» when one has none). Each محصنة is a SMALL
+      chip: the drag handle, the stage's mark (the badge's tone and glyph, its words on hover), «البنك ·
+      الفرع» (the branch it goes to), its marks as small icons, and «نقل إلى…» as a small icon. Its card
+      opens on hover, on a keyboard focus and on a tap on a phone: the bank and its stage, from → to
+      with each branch's bank, the area, the delivery day (and «متأخرة»), each amount by currency, the
+      packages the vault counted (or «لم تُعدّ بعد»), the vault's receipt number, the van and captain it
+      is on, and the screen's marks in words. The read carries no seals; the receipt keeps them.
+    - THE RIGHT COLUMN: a filter bar on top — «كود السيارة» («١٢» finds 112; «بدون» the crews without
+      a van), «البنك أو الفرع» (a van answers through one of its محصنات) and «المنطقة» (its direction
+      names it — either area of «المعادي - حلوان» — or one of its محصنات is of it; «بلا اتجاه»). AND-ed;
+      «المعروض ٢ من ٨» and «مسح التصفية» once one is set. View only: a van filtered out keeps its draft
+      and «حفظ» saves it.
+    - THE VAN CARD: the head as before (code or «بدون سيارة (n)» · time · direction); then ONE
+      captain's line — first the count of محصنات on it («محصنتان», «0 محصنات»), then the captain: on a
+      van with two, only the FIRST put on the row (`captainEmployeeIds[0]`). No specialists, no
+      «المصري» / «الدولار» / «عملات أخرى». Then «كراتين · حقائب · صناديق», each always, its count written
+      even when 0 (in the card's figures' face — an Arabic zero reads as a dot), summed from the vault's
+      counts; «—» with why to a reader who cannot view the vault. The محصنات on it are the same small
+      chips with the same card. A محصنة riding the OTHER captain of a two-captain van carries a small
+      captain mark («مع …»), and its «نقل إلى…» lists the van's captains first — the switch, one
+      «تراجع» step as before.
+    - «تسليم المحصنات» shares the card: the same van card and chips under «تسليم» and «طباعة»; the
+      confirmation keeps the money and the list, and the printed sheet keeps every detail.
+    - AFTER REVIEW. «حتى لو ب 0 يتكتب» — so a 0 is written only once the vault's counts are in: while
+      that read is out a van says «…», after it failed «—», each with why on hover (`packagingRead`,
+      `vanPackages`), on both screens; and the chip's card says the same rather than «لم تُعدّ بعد،
+      فهي ليست بالخزينة» about a محصنة its own badge marks «بالخزينة». The chip's card no longer
+      opens over its own «نقل إلى…» menu (the menu is a portal React counts inside the chip:
+      `hoverIsOnChip`). A محصنة saved on a kept row and moved off it in the draft goes back there by
+      a drag or by the menu, as the save allows; no other new one does. With no saved «محصنة» row on
+      the day the screen says exactly that, and where a row becomes one — not «لا توجد سيارات مخططة».
+      And the single-shipment door, `POST /operations/secured/:id/assign-delivery` (no screen mounts
+      it), keeps the same rule as the save: 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`, the leg
+      already on that row excepted.
+
+  - Round 25 — «لوحة البنك بفروعه» on «تقرير البنوك», the owner: «صفحة تقرير البنوك عاوز فى الجدول عند
+    البنك فى الاخر بعد الصناديق يكون فيه سهم ادوس عليه يفتح زى داش برود كدا للبنك بالفروع بتاعته».
+    - THE ARROW: the table's last column, «الفروع», after «صندوق» — on every bank's row (none on
+      «الإجمالي», none on a row the server could not attribute), named «فتح لوحة {البنك} بفروعه» to a
+      screen reader and as its tooltip, in a 32px brand square (the board table squeezes a cell's
+      button to 22px). The table's floor stays the nine columns' own, so the report still fits beside
+      its panel at 1280px; on a phone the arrow is at the end of the table's own sideways scroll.
+    - THE WINDOW is the vault reports' own (`ReportModalFrame`, as «تقرير الخزينة» and «لوحة تحكم» on
+      «محصنات الخزينة»): over the whole screen, Escape or × closes it, the focus kept inside and
+      handed back to the arrow — the dashboard the owner already knows, over the page it came from
+      rather than a page of its own that would lose the report's period and name filter behind it.
+      It is a link all the same: the bank is in the address (`?bank=…`, and `bankSide=destination`),
+      so a copied address opens the same bank over the same period, and Back closes it.
+    - FOR THE PAGE'S PERIOD, exactly: the same «من» / «إلى», judged as the report judges them (every
+      محصنة the vault received in the period, delivered since or not, a cancelled receipt out).
+    - WHAT IT SHOWS: the bank's seven tiles (عدد المحصنات، المصري، الدولار، عملات أخرى with its breakdown،
+      الحقائب، الكراتين، الصناديق — the bank's own row of the report, figure for figure); two charts,
+      one measure each — «المصري حسب الفرع» and «عدد المحصنات حسب الفرع»: horizontal bars in one hue,
+      the largest first, eight branches named and the rest folded into one muted «باقي الفروع (n)»
+      bar, the figure at each bar's tip and the branch's count, pound and dollar in its hover title;
+      then «بيان المحصنات لكل فرع» — the reports' table with «المنطقة» after the branch, a branch of
+      another bank saying whose («فرع تابع لـ…»), every head sortable (the pound, largest first, by
+      default), «الإجمالي» pinned — beside «إجمالي قيمة الشحنات». A bank with nothing in the period
+      keeps every section, at zero. «Excel | PDF» carry the branch table (with «المنطقة») and the
+      panel, the period, the bank and the side under the title.
+    - WHICH BRANCH: a shipment names two, so the window asks — «تُنسب كل محصنة إلى: من فرع | إلى فرع».
+      «من فرع» by default: the report counts what the vault RECEIVED, and that came from the branch it
+      was collected from. «إلى فرع» files the same محصنات under where they are delivered; the totals
+      do not move. The billed bank's own branch is the destination unless a second bank was named,
+      while the origin may be any bank's branch — so a row of another bank's branch says whose.
+    - API: `GET /operations/reports/banks/:bankId/branches?from=&to=&side=origin|destination` —
+      the bank report's readers (`OPERATIONS_BANK_REPORT_KEYS`, no grant added) and its period;
+      `OperationsBankBranchReportDto` (`rows` per branch — id, name, code, area, `otherBankName` —
+      and `total`, which IS the bank's row of `GET /operations/reports/banks`). A malformed id, a bad
+      day, an unknown `side` or key → 400; an id that names no bank → 404; a bank with nothing in the
+      period → 200, no rows, a zero total. The database narrows it — the period's receipts by their
+      indexed instant, then only this bank's live shipments by id, with only the branch ids and the
+      money projected — and the roll-up is the bank report's own (`branchReportRows` over the same
+      `groupBy`, one receipt builder for both), so the branches add up to the bank's row by
+      construction: the packages are the treasury's, behind the custody port, which a `$lookup`
+      would read behind its back.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

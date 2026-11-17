@@ -45,15 +45,24 @@
 // are the shown banks' own — each bank is one row, so nothing is counted twice; with none, the
 // server's grand total as before. The name is remembered across visits, as the boards' filters are;
 // the period opens on the month.
-import { useSearchParams } from 'react-router-dom';
+import { useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { type OperationsBankBranchReportSide } from '@ecms/contracts';
 import { MAX_PAGE_SIZE } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useBankReport, useOperationsBanks } from '../api/operations-queries';
+import { BankBranchDashboard } from '../components/BankBranchDashboard';
 import { ReportBoard } from '../components/ReportBoard';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
 import { VaultValuePanel } from '../components/VaultValuePanel';
+import {
+  BANK_DASHBOARD_PARAM,
+  BANK_DASHBOARD_SIDE_PARAM,
+  bankDashboardSide,
+  withBankDashboard,
+} from '../lib/bank-dashboard';
 import { bankRank, reportRowsInOrder, reportView, type ReportBoardRow } from '../lib/report-board';
 import { reportExportSubtitle } from '../lib/report-export';
 import { isRangeValid, rangeFromParams } from '../lib/report-range';
@@ -81,6 +90,31 @@ export const BankReportPage = (): JSX.Element => {
   });
 
   useRememberedFilters(search, REMEMBERED_FILTERS);
+
+  // ROUND 25 — «عاوز فى الجدول عند البنك فى الاخر بعد الصناديق يكون فيه سهم ادوس عليه يفتح زى داش برود
+  // كدا للبنك بالفروع بتاعته». The arrow names the bank in the address (`?bank=`), which opens its
+  // dashboard over this page for this page's period — a link to it opens it, Back closes it. Opened
+  // here, it is a step of the history, so × goes back the way it came; reached by a link, × just
+  // takes the bank out of the address.
+  const navigate = useNavigate();
+  const openedHere = useRef(false);
+  const dashboardBank = sp.get(BANK_DASHBOARD_PARAM);
+  const dashboardSide = bankDashboardSide(sp.get(BANK_DASHBOARD_SIDE_PARAM));
+  const openDashboard = (row: ReportBoardRow): void => {
+    openedHere.current = true;
+    setSp(withBankDashboard(sp, row.key));
+  };
+  const closeDashboard = (): void => {
+    if (openedHere.current) {
+      openedHere.current = false;
+      navigate(-1);
+      return;
+    }
+    setSp(withBankDashboard(sp, null), { replace: true });
+  };
+  const setDashboardSide = (side: OperationsBankBranchReportSide): void => {
+    setSp(withBankDashboard(sp, dashboardBank, side), { replace: true });
+  };
 
   // Applied as it is chosen, as the boards apply a filter. Emptied, a bound goes back to its
   // default — the first or the last day of the current month (`rangeFromParams`, per field).
@@ -120,6 +154,15 @@ export const BankReportPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
+      <BankBranchDashboard
+        // Over a period the page refuses there is nothing to break down: the page says why.
+        bankId={valid ? dashboardBank : null}
+        bankName={rows.find((row) => row.key === dashboardBank)?.label ?? ''}
+        range={range}
+        side={dashboardSide}
+        onSide={setDashboardSide}
+        onClose={closeDashboard}
+      />
       <ReportBoard
         label={t('operations.reports.banks.title')}
         title={t('operations.vaultReport.table')}
@@ -131,7 +174,9 @@ export const BankReportPage = (): JSX.Element => {
         loading={valid && report.isLoading}
         error={report.error}
         onRetry={() => void report.refetch()}
-        empty={t(view.filtered ? 'operations.reports.banks.noName' : 'operations.reports.banks.empty')}
+        empty={t(
+          view.filtered ? 'operations.reports.banks.noName' : 'operations.reports.banks.empty',
+        )}
         refusal={valid ? null : t('operations.reports.invalidRange')}
         nameFilter={{
           label: t('operations.reports.bankName'),
@@ -171,6 +216,11 @@ export const BankReportPage = (): JSX.Element => {
             filter: { label: t('operations.reports.bankName'), value: name },
           }),
           withValuePanel: true,
+        }}
+        rowAction={{
+          header: t('operations.bankDashboard.column'),
+          label: (row) => t('operations.bankDashboard.open', { bank: row.label }),
+          onOpen: openDashboard,
         }}
         aside={
           // The table's own total — the server's, or the shown banks' — and nothing while there

@@ -2,7 +2,7 @@
 //
 // Every assignment write invalidates BOTH subtrees: an assignment belongs to a user and to a role,
 // and the two screens that show it are reached from opposite directions.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type CreateRole,
   type CreateRoleAssignment,
@@ -22,6 +22,37 @@ const assignmentsKey = featureKey(MODULE, ASSIGNMENTS);
 
 export const useRoles = (params: RoleListParams) =>
   useQuery({ queryKey: listKey(MODULE, ROLES, params), queryFn: () => api.listRoles(params) });
+
+/** How many roles a filter's search shows at once (ADR-019 rule 1: a small page, never "all"). */
+const ROLE_SEARCH_PAGE = 20;
+
+/**
+ * Roles matching what was typed, for a filter's choices — a SEARCH on the server, a small page
+ * (ADR-019). Off for a reader who cannot see roles (`role.view`), whose request would be refused.
+ */
+export const useRoleSearch = (term: string, enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, ROLES, { search: term.trim(), pageSize: ROLE_SEARCH_PAGE }),
+    queryFn: () => api.listRoles({ search: term.trim(), pageSize: ROLE_SEARCH_PAGE }),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+/**
+ * The chosen roles, each read by id — so a filter names what is chosen even when the current
+ * search does not return it (ADR-019 rule 2).
+ */
+export const useRolesById = (ids: readonly string[], enabled: boolean) =>
+  useQueries({
+    queries: ids.map((id) => ({
+      queryKey: detailKey(MODULE, ROLES, id),
+      queryFn: () => api.getRole(id),
+      enabled,
+      staleTime: 5 * 60_000,
+      retry: false,
+    })),
+  });
 
 export const useRole = (id: string) =>
   useQuery({ queryKey: detailKey(MODULE, ROLES, id), queryFn: () => api.getRole(id) });

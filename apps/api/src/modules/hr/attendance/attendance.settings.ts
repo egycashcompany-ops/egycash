@@ -102,6 +102,18 @@ export const registerHrAttendanceSettings = (): void => {
   // approves it, because the older the day, the more likely the correction is reconstruction
   // rather than recollection. Zero would mean every decision needs HR, which is a legitimate
   // posture for a branch that wants it.
+  // Stage 4. A PROMPT TO LOOK, not a limit: crossing it blocks nothing and undoes nothing. Twenty
+  // a week is a starting point rather than a measured figure — a supervisor covering a branch
+  // whose reader is broken will cross it legitimately, which is the week worth looking at. It is a
+  // setting precisely so the number can be moved once there is a month of real traffic to judge by.
+  declareSetting({
+    key: HrAttendanceSettingKeys.DecisionWeeklyReviewThreshold,
+    description:
+      'Decisions by one manager in a week above which the review screen flags them for a look',
+    schema: z.number().int().min(1).max(1000),
+    defaultValue: 20,
+    allowedScopes: ['organization', 'branch'],
+  });
   declareSetting({
     key: HrAttendanceSettingKeys.DecisionApprovalAfterDays,
     description:

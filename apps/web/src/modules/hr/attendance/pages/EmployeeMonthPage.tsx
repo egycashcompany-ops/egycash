@@ -9,8 +9,10 @@ import { EmptyState } from '../../../../shared/ui';
 import { Field, Input } from '../../../../shared/ui/form';
 import { MonthGrid } from '../components/MonthGrid';
 import { DaysTable } from '../components/DaysTable';
+import { DecisionsTable } from '../components/DecisionsTable';
 import { monthBounds, thisMonth } from '../components/month';
-import { useAttendanceDays } from '../api/attendance-queries';
+import { useAttendanceDays, useAttendanceDecisions } from '../api/attendance-queries';
+import { useCan } from '../../../../platform/rbac/Can';
 
 export const EmployeeMonthPage = (): JSX.Element => {
   const t = useT();
@@ -24,6 +26,19 @@ export const EmployeeMonthPage = (): JSX.Element => {
   }, [month, id]);
   const days = useAttendanceDays(filters, id !== '');
   const rows = days.data?.items ?? [];
+
+  /**
+   * WHAT WAS CHANGED ABOUT THIS MONTH, and by whom (stage 4 §4). It sits beside the days it
+   * changed rather than on a screen of its own, because the question is always asked while looking
+   * at a particular person's month — "why does this day say that?" — and an answer two clicks away
+   * is an answer nobody finds.
+   */
+  const can = useCan();
+  const changes = useAttendanceDecisions(
+    { employeeId: id, from: filters.from, to: filters.to, page: 1, pageSize: 50 },
+    id !== '' && can('attendance.decide'),
+  );
+  const changeRows = changes.data?.items ?? [];
   const name = rows.find((row) => row.employeeName !== undefined)?.employeeName;
 
   return (
@@ -61,6 +76,25 @@ export const EmployeeMonthPage = (): JSX.Element => {
             error={days.isError ? days.error : undefined}
             onRetry={() => void days.refetch()}
           />
+
+          {/* Shown only when there is something to show: an empty history section on every
+              employee's month would be noise on the overwhelming majority of them. */}
+          {changeRows.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {t('attendance.changes.onThisMonth')}
+              </h2>
+              <DecisionsTable
+                rows={changeRows}
+                loading={changes.isLoading}
+                error={changes.isError ? changes.error : undefined}
+                onRetry={() => void changes.refetch()}
+                canApprove={false}
+                canRevoke={can('attendance.decide')}
+                showDecidedBy
+              />
+            </section>
+          )}
         </div>
       )}
     </PageContainer>

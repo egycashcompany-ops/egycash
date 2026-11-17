@@ -12,6 +12,8 @@ import {
   DecideAttendanceDecisionSchema,
   ListAttendanceDecisionsQuerySchema,
   RevokeAttendanceDecisionSchema,
+  AttendanceDecisionSignalsQuerySchema,
+  ExportAttendanceDecisionsQuerySchema,
 } from '@ecms/contracts';
 import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
@@ -19,6 +21,8 @@ import { authorize } from '../../../../platform/rbac';
 import {
   createDecision,
   decideDecision,
+  decisionSignals,
+  exportDecisions,
   listDecisions,
   revokeDecision,
 } from './decision.controller';
@@ -28,6 +32,23 @@ const IdParamSchema = z.object({ id: objectId() }).strict();
 export const buildAttendanceDecisionsRouter = (): Router => {
   const router = Router();
 
+  // Both literal paths before `/`, so neither is read as a list query.
+  router.get(
+    '/signals',
+    authenticate,
+    authorize('attendance.decide'),
+    validate({ query: AttendanceDecisionSignalsQuerySchema }),
+    asyncHandler(decisionSignals),
+  );
+  // The CSV rides `attendance.export`, the key the attendance CSV already uses: reading a screen
+  // and taking a file off the system are separate grants here, as they are on the audit log.
+  router.get(
+    '/export',
+    authenticate,
+    authorize('attendance.export'),
+    validate({ query: ExportAttendanceDecisionsQuerySchema }),
+    asyncHandler(exportDecisions),
+  );
   router.get(
     '/',
     authenticate,

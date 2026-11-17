@@ -9,7 +9,7 @@ import { type AttendanceDecisionDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Badge, Button, DataTable, type Column, type Tone } from '../../../../shared/ui';
-import { formatDate } from '../../../../shared/lib/format';
+import { formatDate, localized } from '../../../../shared/lib/format';
 import { cairoTime } from './minutes';
 import {
   useDecideAttendanceDecision,
@@ -31,6 +31,7 @@ export const DecisionsTable = ({
   empty,
   canApprove,
   canRevoke,
+  showDecidedBy = false,
 }: {
   rows: AttendanceDecisionDto[];
   loading?: boolean;
@@ -39,6 +40,8 @@ export const DecisionsTable = ({
   empty?: JSX.Element;
   canApprove: boolean;
   canRevoke: boolean;
+  /** The history view names the person; the queue does not need to — it is one manager's ask. */
+  showDecidedBy?: boolean;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -88,6 +91,26 @@ export const DecisionsTable = ({
         </span>
       ),
     },
+    ...(showDecidedBy
+      ? [
+          {
+            key: 'decidedBy',
+            header: t('attendance.changes.decidedBy'),
+            render: (r: AttendanceDecisionDto) => (
+              <span className="text-sm">
+                {r.decidedByName === undefined ? '—' : localized(r.decidedByName, locale)}
+                {r.hrDecidedByName !== undefined && (
+                  <span className="block text-xs text-slate-500">
+                    {t('attendance.changes.approvedBy', {
+                      name: localized(r.hrDecidedByName, locale),
+                    })}
+                  </span>
+                )}
+              </span>
+            ),
+          },
+        ]
+      : []),
     {
       key: 'type',
       header: t('attendance.decision.type'),

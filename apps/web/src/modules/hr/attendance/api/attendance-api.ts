@@ -7,6 +7,7 @@ import {
   type AttendanceDecisionSignalsDto,
   type AttendanceRegularizationDto,
   type AttendanceSheetRowDto,
+  type AttendanceSheetSummaryDto,
   type CreateAttendanceRegularization,
   type CreateShift,
   type CreateShiftAssignment,
@@ -63,6 +64,15 @@ export const listAttendanceSheet = (
   params: QueryParams,
 ): Promise<Paginated<AttendanceSheetRowDto>> =>
   getPage<AttendanceSheetRowDto>(`/hr/attendance/days/sheet${buildQuery(params)}`);
+
+/**
+ * The sheet's counts over the WHOLE day. A sibling read rather than a field on the list, because
+ * the page envelope's `meta` is a shape every list in the product returns.
+ */
+export const attendanceSheetSummary = (
+  params: QueryParams,
+): Promise<AttendanceSheetSummaryDto> =>
+  get<AttendanceSheetSummaryDto>(`/hr/attendance/days/sheet/summary${buildQuery(params)}`);
 
 /** My own days — own by construction on the server; no employee filter is accepted. */
 export const listMyAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>

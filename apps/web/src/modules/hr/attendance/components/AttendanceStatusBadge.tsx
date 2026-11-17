@@ -1,12 +1,30 @@
-// The thirteen day statuses (§3) and the six regularization statuses (§7), toned the way Leave tones
-// its own: a warning is something waiting on a human, a danger is a refusal or an absence, and a
-// neutral is a day nobody owes anything for.
+// The thirteen day statuses (§3) and the six regularization statuses (§7), toned the way Leave
+// tones its own: a warning is something waiting on a human, a danger is a refusal or an absence,
+// and a neutral is a day nobody owes anything for.
+//
+// EACH DAY STATUS ALSO CARRIES AN ICON (stage 6). On a sheet of 1,300 rows the status column is
+// scanned rather than read, and at a glance a tint alone is a poor signal: the amber of «متأخر»
+// and the amber of «انصراف مبكر» are the same amber. The glyph is what separates them in the
+// corner of the eye — and it is what carries the meaning for a reader who cannot separate the two
+// tints at all, which is the whole reason colour is never the only carrier of state here.
 import {
   type AttendanceDayStatus,
   type AttendanceRegularizationStatus,
 } from '@ecms/contracts';
+import { type ComponentType, type SVGProps } from 'react';
 import { useT } from '../../../../platform/localization/useT';
 import { Badge, type Tone } from '../../../../shared/ui';
+import {
+  AlertIcon,
+  CalendarIcon,
+  CheckIcon,
+  CloseIcon,
+  CogIcon,
+  FingerprintIcon,
+  HistoryIcon,
+  MoonIcon,
+  StarIcon,
+} from '../../../../shared/ui/icons';
 
 const DAY_TONE: Record<AttendanceDayStatus, Tone> = {
   present: 'success',
@@ -39,6 +57,32 @@ const DAY_TONE: Record<AttendanceDayStatus, Tone> = {
   incomplete: 'danger',
 };
 
+/**
+ * One glyph per status, chosen so the three AMBER states and the three NEUTRAL ones are still
+ * distinguishable from each other at a glance:
+ *
+ *   · a tick for a clean day, a fingerprint for one the device vouched for and nothing more;
+ *   · an alert for the three that cost somebody minutes, a clock for the day still being waited on;
+ *   · a calendar for leave, a moon for a rest day, a star for a public holiday;
+ *   · a cog for «لا يوجد جدول», because it is the one state a person cannot fix by turning up —
+ *     somebody has to go and configure the roster.
+ */
+const DAY_ICON: Record<AttendanceDayStatus, ComponentType<SVGProps<SVGSVGElement>>> = {
+  present: CheckIcon,
+  checkedIn: FingerprintIcon,
+  late: AlertIcon,
+  earlyLeave: AlertIcon,
+  lateAndEarly: AlertIcon,
+  pending: HistoryIcon,
+  absent: CloseIcon,
+  onLeave: CalendarIcon,
+  weekend: MoonIcon,
+  holiday: StarIcon,
+  dayOff: MoonIcon,
+  noSchedule: CogIcon,
+  incomplete: AlertIcon,
+};
+
 const REGULARIZATION_TONE: Record<AttendanceRegularizationStatus, Tone> = {
   draft: 'neutral',
   pendingManager: 'warning',
@@ -50,11 +94,21 @@ const REGULARIZATION_TONE: Record<AttendanceRegularizationStatus, Tone> = {
 
 export const AttendanceDayStatusBadge = ({
   status,
+  size = 'md',
 }: {
   status: AttendanceDayStatus;
+  size?: 'sm' | 'md' | 'lg';
 }): JSX.Element => {
   const t = useT();
-  return <Badge tone={DAY_TONE[status]}>{t(`attendance.dayStatus.${status}`)}</Badge>;
+  const Icon = DAY_ICON[status];
+  return (
+    <Badge tone={DAY_TONE[status]} size={size}>
+      {/* Decorative: the label beside it already says what this is, so a screen reader that
+          announced the glyph too would simply say it twice. */}
+      <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      {t(`attendance.dayStatus.${status}`)}
+    </Badge>
+  );
 };
 
 export const RegularizationStatusBadge = ({

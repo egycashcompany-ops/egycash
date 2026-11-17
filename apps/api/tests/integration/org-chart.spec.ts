@@ -449,3 +449,141 @@ describe('job places, saved with the job (P-ORG-3 §5.2)', () => {
     expect(change?.new).toEqual(['العمليات › الخزينة']);
   });
 });
+
+describe('section writes from the chart (P-ORG-3 §5.3)', () => {
+  const addSection = async (body: object, token = adminToken) =>
+    request(app).post('/api/v1/platform/org-chart/sections').set('Authorization', `Bearer ${token}`).send(body);
+
+  it('adds a section in the ticked branches: one entry, linked rows with distinct codes, the chart back', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 4));
+    const res = await addSection({
+      departmentCatalogId: String(ops.entry._id),
+      name: { ar: 'التحصيل', en: 'Collection' },
+      branchIds: branches.slice(0, 3),
+    });
+    expect(res.status).toBe(201);
+    const section = data<OrgChartDto>(res).departments[0]?.sections[0];
+    expect(section?.name.en).toBe('Collection');
+    expect(section?.branches).toHaveLength(3);
+    const rows = await SectionModel.find({ catalogId: new Types.ObjectId(section?.sectionCatalogId ?? '') }).lean();
+    expect(rows).toHaveLength(3);
+    expect(new Set(rows.map((r) => r.code)).size).toBe(3);
+  });
+
+  it('refuses a name the department already has — by fold, and by an exact English match', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    await linkedSection({ ar: 'العد والفرز', en: 'Counting' }, ops.entry._id, ops.rows);
+    for (const name of [{ ar: 'العد و الفرز', en: 'Sorting' }, { ar: 'قسم آخر', en: 'counting' }]) {
+      const res = await addSection({ departmentCatalogId: String(ops.entry._id), name, branchIds: [branches[0]] });
+      expect(res.status).toBe(409);
+      expect(errorCode(res)).toBe('ORG_SECTION_NAME_TAKEN');
+    }
+  });
+
+  it('refuses a branch without a linked row of the department, writing nothing', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    await unlinkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches[1] ?? '');
+    const res = await addSection({
+      departmentCatalogId: String(ops.entry._id),
+      name: { ar: 'التحصيل', en: 'Collection' },
+      branchIds: [branches[0], branches[1]],
+    });
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe('BRANCH_WITHOUT_DEPARTMENT');
+    expect(await SectionCatalogModel.countDocuments({})).toBe(0);
+    expect(await SectionModel.countDocuments({})).toBe(0);
+  });
+
+  it('refuses under a stopped department entry, and needs section.create', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const body = { departmentCatalogId: String(ops.entry._id), name: { ar: 'التحصيل', en: 'Collection' }, branchIds: [branches[0]] };
+    expect((await addSection(body, viewerToken)).status).toBe(403);
+    await DepartmentCatalogModel.updateOne({ _id: ops.entry._id }, { $set: { status: 'inactive' } });
+    const res = await addSection(body);
+    expect(res.status).toBe(422);
+    expect(errorCode(res)).toBe('ORG_UNIT_NOT_EDITABLE');
+  });
+
+  it('renames every row of the group, linked or not, and refuses a sibling name or a stale version', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 2));
+    const treasury = await linkedSection({ ar: 'الخزينة', en: 'Treasury' }, ops.entry._id, ops.rows.slice(0, 1));
+    await linkedSection({ ar: 'العد', en: 'Counting' }, ops.entry._id, ops.rows.slice(0, 1));
+    // An unlinked copy in the second branch that joins the group by name.
+    const second = ops.rows[1];
+    const _id = new Types.ObjectId();
+    await SectionModel.create({
+      _id, branchId: second?.branchId, departmentId: second?._id, code: nextCode('S-'),
+      name: { ar: 'الخزينه', en: 'Treasury' }, catalogId: null, status: 'active',
+      path: `${String(second?.branchId)}/${String(second?._id)}/${String(_id)}`,
+    });
+    const url = `/api/v1/platform/org-chart/sections/${String(treasury._id)}`;
+    const clash = await request(app).patch(url).set('Authorization', `Bearer ${adminToken}`).send({ name: { ar: 'العد', en: 'X' }, version: 0 });
+    expect(errorCode(clash)).toBe('ORG_SECTION_NAME_TAKEN');
+    const ok = await request(app).patch(url).set('Authorization', `Bearer ${adminToken}`).send({ name: { ar: 'الصندوق', en: 'Vault' }, version: 0 });
+    expect(ok.status).toBe(200);
+    const names = (await SectionModel.find({ departmentId: { $in: ops.rows.map((r) => r._id) } }).lean()).map((r) => r.name.en);
+    expect(names.filter((n) => n === 'Vault')).toHaveLength(2);
+    const stale = await request(app).patch(url).set('Authorization', `Bearer ${adminToken}`).send({ name: { ar: 'أخرى', en: 'Other' }, version: 0 });
+    expect(errorCode(stale)).toBe('STALE_DOCUMENT');
+  });
+
+  it('stop deactivates every row, keeps the entry active and the places, and lists the rows it stopped', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 2));
+    const treasury = await linkedSection({ ar: 'الخزينة', en: 'Treasury' }, ops.entry._id, ops.rows);
+    const cashier = await job('Cashier', 'أمين خزينة');
+    await JobPlaceModel.create({ jobTitleId: cashier._id, departmentCatalogId: ops.entry._id, sectionCatalogId: treasury._id });
+    const res = await request(app)
+      .post(`/api/v1/platform/org-chart/sections/${String(treasury._id)}/stop`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: 0 });
+    expect(res.status).toBe(200);
+    expect(data<OrgChartDto>(res).departments[0]?.sections).toHaveLength(0);
+    expect(await SectionModel.countDocuments({ catalogId: treasury._id, status: 'active' })).toBe(0);
+    expect((await SectionCatalogModel.findById(treasury._id).lean())?.status).toBe('active');
+    expect(await JobPlaceModel.countDocuments({ sectionCatalogId: treasury._id, isDeleted: false })).toBe(1);
+    const audit = await AuditLogModel.findOne({ 'entityRef.entityId': String(treasury._id), action: 'update' }).lean();
+    expect((audit?.changes.find((c) => c.field === 'stoppedRows')?.new as string[]).length).toBe(2);
+  });
+});
+
+describe('a new department or section is linked when created (P-ORG-3 §5.6, D-ORG3-5)', () => {
+  const createDepartment = async (branchId: string, name: { ar: string; en: string }) =>
+    request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: nextCode('ND-'), branchId, name });
+
+  it('links to the entry its name folds to, and creates one for a new name', async () => {
+    const ops = await linkedDepartment({ ar: 'نقل الأموال', en: 'Cash' }, branches.slice(0, 1));
+    const joined = await createDepartment(branches[1] ?? '', { ar: 'نقل الاموال', en: 'Cash transfer' });
+    expect(joined.status).toBe(201);
+    expect(data<{ catalogId: string | null }>(joined).catalogId).toBe(String(ops.entry._id));
+
+    const fresh = await createDepartment(branches[1] ?? '', { ar: 'الجودة', en: 'Quality' });
+    const entryId = data<{ catalogId: string | null }>(fresh).catalogId;
+    expect(entryId).not.toBeNull();
+    // A department that exists from now has nobody to fill from: marked at once (§7).
+    const { JobPlaceFillModel } = await import('../../src/platform/organization');
+    expect(await JobPlaceFillModel.countDocuments({ departmentCatalogId: new Types.ObjectId(entryId ?? '') })).toBe(1);
+  });
+
+  it('leaves the row unlinked when an unlinked row of that name already exists', async () => {
+    await unlinkedDepartment({ ar: 'قديمة', en: 'Old' }, branches[0] ?? '');
+    const res = await createDepartment(branches[1] ?? '', { ar: 'قديمة', en: 'Old' });
+    expect(res.status).toBe(201);
+    expect(data<{ catalogId: string | null }>(res).catalogId).toBeNull();
+    expect(await DepartmentCatalogModel.countDocuments({})).toBe(0);
+  });
+
+  it('links a new section under its department entry', async () => {
+    const ops = await linkedDepartment({ ar: 'العمليات', en: 'Operations' }, branches.slice(0, 1));
+    const res = await request(app)
+      .post('/api/v1/platform/sections')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: nextCode('NS-'), departmentId: String(ops.rows[0]?._id), name: { ar: 'الحسابات', en: 'Accounts' } });
+    expect(res.status).toBe(201);
+    const entryId = data<{ catalogId: string | null }>(res).catalogId;
+    const entry = await SectionCatalogModel.findById(entryId).lean();
+    expect(String(entry?.departmentCatalogId)).toBe(String(ops.entry._id));
+  });
+});

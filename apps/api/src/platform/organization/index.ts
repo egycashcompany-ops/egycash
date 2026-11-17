@@ -2,7 +2,8 @@
 // unit sub-features (delete guards walk down the fixed hierarchy, Review R12).
 import { branchService } from './branches';
 import { departmentService, departmentRepository } from './departments';
-import { sectionRepository } from './sections';
+import { sectionRepository, sectionService } from './sections';
+import { linkNewDepartmentRow, linkNewSectionRow } from './org-chart/org-chart.link-new';
 import { departmentCatalogService } from './department-catalog';
 import { sectionCatalogService } from './section-catalog';
 import { jobPlaceRepository } from './job-places/job-place.repository';
@@ -12,7 +13,10 @@ branchService.setHooks({
 });
 departmentService.setHooks({
   hasChildren: (departmentId) => sectionRepository.existsUnderDepartment(departmentId),
+  // P-ORG-3 §5.6 (D-ORG3-5): a new row is linked to the company list when it is created.
+  afterCreate: linkNewDepartmentRow,
 });
+sectionService.setHooks({ afterCreate: linkNewSectionRow });
 
 // The catalogs reach DOWN to the units that declare them — a delete guard and a rename fan-out —
 // exactly as the hierarchy's own guards do, and wired here for the same reason: neither feature may
@@ -82,5 +86,7 @@ export {
   type SectionCatalogDoc,
 } from './section-catalog';
 export { effectiveManagerId } from './shared/org-unit';
+export { nextFreeCode, nextFreeCodes } from './shared/next-free-code';
+export { sectionRowFields } from './sections/section-row';
 export { buildOrgChartRouter, orgChartService } from './org-chart';
 export { JobPlaceModel, JobPlaceFillModel, migrateJobPlaceIndexes } from './job-places';

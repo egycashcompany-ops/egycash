@@ -132,6 +132,12 @@ export interface OrgUnitHooks<TDoc extends OrgUnitDoc> {
    * Sections declare it; a Branch has no catalog. It is what a filter folds duplicates on.
    */
   optionCatalogId?: (doc: TDoc) => string | null;
+  /**
+   * Optional: a step after the row exists and is audited, whose answer is what `create` returns.
+   * Departments and sections use it to link a new row to the company list (P-ORG-3 §5.6); it must
+   * never throw — a failure leaves the row as created.
+   */
+  afterCreate?: (doc: TDoc, by: string) => Promise<TDoc>;
 }
 
 export class OrgUnitService<TDoc extends OrgUnitDoc> {
@@ -205,7 +211,7 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
       unitId: String(doc._id),
       change: 'created',
     });
-    return doc;
+    return this.hooks.afterCreate === undefined ? doc : this.hooks.afterCreate(doc, by);
   }
 
   async update(id: string, input: UpdateUnitInput, by: string): Promise<TDoc> {

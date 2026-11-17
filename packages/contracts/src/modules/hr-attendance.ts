@@ -391,8 +391,45 @@ export const ListAttendanceSheetQuerySchema = PaginationQuerySchema.extend({
   date: z.coerce.date(),
   branchId: listQuery(objectId()),
   sectionId: listQuery(objectId()),
+  /**
+   * The quick status filter, on the RESOLVED status — which is not a stored field, so the server
+   * resolves the whole branch-day before paging rather than filtering rows in the database. That
+   * is also what makes the summary counts exact instead of per-page.
+   */
+  status: listQuery(AttendanceDayStatusSchema),
+  /** Name or code, matched the way the employee directory matches them. */
+  search: z.string().trim().min(1).max(100).optional(),
 }).strict();
 export type ListAttendanceSheetQuery = z.infer<typeof ListAttendanceSheetQuerySchema>;
+
+/**
+ * The sheet's counts, over the WHOLE filtered day rather than the page on screen — which is the
+ * only way a card reading "18 absent" can be true while the table shows fifty of thirteen hundred.
+ *
+ * It is a sibling endpoint rather than a field on the list because `Paginated.meta` is a shared
+ * shape the whole product returns, and widening it for one screen would change every list in the
+ * system. The two reads are cached separately and refresh together.
+ *
+ * Every status gets its own count, and the screen groups them: nothing here decides that `late`
+ * is "present", because a count the server has already blended cannot be unblended by a reader
+ * who wants the other grouping.
+ */
+export const AttendanceSheetSummaryQuerySchema = z
+  .object({
+    date: z.coerce.date(),
+    branchId: listQuery(objectId()),
+    sectionId: listQuery(objectId()),
+    search: z.string().trim().min(1).max(100).optional(),
+  })
+  .strict();
+export type AttendanceSheetSummaryQuery = z.infer<typeof AttendanceSheetSummaryQuerySchema>;
+
+export interface AttendanceSheetSummaryDto {
+  date: string;
+  /** Everybody the sheet covers for this date, before any status filter. */
+  total: number;
+  byStatus: Record<AttendanceDayStatus, number>;
+}
 
 /**
  * One line of the daily sheet: an EMPLOYEE, what was expected of them, and the day row if one
@@ -414,6 +451,8 @@ export interface AttendanceSheetRowDto {
   employeeId: string;
   employeeCode: string;
   employeeName: string;
+  /** The employee's photo, for the row's avatar; null is the ordinary case, not an error. */
+  employeePhotoFileId: string | null;
   branchId: string;
   date: string;
   status: AttendanceDayStatus;

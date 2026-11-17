@@ -6,6 +6,7 @@ import {
   type ExportAttendanceQuery,
   type ListAttendanceDaysQuery,
   type ListAttendanceSheetQuery,
+  type AttendanceSheetSummaryQuery,
   type RecomputeAttendanceDays,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../../platform/web';
@@ -41,6 +42,17 @@ export const listAttendanceSheet = async (req: Request, res: Response): Promise<
   const { query } = validated<never, ListAttendanceSheetQuery, never>(req);
   const page = await dayRecordService.sheet(query, scopeSelector(ctx, 'attendance.view'));
   okPage(res, page, (row) => row);
+};
+
+/**
+ * The sheet's counts, over the whole day. A sibling of the list rather than a field on it: the
+ * page envelope's `meta` is a shape every list in the product returns, and widening it for one
+ * screen would change all of them.
+ */
+export const attendanceSheetSummary = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, AttendanceSheetSummaryQuery, never>(req);
+  ok(res, await dayRecordService.sheetSummary(query, scopeSelector(ctx, 'attendance.view')));
 };
 
 export const listMyAttendanceDays = async (req: Request, res: Response): Promise<void> => {

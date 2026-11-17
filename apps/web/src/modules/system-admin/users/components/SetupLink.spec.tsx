@@ -117,7 +117,7 @@ const panel = (
   options: { locale?: Locale; permissions?: string[] } = {},
 ): string => render(<UserSecurityActions user={user(over)} />, options);
 
-const RECIPIENT = { nameAr: 'سارة أحمد', username: '0101469', email: null };
+const RECIPIENT = { nameAr: 'سارة أحمد', username: '0101469', email: null, isEmployee: true };
 
 const LINK: SetupLinkDto = {
   url: 'https://ecms.example.com/activate?token=abc123def456',

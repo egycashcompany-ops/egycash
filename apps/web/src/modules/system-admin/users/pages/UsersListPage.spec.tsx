@@ -100,7 +100,8 @@ vi.mock('../../../organization/shared/references', async (importOriginal) => ({
 
 vi.mock('../../roles/api/role-queries', async (importOriginal) => ({
   ...(await importOriginal<typeof RoleQueries>()),
-  useRoleOptions: (enabled: boolean) => ({
+  // The filter searches the server; here the search answers one role.
+  useRoleSearch: (_term: string, enabled: boolean) => ({
     data: enabled
       ? {
           items: [
@@ -108,7 +109,9 @@ vi.mock('../../roles/api/role-queries', async (importOriginal) => ({
           ],
         }
       : undefined,
+    isFetching: false,
   }),
+  useRolesById: () => [],
 }));
 
 const me = (permissions: string[]): MeDto => ({

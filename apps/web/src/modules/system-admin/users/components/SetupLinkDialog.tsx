@@ -27,6 +27,8 @@ export interface SetupLinkRecipient {
   nameAr: string;
   username: string | null;
   email: string | null;
+  /** An employee's account — only then is the username their code, and called so. */
+  isEmployee: boolean;
 }
 
 /**
@@ -50,6 +52,8 @@ export const SetupLinkPanel = ({
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
   const [copied, setCopied] = useState<'link' | 'message' | null>(null);
+  // Shown when the browser will not copy for us: the link is already on screen, the message is not.
+  const [showMessage, setShowMessage] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
@@ -58,6 +62,7 @@ export const SetupLinkPanel = ({
     username: recipient.username,
     email: recipient.email,
     url: link.url,
+    isEmployee: recipient.isEmployee,
   });
 
   const copy = (what: 'link' | 'message'): void => {
@@ -65,7 +70,12 @@ export const SetupLinkPanel = ({
     // No clipboard over plain HTTP and none in some embedded webviews. The link is already on
     // screen and selectable, so the fallback is to say so rather than to fail silently.
     if (clipboard === undefined) {
-      toast.info(t('systemAdmin.users.setupLink.copyUnavailable'));
+      if (what === 'message') {
+        setShowMessage(true);
+        toast.info(t('systemAdmin.users.setupLink.copyMessageUnavailable'));
+      } else {
+        toast.info(t('systemAdmin.users.setupLink.copyUnavailable'));
+      }
       return;
     }
     void clipboard.writeText(what === 'link' ? link.url : message).then(() => {
@@ -95,6 +105,23 @@ export const SetupLinkPanel = ({
           onFocus={(event) => event.currentTarget.select()}
           className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
         />
+
+        {showMessage && (
+          <>
+            <label htmlFor="setup-link-message" className="sr-only">
+              {t('systemAdmin.users.setupLink.copyMessage')}
+            </label>
+            <textarea
+              id="setup-link-message"
+              readOnly
+              dir="rtl"
+              rows={8}
+              value={message}
+              onFocus={(event) => event.currentTarget.select()}
+              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+            />
+          </>
+        )}
 
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
           <strong className="font-semibold">{t('systemAdmin.users.setupLink.onceTitle')}</strong>{' '}

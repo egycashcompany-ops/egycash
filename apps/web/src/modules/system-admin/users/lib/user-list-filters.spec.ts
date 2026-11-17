@@ -1,7 +1,12 @@
 // One «الأمن» in the filter, however many branches have it — and choosing it means all of them.
 import { describe, expect, it } from 'vitest';
 import { type OrgUnitOptionDto } from '@ecms/contracts';
-import { departmentChoices, departmentIdsFor } from './user-list-filters';
+import {
+  departmentChoices,
+  departmentIdsFor,
+  departmentKeyName,
+  keysOfferedIn,
+} from './user-list-filters';
 
 const unit = (
   id: string,
@@ -49,5 +54,29 @@ describe('departmentIdsFor', () => {
 
   it('ignores a key no longer on offer rather than filtering to nothing', () => {
     expect(departmentIdsFor(DEPARTMENTS, null, ['catalog:gone'])).toEqual([]);
+  });
+});
+
+describe('a branch change keeps only the departments that branch has', () => {
+  const securityKey = (): string =>
+    departmentChoices(DEPARTMENTS, null).find((c) => c.name.ar === 'الأمن')?.key ?? '';
+  const opsKey = (): string =>
+    departmentChoices(DEPARTMENTS, null).find((c) => c.name.ar === 'العمليات')?.key ?? '';
+
+  it('drops a department the new branch has no copy of', () => {
+    // Tanta has «العمليات» only: «الأمن» chosen before must not linger and resolve to nothing.
+    expect(keysOfferedIn(DEPARTMENTS, 'tanta', [securityKey(), opsKey()])).toEqual([opsKey()]);
+  });
+
+  it('keeps every choice when the branch is cleared', () => {
+    expect(keysOfferedIn(DEPARTMENTS, null, [securityKey(), opsKey()])).toEqual([
+      securityKey(),
+      opsKey(),
+    ]);
+  });
+
+  it('names a chosen department from every branch, not only the chosen one', () => {
+    expect(departmentKeyName(DEPARTMENTS, securityKey())?.ar).toBe('الأمن');
+    expect(departmentKeyName(DEPARTMENTS, 'catalog:gone')).toBeNull();
   });
 });

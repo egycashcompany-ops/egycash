@@ -13,9 +13,9 @@
 //     changes nothing.
 //
 // Filters are search, lifecycle status, branch, department, job title and role. The branch
-// filter waited until SA-2, when this module gained its own branch reference surface
-// (`/platform/branches/options`): the only one that existed before lived inside the organization
-// module, which this module may not import.
+// filter has its own reference surface in this module (`/platform/branches/options`); the
+// department and job-title choices come from the organization module's shared reference options,
+// which the Employees list's filters read too.
 //
 // It NARROWS, it never widens. The rows are already scoped server-side, so picking a branch a
 // department-scoped administrator cannot see returns nothing rather than something new — the filter
@@ -27,7 +27,9 @@
 // its department and job title (resolved by the server, retired units included) and the roles it
 // holds right now. Roles — column and filter — are shown only to an administrator who may see
 // roles (`role.view`); the server sends `roles: null` to anyone else and refuses a role filter
-// from them. The department filter lists each COMPANY department once (`user-list-filters.ts`).
+// from them. The role filter SEARCHES the roles on the server and names the chosen ones by id
+// (ADR-019); the department filter lists each COMPANY department once (`user-list-filters.ts`),
+// and never lets a choice that resolves to nothing turn into "no filter".
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -60,8 +62,14 @@ import {
   useDepartmentReferenceOptions,
   useJobTitleReferenceOptions,
 } from '../../../organization/shared/references';
-import { useRoleOptions } from '../../roles/api/role-queries';
-import { departmentChoices, departmentIdsFor } from '../lib/user-list-filters';
+import { useRoleSearch, useRolesById } from '../../roles/api/role-queries';
+import {
+  NO_DEPARTMENT_MATCH,
+  departmentChoices,
+  departmentIdsFor,
+  departmentKeyName,
+  keysOfferedIn,
+} from '../lib/user-list-filters';
 import { AccountStatusBadge, UserStatusBadge } from '../components/UserStatusBadges';
 import { UserFormDialog } from '../components/UserFormDialog';
 import { useBranchOptions, useSystemUsers } from '../api/user-queries';
@@ -111,26 +119,43 @@ export const UsersListPage = (): JSX.Element => {
 
   const can = useCan();
   const seesRoles = can('role.view');
-  const { data: departmentOptions = [] } = useDepartmentReferenceOptions();
+  const departmentsQuery = useDepartmentReferenceOptions();
+  const departmentOptions = useMemo(() => departmentsQuery.data ?? [], [departmentsQuery.data]);
+  // Settled either way: an answer, or a refusal/failure. Until then a chosen department cannot be
+  // turned into ids, and the list waits rather than showing every account for a moment.
+  const departmentsSettled = departmentsQuery.isSuccess || departmentsQuery.isError;
   const { data: jobTitleOptions = [] } = useJobTitleReferenceOptions();
-  const { data: rolePage } = useRoleOptions(seesRoles);
-  const roleOptions = useMemo(
-    () =>
-      seesRoles
-        ? [...(rolePage?.items ?? [])].sort((a, b) =>
-            a.name[locale].localeCompare(b.name[locale], locale),
-          )
-        : [],
-    [rolePage, seesRoles, locale],
-  );
+  const branch = branchId === '' ? null : branchId;
   const departments = useMemo(
-    () => departmentChoices(departmentOptions, branchId === '' ? null : branchId),
-    [departmentOptions, branchId],
+    () => departmentChoices(departmentOptions, branch),
+    [departmentOptions, branch],
   );
   const departmentIds = useMemo(
-    () => departmentIdsFor(departmentOptions, branchId === '' ? null : branchId, departmentKeys),
-    [departmentOptions, branchId, departmentKeys.join(',')],
+    () => departmentIdsFor(departmentOptions, branch, departmentKeys),
+    [departmentOptions, branch, departmentKeys.join(',')],
   );
+  // A chosen department that resolves to nothing — closed since, or the options could not be read —
+  // filters to NOBODY. Dropping it would answer "everybody" under a filter that still looks set.
+  const departmentFilter =
+    departmentKeys.length === 0
+      ? []
+      : departmentIds.length > 0
+        ? departmentIds
+        : departmentsSettled
+          ? [NO_DEPARTMENT_MATCH]
+          : [];
+
+  const [roleTerm, setRoleTerm] = useState('');
+  const roleSearch = useRoleSearch(roleTerm, seesRoles);
+  const chosenRoles = useRolesById(roleIds, seesRoles);
+  const roleOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const q of chosenRoles) if (q.data !== undefined) byId.set(q.data.id, q.data.name[locale]);
+    for (const r of roleSearch.data?.items ?? []) byId.set(r.id, r.name[locale]);
+    // A chosen role whose read failed is still listed, by id, so it can be un-ticked.
+    for (const id of roleIds) if (!byId.has(id)) byId.set(id, id);
+    return [...byId].map(([value, label]) => ({ value, label }));
+  }, [chosenRoles, roleSearch.data, roleIds.join(','), locale]);
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
     const next = new URLSearchParams(sp);
@@ -156,14 +181,17 @@ export const UsersListPage = (): JSX.Element => {
       search,
       ...(status === '' ? {} : { status }),
       ...(branchId === '' ? {} : { branchId }),
-      ...(departmentIds.length === 0 ? {} : { departmentId: departmentIds }),
+      ...(departmentFilter.length === 0 ? {} : { departmentId: departmentFilter }),
       ...(jobTitleIds.length === 0 ? {} : { jobTitleId: jobTitleIds }),
       ...(roleIds.length === 0 || !seesRoles ? {} : { roleId: roleIds }),
     }),
-    [paramsKey, departmentIds.join(','), seesRoles],
+    [paramsKey, departmentFilter.join(','), seesRoles],
   );
 
-  const { data, isLoading, isError, error, refetch } = useSystemUsers(params);
+  const { data, isLoading, isError, error, refetch } = useSystemUsers(
+    params,
+    departmentKeys.length === 0 || departmentsSettled,
+  );
   const rows = data?.items ?? [];
   // `retry: false` on the query — the expected failure is a refusal, and the field's answer to that
   // is to not be there. `?? []` covers both "failed" and "still loading" with the same absence.
@@ -328,7 +356,15 @@ export const UsersListPage = (): JSX.Element => {
           {branches.length > 0 && (
             <Select
               value={branchId}
-              onChange={(e) => patch({ branch: e.target.value || null })}
+              onChange={(e) => {
+                const next = e.target.value === '' ? null : e.target.value;
+                // A department the new branch does not have goes with the change, rather than
+                // lingering in the address and resolving to nothing.
+                const kept = departmentsQuery.isSuccess
+                  ? keysOfferedIn(departmentOptions, next, departmentKeys)
+                  : departmentKeys;
+                patch({ branch: next, dept: kept.length === 0 ? null : joinNameList(kept) });
+              }}
               aria-label={t('systemAdmin.users.filters.branch')}
             >
               <option value="">{t('systemAdmin.users.filters.anyBranch')}</option>
@@ -339,12 +375,21 @@ export const UsersListPage = (): JSX.Element => {
               ))}
             </Select>
           )}
-          {departments.length > 0 && (
+          {(departments.length > 0 || departmentKeys.length > 0) && (
             <MultiSelect
               label={t('systemAdmin.users.columns.department')}
               value={departmentKeys}
               onChange={(next) => patch({ dept: next.length === 0 ? null : joinNameList(next) })}
-              options={departments.map((d) => ({ value: d.key, label: d.name[locale] }))}
+              options={[
+                ...departments.map((d) => ({ value: d.key, label: d.name[locale] })),
+                // A chosen department not offered here is still listed, named, so it can be removed.
+                ...departmentKeys
+                  .filter((key) => !departments.some((d) => d.key === key))
+                  .map((key) => ({
+                    value: key,
+                    label: departmentKeyName(departmentOptions, key)?.[locale] ?? key,
+                  })),
+              ]}
             />
           )}
           {jobTitleOptions.length > 0 && (
@@ -355,12 +400,14 @@ export const UsersListPage = (): JSX.Element => {
               options={jobTitleOptions.map((j) => ({ value: j.id, label: j.name[locale] }))}
             />
           )}
-          {roleOptions.length > 0 && (
+          {seesRoles && (
             <MultiSelect
               label={t('systemAdmin.users.columns.roles')}
               value={roleIds}
               onChange={(next) => patch({ role: writeList(next) })}
-              options={roleOptions.map((r) => ({ value: r.id, label: r.name[locale] }))}
+              options={roleOptions}
+              onSearch={setRoleTerm}
+              searching={roleSearch.isFetching}
             />
           )}
         </FilterBar>

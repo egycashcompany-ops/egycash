@@ -307,6 +307,7 @@ export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element =>
           nameAr: `${user.firstName.ar} ${user.lastName.ar}`.trim(),
           username: user.username,
           email: user.email,
+          isEmployee: user.employeeId !== null,
         }}
         onClose={() => setSetupLink(null)}
       />

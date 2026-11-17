@@ -11076,6 +11076,8 @@ const en: Record<string, string> = {
     'Nothing was sent by the system. Delivering it is up to you.',
   'systemAdmin.users.setupLink.copy': 'Copy link',
   'systemAdmin.users.setupLink.copyMessage': 'Copy message',
+  'systemAdmin.users.setupLink.copyMessageUnavailable':
+    'This browser will not let a page copy for you — the message is shown below; select it and copy it yourself.',
   'systemAdmin.users.setupLink.copied': 'Copied',
   'systemAdmin.users.setupLink.copyUnavailable':
     'This browser will not let a page copy for you — select the link and copy it yourself.',
@@ -25668,6 +25670,8 @@ const ar: Record<string, string> = {
   'systemAdmin.users.setupLink.notSent': 'لم يرسل النظام شيئًا. الإرسال مسؤوليتك أنت.',
   'systemAdmin.users.setupLink.copy': 'نسخ الرابط',
   'systemAdmin.users.setupLink.copyMessage': 'نسخ الرسالة',
+  'systemAdmin.users.setupLink.copyMessageUnavailable':
+    'هذا المتصفح لا يسمح للصفحة بالنسخ نيابة عنك — الرسالة معروضة بالأسفل؛ حدّدها وانسخها بنفسك.',
   'systemAdmin.users.setupLink.copied': 'تم النسخ',
   'systemAdmin.users.setupLink.copyUnavailable':
     'هذا المتصفح لا يسمح للصفحة بالنسخ نيابة عنك — حدّد الرابط وانسخه بنفسك.',

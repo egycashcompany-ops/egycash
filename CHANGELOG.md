@@ -18,8 +18,12 @@ its entry here in the same PR.
     retired units included, so an account in a closed department still shows that department.
   - Each row names the roles held now: a grant that is revoked, not yet started or already ended
     is not one of them. Three show, and the rest fold into «+n» with all of them on hover.
-  - Three new filters, each taking several picks. The department filter lists each company
-    department once and means every branch copy of it, or only the copy in the branch chosen.
+  - Three new filters, each taking several picks.
+    - The department filter lists each company department once and means every branch copy of
+      it, or only the copy in the branch chosen.
+    - Changing the branch drops a chosen department that branch does not have.
+    - A chosen department that matches nothing filters to nobody, rather than being dropped.
+    - The role filter searches the roles on the server (ADR-019).
   - Roles, column and filter, are only for an administrator who holds `role.view`. For anyone
     else the server sends `roles: null` and refuses a role filter with 403 rather than ignoring it.
   - `GET /platform/users` takes `roleId`, `departmentId` and `jobTitleId` lists, and each row is
@@ -33,8 +37,9 @@ its entry here in the same PR.
   - the link itself;
   - where to sign in afterwards: the link's own host, e.g. `ecms.egycash.com.eg`.
 
-  An account with no sign-in name is named by its email instead. The message is always in
-  Arabic, whatever language the screen is in.
+  Only an employee's sign-in name is called «كود الموظف»; any other account is named by its
+  username, or by its email when it has none. The message is always in Arabic, whatever language
+  the screen is in. A browser that will not copy shows the message in the dialog to copy by hand.
 
 - **HR: «جاهزون للتعيين» gets the settings bar, with «مستندات الوظائف» and «المعينون».** «عاوز اعمل
   toggle switch في جاهزون للتعيين … بين مستندات الوظائف و حاجه اسمها المعينون … زي اللي موجود فيي

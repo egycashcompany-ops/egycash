@@ -41,3 +41,38 @@ export const departmentIdsFor = (
     : departmentChoices(departments, branchId)
         .filter((choice) => keys.includes(choice.key))
         .flatMap((choice) => choice.ids);
+
+/**
+ * The chosen keys still offered under `branchId` — what a branch change keeps. Called from the
+ * branch's change handler, never on render: pruning against options that have not loaded yet
+ * would erase a good selection restored from the address bar.
+ *
+ * Without it, «الأمن» chosen and then a branch with no «الأمن» left the key in the address while it
+ * resolved to no ids, so the request went out without a department and every account in the
+ * branch looked filtered.
+ */
+export const keysOfferedIn = (
+  departments: readonly OrgUnitOptionDto[],
+  branchId: string | null,
+  keys: readonly string[],
+): string[] => {
+  const offered = new Set(departmentChoices(departments, branchId).map((choice) => choice.key));
+  return keys.filter((key) => offered.has(key));
+};
+
+/**
+ * The name a chosen key is shown by — from every branch's copies, not just the chosen branch's, so
+ * the filter names it instead of printing its key. Null for a key nothing carries any more.
+ */
+export const departmentKeyName = (
+  departments: readonly OrgUnitOptionDto[],
+  key: string,
+): OrgUnitOptionDto['name'] | null =>
+  departmentChoices(departments, null).find((choice) => choice.key === key)?.name ?? null;
+
+/**
+ * An id no record carries, for a department choice that resolves to nothing — a key whose
+ * department has since closed, or options that could not be read. Sent so the list answers
+ * "nobody" rather than dropping the filter and answering "everybody".
+ */
+export const NO_DEPARTMENT_MATCH = '000000000000000000000000';

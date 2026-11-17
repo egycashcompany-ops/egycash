@@ -6,8 +6,9 @@
 //
 // In Arabic whatever the screen's language: it is written to the person receiving it. The sign-in
 // name is the account's own username, which for an employee IS the employee code (the login is
-// issued as the code, and follows it when the code changes). An account that signs in by email
-// only has no code to quote, so those two lines name the email instead.
+// issued as the code, and follows it when the code changes) — so only an EMPLOYEE's message calls
+// it «كود» / «كود الموظف». Any other account is named by its username, or its email when it has
+// none, with no code in the wording.
 
 export interface SetupLinkMessageInput {
   /** The account's Arabic name, first and last, as the setup dialog names the person. */
@@ -15,6 +16,8 @@ export interface SetupLinkMessageInput {
   /** The account's sign-in name — the employee code for an employee. */
   username: string | null;
   email: string | null;
+  /** An employee's account: only then is the username their code. */
+  isEmployee: boolean;
   /** The setup link itself, `{origin}{basePath}/activate?token=…`. */
   url: string;
 }
@@ -33,9 +36,16 @@ export const signInAddressOf = (url: string): string => {
   }
 };
 
-export const setupLinkMessage = ({ name, username, email, url }: SetupLinkMessageInput): string => {
-  const code = username === null || username.trim() === '' ? null : username.trim();
-  const signInName = code ?? email ?? '';
+export const setupLinkMessage = ({
+  name,
+  username,
+  email,
+  url,
+  isEmployee,
+}: SetupLinkMessageInput): string => {
+  const login = username === null || username.trim() === '' ? null : username.trim();
+  const code = isEmployee ? login : null;
+  const signInName = login ?? email ?? '';
   return [
     `السيد / ${name.trim()}`,
     code === null ? 'هذا الرابط خاص بتفعيل حسابكم' : `هذا الرابط خاص بتفعيل حسابكم كود ${code}`,

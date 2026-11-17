@@ -1359,6 +1359,12 @@ class RbacService {
    * assignments would have to load the whole catalog to render a name — the pattern ADR-019 exists
    * to prevent.
    */
+  async rolesForAssignments(docs: RoleAssignmentDoc[]): Promise<Map<string, RoleDoc>> {
+    if (docs.length === 0) return new Map();
+    const roles = await roleRepository.findByIds([...new Set(docs.map((d) => d.roleId))]);
+    return new Map(roles.map((role) => [String(role._id), role]));
+  }
+
   /**
    * The roles each of these accounts holds right now, deduplicated — a role granted twice (two
    * branches, say) is one role to the reader. A grant whose role has since been deleted names
@@ -1385,12 +1391,6 @@ class RbacService {
     return roleAssignmentRepository.distinctUserIdsInForceForRoles(
       roleIds.map((id) => new Types.ObjectId(id)),
     );
-  }
-
-  async rolesForAssignments(docs: RoleAssignmentDoc[]): Promise<Map<string, RoleDoc>> {
-    if (docs.length === 0) return new Map();
-    const roles = await roleRepository.findByIds([...new Set(docs.map((d) => d.roleId))]);
-    return new Map(roles.map((role) => [String(role._id), role]));
   }
 
   toAssignmentDto(

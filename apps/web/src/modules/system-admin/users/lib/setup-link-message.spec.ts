@@ -12,6 +12,7 @@ describe('setupLinkMessage', () => {
         username: '0101469',
         email: null,
         url: URL_,
+        isEmployee: true,
       }),
     ).toBe(
       [
@@ -32,6 +33,7 @@ describe('setupLinkMessage', () => {
       username: '0207001',
       email: 'sara@ecms.local',
       url: 'https://ecms.egycash.com.eg/activate?token=XYZ',
+      isEmployee: true,
     });
     expect(message).toContain('السيد / سارة أحمد\n');
     expect(message).toContain('كود 0207001');
@@ -46,9 +48,24 @@ describe('setupLinkMessage', () => {
       username: null,
       email: 'admin@ecms.local',
       url: URL_,
+      isEmployee: false,
     });
     expect(message).toContain('هذا الرابط خاص بتفعيل حسابكم\n');
     expect(message).toContain('واسم المستخدم هو admin@ecms.local');
+    expect(message).not.toContain('كود');
+  });
+
+  // A system account may have a username; it is not an employee code and is not called one.
+  it('names a non-employee’s username without calling it a code', () => {
+    const message = setupLinkMessage({
+      name: 'مراجع النظام',
+      username: 'auditor',
+      email: null,
+      url: URL_,
+      isEmployee: false,
+    });
+    expect(message).toContain('هذا الرابط خاص بتفعيل حسابكم\n');
+    expect(message).toContain('واسم المستخدم هو auditor');
     expect(message).not.toContain('كود');
   });
 });

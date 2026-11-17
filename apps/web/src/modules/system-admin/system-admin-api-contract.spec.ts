@@ -148,23 +148,29 @@ describe('the client stays inside what the API accepts', () => {
 
   // Every filter belongs in the URL, so a support conversation can link to the exact view — and so
   // the back button works. A filter held in component state alone would be invisible to both.
-  it('reads all three filters from the URL, and resets the page when one changes', () => {
+  it('reads every filter from the URL, and resets the page when one changes', () => {
     for (const [param, reader] of [
       ['search', "sp.get('q')"],
       ['status', "sp.get('status')"],
       ['branch', "sp.get('branch')"],
+      ['department', "sp.get('dept')"],
+      ['job title', "readList(sp, 'job')"],
+      ['role', "readList(sp, 'role')"],
     ] as const) {
       expect(LIST_PAGE, `${param} is not URL-synced`).toContain(reader);
     }
-    // `patch` clears `page` unless the caller is paging; each filter goes through it.
-    expect(LIST_PAGE).toContain("patch({ branch: e.target.value || null })");
+    // `patch` clears `page` unless the caller is paging; each filter goes through it. The branch
+    // writes the departments it keeps in the same patch (a branch change prunes them).
+    expect(LIST_PAGE).toContain('patch({ branch: next, dept:');
     expect(LIST_PAGE).toMatch(/if \(resetPage && !\('page' in updates\)\) next\.delete\('page'\);/);
   });
 
   // ADR-019 rule 5. The list is paginated by the server; a client that asked for a bigger page to
   // avoid paging is the exact pattern the ADR forbids, and MAX_PAGE_SIZE is 100 anyway.
   it('never raises the page size above the shared default', () => {
-    const code = [CLIENT, QUERIES, LIST_PAGE].join('\n').replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
+    const code = [CLIENT, QUERIES, LIST_PAGE, QUERIES_ROLES]
+      .join('\n')
+      .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
     expect(code).not.toMatch(/pageSize:\s*(?:[5-9]\d|\d{3,})/);
     expect(code).toContain('DEFAULT_PAGE_SIZE = 25');
   });

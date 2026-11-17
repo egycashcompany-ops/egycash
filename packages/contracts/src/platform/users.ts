@@ -152,13 +152,14 @@ export const ListUsersQuerySchema = PaginationQuerySchema.extend({
    * window is open. Answered only for a caller who may see roles (`role.view`); anyone else is
    * refused, because a filter that is quietly ignored returns rows that look filtered and are not.
    */
-  roleId: listQuery(objectId(), 100),
+  roleId: listQuery(objectId()),
   /**
    * The account's placement, ORed within each list. A department is one record PER BRANCH, so a
    * company department chosen on the screen arrives as every branch copy of it — hence the 500.
+   * Job titles and roles are picked one by one, so they keep the default cap.
    */
   departmentId: listQuery(objectId(), 500),
-  jobTitleId: listQuery(objectId(), 200),
+  jobTitleId: listQuery(objectId()),
 }).strict();
 export type ListUsersQuery = z.infer<typeof ListUsersQuerySchema>;
 

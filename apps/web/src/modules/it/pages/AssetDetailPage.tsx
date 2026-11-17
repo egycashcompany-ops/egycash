@@ -470,8 +470,10 @@ export const AssetDetailPage = (): JSX.Element => {
         </Card>
 
         {/* FR-20 — «المستهلكات المركّبة عليه»: what the store issued as installed on this asset
-            (a drive, a stick of memory, a mouse), with who received it and the memo they signed. */}
-        <AssetConsumablesCard assetId={asset.id} />
+            (a drive, a stick of memory, a mouse), with who received it and the memo they signed.
+            It is the store's ledger, so it rides the store's own read grant: without it the card
+            is not drawn and its read is not asked. */}
+        {can('itConsumable.view') && <AssetConsumablesCard assetId={asset.id} />}
 
         <Card>
           <CardHeader title={t('it.assets.sections.record')} />

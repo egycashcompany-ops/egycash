@@ -3,7 +3,8 @@
 // «اعمل شاشه فيها كل المواظفيين اللى مشيوا واللى موجودين ... الفنى يكون من مموظفيين الit بس».
 //
 // Three things have to hold. The register reads in the READER'S scope and carries what each person
-// holds now. The technician list is the IT departments' people and nobody else — and says when no
+// holds now — counted within the reader's ASSET grant, and not at all without it. The technician
+// list is the IT departments' people and nobody else — and says when no
 // department has been chosen rather than answering with an empty list that looks like «nobody
 // matches». And the assign guard refuses anybody who is not a current IT employee, while leaving an
 // unconfigured deployment exactly as it was.
@@ -59,6 +60,10 @@ const page = (items: DirectoryEmployeeListing[]) => ({
 });
 
 const scope = { scope: 'branch', branchId: 'b1' } as never;
+/** One selector per register read grant the reader holds — OR-ed by the directory. */
+const scopes = [scope, { scope: 'own', userId: 'u1' } as never];
+/** The reader's `itAsset.view` — its own selector, so «counted within it» is an assertion. */
+const assetScope = { scope: 'organization', branchId: null } as never;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -74,13 +79,14 @@ describe('the people register', () => {
 
     const result = await itPeopleService.list(
       { status: 'all', sortBy: 'name', sortDir: 'asc', page: 1, pageSize: 25 },
-      scope,
+      scopes,
+      assetScope,
     );
 
     expect(mocks.searchDirectoryEmployees).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'all', scope }),
+      expect.objectContaining({ status: 'all', anyOfScopes: scopes }),
     );
-    expect(mocks.countOpenByEmployees).toHaveBeenCalledWith(['e-0100001', 'e-0100002'], scope);
+    expect(mocks.countOpenByEmployees).toHaveBeenCalledWith(['e-0100001', 'e-0100002'], assetScope);
     expect(result.items.map((p) => [p.code, p.status, p.openCustodyCount])).toEqual([
       ['0100001', 'active', 0],
       ['0100002', 'exited', 2],
@@ -88,11 +94,32 @@ describe('the people register', () => {
     expect(result.items[1]?.exitedAt).toBe('2026-05-01T00:00:00.000Z');
   });
 
+  it('counts no assets for a reader without the asset grant — the register is not asked', async () => {
+    // A lines or store keeper (2026-11-17) finds the people they hand things to, and learns from
+    // the list nothing of how many devices anybody holds.
+    mocks.searchDirectoryEmployees.mockResolvedValue(
+      page([listing('0100001'), listing('0100002')]),
+    );
+    const result = await itPeopleService.list(
+      { status: 'all', sortBy: 'name', sortDir: 'asc', page: 1, pageSize: 25 },
+      scopes,
+      null,
+    );
+    expect(mocks.countOpenByEmployees).not.toHaveBeenCalled();
+    expect(result.items.map((p) => p.openCustodyCount)).toEqual([0, 0]);
+
+    mocks.searchDirectoryEmployees.mockResolvedValue(page([listing('0100001')]));
+    expect((await itPeopleService.get('e-0100001', scopes, null)).openCustodyCount).toBe(0);
+    expect(mocks.countOpenByEmployees).not.toHaveBeenCalled();
+  });
+
   it('answers 404 for a person the reader could not have found by searching', async () => {
     mocks.searchDirectoryEmployees.mockResolvedValue(page([]));
-    await expect(itPeopleService.get('e-x', scope)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(itPeopleService.get('e-x', scopes, assetScope)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
     expect(mocks.searchDirectoryEmployees).toHaveBeenCalledWith(
-      expect.objectContaining({ employeeIds: ['e-x'], status: 'all', scope }),
+      expect.objectContaining({ employeeIds: ['e-x'], status: 'all', anyOfScopes: scopes }),
     );
   });
 });

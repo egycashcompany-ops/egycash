@@ -53,7 +53,7 @@ class ItMobileLineReceiptService {
       employeeName: holder.employeeName,
       employeeCode: holder.employeeCode,
       jobTitle: holder.jobTitle,
-      // Raw here; the controller withholds it from a caller without `itAsset.viewNationalId`.
+      // Raw here; the controller withholds it from a caller without `itMobileLine.viewNationalId`.
       nationalId: holder.nationalId,
       nationalIdVisible: true,
       section: holder.section,

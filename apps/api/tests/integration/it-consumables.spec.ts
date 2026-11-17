@@ -7,8 +7,9 @@
 // quantity written as a delivery, the counters moved with every movement and never below zero —
 // two people issuing the last unit at once, one of them refused — a replacement counted as scrap,
 // ONE memo per issue on its own unbroken series, the ledger naming the person, the asset and the
-// memo, a leaver refused through HR's own answer, a disposed asset refused, the signed copy, and
-// the branch scope.
+// memo, a leaver refused through HR's own answer, a disposed asset refused, the signed copy, the
+// branch scope — and, since 2026-11-17, the store's OWN grants: `itConsumable.*` opens the store,
+// `itAsset.*` no longer does, and an «installed on» still needs the asset grant.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -39,8 +40,14 @@ const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
-let branchAToken: string; // itAsset.view at BRANCH scope, placed in branch A — nothing else
-let keeperAToken: string; // itAsset.view + itAsset.assign at BRANCH scope, placed in branch A
+let branchAToken: string; // itConsumable.view at BRANCH scope, placed in branch A — nothing else
+// itConsumable.view + .assign, and itAsset.view (an «installed on» names a device), at BRANCH
+// scope, placed in branch A
+let keeperAToken: string;
+// itConsumable.view + .assign at BRANCH scope, placed in branch A — and NO asset grant
+let storeOnlyKeeperToken: string;
+// Every asset grant at ORGANIZATION scope — and no consumables grant: the store is closed to it
+let assetsOnlyToken: string;
 let branchAId: string;
 let branchBId: string;
 let typeId: string; // a consumable type — «كابلات»
@@ -196,7 +203,7 @@ beforeAll(async () => {
   branchBId = await mkBranch('91', 'فرع ب', 'Branch B');
 
   const viewerRole = await rbacService.createRole(
-    { name: { en: 'Store viewer', ar: 'مطالع مخزن' }, permissionKeys: ['itAsset.view'] },
+    { name: { en: 'Store viewer', ar: 'مطالع مخزن' }, permissionKeys: ['itConsumable.view'] },
     adminId,
   );
   const viewerId = await mkUser('consumables-viewer@ecms.local', branchAId);
@@ -206,13 +213,36 @@ beforeAll(async () => {
   const keeperRole = await rbacService.createRole(
     {
       name: { en: 'Store keeper', ar: 'أمين مخزن' },
-      permissionKeys: ['itAsset.view', 'itAsset.assign'],
+      permissionKeys: ['itConsumable.view', 'itConsumable.assign', 'itAsset.view'],
     },
     adminId,
   );
   const keeperId = await mkUser('consumables-keeper@ecms.local', branchAId);
   await rbacService.ensureAssignment(keeperId, String(keeperRole._id), 'branch');
   keeperAToken = await login('consumables-keeper@ecms.local');
+
+  const storeOnlyRole = await rbacService.createRole(
+    {
+      name: { en: 'Store keeper, no assets', ar: 'أمين مخزن بلا أصول' },
+      permissionKeys: ['itConsumable.view', 'itConsumable.assign'],
+    },
+    adminId,
+  );
+  const storeOnlyId = await mkUser('consumables-store-only@ecms.local', branchAId);
+  await rbacService.ensureAssignment(storeOnlyId, String(storeOnlyRole._id), 'branch');
+  storeOnlyKeeperToken = await login('consumables-store-only@ecms.local');
+
+  // Every key the store rode until 2026-11-17, organization-wide — and none of its own.
+  const assetsOnlyRole = await rbacService.createRole(
+    {
+      name: { en: 'Assets keeper', ar: 'أمين أصول' },
+      permissionKeys: ['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.assign'],
+    },
+    adminId,
+  );
+  const assetsOnlyId = await mkUser('consumables-assets-only@ecms.local');
+  await rbacService.ensureAssignment(assetsOnlyId, String(assetsOnlyRole._id), 'organization');
+  assetsOnlyToken = await login('consumables-assets-only@ecms.local');
 
   await plantEmployee(EMPLOYEE, '0101002', 'وليد صفوت جلال', 'active');
   await plantEmployee(LEAVER, '0100001', 'شريف ممدوح فاروق', 'exited');
@@ -659,7 +689,93 @@ describe('scope', () => {
     ).toBe(404);
     expect((await current(inA.id)).onHandQty).toBe(10);
 
+    // And on one they CAN see — their own branch's, under their own `itAsset.view`.
+    const assetInA = data<ItAssetDto>(
+      await api.post('/assets', { name: 'Branch A desktop', categoryId, branchId: branchAId }),
+    );
+    const installed = await issue(
+      { lines: [{ consumableId: inA.id, qty: 1, assetId: assetInA.id }] },
+      keeperAToken,
+    );
+    expect(installed.status).toBe(201);
+
     const issued = await issue({ lines: [{ consumableId: inA.id, qty: 1 }] }, keeperAToken);
     expect(issued.status).toBe(201);
+  });
+});
+
+// «فى الصلاحيات مش لاقى حاجة لـ /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات عشان
+// أقدر أتحكم فيها» (2026-11-17): the store answers to `itConsumable.*` and to nothing else.
+describe('the store’s own grants', () => {
+  it('refuses a role holding only the asset grants — on every surface of the store', async () => {
+    const item = await stock();
+    const { memo } = data<ItConsumableIssueResultDto>(
+      await issue({ lines: [{ consumableId: item.id, qty: 1 }] }),
+    );
+    const refused = [
+      await api.get('/consumables', assetsOnlyToken),
+      await api.get(`/consumables/${item.id}`, assetsOnlyToken),
+      await api.get(`/consumables/${item.id}/movements`, assetsOnlyToken),
+      await api.get('/consumable-movements', assetsOnlyToken),
+      await api.get(`/consumable-memos/${memo.id}`, assetsOnlyToken),
+      await api.get('/consumables/transfer-targets', assetsOnlyToken),
+      await api.post(
+        '/consumables',
+        { name: nextName(), typeId, unit: 'قطعة', branchId: branchAId },
+        assetsOnlyToken,
+      ),
+      await api.post(`/consumables/${item.id}/receive`, { qty: 1 }, assetsOnlyToken),
+      await issue({ lines: [{ consumableId: item.id, qty: 1 }] }, assetsOnlyToken),
+    ];
+    expect(refused.map((res) => res.status)).toEqual(refused.map(() => 403));
+    expect((await current(item.id)).onHandQty).toBe(9);
+    // The assets themselves stay theirs.
+    expect((await api.get('/assets', assetsOnlyToken)).status).toBe(200);
+  });
+
+  it('lets a role holding only itConsumable.view read the store — and not the assets', async () => {
+    await stock();
+    const listed = await api.get('/consumables?pageSize=100', branchAToken);
+    expect(listed.status).toBe(200);
+    expect(data<ItConsumableDto[]>(listed).length).toBeGreaterThan(0);
+    expect((await api.get('/consumable-movements', branchAToken)).status).toBe(200);
+    // The types the screen filters and labels by are readable on the store's grant.
+    const types = await api.get('/catalog-items?kind=consumableType', branchAToken);
+    expect(types.status).toBe(200);
+    expect(data<ItCatalogItemDto[]>(types).map((row) => row.id)).toContain(typeId);
+    // The asset register is not.
+    expect((await api.get('/assets', branchAToken)).status).toBe(403);
+    expect((await api.get('/assignments', branchAToken)).status).toBe(403);
+  });
+
+  it('a store keeper without the asset grant issues — but installs on no asset at all', async () => {
+    const item = await stock();
+    // In their own branch: an asset `itAsset.view` would show them, had they held it.
+    const desktop = data<ItAssetDto>(
+      await api.post('/assets', { name: 'Reception desktop', categoryId, branchId: branchAId }),
+    );
+    const onAsset = await issue(
+      { lines: [{ consumableId: item.id, qty: 1, assetId: desktop.id }] },
+      storeOnlyKeeperToken,
+    );
+    expect(onAsset.status).toBe(404);
+    expect((await current(item.id)).onHandQty).toBe(10);
+
+    const plain = await issue({ lines: [{ consumableId: item.id, qty: 1 }] }, storeOnlyKeeperToken);
+    expect(plain.status).toBe(201);
+
+    // What the ledger already names stays named: the device an item went on is part of the
+    // item's record, read under the store's grant.
+    const installed = await issue({
+      lines: [{ consumableId: item.id, qty: 1, assetId: desktop.id }],
+    });
+    expect(installed.status).toBe(201);
+    const ledger = data<ItConsumableMovementDto[]>(
+      await api.get(`/consumables/${item.id}/movements?kind=issued`, storeOnlyKeeperToken),
+    );
+    expect(ledger.find((row) => row.assetId === desktop.id)).toMatchObject({
+      assetCode: desktop.assetCode,
+      assetName: 'Reception desktop',
+    });
   });
 });

@@ -38,7 +38,20 @@ import { type JobValueSource } from './hr-employee.js';
  * `attendance-quantities.ts`, so it contributes zero to every quantity, and a month cannot be
  * frozen until it has passed, by which time the nightly pass has written `absent`.
  *
- * It is never the FINAL answer for a date, and the read paths enforce that: once the work date is
+ * `noSchedule` IS "NOBODY HAS SAID WHEN THIS PERSON WORKS", and it exists because that was being
+ * reported as «يوم راحة». An employee with no shift assignment and no default pattern used to
+ * derive `dayOff` on a Tuesday — a positive claim that the company owed them no work that day,
+ * which nobody had made. It is a gap in the schedule, not a rest day, and HR can act on it only if
+ * the screen says which one it is.
+ *
+ * A REST DAY HAS EXACTLY TWO SOURCES, and neither of them is silence: the work calendar, which
+ * yields `weekend` or `holiday`, and a shift that genuinely does not run that day. `dayOff`
+ * accordingly STAYS in the vocabulary and nothing derives it any more — the same posture as
+ * `incomplete` — because rows written before this carry it.
+ *
+ * It is payroll-neutral for the same reason `dayOff` was: in no quantity group, contributing zero.
+ *
+ * `pending` is never the FINAL answer for a date, and the read paths enforce that: once the work date is
  * in the past a stored `pending` reads as `absent`, because the day ended and nobody arrived. This
  * matters because the branch servers only recompute employees who scanned, so a no-show's row is
  * never rewritten during the day and sits at `pending` until the nightly pass — the resolution is
@@ -57,6 +70,7 @@ export const ATTENDANCE_DAY_STATUSES = [
   'holiday',
   'incomplete',
   'dayOff',
+  'noSchedule',
 ] as const;
 export const AttendanceDayStatusSchema = z.enum(ATTENDANCE_DAY_STATUSES);
 export type AttendanceDayStatus = z.infer<typeof AttendanceDayStatusSchema>;

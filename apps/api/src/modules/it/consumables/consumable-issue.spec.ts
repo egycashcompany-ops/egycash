@@ -70,6 +70,11 @@ const ctx = {
   identity: { displayName: { ar: 'أحمد سمير', en: 'Ahmed Samir' } },
 } as never;
 const scope = { scope: 'branch', userId: 'u', branchId: String(STORE) } as never;
+/**
+ * The ASSET register's scope — the caller's own `itAsset.view` — deliberately not the store's, so
+ * «the asset is read under the asset grant» is an assertion rather than a coincidence.
+ */
+const assetScope = { scope: 'organization', userId: 'u', branchId: null } as never;
 
 const item = (_id: Types.ObjectId, over: Record<string, unknown> = {}) => ({
   _id,
@@ -170,7 +175,12 @@ beforeEach(() => {
 
 describe('one issue, one memo', () => {
   it('moves every line and writes ONE memo in one transaction, its number reserved inside it', async () => {
-    const { memo, consumables } = await itConsumableIssueService.issue(input(), ctx, scope);
+    const { memo, consumables } = await itConsumableIssueService.issue(
+      input(),
+      ctx,
+      scope,
+      assetScope,
+    );
 
     expect(mocks.unitOfWork).toHaveBeenCalledTimes(1);
     expect(mocks.reserve).toHaveBeenCalledWith('consumableMemo:global', 1, SESSION);
@@ -249,7 +259,7 @@ describe('one issue, one memo', () => {
   });
 
   it('counts the damaged unit a replacement takes back as scrap — the shelf gives the new one only', async () => {
-    await itConsumableIssueService.issue(input(), ctx, scope);
+    await itConsumableIssueService.issue(input(), ctx, scope, assetScope);
     const effects = mocks.moveStock.mock.calls.map(
       ([, effect]) => effect as Record<string, number>,
     );
@@ -260,7 +270,7 @@ describe('one issue, one memo', () => {
   });
 
   it('audits each item and the memo — only once the transaction has committed', async () => {
-    await itConsumableIssueService.issue(input(), ctx, scope);
+    await itConsumableIssueService.issue(input(), ctx, scope, assetScope);
 
     const rows = mocks.audit.mock.calls.map(
       ([entry]) =>
@@ -298,7 +308,7 @@ describe('one issue, one memo', () => {
       return item(INK, { onHandQty: 3 });
     });
 
-    await expect(itConsumableIssueService.issue(input(), ctx, scope)).rejects.toThrow(
+    await expect(itConsumableIssueService.issue(input(), ctx, scope, assetScope)).rejects.toThrow(
       /has 0 on hand/,
     );
     expect(mocks.createMemo).not.toHaveBeenCalled();
@@ -317,7 +327,7 @@ describe('what an issue refuses — before anything is written', () => {
 
   it('a leaver — «اللى موجود بس» — before even the items are read', async () => {
     mocks.readReceiptHolder.mockResolvedValue(holderFor('exited'));
-    const attempt = itConsumableIssueService.issue(input(), ctx, scope);
+    const attempt = itConsumableIssueService.issue(input(), ctx, scope, assetScope);
     await expect(attempt).rejects.toBeInstanceOf(BusinessRuleError);
     await expect(attempt).rejects.toThrow(/0101002 has left/);
     expect(mocks.itemsByIds).not.toHaveBeenCalled();
@@ -326,16 +336,16 @@ describe('what an issue refuses — before anything is written', () => {
 
   it('an item the caller cannot see', async () => {
     mocks.itemsByIds.mockResolvedValue([item(INK)]);
-    await expect(itConsumableIssueService.issue(input(), ctx, scope)).rejects.toBeInstanceOf(
-      NotFoundError,
-    );
+    await expect(
+      itConsumableIssueService.issue(input(), ctx, scope, assetScope),
+    ).rejects.toBeInstanceOf(NotFoundError);
     expect(mocks.itemsByIds).toHaveBeenCalledWith([String(INK), String(MOUSE)], scope);
     nothingWritten();
   });
 
   it('a retired item', async () => {
     mocks.itemsByIds.mockResolvedValue([item(INK), item(MOUSE, { active: false })]);
-    await expect(itConsumableIssueService.issue(input(), ctx, scope)).rejects.toThrow(
+    await expect(itConsumableIssueService.issue(input(), ctx, scope, assetScope)).rejects.toThrow(
       'item CON-00002 is inactive and cannot be issued',
     );
     nothingWritten();
@@ -343,7 +353,7 @@ describe('what an issue refuses — before anything is written', () => {
 
   it('more than its store holds', async () => {
     mocks.itemsByIds.mockResolvedValue([item(INK, { onHandQty: 1 }), item(MOUSE)]);
-    await expect(itConsumableIssueService.issue(input(), ctx, scope)).rejects.toThrow(
+    await expect(itConsumableIssueService.issue(input(), ctx, scope, assetScope)).rejects.toThrow(
       'item CON-00001 has 1 on hand and cannot give 2',
     );
     nothingWritten();
@@ -354,7 +364,7 @@ describe('what an issue refuses — before anything is written', () => {
       item(INK),
       item(MOUSE, { branchId: new Types.ObjectId() }),
     ]);
-    await expect(itConsumableIssueService.issue(input(), ctx, scope)).rejects.toThrow(
+    await expect(itConsumableIssueService.issue(input(), ctx, scope, assetScope)).rejects.toThrow(
       /one store's items/,
     );
     nothingWritten();
@@ -362,10 +372,20 @@ describe('what an issue refuses — before anything is written', () => {
 
   it('an asset the caller cannot see', async () => {
     mocks.assetsByIds.mockResolvedValue([]);
-    await expect(itConsumableIssueService.issue(input(), ctx, scope)).rejects.toBeInstanceOf(
+    await expect(
+      itConsumableIssueService.issue(input(), ctx, scope, assetScope),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(mocks.assetsByIds).toHaveBeenCalledWith([String(ASSET)], assetScope);
+    nothingWritten();
+  });
+
+  it('any asset at all, for a caller without the asset grant — the register is not even asked', async () => {
+    // A store keeper given the consumables and not the assets (2026-11-17): the issue must not be
+    // a way to learn which devices exist. The same refusal as an asset out of scope.
+    await expect(itConsumableIssueService.issue(input(), ctx, scope, null)).rejects.toBeInstanceOf(
       NotFoundError,
     );
-    expect(mocks.assetsByIds).toHaveBeenCalledWith([String(ASSET)], scope);
+    expect(mocks.assetsByIds).not.toHaveBeenCalled();
     nothingWritten();
   });
 
@@ -373,7 +393,7 @@ describe('what an issue refuses — before anything is written', () => {
     mocks.assetsByIds.mockResolvedValue([
       { _id: ASSET, assetCode: 'AST-00031', name: 'Lenovo ThinkCentre', status: 'disposed' },
     ]);
-    await expect(itConsumableIssueService.issue(input(), ctx, scope)).rejects.toThrow(
+    await expect(itConsumableIssueService.issue(input(), ctx, scope, assetScope)).rejects.toThrow(
       'asset AST-00031 is disposed; nothing can be installed on it',
     );
     nothingWritten();
@@ -384,7 +404,19 @@ describe('what an issue refuses — before anything is written', () => {
       { employeeId: EMPLOYEE, lines: [{ consumableId: String(INK), qty: 1, reason: 'new' }] },
       ctx,
       scope,
+      assetScope,
     );
+    expect(mocks.assetsByIds).not.toHaveBeenCalled();
+  });
+
+  it('issues to a caller without the asset grant when no line names an asset', async () => {
+    const { memo } = await itConsumableIssueService.issue(
+      { employeeId: EMPLOYEE, lines: [{ consumableId: String(INK), qty: 1, reason: 'new' }] },
+      ctx,
+      scope,
+      null,
+    );
+    expect(memo.lines).toHaveLength(1);
     expect(mocks.assetsByIds).not.toHaveBeenCalled();
   });
 });

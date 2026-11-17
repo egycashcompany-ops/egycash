@@ -538,7 +538,7 @@ describe('the derivation engine over HTTP', () => {
 // INERT until switched on, and a real assignment BEATS it.
 //
 // Every test here puts the switch back, because these settings are process-wide and the rest of
-// this file is written against a shift-less day deriving as `dayOff`.
+// this file is written against a shift-less day deriving as `noSchedule`.
 describe('the default working pattern (1b)', () => {
   const patternCtx = (): AuthContext => ({
     // `settingsService.set` stamps `updatedBy`, so this has to be a real ObjectId.
@@ -600,11 +600,11 @@ describe('the default working pattern (1b)', () => {
     }
   });
 
-  it('is inert until it is switched on — a day with no shift is still dayOff', async () => {
+  it('is inert until it is switched on — a day with no shift has no schedule', async () => {
     const emp = await regEmployee();
     const workday = recentWorkday();
     await recompute(emp.id, workday);
-    expect((await dayRow(emp.id, workday)).status).toBe('dayOff');
+    expect((await dayRow(emp.id, workday)).status).toBe('noSchedule');
   });
 
   it('once on, an unassigned employee with no punches is ABSENT', async () => {
@@ -893,17 +893,27 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     expect(mine?.status).toBe('weekend');
   });
 
-  it('is a day off, not an absence, when nobody said when the person was due', async () => {
-    // The pattern stays OFF here and the employee has no assignment, so there is no hour for them
-    // to be "not yet in" by. An empty day is one the company never claimed. Recomputed first, so
-    // the engine's own answer for the same inputs is what the sheet is checked against.
+  it('says the SCHEDULE IS MISSING, not «يوم راحة», when nobody said when the person was due', async () => {
+    // THE PRODUCTION BUG. The pattern is off and the employee has no assignment, on a working day.
+    // This answered `dayOff`, so every employee on the sheet read «يوم راحة» on a Tuesday — the
+    // company claiming it owed them no work, which nobody had decided, and which hid the real
+    // problem: an empty roster. Recomputed first, so the stored row and the sheet are checked to
+    // give the same answer rather than two.
     const emp = await inBranch();
     const workday = recentWorkday();
     await recompute(emp.id, workday);
-    expect((await dayRow(emp.id, workday)).status).toBe('dayOff');
+    expect((await dayRow(emp.id, workday)).status).toBe('noSchedule');
     const mine = (await sheet(workday)).rows.find((r) => r.employeeId === emp.id);
-    expect(mine?.status).toBe('dayOff');
+    expect(mine?.status).toBe('noSchedule');
     expect(mine?.expectedEndAt).toBeNull();
+  });
+
+  it('a missing schedule does NOT overrule the weekend — that really is a rest day', async () => {
+    // The two answers must stay separate in the direction that matters as well: a Friday is a rest
+    // day for everybody, roster or no roster, and must not start reading «لا يوجد جدول».
+    const emp = await inBranch();
+    const mine = (await sheet(nextWeekendDay())).rows.find((r) => r.employeeId === emp.id);
+    expect(mine?.status).toBe('weekend');
   });
 
   it('reads a row the nightly pass never reached as the absence it turned out to be', async () => {

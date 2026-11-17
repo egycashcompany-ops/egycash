@@ -8,8 +8,9 @@
 // its own minimum is marked in the row: its figure in the warning colour AND a word beside it,
 // since a colour alone says nothing to a reader who cannot tell it apart.
 //
-// Every action is a named movement, offered where the reader's grant allows it — the assets'
-// grants (`itAsset.*`), no key of its own — and where the item allows it: an issue and a scrap
+// Every action is a named movement, offered where the reader's grant allows it — the store's own
+// grants since 2026-11-17 (`itConsumable.*`: «فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها»;
+// it shipped on the assets') — and where the item allows it: an issue and a scrap
 // need something on hand, and a retired item takes no new stock and is issued to nobody (a scrap
 // or a return it still takes: what was already out comes back, what breaks is written off). «صرف لموظف» in the header
 // starts an empty memo; the row's «صرف» starts it with that item. «سجل الحركات» is the ledger of
@@ -322,7 +323,7 @@ export const ConsumablesPage = (): JSX.Element => {
       align: 'end',
       render: (item) => (
         <span className="flex flex-wrap items-center justify-end gap-1">
-          {can('itAsset.edit') &&
+          {can('itConsumable.edit') &&
             item.active &&
             action(
               item,
@@ -330,7 +331,7 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.actions.receive'),
               <DownloadIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.assign') &&
+          {can('itConsumable.assign') &&
             item.active &&
             item.onHandQty > 0 &&
             action(
@@ -339,7 +340,7 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.actions.issue'),
               <UsersIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.edit') &&
+          {can('itConsumable.edit') &&
             item.onHandQty > 0 &&
             action(
               item,
@@ -347,14 +348,14 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.actions.scrap'),
               <TrashIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.assign') &&
+          {can('itConsumable.assign') &&
             action(
               item,
               'return',
               t('it.consumables.actions.return'),
               <ResetIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.assign') &&
+          {can('itConsumable.assign') &&
             item.onHandQty > 0 &&
             action(
               item,
@@ -362,7 +363,7 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.transfer.title'),
               <SwapIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.edit') &&
+          {can('itConsumable.edit') &&
             action(item, 'edit', t('it.consumables.edit'), <EditIcon className="h-4 w-4" />)}
           {action(
             item,
@@ -403,7 +404,7 @@ export const ConsumablesPage = (): JSX.Element => {
                 <HistoryIcon className="h-4 w-4" />
                 {t('it.consumables.movementsLink')}
               </Link>
-              <Can permission="itAsset.assign">
+              <Can permission="itConsumable.assign">
                 <Button
                   size="sm"
                   variant="secondary"
@@ -413,7 +414,7 @@ export const ConsumablesPage = (): JSX.Element => {
                   {t('it.consumables.issueAction')}
                 </Button>
               </Can>
-              <Can permission="itAsset.create">
+              <Can permission="itConsumable.create">
                 <Button
                   size="sm"
                   leftIcon={<PlusIcon className="h-4 w-4" />}
@@ -476,7 +477,7 @@ export const ConsumablesPage = (): JSX.Element => {
         </FilterBar>
 
         <BulkActionBar count={selection.count} onClear={selection.clear}>
-          <Can permission="itAsset.assign">
+          <Can permission="itConsumable.assign">
             <Button
               size="sm"
               variant="secondary"

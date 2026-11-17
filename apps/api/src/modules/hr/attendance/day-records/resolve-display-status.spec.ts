@@ -53,12 +53,21 @@ describe('today, which is the whole reason this function exists', () => {
     expect(resolve({ now: EXPECTED_END })).toBe('absent');
   });
 
-  it('is a day off when nobody said when this person was due', () => {
-    // No assignment and no branch pattern. An empty day is then not a failure to attend — it is a
-    // day the company never claimed, which is the same answer the engine gives for the same reason.
-    expect(resolve({ expectedEnd: null, now: MORNING })).toBe('dayOff');
-    expect(resolve({ expectedEnd: null, now: EVENING })).toBe('dayOff');
-    expect(resolve({ expectedEnd: null, stored: 'pending' })).toBe('dayOff');
+  it('says the schedule is MISSING when nobody said when this person was due', () => {
+    // No assignment and no branch pattern, on a working day. This is the production bug: it
+    // answered `dayOff`, so an entire branch read «يوم راحة» on a Tuesday — a claim that the
+    // company owed them no work, which nobody had made, and which hid the real problem (an empty
+    // roster) behind a settled-looking answer.
+    expect(resolve({ expectedEnd: null, now: MORNING })).toBe('noSchedule');
+    expect(resolve({ expectedEnd: null, now: EVENING })).toBe('noSchedule');
+    expect(resolve({ expectedEnd: null, stored: 'pending' })).toBe('noSchedule');
+  });
+
+  it('still defers to the calendar — a missing roster does not overrule a weekend', () => {
+    // The two are different answers to different questions, and the calendar's comes first: a
+    // Friday is a rest day for everybody whether or not their schedule was ever filled in.
+    expect(resolve({ expectedEnd: null, calendar: 'weekend' })).toBe('weekend');
+    expect(resolve({ expectedEnd: null, calendar: 'holiday' })).toBe('holiday');
   });
 });
 
@@ -77,6 +86,7 @@ describe('a settled row answers for itself, whatever the clock says', () => {
     'holiday',
     'incomplete',
     'dayOff',
+    'noSchedule',
   ] as const;
 
   it.each(settled)('%s is returned untouched, today and in the past', (status) => {

@@ -125,15 +125,29 @@ export const useItBranchOptions = () =>
   });
 
 /**
- * The branches «نقل إلى فرع» and «تحويل إلى فرع» may go to, as the server judges the caller's
- * `itAsset.assign` (`GET /it/assets/move-targets`). Asked only while a dialog is OPEN: both
- * dialogs stay mounted on pages anyone with `itAsset.view` opens, and the route answers 403 to
- * whoever lacks the grant. Its own subtree: no asset or item write changes a grant's reach.
+ * The branches «نقل إلى فرع» may take assets to, as the server judges the caller's
+ * `itAsset.assign` (`GET /it/assets/move-targets`). Asked only while the dialog is OPEN: it stays
+ * mounted on pages anyone with `itAsset.view` opens, and the route answers 403 to whoever lacks
+ * the grant. Its own subtree: no asset write changes a grant's reach.
  */
 export const useItMoveTargets = (enabled: boolean) =>
   useQuery({
     queryKey: listKey(MODULE, 'moveTargets'),
     queryFn: api.moveTargets,
+    enabled,
+  });
+
+/**
+ * The branches «تحويل إلى فرع» may send consumables to, as the server judges the caller's
+ * `itConsumable.assign` (`GET /it/consumables/transfer-targets`) — the store's own grant, not the
+ * assets'. Asked only while the dialog is OPEN, for the same reason as the assets' list. Its own
+ * subtree, apart from the assets' (two grants, two reaches) and from the consumables' (no item
+ * write changes a grant's reach, so none refetches it).
+ */
+export const useItConsumableTransferTargets = (enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'consumableTransferTargets'),
+    queryFn: api.consumableTransferTargets,
     enabled,
   });
 

@@ -27,17 +27,17 @@ export const resolveConsumableMemoCategoryId = async (): Promise<string> => {
 };
 
 /**
- * Reads need `itAsset.view`, writes `itAsset.assign` — the issue's own grants — and the memo must
- * be one the caller can see, under the branch scope every custody read uses.
+ * Reads need `itConsumable.view`, writes `itConsumable.assign` — the issue's own grants — and the
+ * memo must be one the caller can see, under the branch scope every custody read uses.
  */
 export const consumableMemoFileAuthorizer: FileEntityAuthorizer = {
   entityType: 'consumableMemo',
   async authorize({ ctx, entityId, intent }): Promise<boolean> {
-    const permission = intent === 'write' ? 'itAsset.assign' : 'itAsset.view';
+    const permission = intent === 'write' ? 'itConsumable.assign' : 'itConsumable.view';
     if (!hasPermission(ctx, permission)) return false;
     const memo = await itConsumableMemoRepository.findById(
       entityId,
-      scopeSelector(ctx, 'itAsset.view'),
+      scopeSelector(ctx, 'itConsumable.view'),
     );
     return memo !== null;
   },

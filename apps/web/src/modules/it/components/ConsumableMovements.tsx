@@ -23,6 +23,7 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { useAppSelector } from '../../../store';
 import { Badge, type Tone } from '../../../shared/ui/Badge';
 import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
@@ -85,7 +86,12 @@ export const useConsumableMovementColumns = ({
   by = true,
 }: MovementColumnOptions = {}): Column<ItConsumableMovementDto>[] => {
   const t = useT();
+  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // The person's history (`/it/employees/:id`) and the asset's page are the ASSETS' screens: a
+  // reader of the store who is not one of the assets reads both names as text — the movement still
+  // says who received it and what it went into — rather than following a link to «no access».
+  const linksToAssets = can('itAsset.view');
   const types = useItCatalog('consumableType');
   const typeName = new Map(
     (types.data?.items ?? []).map((type) => [type.id, localized(type.name, locale)] as const),
@@ -151,6 +157,7 @@ export const useConsumableMovementColumns = ({
       render: (m) => {
         const label = movementEmployee(m);
         if (m.employeeId === null || label === null) return '—';
+        if (!linksToAssets) return label;
         return (
           <Link to={`/it/employees/${m.employeeId}`} className="hover:underline">
             {label}
@@ -163,13 +170,15 @@ export const useConsumableMovementColumns = ({
       header: t('it.consumables.movements.columns.installedOn'),
       render: (m) => {
         if (m.assetId === null) return '—';
+        const label = movementAsset(m) ?? t('it.custody.assetUnknown');
+        if (!linksToAssets) return <span data-installed-on={m.assetId}>{label}</span>;
         return (
           <Link
             to={`/it/assets/${m.assetId}`}
             data-installed-on={m.assetId}
             className="text-brand-700 hover:underline dark:text-brand-300"
           >
-            {movementAsset(m) ?? t('it.custody.assetUnknown')}
+            {label}
           </Link>
         );
       },
@@ -239,7 +248,9 @@ const CARD_PAGE_SIZE = 10;
 
 /**
  * A card of the ledger narrowed to one asset or one person — newest first, a page at a time, read
- * under the page's own grant (`itAsset.view`), which is the ledger's.
+ * under the ledger's own grant (`itConsumable.view`). The asset's page and a person's history are
+ * the assets' screens, so each page draws its card only for a reader who also holds the store's
+ * grant — a card of 403s is not drawn, and its read is not asked.
  */
 const MovementsCard = ({
   title,

@@ -745,7 +745,10 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    * The platform directory's register (`searchDirectoryEmployees`): HR's own match — the same
    * `search` over code, applicant code and normalised name that HR's list uses — one page at a
    * time, in the caller's scope when one is handed over and unscoped when the caller has already
-   * bounded who it is asking about.
+   * bounded who it is asking about. `anyOfScopes` finds a person ANY of several selectors reaches:
+   * each is this repository's own scope filter, and the filters are OR-ed — an exact union, which
+   * no single selector can say (an `own` grant beside a branch grant, two grants over different
+   * branches). One that narrows nothing (organization) narrows nothing; an empty list is nobody.
    */
   async searchDirectory(params: {
     search?: string | undefined;
@@ -756,6 +759,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     sortBy?: 'name' | 'code' | undefined;
     sortDir?: 'asc' | 'desc' | undefined;
     scope?: ScopeSelector | undefined;
+    anyOfScopes?: readonly ScopeSelector[] | undefined;
     page: number;
     pageSize: number;
   }): Promise<Paginated<EmployeeDoc>> {
@@ -769,8 +773,14 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       ?.filter((id) => Types.ObjectId.isValid(id))
       .map((id) => new Types.ObjectId(id));
     const sortField = params.sortBy === 'code' ? 'code' : 'personal.fullNameAr';
+    const clauses: FilterQuery<EmployeeDoc>[] = [matched];
+    if (ids !== undefined) clauses.push({ _id: { $in: ids } });
+    if (params.anyOfScopes !== undefined) {
+      const anyOf = this.anyOfScopesFilter(params.anyOfScopes);
+      if (Object.keys(anyOf).length > 0) clauses.push(anyOf);
+    }
     return this.list({
-      filter: ids === undefined ? matched : { $and: [matched, { _id: { $in: ids } }] },
+      filter: clauses.length === 1 ? matched : { $and: clauses },
       page: params.page,
       pageSize: params.pageSize,
       sortBy: sortField,
@@ -779,6 +789,14 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       ...employeeCodeSort('code', sortField, params.sortDir ?? 'asc'),
       ...(params.scope === undefined ? {} : { scope: params.scope }),
     });
+  }
+
+  /** The OR of each selector's own scope filter — see `searchDirectory`. */
+  private anyOfScopesFilter(selectors: readonly ScopeSelector[]): FilterQuery<EmployeeDoc> {
+    if (selectors.length === 0) return { _id: { $in: [] } };
+    const filters = selectors.map((selector) => this.scopeFilter(selector));
+    if (filters.some((filter) => Object.keys(filter).length === 0)) return {};
+    return filters.length === 1 ? (filters[0] as FilterQuery<EmployeeDoc>) : { $or: filters };
   }
 
   async listEmployees(params: {

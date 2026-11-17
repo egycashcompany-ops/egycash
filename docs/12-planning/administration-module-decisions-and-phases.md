@@ -190,7 +190,8 @@ name. ECMS code refuses writes until such an index exists (IT's `collectionReady
   the indexes present and builds nothing.
 - **Fail closed, per collection.** `syncDeclaredIndexes` never throws: a failed build is a line in its report and the
   sync moves on (`apps/api/src/shared/base/index-sync.ts:333-337, 448-450`). So every module repository whose
-  collection carries a `ux_*` index declares `readonly ensureCollection = collectionReady(Model)`, from
+  collection carries a `ux_*` index declares `readonly ensureCollection = collectionReady(Model)` (the bookkeeping
+  models, which have no repository, hold one in their own functions, §2.1 note 10), from
   `shared/collection-ready.ts` (P1a.1), a copy of IT's (`apps/api/src/modules/it/mobile-lines/ensure-collection.ts:18-30`),
   and awaits it before its first write and before any transaction that writes the collection, as IT's store does
   (`apps/api/src/modules/it/consumables/consumable-history.ts:221-234`). The build runs once per process. A failed build
@@ -380,7 +381,7 @@ preferably before P3 (§11.2).
 | Kind | What | When it runs | Approved by | Rules |
 |---|---|---|---|---|
 | 1. Boot-safe | index builds (§15.3.2); create-if-missing seeds (counters with a `$max` floor, file categories, templates); the platform's own syncs; managed roles (D-20); repairs that only add | every boot (§15.1) | the pull request's review | Fleet's three rules: nothing deleted, nothing invented, re-running changes nothing (`modules/fleet/fleet.migration.ts:1-12`); duplicate-key tolerant, because seeds run concurrently (RK-28) |
-| 2. Go-live loads | OD-63 B's counted opening file; OD-68's master-data load when it comes as a file | once per versioned run key, started by the deploy (IT's precedent: `server.ts:142` and `worker.ts:110` start `startItConsumablesOpeningGoLive`) | the owner, on the file itself, reviewed with him in its pull request ("reviewed with the owner", `it/go-live/consumables-opening.ts:4`) | rows validated with the screens' schemas; refusal rather than a partial load; the run row written last; audit after commit. Recommended: the first deploy only reports what it would load, behind an environment switch, as `INDEX_SYNC_MODE` does for indexes (`infrastructure/config/env.ts:204`), standing in for class 3's dry run |
+| 2. Go-live loads | OD-63 B's counted opening file; OD-68's master-data load when it comes as a file | once per versioned run key, started by the deploy (IT's precedent: `server.ts:142` and `worker.ts:110` start `startItConsumablesOpeningGoLive`) | the owner, on the file itself, reviewed with him in its pull request ("reviewed with the owner", `it/go-live/consumables-opening.ts:4`) | rows validated with the screens' schemas; refusal rather than a partial load; the run row written last; audit after commit. Recommended for OD-63 B's counted opening file, where a wrong quantity is the costly mistake (OD-68's master-data load follows IT's steps, which have no such mode): the first deploy only reports what it would load, behind an environment switch, as `INDEX_SYNC_MODE` does for indexes (`infrastructure/config/env.ts:204`), standing in for class 3's dry run |
 | 3. Migrations and merges | the supplier merge (§15.3.5 a), IT stores (b), a change to the name fold (e), any backfill or destructive operation | operator CLI only; never at boot, never as a side effect of a feature slice (D-17) | the owner, on the production dry run's output | ADR-031's discipline (§15.3.5) |
 
 No class-3 operation runs against production without the owner's explicit approval of its dry-run output (D-17). The
@@ -1975,7 +1976,7 @@ slices; **Platform** — a platform slice; **Owner** — a §16 decision; **Repo
 | RK-30 | **Rolling a phase back leaves rows behind.** Redeploying an earlier release re-runs the boot sync, which deletes permissions no longer declared (`platform/rbac/rbac.service.ts:591`) and rewrites super-admin's keys (`:599`), while navigation rows are additive and never removed (`seed-navigation.ts:891`): rows whose keys have vanished stay, and so do the phase's collections, counters, indexes, file categories and templates. | L | M | Each phase's pull request carries a short rollback note: what stays, and what an operator may clean and how; roll forward by preference; any cleanup of data is class 3 (§15.3.7), never a side effect of the rollback. | Ops, Module |
 | RK-31 | **A department reference the org-catalog merge cannot see.** `migrate:org-catalog --merge` repoints only paths named exactly `departmentId` or ending in `DepartmentIds` (`apps/api/src/org-catalog-migration/references.ts:51-54`), and reads `Mixed` only in two named carriers (`:10-16, 178-201`); a reference named otherwise, or held in `Mixed`, silently keeps pointing at a retired department. | M | M | §15.3.4's naming rule (§2.1, §7.7), checked in review; `references.spec.ts:188-200`'s exact list catches a new array path, but nothing catches a misnamed scalar, so the rule is a pull-request checklist item. | Module |
 | RK-32 | **Procurement policy changed outside the module key (the settings bypass).** The value bands and tolerances are organization-scope platform settings (§15.1), and the settings service authorizes every write by the platform key `setting.edit` and its scope (`apps/api/src/platform/settings/settings.service.ts:179-200`). Any `setting.edit` holder at organization scope can therefore change them through the generic `PATCH /api/v1/platform/settings/values` (`apps/api/src/platform/settings/settings.routes.ts:19-25`) without `administrationProcurementPolicy.manage`, and the audit records only `platform/setting` (`settings.service.ts:249-259`); `platform-admin` holds every platform key (`platform/rbac/rbac.service.ts:602-604`). | M | H | The declaration's Zod schema carries every domain check; an object value is read-only on the generic screen (`apps/web/src/modules/system-admin/settings/lib/settings-view.ts:69-81`), and the screen can show a key with no field and a link to its owning screen instead (`MANAGED_ELSEWHERE`, `apps/web/src/modules/system-admin/settings/lib/settings-catalog.ts:131-153`), which leaves the `PATCH` open; a band is stamped at submission, so an edit never re-routes an in-flight PO (§6.4 item 2). Closing the bypass is a sub-question of OD-18 (recommended default: a module-owned policy record or an owning key; §6.7). | Owner, Module, Platform |
-| RK-33 | **Series contention and long posting transactions.** A posting's first write is its series counter's `$inc` (§2.4.4), held until commit, so every other posting of that series meets a write conflict and retries for as long as the holder's transaction runs. `unitOfWork` is a plain `session.withTransaction` (`apps/api/src/platform/kernel/unit-of-work.ts:5-17`), whose driver retry stops after 120 s (MongoDB driver 6.21.0, `package-lock.json:9827-9829`). No length is measured for a 100-line posting or for a count start that claims every row of a warehouse, and in-transit legs write the same balance rows as a count's posting (§2.4.6). | M | M | §2.4's capacity assumptions until OD-85 is answered (≤ 30 warehouses, ≤ 5,000 items, ≤ 3,000 stock documents a month, ≤ 100 lines a document, ≤ 5 postings a minute per series). Gates, each on staging before its phase ships, against the thresholds of §18.3.2 (P5: the slowest of 5 concurrent 100-line postings in one series commits within 5 s) and §18.3.3 (P7: a count's start and its posting on the largest warehouse each commit within 10 s alongside a concurrent posting). If the P5 measurement misses its threshold, per-branch series (OD-58 B) are adopted before P5 ships; if the P7 measurement misses its threshold, counts are split by category scope (OD-48). Both numbers are re-set at the phase's re-detail if OD-85's volumes differ (§18.3). | Module, Owner |
+| RK-33 | **Series contention and long posting transactions.** A posting's first write is its series counter's `$inc` (§2.4.4), held until commit, so every other posting of that series meets a write conflict and retries for as long as the holder's transaction runs. `unitOfWork` is a plain `session.withTransaction` (`apps/api/src/platform/kernel/unit-of-work.ts:5-17`), whose driver retry stops after 120 s (MongoDB driver 6.21.0, `package-lock.json:9827-9829`). No length is measured for a 100-line posting or for a count start that claims every row of a warehouse, and in-transit legs write the same balance rows as a count's posting (§2.4.6). | M | M | §2.4's capacity assumptions until OD-85 is answered (≤ 30 warehouses, ≤ 5,000 items, ≤ 3,000 stock documents a month, ≤ 100 lines a document, ≤ 5 postings a minute per series). Gates, each on staging before its phase ships, against the thresholds of §18.3.2 (P5: the slowest of 5 concurrent 100-line postings in one series commits within 5 s) and §18.3.3 (P7: a count's start and its posting on the largest warehouse each commit within 10 s alongside a concurrent posting). If the P5 measurement misses its threshold, per-branch series (OD-58 B) are adopted before P5 ships; if the P7 measurement misses its threshold, counts are split by category scope (OD-48). | Module, Owner |
 | RK-34 | **A permanently deleted employee's name on kept records.** HR's permanent delete rewrites a purged person's name copies on `keep` collections, so that the person is removed everywhere, but refuses any path inside a subdocument or array (`apps/api/src/modules/hr/employee-management/employees/employee-name-copies.ts:9-12, 250-261`). Names inside arrays (approval trails, count teams) therefore stay on posted documents. | M | M | D-22 from P2: a single person on a document carries a top-level name the purge scrubs; names inside arrays are classified `leave`, a recorded gap (§15.3.3). OD-64 asks whether a name may stay at all. Changing the shape after P2 is a class-3 backfill of posted documents (§15.3.7). | Owner, Module |
 
 ---
@@ -2027,7 +2028,7 @@ enter only through opening balances, or through an approved `adjustmentIn` (OD-3
 receipt without a PO is OD-33 B.
 
 **Cross-cutting prerequisites.** This table is the single source for what each phase waits for outside the module
-(§15.5 and §18.3 point here; §18.2 draws the same edges). Each lands before the first phase that needs it, as its own
+(§15.5 and §18.3 point here; §18.2 draws the platform slices and PC-1, PC-12 and PC-13 among them). Each lands before the first phase that needs it, as its own
 pull request outside the module, never mixed with module code.
 
 | Prerequisite | Before | Why |
@@ -2396,7 +2397,10 @@ The architecture guards start checking in this order:
 ### 19.1 Scope and pull requests
 
 Phase 1 ships master data and nothing that moves stock or money. It is the IT-1 + ITW-1 equivalent, in six pull
-requests if OD-81 lets a phase ship as several (else six steps of one):
+requests if OD-81 lets a phase ship as several (else six steps of one). Its first pull request opens with a drift check
+of §19 against the code it starts from: this design cites `4c0fa1b0`, and `main` has moved since (the pins, counts and
+line numbers of files such as `apps/web/src/platform/localization/i18n.ts`, the settings pins and the remembered-filter
+list). Whatever moved is re-pinned and recorded in §22; only a change of behavior would be a design question.
 
 | Pull request | Content | Depends on |
 |---|---|---|
@@ -2430,9 +2434,9 @@ requests if OD-81 lets a phase ship as several (else six steps of one):
 | Data load | OD-03; OD-68 (recommended default: A): the owner's files, reviewed with him, loaded once by a versioned go-live step (IT `go-live/`): units, categories and items in P1a.2, suppliers in P1b.1 (§19.8) | hand entry (OD-68 B), or an in-app import with preview (OD-68 C) |
 | Permission-matrix section | adopted at approval by the owner or reviewers: an Administrative Affairs section in `docs/06-security/permission-matrix.md` under governance rule 2 (`:105`), per phase | not adopted: §6.2 is the module's matrix, as the owner's brief item 5 asks |
 
-A non-recommended answer to any row above re-opens Phase 1 for the pull requests it names: their §19.1 rows, §19.3
-routes, §19.4 contracts, §19.7 specs, §19.8 files and §19.10 criteria are re-detailed, design-reviewed and recorded in
-§22 before the first of those pull requests. The freeze then covers the revised §19.
+A non-recommended answer to any row above re-opens Phase 1 for the parts it names: the §19.1 rows, §19.3
+routes, §19.4 contracts, §19.7 specs, §19.8 files and §19.10 criteria those parts touch are re-detailed, design-reviewed
+and recorded in §22 before the first pull request that carries them. The freeze then covers the revised §19.
 
 ### 19.3 API endpoints
 
@@ -2709,7 +2713,7 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | `administration.mappers.ts` | C, M | P1a.1; P1a.2, P1a.3, P1b.1 | doc → DTO; the labels of §19.4's list table via `findByIdsSystem`, the keeper via `getDirectoryEmployees` |
 | `administration-scope-guards.spec.ts` | C, M | P1a.1; P1a.3, P1b.1 | scope options declared everywhere (the payroll `department-scope-guards.spec.ts` shape) |
 | `administration-isolation.spec.ts` | C | P1a.1 | no import from another module's folder (§3.7) |
-| `shared/collection-ready.ts` + `.spec.ts` | C | P1a.1 | `collectionReady(model)`, a copy of `apps/api/src/modules/it/mobile-lines/ensure-collection.ts:18-30`: built once per process, a failure forgotten so the next write retries. Every module repository whose collection carries a `ux_*` index declares `readonly ensureCollection = collectionReady(Model)` and awaits it before its first write, and before any transaction that writes it (`apps/api/src/modules/it/consumables/consumable-history.ts:221-234`): units and categories (P1a.1), items and the counter (P1a.2), warehouses (P1a.3), suppliers (P1b.1), the ledger and balances (P5) |
+| `shared/collection-ready.ts` + `.spec.ts` | C | P1a.1 | `collectionReady(model)`, a copy of `apps/api/src/modules/it/mobile-lines/ensure-collection.ts:18-30`: built once per process, a failure forgotten so the next write retries. Every module repository declares `readonly ensureCollection = collectionReady(Model)`, and the bookkeeping models (counter, balances, go-live runs) hold one in their own functions (§2.1 note 10); each awaits it before its first write, and before any transaction that writes it (`apps/api/src/modules/it/consumables/consumable-history.ts:221-234`): units and categories (P1a.1), items and the counter (P1a.2), warehouses (P1a.3), suppliers (P1b.1), the balances and the ledger (P5; the ledger has no `ux_*` index but is first written inside the posting transaction) |
 | `shared/org-authority.ts` + `.spec.ts` | C | P1a.1 | `assertAdministrationOrgAuthority` (§6.7), naming the module's keys over `assertOrganizationScope` (`apps/api/src/shared/base/org-authority.ts`, PC-12), which ATM's `assertAtmSettingsManager` (`apps/api/src/modules/atm/shared/settings-authority.ts:12-20`) and its bank rule ("a bank is company-wide", `apps/api/src/modules/atm/catalogs/bank.service.ts:131-138`) call |
 | `shared/counter.model.ts` | C | P1a.2 under OD-05 A (P1a.1 under B, P2 under C) | `administration_counters`, the module's counter model built with the shared counter factory (`apps/api/src/shared/base/counter.ts`, PC-13): ensured outside the transaction, moved inside it |
 | `shared/document-number.ts` + `.spec.ts` | C | with the counter | series keys and floors: the master codes now, document series from P2; the formatters live in contracts (§2.8) |
@@ -2722,7 +2726,7 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 | `procurement/suppliers/supplier.{…}.ts`, `supplier-rules.ts` + spec, `supplier-audit.ts` + spec, `index.ts` | C | P1b.1 | suppliers |
 | `procurement/suppliers/supplier-files.ts` | C if OD-11 | P1b.1 | category `administration-supplier-documents`; authorizer `administration/supplier` (read `.view`, write `.edit`, §11.3); the three paper endpoints, with the organization-scope check |
 | `go-live/<list>-import.ts` + spec | C if OD-68 A | P1a.2 (units, categories, items); P1b.1 (suppliers) | pure: the file's shape and rows, validated with the screens' Create schemas, and the folded-name match that makes a row naming a live record that record (IT's `apps/api/src/modules/it/go-live/consumables-opening-import.ts` shape) |
-| `go-live/<list>.ts` | C if OD-68 A | the same | the boot step: every collection it writes awaits its `ensureCollection` before the one transaction (`apps/api/src/modules/it/go-live/consumables-opening.ts:161-163`); a versioned run key in IT's shape (`go-live:administration-<list>-<yyyy-mm>:v1`, as `apps/api/src/modules/it/go-live/consumables-opening.ts:77-78`); the run row written last, in the same transaction; an audit `create` per row after commit |
+| `go-live/<list>.ts` | C if OD-68 A | the same | the boot step: it creates each row through the owning feature's exported create function with its session (§3.4), so `catalog/*` and `procurement/suppliers` stay the sole writers of their collections (§3.3); every collection the transaction writes awaits its `ensureCollection` before it (`apps/api/src/modules/it/go-live/consumables-opening.ts:161-163`); a versioned run key in IT's shape (`go-live:administration-<list>-<yyyy-mm>:v1`, as `apps/api/src/modules/it/go-live/consumables-opening.ts:77-78`); the run row written last, in the same transaction; an audit `create` per row after commit |
 | `shared/go-live-run.model.ts` | C if OD-68 A | the first of those pull requests | the run marker (`it/go-live/go-live-run.model.ts`), in `administrationModels`, so `sync-indexes.models.ts` does not change; otherwise it arrives in P5 under OD-63 B |
 | `apps/api/assets/administration-go-live/<list>-<yyyy-mm>.json` | C if OD-68 A | the same as its step | the owner's file, reviewed with him before it is committed, as IT's are (`apps/api/assets/it-go-live/`; `tsup.config.ts:47` copies `assets/` into the build); no supplier contact data: contacts are typed in the app after the load (§15.3.5 d) |
 
@@ -2756,7 +2760,7 @@ C = create, M = modify; "C, M" = created in the first pull request listed and mo
 |---|---|---|---|
 | `apps/api/tests/integration/helpers/administration-fixtures.ts` | C | P1a.1 | users, scoped roles, branches, planted employees, written once (module helpers already live in `helpers/`) |
 | `apps/api/tests/integration/administration-catalog.spec.ts` | C | P1a.1, P1a.2 | §19.7 |
-| `apps/api/tests/integration/administration-warehouses.spec.ts` | C | P1a.3 | §19.7 |
+| `apps/api/tests/integration/administration-warehouses.spec.ts` | C, M | P1a.3; P1a.W | §19.7; P1a.W adds the `GET /platform/me/applications` case (§19.10.2) |
 | `apps/api/tests/integration/administration-suppliers.spec.ts` | C | P1b.1 | §19.7 |
 | `apps/api/tests/integration/administration-go-live-<list>.spec.ts` | C if OD-68 A | P1a.2; P1b.1 | §19.7, one per loaded list |
 
@@ -2992,7 +2996,7 @@ Repository-wide findings outside this module are listed for the owner in
     Phase 1's six refusal codes (§5.15); a stored folded name, `nameKey`, under a unique index, so two spellings of one
     name never make two rows; the list queries and DTO labels (§19.4); the go-live load's files, pull requests and
     wiring (§19.8); the module's dialog frame; every census pin with its spec; thresholds for RK-33's measurements and
-    PX-3's split (§18.3.2, §18.3.3); a category-move race accepted and stated instead of guarded (§19.7).
+    PX-3's split (§18.3, §18.3.2, §18.3.3); a category-move race accepted and stated instead of guarded (§19.7).
   - *Plan rules.* The freeze names what it covers inside §2–§14 (Status, §18); each later phase is re-detailed in
     `docs/12-planning/administration-module-phase-<n>.md` and design-reviewed before its first pull request, with no
     added owner approval; a Phase 1 decision answered other than as recommended re-opens the parts it names (§19.2).
@@ -3005,6 +3009,8 @@ Repository-wide findings outside this module are listed for the owner in
     gains option D (send goods back on a new transfer); B stays recommended. OD-54 stays B, now with the owner's own
     chain as its reason. OD-80 no longer gates code; OD-83's default applies unless the owner objects; OD-79 asks about
     reports, not boards.
+  - *Base.* `main` moved past `4c0fa1b0` while this stage ran; the citations stay pinned to `4c0fa1b0`, and Phase 1's
+    first pull request opens with a drift check that re-pins what moved (§19.1).
   - *Moved out.* The findings about other modules are now in
     `docs/10-reviews/2026-11-administration-design-cross-module-findings.md` (eleven items).
   - *For the owner*, new from this stage: the launcher tile's picture (OD-62.1); a receiving committee or the signed-in

@@ -32,6 +32,7 @@ import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFil
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { BulkPrintDialog } from '../../../contracts/components/BulkPrintDialog';
+import { ReadyHeaderActions } from '../components/ReadyHeaderActions';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -206,6 +207,7 @@ export const EmployeesReadyPage = (): JSX.Element => {
       <PageHeader
         title={t('employees.ready.title')}
         breadcrumbs={[{ label: t('employees.title'), to: '/employees' }, { label: t('employees.ready.title') }]}
+        actions={<ReadyHeaderActions />}
       />
 
       <div className="space-y-4">

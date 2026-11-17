@@ -27,6 +27,7 @@ import { useEmployees } from '../api/employee-queries';
 import { type EmployeeListParams } from '../api/employee-api';
 import { employeeColumns } from '../lib/employee-columns';
 import { HiredEmployeesFilters, type HiredFiltersState } from '../components/HiredEmployeesFilters';
+import { ReadyHeaderActions } from '../components/ReadyHeaderActions';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = ['branch', 'department', 'job', 'q', 'size'] as const;
@@ -139,6 +140,7 @@ export const HiredEmployeesPage = (): JSX.Element => {
           { label: t('employees.ready.title'), to: '/employees/ready' },
           { label: t('employees.hired.title') },
         ]}
+        actions={<ReadyHeaderActions />}
       />
 
       <div className="space-y-4">

@@ -1216,10 +1216,10 @@ describe('Round 26 — the screens', () => {
     }
     expect(cardOf(vault, 's-captain')).not.toContain('data-chip-accent');
     // The saved one on 101 is the design's quiet row with its cyan dot; the proposal keeps its
-    // dashed amber.
+    // dashed amber (Round 27d: a lighter amber-400, was amber-500).
     expect(cardOf(desk, 's-captain')).toContain(CHIP_LOOK.van);
     expect(cardOf(desk, 's-captain')).toContain('data-chip-dot="van"');
-    expect(cardOf(desk, 's-maadi')).toContain('border-dashed border-amber-500');
+    expect(cardOf(desk, 's-maadi')).toContain('border-dashed border-amber-400');
   });
 
   it('Round 27 — a محصنة on no van: the design’s waiting row, on both screens; its column’s head rose', () => {
@@ -1313,8 +1313,9 @@ describe('Round 26 — the screens', () => {
     for (const figure of ['shipments', 'unplaced', 'cartons', 'bags', 'boxes']) {
       expect(bar, figure).toContain(`data-figure="${figure}"`);
     }
+    // Round 27d — the square's tint /10 (was /15): the pill neutral, only its small square tinted.
     expect(bar).toMatch(
-      /bg-cyan-500\/15 text-cyan-700[\s\S]*data-figure="shipments"|data-figure="shipments"[\s\S]*bg-cyan-500\/15 text-cyan-700/,
+      /bg-cyan-500\/10 text-cyan-700[\s\S]*data-figure="shipments"|data-figure="shipments"[\s\S]*bg-cyan-500\/10 text-cyan-700/,
     );
     // Round 27 — the owner's colours: كراتين amber, حقائب blue, صناديق purple: each its own.
     for (const [figure, hue] of [
@@ -1323,7 +1324,7 @@ describe('Round 26 — the screens', () => {
       ['boxes', 'purple'],
     ] as const) {
       expect(bar).toMatch(
-        new RegExp(`data-figure="${figure}"[^>]*>\\s*<span class="[^"]*bg-${hue}-500/15`),
+        new RegExp(`data-figure="${figure}"[^>]*>\\s*<span class="[^"]*bg-${hue}-500/10`),
       );
     }
     // s-maadi is the one counted: 4 bags, 1 box.

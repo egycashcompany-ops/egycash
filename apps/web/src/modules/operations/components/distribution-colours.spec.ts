@@ -23,6 +23,20 @@
 //   · THE CHIPS — on a van a dark row with a cyan dot, on no van a dashed rose edge (3:1) on a rose
 //     tint with a rose dot, words 4.5:1 on every ground, dots 3:1; the rose head of their column;
 //   · THE CAPTAIN'S FRAME (unchanged), THE LOAD, THE KEPT NOTICE — their words at 4.5:1.
+//
+// Round 27d — the owner on Round 27's screens: «اعملى نسخة واحدة بس من الشاشة بس تكون بالوان اهدى».
+// The same hues in the same roles, calmer — and measured so: NO coloured glow anywhere; every word
+// still 4.5:1, every icon and dot 3:1, and the two STATES' edges («بلا قائد», a kept row) still 3:1 on
+// their column — they are the card's state at a glance. What changed, each on purpose:
+//   · the edges that only DRAW a shape — a count's tile, a 0's, the code pill, the head's pills, a
+//     chip on no van — are a breath of their hue now (by day x-200/300, by night x-400 at about a
+//     third): WCAG 1.4.11 asks nothing of a container's outline, and none of them is the only sign of
+//     anything (the words, the icon, the dot say it). Their 3:1 checks give way to «still drawn» (a
+//     ΔE floor) and «quiet» (a contrast ceiling of 2.75:1);
+//   · a count's word is neutral slate, its 0 neutral grey throughout — only the 0's icon keeps a
+//     faint hue (`zeroMark`), and the three packages' 0 icons stand 20 or more apart (R26's «one grey
+//     for every 0» is answered by the icon now, not the figure);
+//   · the distances calmer tints legitimately shrink — each relaxed where it is measured, with why.
 import { describe, expect, it } from 'vitest';
 import colors from 'tailwindcss/colors';
 import { COUNT_KINDS, PACKAGE_KINDS } from '../lib/van-card';
@@ -237,10 +251,11 @@ describe('the van — ONE look for every van, the owner’s blue (Round 27)', ()
     // A tint, never a solid slab: light by day, a fifth of blue by night.
     expect(luminance(ground(VAN_LOOK.pill, false, bandOf(false)))).toBeGreaterThan(0.85);
     expect(token(pick(VAN_LOOK.pill, 'bg', true)).alpha).toBeLessThanOrEqual(0.25);
-    // Its number white by night, as in the design.
-    expect(pick(VAN_LOOK.pill, 'text', true)).toBe('white');
-    // It glows softly by night — a shadow of its own blue.
-    expect(VAN_LOOK.ring).toMatch(/dark:shadow-\[[^\]]*rgba\(59,130,246,/);
+    // Round 27d — its number neutral: slate by day, near-white by night (was blue-950 / white).
+    expect(pick(VAN_LOOK.pill, 'text', false)).toMatch(/^slate-/);
+    expect(pick(VAN_LOOK.pill, 'text', true)).toMatch(/^slate-(50|100)$/);
+    // Round 27d — no glow (Round 27's soft blue glow is gone).
+    expect(VAN_LOOK.ring).not.toMatch(/shadow/);
   });
 
   it('its code reads at 10:1 or better on its tint, light and dark; its truck at 3:1', () => {
@@ -254,16 +269,19 @@ describe('the van — ONE look for every van, the owner’s blue (Round 27)', ()
     }
   });
 
-  it('the pill’s blue EDGE draws its shape on the band at 3:1 or better — both themes (R26b critic)', () => {
-    // By night the tint and the band are both dark: the edge, a 1px ring over the pill's own ground,
-    // is what draws it (R26b critic: a `white/15` edge left the van's code a dark slab).
+  it('Round 27d — the pill’s blue edge is quiet, and the pill is still DRAWN on the band — both themes', () => {
+    // R26b critic: a `white/15` edge left the van's code a dark slab by night. Round 27 answered with
+    // a 3:1 blue ring and a glow; Round 27d («بالوان اهدى») keeps the pill drawn by a faint blue edge
+    // AND its own tint — each plainly apart from the band (CIEDE2000) — under a quiet ceiling. The
+    // code itself reads at 10:1 (above); the edge is never the only thing that says «a van's code».
     for (const dark of [false, true]) {
+      const theme = dark ? 'dark' : 'light';
       const band = bandOf(dark);
       const pill = ground(VAN_LOOK.pill, dark, band);
-      expect(
-        contrast(edge(VAN_LOOK.ring, 'ring', dark, pill), band),
-        dark ? 'dark' : 'light',
-      ).toBeGreaterThanOrEqual(3);
+      const ring = edge(VAN_LOOK.ring, 'ring', dark, pill);
+      expect(deltaE2000(ring, band), `edge ${theme}`).toBeGreaterThanOrEqual(10);
+      expect(deltaE2000(pill, band), `tint ${theme}`).toBeGreaterThanOrEqual(3);
+      expect(contrast(ring, band), `quiet ${theme}`).toBeLessThanOrEqual(2.75);
     }
   });
 
@@ -276,7 +294,7 @@ describe('the van — ONE look for every van, the owner’s blue (Round 27)', ()
     }
   });
 
-  it('the time a neutral pill, the direction a sky one (the design’s), «بلا اتجاه» neutral — each opaque, 4.5:1', () => {
+  it('Round 27d — the time and the direction ONE neutral pill, the direction’s arrow blue; «بلا اتجاه» neutral — each opaque, 4.5:1', () => {
     for (const dark of [false, true]) {
       for (const pill of [HEAD_PILL.time, HEAD_PILL.direction, HEAD_PILL.none]) {
         expect(token(pick(pill, 'bg', dark)).alpha, pill).toBe(1);
@@ -284,13 +302,17 @@ describe('the van — ONE look for every van, the owner’s blue (Round 27)', ()
       }
       expect(pick(HEAD_PILL.time, 'text', dark)).toMatch(/^(slate-\d+|white)$/);
       expect(pick(HEAD_PILL.none, 'text', dark)).toMatch(/^slate-\d+$/);
-      expect(pick(HEAD_PILL.direction, 'text', dark)).toMatch(/^sky-/);
-      expect(pick(HEAD_PILL.direction, 'ring', dark)).toMatch(/^sky-/);
-      // The direction's edge draws it on the band; its arrow and the clock read at 3:1.
+      // Round 27d — the direction neutral too (Round 27 drew it sky-outlined): slate words, a slate
+      // edge, the time's own ground; its arrow the one spot of colour, the van's blue.
+      expect(pick(HEAD_PILL.direction, 'text', dark)).toMatch(/^slate-/);
+      expect(pick(HEAD_PILL.direction, 'ring', dark)).toBe(pick(HEAD_PILL.time, 'ring', dark));
+      expect(pick(HEAD_PILL.direction, 'bg', dark)).toBe(pick(HEAD_PILL.time, 'bg', dark));
+      expect(pick(HEAD_PILL.directionIcon, 'text', dark)).toMatch(/^blue-/);
+      // Its arrow and the clock read at 3:1; the pills' edges are quiet (the words carry them).
       const band = bandOf(dark);
       const dir = ground(HEAD_PILL.direction, dark, band);
-      expect(contrast(edge(HEAD_PILL.direction, 'ring', dark, dir), band)).toBeGreaterThanOrEqual(
-        3,
+      expect(contrast(edge(HEAD_PILL.direction, 'ring', dark, dir), band)).toBeLessThanOrEqual(
+        2.75,
       );
       expect(contrast(words(HEAD_PILL.directionIcon, dark), dir), 'arrow').toBeGreaterThanOrEqual(
         3,
@@ -313,15 +335,21 @@ describe('the card and its states — the design’s edges (Round 27)', () => {
     }
   });
 
-  it('«بلا قائد»: a solid rose edge with a rose glow; a kept row: a DASHED amber edge with an amber glow', () => {
+  it('«بلا قائد»: a quiet solid rose edge; a kept row: a quiet DASHED amber edge — no ring, no glow (Round 27d)', () => {
     for (const dark of [false, true]) {
       expect(pick(VAN_CARD.noCaptain, 'border', dark)).toMatch(/^rose-/);
       expect(pick(VAN_CARD.kept, 'border', dark)).toMatch(/^amber-/);
     }
     expect(VAN_CARD.noCaptain).not.toContain('border-dashed');
     expect(VAN_CARD.kept).toContain('border-dashed');
-    expect(VAN_CARD.noCaptain).toMatch(/dark:shadow-\[[^\]]*rgba\(244,63,94,/);
-    expect(VAN_CARD.kept).toMatch(/dark:shadow-\[[^\]]*rgba\(245,158,11,/);
+    // Round 27d — Round 27's rose and amber glows (and the 3px halo by day) are gone: a state wears
+    // the card at rest's own neutral shadow, nothing more.
+    const shadows = (classes: string): string[] =>
+      classes.split(/\s+/).filter((c) => /^(dark:)?shadow/.test(c));
+    for (const state of [VAN_CARD.noCaptain, VAN_CARD.kept]) {
+      expect(shadows(state)).toEqual(shadows(VAN_CARD.rest));
+      expect(state).not.toMatch(/rgba|ring-/);
+    }
     // Its stripe in its edge's colour, never the van's blue inside a rose or amber edge.
     expect(pick(VAN_STATE_STRIPE.noCaptain, 'bg', false)).toMatch(/^rose-/);
     expect(pick(VAN_STATE_STRIPE.kept, 'bg', false)).toMatch(/^amber-/);
@@ -368,7 +396,7 @@ const outlineOf = (
   look: 'chip' | 'zero' = 'chip',
 ): Rgb => edge(COUNT_LOOK[kind][look], 'ring', dark, ground(COUNT_LOOK[kind][look], dark, under));
 
-describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)', () => {
+describe('the counts — four hues on soft tiles (Round 27; calmer, Round 27d)', () => {
   it('four kinds, four hues, four icons — محصنات cyan, كراتين amber, حقائب blue, صناديق purple', () => {
     expect(COUNT_KINDS.map((kind) => COUNT_LOOK[kind].hue)).toEqual([
       'cyan',
@@ -377,20 +405,29 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
       'purple',
     ]);
     expect(new Set(COUNT_KINDS.map((kind) => COUNT_LOOK[kind].icon.join(' '))).size).toBe(4);
-    // Each look is its own hue throughout — ground, edge, words, figure, icon; its 0 too.
+    // Round 27d — the HUE lives in the tile's ground and edge, its figure, its icon, its page square
+    // and its 0's icon; its word is neutral slate, and its 0 neutral grey throughout (Round 27 wrote
+    // every part in the hue — words and 0 too).
     for (const kind of COUNT_KINDS) {
-      const { hue, chip, figure, mark, zero, zeroFigure, square } = COUNT_LOOK[kind];
-      for (const classes of [chip, figure, mark, zero, zeroFigure, square]) {
-        for (const dark of [false, true]) {
+      const { hue, chip, figure, mark, zero, zeroFigure, zeroMark, square } = COUNT_LOOK[kind];
+      for (const dark of [false, true]) {
+        for (const classes of [figure, mark, zeroMark, square]) {
           for (const c of own(classes, dark).filter((one) => /^(bg|text|ring)-/.test(one))) {
             expect(c, `${kind}: ${classes}`).toContain(`-${hue}-`);
           }
         }
+        expect(pick(chip, 'bg', dark), kind).toMatch(new RegExp(`^${hue}-`));
+        expect(pick(chip, 'ring', dark), kind).toMatch(new RegExp(`^${hue}-`));
+        expect(pick(chip, 'text', dark), `${kind} word`).toMatch(/^slate-/);
+        for (const part of ['bg', 'text', 'ring'] as const) {
+          expect(pick(zero, part, dark), `${kind} 0 ${part}`).toMatch(/^slate-/);
+        }
+        expect(pick(zeroFigure, 'text', dark), `${kind} 0 figure`).toMatch(/^slate-/);
       }
     }
   });
 
-  it('OUTLINED — a 1px edge of its colour on a tinted ground of the same colour, never dashed', () => {
+  it('a SOFT tile — a 1px faint edge of its colour on the faintest tint of it, never dashed, no glow', () => {
     for (const kind of COUNT_KINDS) {
       for (const look of ['chip', 'zero'] as const) {
         const classes = COUNT_LOOK[kind][look];
@@ -401,23 +438,31 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
       const light = token(pick(COUNT_LOOK[kind].chip, 'bg', false));
       expect(light.alpha, kind).toBe(1);
       expect(deltaE2000(light.rgb, WHITE), kind).toBeGreaterThanOrEqual(4);
+      // Round 27d — by night the faintest tint (Round 27: /[0.12]–/[0.24]).
       const night = token(pick(COUNT_LOOK[kind].chip, 'bg', true)).alpha;
-      expect(night, kind).toBeGreaterThanOrEqual(0.08);
-      expect(night, kind).toBeLessThanOrEqual(0.25);
+      expect(night, kind).toBeGreaterThanOrEqual(0.06);
+      expect(night, kind).toBeLessThanOrEqual(0.1);
+      // Round 27d — no glow: Round 27's soft cyan glow on the محصنات' tile is gone.
+      for (const look of ['chip', 'zero'] as const) {
+        expect(COUNT_LOOK[kind][look], `${kind} ${look}`).not.toMatch(/shadow/);
+      }
     }
-    // The محصنات' tile glows softly by night, as in the design.
-    expect(COUNT_LOOK.shipments.chip).toMatch(/dark:shadow-\[[^\]]*rgba\(34,211,238,/);
   });
 
-  it('every edge reads at 3:1 or better against the card it stands on — a count’s and a 0’s, light and dark', () => {
+  it('Round 27d — every edge is QUIET, and still draws its tile — a count’s and a 0’s, light and dark', () => {
+    // Round 27 drew each tile with a 3:1 ring of its hue. «بالوان اهدى»: the ring is a breath of the
+    // hue now (by day x-300, by night x-400/35; a 0's neutral) — a container's outline, which WCAG
+    // 1.4.11 does not ask to reach 3:1, and never the only sign of anything: the tile's icon (3:1),
+    // figure and word (4.5:1) say what it counts. Measured both ways: never louder than 2.75:1, and
+    // still plainly apart from what it stands on (CIEDE2000 — a count's 8 or more, a 0's 4).
     for (const kind of COUNT_KINDS) {
       for (const look of ['chip', 'zero'] as const) {
         for (const dark of [false, true]) {
           for (const under of groundsFor(kind, dark)) {
-            expect(
-              contrast(outlineOf(kind, dark, under, look), under),
-              `${kind} ${look} (${dark ? 'dark' : 'light'})`,
-            ).toBeGreaterThanOrEqual(3);
+            const ring = outlineOf(kind, dark, under, look);
+            const label = `${kind} ${look} (${dark ? 'dark' : 'light'})`;
+            expect(contrast(ring, under), label).toBeLessThanOrEqual(2.75);
+            expect(deltaE2000(ring, under), label).toBeGreaterThanOrEqual(look === 'chip' ? 8 : 4);
           }
         }
       }
@@ -437,12 +482,17 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
     }
   });
 
-  it('their edges are 15 or more apart, their grounds 10 by day and 7 by night — the tile told apart whole', () => {
+  it('their edges are 15 or more apart by day and 10 by night, their grounds 5 by day and 2.5 by night', () => {
     // Round 26b's FILLED tiles were told apart by the ground alone (10 or more). The owner's design
     // outlines them on a thin tint of their hue — its own grounds are 8.4 apart at the closest (cyan
     // and blue): the edge and the icon carry the hue now, the ground follows it. R27 critic — on
     // EVERY ground they stand on (a `slice(0, 2)` had dropped two), and the three packages also on
     // «تسليم»'s confirmation, where bags and boxes stood 6.5 apart.
+    // Round 27d relaxes the two that calmer tints shrink, on purpose: the grounds are the faintest
+    // tint now (x-50 by day, x-400/[0.08] by night — blue and purple 5.9 apart by day, cyan and blue
+    // 2.8 by night on the confirmation), and by night the edges are x-400/35 (11.9 at the closest,
+    // was 15 at /80). The ICONS still stand 20 or more apart (above) and the figures in their hues:
+    // the tile is told apart by what it draws, its ground and edge only echo it.
     const grounds = (dark: boolean): [Rgb, readonly (typeof COUNT_KINDS)[number][]][] => [
       ...groundsOf(dark).map((under): [Rgb, readonly (typeof COUNT_KINDS)[number][]] => [
         under,
@@ -458,11 +508,11 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
             expect(
               deltaE2000(outlineOf(one, dark, under), outlineOf(two, dark, under)),
               `edges ${pair}`,
-            ).toBeGreaterThanOrEqual(15);
+            ).toBeGreaterThanOrEqual(dark ? 10 : 15);
             expect(
               deltaE2000(chipGround(one, dark, under), chipGround(two, dark, under)),
               `grounds ${pair}`,
-            ).toBeGreaterThanOrEqual(dark ? 7 : 10);
+            ).toBeGreaterThanOrEqual(dark ? 2.5 : 5);
           }
         });
       }
@@ -490,7 +540,9 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
         ),
         `edge ~ frame's edge (${theme})`,
       ).toBeGreaterThanOrEqual(15);
-      expect(deltaE2000(tile, frame), `ground ~ frame (${theme})`).toBeGreaterThanOrEqual(5);
+      // Round 27d — 4 (was 5): by day cyan-50 stands 4.1 from the frame's emerald-50; the edge (15
+      // or more) and the icon (20) carry the difference.
+      expect(deltaE2000(tile, frame), `ground ~ frame (${theme})`).toBeGreaterThanOrEqual(4);
       // And a plainly other hue: 25° or more round the wheel.
       const turn = Math.abs(
         hueAngle(markOf('shipments', dark)) - hueAngle(token('emerald-500').rgb),
@@ -543,21 +595,19 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
     }
   });
 
-  it('a 0 keeps its hue and its edge, quieter — a lighter ground, a quieter figure — its figure and words still 4.5:1', () => {
+  it('Round 27d — a 0 is neutral grey, only its icon keeps the hue — its figure and words still 4.5:1, its icon 3:1', () => {
+    // Round 27 kept a 0 in its hue and edge, quieter. «بالوان اهدى»: a 0 is grey — ground, edge, word
+    // and figure slate (above) — and only its icon keeps a faint tone of its hue (`zeroMark`), so a
+    // count stands out and a 0 sits back. By day its grey ground (slate-50) is a shade DARKER than a
+    // count's x-50 tint, not lighter (Round 27's check): it is quieter by having no hue, and stands
+    // closer to the card (the ground check below, 0.6 or less of a count's distance).
     for (const kind of COUNT_KINDS) {
-      const { chip, zero, figure, zeroFigure, mark } = COUNT_LOOK[kind];
-      // Lighter by day, thinner by night.
-      expect(luminance(ground(zero, false, LIGHT_GROUND)), kind).toBeGreaterThan(
-        luminance(ground(chip, false, LIGHT_GROUND)),
-      );
+      const { chip, zero, figure, zeroFigure, zeroMark } = COUNT_LOOK[kind];
+      // Thinner by night.
       expect(token(pick(zero, 'bg', true)).alpha, kind).toBeLessThan(
         token(pick(chip, 'bg', true)).alpha,
       );
       for (const dark of [false, true]) {
-        // The same colour of edge as its count's.
-        expect(pick(zero, 'ring', dark).split('/')[0], kind).toBe(
-          pick(chip, 'ring', dark).split('/')[0],
-        );
         expect(worst(zero, dark, groundsFor(kind, dark)), `${kind} 0 words`).toBeGreaterThanOrEqual(
           4.5,
         );
@@ -569,7 +619,7 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
           expect(quiet, `${kind} 0 figure`).toBeGreaterThanOrEqual(4.5);
           // Quieter than a count's figure — muted, never louder.
           expect(quiet, `${kind} 0 figure`).toBeLessThan(contrast(words(figure, dark), on));
-          expect(contrast(words(mark, dark), on0), `${kind} 0 icon`).toBeGreaterThanOrEqual(3);
+          expect(contrast(words(zeroMark, dark), on0), `${kind} 0 icon`).toBeGreaterThanOrEqual(3);
         }
       }
     }
@@ -578,8 +628,11 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
   it('R27 critic — a 0 is PLAINLY quieter than its count: its figure, its words, its ground — and by night its edge', () => {
     // The critic, by night: «0 كراتين» read as loud as «2 كرتونتان» — the 0's figure only 1.2:1
     // under a count's, its words LOUDER than a count's, its edge as strong. Each part measured, on
-    // every ground the count stands on. By day a 0's edge stays its count's: the lightest of its hue
-    // that still draws the tile at 3:1 on white (and a 0 never loses its edge).
+    // every ground the count stands on (and a 0 never loses its edge).
+    // Round 27d relaxes two margins, on purpose: the figure's 2.5:1 to 2 — by day a count's figure is
+    // a muted x-800 now (was x-950) and a 0's slate-500 cannot go lower and stay 4.5:1 (amber 2.3,
+    // cyan 2.4 apart), while the 0 has lost its hue altogether; and by night the edges' 1:1 to 0.5 —
+    // a count's edge is itself only x-400/35 now (was /80), the 0's a neutral /25 under it.
     for (const kind of COUNT_KINDS) {
       const { chip, zero, figure, zeroFigure } = COUNT_LOOK[kind];
       for (const dark of [false, true]) {
@@ -590,7 +643,7 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
           expect(
             contrast(words(figure, dark), on) - contrast(words(zeroFigure, dark), on0),
             `figure ${theme}`,
-          ).toBeGreaterThanOrEqual(2.5);
+          ).toBeGreaterThanOrEqual(2);
           expect(contrast(words(zero, dark), on0), `words ${theme}`).toBeLessThan(
             contrast(words(chip, dark), on),
           );
@@ -602,23 +655,26 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
               contrast(outlineOf(kind, dark, under), under) -
                 contrast(outlineOf(kind, dark, under, 'zero'), under),
               `edge ${theme}`,
-            ).toBeGreaterThanOrEqual(1);
+            ).toBeGreaterThanOrEqual(0.5);
           }
         }
       }
     }
   });
 
-  it('never one grey for the three packages’ zeros — each its own hue, 20 or more apart', () => {
-    // R26 wrote every 0 in the same grey: «0 كراتين», «0 حقائب», «0 صناديق» read as one thing.
-    expect(new Set(PACKAGE_KINDS.map((kind) => COUNT_LOOK[kind].zero)).size).toBe(3);
+  it('never one grey for the three packages’ zeros — each 0’s ICON its own hue and drawing, 20 or more apart', () => {
+    // R26 wrote every 0 in the same grey: «0 كراتين», «0 حقائب», «0 صناديق» read as one thing. Round
+    // 27d greys a 0's tile, word and figure on purpose («بالوان اهدى»): its ICON keeps its hue and its
+    // own drawing, so the three still read as three (Round 27 measured the 0's coloured figures).
+    expect(new Set(PACKAGE_KINDS.map((kind) => COUNT_LOOK[kind].zeroMark)).size).toBe(3);
+    expect(new Set(PACKAGE_KINDS.map((kind) => COUNT_LOOK[kind].icon.join(' '))).size).toBe(3);
     for (const dark of [false, true]) {
       PACKAGE_KINDS.forEach((one, at) => {
         for (const two of PACKAGE_KINDS.slice(at + 1)) {
           expect(
             deltaE2000(
-              words(COUNT_LOOK[one].zeroFigure, dark),
-              words(COUNT_LOOK[two].zeroFigure, dark),
+              words(COUNT_LOOK[one].zeroMark, dark),
+              words(COUNT_LOOK[two].zeroMark, dark),
             ),
             `${one} ~ ${two} (${dark ? 'dark' : 'light'})`,
           ).toBeGreaterThanOrEqual(20);
@@ -643,6 +699,43 @@ describe('the counts — four hues, OUTLINED as the owner drew them (Round 27)',
     }
   });
 
+  it('Round 27d — NO coloured glow or halo anywhere on the two screens (a drag’s «here» keeps Round 25’s lift)', () => {
+    // «بالوان اهدى»: Round 27's glows — the code pill's blue, the محصنات' cyan, «بلا قائد»'s rose, the
+    // kept row's amber, the waiting column's rose count — and the 3px halos by day are gone. A
+    // neutral soft shadow (slate / black) is all a card keeps.
+    const looks: Record<string, unknown> = {
+      VAN_LOOK,
+      VAN_CARD: { ...VAN_CARD, place: '' },
+      VAN_STATE_STRIPE,
+      COUNT_LOOK,
+      HEAD_PILL,
+      CAPTAIN_FRAME,
+      CAPTAIN_MARK,
+      LOAD_LOOK,
+      KEPT_NOTICE,
+      CHIP_LOOK,
+      CHIP_DOT,
+      CHIP_WORDS,
+      COLUMN_WARN,
+    };
+    const strings = (value: unknown): string[] =>
+      typeof value === 'string'
+        ? [value]
+        : Array.isArray(value)
+          ? []
+          : typeof value === 'object' && value !== null
+            ? Object.values(value).flatMap(strings)
+            : [];
+    for (const [name, look] of Object.entries(looks)) {
+      for (const classes of strings(look)) {
+        expect(classes, name).not.toMatch(/rgba\(|shadow-\[/);
+        for (const c of classes.split(/\s+/).filter((one) => /^(dark:)?shadow-/.test(one))) {
+          expect(c, `${name}: ${classes}`).toMatch(/^(dark:)?shadow-(sm|md|lg|slate-|black\/)/);
+        }
+      }
+    }
+  });
+
   it('the measure itself: a colour against itself is 0, black against white is about 100', () => {
     // Sharma, Wu & Dalal (2005), the CIEDE2000 test data, pairs 1 and 7.
     expect(deltaE2000Lab([50, 2.6772, -79.7751], [50, 0, -82.7485])).toBeCloseTo(2.0425, 3);
@@ -659,11 +752,11 @@ describe('the captain’s own frame — as Round 26b drew it («والكارت �
       'bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30',
     );
     expect(CAPTAIN_MARK).toBe('bg-emerald-700 text-white dark:bg-emerald-700 dark:text-white');
-    // R27 critic — its «بلا قائد» state is NOT Round 26b's: a firmer rose (rose-200 → rose-300 by
-    // day; /10 → /[0.12] ground and /30 → /50 edge by night), the design's «بلا قائد» box. Pinned,
-    // so the frame with a captain is the only part said to be «unchanged».
+    // R27 critic — its «بلا قائد» state is NOT Round 26b's. Round 27d — as light as the rest of the
+    // card: by day rose-300 → rose-200; by night /[0.12] → /[0.08] ground and rose-500/50 →
+    // rose-400/30 edge. Pinned, so the frame with a captain is the only part said to be «unchanged».
     expect(CAPTAIN_FRAME.none).toBe(
-      'bg-rose-50 ring-rose-300 dark:bg-rose-500/[0.12] dark:ring-rose-500/50',
+      'bg-rose-50 ring-rose-200 dark:bg-rose-500/[0.08] dark:ring-rose-400/30',
     );
     expect(
       contrast(token('slate-900').rgb, ground(CAPTAIN_FRAME.some, false, LIGHT_GROUND)),
@@ -733,7 +826,7 @@ describe('the chips — the design’s rows, the chip’s own shape (Round 27)',
       ? COLUMN_GROUND(dark)
       : [ground(LOAD_LOOK.area, dark, dark ? CARD_DARK : WHITE)];
 
-  it('one ground and one edge each; on no van a DASHED ROSE edge on a rose tint — on a van a quiet row', () => {
+  it('one ground and one edge each; on no van a light DASHED ROSE edge on a faint rose tint — on a van a quiet row', () => {
     for (const tone of Object.keys(CHIP_LOOK) as (keyof typeof CHIP_LOOK)[]) {
       for (const dark of [false, true]) {
         pick(CHIP_LOOK[tone], 'bg', dark);
@@ -749,19 +842,23 @@ describe('the chips — the design’s rows, the chip’s own shape (Round 27)',
     expect(CHIP_LOOK.van).not.toContain('dashed');
   });
 
-  it('the rose edge of a chip on no van reads at 3:1 or better against its column', () => {
+  it('Round 27d — the rose edge of a chip on no van is light and quiet, still plainly rose on its column', () => {
+    // Round 27 asked 3:1 of this dashed edge. «بالوان اهدى» — a light dashed rose (rose-300 by day,
+    // rose-400/35 by night): the chip's place is said by its column («بلا سيارة»), and its state
+    // by its rose dot at 3:1 (below) — the edge only echoes them. Never louder than 2.75:1, and still
+    // 20 or more from the column it stands on (CIEDE2000).
     for (const dark of [false, true]) {
       for (const column of COLUMN_GROUND(dark)) {
         const on = ground(CHIP_LOOK.unplaced, dark, column);
-        expect(
-          contrast(edge(CHIP_LOOK.unplaced, 'border', dark, on), column),
-          dark ? 'dark' : 'light',
-        ).toBeGreaterThanOrEqual(3);
+        const rim = edge(CHIP_LOOK.unplaced, 'border', dark, on);
+        const theme = dark ? 'dark' : 'light';
+        expect(contrast(rim, column), theme).toBeLessThanOrEqual(2.75);
+        expect(deltaE2000(rim, column), theme).toBeGreaterThanOrEqual(20);
       }
     }
   });
 
-  it('its words read at 4.5:1 or better on every tone’s ground — rose-tinted on no van', () => {
+  it('its words read at 4.5:1 or better on every tone’s ground — neutral slate on no van too (Round 27d)', () => {
     for (const tone of TONES) {
       const set = tone === 'unplaced' ? CHIP_WORDS.unplaced : CHIP_WORDS.plain;
       for (const dark of [false, true]) {
@@ -776,8 +873,11 @@ describe('the chips — the design’s rows, the chip’s own shape (Round 27)',
         }
       }
     }
+    // Round 27d — Round 27 wrote a waiting chip's words rose; the rose is its ground, edge and dot.
     for (const dark of [false, true]) {
-      expect(pick(CHIP_WORDS.unplaced.bank, 'text', dark)).toMatch(/^rose-/);
+      for (const part of ['bank', 'dot', 'branch'] as const) {
+        expect(pick(CHIP_WORDS.unplaced[part], 'text', dark)).toMatch(/^(slate-\d+|white)$/);
+      }
     }
   });
 
@@ -798,16 +898,25 @@ describe('the chips — the design’s rows, the chip’s own shape (Round 27)',
     }
   });
 
-  it('the column of chips on no van: a rose warning icon (3:1) and a rose count (4.5:1)', () => {
+  it('the column of chips on no van: a rose warning icon (3:1) and a NEUTRAL count (4.5:1) — Round 27d', () => {
     for (const dark of [false, true]) {
       for (const column of COLUMN_GROUND(dark)) {
         expect(worst(COLUMN_WARN.count, dark, [column])).toBeGreaterThanOrEqual(4.5);
         expect(
           contrast(words(COLUMN_WARN.icon, dark), ground(COLUMN_WARN.icon, dark, column)),
         ).toBeGreaterThanOrEqual(3);
+        // Where the icon gives way (1280–1440), the warning in the count stays rose — 3:1 on it.
+        expect(
+          contrast(words(COLUMN_WARN.glyph, dark), ground(COLUMN_WARN.count, dark, column)),
+        ).toBeGreaterThanOrEqual(3);
       }
-      expect(pick(COLUMN_WARN.count, 'bg', dark)).toMatch(/^rose-/);
+      // Round 27d — the count a neutral pill (Round 27: rose with a rose glow); the icon rose on a
+      // faint rose square, with no ring.
+      expect(pick(COLUMN_WARN.count, 'bg', dark)).toMatch(/^slate-/);
+      expect(pick(COLUMN_WARN.count, 'text', dark)).toMatch(/^slate-/);
       expect(pick(COLUMN_WARN.icon, 'text', dark)).toMatch(/^rose-/);
+      expect(pick(COLUMN_WARN.glyph, 'text', dark)).toBe(pick(COLUMN_WARN.icon, 'text', dark));
+      expect(COLUMN_WARN.icon).not.toMatch(/ring/);
       // R27 critic — the page's «بلا سيارة» figure in the same rose: its warning 3:1 on the bar's
       // pill (white by day, `#111827` by night), the same hue as the head's icon.
       const pill = dark ? hex('#111827') : WHITE;

@@ -756,8 +756,8 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     // The desk says which vans take nothing — its own rule (`takesShipments`).
     expect(DIST).toContain('takesNone={!takesShipments(van)}');
     expect(HANDOVER).not.toContain('takesNone');
-    // A kept row of another type keeps its dashed amber edge (Round 27: with the design's amber glow)
-    // and its notice, amber.
+    // A kept row of another type keeps its dashed amber edge (Round 27d: quiet, no glow) and its
+    // notice, amber.
     const kept = card(VANS[2] as OperationsDayBoardVehicleCrewDto);
     expect(classOf(kept, 'data-distribution-van="cr-106"')).toContain(VAN_CARD.kept);
     expect(VAN_CARD.kept).toContain('border-dashed');
@@ -828,13 +828,14 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     expect(html).toContain(CHIP_WORDS.plain.bank);
   });
 
-  it('Round 27 — a chip on NO van: the design’s waiting row — a dashed rose edge on a rose tint, a rose dot, rose words', () => {
+  it('Round 27 — a chip on NO van: the design’s waiting row — a dashed rose edge on a rose tint, a rose dot (Round 27d: lighter, its words neutral)', () => {
     const html = chip(undefined, true);
     // The same chip, the same marks: its tone is still «saved» — only its colours say where it is.
     expect(html).toContain('data-shipment-tone="saved"');
     const classes = classOf(html, 'data-shipment-tone="saved"');
     expect(classes).toContain(CHIP_LOOK.unplaced);
-    expect(classes).toContain('border-dashed border-rose-500');
+    // Round 27d — a light dashed rose-300 (was rose-500).
+    expect(classes).toContain('border-dashed border-rose-300');
     expect(html).toContain(
       `data-chip-dot="unplaced" class="h-2 w-2 shrink-0 rounded-full ${CHIP_DOT.unplaced}"`,
     );
@@ -843,15 +844,17 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     // A state's own look wins on no van too — an unsaved move back keeps its edge.
     const back = chip('moved', true);
     expect(classOf(back, 'data-shipment-tone="moved"')).toContain(CHIP_LOOK.moved);
-    expect(back).not.toContain('border-rose-500');
+    expect(back).not.toContain('border-rose-300');
     expect(back).toContain('data-chip-dot="moved"');
   });
 
   it('a proposal keeps its «مقترحة» look — dashed amber on its own amber ground; an unsaved move its own', () => {
     const html = chip('proposed');
     expect(html).toContain('data-shipment-tone="proposed"');
-    expect(html).toContain('border-dashed border-amber-500');
-    expect(html).toContain('bg-amber-50 dark:bg-amber-400/[0.06]');
+    // Round 27d — a lighter amber: edge amber-400 (was 500), ground amber-50/70 (was amber-50) and
+    // /[0.05] by night (was /[0.06]).
+    expect(html).toContain('border-dashed border-amber-400');
+    expect(html).toContain('bg-amber-50/70 dark:bg-amber-400/[0.05]');
     expect(html).toContain('data-chip-dot="proposed"');
     const moved = chip('moved');
     expect(moved).toContain('bg-brand-50/60 dark:bg-brand-500/[0.08]');
@@ -879,8 +882,8 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     // The chip, each tone — and each tone's own edge is the one it keeps; on no van too (Round 27).
     for (const [tone, unplaced, edge] of [
       [undefined, false, 'border-slate-200'],
-      [undefined, true, 'border-rose-500'],
-      ['proposed', false, 'border-amber-500'],
+      [undefined, true, 'border-rose-300'],
+      ['proposed', false, 'border-amber-400'],
       ['moved', false, 'border-brand-400'],
       ['moved', true, 'border-brand-400'],
       ['refused', false, 'border-rose-500'],

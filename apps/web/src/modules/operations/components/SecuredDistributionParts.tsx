@@ -34,8 +34,9 @@
 // Round 27 — the owner's colours on that same card («يعني انا عايز ناخد الالوان نطبقها على الديزاين
 // الموجود، ما نعملش شبه الديزاين ده»): the van's code in a blue-outlined pill on a soft blue tint, its
 // stripe blue; the counts OUTLINED tiles — محصنات cyan, كراتين amber, حقائب blue, صناديق purple; «بلا
-// قائد» a rose edge, a kept row a dashed amber one; a chip on no van rose and dashed. Every colour is
-// in `distribution-look.ts`; the shapes above are unchanged.
+// قائد» a rose edge, a kept row a dashed amber one; a chip on no van rose and dashed. Round 27d — «بس
+// تكون بالوان اهدى»: the same hues in the same roles, calmer — no glow, faint edges and tints, the
+// words neutral. Every colour is in `distribution-look.ts`; the shapes above are unchanged.
 import {
   useCallback,
   useEffect,
@@ -382,7 +383,8 @@ export const DistributionColumn = ({
   extra?: ReactNode;
   /**
    * Round 27 — the column holds work still to do (the محصنات on no van — the owner's design's
-   * «رحلات بلا سيارة»): its head's icon a rose warning, its count a rose pill (`COLUMN_WARN`).
+   * «رحلات بلا سيارة»): its head's icon a rose warning (Round 27d: its count a neutral pill, the
+   * warning in it rose where the icon gives way — `COLUMN_WARN`).
    */
   warn?: boolean;
   /** The column's filter bar, on the head's line beside the title (Round 26). */
@@ -439,7 +441,7 @@ export const DistributionColumn = ({
           <span
             aria-hidden
             data-column-warn-glyph="true"
-            className="hidden [@container(max-width:20.5rem)]:inline-flex"
+            className={cn('hidden [@container(max-width:20.5rem)]:inline-flex', COLUMN_WARN.glyph)}
           >
             <BoardIcon d={[...PATH.warn]} className="h-3 w-3" />
           </span>
@@ -986,8 +988,8 @@ const PersonCardBody = ({
  * ONE COUNT, as a TILE (Round 26b — «عاوز يبقى فى فرق فى الالوان بين الصندوق و الحقائب و الكراتين»):
  * a tile of its kind's own hue (Round 27 — OUTLINED, the owner's colours) — its icon and its figure
  * on the first line, its name under them — the same on the van card and on the van's card
- * (`COUNT_LOOK`): محصنات cyan, كراتين amber, حقائب blue, صناديق purple. A 0 keeps its hue and its
- * edge, quieter — a thinner ground, a quieter figure;
+ * (`COUNT_LOOK`): محصنات cyan, كراتين amber, حقائب blue, صناديق purple. Round 27d — calmer: a soft
+ * tile, the hue in its icon and figure, its word slate; a 0 neutral grey, only its icon a faint hue;
  * so do «…» (still reading) and «—» (not to be read). `said`: what a screen reader hears instead of
  * the two lines, and the tile's tooltip — the محصنات' own Arabic form («محصنتان», «3 محصنات»).
  */
@@ -1050,7 +1052,10 @@ export const CountTile = ({
       {/* R26b critic — a long count («1,251») never runs past its tile: its figure a step smaller
           (`tileFigureSize`), and the icon wraps over it before anything spills. */}
       <span {...hidden} className="flex max-w-full flex-wrap items-center justify-center gap-x-1">
-        <BoardIcon d={[...look.icon]} className={cn('h-3.5 w-3.5 shrink-0', look.mark)} />
+        <BoardIcon
+          d={[...look.icon]}
+          className={cn('h-3.5 w-3.5 shrink-0', some ? look.mark : look.zeroMark)}
+        />
         {/* The figures' face, as the money and the code: a «0» reads as zero, where an Arabic zero
             reads as one more dot. */}
         <span
@@ -1103,7 +1108,8 @@ export const ShipmentsCount = ({
 
 /**
  * ONE COUNT, inline — the same colours as the tile (`COUNT_LOOK`), on one line, where a fact holds
- * it: the packages on a محصنة's card. A 0 muted in its own hue, as on the tile.
+ * it: the packages on a محصنة's card. A 0 neutral grey, only its icon a faint hue, as on the tile
+ * (Round 27d).
  */
 export const CountChip = ({
   kind,
@@ -1133,7 +1139,10 @@ export const CountChip = ({
         className,
       )}
     >
-      <BoardIcon d={[...look.icon]} className={cn('h-3 w-3 shrink-0', look.mark)} />
+      <BoardIcon
+        d={[...look.icon]}
+        className={cn('h-3 w-3 shrink-0', some ? look.mark : look.zeroMark)}
+      />
       <span
         dir="ltr"
         className={cn(NUM, 'text-[12px] font-black', some ? look.figure : look.zeroFigure)}
@@ -1295,8 +1304,8 @@ const TimePill = ({ van }: { van: OperationsDayBoardVehicleCrewDto }): JSX.Eleme
 };
 
 /**
- * The van's direction — sky-outlined with its arrow (Round 27, `HEAD_PILL`); «بلا اتجاه», quieter
- * and neutral. On the card's one line it is cut, whole on hover and to a screen reader; on the van's
+ * The van's direction — a neutral pill with its arrow in blue (Round 27d, `HEAD_PILL`); «بلا اتجاه»,
+ * quieter. On the card's one line it is cut, whole on hover and to a screen reader; on the van's
  * card (`wrap`) it is written whole.
  */
 const DirectionPill = ({
@@ -1483,7 +1492,7 @@ const onPersonName = (target: EventTarget | null): boolean =>
  * بالكامل»: ONE look for every van, and the card redrawn in four parts, top to bottom —
  *   · THE HEAD, on the van's very light band: its code in the van's one pill (or «بدون سيارة
  *     (n)»), the time, the direction — one line (Round 24c); a thin stripe at the card's start
- *     (Round 27 — the owner's blue: a blue-outlined pill on a soft blue tint, the stripe blue);
+ *     (Round 27 — the owner's blue: a pill on a soft blue tint, the stripe blue; Round 27d: calmer);
  *   · THE CAPTAIN'S ROW — Round 25's order, «الصف نفسه بتاع القائد يكون قبله عدد المحصنات» (R26b
  *     critic: the redraw had put the count after him): the count of محصنات FIRST, in its own tile,
  *     then the captain in a frame of his own — «قائد» over his name, the FIRST put on the row
@@ -1593,9 +1602,9 @@ export const VanCard = ({
         // ONE edge and ONE ground at a time (R26b verify): `cn` does not merge, and the board's CSS
         // writes `border-slate-200` / `bg-white` AFTER the brand and rose utilities — beside them, the
         // plain card's colours won, and a drag's «here» and «no» lost their edge and ground by day.
-        // Round 27 — the owner's colours: «بلا قائد» a rose edge and glow, a kept row its dashed amber
-        // with an amber glow (`VAN_CARD`); each also says itself in words on the card. R27 critic —
-        // both at once: the rose, in the kept row's dashed shape.
+        // Round 27 — the owner's colours: «بلا قائد» a rose edge, a kept row its dashed amber
+        // (`VAN_CARD`; Round 27d — quiet 1px edges, no glow); each also says itself in words on the
+        // card. R27 critic — both at once: the rose, in the kept row's dashed shape.
         drop?.over === 'place'
           ? VAN_CARD.place
           : drop?.over === 'refuse'
@@ -2080,9 +2089,9 @@ export const ShipmentChip = ({
   /** The chip's edge: a proposal (amber, dashed), an unsaved move (brand), a refusal (rose). */
   tone?: 'proposed' | 'moved' | 'refused' | undefined;
   /**
-   * Round 27 — it stands on NO van (the «بلا سيارة» column): a rose-tinted ground, a dashed rose
-   * edge, a rose dot, its words rose-tinted — the owner's design's waiting rows. A state's own look
-   * (a move back, a refusal) wins.
+   * Round 27 — it stands on NO van (the «بلا سيارة» column): a faint rose ground, a light dashed
+   * rose edge, a rose dot, its words neutral (Round 27d) — the owner's design's waiting rows. A
+   * state's own look (a move back, a refusal) wins.
    */
   unplaced?: boolean;
   /** What its card says (`ShipmentCardBody`). */
@@ -2126,7 +2135,7 @@ export const ShipmentChip = ({
           // ONE ground and ONE edge (R26b verify): `cn` does not merge, and the board's CSS writes
           // `border-slate-200` AFTER amber, brand and rose — the plain edge beside a tone's hid a
           // proposal's dashed amber, a move's brand and a refusal's rose by day. Round 27 — the
-          // owner's colours (`CHIP_LOOK`): a dark row on a van, a dashed rose one on no van; a
+          // owner's colours (`CHIP_LOOK`): a quiet row on a van, a dashed rose one on no van; a
           // proposal and an unsaved move keep their own wherever they are.
           CHIP_LOOK[look],
           drag !== undefined && 'cursor-grab active:cursor-grabbing',

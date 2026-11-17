@@ -130,6 +130,18 @@ const resolveFromData = async (key: string, input: ResolutionInput): Promise<str
       const [first, second] = occupationCodeParts(row?.occupationCode ?? '');
       return key === 'job.occupationCode1' ? first : second;
     }
+    case 'job.fixedSalaryPounds':
+    case 'job.fixedSalaryPiasters': {
+      // «نموذج رقم (1)»: «أجر /دخل الاشتراك» and «الأجر الشامل» — the job's «الراتب الثابت» as the
+      // organization chart holds it, its pounds and its two digits of piasters. None: empty boxes.
+      const title = await jobTitleService.getById(String(employee.employment.jobTitleId)).catch(() => null);
+      const amount = title?.fixedSalary?.amount;
+      if (amount === undefined || amount === null) return '';
+      const piasters = Math.round(amount * 100);
+      return key === 'job.fixedSalaryPounds'
+        ? String(Math.floor(piasters / 100))
+        : String(piasters % 100).padStart(2, '0');
+    }
     case 'department.name': {
       const dep = await departmentService.getById(String(employee.employment.departmentId)).catch(() => null);
       if (dep === null) return '';

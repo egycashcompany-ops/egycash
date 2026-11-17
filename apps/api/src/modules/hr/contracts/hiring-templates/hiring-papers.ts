@@ -245,11 +245,21 @@ const CONTRACT: HiringPaper = {
  * hold (the establishment number, the codes, signatures) stays for the hand.
  */
 const boxes = (count: number, value = ''): string => `<span class="cells c${count}">${value}</span>`;
+/** Boxes filled from their end — an amount: 9500 in five boxes of pounds is « 9500». */
+const amountBoxes = (count: number, value: string): string => `<span class="cells c${count} end">${value}</span>`;
 /** A value at its place on the scanned page (`form-one-scan.ts` places each class). */
 const at = (place: string, value: string): string => `<span class="at ${place}">${value}</span>`;
 
 /** The basic wage the owner registers every new hire at: «رقم 2720 دا يبقا الاجر الاساسي». */
 const INSURED_BASIC_WAGE = '2720';
+
+/**
+ * The company's own, the same on every copy, in Arabic figures: «رقم المنشاه … هنثبت اول مربع و هنحط
+ * من تاني مربع الرقم دا 3338726 بالعربي من الشمال لليمين»; overleaf «رقمها التاميني … بردو 3338726»
+ * and «العنوان نثبتو هيبقا 90 د احمد عرابي المهندسين-الجيزه كل الارقام بالعربي».
+ */
+const ESTABLISHMENT_NUMBER = '٣٣٣٨٧٢٦';
+const ESTABLISHMENT_ADDRESS = '٩٠ د احمد عرابي المهندسين-الجيزه';
 
 const FORM_ONE: HiringPaper = {
   key: 'egycash.hiring.insurance-form-1',
@@ -259,13 +269,16 @@ const FORM_ONE: HiringPaper = {
   printOrder: 5,
   // 2: the job as the insurance authority names it, and its occupation code («مسميات الوظائف لدى التأمينات»).
   // 3: printed on his own scanned pages, the values written on them — «الشكل اللي ادتولك بظبط».
-  revision: 3,
+  // 4: the establishment's number and address fixed, the job's wage in its two boxes, no date written.
+  revision: 4,
   sections: {
     header: '',
     body: [
       '<div class="scan f1p1">' +
         // «الفئة»: «عاملين لدى الغير».
         at('f1-cat', '✓') +
+        // «رقم المنشأة»: the first of its eight boxes left empty, the number in the other seven.
+        at('f1-est', boxes(7, ESTABLISHMENT_NUMBER)) +
         at('f1-co', '{{company.name}}') +
         at('f1-ins', boxes(9, '{{employee.insuranceNumber}}')) +
         at('f1-nid', boxes(14, '{{employee.nationalId}}')) +
@@ -283,16 +296,23 @@ const FORM_ONE: HiringPaper = {
         // «*أجر أساسي»: the pounds in the last four of its five boxes, the piasters in their two.
         at('f1-wage', boxes(4, INSURED_BASIC_WAGE)) +
         at('f1-qirsh', boxes(2, '00')) +
+        // «*أجر /دخل الاشتراك» and «*الأجر الشامل»: the job's «الراتب الثابت» (the organization chart).
+        at('f1-subwage', amountBoxes(5, '{{job.fixedSalaryPounds}}')) +
+        at('f1-subqirsh', boxes(2, '{{job.fixedSalaryPiasters}}')) +
+        at('f1-totwage', amountBoxes(5, '{{job.fixedSalaryPounds}}')) +
+        at('f1-totqirsh', boxes(2, '{{job.fixedSalaryPiasters}}')) +
         at('f1-street', '{{employee.address}}') +
         at('f1-phone', '{{employee.phone}}') +
         at('f1-email', '{{employee.email}}') +
-        // «تحريراً في:  /  /» — the day, the month and the year between his strokes.
-        at('f1-tday', '{{contract.currentDay}}') +
-        at('f1-tmonth', '{{contract.currentMonth}}') +
-        at('f1-tyear', '{{contract.currentYear}}') +
+        // «تحريراً في:  /  /» is left for the hand.
         '</div>',
       // Overleaf: «إرشادات» and «إقرار» — the company, and his name in the declaration.
-      '<div class="scan f1p2">' + at('f2-co', '{{company.name}}') + at('f2-name', '{{employee.fullName}}') + '</div>',
+      '<div class="scan f1p2">' +
+        at('f2-co', '{{company.name}}') +
+        at('f2-ins', ESTABLISHMENT_NUMBER) +
+        at('f2-addr', ESTABLISHMENT_ADDRESS) +
+        at('f2-name', '{{employee.fullName}}') +
+        '</div>',
     ].join('\n'),
     footer: '',
   },

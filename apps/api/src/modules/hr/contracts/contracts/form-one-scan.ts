@@ -2503,9 +2503,18 @@ export const FORM_ONE_SCAN_CSS = `
   .scan .f1-street { right: 28.85mm; bottom: 103.00mm; }
   .scan .f1-phone { right: 34.69mm; bottom: 81.04mm; }
   .scan .f1-email { right: 34.69mm; bottom: 74.04mm; }
-  .scan .f1-tday { left: 153.27mm; bottom: 66.72mm; transform: translateX(-50%); }
-  .scan .f1-tmonth { left: 145.00mm; bottom: 66.72mm; transform: translateX(-50%); }
-  .scan .f1-tyear { left: 136.83mm; bottom: 66.72mm; transform: translateX(-50%); }
+  .scan .f1-est { left: 104.22mm; top: 48.95mm; height: 5.89mm; }
+  .scan .f1-est .cells > i { width: 5.82mm; }
+  .scan .f1-subwage { left: 70.59mm; top: 132.01mm; height: 4.88mm; }
+  .scan .f1-subwage .cells > i { width: 3.37mm; }
+  .scan .f1-subqirsh { left: 87.46mm; top: 132.01mm; height: 4.88mm; }
+  .scan .f1-subqirsh .cells > i { width: 4.30mm; }
+  .scan .f1-totwage { left: 15.01mm; top: 132.11mm; height: 4.77mm; }
+  .scan .f1-totwage .cells > i { width: 3.38mm; }
+  .scan .f1-totqirsh { left: 31.93mm; top: 132.11mm; height: 4.77mm; }
+  .scan .f1-totqirsh .cells > i { width: 4.32mm; }
+  .scan .f2-ins { right: 129.41mm; bottom: 143.73mm; }
+  .scan .f2-addr { right: 33.09mm; bottom: 136.20mm; }
   .scan .f2-co { right: 33.73mm; bottom: 143.73mm; }
   .scan .f2-name { right: 33.62mm; bottom: 75.63mm; }
 `;

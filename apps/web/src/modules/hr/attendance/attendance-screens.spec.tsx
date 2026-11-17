@@ -30,14 +30,16 @@ import { DailySheetPage } from './pages/DailySheetPage';
 import { MyAttendancePage } from './pages/MyAttendancePage';
 import { RegularizationQueuePage } from './pages/RegularizationQueuePage';
 import { EmployeeMonthPage } from './pages/EmployeeMonthPage';
-import { periodRange } from './components/period';
+import { cairoToday, periodRange } from './components/period';
 
 /** What all three employee screens open on, and therefore the key their rows are seeded under. */
 const PERIOD = periodRange('thisMonth');
 /** One page of days — the screens ask for the server's maximum (`MAX_PAGE_SIZE`). */
 const DAYS_PAGE = 100;
 
-const TODAY = new Date().toISOString().slice(0, 10);
+// The sheet opens on Cairo's day (`cairoToday`), not UTC's: from 22:00 UTC Cairo is already on the
+// next date, and a UTC «today» put every stub row on a day the page never asked for.
+const TODAY = cairoToday();
 
 const day = (over: Partial<AttendanceDayDto> = {}): AttendanceDayDto => ({
   id: 'd-1',

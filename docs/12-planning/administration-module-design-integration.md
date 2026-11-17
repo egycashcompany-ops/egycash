@@ -43,15 +43,15 @@ The module publishes facts others react to and consumes almost none, through the
   (`event-bus.ts:31-49`).
 - **Additive only.** Module envelopes are always `schemaVersion: 1` (`event-bus.ts:36`); a `…V2` needs a bus change. So
   fields are only added, and consumers read tolerantly (`events/index.ts:1-4`).
-- **Tier.** In-process after commit, like every IT, Fleet and Operations emit. Facts Finance must not lose are reliable
-  (D-13, §8.5). A later promotion (OD-37, OD-41, OD-54, OD-56) changes no payload contract, but it changes how a handler
-  runs. An in-process handler runs in the emitter's process, under its request context (`event-bus.ts:51-59`;
+- **Tier.** In-process after commit, like every IT, Fleet and Operations emit. Facts Finance must not lose become
+  reliable once a cross-module consumer exists (D-13, §12.11), in the order of §8.5. A later promotion (OD-37, OD-41,
+  OD-54, OD-56) changes no payload contract, but it changes how a handler runs. An in-process handler runs in the emitter's process, under its request context (`event-bus.ts:51-59`;
   `apps/api/src/infrastructure/http/request-context.ts:31-36`), so a row it writes names the emitting user. A reliable
   handler runs in the worker with only the request id (`apps/api/src/infrastructure/queue/jobs.ts:142, 262-263`), waits
   for the relay (§8.5) and runs at most once when it throws. Handlers therefore take the actor from `envelope.actorId`
   and are idempotent and non-throwing. **A fact and its reversal share a tier:** promoting one promotes its opposing
-  events in the same slice: `stockIssue.posted` with `stockReturn.posted`; `purchaseOrder.issued` with `.cancelled` and
-  `.closed`; and, under OD-37 B or C, every posting that writes stock off (`stockAdjustment.posted`,
+  events in the same slice: `goodsReceipt.posted` with `supplierReturn.posted`; `stockIssue.posted` with
+  `stockReturn.posted`; `purchaseOrder.issued` with `.cancelled` and `.closed`; and, under OD-37 B or C, every posting that writes stock off (`stockAdjustment.posted`,
   `stockCount.posted`).
 - **Literal emit sites.** `emit(AdministrationEvents.X, { … })` with an object literal written one key per line. The
   payload-key check (`apps/api/src/platform/kernel/event-publishers.spec.ts:198`) reads only the keys that start a line
@@ -64,12 +64,13 @@ The module publishes facts others react to and consumes almost none, through the
 ### 8.2 Catalogue per phase
 
 `C` = `{ <doc>Id, number, branchId, lineCount }`; transfers carry `fromBranchId` and `toBranchId` instead of `branchId`.
-**P1a and P1b emit nothing**: master data is audited, not published, as for IT vendors and consumables (discovery 09
-§1.6, §3.1).
+**P1a and P1b emit nothing**: master data is audited, not published, as IT's vendors and consumables audit their create
+and edit and emit nothing (`apps/api/src/modules/it/vendors/vendor.service.ts:54-58, 110-114`;
+`apps/api/src/modules/it/consumables/consumable.service.ts:215, 274`).
 
 | Ph | Event | Fires when | Payload beyond `C` | Tier |
 |---|---|---|---|---|
-| P2 | `administration.purchaseRequest.submitted` | draft → `pendingApproval` | `departmentId`, `requesterUserId`, `requesterEmployeeId` (`requester.employeeId`, §2.5) | in-process |
+| P2 | `administration.purchaseRequest.submitted` | draft → `pendingApproval` | `departmentId`, `requesterUserId`, `requesterEmployeeId` (§2.5) | in-process |
 | P2 | `….purchaseRequest.approved` · `.rejected` | the chain's final outcome | the same + `status` | in-process |
 | P2 | `….purchaseRequest.cancelled` · `.closed` | cancel after draft (OD-28); the act that closes it: a remainder cancel, or the PO act that closes its last open claiming PO (§4.2.2) | the same + `status`, `orderStatus` | in-process |
 | P3 | `administration.rfq.issued` | draft → `issued` | `supplierIds` (invited) | in-process |
@@ -77,9 +78,8 @@ The module publishes facts others react to and consumes almost none, through the
 | P4 | `administration.purchaseOrder.submitted` · `.approved` · `.rejected` | as for PRs | `supplierId`, `status` | in-process |
 | P4 | `….purchaseOrder.issued` | `approved → issued` (OD-31) | `supplierId`, `deliveryWarehouseIds`, `deliveryBranchIds` (distinct over the lines, §2.5) | in-process; reliable if OD-56 adds commitments |
 | P4 | `….purchaseOrder.cancelled` · `.closed` | cancel after draft; close: a short-close, or the GRN or remainder cancel that completes it under OD-28 A's auto-close (§4.3.2; §5.6 row 7) | `supplierId`, `deliveryBranchIds`, `receiptStatus`, `shortClosed` (derived: closed with a `closeReason`, i.e. by a short-close or by the remainder cancel that completes it, §5.6 rows 7–8 and 13; never from `receiptStatus`, which reads `fullyReceived` on every closed PO, §5.12) | in-process; reliable with `.issued` (§8.1) |
-| P4 | `….purchaseOrder.amended` | only under OD-26 B (recommended default: A, no revisions): a revision takes effect, at once or on its round's final approval | `supplierId`, `revisionNumber` | in-process |
-| P5 | `administration.goodsReceipt.posted` | GRN posted | `warehouseId`, `supplierId`, `purchaseOrderId` (null only under OD-33 B), `purchaseOrderReceiptStatus`, `at` | **reliable** |
-| P5 | `administration.supplierReturn.posted` | SRN posted | `warehouseId`, `supplierId`, `goodsReceiptId`, `purchaseOrderId`, `reasonCodes` (the lines' distinct codes, OD-84's `entryError` among them), `at` | **reliable** |
+| P5 | `administration.goodsReceipt.posted` | GRN posted | `warehouseId`, `supplierId`, `purchaseOrderId` (null only under OD-33 B), `purchaseOrderReceiptStatus`, `at` | in-process; **reliable** once a cross-module consumer exists (D-13; §8.6) |
+| P5 | `administration.supplierReturn.posted` | SRN posted | `warehouseId`, `supplierId`, `goodsReceiptId`, `purchaseOrderId`, `reasonCodes` (the lines' distinct codes, OD-84's `entryError` among them), `at` | in-process; **reliable** with `goodsReceipt.posted` (§8.1) |
 | P5 | `administration.item.belowMin` | an outbound posting takes one or more balance rows from above to at or below the item's minimum (the edge, `apps/api/src/modules/it/spare-parts/stock-rules.ts:20-21`): one event per posting, never one per item; a count posting emits none (below) | not `C`: `warehouseId`, `warehouseCode`, `branchId`, `docType`, `docId`, `number`, `items: [{itemId, itemCode, onHandQty, minQty}]`, at most the line cap (§2.1) | in-process |
 | P6 | `administration.materialRequest.submitted` · `.approved` · `.rejected` · `.cancelled` · `.closed` | as for PRs; `.closed` from the issue or remainder cancel that completes it | `departmentId`, `requesterUserId`, `requesterEmployeeId`, `warehouseId` (the fulfilling store, OD-75), `status`, `issueStatus` | in-process |
 | P6 | `administration.stockIssue.posted` | ISS posted | `warehouseId`, `materialRequestId` (null only under OD-40 B or C), `recipientEmployeeId`, `recipientDepartmentId` (the `recipient` snapshot's, §2.6), `at` | in-process; reliable if OD-41/OD-54 make consumption a Finance fact |
@@ -87,9 +87,8 @@ The module publishes facts others react to and consumes almost none, through the
 | P7 | `administration.stockTransfer.submitted` · `.approved` · `.rejected` | only where OD-45 puts the transfer on a chain (recommended default: A, inter-branch transfers) | `fromWarehouseId`, `toWarehouseId`, `status` | in-process |
 | P7 | `….stockTransfer.dispatched` · `.received` · `.closed` · `.cancelled` | dispatch; every act that moves stock into the destination's on hand (a receipt, or a late arrival a resolution records); the act that empties transit (§2.4.5); cancel after draft | the same + `receiptStatus`, `discrepancy` | in-process |
 | P7 | `administration.stockCount.started` · `.approvalRequested` · `.posted` · `.cancelled` | freeze (`draft → inProgress`); `submitted → pendingApproval`; the final approval, which posts (§4.3.6); cancel after draft | `warehouseId`, `varianceLineCount` | in-process; `.posted` reliable under OD-37 B or C |
-| P7 | `….stockCount.rejected` | only if OD-51 makes a rejection final (recommended default: A, a rejection is a recount) | the same + `status` | in-process |
 | P7 | `administration.stockAdjustment.submitted` · `.posted` · `.rejected` · `.cancelled` | submit; the final approval, which posts; rejection; cancel after draft | `warehouseId` | in-process; `.posted` reliable under OD-37 B or C |
-| P8 | `administration.financeHandoff.created` · `.withdrawn` | hand-over, or an SRN posting that cuts a return notice (OD-54's post-hand-over notice (i), recommended; §12.5); withdrawal (§12.5) | §12.5's `{ handoffId, number, supplierInvoiceId, supplierId, status }`, plus `branchId` (asked here, for parity with `C`) | **reliable**; the record exists only under OD-55 D (recommended) |
+| P8 | `administration.financeHandoff.created` · `.withdrawn` | hand-over, or an SRN posting that cuts a return notice (OD-54's post-hand-over notice (i), recommended; §12.5); withdrawal (§12.5) | §12.5's `{ handoffId, number, supplierInvoiceId, supplierId, status }`, plus `branchId` (asked here, for parity with `C`) | in-process; **reliable** once a consumer exists (D-13, §12.11); the record exists only under OD-55 D (recommended) |
 
 - **Acts that emit nothing.** The catalogue keeps to the facts others react to:
   - closing bidding (`issued → evaluating`) and every quotation act (record, edit, withdraw): the buyer's working
@@ -99,21 +98,24 @@ The module publishes facts others react to and consumes almost none, through the
   - a count's recount (`submitted → inProgress`) and, under OD-51 A, its rejection (`pendingApproval → inProgress`):
     the count stays frozen and in progress;
   - a transfer that needs no approval (`draft → approved`, OD-45 A): its first fact is `.dispatched`;
-  - a transfer line declared returning or lost, the source's return posting and the loss round (OD-47, recommended:
-    return B with loss round (ii)); only a late arrival, which moves stock on hand, emits `.received`, and the act that
-    empties transit emits `.closed`. A valued loss event waits for OD-37 (recommended default: A, quantities only);
-  - a PR or MR remainder cancel that leaves the document open; a PO revision's round, whose outcome is `.amended`;
+  - a transfer line declared returning or lost, a return re-declared as never arrived (`returnNotArrived`), the
+    source's return posting and the loss round (OD-47, recommended: OD-47.3 B with OD-47.4 (ii)); only a late arrival,
+    which moves stock on hand, emits `.received`, and the act that empties transit emits `.closed`. A valued loss event
+    waits for OD-37 (recommended default: A, quantities only);
+  - a PR or MR remainder cancel that leaves the document open;
   - opening balances, as IT's go-live opening (`apps/api/src/modules/it/go-live/consumables-opening.ts`).
+- **Under answers not recommended.** OD-26 B (PO revisions) would add `purchaseOrder.amended` (`supplierId`,
+  `revisionNumber`) when a revision takes effect, its round emitting nothing; OD-51 C (a final rejection) would add
+  `stockCount.rejected` (the count payload plus `status`). Each ships with that answer.
 - **`item.belowMin`.** The event is the immediate at-or-below-minimum crossing of OD-61's level alerts (recommended
   default: A); it compares the item's `minQty` with each warehouse's on hand, OD-09's basis 1 (§2.3.4). A daily
   reorder-point alert per (warehouse, item) is OD-61's too, and needs PX-2's marks (§2.7). A count posting emits
   none, because it can cross hundreds of rows at once and OD-61's recommended low-stock digest reports them. The event
   alerts nobody by itself: a rule or workflow built on it is its author's second alert beside the digest.
-- `at` is the business time (OD-74, recommended default: A, the posting instant; an opening balance carries its as-of
-  date).
+- `at` is the business time (OD-74, recommended default: A, the posting instant; an opening balance carries its
+  `asOfDate`, §2.6).
 - HR rules address a person only through an employee-id path
-  (`packages/contracts/src/modules/hr-notification-rule.ts:46-55`). §2 stores `requester` and `recipient` as
-  `PersonSnap` (§2.5, §2.6), so PR, MR and issue payloads carry `requesterEmployeeId` and `recipientEmployeeId`. A
+  (`packages/contracts/src/modules/hr-notification-rule.ts:46-55`). §2 stores the requester and the recipient as top-level `requesterEmployeeId` and `recipientEmployeeId` (D-22; §2.5, §2.6), and PR, MR and issue payloads carry them. A
   requester without an employee is OD-16's question; only then would the field be null.
 
 ### 8.3 What changes in `packages/contracts`
@@ -142,19 +144,18 @@ The module publishes facts others react to and consumes almost none, through the
 
 All other action words exist (`catalog.ts:782-929`): `submitted`, `approved`, `rejected`, `cancelled`, `closed`,
 `issued`, `started`, `approvalRequested` («طلب اعتماد», `:870`), `amended` («تعديل», `:873`), `dispatched`, `received`,
-`created`, `withdrawn` and `belowMin`. Labels compose as «ترحيل إذن صرف», «إصدار أمر شراء», «ترسية طلب عروض أسعار»,
-«طلب اعتماد جرد». Every Arabic word of this section and of §10.3, the composed labels included, passes
+`created`, `withdrawn` and `belowMin`. Labels compose as ترحيل إذن صرف، إصدار أمر شراء، ترسية طلب عروض أسعار،
+طلب اعتماد جرد. Every Arabic word of this section and of §10.3, the composed labels included, passes
 `scripts/check-formal-arabic.mjs` today (probed through its exported `offendersIn`, `:181-199`; the check scans every
 product file, `catalog.ts` included, `:202-226`). Two meanings collide, and both go to OD-67:
 
 - «ترحيل» (`posted`) already labels leave carry-over (`apps/web/src/platform/localization/i18n.ts:17017-17027`:
   «الترحيل», «ترحيل الكل»);
 - «صرف» already labels money and vault releases in the action lexicon (`disbursed` and `released`,
-  `catalog.ts:888, 903`), beside IT's stock «صرف», so the trigger picker would show «اعتماد طلب صرف» next to
-  «صرف سلفة». «طلب مواد» and «إذن صرف مخزني» also pass the check, as alternatives.
+  `catalog.ts:888, 903`), beside IT's stock «صرف», so the trigger picker would show اعتماد طلب صرف next to
+  «صرف سلفة». طلب مواد and إذن صرف مخزني also pass the check, as alternatives.
 
-«جرد» is reused, not a collision: it already exists in the product (Gold's «محضر جرد درج», the ATM settlement papers),
-and only the count document's own name is a candidate (§0.4).
+«جرد» is reused, not a collision (§0.4).
 
 ### 8.4 Spec and gate obligations
 
@@ -167,6 +168,8 @@ and only the count document's own name is a candidate (§0.4).
 | Docs | P2 corrects `docs/12-planning/automation-module-design.md:256-257` (§8.7). |
 
 ### 8.5 Reliable emits: the order of a posting
+
+Once a fact is reliable (D-13), its posting runs in this order:
 
 ```ts
 await ensureStockRows(pairsOf(input));                                    // outside the transaction (§2.4.4)
@@ -195,17 +198,17 @@ This is the platform's shape (`apps/api/src/platform/users/user.service.ts:174-1
 built inside the callback, fresh on every attempt, and recorded once after the commit
 (`apps/api/src/modules/atm/settlements/plans/plan.service.ts:16-17, 118`). The relay writes its dedup row before the
 handler runs (`event-bus.ts:100-109`), so a failing handler is never retried; `failed` is never set and outbox rows are
-never purged. PC-1 (§15.2.2) fixes the retry before P8 (§18.1). The one-minute `platform.outboxSweep`
-(`apps/api/src/platform/scheduler/scheduler.tasks.ts:14-23`) relays what a lost nudge left pending. Consumers reconcile
-by reading records: "the event is the doorbell, the record the mailbox" (§12.5).
+never purged. PC-1 (§15.2.2) fixes the retry before the first reliable event gets a cross-module consumer (§12.11).
+The one-minute `platform.outboxSweep` (`apps/api/src/platform/scheduler/scheduler.tasks.ts:14-23`) relays what a lost
+nudge left pending. Consumers reconcile by reading records: "the event is the doorbell, the record the mailbox" (§12.5).
 
 ### 8.6 Consumers
 
 | Consumer | What it gets | Constraint |
 |---|---|---|
 | HR notification rules | every event, subscribed by name (`rule-subscriptions.ts:15-24`) and offered in the rule picker (`notification-rule.controller.ts:68-73`) | Organization-scope authors; payload values interpolate into the message as `{{placeholders}}` (`packages/contracts/src/modules/hr-notification-rule.ts:69-75`), which can reach the `everyone` audience (`:46-67`). Hence §8.1's lean payloads. |
-| Automation | every event, once `AUTOMATION_ENABLED` | Off by default; no branch filter on dispatch; n8n persists full payloads (discovery 06 §5.3); never the authority on state (ADR-018). |
-| Module notifications | none: `notify()` runs after commit (OD-61) | a notification about a record without a detail route (a quotation, a line) carries its parent document's `entityRef`, the RFQ's for a quotation; `ENTITY_ROUTES` (`packages/contracts/src/platform/notification-target.ts:36-42`) gets entries only for entity types with a detail route (§13.4, rule 4; skeleton Addenda 5). The push then refreshes the parent's keys (§9.5) |
+| Automation | every event, once `AUTOMATION_ENABLED` | Off by default; no branch filter on dispatch; each run keeps the payload in its execution row (credentials redacted) and hands it whole to the provider, n8n (`apps/api/src/modules/automation/triggers/trigger-bridge.ts:83, 113`); never the authority on state (ADR-018). |
+| Module notifications | none: `notify()` runs after commit (OD-61) | a notification about a record without a detail route (a quotation, a line) carries its parent document's `entityRef`, the RFQ's for a quotation; `ENTITY_ROUTES` (`packages/contracts/src/platform/notification-target.ts:36-42`) gets entries only for entity types with a detail route (§13.4, rule 4). The push then refreshes the parent's keys (§9.5) |
 | Future Finance | `financeHandoff.*`, `goodsReceipt.posted`, `supplierReturn.posted` as doorbells; amounts from the records (§12.6) | idempotent, non-throwing handlers that take the actor from `envelope.actorId` (§8.1, §8.5) |
 | Future IT | `goodsReceipt.posted` for IT items, under OD-02 C or OD-65 B (recommended default: A in P5, B as a later IT slice) | IT re-reads the GRN through a read seam; no line payloads |
 
@@ -224,7 +227,7 @@ so a mover needs nothing).
   (`apps/api/src/modules/it/assets/custody.service.ts:1027-1042`;
   `apps/api/src/modules/it/mobile-lines/line-custody.service.ts:353-368`): each warehouse whose `responsibleEmployeeId`
   is the leaver (`ix_responsible`, §2.3.5) and, only under OD-15 B, each of his issues with returnable items still out
-  (`recipient.employeeId`, `ix_recipient`, §2.6). The label reads «رفع تنبيه أمني» (§10.3).
+  (`recipientEmployeeId`, `ix_recipient`, §2.6). The label reads «رفع تنبيه أمني» (§10.3).
 - **Cancelling drafts is a later act.** Under OD-44 A, a module sweep reads the distinct requesters of draft PRs and MRs
   through the directory and cancels the drafts of those it reads as `exited`, on a positive answer only, IT's
   `refuseLeaver` reading (`apps/api/src/modules/it/assets/custody.service.ts:89-95`). It runs as the system actor with
@@ -237,17 +240,19 @@ so a mover needs nothing).
 | `purchasing.request.approved` (`:257`) | `administration.purchaseRequest.approved`: the prefix is the reserved module id (`docs/01-business/module-hierarchy.md:75`), and shipped names are permanent. |
 | `admin.asset.created` (`:256`) | Not this module: durable assets are IT's (`it.asset.registered`); personal custody is OD-15. |
 | "request submitted → approval by amount" (`:682`) | Value bands are approval request types (OD-18); automation never decides state (ADR-018). |
-| "approved → PO generation" (`:682`) | Module logic from the awaiting-sourcing queue (§4.2.3); automation has no action surface (A-6b). |
-| "supplier delivery reminder" (`:682-683`) | `purchaseOrder.issued` plus scheduling (A-8, unbuilt) or a module sweep (OD-61). |
+| "approved → PO generation" (`:682`) | Module logic from the awaiting-sourcing queue (§4.2.3); automation has no action surface (A-6b, the automation plan's unbuilt service-token and callback slice, `docs/12-planning/automation-module-design.md:744`). |
+| "supplier delivery reminder" (`:682-683`) | `purchaseOrder.issued` plus scheduling (A-8, the automation plan's unbuilt scheduling slice, `docs/12-planning/automation-module-design.md:746`) or a module sweep (OD-61). |
 | "budget-threshold alert" (`:683`) | OD-56. |
 | "office supplies reorder point" (`:685-686`) | `administration.item.belowMin` at the minimum; a reorder-point alert is OD-61's daily alert (§8.2). |
+
+---
 
 ## 9. Realtime
 
 ### 9.1 The rule
 
 `auditService.record()` broadcasts only eight data-change verbs (`packages/contracts/src/platform/realtime.ts:19-31`;
-`restore` joined on 2026-11-11, a verb this module does not use) and never passes `branchId`
+`restore` among them, a verb this module does not use) and never passes `branchId`
 (`apps/api/src/platform/audit/audit.service.ts:180-188`), nor does `recordMany`; any other verb stops at the audit
 stream (`apps/api/src/platform/realtime/realtime-publisher.ts:51-55`). Branch-, department- and section-scoped viewers
 join only branch rooms (`apps/api/src/platform/realtime/realtime-rooms.ts:29-35`). So, after commit:
@@ -258,13 +263,13 @@ join only branch rooms (`apps/api/src/platform/realtime/realtime-rooms.ts:29-35`
    (`apps/api/src/modules/it/consumables/consumable-history.ts:100-107`). IT signals only movements, so its item edits
    (`apps/api/src/modules/it/consumables/consumable.service.ts:274`) never reach branch viewers; this design closes that
    gap.
-2. **Company-wide master data audited under a non-broadcast verb sends the same signal without a branch**, which
-   reaches the organization room. That is (de)activation: it audits `deactivate` and `activate` (§10.2; skeleton
-   Addenda 4), and neither verb is broadcast, so without the signal retiring or reactivating an item, unit, category
-   or supplier would refresh no screen (§19.6).
+2. **Organization-wide master data audited under a non-broadcast verb sends the same signal without a branch**, which
+   reaches the organization room. That is (de)activation: it audits `deactivate` and `activate` (§10.2), and neither
+   verb is broadcast, so without the signal retiring or reactivating an item, unit, category or supplier would refresh
+   no screen (§19.6).
 
 Broadcast verbs thus reach the organization room twice, and every explicit signal also feeds the audit screen's live
-stream once more (`realtime-publisher.ts:51-52`). Both are harmless refetches that the web's 300 ms coalescer merges
+stream once more (`realtime-publisher.ts:51-52`). Both are extra refetches, which the web's 300 ms coalescer merges
 (`apps/web/src/platform/realtime/realtime-client.ts:11`). The rule covers acts that change a record: audited reads
 (`export`, `download`) and exit flags (`alertRaised`, §8.6) send no signal, the reading §11.5 records. A print of
 record moves its counters, so it signals like any write (§11.6.6).
@@ -274,7 +279,7 @@ record moves its counters, so it signals like any write (§11.6.6).
 | Topic | Permission | Ph | `branchId` on the module's signal |
 |---|---|---|---|
 | `administration.warehouse` | `administrationWarehouse.view` | P1a | the warehouse's |
-| `administration.item` · `.catalogItem` · `.itemCategory` | `administrationItem.view` (the catalog pair on `administrationCatalog.manage` in P1a.1, §19.6) | P1a | none (company-wide data) |
+| `administration.item` · `.catalogItem` · `.itemCategory` | `administrationItem.view` (the catalog pair on `administrationCatalog.manage` in P1a.1, §19.6) | P1a | none (organization-wide data) |
 | `administration.supplier` | `administrationSupplier.view` | P1b | none |
 | `administration.purchaseRequest` | `administrationPurchaseRequest.view` | P2 | the request's |
 | `administration.rfq` · `.quotation` | `administrationRfq.view` | P3 | the RFQ's |
@@ -302,16 +307,17 @@ record moves its counters, so it signals like any write (§11.6.6).
   an audience without the main key (`apps/api/src/modules/fleet/custody/custody-memo-guard.ts:174-186`;
   `apps/api/src/modules/atm/settlements/shared/day-signals.ts:1-30`). The same precedent carries the `goodsReceipt`
   signal of a PO act to the delivery branches (§9.3).
-- **No other entity types.** The list is skeleton Addenda 3's. Server exports (OD-60) audit on the exported register's
-  entity type with `entityId: 'export'` (`stock` for the stock registers), as ATM's register export does
+- **No other entity types.** The table above is the module's whole list. Server exports (OD-60) audit on the exported
+  register's entity type with `entityId: 'export'` (`stock` for the stock registers), as ATM's register export does
   (`apps/api/src/modules/atm/register/register-export.ts:145-153`). File links audit on their document (§11.4).
   Go-live loads audit per row (§10.1), so they need no run entity; an in-app import with preview (OD-68 C, OD-63)
-  would need a run entity type and a run verb, a skeleton addition that is not proposed.
+  would need a run entity type, with its topic and registry entry, and a run verb appended to `AUDIT_ACTIONS` with its
+  labels (§10.3 gives that cost). It is not proposed.
 - **The procurement policy** (OD-18 bands, OD-32 tolerance) is written through the platform settings service, the ATM
   precedent (`apps/api/src/modules/atm/shared/settings-authority.ts:22-33`; §18.3 P4). Its `settingChanged` row
   broadcasts on `platform.setting`, gated by `setting.view` (`realtime-registry.ts:262`). A policy manager without
-  `setting.view` refreshes on navigation and `staleTime`; a module topic for the policy would sit outside the skeleton's
-  list, and is not proposed.
+  `setting.view` refreshes on navigation and `staleTime`. A module topic for the policy would cost a topic of its own,
+  its registry entry and an invalidation row (§9.4), with a signal sent after each save; it is not proposed.
 
 ### 9.3 What each act signals
 
@@ -323,16 +329,16 @@ hold no PO key, so they join no PO room.
 
 | Act | Signals after commit |
 |---|---|
-| Master data: create, edit | items, units, categories, suppliers: `record()`'s broadcast to the organization room; a warehouse: also its topic → its branch |
+| Master data: create, edit (a warehouse opened empty included, §2.3.5) | items, units, categories, suppliers: `record()`'s broadcast to the organization room; a warehouse: also its topic → its branch |
 | Master data: deactivate, reactivate | items, units, categories, suppliers: an explicit `update` signal without a branch → the organization room (§9.1, rule 2); a warehouse: its topic → its branch |
 | Any document: create, edit, submit, return, decide, cancel, close; a file link (§11.4) | its topic → its branch |
-| PO act that claims or gives back PR quantity: submit, reject, return, cancel, short-close, remainder cancel, a revision approved under OD-26 B | `purchaseOrder` → PO branch; `purchaseRequest` → each cited PR's branch (each act writes every PR it cites, §4.2.2) |
-| PO act that changes receivability: issue, cancel, short-close, remainder cancel, an applied revision; a GRN that closes its PO | also `goodsReceipt` → each distinct `lines.deliveryBranchId` |
+| PO act that claims or gives back PR quantity: submit, reject, return, cancel, short-close, remainder cancel | `purchaseOrder` → PO branch; `purchaseRequest` → each cited PR's branch (each act writes every PR it cites, §4.2.2) |
+| PO act that changes receivability: issue, cancel, short-close, remainder cancel; a GRN that closes its PO | also `goodsReceipt` → each distinct `lines.deliveryBranchId` |
 | RFQ award; RFQ cancel from `issued` or `evaluating` | `rfq`, `quotation` → RFQ branch (the quotations settle in the same act, §3.4) |
 | Quotation record, edit, withdraw (nested under `/rfqs/:id/quotations`, §3.3) | `quotation` → RFQ branch |
 | GRN posted | `goodsReceipt`, `stock` → warehouse branch; `purchaseOrder` → PO branch; `purchaseRequest` → the branch of each PR that closed with the PO (§4.3.2) |
 | Supplier return posted | `supplierReturn`, `stock` → warehouse branch; `goodsReceipt` → its branch; `purchaseOrder` → PO branch when it gives `receivedQty` back (OD-36 A, OD-84); `financeHandoff` → the PO's branch when it cuts a return notice (P8, OD-54 (i), §12.5) |
-| Opening balance posted | `openingBalance`, `stock` → warehouse branch |
+| Opening balance posted | `openingBalance`, `stock` → warehouse branch; `warehouse` → its branch when the posting opens it (`openedAt`, §2.3.5) |
 | Issue posted | `stockIssue`, `stock` → warehouse branch; `materialRequest` → the MR's branch, where it closes when the issue completes it |
 | Issue return posted | `stockReturn`, `stock` → warehouse branch; `stockIssue` → its branch |
 | MR act that changes issuability (approve, cancel, remainder cancel), under OD-75 B or C | also `materialRequest` → the fulfilling warehouse's branch |
@@ -345,7 +351,8 @@ hold no PO key, so they join no PO room.
 | Procurement policy saved | the platform's `settingChanged` on `platform.setting` only (§9.2) |
 
 Both sides read a transfer at every status, drafts included (§7.4), so both are signalled for every act. The signal is
-not data (`realtime.ts:4-8`).
+not data (`realtime.ts:4-8`). Under OD-26 B (not recommended), a PO revision approved or applied would signal as both
+kinds of PO act above.
 
 ### 9.4 Web invalidation registry
 
@@ -354,7 +361,7 @@ Each row in `apps/web/src/platform/realtime/invalidation-registry.ts` says exact
 (`apps/web/src/shared/lib/query-keys.ts:4-15`); a feature subtree holds its lists, details and history, so Phase 1's
 ItemDetailPage and SupplierDetailPage sit under `items` and `suppliers`. The awaiting-sourcing queue sits under
 `purchaseRequests`, the receivable PO lines (§7.10) under `goodsReceipts`, and the item card and warehouse card, live
-stock views from P5, under `stock`, which the `administration.stock` topic refreshes (skeleton Addenda 5). A key marked
+stock views from P5, under `stock`, which the `administration.stock` topic refreshes. A key marked
 with a phase joins its row with the screen that holds it; the dashboard ships in P9 (§18.2).
 
 | Topic | Key prefixes `['administration', …]` |
@@ -377,7 +384,12 @@ with a phase joins its row with the screen that holds it; the dashboard ships in
 | `.supplierInvoice`, `.financeHandoff` | `supplierInvoices`, `financeHandoffs`, `purchaseOrders`, `dashboard` (P9) |
 
 No document row lists `stock`: a posting's stock effect arrives on `administration.stock`, which also reaches readers
-without the document key. The dashboard key sits in the row of every topic that feeds a tile (§14.3, §14.4); RFQs, quotations, the catalogs, suppliers and opening balances feed none (§14.4). From P9 the `dashboard` prefix also joins the registry's `THROTTLED_KEY_PREFIXES`, as Fleet's dashboard did (D13, `apps/web/src/platform/realtime/invalidation-registry.ts:47-69`): a signal marks it stale at once and refetches it on screen at most once per 30 s (`apps/web/src/platform/realtime/throttle.ts:1-17`), so a busy store does not re-read the board on every posting. Report keys sit in no row: cross-document reports (§14) are not live; they show `generatedAt`
+without the document key. The dashboard key sits in the row of every topic that feeds a tile (§14.3, §14.4); RFQs,
+quotations, the catalogs, suppliers and opening balances feed none (§14.4). From P9 the `dashboard` prefix also joins
+the registry's `THROTTLED_KEY_PREFIXES`, as Fleet's dashboard did
+(`apps/web/src/platform/realtime/invalidation-registry.ts:47-69`): a signal marks it stale at once and refetches it on
+screen at most once per 30 s (`apps/web/src/platform/realtime/throttle.ts:1-17`), so a busy store does not re-read the
+board on every posting. Report keys sit in no row: cross-document reports (§14) are not live; they show `generatedAt`
 and a refresh action (§14.4). The item and warehouse cards are not among them, although §14.5 lists them: their keys
 sit under `stock`, so a posting refreshes an open card through the `.stock` row. A module spec pins `keysForTopic` for
 the stock topic (`apps/web/src/modules/fleet/api/custody-queries.spec.tsx:277-292`).
@@ -389,7 +401,7 @@ Own-scope requesters join no rooms (`realtime-rooms.ts:29-35`). The in-app push 
 `apps/api/src/platform/notifications/notification.mapper.ts:19`), which the web ignores
 (`apps/web/src/platform/realtime/realtime-client.ts:88`).
 
-**Design (PC-7; skeleton Addenda 3).** On `notification:new`, the client also pushes
+**Design (PC-7).** On `notification:new`, the client also pushes
 `realtimeTopic(entityRef.moduleId, entityRef.entityType)` into the coalescer; the registry row picks the keys, and an
 unknown topic is ignored. A notification about a record without a detail route (a quotation, a line) carries its
 parent document's `entityRef` (§8.6), so the parent's row picks the keys: the RFQ's for a quotation (§9.4). ADR-029's
@@ -398,6 +410,9 @@ This is platform web code (one handler and its spec), recorded as an ADR-029 not
 platform convention (§20). A push without `entityRef` keeps today's single `NOTIFICATIONS_TOPIC`, the pinned case
 (`apps/web/src/platform/realtime/realtime.spec.ts:143-151`). **Fallback:** if platform review refuses the generic rule,
 the handler acts only when `entityRef.moduleId` is `administration` (an allow-list).
+
+**Timing.** PC-7 is not a prerequisite of P2. P2 ships with navigation and `staleTime` refresh for requesters (below),
+PC-7 lands when platform review accepts it, and P2's exit criterion is worded accordingly (§18.1).
 
 **Risk.** A transition that notifies nobody (OD-61) refreshes nothing. Neither does one whose template was deactivated:
 `notify()` then throws (`apps/api/src/platform/notifications/notification.service.ts:113-117`), and the caller swallows
@@ -409,8 +424,8 @@ because the push is sent for every notification row whatever the template's chan
 ### 9.6 Reconnect and degraded modes
 
 - **Reconnect** invalidates every registered prefix (`apps/web/src/platform/realtime/RealtimeProvider.tsx:67`;
-  `invalidation-registry.ts:666-674`) through the platform invalidator (`apps/web/src/platform/realtime/invalidator.ts`, since
-  2026-11-04): mounted screens refetch at once, unless the tab is hidden (marked stale, refetched once when shown) or the
+  `invalidation-registry.ts:666-674`) through the platform invalidator (`apps/web/src/platform/realtime/invalidator.ts`):
+  mounted screens refetch at once, unless the tab is hidden (marked stale, refetched once when shown) or the
   prefix is throttled (at most once per 30 s); others refetch when next opened. No module code, but
   every live module key must sit under a registered prefix; report keys, which are not live, sit under none (§9.4).
 - **Rooms are computed at connect**, so a new or revoked grant takes effect at reconnect
@@ -437,8 +452,8 @@ signal from P1a.2 on (§9.2).
 ### 9.8 Guards
 
 - **`apps/api/src/platform/realtime/realtime-registry.spec.ts`**: every literal pair (letters only, `:76-77`)
-  classified, none stale, none dynamic (`EXPECTED_DYNAMIC_SITES = 16` holds, `:65`; it was 10 at `b03522f`); each topic's permission declared
-  in `moduleManifests` (an env-gated manifest is imported directly, `:9-13`). The scan also sees signals, notification
+  classified, none stale, none dynamic (`EXPECTED_DYNAMIC_SITES = 16` holds, `:65`; it was 10 at `b03522f`); each
+  topic's permission declared in `moduleManifests` (an env-gated manifest is imported directly, `:9-13`). The scan also sees signals, notification
   `entityRef`s and file owners, so a topic row lands with the entity's first literal pair. **Shared helpers never build
   `entityType` from a variable:** `shared/lifecycle.ts` and `shared/posting-lifecycle.ts` take the feature's literal
   `…EntityRef` helper and its `signal<Entity>` as parameters, because a `moduleId: 'administration'` site with a
@@ -449,6 +464,8 @@ signal from P1a.2 on (§9.2).
 - **A module audit spec per `<entity>-audit.ts`** pins literal pairs, verbs and branch signals
   (`apps/api/src/modules/it/consumables/consumable-history.spec.ts:100-163`).
 
+---
+
 ## 10. Audit
 
 ### 10.1 Shape and timing
@@ -458,7 +475,7 @@ signal from P1a.2 on (§9.2).
   (`apps/api/src/platform/kernel/unit-of-work.ts:5-17`). The rows are built inside the callback, fresh on every
   attempt, and recorded once after it (§2.4.4; ATM's `recordAll`,
   `apps/api/src/modules/atm/settlements/plans/plan.service.ts:16-17, 118`), in one `auditService.recordMany(entries)` call
-  (since 2026-11-04, `apps/api/src/platform/audit/audit.service.ts:229-274`): one queue round trip for all the act's rows,
+  (`apps/api/src/platform/audit/audit.service.ts:229-274`): one queue round trip for all the act's rows,
   each its own instant, `record()`'s never-throws fallback, and one entity signal per entity type and verb. Like `record()`
   it passes no branch, so §9.1's branch signal still follows. Several IT services audit inside the
   callback instead: custody, spare parts, maintenance, tickets and software (e.g.
@@ -472,12 +489,12 @@ signal from P1a.2 on (§9.2).
   (§12.5). A PO cites at most the line cap's PR lines (§2.1), which bounds the cascade. Physical progress
   (`orderStatus`, `receiptStatus`, `issueStatus`, `discrepancy`) rides on the acting row as pseudo-fields.
 - **Literal refs.** One `…EntityRef(id)` helper per entity type, with its `signal<Entity>`, in the feature's
-  `<entity>-audit.ts` (skeleton Addenda 3), after IT's `consumable-history.ts`
+  `<entity>-audit.ts`, after IT's `consumable-history.ts`
   (`apps/api/src/modules/it/consumables/consumable-history.ts:26-38, 100-107`).
 - **Actor.** The request context. Sweeps and go-live steps run without one, so their rows carry a null actor
   (`apps/api/src/platform/audit/audit.service.ts:162`; IT's SLA sweep,
   `apps/api/src/modules/it/tickets/ticket-sweeps.ts:58-62`). They also name their origin in a `source` pseudo-field,
-  as IT's go-live does (`apps/api/src/modules/it/go-live/consumables-opening.ts:305`); for a sweep that is new ground.
+  as IT's go-live does (`apps/api/src/modules/it/go-live/consumables-opening.ts:305`); no sweep does that yet.
   The exit handler passes an explicit null actor with `source` (§8.6). A sweep that stamps a document audits the stamp
   (IT's `slaBreached`); a sweep that only notifies writes nothing.
 - **Go-live loads.** A master-data load (OD-68) or an opening-balance file (OD-63 B) audits per row, after commit, as
@@ -485,39 +502,44 @@ signal from P1a.2 on (§9.2).
   own posting row, each with `source`, written by one `auditService.recordMany` call (`audit.service.ts:229-274`): one queue
   round trip and one entity signal per entity type and verb, rather than one of each per row. No run entity and no run verb
   are needed (§9.2).
-- **Accepted gaps.** A crash between commit and audit loses the row (platform precedent). The engine's own decision
-  row (`apps/api/src/platform/approvals/approval.service.ts:202-221`) is written before the host commits and keyed
+- **Accepted gaps.** A crash between commit and audit loses the row (platform precedent; D-12 records the rejected
+  alternatives). The engine's own decision row (`apps/api/src/platform/approvals/approval.service.ts:202-221`) is
+  written before the host commits and keyed
   `<requestType>:<step>`, so it names no document (R5, OD-20; PX-1 fixes it under OD-20 A, §18.1 A4). Both rows carry
   the HTTP `requestId` (`audit.service.ts:167`), which joins them; the host row repeats the decision's fields besides.
 
 ### 10.2 Verb per act
 
 This is the module's one verb table; §5's audit columns defer to it. `accept`, `reject`, `deliver` and `checkOut` are
-never reused, and the chain-decision verb is OD-82 (skeleton Addenda 3 and 4).
+never reused (§10.3), and the chain-decision verb is OD-82. The table holds the acts of the recommended answers; the
+rows another answer adds are listed under it and ship with that answer.
 
 | Act | Verb | `changes`, beyond `status` old → new |
 |---|---|---|
 | Create; edit (master data, drafts) | `create`; `update` | `diffChanges(snapshot)` (`apps/api/src/shared/utils/diff.ts:19-34`), only if non-empty |
+| Open a warehouse empty, with no opening balance (P5, §2.3.5) | `update` on the warehouse | `openedAt`; an opening balance's posting sets `openedAt` in its own transaction, and its `receive` row carries it |
 | Link, replace or withdraw a file (§11.4) | `update` on the document | `signedCopy` (old → new id) or `attachment` |
 | Count entry: one save of a page of lines (`PATCH /:id/lines`) | `update` on the count | `lines [{itemCode, countedQty}]`. The screen saves a page at a time, never line by line, so the trail holds one row per save; each line's `countedByUserId` and `countedAt` (§2.6) record who counted it |
 | Deactivate, reactivate master data (§5.3) | `deactivate`, `activate`, then an explicit `update` signal (§9.1) | `isActive`, plus any field the same `PATCH` changed (§19.6) |
 | Submit; issue an RFQ; close bidding (`issued → evaluating`); award; issue a PO; request a count's approval; submit a transfer that needs no approval (`draft → approved`, OD-45 A) | `statusChange` | `number` when assigned; linked ids; award: `quotationIds`, `justification`; the no-approval transfer: `approvalRequired: false` |
 | Return for amendment (OD-72 B); recount (§5.10); withdraw a quotation; withdraw a finance handoff (§12.5) | `statusChange` | `reason`; recount: `lineIds`; return: the archived round's number |
-| Chain decision, any rung, any document, a PO revision's or a transfer loss's round included | the verb OD-82 picks (recommended default: A, a new `approvalDecision`; B: `statusChange` on the settling rung, `update` on the others; C: `update` everywhere) | `decision`, `requestType`, `step`, `level`, `permissionKey`, `overriddenWith`, `covers`, `comment`; when the final approval posts (count, adjustment, transit loss), the posted lines |
-| Apply a PO revision (OD-26 B) | `update` | the terms' diff, `revisionNumber` |
+| Chain decision, any rung, any document, a transfer loss's round included | the verb OD-82 picks (recommended default: A, a new `approvalDecision`; B: `statusChange` on the settling rung, `update` on the others; C: `update` everywhere) | `decision`, `requestType`, `step`, `level`, `permissionKey`, `overriddenWith`, `covers`, `comment`; when the final approval posts (count, adjustment, transit loss), the posted lines |
 | Cancel a document | `cancel` | `reason` after draft |
-| Cancel a remainder: PR, MR and PO `/cancel-remainder`, a keeper's "cannot supply" under OD-28's MR option (ii), a PO short-close (`/close`) | `cancel` with `scope: 'remainder'` | `reason`, the remainder per line; on a PO short-close, `status` `issued → closed` and `shortClosed: true`; on a PO remainder cancel, `status` `issued → closed` only when it completes the PO (§5.6 row 7) |
+| Cancel a remainder: PR, MR and PO `/cancel-remainder`, a keeper's "cannot supply" under OD-28.1 (ii), a PO short-close (`/close`) | `cancel` with `scope: 'remainder'` | `reason`, the remainder per line; on a PO short-close, `status` `issued → closed` and `shortClosed: true`; on a PO remainder cancel, `status` `issued → closed` only when it completes the PO (§5.6 row 7) |
 | Another document whose lifecycle `status` the act changes (§10.1) | `complete` when the act closes it; `statusChange` otherwise | the acting document's type, id and number |
 | Post a GRN; post an opening balance | `receive` | `lines [{itemCode, qty}]`, `warehouseId`, `purchaseOrderId`, `receiptStatus` |
 | Post a supplier return; post an issue return | `return`; `create` on a return notice it cuts (P8, OD-54 (i); §10.1, §12.5) | `lines`, `reasonCodes`, the cited GRN or issue |
 | Post a stock issue | `assign` (IT `issued → assign`, `apps/api/src/modules/it/consumables/consumable-history.ts:74-81`) | `lines`, `materialRequestId`, `issueStatus` |
-| Transfer: dispatch · receipt or late arrival · resolve (a line declared returning or lost, OD-47) · the source's return posting | `transfer` · `receive` · `resolve` · `return` | `lines`; `receiptStatus`, `discrepancy`; per line the outcome, quantity and reason |
+| Transfer: dispatch · receipt or late arrival · resolve (a line declared returning or lost, or a return re-declared as never arrived, `returnNotArrived`; OD-47) · the source's return posting | `transfer` · `receive` · `resolve` · `return` | `lines`; `receiptStatus`, `discrepancy`; per line the outcome, quantity and reason |
 | Start a count (freeze); add and freeze a found line (§2.4.6) | `start`; `update` | the frozen line count; the found item |
-| Post an adjustment without a chain, only under OD-52 C or OD-19 B (recommended defaults: A, the chain; A, no submission without one) | `correct` | `lines [{itemCode, kind, qty, reasonCode}]` |
 | Hand over a supplier invoice (§12.5) | `create` on the handoff; `statusChange` on the invoice | §12.5 |
 | Save the procurement policy | the platform's `settingChanged` on `platform.setting` (`apps/api/src/platform/settings/settings.service.ts:249-259`) | the old and new value of each key, and the actor; the band stamped at submission keeps a later threshold change from re-routing an in-flight PO (OD-18) |
 | Exit flag (§8.6) | `alertRaised` (IT's exit-flag precedent) | `exitedEmployeeId`, `source` |
-| Server export · print of record (OD-59, §11.6.6) · quotation or invoice file read under OD-73 C (§11.5) | `export` · `export` · `download` | `rowCount`, `completed`, `filter` · `paper`, `printNumber` · file, version, category |
+| Server export · print of record (OD-59, §11.6.6) · quotation or invoice file read under OD-73 C (§11.5) | `export` · `administrationPrint` (§10.3) · `download` | `rowCount`, `completed`, `filter` · `paper`, `printNumber` · file, version, category |
+
+Rows other answers add: an applied PO revision (OD-26 B) audits `update` with the terms' diff and `revisionNumber`,
+and its round decides under the OD-82 verb; an adjustment posted without a chain (OD-52 C or OD-19 B) audits `correct`
+with `lines [{itemCode, kind, qty, reasonCode}]`.
 
 A count lists only its variance lines (counted ≠ book). Which acts require a reason is §5.1.2 (5), after the
 recruitment `requiresReason` precedent; the ODs that own those acts may change the list (OD-28, OD-47, OD-51, OD-52,
@@ -534,8 +556,7 @@ account's own timeline and translates a fixed subset of verbs
 there. Some verbs carry another module's wording
 (`apps/web/src/platform/localization/i18n.ts:25195, 25211, 25214-25215`): `accept`/`reject` read
 «قبول رسالة صيانة»/«رفض رسالة صيانة», `deliver` «خروج من الخزينة», `checkOut` «تسليم العهدة». A rejected PO
-audited as `reject` would read «رفض رسالة صيانة», so none is reused. This confirms skeleton Addenda 3 and 4, which
-correct the first addendum's list.
+audited as `reject` would read «رفض رسالة صيانة», so none is reused.
 
 Reused, because their labels are neutral: `receive` «استلام», `return` «إرجاع», `transfer` «نقل», `resolve` «حل»,
 `start` «بدء», `complete` «إتمام», `cancel` «إلغاء», `correct` «تصحيح», `activate`/`deactivate` «تفعيل»/«تعطيل»,
@@ -554,6 +575,14 @@ relabel is a separate platform fix.
 `apps/web/src/modules/system-admin/audit/audit-screens.spec.tsx:362-368`. No migration: the enum is derived
 (`apps/api/src/platform/audit/audit.model.ts:46`). An old worker refuses the verb, retries and parks the job
 (`removeOnFail: false`), so the worker ships with the new contracts first (RK-29, §18.1).
+
+**The print verb, adopted.** Every print of record (OD-59) writes the module's own verb, `administrationPrint` (en
+"Printed a paper of record", ar طباعة مستند رسمي), never `export`: the `exportSpike` detector counts only `export`
+rows (`apps/api/src/platform/audit/audit.signals.ts:129-142`), so a keeper's prints never raise it (§10.6). It is the
+same append to `AUDIT_ACTIONS`, after ATM's `atmSettlementPrint` (`packages/contracts/src/platform/audit.ts:189-194`),
+with its rationale comment, en+ar labels, the same two specs and the same worker order (RK-29). It ships with the first
+paper of record (§11.6.6). It is not a broadcast verb (`packages/contracts/src/platform/realtime.ts:19-31`), so a print
+refreshes screens through the branch `update` signal its counter write sends (§9.1).
 
 ### 10.4 Before, after and reason
 
@@ -584,7 +613,7 @@ history under the document's own scope: the approval trail (`approvalService.tra
 for stock, the ledger itself, since the item card is the history (`consumable-history.ts:5-7`). No module history
 collection is proposed; one would wait for the platform Timeline kit (IT §16 P2,
 `docs/12-planning/it-module-design.md:1159-1176`). A module-gated read of a document's own audit rows needs none:
-`auditService.trailOf` (since 2026-11-11, `apps/api/src/platform/audit/audit.service.ts:346-375`) reads several entities of one
+`auditService.trailOf` (`apps/api/src/platform/audit/audit.service.ts:346-375`) reads several entities of one
 module in one read, masked as the audit list masks them, and Operations serves its shipment log with it under
 `operationsShipment.view` (`apps/api/src/modules/operations/shipments/shipment.routes.ts:128-136`). Whether this module
 shows such a log is OD-73's *action log* question (recommended default: (i), none). `recordActivity` is not used.
@@ -598,15 +627,16 @@ The platform audits three reads: `medicalRecordRead` and `secretRevealed`
 `readEntityOwnedBuffer` (`file.service.ts:727-739`), write nothing (§11.5). By that bar, reading prices, quotations
 or comparisons writes nothing under OD-73's recommended default (A); under OD-73 C, each read of a quotation or invoice
 file writes one `download` row (§11.5). Also audited: server exports under `<resource>.export` (OD-60, §11.7; none in
-Phase 1, skeleton Addenda 3) and the ADR-034 reveal if OD-11 ever stores bank data (§6.8).
+Phase 1), prints of record under `administrationPrint` (§10.3, §11.6.6), and the ADR-034 reveal if OD-11 ever stores
+bank data (§6.8).
 
-**`exportSpike`.** Every `export` row, prints of record included (OD-59 A, §11.6.6), counts toward the per-user 24-hour
-`exportSpike` signal (`apps/api/src/platform/audit/audit.signals.ts:24, 31, 129-142`). Its threshold defaults to 20 a
-day, with a floor of 5, set organization-wide (`apps/api/src/platform/audit/audit.settings.ts:32-38`). A keeper who
-prints more than 20 GRN or issue papers in a day would raise a security alert, and raising the threshold blinds the
-signal for every module. ATM's papers avoid this with a verb of their own, `atmSettlementPrint`, which the detector does
-not count (`packages/contracts/src/platform/audit.ts:185-194`). The same for this module's papers would change the
-skeleton's rule that a print of record writes `export`: it is proposed in §11.6.6 and not adopted.
+**`exportSpike`.** Every `export` row counts toward the per-user 24-hour `exportSpike` signal
+(`apps/api/src/platform/audit/audit.signals.ts:24, 31, 129-142`). Its threshold defaults to 20 a day, with a floor of 5,
+set organization-wide (`apps/api/src/platform/audit/audit.settings.ts:32-38`). If prints of record wrote `export`, a
+keeper who prints more than 20 GRN or issue papers in a day would raise a security alert, and raising the threshold
+would blind the signal for every module. ATM's papers avoid this with a verb of their own, `atmSettlementPrint`, which
+the detector does not count (`packages/contracts/src/platform/audit.ts:185-194`), and this module does the same with
+`administrationPrint` (§10.3). Only real exports write `export` (§11.7, §14.7), so the threshold stays as it is.
 
 ### 10.7 What is not audited
 
@@ -622,9 +652,10 @@ skeleton's rule that a print of record writes `export`: it is proposed in §11.6
 ## 11. Documents, attachments, printing and exports
 
 This section reuses what ECMS already has: platform Files with ADR-023 authorizers, the web print door, the company
-report form, the hand-written `.xlsx` writer and the audited CSV stream. In the default design the platform's code does
-not change; conditional platform edits are named where they arise. Three shared-web changes are proposed (§11.5,
-§11.6.3, §11.7), each scheduled in §18.1. Business choices stay open decisions.
+report form, the hand-written `.xlsx` writer and the audited CSV stream. In the default design the platform changes in
+two ways: the audit contracts gain the module's print verb, `administrationPrint` (§11.6.6), and two shared-web changes
+fix or promote existing pieces (PC-5 and PC-11: §11.5, §11.6.3, §11.7), each scheduled in §18.1. Conditional platform
+edits are named where they arise. Business choices stay open decisions.
 
 ### 11.1 Ground rules (precedent, not policy)
 
@@ -633,9 +664,9 @@ not change; conditional platform edits are named where they arise. Three shared-
 | Files owns the bytes; the document owns the link. Services call `fileService.upload`, `replace`, `softDelete` and `readEntityOwnedBuffer`. The module has one multipart helper per cap (15 MB and 25 MB), shared by its routes. | `fleet/license-image-upload.ts:1-5` ("a second copy would be a second place for the cap … to drift"); IT's three papers share `signedCopyUpload` (`it/assets/receipt.controller.ts:21-23`, `consumable-memo.routes.ts:11, 48`). `module-structure.md:89` forbids touching Multer; module code does it for uploads throughout HR, Fleet and IT, and the code wins. |
 | For module roles, the module's own endpoints are the only door. No administration role holds `file.*`, and no screen calls `/platform/files`. | An authorizer never sees the category (`file-authorizers.ts:32-56`), so only a module endpoint can enforce one. The residual path for `file.*` holders is in §11.4 ("Generic file paths"). |
 | Every entity type that owns files has an authorizer. | Claimed types fail closed (`file-authorizers.ts:151-186`); `readEntityOwnedBuffer` refuses unclaimed types (`file.service.ts:727-739`). |
-| A file's `entityType` is the document's own audited entity type (skeleton list), written as a literal at each upload call: `moduleId: 'administration', entityType: 'goodsReceipt'`. | The registry scan then finds a pair the document already classifies, so no new entry is needed (`realtime-registry.spec.ts:76-78`). A constant would be a new dynamic site and break the `EXPECTED_DYNAMIC_SITES` pin (`:24-65, 113-115`). |
+| A file's `entityType` is the document's own audited entity type (§9.2), written as a literal at each upload call: `moduleId: 'administration', entityType: 'goodsReceipt'`. | The registry scan then finds a pair the document already classifies, so no new entry is needed (`realtime-registry.spec.ts:76-78`). A constant would be a new dynamic site and break the `EXPECTED_DYNAMIC_SITES` pin (`:24-65, 113-115`). |
 | A category ships with its phase's endpoint. `ensure()` runs in `administration.seed.ts` before any upload, and a cached resolver serves the uploads. Keys are declared in contracts and match the schema's key pattern. | Fleet's seed variant: `fleet.seed.ts:31-33` → `fleet/vehicles/vehicle-files.ts:29-42`; IT's lazy creation is the cache precedent only (`consumable-memo-files.ts:18-27`). Key pattern: `platform/files.ts:110-118`; `hr.contractAttachments` breaks it. Keys are declared with their operation, like permissions (`it.module.ts:68-70`). |
-| A category's rules change only by an operator act. `ensure()` is create-if-missing, so a later OD answer (formats, size, retention) never reaches an existing category, and no screen edits categories. The change is a `PATCH /platform/file-categories/:id` under `fileCategory.manage`, recorded in the phase's runbook. The resolver drops its cached id when a lookup answers `NotFound`. | `file-category.service.ts:83-87`; `file.routes.ts:191-196`; discovery 07 §1.3 and §9 risk 5 (a soft-deleted category leaves a stale cached id until restart). A seed-time reconcile of `administration-*` rules would be new ground. |
+| A category's rules change only by an operator act. `ensure()` is create-if-missing, so a later OD answer (formats, size, retention) never reaches an existing category, and no screen edits categories. The change is a `PATCH /platform/file-categories/:id` under `fileCategory.manage`, recorded in the phase's runbook. The resolver drops its cached id when a lookup answers `NotFound`. | `file-category.service.ts:83-87`; `file.routes.ts:191-196`. A cache held for the process's life, as IT's is (`apps/api/src/modules/it/consumables/consumable-memo-files.ts:18-27`), keeps a soft-deleted category's id until restart. A seed-time reconcile of `administration-*` rules has no precedent and is not proposed. |
 
 ### 11.2 File categories
 
@@ -661,7 +692,6 @@ platform's own multer cap, `file.routes.ts:54`) lowers the module's caps too. Th
 | `administration-delivery-documents` | the supplier's delivery note or packing list | `goodsReceipt` | P+I | 10 MB | `null` | P5 |
 | `administration-evidence` | photos or minutes of damage, loss or variance; the counted sheet an opening balance comes from | `goodsReceipt`, `supplierReturn`, `stockReturn`, `stockTransfer`, `stockCount`, `stockAdjustment`, `openingBalance` (OD-63) | P+I | 10 MB | `null` | P5–P7 |
 | `administration-supplier-invoices` | invoice scans (OD-54) | `supplierInvoice` | P+I | 20 MB | `null` | P8 |
-| `administration-generated-pdfs` | server PDFs, only with §11.6.7 | `purchaseOrder` | `application/pdf` | 20 MB | `null` | conditional |
 
 There is one key per purpose. A link can then be checked against its purpose (§11.4), and retention and formats stay
 separate decisions (`fleet/driver-profiles/driver-files.ts:10-14`). If OD-77 gives procurement papers and store papers
@@ -688,7 +718,7 @@ export const goodsReceiptFileAuthorizer: FileEntityAuthorizer = {
 
 **Keys.** Reading needs `.view`. Documents with an approval chain also accept `.approve`, because a decider loads the
 document under the decide key (§5.2) and must be able to open its evidence. Writing needs the key of the act that
-produces the file. Since 2026-11-02 the platform also has a `delete` intent, opt-in per authorizer (`understandsDelete`):
+produces the file. The platform also has a `delete` intent, opt-in per authorizer (`understandsDelete`):
 an authorizer that does not opt in, as these do not, is asked a delete as a `write`
 (`apps/api/src/platform/files/file-authorizers.ts:30`, `:44`, `:162-165`), so withdrawing a file takes the write key and
 the `intent === 'write'` test above stays right; an authorizer that opted in with that test would send deletes down its
@@ -713,11 +743,16 @@ lookups is also the most any authorizer here makes.
 **Transfers (§7.4).**
 - *Read:* the two-branch `$or` under `.view` or `.approve`.
 - *Write:* one lookup by id, then `keyReachesBranch` (`shared/types/index.ts:205`) for each held write key on the side
-  its act changes: `.dispatch` on `fromBranchId`; `.resolve` on `toBranchId` (a late arrival or a loss); `.receive` on `toBranchId` for receipts and on `fromBranchId` for the source keeper's return posting, never under `.resolve` (§5.9, §7.4; skeleton Addenda 5). This is ATM's `requireReach` shape (`atm/settlements/prints/print.service.ts:82-86`). The read's two-branch match alone would let a B-only holder of `.dispatch` pass for an A→B transfer, because B matches `toBranchId`. The authorizer cannot see which `.receive` act writes, so it accepts `.receive` reaching either side.
+  its act changes: `.dispatch` on `fromBranchId`; `.resolve` on `toBranchId` (a late arrival or a loss); `.receive` on
+  `toBranchId` for receipts and on `fromBranchId` for the source keeper's return posting, never under `.resolve` (§5.9,
+  §7.4). This is ATM's `requireReach` shape (`atm/settlements/prints/print.service.ts:82-86`). The read's two-branch
+  match alone would let a B-only holder of `.dispatch` pass for an A→B transfer, because B matches `toBranchId`. The
+  authorizer cannot see which `.receive` act writes, so it accepts `.receive` reaching either side.
 - *Slot:* the authorizer cannot tell which slot is written; it sees only `ctx`, `entityId` and `intent`
   (`file-authorizers.ts:32-56`). The endpoint therefore applies the exact side check (`canDispatch`, `canReceive`,
   `canResolve`, §7.4).
-- *Spec:* §7.4's guard spec gains three file cases on an A→B transfer: a B-only holder of `.dispatch` and an A-only holder of `.resolve` are both refused file writes, and so is a `.receive` holder who reaches neither branch.
+- *Spec:* §7.4's guard spec gains three file cases on an A→B transfer: a B-only holder of `.dispatch` and an A-only
+  holder of `.resolve` are both refused file writes, and so is a `.receive` holder who reaches neither branch.
 
 **The PO approver and the bids.** Under OD-24 A the PO approval covers the award, so the PO approver must see the
 quotations and the award minutes. Approvers on `unit` rungs hold no RFQ key (§6.5). The `rfq` read rule therefore also
@@ -760,19 +795,19 @@ independent line. Entity types that own no file register no authorizer: `catalog
 interface FileLink { fileId: ObjectId; fileName: string; mime: string; size: number; uploadedAt: Date }
 // B — typed list: HR contracts' list (contract.model.ts:218-231) with Employee File's file facts (employee-file.model.ts:47-56)
 attachments: { attachmentId; fileId; categoryKey; label; fileName; mime; size; addedByUserId; addedAt }[]
-// D — uploaded first, before the record that links it (HR, employee-action.service.ts:1067-1119)
+// C — uploaded first, before the record that links it (HR, employee-action.service.ts:1067-1119)
 quotationFile: FileLink   // on administration_quotations; the file's entityRef is administration/rfq/<rfqId>
 ```
 
 In B, `categoryKey` is a file-category key such as `administration-evidence`. HR's `category` is a different thing: a
 purpose enum (`nda | annex | signedCopy | approval | other`, `contract.model.ts:224`). The cap of 20 entries per list
-has one precedent since 2026-11: IT's vehicle-check reports hold at most five photos, guarded in the write's filter
+has one precedent: IT's vehicle-check reports hold at most five photos, guarded in the write's filter
 (`photos.4` must not exist) and refused with 422 `IT_VEHICLE_CHECK_PHOTO_LIMIT`
 (`packages/contracts/src/modules/it.ts:3007`; `apps/api/src/modules/it/vehicle-checks/vehicle-check.repository.ts:147-159`;
 `vehicle-check.service.ts:304-309`). It bounds the document's size and keeps one list within a single
 scan-state read (§11.5).
 
-| Document | A: signed-copy slot (opens at) | B: list (editable while) | D |
+| Document | A: signed-copy slot (opens at) | B: list (editable while) | C |
 |---|---|---|---|
 | Supplier | — | supplier documents (OD-11) | — |
 | PurchaseRequest, MaterialRequest | — (an information copy; `signedCopy` at `pendingApproval` only if OD-59 has the paper signed) | request attachments (`draft`; OD-76) | — |
@@ -782,7 +817,7 @@ scan-state read (§11.5).
 | SupplierReturn, StockReturn | `signedCopy` (`posted`) | evidence (OD-43) (`draft`) | — |
 | StockIssue | `signedCopy` (`posted`; signed per OD-59, recommended default the recipient, as on the IT memo) | — | — |
 | StockTransfer | `dispatchSignedCopy` (`dispatched`), `receiptSignedCopy` (first receipt; see below) | evidence (OD-47) (from `dispatched` until `closed`, by `.receive` on the destination side (on the source side for the return posting) or `.resolve` on the destination side, §7.4) | — |
-| StockCount | `signedCopy` (`submitted`: the count result, sign-off OD-50; stale after a recount) | evidence, e.g. the filled count sheet (`inProgress`, `submitted`) | — |
+| StockCount | `signedCopy` (`submitted`: the count result, signed by the count team, OD-50; stale after a recount) | evidence, e.g. the filled count sheet (`inProgress`, `submitted`) | — |
 | StockAdjustment | `signedCopy` (`pendingApproval`: the minutes the approvers decide on; OD-52) | evidence (OD-52) (`draft`) | — |
 | OpeningBalance | — (no paper unless OD-63 or OD-59 asks) | evidence: the counted source sheet (OD-63) (`draft`) | — |
 | SupplierInvoice (P8) | `invoiceFile` (`draft`; OD-54) | — | — |
@@ -792,18 +827,19 @@ scan-state read (§11.5).
 §5.10) supersedes it, and the DTO derives that at read time: a copy filed before the latest `countSubmittedAt` is
 stale, so the earlier copy reads stale once the recount is submitted. The counting submit (`/:id/submit`) stamps
 `countSubmittedAt`; `submittedAt` is the approval host's stamp, taken later by `/:id/request-approval` (§5.10 row 5;
-§2.1; skeleton Addenda 5); read here, it would mark stale every copy filed in between.
+§2.1); read here, it would mark stale every copy filed in between.
 This follows ATM's paper-staleness idea (`receiptStale`, `print.service.ts:14-15`), derived instead of stored.
 
-**Transfer receipt notes.** Receipts are partial and repeatable (`POST /:id/receipts`, §5.9). The skeleton gives the
-transfer one `receiptSignedCopy` (§2.6), so each later note is filed as a new version, and the earlier signatures
-become history that no screen lists (discovery 07 §1.4). The receipt note is therefore cumulative: it lists every
-receipt to date and is filed again after each one. Whether each delivery gets its own signed note is OD-59
-(recommended default: the cumulative note, which the binding fields carry). A note per delivery, the stronger record
-since each delivery is a separate hand-over, would need one receipt entry per act with its own slot, a field §2.6
-does not have; it is raised as a proposed addition to the binding names, not adopted here.
+**Transfer receipt notes.** Receipts are partial and repeatable (`POST /:id/receipts`, §5.9). The transfer has one
+`receiptSignedCopy` (§2.6), so each later note is filed as a new version, and the earlier signatures become history
+that no screen lists. The receipt note is therefore cumulative: it lists every receipt to date and is filed again after
+each one. Whether each delivery gets its own signed note is OD-59 (recommended default: the cumulative note, which
+§2.6's fields carry). A note per delivery is the stronger record, since each delivery is a separate hand-over, but it is
+not adopted: it would need a receipt entry with its own slot per act, a field §2.6 does not have, or one more numbered
+document and series (a collection, a counter and a paper), for what each receipt act already records with its own
+`receive` audit row (§10.2).
 
-**Why quotations use D.** A quotation is recorded as `received` in one step, with no draft (§5.5 Q1). Uploading first
+**Why quotations use C.** A quotation is recorded as `received` in one step, with no draft (§5.5 Q1). Uploading first
 lets "every quotation has its file" (OD-76) hold at recording. Every quotation route, file routes included, sits under
 the one nested family `/rfqs/:id/quotations` that the RFQ feature mounts (§3.3, §3.6):
 
@@ -815,19 +851,20 @@ the one nested family `/rfqs/:id/quotations` that the RFQ feature mounts (§3.3,
    that the file is the latest, active version. `ux_quotation_file`, partial unique on `quotationFile.fileId` among live
    quotations (§2.5), makes one file back exactly one quotation.
 
-An abandoned upload stays under the RFQ, readable only by RFQ readers; HR documents the same behaviour (`employee-action.service.ts:1104-1108`).
-The quotation file follows its quotation's edit window: replaceable while the RFQ is `issued` (§5.5 in-state rule), and
-frozen from `evaluating` on. A replacement is A's replace on the linked group, a new version
-(`POST …/rfqs/:id/quotations/:quotationId/file`). A late change is a withdrawal plus a new quotation before bidding
-closes (OD-23). Whether the person who records quotations may also award is one of OD-21's further candidate pairs (recommended: not enforced, since B3 keeps the awarder off the PO; §6.6).
+An abandoned upload stays under the RFQ, readable only by RFQ readers; HR documents the same behaviour
+(`employee-action.service.ts:1104-1108`). The quotation file follows its quotation's edit window: replaceable while the
+RFQ is `issued` (§5.5 in-state rule), and frozen from `evaluating` on. A replacement is A's replace on the linked
+group, a new version (`POST …/rfqs/:id/quotations/:quotationId/file`). A late change is a withdrawal plus a new
+quotation before bidding closes (OD-23). Whether the person who records quotations may also award is one of OD-21's
+further candidate pairs (recommended: not enforced, since B3 keeps the awarder off the PO; §6.6).
 
 **Where this departs from HR.** HR files early uploads under a dedicated entity type keyed by the parent's id, with its
 own authorizer (`employee-action.service.ts:1117-1127`, `employee-action-file-access.ts:37-48`), pinned as a dynamic
 key (`realtime-registry.spec.ts:24-27`). Here they go under `rfq` itself. Quotation files, award minutes and the RFQ's
 other files therefore share one read rule, and the authorizer cannot treat quotation files apart. If the owner's answer
-to OD-73 gives quotation files a narrower reader than the RFQ's view key (its option E), they move to
-a dedicated entity type keyed by the RFQ id, with its own authorizer and a realtime classification. That type is not
-among the binding entity types (§18.2), so it would be added with that answer.
+to OD-73 gives quotation files a narrower reader than the RFQ's view key (its option E), they move to a dedicated
+entity type keyed by the RFQ id, with its own authorizer and a realtime classification. That type is not among this
+design's entity types (§9.2, §18.2), so it would be added with that answer.
 
 **Rules for every shape:**
 
@@ -835,13 +872,13 @@ among the binding entity types (§18.2), so it would be added with that answer.
 |---|---|
 | Upload, replace, withdraw | **A:** a first upload uses `upload`; a later one uses `replace` (a new version). A replace starts from the group's latest version (`listVersions`, `file.service.ts:384-391`), never from the linked id, which `replace` refuses once it is not the latest (`:247-255`). Withdrawing unlinks first, then soft-deletes (`consumable-memo.service.ts:110-134`). **B:** entries are added and removed. An entry is replaced only when its file is `blocked` (below). |
 | Failed link write | After a first upload, the new file is soft-deleted (`consumable-memo.service.ts:74-80`). After a replace, the new version stays as history and the document keeps naming version n. The next replace starts from the latest, so the slot never sticks. |
-| Concurrency, audit, signal | Link writes are version-guarded and audit one `update` row with a pseudo-field: `signedCopy` (old → new id) or `attachment` (`<categoryKey>:<label>`). `record()` passes no branch, so branch-scoped viewers would otherwise wait for a refetch (`realtime-publisher.ts:32-37, 68-70`; skeleton Addenda 3). After commit the service therefore sends `publishAuditedChange({ action: 'update', branchId })`: both branches for a transfer, the RFQ's branch for a quotation link. A supplier has no branch: `record()`'s own `update` broadcast reaches its viewers in the organization room (§9.3). |
+| Concurrency, audit, signal | Link writes are version-guarded and audit one `update` row with a pseudo-field: `signedCopy` (old → new id) or `attachment` (`<categoryKey>:<label>`). `record()` passes no branch, so branch-scoped viewers would otherwise wait for a refetch (`realtime-publisher.ts:32-37, 68-70`). After commit the service therefore sends `publishAuditedChange({ action: 'update', branchId })`: both branches for a transfer, the RFQ's branch for a quotation link. A supplier has no branch: `record()`'s own `update` broadcast reaches its viewers in the organization room (§9.3). |
 | Posted documents | No edit is accepted. File links and print counters go through one narrow repository method that writes nothing else (§2.1 "After draft"). Considered and not chosen: HR medical events link from the file's side and read the document back by entity (`medical-event.service.ts:58-66, 131-149`). The link has to live on the document: a gate checks it inside the transition's own write, the version guard and the `update` row record it, and it tells the filed copy apart from abandoned uploads. |
 | B lists | A list freezes when its editable status ends (matrix above); removal is refused from then on (`contract.service.ts:576-578`). Whether files may be added after submission is OD-76 (recommended default: `draft` only). A file an approver asks for comes back through OD-72's return for amendment (recommended B). By contrast, HR contracts add after signing (`addAttachment` has no `assertMutable`, `:514-535`), and HR leave attaches while pending (`leave-request.service.ts:1032-1041`). |
-| Required files (OD-76) | A gate runs at the last moment its slot is editable: submission (PR, MR, adjustment), posting (GRN, SRN, RTN), recording (quotation), hand-over (invoice). It does not run at the approval decision. HR leave checks after `approvalService.decide` has already audited (`leave-request.service.ts:569-581`; discovery 04, R5), and a gate at decide over a frozen list could never be cured. At a decision only `blocked` is re-checked, and never on a reject. If a file turns `blocked` after its gate, the DTO flags the document and the slot accepts a replace even after its freeze. Who is told is OD-61. |
+| Required files (OD-76) | A gate runs at the last moment its slot is editable: submission (PR, MR, adjustment), posting (GRN, SRN, RTN), recording (quotation), hand-over (invoice). It does not run at the approval decision. HR leave checks after `approvalService.decide` has already audited (`leave-request.service.ts:569-581`; R5, §15.2.1), and a gate at decide over a frozen list could never be cured. At a decision only `blocked` is re-checked, and never on a reject. If a file turns `blocked` after its gate, the DTO flags the document and the slot accepts a replace even after its freeze. Who is told is OD-61. |
 | Closing an A slot (OD-59, OD-55) | No precedent closes one: IT deletes at any time (`consumable-memo.service.ts:110-134`). Recommended default: replace stays allowed, with history kept. Withdraw is refused once the PO is `closed`, once a live handoff cites the document (§12.5), and on a filed handoff memo. A replace after hand-over requires an audited reason. |
 | Double submits | No idempotency store exists, so the control is disabled while a request is pending (`CustodyReceipt.tsx:209`). |
-| Generic file paths | A holder of `file.edit` or `file.delete` who passes the write authorizer can still change `categoryId` or `visibility`, or archive a linked file, through `/platform/files`; a delete there is put to the module's authorizer as a write too, unless that authorizer opts into the separate `delete` intent (`understandsDelete`) (`files.ts:54-63`; `file.service.ts:474-530, 549-558`; `apps/api/src/platform/files/file-authorizers.ts:36-44, 162-165`). Super-admin receives every new key (OD-78). The DTO shows a link whose file is gone or archived as «الملف غير متاح», and the slot accepts a new upload. A status-aware authorizer is not used: it cannot see the slot, and it would also refuse the replace of a `blocked` file after a freeze. |
+| Generic file paths | A holder of `file.edit` or `file.delete` who passes the write authorizer can still change `categoryId` or `visibility`, or archive a linked file, through `/platform/files`; a delete there is put to the module's authorizer as a write too, unless that authorizer opts into the separate `delete` intent (`understandsDelete`) (`files.ts:54-63`; `file.service.ts:474-530, 549-558`; `apps/api/src/platform/files/file-authorizers.ts:36-44, 162-165`). Super-admin receives every new key (OD-78). The DTO shows a link whose file is gone or archived as الملف غير متاح, and the slot accepts a new upload. A status-aware authorizer is not used: it cannot see the slot, and it would also refuse the replace of a `blocked` file after a freeze. |
 
 **Precedents not to copy:**
 
@@ -849,7 +886,7 @@ among the binding entity types (§18.2), so it would be added with that answer.
 |---|---|---|
 | Bare `ObjectId[]` (HR leave, `leave-request.model.ts:108`) | No purpose; the type is unguarded | B |
 | File rows listed via `/platform/files` (IT tickets) | No category check; the screen takes `categories.items[0]` (`TicketAttachments.tsx:57, 181`) | Never |
-| HR contracts' JSON `addAttachment` (`contract.service.ts:514-535`, `contract.routes.ts:407-410`) | Links any `fileId` without checking its `entityRef` or category | Every JSON link runs D's check |
+| HR contracts' JSON `addAttachment` (`contract.service.ts:514-535`, `contract.routes.ts:407-410`) | Links any `fileId` without checking its `entityRef` or category | Every JSON link runs C's check |
 | HR contracts' `uploadAttachment` (`contract.service.ts:537-574`) | No compensation, so a stale version leaves an orphan; `ensure()` on every call; an invalid key | IT compensation, cached id, valid keys |
 | IT's signed-copy replace (`consumable-memo.service.ts:57, 74-81`) | Replaces from the linked id: after a failed link write the slot names a non-latest version, and every later replace is refused | Replace from the group's latest |
 | Gold `uploadCompanyLogo` (`gold/api/gold-api.ts:128-135`) | Sends no `entityId`, which `files.ts:30` requires | The server sets `entityRef` |
@@ -869,14 +906,14 @@ among the binding entity types (§18.2), so it would be added with that answer.
 
 **Read audit.** Only `issueDownloadTicket` audits a file read today (`file.service.ts:768`). The platform's other
 audited reads are `medicalRecordRead` and `secretRevealed` (`packages/contracts/src/platform/audit.ts:88-97, 166-174`).
-Module byte endpoints audit nothing (discovery 07 §9, risk 3). OD-73 recommends A, with C (audited reads of quotation
-and invoice files) if bids are confidential. Under OD-73 C, each read of a quotation or invoice file writes one
-`download` row before the bytes are sent. The buffer is already in memory, and the ticket also audits before it hands
-out its URL (`file.service.ts:767-769`), so a failed audit fails the read. The row's `changes` name the file, the version and the
-category. `download` (`audit.ts:53`) is not a broadcast action (`realtime-publisher.ts:55`), and these rows send no
-branch signal. The skeleton's signal rule ("whatever its verb") is read here as covering acts that change a document;
-a read changes nothing a viewer must refetch. That reading is recorded for confirmation with the binding names. HEAD
-requests are skipped (`stream-rows.ts:52-53`). Store papers are not audited, as in IT.
+Module byte endpoints audit nothing: `readEntityOwnedBuffer` writes no row (`file.service.ts:727-739`). OD-73
+recommends A, with C (audited reads of quotation and invoice files) if bids are confidential. Under OD-73 C, each read
+of a quotation or invoice file writes one `download` row before the bytes are sent. The buffer is already in memory,
+and the ticket also audits before it hands out its URL (`file.service.ts:767-769`), so a failed audit fails the read.
+The row's `changes` name the file, the version and the category. `download` (`audit.ts:53`) is not a broadcast action
+(`realtime-publisher.ts:55`), and these rows send no branch signal: §9.1's signal rule ("whatever its verb") covers
+acts that change a record, and a read changes nothing a viewer must refetch. HEAD requests are skipped
+(`stream-rows.ts:52-53`). Store papers are not audited, as in IT.
 
 **Web.**
 - *Previews.* Bytes come through `fetchBlob` into an object URL: `<img>` for photos, `<iframe>` for PDFs
@@ -885,13 +922,15 @@ requests are skipped (`stream-rows.ts:52-53`). Store papers are not audited, as 
   throws `ApiError('EXPORT_FAILED', …, status)` without reading the body (`api-client.ts:490-508`). The friendly
   `FILE_SCAN_PENDING` and `FILE_BLOCKED` messages (`errors.ts:126-127, 208-209`) are therefore never reached on this path,
   and IT's hook only sets `failed: true` (`CustodyReceipt.tsx:155-164`).
-- *The fix.* The shared-web PR that adds `X-Active-Branch` to `fetchBlob` (§11.7) also parses the JSON error envelope
-  on non-OK responses. Until then, the module's hook maps a 422 to "refresh the scan state".
+- *The fix.* The shared-web pull request that adds `X-Active-Branch` to `fetchBlob` (PC-5, §11.7) also parses the JSON
+  error envelope on non-OK responses. Until then, the module's hook maps a 422 to "refresh the scan state".
 - *Signed-copy controls.* IT already made these generic: `ReceiptStore` (`CustodyReceipt.tsx:44-64`) has three stores,
   `DEVICE_RECEIPTS`, `LINE_RECEIPTS` (`MobileLineReceipt.tsx:23`) and `CONSUMABLE_MEMOS` (`ConsumableMemo.tsx:24`). But
-  they are typed to IT's DTOs and queries (`ItCustodyReceiptSignedCopyDto`). Moving them to `apps/web/src/shared/ui` means
-  retyping a component, which is OD-83's question (recommended: a module copy; C: a shared piece reviewed outside the module). The house rule "a module never copies another's code" (`xlsx-writer.ts:3-6`) is applied to the pure
-  libraries of §11.6.3 and §11.7, which move unchanged behind re-exports.
+  they are typed to IT's DTOs and queries (`ItCustodyReceiptSignedCopyDto`). Moving them to `apps/web/src/shared/ui`
+  means retyping a component, so the module rebuilds its own from IT's pattern (D-21); a shared piece is a separate
+  change reviewed outside the module. The house rule "a module never copies another's code" was written for a promoted
+  library (`apps/web/src/shared/lib/xlsx-writer.ts:3-6`): a pure library is never copied, it is promoted, as the
+  libraries of §11.6.3 and §11.7 are, unchanged behind re-exports.
 
 **Scan states.** These apply only when `CLAMAV_HOST` is set (`virus-scan.processor.ts:3, 24`). The detail DTO derives
 each link's `scanStatus` from the linked files themselves. It makes one `fileService.list` call by entity and category
@@ -903,13 +942,13 @@ would race the link write.
 | `scanStatus` | UI | Actions |
 |---|---|---|
 | `unscanned`, `clean` | preview | view, replace, withdraw (where the slot allows, §11.4) |
-| `pending` | «قيد الفحص» chip; preview and download disabled. The screen refetches with backoff, because no signal is published on a verdict: `setScanStatus` writes no audit row (`file.repository.ts:110-112`) | replace, withdraw |
-| `blocked` | «محظور» danger chip; the file cannot be opened | replace (scanned again; allowed after a freeze, §11.4), withdraw |
+| `pending` | قيد الفحص chip; preview and download disabled. The screen refetches with backoff, because no signal is published on a verdict: `setScanStatus` writes no audit row (`file.repository.ts:110-112`) | replace, withdraw |
+| `blocked` | محظور danger chip; the file cannot be opened | replace (scanned again; allowed after a freeze, §11.4), withdraw |
 
 The verdict is already a reliable event, `platform.file.virusScanCompleted` with `{ fileId, groupId, processor, result }`
 (`file.processors.ts:76-90`; `packages/contracts/src/events/index.ts:54`). A manifest `eventSubscription` could send the
-owning document's `update` signal. That is new ground: the payload has no `entityRef`, so the module would look the link
-up by `fileId`. It is not proposed for the first release.
+owning document's `update` signal. No module does that: the payload has no `entityRef`, so the module would look the
+link up by `fileId`. It is not proposed for the first release.
 
 If clamd is down, files stay `pending` (fail-closed). A sweep every 15 minutes re-queues files that have been pending for
 over 10 minutes (`scheduler.tasks.ts:80-91`, `file.processors.ts:111-127`). The chip therefore means "still being
@@ -920,28 +959,27 @@ which is OD-76's recommendation, so a scanner outage does not stop posting.
 
 #### 11.6.1 Which papers (OD-59)
 
-Titles are §0.4 candidates (OD-67). The word «جرد» is not: Gold's «محضر جرد درج» and ATM's «محضر جرد ماكينة الصراف
-الآلى» already print it (`gold/lib/gold-print.ts:236`; `atm/lib/papers/settlement-paper-wording.ts:11`), so only the
-count papers' full titles are candidates. The print-from states, signed copies and watermarks are recommended defaults
+Titles are §0.4 candidates (OD-67), except the word «جرد», which the product already prints (§0.4); only the count
+papers' full titles are candidates. The print-from states, signed copies and watermarks are recommended defaults
 under OD-59. Numbers are §2.8's; a print never takes one (§11.6.6). Each paper ships in its document's phase (§18.2).
 
 | Paper | Document | Ph | Number (§2.8, taken at) | Print from | Signed copy (§11.4) | Gate |
 |---|---|---|---|---|---|---|
-| «طلب شراء» | PurchaseRequest | P2, only if OD-59 has PRs printed | `PR-` (submission) | `pendingApproval` | none: an information copy, unless OD-59 has it signed | `administrationPurchaseRequest.view` |
-| «طلب عروض أسعار» | Rfq | P3 | `RFQ-` (issue), kind `request` | `issued` | — | `administrationRfq.view` |
+| طلب شراء | PurchaseRequest | P2, only if OD-59 has PRs printed | `PR-` (submission) | `pendingApproval` | none: an information copy, unless OD-59 has it signed | `administrationPurchaseRequest.view` |
+| طلب عروض أسعار | Rfq | P3 | `RFQ-` (issue), kind `request` | `issued` | — | `administrationRfq.view` |
 | award sheet (title: OD-67) | Rfq | P3 | same `RFQ-`, kind `awardSheet` | `evaluating` (signed, then filed once `awarded`) | `awardSignedCopy` | `administrationRfq.view` |
-| «أمر شراء» | PurchaseOrder | P4 | `PO-` (submission) | `approved` (earlier: «غير معتمد» watermark) | `signedCopy` from `issued` (OD-31) | `administrationPurchaseOrder.print` |
-| «إذن استلام / إذن إضافة» | GoodsReceipt | P5 | `GRN-` (posting) | `posted` | `signedCopy` | `administrationGoodsReceipt.print` |
-| «مرتجع مشتريات» | SupplierReturn | P5 | `SRN-` (posting) | `posted` | `signedCopy` | `administrationSupplierReturn.view` |
-| «طلب صرف» | MaterialRequest | P6, only if OD-59 has MRs printed | `MR-` (submission) | `pendingApproval` | none: an information copy, unless OD-59 has it signed | `administrationMaterialRequest.view` |
-| «إذن صرف» | StockIssue | P6 | `ISS-` (posting) | `posted` | `signedCopy` | `administrationStockIssue.print` |
-| «مرتجع صرف» | StockReturn | P6 | `RTN-` (posting) | `posted` | `signedCopy` | `administrationStockReturn.view` |
-| «تحويل مخزني», dispatch note | StockTransfer | P7 | `TRF-` (submission, including `draft → approved` where OD-45 needs no approval), kind `dispatchNote` | `dispatched` | `dispatchSignedCopy` | `administrationStockTransfer.view`, source side |
-| «تحويل مخزني», receipt note | StockTransfer | P7 | same `TRF-`, kind `receiptNote` | first receipt (cumulative, §11.4) | `receiptSignedCopy` | `administrationStockTransfer.view`, destination side |
+| أمر شراء | PurchaseOrder | P4 | `PO-` (submission) | `approved` (earlier: a غير معتمد watermark) | `signedCopy` from `issued` (OD-31) | `administrationPurchaseOrder.print` |
+| إذن استلام / إذن إضافة | GoodsReceipt | P5 | `GRN-` (posting) | `posted` | `signedCopy` | `administrationGoodsReceipt.print` |
+| مرتجع مشتريات | SupplierReturn | P5 | `SRN-` (posting) | `posted` | `signedCopy` | `administrationSupplierReturn.view` |
+| طلب صرف | MaterialRequest | P6, only if OD-59 has MRs printed | `MR-` (submission) | `pendingApproval` | none: an information copy, unless OD-59 has it signed | `administrationMaterialRequest.view` |
+| إذن صرف | StockIssue | P6 | `ISS-` (posting) | `posted` | `signedCopy` | `administrationStockIssue.print` |
+| مرتجع صرف | StockReturn | P6 | `RTN-` (posting) | `posted` | `signedCopy` | `administrationStockReturn.view` |
+| تحويل مخزني, dispatch note | StockTransfer | P7 | `TRF-` (submission, including `draft → approved` where OD-45 needs no approval), kind `dispatchNote` | `dispatched` | `dispatchSignedCopy` | `administrationStockTransfer.view`, source side |
+| تحويل مخزني, receipt note | StockTransfer | P7 | same `TRF-`, kind `receiptNote` | first receipt (cumulative, §11.4) | `receiptSignedCopy` | `administrationStockTransfer.view`, destination side |
 | «جرد» sheet | StockCount | P7 | `CNT-` (start), kind `sheet` | `inProgress`; no book quantities if blind (OD-49) | none; the filled sheet is evidence | `administrationStockCount.view` |
-| «محضر جرد» (count result) | StockCount | P7 | same `CNT-`, kind `result` | `submitted` | `signedCopy` (stale after a recount) | `administrationStockCount.view` |
-| «تسوية / إعدام» minutes | StockAdjustment | P7 (P5 under §18.1 A11) | `ADJ-` (submission) | `pendingApproval` | `signedCopy` | `administrationStockAdjustment.view` |
-| «مذكرة تسليم إلى الإدارة المالية» (§12.5) | FinanceHandoff | P8 | `FH-` (hand-over; under OD-54's post-hand-over notice (i), recommended, also the SRN posting that cuts a return notice, whose memo takes its own title, OD-67; §2.8, §12.5) | `handedOver` | `signedCopy` (Finance's block) | `administrationSupplierInvoice.view` |
+| محضر جرد (count result) | StockCount | P7 | same `CNT-`, kind `result` | `submitted` | `signedCopy` (stale after a recount) | `administrationStockCount.view` |
+| تسوية مخزنية minutes | StockAdjustment | P7 (P5 under §18.1 A11) | `ADJ-` (submission) | `pendingApproval` | `signedCopy` | `administrationStockAdjustment.view` |
+| مذكرة تسليم إلى الإدارة المالية (§12.5) | FinanceHandoff | P8 | `FH-` (hand-over; under OD-54's post-hand-over notice (i), recommended, also the SRN posting that cuts a return notice, whose memo takes its own title, OD-67; §2.8, §12.5) | `handedOver` | `signedCopy` (Finance's block) | `administrationSupplierInvoice.view` |
 
 - **First paper.** It is the PR's information copy, in P2, if OD-59 has PRs printed. Otherwise it is P3's RFQ paper,
   which OD-59 A makes the first. `EGYCASH_LOGO` is already shared, in contracts (§11.6.3).
@@ -951,7 +989,7 @@ under OD-59. Numbers are §2.8's; a print never takes one (§11.6.6). Each paper
   `supplierInvoiceNo`, §2.5).
 - **Shared numbers.** The RFQ, transfer and count each print two papers under one number; the form code (OD-59) and the
   paper's title tell the two apart.
-- **Print keys.** Only the PO, GRN and stock issue have a `.print` key in the skeleton. The other papers ride `.view`, as
+- **Print keys.** Only the PO, GRN and stock issue have a `.print` key (§6.2). The other papers ride `.view`, as
   IT reprints do: "the paper shows nothing the ledger does not" (`consumable-memo.routes.ts:1-5`). That holds until
   OD-59 makes a paper a record; it then gets `<resource>.print` with its endpoint.
 
@@ -972,10 +1010,11 @@ Two headers, both under the EGYCASH logo:
 
 - **Registers, reports and item or warehouse cards** print on the company report form, `buildFleetReportHtml` /
   `printFleetReport` (`fleet/lib/fleet-report-print.ts:46-50, 140-144, 212-224`). Only its company line
-  «ايجى كاش للحلول النقدية» is fixed; the department line is a field. IT's registers (`it/lib/register-export.ts:12-19, 90-91`) and ATM's statements (`atm/components/StatementExportButtons.tsx:9-13, 20`) already print on it with their own
-  lines: "Writing a second copy … is how two exports of the same app come to look different". The module passes
-  «الشئون الإدارية», or its section's name (OD-62). The report form is promoted to `apps/web/src/shared/` with the export
-  walk and buttons (§11.7; §15.4 lists the same move).
+  «ايجى كاش للحلول النقدية» is fixed; the department line is a field. IT's registers
+  (`it/lib/register-export.ts:12-19, 90-91`) and ATM's statements (`atm/components/StatementExportButtons.tsx:9-13, 20`)
+  already print on it with their own lines: "Writing a second copy … is how two exports of the same app come to look
+  different". The module passes «الشئون الإدارية», or its section's name (OD-62). The report form is promoted to
+  `apps/web/src/shared/` with the export walk and buttons (PC-11, §11.7; §15.4 lists the same move).
 - **Form papers** (PO, GRN, issue, returns, transfer notes, count and adjustment minutes, the handoff memo) use a module
   letterhead, `administration/lib/administration-letterhead.ts`.
   - *Layout:* the logo and a «الشئون الإدارية» banner; under them a department line («المخازن» or «المشتريات», OD-62);
@@ -990,7 +1029,7 @@ Two headers, both under the EGYCASH logo:
 imported by its subpath, `@ecms/contracts/egycash-logo`, never through the barrel (`packages/contracts/package.json:14-16`).
 Gold re-exports it for its six web importers across four modules (`apps/web/src/modules/gold/lib/egycash-logo.ts:1-5`), and
 HR's server letterhead imports the subpath (`apps/api/src/modules/hr/contracts/contracts/letterhead.ts:4`). The module
-imports it the same way: no move PR and no local copy.
+imports it the same way: no move pull request and no local copy.
 
 **Wording.** All wording passes `check-formal-arabic.mjs`. If OD-59 requires the owner's forms word for word, that
 wording goes into one `administration-paper-wording.ts`, modelled on ATM's `settlement-paper-wording.ts:1-8`:
@@ -1015,8 +1054,8 @@ interface AdministrationPaperDto {                 // one per paper, e.g. Admini
   number: string; formCode: string | null; businessDate: string; status: string; printNumber: number | null;
   branch: BranchSnap; warehouse?: PartySnap;       // a transfer note carries both sides' pairs (§2.6)
   supplier?: SupplierSnap;                         // OD-11 fields only, never bank data
-  person?: PersonSnap;                             // requester, recipient or returnedBy (§2.5, §2.6)
-  team?: PersonSnap[];                             // a count's team (OD-50) or a GRN's committee (OD-35)
+  person?: PersonSnap & { name: string | null };   // requester, recipient or returnedBy: <role>Name beside <role> (D-22)
+  team?: MemberSnap[];                             // a count's team (OD-50) or a GRN's committee (OD-35)
   currency: string;                                // one per document (§2.1)
   lines: (ItemSnap & { serial: number; qty: number;
            unitPriceMinor?: number; lineTotalMinor?: number })[];  // prices only where the document shows them
@@ -1048,10 +1087,11 @@ interface AdministrationPaperDto {                 // one per paper, e.g. Admini
   - the label from the chain read just before `decide` (`approvalService.chainFor`, `approval.service.ts:73`;
     `ResolvedStep.label`, `approval-chain.ts:13, 58`).
 
-  This is new ground; §2.1 carries both fields on `ApprovalEntry`. The paper prints decided rungs only (OD-59 default).
+  No host stores these two today; §2.1 carries both fields on `ApprovalEntry`. The paper prints decided rungs only
+  (OD-59 default).
   Skipped, covered and unreached rungs, whose decider is null, do not print.
 - **Revisions.** Under OD-26 B only (recommended default: A, which cancels and re-raises instead), a PO revision changes
-  its terms in state (§5.6; skeleton Addenda 4): the old terms move to `revisions[]` and `revisionNumber` grows (§2.5).
+  its terms in state (§5.6): the old terms move to `revisions[]` and `revisionNumber` grows (§2.5).
   The PO paper therefore prints `revisionNumber` beside the number, and a print after an applied revision shows the new
   terms. The acknowledgment already filed covers the earlier terms; re-issuing a revised PO is OD-31's (§5.6).
 - **Signatures.** Whether an electronic approval line can replace a wet signature is OD-59.
@@ -1062,11 +1102,12 @@ interface AdministrationPaperDto {                 // one per paper, e.g. Admini
   for its reports (`fleet.settings.ts:57-103`), read through `GET /settings/me` (`use-report-signatories.ts:1-39`).
   A role is declared with the first paper that prints it, so the file arrives with the first paper that carries a
   signature block: P3's RFQ papers, or P2 if OD-59 has PRs printed with one.
-- **Keepers.** Settings are organization scope only (skeleton Addenda 2), so they name offices and company-wide people. A
-  keeper's block takes the warehouse's keeper (`responsibleEmployeeId`, OD-10), resolved when the document leaves draft
+- **Keepers.** These settings are organization scope, as Fleet's are, so they name offices and people who serve the
+  whole organization. A keeper's block takes the warehouse's keeper (`responsibleEmployeeId`, OD-10), resolved when the document leaves draft
   and snapshotted on the paper only (§2.3.5). With no keeper named, the line prints blank for the pen
   (`SignatorySnap.name: null`, §2.1).
-- **Defaults.** Defaults are office titles only. Fleet ships real names as defaults (`fleet.settings.ts:80-103`); this module does not.
+- **Defaults.** Defaults are office titles only. Fleet ships real names as defaults (`fleet.settings.ts:80-103`); this
+  module does not.
 - **Blank roles.** Fleet's schema refuses an empty value (`z.string().trim().min(1)`, `:66-73`), so in Fleet a line
   drops out only in the moment before settings load (`use-report-signatories.ts:8-10`). If a role must be optional here,
   its schema accepts `''` (new ground), and a blank role drops out of the paper.
@@ -1096,7 +1137,8 @@ unlike IT's F-14 receipts, where an unused print leaves a gap (`it/assets/receip
 as an unnumbered «مسودة» preview (OD-59 default), as Operations' vault receipt prints before its act: titled «مسودة»,
 nobody named, no time (`apps/web/src/modules/operations/lib/vault-receipt-print.ts:10-13`).
 
-**Reprint marking (OD-59).** No paper marks its copies today, so this is new ground. If adopted:
+**Reprint marking (OD-59).** No paper marks its copies today; the counters below have precedents, the marks do not. If
+adopted:
 
 - `printCount` and `lastPrintedAt` change by `$inc` with no `__v` bump (gold `recordPrint`,
   `delivery-receipt.repository.ts:9-22`). The printable-status set goes in the filter, which gold's has not; ATM puts
@@ -1104,22 +1146,27 @@ nobody named, no time (`apps/web/src/modules/operations/lib/vault-receipt-print.
   live document or answers 409.
 - Counters are per paper; one pair serves the PO, GRN and issue. A two-paper document would need a pair per kind, a
   field §2 does not have, and only if OD-59 makes its papers records.
-- The first print reads «أصل», later ones «نسخة رقم n», and a cancelled document prints «ملغى» (OD-59 defaults).
+- The first print reads أصل, later ones نسخة رقم n, and a cancelled document prints ملغى (OD-59 defaults).
 - Before a reprint, the screen says when the paper was last printed. The paper itself carries none of this, as with
   ATM's reprint dialog (`PrintReceiptDialog.tsx:1-4`).
-- A counter change sends the branch `update` signal (§11.4), because `export` rows are not broadcast
-  (`realtime-publisher.ts:55`).
+- A counter change sends the branch `update` signal (§11.4), because a print row is not broadcast: its verb is not
+  among the broadcast verbs (`packages/contracts/src/platform/realtime.ts:19-31`; `realtime-publisher.ts:55`).
 
-**Audit.** If prints are records, each print writes one `export` audit row with the pseudo-fields `paper` and
-`printNumber`. This follows the skeleton and HR's `documentHtml`, which audits `export` (`contract.service.ts:669-677`).
+**Audit.** If prints are records (OD-59 A), each print writes one row under the module's own verb,
+`administrationPrint` (en "Printed a paper of record", ar طباعة مستند رسمي), with the pseudo-fields `paper` and
+`printNumber`.
 
-- *The cost:* every `export` row counts toward the per-user 24-hour `exportSpike` signal (`audit.signals.ts:24, 31, 129-142`; default threshold 20, `audit.settings.ts:33-39`). A keeper who prints more than 20 issue vouchers in a day
-  would raise a security alert.
-- *ATM's answer:* papers get their own verb, `atmSettlementPrint` (`audit.ts:189-194`; `print.service.ts:4-8, 330-338`),
-  and `export` stays for the workbook (`:350-360`).
-- *Proposed, not adopted:* a module print verb with en+ar `systemAdmin.users.audit.<verb>` labels, which would change
-  the binding rule that names `export`. Until then, if keepers' prints trip the signal, the owner raises
-  `audit.signals.exportSpikeThreshold` (organization scope, 5 to 1,000, `audit.settings.ts:33-39`).
+- *Why not `export`:* HR's `documentHtml` audits a document view as `export` (`contract.service.ts:669-677`), but every
+  `export` row counts toward the per-user 24-hour `exportSpike` signal
+  (`apps/api/src/platform/audit/audit.signals.ts:24, 31, 129-142`; default threshold 20, organization scope,
+  `apps/api/src/platform/audit/audit.settings.ts:32-38`). A keeper who prints more than 20 issue vouchers in a day
+  would raise a security alert, and raising the threshold would blind the signal for every module (§10.6).
+- *ATM's answer, followed here:* papers get their own verb, `atmSettlementPrint` (`audit.ts:189-194`;
+  `print.service.ts:4-8, 330-338`), and `export` stays for the workbook (`:350-360`). The detector counts only `export`
+  rows (`audit.signals.ts:129-142`), so prints never trip it.
+- *Cost:* an append to `AUDIT_ACTIONS` after `atmSettlementPrint`, with en+ar `systemAdmin.users.audit.<verb>` labels,
+  shipped with the first paper of record (§10.3 lists the specs and the worker order). `export` stays for real exports
+  (§11.7, §14.7).
 
 #### 11.6.7 Optional server PDF
 
@@ -1129,38 +1176,28 @@ a document to a non-user (§0.2): notifications reach users only (`notification.
 is a text-only infrastructure transport for credentials and applicant invites (`infrastructure/messaging/whatsapp.ts:1-4`;
 `applicant-portal.service.ts:15`), not a platform seam. A PDF could therefore only be printed or handed over.
 
-If the owner wants a stored, supplier-facing PO:
-
-1. **One renderer.** The composer moves to the server, so print and PDF share one renderer. IT's label sheet is the
-   precedent: a PDF when the driver is configured, the same HTML otherwise (`asset.service.ts:387-408`).
-2. **Worker rendering.** The worker renders with `renderPdfFromHtml` (`platform/pdf/index.ts:2`;
-   `chromium-pdf.ts:10-32`). Chromium and `fonts-noto` are installed on the worker only (`railway-deployment.md:90-100`).
-   Each call launches a new browser, so bulk rendering is slow. The paper fonts are `local()` aliases with Noto
-   fallbacks and no bundled file (`paper-fonts.ts:1-20`), so the worker's Noto draws the page and nothing needs
-   embedding.
-3. **Reliable trigger.** An internal event is emitted with `{ reliable: true, session }` inside the issuing
-   `unitOfWork` (`event-bus.ts:60-66`). HR's `renderRequested` emits after its writes and without a session
-   (`contract.service.ts:341, 354`). Like HR's, the event stays out of the catalogue: it is listed in
-   `INTERNAL_EVENT_NAMES` (`event-publishers.spec.ts:28-34`), so it never becomes a notification-rule or automation
-   trigger.
-4. **Storage.** One immutable `administration-generated-pdfs` file is kept per version, under a real-key context.
-5. **HTML fallback.** When `pdfDriverEnabled()` is false, the browser receives the same HTML and opens it through the
-   print door (`writePrintWindow`, `print-window.ts:111`), as IT's label sheet does (`useAssetLabels.ts`, pinned in
-   `print-window.spec.ts:138-155`). It does not use `window.open` as HR contracts do.
-6. **Verification.** HR's integrity hash and QR are added only if suppliers must verify a PO.
-7. **Blocker.** `local` and `railway` storage cannot be shared between API and worker (ADR-020;
-   `shared-file-storage-design.md` is still a draft).
+**Impact if the owner wants a stored, supplier-facing PO** (M, and blocked as below). The PO composer moves to the
+server, so print and PDF share one renderer, as IT's label sheet does: a PDF when the driver is configured, the same
+HTML through the print door otherwise (`asset.service.ts:387-408`; `print-window.ts:111`). Rendering runs in the
+worker (`renderPdfFromHtml`, `platform/pdf/index.ts:2`; `chromium-pdf.ts:10-32`), the only service with Chromium and
+`fonts-noto` (`railway-deployment.md:90-100`); each call launches a browser, and the cost of rendering in bulk is
+unmeasured. A reliable internal event, kept out of the catalogue, starts it from the issuing transaction, and one
+immutable file per version is kept in a category of its own (`administration-generated-pdfs`, PDF only). It is blocked
+until the API and the worker share file storage: `local` and `railway` storage cannot (ADR-020;
+`shared-file-storage-design.md` is still a draft). It touches §8 (an internal event), §11.2 (the category) and §11.6.2
+(where the composer lives); HR's integrity hash and QR would be added only if suppliers must verify a PO. Its routes
+and job are designed with that answer.
 
 ### 11.7 Exports (OD-60)
 
 | Kind | Mechanism | Gate | Audited | Recommended use (OD-60) |
 |---|---|---|---|---|
-| A. Client `.xlsx` | `buildXlsx` (`xlsx-writer.ts:553-575`) over every filtered page (`fetchFilteredRows`, `fleet/lib/fleet-sheet.ts:28-30`). The walk stops at 200 pages of 100 rows without saying so (`whole-catalog.ts:40, 47-57`). | list `.view` | no | registers without money (past 20,000 rows, filtered under the cap: OD-60 (i)): master data, suppliers (no sensitive fields), PR and MR lists without prices |
-| B. Server CSV | copy of `atm/register/register-export.ts:90-153` | `<resource>.export` | yes | any register with prices or values; a register with no export key that can pass 20,000 rows is OD-60's sub-question (recommended (i): the client export stays, filtered under the cap, and a register the owner names gets a server export with a key of its own) |
-| C. Server JSON → client `.xlsx` | ATM REP. TAPE: the server audits `export` (`print.service.ts:350-360`), the browser builds the workbook | `<resource>.export` | yes | audited data the owner wants as a formatted workbook |
+| Client export: `.xlsx` | `buildXlsx` (`xlsx-writer.ts:553-575`) over every filtered page (`fetchFilteredRows`, `fleet/lib/fleet-sheet.ts:28-30`). The walk stops at 200 pages of 100 rows without saying so (`whole-catalog.ts:40, 47-57`). | list `.view` | no | registers without money (past 20,000 rows, filtered under the cap: OD-60.2 (i)): master data, suppliers (no sensitive fields), PR and MR lists without prices |
+| Server export: CSV | copy of `atm/register/register-export.ts:90-153` | `<resource>.export` | yes | any register with prices or values; a register with no export key that can pass 20,000 rows is OD-60.2 (recommended (i): the client export stays, filtered under the cap, and a register the owner names gets a server export with a key of its own) |
+| Server workbook export: JSON → client `.xlsx` | ATM's REP. TAPE export (the day's replenishment lines as a workbook, `docs/12-planning/atm-settlements-phase1.md:76`): the server audits `export` (`print.service.ts:350-360`), the browser builds the workbook | `<resource>.export` | yes | audited data the owner wants as a formatted workbook |
 
-**Export keys.** The skeleton names five keys. Each exists only if OD-60 picks server exports, and each is declared with
-its endpoint:
+**Export keys.** §6.2 declares five keys. Each exists only if OD-60 picks server exports, and each is declared with its
+endpoint:
 
 | Key | Phase | Register |
 |---|---|---|
@@ -1170,10 +1207,11 @@ its endpoint:
 | `administrationGoodsReceipt.export` | P5 | GRN register, if values are shown |
 | `administrationSupplierInvoice.export` | P8 | invoice and handoff registers |
 
-There are no exports in Phase 1 (P1a, P1b). Client Excel ships there only if the owner asks (skeleton Addenda 3). Stock
-values in any export follow OD-73 (a separate value key under its option B), and no valuation exists before OD-37.
+There are no exports in Phase 1 (P1a, P1b). A client export ships there only if the owner asks (OD-60.1, recommended
+(i): none). Stock values in any export follow OD-73 (a separate value key under its option B), and no valuation exists
+before OD-37.
 
-How B works:
+How a server export works:
 
 - **Scope.** The cursor reads the model directly, so it applies the repository's own match. That is `orgScopeMatch` on
   the collection's fields plus the module's own clause (`shared/base/org-scope-match.ts:61-71`), as ATM's
@@ -1184,14 +1222,16 @@ How B works:
   (`platform/audit/index.ts:1`). HR attendance and ATM already import it this way (`attendance-export.ts:13`;
   `register-export.ts:26`), so the module would be the third, unless the barrel exports it. Every cell also passes a
   module copy of `guardCsvFormula` (`register-export.ts:46-55`). Backend modules may not import each other
-  (`module-structure.md:88`), and the skeleton copies backend helpers the same way (`branch-scope.ts`; `cairo-day.ts` now re-exports the shared Cairo calendar in contracts instead, §3.5).
+  (`module-structure.md:88`), so the module copies a backend helper only where no shared one exists, as it copies
+  Fleet's counter (§3.5); ATM's branch-scope rule moves to `apps/api/src/shared/` instead (PC-12), and `cairo-day.ts`
+  re-exports the shared Cairo calendar in contracts.
 - **Audit.** One `export` row after the stream, with `rowCount`, `completed` and `filter`.
 
 Rules for every export:
 
-- A register on B or C never also offers A.
-- In B, money leaves as 2-dp strings from minor units, with server totals. In C it becomes numeric cells, because the
-  writer stores numbers as numbers (`xlsx-writer.ts:16-17`).
+- A register with a server or server workbook export never also offers a client export.
+- In a server export, money leaves as 2-dp strings from minor units, with server totals. In a server workbook export it
+  becomes numeric cells, because the writer stores numbers as numbers (`xlsx-writer.ts:16-17`).
 - Movement registers carry a signed quantity column (`MOVEMENT_SIGN`, `consumable-movement-register-export.ts:37`).
 - No filter in force is ever dropped from the filter line (`it/lib/register-export.ts:37-41`).
 - Movement exports take a date window. Attendance caps its window at 92 days (`hr-attendance.ts:442-445`); the length
@@ -1200,25 +1240,24 @@ Rules for every export:
 **Active-branch gap.**
 - *The gap:* `fetchBlob` sends only `Authorization` (`api-client.ts:490-508`), and `downloadBlob` uses it (`:511-513`).
   `getText` has the same gap (`:391-407`); the module does not use it.
-- *Discovery 15:* it says these send `X-Active-Branch`, but the line it cites (385) is `rawUpload`. The code wins.
 - *The effect:* server exports and byte reads ignore the branch switcher.
-- *The fix:* its own shared-web PR (PC-5, §18.1) before the first server export. It adds the header line the other
-  paths already set (`:126, 334, 450, 532, 598`) and parses the JSON error envelope on non-OK responses (§11.5). Until then,
-  the export takes the branch as an explicit filter.
+- *The fix:* its own shared-web pull request (PC-5, §18.1) before the first server export. It adds the header line the
+  other paths already set (`:126, 334, 450, 532, 598`) and parses the JSON error envelope on non-OK responses (§11.5).
+  Until then, the export takes the branch as an explicit filter.
 
 **Promotion.** The module is the next consumer of the export walk, the buttons and the company report form
-(`whole-catalog.ts`, `fleet-sheet.ts`, `RegisterExportButtons.tsx`, `fleet-report-print.ts`). Fleet, IT, ATM and, since
-2026-11, Operations use them, the last three by importing across modules (`apps/web/src/modules/operations/lib/report-export.ts:30`). They move to `apps/web/src/shared/` behind re-export shims, as the xlsx
-writer did, in their own PR before the first client export (§18.1); §15.4 lists the same move. The skeleton names the
-walk and buttons; §18.1 moves the report form with them. The fallback is to import them from Fleet and IT, as ATM
-does.
+(`whole-catalog.ts`, `fleet-sheet.ts`, `RegisterExportButtons.tsx`, `fleet-report-print.ts`). Fleet, IT, ATM and
+Operations use them, the last three by importing across modules
+(`apps/web/src/modules/operations/lib/report-export.ts:30`). They move to `apps/web/src/shared/` behind re-export shims,
+as the xlsx writer did, in their own pull request before the first client export (PC-11, §18.1); §15.4 lists the same
+move, the report form included. The fallback is to import them from Fleet and IT, as ATM does.
 
 ---
 
 ## 12. Finance integration
 
 This section defines what Administrative Affairs hands to Finance and where its responsibility stops. It invents no
-accounting: every Finance policy is an open decision, quoted with its recommended default.
+accounting: every Finance policy is an open decision (§16).
 
 ### 12.1 Verified: ECMS has no Finance
 
@@ -1227,7 +1266,7 @@ The search log is in §1.10.
 | Fact | Evidence |
 |---|---|
 | No `accounting`, `finance` or treasury module exists; `accounting` is a reserved id only. | `apps/api/src/modules/` = `atm automation fleet gold hr it operations`; `docs/01-business/module-hierarchy.md:76` |
-| No chart of accounts, journal, payable, supplier invoice, payment, bank-account (IBAN) or VAT model exists. The bank models that do exist are catalogs of customer banks. | No model matches `generalLedger`, `chartOfAccount`, `vendorInvoice`, `accountsPayable`, `journalEntry` or `\bvat\b`; `withholding` appears only in prose comments. Bank catalogs: `operations_banks`, `operations_bank_branches` (`apps/api/src/modules/operations/operations.module.ts:258-259`) and ATM's (`apps/api/src/modules/atm/catalogs/bank.model.ts`). VAT appears once, since 2026-11, as a note: Fleet's vehicle supply contracts store unit prices excluding VAT, with no tax field, and print «غير شامل ضريبة القيمة المضافة 14%» as fixed text (`apps/api/src/modules/fleet/vehicle-contracts/vehicle-contract.model.ts:20`; `apps/web/src/modules/fleet/components/vehicle-contract-record-parts.tsx:179-183`) |
+| No chart of accounts, journal, payable, supplier invoice, payment, bank-account (IBAN) or VAT model exists. The bank models that do exist are catalogs of customer banks. | No model matches `generalLedger`, `chartOfAccount`, `vendorInvoice`, `accountsPayable`, `journalEntry` or `\bvat\b`; `withholding` appears only in prose comments. Bank catalogs: `operations_banks`, `operations_bank_branches` (`apps/api/src/modules/operations/operations.module.ts:258-259`) and ATM's (`apps/api/src/modules/atm/catalogs/bank.model.ts`). VAT appears once, as a note: Fleet's vehicle supply contracts store unit prices excluding VAT, with no tax field, and print «غير شامل ضريبة القيمة المضافة 14%» as fixed text (`apps/api/src/modules/fleet/vehicle-contracts/vehicle-contract.model.ts:20`; `apps/web/src/modules/fleet/components/vehicle-contract-record-parts.tsx:179-183`) |
 | Money is only recorded as having moved *elsewhere*. | "ECMS has no treasury and pays nobody" (`packages/contracts/src/modules/hr-employee-loans.ts:141`); payroll → GL "🔒 BLOCKED" (`docs/12-planning/payroll-to-gl-discovery.md:84`) |
 | The only Finance handoff is paper. | Fleet custody letters carry a `finance` signature role (`packages/contracts/src/modules/fleet.ts:5503-5504`) that prints the office «مدير الادارة المالية», as stored (`packages/contracts/src/modules/fleet-custody-paper-defaults.ts:98-99, 122-123, 145-146`), snapshotted per paper (`apps/api/src/modules/fleet/custody/custody-papers.service.ts:104-114`) |
 | The domain docs model receivables only; a new Finance edge needs an ADR. | `docs/01-domain/domain-model.md:228-232`; `docs/01-domain/entity-relationships.md:151` |
@@ -1275,10 +1314,13 @@ narrows it, because that guard lower-cases the source and refuses substrings:
 | **B. Invoice match** (recommended) | invoice recorded, matched to the PO and its GRNs, handed over | one matched package per invoice | Adds `supplier_invoices` and `finance_handoffs` (P8); whoever ordered and received checks the bill. A departure from `bounded-contexts.md:105` (§12.2), recorded by the §20 ADR |
 | C. B + payment facts | also records "paid on" and a reference | the same, with a paid state | Record-only precedents exist: loan `disburse` records `disbursedAt` (`packages/contracts/src/modules/hr-employee-loans.ts:144-151`) and payroll `pay` records `paidOn` and a reference (`packages/contracts/src/modules/hr-payroll.ts:588-599`), each "that a payment was made elsewhere" (`docs/12-planning/employee-loans-design.md:239-241`). The cost: Administrative Affairs would type a fact Finance owns |
 
+Recommended: B, so that whoever ordered and received checks the bill. Choose A if the context map's rule "Operations
+never compute money owed" (`docs/01-domain/bounded-contexts.md:105`) is to hold.
+
 **What is handed over under each option.** The mechanism of §12.5 serves all three:
 
 - **A** — one handoff per posted GRN (or per closed PO, an OD-54 sub-question), cut from the receipt facts: the same
-  record, reliable event and memo, with no invoice and no match.
+  record and memo, with no invoice and no match.
 - **B** — one handoff per matched invoice (§12.4–§12.5).
 - **C** — B, plus `paidOn` and a reference written later on the handoff by one more version-guarded, audited act (the
   payroll `pay` shape, `hr-payroll.ts:642-643`), until a Finance module publishes the paid fact through the seam
@@ -1305,6 +1347,9 @@ flowchart LR
   H -. "future: platform seam" .-> P
 ```
 
+The outbox event in the diagram is built only with its first consumer (§12.5 part 2, §12.11); P8 ships the record and
+the memo.
+
 ### 12.4 Supplier invoice and match (P8, OD-54 = B)
 
 **The invoice.** A copy of the supplier's paper, typed as printed (§2.5): `supplierId` and its `SupplierSnap`,
@@ -1328,7 +1373,7 @@ stateDiagram-v2
 - Only a draft is edited or cancelled, and a cancel frees the supplier's number (the index is partial on `draft` and
   `handedOver`).
 - The guard sets are exhaustive Records in contracts (§5.14): `SUPPLIER_INVOICE_CANCELLABLE` (`draft`) and
-  `PO_INVOICEABLE` (`issued`, `closed`; skeleton Addenda 5); a PO that received nothing is never billed here.
+  `PO_INVOICEABLE` (`issued`, `closed`); a PO that received nothing is never billed here.
 - Registering, editing and cancelling a draft ride `administrationSupplierInvoice.create` (recommended, as a GRN
   draft's acts ride its create key, §6.2); hand-over and withdrawal ride `.handOver` (§12.5). The derived match comes
   with the invoice's detail read.
@@ -1382,12 +1427,11 @@ here, with recommended defaults:
 | A. Paper memo only | yes | no — nothing to read | Fleet custody letters |
 | B. Event only | no — no consumer | only if delivered; a handler that throws runs once (below) | payroll `runPaid` |
 | C. Export file only | yes | no — no idempotency, no state | ATM register CSV |
-| **D. Record + reliable event + memo** (recommended) | yes — a page plus the paper | yes — reads the records (§12.6); the event signals | Fleet memo · outbox · directory seam |
+| **D. Record + memo; a reliable event once a consumer exists** (recommended) | yes — a page plus the paper | yes — reads the records (§12.6); the event, built with the seam and its first consumer, signals | Fleet memo · outbox · directory seam |
 
 **1 — The record.** `administration_finance_handoffs` holds one snapshot per hand-over, with §2.5's fields:
 
-- **Identity.** `number`, `FH-{YYYY}-{seq:6}` (skeleton Addenda 3; counter key `financeHandoff:{YYYY}`, Cairo year,
-  §2.8), and `status: handedOver | withdrawn` (proposed with OD-55, §2.5).
+- **Identity.** `number`, `FH-{YYYY}-{seq:6}` (counter key `financeHandoff:{YYYY}`, Cairo year, §2.8), and `status: handedOver | withdrawn` (proposed with OD-55, §2.5).
 - **Parties.** `supplierId` and `supplier: SupplierSnap` (its tax registration included, OD-11), and `branchId`, the PO's
   purchasing branch.
 - **Documents.** `supplierInvoiceId` with the supplier's invoice number and date; `purchaseOrderId` and its number;
@@ -1419,8 +1463,8 @@ Inside one `unitOfWork`, in order:
    first, with the top-level `$expr` cap `invoicedQty + q ≤ acceptedQty − returnedQty` (§2.1 "Claims"); a shortfall is a
    quantity variance, refused unless OD-54's variance path applies;
 4. the match, recomputed from what the session now reads: it shapes the error and becomes the frozen snapshot;
-5. the handoff inserted, and `administration.financeHandoff.created` emitted with `{ reliable: true, session }`
-   (`apps/api/src/platform/kernel/event-bus.ts:61-97`).
+5. the handoff inserted; once the event has a consumer (part 2 below), `administration.financeHandoff.created` is also
+   emitted with `{ reliable: true, session }` (`apps/api/src/platform/kernel/event-bus.ts:61-97`).
 
 **Why the claim is a write.** ATM's governing rule: "Every guard is checked by the write that depends on it, inside the
 same transaction … A check made before the transaction only shapes the error" (`plan.service.ts:5-8`). A read-only
@@ -1428,13 +1472,13 @@ recompute would not conflict with a supplier return posted at the same moment, b
 different documents, so a handoff could bill quantity the return had just removed. The SRN posting writes the same GRN
 line (`returnedQty`, §2.6), so the two now conflict and `withTransaction` retries the loser against the winner's result.
 Two hand-overs on one PO line conflict on the same GRN lines too, not only, by accident, on the yearly `FH-` counter.
-`invoicedQty` is the GRN-line counter skeleton Addenda 5 adds for this guard (§2.6).
+`invoicedQty` is the GRN-line counter §2.6 adds for this guard.
 
 After commit, in §8.5's order:
 
-- `nudgeOutboxRelay()` (`event-bus.ts:140-144`);
+- `nudgeOutboxRelay()` (`event-bus.ts:140-144`), when the event was emitted;
 - the audit rows: `statusChange` on the `supplierInvoice`, the acting row (§10.2: the `FH-` number, linked ids, a
-  variance summary), and `create` on the `financeHandoff`, whose lifecycle starts there (Addenda 3's row on another
+  variance summary), and `create` on the `financeHandoff`, whose lifecycle starts there (D-12's row on another
   document);
 - one `publishAuditedChange({ action: 'update', branchId })` per topic: `supplierInvoice` and `financeHandoff` on the
   purchasing branch, and `goodsReceipt` on the branch of each GRN whose progress moved (§9.3);
@@ -1448,9 +1492,9 @@ After commit, in §8.5's order:
    the two;
 2. the claims released: the opposite `$inc` on every GRN line the frozen match names;
 3. the invoice `handedOver → draft`, guarded the same way;
-4. `administration.financeHandoff.withdrawn`, emitted reliably.
+4. `administration.financeHandoff.withdrawn`, emitted reliably once the event has a consumer.
 
-After commit come the nudge; `statusChange` on the handoff (with the reason) and on the invoice; the same signals; and
+After commit come the nudge (with the event); `statusChange` on the handoff (with the reason) and on the invoice; the same signals; and
 Finance's notification. The `FH-` number stays on the withdrawn record, and a reprint prints «ملغى» (OD-59's default,
 §11.6.6). The invoice, back in draft, is corrected and handed over again under a new number.
 
@@ -1466,7 +1510,7 @@ hears of them is a sub-question of OD-36 and OD-54:
 
 | Option | What reaches Finance | Cost |
 |---|---|---|
-| **(i) Return notice** (recommended) | The SRN posting cuts a second kind of handoff, in its own transaction and through the handoff feature's service (§3.4), for the handed-over share it returned: its own `FH-` number, the same record, reliable event and memo (title: OD-67), one live notice per SRN | A `kind` and a `supplierReturnId` on `finance_handoffs`, and a second partial unique index (a §2.5 change). A supplier's credit note for a price stays Finance's to receive: it changes the payable, not the goods |
+| **(i) Return notice** (recommended) | The SRN posting cuts a second kind of handoff, in its own transaction and through the handoff feature's service (§3.4), for the handed-over share it returned: its own `FH-` number, the same record and memo (title: OD-67), one live notice per SRN | A `kind` and a `supplierReturnId` on `finance_handoffs`, and a second partial unique index (a §2.5 change). A supplier's credit note for a price stays Finance's to receive: it changes the payable, not the goods |
 | (ii) Credit note | The supplier's credit note is registered as an invoice of kind `creditNote`, matched against posted returns not yet credited, and handed over | A `kind` on `supplier_invoices`, and credit amounts as the one stated exception to "prices ≥ 0" (§12.7). Nothing reaches Finance until the supplier sends the paper |
 | (iii) Nothing in ECMS | Finance reads the SRN through the seam (§12.6) and its signed paper (§11.6.1) | The live handoff overstates the payable until a person notices |
 
@@ -1474,9 +1518,11 @@ Under (i), the rule that an `entryError` return "creates no debit note or handof
 of the GRN line has been handed over. OD-36's recommended "each return joins the handoff" (§16) reads the same way:
 before the hand-over, a return lowers what can be billed; after it, the return cuts a notice.
 
-**2 — The reliable event.** `administration.financeHandoff.created` and `.withdrawn` are emitted with
-`{ reliable: true, session }` inside the transaction, followed by `nudgeOutboxRelay()` after commit
-(`apps/api/src/platform/kernel/event-bus.ts:61-97, 140-144`; the platform's shape,
+**2 — The reliable event, with its first consumer.** Nothing in ECMS can consume a handoff event today (§12.1), so
+P8 ships the record and the memo, and the event is a recorded integration requirement (§12.11), built with the seam
+(§12.6) and its first consumer, after PC-1. Its shape is fixed now: `administration.financeHandoff.created` and
+`.withdrawn` emitted with `{ reliable: true, session }` inside the transaction, followed by `nudgeOutboxRelay()` after
+commit (`apps/api/src/platform/kernel/event-bus.ts:61-97, 140-144`; the platform's shape,
 `apps/api/src/platform/users/user.service.ts:179-188`).
 
 - **Payload.** `{ handoffId, number, supplierInvoiceId, supplierId, status, branchId }`, `branchId` for parity with
@@ -1488,38 +1534,40 @@ before the hand-over, a return lowers what can be billed; after it, the return c
   loan events carry `principal` and `currency` (`packages/contracts/src/modules/hr-employee-loans.ts:360-393`). A Finance
   consumer reads the amounts from the record.
 - **Words.** `created` and `withdrawn` exist in the lexicon (`packages/contracts/src/events/catalog.ts:783, 796`).
-  The entity word `financeHandoff` (candidate ar «تسليم للإدارة المالية», OD-67) and the module's name are new:
+  The entity word `financeHandoff` (candidate ar تسليم للإدارة المالية, OD-67) and the module's name are new:
   `EVENT_ENTITY_NAMES` and `EVENT_MODULE_NAMES` (`:656-663`) gain them, or the catalogue's localization check fails
   (`isFullyLocalized`, `:980-989`; §8.3).
 - **Delivery.** The `outbox.dispatch` consumer (`dispatchReliable`, `event-bus.ts:99-109`) writes its dedup row before it
   calls the handler. BullMQ retries the failed job (`apps/api/src/infrastructure/queue/jobs.ts:108-109`), but the retry
-  finds the row and skips that handler, so a handler that throws runs once. PC-1 closes this before P8 (§18.1, RK-05).
+  finds the row and skips that handler, so a handler that throws runs once. PC-1 closes this before the event's first
+  consumer (§18.1, RK-05).
   Either way consumers reconcile by listing records: the event is the doorbell, the record the mailbox.
 
-**3 — The memo.** «مذكرة تسليم إلى الإدارة المالية» (candidate, OD-67) is a §11.6 paper (§11.6.1): a composer,
+**3 — The memo.** مذكرة تسليم إلى الإدارة المالية (candidate, OD-67) is a §11.6 paper (§11.6.1): a composer,
 the §11.6.3 form letterhead, a snapshot DTO, and signatories snapshotted at hand-over (§11.6.5), Finance's receiving
 block included. Which blocks print is OD-59. A variance prints with its reason. The memo prints at once from the
 hand-over response. Reprints ride `.view` unless OD-59 makes the paper a record; `administrationSupplierInvoice.print`
-then arrives with its endpoint (skeleton Addenda 3). The two precedents are ATM's print of record ("A PRINT IS A WRITE
+then arrives with its endpoint, and each print of record writes the module's audit verb `administrationPrint`
+(§11.6.6). The two precedents are ATM's print of record ("A PRINT IS A WRITE
 OF RECORD": a reach check, and an audit row of what was printed,
 `apps/api/src/modules/atm/settlements/prints/print.service.ts:4-8`) and IT's reprints, which write nothing ("the paper
 shows nothing the ledger does not", `apps/api/src/modules/it/consumables/consumable-memo.routes.ts:1-5`). The signed copy goes in
 `administration-signed-papers`, whose entity types include `financeHandoff` (§11.2).
 
 **Finance staff today** use the "handed over" view of `administration.supplier-invoices` (§6.3) through §6.5's
-`administration-finance-reader` bundle: `administrationSupplierInvoice.view` (plus its `.export` under OD-60) and `administrationItem.view` (the home row's key, §13.3; skeleton Addenda 5), at
+`administration-finance-reader` bundle: `administrationSupplierInvoice.view` (plus its `.export` under OD-60) and `administrationItem.view` (the home row's key, §13.3), at
 organization scope. The snapshot is self-contained, so they need no PO or stock key. Who is told of a hand-over or a
 withdrawal is OD-61. Recommended default here: the holders of `administrationSupplierInvoice.view` at organization scope
 (a `permission@organization` recipient), with no amount in the body (`hr.seed.ts:724-725`). The closed category list
 already has `finance`, which nothing uses yet (`packages/contracts/src/platform/notifications.ts:8-19`).
 
-**OD-55 also decides:** per invoice or batched (recommended: per invoice, one key per payable; a dated «كشف» is the
+**OD-55 also decides:** per invoice or batched (recommended: per invoice, one key per payable; a dated كشف is the
 handoff register of §14.5); acknowledgement (recommended: the filed signed copy, not an in-app Finance act); the withdrawal window (above); and whether Finance needs the files (recommended in §16: on request).
 
 ### 12.6 The future-Finance seam is a platform seam
 
-When `accounting` is designed, it reads handoffs through `apps/api/src/platform/finance-handoff/index.ts` (skeleton
-Addenda 3), shaped like `apps/api/src/platform/directory/index.ts:1-11, 137-179`. The context map documents exactly this
+When `accounting` is designed, it reads handoffs through `apps/api/src/platform/finance-handoff/index.ts`, shaped like
+`apps/api/src/platform/directory/index.ts:1-11, 137-179`. The context map documents exactly this
 relationship: "Business context → business context (read): Query contract registered with the platform"
 (`docs/01-domain/bounded-contexts.md:102`).
 
@@ -1553,7 +1601,8 @@ relationship: "Business context → business context (read): Query contract regi
 | Its accessor throws when no provider is registered (`vaultCustody()`, `treasury-boundary.ts:188-193`) | The seam fails closed (above), so this module and its screens work before Finance exists. Registration stays last-wins in both (`directory/index.ts:146`; `treasury-boundary.ts:183`), so a test can install a fake; one registrant per reader, the data's owner, is a convention the conformance spec checks by loading every manifest (new ground). |
 | No conformance test | Ship an "unregistered = empty" spec and a conformance suite (`apps/api/src/platform/automation/provider-conformance.ts:57`). |
 
-**Timing.** Specified now, built with its first consumer: "a grant is declared WITH its operation, never ahead of it"
+**Timing.** The seam and the reliable event (§12.5 part 2) are specified now and built with their first consumer: "a
+grant is declared WITH its operation, never ahead of it"
 (`apps/api/src/modules/it/it.module.ts:68-70`). The §20 Finance-handoff ADR records it, with the version bump:
 Administrative Affairs registers its reader, and a future `accounting` module consumes it.
 
@@ -1596,7 +1645,7 @@ The options are §16's:
 
 Foreign currency needs exchange rates under any option (L). OD-29 also decides whether value bands (OD-18) and quotation comparison (OD-24) use net or gross amounts, and whether a
 discount is an amount or a percentage. Today a PO's `totalMinor` is the sum of its net line totals (§2.5), so OD-18's
-band basis, the PO total (skeleton Addenda 4), is net unless OD-29 says otherwise. Under every option ECMS files nothing:
+band basis, the PO total, is net unless OD-29 says otherwise. Under every option ECMS files nothing:
 VAT and withholding returns are Finance's.
 
 ### 12.9 Valuation (OD-37)
@@ -1604,27 +1653,28 @@ VAT and withholding returns are Finance's.
 | Option (§16) | Meaning |
 |---|---|
 | A. Quantities | Receipt lines keep the PO price; no value is computed, as in IT ("no valuation", `apps/api/src/modules/it/spare-parts/part.model.ts:5`) |
-| B. Weighted average per item and warehouse | Every movement valued; a balance field (a skeleton change); past outflows valued through a valuation record or a D-17 backfill, because movements have no update path (below); average rounding is new ground |
+| B. Weighted average per item and warehouse | Every movement valued; a new field on each balance row (§2.4.3); past outflows valued through a valuation record or a D-17 backfill, because movements have no update path (below); average rounding is new ground |
 | C. FIFO | A new collection of cost layers |
 | D. Reference value | The last PO price, read at display time; nothing is stored |
 
 D is listed for the owner but not recommended: it is not an accounting value, but it is easily taken for one.
 
 **Recommended default (OD-37): A in P5, with capture.** `goodsReceipt` movements carry `unitCostMinor` and `currency`, the
-PO line price as the GRN line captured it; `openingBalance` movements carry them when OD-63 supplies a cost (§2.4.1;
-skeleton Addenda 3). Every other kind leaves both `null`: a supplier return's price stays on its SRN line
+PO line price as the GRN line captured it; `openingBalance` movements carry them when OD-63 supplies a cost
+(§2.4.1). Every other kind leaves both `null`: a supplier return's price stays on its SRN line
 (`unitPriceMinor`, §2.6), not on the movement. Under A, no value is summed or shown anywhere; who may see costs is OD-73
 (§6.8).
 
-**What capture buys, and what it does not.** The ledger is append-only, complete and ordered (`at`, then `createdAt`,
-then `_id`, §2.4.7), so B or C can later be computed from it without re-keying history. They still need work:
+**What capture buys, and what it does not.** The ledger is append-only, complete and ordered (on each balance row by
+`moveSeq`, the row's commit order, §2.4.4; across rows by `at`, then `createdAt`, then `_id`, §2.4.7), so B or C can
+later be computed from it without re-keying history. They still need work:
 
-- B needs a new balance field (a skeleton change). Valuing past outflows then needs either a valuation record of its own
+- B needs a new field on each balance row (§2.4.3). Valuing past outflows then needs either a valuation record of its own
   beside the movements, or one operator-run backfill over the ledger, dry-run first and approved by the owner (D-17),
   because movements have no update path.
 - Kinds with no natural cost (`countGain`, `adjustmentIn`, `issueReturn`, transfers) take theirs from the chosen method.
-- A replay reproduces history only while no movement lands before an earlier one, which OD-74's recommended default (A:
-  `at` is the posting instant) ensures.
+- A replay per (warehouse, item) row follows `moveSeq`, so no movement lands before one committed earlier on its row;
+  B and C value per row.
 
 Who owns cost, and which method, is OD-37's question; no value appears anywhere before it is answered.
 
@@ -1652,7 +1702,8 @@ backfilled (`:162-169`).
 3. **Reversal:** a withdrawal cites the handoff it reverses; a later return or correction reaches Finance per OD-36 ×
    OD-54 (§12.5) and cites the SRN and the handoff.
 4. **Direction:** Finance reads through the seam; this module stores no account, mapping or posting rule.
-5. **Delivery:** the outbox event signals; consumers reconcile by listing and dedupe by event id; PC-1 lands before P8.
+5. **Delivery:** recorded, not built in P8: the reliable event (§12.5 part 2) is built with the seam (§12.6) and its
+   first consumer, after PC-1; it signals, and consumers reconcile by listing and dedupe by event id.
 6. **Money:** minor units and currency per line and document; tax per OD-29; variances frozen with their reasons
    (OD-54).
 7. **Dates:** Cairo business dates (the invoice's `businessDate`, the GRN's posting date) plus recorded timestamps.
@@ -1661,7 +1712,7 @@ backfilled (`:162-169`).
 10. **Commitments:** approved PO value not yet received or handed over is derivable (OD-56); the received-not-invoiced
     report shows it (§14.5).
 11. **Stock:** `goodsReceipt` and `openingBalance` movements carry `unitCostMinor` and `currency` (OD-37); the integrity
-    check proves movements sum to balances.
+    check reports any difference between the movements and the balances (§2.4.8).
 12. **Payment state:** only ever Finance's, read through the seam (§12.6), unless OD-54 C has it typed here.
 13. **Year:** Cairo calendar year; `fiscalYearStartMonth` only if OD-57 says so.
 14. **Retention:** handoffs and invoices are records, kept under OD-77 (recommended default: A, keep all). They carry no
@@ -1670,16 +1721,13 @@ backfilled (`:162-169`).
 
 ---
 
----
-
 ## 13. Navigation & page plan
 
 This section fixes where the module sits in the sidebar, which web routes it mounts, which key guards each route and
 nav row, which page id carries each key, and how each kind of page is built. It follows the shipped IT and ATM
-precedents and a `ui-consistency` pass over `apps/web` for the Phase 1 pages, whose record is §13.6 (the pass's working
-notes are not part of the repository). One owner rule holds throughout: **no placeholder surface is ever reachable.** A
-screen gets its route, its nav row and its page in the slice that ships it (`apps/web/src/modules/it/routes.tsx:4-7`;
-`apps/api/src/seed-navigation.ts:889-892`; slices in §19.1).
+precedents and a `ui-consistency` pass over `apps/web` for the Phase 1 pages, recorded in §13.6. One owner rule holds
+throughout: **no placeholder surface is ever reachable.** A screen gets its route, its nav row and its page in the slice
+that ships it (`apps/web/src/modules/it/routes.tsx:4-7`; `apps/api/src/seed-navigation.ts:889-892`; slices in §19.1).
 
 ### 13.1 The navigation category
 
@@ -1688,14 +1736,23 @@ screen gets its route, its nav row and its page in the slice that ships it (`app
 | English name (the identity key) | **Administrative Affairs** — never "Administration" | `ensureCategory` finds a category by `name.en` (`apps/api/src/seed-navigation.ts:1403-1404`). "Administration" is System Administration (`:1290-1296`), so the module's rows would be filed under it, and section defaults key on the same name (`apps/api/src/seed-application-sections.ts:91`). |
 | Arabic name | «الشئون الإدارية» (spelling: OD-62) | «الشئون الإدارية» is the owner's own spelling (OD-62). The repository holds the department only in two test fixtures: `apps/api/tests/integration/org-catalog.spec.ts:274` («الشئون الإدارية») and `apps/api/src/org-catalog-migration/plan.spec.ts:236` («الشئون الادارية», without the hamza); no seed or data file carries it. Which spelling the product prints is OD-62's (recommended default: A, «الشئون الإدارية»). Product prose writes «الشؤون» (`apps/web/src/platform/localization/i18n.ts:17538`). Neither spelling trips the formal-Arabic gate, which looks for dialect morphology (`scripts/check-formal-arabic.mjs:20-22`). |
 | `sortOrder` | **29** (OD-62's recommended default, §19.2) | It sits between ATM (28, `seed-navigation.ts:1151`) and System Administration (30, `:1296`). The pinned order list gains the name between `'ATM'` and `'Administration'` (`apps/api/tests/integration/auth-seed-login.spec.ts:141-150`). |
-| Place in `NAVIGATION_CATALOG` | directly after the ATM block | Three specs read the seed as text and slice it by category: HR → Fleet (`apps/api/src/seed-application-sections.spec.ts:21-28`), Operations → Organization (`apps/api/src/seed-navigation-operations.spec.ts:40-47`), and Fleet's rows from «الحركة»'s `apps: [` to the next category (`apps/web/src/modules/fleet/fleet-nav-icons.spec.ts:25-34`). A block inside either of the first two spans would be read as their rows; after ATM it is outside all three. Array order is independent of `sortOrder`, but not of a fourth spec, which reads every module tile's name and icon in array order and pins the list (`apps/web/src/platform/navigation/module-icons.spec.ts:30-38`, `:49-58`, since 2026-10-30): there the new tile sits between `'ATM'` and `'Administration'` (§13.3, Pins). The module's own nav spec slices its block the same way (§13.4). |
-| Category icon | **new glyph `box`**: a `BoxIcon` in `apps/web/src/shared/ui/icons.tsx`, registered as `box` in P1a.W (§19.5); a design choice, not OD-62's (skeleton Addenda 5) | None of the 72 glyphs is a box, warehouse or cart. The registry knows 41 keys (`apps/web/src/platform/navigation/app-icon.tsx:44-104`), and an unknown key falls back silently (`:106-109`). Module tiles wear one glyph each, none shared, since the owner's «عايز كل أيقونة تكون بتعبر عن اسم الإدارة» (`:99-103`), which `module-icons.spec.ts` pins (§13.3, Pins). Its rule is that a key is registered with the row that names it (`app-icon.tsx:88-95`); a module tile's glyph is also pinned, every tile listed with its glyph and no two alike (`apps/web/src/platform/navigation/module-icons.spec.ts:44-81`). The existing alternative, `inbox`, is already worn by five rows, among them IT consumables (`seed-navigation.ts:934`). `box` describes the stores; the department later takes on facilities and office services (§0). The glyph is the design's, as `warehouse` is: OD-62 covers the names and labels and when sections arrive, not glyphs (skeleton Addenda 5). |
+| Place in `NAVIGATION_CATALOG` | directly after the ATM block | Three specs read the seed as text and slice it by category: HR → Fleet (`apps/api/src/seed-application-sections.spec.ts:21-28`), Operations → Organization (`apps/api/src/seed-navigation-operations.spec.ts:40-47`), and Fleet's rows from «الحركة»'s `apps: [` to the next category (`apps/web/src/modules/fleet/fleet-nav-icons.spec.ts:25-34`). A block inside either of the first two spans would be read as their rows; after ATM it is outside all three. Array order is independent of `sortOrder`, but not of a fourth spec, which reads every module tile's name and icon in array order and pins the list (`apps/web/src/platform/navigation/module-icons.spec.ts:30-38`, `:49-58`): there the new tile sits between `'ATM'` and `'Administration'` (§13.3, Pins). The module's own nav spec slices its block the same way (§13.4). |
+| Category icon | **new glyph `box`**: a `BoxIcon` in `apps/web/src/shared/ui/icons.tsx`, registered as `box` in P1a.W (§19.5); a design choice, not OD-62's | None of the 72 glyphs is a box, warehouse or cart. Module tiles wear one glyph each, none shared (`apps/web/src/platform/navigation/app-icon.tsx:99-103`), pinned by `apps/web/src/platform/navigation/module-icons.spec.ts:44-81`. Why `box`: the note below the table. |
 | Role-matrix label | `systemAdmin.roles.module.administration` — "Administrative Affairs" / «الشئون الإدارية» | The role matrix and the permission catalog read it without a fallback (IT's entry: `i18n.ts:10695`). Without it they show the raw key. |
+
+**Note to the category icon.** The registry knows 41 keys (`apps/web/src/platform/navigation/app-icon.tsx:44-104`), and
+an unknown key falls back silently (`app-icon.tsx:106-109`). Each module tile wears its own glyph since the owner's
+«عايز كل أيقونة تكون بتعبر عن اسم الإدارة» (`app-icon.tsx:99-103`). A key is registered with the row that names it
+(`app-icon.tsx:88-95`), and `module-icons.spec.ts` lists every tile with its glyph, no two alike (§13.3, Pins). The
+existing alternative, `inbox`, is already worn by five rows, among them IT consumables
+(`apps/api/src/seed-navigation.ts:934`). `box` describes the stores; the department later takes on facilities and
+office services (§0). The glyph is the design's, as `warehouse` is: OD-62 covers the names and labels and when sections
+arrive, not glyphs.
 
 **A second «الإدارة».** The System Administration category is called «الإدارة». The ubiquitous language uses «الإدارة»
 for a department (`docs/01-domain/ubiquitous-language.md:30`), and the company's department is «الشئون الإدارية», in
 the owner's spelling (OD-62). SA-1 already refused "two groups both called some form of 'administration'"
-(`seed-navigation.ts:1312-1317`). This design does not rename the system category (for example to «إدارة النظام»):
+(`seed-navigation.ts:1312-1317`). This design does not rename the system category (for example to إدارة النظام):
 installed rows are found by `name.en`, and an administrator may have renamed the category at
 `/organization/application-categories`. The rename belongs to OD-62 (option C).
 
@@ -1736,12 +1793,13 @@ When sections ship — now, if the owner asks for them (§19.2), or in a later p
 
 ### 13.3 Rows per phase
 
-Each row's `permission` is the key that the client route guard checks (`seed-navigation.ts:56-62`); since 2026-11-02 a hub row or a shared row also opens on the other keys its contracts entry lists (`packages/contracts/src/platform/navigation-hubs.ts:92-99`), which this plan uses only if OD-62 adopts one. The labels are
-candidates (OD-62; terms OD-67) and repeat §6.3's page names; the home row takes the label every module home row wears,
-`<Module> Home` / «الرئيسية» (Fleet `seed-navigation.ts:412-413`, Operations `:647-648`, IT `:894`, ATM `:1155-1156`).
-«جرد» is not a candidate: Gold's and ATM's papers already print it, so only the count document's own name is (§0.4,
-§11.6.1). The icons are the design's, not OD-62's, which covers names, labels and when sections arrive (skeleton
-Addenda 5; §15.2.3).
+Each row's `permission` is the key that the client route guard checks (`seed-navigation.ts:56-62`); a hub row or a
+shared row also opens on the other keys its contracts entry lists (`packages/contracts/src/platform/navigation-hubs.ts:92-99`),
+which this plan uses only if OD-62 adopts one. The labels are candidates (OD-62; terms OD-67) and repeat §6.3's page
+names; the home row takes the label every module home row wears, `<Module> Home` / «الرئيسية» (Fleet
+`seed-navigation.ts:412-413`, Operations `:647-648`, IT `:894`, ATM `:1155-1156`). «جرد» is the product's word, not a
+candidate (§0.4). The icons are the design's, not OD-62's, which covers names, labels and when sections arrive
+(§15.2.3).
 "New" means a glyph or a key is added to `app-icon.tsx` together with the row that uses it. The Section column applies
 only once OD-62 adds sections (§13.2).
 
@@ -1767,24 +1825,27 @@ only once OD-62 adds sections (§13.2).
 | P7, or P5 under §18.1 A11 | Warehouses | Stock adjustments | التسويات المخزنية | `/administration/stock-adjustments` | `administrationStockAdjustment.view` | `edit` (new key) |
 | P8, under OD-54 B or C | Procurement | Supplier invoices | فواتير الموردين | `/administration/supplier-invoices` | `administrationSupplierInvoice.view` | `receipt` |
 
-¹ The home row is the one row whose key is not a route guard (skeleton Addenda 3). The index route has no guard in any
+¹ The home row is the one row whose key is not a route guard. The index route has no guard in any
 phase, as IT's, ATM's and Operations' indexes have none (`apps/web/src/modules/it/routes.tsx:81`, `atm/routes.tsx:85`,
 `operations/routes.tsx:75`): the page decides what to show from the reader's grants ("any IT
 grant (the page itself decides what to show)", `it/routes.tsx:8`). Two module indexes are guarded: Gold's, by
-`goldReport.view` (`apps/web/src/modules/gold/routes.tsx:43-50`), and since 2026-11-02 Fleet's, by
+`goldReport.view` (`apps/web/src/modules/gold/routes.tsx:43-50`), and Fleet's, by
 `RequirePermission anyOf={FLEET_DASHBOARD_PAGE_KEYS}`, the union of its dashboard sections' gates
 (`apps/web/src/modules/fleet/routes.tsx:102-109`; `packages/contracts/src/modules/fleet-dashboard.ts:532-536`), so a
 Fleet reader holding none of them meets the forbidden page at `/fleet`. This module does not copy that guard, for the
 reason below. IT's row carries `itAsset.view`
 (`seed-navigation.ts:894`) and ATM's `atmReplenishment.view` (`:1154-1160`). Here the row carries
-`administrationItem.view`, which OD-78's recommended bundles give the storekeeper, the procurement roles, the Admin
-Affairs manager, the auditor, the master-data administrator, from P7 the count team (OD-78's found-line answer (i)) and, from P8, the Finance reader (§6.5; skeleton Addenda 5). Readers without it — in those bundles the department requesters (P2) and ESS requesters under OD-16 B or OD-38 B — reach the home through the breadcrumb every page carries. From P9 (§18.2) the page adds the dashboard sections that come back non-null (Fleet's pattern,
+`administrationItem.view`, which OD-78's recommended bundles give the storekeeper, the procurement roles, the
+Administrative Affairs manager, the auditor, the master-data administrator, from P7 the count team (OD-78's found-line
+answer (i)) and, from P8, the Finance reader (§6.5). Readers without it — in those bundles the department requesters
+(P2) and ESS requesters under OD-16 B or OD-38 B — reach the home through the breadcrumb every page carries. From P9
+(§18.2) the page adds the dashboard sections that come back non-null (Fleet's pattern,
 `apps/web/src/modules/fleet/pages/FleetDashboardPage.tsx:31-34`) and asks `GET /dashboard` only when the reader holds
 one of its door keys. The route stays unguarded even then: a guard over the dashboard's keys would shut readers who hold
 only keys no tile reads (units and categories, suppliers, RFQs, the procurement policy; §14.3) out of the page every
-breadcrumb links to. Skeleton Addenda 5 makes this binding: `/administration`, index and dashboard alike, is never
-route-guarded, as IT's, ATM's and Operations' indexes are not (Gold's and, since 2026-11, Fleet's are), and the API gates the tiles per section (`authorizeAny` and null sections,
-§14.2). The row keeps `administrationItem.view`; a later change ships with `previousPermission` (below).
+breadcrumb links to. This design fixes the rule: `/administration`, index and dashboard alike, is never route-guarded,
+as IT's, ATM's and Operations' indexes are not (Gold's and Fleet's are), and the API gates the tiles per section
+(`authorizeAny` and null sections, §14.2). The row keeps `administrationItem.view`; a later change ships with `previousPermission` (below).
 
 ² The policy page ships with the first procurement setting the owner adopts (§6.2, §18.2): in P3 if OD-23 = A
 (recommended: a quotation minimum per value band, which brings OD-18's thresholds forward), else in P4 with OD-18's
@@ -1803,13 +1864,13 @@ OD-23 B or C, and OD-32 other than B), there is no page and no row.
   no row, just as IT's consumables ledger has none (`it/routes.tsx:30`; `apps/api/src/seed-navigation.spec.ts:169-187`).
   They sit under `/stock`, so the Stock row stays a prefix row and lights on them; they are reached from the stock page,
   the item detail and the warehouse register. The work lists and the count sheet have no row either (§13.4). Each report
-  with a page of its own sits at `/administration/reports/<name>` (§13.4); a «التقارير» row is part of OD-62. A row is
-  no longer limited to one key: since 2026-11-02 a hub, one row over a page of tabs each on its own key, opens for a holder
+  with a page of its own sits at `/administration/reports/<name>` (§13.4); a Reports (التقارير) row is part of OD-62. A
+  row is not limited to one key: a hub, one row over a page of tabs each on its own key, opens for a holder
   of any tab's key (`packages/contracts/src/platform/navigation-hubs.ts:26-66`; OD-62, *One row over several screens*).
 - **What the boot sync changes, and what it never does.** `syncNavigationCatalog` matches rows by route and rewrites an
   existing row only through its named corrections (`seed-navigation.ts:1669-1682`); sections are found by English name
   (§13.2). Three corrections apply only while the stored value still equals what the seed used to ship: `previousIcon`,
-  `previousPermission` and, since 2026-11-12, `previousName`, per language (`:29-55`, `:1584-1610`; precedents `:765`,
+  `previousPermission` and `previousName`, per language (`:29-55`, `:1584-1610`; precedents `:765`,
   `:775`, pinned by `seed-navigation.spec.ts:243`). A category may also list routes it no longer seeds under `retired`,
   made inactive on a live installation once per revision, recorded on the module tile (`seed-navigation.ts:83-95`, `:1499-1524`; pinned by
   `seed-navigation.spec.ts:88-106`), and a module tile takes a new icon once per `iconRevision` (`seed-navigation.ts:70-82`, `:1472-1489`).
@@ -1827,10 +1888,11 @@ OD-23 B or C, and OD-32 other than B), there is no page and no row.
   lists the reader's recent pages and, only while there are none yet, a few starting pages with the personal rows after the
   work rows (`apps/api/src/platform/me/effective-applications.ts:96-112`; `apps/web/src/platform/navigation/nav-model.ts:134-163`;
   `apps/web/src/platform/home/WelcomePage.tsx:358`).
-- **Rollout.** Rows and routes follow OD-80 (recommended default: A, no gate): a row shows to whoever holds its key, a
-  pilot is a matter of role assignment, and super-admin sees every row the day it deploys (§15.1). Under B (an
-  environment gate) or C (a feature flag) the same gate must hide the rows and the routes (§19.2).
-- **Icons (design, not OD-62; skeleton Addenda 5).** One glyph per row, Fleet's rule: the owner asked for it on
+- **Rollout.** Rows and routes carry no gate (D-19): a row shows to whoever holds its key, OD-80's pilot (a branch or
+  all branches) is a matter of role assignment, and super-admin sees every row the day it deploys (§15.1). An
+  environment gate or a feature flag, D-19's rejected alternatives, would have to hide the rows and the routes too
+  (§19.2).
+- **Icons (design, not OD-62).** One glyph per row, Fleet's rule: the owner asked for it on
   Fleet's rail and two specs hold it there (`apps/api/src/seed-navigation.spec.ts:283-298`;
   `fleet-nav-icons.spec.ts:51-57`). IT gave its store a glyph "no other IT row wears" (`seed-navigation.ts:928-930`);
   ATM repeats three (clipboard, calendar and chart, each on two rows), so this is the module's choice, not a project
@@ -1848,7 +1910,7 @@ OD-23 B or C, and OD-32 other than B), there is no page and no row.
   settings screens left the sidebar for one hub row, −7, and other modules added ten), at `seed-navigation.spec.ts:80` and
   `auth-seed-login.spec.ts:36`, with the breakdown comment and its sum (`:290-296`, used at `:297` and `:322`), the
   category comments (`:132-140`, `:312-313`) and the ninth group (`:314`). The launcher spec
-  `apps/web/src/platform/navigation/module-icons.spec.ts` (since 2026-10-30) also pins every module tile in seed order and
+  `apps/web/src/platform/navigation/module-icons.spec.ts` also pins every module tile in seed order and
   its glyph, no two alike (`:49-58`, `:65-74`, `:77-81`): it gains `'Administrative Affairs'` with `BoxIcon`, and the
   category block keeps its `icon:` line directly above `sortOrder:`, which the spec's parser needs (`:30-38`). Pin #3 changes only if sections ship now
   (§13.2). Later phases add: P2 one row; P3 one, or two with the procurement policy under OD-23 A; P4 one, or two when
@@ -1873,7 +1935,7 @@ comment is the route → key table (IT `routes.tsx:1-46`), and literal segments 
 | `suppliers` · `suppliers/:id` | `SuppliersPage` · `SupplierDetailPage` | `administrationSupplier.view` | `administration.suppliers` | P1b |
 | `purchase-requests` · `/:id` | `PurchaseRequestsPage` · `PurchaseRequestDetailPage` | `administrationPurchaseRequest.view`; the detail `anyOf` with `.approve` ³ | `administration.purchase-requests` | P2 |
 | `purchase-requests/awaiting-sourcing` | `AwaitingSourcingPage` | `administrationPurchaseRequest.view` | `administration.purchase-requests` | P3 |
-| `rfqs` · `/:id` | `RfqsPage` · `RfqDetailPage` (quotations inside; their API is nested under `/rfqs/:id/quotations`, skeleton Addenda 4) | `administrationRfq.view` | `administration.rfqs` | P3 |
+| `rfqs` · `/:id` | `RfqsPage` · `RfqDetailPage` (quotations inside; their API is nested under `/rfqs/:id/quotations`, §3.3) | `administrationRfq.view` | `administration.rfqs` | P3 |
 | `procurement-policy` | `ProcurementPolicyPage` | `administrationProcurementPolicy.manage` | `administration.procurement-policy` | P3 or P4 (², §13.3) |
 | `purchase-orders` · `/:id` | `PurchaseOrdersPage` · `PurchaseOrderDetailPage` | `administrationPurchaseOrder.view`; the detail `anyOf` with `.approve` ³ | `administration.purchase-orders` | P4 |
 | `stock` · `stock/movements` | `StockPage` · `StockMovementsPage` (the ledger) | `administrationStock.view` | `administration.stock` | P5 |
@@ -1889,7 +1951,7 @@ comment is the route → key table (IT `routes.tsx:1-46`), and literal segments 
 | `stock-counts` · `/:id` | `StockCountsPage` · `StockCountDetailPage` | `administrationStockCount.view`; the detail `anyOf` with `.approve` ³ | `administration.stock-counts` | P7 |
 | `stock-counts/:id/count` | `CountSheetPage` (rule 1) | `administrationStockCount.view`, nesting `administrationStockCount.count` | `administration.stock-counts` | P7 |
 | `stock-adjustments` · `/:id` | `StockAdjustmentsPage` · `StockAdjustmentDetailPage` | `administrationStockAdjustment.view`; the detail `anyOf` with `.approve` ³ | `administration.stock-adjustments` | P7 (P5 under §18.1 A11) |
-| `<plural>/awaiting-decision`, for the six approvable documents | `AwaitingDecisionPage`, mounted once per type | `<resource>.approve` | the document's | with its approval type: P2, P4, P6, P7 (transfers: where OD-45 or OD-47's loss round asks for a decision) |
+| `<plural>/awaiting-decision`, for the six approvable documents | `AwaitingDecisionPage`, mounted once per type | `<resource>.approve` | the document's | with its approval type: P2, P4, P6, P7 (transfers: where OD-45 or OD-47.4's loss round asks for a decision) |
 | `supplier-invoices` · `/:id` | `SupplierInvoicesPage` · `SupplierInvoiceDetailPage` | `administrationSupplierInvoice.view` | `administration.supplier-invoices` | P8 (OD-54 B or C) |
 | `supplier-invoices/handoffs` · `/:id` | `FinanceHandoffsPage` · `FinanceHandoffDetailPage` (the FH- memo prints from it, §11.6.1, §12.5) | `administrationSupplierInvoice.view` (§11.3) | `administration.supplier-invoices` | P8 (OD-55) |
 | `reports/<name>` | one page per report that no register already shows | its §14.5 gate key | — (§14.1) | with its report (§14.5): P5 low stock and stock integrity; P8 received not invoiced; P9 supplier purchases (with OD-13's KPIs) and the other cross-document reports (§18.2) |
@@ -1901,7 +1963,7 @@ under either key (§11.3), a decision loads the document under `.approve` (§6.4
 who hold `.approve` without `.view`. A `.view`-only route would send such an approver's notification link to
 `ForbiddenPage` (`apps/web/src/platform/router/RequirePermission.tsx:15-20`), away from the decision dialog that rule 1
 puts on the record. The detail `GET` takes the matching `authorizeAny`, so rule 3 holds; §6.2 states that gate for the
-detail read and §11.3 for files (skeleton Addenda 5). Registers stay `.view`. An
+detail read and §11.3 for files. Registers stay `.view`. An
 `approval.override` holder reads through `.view`, since a read tries at most these two keys (§11.3).
 
 **Reports.** A §14.5 report whose rows a register already lists is that register, with the report's grouping: the stock
@@ -1918,7 +1980,8 @@ The tree follows seven rules:
    and cancel a remainder. A reloadable URL can fire a transition twice (`apps/web/src/modules/it/it-routes.spec.ts`;
    IT's header, `it/routes.tsx:33-34`), and a posting moves stock. The acts a page offers come from the detail DTO's
    `availableActions` (§5.1.4), which carry the key's reach and §6.6's pairs; the decide entry also needs
-   `viewerMayDecide || viewerMayOverride` and §6.4's checks (§6.4, item 6), and never `useCan` alone. **Line entry is
+   `viewerMayDecide || viewerMayOverride` and, under OD-20 B only, §6.4 item 4's checks (§6.4, item 6), and never
+   `useCan` alone. **Line entry is
    not a transition.** Counted quantities over many lines, entered blind (OD-49, recommended default: A) by a team
    (OD-50) across sessions, are a page: the count sheet, saved with `PATCH /stock-counts/:id/lines` under `.count`
    (§18.3, P7). Starting the count, submitting it and asking for a recount stay dialogs.
@@ -1931,8 +1994,8 @@ The tree follows seven rules:
    not copy it, because `…/:id` stays the view-gated detail page and deep-link target (rule 4). An editor route nests the
    register's `.view` over the key that authorizes drafting: `.edit` where the resource has one (PR, RFQ, PO, MR), else
    `.create` (GRN, supplier return, issue, issue return, transfer, count, adjustment, supplier invoice), and
-   `administrationStock.openBalance` for opening balances (§6.2; skeleton Addenda 3). A PO revision under OD-26 B is
-   drafted in the same editor, under `.edit` (§6.2). P2's UI pass makes the choice once, for every document.
+   `administrationStock.openBalance` for opening balances (§6.2). P2's UI pass makes the choice once, for every
+   document.
 3. **Guards mirror the API.** A route takes the key its endpoint admits. It uses `anyOf` only where the endpoint uses
    `authorizeAny` and the page serves every key the endpoint admits; a page that needs two endpoints under different
    keys nests both guards (an editor; Operations' attendance page chains two, `seed-navigation-operations.spec.ts:264-273`).
@@ -1951,7 +2014,7 @@ The tree follows seven rules:
    change with cases in `notification-target.spec.ts` — in the slice that ships each notified detail route (§15.2.3; Phase
    1 notifies nothing, §19.9). Only an entity type with a detail route gets an entry ("every route here is one the
    client actually declares", `notification-target.ts:33-34`); a notification about a record without a page of its own — a quotation, a line —
-   carries its parent document's `entityRef` (§8.6, §9.5; skeleton Addenda 5). Once shipped, a detail route never moves.
+   carries its parent document's `entityRef` (§8.6, §9.5). Once shipped, a detail route never moves.
 5. **Pages ship with their keys** in the API slice (§19.5), as literal entries in `administration.module.ts` itself:
    an `export const administrationPages: PageDef[] = [ … ];` block whose objects open with
    `{ id: 'administration.<slug>', moduleId: 'administration', … }`, and `declarePermissions('administration', …,
@@ -1978,11 +2041,11 @@ notifications lead to it.
 | Awaiting sourcing: approved PR lines with open quantity, oldest approval first (§4.2.3) | `purchase-requests/awaiting-sourcing` | `administrationPurchaseRequest.view` (§4.2.2, step 4) | the procurement officer; the RFQ and PO create dialogs pick their PR lines from it | P3 |
 | Receivable PO lines bound for the keeper's warehouses; a unit price only for a reader whose `administrationPurchaseOrder.view` reaches the PO (§7.10; OD-73 A) | `goods-receipts/receivable` | `administrationGoodsReceipt.create` (§7.10) | the keeper; the GRN editor picks its lines from it | P5 |
 | Approved MRs awaiting issue | the MR register filtered `status=approved` and `issueStatus` ≠ `fullyIssued`, by warehouse (`ix_warehouse_issue`, §2.6) | `administrationMaterialRequest.view`, the keeper's read (§7.10) | the keeper; the issue editor starts from an MR | P6 |
-| Awaiting decision: documents in a live approval round within the `.approve` key's reach — the `APPROVAL_PENDING` set (§5.14): `pendingApproval`, a PO's pending revision (OD-26 B) and a dispatched transfer's loss round (OD-47 (ii), recommended) — §14.3's tile 6 as a list, the same set (skeleton Addenda 5) | `<plural>/awaiting-decision` | `<resource>.approve` | approvers, with or without `.view`; the home page shows its count per held key (`pageSize: 1`) | P2, P4, P6, P7 (transfers: where OD-45 or OD-47's loss round asks for a decision) |
+| Awaiting decision: documents in a live approval round within the `.approve` key's reach — the `APPROVAL_PENDING` set (§5.14): `pendingApproval` and a dispatched transfer's loss round (OD-47.4 (ii), recommended) — §14.3's tile 6 as a list, the same set | `<plural>/awaiting-decision` | `<resource>.approve` | approvers, with or without `.view`; the home page shows its count per held key (`pageSize: 1`) | P2, P4, P6, P7 (transfers: where OD-45 or OD-47.4's loss round asks for a decision) |
 
 "Within my reach" is not "waiting for me": a true per-approver inbox stays platform debt (§14.3), and this list is the
 screen side of R10, which §15.2.1 routes here. §18 ships the awaiting-decision read with P2, P4, P6 and P7 and the
-other two reads with P3 and P5 (skeleton Addenda 5).
+other two reads with P3 and P5.
 
 **Specs that hold the tree together.**
 
@@ -2007,21 +2070,22 @@ the reference named here is only the starting candidate.
 
 | Kind | Pages | Reference | What it reuses |
 |---|---|---|---|
-| List / register | Warehouses, Items, Suppliers; every document register | `apps/web/src/modules/it/pages/ConsumablesPage.tsx` | §13.6 A, in IT's board frame since 2026-11-17 (`PageContainer fullHeight`, `BOARD_FRAME`, `BOARD_TABLE_FILL_LOW`, `DataTable stickyHead`), which the copy keeps under OD-83 B (recommended) |
-| Detail (record, history, attachments) | Item, Supplier (Phase 1); every document detail | `apps/web/src/modules/it/pages/AssetDetailPage.tsx` | §13.6 B. History through `shared/ui/Timeline.tsx`. Attachments and signed copies go through module routes, in IT's `CustodyReceipt.tsx` shape, copied (§11.5). `TicketAttachments.tsx` is a precedent not to copy (§11.4). Links to other documents follow §13.4 rule 7. |
-| Catalogs | Units and categories | `apps/web/src/modules/it/pages/ItCatalogsPage.tsx` | §13.6 C. The reference wears IT's board frame since 2026-11-17, like the register reference (OD-83) |
+| List / register | Warehouses, Items, Suppliers; every document register | `apps/web/src/modules/it/pages/ConsumablesPage.tsx` | §13.6 A, in IT's board frame (`PageContainer fullHeight`, `BOARD_FRAME`, `BOARD_TABLE_FILL_LOW`, `DataTable stickyHead`), which this module's registers wear under OD-83 B (recommended) |
+| Detail (record, history, attachments) | Item, Supplier (Phase 1); every document detail | `apps/web/src/modules/it/pages/AssetDetailPage.tsx` | §13.6 B. History through `shared/ui/Timeline.tsx`. Attachments and signed copies go through module routes, in IT's `CustodyReceipt.tsx` shape, rebuilt in the module (§11.5). `TicketAttachments.tsx` is a precedent not to copy (§11.4). Links to other documents follow §13.4 rule 7. |
+| Catalogs | Units and categories | `apps/web/src/modules/it/pages/ItCatalogsPage.tsx` | §13.6 C. The reference wears IT's board frame, like the register reference (OD-83) |
 | Picker / select | Item and supplier (search); warehouse, unit and category (select); keeper; source-document lines | `apps/web/src/modules/it/components/VendorPicker.tsx` | §13.6 D |
 | Document with lines + approval panel | PR, RFQ with quotations, PO, GRN, supplier return, MR, issue, return, transfer, count, adjustment, invoice | Lines: Fleet `pages/CustodyMemoEditorPage.tsx` (the newest document editor, 2026-10-20) or IT `IssueConsumablesDialog` (`it/components/ConsumableDialogs.tsx:729`). Trail: `apps/web/src/platform/approvals/ApprovalChainPanel.tsx` as `hr/leave-management/pages/LeaveRequestDetailPage.tsx:193` uses it (its only consumer). | The acts come from `availableActions` (§13.4 rule 1). The panel shows `label.ar` in both locales (`ApprovalChainPanel.tsx:76-78`) and a raw `permissionKey · level` (`:95-97`). Fixing both is a small platform change and a P2 prerequisite (§18.1), with the chain screen's same defect (§13.4 rule 6). |
 | Count sheet | `stock-counts/:id/count` (P7) | none: no count capture exists in ECMS (OD-49's evidence), so this is new ground, settled by P7's pass | the counted lines without book quantities under OD-49 A; `Input rule="integer"` per line |
 | Ledger and cards | stock, ledger, item card, warehouse card (P5) | IT `pages/ConsumableMovementsPage.tsx` (a ledger with no row, `it/routes.tsx:30`, `:166-171`); Fleet `pages/CustodyLedgerPage.tsx` for the running balance, where filters choose lines and never change the balance after them (§14.6) | `DataTable`, Cairo dates (§14.8); quantities under OD-73 A, money only for a reader who also holds `administrationPurchaseOrder.view` (§6.8). The stock page and the ledger refresh on the signal-only `administration.stock` topic, which reaches stock readers who hold no document key (§9.2) |
 | Settings | Procurement policy | `apps/web/src/modules/atm/pages/AtmSettingsPage.tsx`, the newest (2026-10-28): a thin shell of cards behind `atmSettings.manage`, organization scope enforced on the server (`apps/api/src/modules/atm/shared/settings-authority.ts:12-32`, the precedent §18.3 cites for `/procurement-policy`); its values edited as `fleet/pages/FleetSettingsPage.tsx` does (resolved settings, `MoneyInput`, `:1-9`, `:248`) | Settings authority held at organization scope (§6.7). Not `it/pages/HelpDeskSettingsPage.tsx`, which edits a collection (`:1-9`). |
-| Home / dashboard | `/administration` | Phase 1: tiles per grant with counts via `pageSize: 1`, as IT's home did before its 2026-11 dashboard and its help-desk counts still do (`apps/web/src/modules/it/pages/ItHomePage.tsx:920-929`; §19.5). From P9: Fleet's board with null sections (§14.2; §18.2). | `ShortcutCard`, `StatCard`, `StatStrip`, `EmptyState`; charts in plain SVG (`apps/web/src/modules/fleet/components/CustodyDashboardCharts.tsx:10-12`). Never `ModuleHome`: its KPI tiles (`apps/web/src/shared/ui/ModuleHome.tsx:58-63`) and its always-rendered `RecentActivityCard` (`:78-80`; "a UI-only placeholder", `shared/ui/RecentActivityCard.tsx:1-2`) are both placeholders. Cards from `ADMINISTRATION_SHORTCUTS` (§13.4). |
-| Print paper | the §11.6.1 papers: PO, GRN and stock issue under their `.print` keys; the RFQ and its award sheet, supplier return, issue return, transfer notes, count sheet and result, adjustment minutes and the FH- handoff memo under `.view`; PR and MR information copies only if OD-59 prints them | `apps/web/src/modules/it/lib/consumable-memo-print.ts` (the newest paper, 2026-10-28) | `shared/lib/print-window.ts`, with each paper listed in `print-window.spec.ts`; one composer per paper (§11.6). A paper becomes a record with its own `.print` key only under OD-59 (skeleton Addenda 3). |
+| Home / dashboard | `/administration` | Phase 1: tiles per grant with counts via `pageSize: 1`, as IT's help-desk counts still do (`apps/web/src/modules/it/pages/ItHomePage.tsx:920-929`; §19.5). From P9: Fleet's board with null sections (§14.2; §18.2). | `ShortcutCard`, `StatCard`, `StatStrip`, `EmptyState`; charts in plain SVG (`apps/web/src/modules/fleet/components/CustodyDashboardCharts.tsx:10-12`). Never `ModuleHome`: its KPI tiles (`apps/web/src/shared/ui/ModuleHome.tsx:58-63`) and its always-rendered `RecentActivityCard` (`:78-80`; "a UI-only placeholder", `shared/ui/RecentActivityCard.tsx:1-2`) are both placeholders. Cards from `ADMINISTRATION_SHORTCUTS` (§13.4). |
+| Print paper | the §11.6.1 papers: PO, GRN and stock issue under their `.print` keys; the RFQ and its award sheet, supplier return, issue return, transfer notes, count sheet and result, adjustment minutes and the FH- handoff memo under `.view`; PR and MR information copies only if OD-59 prints them | `apps/web/src/modules/it/lib/consumable-memo-print.ts` (the newest paper, 2026-10-28) | `shared/lib/print-window.ts`, with each paper listed in `print-window.spec.ts`; one composer per paper (§11.6). A paper becomes a record with its own `.print` key only under OD-59 (§11.6.1). |
 
-### 13.6 Phase 1 UI checklist (summary)
+### 13.6 Phase 1 UI checklist
 
-The pass ran on 2026-10-29, at `b03522f`, inside the bound the method fixes (its counts are discovery's; the page frame was recounted at `4c0fa1b0`, and the pass is re-run before P1a.W): the application that mounts the pages,
-`apps/web`. This subsection is its record.
+The pass ran on 2026-10-29 at `b03522f`, bounded, as the method requires, to the application that mounts the pages,
+`apps/web`. Its counts are from that commit, except the page frame's, recounted at `4c0fa1b0`; the pass is re-run
+before P1a.W. This subsection is its record.
 
 | Family | Members | Candidates |
 |---|---|---|
@@ -2039,21 +2103,21 @@ settled it:
 - **Level 5:** a written rule that the newest pages follow.
 - **Majority:** level 6, the commonest way across the family.
 
-**A. Registers (Warehouses, Items, Suppliers)**
+#### 13.6 A. Registers (Warehouses, Items, Suppliers)
 
 | Position | Build it with | Settled by |
 |---|---|---|
-| Holder | `PageContainer fullHeight` with the board frame: `BOARD_FRAME` holding the header and filters, the table in `BOARD_TABLE_FILL_LOW` with `DataTable stickyHead`, so only the rows scroll | the references (§13.5) wear it since 2026-11-17, as 34 of 71 list pages do, at the owner's request module by module (54 of 69 were plain at `b03522f`); OD-83 (recommended default: B) — see below |
+| Holder | `PageContainer fullHeight` with the board frame: `BOARD_FRAME` holding the header and filters, the table in `BOARD_TABLE_FILL_LOW` with `DataTable stickyHead`, so only the rows scroll | the references (§13.5) wear it, as 34 of 71 list pages do, at the owner's request module by module (54 of 69 were plain at `b03522f`); OD-83 (recommended default: B) — see below |
 | Header | `PageHeader` with title, breadcrumbs (module → page) and actions; **no subtitle** | 57 of 69 (the 12 without are Fleet's own toolbar); no-subtitle is CI-guarded (`apps/web/src/platform/layout/page-header-has-no-subtitle.spec.ts`) |
 | Create | `<Can permission="….create">` around a `Button size="sm"` with `PlusIcon` | 53 and 38 of 69 |
 | Filters | `FilterBar`, then `SearchInput` (debounced, server-side `search`), then `Select`s | 48 and 43 of 69 |
-| Branch filter (warehouses only) | a `Select` of the branches the view key reaches, as `GET /administration/warehouses/branch-options` answers them (its `canView` branches; skeleton Addenda 5), named and ordered as the top bar names them; names through a module-own hook over `/platform/branches/options` — see below | level 5: the written rule, followed by IT and System Administration |
+| Branch filter (warehouses only) | a `Select` of the branches the view key reaches, as `GET /administration/warehouses/branch-options` answers them (its `canView` branches), named and ordered as the top bar names them; names through a module-own hook over `/platform/branches/options` — see below | level 5: the written rule, followed by IT and System Administration |
 | Rows | `DataTable` with `loading`, `error` and `onRetry`; server sort through `sort=by:dir` | 69 of 69 |
 | Status | `StatusBadge` active / inactive, from `isActive` (§5.3); a record is deactivated, never deleted; labels OD-67 | shared piece: 28 pages use it directly; the module enum badges on 19 more wrap it (23 of 23 wrappers do) |
 | Row actions | `<RowActions>` (its default: painted under the pointer, always on touch screens and on focus) holding `Button variant="ghost" size="icon"`; warehouse edit from the row's `canEdit` (§19.3) | level 4, and the piece's own written rule — see below |
 | Pager | `Pagination`, page size 25 | 55 of 69 (Fleet's `FleetPager` is its own) |
 | URL state | `useSearchParams`; a `patch()` that drops `page`; `const REMEMBERED_FILTERS = [...] as const`; the page listed as COVERED in `apps/web/src/shared/lib/remembered-filters-coverage.spec.ts` | 66 of 69, and the spec enforces it |
-| Exports | none in Phase 1: a client Excel comes only if the owner asks (§19.9); server exports are OD-60 | majority: 51 of 69 have none (18 export: Fleet 11, IT 5, ATM 1 client CSV, HR 1 server CSV) |
+| Exports | none in Phase 1: a client Excel comes only if the owner asks (OD-60.1, §19.9); server exports are OD-60 | majority: 51 of 69 have none (18 export: Fleet 11, IT 5, ATM 1 client CSV, HR 1 server CSV) |
 
 - **The board frame is the owner's, not Fleet's.** `apps/web/src/shared/ui/board-scroll.ts` is a shared piece, used
   with `PageContainer fullHeight` and `DataTable stickyHead`: the page fills the screen and only the table scrolls. The
@@ -2061,20 +2125,24 @@ settled it:
   والفلتر وتخلي الجدول بس هو اللى يعمل Scroll», then on 2026-11-17 on IT's boards and on every page of the System
   Administration menu (`board-scroll.ts:1-15`, `:46-55`). `PageContainer fullHeight` is in 73 pages (Fleet 20, ATM 16,
   IT 14, Operations 12, System Administration 9, Organization 2) and `BOARD_FRAME` in 59 (Fleet 16, ATM 14, IT 14,
-  System Administration 9, Operations 4, Organization 2); of the 71 list members at 4c0fa1b0 (69 at discovery), 34 wear
-  it (Fleet 15, IT 14, ATM 2, Organization 2, Operations 1), IT's `ConsumablesPage` and `ItCatalogsPage` among them. He has since asked for it in two more places, and the IT pages this module copies wear it (§13.5), so OD-83 recommends it for the registers here (recommended default: B; A only if the owner wants this module's registers to scroll as one page).
+  System Administration 9, Operations 4, Organization 2); of the 71 list members at `4c0fa1b0` (69 at `b03522f`), 34
+  wear it (Fleet 15, IT 14, ATM 2, Organization 2, Operations 1), IT's `ConsumablesPage` and `ItCatalogsPage` among
+  them. He has since asked for it in two more places, and the IT pages this module follows wear it (§13.5), so OD-83
+  recommends it for the registers here (recommended default: B; A only if the owner wants this module's registers to
+  scroll as one page).
 - **Branch filter.** It offers only the branches the reader's `administrationWarehouse.view` reaches under the top
   bar's choice, named and ordered as the switcher names and orders them (`apps/web/src/platform/layout/BranchSwitcher.tsx:67-75`),
   and it drops a remembered branch it no longer offers. A branch outside reach answers 400 `OUT_OF_REACH` (§19.3),
   which a remembered filter would replay on every visit. The web cannot compute per-key reach: `me.permissions` holds
   one scope per key and `me.branchIds` the union of all grants (`packages/contracts/src/platform/auth.ts:108-117`),
-  which is why §19.3 puts `canEdit` on the warehouse DTO. A module read, `GET /administration/warehouses/branch-options`
-  (skeleton Addenda 5), therefore answers `canView` and `canCreate` per branch, as the ATM register's meta does
+  which is why §19.3 puts `canEdit` on the warehouse DTO. A module read, `GET /administration/warehouses/branch-options`,
+  therefore answers `canView` and `canCreate` per branch, as the ATM register's meta does
   (`apps/api/src/modules/atm/register/register.service.ts:1297-1323`; the filter offers `canView` and drops a stray
   value, `apps/web/src/modules/atm/components/register/RegisterFilters.tsx:113-142`), after the owner's
-  «الفروع فوق خالص فى البار بتاع السيستم غير اللى فى الفلاتر» (2026-10-28, `:10-13`). The branch filter offers that
-  read's `canView` branches, and the warehouse dialog's branch `Select` offers its `canCreate` branches only
-  (`writableBranches`, §7.1). §19.3 lists the read, and its counts follow (skeleton Addenda 5).
+  «الفروع فوق خالص فى البار بتاع السيستم غير اللى فى الفلاتر» (2026-10-28,
+  `apps/web/src/modules/atm/components/register/RegisterFilters.tsx:10-13`). The branch filter offers that read's
+  `canView` branches, and the warehouse dialog's branch `Select` offers its `canCreate` branches only
+  (`writableBranches`, §7.1). §19.3 lists the read, and its counts follow.
 - **Branch names.** A module-own hook reads `/platform/branches/options` for the names; which branches the filter and
   the warehouse dialog offer comes from `GET /administration/warehouses/branch-options` (above). Level 5: the written rule
   (`.github/pull_request_template.md:13`, "No cross-module imports"; `apps/web/src/modules/it/api/it-api.ts:134-141`),
@@ -2092,14 +2160,14 @@ settled it:
   warehouse edit renders from the server's `canEdit`; item, supplier and catalog writes show to key holders, and a
   holder below organization scope meets the server's refusal under OD-04 A (§6.7), through the module error map (E).
 
-**B. Item and supplier detail**
+#### 13.6 B. Item and supplier detail
 
 - **Loading.** `LoadingState` (24 of 30), not IT's `Skeleton`.
 - **Errors.** `ErrorState` with a retry (29 of 30). A record outside the reader's scope arrives as the API's 404.
 - **Header.** `PageHeader` with the record's name and breadcrumbs module → list → code.
 - **Body.** `Card`, `CardHeader` and `CardBody` sections in a three-column grid. Facts are `<dl>`, `<dt>` and `<dd>`,
   with "—" for an empty value (26 of 30). Twelve of the 30 write facts through a page-local component (IT's `Fact` in 5,
-  Organization's `Row` in 7); app-wide, `Fact` is copied in nine files (OD-83).
+  Organization's `Row` in 7); app-wide, `Fact` is copied in nine files (D-21).
 - **References.** Linked records resolve by id under the reader's own grant, inactive ones included
   (`apps/web/src/modules/it/pages/AssetDetailPage.tsx:118-125`).
 - **Edit.** Through the list's dialog (6 of the 10 detail pages that edit).
@@ -2112,7 +2180,7 @@ settled it:
 - **Coverage spec.** Both pages are classified NOT_FILTER_CAPABLE, as `AssetDetailPage` is
   (`remembered-filters-coverage.spec.ts:386`).
 
-**C. Units and categories**
+#### 13.6 C. Units and categories
 
 - **Kinds.** Tabs are driven by `?kind=` (3 of 3) and drawn as a hand-written tablist (2 of 3).
 - **Coverage spec.** COVERED, with `['kind']` excluded (`remembered-filters-coverage.spec.ts:153`).
@@ -2124,7 +2192,7 @@ settled it:
 - **Categories.** The categories tab has a parent `Select`, under OD-06's recommended default of two levels; n levels
   would change this control (§19.2).
 
-**D. Pickers**
+#### 13.6 D. Pickers
 
 - **ADR-019 rule 5, both halves.** First, search the server: `useQuery` keyed
   `listKey('administration', '<feature>', { picker: search })`, enabled only when the search is not empty, 8 rows
@@ -2142,20 +2210,21 @@ settled it:
   no precedent for a growth catalog.
 - **Selects.** The warehouse control is a `Select`, because warehouses are few per branch under OD-10's recommended
   default (A) and not a growth catalog. It has three sources: for a posting document, the warehouses the act's key can
-  write (`writableBranches`, §7.1); for a transfer's destination, §7.4's company-wide options read under
+  write (`writableBranches`, §7.1); for a transfer's destination, §7.4's organization-wide options read under
   `administrationStockTransfer.create`; for a material request, the active warehouses of the requester's branch under
   `administrationMaterialRequest.create` (OD-75 A, §7.10). Units and categories use the module's `CatalogSelect`.
-- **Keeper.** The module's `EmployeePicker` over `/administration/people`, current staff only, only if OD-10 keeps a
-  keeper and OD-64 = A, `keep` (both recommended, §19.2); under OD-64's keeper option (ii) warehouses store none.
+- **Keeper.** The module's `EmployeePicker` over `/administration/people`, current staff only, in P1a when OD-10 keeps a
+  keeper from Phase 1, as the owner's brief lists one in warehouse master data (recommended, §19.2); OD-10's cheaper
+  timing names the keeper from P5 instead, and the picker moves with it.
 - **Source-document lines (P3–P6).** PR lines for an RFQ or a PO come from the awaiting-sourcing read (P3); PO lines for
   a GRN from the receivable-lines read (P5); posted GRN lines for a supplier return (P5); approved MR lines for an issue
   (P6); posted issue lines for a stock return (P6). The first two take their reads' gates (§13.4, Work lists). For the
   other three, §7.1's picker rule carried to documents, `authorizeAny(<source>.view, <acting document>.create)`, is the
-  gate (§7.1; skeleton Addenda 5).
+  gate (§7.1).
 - **When they ship.** `ItemPicker` with PR lines (P2), `SupplierPicker` with RFQs (P3), `WarehouseSelect` with goods
   receipts and opening balances (P5).
 
-**E. Form dialogs**
+#### 13.6 E. Form dialogs
 
 - **Frame.** `Dialog` with a Cancel / Save footer and `dismissOnOutsideClick={false}` (29 files, the newest work among
   them). Fields are `Field` with the `shared/ui/form` controls.
@@ -2165,18 +2234,17 @@ settled it:
 - **Whole numbers.** `Input rule="integer"` (14 files), which normalises Arabic-Indic digits, not `type="number"`.
 - **Refusals.** `errorMessage(err, locale)` (`apps/web/src/shared/lib/errors.ts:235`; 60 files, against 33 that show
   `err.message` raw), plus `lib/administration-errors.ts` (§19.8). Module-wide codes map to
-  `administration.module.errors.<code>`, feature codes to `administration.<feature>.errors.<key>`: the families skeleton
-  Addenda 3 allows.
+  `administration.module.errors.<code>`, feature codes to `administration.<feature>.errors.<key>`, and no other family.
 - **Success and edits.** `toast.success` on success. An edit sends only the changed fields, plus `version`.
 
-**Throughout**
+#### Throughout
 
 - **Money (from P3).** `MoneyInput` and `formatMoney`, CI-guarded (`apps/web/src/shared/lib/money-input.spec.ts:125-166`,
   `money-format.spec.ts:70-94`). Which pages show prices follows OD-73 (recommended default: A): prices on RFQ,
   quotation, PO and invoice pages; GRN pages, the receivable lines, movement rows and the stock screens show quantities,
   with money there only for a reader who also holds `administrationPurchaseOrder.view` (§6.8, §7.10).
-- **i18n.** Keys follow `administration.<feature>.<area>.<key>`, beside the two module families skeleton Addenda 3
-  allows: `administration.module.title` (and `administration.module.errors.*`) and `administration.nav.<page>`; then
+- **i18n.** Keys follow `administration.<feature>.<area>.<key>`, beside two module-wide families:
+  `administration.module.title` (and `administration.module.errors.*`) and `administration.nav.<page>`; then
   `….columns|fields|status|errors.*`. Enum labels come from the contract's `as const` arrays. Page titles match the
   seeded nav labels word for word. Arabic must pass the formal-Arabic gate (`scripts/check-formal-arabic.mjs`, run in
   CI).
@@ -2217,22 +2285,14 @@ settled it:
 Fleet files and no others; `FleetPager`; its toolbar in place of `PageHeader`). The board frame is not on this list:
 it is shared and owner-requested, and OD-83 decides it.
 
-**Waiting on a person.** OD-83 asks whether registers wear the board frame, and whether to add `ReferencePicker`, `Fact`
-and `Tabs` in `apps/web/src/shared/ui/`. Until it is answered, the registers wear the board frame and the pieces are module copies (recommended default: B, the board frame, with module copies). A form-dialog frame shared by the module's own
-dialogs waits on nobody: it stays in the module's area, as IT's file-local `Shell` does
+**Waiting on a person.** OD-83 asks whether registers wear the board frame; until it is answered they do (recommended
+default: B). `ReferencePicker`, `Fact` and `Tabs` are rebuilt in the module after IT's pattern (D-21); adding them to
+`apps/web/src/shared/ui/` is a separate change, reviewed outside the module. A form-dialog frame shared by the module's
+own dialogs waits on nobody: it stays in the module's area, as IT's file-local `Shell` does
 (`apps/web/src/modules/it/components/ConsumableDialogs.tsx:98`).
 
-**Findings, reported and not settled here:**
-
-- 22 dialogs disable Save, against the owner's recorded reason.
-- 21 files import Organization's branch hook from another module, against the written rule (A).
-- IT shows the server's English message in 18 files.
-- `ModuleHome` paints placeholder KPI tiles and an always-rendered placeholder activity panel. ATM, Operations and
-  Organization compose their homes with it (`apps/web/src/modules/atm/pages/AtmOverviewPage.tsx:197`,
-  `apps/web/src/modules/operations/pages/OperationsOverviewPage.tsx:200`,
-  `apps/web/src/modules/organization/pages/OrganizationOverview.tsx:54-56`), so all three show the placeholder panel
-  today, and Organization's KPIs too.
-- The approval-chain screen and the approval panel show Arabic names in both locales (§13.4 rule 6; §13.5).
+**Findings about other modules.** What this pass found in other modules' pages is not this design's work; it is listed
+in §22 for the owner.
 
 ---
 
@@ -2247,26 +2307,26 @@ dialogs waits on nobody: it stays in the module's area, as IT's file-local `Shel
    "no server cache" (`apps/api/src/modules/fleet/dashboard/dashboard-context.ts:8-9`). The balance projection is
    ledger state, not a report.
 2. **Module-owned endpoints.** `GET /api/v1/administration/dashboard` (P9) and `/api/v1/administration/reports/<kebab>`
-   with its `/export` (skeleton Addenda 3), served by the `dashboard/` and `reports/` folders (§3.3). Controllers are
+   with its `/export` (§14.7), served by the `dashboard/` and `reports/` folders (§3.3). Controllers are
    thin; DTOs live in the contracts split (`administration-warehouses.ts`, `administration-procurement.ts`). A report
    that is a register is that list's own endpoint with its filters (§14.5). Reports ride view keys and get no page
    (§6.2); a report-only reader key is OD-79's question.
 3. **Scope passed in, never wider than the list.** Every `$match` is built from `scopeSelector(ctx, key)` by the rule the
-   matching list applies (§7.1–§7.2): the copied `branchScopeMatch` for branch records
-   (`apps/api/src/modules/atm/shared/branch-scope.ts:36-45`), the department and owner fields for PRs and MRs, and
+   matching list applies (§7.1–§7.2): the shared `branchScopeMatch` for branch records (PC-12, moved from
+   `apps/api/src/modules/atm/shared/branch-scope.ts:36-45`), the department and owner fields for PRs and MRs, and
    `twoBranchScopeMatch` for transfers (§7.4). User filters are later `$match` stages, which can only narrow
-   (`apps/api/src/modules/hr/payroll/payslips/payslip.repository.ts:269-278`). Fleet's board, rebuilt
-   in 2026-11, does the same only for its 'screen' sections, which pass the reader's `scopeSelector` of the linked
+   (`apps/api/src/modules/hr/payroll/payslips/payslip.repository.ts:269-278`). Fleet's board does
+   the same only for its 'screen' sections, which pass the reader's `scopeSelector` of the linked
    screen's key to that screen's own list query (`apps/api/src/modules/fleet/dashboard/now.service.ts:3-9`); its
    'company+set' sections pass no permission scope and narrow by the branches of the reader's widest dashboard grant, a
    limit it records ("a figure can cover a branch its own register does not show that reader",
    `apps/api/src/modules/fleet/dashboard/dashboard-context.ts:75-81`). This module does not copy that limit. The selector
    carries ADR-028's active-branch narrowing. Each figure that reads another collection takes that collection's own key
-   and selector (§14.3). Branches outside reach are not drawn (ATM DEC-27,
+   and selector (§14.3). Branches outside reach are not drawn (ATM's register decision DEC-27,
+   `docs/12-planning/atm-efficiency-register.md:97`;
    `apps/web/src/modules/atm/components/register-report/ReportSection.tsx:6-8`).
 4. **The server computes every figure** and stamps `generatedAt`
-   (`apps/api/src/modules/atm/register/register-report.service.ts:172`). Operations' `ReportBoard.tsx`, which replaced
-   `ReportView.tsx` in 2026-11, keeps the server's grand total only while no name filter is typed; with one, it adds up
+   (`apps/api/src/modules/atm/register/register-report.service.ts:172`). Operations' `ReportBoard.tsx` keeps the server's grand total only while no name filter is typed; with one, it adds up
    the rows on screen (`apps/web/src/modules/operations/components/ReportBoard.tsx:22-24, 34-37`). Here every filter is a
    server filter (§14.5), so totals stay the server's. `$lookup` stays inside the module;
    labels are batch-read afterwards. Money is grouped per currency (§12.7).
@@ -2280,18 +2340,18 @@ dialogs waits on nobody: it stays in the module's area, as IT's file-local `Shel
 
 The board ships in P9 (§18.2), once every section's data exists. Until then the home at `/administration` is Phase 1's
 `AdministrationHomePage` (§19.5): list counts read from each list's pagination meta (`pageSize: 1`), each card under its
-own key, as `/it` did until IT's dashboard replaced its home in 2026-11; its help-desk counts still do
+own key, as `/it` did before IT's dashboard replaced its home; its help-desk counts still do
 (`apps/web/src/modules/it/pages/ItHomePage.tsx:920-929`). It shows no tiles from this endpoint
 and no placeholder. Later phases may add counts the same way, each with its list.
 
 The board follows Fleet's pattern:
 
-- **Door.** The endpoint takes `authorizeAny(...)` over every section key, as Fleet's board does: since 2026-11 it is two
+- **Door.** The endpoint takes `authorizeAny(...)` over every section key, as Fleet's board does: it is two
   reads, `/now` and `/period`, each behind a key union exported once from contracts and derived from its section gate
   table (`apps/api/src/modules/fleet/dashboard/dashboard.routes.ts:29-44`;
   `packages/contracts/src/modules/fleet-dashboard.ts:509-531`). The web route does not mirror it: `/administration`
-  (index and dashboard) is never route-guarded, as IT's, ATM's and Operations' indexes are not (skeleton Addenda 5;
-  §13.3, note ¹). Fleet's index now is: `RequirePermission anyOf={FLEET_DASHBOARD_PAGE_KEYS}`, the union of every gate
+  (index and dashboard) is never route-guarded, as IT's, ATM's and Operations' indexes are not
+  (§13.3, note ¹). Fleet's index now is: `RequirePermission anyOf={FLEET_DASHBOARD_PAGE_KEYS}`, the union of every gate
   (`apps/web/src/modules/fleet/routes.tsx:102-108`; `fleet-dashboard.ts:532-536`). Here no `RequirePermission anyOf`
   wraps the board: its tiles are gated per section by the API, through this door and the `null` sections below. One key
   list in contracts feeds the door and the page's check before it asks for the board (§13.3), as Fleet's now does,
@@ -2312,7 +2372,7 @@ The board follows Fleet's pattern:
     - count team: 2 (`administrationItem.view` under OD-78's found-line answer (i)), 13 (count part);
   - department requester: 5, 14 (MR part);
   - procurement officer and manager: 1, 2, 5, 7, 8, 9 (draft GRNs), 12, 13 (GRN and invoice parts), 16;
-  - Admin Affairs manager: every section, 9 with its draft GRNs only;
+  - Administrative Affairs manager: every section, 9 with its draft GRNs only;
   - auditor: every section but 6, 9 with its draft GRNs only;
   - Finance reader: 2, 13 (invoice part), 16.
 
@@ -2345,7 +2405,7 @@ selector, and is `null` without it.
 | 3 | Low stock | count; the 10 lowest (on hand, `minQty`, in transit) | `stock_balances` with `lastMovementAt ≠ null` → `$lookup items` → `onHandQty ≤ minQty` (OD-09: on the item, compared with each warehouse's on hand, §2.3.4); no `minQty` means never low (`apps/api/src/modules/it/consumables/consumable-stock.ts:94-99`). A pair the warehouse never carried cannot show as low until OD-09 adds per-warehouse levels | `administrationStock.view` | branch | P5 |
 | 4 | Out of stock | rows that have moved and stand at `onHandQty = 0` | `stock_balances` with `lastMovementAt ≠ null`: rows ensured for a posting that was then refused, or for a count, are zeros that never moved (§2.4.3–§2.4.4, §2.4.6) | `administrationStock.view` | branch | P5 |
 | 5 | Pending PRs | `pendingApproval`; `approved` with `orderStatus` ≠ `fullyOrdered`; own scope: "my PRs" | `purchase_requests` `countByStatus` | `administrationPurchaseRequest.view` | branch, department, own | P2 |
-| 6 | Pending approvals | per type, the `APPROVAL_PENDING` documents within the `.approve` key's reach (§5.14; skeleton Addenda 5): `pendingApproval`, a PO's `pendingRevision` (OD-26 B) and a dispatched transfer's loss round (`lossPendingQty` > 0, OD-47) | per collection, a count over `approvalPending(doc)`'s Mongo filter (§5.14), the set of that type's awaiting-decision read (§13.4); not `countByStatus`, because a revision and a loss round keep their document's status; a sub-count is `null` without its key | the six `.approve` keys (§6.4) | each key's | P2–P7 |
+| 6 | Pending approvals | per type, the `APPROVAL_PENDING` documents within the `.approve` key's reach (§5.14): `pendingApproval`, a PO's `pendingRevision` (OD-26 B) and a dispatched transfer's loss round (`lossPendingQty` > 0, OD-47.4 (ii)) | per collection, a count over `approvalPending(doc)`'s Mongo filter (§5.14), the set of that type's awaiting-decision read (§13.4); not `countByStatus`, because a revision and a loss round keep their document's status; a sub-count is `null` without its key | the six `.approve` keys (§6.4) | each key's | P2–P7 |
 | 7 | Open POs | `approved` and not issued; `issued` and `notReceived` | `purchase_orders` | `administrationPurchaseOrder.view` | purchasing branch | P4 |
 | 8 | Partial POs | `partiallyReceived`, oldest first | `purchase_orders` | `administrationPurchaseOrder.view` | purchasing branch | P5 (receipts) |
 | 9 | Pending receiving | PO lines due at my warehouses (quantities only; overdue if the PO carries `expectedDeliveryAt`); draft GRNs | the §7.10 read of `purchase_orders` (`ix_delivery_receipt`); `goods_receipts` | `administrationGoodsReceipt.create` (the §7.10 read) · `administrationGoodsReceipt.view` (drafts) | the delivery branch · the warehouse's branch | P5 |
@@ -2357,8 +2417,8 @@ selector, and is `null` without it.
 | 15 | Transfers | to dispatch (`approved`, OD-45's no-approval edge included); in transit to or from my warehouses | `stock_transfers` (`$or` on both branches, §7.4) | `administrationStockTransfer.view` | two branches | P7 |
 | 16 | Finance handoffs | handed over, signed copy not yet filed | `finance_handoffs` (`status: 'handedOver'`, `signedCopy: null`) | `administrationSupplierInvoice.view` | purchasing branch | P8 |
 
-**"Pending approvals" means within my reach, not "waiting for me".** The engine has no cross-module inbox, and a trail
-costs about 1 + 2–4 queries per (key, level) (discovery 04, R10), which is why lists skip it
+**"Pending approvals" means within my reach, not "waiting for me".** The engine has no cross-module inbox (R10, §15.2.1), and a
+trail costs about 1 + 2–4 queries per (key, level), which is why lists skip it
 (`apps/api/src/modules/hr/leave-management/leave-requests/leave-request.controller.ts:64`). The shape is that of leave's
 scoped queue, `findPendingScoped`
 (`apps/api/src/modules/hr/leave-management/leave-requests/leave-request.service.ts:1111-1114`); leave's other half adds
@@ -2374,7 +2434,7 @@ not designed here.
   `.stockAdjustment` (6), `.supplierInvoice` (13) and `.financeHandoff` (16); §9.4's rows must carry it on each of these.
   Fleet's dashboard key is in no row and refreshes only on `staleTime`. No tile reads RFQs, quotations or catalogs;
   supplier names are labels; an opening balance's effect arrives on `.stock`.
-- **The stock topic.** `administration.stock` is signal-only (skeleton Addenda 3; §9.2): gated by
+- **The stock topic.** `administration.stock` is signal-only (§9.2): gated by
   `administrationStock.view`, with no audit row of its own, signalled once per touched branch after every posting;
   transfers signal both branches. Its precedent is ATM's day signals, with "No audit row of their own", each carrying the
   plan's branch and written with its literal `{ moduleId, entityType }` pair so the registry spec's scan finds it
@@ -2387,67 +2447,69 @@ not designed here.
 - **Branch signals.** `record()` reaches organization rooms only and never passes `branchId`, so every audited act on a
   branch-scoped entity also sends `publishAuditedChange({ action: 'update', branchId })`, whatever its verb (§9.1).
   Master-data (de)activation, which tiles 1 and 2 count, audits `activate`/`deactivate`; those verbs are not broadcast
-  (`packages/contracts/src/platform/realtime.ts:19-31`), so the act sends an explicit `update` signal too (skeleton
-  Addenda 4).
-- **Own scope.** Requesters join no rooms; their tiles refresh through notification-socket invalidation (§9.5, new
-  ground) and `staleTime`.
-- **Cards are live; cross-document reports are not.** The item card and warehouse card are live stock views (P5,
-  skeleton Addenda 5): their query keys sit under `stock` (§9.4), so the `administration.stock` topic refreshes them
+  (`packages/contracts/src/platform/realtime.ts:19-31`), so the act sends an explicit `update` signal too.
+- **Own scope.** Requesters join no rooms; their tiles refresh on `staleTime` and on navigation, and through
+  notification-socket invalidation once PC-7 lands (§9.5).
+- **Cards are live; cross-document reports are not.** The item card and warehouse card are live stock views (P5):
+  their query keys sit under `stock` (§9.4), so the `administration.stock` topic refreshes them
   after every posting. Cross-document reports are not live: they show `generatedAt` and a refresh action, and their keys
-  sit in no registry row (§9.4), so postings do not refetch heavy aggregates while a keeper works. The as-of display has
-  a precedent to copy, or to promote to `shared/ui`: ATM's `AsOfStamp`, "the moment the server counted … on the Cairo
+  sit in no registry row (§9.4), so postings do not refetch heavy aggregates while a keeper works. The as-of display
+  follows a precedent, rebuilt in the module or promoted to `shared/ui` (D-21): ATM's `AsOfStamp`, "the moment the server counted … on the Cairo
   calendar" (`apps/web/src/modules/atm/components/register-report/AsOfStamp.tsx:1-3`).
 
 ### 14.5 Reports catalog
 
-Paths are `/api/v1/administration/reports/<name>`, with `/export` for kind B (skeleton Addenda 3). A report whose rows a
-section already lists is that list, with the filters below; only its export takes the report route. Export kinds are
-§11.7's: **A** is a client `.xlsx` under the view key; **B** is an audited server CSV under `.export`. A register offers
-exactly one (§11.7). The column gives the kind under OD-60's recommended default (A: server exports for registers with
-money or stock). Under it, a client list export (kind A: an unaudited Excel of a list without prices) may come on request
-from P2; audited server exports (kind B) exist only under the Addenda 3 keys: P3 RFQ, P4 PO, P5 stock and GRN, P8
-supplier invoices (§14.7). Phase 1 has none (skeleton Addenda 5). Under OD-60 B every report exports by A, and under C
-by B.
+Paths are `/api/v1/administration/reports/<name>`, with `/export` for a server export. A report whose rows a section
+already lists is that list, with the filters below; only its export takes the report route. Export kinds are §11.7's:
+a **client export** is a client `.xlsx` under the view key; a **server export** is an audited server CSV under
+`.export`. A register offers exactly one (§11.7). The column gives the kind under OD-60's recommended default (A: server
+exports for registers with money or stock). Under it, a client list export (an unaudited Excel of a list without
+prices) may come on request from P2; server exports exist only under §14.7's five export keys: P3 RFQ, P4 PO, P5 stock
+and GRN, P8 supplier invoices. Phase 1 has none (OD-60.1 (i)). Under OD-60 B every report has a client export, and
+under C a server export.
 
 | Report (`name`) | Question answered | Filters | Grouping | Gate · scope | Export (OD-60 A) | Phase | Precedent |
 |---|---|---|---|---|---|---|---|
-| Stock balance «أرصدة المخزون» (`stock-balance`) | What is on hand and in transit now? | warehouses, category, item, low or out of stock | by warehouse, or by item across warehouses in reach | `administrationStock.view` · branch | B `administrationStock.export` | P5 | IT consumables register (`apps/api/src/modules/it/consumables/consumable.service.ts:118-129`) |
-| Stock movements (`stock-movements`) | Every unit in and out: when, on which document, by whom | warehouse, item, kinds, bucket, document, Cairo range (required) | chronological, paged ≤ 100; totals per kind | same | B, signed quantity | P5 | `/it/consumable-movements` (`apps/api/src/modules/it/consumables/consumable-movement.routes.ts:1-3`) |
-| Item card «كارت صنف» (`item-card`) | One item's history, with its running balance | item (required); one warehouse, or every warehouse in reach (§2.4.7); range | opening, rows, closing (§14.6) | same; the warehouse read under scope first | B; the card prints on the company report form (§14.7) | P5; reached from the stock page and `ItemDetailPage` (§13.3) | Fleet custody fold (`apps/api/src/modules/fleet/custody/custody-ledger.ts:1-8`) |
-| Warehouse card «كارت مخزن» (`warehouse-card`) | For each item: opening, in, out, closing | warehouse (required), category, range | item; kind groups | same | B | P5 | Gold fund statement (`apps/api/src/modules/gold/reports/reports.service.ts:1-13`) |
-| Low stock (`low-stock`) | What to reorder, and is it already on order? | warehouse, category | warehouse → item | same; the on-order column needs `administrationPurchaseOrder.view`, with its own selector | B (balances) | P5 | IT `isBelowMin` (`consumable-stock.ts:94-99`) |
+| Stock balance أرصدة المخزون (`stock-balance`) | What is on hand and in transit now? | warehouses, category, item, low or out of stock | by warehouse, or by item across warehouses in reach | `administrationStock.view` · branch | server, `administrationStock.export` | P5 | IT consumables register (`apps/api/src/modules/it/consumables/consumable.service.ts:118-129`) |
+| Stock movements (`stock-movements`) | Every unit in and out: when, on which document, by whom | warehouse, item, kinds, bucket, document, Cairo range (required) | chronological, paged ≤ 100; totals per kind | same | server, signed quantity | P5 | `/it/consumable-movements` (`apps/api/src/modules/it/consumables/consumable-movement.routes.ts:1-3`) |
+| Item card كارت صنف (`item-card`) | One item's history, with its running balance | item (required); one warehouse, or every warehouse in reach (§2.4.7); range | opening, rows, closing (§14.6) | same; the warehouse read under scope first | server; the card prints on the company report form (§14.7) | P5; reached from the stock page and `ItemDetailPage` (§13.3) | Fleet custody fold (`apps/api/src/modules/fleet/custody/custody-ledger.ts:1-8`) |
+| Warehouse card كارت مخزن (`warehouse-card`) | For each item: opening, in, out, closing | warehouse (required), category, range | item; kind groups | same | server | P5 | the forward `$group` (§14.6); Gold's rewind (`apps/api/src/modules/gold/reports/reports.service.ts:6-13`) only as its cross-check |
+| Low stock (`low-stock`) | What to reorder, and is it already on order? | warehouse, category | warehouse → item | same; the on-order column needs `administrationPurchaseOrder.view`, with its own selector | server (balances) | P5 | IT `isBelowMin` (`consumable-stock.ts:94-99`) |
 | Stock integrity (`stock-integrity`) — hardening | Do the movements sum to every balance (§2.4.8's checks)? | warehouse | warehouse → item drift | `administrationStock.view` at organization scope | — | P5 on demand; nightly from P9 (§2.4.8) | leave's ledger rebuild, one `$group` per kind (`apps/api/src/modules/hr/leave-management/leave-balances/leave-balance.service.ts:747-790`), here report-only |
-| Purchase requests (`purchase-requests`) | What was requested, by whom, how far it has been sourced, how old it is | status, `orderStatus`, department, requester, range | department, status, month | `administrationPurchaseRequest.view` · branch, department, own | A, on request | P2 | a Fleet list with its `/summary` (`apps/api/src/modules/fleet/custody/custody.routes.ts:14-16`) |
-| Quotation comparison (`rfq-comparison`) | Which offer wins each line, at what price and lead time? | the RFQ | RFQ line → quotation | `administrationRfq.view` · branch | B `administrationRfq.export` | P3 | the derived comparison (§4.2.3) |
-| Purchase orders (`purchase-orders`) | What we committed, with whom, and how much has arrived | status, `receiptStatus`, supplier, range | supplier, status, month; value per currency | `administrationPurchaseOrder.view` · branch | B `administrationPurchaseOrder.export` | P4 | Operations reports, which ride the list's view key (`apps/api/src/modules/operations/reports/report.routes.ts:1-6, 40-42`) |
-| Receiving (`goods-receipts`) | What arrived, when, from whom, where; late; rejected | warehouse, supplier, PO, item, range | supplier, warehouse, month | `administrationGoodsReceipt.view` · the warehouse's branch; values only per OD-73 (§6.8) | B `administrationGoodsReceipt.export` | P5 | — |
-| Issues (`stock-issues`) | What each department consumed, from where, against which MR | warehouse, department, recipient, item, range | department, item, month | `administrationStockIssue.view` · the warehouse's branch | A, on request (quantities) | P6 | IT movements by employee (`ListItConsumableMovementsQuerySchema`, `packages/contracts/src/modules/it.ts:2816-2827`) |
-| Transfers (`stock-transfers`) | What is in transit, for how long, and what went missing | warehouses, either branch, status, `discrepancy`, range | status, route | `administrationStockTransfer.view` · two branches (§7.4) | A, on request | P7 | new ground |
-| Count and variance (`stock-counts`) | How far book and shelf differed | warehouse, count, status, item, variances only | count → line; item across counts | `administrationStockCount.view` · branch | A, on request (quantities) | P7 | ATM's 57-number check, a computed fold beside a snapshot (`apps/api/src/modules/atm/register/import/report-check.ts:1-4`) |
-| Invoices and handoffs «كشف» (`finance-handoffs`) | What was handed to Finance, when, for which supplier and PO, signed or not, withdrawn or not; which invoices wait | range, supplier, branch, status, signed copy filed | supplier, month; totals per currency | `administrationSupplierInvoice.view` · branch | B `administrationSupplierInvoice.export` | P8 | Fleet's memos awaiting replenishment (`apps/api/src/modules/fleet/custody/custody-memo.service.ts:376-384`) |
-| Received not invoiced (`received-not-invoiced`) | What was kept but not yet handed over, per PO line, and for how long? | supplier, branch, PO, age | supplier → PO line; value at the GRN price, per currency | `administrationPurchaseOrder.view` · branch (the PO's GRNs read through the PO, §4.3.2) | B `administrationPurchaseOrder.export` | P8 | Fleet's "waiting money" figures (`custody-memo.service.ts:386-398`; §4.2.3) |
-| Supplier purchases (`supplier-purchases`) | How much we bought from each supplier, and how reliably it came | supplier, branch, category, range | supplier, month | `administrationPurchaseOrder.view` · branch; its receipt figures under `administrationGoodsReceipt.view`, with their own selector | B `administrationPurchaseOrder.export` | P9, with OD-13's KPIs | Operations bank report (`report.routes.ts:34-54`) |
+| Purchase requests (`purchase-requests`) | What was requested, by whom, how far it has been sourced, how old it is | status, `orderStatus`, department, requester, range | department, status, month | `administrationPurchaseRequest.view` · branch, department, own | client, on request | P2 | a Fleet list with its `/summary` (`apps/api/src/modules/fleet/custody/custody.routes.ts:14-16`) |
+| Quotation comparison (`rfq-comparison`) | Which offer wins each line, at what price and lead time? | the RFQ | RFQ line → quotation | `administrationRfq.view` · branch | server, `administrationRfq.export` | P3 | the derived comparison (§4.2.3) |
+| Purchase orders (`purchase-orders`) | What we committed, with whom, and how much has arrived | status, `receiptStatus`, supplier, range | supplier, status, month; value per currency | `administrationPurchaseOrder.view` · branch | server, `administrationPurchaseOrder.export` | P4 | Operations reports, which ride the list's view key (`apps/api/src/modules/operations/reports/report.routes.ts:1-6, 40-42`) |
+| Receiving (`goods-receipts`) | What arrived, when, from whom, where; late; rejected | warehouse, supplier, PO, item, range | supplier, warehouse, month | `administrationGoodsReceipt.view` · the warehouse's branch; values only per OD-73 (§6.8) | server, `administrationGoodsReceipt.export` | P5 | — |
+| Issues (`stock-issues`) | What each department consumed, from where, against which MR | warehouse, department, recipient, item, range | department, item, month | `administrationStockIssue.view` · the warehouse's branch | client, on request (quantities) | P6 | IT movements by employee (`ListItConsumableMovementsQuerySchema`, `packages/contracts/src/modules/it.ts:2816-2827`) |
+| Transfers (`stock-transfers`) | What is in transit, for how long, and what went missing | warehouses, either branch, status, `discrepancy`, range | status, route | `administrationStockTransfer.view` · two branches (§7.4) | client, on request | P7 | new ground |
+| Count and variance (`stock-counts`) | How far book and shelf differed | warehouse, count, status, item, variances only | count → line; item across counts | `administrationStockCount.view` · branch | client, on request (quantities) | P7 | ATM's 57-number check, a computed fold beside a snapshot (`apps/api/src/modules/atm/register/import/report-check.ts:1-4`) |
+| Invoices and handoffs كشف (`finance-handoffs`) | What was handed to Finance, when, for which supplier and PO, signed or not, withdrawn or not; which invoices wait | range, supplier, branch, status, signed copy filed | supplier, month; totals per currency | `administrationSupplierInvoice.view` · branch | server, `administrationSupplierInvoice.export` | P8 | Fleet's memos awaiting replenishment (`apps/api/src/modules/fleet/custody/custody-memo.service.ts:376-384`) |
+| Received not invoiced (`received-not-invoiced`) | What was kept but not yet handed over, per PO line, and for how long? | supplier, branch, PO, age | supplier → PO line; value at the GRN price, per currency | `administrationPurchaseOrder.view` · branch (the PO's GRNs read through the PO, §4.3.2) | server, `administrationPurchaseOrder.export` | P8 | Fleet's "waiting money" figures (`custody-memo.service.ts:386-398`; §4.2.3) |
+| Supplier purchases (`supplier-purchases`) | How much we bought from each supplier, and how reliably it came | supplier, branch, category, range | supplier, month | `administrationPurchaseOrder.view` · branch; its receipt figures under `administrationGoodsReceipt.view`, with their own selector | server, `administrationPurchaseOrder.export` | P9, with OD-13's KPIs | Operations bank report (`report.routes.ts:34-54`) |
 
 ### 14.6 Item card and warehouse card
 
-**Item card.** One item, `onHand` bucket, in one warehouse or across the warehouses in reach (§2.4.7), ordered by `at`,
-then `createdAt`, then `_id` (Fleet keeps a fixed order, `custody-ledger.ts:215-218`):
+**Item card.** One item, `onHand` bucket, in one warehouse or across the warehouses in reach (§2.4.7). In one
+warehouse the rows are ordered by `moveSeq`, the row's commit order (§2.4.4); across warehouses by `at`, then
+`createdAt`, then `_id` (Fleet keeps a fixed order, `custody-ledger.ts:215-218`):
 
 - **Opening** at `from` is one signed `$group` over the movements with `at < from` (`ix_warehouse_item_at` for one
-  warehouse, `ix_item_at` across warehouses, §2.4.1). Under OD-74's recommended default (A: `at` is the posting instant),
-  no movement can land before a past `from`, so the figure is stable and needs no read of the balance. §2.4.7's rewind
-  (the balance minus the movements with `at ≥ from`, Gold's method) gives the same figure while Invariant I holds,
-  provided the balance and the movements come from one snapshot; the forward sum needs none.
+  warehouse, `ix_item_at` across warehouses, §2.4.1). This forward sum is the card's one algorithm, and it reads no
+  balance. Under OD-74's recommended default (A: `at` is the posting instant), the one movement that can land before a
+  past `from` is an opening balance, whose `at` is its `asOfDate` (§2.6): an opening posted later for a warehouse
+  changes the openings of cards over that warehouse once. Gold's rewind (the balance minus the later movements) is not
+  used for the card; it is the integrity cross-check (the warehouse card, below).
 - **Window** rows `[from, to)` are folded in memory carrying the balance: "a filter picks rows out of the fold, it
   never changes a row's «بعدها»" (`custody-ledger.ts:5-8`); pages are cut in memory (`:292`). Fleet carries its fold over the
-  WHOLE history (`:6-7`); computing the opening with a `$group` and folding only the window is a departure, closer to
-  Gold's period sums (new ground). Without `from`, the card folds the whole history from zero, Fleet's way.
+  WHOLE history (`:6-7`); computing the opening with a `$group` and folding only the window is a departure from Fleet
+  (new ground). Without `from`, the card folds the whole history from zero, Fleet's way.
 - **Columns:** Cairo date, document number, kind, counterpart, in, out, balance. In transit (inbound to the warehouse,
   not yet resolved) is a separate figure, never part of the balance.
-- **Order and commit order.** The fold's order is each row's commit order only if a posting stamps `at` inside each
-  transaction attempt, as postings build their audit rows (`plan.service.ts:16-17`). A stamp taken before
-  `withTransaction` and kept across a retry could place a movement before one it waited behind, and show a negative
-  intermediate balance the guard never saw (§2.4.7). This is asked of §2.4.4.
+- **Order.** `at` is the app server's clock, stamped in each transaction attempt, so postings handled by different
+  processes can carry `at` out of commit order. The guarded balance update `$inc`s the row's `moveSeq` and the
+  movement stores the returned value (§2.4.4), so a one-warehouse card in `moveSeq` order shows no intermediate balance
+  the guard did not see. `at` gives the displayed date and orders the cross-warehouse card, whose rows share no
+  sequence.
 - **Cross-check.** The whole-history card's last "after" equals the row's `onHandQty`, which a test asserts (§2.4.7). A
   period card does not compare itself with the live balance at run time, where a posting between two reads would look
   like drift; drift is the integrity report's (§2.4.8). Nothing is patched.
@@ -2460,7 +2522,8 @@ from the `inTransit` bucket. Gold's rewind (current balance − later movements)
 movements sum to balances, so the integrity report uses it as the cross-check, bucket by bucket.
 
 **Back-dating** would change past cards, because they are computed. Under OD-74's recommended default (A) it cannot
-happen; B opens a window with a reason, and C adds the period lock. Preventing it is the decision's, never the
+happen, except through an opening balance's `asOfDate`, a Cairo date no later than today and no earlier than the
+go-live floor (§2.6); B opens a window with a reason, and C adds the period lock. Preventing it is the decision's, never the
 report's.
 
 ### 14.7 Exports and printing
@@ -2472,8 +2535,8 @@ Mechanics are §11.7 (streaming, formula guard, audit row, the `fetchBlob` branc
 |---|---|
 | An export inherits the screen's filters and names every one on its filter line | precedent: `apps/web/src/modules/it/lib/register-export.ts:37-41` (§11.7) |
 | A register exports by one kind only | §11.7 |
-| A report with money (purchase orders, receiving with values, received not invoiced, supplier purchases, the invoice and handoff «كشف») exports by B only, with no client walk. Printing it whole is a print of record under its `.export` key, audited as an `export` row with the pseudo-field `paper` (the HR contract precedent, skeleton Addenda 3), so the «كشف» Finance works from is a paper of record | OD-60 (recommended default: A) and OD-73 |
-| A report without money (the cards, and balances, movements, transfers and counts without values) prints what the screen shows, under its filter line, on the §11.6.3 company report form, under its view key and unaudited; the whole register leaves only by its export kind | skeleton Addenda 3 and OD-59 A (papers other than the PO, GRN and issue records ride `.view`; only a print of record is audited); IT prints its registers on the same form (`it/lib/register-export.ts:12-15`) |
+| A report with money (purchase orders, receiving with values, received not invoiced, supplier purchases, the invoice and handoff كشف) has a server export only, with no client walk. Printing it whole is a print of record under its `.export` key, audited with the module's print verb `administrationPrint` (§11.6.6), so the كشف Finance works from is a paper of record. The export-spike signal counts only `export` rows (`apps/api/src/platform/audit/audit.signals.ts:129-142`), so prints never trip it | OD-60 (recommended default: A), OD-59 and OD-73 |
+| A report without money (the cards, and balances, movements, transfers and counts without values) prints what the screen shows, under its filter line, on the §11.6.3 company report form, under its view key and unaudited; the whole register leaves only by its export kind | OD-59 A (papers other than the PO, GRN and issue records ride `.view`; only a print of record is audited); IT prints its registers on the same form (`it/lib/register-export.ts:12-15`) |
 
 **Export keys.** They exist only if OD-60 picks server exports (recommended default: A), each declared with its endpoint
 in its phase (§6.2, §11.7):
@@ -2486,9 +2549,9 @@ in its phase (§6.2, §11.7):
 | `administrationGoodsReceipt.export` | P5 | receiving |
 | `administrationSupplierInvoice.export` | P8 | invoices and handoffs |
 
-No other export key exists. The issue and count reports export by A, on request, while they carry quantities only; if
-OD-37 and OD-73 put values on them, a server export would need a key the skeleton does not list; OD-60's sub-question
-on registers with no export key raises that for the owner (§16), not assumed. There are no exports in Phase 1 (skeleton Addenda 3).
+No other export key exists. The issue and count reports have a client export, on request, while they carry quantities
+only; if OD-37 and OD-73 put values on them, a server export would need a new `.export` key for each, declared in its
+phase (§6.2); OD-60.2 raises that for the owner (§16), not assumed. There are no exports in Phase 1 (OD-60.1 (i)).
 
 ### 14.8 Cairo calendar
 
@@ -2512,8 +2575,8 @@ on registers with no export key raises that for the owner (§16), not assumed. T
 | Movement, receiving and issue reports; warehouse card; an item card across warehouses | a Cairo range is required, ≤ 366 days (proposed; the length is fixed at P5, §11.7) | attendance caps its export window at 92 days (`packages/contracts/src/modules/hr-attendance.ts:442-445`) |
 | Item card in one warehouse | the opening is one `$group`; only the window is folded; without a range, the whole history | Fleet's custody fold for the window (§14.6) |
 | Id-list filters | `listQuery(objectId())`, 50 ids; raised only for a list a machine generates, with the reason stated | `packages/contracts/src/common/index.ts:32-48`; Gold raises it to 500 for fund lists (`packages/contracts/src/modules/gold.ts:885, 910`) |
-| Client `.xlsx` (kind A) | ≤ 20,000 rows: the shared walk stops at 200 pages of 100 without saying so; a register that can pass it exports by B (§11.7), which exists only under the Addenda 3 keys (§14.7); a key-less register past the cap is OD-60's sub-question | `apps/web/src/modules/fleet/lib/whole-catalog.ts:33-41, 47-57` |
-| Server CSV (kind B) | streamed, ≤ 50,000 rows, a technical default borrowed from the audit export's setting (1,000–200,000, organization scope); the audit row records `rowCount`, `completed`, `maxRows` and `filter`. A capped export ends `completed: true`, so truncation shows only as `rowCount = maxRows`; an explicit `truncated` pseudo-field would be new ground. The ATM register and attendance exports have no cap | `apps/api/src/platform/audit/audit.settings.ts:18-24`; `apps/api/src/platform/audit/audit.export.ts:84-104`; `apps/api/src/shared/utils/stream-rows.ts:4-11` |
+| Client export (`.xlsx`) | ≤ 20,000 rows: the shared walk stops at 200 pages of 100 without saying so; a register that can pass it has a server export (§11.7), which exists only under §14.7's five keys; a key-less register past the cap is OD-60.2 | `apps/web/src/modules/fleet/lib/whole-catalog.ts:33-41, 47-57` |
+| Server export (CSV) | streamed, ≤ 50,000 rows, a technical default borrowed from the audit export's setting (1,000–200,000, organization scope); the audit row records `rowCount`, `completed`, `maxRows` and `filter`. A capped export ends `completed: true`, so truncation shows only as `rowCount = maxRows`; an explicit `truncated` pseudo-field would be new ground. The ATM register and attendance exports have no cap | `apps/api/src/platform/audit/audit.settings.ts:18-24`; `apps/api/src/platform/audit/audit.export.ts:84-104`; `apps/api/src/shared/utils/stream-rows.ts:4-11` |
 
 **Indexes.** They are §2's, declared on the schemas:
 
@@ -2524,8 +2587,5 @@ on registers with no export key raises that for the owner (§16), not assumed. T
 - documents: `ix_branch_status {branchId, status, businessDate: -1}` on stock documents (§2.6), `ix_branch_status_created`
   on procurement documents (§2.5).
 
-`autoIndex` is off in production (`apps/api/src/infrastructure/database/mongo.ts:143`). The platform's pre-deploy step
-(`npm run db:sync-indexes`, `railway.json`) builds declared indexes only when `INDEX_SYNC_MODE` is `apply`; by default it
-only reports (`apps/api/src/shared/base/index-sync.ts:19-24`; `apps/api/src/infrastructure/config/env.ts:200-204`).
-The seed therefore builds them first, through the shared `syncDeclaredIndexes('apply', administrationModels)` over the
-model list in `administration-indexes.ts` (§2.1, §15.3.2); no builder is copied.
+The module's seed builds them before any transaction, and keeps the module's writes refused while one of its unique
+indexes is missing (D-16, §15.3.2).

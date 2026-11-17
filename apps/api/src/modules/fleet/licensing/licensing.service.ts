@@ -29,6 +29,9 @@ const entityRef = (id: string) => ({
 
 const PAGE = 100;
 
+/** How far one of the board's papers has got (`paperStage`). */
+type PaperStage = ReturnType<typeof paperStage>;
+
 class FleetLicensingService {
   /**
    * Every car on the board, its papers beside it, sorted by code.
@@ -76,7 +79,9 @@ class FleetLicensingService {
         plateNumber: vehicle.plateNumber,
         chassisNumber: vehicle.chassisNumber,
         licenseClass:
-          vehicle.licenseClassId === null ? null : (classNames.get(String(vehicle.licenseClassId)) ?? null),
+          vehicle.licenseClassId === null
+            ? null
+            : (classNames.get(String(vehicle.licenseClassId)) ?? null),
         licenseExpiresAt: vehicle.licenseExpiresAt.toISOString(),
         // A car nobody has ticked anything for has no row, and reads as four falses rather than
         // being given one — the board must be readable without writing to it.
@@ -124,6 +129,44 @@ class FleetLicensingService {
       }
     }
     return counts;
+  }
+
+  /**
+   * «أوراق الترخيص» on the fleet dashboard's «أقرب تراخيص السيارات»: each paper's stage
+   * (`paperStage`: none / open / done) for the cars among `vehicleIds` that are ON the board — a «ت»
+   * licence class, under the reader's scope, the same rule as `openPaperCounts` — read from the same
+   * live marks. A car off the board (a «م» class, no class, out of the reader's scope) is absent.
+   *
+   * READ-ONLY like `openPaperCounts`: never the board's sweep, never a mark. A handful of ids (the
+   * dashboard's ≤ 6 rows), so it asks the registry which of THOSE cars are on the board under the
+   * reader's scope (one read of their ids) — never the whole board — and reads their marks.
+   */
+  async paperStagesFor(
+    scope: ScopeSelector,
+    vehicleIds: readonly string[],
+  ): Promise<Map<string, { insurance: PaperStage; tax: PaperStage }>> {
+    const ids = [...new Set(vehicleIds)].filter((id) => Types.ObjectId.isValid(id));
+    if (ids.length === 0) return new Map();
+    const classIds = (await fleetCatalogItemRepository.listKind('licenseClass'))
+      .filter((item) => isLicensingClass(item.name.ar))
+      .map((item) => String(item._id));
+    if (classIds.length === 0) return new Map();
+    const onBoard = [...(await fleetVehicleRepository.idsOfClassesInScope(scope, ids, classIds))];
+    const marks = await fleetVehicleLicensingRepository.findForVehicles(onBoard);
+    const byVehicle = new Map(marks.map((row) => [String(row.vehicleId), row]));
+    return new Map(
+      onBoard.map((vehicleId) => {
+        const row = byVehicle.get(vehicleId);
+        const ticks = {
+          insuranceHandover: row?.insuranceHandover ?? false,
+          insuranceReceipt: row?.insuranceReceipt ?? false,
+          taxHandover: row?.taxHandover ?? false,
+          taxReceipt: row?.taxReceipt ?? false,
+        };
+        const [insurance, tax] = FLEET_LICENSING_PAPERS.map((paper) => paperStage(ticks, paper));
+        return [vehicleId, { insurance: insurance ?? 'none', tax: tax ?? 'none' }];
+      }),
+    );
   }
 
   /**

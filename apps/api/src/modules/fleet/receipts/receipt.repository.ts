@@ -8,6 +8,7 @@ import {
 } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { RECEIPT_PIASTRES } from '../custody/custody-memo-totals';
 import { FleetReceiptModel, type FleetReceiptDoc } from './receipt.model';
 
 const escapeRegex = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -34,6 +35,14 @@ interface TotalsRow {
   litres: number;
   /** The rows with no litres — a fuel receipt with no litre price. */
   unpriced: number;
+}
+
+/** The receipts of one custody memo — or of none (`memoId: null`) — among a filter's rows. */
+export interface ReceiptMemoGroup {
+  memoId: string | null;
+  count: number;
+  /** Whole piastres, summed in the database — exact however many receipts add up. */
+  piastres: number;
 }
 
 /** One slot of a receipts series: the paper day ('YYYY-MM-DD') or month ('YYYY-MM'). */
@@ -183,7 +192,36 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
       fuelUnpriced: rows
         .filter((row) => row._id.kind === 'fuel')
         .reduce((total, row) => total + row.unpriced, 0),
+      // «N إيصالًا» on «مصروفات العهدة» — the custody-paid receipts, from the same `$group`.
+      custodyCount: rows
+        .filter((row) => row._id.source === 'custody')
+        .reduce((total, row) => total + row.count, 0),
     };
+  }
+
+  /**
+   * The rows `filter` matches, per custody memo they are a line of (`null`: on none) — ONE
+   * aggregate, in the database, through `ix_receipt_source_date` when the filter names the custody
+   * source and a day. The fleet dashboard's `custodyStates` puts each group where its memo stands.
+   */
+  async custodyByMemo(filter: FilterQuery<FleetReceiptDoc>): Promise<ReceiptMemoGroup[]> {
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId | null; count: number; piastres: number }>([
+        { $match: this.baseFilter(undefined, filter) },
+        {
+          $group: {
+            _id: { $ifNull: ['$memoId', null] },
+            count: { $sum: 1 },
+            piastres: { $sum: RECEIPT_PIASTRES },
+          },
+        },
+      ])
+      .exec();
+    return rows.map((row) => ({
+      memoId: row._id == null ? null : String(row._id),
+      count: row.count,
+      piastres: Math.round(row.piastres),
+    }));
   }
 
   /**

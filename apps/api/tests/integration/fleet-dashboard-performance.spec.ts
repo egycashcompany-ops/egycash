@@ -1,6 +1,7 @@
 // The dashboard's two reads at about three times today's volume (plan §5.11, P1-07, P1-08):
-// ~210 cars, ~100k odometer rows, 2k workshop visits, 200 accidents, 1k violations, 5k receipts,
-// ~160 fuel cards, two read sheets per company, 400 dealership rows.
+// ~210 cars, ~100k odometer rows, 2k workshop visits, 200 accidents, 1k violations, 5k receipts
+// (a fifth of them on 40 custody memos), ~160 fuel cards, two read sheets per company, 400
+// dealership rows, 300 licence-expense memos; a third of the cars carry a «ت» licence class.
 //
 // What is ASSERTED is what a regression would move silently:
 //   · the number of database commands one read sends (counted with the driver's own `commandStarted`
@@ -9,7 +10,8 @@
 //   · no collection scan: every command R2 sends to the odometer, visits or receipts collections is
 //     re-run under `explain` and its plan must not contain a COLLSCAN; the drivers' fines of a
 //     period walk `ix_kind_date`, the day series `ix_receipt_date`, and each company's last read
-//     sheet `ix_fuel_reconcile_company_read`;
+//     sheet `ix_fuel_reconcile_company_read`; «التراخيص والتجديدات»'s months walk `ix_license_sweep`,
+//     «منها حتى الآن» `ix_receipt_source_date` and «مصروفات التراخيص» `ix_license_expense_date`;
 //   · a TYPE filter covering more than 50 cars (the screens' code cap) still reproduces every period
 //     figure on its screen — the filter travels as `typeIds`, never as a code list.
 // Timings are measured and printed, never asserted: the machine running CI is not the server.
@@ -51,6 +53,8 @@ import { FleetDealershipInvoiceModel } from '../../src/modules/fleet/dealership/
 import { fleetOdometerRepository } from '../../src/modules/fleet/odometer/odometer.repository';
 import { fleetOdometerService } from '../../src/modules/fleet/odometer/odometer.service';
 import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
+import { FleetCustodyMemoModel } from '../../src/modules/fleet/custody/custody-memo.model';
+import { FleetLicenseExpenseModel } from '../../src/modules/fleet/license-expenses/license-expense.model';
 import { nextNationalId } from './helpers/national-id';
 
 const NOW = new Date('2026-10-31T23:30:00.000Z');
@@ -132,7 +136,21 @@ const PLAN = { r1: 45, r2: 15 };
 //   · «مصروف التشغيل يومًا بيوم»: ONE `$group` by the paper day (or month): +1;
 //   · «فواتير التوكيل في الفترة»: the dealership screen's `find` + count, the cars, their makes: +4.
 //   With the conditional `latestChainDates` above: 35.
-const CEILING = { r1: 74, r2: 35 };
+// «العهدة» + «التراخيص والتجديدات» (build-cl), on a fixture that now holds custody memos, licence-
+// expense memos and «ت» cars — R1 71 → 74 measured:
+//   · «آخر ما سُجّل» retired: the visits' and accidents' recent reads and their cars: −5;
+//   · «التراخيص المستحقة للتجديد — 12 شهرًا» (the cars): ONE `$group` by the expiry month: +1;
+//   · «أقرب تراخيص السيارات» names its ≤ 6 rows' classes with ONE catalog `namesByIds` (+1; the makes
+//     ride on the memoised type list) and — beside the board's key — their papers: the classes, the
+//     listed cars on the board (ONE `find` of ids) and their marks: +3;
+//   · the fixture's «ت» cars now exercise «أوراق لم تُستلم بعد»'s existing board read (its cars, a
+//     page of the registry, and their marks): +3 — not new code, a board that is no longer empty.
+//   The drivers' months and list come from the registry digest already read (+0); their licence
+//   types, ONE `namesByIds` when a listed file has one: +1 (none here) — 75.
+// R2 34 → 37 measured: «منها حتى الآن» is ONE `$group` of the custody receipts by memo plus ONE read
+// of the memos' statuses (+2; the statuses asked only when a receipt is on a memo), «مصروفات
+// التراخيص» ONE `$group` (+1). With the conditional `latestChainDates` above: 38.
+const CEILING = { r1: 75, r2: 38 };
 /**
  * R2 narrowed by a type and car codes: the same sections plus the set's own resolution. The six
  * modules resolve the filter as their screens do, but inside one read each narrowing is asked of
@@ -149,7 +167,9 @@ const CEILING = { r1: 74, r2: 35 };
  * (the set is still resolved once, `withVehicleFilterMemo`); 39 with the conditional
  * `latestChainDates`.
  */
-const CEILING_FILTERED_R2 = 39;
+// 41 measured with «العهدة» + «التراخيص والتجديدات» (the same +3 as R2 above, the set still
+// resolved once); 42 with the conditional `latestChainDates`.
+const CEILING_FILTERED_R2 = 42;
 
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
@@ -425,6 +445,14 @@ beforeAll(async () => {
       .id;
   const workshop = new Types.ObjectId(await catalog('workshop', 'ورشة الأداء'));
   const workType = new Types.ObjectId(await catalog('workType', 'صيانة'));
+  // A «ت» licence class: a third of the cars are on the licensing board.
+  const boardClass = ok<FleetCatalogItemDto>(
+    await post('/fleet/catalog-items', {
+      kind: 'licenseClass',
+      name: { ar: 'برقاش ت', en: 'Barqash T' },
+    }),
+    201,
+  ).id;
   const violationType = new Types.ObjectId(
     ok<FleetCatalogItemDto>(
       await post('/fleet/catalog-items', {
@@ -448,6 +476,7 @@ beforeAll(async () => {
           motorNumber: `FMO-${i}`,
           joinedAt: '2025-01-01T00:00:00.000Z',
           licenseExpiresAt: new Date(NOW.getTime() + ((i % 90) - 10) * DAY).toISOString(),
+          ...(i % 3 === 0 ? { licenseClassId: boardClass } : {}),
           radio: { issi: `FISSI-${i}` },
           branchId: branches[i % branches.length],
         }),
@@ -559,9 +588,35 @@ beforeAll(async () => {
     })),
     { lean: true },
   );
+  // Forty custody memos — a quarter transferred, a quarter held, the rest waiting — each holding a
+  // fifth of the receipts below («منها حتى الآن» reads their statuses once).
+  const receiptIds = Array.from({ length: 5000 }, () => new Types.ObjectId());
+  const memoIds = Array.from({ length: 40 }, () => new Types.ObjectId());
+  await FleetCustodyMemoModel.insertMany(
+    memoIds.map((_id, m) => ({
+      ...row,
+      _id,
+      no: 5000 + m,
+      kind: 'wash',
+      name: '',
+      date: ymdUtc(lastDay - m * DAY),
+      from: ymdUtc(lastDay - 60 * DAY),
+      to: ymdUtc(lastDay),
+      lines: [{ receiptId: receiptIds[m * 5] }],
+      signatures: { blocks: [], note: '' },
+      replenishmentId: m % 4 === 3 ? null : new Types.ObjectId(),
+      replenishedAt: m % 4 === 3 ? null : ymdUtc(lastDay),
+      ...(m % 4 === 3 ? {} : { replenishmentHeld: m % 4 === 1 }),
+      lockSeq: 0,
+      deletedAt: null,
+    })),
+    { lean: true },
+  );
   await FleetReceiptModel.insertMany(
     Array.from({ length: 5000 }, (_, r) => ({
       ...row,
+      _id: receiptIds[r],
+      memoId: r % 5 === 0 ? memoIds[(r / 5) % memoIds.length] : null,
       date: ymdUtc(lastDay - (r % 400) * DAY),
       vehicleId: new Types.ObjectId((cars[r % CARS] as FleetVehicleDto).id),
       kind: 'wash',
@@ -678,7 +733,29 @@ beforeAll(async () => {
     })),
     { lean: true },
   );
+  // Three hundred licence-expense memos over the year — renewals, extensions and records holding both.
+  const half = (car: FleetVehicleDto, amount: number) => ({
+    vehicles: [{ vehicleId: new Types.ObjectId(car.id), plate: '' }],
+    items: [
+      { itemId: null, label: 'بند', amount, count: 2, paidBy: 'visa', receipt: true },
+      { itemId: null, label: 'بند', amount: amount / 2, count: 1, paidBy: 'cash', receipt: true },
+    ],
+  });
+  await FleetLicenseExpenseModel.insertMany(
+    Array.from({ length: 300 }, (_, e) => ({
+      ...row,
+      date: ymdUtc(lastDay - (e % 300) * DAY),
+      renewal: e % 3 === 2 ? null : half(cars[e % CARS] as FleetVehicleDto, 100 + e),
+      extension: e % 3 === 0 ? null : half(cars[(e + 7) % CARS] as FleetVehicleDto, 50 + e),
+      signatures: { agent: '', director: '', generalManager: '' },
+      deletedAt: null,
+    })),
+    { lean: true },
+  );
   await Promise.all([
+    FleetVehicleModel.createIndexes(),
+    FleetCustodyMemoModel.createIndexes(),
+    FleetLicenseExpenseModel.createIndexes(),
     FleetOdometerLogModel.createIndexes(),
     FleetMaintenanceVisitModel.createIndexes(),
     FleetReceiptModel.createIndexes(),
@@ -839,6 +916,58 @@ describe('the new parts walk their indexes (ix_kind_date, ix_receipt_date, ix_fu
       expect(plan).toContain('ix_fuel_reconcile_company_read');
       expect(plan).not.toContain('COLLSCAN');
     }
+  });
+});
+
+describe('«العهدة» and «التراخيص والتجديدات» walk their indexes', () => {
+  it('R1: the cars’ licence months are ONE aggregate through ix_license_sweep', async () => {
+    const { result, seen } = await recording(() => get('/fleet/dashboard/now'));
+    const dto = ok<FleetDashboardNowDto>(result);
+    expect(dto.licenceVehicles?.months).toHaveLength(12);
+    const months = seen.filter(
+      (s) =>
+        s.name === 'aggregate' &&
+        s.collection === 'fleet_vehicles' &&
+        JSON.stringify(s.command).includes('"%Y-%m"'),
+    );
+    expect(months).toHaveLength(1);
+    const plan = await explain(months[0] as Seen);
+    expect(plan).toContain('ix_license_sweep');
+    expect(plan).not.toContain('COLLSCAN');
+    // The board's papers for the ≤ 6 listed rows: the listed cars only, never the whole board.
+    expect(dto.licenceVehicles?.list.some((row) => row.papers !== null)).toBe(true);
+  });
+
+  it('R2: «منها حتى الآن» through ix_receipt_source_date; «مصروفات التراخيص» through ix_license_expense_date', async () => {
+    const { result, seen } = await recording(() => get('/fleet/dashboard/period', OCT));
+    const dto = ok<FleetDashboardPeriodDto>(result);
+    const s = dto.custodyStates;
+    expect(Math.round(((s?.replenished ?? 0) + (s?.pending ?? 0) + (s?.outside ?? 0)) * 100)).toBe(
+      Math.round((dto.opex?.custody ?? -1) * 100),
+    );
+    expect(s?.replenished).toBeGreaterThan(0);
+    expect(s?.pending).toBeGreaterThan(0);
+    const byMemo = seen.filter(
+      (c) =>
+        c.name === 'aggregate' &&
+        c.collection === 'fleet_receipts' &&
+        JSON.stringify(c.command).includes('"$ifNull":["$memoId",null]'),
+    );
+    expect(byMemo).toHaveLength(1);
+    const receiptsPlan = await explain(byMemo[0] as Seen);
+    expect(receiptsPlan).toContain('ix_receipt_source_date');
+    expect(receiptsPlan).not.toContain('COLLSCAN');
+    // The memos' statuses: ONE read, by id.
+    expect(seen.filter((c) => c.collection === 'fleet_custody_memos')).toHaveLength(1);
+    const spend = seen.filter((c) => c.collection === 'fleet_license_expenses');
+    expect(spend).toHaveLength(1);
+    const spendPlan = await explain(spend[0] as Seen);
+    expect(spendPlan).toContain('ix_license_expense_date');
+    expect(spendPlan).not.toContain('COLLSCAN');
+    expect(dto.licenceSpend?.count).toBeGreaterThan(0);
+    expect(
+      Math.round(((dto.licenceSpend?.renewal ?? 0) + (dto.licenceSpend?.extension ?? 0)) * 100),
+    ).toBe(Math.round((dto.licenceSpend?.total ?? -1) * 100));
   });
 });
 

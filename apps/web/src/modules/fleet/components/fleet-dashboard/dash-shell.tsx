@@ -148,11 +148,6 @@ const PILL_ON = 'bg-brand-600 text-white shadow-md shadow-brand-700/30';
 const PILL_OFF =
   'text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/[0.07] dark:hover:text-white';
 
-/** The bar's short word for a tab whose heading is long (the heading is its tooltip). */
-const SHORT: Partial<Record<FleetDashboardTab, string>> = {
-  licences: 'fleet.dash.shell.tabShort.licences',
-};
-
 const NavTab = ({
   tab,
   on,
@@ -165,15 +160,14 @@ const NavTab = ({
   onPick: (tab: FleetDashboardTab) => void;
 }): JSX.Element => {
   const t = useT();
+  // Every pill reads its tab's full approved name (the strip scrolls, with its cue, when it overflows).
   const label = t(`fleet.dash.shell.tab.${tab}`);
-  const short = SHORT[tab];
   return (
     <button
       type="button"
       role="tab"
       aria-selected={on}
       data-dash-tab={tab}
-      title={short !== undefined ? label : undefined}
       onClick={() => onPick(tab)}
       className={cn(
         'inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[14px] font-semibold leading-5 transition-colors min-[1800px]:px-3',
@@ -181,7 +175,7 @@ const NavTab = ({
         on ? PILL_ON : PILL_OFF,
       )}
     >
-      <span>{short !== undefined ? t(short) : label}</span>
+      <span>{label}</span>
       {badge !== undefined && (
         <span
           data-dash-badge={tab}

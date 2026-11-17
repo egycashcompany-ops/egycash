@@ -39,6 +39,7 @@ import { punchRepository } from '../punches';
 import { deriveDay, punchWindowFor, type EnginePunch, type EngineShift } from './derive-day';
 import { defaultPatternForBranch, expectationsForDate } from './expectations';
 import { resolveDisplayStatus } from './resolve-display-status';
+import { liveDecisionFor } from '../decisions/live-decision';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 import { dayRecordRepository } from './day-record.repository';
 import { monthRange, toFeedRow } from './attendance-feed';
@@ -315,9 +316,13 @@ class DayRecordService {
               (leaveDoc.halfDayEnd && toDateOnly(leaveDoc.endDate).getTime() === workDate.getTime()),
           };
 
-    const [holidays, weekendDays] = await Promise.all([
+    const [holidays, weekendDays, decision] = await Promise.all([
       workCalendarService.listHolidays(workDate, workDate),
       workCalendarService.weekendDays(),
+      // THE MANAGER'S JUDGEMENT IS AN INPUT, re-read on every derivation (stage 3). The branch
+      // servers recompute constantly, so anything written onto the row would be gone by the next
+      // call — this is what makes a decision survive a re-send instead of being erased by it.
+      liveDecisionFor(String(employee._id), workDate),
     ]);
 
     const shiftId = await shiftAssignmentService.resolveShiftIdForDate(
@@ -371,6 +376,7 @@ class DayRecordService {
       shift: expectation,
       punches,
       employeeBranchId: String(employee.employment.branchId),
+      decision,
       now,
     });
     if (derived === null) return null;

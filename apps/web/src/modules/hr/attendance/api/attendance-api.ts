@@ -3,6 +3,7 @@
 import {
   type ApproveOvertime,
   type AttendanceDayDto,
+  type AttendanceDecisionDto,
   type AttendanceRegularizationDto,
   type AttendanceSheetRowDto,
   type CreateAttendanceRegularization,
@@ -65,6 +66,30 @@ export const listAttendanceSheet = (
 /** My own days — own by construction on the server; no employee filter is accepted. */
 export const listMyAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>
   getPage<AttendanceDayDto>(`/hr/attendance/days/me${buildQuery(params)}`);
+
+/**
+ * Manager day decisions (stage 3). A decision is an INPUT to the derivation rather than an edit of
+ * it, so there is no "undo" verb here — undoing one is `revoke`, which records a second decision.
+ */
+export const listAttendanceDecisions = (
+  params: QueryParams,
+): Promise<Paginated<AttendanceDecisionDto>> =>
+  getPage<AttendanceDecisionDto>(`/hr/attendance/decisions${buildQuery(params)}`);
+
+export const createAttendanceDecision = (body: unknown): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>('/hr/attendance/decisions', body);
+
+export const decideAttendanceDecision = (
+  id: string,
+  body: unknown,
+): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>(`/hr/attendance/decisions/${id}/decide`, body);
+
+export const revokeAttendanceDecision = (
+  id: string,
+  body: unknown,
+): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>(`/hr/attendance/decisions/${id}/revoke`, body);
 
 export const listRegularizations = (
   params: QueryParams,

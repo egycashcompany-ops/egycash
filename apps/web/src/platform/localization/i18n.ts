@@ -2370,6 +2370,40 @@ const en: Record<string, string> = {
   'attendance.flag.manualPunch': 'Manual punch',
   'attendance.flag.regularizedPunch': 'Approved correction',
   'attendance.flag.crossBranchPunch': 'Cross-branch punch',
+  'attendance.flag.overriddenByManager': 'Decided by a manager',
+  'attendance.queue.tab.decisions': 'Day decisions',
+  'attendance.decision.revokeReason': 'Why is this decision being revoked?',
+  'attendance.decision.action': 'Decide',
+  'attendance.decision.title': 'Decide this day',
+  'attendance.decision.type': 'Decision',
+  'attendance.decision.markPresent': 'Record an arrival',
+  'attendance.decision.markAbsent': 'Record an absence',
+  'attendance.decision.editTimes': 'Correct the times',
+  'attendance.decision.inAt': 'Arrival',
+  'attendance.decision.outAt': 'Departure',
+  'attendance.decision.reason': 'Reason',
+  'attendance.decision.reasonPlaceholder': 'Why is this day being decided?',
+  'attendance.decision.submit': 'Record the decision',
+  'attendance.decision.arrivalOnlyHint':
+    'A departure is optional. An arrival on its own records the day as checked in, with the hours unknown.',
+  'attendance.decision.overrideHint':
+    'This day already carries device punches. They are kept, and the day is marked as decided by a manager.',
+  'attendance.decision.oldDayHint':
+    'Beyond the branch threshold, the decision is recorded and takes effect only after HR approves it.',
+  'attendance.decision.queueTitle': 'Day decisions awaiting approval',
+  'attendance.decision.queueEmpty': 'No decision is waiting for approval.',
+  'attendance.decision.approve': 'Approve',
+  'attendance.decision.reject': 'Reject',
+  'attendance.decision.revoke': 'Revoke',
+  'attendance.decision.overrodePunch': 'Decided against device evidence',
+  'attendance.decision.status.applied': 'In force',
+  'attendance.decision.status.pendingHr': 'Awaiting HR',
+  'attendance.decision.status.rejected': 'Rejected',
+  'attendance.decision.status.revoked': 'Revoked',
+  'attendance.decision.type.markPresent': 'Arrival recorded',
+  'attendance.decision.type.markAbsent': 'Absence recorded',
+  'attendance.decision.type.editTimes': 'Times corrected',
+  'attendance.decision.type.revoke': 'Revocation',
   'attendance.dayStatus.present': 'Present',
   'attendance.dayStatus.checkedIn': 'Checked in',
   'attendance.dayStatus.late': 'Late',
@@ -10334,6 +10368,9 @@ const en: Record<string, string> = {
   'systemAdmin.users.audit.attendanceRegularization': 'Attendance regularization requested',
   'systemAdmin.users.audit.attendanceRegularizationDecision': 'Attendance regularization decided',
   'systemAdmin.users.audit.attendanceOvertimeApproval': 'Overtime approved',
+  'systemAdmin.users.audit.attendanceDecision': 'Attendance day decided',
+  'systemAdmin.users.audit.attendanceDecisionApproval': 'Day decision approved',
+  'systemAdmin.users.audit.attendanceDecisionRevoke': 'Day decision revoked',
   'systemAdmin.users.audit.settingChanged': 'Setting changed',
   'systemAdmin.users.audit.loginCreated': 'Login account created',
   'systemAdmin.users.audit.personnelAction': 'Personnel action',
@@ -10993,6 +11030,8 @@ const en: Record<string, string> = {
     'Lateness grace (minutes)',
   'systemAdmin.settings.keys.hr.attendance.defaultPattern.graceOutMinutes':
     'Early-leave grace (minutes)',
+  'systemAdmin.settings.keys.hr.attendance.decisionApprovalAfterDays':
+    'Days a manager may decide an attendance day alone',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
     'Nightly attendance calculation hour (0–23)',
   'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'Overtime requires approval',
@@ -11114,6 +11153,8 @@ const en: Record<string, string> = {
     'Minutes after the start time that are not counted as lateness. Arriving later than this is recorded as late by the full number of minutes after the start time, not after the grace.',
   'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.graceOutMinutes':
     'Minutes before the end time that are not counted as leaving early. Zero means any departure before the end time is recorded as early leave.',
+  'systemAdmin.settings.descriptions.hr.attendance.decisionApprovalAfterDays':
+    'How far back a supervisor may decide a day on their own authority. An older day is recorded and takes effect only after HR approves it.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
     'The hour, Cairo time on a 24-hour clock, at which the previous day\'s attendance is calculated for every employee. For example, 2 runs it shortly after 2:00 am.',
   'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':
@@ -17313,6 +17354,40 @@ const ar: Record<string, string> = {
   'attendance.flag.manualPunch': 'بصمة يدوية',
   'attendance.flag.regularizedPunch': 'تسوية معتمدة',
   'attendance.flag.crossBranchPunch': 'بصمة من فرع آخر',
+  'attendance.flag.overriddenByManager': 'قرار من المسؤول',
+  'attendance.queue.tab.decisions': 'قرارات الأيام',
+  'attendance.decision.revokeReason': 'ما سبب إلغاء هذا القرار؟',
+  'attendance.decision.action': 'اتخاذ قرار',
+  'attendance.decision.title': 'اتخاذ قرار بشأن هذا اليوم',
+  'attendance.decision.type': 'نوع القرار',
+  'attendance.decision.markPresent': 'تسجيل حضور',
+  'attendance.decision.markAbsent': 'تسجيل غياب',
+  'attendance.decision.editTimes': 'تصحيح الأوقات',
+  'attendance.decision.inAt': 'وقت الحضور',
+  'attendance.decision.outAt': 'وقت الانصراف',
+  'attendance.decision.reason': 'السبب',
+  'attendance.decision.reasonPlaceholder': 'ما سبب اتخاذ القرار بشأن هذا اليوم؟',
+  'attendance.decision.submit': 'تسجيل القرار',
+  'attendance.decision.arrivalOnlyHint':
+    'وقت الانصراف اختياري. تسجيل الحضور وحده يُقيّد اليوم كحضور دون معرفة عدد الساعات.',
+  'attendance.decision.overrideHint':
+    'هذا اليوم يحمل بصمات من الجهاز. تبقى البصمات كما هي، ويُسجَّل اليوم بوصفه قرارًا من المسؤول.',
+  'attendance.decision.oldDayHint':
+    'إذا تجاوز اليوم الحد المقرر للفرع، يُسجَّل القرار ولا يسري إلا بعد اعتماد الموارد البشرية.',
+  'attendance.decision.queueTitle': 'قرارات أيام بانتظار الاعتماد',
+  'attendance.decision.queueEmpty': 'لا توجد قرارات بانتظار الاعتماد.',
+  'attendance.decision.approve': 'اعتماد',
+  'attendance.decision.reject': 'رفض',
+  'attendance.decision.revoke': 'إلغاء القرار',
+  'attendance.decision.overrodePunch': 'قرار مخالف لبصمات الجهاز',
+  'attendance.decision.status.applied': 'ساري',
+  'attendance.decision.status.pendingHr': 'بانتظار الموارد البشرية',
+  'attendance.decision.status.rejected': 'مرفوض',
+  'attendance.decision.status.revoked': 'مُلغى',
+  'attendance.decision.type.markPresent': 'تسجيل حضور',
+  'attendance.decision.type.markAbsent': 'تسجيل غياب',
+  'attendance.decision.type.editTimes': 'تصحيح الأوقات',
+  'attendance.decision.type.revoke': 'إلغاء قرار',
   'attendance.dayStatus.present': 'حاضر',
   'attendance.dayStatus.checkedIn': 'حضر',
   'attendance.dayStatus.late': 'متأخر',
@@ -25088,6 +25163,9 @@ const ar: Record<string, string> = {
   'systemAdmin.users.audit.attendanceRegularization': 'طلب تسوية حضور',
   'systemAdmin.users.audit.attendanceRegularizationDecision': 'البت في تسوية حضور',
   'systemAdmin.users.audit.attendanceOvertimeApproval': 'اعتماد عمل إضافي',
+  'systemAdmin.users.audit.attendanceDecision': 'قرار بشأن يوم حضور',
+  'systemAdmin.users.audit.attendanceDecisionApproval': 'اعتماد قرار يوم حضور',
+  'systemAdmin.users.audit.attendanceDecisionRevoke': 'إلغاء قرار يوم حضور',
   'systemAdmin.users.audit.settingChanged': 'تغيير إعداد',
   'systemAdmin.users.audit.loginCreated': 'إنشاء حساب دخول',
   'systemAdmin.users.audit.personnelAction': 'إجراء وظيفي',
@@ -25741,6 +25819,8 @@ const ar: Record<string, string> = {
     'سماح التأخير بالدقائق',
   'systemAdmin.settings.keys.hr.attendance.defaultPattern.graceOutMinutes':
     'سماح الانصراف المبكر بالدقائق',
+  'systemAdmin.settings.keys.hr.attendance.decisionApprovalAfterDays':
+    'عدد الأيام التي يبتّ فيها المسؤول منفردًا',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
   'systemAdmin.settings.keys.hr.attendance.overtimeRequiresApproval': 'اشتراط اعتماد العمل الإضافي',
   'systemAdmin.settings.keys.hr.attendance.selfPunchEnabled':
@@ -25862,6 +25942,8 @@ const ar: Record<string, string> = {
     'عدد الدقائق بعد موعد البداية التي لا تُحتسب تأخيرًا. وإذا تجاوز الحضور هذه المدة، يُسجّل التأخير بكامل الدقائق المحسوبة من موعد البداية، لا من نهاية مدة السماح.',
   'systemAdmin.settings.descriptions.hr.attendance.defaultPattern.graceOutMinutes':
     'عدد الدقائق قبل موعد النهاية التي لا تُحتسب انصرافًا مبكرًا. والقيمة صفر تعني أن أي انصراف قبل موعد النهاية يُسجّل انصرافًا مبكرًا.',
+  'systemAdmin.settings.descriptions.hr.attendance.decisionApprovalAfterDays':
+    'المدة التي يجوز خلالها للمسؤول أن يبتّ في يوم حضور بسلطته وحده. وما كان أقدم من ذلك يُسجَّل القرار بشأنه ولا يسري إلا بعد اعتماد الموارد البشرية.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
     'الساعة، بتوقيت القاهرة وبنظام 24 ساعة، التي يُحتسب فيها حضور اليوم السابق لجميع الموظفين. مثلًا، القيمة 2 تعني بعد الساعة الثانية صباحًا بقليل.',
   'systemAdmin.settings.descriptions.hr.attendance.overtimeRequiresApproval':

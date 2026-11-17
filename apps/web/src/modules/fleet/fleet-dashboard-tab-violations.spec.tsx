@@ -640,6 +640,31 @@ describe('«الآن» — the company, the drivers and both, every year, owed',
 
 // ── 3 · «خلال الفترة»: the drivers’ fines by the fine’s day ─────────────────────────────────────
 
+describe('the bands at a tablet’s width — never one card to a full row', () => {
+  it('«الآن»: three in a row from 1280 px, two on a tablet with the total across under them', () => {
+    const cards = slice(DEFAULT, 'data-viol-cards', 'now', '>');
+    expect(cards).toContain('md:grid-cols-2');
+    expect(cards).toContain('xl:grid-cols-3');
+    expect(kpi(DEFAULT, 'total')).toContain('md:col-span-2 xl:col-span-1');
+    for (const id of ['company', 'drivers']) expect(kpi(DEFAULT, id), id).not.toContain('col-span');
+  });
+
+  it('«خلال الفترة»: the period card beside the types from 1024 px — halves until 1280 px (its one-line title needs them), one to two from there', () => {
+    const row = slice(DEFAULT, 'data-viol-period-row', 'true', '>');
+    expect(row).toContain('lg:grid-cols-2');
+    expect(row).toContain('xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]');
+    expect(row).not.toContain('lg:grid-cols-[');
+  });
+
+  it('a long driver name wraps below 1280 px and keeps one line above it — never cut with «…» on a tablet', () => {
+    const cell = fineRow(block(DEFAULT, 'list'), 'f3');
+    const open = cell.lastIndexOf('<td', cell.indexOf('data-viol-driver'));
+    const driverTd = cell.slice(open, cell.indexOf('>', open) + 1);
+    expect(driverTd).toContain('xl:truncate xl:whitespace-nowrap');
+    expect(driverTd).not.toMatch(/(?:^|[\s"])truncate(?:[\s"]|$)/u);
+  });
+});
+
 describe('«خلال الفترة» — the drivers’ fines of the period, by the fine’s day', () => {
   it('«مخالفات السائقين في الفترة»: sky, its count and amount open the period’s fines', () => {
     const card = kpi(DEFAULT, 'period');
@@ -839,6 +864,41 @@ describe('«مخالفات السائقين في الفترة» — the table, t
     expect(text(fineRow(list, 'f1'))).toContain(SPRINTER.ar);
   });
 
+  it('tags a car deleted since «محذوفة» beside its chip, as «كروت تحتاج متابعة» does', () => {
+    const deleted = fineRow(list, 'f3');
+    expect(deleted).toContain('data-viol-car-deleted="true"');
+    expect(text(deleted)).toContain(ar('fleet.dash.common.vehicleDeleted'));
+    for (const id of ['f1', 'f5']) {
+      expect(fineRow(list, id)).not.toContain('data-viol-car-deleted');
+      expect(text(fineRow(list, id))).not.toContain(ar('fleet.dash.common.vehicleDeleted'));
+    }
+  });
+
+  it('a fine no code names: a «—» chip, and «فتح» opens that day’s fines of the type under the set', () => {
+    const nameless = row({
+      violationId: 'f9',
+      code: null,
+      vehicleId: null,
+      typeName: null,
+      date: '2026-10-15',
+    });
+    const page: FleetDashboardPeriodDto = {
+      ...PAGE_BRANCH,
+      violationList: { rows: [nameless], more: 0 },
+    };
+    const html = block(tab({ now: NOW_BRANCH, page }), 'list');
+    const cell = fineRow(html, 'f9');
+    expect(cell).toContain('data-viol-car=""');
+    expect(text(cell)).toContain('—');
+    const open = target(hrefOf(cell, 'violationList.row'));
+    expect(open.path).toBe('/fleet/violations');
+    expect(open.params).not.toHaveProperty('dcodes');
+    expect(open.params).toMatchObject({ dfrom: '2026-10-15', dto: '2026-10-15', dtype: SPEED });
+    // The period's branch, as every other link of the table carries it.
+    expect(open.params.branch).toBe(target(hrefOf(html, 'violationList.all')).params.branch);
+    expect(open.params.branch).toBeDefined();
+  });
+
   it('names the driver as the register does: HR underlined, «مجهول» muted, the book’s name plain', () => {
     const hr = fineRow(list, 'f1');
     expect(hr).toContain('data-viol-driver="hr"');
@@ -889,9 +949,12 @@ describe('«مخالفات السائقين في الفترة» — the table, t
     expect(hrefs(all, 'violationList.all')).toHaveLength(1);
   });
 
-  it('folds into blocks under 768 px: no sideways scroll on a phone', () => {
-    expect(list).toContain('max-md:block');
-    expect(list).toContain('md:overflow-x-auto');
+  it('folds into blocks under 1024 px: no sideways scroll on a phone or a tablet', () => {
+    // A table from lg only — its 900 px of columns would scroll inside the card at 768–1023.
+    expect(list).toContain('max-lg:block');
+    expect(list).toContain('lg:overflow-x-auto');
+    expect(list).toContain('lg:min-w-[900px] lg:table-fixed');
+    expect(list).not.toMatch(/(?:^|[\s"])(?:max-)?md:/u);
   });
 
   it('closes the period with the approved notes, the company sentence among them', () => {

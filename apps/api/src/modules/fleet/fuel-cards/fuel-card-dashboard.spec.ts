@@ -8,8 +8,10 @@
 //     included, by their last branch) ∩ the typed codes; a card on no car is in no branch, so it
 //     drops out under a branch and is counted in the company view only;
 //   · the summary's per-company cards and the no-car cards / balance come from the same `$group`;
-//   · «شُحن اليوم» under ANY filter counts the charges of the matched LIVE cards only; with none,
-//     every charge of the day as before; `charged: false` never asks it;
+//   · «شُحن اليوم» follows WHICH cards are asked (company, cars, branch, number) — never the state
+//     filter (a request waiting, a balance below a line) — and counts their charges, a card deleted
+//     since included (the company view counts it); with none, every charge of the day as before;
+//     `charged: false` never asks it;
 //   · «أقربها» = the earliest expiry in the caller's window;
 //   · «كروت تحتاج متابعة» = every flagged card with its states (critical ⊕ low), most urgent first,
 //     then the car's code, the cards on no car last; ≤ limit rows, `total` every flagged card; a
@@ -240,9 +242,10 @@ describe('«شُحن اليوم» follows the same cards', () => {
     expect((await fleetFuelCardService.summary({}, NOW)).chargedTodayAmount).toBe(357);
   });
 
-  it('under a branch: the charges of the branch’s live cards only', async () => {
+  it('under a branch: the charges of the branch’s cards only — a card deleted since too', async () => {
+    // 100 on «critical» + 7 on the card deleted since (on A, B1): the company view's 357 counts it.
     expect((await fleetFuelCardService.summary({ branchIds: [B1] }, NOW)).chargedTodayAmount).toBe(
-      100,
+      107,
     );
     expect((await fleetFuelCardService.summary({ branchIds: [B2] }, NOW)).chargedTodayAmount).toBe(
       200,
@@ -256,6 +259,26 @@ describe('«شُحن اليوم» follows the same cards', () => {
     expect(
       (await fleetFuelCardService.summary({ vehicleCodes: ['152'] }, NOW)).chargedTodayAmount,
     ).toBe(200);
+  });
+
+  it('never by the screen’s STATE filter: a request approved or a card topped up is still today’s charge', async () => {
+    // «طلبات بانتظار الاعتماد» (requested) and «رصيد منخفض» (below the yellow line): the cards
+    // shown narrow, the day's charges do not — only which cards (here: none, or B2's).
+    expect((await fleetFuelCardService.summary({ requested: true }, NOW)).chargedTodayAmount).toBe(
+      357,
+    );
+    expect(
+      (await fleetFuelCardService.summary({ balanceBelow: 300 }, NOW)).chargedTodayAmount,
+    ).toBe(357);
+    expect((await fleetFuelCardService.summary({ ...WINDOW }, NOW)).chargedTodayAmount).toBe(357);
+    const b2Requested = await fleetFuelCardService.summary(
+      { branchIds: [B2], requested: true },
+      NOW,
+    );
+    expect(b2Requested).toMatchObject({ cardCount: 1, chargedTodayAmount: 200 });
+    const b1Low = await fleetFuelCardService.summary({ branchIds: [B1], balanceBelow: 300 }, NOW);
+    // The cards: critical (50) and expiredCritical (20); the charges: every B1 card's.
+    expect(b1Low).toMatchObject({ cardCount: 2, chargedTodayAmount: 107 });
   });
 
   it('`charged: false` answers the counts and never asks the charges', async () => {
@@ -354,9 +377,9 @@ describe('attentionList — «كروت تحتاج متابعة»', () => {
 });
 
 describe('cardIdsOf — a branch’s cards, for the sheet', () => {
-  it('the live cards on the branch’s cars', async () => {
+  it('every card on the branch’s cars — one deleted since too (its sheet lines are history)', async () => {
     expect((await fleetFuelCardService.cardIdsOf({ branchIds: [B1] })).sort()).toEqual(
-      [ID(31), ID(32), ID(36), ID(38)].sort(),
+      [ID(31), ID(32), ID(36), ID(37), ID(38)].sort(),
     );
     expect(await fleetFuelCardService.cardIdsOf({ branchIds: [B2] })).toEqual([ID(33)]);
   });

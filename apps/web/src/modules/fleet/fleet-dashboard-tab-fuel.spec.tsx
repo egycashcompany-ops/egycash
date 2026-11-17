@@ -586,7 +586,9 @@ describe('«الوقود والمصروفات» — the heading, the two bands a
       'متوقع',
       'ج.م/كم',
       'لتر لكل 100',
+      'L / 100',
       'تصدير',
+      'CSV',
       'مراجعة مالية',
       'شحن عاجل',
       'إصدار أمر فحص',
@@ -867,7 +869,7 @@ describe('«كروت تحتاج متابعة» — the cards with a state now, t
     expect(spare).toContain('data-fuel-car="none"');
     expect(text(spare)).toContain('اسبير 2');
     expect(text(spare)).toContain(ar('fleet.fuelCards.noCar'));
-    expect(text(cardRowOf(table, 'k6'))).toContain(w('cards.deleted'));
+    expect(text(cardRowOf(table, 'k6'))).toContain(ar('fleet.dash.common.vehicleDeleted'));
   });
 
   it('uses the register’s state words and colours (C3) and «—» for what is not known', () => {
@@ -955,10 +957,15 @@ describe('«كروت تحتاج متابعة» — the cards with a state now, t
     expect(block(html, 'cards')).not.toContain('<table');
   });
 
-  it('folds into blocks under 768 px: no sideways scroll on a phone', () => {
-    const table = block(DEFAULT, 'cards');
-    expect(table).toContain('max-md:block');
-    expect(table).toContain('md:min-w-[900px]');
+  it('folds into blocks under 1024 px: no sideways scroll on a phone or a tablet', () => {
+    // Both full-width tables are tables from lg only — 900 px of columns would scroll at 768–1023.
+    for (const name of ['cards', 'dealer-table']) {
+      const table = block(DEFAULT, name);
+      expect(table, name).toContain('max-lg:block');
+      expect(table, name).toContain('lg:overflow-x-auto');
+      expect(table, name).toContain('lg:min-w-[900px] lg:table-fixed');
+      expect(table, name).not.toMatch(/(?:^|[\s"])(?:max-)?md:/u);
+    }
   });
 });
 
@@ -993,6 +1000,10 @@ describe('«خلال الفترة» — the receipts beside the dealership, neve
     const html = tab({ page: { ...PAGE, opex: { ...OPEX, unpricedFuel: 4 } } });
     const line = slice(opexCard(html), 'data-fuel-unpriced', '4', '</p>');
     expect(text(line)).toContain(dual('receipt', 4));
+    // It names the FUEL receipts — only they carry a litre price — never «منها» after the
+    // period's receipts count, which would read as 4 of all of them.
+    expect(text(line)).toContain('إيصالات الوقود');
+    expect(text(line)).not.toMatch(/^\s*منها/u);
     expect(line).not.toContain('<a ');
   });
 
@@ -1224,6 +1235,45 @@ describe('«فواتير التوكيل في الفترة» — the dealership s
     expect(hrefs(dealerRowOf(table, 'd5'), 'dealershipList.vehicle')).toEqual([]);
     expect(hrefs(dealerRowOf(table, 'd6'), 'dealershipList.vehicle')).toEqual([]);
     expect(text(dealerRowOf(table, 'd6'))).toContain('318 ق');
+  });
+
+  it('tags a car deleted since «محذوفة» beside its chip; a live car and an old-book code are not', () => {
+    const table = block(DEFAULT, 'dealer-table');
+    const deleted = dealerRowOf(table, 'd5');
+    expect(deleted).toContain('data-fuel-dealer-car-deleted="true"');
+    expect(text(deleted)).toContain(ar('fleet.dash.common.vehicleDeleted'));
+    for (const id of ['d2', 'd6']) {
+      expect(dealerRowOf(table, id)).not.toContain('data-fuel-dealer-car-deleted');
+      expect(text(dealerRowOf(table, id))).not.toContain(ar('fleet.dash.common.vehicleDeleted'));
+    }
+  });
+
+  it('a row no code names: a «—» chip, and «فتح» opens that exit day’s rows of the work under the set', () => {
+    const nameless = dealerRow({
+      id: 'd9',
+      code: null,
+      vehicleId: null,
+      typeName: null,
+      date: '2026-10-27',
+      workKind: 'maintenance',
+      workTypeLabel: 'صيانة',
+    });
+    const html = tab({
+      now: NOW_BRANCH,
+      page: { ...PAGE_BRANCH, dealershipList: { rows: [nameless], more: 0 } },
+    });
+    const row = dealerRowOf(block(html, 'dealer-table'), 'd9');
+    expect(row).toContain('data-fuel-dealer-car=""');
+    expect(text(row)).toContain('—');
+    const open = target(hrefOf(row, 'dealershipList.row'));
+    expect(open.path).toBe('/fleet/dealership');
+    expect(open.params).not.toHaveProperty('vehicleCodes');
+    expect(open.params).toMatchObject({
+      from: '2026-10-27',
+      to: '2026-10-27',
+      work: 'maintenance',
+    });
+    expect(open.params.branch).toBeDefined();
   });
 
   it('offers the rest on the dealership screen only when the server left some out', () => {

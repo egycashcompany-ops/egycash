@@ -230,6 +230,18 @@ class FleetFuelCardService {
   private async filterFor(
     query: FleetFuelCardSummaryQuery,
   ): Promise<FilterQuery<FleetFuelCardDoc>> {
+    return (await this.filtersFor(query)).cards;
+  }
+
+  /**
+   * `filterFor`'s filter (`cards`) and beside it its CARD-IDENTITY part (`identity`): which cards —
+   * their car (codes, branch), company and number — never their state (an expiry window, a request
+   * waiting, a balance below a line). The car set is resolved once for both.
+   */
+  private async filtersFor(query: FleetFuelCardSummaryQuery): Promise<{
+    cards: FilterQuery<FleetFuelCardDoc>;
+    identity: FilterQuery<FleetFuelCardDoc>;
+  }> {
     const [byCode, byBranch] = await Promise.all([
       query.vehicleCodes === undefined
         ? undefined
@@ -238,15 +250,21 @@ class FleetFuelCardService {
         ? undefined
         : resolveVehicleFilterIds({ branchIds: query.branchIds }),
     ]);
-    return fleetFuelCardRepository.cardFilter({
+    const identity = {
       vehicleIds: intersectVehicleIds(byCode, byBranch),
       company: query.company,
       number: query.number,
-      expiresBefore: query.expiresBefore,
-      expiresFrom: query.expiresFrom,
-      requested: query.requested,
-      balanceBelow: query.balanceBelow,
-    });
+    };
+    return {
+      cards: fleetFuelCardRepository.cardFilter({
+        ...identity,
+        expiresBefore: query.expiresBefore,
+        expiresFrom: query.expiresFrom,
+        requested: query.requested,
+        balanceBelow: query.balanceBelow,
+      }),
+      identity: fleetFuelCardRepository.cardFilter(identity),
+    };
   }
 
   async list(
@@ -274,12 +292,22 @@ class FleetFuelCardService {
     /** `charged: false` — the caller reads the counts only; «شُحن اليوم» is not asked (0). */
     opts: { charged?: boolean } = {},
   ): Promise<FleetFuelCardTotalsDto> {
-    return fleetFuelCardRepository.totals(await this.filterFor(query), now, opts);
+    const { cards, identity } = await this.filtersFor(query);
+    // «شُحن اليوم» follows WHICH cards are shown (company, cars, branch, number) — never the state
+    // filter: a request is cleared once its charge is approved, and a charged card is back above
+    // the yellow line, so «طلبات بانتظار الاعتماد» / «رصيد منخفض» would leave today's charges out.
+    return fleetFuelCardRepository.totals(cards, now, { ...opts, chargedOver: identity });
   }
 
-  /** The live cards a query names, by id — e.g. a branch's cards, by their current car. */
+  /**
+   * The cards a query names by WHO they are (its card-identity part), by id — deleted cards too: a
+   * stored sheet's lines and today's charges stay history when their card goes (e.g. one replaced
+   * by a number repair), and the company view counts them, so a branch counts them by the card's
+   * car as well.
+   */
   async cardIdsOf(query: FleetFuelCardSummaryQuery): Promise<string[]> {
-    return (await fleetFuelCardRepository.idsOf(await this.filterFor(query))).map(String);
+    const { identity } = await this.filtersFor(query);
+    return (await fleetFuelCardRepository.idsOfAny(identity)).map(String);
   }
 
   /**

@@ -315,7 +315,7 @@ class FleetDealershipService {
       return {
         id: String(doc._id),
         vehicleId,
-        code: car?.code ?? doc.vehicleCode ?? '—',
+        code: car?.code ?? doc.vehicleCode ?? null,
         typeName: car?.typeId == null ? null : (makes.get(String(car.typeId)) ?? null),
         vehicleDeleted: vehicleId !== null && (car === undefined || car.isDeleted === true),
         // The exit day — the day the period counts the row by.

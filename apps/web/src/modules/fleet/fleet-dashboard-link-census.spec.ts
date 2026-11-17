@@ -374,6 +374,7 @@ const built = (): Anchor[] => {
       P.violations('violations.owed', { dset: 'false' }),
       P.violations('violations.byType', { dtype: 'vt1' }),
       P.violationRow({ code: '133', date: '2026-10-12', violationTypeId: 'vt1' }),
+      P.violationRow({ code: null, date: '2026-10-12', violationTypeId: 'vt1' }),
       P.opexKind('opex.card', 'fuel', 'card'),
       P.opexKind('opex.fuelCustody', 'fuel', 'custody'),
       P.opexKind('opex.tyres', 'tyres'),
@@ -381,6 +382,7 @@ const built = (): Anchor[] => {
       P.opexKind('opex.maintenance', 'maintenance'),
       P.dealershipRow({ code: '221', date: '2026-10-29', workKind: 'maintenance' }),
       P.dealershipRow({ code: '263', date: '2026-10-31', workKind: 'repair' }),
+      P.dealershipRow({ code: null, date: '2026-10-31', workKind: 'repair' }),
     );
   }
   return all.flatMap(asAnchor);

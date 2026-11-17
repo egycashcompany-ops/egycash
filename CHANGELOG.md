@@ -2054,8 +2054,11 @@ its entry here in the same PR.
   the cards on no car when there are some; «مطابقة شيت شركة الوقود», one half per company — the last
   read sheet's day, the cards whose balance differed at the read, those still undecided and their net
   as at the read (plain figures; «لم يُقرأ شيت لهذه الشركة بعد.» and «لم يختلف رصيد أي كارت عند
-  القراءة» when so; it refreshes on a decision, every 5 minutes or with «تحديث» — a freshly read
-  sheet alone does not move it), its foot «مطابقة أرصدة الكروت»; and «كروت تحتاج متابعة» across the
+  القراءة» when so, «قُرئ يوم …» for a sheet read before its day was recorded, and a net of 0.00
+  written plain, with no «أقل/أكثر»; under a branch, the lines of the branch's cards — a card
+  deleted since the read included, as the company view counts it; it refreshes on a decision,
+  every 5 minutes or with «تحديث» — a freshly read sheet alone does not move it), its foot
+  «مطابقة أرصدة الكروت»; and «كروت تحتاج متابعة» across the
   page (at most 8 in urgency order — expired, below red, a request waiting, low, expiring — with the
   register's state words, «تُعرض هنا أول 8 كروت…» only when there are more, and «فتح» opening the
   cards list on the card's car and company for an expiry, the charging screen on them for a balance
@@ -2063,25 +2066,34 @@ its entry here in the same PR.
   which shows «محذوفة» and no link to its file). «خلال الفترة» — «مصروف التشغيل» (the receipts: the
   total, «الوقود كله» with about N litres at each receipt's day price, a line for fuel receipts with
   no litre price when there are some) beside «فواتير التوكيل» (the amount, «بانتظار تسجيل القيمة»;
-  no priced-from-invoices meter), the note that the two are never summed, «مصروف التشغيل حسب النوع»
-  (card fuel, custody fuel, tyres, wash, maintenance — each opening its receipts — with its share;
-  card fuel with no receipt is outside it, and the custody kinds are the custody spend «العهدة» will
-  show, never to be added to it), «مصروف التشغيل يومًا بيوم» by the receipt's paper day (Fridays
-  dimmed by the calendar, an empty day as an empty slot; «شهرًا بشهر» for «هذه السنة» or more than
-  a month) and «فواتير التوكيل في الفترة» (at most 6 in the dealership screen's order, so a visit's
+  no priced-from-invoices meter; each card says «البيانات متاحة من …», as «أرقام الفترة» does, when
+  the range starts before its source's first record), the note that the two are never summed,
+  «مصروف التشغيل حسب النوع» (card fuel, custody fuel, tyres, wash, maintenance — each opening its
+  receipts — with its share; card fuel with no receipt is outside it, and the custody kinds are the
+  custody spend «العهدة» will show, never to be added to it), «مصروف التشغيل يومًا بيوم» by the
+  receipt's paper day (Fridays dimmed by the calendar, an empty day as an empty slot; «شهرًا بشهر»
+  for «هذه السنة» or more than a month) and «فواتير التوكيل في الفترة» (at most 6 in the
+  dealership screen's order, so a visit's
   «إصلاح» may stand above its «صيانة»; «فتح» opens that car's rows of that work on that exit day;
-  «عرض الباقي (N) في شاشة التوكيل» only when there are more). Each part is under its own gate: a
-  reader of the fines alone now sends R2 too (its period part), a reader of the receipts or of the
-  dealership alone sees the fuel tab with that part only, and a reader of the fuel cards alone sees
-  its expiry card only. Tables become stacked blocks on a phone with no sideways scroll, and the day
-  chart opens there on its latest days. Bars and columns are in the site colour; status colours stay.
+  «عرض الباقي (N) في شاشة التوكيل» only when there are more). In both period tables a car deleted
+  since shows «محذوفة» and no link to its file, and a row no code names shows «—» and opens that
+  day (and type, or work) under the period's set. Each part is under its own gate: a reader of the
+  fines alone now sends R2 too (its period part), a reader of the receipts or of the dealership
+  alone sees the fuel tab with that part only (the heading's line then names that part alone), and
+  a reader of the fuel cards alone sees its expiry card only. The three tables become stacked
+  blocks below 1024 px (a phone or a tablet) with no sideways scroll, the fines' «الآن» cards sit
+  two to a row on a tablet with the total under them (and the period card beside the types from
+  1024 px), a long driver name wraps there rather than being cut, and the day chart opens on a
+  phone on its latest days. Bars and columns are in the site colour; status colours stay.
   The fuel cards now follow the branch of each card's CURRENT car (a car deleted since by its last
   branch; a card on no car — «سفر»، «اسبير» — in the company view alone): the balances, requests,
   low cards, «شُحن اليوم» and the expiring cards on the new tab, the overview's «أرصدة كروت الوقود»
   card and its three fuel lines, the fuel parts of «ملخصات» and the cards panel of «التراخيص» are
   now the branch's, drop their «الشركة كلها» tag, and their links carry the branch; «كروت الوقود» and
   «شحن الكروت» read, remember and show it (removable), and the charging screen's «شُحن اليوم» now
-  follows its own company, car and branch filters (it was always the whole company).
+  follows its own company, car and branch filters (it was always the whole company) — never its
+  state filter («طلبات بانتظار الاعتماد» / «رصيد منخفض» still show the day's charges), and a card
+  deleted since keeps its charge of the day under its car's branch.
   `GET /fleet/fuel-cards` and `/summary` take `branchIds`, and the summary gains per-company and
   no-car counts; `/fleet/receipts/summary` gains `fuelCustodyTotal` / `fuelUnpriced`. On the
   overview, «مخالفات قائمة N مخالفة» now opens the fines tab (it opened the register), «مصروف
@@ -2090,7 +2102,8 @@ its entry here in the same PR.
   `bookOnly`, `fuelCards.nearest`, `fuelCharging.companyCards` / `unassigned`, `fuelCardList`,
   `fuelSheets`; R2 `violations`, `violationList`, `opex.fuelCustody` / `tyres` / `wash` /
   `maintenance` / `litres` / `unpricedFuel`, `opexSeries`, `dealershipList` (fields are only added).
-  A fine's tick or edit now refreshes the period part too. New index `ix_kind_date` on
+  A fine's tick or edit now refreshes the period part too, a closed range («الشهر الماضي»)
+  included — its fines are «قائمة» or «محصَّلة» as of now. New index `ix_kind_date` on
   `fleet_violations`. «أرقام الفترة»، «ملخصات» and «التراخيص» are otherwise unchanged and show the
   same figures as the new tabs where they share them. No new permission key. No migration; data
   unchanged.

@@ -12,7 +12,7 @@
 //   · «مصروف التشغيل يومًا بيوم» (tab-fuel-chart.tsx, C12);
 //   · «فواتير التوكيل في الفترة», the page's full width: at most FLEET_DASHBOARD_DEALERSHIP_ROWS rows
 //     in the dealership screen's own order (its first page), the one pending phrase (C4), «فتح» per
-//     row, «عرض الباقي (N)» only when rows are left; a table from 768 px, each row a block below.
+//     row, «عرض الباقي (N)» only when rows are left; a table from 1024 px, each row a block below.
 //
 // Each part shows under its own gate: a receipts-only reader gets the receipts part, a
 // dealership-only reader the dealership part. NOTHING IS COUNTED HERE: every figure is a field R2
@@ -335,7 +335,8 @@ const OpexBars = ({ o, links }: { o: Opex; links: PeriodLinks }): JSX.Element =>
 const CELL = 'px-3 py-3.5 align-middle first:ps-5 last:pe-5';
 
 /** The car and its make; the chip opens the car's record for a reader of the registry, and only
- *  while the car is in it (an old-book code or a deleted car has no record to open). */
+ *  while the car is in it (an old-book code or a deleted car has no record to open). A car deleted
+ *  since says so («محذوفة»), as «كروت تحتاج متابعة» does. */
 const DealerCar = ({
   row,
   links,
@@ -345,14 +346,22 @@ const DealerCar = ({
   links: PeriodLinks;
   canVehicle: boolean;
 }): JSX.Element => {
+  const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const record =
     canVehicle && row.vehicleId !== null && !row.vehicleDeleted
       ? links.vehicle(row.vehicleId, 'dealershipList.vehicle')
       : null;
   return (
-    <div data-fuel-dealer-car={row.code} className="flex flex-col items-start gap-1">
-      <CarChip code={row.code} link={record} />
+    <div
+      data-fuel-dealer-car={row.code ?? ''}
+      {...(row.vehicleDeleted ? { 'data-fuel-dealer-car-deleted': 'true' } : {})}
+      className="flex flex-col items-start gap-1"
+    >
+      <span className="flex items-center gap-1.5">
+        <CarChip code={row.code ?? '—'} link={record} />
+        {row.vehicleDeleted && <Tag tone="slate">{t('fleet.dash.common.vehicleDeleted')}</Tag>}
+      </span>
       {row.typeName !== null && (
         <span className={cn('whitespace-nowrap text-xs font-semibold', MUTED)}>
           {localized(row.typeName, locale)}
@@ -418,7 +427,7 @@ const DealerRow = ({
         <DealerValue row={row} />
       </td>
       <td className={cn(CELL, FOLD.cell, FOLD.line, 'text-end')}>
-        <Btn link={links.dealershipRow(row)} className="h-9 px-4 max-md:w-full">
+        <Btn link={links.dealershipRow(row)} className="h-9 px-4 max-lg:w-full">
           {w('open')}
         </Btn>
       </td>
@@ -461,7 +470,7 @@ const DealerTable = ({
         <div className={FOLD.scroll}>
           <table
             className={cn(
-              'w-full border-collapse text-[13px] md:min-w-[900px] md:table-fixed',
+              'w-full border-collapse text-[13px] lg:min-w-[900px] lg:table-fixed',
               FOLD.table,
             )}
           >

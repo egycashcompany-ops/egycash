@@ -1574,8 +1574,11 @@ export interface FleetDashboardPeriodViolationRowDto {
   violationId: string;
   /** `null` = an old-book row on a car the registry never had (known by its code). */
   vehicleId: string | null;
-  /** The car's registry code, else the row's own (old-book) code. */
-  code: string;
+  /**
+   * The car's registry code, else the row's own (old-book) code; `null` when neither names it (a
+   * car id with no registry record left, a carless row with no code) — «فتح» then opens the day.
+   */
+  code: string | null;
   /** The car's make; `null` for an old-book code (or a car with no type name). */
   typeName: LocalizedString | null;
   /**
@@ -1616,8 +1619,11 @@ export interface FleetDashboardPeriodDealershipRowDto {
   id: string;
   /** `null` = an old-book row on a car the registry never had (known by its code). */
   vehicleId: string | null;
-  /** The car's registry code, else the row's own (old-book) code. */
-  code: string;
+  /**
+   * The car's registry code, else the row's own (old-book) code; `null` when neither names it —
+   * «فتح» then opens that exit day's rows of the work.
+   */
+  code: string | null;
   /** The car's make; `null` for an old-book code (or a car with no type name). */
   typeName: LocalizedString | null;
   /** The registry car was DELETED since (soft delete): no record link. `false` for an old-book row. */

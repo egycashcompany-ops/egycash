@@ -34,6 +34,7 @@ import { createRealtimeInvalidator } from '../../platform/realtime/invalidator';
 import {
   THROTTLED_KEY_PREFIXES,
   isStaleOnlyKey,
+  keysForTopic,
 } from '../../platform/realtime/invalidation-registry';
 import { ar } from './fleet-dashboard-fixtures';
 
@@ -442,6 +443,40 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     reads[1]?.answer(2);
     await settle();
     expect(qc.getQueryData(fleetDashboardKeys.now)).toBe(2);
+    invalidator.cancel();
+    stop();
+  });
+
+  it('a fine’s signal re-reads «الشهر الماضي» on screen (its fines are «قائمة»/«محصَّلة» as of now); an accident’s does not', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let reads = 0;
+    const observer = new QueryObserver(qc, {
+      queryKey: fleetDashboardKeys.period('past', { preset: 'lastMonth' }),
+      queryFn: () => {
+        reads += 1;
+        return Promise.resolve(reads);
+      },
+    });
+    const stop = observer.subscribe(() => undefined);
+    const settle = async (ms = 0): Promise<void> => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    };
+    await settle();
+    expect(reads).toBe(1);
+    const invalidator = createRealtimeInvalidator(qc, {
+      isHidden: () => false,
+      throttled: THROTTLED_KEY_PREFIXES,
+      isStaleOnly: isStaleOnlyKey,
+      throttleMs: 20,
+    });
+    // An accident (or an odometer reading) of a closed range is history: nothing moves.
+    invalidator.invalidate(keysForTopic('fleet.accident'));
+    await settle();
+    expect(reads).toBe(1);
+    // A tick on a fine of last month: the period read is re-read at once (through the throttle).
+    invalidator.invalidate(keysForTopic('fleet.violation'));
+    await settle();
+    expect(reads).toBe(2);
     invalidator.cancel();
     stop();
   });

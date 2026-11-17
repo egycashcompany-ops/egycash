@@ -876,7 +876,8 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
   }),
 
   // «مطابقة شيت شركة الوقود» — each company's last read sheet as it stood at its read; under a
-  // branch, the lines of the branch's cards (by their current car).
+  // branch, the lines of the branch's cards (by their current car) — a card deleted since too, as
+  // the company view counts its lines.
   fuelSheets: section('fuelSheets', 'company+set', async (d) =>
     fleetFuelReconcileService.lastSheets(
       d.branchIds === null

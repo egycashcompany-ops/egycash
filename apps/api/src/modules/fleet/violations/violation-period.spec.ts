@@ -397,6 +397,36 @@ describe('dashboardRows — the register’s first page of the period', () => {
     expect(out.rows.some((r) => r.violationId === idOf(W.statement))).toBe(false);
   });
 
+  it('a row no code names answers `code: null` (never a «—» the link would send as a code)', async () => {
+    const JUNE = {
+      from: new Date('2026-06-01T00:00:00.000Z'),
+      to: new Date('2026-06-30T00:00:00.000Z'),
+    };
+    // A car id the registry holds no record of, and a carless row the book gave no code.
+    const gone = row({ vehicleId: oid(99), date: new Date('2026-06-12T00:00:00.000Z') });
+    const bare = row({ vehicleId: null, date: new Date('2026-06-11T00:00:00.000Z') });
+    await FleetViolationModel.collection.insertMany([gone, bare]);
+    try {
+      const out = await fleetViolationService.dashboardRows(JUNE, 6);
+      const byId = new Map(out.rows.map((r) => [r.violationId, r]));
+      expect(byId.get(idOf(gone))).toMatchObject({
+        vehicleId: ID(99),
+        code: null,
+        typeName: null,
+        vehicleDeleted: true,
+      });
+      expect(byId.get(idOf(bare))).toMatchObject({
+        vehicleId: null,
+        code: null,
+        vehicleDeleted: false,
+      });
+    } finally {
+      await FleetViolationModel.collection.deleteMany({
+        _id: { $in: [gone['_id'], bare['_id']] as Types.ObjectId[] },
+      });
+    }
+  });
+
   it('a set drops the book’s carless rows from the list too', async () => {
     const out = await fleetViolationService.dashboardRows({ ...OCT, branchIds: [ID(72)] }, 6);
     expect(idsOf(out.rows).sort()).toEqual([W.carried, W.unspecC, W.unspecC2].map(idOf).sort());

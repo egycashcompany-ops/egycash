@@ -25,8 +25,8 @@
 // link names the period by the FINE's day on the drivers' half (`dfrom`/`dto`) and its cars as that
 // half reads them (`dcodes`) — never the page's `from`/`to`/`vehicleCodes`, which the register's
 // halves do not read. A row's «فتح» opens the register on its car, its day and its type (that fine
-// and any sharing the three). The fines are a table from 768 px, each row a block below it (no
-// sideways scroll on a phone). Bars are the brand's (DECISIONS §5); «قائمة» is amber, «محصَّلة»
+// and any sharing the three). The fines are a table from 1024 px, each row a block below it (no
+// sideways scroll on a phone or a tablet). Bars are the brand's (DECISIONS §5); «قائمة» is amber, «محصَّلة»
 // emerald (the register's colours); nothing on this tab is red.
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -221,6 +221,7 @@ const NowCard = ({
   link,
   parts,
   foot,
+  className,
 }: {
   id: string;
   tone: Tone;
@@ -230,8 +231,10 @@ const NowCard = ({
   link: DashLink;
   parts?: ReactNode;
   foot: ReactNode;
+  /** Where the card sits in the row (the total spans the tablet row). */
+  className?: string;
 }): JSX.Element => (
-  <Card accent={tone} data-viol-kpi={id} data-viol-tone={tone}>
+  <Card accent={tone} data-viol-kpi={id} data-viol-tone={tone} className={className}>
     <div className="flex flex-1 flex-col px-5 pb-4 pt-5">
       <div className="flex items-start justify-between gap-3">
         <h3 className={cn(TITLE, 'flex items-center gap-2 whitespace-nowrap pt-1')}>
@@ -334,7 +337,9 @@ const DriverParts = ({ open, links }: { open: Open; links: NowLinks }): JSX.Elem
 const NowCards = ({ open, links }: { open: Open; links: NowLinks }): JSX.Element => {
   const w = useWords();
   return (
-    <div data-viol-cards="now" className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+    // Three in a row from 1280 px (as approved); two on a tablet, the total across under them —
+    // never one card to a row on a wide screen.
+    <div data-viol-cards="now" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       <NowCard
         id="company"
         tone="violet"
@@ -370,6 +375,7 @@ const NowCards = ({ open, links }: { open: Open; links: NowLinks }): JSX.Element
         title={w('total.title')}
         sum={open.total}
         link={links.violationsOpen('violationsOpen.total')}
+        className="md:col-span-2 xl:col-span-1"
         foot={
           <FootLink link={links.violationsOpen('violationsOpen.totalAll')}>
             {w('total.all')}
@@ -637,23 +643,24 @@ const TypesCard = ({ v, links }: { v: Violations; links: PeriodLinks }): JSX.Ele
   );
 };
 
-// ── The table: a table from 768 px, each row a block under it (no sideways scroll on a phone) ──
+// ── The table: a table from 1024 px, each row a block under it (no sideways scroll below) ──
 
 const CELL = 'px-3 py-3.5 align-middle first:ps-5 last:pe-5';
 
-/** How the table folds into blocks under 768 px: the row's first line holds the car at the start
- *  and «فتح» at the end, every other cell a line of its own with its column's name. */
+/** How the table folds into blocks under 1024 px (its 900 px of columns would scroll a tablet):
+ *  the row's first line holds the car at the start and «فتح» at the end, every other cell a line
+ *  of its own with its column's name. */
 const F = {
-  table: 'max-md:block',
-  head: 'max-md:hidden',
-  body: 'max-md:block max-md:border-t',
-  row: 'max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-center max-md:gap-x-3 max-md:gap-y-2 max-md:px-4 max-md:py-3.5',
-  cell: 'max-md:block max-md:p-0 max-md:first:ps-0 max-md:last:pe-0',
-  car: 'max-md:col-start-1 max-md:row-start-1',
-  open: 'max-md:col-start-2 max-md:row-start-1',
-  line: 'max-md:col-span-2',
-  label: 'md:hidden',
-  scroll: 'md:overflow-x-auto',
+  table: 'max-lg:block',
+  head: 'max-lg:hidden',
+  body: 'max-lg:block max-lg:border-t',
+  row: 'max-lg:grid max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:items-center max-lg:gap-x-3 max-lg:gap-y-2 max-lg:px-4 max-lg:py-3.5',
+  cell: 'max-lg:block max-lg:p-0 max-lg:first:ps-0 max-lg:last:pe-0',
+  car: 'max-lg:col-start-1 max-lg:row-start-1',
+  open: 'max-lg:col-start-2 max-lg:row-start-1',
+  line: 'max-lg:col-span-2',
+  label: 'lg:hidden',
+  scroll: 'lg:overflow-x-auto',
 } as const;
 
 /** A column's name beside its value, while the row is a block (the heading says it after). */
@@ -662,7 +669,8 @@ const PhoneLabel = ({ children }: { children: ReactNode }): JSX.Element => (
 );
 
 /** The car and its make; the chip opens the car's record for a reader of the registry, and only
- *  while the car is in it (an old-book code or a deleted car has no record to open). */
+ *  while the car is in it (an old-book code or a deleted car has no record to open). A car deleted
+ *  since says so («محذوفة»), as «كروت تحتاج متابعة» and the registers do. */
 const CarCell = ({
   row,
   links,
@@ -672,14 +680,22 @@ const CarCell = ({
   links: PeriodLinks;
   canVehicle: boolean;
 }): JSX.Element => {
+  const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const record =
     canVehicle && row.vehicleId !== null && !row.vehicleDeleted
       ? links.vehicle(row.vehicleId, 'violationList.vehicle')
       : null;
   return (
-    <div data-viol-car={row.code} className="flex flex-col items-start gap-1">
-      <CarChip code={row.code} link={record} />
+    <div
+      data-viol-car={row.code ?? ''}
+      {...(row.vehicleDeleted ? { 'data-viol-car-deleted': 'true' } : {})}
+      className="flex flex-col items-start gap-1"
+    >
+      <span className="flex items-center gap-1.5">
+        <CarChip code={row.code ?? '—'} link={record} />
+        {row.vehicleDeleted && <Tag tone="slate">{t('fleet.dash.common.vehicleDeleted')}</Tag>}
+      </span>
       {row.typeName !== null && (
         <span className={cn('whitespace-nowrap text-xs font-semibold', MUTED)}>
           {localized(row.typeName, locale)}
@@ -764,7 +780,9 @@ const FineRow = ({
         <PhoneLabel>{w('col.date')}</PhoneLabel>
         <N className="font-semibold text-slate-700 dark:text-slate-200">{slashDay(row.date)}</N>
       </td>
-      <td className={cn(CELL, F.cell, F.line, 'truncate whitespace-nowrap')}>
+      {/* One line from 1280 px (as approved); below it the driver's column is narrow, so a long
+          name wraps rather than losing its end to «…». */}
+      <td className={cn(CELL, F.cell, F.line, 'xl:truncate xl:whitespace-nowrap')}>
         <PhoneLabel>{w('col.driver')}</PhoneLabel>
         <DriverCell row={row} />
       </td>
@@ -833,7 +851,7 @@ const FinesTable = ({
         <div className={F.scroll}>
           <table
             className={cn(
-              'w-full border-collapse text-[13px] md:min-w-[900px] md:table-fixed',
+              'w-full border-collapse text-[13px] lg:min-w-[900px] lg:table-fixed',
               F.table,
             )}
           >
@@ -884,7 +902,7 @@ const FinesTable = ({
 /** The period's figures on their way: the row of two and the table in grey. */
 const PeriodSkeleton = (): JSX.Element => (
   <div className="space-y-5">
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
       <Skeleton className="h-64 rounded-2xl" />
       <Skeleton className="h-64 rounded-2xl" />
     </div>
@@ -912,9 +930,11 @@ const PeriodBody = ({
     <>
       {violationsState === 'failed' && <SectionError section="violations" onRetry={onRetry} />}
       {violations !== null && (
+        // Beside the types from 1024 px: halves to 1280 px (a third would cut into the card's
+        // one-line title), then one to two as approved.
         <div
           data-viol-period-row="true"
-          className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
+          className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
         >
           <PeriodKpi v={violations} links={links} />
           <TypesCard v={violations} links={links} />

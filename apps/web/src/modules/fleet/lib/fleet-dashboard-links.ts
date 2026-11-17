@@ -616,14 +616,27 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
       kind: 'fuel' | 'tyres' | 'wash' | 'maintenance',
       source?: 'card' | 'custody',
     ): DashLink => over('receipts', metric, { kind, source }),
-    /** «فتح» on a row of «فواتير التوكيل في الفترة»: that car's rows of that work on that exit day. */
+    /**
+     * «فتح» on a row of «فواتير التوكيل في الفترة»: that car's rows of that work on that exit day. A
+     * row no code names (`code: null`) opens that day's rows of the work under the period's types,
+     * operations and branches — the row is among them.
+     */
     dealershipRow: (
-      row: { code: string; date: string; workKind: FleetDealershipWorkKind },
+      row: { code: string | null; date: string; workKind: FleetDealershipWorkKind },
       metric = 'dealershipList.row',
     ): DashLink =>
       at(
         'dealership',
-        { vehicleCodes: [row.code], from: row.date, to: row.date, work: row.workKind },
+        row.code === null
+          ? {
+              from: row.date,
+              to: row.date,
+              work: row.workKind,
+              type: set.type,
+              operation: set.operation,
+              branch: set.branch,
+            }
+          : { vehicleCodes: [row.code], from: row.date, to: row.date, work: row.workKind },
         metric,
       ),
     /**
@@ -648,15 +661,25 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
     /**
      * «فتح» on a row of «مخالفات السائقين في الفترة»: that car's fines of that type on that day —
      * this fine and any that share them (the register's code filter reaches a deleted car and an
-     * old-book code alike).
+     * old-book code alike). A row no code names (`code: null`) opens that day's fines of the type
+     * under the period's types, operations and branches — the fine is among them.
      */
     violationRow: (
-      row: { code: string; date: string; violationTypeId: string },
+      row: { code: string | null; date: string; violationTypeId: string },
       metric = 'violationList.row',
     ): DashLink =>
       at(
         'violations',
-        { dcodes: [row.code], dfrom: row.date, dto: row.date, dtype: row.violationTypeId },
+        row.code === null
+          ? {
+              dfrom: row.date,
+              dto: row.date,
+              dtype: row.violationTypeId,
+              type: set.type,
+              operation: set.operation,
+              branch: set.branch,
+            }
+          : { dcodes: [row.code], dfrom: row.date, dto: row.date, dtype: row.violationTypeId },
         metric,
       ),
   };

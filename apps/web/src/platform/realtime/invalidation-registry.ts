@@ -38,14 +38,17 @@ const attendanceDaySweep: readonly KeyPrefix[] = [
 ];
 
 /**
- * «لوحة تحكم الحركة» (D13): R1, the «الآن» tabs, and R2 while its period is still LIVE (a period
- * that ended — `past` — never moves, so no signal names it). A dashboard counts over every fleet
- * screen at once, so a busy morning would re-read it on every save: these two prefixes are NOT
- * swept like the rest — the provider hands them to the platform throttle (`throttle.ts`), which
- * marks them stale at once and refetches what is on screen at most once per window.
+ * «لوحة تحكم الحركة» (D13): R1, the «الآن» tabs, and R2 while its period is still LIVE. A period
+ * that ended — `past` — counts rows whose days are behind it, so only one signal names it: a
+ * fine's, because the period's drivers' fines carry their state AS OF NOW (a tick turns «قائمة»
+ * into «محصَّلة» even in «الشهر الماضي»). A dashboard counts over every fleet screen at once, so a
+ * busy morning would re-read it on every save: these prefixes are NOT swept like the rest — the
+ * provider hands them to the platform throttle (`throttle.ts`), which marks them stale at once and
+ * refetches what is on screen at most once per window.
  */
 const FLEET_DASHBOARD_NOW: KeyPrefix = ['fleet', 'dashboard', 'now'];
 const FLEET_DASHBOARD_LIVE: KeyPrefix = ['fleet', 'dashboard', 'period', 'live'];
+const FLEET_DASHBOARD_PAST: KeyPrefix = ['fleet', 'dashboard', 'period', 'past'];
 /** The rows whose writes move a figure of both reads (a «الآن» count and a period total). */
 const fleetDashboardBoth: readonly KeyPrefix[] = [FLEET_DASHBOARD_NOW, FLEET_DASHBOARD_LIVE];
 /** The rows whose writes move only a «الآن» figure (roster, licences, notices, fuel cards). */
@@ -55,6 +58,7 @@ const fleetDashboardNow: readonly KeyPrefix[] = [FLEET_DASHBOARD_NOW];
 export const THROTTLED_KEY_PREFIXES: readonly KeyPrefix[] = [
   FLEET_DASHBOARD_NOW,
   FLEET_DASHBOARD_LIVE,
+  FLEET_DASHBOARD_PAST,
 ];
 
 /**
@@ -492,8 +496,14 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   'fleet.accident': [['fleet', 'accidents'], ['fleet', 'vehicles'], ...fleetDashboardBoth],
   // A fine moves «الآن»'s owed totals AND the period's drivers' fines (a tick turns «قائمة» into
-  // «محصَّلة»; a new fine or a moved day changes the period's count) — both reads.
-  'fleet.violation': [['fleet', 'violations'], ['fleet', 'drivers'], ...fleetDashboardBoth],
+  // «محصَّلة»; a new fine or a moved day changes the period's count) — both reads, and a CLOSED
+  // period too: its fines' states are as of now, whatever range is chosen.
+  'fleet.violation': [
+    ['fleet', 'violations'],
+    ['fleet', 'drivers'],
+    ...fleetDashboardBoth,
+    FLEET_DASHBOARD_PAST,
+  ],
   'fleet.violationGrievance': [['fleet', 'violations'], ...fleetDashboardNow],
   // The board — and tab 4's paper counts, which read the same papers.
   'fleet.vehicleLicensing': [['fleet', 'licensing'], ...fleetDashboardNow],

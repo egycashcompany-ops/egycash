@@ -11,7 +11,7 @@
 //     figures (no screen lists exactly them), one foot link to the reconcile screen;
 //   · «كروت تحتاج متابعة» (Q2 أ), the page's full width: at most FLEET_DASHBOARD_FUEL_CARD_ROWS
 //     cards in the server's urgency order, the register's own state words and colours (C3), «فتح»
-//     per row (C6), the two figure-free foot links (C5); a table from 768 px, each row a block below.
+//     per row (C6), the two figure-free foot links (C5); a table from 1024 px, each row a block below.
 //
 // Every figure follows the card's CURRENT car's branch (DECISIONS §0b answer 1): the server narrows,
 // so the links carry the figures' branch; a card on no car is in no branch and stands in the company
@@ -581,7 +581,6 @@ const CarCell = ({
   canVehicle: boolean;
 }): JSX.Element => {
   const t = useT();
-  const w = useFuelWords();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   if (row.vehicleId === null) {
     return (
@@ -605,7 +604,7 @@ const CarCell = ({
     >
       <span className="flex items-center gap-1.5">
         <CarChip code={row.code ?? '—'} link={record} />
-        {row.vehicleDeleted && <Tag tone="slate">{w('cards.deleted')}</Tag>}
+        {row.vehicleDeleted && <Tag tone="slate">{t('fleet.dash.common.vehicleDeleted')}</Tag>}
       </span>
       {row.typeName !== null && (
         <span className={cn('whitespace-nowrap text-xs font-semibold', MUTED)}>
@@ -618,20 +617,21 @@ const CarCell = ({
 
 const CELL = 'px-3 py-3.5 align-middle first:ps-5 last:pe-5';
 
-/** How a table folds into blocks under 768 px: the first line holds the card (or the car) at the
- *  start and the car (or the value) at the end; every other cell is a line of its own with its
- *  column's name, «فتح» across the foot. One DOM, so a row is never drawn twice. */
+/** How a table folds into blocks under 1024 px (its 900 px of columns would scroll a tablet):
+ *  the first line holds the card (or the car) at the start and the car (or the value) at the end;
+ *  every other cell is a line of its own with its column's name, «فتح» across the foot. One DOM,
+ *  so a row is never drawn twice. */
 export const FOLD = {
-  table: 'max-md:block',
-  head: 'max-md:hidden',
-  body: 'max-md:block max-md:border-t',
-  row: 'max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-start max-md:gap-x-3 max-md:gap-y-2 max-md:px-4 max-md:py-3.5',
-  cell: 'max-md:block max-md:p-0 max-md:first:ps-0 max-md:last:pe-0',
-  start: 'max-md:col-start-1 max-md:row-start-1',
-  end: 'max-md:col-start-2 max-md:row-start-1',
-  line: 'max-md:col-span-2',
-  label: 'md:hidden',
-  scroll: 'md:overflow-x-auto',
+  table: 'max-lg:block',
+  head: 'max-lg:hidden',
+  body: 'max-lg:block max-lg:border-t',
+  row: 'max-lg:grid max-lg:grid-cols-[minmax(0,1fr)_auto] max-lg:items-start max-lg:gap-x-3 max-lg:gap-y-2 max-lg:px-4 max-lg:py-3.5',
+  cell: 'max-lg:block max-lg:p-0 max-lg:first:ps-0 max-lg:last:pe-0',
+  start: 'max-lg:col-start-1 max-lg:row-start-1',
+  end: 'max-lg:col-start-2 max-lg:row-start-1',
+  line: 'max-lg:col-span-2',
+  label: 'lg:hidden',
+  scroll: 'lg:overflow-x-auto',
 } as const;
 
 /** A column's name beside its value, while the row is a block (the heading says it after). */
@@ -678,11 +678,11 @@ const CardRow = ({
         {row.expiresAt === null ? <Dash /> : <Day ymd={row.expiresAt} />}
       </td>
       {/* As a block, the states stand right under the card and its car (the approved phone). */}
-      <td className={cn(CELL, FOLD.cell, FOLD.line, 'max-md:row-start-2')}>
+      <td className={cn(CELL, FOLD.cell, FOLD.line, 'max-lg:row-start-2')}>
         <StateTags row={row} />
       </td>
       <td className={cn(CELL, FOLD.cell, FOLD.line, 'text-end')}>
-        <Btn link={links.fuelCardRow(row)} className="h-9 px-4 max-md:w-full">
+        <Btn link={links.fuelCardRow(row)} className="h-9 px-4 max-lg:w-full">
           {w('open')}
         </Btn>
       </td>
@@ -739,7 +739,7 @@ const CardsTable = ({
         <div className={FOLD.scroll}>
           <table
             className={cn(
-              'w-full border-collapse text-[13px] md:min-w-[900px] md:table-fixed',
+              'w-full border-collapse text-[13px] lg:min-w-[900px] lg:table-fixed',
               FOLD.table,
             )}
           >

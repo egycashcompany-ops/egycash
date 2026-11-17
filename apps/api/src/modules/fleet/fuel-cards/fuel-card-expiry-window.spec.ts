@@ -111,13 +111,30 @@ describe('«شُحن اليوم» follows the same cards as every figure beside 
     expect(moves[0]?.$match?.cardId).toBeUndefined();
   });
 
-  it('under any filter: only the charges of the matched live cards', async () => {
+  it('under a filter of WHICH cards: only the charges of the matched cards, deleted ones too', async () => {
     const { moves, distinct } = await drive(() =>
       fleetFuelCardService.summary({ company: 'wataniya' }, now),
     );
     expect(json(distinct)).toContain('"company":"wataniya"');
-    expect(json(distinct)).toContain('"isDeleted":false');
+    // A card deleted since keeps its charge of the day, as the company view counts it.
+    expect(json(distinct)).not.toContain('isDeleted');
     expect(moves[0]?.$match?.cardId).toEqual({ $in: MATCHED });
+  });
+
+  it('never by the state filter: a request waiting or a low balance narrows the cards, not the charges', async () => {
+    const { cards, moves, distinct } = await drive(() =>
+      fleetFuelCardService.summary({ requested: true, balanceBelow: 300 }, now),
+    );
+    expect(json(cards[0]?.$match)).toContain('"requestedAmount":{"$ne":null}');
+    expect(json(cards[0]?.$match)).toContain('"balance":{"$lt":300}');
+    // No card-identity part: every charge of the day, no card list read.
+    expect(distinct).toBeNull();
+    expect(moves[0]?.$match?.cardId).toBeUndefined();
+    const withCompany = await drive(() =>
+      fleetFuelCardService.summary({ company: 'chillout', requested: true }, now),
+    );
+    expect(json(withCompany.distinct)).toContain('"company":"chillout"');
+    expect(json(withCompany.distinct)).not.toContain('requestedAmount');
   });
 
   it('`charged: false` asks the counts only — no charge read at all', async () => {

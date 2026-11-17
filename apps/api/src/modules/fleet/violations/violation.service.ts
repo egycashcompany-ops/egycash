@@ -793,7 +793,7 @@ class FleetViolationService {
       return {
         violationId: String(doc._id),
         vehicleId,
-        code: car?.code ?? doc.vehicleCode ?? '—',
+        code: car?.code ?? doc.vehicleCode ?? null,
         typeName: car?.typeId == null ? null : (makes.get(String(car.typeId)) ?? null),
         // A registry car the registry no longer lists — no record link (its fines stay).
         vehicleDeleted: vehicleId !== null && (car === undefined || car.isDeleted === true),

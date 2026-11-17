@@ -874,6 +874,23 @@ describe('the links of «المخالفات المرورية والتسويات�
       metric: 'violationList.row',
     });
   });
+
+  it('a fine no code names opens its day and type under the period’s set — never `dcodes=—`', () => {
+    const P = periodLinks({
+      range: RANGE,
+      vehicleScope: {
+        ...NO_SET,
+        typeIds: ['t1'],
+        vehicleCodes: ['133'],
+        branchId: 'b1',
+        scopeBranches: [B1_NAMED],
+      },
+    });
+    expect(P.violationRow({ code: null, date: '2026-10-14', violationTypeId: 'vt9' })).toEqual({
+      to: '/fleet/violations?dfrom=2026-10-14&dto=2026-10-14&dtype=vt9&type=t1&branch=b1',
+      metric: 'violationList.row',
+    });
+  });
 });
 
 describe('the links of «الوقود والمصروفات» (exact URLs, plan §7 and D17)', () => {
@@ -951,6 +968,11 @@ describe('the links of «الوقود والمصروفات» (exact URLs, plan �
     );
     expect(P.dealershipRow({ code: '221', date: '2026-10-29', workKind: 'repair' })).toEqual({
       to: '/fleet/dealership?vehicleCodes=221&from=2026-10-29&to=2026-10-29&work=repair',
+      metric: 'dealershipList.row',
+    });
+    // A row no code names: that exit day's rows of the work under the period's set.
+    expect(P.dealershipRow({ code: null, date: '2026-10-29', workKind: 'repair' })).toEqual({
+      to: '/fleet/dealership?from=2026-10-29&to=2026-10-29&work=repair&type=t1&branch=b1',
       metric: 'dealershipList.row',
     });
   });

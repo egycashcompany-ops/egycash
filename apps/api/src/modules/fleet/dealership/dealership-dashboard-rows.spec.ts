@@ -126,6 +126,28 @@ describe('dashboardRows — the dealership screen’s first page of the period',
     expect(out.rows.length + out.more).toBe(totals.count);
   });
 
+  it('a row no code names answers `code: null` (never a «—» the link would send as a code)', async () => {
+    const JUNE = { from: day('2026-06-01'), to: day('2026-06-30') };
+    // A car id the registry holds no record of, and a carless row the book gave no code.
+    const gone = row(41, { vehicleId: oid(99), outDate: day('2026-06-12') });
+    const bare = row(42, { vehicleId: null, outDate: day('2026-06-11') });
+    await FleetDealershipInvoiceModel.collection.insertMany([gone, bare]);
+    try {
+      const { rows } = await fleetDealershipService.dashboardRows(JUNE, 6);
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      expect(byId.get(ID(41))).toMatchObject({ vehicleId: ID(99), code: null, typeName: null });
+      expect(byId.get(ID(42))).toMatchObject({
+        vehicleId: null,
+        code: null,
+        vehicleDeleted: false,
+      });
+    } finally {
+      await FleetDealershipInvoiceModel.collection.deleteMany({
+        _id: { $in: [gone._id, bare._id] },
+      });
+    }
+  });
+
   it('at most `limit` rows; `more` + rows = the screen’s count', async () => {
     const out = await fleetDealershipService.dashboardRows(OCT, 3);
     expect(out.rows.map((r) => r.id)).toEqual([ID(34), ID(32), ID(31)]);

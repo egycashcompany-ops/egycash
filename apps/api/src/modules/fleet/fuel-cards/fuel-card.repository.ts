@@ -93,16 +93,18 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
    * The cards' totals over `filter` — one `$group` — and «شُحن اليوم» beside them.
    *
    * «شُحن اليوم» is the CAIRO day (his «اليوم»), from its midnight; a charge the company's sheet
-   * cancelled («أُلغي بشيت الشركة») is in the card's log only, and not counted. It follows the same
-   * cards as every figure beside it: under ANY filter (company, cars, branch …) only the charges of
-   * the matched live cards count — one `distinct` more; with no filter, every charge of the day, as
-   * it always was. `charged: false` skips it (0) for a caller that reads only the counts — the fleet
-   * dashboard asks it once, of the summary that shows it.
+   * cancelled («أُلغي بشيت الشركة») is in the card's log only, and not counted. It follows the cards
+   * `chargedOver` names (`filter` when none is given; the service passes the query's card-identity
+   * part — company, cars, branch, number — never its state filter): under a non-empty one only the
+   * charges of the matched cards count, a card deleted since included (its charge stays in the
+   * day, as the company view counts it) — one `distinct` more; with none, every charge of the day,
+   * as it always was. `charged: false` skips it (0) for a caller that reads only the counts — the
+   * fleet dashboard asks it once, of the summary that shows it.
    */
   async totals(
     filter: FilterQuery<FleetFuelCardDoc>,
     now: Date,
-    opts: { charged?: boolean } = {},
+    opts: { charged?: boolean; chargedOver?: FilterQuery<FleetFuelCardDoc> } = {},
   ): Promise<FleetFuelCardTotalsDto> {
     const match = this.baseFilter(undefined, filter);
     const pipeline: PipelineStage[] = [
@@ -154,7 +156,8 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
       chilloutBalance: round(row?.chilloutBalance ?? 0),
       requestedCount: row?.requestedCount ?? 0,
       requestedAmount: round(row?.requestedAmount ?? 0),
-      chargedTodayAmount: opts.charged === false ? 0 : await this.chargedToday(filter, now),
+      chargedTodayAmount:
+        opts.charged === false ? 0 : await this.chargedToday(opts.chargedOver ?? filter, now),
       wataniyaCards: row?.wataniyaCards ?? 0,
       chilloutCards: row?.chilloutCards ?? 0,
       noCarCards: row?.noCarCards ?? 0,
@@ -166,7 +169,7 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
   private async chargedToday(filter: FilterQuery<FleetFuelCardDoc>, now: Date): Promise<number> {
     const today = cairoDayRange(cairoDayOf(now));
     const narrowed = Object.keys(filter).length > 0;
-    const cardIds = narrowed ? await this.idsOf(filter) : null;
+    const cardIds = narrowed ? await this.idsOfAny(filter) : null;
     if (cardIds !== null && cardIds.length === 0) return 0;
     const [charged] = await FleetFuelCardMovementModel.aggregate<{ amount: number }>([
       {
@@ -183,11 +186,12 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
     return Math.round((charged?.amount ?? 0) * 100) / 100;
   }
 
-  /** The live cards `filter` matches, by id. */
-  async idsOf(filter: FilterQuery<FleetFuelCardDoc>): Promise<Types.ObjectId[]> {
-    return this.model.distinct('_id', this.baseFilter(undefined, filter)).exec() as Promise<
-      Types.ObjectId[]
-    >;
+  /**
+   * Every card `filter` matches, by id — a DELETED card too (no soft-delete clause): what a card
+   * left behind (today's charges, a stored sheet's lines) is history and still counts by its car.
+   */
+  async idsOfAny(filter: FilterQuery<FleetFuelCardDoc>): Promise<Types.ObjectId[]> {
+    return this.model.distinct('_id', filter).exec() as Promise<Types.ObjectId[]>;
   }
 
   /**

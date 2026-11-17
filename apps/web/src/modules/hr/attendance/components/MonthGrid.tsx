@@ -8,6 +8,9 @@ import { formatMinutes } from './minutes';
 
 const TONE: Record<AttendanceDayStatus, string> = {
   present: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
+  // Checked in and never out — a presence, so it reads green like one. It is deliberately a
+  // SOFTER green than `present`: the day counted, and the hours behind it are unknown.
+  checkedIn: 'bg-emerald-50/60 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300',
   late: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
   earlyLeave: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
   lateAndEarly: 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200',

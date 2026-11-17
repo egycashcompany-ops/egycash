@@ -271,9 +271,18 @@ export const HoverCardLayer = ({
    * `captain` and `crew` are Operations' day-board cards (`BoardCrewCards`), and `roster` the
    * member card on «كشف طاقم العمليات» (`RosterMemberCard`), on these mechanics. On «لوحة التشغيلة»
    * (Round 22): `crew-plan` the person card on a name, `crew-flag` the small tip that names a
-   * requirement icon (`crew-plan-icons`).
+   * requirement icon (`crew-plan-icons`). On «توزيع المحصنات» (Round 25): `secured-shipment` the
+   * card of a محصنة's small chip.
    */
-  mark: 'driver' | 'vehicle' | 'captain' | 'crew' | 'roster' | 'crew-plan' | 'crew-flag';
+  mark:
+    | 'driver'
+    | 'vehicle'
+    | 'captain'
+    | 'crew'
+    | 'roster'
+    | 'crew-plan'
+    | 'crew-flag'
+    | 'secured-shipment';
   /**
    * The look. Every card keeps the cards' frame; a TIP — a word or two for an icon — takes
    * `HOVER_TIP_FRAME`, on the same mechanics.

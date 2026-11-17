@@ -1,4 +1,4 @@
-// The ten day statuses (§3) and the six regularization statuses (§7), toned the way Leave tones
+// The eleven day statuses (§3) and the six regularization statuses (§7), toned the way Leave tones
 // its own: a warning is something waiting on a human, a danger is a refusal or an absence, and a
 // neutral is a day nobody owes anything for.
 import {
@@ -10,6 +10,11 @@ import { Badge, type Tone } from '../../../../shared/ui';
 
 const DAY_TONE: Record<AttendanceDayStatus, Tone> = {
   present: 'success',
+  // A presence, and toned as one. Most of the workforce scans on arrival and never scans out, so
+  // this is the commonest good day on the sheet — drawing it as a problem (which is what
+  // `incomplete` did to it) put a warning beside almost every name every morning, and a warning
+  // that appears beside almost every name stops being read at all.
+  checkedIn: 'success',
   late: 'warning',
   earlyLeave: 'warning',
   lateAndEarly: 'warning',
@@ -18,7 +23,8 @@ const DAY_TONE: Record<AttendanceDayStatus, Tone> = {
   weekend: 'neutral',
   holiday: 'neutral',
   dayOff: 'neutral',
-  // The one status that blocks a payroll calculation until a regularization fixes it (D6).
+  // HISTORICAL. Nothing derives this any more — a single punch is `checkedIn` — so it appears only
+  // on days computed before that ruling, and keeps the tone it had while it meant something.
   incomplete: 'danger',
 };
 

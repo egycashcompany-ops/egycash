@@ -24,11 +24,23 @@ import { type DateSpan } from './compensation-rules';
 /**
  * The statuses that mean "came to work", by name.
  *
- * `incomplete` is deliberately absent: a day whose checkout never arrived is neither attendance
- * nor absence, and deciding which it is would be a labour rule. So are `weekend`, `holiday` and
- * `dayOff` — a worked holiday counting twice is a rule nobody has granted this system either.
+ * `checkedIn` IS ONE OF THEM, by the owner's ruling (2026-11-17). On this payroll 70–90% of
+ * employees scan on arrival and never scan out, so a check-in with no check-out is what an
+ * ordinary attended day looks like here. It contributes 1 to `attendedDays` and 0 worked minutes,
+ * which is exactly what is known: they were at work, and for how long is not recorded. The labour
+ * rule that used to be missing has now been given — for the arrival, and for nothing else.
+ *
+ * `incomplete` IS STILL ABSENT, and that is now a statement about HISTORY rather than about the
+ * rule. Nothing produces it any more (`derive-day.ts` returns `checkedIn` for a single punch), so
+ * the only rows carrying it are days derived before the ruling. Adding it here would re-price
+ * every one of them, including the frozen months whose payslips are already paid — so a closed
+ * month keeps the figures it closed with, and an unfrozen day picks up the new rule the next time
+ * it is recomputed.
+ *
+ * `weekend`, `holiday` and `dayOff` stay out: a worked holiday counting twice is a rule nobody has
+ * granted this system either.
  */
-const ATTENDED_STATUSES = ['present', 'late', 'earlyLeave', 'lateAndEarly'] as const;
+const ATTENDED_STATUSES = ['present', 'checkedIn', 'late', 'earlyLeave', 'lateAndEarly'] as const;
 
 /** How each source reads ONE row: a day contributes 1, a minute field contributes its value. */
 const CONTRIBUTION: Record<PayItemQuantitySource, (row: AttendanceFeedRow) => number> = {

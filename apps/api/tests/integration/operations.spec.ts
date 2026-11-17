@@ -30,6 +30,7 @@ import {
   type OperationsMobileDayDto,
   type OperationsExecutionResultDto,
   type OperationsShipmentAssignmentDto,
+  type OperationsBankBranchReportDto,
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
   type OperationsCrewAttendanceDayDto,
@@ -139,6 +140,12 @@ let adminId: string;
 let captainId: string;
 let specialist1Id: string;
 let specialist2Id: string;
+/**
+ * Round 25 — the seeded «محصنة» type. A محصنة's delivery leg goes only onto a crew row of that type
+ * («انا عاوز اللى يظهر اللى نوعها محصنة بس»: `assign-delivery` and the distribution save alike), so
+ * every row below that takes one is planned of it.
+ */
+let securedTypeId = '';
 
 let bankA: OperationsBankDto;
 let bankB: OperationsBankDto;
@@ -472,6 +479,14 @@ beforeAll(async () => {
       .send({ name });
     expect(areaRes.status, JSON.stringify(areaRes.body)).toBe(201);
   }
+
+  const types = await request(app)
+    .get('/api/v1/operations/shift-types?page=1&pageSize=100')
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(types.status, JSON.stringify(types.body)).toBe(200);
+  securedTypeId =
+    data<{ id: string; name: string }[]>(types).find((type) => type.name === 'محصنة')?.id ?? '';
+  expect(securedTypeId).not.toBe('');
 }, 240_000);
 
 afterAll(async () => {
@@ -2001,7 +2016,9 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: DELIVERY_DATE,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }],
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeIds: [captainId], shiftTypeId: securedTypeId },
+        ],
       });
     expect(plan.status).toBe(200);
     const board = data<OperationsCrewBoardDto>(plan);
@@ -2410,6 +2427,7 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
             {
               vehicleId: vehicleAId,
               captainEmployeeIds: [handoverCaptainA, handoverCaptainB],
+              shiftTypeId: securedTypeId,
             },
           ],
         });
@@ -3026,7 +3044,12 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
     await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: DELIVERY, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }] });
+      .send({
+        date: DELIVERY,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeIds: [captainId], shiftTypeId: securedTypeId },
+        ],
+      });
 
     const secured = data<OperationsShipmentDto>(
       await mkShipment({
@@ -3665,6 +3688,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
             specialist2EmployeeIds: [specialist2Id],
             direction: 'القاهرة',
             plannedTime: '08:30',
+            shiftTypeId: securedTypeId,
           },
         ],
       });
@@ -5430,7 +5454,13 @@ describe('operations reports — legacy /ops_report (B5)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         date: REPORT_DAY,
-        rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [reportCaptain] }],
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            captainEmployeeIds: [reportCaptain],
+            shiftTypeId: securedTypeId,
+          },
+        ],
       });
     expect(plan.status).toBe(200);
     // The crew assignment id is not on the board DTO — the board shows the crew, not its row id —
@@ -5957,7 +5987,12 @@ describe('«تقرير البنوك» (the vault roll-up) and operational areas 
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: VAULT_DATE, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }] });
+      .send({
+        date: VAULT_DATE,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeIds: [captainId], shiftTypeId: securedTypeId },
+        ],
+      });
     expect(plan.status).toBe(200);
     const crewRow = await crewAssignmentIdForDay(VAULT_DATE);
 
@@ -6133,6 +6168,222 @@ describe('«تقرير البنوك» (the vault roll-up) and operational areas 
           .set('Authorization', `Bearer ${adminToken}`)
       ).status,
     ).toBe(404);
+  });
+
+  // ── Round 25 — «لوحة البنك بفروعه»: «عاوز فى الجدول عند البنك فى الاخر بعد الصناديق يكون فيه سهم ادوس
+  // عليه يفتح زى داش برود كدا للبنك بالفروع بتاعته». `GET /reports/banks/:bankId/branches` — the bank
+  // report's readers and period, one bank by its branches, adding up to its row.
+  describe('Round 25 — one bank of «تقرير البنوك» by its branches', () => {
+    let r25Bank: OperationsBankDto;
+    let r25Empty: OperationsBankDto;
+    let r25Main: OperationsBankBranchDto;
+    let r25Second: OperationsBankBranchDto;
+
+    const branchReport = (bankId: string, query = '', token = adminToken): request.Test =>
+      request(app)
+        .get(`/api/v1/operations/reports/banks/${bankId}/branches${query}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    /** A محصنة of the R25 bank from `origin` to `destination`, received now with these packages. */
+    const receivedR25 = async (
+      origin: string,
+      destination: string,
+      lines: { currencyId: string; amount: number }[],
+      packages: { bagCount: number; cartonCount?: number; boxCount?: number },
+    ): Promise<OperationsShipmentDto> => {
+      const created = await mkShipment({
+        shipmentType: 'secured',
+        collectionDate: VAULT_DATE,
+        deliveryDate: VAULT_DATE,
+        mainBankId: r25Bank.id,
+        originBranchId: origin,
+        destinationBranchId: destination,
+        lines,
+      });
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const shipment = data<OperationsShipmentDto>(created);
+      receiptCounter += 1;
+      const received = await request(app)
+        .post(`/api/v1/operations/secured/${shipment.id}/receive`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          receiptNumber: `R-25-${String(receiptCounter)}`,
+          ...packages,
+          version: (await deskPickUp(shipment.id)).version,
+        });
+      expect(received.status, JSON.stringify(received.body)).toBe(200);
+      return shipment;
+    };
+
+    beforeAll(async () => {
+      const mkBank = async (code: number, ar: string, en: string): Promise<OperationsBankDto> => {
+        const res = await request(app)
+          .post('/api/v1/operations/banks')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ code, name: { ar, en }, opsName: ar });
+        expect(res.status, JSON.stringify(res.body)).toBe(201);
+        return data<OperationsBankDto>(res);
+      };
+      r25Bank = await mkBank(251, 'بنك اللوحة', 'Dashboard Bank');
+      r25Empty = await mkBank(252, 'بنك بلا محصنات', 'Idle Bank');
+      const mkBranch = async (name: string, code: string, area: string) => {
+        const res = await request(app)
+          .post('/api/v1/operations/bank-branches')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ bankId: r25Bank.id, name, code, opsAreaName: area });
+        expect(res.status, JSON.stringify(res.body)).toBe(201);
+        return data<OperationsBankBranchDto>(res);
+      };
+      r25Main = await mkBranch('الفرع الرئيسي', 'D-1', 'وسط البلد');
+      r25Second = await mkBranch('فرع الدقي', 'D-2', 'الجيزة');
+
+      // Two from its main branch (two currencies on one), one from its second branch, and one
+      // collected from ANOTHER bank's branch (bank B) — the origin carries no bank rule.
+      await receivedR25(
+        r25Main.id,
+        r25Main.id,
+        [
+          { currencyId: egp.id, amount: 1_000 },
+          { currencyId: usdShared.id, amount: 100 },
+        ],
+        { bagCount: 2, cartonCount: 1 },
+      );
+      await receivedR25(r25Main.id, r25Second.id, [{ currencyId: egp.id, amount: 500 }], {
+        bagCount: 1,
+      });
+      await receivedR25(r25Second.id, r25Second.id, [{ currencyId: egp.id, amount: 250 }], {
+        bagCount: 3,
+        boxCount: 2,
+      });
+      await receivedR25(branchB1.id, r25Second.id, [{ currencyId: usdShared.id, amount: 40 }], {
+        bagCount: 1,
+      });
+    });
+
+    it("25a. files each محصنة under its «من فرع» and adds up to the bank's row, figure for figure", async () => {
+      const res = await branchReport(r25Bank.id);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const report = data<OperationsBankBranchReportDto>(res);
+      expect(report).toMatchObject({ side: 'origin', bankId: r25Bank.id, bankName: 'بنك اللوحة' });
+
+      const byBranch = new Map(report.rows.map((row) => [row.branchId, row]));
+      expect(report.rows).toHaveLength(3);
+      const main = byBranch.get(r25Main.id);
+      expect(main).toMatchObject({
+        branchName: 'الفرع الرئيسي',
+        branchCode: 'D-1',
+        areaName: 'وسط البلد',
+        otherBankName: null,
+      });
+      expect(main?.totals).toMatchObject({
+        shipmentCount: 2,
+        bagCount: 3,
+        cartonCount: 1,
+        boxCount: 0,
+      });
+      expect(byBranch.get(r25Second.id)?.totals).toMatchObject({
+        shipmentCount: 1,
+        bagCount: 3,
+        boxCount: 2,
+      });
+      // Bank B's branch: still this bank's money, and it says whose branch it is.
+      const foreign = byBranch.get(branchB1.id);
+      expect(foreign?.otherBankName).toBe(bankB.opsName);
+      expect(foreign?.totals.shipmentCount).toBe(1);
+
+      // The bank's total IS its row of «تقرير البنوك» for the same period — the same answer.
+      const bankRow = data<OperationsBankReportDto>(await vaultReport()).rows.find(
+        (row) => row.bankId === r25Bank.id,
+      );
+      expect(bankRow).toBeDefined();
+      expect(report.total).toEqual(bankRow?.totals);
+      // And the branches add up to it, measure by measure and currency by currency.
+      const sum = (pick: (t: OperationsBankBranchReportDto['total']) => number): number =>
+        report.rows.reduce((n, row) => n + pick(row.totals), 0);
+      expect(sum((t) => t.shipmentCount)).toBe(4);
+      expect(sum((t) => t.shipmentCount)).toBe(report.total.shipmentCount);
+      expect(sum((t) => t.bagCount)).toBe(report.total.bagCount);
+      expect(sum((t) => t.cartonCount)).toBe(report.total.cartonCount);
+      expect(sum((t) => t.boxCount)).toBe(report.total.boxCount);
+      for (const currency of report.total.currencies) {
+        const ofBranches = report.rows
+          .flatMap((row) => row.totals.currencies)
+          .filter((c) => c.currencyId === currency.currencyId)
+          .reduce((n, c) => n + c.amount, 0);
+        expect(ofBranches, currency.currencyName).toBe(currency.amount);
+      }
+      expect(report.total.currencies.find((c) => c.currencyId === egp.id)?.amount).toBe(1_750);
+    });
+
+    it('25b. files them under «إلى فرع» when asked — other rows, the same total', async () => {
+      const origin = data<OperationsBankBranchReportDto>(await branchReport(r25Bank.id));
+      const res = await branchReport(r25Bank.id, '?side=destination');
+      expect(res.status).toBe(200);
+      const report = data<OperationsBankBranchReportDto>(res);
+      expect(report.side).toBe('destination');
+      const counts = Object.fromEntries(
+        report.rows.map((row) => [row.branchId ?? 'none', row.totals.shipmentCount]),
+      );
+      expect(counts).toEqual({ [r25Main.id]: 1, [r25Second.id]: 3 });
+      expect(report.rows.every((row) => row.otherBankName === null)).toBe(true);
+      expect(report.total).toEqual(origin.total);
+    });
+
+    it("25c. follows the page's period — its days back, and nothing outside them", async () => {
+      const month = cairoMonth(0);
+      const named = data<OperationsBankBranchReportDto>(
+        await branchReport(r25Bank.id, period(month)),
+      );
+      expect(named.from).toBe(`${month.from}T00:00:00.000Z`);
+      expect(named.to).toBe(`${month.to}T00:00:00.000Z`);
+      expect(named.total.shipmentCount).toBe(4);
+      // Last month received none of them.
+      const last = data<OperationsBankBranchReportDto>(
+        await branchReport(r25Bank.id, period(cairoMonth(-1))),
+      );
+      expect(last.rows).toEqual([]);
+      expect(last.total.shipmentCount).toBe(0);
+    });
+
+    it('25d. answers a bank with nothing in the period: no rows, a zero total, its name', async () => {
+      const res = await branchReport(r25Empty.id);
+      expect(res.status).toBe(200);
+      const report = data<OperationsBankBranchReportDto>(res);
+      expect(report.bankName).toBe('بنك بلا محصنات');
+      expect(report.rows).toEqual([]);
+      expect(report.total).toEqual({
+        shipmentCount: 0,
+        bagCount: 0,
+        cartonCount: 0,
+        boxCount: 0,
+        currencies: [],
+      });
+    });
+
+    it('25e. validates: a malformed id, a bad day, an unknown side or key → 400; no such bank → 404', async () => {
+      expect((await branchReport('not-an-id')).status).toBe(400);
+      expect((await branchReport(r25Bank.id, '?from=not-a-date')).status).toBe(400);
+      expect((await branchReport(r25Bank.id, '?side=both')).status).toBe(400);
+      expect((await branchReport(r25Bank.id, '?month=11')).status).toBe(400);
+      const missing = await branchReport(new mongoose.Types.ObjectId().toHexString());
+      expect(missing.status).toBe(404);
+      expect((missing.body as { error: { code: string } }).error.code).toBe(ErrorCodes.NOT_FOUND);
+    });
+
+    it("25f. rides the bank report's grants — either reader, never anybody else", async () => {
+      expect((await branchReport(r25Bank.id, '', viewerToken)).status).toBe(200);
+      const vaultOnly = await tokenWith('ops-r25-vault@ecms.local', ['operationsVault.view']);
+      const theirs = await branchReport(r25Bank.id, '', vaultOnly);
+      expect(theirs.status).toBe(200);
+      expect(data<OperationsBankBranchReportDto>(theirs)).toEqual(
+        data<OperationsBankBranchReportDto>(await branchReport(r25Bank.id)),
+      );
+      const crewOnly = await tokenWith('ops-r25-crew@ecms.local', ['operationsCrew.view']);
+      expect((await branchReport(r25Bank.id, '', crewOnly)).status).toBe(403);
+      expect(
+        (await request(app).get(`/api/v1/operations/reports/banks/${r25Bank.id}/branches`)).status,
+      ).toBe(401);
+    });
   });
 
   it('6. creates an operational area — the legacy /data_edit city, without its id generator', async () => {
@@ -6693,7 +6944,12 @@ describe('Round 8 — the secured screen, its stages, and the vault receive queu
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }] });
+      .send({
+        date,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeIds: [captainId], shiftTypeId: securedTypeId },
+        ],
+      });
     expect(plan.status, JSON.stringify(plan.body)).toBe(200);
     const id =
       data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
@@ -7353,7 +7609,16 @@ describe('Round 10 — the pickup ✓, the vault lock, the cancelled receipt and
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainEmployeeId] }] });
+      .send({
+        date,
+        rows: [
+          {
+            vehicleId: vehicleAId,
+            captainEmployeeIds: [captainEmployeeId],
+            shiftTypeId: securedTypeId,
+          },
+        ],
+      });
     expect(plan.status, JSON.stringify(plan.body)).toBe(200);
     const id =
       data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??
@@ -9478,7 +9743,12 @@ describe('Round 21b — a seal still in the vault is not received on another م�
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: R21B_OUT, rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [captainId] }] });
+      .send({
+        date: R21B_OUT,
+        rows: [
+          { vehicleId: vehicleAId, captainEmployeeIds: [captainId], shiftTypeId: securedTypeId },
+        ],
+      });
     expect(plan.status, JSON.stringify(plan.body)).toBe(200);
     outCrewId =
       data<OperationsCrewBoardDto>(plan).rows.find((r) => r.vehicleId === vehicleAId)?.crew?.id ??

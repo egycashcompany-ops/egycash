@@ -34,13 +34,7 @@ import { workCalendarService } from '../../work-calendar';
 import { shiftRepository, type ShiftDoc } from '../shifts';
 import { shiftAssignmentService } from '../assignments';
 import { punchRepository } from '../punches';
-import {
-  deriveDay,
-  shiftWindow,
-  PUNCH_WINDOW_AFTER_MS,
-  PUNCH_WINDOW_BEFORE_MS,
-  type EnginePunch,
-} from './derive-day';
+import { deriveDay, punchWindowFor, type EnginePunch } from './derive-day';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 import { dayRecordRepository } from './day-record.repository';
 import { monthRange, toFeedRow } from './attendance-feed';
@@ -189,21 +183,22 @@ class DayRecordService {
     );
     const shift: ShiftDoc | null = shiftId === null ? null : await shiftRepository.findById(shiftId);
 
-    let punches: EnginePunch[] = [];
-    if (shift !== null) {
-      const { start, end } = shiftWindow(workDate, shift);
-      const rows = await punchRepository.listForWindow(
-        employee._id as Types.ObjectId,
-        new Date(start.getTime() - PUNCH_WINDOW_BEFORE_MS),
-        new Date(end.getTime() + PUNCH_WINDOW_AFTER_MS),
-      );
-      punches = rows.map((p) => ({
-        at: p.at,
-        direction: p.direction,
-        source: p.source,
-        branchIdAtPunch: p.branchIdAtPunch === null ? null : String(p.branchIdAtPunch),
-      }));
-    }
+    // THE PUNCHES ARE LOADED WHETHER OR NOT THERE IS A SHIFT. This used to sit inside
+    // `if (shift !== null)`, so an employee with no shift assignment had an empty punch list by
+    // construction and their scans could not be reported although they were in the database.
+    // `punchWindowFor` owns which window, and why the two differ.
+    const punchWindow = punchWindowFor(workDate, shift);
+    const punchRows = await punchRepository.listForWindow(
+      employee._id as Types.ObjectId,
+      punchWindow.from,
+      punchWindow.to,
+    );
+    const punches: EnginePunch[] = punchRows.map((p) => ({
+      at: p.at,
+      direction: p.direction,
+      source: p.source,
+      branchIdAtPunch: p.branchIdAtPunch === null ? null : String(p.branchIdAtPunch),
+    }));
 
     const derived = deriveDay({
       workDate,

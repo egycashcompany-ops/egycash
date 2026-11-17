@@ -18,9 +18,19 @@ import {
 } from './hr-attendance.js';
 
 describe('closed vocabularies', () => {
-  it('pins the ten day statuses of §2 — one enum, one value per day', () => {
+  it('pins the eleven day statuses of §2 — one enum, one value per day', () => {
+    // `checkedIn` is a deliberate contract change (owner ruling, 2026-11-17). The branch devices
+    // show 70–90% of employees scan on arrival and never scan out, so a check-in with no
+    // check-out is the ordinary working day here; it used to derive as `incomplete`, which is
+    // toned as a fault and priced at nothing. It counts as an attended day.
+    //
+    // `incomplete` STAYS in the vocabulary although nothing derives it any more: rows written
+    // before that ruling carry it, and a value that exists in the database must stay nameable by
+    // the enum that reads it. Payroll deliberately leaves it out of the attended statuses so no
+    // frozen month is restated — see `attendance-quantities.ts`.
     expect([...ATTENDANCE_DAY_STATUSES]).toEqual([
       'present',
+      'checkedIn',
       'late',
       'earlyLeave',
       'lateAndEarly',

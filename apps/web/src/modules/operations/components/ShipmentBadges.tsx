@@ -188,6 +188,24 @@ const StageFace = ({
   </Badge>
 );
 
+/**
+ * Round 25 — the SAME stage, as small as a chip of «توزيع المحصنات» needs it («عاوز المحصنة تظهر
+ * صغيره عبارة عن البنك والفرع»): the badge's tone and glyph without its words, which the chip's card
+ * says in full on hover. The words stay for a screen reader and as the tooltip.
+ */
+export const SecuredStageMark = ({ stage }: { stage: OperationsSecuredStage }): JSX.Element => {
+  const t = useT();
+  const label = t(`operations.board.stage.${stage}`);
+  return (
+    <span data-secured-stage={stage} title={label} className="inline-flex shrink-0">
+      <Badge tone={STAGE_TONE[stage]} size="sm" className="!h-5 !w-5 !justify-center !p-0">
+        {STAGE_GLYPH[stage]}
+        <span className="sr-only">{label}</span>
+      </Badge>
+    </span>
+  );
+};
+
 export const SecuredStageBadge = ({ stage }: { stage: OperationsSecuredStage }): JSX.Element => {
   const t = useT();
   const hint = t(`operations.board.stageHint.${stage}`);

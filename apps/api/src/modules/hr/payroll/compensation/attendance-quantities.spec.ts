@@ -53,6 +53,8 @@ describe('day sources', () => {
     row('2026-03-03', 'late'),
     row('2026-03-04', 'earlyLeave'),
     row('2026-03-05', 'lateAndEarly'),
+    // A check-in with no check-out: attendance here, by the owner's ruling.
+    row('2026-03-13', 'checkedIn'),
     row('2026-03-06', 'absent'),
     row('2026-03-09', 'absent'),
     row('2026-03-10', 'onLeave'),
@@ -63,8 +65,20 @@ describe('day sources', () => {
     row('2026-03-12', 'dayOff'),
   ];
 
-  it('counts the four attendance statuses and only those', () => {
-    expect(quantityFor(month, 'attendedDays', MARCH, ALWAYS_EMPLOYED)).toBe(4);
+  it('counts the five attendance statuses and only those', () => {
+    expect(quantityFor(month, 'attendedDays', MARCH, ALWAYS_EMPLOYED)).toBe(5);
+  });
+
+  // The owner's ruling (2026-11-17): on this payroll most people scan on arrival and never scan
+  // out, so a check-in IS an attended day. What it is NOT is a day with hours — the arrival is
+  // known and the departure is not, so it contributes a day and no minutes.
+  it('counts a check-in as an attended day, and as no worked minutes', () => {
+    const checkedIn = [row('2026-03-13', 'checkedIn', { workedMinutes: 0, lateMinutes: 35 })];
+    expect(quantityFor(checkedIn, 'attendedDays', MARCH, ALWAYS_EMPLOYED)).toBe(1);
+    expect(quantityFor(checkedIn, 'absentDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);
+    expect(quantityFor(checkedIn, 'workedMinutes', MARCH, ALWAYS_EMPLOYED)).toBe(0);
+    // Lateness still travels: being expected at a time is what makes it real.
+    expect(quantityFor(checkedIn, 'lateMinutes', MARCH, ALWAYS_EMPLOYED)).toBe(35);
   });
 
   it('counts absences', () => {
@@ -76,7 +90,12 @@ describe('day sources', () => {
   });
 
   // The decision this asserts: `incomplete`, `weekend`, `holiday` and `dayOff` belong to NO group.
-  // Whether a missing checkout is attendance is a labour rule, and none has been given.
+  //
+  // `incomplete` is here for a DIFFERENT reason from the other three now. Nothing derives it any
+  // more — a single punch is `checkedIn` — so the only rows carrying it were computed before that
+  // ruling, and most of them sit in frozen months whose payslips are paid. Counting them now would
+  // restate those months. A closed month keeps the figures it closed with; an unfrozen day picks
+  // up the new rule when it is next recomputed.
   it('puts incomplete, weekend, holiday and dayOff in no group at all', () => {
     const unruled = [
       row('2026-03-11', 'incomplete'),

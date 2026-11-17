@@ -25,6 +25,7 @@ import {
   type ListOperationsCrewRequirementsQuery,
   type ListSecuredBacklogQuery,
   type OperationsAreaDto,
+  type OperationsBankBranchReportSide,
   type OperationsExecutionResultDto,
   type OperationsShipmentType,
   type OperationsShiftTypeColour,
@@ -560,8 +561,18 @@ export const useOperationsCrewRequirements = (
     enabled,
   });
 
+/** Every day's «توزيع المحصنات» / «تسليم المحصنات» read (`securedDistributionKey` below). */
+const securedDistributionPrefix: readonly unknown[] = [
+  ...featureKey(MODULE, 'dayBoard'),
+  'securedDistribution',
+];
+
 /**
  * Planning changes who is taken, so the POOL is staled alongside the board.
+ *
+ * Round 25 — «لازم اكون دايس حفظ»: «توزيع المحصنات» lists the SAVED «محصنة» rows, so a save is what
+ * puts a row there (or takes it off); its read is staled with the board's, on this desk too, rather
+ * than waiting for the crew topic to come back over the socket.
  *
  * The board owns the refusal (Round 20): it words it and marks the row the server named — a type
  * archived on another desk, a direction that is not an area — so the global notifier stays quiet,
@@ -574,6 +585,7 @@ export const usePlanOperationsCrew = () => {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
       await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });
+      await qc.invalidateQueries({ queryKey: securedDistributionPrefix });
     },
     onError: formOwnsTheError,
   });
@@ -1223,6 +1235,26 @@ export const useBankReport = (range: { from: string; to: string }, enabled = tru
     queryKey: listKey(MODULE, 'vaultReport', range),
     queryFn: () => api.getBankReport(range),
     enabled: enabled && range.from !== '' && range.to !== '',
+  });
+
+/**
+ * Round 25 — «لوحة البنك بفروعه»: one bank of the bank report by its branches, over the page's
+ * period. In the vault roll-up's subtree beside the report it opens from, so every secured act and
+ * the vault's custody topic refresh the two together — the dashboard never says something the row
+ * under it no longer does. Read only while the dashboard is up (`enabled`).
+ */
+export const useBankBranchReport = (
+  bankId: string,
+  params: { from: string; to: string; side: OperationsBankBranchReportSide },
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vaultReport', { bankId, ...params }),
+    queryFn: () => api.getBankBranchReport(bankId, params),
+    enabled: enabled && bankId !== '' && params.from !== '' && params.to !== '',
+    // «من فرع» ↔ «إلى فرع» holds the last answer (dimmed) until the other lands, rather than
+    // blanking the window between two figures of the same bank.
+    placeholderData: (previous) => previous,
   });
 
 /** «تقرير الخزينة»'s cache entry — inside the vault roll-up's subtree, beside the bank report's. */

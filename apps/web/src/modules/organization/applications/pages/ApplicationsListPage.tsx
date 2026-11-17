@@ -13,6 +13,7 @@ import { DataTable, type Column } from '../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
 import { ListView } from '../../../../shared/ui/ListView';
+import { BOARD_FRAME, BOARD_LISTVIEW_FILL, BOARD_TABLE_FILL } from '../../../../shared/ui/board-scroll';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
 import { Select } from '../../../../shared/ui/form';
 import { StatusBadge } from '../../../../shared/ui/Badge';
@@ -153,82 +154,93 @@ export const ApplicationsListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('organization.nav.applications')}
-        breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.applications') }]}
-        actions={
-          <div className="flex gap-2">
-            {/* The same catalog, seen the way the sidebar reads it — grouping and order live
-                there, because both are questions about position rather than about a field. */}
-            <Can permission="application.edit">
-              <Button size="sm" variant="secondary" onClick={() => navigate('organize')}>
-                {t('organization.sections.open')}
-              </Button>
-            </Can>
-            <Can permission="application.create">
-              <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => navigate('new')}>
-                {t('organization.application.create')}
-              </Button>
-            </Can>
-          </div>
-        }
-      />
-
-      <ListView
-        total={data?.meta.totalItems}
-        hasActiveFilters={search !== '' || status !== '' || categoryId !== ''}
-        onClear={() => setSp(new URLSearchParams())}
-        search={
-          <SearchInput
-            className="w-full sm:w-64"
-            value={search}
-            onChange={(v) => patch({ q: v || null })}
-            placeholder={t('organization.application.searchPlaceholder')}
-          />
-        }
-        filters={
-          <>
-            <Select className="w-48" value={categoryId} onChange={(e) => patch({ categoryId: e.target.value || null })}>
-              <option value="">{t('organization.application.allCategories')}</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {localized(c.name, locale)}
-                </option>
-              ))}
-            </Select>
-            <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
-              <option value="">{t('organization.filter.allStatuses')}</option>
-              <option value="active">{t('organization.status.active')}</option>
-              <option value="inactive">{t('organization.status.inactive')}</option>
-            </Select>
-          </>
-        }
-        pagination={
-          data !== undefined && data.meta.totalItems > 0 ? (
-            <Pagination
-              meta={data.meta}
-              onPageChange={(p) => patch({ page: String(p) }, false)}
-              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-            />
-          ) : undefined
-        }
-      >
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(a) => a.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={(by) =>
-            patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «عايز بردو كل الصفحات اللى فى مديول
+          الإدارة ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس»): on a computer the title, its
+          actions and the card's filters keep their place, the card's pager keeps its place below,
+          and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('organization.nav.applications')}
+          breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.applications') }]}
+          actions={
+            <div className="flex gap-2">
+              {/* The same catalog, seen the way the sidebar reads it — grouping and order live
+                  there, because both are questions about position rather than about a field. */}
+              <Can permission="application.edit">
+                <Button size="sm" variant="secondary" onClick={() => navigate('organize')}>
+                  {t('organization.sections.open')}
+                </Button>
+              </Can>
+              <Can permission="application.create">
+                <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => navigate('new')}>
+                  {t('organization.application.create')}
+                </Button>
+              </Can>
+            </div>
           }
-          onRowClick={(a) => navigate(a.id)}
-          embedded
         />
-      </ListView>
+
+        <div className={BOARD_TABLE_FILL}>
+          <div className={BOARD_LISTVIEW_FILL}>
+            <ListView
+              total={data?.meta.totalItems}
+              hasActiveFilters={search !== '' || status !== '' || categoryId !== ''}
+              onClear={() => setSp(new URLSearchParams())}
+              search={
+                <SearchInput
+                  className="w-full sm:w-64"
+                  value={search}
+                  onChange={(v) => patch({ q: v || null })}
+                  placeholder={t('organization.application.searchPlaceholder')}
+                />
+              }
+              filters={
+                <>
+                  <Select className="w-48" value={categoryId} onChange={(e) => patch({ categoryId: e.target.value || null })}>
+                    <option value="">{t('organization.application.allCategories')}</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {localized(c.name, locale)}
+                      </option>
+                    ))}
+                  </Select>
+                  <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
+                    <option value="">{t('organization.filter.allStatuses')}</option>
+                    <option value="active">{t('organization.status.active')}</option>
+                    <option value="inactive">{t('organization.status.inactive')}</option>
+                  </Select>
+                </>
+              }
+              pagination={
+                data !== undefined && data.meta.totalItems > 0 ? (
+                  <Pagination
+                    meta={data.meta}
+                    onPageChange={(p) => patch({ page: String(p) }, false)}
+                    onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+                  />
+                ) : undefined
+              }
+            >
+              <DataTable
+                columns={columns}
+                rows={rows}
+                rowKey={(a) => a.id}
+                loading={isLoading}
+                error={isError ? error : undefined}
+                onRetry={() => void refetch()}
+                sort={sort}
+                onSortChange={(by) =>
+                  patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)
+                }
+                onRowClick={(a) => navigate(a.id)}
+                embedded
+                stickyHead
+              />
+            </ListView>
+          </div>
+        </div>
+      </div>
     </PageContainer>
   );
 };

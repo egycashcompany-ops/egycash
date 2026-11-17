@@ -212,14 +212,14 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'it.asset': { permission: 'itAsset.view' },
   // FR-18 — a receipt names who signed for which assets: exactly what the custody register shows.
   'it.custodyReceipt': { permission: 'itAsset.view' },
-  // FR-19 — the mobile lines ride the asset grants: a line and its acknowledgment are shown to
-  // exactly whoever sees the asset register and the custody papers.
-  'it.mobileLine': { permission: 'itAsset.view' },
-  'it.mobileLineReceipt': { permission: 'itAsset.view' },
-  // FR-20 — the consumables ride the asset grants too: a store's item, its stock and the memo an
-  // employee signs are shown to exactly whoever sees the asset register.
-  'it.consumable': { permission: 'itAsset.view' },
-  'it.consumableMemo': { permission: 'itAsset.view' },
+  // FR-19 — the mobile lines, on their own read grant (2026-11-17): a line and its acknowledgment
+  // are shown to exactly whoever may read the lines screen.
+  'it.mobileLine': { permission: 'itMobileLine.view' },
+  'it.mobileLineReceipt': { permission: 'itMobileLine.view' },
+  // FR-20 — the consumables, on their own read grant too: a store's item, its stock and the memo
+  // an employee signs are shown to exactly whoever may read the stores.
+  'it.consumable': { permission: 'itConsumable.view' },
+  'it.consumableMemo': { permission: 'itConsumable.view' },
   'it.catalogItem': { permission: 'itCatalog.manage' },
   'it.license': { permission: 'itLicense.view' },
   'it.maintenanceOrder': { permission: 'itMaintenance.view' },

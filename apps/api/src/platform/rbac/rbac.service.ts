@@ -2,7 +2,7 @@
 // code and synced at boot; roles are data; assignments carry a data scope and an
 // optional validity window (Review R14). Effective permission sets are cached with
 // a TTL capped at the next validity boundary — expiry needs no cleanup job.
-import { Types } from 'mongoose';
+import { Types, type ClientSession } from 'mongoose';
 import {
   DATA_SCOPE_RANK,
   ErrorCodes,
@@ -59,6 +59,18 @@ import { type RoleDoc } from './role.model';
 import { type RoleAssignmentDoc } from './role-assignment.model';
 import { delegatedGrantRepository } from './delegation.repository';
 import { type DelegatedGrantDoc } from './delegation.model';
+import {
+  alongsideFromKeys,
+  delegationCopyAuditChanges,
+  keysGainedAlongside,
+  roleCopyAuditChanges,
+  roleTakesGrantsAlongside,
+  unregisteredAlongsideKeys,
+  type DelegatedGrantsCopied,
+  type GrantAlongsidePair,
+  type GrantsAlongsideResult,
+  type RoleGrantsCopied,
+} from './grant-alongside';
 
 const PERM_CACHE_MAX_TTL_SECONDS = 300;
 
@@ -735,12 +747,19 @@ class RbacService {
         input.departmentCatalogId === null ? null : new Types.ObjectId(input.departmentCatalogId);
     }
     if (input.permissionKeys !== undefined) {
-      this.assertKnownPermissionKeys(input.permissionKeys);
       // Only what the edit ADDS is checked. Removing a grant is a narrowing and always allowed, and
       // re-sending an untouched list must not refuse an administrator who is renaming a role that
       // happens to carry a permission they do not hold — they gain nothing by leaving it there, and
       // assigning that role to anyone still runs the full check.
       const added = input.permissionKeys.filter((key) => !before.permissionKeys.includes(key));
+      // The same for a key the registry no longer declares: it may not be ADDED, but a role already
+      // holding one may be saved with it. «الموارد البشرية Test» held `applicant.returnToStage`
+      // when that key was retired, and every later save of the role was refused for it — while the
+      // screen, which shows only registered keys, gave no way to untick it. Not dropped here:
+      // a key can be absent from the registry only for now (the automation keys while
+      // AUTOMATION_ENABLED is off), and a save must not strip it. The role form names such keys and
+      // removes them when the administrator says so.
+      this.assertKnownPermissionKeys(added);
       if (actor !== undefined) this.assertKeysHeld(actor, added, 'add');
       set.permissionKeys = [...new Set(input.permissionKeys)];
     }
@@ -1071,6 +1090,124 @@ class RbacService {
       ),
     });
     return after;
+  }
+
+  // ── Grants copied alongside (a module splitting a grant) ──────────────────
+
+  /**
+   * Give every holder of a `from` key its `add` keys too — every live role but the three
+   * `grant-alongside.ts` names, and every live delegated grant (ADR-032). See that file for why
+   * this widens nobody.
+   *
+   * A SYSTEM write (ADR-026 §1: no actor, no request, no human authority to exceed), inside the
+   * caller's transaction `session`, so the copy commits with whatever the caller records beside it
+   * — a run row, typically — or not at all. Each holder is one atomic write that names the `from`
+   * keys it was found by and moves the version its editor checks. Strictly additive; a holder that
+   * already carries every key is not written at all.
+   *
+   * Nothing is audited, invalidated or announced here: the transaction may still roll back, or be
+   * retried. The caller passes the result to `afterGrantsAlongside` once it has committed.
+   */
+  async grantAlongside(
+    pairs: readonly GrantAlongsidePair[],
+    session: ClientSession,
+  ): Promise<GrantsAlongsideResult> {
+    const unknown = unregisteredAlongsideKeys(pairs, (key) => this.registryKeys.has(key));
+    if (unknown.length > 0) {
+      throw new BusinessRuleError(
+        `Unknown permission keys: ${unknown.join(', ')}`,
+        ErrorCodes.PERMISSION_UNKNOWN,
+      );
+    }
+    const fromKeys = alongsideFromKeys(pairs);
+
+    const roles: RoleGrantsCopied[] = [];
+    for (const role of await roleRepository.findHoldingAny(fromKeys, session)) {
+      if (!roleTakesGrantsAlongside(role)) continue;
+      const gained = keysGainedAlongside(role.permissionKeys, pairs);
+      if (gained.add.length === 0) continue;
+      const after = await roleRepository.addPermissionKeys(
+        role._id,
+        gained.because,
+        gained.add,
+        session,
+      );
+      if (after === null) continue;
+      roles.push({
+        roleId: String(role._id),
+        name: { ar: role.name.ar, en: role.name.en },
+        before: [...role.permissionKeys],
+        after: [...after.permissionKeys],
+      });
+    }
+
+    const delegatedGrants: DelegatedGrantsCopied[] = [];
+    for (const grant of await delegatedGrantRepository.findHoldingAny(fromKeys, session)) {
+      const gained = keysGainedAlongside(grant.permissionKeys, pairs);
+      if (gained.add.length === 0) continue;
+      const after = await delegatedGrantRepository.addPermissionKeys(
+        grant._id,
+        gained.because,
+        gained.add,
+        session,
+      );
+      if (after === null) continue;
+      delegatedGrants.push({
+        grantId: String(grant._id),
+        userId: String(grant.userId),
+        // `?? null`: lean rows written before these fields existed carry none (see the model).
+        branchId: (grant.branchId ?? null) === null ? null : String(grant.branchId),
+        departmentId: (grant.departmentId ?? null) === null ? null : String(grant.departmentId),
+        departmentCatalogId:
+          (grant.departmentCatalogId ?? null) === null ? null : String(grant.departmentCatalogId),
+        before: [...grant.permissionKeys],
+        after: [...after.permissionKeys],
+      });
+    }
+    return { roles, delegatedGrants };
+  }
+
+  /**
+   * What follows a committed `grantAlongside`, as `updateRole` and the delegation write do after
+   * theirs: one audit row per changed role (`update`, its `permissionKeys` before and after) and per
+   * changed delegated grant (on its holder, `roleAssigned`, as a delegation write records it); every
+   * affected account's permission snapshot dropped; `RoleChanged` per changed role.
+   *
+   * The trail is written first and whole — `record` never throws. An account that cannot be
+   * invalidated (deleted since it was granted) is logged and stepped over rather than allowed to
+   * stop the rest: its snapshot lapses with its TTL in any case, and the next account's must not
+   * wait for that.
+   */
+  async afterGrantsAlongside(result: GrantsAlongsideResult): Promise<void> {
+    for (const role of result.roles) {
+      await auditService.record({
+        entityRef: roleEntityRef(role.roleId),
+        action: 'update',
+        changes: roleCopyAuditChanges(role),
+      });
+    }
+    for (const grant of result.delegatedGrants) {
+      await auditService.record({
+        entityRef: { moduleId: 'platform', entityType: 'user', entityId: grant.userId },
+        action: 'roleAssigned',
+        changes: delegationCopyAuditChanges(grant),
+      });
+    }
+    const invalidateQuietly = async (userId: string): Promise<void> => {
+      try {
+        await this.invalidateUser(userId);
+      } catch (error) {
+        logger.warn({ err: error, userId }, 'grants copied alongside: snapshot not invalidated');
+      }
+    };
+    for (const role of result.roles) {
+      const userIds = await roleAssignmentRepository.distinctUserIdsForRole(role.roleId);
+      for (const userId of userIds) await invalidateQuietly(userId);
+      await emit(PlatformEvents.RoleChanged, { roleId: role.roleId, change: 'updated' });
+    }
+    for (const userId of new Set(result.delegatedGrants.map((grant) => grant.userId))) {
+      await invalidateQuietly(userId);
+    }
   }
 
   // ── Evaluation & cache (ADR-004) ──────────────────────────────────────────

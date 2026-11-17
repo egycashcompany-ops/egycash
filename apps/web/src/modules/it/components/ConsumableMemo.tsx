@@ -17,12 +17,16 @@ import {
 import { printConsumableMemo } from '../lib/consumable-memo-print';
 import { ReceiptPaperActions, usePaperPrinter, type ReceiptStore } from './CustodyReceipt';
 
-/** The memos, for the shared controls. */
+/**
+ * The memos, for the shared controls. Their signed copy is filed and withdrawn under the store's
+ * own custody grant (2026-11-17), as the issue that wrote them is.
+ */
 export const CONSUMABLE_MEMOS: ReceiptStore = {
   useReceipt: useItConsumableMemo,
   useUploadSignedCopy: useUploadConsumableMemoSignedCopy,
   useDeleteSignedCopy: useDeleteConsumableMemoSignedCopy,
   fetchSignedCopy: api.fetchConsumableMemoSignedCopy,
+  assignGrant: 'itConsumable.assign',
 };
 
 /** The memo's printer — the issue prints with it as it records, and the register prints again. */

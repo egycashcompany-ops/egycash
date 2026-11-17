@@ -165,14 +165,16 @@ class DelegationService {
     }
 
     const wanted = [...new Set(input.permissionKeys)].sort();
-    const unknown = wanted.filter((key) => !rbacService.isRegisteredPermission(key));
-    if (unknown.length > 0) {
-      throw new BusinessRuleError(`Unknown permission keys: ${unknown.join(', ')}`);
-    }
 
     const current = await delegatedGrantRepository.findForUserInUnit(userId, branchId, departmentId);
     const before = current === null ? [] : [...current.permissionKeys].sort();
     const added = wanted.filter((key) => !before.includes(key));
+    // A key the registry no longer declares may not be ADDED; one the grant already holds may be
+    // re-sent (see `rbacService.updateRole` — a retired key must not make the grant unsaveable).
+    const unknown = added.filter((key) => !rbacService.isRegisteredPermission(key));
+    if (unknown.length > 0) {
+      throw new BusinessRuleError(`Unknown permission keys: ${unknown.join(', ')}`);
+    }
     this.assertMayGrant(actor, added, branchId, departmentId);
 
     const targetId = String(target._id);

@@ -7,29 +7,41 @@ import {
   ListItTechniciansQuerySchema,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize, authorizeAny } from '../../../platform/rbac';
+import { authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
-import { getItPerson, listItPeople, listItTechnicians } from './people.controller';
+import {
+  IT_PEOPLE_GRANTS,
+  getItPerson,
+  listItPeople,
+  listItTechnicians,
+} from './people.controller';
 
 /**
- * `/it/people` — the CUSTODY grant, not a new one and not HR's. Whoever may read the custody
- * register already reads a holder's name and code on every row of it; this is those same people,
- * findable before they hold anything. It is the reach the holder boxes, the employees register and
- * a person's history all need, and nothing wider.
+ * `/it/people` — the CUSTODY registers' read grants, not a new one and not HR's. Whoever may read
+ * a register of what people hold already reads a holder's name and code on every row of it; this
+ * is those same people, findable before they hold anything. It is the reach the holder boxes, the
+ * employees register and a person's history all need, and nothing wider.
+ *
+ * Three registers name holders — the assets, the mobile lines and the consumables — and since
+ * 2026-11-17 each has its own read grant, so ANY of the three opens the list: a lines keeper hands
+ * a line to somebody they must be able to find, without being given the assets. A person is found
+ * when ANY of the three the caller holds reaches them, each in its own scope
+ * (`people.controller.ts`); what a person holds of the ASSETS is still counted only within
+ * `itAsset.view`.
  */
 export const buildItPeopleRouter = (): Router => {
   const router = Router();
   router.get(
     '/',
     authenticate,
-    authorize('itAsset.view'),
+    authorizeAny(...IT_PEOPLE_GRANTS),
     validate({ query: ListItPeopleQuerySchema }),
     asyncHandler(listItPeople),
   );
   router.get(
     '/:employeeId',
     authenticate,
-    authorize('itAsset.view'),
+    authorizeAny(...IT_PEOPLE_GRANTS),
     validate({ params: ItPersonIdParamSchema }),
     asyncHandler(getItPerson),
   );

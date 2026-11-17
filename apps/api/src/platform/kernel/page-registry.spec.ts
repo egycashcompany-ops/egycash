@@ -52,12 +52,17 @@ describe('the assembled page registry', () => {
   // screen rather than a screen of its own. Its own key beside `applicant.delete` on purpose —
   // that one sets `isDeleted` and can be undone, this one erases the record, the stages, the offer,
   // the portal login and the photographs of an ID card.
-  // Stage 3's two day-decision keys arrive WITH the screen that uses them — they route to
+  // IT's mobile lines and consumables («فى الصلاحيات مش لاقى حاجة لـ /consumables ولا
+  // /mobile-lines», 2026-11-17) added two pages and nine keys: `itMobileLine.*` (view, create,
+  // edit, assign, viewNationalId) on `it.mobile-lines`, `itConsumable.*` (view, create, edit,
+  // assign) on `it.consumables` — the screens that rode `itAsset.*` until then.
+  //
+  // Stage 3's two day-decision keys then arrive WITH the screen that uses them — they route to
   // `hr.attendance-regularizations`, which gained a fourth tab for the queue — so both land in the
   // assigned count below and the unassigned one does not move.
-  it('declares 86 pages over 323 permissions', () => {
-    expect(pages).toHaveLength(86);
-    expect(permissions).toHaveLength(323);
+  it('declares 88 pages over 332 permissions', () => {
+    expect(pages).toHaveLength(88);
+    expect(permissions).toHaveLength(332);
   });
 
   /**
@@ -142,14 +147,20 @@ describe('the assembled page registry', () => {
    * reports, their photos) and `itVehicleCheck.delete` (a wrong report), arriving WITH the screen
    * that uses them, as promised above. Both route to `it.vehicle-checks`, whose route is now that
    * dashboard, so the unassigned count does not move.
+   *
+   * The mobile lines and the consumables add NINE keys and two pages, every key arriving WITH its
+   * page: the two screens existed and rode `itAsset.*`, and what changed is that each is now a row
+   * of the role matrix an administrator can grant on its own. Five on `it.mobile-lines` (the line
+   * receipt's national ID is its own sensitive-data grant there, as the device receipt's is on
+   * `it.assets`), four on `it.consumables`. The unassigned count does not move.
    */
-  it('assigns 294 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 303 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     // `hiringRequirement.manage` arrives WITH its page, so it lands here and the unassigned count
     // below does not move — the same shape as `insuranceJobTitle.manage` before it.
     // `employee.purge` routes to `hr.employees`, the screen its button sits on, so it lands here
     // and the unassigned count below does not move.
-    expect(assigned).toHaveLength(294);
+    expect(assigned).toHaveLength(303);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -175,10 +186,12 @@ describe('the assembled page registry', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
     // IT's tenth page is the vehicle device checks (`it.vehicle-checks`, FR-21) — the form's page,
-    // whose route the dashboard took over (2026-11-10): one page, not a second.
+    // whose route the dashboard took over (2026-11-10): one page, not a second. Its eleventh and
+    // twelfth are the mobile lines and the consumables (2026-11-17), screens that had been there
+    // for weeks inside «الأصول»'s grants and became rows of their own.
     // HR's 39th is «مستندات مطلوبة للتعيين» — a reserved settings tab whose screen is not built
     // yet, counted because the authority over it is administered from today.
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 39, fleet: 19, it: 10 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 39, fleet: 19, it: 12 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer
@@ -243,6 +256,45 @@ describe('the assembled page registry', () => {
     expect(pageOf('contractType.manage')).toBe('hr.contracts');
     expect(pageOf('hiringDocumentType.manage')).toBe('hr.hiring-documents');
     expect(pageOf('itMaintenancePlan.manage')).toBe('it.maintenance');
+  });
+
+  // 2026-11-17: the two IT screens that rode the asset grants are pages of their own, right after
+  // the assets and in the rail's order — and every one of their keys sits on its own screen's page,
+  // none on «الأصول».
+  it('gives the mobile lines and the consumables their own pages, after the assets', () => {
+    const order = pages
+      .filter((p) => p.moduleId === 'it')
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+      .map((p) => p.id);
+    expect(order.slice(0, 4)).toEqual([
+      'it.assets',
+      'it.mobile-lines',
+      'it.consumables',
+      'it.help-desk',
+    ]);
+    const keysOn = (pageId: string): string[] =>
+      permissions
+        .filter((p) => p.pageId === pageId)
+        .map((p) => p.key)
+        .sort();
+    expect(keysOn('it.mobile-lines')).toEqual(
+      [
+        'itMobileLine.view',
+        'itMobileLine.create',
+        'itMobileLine.edit',
+        'itMobileLine.assign',
+        'itMobileLine.viewNationalId',
+      ].sort(),
+    );
+    expect(keysOn('it.consumables')).toEqual(
+      [
+        'itConsumable.view',
+        'itConsumable.create',
+        'itConsumable.edit',
+        'itConsumable.assign',
+      ].sort(),
+    );
+    expect(keysOn('it.assets').every((key) => key.startsWith('itAsset.'))).toBe(true);
   });
 
   // A page is organizational. Nothing here may grow into an authorization axis — if it ever does,

@@ -11,6 +11,49 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: «خطوط المحمول» and «المستهلكات» have their own permissions.** «فى الصلاحيات مش لاقى حاجة لـ
+  /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها». Both screens
+  rode the asset grants, so the roles screen had no row for either. Each is now a page of the role
+  matrix, right after «الأصول», with its own keys.
+  - `itMobileLine` (page «خطوط المحمول»): view, create, edit, «تسليم واسترجاع خطوط المحمول» (`assign`)
+    and «عرض الرقم القومي للمستلم في إقرار استلام الخط» (`viewNationalId`). `itConsumable` (page
+    «المستهلكات»): view, create, edit and «صرف واسترجاع وتحويل المستهلكات» (`assign`). Each does
+    exactly what the asset key did on the same screen, within the same scope.
+  - The asset keys no longer open these two screens — their routes, the papers' signed copies and
+    their live refresh. The assets, custody, the employees screen and the home's asset figures keep
+    `itAsset.*`.
+  - Nobody loses access on deploy: once, every role and every live delegated grant holding an
+    `itAsset` key is given the matching new keys (`go-live:it-screen-grants:v1`). It adds and never
+    removes, and a key removed afterwards stays removed.
+  - `GET /it/consumables/transfer-targets`: the branches «تحويل إلى فرع» may go to, as
+    `itConsumable.assign` reaches them. The assets' `GET /it/assets/move-targets` stays on
+    `itAsset.assign`.
+  - `/it/people` (the holder boxes) opens on any of the three screens' view keys and finds people in
+    every unit any of them reaches. How many assets a person holds is counted only for a reader with
+    `itAsset.view`, and shows 0 to anyone else.
+  - Naming the asset an issued item is installed on needs `itAsset.view`; without it the asset is
+    «not found». The consumables' types list (`GET /it/catalog-items`) also opens on
+    `itConsumable.view`.
+  - The «خطوط المحمول» and «المستهلكات» menu rows move to the new view keys, only where the stored row
+    still holds `itAsset.view`.
+
+- **Administration: only the table scrolls, not the page.** «عايز بردو كل الصفحات اللى فى مديول الإدارة
+  ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس». Every page of the «الإدارة» menu now takes the
+  board frame Fleet and ATM use (`shared/ui/board-scroll.ts`). On a computer the title, tabs and
+  filters keep their place, the pager stays below, and only the table's rows scroll, under a head
+  that stays. A phone or a tablet scrolls as before.
+  - The table pages: System Users, Active Users, Notification Templates, Audit Log, Activity Log,
+    Applications and Application Categories.
+  - The pages whose list is cards: Roles, the Permission Catalog, Approval Workflows and System
+    Settings. Their list scrolls instead (`BOARD_LIST_FILL`).
+  - `BOARD_LISTVIEW_FILL` does the same for a `ListView` card.
+  - The Audit Log, whose filter bar is the tallest, takes the IT boards' lower table floor
+    (`BOARD_TABLE_FILL_LOW`). With the usual 14rem floor, a 1280×720 or 1366×768 laptop scrolled
+    the whole page, filters included.
+  - `admin-board-scroll.spec.ts` holds every page of the menu to this shape.
+  - Checked in a browser against a mocked API. At 1440×900, 1366×768 and 1280×720 the title and
+    filters stay in place on all eleven pages, and the table or list takes the height that is left.
+
 - **Organization: «شجرة الهيكل التنظيمي», and a job's place in the structure.** «HR hierarchical chart …
   عبارة عن شارت بالشركة كلها .. فيه الإدارات والأقسام والمسميات الوظيفية … ولما أختار إدارة بالضغط على
   كارت يجيب تحتها الشارت بتاع هيكلها التنظيمي مع إمكانية تعديل الهيكل»; «عند إضافة وظيفة جديدة لا يتم
@@ -76,6 +119,8 @@ its entry here in the same PR.
     the pounds at the end of their five boxes, the piasters in their two (variables
     `job.fixedSalaryPounds`, `job.fixedSalaryPiasters`). A job with none leaves the boxes empty.
   - «تحريراً في» is left for the hand; «تاريخ بدء الاشتراك» is still the start date.
+  - Overleaf, «أقر أنا …» is left for the hand too: the employee's name is no longer written there
+    («اقر انا دي سبها متكتبش فيها اسم الموظف»; revision 5).
   - Every figure the form is filled with is printed in Arabic figures; an e-mail address keeps its own.
   - The template sanitizer keeps rows of five and seven boxes (`c5`, `c7`) and `end`; the paper's
     revision 4 rewrites the stored row at boot.
@@ -1867,6 +1912,19 @@ its entry here in the same PR.
   replaced, and a note names the asset the data came from.
 
 ### Fixed
+
+- **A role holding a retired permission can be saved again.** «لما بعدل صلاحيات دور بيظهر كدا !
+  Unknown permission keys: applicant.returnToStage» (the role «الموارد البشرية Test»).
+  - The cause: `applicant.returnToStage` was retired on 2026-11-16 (replaced by
+    `applicantReturn.execute`). Roles that held it kept it, and every save checked ALL the role's
+    keys against the registry, so the role could not be saved at all.
+  - Now only the keys an edit ADDS must be registered, the same rule the "keys you hold" check
+    already followed. A key the role already holds may be re-sent and is kept.
+  - Delegated grants follow the same rule.
+  - Retired keys are not stripped automatically: a key can be missing from the registry only for
+    now (the automation keys while `AUTOMATION_ENABLED` is off).
+  - The role form already lists such keys at the end, as «غير معروفة», where they can be unticked
+    but not re-added.
 
 - **HR: «نموذج رقم (1)» prints on the owner's own pages.** «انا عاوز النموزج بردو شبه منا بعتو بظبط
   مفهوش اي تعديل خالص و بيتملي عادي بس الشكل اللي ادتولك بظبط». The form was drawn again in the

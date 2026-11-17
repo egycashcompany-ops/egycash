@@ -12,6 +12,7 @@ import { DataTable, type Column } from '../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../shared/ui/Pagination';
 import { Button } from '../../../../shared/ui/Button';
 import { ListView } from '../../../../shared/ui/ListView';
+import { BOARD_FRAME, BOARD_LISTVIEW_FILL, BOARD_TABLE_FILL } from '../../../../shared/ui/board-scroll';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
 import { Select } from '../../../../shared/ui/form';
 import { StatusBadge } from '../../../../shared/ui/Badge';
@@ -132,63 +133,77 @@ export const ApplicationCategoriesListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('organization.nav.applicationCategories')}
-        breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.applicationCategories') }]}
-        actions={
-          <Can permission="applicationCategory.create">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => navigate('new')}>
-              {t('organization.applicationCategory.create')}
-            </Button>
-          </Can>
-        }
-      />
-
-      <ListView
-        total={data?.meta.totalItems}
-        hasActiveFilters={search !== '' || status !== ''}
-        onClear={() => setSp(new URLSearchParams())}
-        search={
-          <SearchInput
-            className="w-full sm:w-64"
-            value={search}
-            onChange={(v) => patch({ q: v || null })}
-            placeholder={t('organization.filter.search')}
-          />
-        }
-        filters={
-          <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
-            <option value="">{t('organization.filter.allStatuses')}</option>
-            <option value="active">{t('organization.status.active')}</option>
-            <option value="inactive">{t('organization.status.inactive')}</option>
-          </Select>
-        }
-        pagination={
-          data !== undefined && data.meta.totalItems > 0 ? (
-            <Pagination
-              meta={data.meta}
-              onPageChange={(p) => patch({ page: String(p) }, false)}
-              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-            />
-          ) : undefined
-        }
-      >
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(c) => c.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={(by) =>
-            patch({ sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` }, false)
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`, 2026-11-17 «عايز بردو كل الصفحات اللى فى
+          مديول الإدارة ميبقاش الصفحات كلها بتعمل Scroll لكن الجداول بس»): on a computer the title,
+          its action and the card's filters keep their place, the card's pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('organization.nav.applicationCategories')}
+          breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.applicationCategories') }]}
+          actions={
+            <Can permission="applicationCategory.create">
+              <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => navigate('new')}>
+                {t('organization.applicationCategory.create')}
+              </Button>
+            </Can>
           }
-          onRowClick={(c) => navigate(c.id)}
-          embedded
         />
-      </ListView>
+
+        <div className={BOARD_TABLE_FILL}>
+          <div className={BOARD_LISTVIEW_FILL}>
+            <ListView
+              total={data?.meta.totalItems}
+              hasActiveFilters={search !== '' || status !== ''}
+              onClear={() => setSp(new URLSearchParams())}
+              search={
+                <SearchInput
+                  className="w-full sm:w-64"
+                  value={search}
+                  onChange={(v) => patch({ q: v || null })}
+                  placeholder={t('organization.filter.search')}
+                />
+              }
+              filters={
+                <Select className="w-40" value={status} onChange={(e) => patch({ status: e.target.value || null })}>
+                  <option value="">{t('organization.filter.allStatuses')}</option>
+                  <option value="active">{t('organization.status.active')}</option>
+                  <option value="inactive">{t('organization.status.inactive')}</option>
+                </Select>
+              }
+              pagination={
+                data !== undefined && data.meta.totalItems > 0 ? (
+                  <Pagination
+                    meta={data.meta}
+                    onPageChange={(p) => patch({ page: String(p) }, false)}
+                    onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+                  />
+                ) : undefined
+              }
+            >
+              <DataTable
+                columns={columns}
+                rows={rows}
+                rowKey={(c) => c.id}
+                loading={isLoading}
+                error={isError ? error : undefined}
+                onRetry={() => void refetch()}
+                sort={sort}
+                onSortChange={(by) =>
+                  patch(
+                    { sort: `${by}:${sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc'}` },
+                    false,
+                  )
+                }
+                onRowClick={(c) => navigate(c.id)}
+                embedded
+                stickyHead
+              />
+            </ListView>
+          </div>
+        </div>
+      </div>
     </PageContainer>
   );
 };

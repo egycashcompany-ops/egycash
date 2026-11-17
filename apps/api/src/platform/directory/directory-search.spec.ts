@@ -63,6 +63,8 @@ describe('the directory register', () => {
 
     expect((await searchDirectoryEmployees(query({ departmentIds: [] }))).items).toEqual([]);
     expect((await searchDirectoryEmployees(query({ employeeIds: [] }))).items).toEqual([]);
+    // No selector reaches anybody: an empty union is nobody (IT's people, 2026-11-17).
+    expect((await searchDirectoryEmployees(query({ anyOfScopes: [] }))).items).toEqual([]);
     expect(lookup).not.toHaveBeenCalled();
   });
 });

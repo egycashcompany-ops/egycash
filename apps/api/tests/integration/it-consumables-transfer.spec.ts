@@ -6,7 +6,9 @@
 // every other line, and the item a line would have made, unwritten — the two stores' counters
 // moved together and never below zero, the receiving store's item found by its exact name (the
 // unique index's) or made there with a new code, the pair of movements on both ledgers sharing one
-// `transferId` and naming each other, the audit trail of both stores, and the reach of the grant.
+// `transferId` and naming each other, the audit trail of both stores, and the reach of the grant —
+// the store's OWN custody grant since 2026-11-17 (`itConsumable.assign`), which is also what
+// `GET /it/consumables/transfer-targets` answers by.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,6 +20,7 @@ import {
   type ItConsumableDto,
   type ItConsumableMovementDto,
   type ItConsumableTransferResultDto,
+  type ItMoveTargetsDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -34,7 +37,8 @@ const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminToken: string;
-let keeperAToken: string; // itAsset.view + itAsset.assign at BRANCH scope, placed in branch A
+let keeperAToken: string; // itConsumable.view + .assign at BRANCH scope, placed in branch A
+let assetsKeeperToken: string; // itAsset.view + .assign at ORGANIZATION scope — no store grant
 let branchAId: string;
 let branchBId: string;
 let typeId: string; // «ماوس»
@@ -177,13 +181,25 @@ beforeAll(async () => {
   const keeperRole = await rbacService.createRole(
     {
       name: { en: 'Store keeper', ar: 'أمين مخزن' },
-      permissionKeys: ['itAsset.view', 'itAsset.assign'],
+      permissionKeys: ['itConsumable.view', 'itConsumable.assign'],
     },
     adminId,
   );
   const keeperId = await mkUser('transfer-keeper@ecms.local', branchAId);
   await rbacService.ensureAssignment(keeperId, String(keeperRole._id), 'branch');
   keeperAToken = await login('transfer-keeper@ecms.local');
+
+  // The custody grant the transfer rode until 2026-11-17, everywhere — and none of the store's.
+  const assetsKeeperRole = await rbacService.createRole(
+    {
+      name: { en: 'Assets keeper', ar: 'أمين أصول' },
+      permissionKeys: ['itAsset.view', 'itAsset.assign'],
+    },
+    adminId,
+  );
+  const assetsKeeperId = await mkUser('transfer-assets-keeper@ecms.local');
+  await rbacService.ensureAssignment(assetsKeeperId, String(assetsKeeperRole._id), 'organization');
+  assetsKeeperToken = await login('transfer-assets-keeper@ecms.local');
 
   const type = await api.post('/catalog-items', {
     kind: 'consumableType',
@@ -433,7 +449,7 @@ describe('a refused transfer writes nothing', () => {
     await untouched(item, 1);
   });
 
-  it('a branch the caller’s itAsset.assign does not reach — 403', async () => {
+  it('a branch the caller’s itConsumable.assign does not reach — 403', async () => {
     const mine = await stock();
     const res = await transfer({ lines: [{ consumableId: mine.id, qty: 1 }] }, keeperAToken);
     expect(res.status).toBe(403);
@@ -482,5 +498,42 @@ describe('a refused transfer writes nothing', () => {
     });
     expect(res.status).toBe(400);
     await untouched(item, 1);
+  });
+
+  it('a caller holding only the assets’ custody grant, however wide — 403', async () => {
+    const item = await stock();
+    const res = await transfer({ lines: [{ consumableId: item.id, qty: 1 }] }, assetsKeeperToken);
+    expect(res.status).toBe(403);
+    await untouched(item, 1);
+  });
+});
+
+describe('where a transfer may go — GET /it/consumables/transfer-targets', () => {
+  const targets = async (token: string): Promise<string[]> => {
+    const res = await api.get('/consumables/transfer-targets', token);
+    expect(res.status).toBe(200);
+    return data<ItMoveTargetsDto>(res).branchIds;
+  };
+
+  it('answers the branches the caller’s itConsumable.assign reaches whole — and only those', async () => {
+    // Branch-scoped in A: A alone, though B exists and is active.
+    expect(await targets(keeperAToken)).toEqual([branchAId]);
+    // Organization-wide: both.
+    expect(await targets(adminToken)).toEqual(expect.arrayContaining([branchAId, branchBId]));
+  });
+
+  it('offers nothing the transfer itself would refuse', async () => {
+    const offered = await targets(keeperAToken);
+    expect(offered).not.toContain(branchBId);
+    const mine = await stock();
+    expect(
+      (await transfer({ lines: [{ consumableId: mine.id, qty: 1 }] }, keeperAToken)).status,
+    ).toBe(403);
+  });
+
+  it('is the store’s grant to ask — the assets’ custody grant opens nothing here (403)', async () => {
+    expect((await api.get('/consumables/transfer-targets', assetsKeeperToken)).status).toBe(403);
+    // The assets keep their own list, on their own grant.
+    expect((await api.get('/assets/move-targets', assetsKeeperToken)).status).toBe(200);
   });
 });

@@ -50,7 +50,8 @@ const branches = { listAll: fn() };
 const catalog = { listKind: fn(), namesByIds: fn() };
 const drivers = { registryDigest: fn() };
 const licensing = { openPaperCounts: fn() };
-const fuel = { summary: fn() };
+const fuel = { summary: fn(), nearestExpiry: fn(), attentionList: fn(), cardIdsOf: fn() };
+const reconcile = { lastSheets: fn() };
 const accidents = { recentWritten: fn(), summaryOver: fn() };
 const notices = { dashboardDigest: fn() };
 const dealership = { summaryOver: fn() };
@@ -79,6 +80,9 @@ vi.mock('../driver-profiles/driver-profile.service', () => ({
 }));
 vi.mock('../licensing/licensing.service', () => ({ fleetLicensingService: licensing }));
 vi.mock('../fuel-cards/fuel-card.service', () => ({ fleetFuelCardService: fuel }));
+vi.mock('../fuel-cards/reconcile/fuel-reconcile.service', () => ({
+  fleetFuelReconcileService: reconcile,
+}));
 vi.mock('../accidents/accident.service', () => ({ fleetAccidentService: accidents }));
 vi.mock('../notices/notice.service', () => ({ fleetNoticeService: notices }));
 vi.mock('../dealership/dealership.service', () => ({ fleetDealershipService: dealership }));
@@ -208,8 +212,36 @@ const totals = (over: Record<string, number>) => ({
   requestedAmount: 0,
   chargedTodayAmount: 0,
   cardCount: 0,
+  wataniyaCards: 0,
+  chilloutCards: 0,
+  noCarCards: 0,
+  noCarBalance: 0,
   ...over,
 });
+
+/** One «كروت تحتاج متابعة» row as the fuel-card module gives it. */
+const CARD_ROW = {
+  cardId: '650000000000000000000701',
+  company: 'wataniya' as const,
+  number: '7000123412344417',
+  vehicleId: 'v1',
+  code: '1',
+  typeName: MERCEDES,
+  vehicleDeleted: false,
+  label: null,
+  balance: 50,
+  requestedAmount: null,
+  expiresAt: '2027-01-01',
+  states: ['critical' as const],
+};
+/** «مطابقة شيت شركة الوقود» of one company, as the reconcile module gives it. */
+const SHEET = {
+  sheetDate: '2026-10-30',
+  readDay: '2026-10-31',
+  differing: 4,
+  undecided: 1,
+  undecidedNet: -120.5,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -307,9 +339,18 @@ beforeEach(() => {
               chilloutBalance: 50,
               requestedCount: 3,
               requestedAmount: 600,
+              cardCount: 7,
+              wataniyaCards: 4,
+              chilloutCards: 3,
+              noCarCards: 2,
+              noCarBalance: 150,
             }),
     ),
   );
+  fuel.nearestExpiry.mockResolvedValue('2026-11-10');
+  fuel.attentionList.mockResolvedValue({ rows: [CARD_ROW], total: 9 });
+  fuel.cardIdsOf.mockResolvedValue(['650000000000000000000701']);
+  reconcile.lastSheets.mockResolvedValue({ wataniya: SHEET, chillout: null });
   accidents.recentWritten.mockResolvedValue([]);
   accidents.summaryOver.mockResolvedValue({ count: 2, remaining: 1500 });
   notices.dashboardDigest.mockResolvedValue({
@@ -356,8 +397,11 @@ const USES: Record<FleetDashboardNowSection, readonly Mock[]> = {
   licenceVehicles: [vehicles.countListed, vehicles.nearestLicences],
   licenceDrivers: [drivers.registryDigest],
   papers: [licensing.openPaperCounts],
-  fuelCards: [fuel.summary],
+  fuelCards: [fuel.summary, fuel.nearestExpiry],
   fuelCharging: [fuel.summary],
+  fuelCardList: [fuel.attentionList],
+  // The branch's cards are asked only under a branch (`cardIdsOf`) — the company view reads none.
+  fuelSheets: [reconcile.lastSheets],
   recentWorkshop: [maintenance.recentWritten],
   recentAccidents: [accidents.recentWritten],
   // ONE read of the open notices: the counts and the rows (never the screen's two full reads).
@@ -396,10 +440,13 @@ describe('R1 — the gating matrix (R-28: the API key AND the linked screen guar
 
   it('fleetFuelCard.view alone gets the expired cards but no balances, requests or low cards', async () => {
     const dto = await fleetDashboardNowService.read(ctxWith(['fleetFuelCard.view']), NOW);
-    expect(dto.fuelCards).toEqual({ warnDays: 30, expired: 1, expiring: 2 });
+    expect(dto.fuelCards).toEqual({ warnDays: 30, expired: 1, expiring: 2, nearest: '2026-11-10' });
     expect(dto.fuelCharging).toBeNull();
-    // Only the two expiry questions — never the balances' three.
+    expect(dto.fuelCardList).toBeNull();
+    expect(dto.fuelSheets).toBeNull();
+    // Only the two expiry questions — never the balances' three — and the nearest expiry.
     expect(fuel.summary).toHaveBeenCalledTimes(2);
+    expect(fuel.nearestExpiry).toHaveBeenCalledTimes(1);
     expect(dto.alerts.map((a) => a.id)).toEqual(['fuelCardExpired']);
   });
 
@@ -446,7 +493,7 @@ describe('R1 — data scope (R-27)', () => {
     expect(dealership.summaryOver).toHaveBeenCalledWith({ pending: true });
     expect(maintenance.openNow).toHaveBeenCalledWith({ today: TODAY, filter: {} });
     expect(violations.yearDigest).toHaveBeenCalledWith({ year: 2026, filter: {} });
-    expect(violations.openDigest).toHaveBeenCalledWith({ filter: {} });
+    expect(violations.openDigest).toHaveBeenCalledWith({ filter: {}, bookOnly: true });
     // The notices: the whole company (a notice with no car included), the reader's own grants.
     expect(notices.dashboardDigest).toHaveBeenCalledWith({}, ctx);
     expect(JSON.stringify(accidents.summaryOver.mock.calls)).not.toContain('createdBy');
@@ -459,7 +506,10 @@ describe('R1 — data scope (R-27)', () => {
     expect(drivers.registryDigest).toHaveBeenCalledWith(
       expect.objectContaining({ branchIds: [B2] }),
     );
-    expect(violations.openDigest).toHaveBeenCalledWith({ filter: { branchIds: [B2] } });
+    expect(violations.openDigest).toHaveBeenCalledWith({
+      filter: { branchIds: [B2] },
+      bookOnly: false,
+    });
     // The notices follow the car's CURRENT branch, through the screen's own `branchIds`.
     expect(notices.dashboardDigest).toHaveBeenCalledWith(
       { branchIds: [B2] },
@@ -561,7 +611,10 @@ describe('R1 — data scope (R-27)', () => {
       expect.objectContaining({ filter: { branchIds: both } }),
     );
     expect(violations.yearDigest).toHaveBeenCalledWith({ year: 2026, filter: { branchIds: both } });
-    expect(violations.openDigest).toHaveBeenCalledWith({ filter: { branchIds: both } });
+    expect(violations.openDigest).toHaveBeenCalledWith({
+      filter: { branchIds: both },
+      bookOnly: false,
+    });
     expect(drivers.registryDigest).toHaveBeenCalledWith(
       expect.objectContaining({ branchIds: both }),
     );
@@ -849,16 +902,23 @@ describe('R1 — one clock, Cairo day', () => {
     expect(dto.today).toBe(TODAY);
     expect(dto.asOf).toBe(NOW.toISOString());
     for (const call of fuel.summary.mock.calls) expect(call[1]).toBe(NOW);
+    const counts = { charged: false };
     expect(fuel.summary).toHaveBeenCalledWith(
       { expiresBefore: new Date(`${TODAY}T23:59:59.999Z`) },
       NOW,
+      counts,
     );
-    expect(fuel.summary).toHaveBeenCalledWith(
-      {
-        expiresFrom: new Date('2026-11-02T00:00:00.000Z'),
-        expiresBefore: new Date('2026-12-01T23:59:59.999Z'),
-      },
-      NOW,
+    const window = {
+      expiresFrom: new Date('2026-11-02T00:00:00.000Z'),
+      expiresBefore: new Date('2026-12-01T23:59:59.999Z'),
+    };
+    expect(fuel.summary).toHaveBeenCalledWith(window, NOW, counts);
+    // «أقربها» over the very window the expiring count and its link name.
+    expect(fuel.nearestExpiry).toHaveBeenCalledWith(window);
+    // «كروت تحتاج متابعة» on the same Cairo day and the same thresholds.
+    expect(fuel.attentionList).toHaveBeenCalledWith(
+      {},
+      { today: TODAY, warnDays: 30, yellowAt: 300, redAt: 100, limit: 8 },
     );
     expect(maintenance.recentWritten).toHaveBeenCalledWith({
       sinceYmd: '2026-10-03',
@@ -975,7 +1035,9 @@ describe('R1 — isolation and alerts', () => {
       requested: { count: 3, amount: 600 },
       low: { belowYellow: 4, belowRed: 1, yellowAt: 300, redAt: 100 },
       charged24h: 0,
-      cards: 0,
+      cards: 7,
+      companyCards: { wataniya: 4, chillout: 3 },
+      unassigned: { count: 2, balance: 150 },
     });
   });
 
@@ -1697,5 +1759,67 @@ describe('rosterLists — «الحركة اليوم»: the rows the tiles count,
       lists.absentDrivers.map((a) => a.employeeId),
     );
     expect(dto.roster?.absentDrivers[1]?.crewVehicle).toBeNull();
+  });
+});
+
+describe('R1 — the fuel figures follow the card’s CURRENT car’s branch (§0b, D10)', () => {
+  it('the company view: no branch on any fuel question, the cards on no car named, every sheet line', async () => {
+    const dto = await fleetDashboardNowService.read(ctxWith(ALL_KEYS), NOW);
+    for (const call of fuel.summary.mock.calls) {
+      expect(call[0] as Record<string, unknown>).not.toHaveProperty('branchIds');
+    }
+    expect(dto.fuelCharging?.unassigned).toEqual({ count: 2, balance: 150 });
+    expect(dto.fuelCardList).toEqual({ rows: [CARD_ROW], total: 9 });
+    expect(dto.fuelSheets).toEqual({ wataniya: SHEET, chillout: null });
+    expect(reconcile.lastSheets).toHaveBeenCalledWith({});
+    expect(fuel.cardIdsOf).not.toHaveBeenCalled();
+  });
+
+  it('a branch view: every fuel question carries the branch; no card on no car; the sheet reads the branch’s cards', async () => {
+    const dto = await fleetDashboardNowService.read(ctxWith(ALL_KEYS, { activeBranchId: B2 }), NOW);
+    expect(fuel.summary.mock.calls.length).toBe(5);
+    for (const call of fuel.summary.mock.calls) {
+      expect((call[0] as { branchIds?: string[] }).branchIds).toEqual([B2]);
+    }
+    expect(fuel.nearestExpiry).toHaveBeenCalledWith(expect.objectContaining({ branchIds: [B2] }));
+    expect(fuel.attentionList).toHaveBeenCalledWith(
+      { branchIds: [B2] },
+      expect.objectContaining({ today: TODAY, limit: 8 }),
+    );
+    expect(fuel.cardIdsOf).toHaveBeenCalledWith({ branchIds: [B2] });
+    expect(reconcile.lastSheets).toHaveBeenCalledWith({ cardIds: ['650000000000000000000701'] });
+    expect(dto.fuelCharging?.unassigned).toBeNull();
+    // Still each company's cards — of the branch.
+    expect(dto.fuelCharging?.companyCards).toEqual({ wataniya: 4, chillout: 3 });
+  });
+
+  it('«شُحن اليوم» is asked ONCE — of the summary that shows it; the counts never ask it', async () => {
+    await fleetDashboardNowService.read(ctxWith(ALL_KEYS), NOW);
+    const asked = fuel.summary.mock.calls.filter((call) => call[2] === undefined);
+    expect(asked).toEqual([[{}, NOW]]);
+    for (const call of fuel.summary.mock.calls.filter((c) => c[2] !== undefined)) {
+      expect(call[2]).toEqual({ charged: false });
+    }
+  });
+
+  it('a fuel section that throws is null and named; the others answer', async () => {
+    fuel.attentionList.mockRejectedValueOnce(new Error('cards down'));
+    reconcile.lastSheets.mockRejectedValueOnce(new Error('sheets down'));
+    const dto = await fleetDashboardNowService.read(ctxWith(ALL_KEYS), NOW);
+    expect(dto.fuelCardList).toBeNull();
+    expect(dto.fuelSheets).toBeNull();
+    expect(dto.unavailable).toEqual(['fuelCardList', 'fuelSheets']);
+    expect(dto.fuelCharging).not.toBeNull();
+    expect(dto.fuelCards).not.toBeNull();
+  });
+
+  it('the new sections need BOTH fuel keys: the charging screen is what their rows open', async () => {
+    const dto = await fleetDashboardNowService.read(
+      ctxWith(['fleetFuelCard.view', 'fleetFuelCharge.view']),
+      NOW,
+    );
+    expect(dto.fuelCardList).not.toBeNull();
+    expect(dto.fuelSheets).not.toBeNull();
+    expect(dto.violationsOpen).toBeNull();
   });
 });

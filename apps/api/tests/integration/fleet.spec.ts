@@ -53,6 +53,7 @@ import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/
 import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
 import { FleetDealershipInvoiceModel } from '../../src/modules/fleet/dealership/dealership.model';
 import { FleetFuelCardMovementModel } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
+import { FleetViolationModel } from '../../src/modules/fleet/violations/violation.model';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { driverAvailabilityOn } from '../../src/modules/fleet/availability/driver-availability';
@@ -6619,6 +6620,71 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       driverEmployeeId: null,
       driverName: 'مجهول',
     });
+  });
+
+  it('«من / إلى» — the fine’s day, whole days; a statement (a year, no day) never matches', async () => {
+    // The fleet dashboard's «مخالفات السائقين في الفترة» opens the register with `from`/`to` (the
+    // web's dfrom/dto): its count must be the list's.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const speed = await violationTypeIdByName('حزام');
+    const fees = await violationTypeIdByName('رسوم خدمة');
+    const statement = await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2026, violationTypeId: fees, count: 1, unitValue: 90 });
+    expect(statement.status, statement.text).toBe(201);
+    const batch = await request(app)
+      .post('/api/v1/fleet/violations/driver/batch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        rows: ['2026-04-30', '2026-05-01', '2026-05-15', '2026-05-31', '2026-06-01'].map(
+          (date) => ({ date, driverEmployeeId: null, violationTypeId: speed, amount: 10 }),
+        ),
+      });
+    expect(batch.status, batch.text).toBe(201);
+    const ids = data<{ id: string }[]>(batch).map((row) => row.id);
+    // An old-book row stored off midnight on the LAST day — 21:00Z on 31 May — is still that day's.
+    await FleetViolationModel.updateOne(
+      { _id: new Types.ObjectId(ids[3]) },
+      { date: new Date('2026-05-31T21:00:00.000Z') },
+    ).exec();
+    const list = async (query: Record<string, string>) => {
+      const res = await request(app)
+        .get('/api/v1/fleet/violations')
+        .query({ vehicleCodes: v.code, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, res.text).toBe(200);
+      return {
+        ids: data<{ id: string }[]>(res).map((row) => row.id),
+        total: (res.body as { meta: { totalItems: number } }).meta.totalItems,
+      };
+    };
+    const may = await list({ kind: 'driver', from: '2026-05-01', to: '2026-05-31' });
+    expect(may.ids.sort()).toEqual([ids[1], ids[2], ids[3]].sort());
+    expect(may.total).toBe(3);
+    // Without `kind` the bounded question still names the drivers' shape — never the statement.
+    expect((await list({ from: '2026-05-01', to: '2026-05-31' })).total).toBe(3);
+    // One end only; beside the other filters (owed, a type).
+    expect((await list({ kind: 'driver', from: '2026-05-31' })).total).toBe(2);
+    expect((await list({ kind: 'driver', to: '2026-04-30' })).ids).toEqual([ids[0]]);
+    expect(
+      (
+        await list({
+          kind: 'driver',
+          from: '2026-05-01',
+          to: '2026-05-31',
+          collected: 'false',
+          violationTypeId: speed,
+        })
+      ).total,
+    ).toBe(3);
+    // The register refuses a word it does not know (the web's own `dfrom` never reaches it).
+    const refused = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ dfrom: '2026-05-01' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(refused.status).toBe(400);
   });
 
   it('the grievance is ONE figure per (vehicle, year), and the rollup merges everything', async () => {

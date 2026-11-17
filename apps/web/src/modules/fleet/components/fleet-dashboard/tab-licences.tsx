@@ -33,7 +33,6 @@ import {
   Card,
   CardHead,
   CarChip,
-  CompanyWide,
   FOCUS,
   Fig,
   FootLink,
@@ -764,12 +763,10 @@ const PapersAndCards = ({
   papers,
   cards,
   links,
-  branch,
 }: {
   papers: FleetDashboardNowDto['papers'];
   cards: FleetDashboardNowDto['fuelCards'];
   links: NowLinks;
-  branch: boolean;
 }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
@@ -781,7 +778,6 @@ const PapersAndCards = ({
           dot="amber"
           title={t('fleet.dash.licences.papersTitle')}
           sub={t('fleet.dash.licences.papersSub')}
-          end={cards !== null ? <CompanyWide show={branch} /> : undefined}
         />
       }
       note={t('fleet.dash.licences.papersNote')}
@@ -893,12 +889,7 @@ export const LicencesTab = (props: NowTabProps): JSX.Element => {
           )}
           {now.licenceDrivers !== null && <DriverLicences lic={now.licenceDrivers} links={links} />}
           {(now.papers !== null || now.fuelCards !== null) && (
-            <PapersAndCards
-              papers={now.papers}
-              cards={now.fuelCards}
-              links={links}
-              branch={now.scopeBranches !== null}
-            />
+            <PapersAndCards papers={now.papers} cards={now.fuelCards} links={links} />
           )}
         </div>
       )}

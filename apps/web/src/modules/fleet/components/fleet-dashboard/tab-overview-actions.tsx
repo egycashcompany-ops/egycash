@@ -8,10 +8,10 @@
 // under a branch) has no button: there is no exact list to open.
 //
 // Every number is the server's — the line's count (`alerts`) and its section's parts — and the
-// custody line's count is the custody screen's own banner (D3). «الشركة كلها» on the lines the
-// server cannot narrow yet (fuel cards, top-ups, custody) while the figures are narrowed to the
-// reader's branches (`scopeBranches !== null`). The notices follow the car's branch, so their line
-// is narrowed like the rest and carries no tag.
+// custody line's count is the custody screen's own banner (D3). «الشركة كلها» on the one line the
+// server cannot narrow (custody) while the figures are narrowed to the reader's branches
+// (`scopeBranches !== null`). The notices, the fuel cards and their top-ups follow the car's branch,
+// so their lines are narrowed like the rest and carry no tag (their links carry the branch).
 import { Fragment, type ReactNode } from 'react';
 import {
   FLEET_DASHBOARD_ALERTS,
@@ -253,7 +253,6 @@ export const useActionLine = (
           sub: null,
           noun: 'card',
           link: links.fuelCardsExpired(),
-          companyWide: narrowed,
         };
       }
       case 'crewAbsent': {
@@ -304,7 +303,6 @@ export const useActionLine = (
           ),
           noun: 'request',
           link: links.charging('requested'),
-          companyWide: narrowed,
         };
       }
       case 'fuelLow': {
@@ -328,7 +326,6 @@ export const useActionLine = (
             ) : null,
           noun: 'card',
           link: links.charging('low'),
-          companyWide: narrowed,
         };
       }
       case 'dealershipPending': {

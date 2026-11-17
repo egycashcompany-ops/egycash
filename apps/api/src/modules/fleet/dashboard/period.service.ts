@@ -9,6 +9,8 @@
 // query exactly as its screen does, so a figure equals its link by construction.
 import {
   FLEET_DASHBOARD_ACCIDENT_ROWS,
+  FLEET_DASHBOARD_DEALERSHIP_ROWS,
+  FLEET_DASHBOARD_VIOLATION_ROWS,
   FleetSettingKeys,
   fleetAccidentRemaining,
   periodGranularity,
@@ -34,6 +36,7 @@ import { fleetReceiptService } from '../receipts/receipt.service';
 import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { vehicleSet, withVehicleFilterMemo } from '../vehicles/vehicle-set';
+import { fleetViolationService } from '../violations/violation.service';
 import { dashboardContext, scopeBranchesOf, type DashboardContext } from './dashboard-context';
 import { runSections, section, type DashboardSection } from './dashboard-sections';
 
@@ -42,6 +45,8 @@ type PeriodValues = { [K in FleetDashboardPeriodSection]: NonNullable<FleetDashb
 /** What every period section reads: the resolved range and the screens' own filter. */
 export interface PeriodInput {
   range: { from: string; to: string };
+  /** The range's slots — days, or months for a long range — as the echo states them. */
+  granularity: 'day' | 'month';
   /**
    * A vehicle set narrows (codes, type, operation or the reader's branches) — read from the QUERY,
    * so no section waits on (or fails with) the set's resolution: each owning module resolves the
@@ -177,6 +182,18 @@ const periodSections = (
     return { rows, more: Math.max(0, page.meta.totalItems - rows.length) };
   }),
 
+  // «مخالفات السائقين في الفترة» — the DRIVERS' fines by the fine's day (whole days), their states
+  // now, and by type: the register's own `kind=driver&from&to` over the same vehicle set. A company
+  // statement carries a year, never a day, so it is never in a period.
+  violations: section('violations', 'company+set', () =>
+    fleetViolationService.periodDigest(dated(p)),
+  ),
+
+  // …and the register's first page of them, newest fine day first, then «+M».
+  violationList: section('violationList', 'company+set', () =>
+    fleetViolationService.dashboardRows(dated(p), FLEET_DASHBOARD_VIOLATION_ROWS),
+  ),
+
   // T6.7/T6.8, R-19/R-21 — card and custody receipts, never added to the dealership figure.
   opex: section('opex', 'company+set', async () => {
     const [totals, dataFrom] = await Promise.all([
@@ -191,8 +208,23 @@ const periodSections = (
       total: addMoney(totals.cardTotal, totals.custodyTotal),
       count: totals.count,
       dataFrom,
+      // «مصروف التشغيل حسب النوع» — the same totals by kind (card receipts are fuel only, so
+      // card + fuelCustody + tyres + wash + maintenance = total), and «نحو N لترًا» with the fuel
+      // receipts that carry no litre price beside it.
+      fuelCustody: totals.fuelCustodyTotal,
+      tyres: totals.tyresTotal,
+      wash: totals.washTotal,
+      maintenance: totals.maintenanceTotal,
+      litres: Math.round(totals.fuelLitres),
+      unpricedFuel: totals.fuelUnpriced,
     };
   }),
+
+  // «مصروف التشغيل يومًا بيوم» (or «شهرًا بشهر») — the same receipts by their paper day or month,
+  // every slot of the range (an empty one marked), so the slots add up to `opex`.
+  opexSeries: section('opexSeries', 'company+set', async () => ({
+    buckets: await fleetReceiptService.seriesOver(dated(p), p.granularity),
+  })),
 
   // T6.9, R-20/R-21 — rows by the car's exit day; the data starts at the backfill's first day.
   dealership: section('dealership', 'company+set', async () => {
@@ -204,6 +236,12 @@ const periodSections = (
       dataFrom: DEALERSHIP_BACKFILL_FROM,
     };
   }),
+
+  // «فواتير التوكيل في الفترة» — the dealership screen's first page of the rows `dealership` counts
+  // (its own order), then «+M».
+  dealershipList: section('dealershipList', 'company+set', () =>
+    fleetDealershipService.dashboardRows(dated(p), FLEET_DASHBOARD_DEALERSHIP_ROWS),
+  ),
 });
 
 class FleetDashboardPeriodService {
@@ -230,7 +268,16 @@ class FleetDashboardPeriodService {
         : undefined;
     const range = periodOf(query.preset, d.today, custom);
     const filter = screenFilter(query, d.branchIds);
-    const input: PeriodInput = { range, setNarrows: Object.keys(filter).length > 0, filter };
+    const granularity = periodGranularity({
+      from: ymdToUtcDate(range.from),
+      to: ymdToUtcDate(range.to),
+    });
+    const input: PeriodInput = {
+      range,
+      granularity,
+      setNarrows: Object.keys(filter).length > 0,
+      filter,
+    };
     const [{ values, unavailable }, vehicleScope] = await Promise.all([
       runSections(
         'period',
@@ -251,10 +298,7 @@ class FleetDashboardPeriodService {
         from: range.from,
         to: range.to,
         days: range.days,
-        granularity: periodGranularity({
-          from: ymdToUtcDate(range.from),
-          to: ymdToUtcDate(range.to),
-        }),
+        granularity,
       },
       vehicleScope,
       ...v,

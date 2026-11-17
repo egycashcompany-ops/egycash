@@ -48,7 +48,8 @@ const FULL: AlertSources = {
     notRecorded: 2,
     unregistered: 1,
   },
-  fuelCards: { warnDays: 30, expired: 1, expiring: 3 },
+  // `nearest` («أقربها») feeds no alert line.
+  fuelCards: { warnDays: 30, expired: 1, expiring: 3, nearest: '2026-11-09' },
   roster: {
     date: '2026-11-01',
     licenceRule: 'flag',
@@ -83,6 +84,9 @@ const FULL: AlertSources = {
     low: { belowYellow: 3, belowRed: 1, yellowAt: 300, redAt: 100 },
     charged24h: 0,
     cards: 0, // No alert line reads the card count.
+    // Nor these: each company's cards and the cards on no car.
+    companyCards: { wataniya: 0, chillout: 0 },
+    unassigned: { count: 0, balance: 0 },
   },
   dealershipPending: { rows: 3 },
   notices: {

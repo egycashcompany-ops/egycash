@@ -20,8 +20,9 @@ const fn = (): Mock => vi.fn();
 const odometer = { kmBreakdown: fn() };
 const maintenance = { visitStates: fn(), exitBreakdown: fn() };
 const accidents = { summaryOver: fn(), undatedCount: fn(), list: fn() };
-const receipts = { summaryOver: fn(), firstReceiptDate: fn() };
-const dealership = { summaryOver: fn() };
+const receipts = { summaryOver: fn(), firstReceiptDate: fn(), seriesOver: fn() };
+const dealership = { summaryOver: fn(), dashboardRows: fn() };
+const violations = { periodDigest: fn(), dashboardRows: fn() };
 const vehicles = { findByIdsSystem: fn() };
 const types = { findByIdsSystem: fn() };
 const set = { vehicleSet: fn() };
@@ -33,6 +34,7 @@ vi.mock('../maintenance/maintenance.service', () => ({ fleetMaintenanceService: 
 vi.mock('../accidents/accident.service', () => ({ fleetAccidentService: accidents }));
 vi.mock('../receipts/receipt.service', () => ({ fleetReceiptService: receipts }));
 vi.mock('../dealership/dealership.service', () => ({ fleetDealershipService: dealership }));
+vi.mock('../violations/violation.service', () => ({ fleetViolationService: violations }));
 vi.mock('../vehicles/vehicle.repository', () => ({ fleetVehicleRepository: vehicles }));
 vi.mock('../vehicle-types/vehicle-type.repository', () => ({
   fleetVehicleTypeRepository: types,
@@ -108,6 +110,51 @@ const EXITS = {
   unregistered: 0,
 };
 const NO_ECHO_BRANCHES = { scopeBranches: null };
+/** The receipts by paper day, as the receipts module answers (every slot of the range). */
+const SERIES = [{ key: TODAY, hasRows: true, amount: 300.3, count: 7 }];
+/** «مخالفات السائقين في الفترة» as the violations module answers it — passed through untouched. */
+const VIOLATIONS = {
+  count: 3,
+  amount: 900,
+  owed: { count: 2, amount: 600 },
+  collected: { count: 1, amount: 300 },
+  byType: [
+    {
+      violationTypeId: '650000000000000000000801',
+      name: { ar: 'سرعة', en: 'Speed' },
+      unspecified: false,
+      count: 3,
+      amount: 900,
+    },
+  ],
+};
+const VIOLATION_ROW = {
+  violationId: '650000000000000000000901',
+  vehicleId: V1,
+  code: '101',
+  typeName: ARMOURED,
+  vehicleDeleted: false,
+  date: TODAY,
+  driverEmployeeId: null,
+  driverName: 'مجهول',
+  violationTypeId: '650000000000000000000801',
+  violationType: { ar: 'سرعة', en: 'Speed' },
+  unspecified: false,
+  amount: 300,
+  collected: false,
+};
+const DEALER_ROW = {
+  id: '650000000000000000000a01',
+  vehicleId: V1,
+  code: '101',
+  typeName: ARMOURED,
+  vehicleDeleted: false,
+  date: TODAY,
+  workKind: 'maintenance' as const,
+  workTypeLabel: 'صيانة',
+  invoiceNumber: null,
+  invoiceAmount: null,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -160,12 +207,24 @@ beforeEach(() => {
   });
   vehicles.findByIdsSystem.mockResolvedValue([{ _id: V1, code: '101', typeId: T1 }]);
   types.findByIdsSystem.mockResolvedValue([{ _id: T1, name: ARMOURED }]);
+  // card 100.1 + custody 200.2 (= fuel by custody 150.15 + tyres 20 + wash 10.05 + maintenance 20);
+  // fuel 250.25 = card + fuel by custody.
   receipts.summaryOver.mockResolvedValue({
     count: 7,
     cardTotal: 100.1,
     custodyTotal: 200.2,
     fuelTotal: 250.25,
+    fuelCustodyTotal: 150.15,
+    tyresTotal: 20,
+    washTotal: 10.05,
+    maintenanceTotal: 20,
+    fuelLitres: 87.6,
+    fuelUnpriced: 1,
   });
+  receipts.seriesOver.mockResolvedValue(SERIES);
+  dealership.dashboardRows.mockResolvedValue({ rows: [DEALER_ROW], more: 4 });
+  violations.periodDigest.mockResolvedValue(VIOLATIONS);
+  violations.dashboardRows.mockResolvedValue({ rows: [VIOLATION_ROW], more: 2 });
   receipts.firstReceiptDate.mockResolvedValue('2026-08-15');
   dealership.summaryOver.mockResolvedValue({ count: 5, pending: 2, dealershipTotal: 4000 });
   set.vehicleSet.mockImplementation(
@@ -200,8 +259,12 @@ const USES: Record<FleetDashboardPeriodSection, readonly Mock[]> = {
   accidents: [accidents.summaryOver, accidents.undatedCount],
   // The listed files' cars (code + make id), then their makes — one read each.
   accidentList: [accidents.list, vehicles.findByIdsSystem, types.findByIdsSystem],
+  violations: [violations.periodDigest],
+  violationList: [violations.dashboardRows],
   opex: [receipts.summaryOver, receipts.firstReceiptDate],
+  opexSeries: [receipts.seriesOver],
   dealership: [dealership.summaryOver],
+  dealershipList: [dealership.dashboardRows],
 };
 const EVERY_STUB = [...new Set(Object.values(USES).flat())];
 
@@ -415,6 +478,11 @@ describe('R2 — screen-shaped calls (D9)', () => {
     expect(accidents.summaryOver).toHaveBeenCalledWith({ ...shaped, status: 'open' });
     expect(receipts.summaryOver).toHaveBeenCalledWith(shaped);
     expect(dealership.summaryOver).toHaveBeenCalledWith(shaped);
+    // The four new parts: each module with the same query its linked page sends.
+    expect(violations.periodDigest).toHaveBeenCalledWith(shaped);
+    expect(violations.dashboardRows).toHaveBeenCalledWith(shaped, 6);
+    expect(receipts.seriesOver).toHaveBeenCalledWith(shaped, 'day');
+    expect(dealership.dashboardRows).toHaveBeenCalledWith(shaped, 6);
     expect(accidents.list).toHaveBeenCalledWith({
       ...shaped,
       page: 1,
@@ -451,6 +519,9 @@ describe('R2 — screen-shaped calls (D9)', () => {
     expect(accidents.summaryOver).toHaveBeenCalledWith(both);
     expect(receipts.summaryOver).toHaveBeenCalledWith(both);
     expect(dealership.summaryOver).toHaveBeenCalledWith(both);
+    expect(violations.periodDigest).toHaveBeenCalledWith(both);
+    expect(receipts.seriesOver).toHaveBeenCalledWith(both, 'day');
+    expect(dealership.dashboardRows).toHaveBeenCalledWith(both, 6);
     // Two branches are not «a branch»: the km come by branch, not by type.
     expect(odometer.kmBreakdown).toHaveBeenCalledWith(
       { from: TODAY, to: TODAY, branchIds: [B1, B2] },
@@ -573,7 +644,30 @@ describe('R2 — the figures as their modules give them', () => {
       total: 300.3,
       count: 7,
       dataFrom: '2026-08-15',
+      fuelCustody: 150.15,
+      tyres: 20,
+      wash: 10.05,
+      maintenance: 20,
+      // Whole litres of the priced fuel receipts; the one with no litre price is named apart.
+      litres: 88,
+      unpricedFuel: 1,
     });
+    const opex = dto.opex;
+    expect(
+      Math.round(
+        ((opex?.card ?? 0) +
+          (opex?.fuelCustody ?? 0) +
+          (opex?.tyres ?? 0) +
+          (opex?.wash ?? 0) +
+          (opex?.maintenance ?? 0)) *
+          100,
+      ) / 100,
+    ).toBe(opex?.total);
+    // The series, the two lists and the drivers' fines: as their modules answer.
+    expect(dto.opexSeries).toEqual({ buckets: SERIES });
+    expect(dto.dealershipList).toEqual({ rows: [DEALER_ROW], more: 4 });
+    expect(dto.violations).toBe(VIOLATIONS);
+    expect(dto.violationList).toEqual({ rows: [VIOLATION_ROW], more: 2 });
     // «الصيانة والورش» (exit day) and «أرقام الفترة» (check-in day): each as its module answers.
     expect(dto.exits).toBe(EXITS);
     expect(dto.dealership).toEqual({ amount: 4000, rows: 5, pending: 2, dataFrom: '2026-09-01' });
@@ -645,6 +739,30 @@ describe('R2 — the figures as their modules give them', () => {
     types.findByIdsSystem.mockResolvedValueOnce([]);
     const unnamed = await fleetDashboardPeriodService.read(ctxWith(ALL_KEYS), NOW, parse({}));
     expect(unnamed.accidentList?.rows[0]).toMatchObject({ code: '101', typeName: null });
+  });
+
+  it('a long range draws the series by the MONTH — the granularity the echo states', async () => {
+    const dto = await fleetDashboardPeriodService.read(
+      ctxWith(ALL_KEYS),
+      NOW,
+      parse({ preset: 'thisYear' }),
+    );
+    expect(dto.range.granularity).toBe('month');
+    expect(receipts.seriesOver).toHaveBeenCalledWith(
+      { from: day('2026-01-01'), to: day(TODAY) },
+      'month',
+    );
+  });
+
+  it('a new part that throws is null and named; its neighbours answer', async () => {
+    violations.dashboardRows.mockRejectedValueOnce(new Error('list down'));
+    receipts.seriesOver.mockRejectedValueOnce(new Error('series down'));
+    const dto = await fleetDashboardPeriodService.read(ctxWith(ALL_KEYS), NOW, parse({}));
+    expect(dto.unavailable).toEqual(['violationList', 'opexSeries']);
+    expect(dto.violationList).toBeNull();
+    expect(dto.opexSeries).toBeNull();
+    expect(dto.violations).not.toBeNull();
+    expect(dto.opex).not.toBeNull();
   });
 
   it('a section that throws is null and named; the rest answer', async () => {

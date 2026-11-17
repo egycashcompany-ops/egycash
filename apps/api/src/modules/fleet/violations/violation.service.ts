@@ -7,9 +7,13 @@
 import {
   FLEET_UNKNOWN_DRIVER_NAME,
   FleetEvents,
+  calendarDayBounds,
   parseFleetSort,
+  ymdOf,
   type FleetDashboardNowViolationsDto,
   type FleetDashboardNowViolationsOpenDto,
+  type FleetDashboardPeriodViolationRowDto,
+  type FleetDashboardPeriodViolationsDto,
   type FleetViolationKind,
   type FleetViolationRollupDto,
   type FleetViolationSide,
@@ -23,6 +27,7 @@ import {
   type SetFleetViolationCollected,
   type SetRollupCollected,
   type UpdateFleetViolation,
+  type LocalizedString,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import { ValidationError } from '../../../shared/errors';
@@ -39,8 +44,10 @@ import {
 import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
 import { fleetGrievanceRepository, fleetViolationRepository } from './violation.repository';
 import { assembleOpenDigest, assembleRollups, assembleYearDigest } from './violation-rollup';
+import { isUnspecifiedViolationType } from './violation-unspecified';
 import { type FleetGrievanceDoc, type FleetViolationDoc } from './violation.model';
 import { vehicleIdOf } from '../fleet.mappers';
 
@@ -97,6 +104,35 @@ const driverOf = (
 /** A row's kind IS its ledger: a vehicle statement row is the company's, a driver row the driver's. */
 const sideOf = (kind: FleetViolationKind): FleetViolationSide =>
   kind === 'vehicle' ? 'company' : 'driver';
+
+/** To the piastre — `$sum` of pounds carries binary residue a card would print. */
+const money = (value: number): number => {
+  const rounded = Math.round(value * 100) / 100;
+  return rounded === 0 ? 0 : rounded;
+};
+
+/**
+ * The register's «من / إلى» as the repository takes them: WHOLE calendar days — the first instant
+ * of `from`'s day and the last of `to`'s (`calendarDayBounds`). A fine is stored date-only, but an
+ * old-book row may sit off midnight, and a bound at 00:00 would drop the last day's.
+ */
+const dayBounds = (query: {
+  from?: Date | undefined;
+  to?: Date | undefined;
+}): { dateFrom?: Date; dateBefore?: Date } => ({
+  ...(query.from === undefined
+    ? {}
+    : { dateFrom: calendarDayBounds(ymdOf(query.from), ymdOf(query.from)).from }),
+  ...(query.to === undefined
+    ? {}
+    : { dateBefore: calendarDayBounds(ymdOf(query.to), ymdOf(query.to)).before }),
+});
+
+/** What the dashboard's period asks of the drivers' ledger: the days and the vehicle filter. */
+export interface ViolationPeriodQuery extends VehicleFilterQuery {
+  from: Date;
+  to: Date;
+}
 
 class FleetViolationService {
   /**
@@ -356,6 +392,8 @@ class FleetViolationService {
         ...query,
         ...(cars.vehicleIds === undefined ? {} : { vehicleIds: cars.vehicleIds }),
         vehicleCodes: cars.vehicleCodes,
+        // «من / إلى» — the fine's day, whole days (a statement row has none, so it never matches).
+        ...dayBounds(query),
       }),
       page: query.page,
       pageSize: query.pageSize,
@@ -634,16 +672,143 @@ class FleetViolationService {
   }
 
   /**
-   * «مخالفات قائمة» — every year's fines still owed, amount and count, for the fleet dashboard's
-   * overview: the rollup's own sums with NO year asked (`yearSums(undefined, …)` is every year)
-   * over the rollup's own vehicle narrowing, so the figure is `/fleet/violations/rollup`'s footer
-   * for the whole history. One aggregate; the drivers' split stays `yearDigest`'s.
+   * «مخالفات قائمة» — every year's fines still owed, amount and count, for the fleet dashboard: the
+   * rollup's own sums with NO year asked (`yearSums(undefined, …)` is every year) over the rollup's
+   * own vehicle narrowing, so the figure is `/fleet/violations/rollup`'s footer for the whole
+   * history — and beside it the drivers' owed fines by whom they are on, every year too, so the
+   * split adds up to that footer («مجهول» = `unknownDriver=true&collected=false`). Two aggregates,
+   * together. `bookOnly` asks for the old book's carless rows apart — the company view only.
    */
   async openDigest(input: {
     filter: VehicleFilterQuery;
+    bookOnly: boolean;
   }): Promise<FleetDashboardNowViolationsOpenDto> {
     const scope = await this.carsOf(input.filter);
-    return assembleOpenDigest(await fleetViolationRepository.yearSums(undefined, scope));
+    const [sums, groups] = await Promise.all([
+      fleetViolationRepository.yearSums(undefined, scope),
+      fleetViolationRepository.driverFineGroups(undefined, scope),
+    ]);
+    return assembleOpenDigest(sums, groups, { bookOnly: input.bookOnly });
+  }
+
+  /** The drivers' ledger's filter for a period: its cars as `list` resolves them, its whole days. */
+  private async periodFilter(query: ViolationPeriodQuery) {
+    const cars = await this.carsOf(query);
+    return fleetViolationRepository.violationFilter({
+      kind: 'driver',
+      ...(cars.vehicleIds === undefined ? {} : { vehicleIds: cars.vehicleIds }),
+      vehicleCodes: cars.vehicleCodes,
+      ...dayBounds(query),
+    });
+  }
+
+  /**
+   * «مخالفات السائقين في الفترة» — the DRIVERS' fines whose day is in the range (whole days on both
+   * ends), over the register's own filter for `GET /fleet/violations?kind=driver&from&to` and the
+   * same vehicle set (a set drops the old book's carless rows, as the list does), their states as
+   * of now. A fine carried onto another year's statement counts by its own day on the car it sits on
+   * now — where the drivers' board lists it.
+   *
+   * «حسب النوع»: only the types with a fine, named from the catalog (a type gone from it keeps its
+   * id and a `null` name), count desc, then amount desc, then name; «غير محدد» always last.
+   */
+  async periodDigest(query: ViolationPeriodQuery): Promise<FleetDashboardPeriodViolationsDto> {
+    const sums = await fleetViolationRepository.periodDigest(await this.periodFilter(query));
+    const names = await fleetCatalogItemRepository.namesByIds(
+      sums.byType.map((row) => row.violationTypeId),
+    );
+    const byType = sums.byType
+      .map((row) => {
+        const name = names.get(row.violationTypeId) ?? null;
+        return {
+          violationTypeId: row.violationTypeId,
+          name,
+          unspecified: isUnspecifiedViolationType(name),
+          count: row.count,
+          amount: money(row.amount),
+        };
+      })
+      .sort(
+        (a, b) =>
+          Number(a.unspecified) - Number(b.unspecified) ||
+          b.count - a.count ||
+          b.amount - a.amount ||
+          (a.name?.ar ?? '').localeCompare(b.name?.ar ?? '', 'ar') ||
+          a.violationTypeId.localeCompare(b.violationTypeId),
+      );
+    return {
+      count: sums.count,
+      amount: money(sums.amount),
+      owed: { count: sums.owed.count, amount: money(sums.owed.amount) },
+      collected: { count: sums.collected.count, amount: money(sums.collected.amount) },
+      byType,
+    };
+  }
+
+  /**
+   * The period's driver fines, owed and collected, as the register's FIRST PAGE lists them —
+   * `GET /fleet/violations?kind=driver&from&to&sortBy=date&sortDir=desc` with the same vehicle set
+   * (newest fine day first, then the newest recorded) — at most `limit`, every name resolved: the
+   * car's code and make (a deleted car's too: its fines are history), the catalog type. `more` =
+   * the fines left out.
+   */
+  async dashboardRows(
+    query: ViolationPeriodQuery,
+    limit: number,
+  ): Promise<{ rows: FleetDashboardPeriodViolationRowDto[]; more: number }> {
+    const copy = (ids: readonly string[] | undefined) => (ids === undefined ? undefined : [...ids]);
+    const page = await this.list({
+      from: query.from,
+      to: query.to,
+      vehicleCodes: copy(query.vehicleCodes),
+      typeIds: copy(query.typeIds),
+      operationIds: copy(query.operationIds),
+      branchIds: copy(query.branchIds),
+      kind: 'driver',
+      page: 1,
+      pageSize: limit,
+      sortBy: 'date',
+      sortDir: 'desc',
+    });
+    const carIds = [
+      ...new Set(
+        page.items.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)])),
+      ),
+    ];
+    const [cars, names] = await Promise.all([
+      fleetVehicleRepository.findByIdsSystem(carIds),
+      fleetCatalogItemRepository.namesByIds([
+        ...new Set(page.items.map((doc) => String(doc.violationTypeId))),
+      ]),
+    ]);
+    const carOf = new Map(cars.map((car) => [String(car._id), car]));
+    const typeIds = [...new Set(cars.map((car) => String(car.typeId)))];
+    const types =
+      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    const makes = new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
+    const rows = page.items.map((doc): FleetDashboardPeriodViolationRowDto => {
+      const vehicleId = doc.vehicleId == null ? null : String(doc.vehicleId);
+      const car = vehicleId === null ? undefined : carOf.get(vehicleId);
+      const typeName = names.get(String(doc.violationTypeId)) ?? null;
+      return {
+        violationId: String(doc._id),
+        vehicleId,
+        code: car?.code ?? doc.vehicleCode ?? null,
+        typeName: car?.typeId == null ? null : (makes.get(String(car.typeId)) ?? null),
+        // A registry car the registry no longer lists — no record link (its fines stay).
+        vehicleDeleted: vehicleId !== null && (car === undefined || car.isDeleted === true),
+        // A bounded question lists dated rows only (`$gte` never matches null).
+        date: doc.date === null ? ymdOf(query.from) : ymdOf(doc.date),
+        driverEmployeeId: doc.driverEmployeeId == null ? null : String(doc.driverEmployeeId),
+        driverName: doc.driverName ?? null,
+        violationTypeId: String(doc.violationTypeId),
+        violationType: typeName,
+        unspecified: isUnspecifiedViolationType(typeName),
+        amount: money(doc.amount),
+        collected: doc.collected === true,
+      };
+    });
+    return { rows, more: Math.max(0, page.meta.totalItems - rows.length) };
   }
 }
 

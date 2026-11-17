@@ -1,22 +1,25 @@
 // «لوحة تحكم الحركة» — the fleet module's home (/fleet).
 //
-// Nine tabs on ONE sticky pill strip, and NO page head (owner-decisions #3), in the order the finished
-// dashboard will keep (plan D2):
+// Eleven tabs on ONE sticky pill strip, and NO page head (owner-decisions #3), in the order the
+// finished dashboard will keep (plan D2):
 //   نظرة عامة · الحركة اليوم · توزيع السيارات · الصيانة والورش · العدادات والكيلومترات ·
-//   الحوادث ومطالبات التأمين · أرقام الفترة · ملخصات · التراخيص
-// The first six are the redesigned screens: «نظرة عامة» and «الحركة اليوم» took the content of the
+//   الحوادث ومطالبات التأمين · المخالفات المرورية والتسويات · الوقود والمصروفات ·
+//   أرقام الفترة · ملخصات · التراخيص
+// The first eight are the redesigned screens: «نظرة عامة» and «الحركة اليوم» took the content of the
 // retired «التنبيهات» and «الحركة الآن» (an old `?tab=alerts` / `?tab=now` opens them);
 // «توزيع السيارات», «الصيانة والورش», «العدادات والكيلومترات» (key `km`) and «الحوادث ومطالبات
 // التأمين» (key `accidents`) were rebuilt under their old keys (an old link opens the new body);
-// «العدادات والكيلومترات» also holds the old «ترتيب السيارات» (an old `?tab=ranking` opens it).
-// The last three are the old tabs, unchanged:
+// «العدادات والكيلومترات» also holds the old «ترتيب السيارات» (an old `?tab=ranking` opens it);
+// «المخالفات المرورية والتسويات» (key `violations`) and «الوقود والمصروفات» (key `fuel`) are NEW
+// tabs with no old tab of their own. The last three are the old tabs, unchanged:
 //   · R1 `GET /fleet/dashboard/now` (Cairo today, untouched by the filters) — overview, today,
 //     distribution, summaries, licences; the overview and «توزيع السيارات» (its km, with the km key)
 //     also read R2 over «هذا الشهر» with no page filter;
 //   · R2 `GET /fleet/dashboard/period` — «أرقام الفترة» alone under `PeriodTab`;
-//   · the three MIXED panels — «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات
-//     التأمين»: an R1 part and a period part over the page's R2, under the same filter bar (between
-//     the bands, or at the top of «العدادات والكيلومترات»); each part wears its own read's face.
+//   · the five MIXED panels — «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات
+//     التأمين», «المخالفات المرورية والتسويات», «الوقود والمصروفات»: an R1 part and a period part over
+//     the page's R2, under the same filter bar (between the bands, or at the top of «العدادات
+//     والكيلومترات»); each part wears its own read's face.
 // One filter state serves every screen that reads R2.
 // At the strip's end «الفرع: …» says what the figures cover, as the server answered it.
 //
@@ -80,6 +83,8 @@ import { DistributionTab } from '../components/fleet-dashboard/tab-distribution'
 import { MaintenanceTab } from '../components/fleet-dashboard/tab-maintenance';
 import { KmTab } from '../components/fleet-dashboard/tab-km';
 import { AccidentsTab } from '../components/fleet-dashboard/tab-accidents';
+import { ViolationsTab } from '../components/fleet-dashboard/tab-violations';
+import { FuelTab } from '../components/fleet-dashboard/tab-fuel';
 import { LicencesTab } from '../components/fleet-dashboard/tab-licences';
 import { SummariesTab } from '../components/fleet-dashboard/tab-summaries';
 
@@ -126,17 +131,22 @@ const MIXED_PANELS = {
   maintenance: MaintenanceTab,
   km: KmTab,
   accidents: AccidentsTab,
+  violations: ViolationsTab,
+  fuel: FuelTab,
 } as const satisfies Partial<Record<FleetDashboardTab, (props: MixedTabProps) => JSX.Element>>;
 type MixedTabKey = keyof typeof MIXED_PANELS;
 /**
- * The R2 section each mixed panel draws its period band from: a reader who may read R2 for another
- * tab (km, dealership) but not this section sees no band, so its age and «تحديث» leave R2 out.
+ * The R2 sections each mixed panel draws its period band from (any one of them draws it — «الوقود
+ * والمصروفات» from the receipts OR the dealership): a reader who may read R2 for another tab (km,
+ * dealership) but none of these sees no band, so its age and «تحديث» leave R2 out.
  */
-const MIXED_PERIOD_SECTION = {
-  maintenance: 'exits',
-  km: 'km',
-  accidents: 'accidents',
-} as const satisfies Record<MixedTabKey, FleetDashboardSection>;
+const MIXED_PERIOD_SECTIONS = {
+  maintenance: ['exits'],
+  km: ['km'],
+  accidents: ['accidents'],
+  violations: ['violations'],
+  fuel: ['opex', 'dealership'],
+} as const satisfies Record<MixedTabKey, readonly FleetDashboardSection[]>;
 
 const isMixedTab = (tab: FleetDashboardTab): tab is MixedTabKey =>
   (Object.keys(MIXED_PANELS) as readonly string[]).includes(tab);
@@ -258,12 +268,14 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
 
   let panel: JSX.Element;
   if (isMixedTab(active)) {
-    // «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين»: an R1 part and a period
-    // part (the page's R2, under the bar the tab draws). «تحديث» refetches both; the heading's age is
-    // the OLDER of the two answers.
+    // «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية
+    // والتسويات», «الوقود والمصروفات»: an R1 part and a period part (the page's R2, under the bar the
+    // tab draws). «تحديث» refetches both; the heading's age is the OLDER of the two answers.
     const Panel = MIXED_PANELS[active];
     // R2 counts in the heading only when this tab draws its band (R2 itself stays page-wide).
-    const periodDrawn = reads.period && sectionPermitted(MIXED_PERIOD_SECTION[active], can);
+    const periodDrawn =
+      reads.period &&
+      MIXED_PERIOD_SECTIONS[active].some((section) => sectionPermitted(section, can));
     const stamps = [
       ...(reads.now && nowQ.dataUpdatedAt > 0 ? [nowQ.dataUpdatedAt] : []),
       ...(periodDrawn && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),

@@ -52,6 +52,7 @@ import { type FleetViolationSide } from '@ecms/contracts';
 import { fleetCatalogItemRepository, fleetCatalogItemService } from '../catalogs';
 import { fleetGrievanceRepository, fleetViolationRepository } from '../violations/violation.repository';
 import { type FleetViolationDoc } from '../violations/violation.model';
+import { UNSPECIFIED_VIOLATION_TYPE } from '../violations/violation-unspecified';
 import { day, driverRef, isPlaceholderDriver } from './odometer-import';
 import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
 import { deletedFields, deletionOf, liveFields, type LegacyBookkeeping, type LegacyDeletion } from './legacy-row';
@@ -249,10 +250,7 @@ export interface PlannedViolation {
 }
 
 /** The catalog row a violation whose type nobody wrote is filed under, one per side. */
-export const UNSPECIFIED_TYPE: Readonly<Record<FleetViolationSide, { ar: string; en: string }>> = {
-  company: { ar: 'غير محدد (مخالفات الشركة)', en: 'Unspecified (company)' },
-  driver: { ar: 'غير محدد (مخالفات السائقين)', en: 'Unspecified (driver)' },
-};
+export const UNSPECIFIED_TYPE = UNSPECIFIED_VIOLATION_TYPE;
 
 export interface PlannedGrievance {
   vehicleId: string;

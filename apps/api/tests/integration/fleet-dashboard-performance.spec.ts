@@ -1,12 +1,15 @@
 // The dashboard's two reads at about three times today's volume (plan §5.11, P1-07, P1-08):
-// ~210 cars, ~100k odometer rows, 2k workshop visits, 200 accidents, 1k violations, 5k receipts.
+// ~210 cars, ~100k odometer rows, 2k workshop visits, 200 accidents, 1k violations, 5k receipts,
+// ~160 fuel cards, two read sheets per company, 400 dealership rows.
 //
 // What is ASSERTED is what a regression would move silently:
 //   · the number of database commands one read sends (counted with the driver's own `commandStarted`
 //     events, the app's connection being opened with `monitorCommands`), warm — against CEILING below
 //     (the plan's §5.11 estimate, R1 ≤ 45 and R2 ≤ 15, is printed beside each measurement);
 //   · no collection scan: every command R2 sends to the odometer, visits or receipts collections is
-//     re-run under `explain` and its plan must not contain a COLLSCAN;
+//     re-run under `explain` and its plan must not contain a COLLSCAN; the drivers' fines of a
+//     period walk `ix_kind_date`, the day series `ix_receipt_date`, and each company's last read
+//     sheet `ix_fuel_reconcile_company_read`;
 //   · a TYPE filter covering more than 50 cars (the screens' code cap) still reproduces every period
 //     figure on its screen — the filter travels as `typeIds`, never as a code list.
 // Timings are measured and printed, never asserted: the machine running CI is not the server.
@@ -42,6 +45,9 @@ import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/
 import { FleetAccidentModel } from '../../src/modules/fleet/accidents/accident.model';
 import { FleetViolationModel } from '../../src/modules/fleet/violations/violation.model';
 import { FleetReceiptModel } from '../../src/modules/fleet/receipts/receipt.model';
+import { FleetFuelCardModel } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
+import { FleetFuelReconciliationModel } from '../../src/modules/fleet/fuel-cards/reconcile/fuel-reconcile.model';
+import { FleetDealershipInvoiceModel } from '../../src/modules/fleet/dealership/dealership.model';
 import { fleetOdometerRepository } from '../../src/modules/fleet/odometer/odometer.repository';
 import { fleetOdometerService } from '../../src/modules/fleet/odometer/odometer.service';
 import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
@@ -111,7 +117,22 @@ const PLAN = { r1: 45, r2: 15 };
 // (+1 types read) and «حوادث الفترة» names its rows' makes (+1 types read); «لم تُقرأ أبدًا» among
 // the cars with no distance is ONE `latestChainDates`, asked only when a car of the set has no
 // distance (+1, none here) — 23.
-const CEILING = { r1: 71, r2: 23 };
+// «المخالفات المرورية والتسويات» + «الوقود والمصروفات» (build-vf), on a fixture that now holds fuel
+// cards, read sheets and dealership rows — R1 68 → 71 measured:
+//   · «شُحن اليوم» is asked once, of the summary that shows it (the four count-only summaries skip it): −4;
+//   · «أقربها» ONE `findOne` by expiry, «كروت تحتاج متابعة» ONE read of the flagged cards: +2;
+//   · its listed cars and their makes, one read each, asked only when a flagged card is on a car: +2;
+//   · «مطابقة شيت شركة الوقود» — each company's last read sheet, ONE indexed read each: +2;
+//   · «مخالفات قائمة» splits the drivers by whom with ONE more `fleet_violations` aggregate: +1.
+//   (Under a branch — not measured here — the branch's cards for the sheet are one `distinct`, and
+//   «شُحن اليوم» narrows to the matched cards with one more: +2.) With the three of the lines above: 74.
+// R2 22 → 34 measured:
+//   · «مخالفات السائقين في الفترة»: ONE `$facet` aggregate + the catalog names of its bars: +2;
+//   · its first page: the register's own `find` + count, the cars, their makes, the type names: +5;
+//   · «مصروف التشغيل يومًا بيوم»: ONE `$group` by the paper day (or month): +1;
+//   · «فواتير التوكيل في الفترة»: the dealership screen's `find` + count, the cars, their makes: +4.
+//   With the conditional `latestChainDates` above: 35.
+const CEILING = { r1: 74, r2: 35 };
 /**
  * R2 narrowed by a type and car codes: the same sections plus the set's own resolution. The six
  * modules resolve the filter as their screens do, but inside one read each narrowing is asked of
@@ -124,8 +145,11 @@ const CEILING = { r1: 71, r2: 23 };
  * ranked cars' makes; the visits' names and cars moved into the exit breakdown, not added).
  * 26 measured with «العدادات والكيلومترات» + «الحوادث ومطالبات التأمين» (the same two makes reads as
  * R2 above); 27 with the conditional `latestChainDates` of the cars with no distance.
+ * 38 measured with «المخالفات المرورية والتسويات» + «الوقود والمصروفات»: the same +12 as R2 above
+ * (the set is still resolved once, `withVehicleFilterMemo`); 39 with the conditional
+ * `latestChainDates`.
  */
-const CEILING_FILTERED_R2 = 27;
+const CEILING_FILTERED_R2 = 39;
 
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
@@ -556,10 +580,112 @@ beforeAll(async () => {
     })),
     { lean: true },
   );
+  // «الوقود والمصروفات»: a card per company on most cars (some expired, some expiring, some low or
+  // waiting for a top-up), six travel cards on no car; two read sheets per company (the latest is the
+  // one the dashboard reads); the dealership rows the visits opened, over the year.
+  const fuelCards = cars.slice(0, 150).flatMap((car, i) =>
+    (['wataniya', 'chillout'] as const).slice(0, i % 3 === 0 ? 2 : 1).map((company, k) => ({
+      ...row,
+      _id: new Types.ObjectId(),
+      vehicleId: new Types.ObjectId(car.id) as Types.ObjectId | null,
+      label: null as string | null,
+      company,
+      name: `كارت ${i}-${k}`,
+      number: `70450000${String(i * 2 + k).padStart(8, '0')}`,
+      expiresAt: ymdUtc(NOW.getTime() + ((i % 120) - 20) * DAY),
+      password: null,
+      balance: 40 + ((i * 37 + k * 11) % 2000),
+      requestedAmount: i % 17 === 0 ? 300 : null,
+      requestedAt: null,
+      lastChargedAt: null,
+      image: null,
+    })),
+  );
+  for (let t = 0; t < 6; t += 1) {
+    fuelCards.push({
+      ...row,
+      _id: new Types.ObjectId(),
+      vehicleId: null,
+      label: `سفر ${t + 1}`,
+      company: 'wataniya',
+      name: `سفر ${t + 1}`,
+      number: `70451111${String(t).padStart(8, '0')}`,
+      expiresAt: ymdUtc(NOW.getTime() + (t * 20 - 10) * DAY),
+      password: null,
+      balance: 100 * t,
+      requestedAmount: null,
+      requestedAt: null,
+      lastChargedAt: null,
+      image: null,
+    });
+  }
+  await FleetFuelCardModel.insertMany(fuelCards, { lean: true });
+  const session = (company: 'wataniya' | 'chillout', readAt: Date, offset: number) => ({
+    ...row,
+    company,
+    fileName: `${company}.xlsx`,
+    fileSha256: `${company}-${readAt.getTime()}`,
+    readAt,
+    rowsRead: 150,
+    sheetCompany: company,
+    sheetDate: ymdUtc(readAt.getTime()),
+    lines: fuelCards
+      .filter((c) => c.company === company)
+      .slice(offset, offset + 20)
+      .map((c, l) => ({
+        cardId: c._id,
+        name: c.name,
+        sheetRow: l + 2,
+        sheetNumber: c.number,
+        sheetBalance: c.balance + 50,
+        systemBalance: c.balance,
+        numberMatches: true,
+        decision: l % 3 === 0 ? 'apply' : null,
+        decidedAt: null,
+        decidedBy: null,
+        movementId: null,
+      })),
+    counts: {
+      equal: 100,
+      sheetOnly: 0,
+      systemOnly: 0,
+      duplicates: 0,
+      conflicts: 0,
+      numbersDiffer: 0,
+    },
+  });
+  await FleetFuelReconciliationModel.collection.insertMany([
+    session('wataniya', new Date(NOW.getTime() - 9 * DAY), 0),
+    session('wataniya', new Date(NOW.getTime() - 2 * DAY), 20),
+    session('chillout', new Date(NOW.getTime() - 8 * DAY), 0),
+    session('chillout', new Date(NOW.getTime() - 1 * DAY), 20),
+  ]);
+  await FleetDealershipInvoiceModel.insertMany(
+    Array.from({ length: 400 }, (_, d) => ({
+      ...row,
+      visitId: new Types.ObjectId(),
+      vehicleId: new Types.ObjectId((cars[(d * 7) % CARS] as FleetVehicleDto).id),
+      vehicleCode: null,
+      outDate: ymdUtc(lastDay - (d % 300) * DAY),
+      workKind: d % 2 === 0 ? 'maintenance' : 'repair',
+      workTypeLabel: d % 2 === 0 ? 'صيانة' : 'إصلاح',
+      privateCar: false,
+      insuranceCompanyId: null,
+      invoiceNumber: d % 4 === 0 ? null : `INV-${d}`,
+      invoiceAmount: d % 4 === 0 ? null : 500 + d,
+      image: null,
+      side: null,
+    })),
+    { lean: true },
+  );
   await Promise.all([
     FleetOdometerLogModel.createIndexes(),
     FleetMaintenanceVisitModel.createIndexes(),
     FleetReceiptModel.createIndexes(),
+    FleetViolationModel.createIndexes(),
+    FleetFuelCardModel.createIndexes(),
+    FleetFuelReconciliationModel.createIndexes(),
+    FleetDealershipInvoiceModel.createIndexes(),
   ]);
   // Warm what any long-lived server has warm: the settings cache, the active-branch list.
   await get('/fleet/dashboard/now');
@@ -666,6 +792,52 @@ describe('no collection scan on the workshop reads of R1', () => {
       expect(await explain(command), `${command.name} ${command.collection}`).not.toContain(
         'COLLSCAN',
       );
+    }
+  });
+});
+
+describe('the new parts walk their indexes (ix_kind_date, ix_receipt_date, ix_fuel_reconcile_company_read)', () => {
+  it('R2: the drivers’ fines of the period by kind and day; the day series by the paper day', async () => {
+    const { seen } = await recording(() => get('/fleet/dashboard/period', OCT));
+    // The period digest — the ONE `$facet` over the drivers' fines — and the register's first page
+    // (its `find` and its count, which the driver sends as an aggregate).
+    const fines = seen.filter(
+      (s) =>
+        ['find', 'aggregate'].includes(s.name) &&
+        s.collection === 'fleet_violations' &&
+        JSON.stringify(s.command).includes('"kind":"driver"') &&
+        JSON.stringify(s.command).includes('"$gte"'),
+    );
+    expect(fines.length).toBe(3);
+    for (const command of fines) {
+      const plan = await explain(command);
+      expect(plan, command.name).toContain('ix_kind_date');
+      expect(plan, command.name).not.toContain('COLLSCAN');
+    }
+    const series = seen.filter(
+      (s) =>
+        s.name === 'aggregate' &&
+        s.collection === 'fleet_receipts' &&
+        JSON.stringify(s.command).includes('$dateToString'),
+    );
+    expect(series).toHaveLength(1);
+    const plan = await explain(series[0] as Seen);
+    expect(plan).toContain('ix_receipt_date');
+    expect(plan).not.toContain('COLLSCAN');
+  });
+
+  it('R1: each company’s last read sheet is ONE indexed read, never a scan of the sessions', async () => {
+    const { result, seen } = await recording(() => get('/fleet/dashboard/now'));
+    const dto = ok<FleetDashboardNowDto>(result);
+    // The latest of each company (read 2 and 1 days ago), as at its read: 20 lines, 13 undecided.
+    expect(dto.fuelSheets?.wataniya).toMatchObject({ differing: 20, undecided: 13 });
+    expect(dto.fuelSheets?.chillout).toMatchObject({ differing: 20, undecided: 13 });
+    const sheets = seen.filter((s) => s.collection === 'fleet_fuel_card_reconciliations');
+    expect(sheets).toHaveLength(2);
+    for (const command of sheets) {
+      const plan = await explain(command);
+      expect(plan).toContain('ix_fuel_reconcile_company_read');
+      expect(plan).not.toContain('COLLSCAN');
     }
   });
 });

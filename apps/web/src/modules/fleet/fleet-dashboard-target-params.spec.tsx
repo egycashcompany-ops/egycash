@@ -376,6 +376,24 @@ describe('/fleet/fuel-cards reads both expiry bounds as days', () => {
       expect(readsInSource('FuelCardsPage.tsx', param), param).toBe(true);
     }
   });
+
+  it('asks for the cards of the figures’ branch with the window — the dashboard’s fuel links (branch → branchIds)', () => {
+    // «الوقود والمصروفات» and the overview's fuel lines follow the branch of each card's car.
+    const html = fuelCardsAt(`/fleet/fuel-cards?expiresBefore=${TODAY}&branch=b1,b2`, {
+      expiresBefore: lastInstant(TODAY),
+      branchIds: ['b1', 'b2'],
+    });
+    expect(html).toContain('data-fuel-line="wataniya"');
+    // A branch-narrowed address is never answered from the company's list.
+    const company = fuelCardsAt(`/fleet/fuel-cards?expiresBefore=${TODAY}&branch=b1`, {
+      expiresBefore: lastInstant(TODAY),
+    });
+    expect(company).not.toContain('data-fuel-line="wataniya"');
+    expect(remembered('FuelCardsPage.tsx')).toContain('branch');
+    expect(source('FuelCardsPage.tsx')).toContain("readList(sp, 'branch')");
+    expect(remembered('FuelChargingPage.tsx')).toContain('branch');
+    expect(source('FuelChargingPage.tsx')).toContain("readList(sp, 'branch')");
+  });
 });
 
 // ── The vehicle set — accidents, dealership, receipts (D10) ─────────────────
@@ -1189,6 +1207,27 @@ describe('/fleet/violations reads «مجهول» and the vehicle set', () => {
     for (const param of ['cset', 'dset']) {
       expect(remembered('ViolationsPage.tsx')).toContain(param);
       expect(readsInSource('ViolationsPage.tsx', param)).toBe(true);
+    }
+  });
+
+  it('asks the drivers’ ledger for the FINE’s days and the set — «مخالفات السائقين في الفترة» (dfrom / dto → from / to)', () => {
+    const html = violationsAt(
+      '/fleet/violations?dfrom=2026-10-03&dto=2026-11-01&branch=b1&dset=false',
+      {
+        rollup: { branchIds: 'b1' },
+        drivers: { from: '2026-10-03', to: '2026-11-01', branchIds: ['b1'], collected: false },
+      },
+    );
+    expect(halves(html).drivers, 'the seeded fine is on the board').toContain('733');
+    // Never answered from the drivers' ledger of every day.
+    const everyDay = violationsAt('/fleet/violations?dfrom=2026-10-03&dto=2026-11-01&branch=b1', {
+      rollup: { branchIds: 'b1' },
+      drivers: { branchIds: ['b1'] },
+    });
+    expect(halves(everyDay).drivers).not.toContain('733');
+    for (const param of ['dfrom', 'dto']) {
+      expect(remembered('ViolationsPage.tsx')).toContain(param);
+      expect(readsInSource('ViolationsPage.tsx', param), param).toBe(true);
     }
   });
 });

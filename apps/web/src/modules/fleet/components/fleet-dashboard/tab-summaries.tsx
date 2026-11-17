@@ -314,15 +314,7 @@ type Fuel = NonNullable<FleetDashboardNowDto['fuelCharging']>;
 type Violations = NonNullable<FleetDashboardNowDto['violationsYear']>;
 type Accidents = NonNullable<FleetDashboardNowDto['accidentsOpen']>;
 
-const FuelKpi = ({
-  fuel,
-  links,
-  branch,
-}: {
-  fuel: Fuel;
-  links: NowLinks;
-  branch: boolean;
-}): JSX.Element => {
+const FuelKpi = ({ fuel, links }: { fuel: Fuel; links: NowLinks }): JSX.Element => {
   const t = useT();
   const total = fuel.wataniya + fuel.chillout;
   return (
@@ -330,12 +322,7 @@ const FuelKpi = ({
       data="fuel"
       tone="emerald"
       icon={I.card}
-      title={
-        <>
-          {t('fleet.dash.summaries.fuelTitle')}
-          <CompanyWide show={branch} />
-        </>
-      }
+      title={t('fleet.dash.summaries.fuelTitle')}
       figure={<Headline value={total} link={null} />}
     >
       <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -526,15 +513,7 @@ const OpenKpi = ({
 
 // ── (c) The three columns ─────────────────────────────────────────────────────────────────────
 
-const FuelColumn = ({
-  fuel,
-  links,
-  branch,
-}: {
-  fuel: Fuel;
-  links: NowLinks;
-  branch: boolean;
-}): JSX.Element => {
+const FuelColumn = ({ fuel, links }: { fuel: Fuel; links: NowLinks }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
   const total = fuel.wataniya + fuel.chillout;
@@ -544,7 +523,6 @@ const FuelColumn = ({
       dot="emerald"
       title={t('fleet.dash.summaries.fuelNow')}
       sub={t('fleet.dash.summaries.fuelNowSub')}
-      end={<CompanyWide show={branch} />}
       foot={
         <Wide link={links.charging('requested')} icon={I.fuel}>
           {t('fleet.dash.summaries.chargingScreen')}
@@ -1050,15 +1028,15 @@ export const SummariesTab = (props: NowTabProps): JSX.Element => {
   const t = useT();
   const { now, custody } = props;
   const links = now === null ? null : nowLinks(now);
-  // «الشركة كلها» whenever the figures are narrowed — one branch or «كل فروعي» (D11).
+  // «الشركة كلها» on the custody parts whenever the figures are narrowed — one branch or «كل فروعي»
+  // (D11). The fuel parts follow the branch of each card's car (plan D10): no tag.
   const branch = now?.scopeBranches != null;
   const fuel = now?.fuelCharging ?? null;
   const accidents = now?.accidentsOpen ?? null;
   const violations = now?.violationsYear ?? null;
   const failed = SUMMARY_SECTIONS.filter((section) => now?.unavailable.includes(section) ?? false);
   const tops: JSX.Element[] = [];
-  if (fuel !== null && links !== null)
-    tops.push(<FuelKpi key="fuel" fuel={fuel} links={links} branch={branch} />);
+  if (fuel !== null && links !== null) tops.push(<FuelKpi key="fuel" fuel={fuel} links={links} />);
   if (custody !== null) tops.push(<CustodyKpi key="custody" custody={custody} branch={branch} />);
   if ((accidents !== null || violations !== null) && links !== null)
     tops.push(<OpenKpi key="open" accidents={accidents} violations={violations} links={links} />);
@@ -1089,9 +1067,7 @@ export const SummariesTab = (props: NowTabProps): JSX.Element => {
       )}
       {tops.length > 0 && <div className="grid grid-cols-1 gap-5 md:grid-cols-3">{tops}</div>}
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {fuel !== null && links !== null && (
-          <FuelColumn fuel={fuel} links={links} branch={branch} />
-        )}
+        {fuel !== null && links !== null && <FuelColumn fuel={fuel} links={links} />}
         {custody !== null && <CustodyColumn custody={custody} links={links} branch={branch} />}
         {(accidents !== null || violations !== null) && links !== null && (
           <OpenColumn accidents={accidents} violations={violations} links={links} />

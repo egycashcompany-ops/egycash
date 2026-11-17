@@ -78,6 +78,22 @@ const alarmRow = (
 });
 
 /** Cairo today, and the server's clock at 10:00 Cairo (EET, UTC+2, after the October change). */
+type FuelCardRow = NonNullable<FleetDashboardNowDto['fuelCardList']>['rows'][number];
+/** One row of «كروت تحتاج متابعة»: a wataniya card on a live car unless told otherwise. */
+const fuelCard = (
+  over: Partial<FuelCardRow> & Pick<FuelCardRow, 'cardId' | 'number' | 'code' | 'states'>,
+): FuelCardRow => ({
+  company: 'wataniya',
+  vehicleId: over.code === null ? null : `v${over.code}`,
+  typeName: over.code === null ? null : ARMOURED,
+  vehicleDeleted: false,
+  label: null,
+  balance: 1240,
+  requestedAmount: null,
+  expiresAt: '2027-06-15',
+  ...over,
+});
+
 export const TODAY = '2026-11-01';
 export const AS_OF = '2026-11-01T08:00:00.000Z';
 
@@ -341,7 +357,11 @@ export const NOW_DTO: FleetDashboardNowDto = {
     unregistered: 1,
   },
   papers: { insurance: 3, tax: 1 },
-  fuelCards: { warnDays: 30, expired: 1, expiring: 2 },
+  // The flagged cards («كروت تحتاج متابعة») are these figures' cards: 1 expired, 4 with a request,
+  // 3 below yellow (1 of them below red, with a request too) and 3 expiring = 10 cards, the first 8
+  // listed in the server's order (first state, then the car's code, a card on no car last); the one
+  // card on no car is the company view's alone (`unassigned`).
+  fuelCards: { warnDays: 30, expired: 1, expiring: 3, nearest: '2026-11-09' },
   fuelCharging: {
     wataniya: 84200,
     chillout: 31750,
@@ -349,6 +369,94 @@ export const NOW_DTO: FleetDashboardNowDto = {
     low: { belowYellow: 3, belowRed: 1, yellowAt: 300, redAt: 100 },
     charged24h: 7500,
     cards: 24,
+    companyCards: { wataniya: 15, chillout: 9 },
+    unassigned: { count: 1, balance: 210 },
+  },
+  fuelCardList: {
+    rows: [
+      fuelCard({
+        cardId: 'k1',
+        number: '7045112000984417',
+        code: '290',
+        expiresAt: '2026-10-28',
+        states: ['expired'],
+      }),
+      fuelCard({
+        cardId: 'k2',
+        number: '7045112000982583',
+        code: '214',
+        balance: 65,
+        requestedAmount: 2000,
+        states: ['critical', 'requested'],
+      }),
+      fuelCard({
+        cardId: 'k3',
+        number: '7045112000986390',
+        code: '122',
+        requestedAmount: 1500,
+        states: ['requested'],
+      }),
+      fuelCard({
+        cardId: 'k4',
+        number: '7045112000981724',
+        code: '167',
+        requestedAmount: 1500,
+        states: ['requested'],
+      }),
+      // A car deleted from the registry since: counted by its last branch, opened by the number.
+      fuelCard({
+        cardId: 'k5',
+        company: 'chillout',
+        number: '6011000000005068',
+        code: '305',
+        vehicleDeleted: true,
+        requestedAmount: 1500,
+        states: ['requested'],
+      }),
+      fuelCard({
+        cardId: 'k6',
+        company: 'chillout',
+        number: '6011000000009472',
+        code: '156',
+        balance: 240,
+        states: ['low'],
+      }),
+      // A card on no car: named by its label, in the company view only.
+      fuelCard({
+        cardId: 'k7',
+        company: 'chillout',
+        number: '6011000000000736',
+        code: null,
+        label: 'سفر 1',
+        balance: 210,
+        states: ['low'],
+      }),
+      fuelCard({
+        cardId: 'k8',
+        number: '7045112000980071',
+        code: '141',
+        expiresAt: '2026-11-09',
+        states: ['expiring'],
+      }),
+    ],
+    total: 10,
+  },
+  // Each company's last read sheet as it stood at its read: one with lines still undecided.
+  fuelSheets: {
+    wataniya: {
+      sheetDate: '2026-10-29',
+      readDay: '2026-10-29',
+      differing: 5,
+      undecided: 2,
+      undecidedNet: -340.5,
+    },
+    chillout: {
+      sheetDate: '2026-10-27',
+      readDay: '2026-10-28',
+      differing: 3,
+      undecided: 0,
+      undecidedNet: 0,
+    },
   },
   recentWorkshop: [
     {
@@ -448,8 +556,16 @@ export const NOW_DTO: FleetDashboardNowDto = {
   // Every year still owed: this year's (violationsYear) plus older statements and fines.
   violationsOpen: {
     company: { amount: 5600, count: 9 },
-    drivers: { total: { amount: 3050, count: 7 } },
+    // The drivers' parts add up to their total, amount and fines: 2,300 + 500 + 250 = 3,050, 5 + 1 + 1.
+    drivers: {
+      total: { amount: 3050, count: 7 },
+      attributed: { amount: 2300, count: 5, drivers: 4 },
+      unknown: { amount: 500, count: 1 },
+      unlinked: { amount: 250, count: 1 },
+    },
     total: { amount: 8650, count: 16 },
+    // Of them, the fines on cars the registry never had (the company view only).
+    bookOnly: { company: { amount: 1200, count: 2 }, drivers: { amount: 250, count: 1 } },
   },
   alerts: [
     { id: 'maintenanceRed', level: 'red', count: 3 },
@@ -549,8 +665,14 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     },
   },
   accidentList: null,
+  // The month read of the overview and of «توزيع السيارات» draws none of the period-only parts:
+  // the period specs seed them (PERIOD_FULL, PERIOD_YEAR).
+  violations: null,
+  violationList: null,
   opex: null,
+  opexSeries: null,
   dealership: null,
+  dealershipList: null,
   unavailable: [],
 };
 

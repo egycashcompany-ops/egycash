@@ -77,7 +77,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period opens on «هذا
   // الشهر» on every visit — a chosen period stays in the address bar between tabs, for the rest of
   // the visit only (DECISIONS §0c); type, operation and codes are remembered, ONE state for «أرقام
-  // الفترة» and the period parts of the three mixed panels (TAB_SHARED below).
+  // الفترة» and the period parts of the five mixed panels (TAB_SHARED below).
   ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab', 'period', 'from', 'to']],
   ['modules/fleet/pages/FuelCardsPage.tsx', []],
   ['modules/fleet/pages/FuelChargingPage.tsx', []],
@@ -587,7 +587,7 @@ const TAB_SCOPED: readonly (readonly [string, string])[] = [
 const TAB_SHARED: readonly (readonly [string, string])[] = [
   [
     'modules/fleet/pages/FleetDashboardPage.tsx',
-    '«أرقام الفترة» and the mixed panels («الصيانة والورش»، «العدادات والكيلومترات»، «الحوادث ومطالبات التأمين») draw one filter bar over one read, R2 — «الفلاتر ثابتة بين التبويبات»; type, operation and codes are remembered, the period is not (it stays in the address bar between tabs)',
+    '«أرقام الفترة» and the five mixed panels («الصيانة والورش»، «العدادات والكيلومترات»، «الحوادث ومطالبات التأمين»، «المخالفات المرورية والتسويات»، «الوقود والمصروفات») draw one filter bar over one read, R2 — «الفلاتر ثابتة بين التبويبات»; type, operation and codes are remembered, the period is not (it stays in the address bar between tabs)',
   ],
 ];
 

@@ -11,6 +11,7 @@ import { REALTIME_THROTTLE_MS, createRefetchThrottle } from './throttle';
 
 const NOW = ['fleet', 'dashboard', 'now'] as const;
 const LIVE = ['fleet', 'dashboard', 'period', 'live'] as const;
+const PAST = ['fleet', 'dashboard', 'period', 'past'] as const;
 
 const build = () => {
   const stale: string[] = [];
@@ -96,8 +97,8 @@ describe('the refetch throttle', () => {
 });
 
 describe('the throttled prefixes in the registry', () => {
-  it('are the fleet dashboard’s R1 and its LIVE period read — never a past period', () => {
-    expect(THROTTLED_KEY_PREFIXES).toEqual([NOW, LIVE]);
+  it('are the fleet dashboard’s R1 and its period reads, live and past', () => {
+    expect(THROTTLED_KEY_PREFIXES).toEqual([NOW, LIVE, PAST]);
   });
 
   it('ride the fleet rows whose writes move a dashboard figure, and no other module', () => {
@@ -122,7 +123,8 @@ describe('the throttled prefixes in the registry', () => {
         'fleet.receipt',
       ]),
     );
-    // The period tabs count km, visits, accidents, card/custody spend and dealership rows.
+    // The period tabs count km, visits, accidents, card/custody spend and dealership rows — and
+    // the drivers' fines of the period («المخالفات المرورية والتسويات»: a tick moves «قائمة»).
     expect(carrying(LIVE).sort()).toEqual(
       [
         'fleet.accident',
@@ -133,8 +135,15 @@ describe('the throttled prefixes in the registry', () => {
         'fleet.receipt',
         'fleet.vehicle',
         'fleet.vehicleType',
+        'fleet.violation',
       ].sort(),
     );
+    // A grievance moves no counted figure: «الآن» only.
+    expect(carrying(LIVE)).not.toContain('fleet.violationGrievance');
+    // A closed range counts rows whose days are behind it, so only a fine reaches it: the
+    // period's fines carry their state as of now («الشهر الماضي»'s «قائمة» turns «محصَّلة» on a
+    // tick). Every other write leaves a past range alone.
+    expect(carrying(PAST)).toEqual(['fleet.violation']);
     // The custody rows reach tab 1's custody line through the custody hooks' own key, not R1.
     expect(carrying(NOW)).not.toContain('fleet.custodyOperation');
   });

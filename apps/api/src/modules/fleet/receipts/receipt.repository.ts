@@ -32,6 +32,15 @@ interface TotalsRow {
   count: number;
   amount: number;
   litres: number;
+  /** The rows with no litres — a fuel receipt with no litre price. */
+  unpriced: number;
+}
+
+/** One slot of a receipts series: the paper day ('YYYY-MM-DD') or month ('YYYY-MM'). */
+export interface ReceiptSeriesRow {
+  key: string;
+  amount: number;
+  count: number;
 }
 
 export interface ReceiptFilterInput {
@@ -126,6 +135,9 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
           count: { $sum: 1 },
           amount: { $sum: '$amount' },
           litres: { $sum: { $ifNull: ['$litres', 0] } },
+          // A fuel receipt is saved with no litres when it has no litre price — it is in the money
+          // and never in the litres; counted so the screens can say so.
+          unpriced: { $sum: { $cond: [{ $eq: [{ $ifNull: ['$litres', null] }, null] }, 1, 0] } },
         },
       },
     ];
@@ -162,7 +174,46 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
         (row) => row._id.kind === 'maintenance',
         (row) => row.amount,
       ),
+      // «وقود من العهدة» — the fuel receipts the custody paid (card receipts are fuel only, so
+      // fuel = card + this), and the fuel receipts with no litre price.
+      fuelCustodyTotal: sum(
+        (row) => row._id.kind === 'fuel' && row._id.source === 'custody',
+        (row) => row.amount,
+      ),
+      fuelUnpriced: rows
+        .filter((row) => row._id.kind === 'fuel')
+        .reduce((total, row) => total + row.unpriced, 0),
     };
+  }
+
+  /**
+   * The same rows as `totals`, by the receipt's PAPER day — or month — in UTC, the way `date` is
+   * stored (date-only): the slots that hold a receipt, through `ix_receipt_date`. The caller fills
+   * the empty slots in.
+   */
+  async series(
+    filter: FilterQuery<FleetReceiptDoc>,
+    unit: 'day' | 'month',
+  ): Promise<ReceiptSeriesRow[]> {
+    const rows = await this.model
+      .aggregate<{ _id: string; amount: number; count: number }>([
+        { $match: this.baseFilter(undefined, filter) },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: unit === 'day' ? '%Y-%m-%d' : '%Y-%m',
+                date: '$date',
+                timezone: 'UTC',
+              },
+            },
+            amount: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .exec();
+    return rows.map((row) => ({ key: row._id, amount: round(row.amount), count: row.count }));
   }
 }
 

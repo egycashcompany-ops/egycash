@@ -1,7 +1,7 @@
 // «لوحة تحكم الحركة» — ONE builder for the link behind every figure of the dashboard's tabs (plan R-28,
 // unified.md §6.2): «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» · «الصيانة والورش» ·
-// «العدادات والكيلومترات» · «الحوادث ومطالبات التأمين» and the three old tabs («أرقام الفترة» ·
-// «ملخصات» · «التراخيص»). A
+// «العدادات والكيلومترات» · «الحوادث ومطالبات التأمين» · «المخالفات المرورية والتسويات» ·
+// «الوقود والمصروفات» and the three old tabs («أرقام الفترة» · «ملخصات» · «التراخيص»). A
 // figure on the dashboard opens the screen that shows the same number: this file knows each screen's OWN
 // parameter names and fills them from the server's echo only — `today`, the `range` of a period, the
 // `vehicleScope` filters, the active `branchId` and the reader's `scopeBranches` — never from the
@@ -28,9 +28,11 @@ import {
   FLEET_LICENCE_GREY_DAYS,
   addDaysYmd,
   type FleetDashboardNowAlarmDto,
+  type FleetDashboardNowFuelCardRowDto,
   type FleetDashboardPeriodDto,
   type FleetDashboardTab,
   type FleetDashboardVehicleScopeDto,
+  type FleetDealershipWorkKind,
 } from '@ecms/contracts';
 
 /** A figure's link: where it goes, and which figure it is (`data-metric="<section>.<field>"`). */
@@ -245,24 +247,59 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
     /** «بلا تاريخ» (D18). «غير مسجّلين» has no list (named exception): no builder. */
     driverLicencesNotRecorded: (): DashLink =>
       at('drivers', { licExp: 'none', ...br }, 'licenceDrivers.notRecorded'),
-    /** T1.4. */
+    /**
+     * T1.4. The fuel cards follow the branch of each card's CURRENT car (plan D10): every fuel link
+     * carries the figures' branch, which the cards and charging screens read (a card on no car is in
+     * no branch, so it is listed in the company view only — as it is counted).
+     */
     fuelCardsExpired: (): DashLink =>
-      at('fuel-cards', { expiresBefore: today }, 'fuelCards.expired'),
+      at('fuel-cards', { expiresBefore: today, ...br }, 'fuelCards.expired'),
     /** T4.7: today+1 … today+N, expired cards excluded. */
     fuelCardsExpiring: (warnDays: number): DashLink =>
       at(
         'fuel-cards',
-        { expiresFrom: addDaysYmd(today, 1), expiresBefore: addDaysYmd(today, warnDays) },
+        { expiresFrom: addDaysYmd(today, 1), expiresBefore: addDaysYmd(today, warnDays), ...br },
         'fuelCards.expiring',
       ),
+    /**
+     * «كروت تحتاج متابعة» foot «كل ما ينتهي خلال N يومًا»: every card expired or expiring up to
+     * today+N (the table's expiry states, expired ones included).
+     */
+    fuelCardsDue: (warnDays: number): DashLink =>
+      at(
+        'fuel-cards',
+        { expiresBefore: addDaysYmd(today, warnDays), ...br },
+        'fuelCardList.expiry',
+      ),
+    /**
+     * «فتح» on a row of «كروت تحتاج متابعة» (plan D17) — never the branch (a card on no car is in
+     * none): a card on no car, or on a car deleted since (the screens find live cars only by code),
+     * opens the cards list by its full number; a card led by an expiry state opens the cards list on
+     * its car and company; a card led by a balance or a request opens the charging screen on them.
+     */
+    fuelCardRow: (row: FleetDashboardNowFuelCardRowDto): DashLink => {
+      if (row.vehicleId === null || row.code === null || row.vehicleDeleted) {
+        return at('fuel-cards', { number: row.number }, 'fuelCardList.row');
+      }
+      const lead = row.states[0];
+      const own = { vehicleCodes: [row.code], company: row.company };
+      return lead === 'expired' || lead === 'expiring'
+        ? at('fuel-cards', own, 'fuelCardList.row')
+        : at('fuel-cards/charging', own, 'fuelCardList.row');
+    },
     /** T1.6. */
     crewGap: (): DashLink => roster('roster.crewGap', { view: 'crewGap' }),
-    /** T1.7 / T5.3, T1.8 / T5.4, T5.5. */
+    /** T1.7 / T5.3, T1.8 / T5.4, T5.5 — the figures' branch (D10). */
     charging: (state: 'requested' | 'low' | 'charged'): DashLink =>
-      at('fuel-cards/charging', { state }, `fuelCharging.${state}`),
+      at('fuel-cards/charging', { state, ...br }, `fuelCharging.${state}`),
     /** T5.1 / T5.2. */
     chargingCompany: (company: 'wataniya' | 'chillout'): DashLink =>
-      at('fuel-cards/charging', { company }, `fuelCharging.${company}`),
+      at('fuel-cards/charging', { company, ...br }, `fuelCharging.${company}`),
+    /** «كروت تحتاج متابعة» foot «كل الطلبات والأرصدة المنخفضة»: the charging screen on both states. */
+    chargingStates: (
+      states: readonly ('requested' | 'low')[],
+      metric = 'fuelCardList.chargingStates',
+    ): DashLink => at('fuel-cards/charging', { state: states, ...br }, metric),
     /** T1.9. */
     dealershipPending: (): DashLink =>
       at('dealership', { state: 'pending', ...br }, 'dealershipPending.rows'),
@@ -456,15 +493,24 @@ export const nowLinks = ({ today, branchId, scopeBranches }: NowEcho) => {
         'violationsYear.unknown',
       ),
     /**
-     * «مخالفات قائمة N مخالفة» (overview): every year's fines still owed — the company statements
-     * and the drivers' ledger both unpaid, no `year` / `dyear` (every year).
+     * «إجمالي المخالفات القائمة» («المخالفات المرورية والتسويات»): every year's fines still owed —
+     * the company statements and the drivers' ledger both unpaid, no `year` / `dyear` (every year).
      */
-    violationsOpen: (): DashLink =>
-      at('violations', { cset: 'false', dset: 'false', ...br }, 'violationsOpen.total'),
+    violationsOpen: (metric = 'violationsOpen.total'): DashLink =>
+      at('violations', { cset: 'false', dset: 'false', ...br }, metric),
+    /** «قائمة على الشركة»: the company statements still unpaid, every year. */
+    violationsOpenCompany: (metric = 'violationsOpen.company'): DashLink =>
+      at('violations', { cset: 'false', ...br }, metric),
+    /** «قائمة على السائقين»: the drivers' ledger still owed, every year. */
+    violationsOpenDrivers: (metric = 'violationsOpen.drivers'): DashLink =>
+      at('violations', { dset: 'false', ...br }, metric),
+    /** «مجهول ←»: the drivers' owed fines on no known driver, every year. */
+    violationsOpenUnknown: (): DashLink =>
+      at('violations', { dunknown: 'true', dset: 'false', ...br }, 'violationsOpen.unknown'),
     /** «مطابقة أرصدة الكروت» — a quick link to an existing screen that keeps no filters. */
-    reconcile: (): DashLink => ({
+    reconcile: (metric = 'fuelCharging.reconcile'): DashLink => ({
       to: '/fleet/fuel-cards/reconcile',
-      metric: 'fuelCharging.reconcile',
+      metric,
     }),
   };
 };
@@ -564,6 +610,78 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
     /** T6.9 (+ «بانتظار تسجيل القيمة»: `state=pending`). */
     dealership: (metric = 'dealership.amount', state?: 'pending'): DashLink =>
       over('dealership', metric, { state }),
+    /** «مصروف التشغيل حسب النوع»: the receipts of one kind (and, for fuel, one source). */
+    opexKind: (
+      metric: string,
+      kind: 'fuel' | 'tyres' | 'wash' | 'maintenance',
+      source?: 'card' | 'custody',
+    ): DashLink => over('receipts', metric, { kind, source }),
+    /**
+     * «فتح» on a row of «فواتير التوكيل في الفترة»: that car's rows of that work on that exit day. A
+     * row no code names (`code: null`) opens that day's rows of the work under the period's types,
+     * operations and branches — the row is among them.
+     */
+    dealershipRow: (
+      row: { code: string | null; date: string; workKind: FleetDealershipWorkKind },
+      metric = 'dealershipList.row',
+    ): DashLink =>
+      at(
+        'dealership',
+        row.code === null
+          ? {
+              from: row.date,
+              to: row.date,
+              work: row.workKind,
+              type: set.type,
+              operation: set.operation,
+              branch: set.branch,
+            }
+          : { vehicleCodes: [row.code], from: row.date, to: row.date, work: row.workKind },
+        metric,
+      ),
+    /**
+     * «مخالفات السائقين في الفترة» (plan D9): the register's DRIVERS' half reads its own names — the
+     * fine's day as `dfrom` / `dto` and the cars as `dcodes` — beside the set's type, operation and
+     * branch. «قائمة» adds `dset=false`, a type bar `dtype=<id>`.
+     */
+    violations: (metric: string, extra: { dset?: 'false'; dtype?: string } = {}): DashLink =>
+      at(
+        'violations',
+        {
+          dfrom: range.from,
+          dto: range.to,
+          dcodes: vehicleScope.vehicleCodes,
+          type: set.type,
+          operation: set.operation,
+          branch: set.branch,
+          ...extra,
+        },
+        metric,
+      ),
+    /**
+     * «فتح» on a row of «مخالفات السائقين في الفترة»: that car's fines of that type on that day —
+     * this fine and any that share them (the register's code filter reaches a deleted car and an
+     * old-book code alike). A row no code names (`code: null`) opens that day's fines of the type
+     * under the period's types, operations and branches — the fine is among them.
+     */
+    violationRow: (
+      row: { code: string | null; date: string; violationTypeId: string },
+      metric = 'violationList.row',
+    ): DashLink =>
+      at(
+        'violations',
+        row.code === null
+          ? {
+              dfrom: row.date,
+              dto: row.date,
+              dtype: row.violationTypeId,
+              type: set.type,
+              operation: set.operation,
+              branch: set.branch,
+            }
+          : { dcodes: [row.code], dfrom: row.date, dto: row.date, dtype: row.violationTypeId },
+        metric,
+      ),
   };
 };
 export type PeriodLinks = ReturnType<typeof periodLinks>;

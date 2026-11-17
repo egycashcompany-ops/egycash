@@ -16,8 +16,9 @@
 // count the alert LINES (`alertSummary`); the fuel total is the two balances the card names side by
 // side; «خارج الجاهزية» is rows − ready. What has no data in the system (the design's «6+3», days of
 // cover, in-kind custody, km cost, budget saving, hours, injuries, the urgent movement order) is not
-// drawn. «الشركة كلها» marks the company-wide figures while the rest are narrowed to the reader's
-// branches (`scopeBranches !== null`).
+// drawn. «الشركة كلها» marks the company-wide figures (the custody fund) while the rest are narrowed
+// to the reader's branches (`scopeBranches !== null`); the fuel card balances follow the branch of
+// each card's car, so they carry no such tag.
 import { type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -356,7 +357,6 @@ const KpiRow = ({
         tone="emerald"
         icon={I.fuel}
         title={w('kpi.fuel.title')}
-        tag={<CompanyWide show={narrowed} />}
         // The two balances the card names side by side, added for the headline (display only).
         figure={<BigMoney value={fuel.wataniya + fuel.chillout} />}
         sub={
@@ -642,7 +642,6 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { now, tabLink } = props;
   const month = props.month.enabled ? props.month.data : undefined;
-  const monthLinks = month === undefined ? null : periodLinks(month);
   const cards: HubCard[] = [];
   const line = (id: string, label: ReactNode, value: ReactNode): HubLine => ({ id, label, value });
 
@@ -777,7 +776,8 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
 
   // «الحوادث والمخالفات» — the month's accidents (the tab «الحوادث ومطالبات التأمين», opened on the
   // month read's own slice — «هذا الشهر», no type or codes — so it shows this number), every fine
-  // still owed (the register: no tab holds every year).
+  // still owed (the tab «المخالفات المرورية والتسويات», whose «إجمالي المخالفات القائمة» is every
+  // year's owed total — this number).
   const incidents: HubLine[] = [];
   const accidentsLine = monthLine(props.month, 'accidents', props.can);
   if (accidentsLine === 'pending') {
@@ -804,7 +804,7 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
         <HubFigure
           n={now.violationsOpen.total.count}
           noun="violation"
-          link={links.violationsOpen()}
+          link={tabLink('violations', 'violationsOpen.tab')}
         />,
       ),
     );
@@ -818,16 +818,20 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
     foot: tabLink('accidents', 'accidents.tab'),
   });
 
-  // «الوقود والمصروفات» — the month's fuel receipts (the receipts screen, kind fuel).
+  // «الوقود والمصروفات» — the month's fuel receipts: the tab «الوقود والمصروفات», opened on the
+  // month read's own slice — «هذا الشهر», no type or codes — so its «الوقود كله» is this number.
   const fuel: HubLine[] = [];
   if (monthLine(props.month, 'opex', props.can) === 'pending') {
     fuel.push(line('fuelSpend', w('hub.fuel.spend'), <HubPending />));
-  } else if (month?.opex != null && monthLinks !== null) {
+  } else if (month?.opex != null) {
     fuel.push(
       line(
         'fuelSpend',
         w('hub.fuel.spend'),
-        <Fig link={monthLinks.opexFuel()} className={cn('font-bold', STRONG)}>
+        <Fig
+          link={tabLink('fuel', 'opex.fuel.month', echoTabFilters(month))}
+          className={cn('font-bold', STRONG)}
+        >
           <Amount value={month.opex.fuel} />
         </Fig>,
       ),
@@ -839,7 +843,7 @@ const useHubCards = (props: NowTabProps, links: NowLinks | null): HubCard[] => {
     icon: I.fuel,
     tone: 'emerald',
     lines: fuel,
-    foot: tabLink('period', 'opex.tab'),
+    foot: tabLink('fuel', 'opex.tab'),
   });
 
   // «العهدة والتراخيص» — the cars whose licence runs out soon (the licences tab).

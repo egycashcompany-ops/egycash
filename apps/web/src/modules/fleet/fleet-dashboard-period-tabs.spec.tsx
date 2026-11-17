@@ -132,7 +132,21 @@ describe('tab 6 «أرقام الفترة»', () => {
         url: URL_30('period'),
         dto: {
           ...PERIOD_FULL,
-          opex: { card: 1, custody: 1, fuel: 0, total: 2, count: 2, dataFrom: '2026-10-10' },
+          // The guard reads `dataFrom` alone; the parts still tie (card + custody's maintenance = total).
+          opex: {
+            card: 1,
+            custody: 1,
+            fuel: 1,
+            total: 2,
+            count: 2,
+            dataFrom: '2026-10-10',
+            fuelCustody: 0,
+            tyres: 0,
+            wash: 0,
+            maintenance: 1,
+            litres: 0,
+            unpricedFuel: 0,
+          },
           dealership: { amount: 5, rows: 1, pending: 0, dataFrom: '2026-10-05' },
         },
       }),

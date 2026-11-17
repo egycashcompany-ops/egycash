@@ -14,7 +14,11 @@
 //      ignored;
 //   3. the old book's rows — an odometer row and a visit with only a code, an undated accident —
 //      count in the company view exactly as on the unfiltered screens, and drop out once a set exists;
-//   4. the old landing read (`GET /fleet/dashboard`) is gone.
+//   4. the old landing read (`GET /fleet/dashboard`) is gone;
+//   5. «المخالفات المرورية والتسويات» and «الوقود والمصروفات»: each part opens with its own key (a
+//      violations-only reader now reads the period), and under a branch the fuel cards follow their
+//      CURRENT car (a deleted car's card counts in its last branch, a card on no car in the company
+//      view only) and the old book's carless fines are named apart in the company view only.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -46,6 +50,8 @@ import { type AuthContext } from '../../src/shared/types';
 import { FleetAccidentModel } from '../../src/modules/fleet/accidents/accident.model';
 import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
+import { FleetFuelCardModel } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
+import { FleetViolationModel } from '../../src/modules/fleet/violations/violation.model';
 
 const NOW = new Date('2026-10-31T23:30:00.000Z');
 /** No exit in the range under a vehicle set: zeros, no mean, and no «غير مسجّلة» line. */
@@ -134,6 +140,8 @@ const NOW_SECTIONS: readonly FleetDashboardNowSection[] = [
   'papers',
   'fuelCards',
   'fuelCharging',
+  'fuelCardList',
+  'fuelSheets',
   'recentWorkshop',
   'recentAccidents',
   'notices',
@@ -148,8 +156,12 @@ const PERIOD_SECTIONS: readonly FleetDashboardPeriodSection[] = [
   'exits',
   'accidents',
   'accidentList',
+  'violations',
+  'violationList',
   'opex',
+  'opexSeries',
   'dealership',
+  'dealershipList',
 ];
 const present = (dto: object, keys: readonly string[]): string[] =>
   keys.filter((key) => (dto as Record<string, unknown>)[key] !== null);
@@ -210,6 +222,7 @@ let B2: string;
 let T1: string;
 let car1: FleetVehicleDto; // B1
 let car2: FleetVehicleDto; // B2
+let car3: FleetVehicleDto; // B1, DELETED — a fuel card still sits on it
 
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
@@ -381,6 +394,104 @@ beforeAll(async () => {
     status: 'open',
     notes: null,
   });
+
+  // «الوقود والمصروفات»: four cards — car1's (B1: nearly empty, expiring on 10 November), car2's
+  // (B2: nothing to follow), one on no car («سفر», expired), and one on car3, a B1 car deleted
+  // since (a request waiting, a low balance). Written as the cards service stores them.
+  car3 = await mkVehicle(B1);
+  const deleted = await send('delete', `/fleet/vehicles/${car3.id}`);
+  expect([200, 204]).toContain(deleted.status);
+  const card = (n: number, over: Record<string, unknown>) => ({
+    ...legacy,
+    vehicleId: null,
+    label: null,
+    company: 'wataniya',
+    name: `كارت ${n}`,
+    number: `70459900${String(n).padStart(8, '0')}`,
+    expiresAt: null,
+    password: null,
+    balance: 1000,
+    requestedAmount: null,
+    requestedAt: null,
+    lastChargedAt: null,
+    image: null,
+    ...over,
+  });
+  await FleetFuelCardModel.create([
+    card(1, {
+      vehicleId: new Types.ObjectId(car1.id),
+      balance: 50,
+      expiresAt: new Date('2026-11-10T00:00:00.000Z'),
+    }),
+    card(2, { vehicleId: new Types.ObjectId(car2.id), company: 'chillout' }),
+    card(3, { label: 'سفر', balance: 400, expiresAt: new Date('2026-10-20T00:00:00.000Z') }),
+    card(4, {
+      vehicleId: new Types.ObjectId(car3.id),
+      company: 'chillout',
+      balance: 200,
+      requestedAmount: 300,
+    }),
+  ]);
+
+  // «المخالفات المرورية والتسويات»: a «مجهول» fine on car1 (B1) and one from the old book on a car
+  // the registry never had (code only), both owed, both October's; and car2's statement of 2026.
+  const driverType = ok<FleetCatalogItemDto>(
+    await send('post', '/fleet/catalog-items', {
+      kind: 'violationType',
+      name: { ar: 'سرعة الاختبار', en: 'Speed' },
+      violationSide: 'driver',
+    }),
+    201,
+  ).id;
+  const companyType = ok<FleetCatalogItemDto>(
+    await send('post', '/fleet/catalog-items', {
+      kind: 'violationType',
+      name: { ar: 'رسوم الاختبار', en: 'Fees' },
+      violationSide: 'company',
+    }),
+    201,
+  ).id;
+  const fine = {
+    ...legacy,
+    kind: 'driver',
+    violationTypeId: new Types.ObjectId(driverType),
+    year: null,
+    count: null,
+    unitValue: null,
+    driverEmployeeId: null,
+    collected: false,
+  };
+  await FleetViolationModel.create([
+    {
+      ...fine,
+      vehicleId: new Types.ObjectId(car1.id),
+      vehicleCode: null,
+      amount: 100,
+      date: new Date('2026-10-10T00:00:00.000Z'),
+      driverName: 'مجهول',
+    },
+    {
+      ...fine,
+      vehicleId: null,
+      vehicleCode: 'B-9',
+      amount: 60,
+      date: new Date('2026-10-12T00:00:00.000Z'),
+      driverName: 'سائق من الدفتر',
+    },
+    {
+      ...fine,
+      kind: 'vehicle',
+      vehicleId: new Types.ObjectId(car2.id),
+      vehicleCode: null,
+      violationTypeId: new Types.ObjectId(companyType),
+      year: 2026,
+      count: 1,
+      unitValue: 300,
+      amount: 300,
+      date: null,
+      driverName: null,
+    },
+  ]);
 }, 240_000);
 
 afterAll(async () => {
@@ -473,6 +584,8 @@ describe('the doors — real roles (R-28, §5.5)', () => {
     expect(present(await nowOf(charging.token), NOW_SECTIONS)).toEqual([
       'fuelCards',
       'fuelCharging',
+      'fuelCardList',
+      'fuelSheets',
     ]);
     // The charging screen's key alone opens the door and nothing behind it — no 403, nothing shown.
     const guardOnly = await reader(['fleetFuelCharge.view']);
@@ -480,6 +593,33 @@ describe('the doors — real roles (R-28, §5.5)', () => {
     expect(present(empty, NOW_SECTIONS)).toEqual([]);
     expect(empty.alerts).toEqual([]);
     expect((await call('/fleet/dashboard/period', guardOnly.token)).status).toBe(403);
+  });
+
+  it('a violations-only reader now reads the period: «مخالفات السائقين في الفترة» and nothing else', async () => {
+    const fines = await reader(['fleetViolation.view']);
+    expect(present(await nowOf(fines.token), NOW_SECTIONS)).toEqual([
+      'violationsYear',
+      'violationsOpen',
+    ]);
+    expect(present(await periodOf(fines.token), PERIOD_SECTIONS)).toEqual([
+      'violations',
+      'violationList',
+    ]);
+  });
+
+  it('the receipts reader gets «مصروف التشغيل» and its days; the dealership reader its card and its rows', async () => {
+    const receipts = await reader(['fleetReceipt.view']);
+    expect((await call('/fleet/dashboard/now', receipts.token)).status).toBe(403);
+    expect(present(await periodOf(receipts.token), PERIOD_SECTIONS)).toEqual([
+      'opex',
+      'opexSeries',
+    ]);
+    const dealership = await reader(['fleetDealership.view']);
+    expect(present(await nowOf(dealership.token), NOW_SECTIONS)).toEqual(['dealershipPending']);
+    expect(present(await periodOf(dealership.token), PERIOD_SECTIONS)).toEqual([
+      'dealership',
+      'dealershipList',
+    ]);
   });
 
   it('the odometer reader gets the alarm and no-reading lines now, and the kilometres of a period', async () => {
@@ -776,6 +916,108 @@ describe('«الحوادث ومطالبات التأمين» and «العداد�
       { ar: 'مصفحة', en: 'Armored' },
       { ar: 'مصفحة', en: 'Armored' },
     ]);
+  });
+});
+
+describe('«الوقود والمصروفات» — the cards follow their CURRENT car’s branch (§0b, D10)', () => {
+  it('the company view: every card, each company’s, and the card on no car named apart', async () => {
+    const now = await nowOf(adminToken);
+    expect(now.fuelCharging).toMatchObject({
+      cards: 4,
+      companyCards: { wataniya: 2, chillout: 2 },
+      unassigned: { count: 1, balance: 400 },
+      requested: { count: 1, amount: 300 },
+    });
+    expect(now.fuelCards).toEqual({ warnDays: 30, expired: 1, expiring: 1, nearest: '2026-11-10' });
+    // Flagged: the expired card on no car, car1's (nearly empty, expiring), the deleted car3's
+    // (a request, a low balance); car2's is fine.
+    expect(
+      now.fuelCardList?.rows.map((row) => [row.code, row.label, row.states, row.vehicleDeleted]),
+    ).toEqual([
+      [null, 'سفر', ['expired'], false],
+      [car1.code, null, ['critical', 'expiring'], false],
+      [car3.code, null, ['requested', 'low'], true],
+    ]);
+    expect(now.fuelCardList?.total).toBe(3);
+    expect(now.fuelSheets).toEqual({ wataniya: null, chillout: null });
+  });
+
+  it('B1: its cars’ cards — the deleted car’s too — and never the card on no car', async () => {
+    for (const now of [
+      await nowOf(adminToken, B1),
+      await nowOf(
+        (await reader(['fleetFuelCard.view', 'fleetFuelCharge.view'], 'branch', B1)).token,
+      ),
+    ]) {
+      expect(now.fuelCharging).toMatchObject({
+        cards: 2,
+        companyCards: { wataniya: 1, chillout: 1 },
+        unassigned: null,
+        requested: { count: 1, amount: 300 },
+        wataniya: 50,
+        chillout: 200,
+      });
+      expect(now.fuelCards).toMatchObject({ expired: 0, expiring: 1, nearest: '2026-11-10' });
+      expect(now.fuelCardList?.rows.map((row) => [row.code, row.vehicleDeleted])).toEqual([
+        [car1.code, false],
+        [car3.code, true],
+      ]);
+      expect(now.fuelCardList?.total).toBe(2);
+    }
+    // B2: car2's card alone, nothing flagged; its expired line is not the company's.
+    const b2 = await nowOf(adminToken, B2);
+    expect(b2.fuelCharging).toMatchObject({ cards: 1, unassigned: null, chillout: 1000 });
+    expect(b2.fuelCardList).toEqual({ rows: [], total: 0 });
+    expect(b2.fuelCards).toMatchObject({ expired: 0, expiring: 0, nearest: null });
+    expect(b2.alerts.map((a) => a.id)).not.toContain('fuelCardExpired');
+  });
+
+  it('the cards screen answers the same question with `branchIds`', async () => {
+    const summary = ok<{ cardCount: number; noCarCards: number }>(
+      await call('/fleet/fuel-cards/summary', adminToken, { branchIds: B1 }),
+    );
+    expect(summary).toMatchObject({ cardCount: 2, noCarCards: 0 });
+    expect(
+      ok<unknown[]>(await call('/fleet/fuel-cards', adminToken, { branchIds: B1 })).length,
+    ).toBe(2);
+  });
+});
+
+describe('«المخالفات المرورية والتسويات» — the drivers’ fines of a period; the book’s apart (§7)', () => {
+  it('the company view: every year owed, the book’s carless fine named apart; October’s two fines', async () => {
+    const now = await nowOf(adminToken);
+    expect(now.violationsOpen).toEqual({
+      company: { amount: 300, count: 1 },
+      drivers: {
+        total: { amount: 160, count: 2 },
+        attributed: { amount: 0, count: 0, drivers: 0 },
+        unknown: { amount: 100, count: 1 },
+        unlinked: { amount: 60, count: 1 },
+      },
+      total: { amount: 460, count: 3 },
+      bookOnly: { company: { amount: 0, count: 0 }, drivers: { amount: 60, count: 1 } },
+    });
+    const period = await periodOf(adminToken);
+    // The statement (a year, no day) is never a period's.
+    expect(period.violations).toMatchObject({ count: 2, amount: 160, owed: { count: 2 } });
+    expect(period.violationList?.rows.map((row) => [row.code, row.vehicleId])).toEqual([
+      ['B-9', null],
+      [car1.code, car1.id],
+    ]);
+  });
+
+  it('a branch: its cars’ fines; the book’s carless rows are in no branch, so nothing is named apart', async () => {
+    const reach = await reader(['fleetViolation.view'], 'branch', B1);
+    for (const [now, period] of [
+      [await nowOf(adminToken, B1), await periodOf(adminToken, OCT, B1)],
+      [await nowOf(reach.token), await periodOf(reach.token)],
+    ] as const) {
+      expect(now.violationsOpen?.drivers.total).toEqual({ amount: 100, count: 1 });
+      expect(now.violationsOpen?.company).toEqual({ amount: 0, count: 0 });
+      expect(now.violationsOpen?.bookOnly).toBeNull();
+      expect(period.violations).toMatchObject({ count: 1, amount: 100 });
+      expect(period.violationList?.rows.map((row) => row.code)).toEqual([car1.code]);
+    }
   });
 });
 

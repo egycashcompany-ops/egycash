@@ -104,6 +104,9 @@ export const DriverViolationsPanel = ({
   settled,
   year = null,
   onYearClear,
+  from = null,
+  to = null,
+  onPeriodClear,
   sorts,
   onSortChange,
   entryVehicleId,
@@ -140,6 +143,15 @@ export const DriverViolationsPanel = ({
    */
   year?: number | null;
   onYearClear?: () => void;
+  /**
+   * The drivers' fines of a PERIOD by the fine's day (`dfrom` / `dto`, 'YYYY-MM-DD'): what a
+   * dashboard figure counted («مخالفات السائقين في الفترة»), so its link lists the same rows — whole
+   * days, the server's rule. This half's own narrowing like the year; shown as ONE chip beside the
+   * year's and cleared with the others. `null` = no bound on that side.
+   */
+  from?: string | null;
+  to?: string | null;
+  onPeriodClear?: () => void;
   /**
    * THE CAR BOTH ENTRY BARS ARE FILING AGAINST — one pick, both halves. Held by the page; the
    * company's bar beside this one reads the same value. See `CompanyViolationsPanel` for why.
@@ -187,7 +199,19 @@ export const DriverViolationsPanel = ({
     typeIds.length > 0 ||
     amount !== '' ||
     settled !== '' ||
-    year !== null;
+    year !== null ||
+    from !== null ||
+    to !== null;
+  // The period chip's words: its days as the dashboard writes them («2026/11/01»), Latin digits.
+  const slashed = (ymd: string): string => ymd.replace(/-/gu, '/');
+  const periodWords =
+    from !== null && to !== null
+      ? t('fleet.violations.periodChip', { from: slashed(from), to: slashed(to) })
+      : from !== null
+        ? t('fleet.violations.periodFrom', { from: slashed(from) })
+        : to !== null
+          ? t('fleet.violations.periodTo', { to: slashed(to) })
+          : '';
 
   // The WHOLE registry: a car past the first hundred by code read as «—».
   const vehicles = useAllVehicles({ anyStatus: true });
@@ -327,6 +351,9 @@ export const DriverViolationsPanel = ({
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
       ...(year === null ? {} : { year }),
+      // The fine's day, whole days — the dashboard's period (the server reads the calendar days).
+      ...(from === null ? {} : { from }),
+      ...(to === null ? {} : { to }),
       // The page's vehicle set — only the lists that hold something, so an un-narrowed board
       // keeps exactly the key it always had.
       ...vehicleSet,
@@ -340,6 +367,8 @@ export const DriverViolationsPanel = ({
       amount,
       settled,
       year,
+      from,
+      to,
       writeSorts(sorts),
       vehicleSet,
     ],
@@ -1140,6 +1169,25 @@ export const DriverViolationsPanel = ({
               className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-300 bg-brand-50 px-2 text-sm font-medium tabular-nums text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900"
             >
               {year}
+              <span aria-hidden="true">×</span>
+            </button>
+          </FilterField>
+        )}
+        {(from !== null || to !== null) && (
+          <FilterField
+            label={t('fleet.violations.fields.period')}
+            active
+            className="shrink-0"
+            density={TIGHT}
+          >
+            <button
+              type="button"
+              data-driver-period={`${from ?? ''}..${to ?? ''}`}
+              onClick={onPeriodClear}
+              aria-label={`${t('common.remove')} ${t('fleet.violations.fields.period')} ${periodWords}`}
+              className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-300 bg-brand-50 px-2 text-sm font-medium tabular-nums text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900"
+            >
+              {periodWords}
               <span aria-hidden="true">×</span>
             </button>
           </FilterField>

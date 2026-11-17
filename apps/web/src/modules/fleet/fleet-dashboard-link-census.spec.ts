@@ -2,9 +2,9 @@
 //
 // A figure on the dashboard opens the screen that shows the same number. The server half of that
 // promise is A-DASH's parity spec (every figure = its screen's endpoint called with the link's
-// parameters). This is the browser half: render all nine tabs from the fixtures — the company, a
+// parameters). This is the browser half: render all eleven tabs from the fixtures — the company, a
 // chosen branch, a reader of several branches («كل فروعي»), and period filters that narrow by type,
-// operation, codes and branch («أرقام الفترة» and the period parts of the three mixed panels) — collect
+// operation, codes and branch («أرقام الفترة» and the period parts of the five mixed panels) — collect
 // EVERY figure link the page draws (the overview's links to other tabs of the page included), and
 // hold each to the screen it opens:
 //   · its path is a route of the fleet module, and the page that route mounts is known;
@@ -15,6 +15,14 @@
 // It also keeps the pins of the retired old-page spec that no other spec carries (the whole page
 // counts nothing in the browser; an empty matrix cell is a dash, never a zero; an empty «آخر ما
 // سُجّل» says so in words).
+//
+// Named exceptions of the two new tabs (a figure no list shows exactly is plain, plan D16): on
+// «المخالفات المرورية والتسويات» every COUNT of the «الآن» cards (the register sums amounts),
+// «سائقون معروفون», «اسم غير مربوط», the sentences on cars the registry never had, the owed AMOUNT,
+// the collected amount and share, a type's amount; on «الوقود والمصروفات» every figure of the sheet
+// card, the «أول 8» sentence, the litres and the unpriced line, the dealership's pending AMOUNT and
+// the day columns. «شُحن اليوم» opens `state=charged` (the screen's own «شُحن اليوم»), and the
+// drivers' period fines travel as `dfrom` / `dto` / `dcodes` (the register's drivers' half).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -140,8 +148,9 @@ const NOW_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('now'),
 );
 /**
- * The tabs drawn over the PAGE's R2: «أرقام الفترة» under the filter bar, and the three mixed
- * panels («الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين»).
+ * The tabs drawn over the PAGE's R2: «أرقام الفترة» under the filter bar, and the five mixed
+ * panels («الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية
+ * والتسويات», «الوقود والمصروفات»).
  */
 const PAGE_PERIOD_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('period'),
@@ -160,6 +169,22 @@ const NOTICES_NARROWED: typeof NOTICES = {
   rows: NOTICES.rows.filter((row) => row.code !== null),
 };
 
+const FUEL_CHARGING = NOW_DTO.fuelCharging as NonNullable<typeof NOW_DTO.fuelCharging>;
+const FUEL_CARDS = NOW_DTO.fuelCardList as NonNullable<typeof NOW_DTO.fuelCardList>;
+const VIOLATIONS_OPEN = NOW_DTO.violationsOpen as NonNullable<typeof NOW_DTO.violationsOpen>;
+/**
+ * The parts a narrowed R1 leaves out (plan D7, D10): no card on no car (it is in no branch), and no
+ * line about the cars the registry never had — the company view's alone.
+ */
+const NARROWED_PARTS = {
+  fuelCharging: { ...FUEL_CHARGING, unassigned: null },
+  fuelCardList: {
+    rows: FUEL_CARDS.rows.filter((row) => row.vehicleId !== null),
+    total: FUEL_CARDS.total - 1,
+  },
+  violationsOpen: { ...VIOLATIONS_OPEN, bookOnly: null },
+};
+
 /** R1 with a branch chosen, and the alarm / no-reading codes the branch narrows to (D19). */
 const NOW_BRANCH = {
   ...NOW_DTO,
@@ -170,6 +195,7 @@ const NOW_BRANCH = {
     codes: { red: ['133'], yellow: ['133', '141'] },
   },
   notices: NOTICES_NARROWED,
+  ...NARROWED_PARTS,
 };
 
 /** R2 narrowed by every filter the bar offers, and by the branch. */
@@ -196,6 +222,7 @@ const NOW_MINE = {
     codes: { red: ['133'], yellow: ['133', '141'] },
   },
   notices: NOTICES_NARROWED,
+  ...NARROWED_PARTS,
 };
 const PERIOD_MINE: FleetDashboardPeriodDto = {
   ...PERIOD_FULL,
@@ -229,8 +256,8 @@ const rendered = (): Anchor[] => {
       permissions: [...ALL_KEYS, 'fleetVehicleContract.view'],
     }),
   );
-  // The three mixed panels under a narrowed page R2, with the switcher's branch on R1 too.
-  for (const tab of ['maintenance', 'km', 'accidents']) {
+  // The five mixed panels under a narrowed page R2, with the switcher's branch on R1 too.
+  for (const tab of ['maintenance', 'km', 'accidents', 'violations', 'fuel']) {
     const narrowedUrl = `/fleet?tab=${tab}&period=last30${SET}`;
     pages.push(
       renderDashboard({
@@ -303,6 +330,21 @@ const built = (): Anchor[] => {
       L.noticeRow({ code: null, number: null, date: '2026-10-31' }),
       L.accidentsOpenAll(),
       L.noReadingCar('133'),
+      L.violationsOpenCompany(),
+      L.violationsOpenDrivers('violationsOpen.driversAll'),
+      L.violationsOpenUnknown(),
+      L.violationsOpen('violationsOpen.totalAll'),
+      L.chargingStates(['requested', 'low']),
+      L.fuelCardsDue(30),
+      L.fuelCardsExpired(),
+      L.charging('charged'),
+      L.reconcile('fuelSheets.reconcile'),
+      // «فتح» on a card: led by an expiry, by a balance, on no car, on a deleted car (D17).
+      ...FUEL_CARDS.rows.map((row) => L.fuelCardRow(row)),
+      L.fuelCardRow({
+        ...(FUEL_CARDS.rows[0] as (typeof FUEL_CARDS.rows)[number]),
+        vehicleDeleted: true,
+      }),
     );
   }
   const sp = new URLSearchParams(`tab=overview${PAGE_FILTERS}`);
@@ -328,6 +370,19 @@ const built = (): Anchor[] => {
       P.carKmDay('133', '2026-10-11', 'km.invalidList.row'),
       P.kmDay('2026-10-11', 'km.invalidList.row'),
       P.vehiclesByCodes(['133', '141'], 'km.noDistance'),
+      P.violations('violations.count'),
+      P.violations('violations.owed', { dset: 'false' }),
+      P.violations('violations.byType', { dtype: 'vt1' }),
+      P.violationRow({ code: '133', date: '2026-10-12', violationTypeId: 'vt1' }),
+      P.violationRow({ code: null, date: '2026-10-12', violationTypeId: 'vt1' }),
+      P.opexKind('opex.card', 'fuel', 'card'),
+      P.opexKind('opex.fuelCustody', 'fuel', 'custody'),
+      P.opexKind('opex.tyres', 'tyres'),
+      P.opexKind('opex.wash', 'wash'),
+      P.opexKind('opex.maintenance', 'maintenance'),
+      P.dealershipRow({ code: '221', date: '2026-10-29', workKind: 'maintenance' }),
+      P.dealershipRow({ code: '263', date: '2026-10-31', workKind: 'repair' }),
+      P.dealershipRow({ code: null, date: '2026-10-31', workKind: 'repair' }),
     );
   }
   return all.flatMap(asAnchor);
@@ -340,10 +395,17 @@ const parse = (href: string): { pathname: string; params: URLSearchParams } => {
 };
 
 describe('the link census — every figure link against the screen it opens', () => {
-  it('collects the page’s links from all nine tabs (the census is not empty by accident)', () => {
-    expect(FLEET_DASHBOARD_TABS).toHaveLength(9);
+  it('collects the page’s links from all eleven tabs (the census is not empty by accident)', () => {
+    expect(FLEET_DASHBOARD_TABS).toHaveLength(11);
     expect([...PAGE_PERIOD_TABS].sort()).toEqual(
-      [...FLEET_DASHBOARD_PERIOD_TABS, 'maintenance', 'km', 'accidents'].sort(),
+      [
+        ...FLEET_DASHBOARD_PERIOD_TABS,
+        'maintenance',
+        'km',
+        'accidents',
+        'violations',
+        'fuel',
+      ].sort(),
     );
     expect(LINKS.length).toBeGreaterThan(150);
     const metrics = new Set(LINKS.map((l) => l.metric.split('.')[0]));
@@ -361,6 +423,16 @@ describe('the link census — every figure link against the screen it opens', ()
       'accidentsOpen',
       'accidents',
       'accidentList',
+      'violationsOpen',
+      'violations',
+      'violationList',
+      'fuelCards',
+      'fuelCharging',
+      'fuelCardList',
+      'fuelSheets',
+      'opex',
+      'dealership',
+      'dealershipList',
     ]) {
       expect(metrics.has(section), section).toBe(true);
     }
@@ -438,6 +510,19 @@ describe('the link census — every figure link against the screen it opens', ()
         '/fleet/roster?q',
         '/fleet/receipts?kind',
         '/fleet/drivers?branch',
+        '/fleet/violations?dfrom',
+        '/fleet/violations?dto',
+        '/fleet/violations?dcodes',
+        '/fleet/violations?dtype',
+        '/fleet/fuel-cards?branch',
+        '/fleet/fuel-cards?number',
+        '/fleet/fuel-cards?company',
+        '/fleet/fuel-cards?vehicleCodes',
+        '/fleet/fuel-cards/charging?branch',
+        '/fleet/fuel-cards/charging?vehicleCodes',
+        '/fleet/fuel-cards/charging?company',
+        '/fleet/dealership?work',
+        '/fleet/dealership?vehicleCodes',
         '/fleet?tab',
         '/fleet?period',
         '/fleet?type',
@@ -563,6 +648,12 @@ describe('«كل فروعي» and the links to other tabs (plan D12, D15)', () =
     for (const metric of [
       'workshop.open',
       'violationsOpen.total',
+      'violationsOpen.company',
+      'violationsOpen.unknown',
+      'fuelCharging.wataniya',
+      'fuelCharging.requested',
+      'fuelCards.expired',
+      'fuelCardList.chargingStates',
       'dealershipPending.rows',
       'notices.missingAny',
       'notices.missingCheckImage',

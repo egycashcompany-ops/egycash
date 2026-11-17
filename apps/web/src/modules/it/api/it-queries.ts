@@ -52,6 +52,7 @@ import {
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
+  type SetItConsumableInstalledOn,
   type TransferItConsumables,
   type UpdateItConsumable,
   type ItCatalogKind,
@@ -725,6 +726,27 @@ export const useUploadConsumableMemoSignedCopy = () =>
   );
 export const useDeleteConsumableMemoSignedCopy = () =>
   useConsumableMutation((id: string) => api.deleteConsumableMemoSignedCopy(id));
+
+/**
+ * «تعديل الجهاز» — the device an issued unit sits in, corrected after the issue. The one subtree
+ * again: the ledger's row wherever it is read (the movements screen, the item's movements, the
+ * person's card, and BOTH assets' cards — the one it left and the one it went to, each a read of the
+ * ledger by `assetId`), and the memo whose line now names the new device. Read again on a refusal
+ * too: a 409 is somebody's change first, and the dialog then shows the row — its device, its
+ * version — as it now stands. A refusal is the dialog's to say, once: the declared `onError` keeps
+ * the global handler's second toast away.
+ */
+export const useSetItConsumableInstalledOn = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: SetItConsumableInstalledOn }) =>
+      api.setConsumableInstalledOn(id, body),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.consumables });
+    },
+    onError: () => undefined,
+  });
+};
 
 // ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ───────────────────────
 

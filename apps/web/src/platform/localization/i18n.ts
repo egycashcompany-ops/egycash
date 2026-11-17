@@ -9922,6 +9922,22 @@ const en: Record<string, string> = {
   'it.assets.pickerNoAccess': 'Choosing an asset needs the assets permission.',
   'it.assets.pickedUnresolved': 'This asset is no longer readable.',
   'it.assets.clearPick': 'Clear the chosen asset',
+  'it.assets.pickerHolderHint': 'The devices {{name}} holds now',
+  'it.assets.pickerHolderHintAnon': 'The devices the chosen employee holds now',
+  'it.assets.pickerHolderNone': '{{name}} holds no device now. This field may stay empty.',
+  'it.assets.pickerHolderNoneAnon':
+    'The chosen employee holds no device now. This field may stay empty.',
+  'it.assets.pickerHolderMore': 'The first {{shown}} of {{total}} — type to search among them.',
+  'it.assets.pickerHeldBy': 'Held by {{name}}',
+  'it.assets.pickerOther': 'Another device',
+  'it.assets.pickerOtherHint':
+    'Searching every device in the register — type a name, a code or a serial number.',
+  'it.assets.pickerHolderOnly': 'The employee’s devices only',
+  'it.assets.pickerHolderError':
+    'The devices {{name}} holds could not be loaded. Type to search, or retry.',
+  'it.assets.pickerHolderErrorAnon':
+    'The chosen employee’s devices could not be loaded. Type to search, or retry.',
+  'it.assets.pickerSearchError': 'The search could not be completed. Retry.',
 
   // FR-19 — mobile lines (خطوط المحمول): the register, the network cards, the hand-over and its
   // acknowledgment, on the assets' grants.
@@ -10329,6 +10345,17 @@ const en: Record<string, string> = {
   'it.consumables.issue.reason': 'Reason',
   'it.consumables.issue.installedOn': 'Installed on',
   'it.consumables.issue.installedOnHint': 'Optional — the register’s asset it goes into.',
+  'it.consumables.issue.holderFilled':
+    'Filled in from the device on item {{n}}: it is in this employee’s custody.',
+  'it.consumables.issue.holderExited':
+    'The device on item {{n}} is held by {{name}}, who has left — choose the employee by hand.',
+  'it.consumables.issue.holderUnreadable':
+    'The holder of the device on item {{n}} could not be confirmed — choose the employee by hand.',
+  'it.consumables.issue.deviceCleared':
+    'The device on item {{lines}} was removed: it is held by the previously chosen employee.',
+  'it.consumables.issue.devicesCleared':
+    'The devices on items {{lines}} were removed: they are held by the previously chosen employee.',
+  'it.consumables.issue.deviceHeldByOther': 'This device is held by {{name}}.',
   'it.consumables.issue.submit': 'Issue and print the memo',
   'it.consumables.issued': 'Issued. Upload the memo once the employee signs it.',
   'it.consumables.pickerPlaceholder': 'Search items by code or name',
@@ -10365,6 +10392,29 @@ const en: Record<string, string> = {
   'it.consumables.employeeCard.hint':
     'What was issued to this employee and what they gave back, newest first, each issue with its memo.',
   'it.consumables.employeeCard.empty': 'Nothing has been issued to this employee.',
+  // «تعديل الجهاز» (2026-11-17): the device an issued unit sits in, corrected after the issue.
+  'it.consumables.installedOn.action': 'Change the device',
+  'it.consumables.installedOn.actionHint': 'Correct the device this item was installed on',
+  'it.consumables.installedOn.title': 'Change the device',
+  'it.consumables.installedOn.current': 'Installed on now',
+  'it.consumables.installedOn.next': 'New device',
+  'it.consumables.installedOn.none': 'No device',
+  'it.consumables.installedOn.unchanged':
+    'This is the device it is installed on now, so there is nothing to save.',
+  'it.consumables.installedOn.reprint': 'A reprint of memo {{memo}} prints the new device.',
+  'it.consumables.installedOn.reprintAnon': 'A reprint of its memo prints the new device.',
+  'it.consumables.installedOn.signedStays': 'The signed copy already filed stays as it was filed.',
+  'it.consumables.installedOn.unsigned':
+    'Its signed copy has not been filed yet: print it again so the employee signs for the new device.',
+  'it.consumables.installedOn.recorded':
+    'The change is recorded: who made it, when, and from which device to which.',
+  'it.consumables.installedOn.saved': 'Device changed.',
+  'it.consumables.installedOn.conflict':
+    'Somebody changed this issue first, and it has been loaded again. Check the device it is installed on now, then save again.',
+  'it.consumables.installedOn.conflictLeft':
+    'Somebody changed this issue first, and it is no longer shown in this list. Open the consumables movements to see the device it is installed on now.',
+  'it.consumables.installedOn.left':
+    'This issue is no longer shown in this list since it was read again, so what is shown above is as it was when this window opened.',
 
   // ── System Administration → Users (SA-1) ──────────────────────────────────
   // P10 — the notification-template catalog. The service has been complete since Sprint 3.3; this
@@ -24854,6 +24904,22 @@ const ar: Record<string, string> = {
   'it.assets.pickerNoAccess': 'اختيار أصل يحتاج صلاحية الأصول.',
   'it.assets.pickedUnresolved': 'هذا الأصل لم يعد متاحًا للقراءة.',
   'it.assets.clearPick': 'إلغاء اختيار الأصل',
+  'it.assets.pickerHolderHint': 'الأجهزة التي في عهدة {{name}} الآن',
+  'it.assets.pickerHolderHintAnon': 'الأجهزة التي في عهدة الموظف المختار الآن',
+  'it.assets.pickerHolderNone':
+    'لا يوجد في عهدة {{name}} أي جهاز الآن، ويمكن ترك هذا الحقل فارغًا.',
+  'it.assets.pickerHolderNoneAnon':
+    'لا يوجد في عهدة الموظف المختار أي جهاز الآن، ويمكن ترك هذا الحقل فارغًا.',
+  'it.assets.pickerHolderMore': 'أول {{shown}} من {{total}}؛ اكتب للبحث فيها.',
+  'it.assets.pickerHeldBy': 'في عهدة {{name}}',
+  'it.assets.pickerOther': 'جهاز آخر',
+  'it.assets.pickerOtherHint': 'البحث في كل أجهزة السجل؛ اكتب الاسم أو الكود أو الرقم التسلسلي.',
+  'it.assets.pickerHolderOnly': 'أجهزة الموظف فقط',
+  'it.assets.pickerHolderError':
+    'تعذّر تحميل الأجهزة التي في عهدة {{name}}؛ اكتب للبحث، أو أعد المحاولة.',
+  'it.assets.pickerHolderErrorAnon':
+    'تعذّر تحميل أجهزة الموظف المختار؛ اكتب للبحث، أو أعد المحاولة.',
+  'it.assets.pickerSearchError': 'تعذّر إتمام البحث؛ أعد المحاولة.',
 
   // FR-19 — خطوط المحمول: السجل، وبطاقات الشبكات، والتسليم وإقرار الاستلام.
   'it.nav.mobileLines': 'خطوط المحمول',
@@ -25251,6 +25317,17 @@ const ar: Record<string, string> = {
   'it.consumables.issue.reason': 'السبب',
   'it.consumables.issue.installedOn': 'مركّب على',
   'it.consumables.issue.installedOnHint': 'اختياري: الأصل الذي يُركَّب عليه الصنف من سجل الأصول.',
+  'it.consumables.issue.holderFilled':
+    'اختير المستلم تلقائيًا لأن الجهاز المختار في الصنف {{n}} في عهدته.',
+  'it.consumables.issue.holderExited':
+    'الجهاز المختار في الصنف {{n}} في عهدة {{name}}، وقد ترك العمل؛ لذا لم يُملأ المستلم، ويجب اختياره يدويًا.',
+  'it.consumables.issue.holderUnreadable':
+    'تعذّر التحقق من حائز الجهاز المختار في الصنف {{n}}؛ لذا لم يُملأ المستلم، ويجب اختياره يدويًا.',
+  'it.consumables.issue.deviceCleared':
+    'أُزيل الجهاز من الصنف {{lines}} لأنه في عهدة الموظف المختار سابقًا.',
+  'it.consumables.issue.devicesCleared':
+    'أُزيلت الأجهزة من الأصناف {{lines}} لأنها في عهدة الموظف المختار سابقًا.',
+  'it.consumables.issue.deviceHeldByOther': 'هذا الجهاز في عهدة {{name}}.',
   'it.consumables.issue.submit': 'صرف وطباعة المذكرة',
   'it.consumables.issued': 'تم الصرف. ارفع صورة المذكرة بعد توقيع الموظف عليها.',
   'it.consumables.pickerPlaceholder': 'ابحث في الأصناف بالكود أو الاسم',
@@ -25287,6 +25364,28 @@ const ar: Record<string, string> = {
   'it.consumables.employeeCard.hint':
     'ما صُرف لهذا الموظف وما أعاده، الأحدث أولًا، وكل صرف بمذكرته.',
   'it.consumables.employeeCard.empty': 'لم يُصرف لهذا الموظف أي صنف.',
+  // «تعديل الجهاز» (2026-11-17): الجهاز المركّب عليه الصنف المصروف، يُصحَّح بعد الصرف.
+  'it.consumables.installedOn.action': 'تعديل الجهاز',
+  'it.consumables.installedOn.actionHint': 'تصحيح الجهاز الذي رُكِّب عليه هذا الصنف',
+  'it.consumables.installedOn.title': 'تعديل الجهاز',
+  'it.consumables.installedOn.current': 'الجهاز الحالي',
+  'it.consumables.installedOn.next': 'الجهاز الجديد',
+  'it.consumables.installedOn.none': 'بدون جهاز',
+  'it.consumables.installedOn.unchanged': 'هذا هو الجهاز المركّب عليه الآن، فلا يوجد ما يُحفظ.',
+  'it.consumables.installedOn.reprint': 'عند إعادة طباعة المذكرة {{memo}} تُطبع بالجهاز الجديد.',
+  'it.consumables.installedOn.reprintAnon': 'عند إعادة طباعة مذكرته تُطبع بالجهاز الجديد.',
+  'it.consumables.installedOn.signedStays': 'أما النسخة الموقّعة المرفوعة فتبقى كما رُفعت.',
+  'it.consumables.installedOn.unsigned':
+    'ولم تُرفع نسختها الموقّعة بعد؛ فاطبعها من جديد ليوقّع الموظف على الجهاز الجديد.',
+  'it.consumables.installedOn.recorded':
+    'يُسجَّل التعديل: من أجراه، ومتى، ومن أي جهاز إلى أي جهاز.',
+  'it.consumables.installedOn.saved': 'تم تعديل الجهاز.',
+  'it.consumables.installedOn.conflict':
+    'عدّل مستخدم آخر هذا الصرف قبلك، وأُعيد تحميله؛ راجع الجهاز الحالي ثم احفظ من جديد.',
+  'it.consumables.installedOn.conflictLeft':
+    'عدّل مستخدم آخر هذا الصرف قبلك، فلم يعد ظاهرًا في هذه القائمة؛ افتح سجل حركات المستهلكات لترى الجهاز المركّب عليه الآن.',
+  'it.consumables.installedOn.left':
+    'لم يعد هذا الصرف ظاهرًا في هذه القائمة بعد تحديثها، فالمعروض أعلاه كما كان عند فتح النافذة.',
 
   // ── إدارة النظام ← المستخدمون (SA-1) ──────────────────────────────────────
   // P10 — قوالب الإشعارات.

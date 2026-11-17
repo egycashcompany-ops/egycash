@@ -359,7 +359,8 @@ class ItAssetService {
     // Ordered cheapest-first, and each one is a different kind of "it was used": a history entry,
     // a custody interval (open OR closed), a maintenance order (an open one writes no event yet),
     // a consumable installed on it (FR-20 — the ledger and the signed memo name it; an issue
-    // writes no asset event).
+    // writes no asset event) — now, or before a «تعديل الجهاز» moved it to another device: the
+    // signed copy on file and the audit trail still name this one.
     if (await itAssetEventRepository.exists({ subjectId: assetId })) refuse('has history');
     if (await itAssetAssignmentRepository.exists({ assetId })) {
       refuse("has been in someone's custody");
@@ -367,7 +368,11 @@ class ItAssetService {
     if (await itMaintenanceOrderRepository.exists({ assetId })) {
       refuse('carries a maintenance order');
     }
-    if (await itConsumableMovementRepository.exists({ assetId })) {
+    if (
+      await itConsumableMovementRepository.exists({
+        $or: [{ assetId }, { installedOnBefore: assetId }],
+      })
+    ) {
       refuse('has consumables installed on it');
     }
   }

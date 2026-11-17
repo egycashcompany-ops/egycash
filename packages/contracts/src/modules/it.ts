@@ -2810,8 +2810,24 @@ export interface ItConsumableMovementDto {
   counterpartConsumableCode: string | null;
   byUserId: string | null;
   notes: string | null;
+  /**
+   * The row's `__v` — what «تعديل الجهاز» sends back, so a change somebody else made first is a
+   * conflict rather than overwritten. It moves only when that one correctable fact does.
+   */
+  version: number;
   createdAt: string;
 }
+
+/**
+ * «تعديل الجهاز» — «وضيف إمكانية تعديل الجهاز اللى عليه المستهلك بعد التسليم» (2026-11-17): the device an
+ * ISSUED unit sits in, corrected after the issue — the ledger's one correctable fact, because it
+ * describes the unit and moves no quantity. `null` is «بدون جهاز». The memo's line follows it, so a
+ * reprint prints the new device; the signed copy already filed stays as it is.
+ */
+export const SetItConsumableInstalledOnSchema = z
+  .object({ assetId: objectId().nullable(), version: z.number().int().min(0) })
+  .strict();
+export type SetItConsumableInstalledOn = z.infer<typeof SetItConsumableInstalledOnSchema>;
 
 export const ListItConsumableMovementsQuerySchema = PaginationQuerySchema.extend({
   kind: ItConsumableMovementKindSchema.optional(),

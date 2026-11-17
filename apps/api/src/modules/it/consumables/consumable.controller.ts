@@ -7,7 +7,8 @@
 // editing, receiving and scrapping are scoped by `itConsumable.edit`; and the custody-like writes —
 // issuing to a person, taking back from one — are gated on `itConsumable.assign` but scoped by the
 // READ grant, as a line's hand-over is: whoever may hand things out may reach every store they can
-// see. The one asset grant left here is the issue's «installed on» check (`assetScope` below).
+// see — the issue's later «تعديل الجهاز» too. The one asset grant left here is the device those two
+// name (`assetScope` below).
 import { type Request, type Response } from 'express';
 import {
   type CreateItConsumable,
@@ -17,6 +18,7 @@ import {
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
+  type SetItConsumableInstalledOn,
   type TransferItConsumables,
   type UpdateItConsumable,
 } from '@ecms/contracts';
@@ -31,6 +33,7 @@ import {
 import { toItConsumableDto, toItConsumableMemoDto, toItConsumableMovementDto } from '../it.mappers';
 import { itConsumableService } from './consumable.service';
 import { itConsumableIssueService } from './consumable-issue.service';
+import { itConsumableInstalledOnService } from './consumable-installed-on.service';
 import { itConsumableTransferService } from './consumable-transfer.service';
 import { type ItConsumableMovementDoc } from './consumable-movement.model';
 
@@ -40,9 +43,10 @@ const viewScope = (req: Request) => scopeSelector(authContext(req), 'itConsumabl
 const editScope = (req: Request) => scopeSelector(authContext(req), 'itConsumable.edit');
 
 /**
- * Where an issue's «installed on» may point: the assets the caller's OWN `itAsset.view` shows them
- * — or none at all without that grant (null), so a store keeper who cannot read the register
- * cannot probe it through the issue either. Every asset id is then the issue's «not found».
+ * Where an issue's «installed on» may point — at the issue, and when it is changed afterwards: the
+ * assets the caller's OWN `itAsset.view` shows them — or none at all without that grant (null), so
+ * a store keeper who cannot read the register cannot probe it through the store either. Every
+ * asset id is then «not found».
  */
 const assetScope = (ctx: AuthContext): ScopeSelector | null =>
   hasPermission(ctx, 'itAsset.view') ? scopeSelector(ctx, 'itAsset.view') : null;
@@ -116,6 +120,25 @@ export const listItConsumableMovementsOf = async (req: Request, res: Response): 
 export const listItConsumableMovements = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListItConsumableMovementsQuery>(req);
   await movementPage(req, res, await itConsumableService.listMovements(query, viewScope(req)));
+};
+
+/**
+ * «تعديل الجهاز» — the device an issued unit sits in, set or cleared after the issue. Answered with
+ * the movement as the ledger shows it, labelled as a page of it is.
+ */
+export const setItConsumableInstalledOn = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<SetItConsumableInstalledOn, never, IdParam>(req);
+  const ctx = authContext(req);
+  const scope = viewScope(req);
+  const movement = await itConsumableInstalledOnService.setInstalledOn(
+    params.id,
+    body,
+    ctx,
+    scope,
+    assetScope(ctx),
+  );
+  const labels = await itConsumableService.movementLabels([movement], scope);
+  ok(res, toItConsumableMovementDto(movement, labels));
 };
 
 /**

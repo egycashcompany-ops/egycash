@@ -580,9 +580,26 @@ describe('the consumables the IT client calls exist on the API, on the store’s
     }
   });
 
-  it('the ledger: one read-only list — the screen, an item, an asset, a person', () => {
-    expect(declared(LEDGER)).toEqual(new Set(['get /']));
+  // Append-only for QUANTITIES: one list, and one correction — «تعديل الجهاز» (2026-11-17), the
+  // device an issued unit sits in, which moves no counter. No general PATCH of a row, no delete.
+  it('the ledger: one list — the screen, an item, an asset, a person — and «تعديل الجهاز»', () => {
+    expect(declared(LEDGER)).toEqual(new Set(['get /', 'patch /:id/installed-on']));
     expect(CLIENT).toContain('`/it/consumable-movements${buildQuery(params)}`');
+    expect(CLIENT).toContain(
+      'patch<ItConsumableMovementDto>(`/it/consumable-movements/${id}/installed-on`, body)',
+    );
+    // The body is the contract's own strict schema — validated by the route, typed by the client.
+    expect(LEDGER).toMatch(/validate\(\{[^}]*body: SetItConsumableInstalledOnSchema/u);
+    expect(CLIENT).toMatch(
+      /body: SetItConsumableInstalledOn,\s*\): Promise<ItConsumableMovementDto>/u,
+    );
+    // …and a change moves the ledger's own subtree: every place a row is read (the screen, an
+    // item's movements, both assets' cards, a person's card) and the memo whose line it rewrote.
+    const queries = readFileSync(resolve(HERE, 'api/it-queries.ts'), 'utf8');
+    const hook =
+      /export const useSetItConsumableInstalledOn = [\s\S]*?\n\};/.exec(queries)?.[0] ?? '';
+    expect(hook).toContain('api.setConsumableInstalledOn(id, body)');
+    expect(hook).toContain('queryKey: itKeys.consumables');
   });
 
   it('the memo: read, print again with the same number, and the signed copy', () => {
@@ -621,6 +638,8 @@ describe('the consumables the IT client calls exist on the API, on the store’s
       [ITEMS, 'post', '/:id/scrap', 'itConsumable.edit'],
       [ITEMS, 'post', '/:id/return', 'itConsumable.assign'],
       [LEDGER, 'get', '/', 'itConsumable.view'],
+      // «تعديل الجهاز» rides the issue's own grant — the device is the issue's own field.
+      [LEDGER, 'patch', '/:id/installed-on', 'itConsumable.assign'],
       [MEMOS, 'get', '/:id', 'itConsumable.view'],
       [MEMOS, 'post', '/:id/print', 'itConsumable.view'],
       [MEMOS, 'get', '/:id/signed-copy', 'itConsumable.view'],

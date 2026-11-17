@@ -11,6 +11,24 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: in «صرف لموظف» the person and the device find each other — and the device can be changed
+  after the issue.** «لما أكتب اسم الشخص اللى هسلمه تظهر الأجهزة اللى معاه بس … والعكس بردو .. لو
+  كتبت سيرال فى الجهاز اللى هيتركب عليه المستهلك .. تظهر على طول الشخص اللى مستلم الجهاز دا», and
+  «وضيف إمكانية تعديل الجهاز اللى عليه المستهلك بعد التسليم».
+  - Choose the person first, and each line's «مركّب على» lists the devices they hold now, at once,
+    with code and serial. «جهاز آخر» under them searches the whole register (a shared printer, a
+    device in stock) without changing the person; the line says whose a held device is.
+  - Type a serial first, and the rows say who holds each device; picking a held one fills the
+    person, unless HR shows they have left. Changing the person takes off only the devices the
+    previous person held, and says which lines lost one.
+  - «تعديل الجهاز» on every issued row of the ledger (with `itConsumable.assign` and `itAsset.view`):
+    set, change or clear the device an issued item sits in —
+    `PATCH /it/consumable-movements/:id/installed-on` with the row's new `version`. It moves no
+    quantity. The memo's line follows it, so a reprint prints the new device; the signed copy
+    already filed stays as it is; the item's and the memo's history record who changed it, when,
+    and from which device to which. A stale version is refused (409). A device a unit was moved
+    off can still not be deleted as «registered in error» — the signed copy still names it.
+
 - **IT: «خطوط المحمول» and «المستهلكات» have their own permissions.** «فى الصلاحيات مش لاقى حاجة لـ
   /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها». Both screens
   rode the asset grants, so the roles screen had no row for either. Each is now a page of the role

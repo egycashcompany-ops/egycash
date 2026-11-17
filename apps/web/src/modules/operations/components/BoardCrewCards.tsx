@@ -40,6 +40,7 @@ import {
   HoverCardMissing as Missing,
   useHoverCard,
 } from '../../fleet/components/HoverCardLayer';
+import { showsDayFacts, useCrewPlanScope } from './crew-plan-scope';
 
 /**
  * A code, a phone or a time: a figure, read left to right in the figures' face. Shared with the
@@ -244,6 +245,7 @@ export const VehicleCrewCardBody = ({
   crew: OperationsDayBoardVehicleCrewDto;
 }): JSX.Element => {
   const t = useT();
+  const dayFacts = showsDayFacts(useCrewPlanScope());
   return (
     <div data-crew-card={crew.crewAssignmentId}>
       <CardHead
@@ -263,9 +265,12 @@ export const VehicleCrewCardBody = ({
         )}
       </CardHead>
       <dl className={HOVER_CARD_FACTS}>
-        <Fact label={t('operations.board.card.drivers')}>
-          <DriverNames drivers={crew.drivers} />
-        </Fact>
+        {/* The drivers are the Fleet roster's for ONE day: «الطاقم الثابت» has none (Round 27). */}
+        {dayFacts && (
+          <Fact label={t('operations.board.card.drivers')}>
+            <DriverNames drivers={crew.drivers} />
+          </Fact>
+        )}
         <Fact label={t('operations.crew.slot.captain')}>
           <People people={crew.captains} slot="captain" />
         </Fact>

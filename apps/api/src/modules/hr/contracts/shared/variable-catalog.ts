@@ -48,6 +48,9 @@ export const CONTRACT_VARIABLE_CATALOG: ContractVariableDto[] = [
   // own) and its occupation code, in the two groups form 1 boxes it in.
   { key: 'job.insuranceTitle', label: { en: 'Job title at social insurance', ar: 'المسمى الوظيفي لدى التأمينات' }, source: 'employment', sample: 'مندوب تحصيل', required: false },
   { key: 'job.occupationCode1', label: { en: 'Occupation code — first part', ar: 'كود المهنة — الجزء الأول' }, source: 'employment', sample: '123', required: false },
+  // The job's «الراتب الثابت» (الهيكل التنظيمي ← المسميات الوظيفية), in form 1's boxes of pounds and piasters.
+  { key: 'job.fixedSalaryPounds', label: { en: "Job's fixed salary — pounds", ar: 'الراتب الثابت للوظيفة — جنيه' }, source: 'employment', sample: '9500', required: false },
+  { key: 'job.fixedSalaryPiasters', label: { en: "Job's fixed salary — piasters", ar: 'الراتب الثابت للوظيفة — قرش' }, source: 'employment', sample: '00', required: false },
   { key: 'job.occupationCode2', label: { en: 'Occupation code — second part', ar: 'كود المهنة — الجزء الثاني' }, source: 'employment', sample: '456', required: false },
   { key: 'employment.startDay', label: { en: 'Start date — day', ar: 'تاريخ المباشرة — اليوم' }, source: 'employment', sample: '15', required: false },
   { key: 'employment.startMonth', label: { en: 'Start date — month', ar: 'تاريخ المباشرة — الشهر' }, source: 'employment', sample: '11', required: false },

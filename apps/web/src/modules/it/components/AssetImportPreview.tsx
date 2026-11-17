@@ -47,6 +47,12 @@ type Kind = ItAssetImportPreviewDto['kinds'][number];
 /** The decisions whose server note says why the line stands where it does. */
 const EXPLAINED: readonly ItAssetImportDecision[] = ['invalid', 'outOfScope', 'ambiguous'];
 
+/**
+ * The lines' box on a computer: the DataTable's own wrapper (its direct child — `stickyHead`
+ * makes it scroll both ways) capped at one screen less what has to stay in view with it.
+ */
+const LINES_BOX = 'lg:[&>div]:max-h-[calc(100dvh-15rem)]';
+
 const chipClass = (pressed: boolean): string =>
   cn(
     'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
@@ -384,14 +390,26 @@ export const AssetImportPreview = ({
               {t('it.assets.import.noSelectable')}
             </p>
           )}
-          <DataTable
-            columns={columns}
-            rows={inView}
-            rowKey={(row) => String(row.row)}
-            dense
-            hoverable
-            minColumnWidth={6.5}
-          />
+          {/* «مش عايز كل الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»
+              (2026-11-17): on a computer the lines scroll in a box of their own, under a head that
+              stays, and the sideways scroll of a narrow screen sits at the box's foot rather than
+              under the last of hundreds of lines. Capped, not the board frame the registers use
+              (`shared/ui/board-scroll.ts`): the steps, the notice, the chips and the kinds above
+              already take more than a screen, so a frame would leave the lines only its 14rem
+              floor. One screen less the top bar, this card's head, its «تأكيد» row and the page's
+              foot — at the page's end the whole card, «تأكيد» with it, is in view while only the
+              lines move. */}
+          <div className={LINES_BOX}>
+            <DataTable
+              columns={columns}
+              rows={inView}
+              rowKey={(row) => String(row.row)}
+              dense
+              hoverable
+              minColumnWidth={6.5}
+              stickyHead
+            />
+          </div>
         </CardBody>
       </Card>
     </div>

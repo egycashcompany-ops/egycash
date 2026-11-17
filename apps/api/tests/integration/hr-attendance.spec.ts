@@ -5,7 +5,7 @@
 // freeze guard refusing recomputation, and authorization on every surface.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
   platformPermissions,
@@ -40,6 +40,7 @@ import {
 } from '../../src/modules/hr/attendance';
 import { Types } from 'mongoose';
 import { NotificationModel } from '../../src/platform/notifications/notification.model';
+import { SettingValueModel } from '../../src/platform/settings/setting-value.model';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -526,6 +527,159 @@ describe('the derivation engine over HTTP', () => {
       .get('/api/v1/hr/attendance/days/me?from=2026-01-01&to=2026-01-02')
       .set('Authorization', `Bearer ${outsiderToken}`);
     expect(mine.status).toBe(404);
+  });
+});
+
+// ── Stage 1b — the default working pattern ──────────────────────────────────
+//
+// The pattern is what lets `late`, `earlyLeave` and `absent` mean anything for the majority of
+// this workforce, who have no shift assignment. The tests that matter are the two edges: it is
+// INERT until switched on, and a real assignment BEATS it.
+//
+// Every test here puts the switch back, because these settings are process-wide and the rest of
+// this file is written against a shift-less day deriving as `dayOff`.
+describe('the default working pattern (1b)', () => {
+  const patternCtx = (): AuthContext => ({
+    // `settingsService.set` stamps `updatedBy`, so this has to be a real ObjectId.
+    userId: new Types.ObjectId().toString(),
+    sessionId: 'seed',
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+    locale: 'en',
+    permissions: { 'setting.edit': 'organization' },
+    permissionVersion: 1,
+    isPrivileged: true,
+  });
+
+  const PATTERN_KEYS = {
+    enabled: HrAttendanceSettingKeys.DefaultPatternEnabled,
+    startTime: HrAttendanceSettingKeys.DefaultPatternStartTime,
+    endTime: HrAttendanceSettingKeys.DefaultPatternEndTime,
+    breakMinutes: HrAttendanceSettingKeys.DefaultPatternBreakMinutes,
+    graceInMinutes: HrAttendanceSettingKeys.DefaultPatternGraceInMinutes,
+    graceOutMinutes: HrAttendanceSettingKeys.DefaultPatternGraceOutMinutes,
+  } as const;
+
+  const setPattern = async (
+    values: Partial<{
+      enabled: boolean;
+      startTime: string;
+      endTime: string;
+      breakMinutes: number;
+      graceInMinutes: number;
+      graceOutMinutes: number;
+    }>,
+    scope: { scope: 'organization' } | { scope: 'branch'; scopeRef: string } = {
+      scope: 'organization',
+    },
+  ): Promise<void> => {
+    for (const [field, value] of Object.entries(values)) {
+      await settingsService.set(patternCtx(), {
+        key: PATTERN_KEYS[field as keyof typeof PATTERN_KEYS],
+        ...scope,
+        value,
+      });
+    }
+  };
+
+  /**
+   * Back to the declared defaults — by DELETING the rows, not by writing `false` over them.
+   *
+   * Writing `false` at branch scope was the first version of this, and it poisoned every test
+   * after it: a branch row BEATS the organization row, so a later test that switched the pattern
+   * on company-wide was silently overridden by this cleanup. Removing the rows leaves the
+   * declaration's own default (off) with nothing in front of it. The cache is keyed per subject,
+   * so it has to be dropped by key prefix the way `settingsService.set` does it.
+   */
+  afterEach(async () => {
+    await SettingValueModel.deleteMany({ key: { $in: Object.values(PATTERN_KEYS) } }).exec();
+    for (const key of Object.values(PATTERN_KEYS)) {
+      await getCache().delByPrefix(`settings:${key}:`);
+    }
+  });
+
+  it('is inert until it is switched on — a day with no shift is still dayOff', async () => {
+    const emp = await regEmployee();
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    expect((await dayRow(emp.id, workday)).status).toBe('dayOff');
+  });
+
+  it('once on, an unassigned employee with no punches is ABSENT', async () => {
+    const emp = await regEmployee();
+    const workday = recentWorkday();
+    await setPattern({ enabled: true, startTime: '09:00', endTime: '17:00', graceInMinutes: 15 });
+    await recompute(emp.id, workday);
+    expect((await dayRow(emp.id, workday)).status).toBe('absent');
+  });
+
+  it('once on, lateness is measured for somebody who was never assigned a shift', async () => {
+    const emp = await regEmployee();
+    const workday = recentWorkday();
+    await setPattern({ enabled: true, startTime: '09:00', endTime: '17:00', graceInMinutes: 15 });
+
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:40').toISOString() });
+    await recompute(emp.id, workday);
+    const row = await dayRow(emp.id, workday);
+    // A lone punch is still a check-in; what the pattern adds is the lateness.
+    expect(row.status).toBe('checkedIn');
+    expect(row.lateMinutes).toBe(40);
+
+    // And the full day computes against the pattern's end, break and all.
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
+    await recompute(emp.id, workday);
+    const full = await dayRow(emp.id, workday);
+    expect(full.status).toBe('late');
+    expect(full.workedMinutes).toBe(440); // 09:40→17:00 is 440 minutes, no break configured
+    expect(full.overtimeMinutes).toBe(0);
+  });
+
+  it('A REAL ASSIGNMENT WINS: the pattern never argues with somebody who was assigned', async () => {
+    const emp = await regEmployee();
+    const workday = recentWorkday();
+    await assign(emp.id, GENERAL.id); // 09:00–17:00, 30-minute break, 15-minute grace
+    // A pattern that disagrees on every field. If it leaked in, the numbers below would change.
+    await setPattern({ enabled: true, startTime: '14:00', endTime: '22:00', graceInMinutes: 0 });
+
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:05').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
+    await recompute(emp.id, workday);
+    const row = await dayRow(emp.id, workday);
+    // Against GENERAL: 09:05 is inside its grace, so not late at all. Against the 14:00 pattern
+    // the same punch would have been 305 minutes early for a shift that had not started, and the
+    // day would have run to 22:00 — so every number here is GENERAL's.
+    expect(row.status).toBe('present');
+    expect(row.lateMinutes).toBe(0);
+    expect(row.workedMinutes).toBe(475 - GENERAL.breakMinutes);
+    expect(row.overtimeMinutes).toBe(0); // 17:00 is GENERAL's end, not the pattern's 22:00
+    expect(row.shiftId).toBe(GENERAL.id);
+  });
+
+  it('a branch value overrides the company default for that branch', async () => {
+    const emp = await regEmployee();
+    const workday = recentWorkday();
+    await setPattern({ enabled: true, startTime: '09:00', endTime: '17:00', graceInMinutes: 0 });
+    await setPattern(
+      { enabled: true, startTime: '11:00', endTime: '19:00', graceInMinutes: 0 },
+      { scope: 'branch', scopeRef: BRANCH_ID },
+    );
+
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '11:30').toISOString() });
+    await recompute(emp.id, workday);
+    // 30 minutes late against the BRANCH's 11:00, not 150 against the company's 09:00.
+    expect((await dayRow(emp.id, workday)).lateMinutes).toBe(30);
+  });
+
+  it('leaves `shiftId` null when the expectation came from the pattern', async () => {
+    const emp = await regEmployee();
+    const workday = recentWorkday();
+    await setPattern({ enabled: true, startTime: '09:00', endTime: '17:00' });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    await recompute(emp.id, workday);
+    // No shift document was involved, so the row must not claim one — the payroll feed carries
+    // this field onward.
+    expect((await dayRow(emp.id, workday)).shiftId).toBeNull();
   });
 });
 

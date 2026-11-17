@@ -165,6 +165,7 @@ const render = ({
   search = '',
   query = { page: 1, pageSize: 25 },
   rows = [line()],
+  networks = summary,
 }: {
   permissions?: string[];
   /** The URL's query — what the screen reads its filters from. */
@@ -172,12 +173,14 @@ const render = ({
   /** The list request the screen is expected to make for that URL. */
   query?: Record<string, unknown>;
   rows?: ItMobileLineDto[];
+  /** The cards' figures. */
+  networks?: ItMobileLinesSummaryDto;
 } = {}): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
   qc.setQueryData(listKey('it', 'mobileLines', query), page(rows));
-  qc.setQueryData(listKey('it', 'mobileLines', { summary: true }), summary);
+  qc.setQueryData(listKey('it', 'mobileLines', { summary: true }), networks);
   qc.setQueryData(listKey('it', 'branchOptions'), [
     { id: 'b-hq', code: '01', name: { ar: 'المهندسين', en: 'HQ' }, parentId: null },
   ]);
@@ -264,6 +267,82 @@ describe('the network cards are the network filter', () => {
     // The account numbers the lines are billed on — as written, not as a quantity.
     expect(vodafone).toContain('6.293541');
     expect(vodafone).toContain(ar('it.mobileLines.card.noAccount'));
+  });
+
+  // The board frame leaves the table only the height the cards do not take («عايز فقط الجدول لكن
+  // الزراير والفلتر يبقوا ثابتين»): from `lg` each card is one compact block, the full card below
+  // `lg` only. And a pressed card's mark sits INSIDE it — the frame is a scroll container, and a
+  // mark sticking out of it is clipped in half and scrolls the frame sideways.
+  const classOf = (html: string, attribute: string): string[] => {
+    const tag = new RegExp(`<span ${attribute} class="([^"]*)"`, 'u').exec(html);
+    expect(tag, attribute).not.toBeNull();
+    return tag![1]!.split(/\s+/u);
+  };
+  const vodafoneCard = (html: string): string =>
+    html.slice(
+      html.indexOf('data-network-pick="vodafone"'),
+      html.indexOf('data-network-pick="etisalat"'),
+    );
+
+  it('on a computer each card is compact, with the same figures — the full card below `lg`', () => {
+    const card = vodafoneCard(render());
+    const compact = classOf(card, 'data-network-card="compact"');
+    expect(compact).toContain('hidden');
+    expect(compact).toContain('lg:flex');
+    const full = classOf(card, 'data-network-card="full"');
+    expect(full).toContain('lg:hidden');
+    expect(full).not.toContain('hidden');
+    // The compact block says what the full one does: the total, the three counts, the accounts.
+    const at = card.indexOf('data-network-card="compact"');
+    const compactHtml = card.slice(at, card.indexOf('data-network-card="full"', at));
+    expect(compactHtml).toContain('٣١٢');
+    for (const status of ['inStock', 'assigned', 'suspended']) {
+      expect(compactHtml).toContain(`data-network-count="${status}"`);
+      expect(compactHtml).toContain(ar(`it.mobileLines.status.${status}`));
+    }
+    expect(compactHtml).toContain('6.293541');
+    expect(compactHtml).toContain(ar('it.mobileLines.card.noAccount'));
+    expect(compactHtml).not.toContain('data-network-accounts-more');
+  });
+
+  it('names at most four accounts on a compact card — the rest are a «+N» that lists them', () => {
+    const many: ItMobileLinesSummaryDto = {
+      networks: summary.networks.map((entry) =>
+        entry.network !== 'vodafone'
+          ? entry
+          : {
+              ...entry,
+              accounts: ['1.1', '2.2', '3.3', '4.4', '5.5', '6.6'].map((value, i) => ({
+                value,
+                count: 10 + i,
+              })),
+            },
+      ),
+    };
+    const card = vodafoneCard(render({ networks: many }));
+    const at = card.indexOf('data-network-card="compact"');
+    const compactHtml = card.slice(at, card.indexOf('data-network-card="full"', at));
+    expect(compactHtml.match(/data-network-account="true"/gu)?.length).toBe(3);
+    const more = /<span data-network-accounts-more="3" title="([^"]*)"[^>]*>/u.exec(compactHtml);
+    expect(more, 'the «+N» chip').not.toBeNull();
+    expect(more![1]!.split('\n')).toEqual(['4.4 · ١٣', '5.5 · ١٤', '6.6 · ١٥']);
+    expect(compactHtml).toContain('+٣');
+    // The full card, below `lg`, still names every account.
+    const fullHtml = card.slice(card.indexOf('data-network-card="full"'));
+    for (const value of ['1.1', '2.2', '3.3', '4.4', '5.5', '6.6'])
+      expect(fullHtml).toContain(value);
+  });
+
+  it('marks a pressed card inside its own edges — never a negative offset', () => {
+    const html = render({
+      search: '?network=vodafone',
+      query: { page: 1, pageSize: 25, networks: 'vodafone' },
+      rows: [HELD],
+    });
+    expect(html.match(/data-network-pressed="true"/gu)?.length).toBe(1);
+    const mark = classOf(vodafoneCard(html), 'data-network-pressed="true"');
+    expect(mark).toEqual(expect.arrayContaining(['absolute', 'top-2', 'end-2']));
+    expect(mark.filter((c) => /^-|:-/u.test(c))).toEqual([]);
   });
 
   it('sits above the other filters — the status and who holds the line', () => {

@@ -517,8 +517,11 @@ describe('«نظرة عامة» — the action centre', () => {
   });
 
   it('counts EXACTLY the custody dashboard’s banner lines, from the one hook (D3)', () => {
-    expect(row(html, 'custody')).toContain('data-dash-action-count="1"');
-    expect(text(row(html, 'custody'))).toContain('1 تنبيه');
+    // The seeded custody screen fires three of its five lines: a kind with receipts outside the
+    // memos past 30 days (b), a memo not replenished past 30 days (c) and a licence part waiting
+    // for its settlement past 30 days (d) — the fund is positive (a) and covers the parts (e).
+    expect(row(html, 'custody')).toContain('data-dash-action-count="3"');
+    expect(text(row(html, 'custody'))).toContain('3 تنبيهات');
     expect(hrefOf(row(html, 'custody'), 'custodyFund.lines')).toEqual(['/fleet/custody/dashboard']);
   });
 

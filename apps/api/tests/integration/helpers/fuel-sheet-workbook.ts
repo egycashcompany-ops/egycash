@@ -67,6 +67,8 @@ const STYLES =
   '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>' +
   '</styleSheet>';
 
+const SHEET_DATE = new Date('2026-01-01T00:00:00.000Z');
+
 /** The workbook as bytes, entries in the companies' order (no shared strings anywhere). */
 export const buildFuelSheet = async ({
   rows,
@@ -129,5 +131,10 @@ export const buildFuelSheet = async ({
       '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
       '</Types>',
   );
+  // One fixed entry date: the same rows build the same bytes, so a spec that builds the sheet
+  // twice (its own copy for the hash, the upload's) never straddles the zip's 2-second clock tick.
+  zip.forEach((_, entry) => {
+    entry.date = SHEET_DATE;
+  });
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 };

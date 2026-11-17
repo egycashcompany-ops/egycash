@@ -52,7 +52,6 @@ import {
   T1,
   T2,
   TODAY,
-  ar,
   dashboardClient,
   renderDashboard,
 } from './fleet-dashboard-fixtures';

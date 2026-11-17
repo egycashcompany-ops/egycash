@@ -291,33 +291,40 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     expect(tab).toContain('cancelRefetch: false');
   });
 
-  it('the five mixed panels refresh R1 and R2 together — each only for its reader — and show the older age', () => {
+  it('the seven mixed panels refresh their «الآن» read and R2 together — each only for its reader — and show the older age', () => {
     const flat = source('pages/FleetDashboardPage.tsx').replace(/\s+/gu, ' ');
     // «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية
-    // والتسويات» and «الوقود والمصروفات» go through ONE branch.
+    // والتسويات», «الوقود والمصروفات», «العهدة» and «التراخيص والتجديدات» go through ONE branch.
     expect(flat).toContain(
-      'const MIXED_PANELS = { maintenance: MaintenanceTab, km: KmTab, accidents: AccidentsTab, violations: ViolationsTab, fuel: FuelTab, }',
+      'const MIXED_PANELS = { maintenance: MaintenanceTab, km: KmTab, accidents: AccidentsTab, violations: ViolationsTab, fuel: FuelTab, custody: CustodyTab, licences: LicencesTab, }',
     );
     // R2 only when this tab draws its period part (a reader of R2 for another tab sees no part
     // here): any one of its sections — «الوقود والمصروفات» draws it from the receipts OR the
-    // dealership.
+    // dealership; «العهدة» from the receipts; «التراخيص والتجديدات» from the licence memos.
     expect(flat).toContain(
       'const periodDrawn = reads.period && MIXED_PERIOD_SECTIONS[active].some((section) => sectionPermitted(section, can));',
     );
     expect(flat).toContain(
-      "const MIXED_PERIOD_SECTIONS = { maintenance: ['exits'], km: ['km'], accidents: ['accidents'], violations: ['violations'], fuel: ['opex', 'dealership'], }",
+      "const MIXED_PERIOD_SECTIONS = { maintenance: ['exits'], km: ['km'], accidents: ['accidents'], violations: ['violations'], fuel: ['opex', 'dealership'], custody: ['opex'], licences: ['licenceSpend'], }",
+    );
+    // The tab's «الآن» read is R1, or — «العهدة» ('web') — the custody screen's own reads: its age,
+    // its «تحديث» and its spinner are theirs, and R1's face never reaches it.
+    expect(flat).toContain("const web = !FLEET_DASHBOARD_TAB_READS[active].includes('now');");
+    expect(flat).toContain(
+      'const ownStamp = web ? (custody?.updatedAt ?? 0) : reads.now ? nowQ.dataUpdatedAt : 0;',
     );
     expect(flat).toContain(
-      'const refreshBoth = (): void => { if (reads.now) void nowQ.refetch({ cancelRefetch: false }); if (periodDrawn) refreshPeriod(); };',
+      'const refreshBoth = (): void => { if (web) custody?.refetch(); else if (reads.now) void nowQ.refetch({ cancelRefetch: false }); if (periodDrawn) refreshPeriod(); };',
     );
     expect(flat).toContain('onRefresh={refreshBoth}');
     expect(flat).toContain(
-      'refreshing={(reads.now && nowQ.isFetching) || (periodDrawn && periodQ.isFetching)}',
+      'refreshing={ (web ? (custody?.fetching ?? false) : reads.now && nowQ.isFetching) || (periodDrawn && periodQ.isFetching) }',
     );
     expect(flat).toContain(
-      '...(reads.now && nowQ.dataUpdatedAt > 0 ? [nowQ.dataUpdatedAt] : []), ...(periodDrawn && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),',
+      '...(ownStamp > 0 ? [ownStamp] : []), ...(periodDrawn && periodQ.dataUpdatedAt > 0 ? [periodQ.dataUpdatedAt] : []),',
     );
     expect(flat).toContain('updatedAt={stamps.length === 0 ? 0 : Math.min(...stamps)}');
+    expect(flat).toContain('{...(nowPending === undefined || web ? {} : { nowPending })}');
     // Each band retries its own read: «الآن» R1, the period band R2.
     expect(flat).toContain('onRetry={refreshNow}');
     expect(flat).toContain('onRetry: refreshPeriod,');
@@ -447,7 +454,7 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     stop();
   });
 
-  it('a fine’s signal re-reads «الشهر الماضي» on screen (its fines are «قائمة»/«محصَّلة» as of now); an accident’s does not', async () => {
+  it('a fine’s or a custody memo’s / operation’s signal re-reads «الشهر الماضي» on screen (their states are as of now); an accident’s or a licence memo’s does not', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     let reads = 0;
     const observer = new QueryObserver(qc, {
@@ -477,6 +484,18 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     invalidator.invalidate(keysForTopic('fleet.violation'));
     await settle();
     expect(reads).toBe(2);
+    // A licence memo of a closed range is history too (as a receipt: «تحديث» or a reload).
+    await settle(30);
+    invalidator.invalidate(keysForTopic('fleet.licenseExpense'));
+    await settle(30);
+    expect(reads).toBe(2);
+    // A replenishment (custody memo or operation) moves «منها حتى الآن» of any month: re-read.
+    invalidator.invalidate(keysForTopic('fleet.custodyMemo'));
+    await settle(30);
+    expect(reads).toBe(3);
+    invalidator.invalidate(keysForTopic('fleet.custodyOperation'));
+    await settle(30);
+    expect(reads).toBe(4);
     invalidator.cancel();
     stop();
   });

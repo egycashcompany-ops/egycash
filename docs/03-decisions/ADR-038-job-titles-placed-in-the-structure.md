@@ -1,113 +1,119 @@
-# ADR-038: A job title says where it sits in the company structure — descriptively, many places, keyed on the company units
+# ADR-038: A job title names its places in the company structure: descriptive, several allowed, keyed on the catalog
 
-**Status:** Accepted · **Date:** 2026-11-17 · **Relates to:**
-[ADR-015](ADR-015-single-organization-model.md) (job titles are an organization-wide catalog),
+**Status:** Proposed. It becomes Accepted when the design review in
+[org-chart-design.md](../12-planning/org-chart-design.md) §11 is recorded. The owner approved the
+behaviour on 2026-11-17. · **Date:** 2026-11-17 · **Relates to:**
+[ADR-015](ADR-015-single-organization-model.md) (job titles are one organization-wide catalog),
 [ADR-030](ADR-030-requisition-names-its-placement.md) (no seat, vacancy or headcount entity),
 [ADR-031](ADR-031-org-units-defined-once-declared-per-branch.md) (the company catalog of departments
-and sections), [org-chart-design.md](../12-planning/org-chart-design.md) (P-ORG-3)
+and sections, which this ADR narrows on linking)
 
 ## Context
 
 [ADR-015](ADR-015-single-organization-model.md) made job titles one organization-wide catalog. P-ORG-1
-then merged the old Job Position into the title. It deliberately did **not** move `departmentId` onto
-the title, because «سائق» exists in many departments, and binding a title to one department would
-multiply the catalog instead of unifying it. Since then a job's place has been carried only by the
-record that holds the title: the employee, the offer, the requisition.
+then merged the old Job Position into the title, and deliberately did **not** move `departmentId` onto
+it. «سائق» (driver) exists in many departments, and tying a title to one department would split one
+job into several. Since then, where a job sits has been recorded only on what holds it: the employee,
+the offer, the requisition.
 
-The owner now wants two things:
-- A company org chart: departments, the sections under each, and the jobs under each section.
-- The job form to say where a job belongs: «فى المسميات الوظيفية … لا يوجد أى ربط بينها وبين
-  الأقسام والإدارات … عايزك تضيفها».
+The owner now wants two things.
+- **A company org chart:** departments, the sections under each, and the jobs under each section.
+- **The job form says where a job belongs:** «فى المسميات الوظيفية … لا يوجد أى ربط بينها وبين الأقسام
+  والإدارات … عايزك تضيفها» ("job titles have no link to sections and departments; add it").
 
-The two must read and write the same thing: «الأتنين يسمعوا فى بعض».
+The two must stay in step: «الأتنين يسمعوا فى بعض».
 
-The data model already allows for this. [organization-structure.md](../02-architecture/organization-structure.md)
-says departments and sections carry no embedded job lists, so that "a future M2M join is a pure
-addition". This ADR is that join.
+[organization-structure.md](../02-architecture/organization-structure.md) §7.4 notes that departments
+and sections embed no lists. So a many-to-many link can be added without changing them, and this ADR
+adds one: job title ⇄ department or section.
 
 ## Decision
 
 **A job title may name the places in the company structure where it is found: a department, or a
-section of that department. It may name several. The list describes the structure. It enforces
-nothing and counts nothing.**
+section of that department. It may name several. These job places describe the structure. They are
+not checked by any other flow, and they count nothing.**
 
-- **The record.** The places are rows of `job_title_placements`:
-  `{jobTitleId, departmentCatalogId, sectionCatalogId | null}`, unique among the living.
-  - They are keyed on the company units of [ADR-031](ADR-031-org-units-defined-once-declared-per-branch.md),
-    never on a branch's row, because a place means "Operations, in whichever branch has it".
-  - The title stays one organization-wide record, as ADR-015 has it.
-  - "Not owned by a unit" still holds: a title with no places is valid, and a title in five places
-    is one title.
-- **Descriptive, not enforced.** Registration, transfer, promotion, requisitions, offers and
-  applicant placement keep validating section ⊂ department ⊂ branch and an active title, and no
-  more. None of them checks the title against its places.
-  - Enforcing it would invalidate every current employee whose job sits elsewhere.
-  - It would also turn a description the owner edits freely into a gate on hiring.
-- **No counts.** A place carries no headcount, seat, budget or vacancy field.
-  [ADR-030](ADR-030-requisition-names-its-placement.md)'s rule stands: a PR that adds one is rejected
-  on sight. The chart shows which jobs a section has, never how many of each.
-- **Part of the job.** A place is written either from the job form or from the chart. Every write:
-  - is audited as an `update` of the job;
-  - raises the job's `version`, so a form opened before a chart change cannot silently overwrite
-    it.
-  - The form sends the whole set of places with the job's own save. The chart sends one change at a
-    time.
-- **Filled once from reality, then owned by the owner.**
-  - On first start after release, each job is placed where its current holders and accepted
+- **The record.** Job places are rows of `job_title_places`:
+  `{jobTitleId, departmentCatalogId, sectionCatalogId | null}`, unique among rows where
+  `isDeleted:false`.
+  - They name the company's catalog entries (ADR-031), never a branch's row. "Operations" means
+    Operations in every branch, including one that opens later.
+  - The title stays one record, so a title in five places is still one title.
+  - A title is not owned by any unit, and a title with no places is valid.
+- **Not enforced.** Registering, transferring or promoting an employee, requisitions, offers and
+  applicant placement keep their present checks: section within department within branch, and an
+  active title. None of them compares the title with its places. Enforcing that would make every
+  current employee whose job sits elsewhere invalid, and would turn a description that users edit
+  freely into a gate on hiring.
+- **No headcounts.** A job place has no headcount, seat, budget or vacancy field. ADR-030's rule
+  stands. A screen may count how many jobs a section has, never how many people a job needs.
+- **One write path.** Job places are saved through the job title's own create and update, as the whole
+  set, with the job's `version` checked.
+  - The org chart uses the same path, one change at a time.
+  - Every change is audited as an `update` of the job.
+  - The form and the chart read and write the same rows.
+- **Filled once from reality.**
+  - On the first start-up after release, each job gets the places where its holders and accepted
     candidates sit.
-  - A mark row (`job_title_placement_fills`) makes the fill run exactly once. A place the owner
-    removes is never put back.
-- **Entries are created only when a write needs one.** A place needs a catalog entry. Where a
-  department or section group has none (its rows predate the catalog or were created unlinked), the
-  write that needs the entry creates it:
-  - from the group's oldest row's name and code;
-  - with **no row changed**. The rows join the entry by the name fold, which now also considers
-    entries that have no linked row yet.
+  - The places and a mark row (`job_title_place_fills`) are written in one transaction. Once the mark
+    has committed, no start-up fills again, so a place removed afterwards is not put back.
+  - The fill creates no catalog entry and links no row.
+- **Linking on write narrows ADR-031.** ADR-031 left the linking of existing rows to its operator
+  command, and put catalog writes under the units' own keys. Here, a user write that needs a catalog
+  entry for a group whose rows are unlinked does it itself, in the same transaction:
+  1. it finds the entry the group's name folds to, or creates one from the group's oldest row (its
+     name, and its code when that code is free, else the next free code);
+  2. it sets `catalogId` on every row of the group, without renaming any of them;
+  3. it refuses when the name folds to two entries, or when one branch holds two rows of the group.
 
-  This needs only the key of the write that caused it (`jobTitle.edit`, `section.create`, or the
-  fill, which runs as the system). It creates no department. It gives an existing one its company
-  entry.
-- **Sections never move between departments here.** `UpdateSectionCatalogSchema` already refuses to
-  re-parent a section. The chart offers add, rename and stop, not move.
+  Linking runs under the key of the write that needed it: `jobTitle.create`, `jobTitle.edit`,
+  `section.create` or `section.edit`. Every row and entry it touches is audited.
+- **Sections do not change department.** `UpdateSectionCatalogSchema` already refuses to re-parent a
+  section. The chart offers add, rename and stop.
 - **No new permission keys.**
-  - Viewing the chart needs `department.view`.
-  - Section writes need `section.create` / `section.edit`.
-  - Places need `jobTitle.edit`, or `jobTitle.create` with a new job.
+  - The chart page needs `department.view`.
+  - Its data endpoint is open to any signed-in user, like the `/options` endpoints. That lets the job
+    form list departments for a job editor.
+  - Section writes need `section.create` or `section.edit`.
+  - Job places need `jobTitle.create` or `jobTitle.edit`.
+- **A catalog entry cited by a live job place cannot be deleted.**
 
 ## Consequences
 
-- ✅ The org chart and the job form are two views of one record, so they cannot disagree.
-- ✅ A job keeps one identity across the company: «سائق» under Movement and under Cash-in-transit is
-  one title with two places, which the P-ORG-1 merge argued for.
-- ✅ A branch that opens later inherits the structure, because places name company units, not
-  branch rows.
-- ⚠️ Places can drift from reality. An employee may hold a job in a section the job is not placed
-  in, and nothing warns. That is the price of D-ORG3-1. A report of "holders outside their job's
-  places" is a later, separate request.
-- ⚠️ The fill creates catalog entries for unlinked groups that hold jobs. Other screens fold rows
-  without the entries, so they see no change. The entries are visible on the catalog endpoints.
-- ⚠️ A stopped section hides its places rather than deleting them. Restarting it shows them again.
-- Enforcement is by review and this ADR: any PR that makes a place a validation rule, or adds a count
-  to it, needs a new ADR that supersedes this one.
+- ✅ The org chart and the job form read and write the same rows. Open screens refresh as the design's
+  §6 describes.
+- ✅ A job keeps one identity across the company. «سائق» under Movement and under Cash-in-transit is one
+  title with two places, as P-ORG-1 intended.
+- ✅ Places name company units, so a branch that opens later is covered by them.
+- ✅ After a group's first edit, its rows are linked. `migrate:org-catalog` then has nothing left to
+  plan for them, and the catalog's delete guard and rename see them.
+- ⚠️ Places can differ from where people actually sit. An employee may hold a job in a section where
+  that job is not placed, and nothing warns. That is the cost of not enforcing. A report of such
+  differences is a separate request.
+- ⚠️ Holders of `jobTitle.edit` and `section.*` can now cause catalog entries to be created and rows
+  to be linked, for the group their write names. Before this ADR, that needed the operator command or
+  `department.*`.
+- ⚠️ «مستندات الوظائف» (job papers) keeps listing the jobs people hold in a department. That is a
+  different question from where a job belongs, so the two lists can differ.
+- A PR that makes a job place a validation rule, or adds a count of people to it, needs a new ADR
+  that supersedes this one.
 
 ## Alternatives considered
 
-- **Put `departmentId` / `sectionId` on the job title.** Rejected for the reason P-ORG-1 gave: a job
-  in two departments would have to become two titles, which multiplies the catalog the merge unified.
-- **Key places on branch rows** (`departments._id`, `sections._id`). Rejected:
-  - one place per branch per job;
-  - nothing for a branch added later;
-  - the chart is "the company", not "each branch".
-- **Derive the chart from where holders sit, and store nothing.** Rejected. The owner asked to edit
-  it, and a job nobody holds yet could never appear. It survives as the one-time fill.
-- **Enforce places on registration and hiring.** Rejected (see Decision). If the business ever wants
-  it, it is a separate decision with its own migration of the people who sit outside.
-- **Link the unlinked rows to their entries as part of this feature** (set `catalogId` on rows).
-  Rejected for the fill and for writes that only place a job:
-  - linking re-spells rows;
-  - it can collide with the `{branchId, catalogId}` index;
-  - it is the operator's decision ADR-031 kept out of boot.
-
-  Only "add a section in these branches" links the one department row per branch it builds under,
-  because a section row's `catalogId` requires its department row's.
-- **Re-run the fill on every start.** Rejected: it would put back every place the owner removed.
+- **Put `departmentId` / `sectionId` on the job title.** Rejected, for the reason P-ORG-1 gave: a job
+  in two departments would have to become two titles.
+- **Key places on branch rows.** Rejected. Every job would need one place per branch, a branch added
+  later would get none, and the chart describes the company, not each branch.
+- **Derive the chart from where holders sit, and store nothing.** Rejected. The owner asked to edit it,
+  and a job nobody holds yet could never appear. That derivation survives as the one-time fill.
+- **Enforce places when registering and hiring.** Rejected (see Decision). If the business wants it
+  later, it is a separate decision, with its own migration for the people who sit elsewhere.
+- **Require the operator to link everything first, and keep unlinked groups read-only.** Rejected. The
+  department and section forms still create unlinked rows, so every department added later would stay
+  read-only until the operator ran the command again.
+- **Create the entry but leave the rows unlinked**, joining them to it by name. Rejected.
+  `migrate:org-catalog` would then plan a second entry for those rows. The catalog's delete guard and
+  rename, which see only linked rows, would treat the entry as unused.
+- **Separate endpoints for job places.** Rejected. That would mean two write paths with two
+  concurrency rules, when the job update already checks `version` and is audited.
+- **Re-run the fill on every start-up.** Rejected: it would put back every place a user removed.

@@ -152,7 +152,6 @@ export const DAY_INPUT =
  *   · a phone: the day, the figures, the acts — each on its own line, nothing sideways.
  * `end` is optional (the vault's screen has its acts on each van): the middle stays the middle.
  */
-const TOP_ROW_ONE_LINE = '[@container(min-width:68rem)]';
 export const TopRow = ({
   day,
   figures,
@@ -163,13 +162,14 @@ export const TopRow = ({
   figures: ReactNode;
   end?: ReactNode;
 } & Record<`data-${string}`, string>): JSX.Element => (
+  // Every class written out whole — Tailwind reads the source, never a class put together.
   <div className="[container-type:inline-size]">
     <div
       {...rest}
       className={cn(
         'grid grid-cols-1 items-center gap-x-3 gap-y-2.5',
         '[@container(min-width:36rem)]:grid-cols-[auto_minmax(0,1fr)]',
-        `${TOP_ROW_ONE_LINE}:grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)]`,
+        '[@container(min-width:68rem)]:grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)]',
         DAY_INPUT,
       )}
     >
@@ -181,22 +181,14 @@ export const TopRow = ({
       </div>
       <div
         data-top-row="figures"
-        className={cn(
-          'col-start-1 row-start-2 min-w-0 justify-self-center',
-          '[@container(min-width:36rem)]:col-span-2',
-          `${TOP_ROW_ONE_LINE}:col-span-1 ${TOP_ROW_ONE_LINE}:col-start-2 ${TOP_ROW_ONE_LINE}:row-start-1`,
-        )}
+        className="col-start-1 row-start-2 min-w-0 justify-self-center [@container(min-width:36rem)]:col-span-2 [@container(min-width:68rem)]:col-span-1 [@container(min-width:68rem)]:col-start-2 [@container(min-width:68rem)]:row-start-1"
       >
         {figures}
       </div>
       {end !== undefined && (
         <div
           data-top-row="end"
-          className={cn(
-            'col-start-1 row-start-3 flex min-w-0 justify-center',
-            '[@container(min-width:36rem)]:col-start-2 [@container(min-width:36rem)]:row-start-1 [@container(min-width:36rem)]:justify-end',
-            `${TOP_ROW_ONE_LINE}:col-start-3`,
-          )}
+          className="col-start-1 row-start-3 flex min-w-0 justify-center [@container(min-width:36rem)]:col-start-2 [@container(min-width:36rem)]:row-start-1 [@container(min-width:36rem)]:justify-end [@container(min-width:68rem)]:col-start-3"
         >
           {end}
         </div>

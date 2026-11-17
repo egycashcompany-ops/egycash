@@ -2,9 +2,10 @@
 // every write seeds the detail cache from the response and invalidates the feature subtree.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type CreateJobTitle, type UpdateJobTitle } from '@ecms/contracts';
-import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
+import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { ORG_MODULE } from '../shared/org-unit-resource';
 import * as api from './job-title-api';
+import { refreshAfterJobWrite } from '../org-chart/org-chart-queries';
 import { type JobTitleListParams } from './job-title-api';
 
 const FEATURE = 'jobTitles';
@@ -29,7 +30,8 @@ export const useCreateJobTitle = () => {
     mutationFn: (body: CreateJobTitle) => api.createJobTitle(body),
     onSuccess: (doc) => {
       qc.setQueryData(detailKey(ORG_MODULE, FEATURE, doc.id), doc);
-      void qc.invalidateQueries({ queryKey: featureKey(ORG_MODULE, FEATURE) });
+      // The job's places are the org chart's too (ADR-038): refresh it and the job pickers.
+      refreshAfterJobWrite(qc, doc);
     },
   });
 };
@@ -40,7 +42,7 @@ export const useUpdateJobTitle = (id: string) => {
     mutationFn: (body: UpdateJobTitle) => api.updateJobTitle(id, body),
     onSuccess: (doc) => {
       qc.setQueryData(detailKey(ORG_MODULE, FEATURE, doc.id), doc);
-      void qc.invalidateQueries({ queryKey: featureKey(ORG_MODULE, FEATURE) });
+      refreshAfterJobWrite(qc, doc);
     },
   });
 };
@@ -50,7 +52,7 @@ export const useDeleteJobTitle = () => {
   return useMutation({
     mutationFn: (id: string) => api.deleteJobTitle(id),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: featureKey(ORG_MODULE, FEATURE) });
+      refreshAfterJobWrite(qc);
     },
   });
 };

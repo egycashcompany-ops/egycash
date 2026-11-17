@@ -4,6 +4,7 @@ import {
   type ApproveOvertime,
   type AttendanceDayDto,
   type AttendanceRegularizationDto,
+  type AttendanceSheetRowDto,
   type CreateAttendanceRegularization,
   type CreateShift,
   type CreateShiftAssignment,
@@ -50,6 +51,16 @@ export const searchEmployees = (search: string, pageSize = 8): Promise<Paginated
 /** The scoped read behind the daily sheet and the employee month. */
 export const listAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>
   getPage<AttendanceDayDto>(`/hr/attendance/days${buildQuery(params)}`);
+
+/**
+ * The daily sheet. A DIFFERENT ENDPOINT from the day list on purpose: this one starts from the
+ * employees and left-joins their day rows, so somebody who has not scanned is on the answer. The
+ * list above answers "which rows exist", which can never show a no-show.
+ */
+export const listAttendanceSheet = (
+  params: QueryParams,
+): Promise<Paginated<AttendanceSheetRowDto>> =>
+  getPage<AttendanceSheetRowDto>(`/hr/attendance/days/sheet${buildQuery(params)}`);
 
 /** My own days — own by construction on the server; no employee filter is accepted. */
 export const listMyAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>

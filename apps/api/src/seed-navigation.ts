@@ -864,6 +864,14 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'tag',
         permission: 'jobTitle.view',
       },
+      // P-ORG-3: the company org chart — every department, its sections and the jobs placed in each.
+      {
+        en: 'Org chart',
+        ar: 'شجرة الهيكل التنظيمي',
+        route: '/organization/chart',
+        icon: 'sitemap',
+        permission: 'department.view',
+      },
       {
         en: 'Cost Centers',
         ar: 'مراكز التكلفة',

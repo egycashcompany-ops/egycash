@@ -18,6 +18,7 @@ const MODULE = 'hr';
 const SHIFTS = 'attendanceShifts';
 const ASSIGNMENTS = 'attendanceAssignments';
 const DAYS = 'attendanceDays';
+const SHEET = 'attendanceSheet';
 const MY_DAYS = 'attendanceMyDays';
 const REGULARIZATIONS = 'attendanceRegularizations';
 const MY_REGULARIZATIONS = 'attendanceMyRegularizations';
@@ -79,6 +80,18 @@ export const useAttendanceDays = (params: Params, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, DAYS, params),
     queryFn: () => api.listAttendanceDays(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * The daily sheet — one date, starting from the employees. Its own cache key, because its rows are
+ * a different shape from the day list's and a no-show has no day row at all.
+ */
+export const useAttendanceSheet = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, SHEET, params),
+    queryFn: () => api.listAttendanceSheet(params),
     placeholderData: (prev) => prev,
     enabled,
   });

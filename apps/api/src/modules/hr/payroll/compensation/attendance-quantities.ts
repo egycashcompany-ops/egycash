@@ -39,6 +39,14 @@ import { type DateSpan } from './compensation-rules';
  *
  * `weekend`, `holiday` and `dayOff` stay out: a worked holiday counting twice is a rule nobody has
  * granted this system either.
+ *
+ * `pending` (stage 2) IS IN NO GROUP HERE, AND THAT IS THE DESIGN, not an omission to be fixed
+ * later. It means "this day is still being lived and nobody has concluded it", so it is neither an
+ * attendance nor an absence, and being in no list it contributes 0 to every quantity below. Two
+ * things make that safe rather than merely tidy: a period cannot be frozen until its last day has
+ * passed (`freezePeriod` refuses), and the feed is complete-or-nothing over frozen rows — so by
+ * the time any row reaches this file the nightly pass has long since turned `pending` into the
+ * real answer. A `pending` row can never be priced, because it can never be frozen.
  */
 const ATTENDED_STATUSES = ['present', 'checkedIn', 'late', 'earlyLeave', 'lateAndEarly'] as const;
 

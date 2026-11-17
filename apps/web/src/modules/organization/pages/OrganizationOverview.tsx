@@ -23,6 +23,7 @@ const SHORTCUTS: { to: string; titleKey: string; descKey: string; icon: Icon; pe
   { to: '/organization/departments', titleKey: 'organization.nav.departments', descKey: 'organization.cards.departments', icon: SitemapIcon, permission: 'department.view' },
   { to: '/organization/sections', titleKey: 'organization.nav.sections', descKey: 'organization.cards.sections', icon: LayersIcon, permission: 'section.view' },
   { to: '/organization/job-titles', titleKey: 'organization.nav.jobTitles', descKey: 'organization.cards.jobTitles', icon: TagIcon, permission: 'jobTitle.view' },
+  { to: '/organization/chart', titleKey: 'organization.nav.chart', descKey: 'organization.cards.chart', icon: SitemapIcon, permission: 'department.view' },
   { to: '/organization/applications', titleKey: 'organization.nav.applications', descKey: 'organization.cards.applications', icon: FolderIcon, permission: 'application.view' },
   { to: '/organization/application-categories', titleKey: 'organization.nav.applicationCategories', descKey: 'organization.cards.applicationCategories', icon: TagIcon, permission: 'applicationCategory.view' },
 ];

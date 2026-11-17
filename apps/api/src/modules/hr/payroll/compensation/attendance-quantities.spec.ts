@@ -107,6 +107,23 @@ describe('day sources', () => {
     expect(quantityFor(unruled, 'absentDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);
     expect(quantityFor(unruled, 'leaveDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);
   });
+
+  // `pending` (stage 2) is PAYROLL-NEUTRAL BY CONSTRUCTION, and this is the test that keeps it so.
+  //
+  // It means "this day is still being lived and nobody has concluded it", which is neither an
+  // attendance nor an absence. Being in no list it contributes 0 to every source — including
+  // `absentDays`, where somebody fixing a later bug might reasonably think it belongs. It does
+  // not: a day in progress is not an absence, and the row will say what it really was by morning.
+  //
+  // Nothing of the sort can in fact reach payroll — a period cannot be frozen until its last day
+  // has passed, and the feed is complete-or-nothing over frozen rows — but a quantity rule that is
+  // safe only because of a guard two modules away deserves to be stated where it is read.
+  it('puts pending in no group either — a day in progress is not an absence', () => {
+    const inProgress = [row('2026-03-16', 'pending'), row('2026-03-17', 'pending')];
+    for (const source of PAY_ITEM_QUANTITY_SOURCES) {
+      expect(quantityFor(inProgress, source, MARCH, ALWAYS_EMPLOYED), source).toBe(0);
+    }
+  });
 });
 
 describe('minute sources', () => {

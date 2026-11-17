@@ -39,6 +39,7 @@ import {
 import { crewRoleOf, flagsOf, type CrewAway, type CrewRole } from '../lib/crew-plan';
 import { CardHead, PersonIcon } from './BoardCrewCards';
 import { FLAG_PATH } from './crew-plan-icons';
+import { scopedKey, useCrewPlanScope } from './crew-plan-scope';
 import { CardHeld, CarriesNothing, CrewPersonFacts, HeldChip } from './RosterMemberCard';
 
 /** The role in the chip's own solid colour (`ROLE_FILL`, without its hover). */
@@ -92,6 +93,8 @@ export const PlanMemberCardBody = ({
   attendance?: ReactNode;
 }): JSX.Element => {
   const t = useT();
+  // «في التشغيلة» on the board, «في الطاقم الثابت» on the standing crew (Round 27).
+  const scope = useCrewPlanScope();
   const role = crewRoleOf(member.requirements);
   const flags = flagsOf(member);
   return (
@@ -115,10 +118,10 @@ export const PlanMemberCardBody = ({
       </CardHead>
       <dl className={HOVER_CARD_FACTS}>
         <CrewPersonFacts member={member} mayReadCrew={mayReadCrew} />
-        <Fact label={t('operations.crewPlan.card.seat')}>
+        <Fact label={t(scopedKey(scope, 'operations.crewPlan.card.seat'))}>
           {seat === null ? (
             <span data-plan-member-seat="none" className="text-slate-500 dark:text-slate-400">
-              {t('operations.crewPlan.card.unseated')}
+              {t(scopedKey(scope, 'operations.crewPlan.card.unseated'))}
             </span>
           ) : (
             <span data-plan-member-seat="true">{seat}</span>

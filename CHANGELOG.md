@@ -1378,15 +1378,17 @@ its entry here in the same PR.
       a proposal keeps its dashed amber, an unsaved move its own edge, a kept row of another type its
       dashed amber edge and notice. The time and the direction are calm neutral pills now (Round
       26's sky and violet would sit beside a cyan and a fuchsia count).
-    - THE VAN CARD, REDRAWN, in four parts top to bottom: THE HEAD (code · time · direction, one
-      line, on its band); THE CAPTAIN in a frame of his own — «قائد» and his name, cut to the frame,
-      his person card on it; «بلا قائد» in the refusal's rose — no count shares it; THE COUNTS in a
-      row of their own — the محصنات first, then كراتين, حقائب, صناديق, four tiles of one width, each
-      its figure over its word (the محصنات' own Arabic form, «محصنتان», whole to a screen reader and on
-      hover); THE LOAD, a bounded place of its own — empty, «اسحب المحصنات إلى هنا» with its arrow,
-      or, on a van that takes nothing, why, in rose. Still ONE drop target (`data-drop-van`), its
-      hover card still on the head and the captain's frame (not on the counts, not on his name). The
-      same card on «تسليم المحصنات».
+    - THE VAN CARD, REDRAWN, top to bottom: THE HEAD (code · time · direction, one line, on its
+      band); THE CAPTAIN'S ROW — Round 25's order kept («الصف نفسه بتاع القائد يكون قبله عدد
+      المحصنات»): the count of محصنات FIRST, in a tile of its own (its figure over its word, the
+      محصنات' own Arabic form, «محصنتان», whole to a screen reader and on hover), then the captain in
+      a frame of his own — «قائد» over his name, cut to the frame, his person card on it; «بلا قائد»
+      in the refusal's rose — no count inside it; THE PACKAGES under it, كراتين, حقائب, صناديق, in the
+      same three columns (the count as wide as a package's tile, the captain's frame as two); THE
+      LOAD, a bounded place of its own — empty, «اسحب المحصنات إلى هنا» with its arrow, or, on a van
+      that takes nothing, why, in rose. Still ONE drop target (`data-drop-van`), its hover card on the
+      head and the captain's row (not on the packages, not on his name). The same card on «تسليم
+      المحصنات».
     - THE COUNTS, APART: each a FILLED tile (a real ground of its hue, not a ring on white), its own
       icon, the same on the van card, the van's card, a chip's card and the page's figures — محصنات
       blue, كراتين orange, حقائب cyan, صناديق fuchsia. Measured (`distribution-colours.spec.ts`): their
@@ -1401,12 +1403,13 @@ its entry here in the same PR.
       من …», cleared by «مسح التصفية». The head's four boxes share the title's line at 1440 and 1280,
       Arabic and English (measured), and wrap below that.
     - THE TOP ROW: the day («يوم التسليم») at the start, the figures in the middle, «حفظ / تراجع /
-      توزيع تلقائي» at the end — the row a container of two equal sides, so the figures stand truly in
-      its middle (0–1px off, measured at 1440 and 1280, both languages; the figures a step smaller,
-      and where the acts' words would push them off the middle — 1280 — «تراجع», and in English «توزيع
-      تلقائي», show their icon alone, their names kept); narrower, the figures take a centred line of
-      their own; at 390 the day, the figures, the acts stack, nothing sideways. The hint and «n مقترحة
-      لم تُحفظ» are a slim line under it — no band. «تسليم المحصنات» the same, its acts on each van.
+      توزيع تلقائي» at the end — on ONE line only where the figures stand exactly in its middle with
+      every act's words: the row measures its three parts and puts two sides of equal width around
+      the figures; where that does not fit, the day and the acts keep the first line and the figures
+      take a centred line of their own; at 390 the day, the figures, the acts stack, nothing
+      sideways. The hint and «n مقترحة لم تُحفظ» are a slim line under it — no band. «تسليم
+      المحصنات» the same, its acts on each van (with none, the figures sit beside the day where they
+      fit there but not in the middle).
     - Specs: Round 26's colour specs went with the colours (the order's neighbours, every palette
       colour's pill, a chip on each van's ground, the stable and kept-row colour rules — 13 in
       `van-accent.spec.ts` and the accent and neighbour tests in `distribution-colours.spec.ts`); in
@@ -1421,6 +1424,25 @@ its entry here in the same PR.
       refusal's rose edge on a chip, a drag's dashed «takes it», «here» and «no» edge and ground on a
       van and on its load, were the plain card's (by night too, the van's edge since 26b's slate).
       Each now wears ONE edge and ONE ground at a time (spec: one of each per state).
+    - R26b critic: (1) the top row went to one line at a fixed 68rem with sides at least their own
+      content — from there to the width the parts really need (1162px in Arabic) the figures stood up
+      to 29px off the middle or split inside the row, and to hold them «تراجع» (and in English «توزيع
+      تلقائي», a bare arrow) lost its words from 1208 up to 1495: the row now measures itself
+      (`lib/top-row.ts`) — one line only where the figures are exactly in the middle with every word,
+      else their own centred line; measured 0px off at every width from 390 to 1920, Arabic and
+      English, both screens, with three-figure counts too, no act ever cut. (2) The redraw had put
+      the count of محصنات AFTER the captain, against Round 25's «الصف نفسه بتاع القائد يكون قبله عدد
+      المحصنات»: it opens his row again, each in its own frame. (3) «تسليم»'s confirmation wrote the
+      packages in one grey pill, the bags first and a 0 kind left out: the van's own coloured
+      counts now, كراتين، حقائب، صناديق, each always. (4) A package's word follows its count, as the
+      محصنات' does — «1 كرتونة», «2 حقيبتان», «11 صندوقًا», not «1 صناديق» beside «1 محصنة»; «Secured»
+      capitalised beside «Cartons». (5) A 4-figure count («1,251») ran past its tile: a step smaller,
+      its icon wrapping over it. (6) The captain's box folds spaces too — «عبدالرحمن» finds «عبد الرحمن»,
+      «br 108» «BR-108» — and a van found by the captain its card does not show says so under the
+      captain's row («يطابق البحث: كريم سمير علي — قائد آخر على السيارة») while the box holds it.
+      (7) By night the van's code pill was a dark slab on a dark band (1.5:1): its edge is a
+      slate-400 line now, 3.5:1 on the band. The vault's top row with no acts puts its figures beside
+      the day where they fit (1024) rather than alone on a second line.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

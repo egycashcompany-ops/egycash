@@ -38,13 +38,15 @@ import { SHIPMENT_PATH } from './shipment-icons';
  *   · `stripe` — the thin stripe at the card's start edge;
  *   · `band` — the head's very light band;
  *   · `pill` — the van code's pill: solid slate, its words white (10:1 or better, both themes);
- *   · `ring` — the pill's edge in dark, where the card is nearly as dark as the pill.
+ *   · `ring` — the pill's edge. By night the band is nearly as dark as the pill (1.5:1), so the
+ *     edge draws its shape: a slate-400 line, 3.5:1 or better on the band (R26b critic — the
+ *     `white/15` edge left the van's code a dark slab on a dark band).
  */
 export const VAN_LOOK = {
   stripe: 'bg-slate-500 dark:bg-slate-500',
   band: 'bg-slate-100 dark:bg-slate-400/[0.08]',
   pill: 'bg-slate-700 text-white dark:bg-slate-700 dark:text-white',
-  ring: 'ring-1 ring-inset ring-slate-800/10 dark:ring-white/15',
+  ring: 'ring-1 ring-inset ring-slate-800/10 dark:ring-slate-400/60',
 } as const;
 
 /**

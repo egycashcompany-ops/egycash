@@ -139,19 +139,35 @@ export const vanMatchesCode = (van: FilterVan, code: string, name: string): bool
 };
 
 /**
- * Does the van answer the captain box (Round 26b)? ANY of its captains — the first, the one the card
- * shows, or the second — by his name or his employee code, folded as every box here is («احمد» finds
- * «أحمد», «مصطفي» «مصطفى», «الشناويه» «الشناوية», «br-107» «BR-107»). A van with no captain answers no
- * typed name.
+ * A name or a code folded for the captain box, its spaces gone too (R26b critic): «عبدالرحمن» finds
+ * «عبد الرحمن» (the compound names are written both ways), «br 108» finds «BR-108».
  */
-export const vanMatchesCaptain = (van: FilterVan, captain: string): boolean => {
-  if (fold(captain) === '') return true;
-  return (van.captains ?? []).some(
+const squash = (value: string): string => fold(value).replace(/\s+/g, '');
+
+/**
+ * Which of the van's captains answers the captain box (Round 26b) — the index in the order put on
+ * the row, the first who does; null when none does, or the box is blank. By his name or his employee
+ * code, folded as every box here is («احمد» finds «أحمد», «مصطفي» «مصطفى», «الشناويه» «الشناوية»,
+ * «br-107» «BR-107»), spaces aside.
+ */
+export const vanCaptainMatch = (van: FilterVan, captain: string): number | null => {
+  const needle = squash(captain);
+  if (needle === '') return null;
+  const at = (van.captains ?? []).findIndex(
     (one) =>
-      foldIncludes(one.fullNameAr ?? '', captain) ||
-      (one.code !== null && one.code !== '' && foldIncludes(one.code, captain)),
+      squash(one.fullNameAr ?? '').includes(needle) ||
+      (one.code !== null && one.code !== '' && squash(one.code).includes(needle)),
   );
+  return at === -1 ? null : at;
 };
+
+/**
+ * Does the van answer the captain box? ANY of its captains — the first, the one the card shows, or
+ * the second (the card then says which, `vanCaptainMatch`). A van with no captain answers no typed
+ * name.
+ */
+export const vanMatchesCaptain = (van: FilterVan, captain: string): boolean =>
+  squash(captain) === '' || vanCaptainMatch(van, captain) !== null;
 
 /**
  * Is the van of this area: its direction names it (a direction of two areas, «المعادي - حلوان», is

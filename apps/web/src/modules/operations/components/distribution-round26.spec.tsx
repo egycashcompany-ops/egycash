@@ -23,21 +23,26 @@ import {
   type OperationsDayBoardVehicleCrewDto,
   type OperationsSecuredDistributionRowDto,
 } from '@ecms/contracts';
+import { pluralKey } from '../../../shared/lib/plural';
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { type Packaging } from '../lib/secured-distribution';
 import {
   ColumnFilterBar,
   CountChip,
+  CountTile,
   DistributionColumn,
   EmptyLoad,
   FilterAreaSelect,
   FilterTextBox,
+  MoneyLine,
+  PackageCounts,
   ShipmentCardBody,
   ShipmentChip,
   VAN_GRID,
   VanCard,
   VanCrewCardBody,
+  tileFigureSize,
 } from './SecuredDistributionParts';
 import { CAPTAIN_FRAME, COUNT_LOOK, HEAD_PILL, LOAD_LOOK, VAN_LOOK } from './distribution-look';
 
@@ -395,10 +400,15 @@ describe('B — the van’s card', () => {
       );
       expect(counts).toContain(`title="${said}"`);
       expect(counts).toContain(`<span class="sr-only">${said}</span>`);
+      // R26b critic — each kind's word follows its count, as the محصنات' does: 2 cartons «كرتونتان»,
+      // 4 bags «حقائب», 0 boxes «صناديق».
       for (const kind of ['cartons', 'bags', 'boxes'] as const) {
         expect(counts).toContain(`data-van-card-count-of="${kind}"`);
-        expect(counts).toContain(tr(locale, `operations.distribution.${kind}`));
+        expect(counts).toContain(
+          `>${tr(locale, pluralKey(`operations.distribution.packageWord.${kind}`, locale, PACKAGES[kind]))}<`,
+        );
       }
+      if (locale === 'ar') expect(counts).toContain('>كرتونتان<');
       // 2 cartons, 4 bags filled in their hues; 0 boxes muted in its own.
       expect(counts).toMatch(
         new RegExp(
@@ -464,13 +474,19 @@ describe('B — the van’s card', () => {
     );
     const zone = html.slice(
       html.indexOf('data-van-hover="cr-112"'),
-      html.indexOf('data-van-counts='),
+      html.indexOf('data-van-packages='),
     );
     expect(zone).toContain('data-van-head="true"');
     expect(zone).toContain('data-van-captain-line="cr-112"');
-    // Round 26b — the counts are a row of their own, after the hover's zone; the load after them.
-    expect(zone).not.toContain('data-van-count=');
+    // R26b critic — the captain's row is the count, then the captain (Round 25's order), each in a
+    // frame of its own: both in the zone; the packages and the load after it.
+    expect(zone).toContain('data-van-count="2"');
+    expect(zone.indexOf('data-van-count="2"')).toBeLessThan(
+      zone.indexOf('data-van-captain-line="cr-112"'),
+    );
+    expect(zone).not.toContain('data-van-package=');
     expect(zone).not.toContain('data-the-load');
+    expect(html.indexOf('data-van-packages=')).toBeLessThan(html.indexOf('data-the-load'));
     // A keyboard reaches it; a screen reader hears what it opens.
     expect(html).toMatch(/tabindex="0" data-van-hover="cr-112" role="group" aria-label="[^"]+"/);
     expect(html).toContain(
@@ -591,7 +607,7 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     const html = card(VAN);
     const frame = html.slice(
       html.indexOf('data-van-captain-line="cr-112"'),
-      html.indexOf('data-van-counts='),
+      html.indexOf('data-van-packages='),
     );
     expect(classOf(html, 'data-van-captain-line="cr-112"')).toContain(CAPTAIN_FRAME.some);
     expect(frame).toContain('data-captain-mark="true"');
@@ -606,20 +622,23 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     expect(none).toContain(`>${tr('ar', 'operations.distribution.noCaptainShort')}<`);
   });
 
-  it('the counts: a row of their own — the محصنات first, then كراتين, حقائب, صناديق, four tiles of one width', () => {
+  it('the captain’s row: the محصنات FIRST, then the captain, each in its own frame — then كراتين, حقائب, صناديق in its columns', () => {
     const html = card(VAN);
+    // R26b critic — Round 25's order («الصف نفسه بتاع القائد يكون قبله عدد المحصنات») kept, the frames
+    // apart (Round 26b): the count, the captain's frame, then the packages, then the load.
     const at = [
+      html.indexOf('data-van-crew="cr-112"'),
+      html.indexOf('data-van-count="2"'),
       html.indexOf('data-van-captain-line='),
-      html.indexOf('data-van-counts="van"'),
+      html.indexOf('data-van-packages='),
       html.indexOf('data-van-load='),
     ];
     expect(at.every((i) => i > -1)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    expect(html).toContain('data-van-counts="van" class="grid grid-cols-4 gap-1.5"');
-    // The packages' three span three of the four columns, with the row's own gap: equal widths.
-    expect(html).toMatch(
-      /data-van-packages="2\/4\/0" class="grid grid-cols-3 gap-1\.5 col-span-3"/,
-    );
+    // Three columns on both lines: the count is as wide as a package's tile, the captain two.
+    expect(html).toContain('data-van-crew="cr-112" class="grid grid-cols-3 gap-1.5"');
+    expect(html).toMatch(/data-van-captain-line="cr-112" class="col-span-2 /);
+    expect(html).toMatch(/data-van-packages="2\/4\/0" class="grid grid-cols-3 gap-1\.5"/);
     const order = [
       'data-van-count="2"',
       'data-van-package="cartons"',
@@ -634,6 +653,11 @@ describe('C — Round 26b: ONE look for every van; the captain in his own frame;
     expect(classOf(html, 'data-van-package="boxes"')).toContain(COUNT_LOOK.boxes.zero);
     const zero = card(VAN, 0);
     expect(classOf(zero, 'data-van-count="0"')).toContain(COUNT_LOOK.shipments.zero);
+    // No captain: the count still first, then «بلا قائد» in its frame.
+    const none = card(VANS[1] as OperationsDayBoardVehicleCrewDto, 0);
+    expect(none.indexOf('data-van-count="0"')).toBeLessThan(
+      none.indexOf('data-van-captain="none"'),
+    );
   });
 
   it('the محصنات tile says its figure and the count’s own word; the whole Arabic phrase to a screen reader', () => {
@@ -872,6 +896,118 @@ describe('Round 26b — no colour per van reaches either screen', () => {
   it('the printed sheet stays black on white — no colour reaches it', () => {
     const sheet = read('../lib/van-load-sheet.ts');
     expect(sheet).not.toMatch(/accent|VAN_LOOK|COUNT_LOOK/);
+  });
+});
+
+describe('R26b critic', () => {
+  const classOf = (html: string, mark: string): string =>
+    new RegExp(`${literal(mark)}[^>]*? class="([^"]*)"`).exec(html)?.[1] ?? '';
+
+  it('F3 — «تسليم»’s confirmation writes the packages as the van does: each kind its hue, in the owner’s order, a 0 written', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      const html = render(
+        <MoneyLine
+          figures={{ egp: 1000, usd: 0, othersSum: 0 }}
+          packages={{ bags: 4, cartons: 2, boxes: 0 }}
+          showZero
+        />,
+        locale,
+      );
+      // كراتين، حقائب، صناديق — not «4 حقائب | 2 كراتين» in one grey pill, the boxes left out.
+      expect(html).toContain('data-packages="2/4/0"');
+      const at = ['cartons', 'bags', 'boxes'].map((kind) =>
+        html.indexOf(`data-package-kind="${kind}"`),
+      );
+      expect(at.every((i) => i > -1)).toBe(true);
+      expect([...at].sort((a, b) => a - b)).toEqual(at);
+      expect(classOf(html, 'data-package-kind="cartons"')).toContain(COUNT_LOOK.cartons.chip);
+      expect(classOf(html, 'data-package-kind="bags"')).toContain(COUNT_LOOK.bags.chip);
+      expect(classOf(html, 'data-package-kind="boxes"')).toContain(COUNT_LOOK.boxes.zero);
+      expect(html.slice(html.indexOf('data-package-kind="boxes"'))).toMatch(/>0</);
+      expect(html).not.toContain('text-slate-300 dark:text-slate-600">|<');
+    }
+    // The vault's screen still hands the confirmation the van's packages.
+    expect(HANDOVER).toMatch(/<MoneyLine[\s\S]*?packages=\{loadFigures\(confirmLoad/);
+  });
+
+  it('F8 — a long count stays in its tile: its figure a step smaller, the icon wrapping over it', () => {
+    expect(tileFigureSize('0')).toBe('text-[15px]');
+    expect(tileFigureSize('999')).toBe('text-[15px]');
+    expect(tileFigureSize('1,251')).toBe('text-[13px]');
+    expect(tileFigureSize('12,345')).toBe('text-[12px]');
+    const html = render(<CountTile kind="bags" value={1251} word="حقائب" />);
+    expect(html).toMatch(/dir="ltr" class="[^"]*text-\[13px\][^"]*">1,251</);
+    expect(html).not.toContain('text-[15px]');
+    expect(html).toMatch(/class="flex max-w-full flex-wrap items-center justify-center gap-x-1"/);
+    expect(render(<CountTile kind="bags" value={12} word="حقائب" />)).toContain('text-[15px]');
+  });
+
+  it('F10 — a package’s word follows its count, as the محصنات’ does: «1 كرتونة», «2 حقيبتان», «11 صندوقًا»', () => {
+    const ar = render(<PackageCounts packages={{ cartons: 1, bags: 2, boxes: 11 }} />);
+    expect(ar.slice(ar.indexOf('data-van-package="cartons"'))).toMatch(/^[^]*?>1<[^]*?>كرتونة</);
+    expect(ar.slice(ar.indexOf('data-van-package="bags"'))).toMatch(/^[^]*?>2<[^]*?>حقيبتان</);
+    expect(ar.slice(ar.indexOf('data-van-package="boxes"'))).toMatch(/^[^]*?>11<[^]*?>صندوقًا</);
+    // Never «1 صناديق» beside «1 محصنة»; 0 and 3–10 keep the plural.
+    expect(ar).not.toContain('>صناديق<');
+    const few = render(<PackageCounts packages={{ cartons: 0, bags: 3, boxes: 10 }} />);
+    for (const word of ['كراتين', 'حقائب', 'صناديق']) expect(few).toContain(`>${word}<`);
+    // English: one Carton, Bags, Boxes — and the محصنات' word capitalised beside them.
+    const en = render(<PackageCounts packages={{ cartons: 1, bags: 2, boxes: 0 }} />, 'en');
+    for (const word of ['Carton', 'Bags', 'Boxes']) expect(en).toContain(`>${word}<`);
+    for (const form of ['one', 'two', 'few', 'many', 'other']) {
+      expect(tr('en', `operations.distribution.loadWord.${form}`)).toBe('Secured');
+    }
+    // No count yet («…», «—»): the kind's own name.
+    expect(render(<PackageCounts packages="pending" />)).toContain('>كراتين<');
+  });
+
+  it('F7 — the captain box found a van by the captain its card does not show: he is named on it', () => {
+    const second = VAN.captains[1] as (typeof VAN.captains)[number];
+    const html = render(
+      <VanCard
+        van={VAN}
+        crewPlanVisible
+        day="2026-11-17"
+        count={2}
+        packages={PACKAGES}
+        captainMatch={second}
+      >
+        <p>load</p>
+      </VanCard>,
+    );
+    const note = html.slice(html.indexOf('data-van-captain-match='));
+    expect(note).toMatch(/^data-van-captain-match="c8"/);
+    expect(note).toContain(
+      tr('ar', 'operations.distribution.filter.captainMatch', { name: 'كريم سمير علي' }),
+    );
+    // Under the captain's row, before the packages; the card still shows the FIRST captain.
+    expect(html.indexOf('data-van-captain-line=')).toBeLessThan(
+      html.indexOf('data-van-captain-match='),
+    );
+    expect(html.indexOf('data-van-captain-match=')).toBeLessThan(
+      html.indexOf('data-van-packages='),
+    );
+    expect(html).toContain('data-van-captain="c7"');
+    // No box, or the first captain answered: nothing to add.
+    const plain = (match: (typeof VAN.captains)[number] | null) =>
+      render(
+        <VanCard
+          van={VAN}
+          crewPlanVisible
+          day="2026-11-17"
+          count={2}
+          packages={PACKAGES}
+          captainMatch={match}
+        >
+          <p>load</p>
+        </VanCard>,
+      );
+    expect(plain(null)).not.toContain('data-van-captain-match');
+    expect(plain(VAN.captains[0] ?? null)).not.toContain('data-van-captain-match');
+    // The desk hands each van the captain who answered.
+    expect(DIST).toContain('captainMatch={captainMatchOf(van)}');
+    expect(DIST).toContain('const at = vanCaptainMatch(van, vanFilter.captain);');
+    expect(tr('en', 'operations.distribution.filter.captainMatch', { name: 'X' })).toContain('X');
   });
 });
 

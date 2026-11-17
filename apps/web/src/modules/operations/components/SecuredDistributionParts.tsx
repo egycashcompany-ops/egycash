@@ -26,12 +26,15 @@
 // pill, a thin slate stripe, a very light slate band), the chips on it plain as on the left. «عاوز
 // يبقى فى فرق فى الالوان بين الصندوق و الحقائب و الكراتين»: each count a filled tinted tile of its own
 // hue and icon (`CountTile`). «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل»: the van
-// card is redrawn — its head (code · time · direction), the captain in a frame of his own, the four
-// counts in a row of their own, the load in a bounded place of its own (`VanCard`). The page's top
-// row is the day at the start, the figures in the middle, the acts at the end (`TopRow`).
+// card is redrawn — its head (code · time · direction), the captain's row (the count of محصنات first,
+// then the captain, each in a frame of its own), the packages under it, the load in a bounded place
+// of its own (`VanCard`). The page's top row is the day at the start, the figures in the middle, the
+// acts at the end (`TopRow`).
 import {
+  useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type DragEvent,
@@ -79,6 +82,7 @@ import {
   vanTapAllowed,
   type CountKind,
 } from '../lib/van-card';
+import { topRowLayout, type TopRowLayout } from '../lib/top-row';
 import { hasNoVan, vanCodeText, vanPhrase } from '../lib/van-name';
 import { CardHead, Figure, PersonIcon } from './BoardCrewCards';
 import { PLAN_ICON } from './crew-plan-icons';
@@ -143,15 +147,65 @@ export const DAY_INPUT =
 
 /**
  * THE PAGE'S TOP ROW (Round 26b — «عاوز اخلى التاريخ يكون مكان الاحصائيات والاحصائيات تكون فى النص»):
- * the day («يوم التسليم») at the start, the figures in the MIDDLE, the acts («حفظ», «تراجع», «توزيع
- * تلقائي») at the end. The row is a container, and lays itself out by the room it has:
- *   · wide (the row 68rem or more — 1440 and 1280, measured, Arabic and English): one line of
- *     three columns, the two sides of equal share (`minmax(max-content,1fr)`), so the figures stand
- *     truly in the middle and never under the day or the buttons;
- *   · narrower: the day and the acts on the first line, the figures on a line of their own, centred;
- *   · a phone: the day, the figures, the acts — each on its own line, nothing sideways.
- * `end` is optional (the vault's screen has its acts on each van): the middle stays the middle.
+ * the day («يوم التسليم») at the start, the figures in the MIDDLE, the acts («توزيع تلقائي», «تراجع»,
+ * «حفظ») at the end.
+ *
+ * R26b critic — the row MEASURES its three parts (`lib/top-row.ts`), whatever the language, the
+ * counts, a scrollbar or the zoom, and takes ONE line only where the figures stand exactly in its
+ * middle — two sides of equal width (`minmax(0,1fr)`, each at least the wider of the day and the
+ * acts) — with every act's words; else the figures take a centred line of their own under the day
+ * and the acts (one line from a fixed width, each side at least its own content, left them up to
+ * 29px off the middle, or split in two inside the row, and the acts dropped their words). With no
+ * acts (`end` left out — the vault's screen, a reader who may not edit) the figures stand beside
+ * the day where they fit there but not truly in the middle. A phone: the day, the figures, the
+ * acts, each on its own line. Every class written out whole — Tailwind reads the source.
  */
+const TOP_ROW_GRID: Record<TopRowLayout, string> = {
+  line: 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]',
+  beside: 'grid-cols-[auto_minmax(0,1fr)]',
+  split: 'grid-cols-[auto_minmax(0,1fr)]',
+  stack: 'grid-cols-1',
+};
+const TOP_ROW_DAY: Record<TopRowLayout, string> = {
+  line: 'col-start-1 row-start-1 justify-start',
+  beside: 'col-start-1 row-start-1 justify-start',
+  split: 'col-start-1 row-start-1 justify-start',
+  stack: 'col-start-1 row-start-1 justify-center',
+};
+const TOP_ROW_FIGURES: Record<TopRowLayout, string> = {
+  line: 'col-start-2 row-start-1',
+  beside: 'col-start-2 row-start-1',
+  split: 'col-span-2 col-start-1 row-start-2',
+  stack: 'col-start-1 row-start-2',
+};
+const TOP_ROW_END: Record<TopRowLayout, string> = {
+  line: 'col-start-3 row-start-1 justify-end',
+  beside: 'col-start-2 row-start-1 justify-end',
+  split: 'col-start-2 row-start-1 justify-end',
+  stack: 'col-start-1 row-start-3 justify-center',
+};
+
+/**
+ * A part's natural width, as the row needs it: a row of items that may wrap (the figures, the acts)
+ * is the sum of its items and their gaps — what it takes on one line, wherever it stands now; any
+ * other part (the day's box) is its own box.
+ */
+const naturalWidth = (element: Element | null | undefined): number => {
+  if (!(element instanceof HTMLElement)) return 0;
+  const style = window.getComputedStyle(element);
+  if (style.display.endsWith('flex') && style.flexWrap !== 'nowrap') {
+    const items = Array.from(element.children).filter(
+      (item) => window.getComputedStyle(item).position !== 'absolute',
+    );
+    const gap = Number.parseFloat(style.columnGap) || 0;
+    return (
+      items.reduce((sum, item) => sum + item.getBoundingClientRect().width, 0) +
+      gap * Math.max(0, items.length - 1)
+    );
+  }
+  return element.getBoundingClientRect().width;
+};
+
 export const TopRow = ({
   day,
   figures,
@@ -161,41 +215,61 @@ export const TopRow = ({
   day: ReactNode;
   figures: ReactNode;
   end?: ReactNode;
-} & Record<`data-${string}`, string>): JSX.Element => (
-  // Every class written out whole — Tailwind reads the source, never a class put together.
-  <div className="[container-type:inline-size]">
+} & Record<`data-${string}`, string>): JSX.Element => {
+  const row = useRef<HTMLDivElement>(null);
+  // Drawn as `split` until measured — the layout that can never overlap; the measure runs before
+  // the first paint (a layout effect), so it is never seen.
+  const [layout, setLayout] = useState<TopRowLayout>('split');
+  const hasEnd = end !== undefined;
+  const measure = useCallback((): void => {
+    const grid = row.current;
+    if (grid === null) return;
+    const part = (name: string): Element | null | undefined =>
+      grid.querySelector(`:scope > [data-top-row="${name}"]`)?.firstElementChild;
+    const widths = {
+      row: grid.clientWidth,
+      day: naturalWidth(part('day')),
+      figures: naturalWidth(part('figures')),
+      end: hasEnd ? naturalWidth(part('end')) : null,
+      gap: Number.parseFloat(window.getComputedStyle(grid).columnGap) || 0,
+    };
+    setLayout((was) => topRowLayout(widths, was));
+  }, [hasEnd]);
+  // Every render: the counts coming in, «حفظ (12)», the language — each changes what the parts need.
+  useLayoutEffect(measure);
+  // The row's own width (the window, the side menu folding), and the figures' face once it loads.
+  useEffect(() => {
+    const grid = row.current;
+    if (grid === null || typeof ResizeObserver === 'undefined') return undefined;
+    const watch = new ResizeObserver(measure);
+    watch.observe(grid);
+    void document.fonts.ready.then(measure);
+    return () => watch.disconnect();
+  }, [measure]);
+  return (
     <div
       {...rest}
-      className={cn(
-        'grid grid-cols-1 items-center gap-x-3 gap-y-2.5',
-        '[@container(min-width:36rem)]:grid-cols-[auto_minmax(0,1fr)]',
-        '[@container(min-width:68rem)]:grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)]',
-        DAY_INPUT,
-      )}
+      ref={row}
+      data-top-row-layout={layout}
+      className={cn('grid items-center gap-x-3 gap-y-2.5', TOP_ROW_GRID[layout], DAY_INPUT)}
     >
-      <div
-        data-top-row="day"
-        className="col-start-1 row-start-1 flex min-w-0 justify-center [@container(min-width:36rem)]:justify-start"
-      >
+      <div data-top-row="day" className={cn('flex min-w-0', TOP_ROW_DAY[layout])}>
         {day}
       </div>
       <div
         data-top-row="figures"
-        className="col-start-1 row-start-2 min-w-0 justify-self-center [@container(min-width:36rem)]:col-span-2 [@container(min-width:68rem)]:col-span-1 [@container(min-width:68rem)]:col-start-2 [@container(min-width:68rem)]:row-start-1"
+        className={cn('min-w-0 justify-self-center', TOP_ROW_FIGURES[layout])}
       >
         {figures}
       </div>
       {end !== undefined && (
-        <div
-          data-top-row="end"
-          className="col-start-1 row-start-3 flex min-w-0 justify-center [@container(min-width:36rem)]:col-start-2 [@container(min-width:36rem)]:row-start-1 [@container(min-width:36rem)]:justify-end [@container(min-width:68rem)]:col-start-3"
-        >
+        <div data-top-row="end" className={cn('flex min-w-0', TOP_ROW_END[layout])}>
           {end}
         </div>
       )}
     </div>
-  </div>
-);
+  );
+};
 
 /** The figures of the top row — centred, wrapping to centred lines when the row is narrow. */
 export const TOP_FIGURES = 'flex min-w-0 flex-wrap items-center justify-center gap-1.5';
@@ -490,30 +564,18 @@ export const MoneyLine = ({
         />
       )}
       {packages !== undefined && packages !== null && (
-        // The kinds the vault counted, each with its count — a zero kind is left out (an Arabic
-        // zero reads as one more dot between the others).
+        // R26b critic — the vault's three counts as the van card writes them: each kind its own hue
+        // and icon (`CountChip`), in the owner's order (كراتين، حقائب، صناديق), EACH ALWAYS, a 0
+        // written (Round 25 — «حتى لو ب 0 يتكتب»). It is what leaves the vault, confirmed here.
         <span
-          data-packages={`${packages.bags}/${packages.cartons}/${packages.boxes}`}
-          className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-600 dark:border-slate-700/70 dark:bg-[#0a1233] dark:text-slate-300"
+          data-packages={`${packages.cartons}/${packages.bags}/${packages.boxes}`}
+          className="inline-flex flex-wrap items-center gap-1"
         >
-          <BoardIcon d={[...PATH.box]} className="h-3 w-3" />
-          {(
-            [
-              ['bags', packages.bags],
-              ['cartons', packages.cartons],
-              ['boxes', packages.boxes],
-            ] as const
-          )
-            .filter(([, value], _index, all) => value > 0 || all.every(([, v]) => v === 0))
-            .map(([kind, value], index) => (
-              <span key={kind} className="inline-flex items-center gap-1">
-                {index > 0 && <span className="text-slate-300 dark:text-slate-600">|</span>}
-                <span dir="ltr" className={cn(NUM, 'font-black text-slate-900 dark:text-white')}>
-                  {formatAmount(value, locale)}
-                </span>
-                {t(`operations.distribution.${kind}`)}
-              </span>
-            ))}
+          {PACKAGE_KINDS.map((kind) => (
+            <CountChip key={kind} kind={kind} value={packages[kind]} data-package-kind={kind}>
+              {packageWord(t, locale, kind, packages[kind])}
+            </CountChip>
+          ))}
         </span>
       )}
     </div>
@@ -891,6 +953,28 @@ const PersonCardBody = ({
  * so do «…» (still reading) and «—» (not to be read). `said`: what a screen reader hears instead of
  * the two lines, and the tile's tooltip — the محصنات' own Arabic form («محصنتان», «3 محصنات»).
  */
+/**
+ * A package kind's word for its count (R26b critic): «1 كرتونة · 2 كرتونتان · 3 كراتين · 11 كرتونة»,
+ * as the محصنات' tile says «محصنة · محصنتان · محصنات» — not «1 صناديق» beside «1 محصنة». With no count
+ * to write («…», «—») the kind's own name.
+ */
+export const packageWord = (
+  t: (key: string) => string,
+  locale: Locale,
+  kind: (typeof PACKAGE_KINDS)[number],
+  count: number | null,
+): string =>
+  count === null
+    ? t(`operations.distribution.${kind}`)
+    : t(pluralKey(`operations.distribution.packageWord.${kind}`, locale, count));
+
+/**
+ * A tile's figure size by its length (R26b critic): three characters at 15px as ever; «1,251» at
+ * 13px; longer at 12px — so the figure and its icon stay inside the tile's ~60px.
+ */
+export const tileFigureSize = (figure: string): string =>
+  figure.length <= 3 ? 'text-[15px]' : figure.length <= 5 ? 'text-[13px]' : 'text-[12px]';
+
 export const CountTile = ({
   kind,
   value,
@@ -912,6 +996,7 @@ export const CountTile = ({
   const some = typeof value === 'number' && value > 0;
   const look = COUNT_LOOK[kind];
   const hidden = said === undefined ? {} : { 'aria-hidden': true as const };
+  const figure = typeof value === 'number' ? countText(value, locale) : value;
   return (
     <span
       {...rest}
@@ -924,7 +1009,9 @@ export const CountTile = ({
         className,
       )}
     >
-      <span {...hidden} className="flex max-w-full items-center gap-1">
+      {/* R26b critic — a long count («1,251») never runs past its tile: its figure a step smaller
+          (`tileFigureSize`), and the icon wraps over it before anything spills. */}
+      <span {...hidden} className="flex max-w-full flex-wrap items-center justify-center gap-x-1">
         <BoardIcon d={[...look.icon]} className={cn('h-3.5 w-3.5 shrink-0', look.mark)} />
         {/* The figures' face, as the money and the code: a «0» reads as zero, where an Arabic zero
             reads as one more dot. */}
@@ -932,11 +1019,12 @@ export const CountTile = ({
           dir="ltr"
           className={cn(
             NUM,
-            'text-[15px] font-black leading-5',
+            'min-w-0 font-black leading-5',
+            tileFigureSize(figure),
             some ? look.figure : look.zeroFigure,
           )}
         >
-          {typeof value === 'number' ? countText(value, locale) : value}
+          {figure}
         </span>
       </span>
       <span {...hidden} className="max-w-full truncate text-[10.5px] font-bold leading-4">
@@ -949,8 +1037,8 @@ export const CountTile = ({
 
 /**
  * THE COUNT OF محصنات on a van — «الصف نفسه بتاع القائد يكون قبله عدد المحصنات» (Round 25), in its own
- * tile since Round 26b («وافصل الاليطار بتاع القائد عن المحصنة»): first of the van's four counts, no
- * longer in the captain's frame. Its figure, then the count's own Arabic form of the word
+ * tile since Round 26b («وافصل الاليطار بتاع القائد عن المحصنة»): first on the captain's row, before
+ * his frame, no longer in it. Its figure, then the count's own Arabic form of the word
  * («محصنة · محصنتان · محصنات», `pluralKey`); the whole phrase («محصنتان», «3 محصنات») to a screen reader
  * and on hover. The same tile on the van's card.
  */
@@ -1038,6 +1126,7 @@ export const PackageCounts = ({
   className?: string;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const counted = typeof packages === 'object' && packages !== null ? packages : null;
   const why =
     packages === null
@@ -1066,7 +1155,7 @@ export const PackageCounts = ({
           kind={kind}
           {...(of === 'van' ? { 'data-van-package': kind } : { 'data-van-card-count-of': kind })}
           value={counted !== null ? counted[kind] : packages === 'pending' ? '…' : '—'}
-          word={t(`operations.distribution.${kind}`)}
+          word={packageWord(t, locale, kind, counted === null ? null : counted[kind])}
         />
       ))}
     </div>
@@ -1074,9 +1163,10 @@ export const PackageCounts = ({
 };
 
 /**
- * A VAN'S FOUR COUNTS, in a row of their own (Round 26b): the محصنات first, then كراتين, حقائب,
- * صناديق — four tiles of one width, aligned (the packages' three span three of the row's four
- * columns, with the row's own gap). The same row on the van card and on the van's card.
+ * A VAN'S FOUR COUNTS, in a row of their own (Round 26b) — on the van's hover card: the محصنات first,
+ * then كراتين, حقائب, صناديق — four tiles of one width, aligned (the packages' three span three of the
+ * row's four columns, with the row's own gap). The van card itself puts the محصنات on the captain's
+ * row and the packages under it (`VanCard`).
  */
 export const VanCounts = ({
   count,
@@ -1352,23 +1442,25 @@ const onPersonName = (target: EventTarget | null): boolean =>
  * بالكامل»: ONE look for every van, and the card redrawn in four parts, top to bottom —
  *   · THE HEAD, on the van's very light band: its code in the van's slate pill (or «بدون سيارة
  *     (n)»), the time, the direction — one line (Round 24c); a thin slate stripe at the card's start;
- *   · THE CAPTAIN, in a frame of his own: «قائد» and his name — the FIRST put on the row
- *     (`captains[0]`) — cut to the frame, his person card on it; «بلا قائد» in the refusal's rose;
- *   · THE COUNTS, in a row of their own: the محصنات, then كراتين, حقائب, صناديق — four tiles of one
- *     width, each its own hue (`VanCounts`);
+ *   · THE CAPTAIN'S ROW — Round 25's order, «الصف نفسه بتاع القائد يكون قبله عدد المحصنات» (R26b
+ *     critic: the redraw had put the count after him): the count of محصنات FIRST, in its own tile,
+ *     then the captain in a frame of his own — «قائد» over his name, the FIRST put on the row
+ *     (`captains[0]`), cut to the frame, his person card on it; «بلا قائد» in the refusal's rose;
+ *   · THE PACKAGES under it, in its three columns: كراتين, حقائب, صناديق — four tiles of one width
+ *     in all, each its own hue;
  *   · THE LOAD, a bounded place of its own: the chips on it plain, as on the left; empty, it says
  *     where to drop («اسحب المحصنات إلى هنا») — or, on a van that takes nothing, why, in rose.
  * A row of another type kept for what it carries (`securedType` false) keeps its dashed amber edge
  * and says so under its head.
  *
  * «لما اقف على العربية يطلع كارت بقى بالقادة والاخصائيين اللى على العربيه والسواقيين» (Round 26):
- * resting on the head or the captain's frame (not on a chip — a chip has its card — and not on the
+ * resting on the head or the captain's row (not on a chip — a chip has its card — and not on the
  * captain's own name, which opens his) opens the van's card (`VanCrewCardBody`) after the usual beat;
  * a keyboard focus opens it at once, a tap on a phone too. Never while a drag is on or a «نقل إلى…»
  * menu is open (`vanHoverAllowed`).
  *
  * THE WHOLE CARD IS A DROP TARGET (`data-drop-van`): the page's frame takes the drag and reads the
- * mark under the pointer at the drop — the head, the captain's frame, the counts, the empty load and
+ * mark under the pointer at the drop — the head, the captain's row, the packages, the empty load and
  * a chip on it all mean this van (`lib/distribution-drag.ts`). The van's card is a layer that takes
  * no pointer, so it never stands between the hand and the drop.
  */
@@ -1384,6 +1476,7 @@ export const VanCard = ({
   drop,
   children,
   footer,
+  captainMatch = null,
 }: {
   van: OperationsDayBoardVehicleCrewDto & { securedType?: boolean; shiftTypeName?: string | null };
   /** A crew without a van: its number among the day's («بدون سيارة (n)»), as the page writes it. */
@@ -1414,6 +1507,12 @@ export const VanCard = ({
   children: ReactNode;
   /** Under the load — the vault's «not in the vault yet» note. */
   footer?: ReactNode;
+  /**
+   * R26b critic — the captain box found this van by a captain the card does not show (the second
+   * put on the row): he is named under the captain's row while the box holds it, so the van the
+   * filter left is never a puzzle.
+   */
+  captainMatch?: OperationsDayBoardPersonDto | null;
 }): JSX.Element => {
   const t = useT();
   const captain = van.captains[0] ?? null;
@@ -1537,54 +1636,74 @@ export const VanCard = ({
               </span>
             </p>
           )}
-          {/* THE CAPTAIN — in a frame of his own (Round 26b): his mark and his name, no count. */}
-          <div
-            data-van-captain-line={van.crewAssignmentId}
-            className={cn(
-              'flex min-h-[2.25rem] min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 ring-1 ring-inset',
-              captain === null ? CAPTAIN_FRAME.none : CAPTAIN_FRAME.some,
-            )}
-          >
-            {captain === null ? (
-              <span
-                data-van-captain="none"
-                className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-black leading-5 text-rose-700 dark:text-rose-300"
-              >
-                <BoardIcon d={[...PATH.warn]} className="h-4 w-4 shrink-0" />
-                <span className="min-w-0 truncate">
-                  {t('operations.distribution.noCaptainShort')}
-                </span>
-              </span>
-            ) : (
-              <span
-                data-van-captain={captain.employeeId}
-                className="flex min-w-0 flex-1 items-center gap-2"
-              >
+          {/* THE CAPTAIN'S ROW (Round 25 — «الصف نفسه بتاع القائد يكون قبله عدد المحصنات»): the count
+              of محصنات FIRST, then the captain — each in a frame of its own since Round 26b («وافصل
+              الاليطار بتاع القائد عن المحصنة»). Three columns, the packages' own under them: the
+              count is as wide as a package's tile, the captain's frame as two. */}
+          <div data-van-crew={van.crewAssignmentId} className="grid grid-cols-3 gap-1.5">
+            <ShipmentsCount count={count} data-van-count={String(count)} />
+            <div
+              data-van-captain-line={van.crewAssignmentId}
+              className={cn(
+                'col-span-2 flex min-w-0 items-center rounded-lg px-2 py-1 ring-1 ring-inset',
+                captain === null ? CAPTAIN_FRAME.none : CAPTAIN_FRAME.some,
+              )}
+            >
+              {captain === null ? (
                 <span
-                  data-captain-mark="true"
-                  className={cn(
-                    'inline-flex shrink-0 items-center gap-1 rounded-md py-0.5 pe-2 ps-1.5 text-[11px] font-black leading-4',
-                    CAPTAIN_MARK,
-                  )}
+                  data-van-captain="none"
+                  className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-black leading-5 text-rose-700 dark:text-rose-300"
                 >
-                  <BoardIcon d={[...PLAN_ICON.rank]} className="h-3.5 w-3.5" width={2.4} />
-                  {t('operations.crewPlan.role.captain')}
+                  <BoardIcon d={[...PATH.warn]} className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 truncate">
+                    {t('operations.distribution.noCaptainShort')}
+                  </span>
                 </span>
-                <PersonName
-                  person={captain}
-                  seat={`${name} · ${t('operations.crew.slot.captain')}`}
-                  day={day}
-                  mayReadDirectory={crewPlanVisible}
-                  className="text-[13.5px] font-black leading-5 text-slate-900 dark:text-white"
-                />
-              </span>
-            )}
+              ) : (
+                // His mark over his name: the name has the frame's whole width.
+                <span
+                  data-van-captain={captain.employeeId}
+                  className="flex min-w-0 flex-1 flex-col items-start gap-0.5"
+                >
+                  <span
+                    data-captain-mark="true"
+                    className={cn(
+                      'inline-flex shrink-0 items-center gap-1 rounded py-px pe-1.5 ps-1 text-[10px] font-black leading-[14px]',
+                      CAPTAIN_MARK,
+                    )}
+                  >
+                    <BoardIcon d={[...PLAN_ICON.rank]} className="h-3 w-3" width={2.4} />
+                    {t('operations.crewPlan.role.captain')}
+                  </span>
+                  <PersonName
+                    person={captain}
+                    seat={`${name} · ${t('operations.crew.slot.captain')}`}
+                    day={day}
+                    mayReadDirectory={crewPlanVisible}
+                    className="max-w-full text-[13px] font-black leading-5 text-slate-900 dark:text-white"
+                  />
+                </span>
+              )}
+            </div>
           </div>
+          {captainMatch !== null && captainMatch.employeeId !== captain?.employeeId && (
+            <p
+              data-van-captain-match={captainMatch.employeeId}
+              className="flex min-w-0 items-center gap-1.5 rounded-lg border border-dashed border-emerald-400 px-2 py-1 text-[11px] font-bold leading-4 text-emerald-800 dark:border-emerald-500/50 dark:text-emerald-200"
+            >
+              <BoardIcon d={[...PLAN_ICON.rank]} className="h-3.5 w-3.5 shrink-0" width={2.4} />
+              <span className="min-w-0 break-words">
+                {t('operations.distribution.filter.captainMatch', {
+                  name: personName(captainMatch),
+                })}
+              </span>
+            </p>
+          )}
         </div>
       </div>
-      <div className="flex min-w-0 flex-col gap-2 pb-2.5 pe-2.5 ps-3.5 pt-2">
-        {/* THE COUNTS — a row of their own: the محصنات, then the three packages. */}
-        <VanCounts count={count} packages={packages} of="van" />
+      <div className="flex min-w-0 flex-col gap-2 pb-2.5 pe-2.5 ps-3.5 pt-1.5">
+        {/* THE PACKAGES — the vault's three counts, under the captain's row, in its columns. */}
+        <PackageCounts packages={packages} of="van" />
         {/* THE LOAD — a bounded place of its own; the chips on it plain, as on the left. */}
         <div
           data-van-load={van.crewAssignmentId}
@@ -1777,7 +1896,7 @@ export const ShipmentCardBody = ({
               >
                 {PACKAGE_KINDS.map((kind) => (
                   <CountChip key={kind} kind={kind} value={packages[kind]}>
-                    {t(`operations.distribution.${kind}`)}
+                    {packageWord(t, locale, kind, packages[kind])}
                   </CountChip>
                 ))}
               </span>

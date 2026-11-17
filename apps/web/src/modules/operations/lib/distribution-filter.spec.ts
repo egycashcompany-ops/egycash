@@ -15,6 +15,7 @@ import {
   shipmentMatchesArea,
   shipmentMatchesSearch,
   vanAreaOptions,
+  vanCaptainMatch,
   vanMatchesArea,
   vanMatchesCaptain,
   vanMatchesCode,
@@ -220,6 +221,38 @@ describe('Round 26b — the captain’s box, after the van’s code', () => {
       ),
     ).toBe(true); // ة typed as ه
     expect(vanMatchesCaptain(V112, '  الشناوى  ')).toBe(true);
+  });
+
+  it('R26b critic — a compound name written with or without its space, a code with a space: «عبدالرحمن», «br 108»', () => {
+    expect(vanMatchesCaptain(V112, 'عبدالرحمن')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'عبد الرحمن')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'عبد  الرحمن  محمد')).toBe(true);
+    expect(
+      vanMatchesCaptain(
+        {
+          vehicleCode: '1',
+          direction: null,
+          captains: [{ fullNameAr: 'محمد عبدالله', code: null }],
+        },
+        'عبد الله',
+      ),
+    ).toBe(true);
+    expect(vanMatchesCaptain(V112, 'br 108')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'BR 107')).toBe(true);
+    expect(vanMatchesCaptain(V112, 'br 109')).toBe(false);
+    expect(matchesVanFilter(V112, [], only('عبدالرحمن'), context)).toBe(true);
+  });
+
+  it('R26b critic — says WHICH captain answered: the first (the card shows him), the second, or none', () => {
+    expect(vanCaptainMatch(V112, 'الشناوي')).toBe(0);
+    expect(vanCaptainMatch(V112, 'BR-107')).toBe(0);
+    expect(vanCaptainMatch(V112, 'مصطفي')).toBe(1);
+    expect(vanCaptainMatch(V112, 'br 108')).toBe(1);
+    // Both answer «م»: the first, whom the card shows, wins — nothing more to say on the card.
+    expect(vanCaptainMatch(V112, 'م')).toBe(0);
+    expect(vanCaptainMatch(V112, 'كريم')).toBeNull();
+    expect(vanCaptainMatch(V112, '   ')).toBeNull();
+    expect(vanCaptainMatch(V125, 'أحمد')).toBeNull();
   });
 
   it('a van with no captain answers no typed name — and every name when the box is blank', () => {

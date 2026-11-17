@@ -372,18 +372,20 @@ describe('«توزيع المحصنات» — the desk', () => {
     expect([...at].sort((a, b) => a - b)).toEqual(at);
   });
 
-  it('says on each van its number, time and direction, then the FIRST captain in his own frame, then the count', () => {
+  it('says on each van its number, time and direction, then the count, then the FIRST captain in his own frame', () => {
     const v104 = vanOf(html, 'cr-104');
     expect(v104).toContain('data-van-code="104"');
     expect(v104).toContain('08:30');
     expect(v104).toContain('data-van-direction="مدينة نصر"');
     // Round 25 — «العربيه لو عليها اتنين قادة انا عاوز اللى يظهر اللى انا ضيفته ف الاول»: the first
-    // captain on the row only. Round 26b — «وافصل الاليطار بتاع القائد عن المحصنة»: his frame holds
-    // him alone; the count of محصنات leads the counts' own row, after it.
+    // captain on the row only, the count of محصنات before him («الصف نفسه بتاع القائد يكون قبله عدد
+    // المحصنات»). Round 26b — «وافصل الاليطار بتاع القائد عن المحصنة»: each in a frame of its own.
+    const crew = v104.slice(v104.indexOf('data-van-crew='));
+    expect(crew).toMatch(/^data-van-crew="cr-104"[^>]*><span data-van-count="2"/);
+    expect(crew.indexOf('data-van-count="2"')).toBeLessThan(crew.indexOf('data-van-captain="c2"'));
     const line = v104.slice(v104.indexOf('data-van-captain-line='));
     expect(line).toMatch(/^data-van-captain-line="cr-104"[^>]*><span data-van-captain="c2"/);
-    expect(line.indexOf('data-van-captain="c2"')).toBeLessThan(line.indexOf('data-van-count="2"'));
-    expect(line.slice(0, line.indexOf('data-van-counts='))).not.toContain('data-van-count');
+    expect(line.slice(0, line.indexOf('data-van-packages='))).not.toContain('data-van-count');
     expect(v104).toContain('شادي محمد أحمد');
     expect(v104).not.toContain('data-van-captain="c3"');
     expect(vanOf(html, 'cr-104').slice(0, v104.indexOf('data-van-load='))).not.toContain(
@@ -860,9 +862,9 @@ describe('Round 24c — the widths, and the van card', () => {
     // The whole direction on hover; the line cuts it.
     expect(head).toContain(`title="${ar('operations.crew.direction')}: المعادي - حلوان"`);
     expect(head).toMatch(/class="min-w-0 truncate">المعادي - حلوان</);
-    // The count is not in the head — Round 26b: first in the counts' own row, after the captain.
+    // The count is not in the head — it opens the captain's row (Round 25), in its own frame.
     expect(head).not.toContain('data-van-count');
-    expect(card).toMatch(/data-van-counts="van"[^>]*><span data-van-count="2"/);
+    expect(card).toMatch(/data-van-crew="cr-101"[^>]*><span data-van-count="2"/);
   });
 
   it('marks the captain on his line, after the count; no specialist slot at all (Round 25)', () => {
@@ -904,7 +906,7 @@ describe('Round 24c — the widths, and the van card', () => {
     expect(card).toContain('data-handover-print="cr-loose-1"');
     expect(card.indexOf('data-handover-print')).toBeLessThan(card.indexOf('data-van-head="true"'));
     expect(card).toContain('data-van-captain="c9"');
-    expect(card).toMatch(/data-van-counts="van"[^>]*><span data-van-count="0"/);
+    expect(card).toMatch(/data-van-crew="cr-loose-1"[^>]*><span data-van-count="0"/);
     expect(card).toContain('data-van-packages="0/0/0"');
     expect(card).not.toContain('data-van-slot');
   });
@@ -1278,33 +1280,44 @@ describe('Round 26b — the top row, and the captain’s box', () => {
     );
   });
 
-  it('the figures stand TRULY in the middle on a wide row — two sides of one share; narrower, a line of their own', () => {
-    expect(PARTS).toContain(
-      "'[@container(min-width:68rem)]:grid-cols-[minmax(max-content,1fr)_auto_minmax(max-content,1fr)]'",
-    );
-    // Narrower: the day and the acts on the first line, the figures centred on the next; a phone:
-    // the day, the figures, the acts, each a line.
-    expect(PARTS).toContain("'[@container(min-width:36rem)]:grid-cols-[auto_minmax(0,1fr)]'");
-    expect(PARTS).toMatch(
-      /data-top-row="figures"\s+className="col-start-1 row-start-2 min-w-0 justify-self-center \[@container\(min-width:36rem\)\]:col-span-2 \[@container\(min-width:68rem\)\]:col-span-1 \[@container\(min-width:68rem\)\]:col-start-2 \[@container\(min-width:68rem\)\]:row-start-1"/,
-    );
+  it('the figures stand TRULY in the middle on one line — two sides of EQUAL width; else a line of their own', () => {
+    // R26b critic — not `minmax(max-content,1fr)` from a fixed 68rem: a side wider than its share
+    // pushed the figures off the middle (29px at 1225 in Arabic) or split them inside the row.
+    expect(PARTS).not.toContain('minmax(max-content,1fr)');
+    expect(PARTS).not.toMatch(/@container\(min-width:68rem\)/);
+    // One line: two sides of one width (each at least the wider of the day and the acts — the row
+    // MEASURES them, `lib/top-row.ts`), the figures between them.
+    expect(PARTS).toContain("line: 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]',");
+    expect(PARTS).toContain("line: 'col-start-2 row-start-1',");
+    expect(PARTS).toContain("line: 'col-start-3 row-start-1 justify-end',");
+    // Else the day and the acts on the first line, the figures centred on the next; a phone: each
+    // its own line.
+    expect(PARTS).toContain("split: 'col-span-2 col-start-1 row-start-2',");
+    expect(PARTS).toContain("stack: 'col-start-1 row-start-2',");
+    expect(PARTS).toContain('topRowLayout(widths, was)');
     expect(PARTS).toContain(
       "export const TOP_FIGURES = 'flex min-w-0 flex-wrap items-center justify-center gap-1.5';",
     );
-    // The row is a container: it lays itself out by its own width.
-    expect(desk).toContain(
-      '<div class="[container-type:inline-size]"><div data-distribution-toolbar="true"',
-    );
+    // Drawn as `split` until measured (before the first paint) — the layout that cannot overlap.
+    expect(desk).toMatch(/data-distribution-toolbar="true" data-top-row-layout="split"/);
+    expect(desk).toMatch(/data-top-row="figures" class="min-w-0 justify-self-center col-span-2/);
   });
 
-  it('where the acts’ words would push the figures off the middle, «تراجع» shows its icon — its name kept', () => {
+  it('every act keeps its words at every width — none is cut to its icon to hold the middle', () => {
+    // R26b critic — «تراجع» was its icon alone from 1208 to 1367 (Arabic) and to 1495 (English), and
+    // «Auto-distribute» a bare arrow from 1208 to 1431: the row now gives the figures a line of their
+    // own instead.
+    for (const act of ['auto', 'undo'] as const) {
+      expect(DIST).toContain(`<span data-act-words="${act}">{t(`);
+    }
+    expect(DIST).not.toMatch(/data-act-words="[a-z]+"\s+className=/);
     const undo = desk.slice(desk.indexOf('data-distribution-discard="true"'));
     expect(undo.slice(0, undo.indexOf('</button>'))).toMatch(
-      /aria-label="[^"]+"[\s\S]*data-act-words="undo"[^>]*>تراجع</,
+      new RegExp(`<span data-act-words="undo">${ar('operations.distribution.discard')}</span>`),
     );
     const auto = desk.slice(desk.indexOf('data-distribution-auto="true"'));
     expect(auto.slice(0, auto.indexOf('</button>'))).toContain(
-      `aria-label="${ar('operations.distribution.auto')}"`,
+      `<span data-act-words="auto">${ar('operations.distribution.auto')}</span>`,
     );
   });
 

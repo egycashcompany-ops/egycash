@@ -196,6 +196,7 @@ import {
   matchesVanFilter,
   shipmentAreaOptions,
   vanAreaOptions,
+  vanCaptainMatch,
   type UnplacedFilter,
   type VanFilter,
 } from '../lib/distribution-filter';
@@ -868,6 +869,11 @@ export const SecuredDistributionPage = (): JSX.Element => {
       bankWordsOf,
     }),
   );
+  // R26b critic — the captain box found a van by a captain its card does not show: name him on it.
+  const captainMatchOf = (van: OperationsSecuredDistributionCrewDto) => {
+    const at = vanCaptainMatch(van, vanFilter.captain);
+    return at === null || at === 0 ? null : (van.captains[at] ?? null);
+  };
   const areaLabel = (option: { value: string; label: string }, none: string) =>
     option.value === NO_AREA ? { ...option, label: none } : option;
   const unplacedAreaOptions = shipmentAreaOptions(columns.unplaced, unplacedFilter.area).map(
@@ -957,6 +963,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 count={load.length}
                 packages={vanPackages(packagesRead, load, packagingOf)}
                 takesNone={!takesShipments(van)}
+                captainMatch={captainMatchOf(van)}
                 {...(canEdit
                   ? {
                       drop: {
@@ -1159,10 +1166,9 @@ export const SecuredDistributionPage = (): JSX.Element => {
                 data-distribution-acts="true"
                 className="flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:justify-end"
               >
-                {/* Round 26b — the row keeps the figures truly in its middle at 1280 as at 1440: where the
-                    acts' words would push them off it, «تراجع» (and, in the longer English, «توزيع
-                    تلقائي») show their icon alone — each keeps its name for a screen reader and on
-                    hover. The widths are the row's own (a container), measured in both languages. */}
+                {/* R26b critic — every act keeps its words at every width: the row measures itself
+                    and puts the figures on a line of their own rather than cut an act to its icon
+                    (`TopRow`). */}
                 <button
                   type="button"
                   data-distribution-auto="true"
@@ -1176,12 +1182,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                     d={[...SHIPMENT_PATH.route]}
                     className="h-3.5 w-3.5 rtl:-scale-x-100"
                   />
-                  <span
-                    data-act-words="auto"
-                    className="[[dir=ltr]_&]:[@container(min-width:68rem)_and_(max-width:81.99rem)]:hidden"
-                  >
-                    {t('operations.distribution.auto')}
-                  </span>
+                  <span data-act-words="auto">{t('operations.distribution.auto')}</span>
                 </button>
                 {/* «تراجع» — the LAST operation only (Round 24); its tooltip says which. */}
                 <button
@@ -1196,12 +1197,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
                   className={cn(BRAND_BUTTON, 'disabled:cursor-not-allowed disabled:opacity-50')}
                 >
                   <BoardIcon d={[...SHIPMENT_PATH.undo]} className="h-3.5 w-3.5" />
-                  <span
-                    data-act-words="undo"
-                    className="[@container(min-width:68rem)_and_(max-width:77.99rem)]:hidden [[dir=ltr]_&]:[@container(min-width:78rem)_and_(max-width:85.99rem)]:hidden"
-                  >
-                    {t('operations.distribution.discard')}
-                  </span>
+                  <span data-act-words="undo">{t('operations.distribution.discard')}</span>
                 </button>
                 <button
                   type="button"

@@ -155,6 +155,23 @@ describe('the van — ONE look for every van (Round 26b — «لون واحد ل
     }
   });
 
+  it('R26b critic — by night the pill’s EDGE draws its shape on the band at 3:1 or better', () => {
+    // The pill and the band are both dark by night (1.5:1): a `white/15` edge left the van's code a
+    // dark slab on a dark band. Its edge — a 1px ring over the pill's own ground — reads at 3:1.
+    const ring = VAN_LOOK.ring
+      .split(/\s+/)
+      .filter((c) => c.startsWith('dark:ring-') && !/^dark:ring-(\d|inset)/.test(c))
+      .map((c) => c.slice('dark:ring-'.length));
+    expect(ring).toHaveLength(1);
+    const { rgb, alpha } = token(ring[0] as string);
+    const pill = token(pick(VAN_LOOK.pill, 'bg', true)).rgb;
+    for (const under of DARK_GROUNDS) {
+      const band = ground(VAN_LOOK.band, true, under);
+      expect(contrast(pill, band), 'the pill alone').toBeLessThan(3);
+      expect(contrast(over(rgb, alpha, pill), band), 'its edge').toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it('the time and the direction are calm — slate words, no hue of a count’s', () => {
     // Round 26's sky time and violet direction would now sit beside a cyan and a fuchsia count.
     for (const pill of [HEAD_PILL.time, HEAD_PILL.direction, HEAD_PILL.none]) {

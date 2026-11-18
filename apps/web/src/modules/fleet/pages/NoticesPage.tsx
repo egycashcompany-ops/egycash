@@ -670,20 +670,29 @@ export const NoticesPage = (): JSX.Element => {
                 onChange={(next) => patch({ checkImage: pickOne(one(checkImage), next) })}
               />
             </FilterWithIcon>
-            {/* «ينقصها مرفق» — on the bar while it narrows the list (a dashboard link, or a
-                remembered visit), and off with a press, like the vehicle set's chips. */}
-            {missingAny && (
-              <button
-                type="button"
-                data-notice-missing="any"
-                onClick={() => patch({ missing: null })}
-                aria-label={`${t('common.remove')} ${t('fleet.notices.filters.missingAny')}`}
-                className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-300 bg-brand-50 px-2 text-sm font-medium text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900"
-              >
-                {t('fleet.notices.filters.missingAny')}
-                <span aria-hidden="true">×</span>
-              </button>
-            )}
+            {/* «ينقصها مرفق» — a filter of the bar, on and off by hand: off, a plain toggle; on (by
+                a press, a dashboard link or a remembered visit), a chip that comes off with a press,
+                like the vehicle set's chips. */}
+            <button
+              type="button"
+              data-notice-missing={missingAny ? 'any' : 'off'}
+              aria-pressed={missingAny}
+              onClick={() => patch({ missing: missingAny ? null : 'any' })}
+              aria-label={
+                missingAny
+                  ? `${t('common.remove')} ${t('fleet.notices.filters.missingAny')}`
+                  : t('fleet.notices.filters.missingAny')
+              }
+              className={cn(
+                'inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border px-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                missingAny
+                  ? 'border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900'
+                  : 'justify-center border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100 dark:border-slate-700/80 dark:bg-[#080C14] dark:text-slate-200 dark:hover:bg-slate-900',
+              )}
+            >
+              {t('fleet.notices.filters.missingAny')}
+              {missingAny && <span aria-hidden="true">×</span>}
+            </button>
             {/* The vehicle set a dashboard link narrowed the notices to — shown only while it does,
                 so a remembered one is never a filter with nothing on the bar saying so. The same
                 controls the accidents register shows; a set this reader cannot name is a nameless

@@ -383,6 +383,20 @@ describe('R-16, R-17 · rankings, coverage and the cars without valid readings',
     expect(out.perVehicleAvg).toBe(304); // 1520 ÷ 5
   });
 
+  it('a check-in dated after today is not «في الورشة منذ» on «أقل 5» (D07, the Cairo-day rule)', () => {
+    const out = breakdown({
+      rows: [...daily('150', 0, 100), ...daily('190', 0, 10)],
+      vehicles: fleet(
+        car('150', { visit: { inDate: '2026-11-01', outDate: null } }), // today: in
+        car('190', { visit: { inDate: '2026-11-02', outDate: null } }), // tomorrow: not yet
+      ),
+    });
+    expect(out.bottom5.map((r) => [r.code, r.inWorkshopSince])).toEqual([
+      ['190', null],
+      ['150', '2026-11-01'],
+    ]);
+  });
+
   it('gives each car without a valid reading exactly one reason, (a)–(f), and never ranks it', () => {
     const vehicles = fleet(
       car('201'), // (a) no row
@@ -773,13 +787,15 @@ describe('D20 · the old book’s rows under a code a live car now carries', () 
     expect(out.perVehicleAvg).toBe(180);
     expect(out.unregistered).toBe(40);
     // Each branch column is what the register shows for that branch — the set filters never read
-    // the old book — so the folded 100 km sit in no column: Σ columns + «غير مسجّلة» = total − 100.
+    // the old book — so the folded 100 km sit in no branch column but in `bookOnRegistered`, a
+    // column of its own: Σ columns + «غير مسجّلة» + bookOnRegistered = total.
     expect(out.byBranch).toEqual([
       { branchId: 'B2', name: { ar: 'الجيزة', en: 'Giza' }, km: 300 },
       { branchId: 'B1', name: { ar: 'القاهرة', en: 'Cairo' }, km: 100 },
     ]);
+    expect(out.bookOnRegistered).toBe(100);
     const columns = out.byBranch.reduce((sum, b) => sum + b.km, 0);
-    expect(columns + (out.unregistered ?? 0) + 100).toBe(out.total);
+    expect(columns + (out.unregistered ?? 0) + out.bookOnRegistered).toBe(out.total);
     // The drawing is unchanged: every km on its day.
     expect(out.buckets.reduce((sum, b) => sum + b.confirmedKm + b.spanKm, 0)).toBe(out.total);
   });
@@ -804,6 +820,7 @@ describe('D20 · the old book’s rows under a code a live car now carries', () 
     ]);
     expect(out.perVehicleAvg).toBe(135); // 540 ÷ 4 — «790» counted twice
     expect(out.unregistered).toBe(140);
+    expect(out.bookOnRegistered).toBe(0);
     const columns = out.byBranch.reduce((sum, b) => sum + b.km, 0);
     expect(columns + (out.unregistered ?? 0)).toBe(out.total);
   });

@@ -1512,6 +1512,7 @@ describe('the shapes of «العدادات والكيلومترات» and «ال
       byBranch: [],
       byType: null,
       unregistered: 0,
+      bookOnRegistered: 0,
       top5: [{ vehicleId: ID_A, code: '150', km: 2100, typeName: name }],
       bottom5: [
         { vehicleId: ID_B, code: '151', km: 300, inWorkshopSince: '2026-11-10', typeName: null },
@@ -1893,7 +1894,7 @@ describe('the shapes of «المخالفات المرورية والتسويات
     // The exit day, never `outDate` (the dashboard never names that field), never a time.
     expect(Object.keys(row)).not.toContain('outDate');
     for (const r of list.rows) expect(r.date, r.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    // «بانتظار تسجيل القيمة» is a row with no value yet.
+    // «بانتظار الفاتورة» is a row with no value yet.
     expect(list.rows.filter((r) => r.invoiceAmount === null).length).toBeLessThanOrEqual(
       dealership.pending,
     );

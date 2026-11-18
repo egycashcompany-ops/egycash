@@ -36,7 +36,7 @@ import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
-import { formatDate, formatMoneyParts, formatNumber } from '../../../shared/lib/format';
+import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import * as fleetApi from '../api/fleet-api';
 import {
@@ -746,6 +746,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
           {/* How many MEMOS the filters matched, over the whole set — the strip's «عدد المذكرات»
               (D05): a record holding a renewal and an extension is two memos, and under «النوع» /
               «التسوية» only the memos asked about count. Not the rows' count — a row is a record.
+              Latin digits, as the strip's «عدد المذكرات» and the pager under the table write them.
               Nothing while the answer is on its way. */}
           <span
             role="status"
@@ -755,9 +756,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
           >
             {summary.data === undefined
               ? ''
-              : t('fleet.licenseExpenses.count', {
-                  count: formatNumber(summary.data.count, locale),
-                })}
+              : t('fleet.licenseExpenses.count', { count: LATIN.format(summary.data.count) })}
           </span>
           {/* Wraps: five buttons are wider than a phone. */}
           <span className="flex flex-wrap items-center justify-end gap-1 sm:gap-2">

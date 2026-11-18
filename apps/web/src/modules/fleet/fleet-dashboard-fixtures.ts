@@ -673,6 +673,7 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     byBranch: [],
     byType: null,
     unregistered: 0,
+    bookOnRegistered: 0,
     top5: [],
     bottom5: [],
     withoutReadings: [],

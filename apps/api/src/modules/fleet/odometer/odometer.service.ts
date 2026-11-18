@@ -760,7 +760,12 @@ class FleetOdometerService {
       input.vehicleIds === undefined
         ? active
         : (intersectVehicleIds(active, input.vehicleIds) ?? []);
-    const inWorkshop = await fleetMaintenanceRepository.openVisitVehicleIds(candidates);
+    // «في الورشة» on the Cairo day (D07): a check-in dated after today is not in the workshop yet —
+    // the same covering-day rule as «في الورشة الآن», the vehicles screen and the roster.
+    const inWorkshop = await fleetMaintenanceRepository.openVisitVehicleIds(
+      candidates,
+      ymdToUtcDate(input.today),
+    );
     const outside = candidates.filter((id) => !inWorkshop.has(id));
     const readSince = await fleetOdometerRepository.vehiclesReadSince(
       outside,

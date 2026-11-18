@@ -17,6 +17,7 @@
 // The web suite runs with `environment: 'node'` and no jsdom, so nothing clicks: markup is
 // rendered with `renderToStaticMarkup` from a pre-seeded query cache, and «الإحصائيات» (drawn only
 // once pressed) is proven through the request the page registers and the pure counters it draws.
+import { readFileSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -35,7 +36,8 @@ import { authSlice } from '../../../store/authSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { setActiveBranch } from '../../../shared/lib/api-client';
-import { DriversListPage, driverLicenceFiguresOf, registryBranchesOf } from './DriversListPage';
+import { DriversListPage, driverLicenceFiguresOf } from './DriversListPage';
+import { dashboardScopeOf, registryBranchesOf } from '../lib/reader-branches';
 import { DriverProfilePage } from './DriverProfilePage';
 import type * as FleetApi from '../api/fleet-api';
 
@@ -352,6 +354,47 @@ describe('«الإحصائيات» count the dashboard’s branches (D31)', () =
     expect(listDrivers).not.toHaveBeenCalled();
   });
 
+  it('the grant is the dashboard’s widest, not `fleetDriver.view` alone (a mixed-grant reader)', () => {
+    // Drivers branch-wide, cars company-wide: the dashboard's driver figures cover the company.
+    expect(
+      dashboardScopeOf({ 'fleetDriver.view': 'branch', 'fleetVehicle.view': 'organization' }),
+    ).toBe('organization');
+    expect(dashboardScopeOf({ 'fleetDriver.view': 'organization' })).toBe('organization');
+    expect(dashboardScopeOf({ 'fleetDriver.view': 'branch' })).toBe('branch');
+    // The custody fund's and the licence expenses' keys never widen what the figures cover.
+    expect(
+      dashboardScopeOf({
+        'fleetDriver.view': 'branch',
+        'fleetCustody.view': 'organization',
+        'fleetLicenseExpense.view': 'organization',
+      }),
+    ).toBe('branch');
+    expect(dashboardScopeOf({})).toBeUndefined();
+    expect(dashboardScopeOf(undefined)).toBeUndefined();
+    const mixed = client(REGISTRY);
+    render(<DriversListPage />, mixed, {
+      reader: {
+        ...me('branch', { branchId: 'b1' }),
+        permissions: { 'fleetDriver.view': 'branch', 'fleetVehicle.view': 'organization' },
+      } as MeDto,
+    });
+    expect(registryQuery(mixed).queryKey).toEqual(
+      listKey('fleet', 'drivers', { whole: true, branchId: null }),
+    );
+  });
+
+  it('a narrowed panel names its branches above the figures (the title and the table do not narrow)', () => {
+    const code = readFileSync(new URL('./DriversListPage.tsx', import.meta.url), 'utf8');
+    expect(code).toContain('data-driver-figures-scope={registryBranches.join');
+    expect(code).toContain("t('fleet.drivers.board.scopeOne'");
+    expect(translate('ar', 'fleet.drivers.board.scopeOne', { name: 'مدينة نصر' })).toBe(
+      'إحصائيات فرع مدينة نصر',
+    );
+    expect(translate('ar', 'fleet.drivers.board.scopeMany', { names: 'أ، ب' })).toBe(
+      'إحصائيات الفروع: أ، ب',
+    );
+  });
+
   it('the TABLE still follows the URL’s «الفرع», not the top bar', () => {
     setActiveBranch('b2');
     const qc = client([row(profile('only', { licenseExpiresAt: '2029-05-01T00:00:00.000Z' }))]);
@@ -464,21 +507,46 @@ describe('the driver file (D08, D14, D47)', () => {
     );
   };
 
+  /** The licence tag on the file: its state and its word. */
+  const tagOf = (html: string): { state: string | undefined; word: string } => {
+    const at = html.indexOf('data-driver-licence-state=');
+    if (at < 0) return { state: undefined, word: '' };
+    const state = /data-driver-licence-state="([a-z]+)"/u.exec(html.slice(at))?.[1];
+    const end = html.indexOf('</span></span>', at);
+    return {
+      state,
+      word: html
+        .slice(at, end)
+        .replace(/<[^>]+>/gu, '')
+        .replace(/^[^>]*>/u, ''),
+    };
+  };
+
   it('a licence running out TODAY reads «منتهٍ» from the first hour of the Cairo day (D08)', () => {
     const html = fileOf(profile('today', { licenseExpiresAt: '2026-11-01T00:00:00.000Z' }));
-    expect(html).toContain(ar('fleet.dashboard.licenseExpired'));
-    expect(html).not.toContain(`>${ar('fleet.vehicle.licenseValid')}<`);
+    expect(tagOf(html)).toEqual({ state: 'expired', word: 'منتهٍ' });
   });
 
-  it('a licence of tomorrow is still valid', () => {
-    const html = fileOf(profile('tomorrow', { licenseExpiresAt: '2026-11-02T00:00:00.000Z' }));
-    expect(html).toContain(ar('fleet.vehicle.licenseValid'));
-    expect(html).not.toContain(`>${ar('fleet.dashboard.licenseExpired')}<`);
+  it('a licence of next year is «ساري» — the list’s word, never the two-state «سارية» (D50)', () => {
+    const html = fileOf(profile('later', { licenseExpiresAt: '2027-06-30T00:00:00.000Z' }));
+    expect(tagOf(html)).toEqual({ state: 'valid', word: 'ساري' });
+    expect(html).not.toContain('سارية');
+  });
+
+  it('a licence inside the warning days is «ينتهي قريبًا» in amber, as the list paints it (D29, D50)', () => {
+    // 25 days away: inside the default 30.
+    const soon = fileOf(profile('soon', { licenseExpiresAt: '2026-11-26T00:00:00.000Z' }));
+    expect(tagOf(soon)).toEqual({ state: 'soon', word: 'ينتهي قريبًا' });
+    expect(soon).toMatch(/font-figures text-amber-600[^"]*">2026\/11\/26</u);
+    // Tomorrow is still inside them: never «ساري» the day before it runs out.
+    const tomorrow = fileOf(profile('tomorrow', { licenseExpiresAt: '2026-11-02T00:00:00.000Z' }));
+    expect(tagOf(tomorrow).state).toBe('soon');
   });
 
   it('no date on file is not an expired licence', () => {
     const html = fileOf(profile('nodate', { licenseExpiresAt: null }));
-    expect(html).not.toContain(`>${ar('fleet.dashboard.licenseExpired')}<`);
+    expect(tagOf(html).state).toBeUndefined();
+    expect(html).not.toContain('data-driver-licence-state');
   });
 
   it('a suspended file carries the suspended-file badge (D47)', () => {

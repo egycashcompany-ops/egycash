@@ -39,12 +39,25 @@ describe('the branch filter names a closed branch picked from the address (D14)'
     ]);
   });
 
-  it('reads the every-branch list only while a pick is off the active one', () => {
+  it('reads the every-branch list only while a pick is off the LOADED active one', () => {
     const src = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), 'BranchFilterSelect.tsx'),
       'utf8',
     );
     expect(src).toContain('useBranchNames(closedPicked)');
-    expect(src).toContain('branchFilterOptions(branches, names, value, locale)');
+    // While the active list is on its way every pick would look closed: no every-branch read, and
+    // no «—» drawn for an active branch for a moment — the options are the active list alone.
+    expect(src).toContain(
+      'const closedPicked = active.isSuccess && value.some((id) => !branches.some((b) => b.id === id));',
+    );
+    expect(src).toContain(
+      'branchFilterOptions(branches, names, active.isSuccess ? value : [], locale)',
+    );
+  });
+
+  it('before the active list lands, an active pick is never drawn as «—»', () => {
+    // What the control builds while loading: no active branches yet, no pick looked up.
+    expect(branchFilterOptions([], [], [], 'ar')).toEqual([]);
+    expect(optionLabel(branchFilterOptions([], [], [], 'ar'), OPEN.id)).not.toBe('—');
   });
 });

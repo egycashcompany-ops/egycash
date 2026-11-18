@@ -388,7 +388,7 @@ describe('«الصيانة والورش» — the heading and its two bands', ()
     expect(html).toContain('data-dash-tab-body="maintenance"');
     expect(text(head(html))).toContain('الصيانة والورش والتوكيلات');
     expect(text(head(html))).toContain(
-      'إنذارات الصيانة بالكيلومتر، والسيارات في الورشة الآن، وزيارات الورش خلال الفترة، وصفوف التوكيل بانتظار القيمة.',
+      'إنذارات الصيانة بالكيلومتر، والسيارات في الورشة الآن، وزيارات الورش خلال الفترة، وصفوف التوكيل بانتظار الفاتورة.',
     );
     // The heading holds «الآن» and the period both: no live chip of its own.
     expect(head(html)).not.toContain('data-live-chip');
@@ -518,6 +518,13 @@ describe('«الآن» — the four cards, each under its own gate', () => {
     const status = part(card, 'data-maint-status="true"', /data-maint-kpi=/u);
     expect(text(status)).toContain(
       `نشطة 8 · خارج الخدمة 1 · ${ar('fleet.dash.now.statusDisposed')} 1 · ${ar('fleet.dash.now.statusNoCar')} 2`,
+    );
+    // The «·» of an extra part sits inside its unbreakable span, never alone at a line's end.
+    expect(status).toMatch(
+      new RegExp(
+        `<span class="whitespace-nowrap"> <span aria-hidden="true"[^>]*>·</span> ${ar('fleet.dash.now.statusDisposed')}`,
+        'u',
+      ),
     );
     expect(links(status)).toEqual([]);
     // The headline is unchanged: the open visits, linked to the list checked in by today.

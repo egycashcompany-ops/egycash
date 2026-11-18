@@ -8,8 +8,8 @@
 //         maintenance list's `state=open&to=<today>`, for the company and for a branch.
 //   D07 — a check-in recorded for TOMORROW is not in the workshop today: not counted, not a stay
 //         («منذ -1 يومًا» never drawn), its car not «داخل الورشة» on the vehicles screen and ready
-//         on the roster — one covering-day rule. A check-in dated Cairo today is in, though the UTC
-//         day is still yesterday.
+//         on the roster, and outside the workshop on «لم تُقرأ أبدًا» / «بلا قراءة حديثة» — one
+//         covering-day rule. A check-in dated Cairo today is in, though the UTC day is still yesterday.
 //   D20 — an old-book visit filed under a code a live car carries now is that car's in the ranking,
 //         as the list's code filter shows it: «194» = 3 = `vehicleCodes=194`; a view narrowed by
 //         a branch leaves the old book out on both sides and is unchanged.
@@ -517,6 +517,24 @@ describe('a check-in dated tomorrow (D07)', () => {
     const rosterInWorkshop = board.rows.filter((row) => row.inMaintenance).length;
     expect(rosterInWorkshop).toBe(now.workshop?.openActive);
     expect(now.roster?.inWorkshop).toBe(now.workshop?.openActive);
+  });
+
+  it('«لم تُقرأ أبدًا» / «بلا قراءة حديثة» hold it as outside the workshop — the same day rule', async () => {
+    // No car of this world has a reading: every ACTIVE car outside the workshop TODAY is never
+    // read — the one checked in for tomorrow among them, the one checked in today not.
+    const never = (now.noReading?.neverRead ?? []).map((row) => row.vehicleId);
+    expect(never).toContain(carFut.id);
+    expect(never).not.toContain(carToday.id);
+    expect(never).not.toContain(carAct.id);
+    expect(now.noReading?.stale.map((row) => row.vehicleId)).not.toContain(carFut.id);
+    expect(now.noReading?.neverReadCount).toBe(never.length);
+    // B1 alike: its never-read cars are its active cars the vehicles screen calls outside.
+    const listed = (await registry()).filter(
+      (car) => car.branchId === B1 && car.status === 'active' && !car.inWorkshop,
+    );
+    expect((nowB1.noReading?.neverRead ?? []).map((row) => row.vehicleId).sort()).toEqual(
+      listed.map((car) => car.id).sort(),
+    );
   });
 });
 

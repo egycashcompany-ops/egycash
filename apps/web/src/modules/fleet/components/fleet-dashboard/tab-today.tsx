@@ -416,7 +416,14 @@ const FigureTile = ({
     className={cn(BOX, BOX_HOVER, 'flex min-w-0 items-center justify-between gap-3 px-4 py-3.5')}
   >
     <div className="min-w-0">
-      <div className={cn(WORDS, 'flex h-5 items-center whitespace-nowrap')}>{label}</div>
+      {/* One line from 640 px. On a phone the two tiles share 343 px and «المتاحون اليوم (مع
+          المعيَّنين)» (D15) is wider than its half: it wraps inside the tile instead of spilling
+          past its border. */}
+      <div
+        className={cn(WORDS, 'flex min-h-5 items-center leading-tight sm:h-5 sm:whitespace-nowrap')}
+      >
+        {label}
+      </div>
       <div className="mt-2.5 flex items-center gap-2">
         <Big link={link}>{count(n)}</Big>
         {tag}

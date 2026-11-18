@@ -33,6 +33,7 @@ import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
+import { setActiveBranch } from '../../../shared/lib/api-client';
 import { translate } from '../../../platform/localization/i18n';
 import { FuelCardsPage } from './FuelCardsPage';
 import { FuelChargingPage } from './FuelChargingPage';
@@ -238,6 +239,35 @@ describe('D04 — «استهلاك الوقود الحالي (الشهر)» asks
       receipts: COMPANY_FUEL,
     });
     expect(kpi(html, 'consumption')).toContain('520.54');
+  });
+
+  it('under the top bar’s branch with no «الفرع» in the address: the same branch as the cards beside it', () => {
+    at(NOW, 'Africa/Cairo');
+    setActiveBranch(B1);
+    try {
+      // The cards and cars tiles are narrowed by the server under X-Active-Branch; the receipts'
+      // summary takes no scope of its own, so the screen sends the same branch.
+      const html = fuelCardsAt('/fleet/fuel-cards', {
+        receiptQuery: { from: '2026-11-01', to: '2026-11-01', branchIds: [B1] },
+        receipts: B1_FUEL,
+      });
+      expect(kpi(html, 'consumption')).toContain('420.55');
+      // Never the company's month beside one branch's cards.
+      const company = fuelCardsAt('/fleet/fuel-cards', {
+        receiptQuery: { from: '2026-11-01', to: '2026-11-01' },
+        receipts: COMPANY_FUEL,
+      });
+      expect(kpi(company, 'consumption')).toBe('');
+      // The address's «الفرع» still wins over the top bar.
+      const picked = fuelCardsAt(`/fleet/fuel-cards?branch=${B2}`, {
+        cardFilters: { branchIds: [B2] },
+        receiptQuery: { from: '2026-11-01', to: '2026-11-01', branchIds: [B2] },
+        receipts: fuelReceipts(99.99, 1),
+      });
+      expect(kpi(picked, 'consumption')).toContain('99.99');
+    } finally {
+      setActiveBranch(null);
+    }
   });
 
   it('is never answered from the old question — no `to`, no branch (595.54 with the 11-05 receipt)', () => {

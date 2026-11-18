@@ -341,7 +341,7 @@ describe('D20 · the old book’s rows of «790» count for the registered car (
     expect(km.buckets.reduce((sum, b) => sum + b.confirmedKm + b.spanKm, 0)).toBe(km.total);
   });
 
-  it('«الكيلومترات حسب الفرع»: each column = the register with that branch; the folded book km sits in none', async () => {
+  it('«الكيلومترات حسب الفرع»: each column = the register with that branch; the folded book km is a column apart', async () => {
     const dto = await period(OCT);
     const km = kmOf(dto);
     expect(km.byBranch.map((b) => [b.branchId, b.km])).toEqual([
@@ -354,9 +354,11 @@ describe('D20 · the old book’s rows of «790» count for the registered car (
       expect(column.km, String(column.branchId)).toBe(register.km);
     }
     // The register by branch never reads the old book: «790»'s 100 book km are the car's (above),
-    // not B1's. Σ columns + «غير مسجّلة» = the total less those 100 km.
+    // not B1's — `bookOnRegistered`, drawn as a column of its own, so the columns still add up:
+    // Σ byBranch + «غير مسجّلة» + bookOnRegistered = the total.
+    expect(km.bookOnRegistered).toBe(100);
     const columns = km.byBranch.reduce((sum, b) => sum + b.km, 0);
-    expect(columns + (km.unregistered ?? 0) + 100).toBe(km.total);
+    expect(columns + (km.unregistered ?? 0) + km.bookOnRegistered).toBe(km.total);
   });
 
   it('the book’s «790» rows are the car’s on the chart: the 13th’s span runs to the car’s next reading', async () => {
@@ -389,6 +391,7 @@ describe('D20 · a type, operation or branch view keeps the old book apart (its 
     expect(ranked?.km).toBe(100);
     expect((await summary({ ...days(dto), vehicleCodes: '790', branchIds: B1 }, B1)).km).toBe(100);
     expect(km.unregistered).toBeNull();
+    expect(km.bookOnRegistered).toBe(0);
     // By type under one branch: each column = the register with the type and the branch.
     for (const column of km.byType ?? []) {
       const register = await summary({ ...days(dto), typeIds: column.typeId, branchIds: B1 }, B1);
@@ -452,6 +455,7 @@ describe('D33 · the km column of a branch deleted since', () => {
     ]);
     expect((await summary({ ...days(dto), branchIds: B3 })).km).toBe(25);
     expect(km.unregistered).toBe(40);
+    expect(km.bookOnRegistered).toBe(0);
     expect(km.byBranch.reduce((sum, b) => sum + b.km, 0) + (km.unregistered ?? 0)).toBe(km.total);
   });
 });

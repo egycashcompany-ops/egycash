@@ -594,8 +594,11 @@ export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDt
   // The registry's rows with their car as it is NOW — «حسب الفرع الحالي للسيارة». Each column is
   // what the register shows for that branch (type), and the set filters never read the old book: a
   // book row folded into a live car (D20) counts for that car above — its ranking, the average —
-  // but in no branch or type here, nor in «غير مسجّلة». So Σ byBranch + unregistered = total less
-  // the folded book km (none unless the book wrote rows under a live car's code).
+  // but in no branch or type here, nor in «غير مسجّلة»: it is `bookOnRegistered`, a column of its
+  // own. So Σ byBranch + unregistered + bookOnRegistered = total.
+  const bookOnRegistered = valid
+    .filter((entry) => entry.row.fromBook === true)
+    .reduce((sum, entry) => sum + (entry.row.km ?? 0), 0);
   const registryKm = valid.flatMap((entry) =>
     entry.row.vehicleId === null || entry.row.fromBook === true
       ? []
@@ -656,6 +659,7 @@ export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDt
             byKmThenName({ km: a.km, name: a.name.ar }, { km: b.km, name: b.name.ar }),
           ),
     unregistered: input.setNarrows && !hasBookRows ? null : bookKm,
+    bookOnRegistered,
     top5: [...ranked]
       .sort(byKmThenCode('desc'))
       .slice(0, FLEET_DASHBOARD_RANK_ROWS)
@@ -673,7 +677,12 @@ export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDt
         vehicleId: car.vehicleId,
         code: car.code,
         km,
-        inWorkshopSince: car.visit !== null && car.visit.outDate === null ? car.visit.inDate : null,
+        // Open AND already begun on the Cairo day (D07): a check-in dated after today is not
+        // «في الورشة» yet — the rule «في الورشة الآن», the vehicles screen and the roster use.
+        inWorkshopSince:
+          car.visit !== null && car.visit.outDate === null && car.visit.inDate <= today
+            ? car.visit.inDate
+            : null,
         typeName: makeOf(car),
       })),
     withoutReadings: setCars

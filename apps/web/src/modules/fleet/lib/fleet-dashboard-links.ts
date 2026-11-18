@@ -725,7 +725,7 @@ export const periodLinks = ({ range, vehicleScope }: PeriodEcho) => {
      * figure counts it (a memo has no branch, type or operation).
      */
     licenceSpend: (metric: string): DashLink => at('license-expenses', { ...dates }, metric),
-    /** T6.9 (+ «بانتظار تسجيل القيمة»: `state=pending`). */
+    /** T6.9 (+ «بانتظار الفاتورة»: `state=pending`). */
     dealership: (metric = 'dealership.amount', state?: 'pending'): DashLink | null =>
       over('dealership', metric, { state }),
     /** «مصروف التشغيل حسب النوع»: the receipts of one kind (and, for fuel, one source). */

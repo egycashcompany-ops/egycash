@@ -350,6 +350,14 @@ describe('«نظرة عامة» — the heading and the six KPI cards', () => {
     expect(text(split)).toContain(
       `نشطة 5 · خارج الخدمة 1 · ${ar('fleet.dash.now.statusDisposed')} 1 · ${ar('fleet.dash.now.statusNoCar')} 2`,
     );
+    // Each extra part holds its own «·» inside its unbreakable span: a wrapped line never ends on
+    // a lone «·» (the shot at 1920 and 375 did, before).
+    expect(split).toContain(
+      `<span class="whitespace-nowrap">· ${ar('fleet.dash.now.statusDisposed')}`,
+    );
+    expect(split).toContain(
+      `<span class="whitespace-nowrap">· ${ar('fleet.dash.now.statusNoCar')}`,
+    );
     // The headline is unchanged: the open visits, the one linked figure; the parts are plain.
     expect(text(body)).toContain('9 سيارات في الورشة');
     expect(hrefOf(body, 'workshop.open')).toEqual([`/fleet/maintenance?state=open&to=${TODAY}`]);

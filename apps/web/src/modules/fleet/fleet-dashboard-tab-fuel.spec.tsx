@@ -1215,7 +1215,7 @@ describe('«فواتير التوكيل في الفترة» — the dealership s
     }
   });
 
-  it('writes the exit day, the work, the invoice («—»), the amount or «بانتظار تسجيل القيمة» (C4)', () => {
+  it('writes the exit day, the work, the invoice («—»), the amount or «بانتظار الفاتورة» (D39)', () => {
     const table = block(DEFAULT, 'dealer-table');
     const pending = dealerRowOf(table, 'd1');
     expect(text(pending)).toContain('2026/10/31');

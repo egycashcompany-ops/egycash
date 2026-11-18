@@ -708,6 +708,9 @@ describe('«الحركة اليوم» — the parts add up and each word means o
     const tile = part(card(HTML, 'balance'), 'data-today-figure="available"', /<\/section>/u);
     expect(text(tile)).toContain(ar('fleet.dash.now.balanceDrivers'));
     expect(text(tile)).toContain('44');
+    // Its label wraps inside the tile on a phone (343 px for two tiles), one line from 640 px.
+    expect(tile).toContain('min-h-5 items-center leading-tight sm:h-5 sm:whitespace-nowrap');
+    expect(tile).not.toMatch(/class="[^"]*(?<!:)whitespace-nowrap[^"]*">[^<]*المتاحون/u);
     const none = card(withRoster({ available: 6, availableWithoutVehicle: 6 }), 'available');
     expect(text(none)).toContain(ar('fleet.dash.now.availableSplit', { seated: '0', free: '6' }));
   });

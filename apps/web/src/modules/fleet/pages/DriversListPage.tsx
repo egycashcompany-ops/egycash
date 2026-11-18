@@ -38,7 +38,6 @@ import {
   MAX_PAGE_SIZE,
   cairoYmd,
   expiryStateOn,
-  type DataScope,
   type FleetCatalogKind,
   type FleetDriverProfileDto,
   type FleetDriverRowDto,
@@ -96,6 +95,7 @@ import { expiryWindowLabel, expiryWindowQuery } from '../lib/vehicle-set-params'
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useLicenceWarnDays } from '../lib/licence-warn-days';
+import { dashboardScopeOf, registryBranchesOf } from '../lib/reader-branches';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -280,41 +280,6 @@ const PrintLicenceButton = ({ driver }: { driver: FleetDriverProfileDto }): JSX.
 // person, so it is the order somebody looking for one reads down. It also matches what the server
 // falls back to, so a first load and a cleared sort agree.
 const DEFAULT_SORT = 'employeeCode:asc';
-
-/**
- * The branches «الإحصائيات» count (audit D31): the branches the dashboard's driver figures cover,
- * so «رخص منتهية» here and the dashboard's figure that opens this screen count the same drivers.
- *
- * `/fleet/drivers` reads no branch scope of its own — every reader's token answers the whole
- * roster — so the header used to count the whole company under a switcher on «فرع ب» (4 beside
- * the dashboard's 0). The vehicles header narrows through its API's scope; this one asks for the
- * branches by name, folded the way the server folds the command bar's branch into a grant
- * (`scopeSelector`):
- * - an `organization` grant: the switcher's branch, or `null` — the whole company — without one;
- * - a branch reach («فرعي» / «كل فروعي»): the switcher's branch when it is one of them, else every
- *   branch the reach holds;
- * - `[]`: a reach that holds no branch at all (a branch user moved out of their branch). The
- *   figures then count nobody, as the dashboard's and the vehicles header's do — never the whole
- *   company under a reach of none.
- *
- * The TABLE is not narrowed by this: it follows the URL's «الفرع», as before.
- */
-export const registryBranchesOf = (reader: {
-  /** The reader's widest grant of `fleetDriver.view` (`MeDto.permissions`). */
-  scope: DataScope | undefined;
-  /** The command bar's branch — the `X-Active-Branch` every request carries. */
-  active: string | null;
-  /** The reader's own branch (`MeDto.branchId`). */
-  home: string | null;
-  /** Every branch the reader's grants reach (`MeDto.branchIds`; empty for a single branch). */
-  reach: readonly string[];
-}): readonly string[] | null => {
-  // `own` reads the whole roster on the server too (`selectorBranches`), and no switcher narrows it.
-  if (reader.scope === undefined || reader.scope === 'own') return null;
-  if (reader.scope === 'organization') return reader.active === null ? null : [reader.active];
-  const reach = [...new Set([...(reader.home === null ? [] : [reader.home]), ...reader.reach])];
-  return reader.active !== null && reach.includes(reader.active) ? [reader.active] : reach;
-};
 
 /**
  * The counters across the top of «الإحصائيات», over the registry `registryBranchesOf` names —
@@ -544,7 +509,7 @@ export const DriversListPage = (): JSX.Element => {
   const [statsOpen, setStatsOpen] = useState(false);
   const me = useAppSelector((state) => state.auth.me);
   const registryBranches = registryBranchesOf({
-    scope: me?.permissions['fleetDriver.view'],
+    scope: dashboardScopeOf(me?.permissions),
     // The header every request already carries; a switch reloads the page, so it is read here.
     active: getActiveBranch(),
     home: me?.branchId ?? null,
@@ -1079,6 +1044,24 @@ export const DriversListPage = (): JSX.Element => {
         {/* Every figure lives behind «الإحصائيات», over the whole registry. */}
         {statsOpen && wholeRegistry.data !== undefined && (
           <section data-driver-figures="true" className="animate-drop-in space-y-2">
+            {/* Narrowed to a branch (the top bar's, or the reader's own) while the title and the
+                table follow the URL: say which, so «إجمالي السائقين» under «١٨ سائق» reads. */}
+            {registryBranches !== null && registryBranches.length > 0 && (
+              <p
+                data-driver-figures-scope={registryBranches.join(',')}
+                className="text-xs font-bold text-slate-500 dark:text-slate-400"
+              >
+                {registryBranches.length === 1
+                  ? t('fleet.drivers.board.scopeOne', {
+                      name: branchName.get(registryBranches[0] ?? '') ?? '—',
+                    })
+                  : t('fleet.drivers.board.scopeMany', {
+                      names: registryBranches
+                        .map((id) => branchName.get(id) ?? '—')
+                        .join(locale === 'ar' ? '، ' : ', '),
+                    })}
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <FigureChip
                 icon={FILTER_ICON.person}

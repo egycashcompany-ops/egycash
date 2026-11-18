@@ -288,7 +288,8 @@ describe('D08 — «تراخيص منتهية» by the Cairo day, expired ON its
     const html = record(byCode('602'));
     expect(html).toContain('data-vehicle-licence-state="expired"');
     expect(html).toContain(t(LICENCE_STATE_KEY.expired));
-    expect(html).not.toContain(t('fleet.vehicle.licenseValid'));
+    // Never the old feminine two-state word.
+    expect(html).not.toContain('سارية');
   });
 
   it('the record’s tag has the three states, not two — «ينتهي قريبًا» inside the warning days', () => {

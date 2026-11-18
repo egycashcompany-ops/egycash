@@ -1193,8 +1193,8 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(markup, 'the column is there').toContain(t('fleet.violations.columns.carriedOnto'));
     expect(markup, 'and it names both').toContain('150 — 2026');
     // «برضو يفضلوا فى جدول السائقيين» — the row still shows the day it actually happened: the
-    // stored day, Latin digits, as the Excel writes it (D41).
-    expect(markup).toContain('>2026-02-01</span>');
+    // stored day, Latin digits (D41), written «yyyy/mm/dd» as the dashboard's row writes it.
+    expect(markup).toContain('>2026/02/01</span>');
 
     // …and the marker is the way out of a drop: pressing it files the fine under its own date.
     expect(markup).toContain('data-filed-year="vio-1"');

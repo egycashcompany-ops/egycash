@@ -62,11 +62,14 @@ export const BranchFilterSelect = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { data: branches = [] } = useBranchOptions();
-  // The every-branch list is read only while a pick is not on the active one.
-  const closedPicked = value.some((id) => !branches.some((b) => b.id === id));
+  const active = useBranchOptions();
+  const branches = active.data ?? [];
+  // A pick is "closed" only against the LOADED active list: while that list is on its way every
+  // pick would look closed — the every-branch read fired for nothing and an active branch drawn as
+  // «—» for a moment. Until it lands the options are the active list alone, as before D14.
+  const closedPicked = active.isSuccess && value.some((id) => !branches.some((b) => b.id === id));
   const { data: names = [] } = useBranchNames(closedPicked);
-  const options = branchFilterOptions(branches, names, value, locale);
+  const options = branchFilterOptions(branches, names, active.isSuccess ? value : [], locale);
 
   return (
     <MultiSelect

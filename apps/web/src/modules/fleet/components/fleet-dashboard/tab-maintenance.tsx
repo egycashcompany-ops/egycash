@@ -366,22 +366,25 @@ const WorkshopKpi = ({
         // Plain: the maintenance screen reads no vehicle-status parameter, so no part has an exact
         // list (the headline's open visits do). The parts add up to the headline: «مكهنة» and «بلا
         // سيارة في السجل» (a car deleted since, or an old-book visit) only when they hold a visit.
+        // Each extra part keeps its «·» inside its unbreakable span: no line ends on a lone «·».
         <span data-maint-status="true">
           {t('fleet.dash.now.statusActive')} {plain(workshop.openActive)}
           <Sep />
           {t('fleet.dash.now.statusOut')} {plain(workshop.openOutOfService)}
           {workshop.openDisposed > 0 && (
             <>
-              <Sep />
+              {' '}
               <span className="whitespace-nowrap">
+                <Sep />
                 {t('fleet.dash.now.statusDisposed')} {plain(workshop.openDisposed)}
               </span>
             </>
           )}
           {workshop.openNoCar > 0 && (
             <>
-              <Sep />
+              {' '}
               <span className="whitespace-nowrap">
+                <Sep />
                 {t('fleet.dash.now.statusNoCar')} {plain(workshop.openNoCar)}
               </span>
             </>

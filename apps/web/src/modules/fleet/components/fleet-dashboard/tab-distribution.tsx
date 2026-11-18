@@ -924,6 +924,22 @@ const KmByBranch = ({ data, km }: { data: FleetDashboardPeriodDto; km: Km }): JS
       muted: true,
     });
   }
+  // The old book's km under a live car's code (D20): that car's in the total, the rankings and the
+  // average, but in no branch column — each column is the register its «فتح» opens, and the
+  // register's branch filter never reads the old book. Drawn apart (never a link) so the columns
+  // still add up to the headline.
+  if (km.bookOnRegistered > 0) {
+    columns.push({
+      key: 'bookOnRegistered',
+      name: t('fleet.dash.km.bookOnRegistered'),
+      value: km.bookOnRegistered,
+      valueText: kmText(km.bookOnRegistered),
+      unit,
+      share: shareText(km.bookOnRegistered, km.total),
+      link: null,
+      muted: true,
+    });
+  }
   return (
     <Card data-dist-block="km">
       <BlockHead

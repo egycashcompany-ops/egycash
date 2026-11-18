@@ -9,7 +9,8 @@
 //      «في الورشة طوال الفترة» is asked of the period — an older visit that covered October still
 //      counts when a newer, shorter one followed it;
 //   3. `noReadingDigest` (R-07): on 2026-11-01 with N = 3 a last chain date of 2026-10-28 fires and
-//      2026-10-29 does not, a workshop car never fires, a never-read car has its own line;
+//      2026-10-29 does not, a workshop car never fires, a never-read car has its own line — and the
+//      workshop is asked of the Cairo day (D07): a check-in dated tomorrow is not in it yet;
 //   4. `explain()`: neither period read nor either no-reading step scans the collection.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
@@ -599,8 +600,20 @@ describe('noReadingDigest — «بلا قراءة عداد منذ N أيام» (
     expect(stale.has(oos.id)).toBe(false); // not active
     expect(stale.has(gone.id)).toBe(false); // deleted
     expect(stale.get(a1.id)).toBe('2026-10-09');
-    expect(digest.neverRead).toEqual([{ vehicleId: never.id, code: never.code }]);
+    // D07: `twice` left its first visit on the 1st and its next one is dated the 2nd — on the 1st it
+    // is outside the workshop (as «في الورشة الآن» says), so it is never-read too.
+    expect(digest.neverRead).toEqual(
+      [never, twice]
+        .sort((x, y) => compareFleetVehicleCodes(x.code, y.code))
+        .map((car) => ({ vehicleId: car.id, code: car.code })),
+    );
     expect(stale.has(never.id)).toBe(false);
+  });
+
+  it('on 2026-11-02 the visit dated that day holds `twice`: it leaves the never-read list (D07)', async () => {
+    const digest = await fleetOdometerService.noReadingDigest({ today: '2026-11-02', days: 3 });
+    expect(digest.neverRead).toEqual([{ vehicleId: never.id, code: never.code }]);
+    expect(digest.stale.map((s) => s.vehicleId)).not.toContain(shop.id);
   });
 
   it('narrowed to some cars, it answers for those cars only', async () => {
@@ -633,13 +646,18 @@ describe('noReadingDigest — «بلا قراءة عداد منذ N أيام» (
       })),
     );
     expect(digest.staleRows.map((r) => r.vehicleId)).not.toContain(stale28.id);
-    expect(digest.neverReadRows).toEqual([
-      {
-        vehicleId: never.id,
-        code: never.code,
-        typeName: expect.objectContaining({ ar: 'ميكروباص العداد' }) as unknown,
-      },
-    ]);
+    // `never` (T2) and `twice` (T1, outside the workshop on the 1st — D07), by code.
+    expect(digest.neverReadRows).toEqual(
+      [never, twice]
+        .sort((x, y) => compareFleetVehicleCodes(x.code, y.code))
+        .map((car) => ({
+          vehicleId: car.id,
+          code: car.code,
+          typeName: expect.objectContaining({
+            ar: car.id === never.id ? 'ميكروباص العداد' : 'مصفحة العداد',
+          }) as unknown,
+        })),
+    );
   });
 
   it('a day recorded without a counter is not a reading: the 28th stays the latest', async () => {

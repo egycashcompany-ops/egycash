@@ -25,6 +25,7 @@ import { cn } from '../../../shared/lib/cn';
 import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { readList, writeList } from '../../../shared/lib/list-param';
+import { getActiveBranch } from '../../../shared/lib/api-client';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import {
   useAllFuelCards,
@@ -59,6 +60,7 @@ import { saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { expiryWindowQuery } from '../lib/vehicle-set-params';
+import { registryBranchesOf } from '../lib/reader-branches';
 
 const REMEMBERED_FILTERS = [
   'vehicleCodes',
@@ -189,17 +191,35 @@ export const FuelCardsPage = (): JSX.Element => {
   // `kind=fuel` total): the 1st of the Cairo month to Cairo today — never a later paper day, never
   // the browser's month — and, when the screen is narrowed, the same branch (the receipt's car's)
   // and the same cars.
+  //
+  // With no «الفرع» in the address the tile still answers for the branches the tiles beside it do:
+  // the cards and the cars are scoped by the server under the command bar's branch (X-Active-Branch)
+  // and the reader's grant, while the receipts' summary takes no scope of its own — so the same
+  // fold is sent as `branchIds` (the switcher's branch, the reader's reach, or nothing for the whole
+  // company), never the company's month beside one branch's cards.
   const month = periodOf('thisMonth', cairoYmd(new Date()));
   const mayReceipts = can('fleetReceipt.view');
+  const me = useAppSelector((state) => state.auth.me);
+  const receiptBranches =
+    branchIds.length > 0
+      ? branchIds
+      : registryBranchesOf({
+          scope: me?.permissions['fleetFuelCard.view'],
+          active: getActiveBranch(),
+          home: me?.branchId ?? null,
+          reach: me?.branchIds ?? [],
+        });
+  // A reach of no branch has no month to answer (an empty `branchIds` would be no filter at all).
+  const noReach = receiptBranches !== null && receiptBranches.length === 0;
   const receipts = useReceiptSummary(
     {
       kind: 'fuel',
       from: month.from,
       to: month.to,
-      ...(branchIds.length > 0 ? { branchIds } : {}),
+      ...(receiptBranches === null || noReach ? {} : { branchIds: [...receiptBranches] }),
       ...(vehicleCodes.length > 0 ? { vehicleCodes } : {}),
     },
-    mayReceipts,
+    mayReceipts && !noReach,
   );
   const consumption = mayReceipts && receipts.data !== undefined ? receipts.data : null;
 

@@ -39,7 +39,7 @@ import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
-import { formatMoney, formatMoneyParts, formatNumber } from '../../../shared/lib/format';
+import { formatMoney, formatMoneyParts } from '../../../shared/lib/format';
 import { listKey } from '../../../shared/lib/query-keys';
 import { ViolationsPage } from './ViolationsPage';
 import { NoticesPage } from './NoticesPage';
@@ -335,13 +335,14 @@ describe('«المخالفات»: the day column prints the stored day (D41)', (
         outstanding: 100,
       }),
     );
-    expect(textAt(html, 'data-violation-day="vio-late"')).toBe('2026-10-31');
-    expect(textAt(html, 'data-violation-day="vio-evening"')).toBe('2026-10-20');
+    // The stored day, written «yyyy/mm/dd» as the dashboard's row writes it (V8).
+    expect(textAt(html, 'data-violation-day="vio-late"')).toBe('2026/10/31');
+    expect(textAt(html, 'data-violation-day="vio-evening"')).toBe('2026/10/20');
   });
 
   it('is the day the filter, the Excel and the print read — one slice, Latin digits', () => {
     const panel = code('../components/DriverViolationsPanel.tsx');
-    expect(panel).toContain("row.date === null ? '—' : row.date.slice(0, 10)");
+    expect(panel).toContain("row.date === null ? '—' : row.date.slice(0, 10).replace(/-/gu, '/')");
     expect(panel, 'never the browser’s zone').not.toContain('formatDate(row.date');
   });
 });
@@ -438,18 +439,26 @@ describe('«الإخطارات» reads «ينقصها مرفق» — what the ov
     expect(html).not.toContain('data-notice-row="nt-1"');
   });
 
-  it('shows it as a chip that comes off — and nothing while it does not narrow', () => {
+  it('shows it as a chip that comes off — and a plain toggle that puts it on by hand', () => {
     const { html } = noticesAt('/fleet/notices?status=open&missing=any', MISSING);
     const chip = textAt(html, 'data-notice-missing="any"', '<span aria-hidden');
     expect(chip).toBe(ar('fleet.notices.filters.missingAny'));
     expect(html).toContain(
       `aria-label="${ar('common.remove')} ${ar('fleet.notices.filters.missingAny')}"`,
     );
+    expect(html).toContain('aria-pressed="true"');
     const plain = noticesAt('/fleet/notices?status=open', { status: 'open' });
     expect(plain.html).toContain('data-notice-row="nt-1"');
-    expect(plain.html).not.toContain('data-notice-missing');
+    expect(plain.html).not.toContain('data-notice-missing="any"');
+    // Off, it is still on the bar: the owner's «فلتر «ينقصها مرفق»», pressed by hand.
+    expect(textAt(plain.html, 'data-notice-missing="off"', '</button>')).toBe(
+      ar('fleet.notices.filters.missingAny'),
+    );
+    expect(plain.html).toContain('aria-pressed="false"');
     const page = code('NoticesPage.tsx').replace(/\s+/gu, ' ');
-    expect(page, 'the chip takes it off').toContain('onClick={() => patch({ missing: null })}');
+    expect(page, 'one press puts it on, the next takes it off').toContain(
+      "onClick={() => patch({ missing: missingAny ? null : 'any' })}",
+    );
     expect(page, 'so does the bar’s «إعادة الضبط»').toMatch(
       /onClear=\{\(\) => patch\(\{[^}]*missing: null,[^}]*\.\.\.CLEAR_VEHICLE_SET,/u,
     );
@@ -460,7 +469,7 @@ describe('«الإخطارات» reads «ينقصها مرفق» — what the ov
       status: 'open',
     });
     expect(html).toContain('data-notice-row="nt-1"');
-    expect(html).not.toContain('data-notice-missing');
+    expect(html).not.toContain('data-notice-missing="any"');
     expect(asked(qc, { summary: true, status: 'open' })).toBe(true);
   });
 
@@ -623,7 +632,8 @@ describe('«مصروفات التراخيص»: a row is its matched memos under 
     });
     const at = html.indexOf('data-filtered-count');
     const said = html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at));
-    expect(said).toBe(ar('fleet.licenseExpenses.count', { count: formatNumber(4, 'ar') }));
+    // Latin digits, as the strip and the pager on the same screen (V7).
+    expect(said).toBe(ar('fleet.licenseExpenses.count', { count: '4' }));
     expect(html.slice(html.lastIndexOf('<span', at), html.indexOf('>', at))).toContain(
       `title="${ar('fleet.licenseExpenses.stats.memos')}"`,
     );

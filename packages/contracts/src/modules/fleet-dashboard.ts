@@ -588,6 +588,23 @@ export const FLEET_DASHBOARD_PERIOD_KEYS: readonly string[] = keysOfRead('period
 export const FLEET_DASHBOARD_PAGE_KEYS: readonly string[] = keysOfRead(null);
 
 /**
+ * The keys of the two reads that decide WHAT THE FIGURES COVER — the widest grant among them names
+ * the reader's branches (`dashboardBranches` on the server). Two keys of the R2 union never decide
+ * it: the custody fund's (its «الآن» is the browser's own read, company-wide; its R2 part follows
+ * the receipt's car under the receipts' key) and the licence expenses' (a memo has no branch). A
+ * screen that counts "what the dashboard counts" (the drivers' «الإحصائيات», audit D31) folds the
+ * same keys.
+ */
+export const FLEET_DASHBOARD_UNSCOPED_KEYS: readonly string[] = [
+  'fleetCustody.view',
+  'fleetLicenseExpense.view',
+];
+export const FLEET_DASHBOARD_SCOPE_KEYS: readonly string[] = distinct([
+  ...FLEET_DASHBOARD_NOW_KEYS,
+  ...FLEET_DASHBOARD_PERIOD_KEYS,
+]).filter((key) => !FLEET_DASHBOARD_UNSCOPED_KEYS.includes(key));
+
+/**
  * Which sections make a tab visible (hidden when every one is null / not permitted). A PART or a
  * PAGELESS section is in none of them (FLEET_DASHBOARD_TAB_PARTS).
  */
@@ -1644,6 +1661,14 @@ export interface FleetDashboardPeriodKmDto {
    * car's code counts as that car's (D20); null when a set exists.
    */
   unregistered: number | null;
+  /**
+   * km of the old book's rows a live car's code took in (D20): counted for that car in `total`, the
+   * rankings and the average, but in no `byBranch` / `byType` column — each column is what the
+   * register shows for its branch, and the register's branch filter never reads the old book. So
+   * Σ byBranch + (unregistered ?? 0) + bookOnRegistered = total. 0 when a type, operation or branch
+   * narrows the view (nothing is folded then).
+   */
+  bookOnRegistered: number;
   /** «أعلى 5»: ≤ FLEET_DASHBOARD_RANK_ROWS; `typeName` = the make. */
   top5: { vehicleId: string; code: string; km: number; typeName: LocalizedString | null }[];
   /** «أقل 5»: ≤ FLEET_DASHBOARD_RANK_ROWS, active cars only; `typeName` = the make. */
@@ -1859,6 +1884,6 @@ export interface FleetDashboardPeriodDealershipRowDto {
   /** «صيانة», «إصلاح» or «إصلاح (كهرباء)» — the dealership screen's work-type column. */
   workTypeLabel: string;
   invoiceNumber: string | null;
-  /** `null` = «بانتظار تسجيل القيمة» (counted in `dealership.pending`). */
+  /** `null` = «بانتظار الفاتورة» (counted in `dealership.pending`). */
   invoiceAmount: number | null;
 }

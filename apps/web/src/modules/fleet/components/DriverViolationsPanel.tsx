@@ -454,10 +454,11 @@ export const DriverViolationsPanel = ({
       headerClassName: 'w-px',
       // THE STORED DAY, Latin digits (D41) — what the filter, the Excel, the print and the
       // dashboard's row all read. Never re-read in the browser's zone: an old-book fine stored at
-      // 22:30Z on the 31st is the 31st's, and a reader in Cairo was shown the 1st.
+      // 22:30Z on the 31st is the 31st's, and a reader in Cairo was shown the 1st. Written
+      // «2026/10/31», as the dashboard row it is opened from and the Fleet day columns write it.
       render: (row) => (
         <span dir="ltr" className="whitespace-nowrap tabular-nums" data-violation-day={row.id}>
-          {row.date === null ? '—' : row.date.slice(0, 10)}
+          {row.date === null ? '—' : row.date.slice(0, 10).replace(/-/gu, '/')}
         </span>
       ),
     },

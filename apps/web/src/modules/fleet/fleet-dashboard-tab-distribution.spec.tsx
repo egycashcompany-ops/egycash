@@ -599,6 +599,28 @@ describe('«توزيع السيارات» — the kilometres by branch (the fixe
     expect(text(km)).toContain('61.3%');
   });
 
+  it('D20: the old book’s km under a live car’s code is a column of its own, so the columns add up', () => {
+    // 3,000 + 1,500 + 296 (no branch) + 100 («غير مسجّلة») + 100 (the old book on registered cars).
+    const month: FleetDashboardPeriodDto = {
+      ...MONTH,
+      km: { ...need(MONTH.km), total: 4996, bookOnRegistered: 100 },
+    };
+    const folded = block(tab({ month }), 'km');
+    const name = text(part(folded, 'data-dash-col-name="bookOnRegistered"', /<\/span>/u)).trim();
+    expect(name).toBe(ar('fleet.dash.km.bookOnRegistered'));
+    expect(name).toBe('الدفتر القديم (سيارات مسجّلة)');
+    expect(folded).toContain(
+      'data-dash-col="bookOnRegistered" data-dash-col-n="100" data-dash-col-muted="true"',
+    );
+    // Muted and unlinked like «غير مسجّلة»; the branch columns keep their links.
+    expect(folded.match(/data-dash-col-muted="true"/gu)).toHaveLength(3);
+    expect(hrefOf(folded, 'km.byBranch')).toHaveLength(2);
+    const columns = [3000, 1500, 296, 100, 100].reduce((sum, km) => sum + km, 0);
+    expect(columns).toBe(4996);
+    // Nothing folded: no such column.
+    expect(km).not.toContain('data-dash-col="bookOnRegistered"');
+  });
+
   it('says no day is closed yet on the month’s first day, and writes the average once one is', () => {
     expect(text(km)).toContain(ar('fleet.dash.km.legend.noAverage'));
     expect(text(km)).toContain(ar('fleet.dash.km.byBranchNote'));

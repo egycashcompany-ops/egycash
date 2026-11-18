@@ -295,7 +295,8 @@ const KpiRow = ({
         foot={
           // The parts add up to the headline: «مكهنة» and «بلا سيارة في السجل» (a car deleted since,
           // or an old-book visit) join «نشطة · خارج الخدمة» only when they hold a visit. Plain: the
-          // maintenance screen reads no vehicle-status parameter.
+          // maintenance screen reads no vehicle-status parameter. Each extra part carries its own
+          // «·» inside its unbreakable span, so a wrapped line never ends on a dangling «·».
           <span data-dash-workshop-split="true">
             <Phrase
               text={w('kpi.workshop.split')}
@@ -306,16 +307,18 @@ const KpiRow = ({
             />
             {workshop.openDisposed > 0 && (
               <>
-                {' · '}
+                {' '}
                 <span className="whitespace-nowrap">
+                  {'· '}
                   {t('fleet.dash.now.statusDisposed')} <N>{count(workshop.openDisposed)}</N>
                 </span>
               </>
             )}
             {workshop.openNoCar > 0 && (
               <>
-                {' · '}
+                {' '}
                 <span className="whitespace-nowrap">
+                  {'· '}
                   {t('fleet.dash.now.statusNoCar')} <N>{count(workshop.openNoCar)}</N>
                 </span>
               </>

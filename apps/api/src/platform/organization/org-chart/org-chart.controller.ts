@@ -1,6 +1,7 @@
 import { type Request, type Response } from 'express';
 import {
   type AddChartSection,
+  type OrderChartColumn,
   type RenameChartSection,
   type StopChartSection,
 } from '@ecms/contracts';
@@ -9,6 +10,7 @@ import { validated } from '../../../infrastructure/http/validate';
 import { authContext } from '../../auth';
 import { orgChartService } from './org-chart.service';
 import { chartSections } from './org-chart.sections';
+import { chartOrder } from './org-chart.order';
 
 type SectionParam = { sectionCatalogId: string };
 
@@ -36,5 +38,13 @@ export const stopChartSection = async (req: Request, res: Response): Promise<voi
   const ctx = authContext(req);
   const { body, params } = validated<StopChartSection, never, SectionParam>(req);
   await chartSections.stop(params.sectionCatalogId, body, ctx.userId);
+  ok(res, await orgChartService.chart());
+};
+
+/** A column's jobs in a new order (§5.7) — answers with the fresh chart, like the section writes. */
+export const orderChartColumn = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<OrderChartColumn>(req);
+  await chartOrder.set(body, ctx.userId);
   ok(res, await orgChartService.chart());
 };

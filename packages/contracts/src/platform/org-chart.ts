@@ -59,6 +59,31 @@ export type RenameChartSection = z.infer<typeof RenameChartSectionSchema>;
 export const StopChartSectionSchema = z.object({ version: z.number().int().min(0) }).strict();
 export type StopChartSection = z.infer<typeof StopChartSectionSchema>;
 
+/**
+ * `PUT /platform/org-chart/order` — one column's jobs in the order the chart shows them (design
+ * §5.7). «لما باجي أشد حاجة عشان أغير ترتيبها»: the jobs of a department, or of one of its sections,
+ * are shown in an order the editor chooses by dragging or with the arrows.
+ *
+ * The list is the WHOLE column: every active job placed there, each once. A list that names a job the
+ * column no longer has, or misses one it gained, was made from an older chart and is refused with
+ * `STALE_DOCUMENT`, so a reorder never silently drops or misplaces a job somebody else just added.
+ */
+export const OrderChartColumnSchema = z
+  .object({
+    departmentCatalogId: objectId(),
+    /** null: the jobs placed directly under the department. */
+    sectionCatalogId: objectId().nullable(),
+    jobTitleIds: z
+      .array(objectId())
+      .min(1)
+      .max(500)
+      .refine((ids) => new Set(ids.map((id) => id.toLowerCase())).size === ids.length, {
+        message: 'each job once',
+      }),
+  })
+  .strict();
+export type OrderChartColumn = z.infer<typeof OrderChartColumnSchema>;
+
 /** A branch, named — the branches a department or section exists in. */
 export interface OrgChartBranchDto {
   id: string;
@@ -99,6 +124,11 @@ export interface OrgChartJobPlaceDto {
   departmentCatalogId: string;
   sectionCatalogId: string | null;
   shown: boolean;
+  /**
+   * Where the job stands in its column, from 0 (`PUT /org-chart/order`). null until the column is
+   * first ordered, and for a job placed there after that: such jobs follow the ordered ones.
+   */
+  position: number | null;
 }
 
 export interface OrgChartJobDto {

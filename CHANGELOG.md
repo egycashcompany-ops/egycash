@@ -11,6 +11,23 @@ its entry here in the same PR.
 
 ### Added
 
+- **Org chart: drag a job to change its order, and print the chart.**
+  ([org-chart design](docs/12-planning/org-chart-design.md) §2.2, §2.4, §5.7)
+  - «لما باجي أشد حاجة عشان أغير ترتيبها مش بتتشد»: the ↕ grip suggested a drag, but a drop on the job's
+    own column did nothing and no order was stored. Now a job dropped on a row of its own column takes
+    that row's place (a bar shows above or below which row), and the column's new order is saved;
+    dropped on another column it moves there, as before. ↑ / ↓ on each row do the same without
+    dragging, on phones too. The grip shows only where a drag can do something.
+  - The order belongs to the place (`job_title_places.position`), so a job in two sections stands where
+    each puts it. `PUT /platform/org-chart/order` (`jobTitle.edit`) takes a column's whole list in one
+    transaction, refuses a list made from an older chart with `STALE_DOCUMENT`, and is audited as
+    `jobOrder` on the department or section entry. The job's own update never changes a position.
+  - «إمكانية طباعة كل إدارة بشكل A4 بالعرض وزرار لطباعة الكل أو اللى أحدده .. حطهم فوق بجانب زر تعديل
+    الهيكل»: «طباعة» beside «تعديل الهيكل» opens a choice of every department or the ones ticked (the
+    open one ticked first). Each prints on its own A4 sheet in landscape under the company letterhead,
+    drawn as the screen draws it and in the saved order. Up to seven columns print as a tree. A
+    department with more prints as rows of columns, and a long column prints in a compact size.
+
 - **The inactivity sign-out window is set on the settings page, and it is 30 minutes.** «فين أقدر
   أتحكم فى المدة اللى بعدها بيحصل تسجيل خروج لو محدش بيستخدم الحساب الخاص بيه؟ دورت هنا ملقيتش
   /system/settings?dept=general», then «ضيفها في صفحة الإعدادات وخليها 30 دقيقة»

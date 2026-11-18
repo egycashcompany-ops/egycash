@@ -159,7 +159,8 @@ never linked by any write except the operator command.
 ```jsonc
 // A job title's place in the company structure. Descriptive: no headcount, no seat.
 { "jobTitleId": "…", "departmentCatalogId": "…",
-  "sectionCatalogId": "…" | null }        // null = directly under the department
+  "sectionCatalogId": "…" | null,         // null = directly under the department
+  "position": 0 | null }                  // where it stands in its column; null until ordered (org-chart §5.7)
 ```
 Indexes: `ux_jobTitleId_departmentCatalogId_sectionCatalogId` (unique, partial on `isDeleted:false`),
 `ix_departmentCatalogId`, `ix_sectionCatalogId` — built at boot (`migrateJobPlaceIndexes`).

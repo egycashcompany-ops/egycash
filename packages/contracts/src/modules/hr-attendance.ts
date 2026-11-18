@@ -320,6 +320,102 @@ export const ImportPunchesSchema = z
   .strict();
 export type ImportPunches = z.infer<typeof ImportPunchesSchema>;
 
+// ── Quarantined device rows (Task 2 §4) ─────────────────────────────────────
+//
+// The import has always REPORTED its quarantine (§13) and never stored it, which was right while
+// an import was a few hundred rows a relay could send again. It is wrong for the history: 153
+// people are no longer on the machines and therefore have no enrolment link, so their two years of
+// scans quarantine on arrival — and a reason returned in an HTTP response that nobody is reading
+// at 2 AM is the same thing as a dropped row. Kept here, each one is a row HR can act on: link the
+// enrolment, retry, and the history lands. Nothing about a punch is decided here; a quarantined
+// row is not evidence of attendance, it is evidence that a scan could not be placed.
+export const AttendanceQuarantineStatuses = ['pending', 'imported', 'discarded'] as const;
+export const AttendanceQuarantineStatusSchema = z.enum(AttendanceQuarantineStatuses);
+export type AttendanceQuarantineStatus = (typeof AttendanceQuarantineStatuses)[number];
+
+export interface AttendanceQuarantineRowDto {
+  id: string;
+  /** The import batch that FIRST held this row; a retry does not restate it. */
+  batchId: string;
+  deviceId: string;
+  enrollmentNo: string | null;
+  employeeNumber: string | null;
+  at: string;
+  direction: AttendancePunchDirection;
+  /** Why it could not be placed — the latest answer, refreshed by every retry. */
+  reason: string;
+  status: AttendanceQuarantineStatus;
+  retries: number;
+  firstSeenAt: string;
+  lastTriedAt: string | null;
+  resolvedAt: string | null;
+}
+
+export const ListAttendanceQuarantineQuerySchema = z
+  .object({
+    deviceId: z.string().trim().min(1).max(100).optional(),
+    status: AttendanceQuarantineStatusSchema.default('pending'),
+    limit: z.coerce.number().int().min(1).max(500).default(100),
+  })
+  .strict();
+export type ListAttendanceQuarantineQuery = z.infer<typeof ListAttendanceQuarantineQuerySchema>;
+
+/**
+ * One machine id nothing in ECMS answers to, and how much history is waiting on it.
+ *
+ * This is the report §4 asks for: «link or ignore», per id, with the span it would recover — a
+ * list of 153 names with a row count beside each is a morning's work, where 62,000 individual
+ * quarantined rows are not.
+ */
+export interface AttendanceUnmatchedIdDto {
+  deviceId: string;
+  enrollmentNo: string | null;
+  employeeNumber: string | null;
+  reason: string;
+  rows: number;
+  firstAt: string;
+  lastAt: string;
+}
+
+export const RetryAttendanceQuarantineSchema = z
+  .object({
+    deviceId: z.string().trim().min(1).max(100).optional(),
+    enrollmentNo: z.string().trim().min(1).max(64).optional(),
+    limit: z.coerce.number().int().min(1).max(5_000).default(1_000),
+  })
+  .strict();
+export type RetryAttendanceQuarantine = z.infer<typeof RetryAttendanceQuarantineSchema>;
+
+/** A retry is an import, so it answers in the same terms — plus how many are still stuck. */
+export interface AttendanceQuarantineRetryResultDto {
+  tried: number;
+  imported: number;
+  duplicates: number;
+  stillQuarantined: number;
+  onFrozenDays: number;
+  /** The batch the retry imported under, or null when there was nothing pending to try. */
+  batchId: string | null;
+}
+
+/** «Ignore them» — an id that will never be a person here, marked so it stops being offered. */
+export const DiscardAttendanceQuarantineSchema = z
+  .object({
+    ids: z.array(objectId()).min(1).max(1_000).optional(),
+    deviceId: z.string().trim().min(1).max(100).optional(),
+    enrollmentNo: z.string().trim().min(1).max(64).optional(),
+    employeeNumber: z.string().trim().min(1).max(20).optional(),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.ids !== undefined ||
+      v.deviceId !== undefined ||
+      v.enrollmentNo !== undefined ||
+      v.employeeNumber !== undefined,
+    { message: 'name the rows to discard: ids, or a device / enrolment / employee number' },
+  );
+export type DiscardAttendanceQuarantine = z.infer<typeof DiscardAttendanceQuarantineSchema>;
+
 export const ListPunchesQuerySchema = PaginationQuerySchema.extend({
   employeeId: objectId().optional(),
   from: z.coerce.date().optional(),
@@ -355,6 +451,20 @@ export interface ImportPunchesResultDto {
   /** Rows already present (unique {deviceId, at, employeeId}) — idempotent re-import. */
   duplicates: number;
   quarantined: { index: number; reason: string }[];
+  /**
+   * How many of the imported punches landed on a day PAYROLL HAS FROZEN.
+   *
+   * The punches are stored — they are evidence, and evidence is never refused — but the day
+   * records they belong to will not be rewritten by any recompute, because a closed month keeps
+   * the figures it was paid on. Without this number a history backfill would look like it had
+   * worked completely while the part of it that falls inside closed months changed nothing, and
+   * nobody would know which part that was.
+   *
+   * Counted by the punch's own Cairo calendar date. A night shift is keyed to the date it STARTED
+   * (D3), so a scan after midnight is attributed here to the day it happened on rather than to the
+   * shift it belongs to; the count is a warning about a range, not an accounting of rows.
+   */
+  onFrozenDays: number;
 }
 
 // ── Day records (§2, §4) ────────────────────────────────────────────────────
@@ -590,6 +700,87 @@ export const RecomputeAttendanceDaysSchema = z
     message: 'recompute window is capped at 92 days',
   });
 export type RecomputeAttendanceDays = z.infer<typeof RecomputeAttendanceDaysSchema>;
+
+// ── The history backfill (Task 2) ───────────────────────────────────────────
+//
+// `days/recompute` above is capped at 92 days ON PURPOSE: it runs inside the request, and the
+// branch servers call it every few seconds all morning. The backfill is the other job — ~655
+// people across ~23 months, which is roughly 450,000 employee-days — and it cannot be done inside
+// a request at all. So it is a RECORD plus worker jobs: the caller starts one, gets an id, and
+// reads its progress; nothing waits on the HTTP connection.
+export const AttendanceBackfillScopes = ['withPunches', 'all'] as const;
+export const AttendanceBackfillScopeSchema = z.enum(AttendanceBackfillScopes);
+export type AttendanceBackfillScope = (typeof AttendanceBackfillScopes)[number];
+
+/**
+ * `running` → `completed`, or `cancelled` if somebody stops it. There is deliberately no `failed`:
+ * a run whose chunks failed is still a run that finished looking, and `failedChunks` with
+ * `lastError` says so without pretending the whole thing never happened. A finished run with
+ * failures is resumable, which is what one actually wants from it.
+ */
+export const AttendanceBackfillStatuses = ['running', 'completed', 'cancelled'] as const;
+export const AttendanceBackfillStatusSchema = z.enum(AttendanceBackfillStatuses);
+export type AttendanceBackfillStatus = (typeof AttendanceBackfillStatuses)[number];
+
+/** Three years: the machines hold scans from December 2024, and a limit keeps a typo cheap. */
+export const BACKFILL_MAX_SPAN_DAYS = 1_100;
+
+export const StartAttendanceBackfillSchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    /** Omitted means everyone the engine may owe a row. */
+    employeeIds: z.array(objectId()).min(1).max(2_000).optional(),
+    /**
+     * `withPunches` (the default) recomputes only the employee-days that actually carry a scan —
+     * which is what an import changed, and a fraction of the span. `all` walks every day of the
+     * window for every employee, which is what you want after a shift or pattern change, and
+     * which also mints the `absent` / `noSchedule` rows for the days nobody scanned.
+     */
+    scope: AttendanceBackfillScopeSchema.default('withPunches'),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= BACKFILL_MAX_SPAN_DAYS, {
+    path: ['to'],
+    message: `the backfill window is capped at ${String(BACKFILL_MAX_SPAN_DAYS)} days`,
+  });
+export type StartAttendanceBackfill = z.infer<typeof StartAttendanceBackfillSchema>;
+
+export const ListAttendanceBackfillsQuerySchema = z
+  .object({ limit: z.coerce.number().int().min(1).max(50).default(10) })
+  .strict();
+export type ListAttendanceBackfillsQuery = z.infer<typeof ListAttendanceBackfillsQuerySchema>;
+
+/**
+ * A backfill and how far it has got. Every count is READ FROM THE CHUNKS rather than tallied onto
+ * this record as the run goes: a worker killed between finishing a chunk and tallying it would
+ * leave a counter permanently short, and a progress figure that drifts is worse than none.
+ */
+export interface AttendanceBackfillDto {
+  id: string;
+  from: string;
+  to: string;
+  scope: AttendanceBackfillScope;
+  status: AttendanceBackfillStatus;
+  /** How many people the plan covers. */
+  employees: number;
+  totalChunks: number;
+  doneChunks: number;
+  failedChunks: number;
+  /** The denominator of «x of y days recomputed», and its numerator. */
+  totalDays: number;
+  doneDays: number;
+  /** Of the days done: rows written, rows refused because Payroll froze them, days that threw. */
+  computed: number;
+  skippedFrozen: number;
+  failedDays: number;
+  /** 0–100, rounded; 100 only once every chunk has been accounted for. */
+  percent: number;
+  startedAt: string;
+  finishedAt: string | null;
+  lastError: string | null;
+}
 
 /**
  * One derived answer for one employee on one work date — the row shape behind the §15.1
@@ -1179,6 +1370,22 @@ export const HrAttendanceSettingKeys = {
    * somebody should see.
    */
   DecisionWeeklyReviewThreshold: 'hr.attendance.decisionWeeklyReviewThreshold',
+
+  /**
+   * HOW OLD A SCAN MAY BE AND STILL BE IMPORTED, in days. `0` means no limit, and that is the
+   * default.
+   *
+   * It used to be a constant of 90, written as a sanity window against device clock drift. The
+   * branch machines turned out to hold 67,839 scans going back to December 2024, of which 62,505
+   * had never reached ECMS at all: the branch app refuses to offer anything older than the limit,
+   * so every one of those days was invisible here and nobody could see that it was. A window that
+   * was protecting against a mistyped clock was quietly deciding that two years of attendance did
+   * not exist.
+   *
+   * The FUTURE guard is untouched and is not a setting: a scan dated next week is a broken clock
+   * in every case, and no history import needs one.
+   */
+  ImportMaxAgeDays: 'hr.attendance.importMaxAgeDays',
 } as const;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────

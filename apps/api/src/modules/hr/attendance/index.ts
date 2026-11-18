@@ -8,5 +8,7 @@ export * from './day-records';
 export * from './regularizations';
 export * from './decisions';
 export * from './overtime';
+export * from './backfill';
+export * from './quarantine';
 export { registerHrAttendanceSettings } from './attendance.settings';
 export { migrateAttendance } from './attendance.migration';

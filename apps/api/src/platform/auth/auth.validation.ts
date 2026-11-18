@@ -12,6 +12,7 @@ export {
   PasskeyRegistrationVerifySchema,
   RenamePasskeySchema,
   PasskeyIdParamSchema,
+  RefreshSessionSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

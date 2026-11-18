@@ -10,6 +10,12 @@ export const SettingKeys = {
   PasswordRequireComplexity: 'auth.password.requireComplexity',
   LockoutMaxAttempts: 'auth.lockout.maxAttempts',
   LockoutMinutes: 'auth.lockout.minutes',
+  /**
+   * Minutes a session may go unused before it is closed (security architecture §1). Read at every
+   * sign-in and renewal and sent back with it, so the countdown on screen and the rule the server
+   * enforces are the same number. It replaced the `SESSION_IDLE_MINUTES` deployment variable.
+   */
+  SessionIdleMinutes: 'auth.session.idleMinutes',
   TotpEnforcedForPrivileged: 'auth.totp.enforcedForPrivileged',
   /**
    * ADR-035 — sign-in with a passkey (fingerprint / Face ID). Off refuses signing in, adding and

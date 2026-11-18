@@ -22,6 +22,7 @@ import {
   CogIcon,
   FingerprintIcon,
   HistoryIcon,
+  InboxIcon,
   MoonIcon,
   StarIcon,
 } from '../../../../shared/ui/icons';
@@ -55,6 +56,11 @@ const DAY_TONE: Record<AttendanceDayStatus, Tone> = {
   // HISTORICAL. Nothing derives this any more — a single punch is `checkedIn` — so it appears only
   // on days computed before that ruling, and keeps the tone it had while it meant something.
   incomplete: 'danger',
+  // NOT a danger, and that is the point of having it at all. «لا يوجد تسجيل» says ECMS has
+  // concluded nothing about this date — most often because the imported history has not been
+  // re-derived yet. Drawing it red would accuse two years of employees of not turning up; drawing
+  // it as a rest day would hide the thing an operator has to act on. Muted, and labelled exactly.
+  noRecord: 'neutral',
 };
 
 /**
@@ -81,6 +87,10 @@ const DAY_ICON: Record<AttendanceDayStatus, ComponentType<SVGProps<SVGSVGElement
   dayOff: MoonIcon,
   noSchedule: CogIcon,
   incomplete: AlertIcon,
+  // An empty tray: nothing has been filed about this day. Deliberately NOT the moon a rest day
+  // carries, and not the cog that means "go and configure the roster" — this one is answered by
+  // running the backfill or linking a machine id, not by editing a schedule.
+  noRecord: InboxIcon,
 };
 
 const REGULARIZATION_TONE: Record<AttendanceRegularizationStatus, Tone> = {

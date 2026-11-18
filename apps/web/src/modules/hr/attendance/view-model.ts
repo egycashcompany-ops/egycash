@@ -84,6 +84,11 @@ export const toViewStatus = (status: AttendanceDayStatus, isToday: boolean): Vie
       return 'holiday';
     case 'noSchedule':
       return 'noSchedule';
+    // The engine has concluded nothing about this date and no scan was seen for it. The view
+    // status already existed for "no row at all"; now the SERVER says it too, for a date it
+    // resolved rather than one the client found missing, and both arrive at the same word.
+    case 'noRecord':
+      return 'noRecord';
   }
 };
 
@@ -114,7 +119,12 @@ export const toSheetRow = (
   },
 ): SheetRow => {
   const day = row.day;
-  const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
+  // THE TIMES COME FROM EITHER, and the fallback is the point: a scan imported onto a date no
+  // recompute has reached has no stored row, and reading only `day` is what put thirty-nine people
+  // at the door and five sets of times on screen. `day` wins where it exists — it is the concluded
+  // record — and `provisionalDay` is the reading of the punches the server took when it answered.
+  const times = day ?? row.provisionalDay;
+  const inAt = times?.firstInAt == null ? null : cairoMinutes(times.firstInAt);
   return {
     id: row.employeeId,
     name: row.employeeName,
@@ -126,8 +136,8 @@ export const toSheetRow = (
     status: toViewStatus(row.status, row.date.slice(0, 10) === options.today),
     expected: expectedSpan(row.expectedStartAt, row.expectedEndAt),
     inAt,
-    outAt: day?.lastOutAt == null ? null : after(inAt, cairoMinutes(day.lastOutAt)),
-    lateMinutes: day?.lateMinutes ?? 0,
+    outAt: times?.lastOutAt == null ? null : after(inAt, cairoMinutes(times.lastOutAt)),
+    lateMinutes: times?.lateMinutes ?? 0,
     overtimeApproved: day?.approvedOvertimeMinutes ?? 0,
     overtimeDerived: day?.overtimeMinutes ?? 0,
     tags: marksOf(day, options.label),

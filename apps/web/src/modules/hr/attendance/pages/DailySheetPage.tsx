@@ -57,7 +57,25 @@ export const FILTER_STATUSES: Record<Exclude<SheetFilter, 'all'>, AttendanceDayS
   notYetIn: ['pending'],
   absent: ['absent'],
   onLeave: ['onLeave'],
+  // An open question for HR: the roster is incomplete, so no punctuality figure exists for them.
+  noSchedule: ['noSchedule'],
+  // `incomplete` sits here on purpose. It is a legacy value nothing derives any more, and on a
+  // live sheet it means exactly what `noRecord` means — a day nothing current has concluded.
+  noRecord: ['noRecord', 'incomplete'],
+  // The three ways a date is genuinely not a working day for somebody.
+  offDay: ['weekend', 'holiday', 'dayOff'],
 };
+
+/**
+ * EVERY STATUS IS IN EXACTLY ONE COUNTER, and this proves it rather than trusting the list above.
+ *
+ * The defect it guards against is not hypothetical: the grouping covered eight of the statuses and
+ * the server counted thirteen, so five of them were invisible and the band disagreed with its own
+ * total. A status added to contracts and not to a counter here would silently repeat that, and a
+ * status in two counters would double-count people — so the test asserts both directions against
+ * `ATTENDANCE_DAY_STATUSES` itself.
+ */
+export const COUNTED_STATUSES: readonly AttendanceDayStatus[] = Object.values(FILTER_STATUSES).flat();
 
 export const DailySheetPage = (): JSX.Element => {
   const t = useT();
@@ -281,6 +299,12 @@ export const DailySheetPage = (): JSX.Element => {
         }
         summary={{
           employees: counts?.total ?? 0,
+          noSchedule: countOf('noSchedule'),
+          noRecord: countOf('noRecord'),
+          offDay: countOf('offDay'),
+          // The scans this sheet CANNOT show: machine ids linked to nobody. Not part of `total`,
+          // because ECMS does not know who they are — which is exactly why the page has to say it.
+          unlinked: counts?.unlinkedScans ?? null,
           present: countOf('present'),
           late: countOf('late'),
           notYetIn: countOf('notYetIn'),

@@ -58,6 +58,7 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   expectedStartAt: '2026-11-02T07:00:00.000Z',
   expectedEndAt: '2026-11-02T15:00:00.000Z',
   day: day(),
+  provisionalDay: null,
   ...over,
 });
 

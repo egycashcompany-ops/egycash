@@ -42,6 +42,11 @@ export const VIEW_LABEL_KEYS = [
   'notYetIn',
   'absent',
   'onLeave',
+  // The three counters that make the band add up, and the line that names what it cannot count.
+  'noSchedule',
+  'noRecord',
+  'offDay',
+  'unlinkedScans',
   'ofEmployees',
   'rate',
   'allToday',

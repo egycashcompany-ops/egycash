@@ -184,6 +184,7 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   expectedStartAt: `${TODAY}T07:00:00.000Z`,
   expectedEndAt: `${TODAY}T15:00:00.000Z`,
   day: day(),
+  provisionalDay: null,
   ...over,
 });
 
@@ -209,6 +210,9 @@ const summary = (
   dayStart: 9 * 60,
   graceMinutes: 15,
   lastPunchAt: `${TODAY}T15:00:00.000Z`,
+  noRecordDays: 0,
+  noScheduleDays: 0,
+  firstPunchAt: null,
   ...over,
 });
 

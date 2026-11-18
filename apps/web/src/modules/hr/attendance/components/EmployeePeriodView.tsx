@@ -203,6 +203,8 @@ export const EmployeePeriodView = ({
           expectedStartAt: null,
           expectedEndAt: null,
           day: deciding === 'noRow' ? null : deciding,
+          // The dialog decides a DAY, not a reading of one: it needs the stored row or nothing.
+          provisionalDay: null,
         };
 
   return (

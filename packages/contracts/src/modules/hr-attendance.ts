@@ -947,6 +947,19 @@ export interface AttendanceEmployeeDayDto {
   provisional: boolean;
   /** Frozen by payroll — the day is evidence now and no recompute will touch it. */
   frozen: boolean;
+  /**
+   * What the day was, beyond its numbers: a hand-entered punch, an approved correction, a scan at
+   * another branch, a manager's decision. The sheet has carried these as row tags all along; the
+   * employee page and the CSV were the two readers left without them, which is why a month's
+   * export could not say why a figure looked the way it did.
+   */
+  flags: AttendanceDayFlag[];
+  /**
+   * Overtime a manager has released, or null when no row has concluded the day. Distinct from
+   * `figures.overtimeMinutes`, which is what the engine derived and what payroll does not pay
+   * until this number rises to meet it (D5).
+   */
+  approvedOvertimeMinutes: number | null;
   /** Every scan of that date, in order, so the timeline can draw them. */
   punches: { at: string; direction: AttendancePunchDirection; source: AttendancePunchSource }[];
 }
@@ -1031,9 +1044,31 @@ export interface AttendanceSheetRowDto {
 }
 
 /**
- * The AT-6 CSV export — the §15.1 columns plus the two display labels, read from the day rows
- * (frozen and live alike), NEVER re-derived from punches. Range-capped like recompute: an export
- * is a report, not a dump.
+ * THE CSV EXPORT — a report for people, which is what it was not.
+ *
+ * It used to emit the §15.1 feed columns straight off the day rows: `employeeId` as a 24-character
+ * object id, `status` as `checkedIn`, minutes as raw integers, `flags` joined with pipes, no
+ * check-in or check-out time anywhere in the file, and the rows ordered by employee code. The
+ * owner's verdict on his own export of 18 November was that HR could not use it, and he was right:
+ * every column that would answer a question about a person was missing, and every column present
+ * answered a question about the database.
+ *
+ * TWO THINGS CHANGED, and the second is the structural one:
+ *
+ *  1. The columns are the ones a human reads — names, branch, department, job title, times in a
+ *     twelve-hour clock, durations as h:mm, the status in the same words the screen uses, and
+ *     notes written out. `attendance-report.ts` holds that layout.
+ *
+ *  2. IT IS NO LONGER A QUERY OVER DAY DOCUMENTS. It resolves the days exactly as the screens do,
+ *     through the same function, so the file IS the sheet: a person with no stored row still has a
+ *     line, the statuses agree with the ones on screen, and the file inherits the screen's
+ *     filters, its search and its sort instead of its own ordering by code. A report that
+ *     disagreed with the page it was taken from would be worse than no report.
+ *
+ * THE RAW TECHNICAL SHAPE IS GONE RATHER THAN HIDDEN BEHIND AN OPTION. Nothing consumed it: the
+ * three HR buttons were its only callers, and the payroll feed it mirrored never travels as a file
+ * — it is an internal port (`attendance-quantity.port.ts`) read in process. Keeping a second shape
+ * alive for nobody is how a module acquires two answers to one question.
  */
 export const ExportAttendanceQuerySchema = z
   .object({
@@ -1043,14 +1078,30 @@ export const ExportAttendanceQuerySchema = z
     /** The daily sheet's own filters, so the file is the sheet: several branches and sections, ORed. */
     branchId: listQuery(objectId()),
     sectionId: listQuery(objectId()),
-    status: AttendanceDayStatusSchema.optional(),
+    /**
+     * Several statuses, as the sheet's own buckets pass them — it used to take one. A reader who
+     * has filtered the screen to «غائب، لا يوجد تسجيل» and presses export means both.
+     */
+    status: listQuery(AttendanceDayStatusSchema),
+    /** The screen's search box, so the file holds the rows the reader was actually looking at. */
+    search: z.string().trim().min(1).max(100).optional(),
+    /** And the screen's order. Check-in ascending by default, as the sheet opens. */
+    sortBy: AttendanceSheetSortSchema.default('checkIn'),
+    sortDir: z.enum(['asc', 'desc']).default('asc'),
   })
   .strict()
   .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
-  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
-    path: ['to'],
-    message: 'the export window is capped at 92 days',
-  });
+  // ONE EMPLOYEE MAY ASK FOR A YEAR; the whole company may ask for a quarter. The two shapes cost
+  // very different amounts — a day of the sheet resolves every employed person on it — so the cap
+  // follows the shape rather than splitting the endpoint in two.
+  .refine(
+    (v) =>
+      (v.to.getTime() - v.from.getTime()) / 86_400_000 <= (v.employeeId === undefined ? 92 : 366),
+    {
+      path: ['to'],
+      message: 'the export window is capped at 92 days, or 366 days for one employee',
+    },
+  );
 export type ExportAttendanceQuery = z.infer<typeof ExportAttendanceQuerySchema>;
 
 /** Range-capped: recomputation is a repair tool, not a batch job (the scheduler owns bulk). */

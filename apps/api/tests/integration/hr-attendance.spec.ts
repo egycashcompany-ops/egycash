@@ -2413,7 +2413,7 @@ describe('AT-6 — screens, self-service and export', () => {
     expect((await get('hr/attendance/regularizations?status=pendingHr,nonsense', adminToken)).status).toBe(400);
   });
 
-  it('exports the §15.1 columns as CSV, behind attendance.export, audited', async () => {
+  it('exports a report a person can read, behind attendance.export, audited', async () => {
     const emp = await regEmployee();
     await assign(emp.id, GENERAL.id);
     const workday = recentWorkday();
@@ -2430,25 +2430,85 @@ describe('AT-6 — screens, self-service and export', () => {
     const res = await get(`hr/attendance/export?${range}&employeeId=${emp.id}`, adminToken);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/csv');
-    expect(res.headers['content-disposition']).toContain('attendance-export-');
+    // Named after the DATES, not the moment of export.
+    expect(res.headers['content-disposition']).toContain(`attendance-${dateOnlyIso(workday)}.csv`);
 
-    const lines = res.text.trim().split('\n');
-    // The header is the two labels plus the twelve feed fields, in the contract's order.
-    expect(lines[0]).toBe(['employeeCode', 'employeeName', ...ATTENDANCE_FEED_FIELDS].join(','));
-    const row = (lines.find((line) => line.includes(emp.code)) ?? '').split(',');
-    expect(row[0]).toBe(emp.code);
-    expect(row[2]).toBe(emp.id);
-    expect(row[3]).toBe(dateOnlyIso(workday));
-    expect(row[4]).toBe('present');
-    // Only the APPROVED overtime is exported — the derived surplus never leaves the module.
-    expect(row).toHaveLength(14);
+    // EXCEL OPENS IT AS UTF-8 because of this, and Arabic is unreadable without it.
+    expect(res.text.startsWith('\ufeff')).toBe(true);
 
-    // The window is capped like recompute: an export is a report, not a dump.
-    const wide = await get(
-      `hr/attendance/export?from=2024-01-01&to=2025-01-01`,
-      adminToken,
+    const lines = res.text.replace('\ufeff', '').trim().split('\r\n');
+    // The English headers, in the owner's order — this admin's locale is `en`. Every value quoted,
+    // which is also what stops a spreadsheet eating the leading zero of an employee code.
+    expect(lines[0]).toBe(
+      [
+        'Employee code',
+        'Name',
+        'Branch',
+        'Department',
+        'Job title',
+        'Date',
+        'Status',
+        'Check-in',
+        'Check-out',
+        'Worked',
+        'Required',
+        'Late',
+        'Shortfall',
+        'Early leave',
+        'Overtime (calculated)',
+        'Overtime (approved)',
+        'Punches',
+        'Notes',
+      ]
+        .map((header) => `"${header}"`)
+        .join(','),
     );
-    expect(wide.status).toBe(400);
+
+    const row = (lines.find((line) => line.includes(emp.code)) ?? '')
+      .split('","')
+      .map((cell) => cell.replace(/^"|"$/g, ''));
+    expect(row).toHaveLength(18);
+    expect(row[0]).toBe(emp.code);
+    // dd/mm/yyyy, his words — read, not parsed.
+    const [y, m, d] = dateOnlyIso(workday).split('-');
+    expect(row[5]).toBe(`${d}/${m}/${y}`);
+    expect(row[6]).toBe('Present');
+    // THE TIMES, which the old file did not carry at all, on a twelve-hour clock.
+    expect(row[7]).toBe('9:00 am');
+    expect(row[8]).toBe('5:00 pm');
+    // Durations as h:mm. The seeded GENERAL shift is 09:00–17:00 with no break, so a day worked
+    // end to end is exactly the eight hours it required.
+    expect(row[9]).toBe('8:00');
+    expect(row[10]).toBe('8:00');
+    // Late, shortfall, early leave, calculated overtime, approved overtime — all empty rather
+    // than «0:00», because nothing was wrong with this day and five zeros per row is noise.
+    expect(row.slice(11, 16)).toEqual(['', '', '', '', '']);
+    expect(row[16]).toBe('2');
+
+    // A MISSING CHECK-OUT IS BLANK, NEVER 0:00 — the defect the owner reported by name.
+    const half = await regEmployee();
+    await assign(half.id, GENERAL.id);
+    await recordPunch({ employeeId: half.id, at: cairoInstant(workday, '09:40').toISOString() });
+    await recompute(half.id, workday);
+    const halfRes = await get(`hr/attendance/export?${range}&employeeId=${half.id}`, adminToken);
+    const halfRow = (halfRes.text.split('\r\n').find((line) => line.includes(half.code)) ?? '')
+      .split('","')
+      .map((cell) => cell.replace(/^"|"$/g, ''));
+    expect(halfRow[6]).toBe('Checked in only');
+    expect(halfRow[7]).toBe('9:40 am');
+    expect(halfRow[8]).toBe('');
+    // Worked, late, shortfall, early leave and overtime: all five blank, none of them zero.
+    expect(halfRow.slice(9, 10)).toEqual(['']);
+    expect(halfRow.slice(11, 16)).toEqual(['', '', '', '', '']);
+    expect(halfRow[17]).toContain('Check-out missing');
+
+    // The window is capped like recompute: an export is a report, not a dump. 92 days for the
+    // sheet, a year for one employee.
+    expect((await get('hr/attendance/export?from=2024-01-01&to=2025-01-01', adminToken)).status).toBe(400);
+    expect(
+      (await get(`hr/attendance/export?from=2026-01-01&to=2026-06-01&employeeId=${emp.id}`, adminToken))
+        .status,
+    ).toBe(200);
 
     // The export audits ITSELF — once the download has ended (`streamAttendanceExport`: the audit
     // never holds up the file), so on a busy machine the next request can be answered before that

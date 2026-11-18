@@ -374,6 +374,10 @@ class DayRecordService {
           assembled.expectation === null ? null : assembled.expectation.end.toISOString(),
         provisional: stored === null,
         frozen: stored !== null && stored.frozenAt !== null,
+        // From the stored row when one exists and from the derivation otherwise, like the times:
+        // a provisional day still knows that one of its punches was entered by hand.
+        flags: times === null ? [] : [...times.flags],
+        approvedOvertimeMinutes: stored === null ? null : stored.approvedOvertimeMinutes,
         punches: assembled.punches.map((punch) => ({
           at: punch.at.toISOString(),
           direction: punch.direction,
@@ -531,7 +535,7 @@ class DayRecordService {
    * target is about 1,300 employees per branch. `SHEET_CAP` is a guard against a filter nobody
    * meant (every branch at once), not an expected limit.
    */
-  private async resolveSheetDay(
+  async resolveSheetDay(
     query: {
       date: Date;
       branchId?: readonly string[] | undefined;
@@ -922,6 +926,8 @@ class DayRecordService {
           workedMinutes: derived.workedMinutes,
           lateMinutes: derived.lateMinutes,
           earlyLeaveMinutes: derived.earlyLeaveMinutes,
+          shortfallMinutes: derived.shortfallMinutes,
+          requiredMinutes: derived.requiredMinutes,
           overtimeMinutes: derived.overtimeMinutes,
           leaveId: derived.leaveId === null ? null : new Types.ObjectId(derived.leaveId),
           flags: derived.flags,

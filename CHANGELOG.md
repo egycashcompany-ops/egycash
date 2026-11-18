@@ -2336,6 +2336,56 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **HR/attendance: the daily sheet showed five people out of a hundred, and the employee pages
+  showed almost nothing before 17 November — both were reads, and the data was never wrong.**
+  65,579 punches were in ECMS from 2024-12-26 on, the history backfill had run to completion
+  (2,062 of 2,062 chunks, 52,237 days computed, 0 failed), and an audit of all 1,430 enrolments on
+  the المهندسين wall found NO machine id whose employee code disagreed with it. Four defects, each
+  silent.
+  - **The sheet resolved the first hundred employees by code, on every date.** It asked the employee
+    list for `pageSize: 10_000` to mean "everyone", and `BaseRepository.list` clamps pageSize to
+    `MAX_PAGE_SIZE` — 100. So a company of 1,755 answered «total 100» for every day of the year, and
+    the four shown as present were whichever of that day's thirty-nine scanners sorted into the
+    first page. Resolved unpaged now, with the filter and the scope intact and the sheet's own cap
+    as a guard. It cannot page first: the display status comes from the clock and the calendar
+    rather than a stored field, so «how many are absent» can only be read off the whole resolved
+    day — paging first gives a card saying «3 غائب» that means «3 on this page».
+  - **`GET /punches?from=D&to=D` answered zero for a day with seventy-four scans.** `to` coerced to
+    `00:00Z` and was compared `$lte` against the punch instant, so one day asked for a zero-width
+    window and every other window sat two hours inside the previous Cairo day. Both ends are Cairo
+    calendar days now, the window closing at the next midnight exclusive. The day-row windows are
+    normalised too, in the day list and the CSV export, where a time component on `from` silently
+    excluded its own day.
+  - **A day was read from two different sources, so two screens disagreed about it.** The sheet
+    resolved its own answer; the employee page read a status straight off whichever stored rows it
+    was sent, so a date with no row was absent from the month entirely — the days that had punches
+    and no recompute — and a legacy `dayOff` row showed «يوم راحة» over real scans. A day is now
+    DERIVED wherever it is read, by the same pure function the stored rows are written from, which
+    buys one property every screen depends on: what a reader sees is what a recompute would store.
+  - **The counters named eight of the thirteen statuses the server counts.** Everyone in the other
+    five was counted, listed, and in no counter at all — «5 of 100» with ninety-five people
+    unaccounted for. Three counters added, «لا يوجد جدول», «لا يوجد تسجيل» and «يوم راحة», with a
+    test asserting every status is in exactly one.
+  - New `noRecord` («لا يوجد تسجيل»): a derived absence with no row behind it. An absence is a
+    conclusion the engine draws, and a screen must not infer one across two years of history nobody
+    has re-derived. Payroll-neutral, never stored.
+  - An import now derives the days it touched — today and the two either side — so a check-out
+    arriving in a later batch than its check-in turns «حضر فقط» into a full day inside the request.
+    It answers with `daysRecomputed` and `daysLeftToBackfill`, because «imported 26,493» read as
+    «done» and no number anywhere said otherwise. Older days stay the backfill's work.
+  - The employee period reaches a year, with previous/next month arrows that walk whole months back
+    to the employee's first scan, the period in the URL, and a month calendar whose cells are
+    buttons that highlight the day in the daily record.
+  - **New page `/attendance/devices` («أجهزة البصمة»), AT-D4**, behind `attendanceDevice.view` —
+    the screen those two keys were declared page-less for in AT-D1. Each unmatched machine id with
+    its wall, its held scan count and its first and last scan, «ربط» and «تجاهل» per id behind
+    `attendanceDevice.manage`, and the backfill's progress with cancel and resume. It SUGGESTS the
+    exact-code match and never acts on it: machine `102815` belongs to ECMS `0102818`, so a screen
+    that auto-linked by that rule would file one employee's attendance under another.
+  - The sheet also reports the scans it cannot show — how many machine ids are linked to nobody and
+    how many of the date's rows they hold — because a scan belonging to nobody has no employee line
+    to sit on, and saying nothing is how thirty-nine people at the door read as five.
+
 - **Linking a department keeps its English name.** The company list's entries were given their
   Arabic name in English too by the workforce importer, and linking copies the entry's name onto every
   row, so «Top Management», «Fleet», «IT» and «Complaince and Risk» would have read «العليا», «الحركة»,

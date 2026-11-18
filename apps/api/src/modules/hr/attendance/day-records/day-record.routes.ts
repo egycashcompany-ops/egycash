@@ -24,6 +24,8 @@ import {
   listAttendanceSheet,
   listMyAttendanceDays,
   recomputeAttendanceDays,
+  attendanceEmployeePeriod,
+  myAttendancePeriod,
 } from './day-record.controller';
 
 export const buildAttendanceDaysRouter = (): Router => {
@@ -37,6 +39,14 @@ export const buildAttendanceDaysRouter = (): Router => {
     authenticate,
     validate({ query: AttendanceEmployeeSummaryQuerySchema }),
     asyncHandler(myAttendanceSummary),
+  );
+  // Before `/me`, for the same reason `/me/summary` is: the longer literal path must not be
+  // swallowed by it.
+  router.get(
+    '/me/period',
+    authenticate,
+    validate({ query: AttendanceEmployeeSummaryQuerySchema }),
+    asyncHandler(myAttendancePeriod),
   );
   router.get(
     '/me',
@@ -52,6 +62,15 @@ export const buildAttendanceDaysRouter = (): Router => {
     authorize('attendance.view'),
     validate({ query: AttendanceEmployeeSummaryQuerySchema }),
     asyncHandler(attendanceEmployeeSummary),
+  );
+  // Every date of one employee's period, resolved. The same key the rows behind it are governed
+  // by: a resolved day is a reading of those rows, not a second kind of access to them.
+  router.get(
+    '/employee-period',
+    authenticate,
+    authorize('attendance.view'),
+    validate({ query: AttendanceEmployeeSummaryQuerySchema }),
+    asyncHandler(attendanceEmployeePeriod),
   );
   // Before `/` so the literal path is matched as one, and on this router because it answers the
   // same question `attendance.view` already governs — a sheet is a day list that starts from the

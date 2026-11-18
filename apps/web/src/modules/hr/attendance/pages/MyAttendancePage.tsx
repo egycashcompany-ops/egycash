@@ -20,15 +20,15 @@ import { RegularizationsTable } from '../components/RegularizationsTable';
 import { RegularizationDialog } from '../components/RegularizationDialog';
 import { periodRange } from '../components/period';
 import {
-  useMyAttendanceDays,
+  useMyAttendancePeriod,
   useMyAttendanceSummary,
   useMyRegularizations,
 } from '../api/attendance-queries';
 import { useMyEmployeeSummary } from '../../../../platform/home/home-api';
 import { useEmployeePhotoUrl } from '../../employee-management/employees/api/employee-photo';
 
-/** One page of days: 92 is the longest period the picker allows, and 100 is the server's cap. */
-const PAGE_SIZE = 100;
+// No page size any more: `/days/employee-period` answers one entry per calendar DATE rather than a
+// page of stored rows, so there is no page to size and no tail to lose.
 
 export const MyAttendancePage = (): JSX.Element => {
   const t = useT();
@@ -42,11 +42,13 @@ export const MyAttendancePage = (): JSX.Element => {
   }));
   const [filing, setFiling] = useState<string | null>(null);
 
+  // One entry per calendar DATE of the period, not a page of stored rows — so a date with no row
+  // is still drawn, and a period longer than one page no longer loses its tail.
   const dayFilters = useMemo(
-    () => ({ from: period.from, to: period.to, page: 1, pageSize: PAGE_SIZE }),
+    () => ({ from: period.from, to: period.to }),
     [period.from, period.to],
   );
-  const days = useMyAttendanceDays(dayFilters);
+  const days = useMyAttendancePeriod(dayFilters);
   const summary = useMyAttendanceSummary({ from: period.from, to: period.to });
   const regularizations = useMyRegularizations({ page: 1, pageSize: 25 });
   // The caller's own card — the photo, the code and where they sit. The welcome page's endpoint,
@@ -104,7 +106,7 @@ export const MyAttendancePage = (): JSX.Element => {
           branch: profile?.branch?.[locale] ?? null,
           jobTitle: profile?.jobTitle?.[locale] ?? null,
         }}
-        rows={days.data?.items ?? []}
+        rows={days.data ?? []}
         summary={summary.data}
         loading={days.isLoading || summary.isLoading}
         error={summary.isError ? summary.error : days.isError ? days.error : undefined}

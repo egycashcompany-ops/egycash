@@ -599,6 +599,76 @@ describe('the custody transfer, sharing the body', () => {
   });
 });
 
+// A single asset's «نقل» could send a device to ANY branch — one its keeper cannot see, where it
+// vanished from their register. Since 2026-11-18 a new branch is one «نقل إلى فرع» could reach.
+describe('a single asset’s «نقل» to another branch goes only where «نقل إلى فرع» may', () => {
+  const NEWCOMER = String(new Types.ObjectId());
+  const branchKeeper = {
+    ...(ctx as object),
+    permissions: { 'itAsset.assign': 'branch' },
+    branchId: String(HEAD_OFFICE),
+  } as never;
+  const transfer = (input: Record<string, unknown>, who: never = ctx) =>
+    itAssetCustodyService.transfer(HELD, input as never, who, scope);
+  const nothingWritten = () => {
+    expect(mocks.updateAssignment).not.toHaveBeenCalled();
+    expect(mocks.createAssignment).not.toHaveBeenCalled();
+    expect(mocks.updateAsset).not.toHaveBeenCalled();
+    expect(mocks.record).not.toHaveBeenCalled();
+    expect(mocks.emit).not.toHaveBeenCalled();
+  };
+
+  it('a branch the caller’s itAsset.assign does not reach whole — 403, the branch never read', async () => {
+    await expect(transfer({ toBranchId: TANTA }, branchKeeper)).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+    // …and with a new holder too: the person may work anywhere, the device may not go anywhere.
+    await expect(
+      transfer({ toEmployeeId: NEWCOMER, toBranchId: TANTA }, branchKeeper),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(mocks.findBranch).not.toHaveBeenCalled();
+    nothingWritten();
+  });
+
+  it('a branch unknown or no longer active — 400, even for an org-wide keeper', async () => {
+    mocks.findBranch.mockResolvedValueOnce(null);
+    await expect(transfer({ toBranchId: TANTA })).rejects.toBeInstanceOf(ValidationError);
+    mocks.findBranch.mockResolvedValueOnce({ _id: new Types.ObjectId(TANTA), status: 'inactive' });
+    await expect(transfer({ toBranchId: TANTA.toUpperCase() })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    // Asked as the id is spelled.
+    expect(mocks.findBranch).toHaveBeenLastCalledWith(TANTA);
+    nothingWritten();
+  });
+
+  it('the branch it is in, or none named, asks nothing of the branches — a new holder anywhere', async () => {
+    await transfer({ toEmployeeId: NEWCOMER, toBranchId: String(HEAD_OFFICE) }, branchKeeper);
+    await transfer({ toEmployeeId: NEWCOMER }, branchKeeper);
+    expect(mocks.findBranch).not.toHaveBeenCalled();
+    expect(mocks.createAssignment).toHaveBeenCalledTimes(2);
+  });
+
+  it('a live branch the grant reaches whole moves as before', async () => {
+    const twoBranches = {
+      ...(branchKeeper as object),
+      reach: { branchIds: [String(HEAD_OFFICE), TANTA], departments: [] },
+    } as never;
+    await transfer({ toBranchId: TANTA }, twoBranches);
+    expect(mocks.findBranch).toHaveBeenCalledWith(TANTA);
+    expect(mocks.updateAsset).toHaveBeenCalledWith(
+      HELD,
+      expect.objectContaining({ branchId: new Types.ObjectId(TANTA) }),
+      expect.anything(),
+    );
+  });
+
+  it('«نقل إلى فرع» judges its target once, not again for each held asset', async () => {
+    await move([SHELVED, HELD]);
+    expect(mocks.findBranch).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('where a move may go — `GET /it/assets/move-targets`', () => {
   const ASSIUT = new Types.ObjectId('6563a1b2c3d4e5f6a7b8c9d3');
   const CLOSED = new Types.ObjectId('6563a1b2c3d4e5f6a7b8c9d4');

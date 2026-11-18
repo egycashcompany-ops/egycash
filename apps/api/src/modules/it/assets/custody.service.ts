@@ -571,6 +571,16 @@ class ItAssetCustodyService {
     const { assetId, input, at, prepared } = step;
     const named = prepared.named;
     const asset = await this.loadForTransition(assetId, scope, session);
+    // Compared — and stored — as an id is spelled: `objectId()` admits upper-case hex, and an
+    // upper-case copy of the asset's own branch is that branch, not a move to another.
+    const toBranchId = (input.toBranchId ?? String(asset.branchId)).toLowerCase();
+    const sameBranch = toBranchId === String(asset.branchId);
+    // A single asset's «نقل» to ANOTHER branch goes only where «نقل إلى فرع» may (2026-11-18): a
+    // live branch the caller's `itAsset.assign` reaches whole — so a branch keeper can no longer
+    // send a device into a branch they cannot see, where it would vanish from their register. The
+    // same branch, or none named, asks nothing. The move judged its one target before its own
+    // transaction, for all its assets at once.
+    if (!sameBranch && step.move === undefined) await this.assertBranchTarget(ctx, toBranchId);
     await this.assertNoActiveMaintenance(asset, 'transfer', session);
     const open = await itAssetAssignmentRepository.findOpenForAsset(assetId, session);
     if (open === null) {
@@ -583,11 +593,7 @@ class ItAssetCustodyService {
     }
 
     const toEmployeeId = input.toEmployeeId ?? String(open.assignedToEmployeeId);
-    // Compared — and stored — as an id is spelled: `objectId()` admits upper-case hex, and an
-    // upper-case copy of the asset's own branch is that branch, not a move to another.
-    const toBranchId = (input.toBranchId ?? String(asset.branchId)).toLowerCase();
     const sameHolder = toEmployeeId === String(open.assignedToEmployeeId);
-    const sameBranch = toBranchId === String(asset.branchId);
     if (sameHolder && sameBranch) {
       throw new BusinessRuleError(
         'a transfer must change the holder, the branch, or both — this changes neither',
@@ -740,7 +746,8 @@ class ItAssetCustodyService {
    * Person→person, branch→branch, or both. It closes the current interval and opens the next
    * inside a single transaction and writes a single `transferred` event — never return+assign,
    * because read back later the two would be indistinguishable from an unrelated same-day
-   * return and reissue, and the history has to show intent.
+   * return and reissue, and the history has to show intent. A new branch must be one «نقل إلى
+   * فرع» could send it to (`assertBranchTarget`); a new holder may work in any branch.
    */
   async transfer(
     assetId: string,
@@ -761,11 +768,30 @@ class ItAssetCustodyService {
   }
 
   /**
+   * The branch an asset is sent to — by «نقل إلى فرع», or by a single asset's «نقل» to another
+   * branch — must be a live one the caller's `itAsset.assign` reaches as a whole: the test
+   * `moveTargets` lists by, so a dialog built from that list offers nothing refused here. 403 for a
+   * branch the grant does not reach; 400 for one unknown or inactive.
+   */
+  private async assertBranchTarget(ctx: AuthContext, toBranchId: string): Promise<void> {
+    if (!keyReachesBranch(ctx, 'itAsset.assign', toBranchId)) {
+      throw new ForbiddenError('itAsset.assign does not reach this branch');
+    }
+    const branch = await branchRepository.findById(toBranchId);
+    if (branch === null || branch.status !== 'active') {
+      throw new ValidationError([
+        { field: 'body.toBranchId', code: 'UNKNOWN', message: 'branch not found or inactive' },
+      ]);
+    }
+  }
+
+  /**
    * Where «نقل إلى فرع» may go for this caller: every active branch of the organisation their
    * `itAsset.assign` reaches as a whole (`moveTargetBranchIds`). The same branch list and the same
    * test `moveToBranch` applies to the branch it is given, so a picker built from it offers nothing
    * the move would refuse. In the branch options' order (by code). The consumables' «تحويل إلى
-   * فرع» asks the same rule of its own grant (`GET /it/consumables/transfer-targets`).
+   * فرع» asks the same rule of its own grant (`GET /it/consumables/transfer-targets`). A single
+   * asset's «نقل» to another branch is held to the same list (2026-11-18).
    */
   async moveTargets(ctx: AuthContext): Promise<ItMoveTargetsDto> {
     const branches = await branchRepository.listAll();
@@ -808,15 +834,7 @@ class ItAssetCustodyService {
     // upper-case hex, and an upper-case copy of an asset's own branch must read as «already there»
     // — not slip past it and write a move from a branch to itself.
     const toBranchId = input.toBranchId.toLowerCase();
-    if (!keyReachesBranch(ctx, 'itAsset.assign', toBranchId)) {
-      throw new ForbiddenError('itAsset.assign does not reach this branch');
-    }
-    const branch = await branchRepository.findById(toBranchId);
-    if (branch === null || branch.status !== 'active') {
-      throw new ValidationError([
-        { field: 'body.toBranchId', code: 'UNKNOWN', message: 'branch not found or inactive' },
-      ]);
-    }
+    await this.assertBranchTarget(ctx, toBranchId);
     const at = input.at ?? new Date();
     const notes = input.notes ?? null;
     // Nobody new is named, so a held asset's transfer asks HR nothing and prints no paper: one

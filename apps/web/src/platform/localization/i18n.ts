@@ -9609,6 +9609,9 @@ const en: Record<string, string> = {
   'it.custody.pickerNoResults': 'No employee matches that search.',
   'it.custody.pickerNoAccess':
     'Choosing an employee needs the view permission of the IT assets, the mobile lines or the consumables.',
+  'it.custody.pickerNoAccessHandOver':
+    'Choosing a recipient needs the hand-over permission of the IT assets, the mobile lines or the consumables.',
+  'it.custody.pickerBranch': 'Branch: {{name}}',
   'it.custody.pickerExited': 'Left',
   'it.custody.clearPick': 'Clear the selected employee',
   'it.custody.method.sold': 'Sold',
@@ -24833,6 +24836,9 @@ const ar: Record<string, string> = {
   'it.custody.pickerNoResults': 'لا يوجد موظف مطابق لهذا البحث.',
   'it.custody.pickerNoAccess':
     'اختيار الموظف يتطلب صلاحية عرض أصول تقنية المعلومات أو خطوط المحمول أو المستهلكات.',
+  'it.custody.pickerNoAccessHandOver':
+    'اختيار المستلِم يتطلب صلاحية التسليم في أصول تقنية المعلومات أو خطوط المحمول أو المستهلكات.',
+  'it.custody.pickerBranch': 'الفرع: {{name}}',
   'it.custody.pickerExited': 'منتهي الخدمة',
   'it.custody.clearPick': 'إلغاء اختيار الموظف',
   'it.custody.method.sold': 'بيع',

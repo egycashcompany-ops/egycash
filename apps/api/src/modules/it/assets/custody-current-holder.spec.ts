@@ -23,10 +23,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../platform/directory', () => ({
   getDirectoryEmployee: mocks.getDirectoryEmployee,
 }));
-// The move to another branch reads the target branch; nothing here moves one. Mocked so the real
-// organization module is not loaded against the directory mock above.
+// A transfer to another branch reads the target branch (2026-11-18: a live one the caller's
+// `itAsset.assign` reaches). Mocked as a live one, so the real organization module is not loaded
+// against the directory mock above.
 vi.mock('../../../platform/organization', () => ({
-  branchRepository: { findById: vi.fn(async () => null) },
+  branchRepository: { findById: vi.fn(async () => ({ status: 'active' })) },
 }));
 // Who the receipt names is read through the directory too — the same answer the leaver rule is
 // judged on, so the mock below is the one fact both decisions see.
@@ -91,6 +92,8 @@ const ctx = {
   userId: String(new Types.ObjectId()),
   locale: 'ar',
   identity: { displayName: { ar: 'فني', en: 'Technician' } },
+  // Org-wide, so the move to another branch below reaches it.
+  permissions: { 'itAsset.assign': 'organization' },
 } as never;
 const scope = {} as never;
 

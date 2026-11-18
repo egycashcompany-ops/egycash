@@ -104,9 +104,10 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
           {s.unlinked !== null && s.unlinked.identities > 0 && (
             <p className={cn('mt-4 rounded-lg px-3 py-2 text-[13px] leading-relaxed', INK2)}
                style={{ background: 'var(--att-warn-bg, rgba(180,120,0,0.08))' }}>
-              {t('unlinkedScans')
-                .replace('{people}', num(s.unlinked.identities))
-                .replace('{rows}', num(s.unlinked.rows))}
+              {t('unlinkedScans', {
+                people: num(s.unlinked.identities),
+                rows: num(s.unlinked.rows),
+              })}
             </p>
           )}
         </Sheet>

@@ -22,7 +22,8 @@ draft key and Excel file.
   seats, notes clamped to 3 lines, pinned «إجراءات» with pen / swap / «إفراغ الطقم»), the drivers
   panel («السائقون (n)», free drivers first, held-off drivers under «معيّنون على سيارات أخرى» with
   the blue «سيارة أخرى»), the pen dialog in the daily DriverSlot look, the floating save bar and
-  the discard confirm.
+  the discard confirm. Under 1366 px a seat's name may take a second line, so the whole table fits
+  a 1280 screen with nothing under «إجراءات».
 - **Tablet / phone (< 1280 px)** — `FixedTouchBoard`: the daily cards and sheets, always in code
   order, the workshop car in place and unlocked, the seat picker (with the drivers on other cars
   by code), the drivers sheet, the mission / notes / filters sheets, the save bar; a landscape
@@ -31,16 +32,24 @@ draft key and Excel file.
   (`FIXED_ROSTER_DRAFT_KEY`, no date), «تراجع» (50 steps, in memory, lapsing on a new board), every
   edit through the existing `fixed-roster-board.ts` rules plus the new pure `swapDrivers`, all
   gated by `fleetRoster.plan`.
-- **The refused save** keeps the draft and says why in Arabic (`lib/fixed-save-refusal.ts`):
-  the driver by name (from the people list the screen already loads) and the holding car by
-  code, or «سيارة أخرى ليست في هذه الشاشة» when that car is outside the reader's scope. Never an
-  id, never the server's English. For that, the server's refusals gain read-side `details`
-  (`FIXED_CREW_DRIVER_HELD`, `FIXED_CREW_HOLDER` only in scope, `FIXED_CREW_VEHICLE_NOT_ACTIVE`,
-  `FIXED_CREW_PROFILE_INACTIVE`, `FIXED_CREW_NOT_A_DRIVER`, `FIXED_CREW_MISSION_INACTIVE`). Status,
-  error code and English message are unchanged; no rule moved; no names in the body.
+- **The refused save** keeps the draft and says why in Arabic (`lib/fixed-save-refusal.ts`), as
+  a toast titled «تعذّر حفظ الطقم الثابت» with the reason under it (the shared toast cuts its
+  title to one line; the reason wraps whole): the driver by name (from the people list the screen
+  already loads) and the holding car by code, or «سيارة أخرى ليست في هذه الشاشة» when that car is
+  outside the reader's scope. Never an id, never the server's English. For that, the server's
+  refusals gain read-side `details` (`FIXED_CREW_DRIVER_HELD`, `FIXED_CREW_HOLDER` only in scope,
+  `FIXED_CREW_VEHICLE_NOT_ACTIVE`, `FIXED_CREW_PROFILE_INACTIVE`, `FIXED_CREW_NOT_A_DRIVER`,
+  `FIXED_CREW_MISSION_INACTIVE`). Status and error code are unchanged, and so is the English
+  message, except that a holding car outside the caller's scope is now «a vehicle outside your
+  scope» in it instead of its internal id. No rule moved; no names in the body.
+- **A driver held on a car off this board** (another branch's, out of service, deleted) is the
+  daily board's «سيارة أخرى»: listed under «معيّنون على سيارات أخرى», never counted, never
+  dragged, and never offered by a seat's list (touch picker, landscape target) or the pen dialog.
+  No edit here can release him, so a save that seated him could only be refused.
 - **The daily «تعيين السيارات» is unchanged.** Its shared pieces gain optional props only, each
   defaulting to today's output (`ExcelPill`/`ExcelButton` `name`, `DriversButton` `label`,
-  `DriverSlotPicker`/`SeatCell` `emptyLabel`, `AvailableList` `freeBadge`/`emptyLabel`,
+  `DriverSlotPicker`/`SeatCell` `emptyLabel`, `SeatCell` `nameClassName`,
+  `AvailableList` `freeBadge`/`emptyLabel`,
   `MissionSheet` `title`/`notice`, `NotesSheet` `title`/`subtitle`/`maxLength`, `CarCard`
   `workshopLock`/`badges`/`menu`), the new `DriversHeading` export, and `export` keywords on
   existing constants. `roster-optional-props.spec.tsx` pins the daily defaults, and every daily
@@ -58,22 +67,22 @@ Design: `docs/12-planning/fleet-module-design.md` §4.5b (rewritten as built) an
 6. ضفنا زرار التبديل (السواق الأول يبقى التاني والعكس) زي التعيين اليومي، على الكمبيوتر في عمود «إجراءات» وعلى الموبايل بين الخانتين.
 7. لما تنقل سواق من عربية لعربية، الخانة الجديدة بيظهر تحتها «سيُنقل من السيارة 214 عند الحفظ» لحد ما تحفظ.
 8. سلة «إفراغ الطقم» فاضلة زي ما هي: بتفضّي السواقين الاتنين مرة واحدة، والمهمة والملاحظات بيفضلوا، ومن غير سؤال (لو غلطت عندك «تراجع» أو «إلغاء»). وعلى الموبايل والتابلت موجودة بنفس الاسم في قايمة النقط التلاتة.
-9. قايمة السواقين بقت بشكل التعيين اليومي (الاسم وتحته الكود)، والكود بقى تحت الاسم في خانات العربية كمان. مفيش كلمة «متاح» جنب كل واحد، لأن الشاشة دي مش بتسأل مين فاضي النهارده. السواقين اللي ملهمش طقم ثابت بقوا أول القايمة، وبعدهم عنوان «معيّنون على سيارات أخرى» وتحته السواق المتثبت على عربية مش ظاهرة في الشاشة (فرع تاني أو عربية خارج الخدمة) ومكتوب جنبه «سيارة أخرى» بالأزرق، زي ما اليومي بيكتبها. ولو مفيش ولا سواق من غير طقم هيكتب «لا يوجد سائقون بلا طقم ثابت» بدل الجملة القديمة اللي كان فيها «في هذا التاريخ».
+9. قايمة السواقين بقت بشكل التعيين اليومي (الاسم وتحته الكود)، والكود بقى تحت الاسم في خانات العربية كمان. مفيش كلمة «متاح» جنب كل واحد، لأن الشاشة دي مش بتسأل مين فاضي النهارده. السواقين اللي ملهمش طقم ثابت بقوا أول القايمة، وبعدهم عنوان «معيّنون على سيارات أخرى» وتحته السواق المتثبت على عربية مش ظاهرة في الشاشة (فرع تاني أو عربية خارج الخدمة) ومكتوب جنبه «سيارة أخرى» بالأزرق، نفس الكلمة اللي اليومي بيكتبها (اليومي بيكتبها بالأصفر، وهنا فاضلة بالأزرق زي السامبل اللي اعتمدته). ولو مفيش ولا سواق من غير طقم هيكتب «لا يوجد سائقون بلا طقم ثابت» بدل الجملة القديمة اللي كان فيها «في هذا التاريخ».
 10. العربية اللي في الورشة صفها بقى بلون وردي خفيف زي التعيين اليومي، بس طقمها الثابت بيتعدل عادي (مش مقفولة زي اليومي). وعلى الموبايل فاضلة في مكانها برقمها، مش متجمعة تحت ومقفولة.
 11. رقم العربية بقى أبيض عريض زي التعيين اليومي، من غير اللون الخاص بكل عربية. لو عاوز الألوان دي ترجع قولي.
 12. كل الأرقام بقت أرقام إنجليزي (1، 2، 3) زي باقي الشاشات الجديدة، بدل (١، ٢، ٣) اللي كانت في المربعات.
 13. اللي غايب النهارده أو في إجازة مش هيظهر هنا، لأن ده يوم؛ هيفضل ظاهر في «تعيين السيارات» («غائب من الطاقم الثابت») وفي لوحة الحركة.
 14. لما تقف على اسم سواق أو رقم عربية، الكارت اللي بيطلع بيقول عربية النهارده وسواقين النهارده من التعيين اليومي، مش الطقم الثابت — زي ما هو دلوقتي.
 15. زرار التحميل بقى تحت العنوان على الشمال، في نفس السطر اللي فيه عدد العربيات، نفس زرار التعيين اليومي وباقي الشاشات الجديدة: مكتوب عليه «تصدير» وجنبها كلمة إكسيل بالحروف الإنجليزي زي ما هي هناك. زرار واحد بس، ومفيش زرار تاني في العنوان. الملف نفسه زي ما هو: اللي ظاهر بالفلتر، ثمان أعمدة.
-16. لو الحفظ اترفض (مثلًا سواق متثبت على عربية فرع تاني أو على عربية خارج الخدمة، أو سواق ملفه موقوف وهو في طقم العربية اللي بتعدلها)، رسالة الرفض بقت بالعربي وفيها اسم السواق ورقم العربية اللي ماسكاه، ومن غير أي رقم داخلي. ولو العربية دي مش من العربيات اللي تقدر تشوفها (فرع تاني)، الرسالة بتقول «سيارة أخرى ليست في هذه الشاشة» بدل رقمها، زي القايمة. التعديل نفسه مش بيضيع، بيفضل مستني لحد ما تصلّحه أو تلغيه.
+16. لو الحفظ اترفض (مثلًا حد تاني ثبّت نفس السواق على عربية تانية وانت لسه بتعدّل، أو سواق ملفه اتوقف وهو في طقم العربية اللي بتعدلها)، رسالة الرفض بقت بالعربي: فوق «تعذّر حفظ الطقم الثابت» وتحتها السبب كامل، وفيه اسم السواق ورقم العربية اللي ماسكاه، ومن غير أي رقم داخلي. ولو العربية دي مش من العربيات اللي تقدر تشوفها، الرسالة بتقول «سيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة محذوفة)» بدل رقمها. التعديل نفسه مش بيضيع، بيفضل مستني لحد ما تصلّحه أو تلغيه.
 17. الصلاحيات زي ما هي: اللي معاه تخطيط بس هو اللي يعدّل، واللي بيتفرج بس مش هيشوف عمود «إجراءات» ولا شريط الحفظ. والفرع اللي فوق بيحدد العربيات، والسواقين من الشركة كلها.
 18. على الموبايل والتابلت «تعديل» اللي في قايمة النقط التلاتة بقى للملاحظات بس، زي التعيين اليومي؛ المهمة بتتغير من الزرار اللي جنب رقم العربية، والسواقين من خاناتهم. على الكمبيوتر القلم لسه بيفتح الشباك اللي فيه الأربع حاجات مع بعض.
 19. مربع «بلا طقم» فوق بقى لونه أصفر زي «بلا سائق» في التعيين اليومي، والوردي بقى للورشة بس. ولو دوست عليه يفلتر زي ما هو.
 20. شباك «تعديل» على الكمبيوتر بقى شكل خانات السواقين فيه زي التعيين اليومي: السواق المختار اسمه وكوده وجنبه علامة ✕، والخانة الفاضية فيها زرار «اختيار سائق» يفتح القايمة. نفس القواعد: السواق التاني مستني الأول، ونفس الشخص مينفعش في الخانتين.
-21. الملاحظات في الجدول بقت تظهر في تلات سطور بالكتير، ولو أطول تقف عليها تشوفها كلها (دلوقتي كانت سطر واحد بنفس الطريقة). كده الملاحظة الطويلة مش بتكبّر الصف، وعلى شاشات الكمبيوتر الصغيرة الجدول كله داخل من غير ما حاجة تستخبى تحت عمود «إجراءات».
+21. الملاحظات في الجدول بقت تظهر في تلات سطور بالكتير، ولو أطول تقف عليها تشوفها كلها (دلوقتي كانت سطر واحد بنفس الطريقة). كده الملاحظة الطويلة مش بتكبّر الصف، وعلى شاشات الكمبيوتر الصغيرة الجدول كله داخل من غير ما حاجة تستخبى تحت عمود «إجراءات». وعلى شاشة 1280 بالذات، اسم السواق الطويل في خانته بينزل على سطرين بدل ما يوسّع الجدول (من 1366 وأكبر بيفضل سطر واحد).
 22. عدد العربيات اللي تحت العنوان بقى مكتوب بالعربي الصح حسب الرقم: «سيارة واحدة»، «سيارتان»، «3 سيارات»، «11 سيارة». ده في الشاشة دي بس، و«تعيين السيارات» فاضل زي ما هو.
 23. الرقم اللي جنب «السائقون» (فوق القايمة، وعلى زرار السواقين في الموبايل والتابلت) بقى عدد السواقين اللي ملهمش طقم ثابت بس، زي اليومي؛ اللي متثبتين على عربيات مش ظاهرة بيبانوا تحت «معيّنون على سيارات أخرى» ومش محسوبين فيه.
-24. على الكمبيوتر السواق المتثبت على عربية مش ظاهرة في الشاشة مبقاش بيتسحب من القايمة (زي اليومي). لو لازم تحطه، تختاره من خانة السواق في شباك «تعديل» (وعلى الموبايل والتابلت من قايمة الخانة)، والحفظ هيترفض بالرسالة اللي في البند 16 لحد ما يتشال من عربيته الأول.
+24. السواق المتثبت على عربية مش ظاهرة في الشاشة (فرع تاني أو عربية خارج الخدمة) بيبان في قايمة «السائقون» تحت «معيّنون على سيارات أخرى» بس، زي اليومي: مش بيتسحب، ومش بيطلع في قايمة أي خانة ولا في شباك «تعديل»، لا على الكمبيوتر ولا على الموبايل والتابلت. السبب إن الحفظ كان هيترفض دايمًا، لأن العربية اللي ماسكاه مش في الشاشة عشان تفضّيها. لو لازم يتنقل، يتشال من طقم عربيته الأول.
 25. العنوان «الطقم الثابت» وفوقه «الحركة» فاضل فوق في كل المقاسات زي ما اخترت (ج)، فعلى شاشة الكمبيوتر الصغيرة (1280 و1366) بيبان حوالي 5 صفوف كاملة بدل 7 في اليومي، وعلى التابلت وهو بالعرض كارتين بدل تلاتة.
 26. زي ما اخترت (ب): مفيش أي علامة في الشاشة دي على سواق ملفه موقوف أو رخصته منتهية أو مش على وظيفة سائق — لا في الخانة ولا في القايمة ولا في شباك «تعديل»؛ ده بيبان في «تعيين السيارات» بس. ولو الحفظ اترفض بسبب كده، الرسالة بتقول ليه (البند 16).
 
@@ -82,8 +91,9 @@ Design: `docs/12-planning/fleet-module-design.md` §4.5b (rewritten as built) an
 - Phase: Fleet — «الطقم الثابت» redesign (design rev 1.25)
 - Type: feat
 - API: `apps/api/src/modules/fleet/fixed-roster/fixed-roster.service.ts`: the refusals carry
-  `details`, and the new exported `FIXED_CREW_REFUSAL` names the six codes. Ten new integration
-  specs sit at the end of the «fixed crew» describe in `tests/integration/fleet.spec.ts`.
+  `details`, and the new exported `FIXED_CREW_REFUSAL` names the six codes; the held-driver 409
+  no longer puts an out-of-scope holder's vehicle id in its message. Ten new integration specs sit
+  at the end of the «fixed crew» describe in `tests/integration/fleet.spec.ts`.
   `packages/contracts/src/modules/fleet.ts` changes comments only.
 - Web, new files:
   - `lib/fixed-roster-model.ts`, `lib/fixed-save-refusal.ts`, `fixed-roster-spec-sources.ts`
@@ -99,9 +109,9 @@ Design: `docs/12-planning/fleet-module-design.md` §4.5b (rewritten as built) an
   `DriverSlotPicker`). `lib/roster-board.ts` changes one stale comment only.
 - Shared specs re-pointed at `components/roster/FixedDeskBoard.tsx` (the fixed columns moved out
   of the page): `fleet-sort-arrows`, `fleet-vehicle-card-census`, `lib/vehicle-code-selectors`.
-- i18n (ar + en): 19 new keys:
+- i18n (ar + en): 20 new keys:
   - `fleet.fixedRoster.poolEmpty`
-  - 12 × `fleet.fixedRoster.refusal.*`
+  - 13 × `fleet.fixedRoster.refusal.*` (the toast's `title` and twelve reasons)
   - the five forms of `fleet.fixedRoster.carCount.*`
   - `fleet.fixedRoster.matchedRows`
 - i18n removed: five keys nothing reads any more (`fleet.fixedRoster.subtitle`, `.summary`,
@@ -132,7 +142,7 @@ Design: `docs/12-planning/fleet-module-design.md` §4.5b (rewritten as built) an
 ## Verification
 
 Ran the full gate locally in CI order with `CI=true` (`npm ci` skipped: `node_modules` were
-already installed), on tree d2e8b7af, alone:
+already installed), alone, on the tree with the review fixes (the last commit of this PR):
 
 | Step | Result |
 |---|---|
@@ -146,11 +156,17 @@ already installed), on tree d2e8b7af, alone:
 | `node scripts/check-page-registry.mjs` | rc 0 |
 | `node scripts/automation-templates.mjs` | rc 0 |
 | `node scripts/check-formal-arabic.mjs` | rc 0 |
-| `npm run test -w packages/contracts` | rc 0 — 53 files |
-| `npm run test -w apps/api` | rc 0 — 689 files |
-| `npm run test -w apps/web` | rc 0 — 596 files, 14039 tests |
+| `npm run test -w packages/contracts` | rc 0 — 53 files, 1334 tests |
+| `npm run test -w apps/api` | rc 0 — 689 files, 11759 tests |
+| `npm run test -w apps/web` | rc 0 — 596 files, 14044 tests |
 | `npm run build` | rc 0 |
 | `node scripts/dependency-audit.mjs` | rc 0 |
+
+One API case is timing-dependent under the full suite's load and failed in two of the five full
+runs made for this PR (each time passing alone, and passing in the other runs):
+`src/modules/atm/register/import/read-register-workbook.spec.ts` › «ExcelJS read directly WOULD
+spill this fixture (control)», a `TypeError` inside ExcelJS's own stream reader. The ATM module
+is untouched here; it may come back in CI.
 
 What the new and moved specs prove:
 - **The daily screen is unchanged.** The daily specs run unedited and pass: fleet-daily-roster,
@@ -159,32 +175,67 @@ What the new and moved specs prove:
   draft-storage. `roster-optional-props.spec.tsx` pins the daily defaults of every new optional
   prop.
 - **The fixed screen:**
-  - `fleet-fixed-roster.spec.tsx`: the screen and the computer, 65 cases.
+  - `fleet-fixed-roster.spec.tsx`: the screen and the computer, 66 cases (the 1280 seat name).
   - `fleet-fixed-roster-touch.spec.tsx`: phone, portrait, landscape and short, 77 cases.
-  - `lib/fixed-roster-model.spec.ts`: the model, 56 cases.
-  - `lib/fixed-save-refusal.spec.ts`: every refusal, 25 cases. This includes the real-catalog case:
+  - `lib/fixed-roster-model.spec.ts`: the model, 57 cases (a held-off driver is never offered to a
+    seat; the refusal toast is title + reason).
+  - `lib/fixed-save-refusal.spec.ts`: every refusal, 22 cases. This includes the real-catalog case:
     each Arabic line has no Latin letter, and the five plural forms read «سيارة واحدة / سيارتان /
-    3 سيارات / 11 سيارة / 100 سيارة».
-- **The API:** ten new cases in `tests/integration/fleet.spec.ts` › «fixed crew». The whole file
-  passes, 408/408.
-- **In a browser** (Chrome, dark, the real page over seeded data):
-  - Computer at 1920 and 1366: one h1, one `data-export="fixed-roster"`, no stepper, no sideways
-    scroll.
-  - Tablet and phone: the same checks, with the sticky rows and the bottom bar holding.
-  - The daily screen in the same harness still shows its stepper, its tabs, «متاح» and its own
-    count.
+    3 سيارات / 11 سيارة / 100 سيارة»; and the real shared Toaster drawing the longest line whole
+    under its one-line title.
+  - `components/roster/roster-optional-props.spec.tsx`: 25 cases, `SeatCell`'s `nameClassName`
+    among them.
+- **The API:** ten new cases in `tests/integration/fleet.spec.ts` › «fixed crew» (the
+  out-of-scope case also pins both 409 messages). The whole file passes, 408/408.
+- **In a browser** (Chromium, dark, DSF 2: the whole real app — shell, routes, both pages — over
+  a mock API, 20 cars in two branches, two 24-letter names in one row):
+  - Computer at 1920, 1366 and 1280: one h1, one `data-export="fixed-roster"`, no stepper, no
+    sideways scroll; the table frame does not scroll at 1280 (858 in 858; the daily, unchanged,
+    is 952 in 858 there). No raw key, no Latin word but «Excel» (and the shell's «ECMS», «EN»,
+    «⌘K»), no Eastern digit, no truncated text except the notes' designed three-line clamp.
+  - Tablet (1024×768, 768×1024) and phone (375): the same checks; the pen dialog, the phone's
+    drivers sheet and seat picker list no held-off driver as a pick (the sheet lists him under
+    «معيّنون على سيارات أخرى»).
+  - The daily screen in the same harness still shows its stepper, its tabs, «متاح», the amber
+    «سيارة أخرى» and its own count («8 سيارة»).
 
 ## Notes for reviewers
 
 - **The daily screen.** Every change to a shared roster piece is an optional prop whose default is
   today's exact output, or an `export` keyword. `roster-optional-props.spec.tsx` renders each piece
   without the prop (daily facts) and with it (fixed behaviour). The daily specs ran unedited.
-- **Held-off drivers (D1).** A driver the server holds on a car that is not on this board is
-  listed, not counted in «السائقون (n)», and not draggable on a computer (the daily rule). He can
-  still be picked from the pen dialog's seat, or from a seat's list on touch, and the save is then
-  refused with the Arabic line. When that car is out of the caller's scope, the 409's English
-  message still ends with the holder's vehicle id, as before. The web never shows it, the details
-  carry no id, and a later PR could drop it.
+- **Held-off drivers (D1, changed in review).** A driver the server holds on a car that is not on
+  this board is listed, not counted in «السائقون (n)», not draggable, and — since the review — not
+  offered by any seat's list or the pen dialog either (`availableFor` leaves him out when a seat is
+  being filled; `dialogCandidates` is the free pool plus the car's own crew). The first build let
+  the pen dialog and the touch seat list pick him while the desk seat picker did not, and every
+  such save was refused: one rule for the whole screen now, the daily one. The held-driver refusal
+  stays reachable (another planner's save in between) and keeps its Arabic line. The 409's English
+  message no longer ends with an out-of-scope holder's vehicle id («a vehicle outside your scope»);
+  the in-scope message is word for word as before, and a spec pins both.
+- **The refusal toast (review L1).** The shared Toaster draws its title on one truncated line, so
+  the reason (driver, holding car) is the toast's description, which wraps: title
+  `fleet.fixedRoster.refusal.title` «تعذّر حفظ الطقم الثابت». The Toaster itself is unchanged;
+  `fixed-save-refusal.spec.ts` draws the real Toaster with the longest line and checks it.
+- **1280 px (review L2, told 21).** With two 24-letter names in one row the table was 899 px in an
+  858 px frame at 1280×800. `SeatCell` gains an optional `nameClassName` (none by default: the
+  daily seat is as before, and no new width rule enters the daily files) through which the fixed
+  board's `FIXED_SEAT_NAME` (`fixed-desk-cells.tsx`) lets a seat's name take a second line below
+  1366 px; measured in
+  the browser it is now 858 in 858 at 1280 and 944 in 944 at 1366, with about 25 px of slack at
+  1280 for a classic scrollbar. The drivers panel keeps the daily laptop width.
+- **Kept on purpose:** `lib/vehicle-colour.ts` (and its spec) has no production importer after
+  told item 11; it stays so the per-car colours can come back if the owner asks («لو عاوز الألوان
+  دي ترجع قولي»).
+- **Left for later (the daily screen, unchanged by rule):** (a) the daily «تعديل» dialog's name and
+  code still touch in Arabic (`EmployeeName` puts `ms-2` on a left-to-right code); fixed locally
+  here (`FixedCrewDialog`) so the daily stays as approved; (b) the daily notes have no 500-letter
+  cap; (c) the desk mission select (shared `MISSION_BOX`) clips a mission name longer than about
+  «نقل أموال (يومي)» on both screens; (d) no realtime event refreshes this screen
+  (`fleet.fixedCrew` and `fleet.maintenanceVisit` invalidate `['fleet','roster']`, not
+  `['fleet','fixed-roster']`) — before adding it, `readDraft` should overlay only the reader's own
+  rows, or a live refresh would carry another planner's change back in this reader's draft. All
+  four predate this PR; candidates for the open owner items.
 - **Refusal literals.** The six codes are plain strings on both sides, pinned by specs on each
   side; `fixed-save-refusal.spec.ts` also reads the API service source to check they match. No
   contract change.

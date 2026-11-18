@@ -1,6 +1,6 @@
 # hand-off — HUB (integration)
 
-TEMPORARY (inside `.wip-notes/`). Written 2026-11-18. Status: IN PROGRESS (see the end).
+TEMPORARY (inside `.wip-notes/`). Written 2026-11-18. Status: DONE — gate run 2 green, commit 035ef175.
 
 ## Done
 - i18n merge (`apps/web/src/platform/localization/i18n.ts`): 19 keys ×2 (core 13 + desk 6; touch
@@ -30,3 +30,37 @@ TEMPORARY (inside `.wip-notes/`). Written 2026-11-18. Status: IN PROGRESS (see t
   never linted. `.wip-notes/` does not exist in the PR (removed before it), so the gate's lint
   step mirrors CI with `--ignore-pattern ".wip-notes/**"` on the root pass; apps/api and apps/web
   are linted exactly as `npm run lint` does.
+
+## Gate run 1 (HEAD d508fcd7, 08:54–09:25 UTC) — summary-run1.txt in scratch gate-out/
+- 00 cleanroom 0 · 01 0 · 03 0 · 04 lint rc=1 (the `.wip-notes/fixed-build/workflow.js` problem
+  above — apps were never reached) · 05–11 0 · 12 api rc=1: ONE case, 1/11759, in
+  `src/modules/atm/register/import/read-register-workbook.spec.ts` «ExcelJS read directly WOULD
+  spill this fixture (control)» — `TypeError … reading 'sheets'` inside ExcelJS's stream reader
+  under the full-suite load (a race in the CONTROL leg: a worksheet entry parsed before
+  `xl/workbook.xml`). Not this PR's code (ATM, untouched); passes 3/3 alone
+  (`--maxWorkers=1`, logs `atm-workbook-{1,2,3}.log`). · 13 web 0 (596 files, 14039 tests) ·
+  14 build 0 · 15 audit 0 · 99 git-status 0 lines (the parent's WIP commit d2e8b7af holds the tree).
+- Lint re-run alone with the notes folder ignored on the root pass: rc 0 (one pre-existing
+  warning in HR's ChangeCodeDialog.tsx).
+- gate.sh step 04 now mirrors CI without the notes folder (see «Gate notes»).
+
+## Owner pictures (dark, DSF 2) — scratch fixed-build/owner/
+fixed-dark (desk company 1920), fixed-branch-dark (desk, 8 cars: «8 سيارات», the held-off driver
+under «معيّنون على سيارات أخرى»), fixed-edit-dark (the pen dialog «تعديل · 150»), fixed-tablet-dark
+(1180×820), fixed-tablet-portrait-dark (820×1180), fixed-phone-dark (390×844),
+fixed-phone-sheet-dark (the drivers sheet: no date, no «متاح», «سيارة أخرى»), fixed-draft-dark (the
+save bar), fixed-1366-dark (5 full rows — told 25); the daily twins daily-dark, daily-branch-dark,
+daily-tablet-dark, daily-tablet-portrait-dark, daily-phone-dark, daily-phone-sheet-dark,
+daily-1366-dark (the daily unchanged: stepper, «السائقون المتاحون / غير المتاحين», «متاح», its count
+«8 سيارة» as before). Harness: scratch fixed-build/owner-harness/ (zz files copied into apps/web
+only while shooting, removed after).
+
+## Gate run 2 (HEAD d2e8b7af, 09:31 UTC) — summary.txt in scratch gate-out/
+Every step rc 0: 00 cleanroom 0 lines · 01 · 03 · 04 lint (183s) · 05 typecheck · 06 · 07 · 08 ·
+09 · 10 formal · 11 contracts (53 files) · 12 api (689 files, 1436s — the ATM control case passed)
+· 13 web (596 files, 14039 tests) · 14 build · 15 audit · 99 git-status 0 lines.
+
+## Commit
+`035ef175` (signed, author Mohamed Hatem, committer Claude) — EMPTY: the parent's WIP commit
+d2e8b7af had already recorded every build file, so `git add -A -- . ':!.wip-notes'` staged
+nothing; the commit carries the build's message and marks the green gate. Not pushed.

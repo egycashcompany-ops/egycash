@@ -131,7 +131,48 @@ Design: `docs/12-planning/fleet-module-design.md` §4.5b (rewritten as built) an
 
 ## Verification
 
-GATE_RESULTS
+Ran the full gate locally in CI order with `CI=true` (`npm ci` skipped: `node_modules` were
+already installed), on tree d2e8b7af, alone:
+
+| Step | Result |
+|---|---|
+| no `zz-*` scratch under `apps` | 0 files |
+| `node scripts/check-secrets.mjs` | rc 0 |
+| `npm run build -w packages/contracts` | rc 0 |
+| `npm run lint` (root, apps/api, apps/web) | rc 0 |
+| `npm run typecheck --workspaces --if-present` | rc 0 |
+| `node scripts/gen-permission-matrix.mjs --check` | rc 0 |
+| `node scripts/check-flag-expiry.mjs` | rc 0 |
+| `node scripts/check-page-registry.mjs` | rc 0 |
+| `node scripts/automation-templates.mjs` | rc 0 |
+| `node scripts/check-formal-arabic.mjs` | rc 0 |
+| `npm run test -w packages/contracts` | rc 0 — 53 files |
+| `npm run test -w apps/api` | rc 0 — 689 files |
+| `npm run test -w apps/web` | rc 0 — 596 files, 14039 tests |
+| `npm run build` | rc 0 |
+| `node scripts/dependency-audit.mjs` | rc 0 |
+
+What the new and moved specs prove:
+- **The daily screen is unchanged.** The daily specs run unedited and pass: fleet-daily-roster,
+  fleet-roster-touch, fleet-roster-filter-row, fleet-roster-licence, fleet-roster-picker,
+  roster-shared, roster-board, roster-layout, daily-roster-board, roster-view, useDraftBoard and
+  draft-storage. `roster-optional-props.spec.tsx` pins the daily defaults of every new optional
+  prop.
+- **The fixed screen:**
+  - `fleet-fixed-roster.spec.tsx`: the screen and the computer, 65 cases.
+  - `fleet-fixed-roster-touch.spec.tsx`: phone, portrait, landscape and short, 77 cases.
+  - `lib/fixed-roster-model.spec.ts`: the model, 56 cases.
+  - `lib/fixed-save-refusal.spec.ts`: every refusal, 25 cases. This includes the real-catalog case:
+    each Arabic line has no Latin letter, and the five plural forms read «سيارة واحدة / سيارتان /
+    3 سيارات / 11 سيارة / 100 سيارة».
+- **The API:** ten new cases in `tests/integration/fleet.spec.ts` › «fixed crew». The whole file
+  passes, 408/408.
+- **In a browser** (Chrome, dark, the real page over seeded data):
+  - Computer at 1920 and 1366: one h1, one `data-export="fixed-roster"`, no stepper, no sideways
+    scroll.
+  - Tablet and phone: the same checks, with the sticky rows and the bottom bar holding.
+  - The daily screen in the same harness still shows its stepper, its tabs, «متاح» and its own
+    count.
 
 ## Notes for reviewers
 

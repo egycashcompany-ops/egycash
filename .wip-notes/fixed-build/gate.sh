@@ -11,7 +11,10 @@ run() { local n="$1"; shift; local start=$(date +%s); "$@" > "$G/$n.log" 2>&1; l
 run 01-secrets node scripts/check-secrets.mjs
 echo "02-npm-ci skipped (CI only; node_modules installed)" >> $G/summary.txt
 run 03-contracts-build npm run build -w packages/contracts
-run 04-lint npm run lint
+# `npm run lint` minus the temporary notes folder: CI never sees `.wip-notes/` (removed before the PR),
+# and its workflow.js (harness globals) would stop the root pass before apps/api and apps/web are linted.
+lint() { npx eslint . --ignore-pattern "apps/api/**" --ignore-pattern "apps/web/**" --ignore-pattern ".wip-notes/**" && npx eslint apps/api && npx eslint apps/web; }
+run 04-lint lint
 run 05-typecheck npm run typecheck --workspaces --if-present
 run 06-perm node scripts/gen-permission-matrix.mjs --check
 run 07-flags node scripts/check-flag-expiry.mjs

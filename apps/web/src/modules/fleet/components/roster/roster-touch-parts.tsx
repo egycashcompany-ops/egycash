@@ -134,12 +134,19 @@ export const DayStepper = ({
 };
 
 /** The Excel action — the computer's green download, at 44px. */
-export const ExcelButton = ({ onExport }: { onExport: () => void }): JSX.Element => {
+export const ExcelButton = ({
+  onExport,
+  name = 'roster',
+}: {
+  onExport: () => void;
+  /** The screen's export hook (`data-export`) — the daily board's own by default. */
+  name?: string | undefined;
+}): JSX.Element => {
   const t = useT();
   return (
     <button
       type="button"
-      data-export="roster"
+      data-export={name}
       aria-label={t('fleet.export.excel')}
       title={t('fleet.export.excel')}
       onClick={onExport}
@@ -347,19 +354,23 @@ export const DriversButton = ({
   count,
   onOpen,
   compact = false,
+  label,
 }: {
   count: number;
   onOpen: () => void;
   compact?: boolean;
+  /** Its name (aria-label and title) — the day's «السائقون المتاحون» by default. */
+  label?: string | undefined;
 }): JSX.Element => {
   const t = useT();
+  const name = label ?? t('fleet.roster.availableTitle');
   return (
     <button
       type="button"
       data-open-pool="true"
       onClick={onOpen}
-      aria-label={t('fleet.roster.availableTitle')}
-      title={t('fleet.roster.availableTitle')}
+      aria-label={name}
+      title={name}
       className={cn(
         'flex h-12 shrink-0 items-center gap-1.5 rounded-lg bg-emerald-700 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-800 active:bg-emerald-900 dark:bg-emerald-600 dark:hover:bg-emerald-500',
         compact ? 'px-2.5' : 'pe-2.5 ps-3 text-sm',
@@ -471,11 +482,17 @@ export const MissionSheet = ({
   missions,
   onPick,
   onClose,
+  title,
+  notice,
 }: {
   row: FleetRosterRowDto | null;
   missions: readonly MissionOption[];
   onPick: (id: string | null) => void;
   onClose: () => void;
+  /** The sheet's title — the day's «تعيين السيارة {{code}}» by default. */
+  title?: string | undefined;
+  /** A line above the options (a catalog that failed or is empty) — none by default. */
+  notice?: ReactNode;
 }): JSX.Element => {
   const t = useT();
   return (
@@ -483,9 +500,17 @@ export const MissionSheet = ({
       name="mission"
       open={row !== null}
       onClose={onClose}
-      title={t('fleet.roster.assignTitle', { code: row?.code ?? '' })}
+      title={title ?? t('fleet.roster.assignTitle', { code: row?.code ?? '' })}
       subtitle={t('fleet.roster.fields.mission')}
     >
+      {notice !== undefined && notice !== null && (
+        <p
+          data-mission-notice="true"
+          className="px-4 pb-2 pt-1 text-[13px] leading-5 text-slate-500 dark:text-slate-400"
+        >
+          {notice}
+        </p>
+      )}
       <div className="divide-y divide-slate-100 pb-2 dark:divide-slate-800/80" role="menu">
         <OptionRow on={row?.missionTypeId === null} onClick={() => onPick(null)} name="none">
           {t('fleet.fixedRoster.noMissionType')}
@@ -635,10 +660,19 @@ export const NotesSheet = ({
   row,
   onSave,
   onClose,
+  title,
+  subtitle,
+  maxLength,
 }: {
   row: FleetRosterRowDto | null;
   onSave: (notes: string) => void;
   onClose: () => void;
+  /** The sheet's title — the day's «تعيين السيارة {{code}}» by default. */
+  title?: string | undefined;
+  /** Its subtitle — the day's «تعديل التعيين» by default. */
+  subtitle?: string | undefined;
+  /** The note's cap in letters — none by default. */
+  maxLength?: number | undefined;
 }): JSX.Element => {
   const t = useT();
   const [text, setText] = useState('');
@@ -650,8 +684,8 @@ export const NotesSheet = ({
       name="notes"
       open={row !== null}
       onClose={onClose}
-      title={t('fleet.roster.assignTitle', { code: row?.code ?? '' })}
-      subtitle={t('fleet.roster.editAssignment')}
+      title={title ?? t('fleet.roster.assignTitle', { code: row?.code ?? '' })}
+      subtitle={subtitle ?? t('fleet.roster.editAssignment')}
       footer={
         <div className="flex items-center gap-2.5">
           <Button data-save-notes="true" onClick={() => onSave(text)} className="min-h-12 flex-1">
@@ -669,6 +703,7 @@ export const NotesSheet = ({
             data-notes-input="true"
             rows={4}
             textScale="comfortable"
+            maxLength={maxLength}
             value={text}
             onChange={(event) => setText(event.target.value)}
             className="min-h-28"

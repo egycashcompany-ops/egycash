@@ -201,6 +201,7 @@ export const SeatCell = ({
   searchIndex,
   onDrop,
   onClear,
+  emptyLabel,
 }: {
   row: FleetRosterRowDto;
   slot: DutySlot;
@@ -215,6 +216,8 @@ export const SeatCell = ({
   searchIndex: ReadonlyMap<string, DriverSearchRecord>;
   onDrop: (row: FleetRosterRowDto, slot: DutySlot, employeeId: string) => void;
   onClear: (row: FleetRosterRowDto, slot: DutySlot) => void;
+  /** The picker's "nobody to offer" line — unset: the picker's own (the day's sentence). */
+  emptyLabel?: string | undefined;
 }): JSX.Element => {
   const t = useT();
   const employeeId = row[slot];
@@ -309,6 +312,7 @@ export const SeatCell = ({
             slotKey={key}
             label={label}
             onSelect={(id) => onDrop(row, slot, id)}
+            emptyLabel={emptyLabel}
           />
         </div>
       </div>

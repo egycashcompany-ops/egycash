@@ -101,6 +101,32 @@ export const DriverTabs = ({
   );
 };
 
+/**
+ * ONE list's heading in the tabs' place — a board whose drivers are one list (the standing crew)
+ * says «السائقون (n)» in the selected tab's face: the same box, the same emerald words, the same
+ * count, and no tab role, because there is nothing to switch to. The face carries
+ * `data-drivers-heading`, so a computer's panel can size it as it sizes the tabs.
+ */
+export const DriversHeading = ({
+  label,
+  count,
+  className,
+}: {
+  label: string;
+  count: number;
+  className?: string | undefined;
+}): JSX.Element => (
+  <div className={cn('flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800/80', className)}>
+    <h2
+      data-drivers-heading="true"
+      className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg bg-white px-2 text-sm font-semibold text-emerald-800 shadow-sm ring-1 ring-slate-900/5 dark:bg-slate-700 dark:text-emerald-200 dark:ring-white/10"
+    >
+      <span className="truncate">{label}</span>
+      <Count value={count} className="text-xs font-medium opacity-80" />
+    </h2>
+  </div>
+);
+
 /** «ابحث بالاسم أو الكود…» over the list on show — 44px, 16px words (no zoom on a phone). */
 export const DriverSearch = ({
   value,
@@ -235,6 +261,8 @@ export const AvailableList = ({
   onDragDriver,
   hoverCard = false,
   part = 'all',
+  freeBadge = true,
+  emptyLabel,
 }: {
   options: DriverOptions;
   person: PersonOf;
@@ -253,6 +281,13 @@ export const AvailableList = ({
   onDragDriver?: ((employeeId: string | null) => void) | undefined;
   hoverCard?: boolean;
   part?: 'all' | 'list' | 'licence';
+  /**
+   * «متاح» on a free row — the day's word, said by default. A board that does not ask who is free
+   * today (the standing crew) leaves it off: every free row is simply a driver with no seat.
+   */
+  freeBadge?: boolean | undefined;
+  /** Both "nobody to offer" lines — the day's sentence by default. */
+  emptyLabel?: string | undefined;
 }): JSX.Element | null => {
   const t = useT();
   const look = onPick === null && onIdlePick === undefined && !draggable;
@@ -281,11 +316,11 @@ export const AvailableList = ({
           </bdi>
         )}
       </Badge>
-    ) : (
+    ) : freeBadge ? (
       <Badge tone="success" size="sm" className="shrink-0">
         {t('fleet.roster.free')}
       </Badge>
-    );
+    ) : null;
     // In the licence block a seated driver says where, as the board always did — and one held
     // off the board says that it is another car.
     const extra =
@@ -460,7 +495,7 @@ export const AvailableList = ({
       <div>
         {occupantRow}
         <p className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
-          {t('fleet.roster.availableEmpty')}
+          {emptyLabel ?? t('fleet.roster.availableEmpty')}
         </p>
         {part === 'all' && licenceBlock}
       </div>
@@ -495,7 +530,9 @@ export const AvailableList = ({
           data-available-empty={searched ? 'search' : 'day'}
           className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400"
         >
-          {t(emptyLine)}
+          {emptyLine === 'fleet.roster.availableEmpty' && emptyLabel !== undefined
+            ? emptyLabel
+            : t(emptyLine)}
         </p>
       ) : (
         <ul className="divide-y divide-slate-100 dark:divide-slate-800/80">

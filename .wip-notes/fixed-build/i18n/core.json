@@ -1,0 +1,54 @@
+{
+  "fleet.fixedRoster.poolEmpty": {
+    "ar": "لا يوجد سائقون بلا طقم ثابت",
+    "en": "Every driver is on a fixed crew"
+  },
+  "fleet.fixedRoster.refusal.held": {
+    "ar": "تعذّر الحفظ: السائق {{name}} في الطقم الثابت للسيارة {{code}}.",
+    "en": "Not saved: driver {{name}} is on the fixed crew of vehicle {{code}}."
+  },
+  "fleet.fixedRoster.refusal.heldUnnamed": {
+    "ar": "تعذّر الحفظ: أحد السائقين في الطقم الثابت للسيارة {{code}}.",
+    "en": "Not saved: one of the drivers is on the fixed crew of vehicle {{code}}."
+  },
+  "fleet.fixedRoster.refusal.heldElsewhere": {
+    "ar": "تعذّر الحفظ: السائق {{name}} في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة خارج الخدمة).",
+    "en": "Not saved: driver {{name}} is on the fixed crew of another vehicle that is not on this screen (another branch, or a vehicle out of service)."
+  },
+  "fleet.fixedRoster.refusal.heldElsewhereUnnamed": {
+    "ar": "تعذّر الحفظ: أحد السائقين في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة خارج الخدمة).",
+    "en": "Not saved: one of the drivers is on the fixed crew of another vehicle that is not on this screen (another branch, or a vehicle out of service)."
+  },
+  "fleet.fixedRoster.refusal.profileInactive": {
+    "ar": "تعذّر الحفظ: ملف السائق {{name}} موقوف، فلا يمكن وضعه في طقم ثابت.",
+    "en": "Not saved: driver {{name}}’s fleet profile is switched off, so he cannot be on a fixed crew."
+  },
+  "fleet.fixedRoster.refusal.profileInactiveUnnamed": {
+    "ar": "تعذّر الحفظ: ملف أحد السائقين موقوف، فلا يمكن وضعه في طقم ثابت.",
+    "en": "Not saved: one driver’s fleet profile is switched off, so he cannot be on a fixed crew."
+  },
+  "fleet.fixedRoster.refusal.notADriver": {
+    "ar": "تعذّر الحفظ: {{name}} ليس على وظيفة سائق.",
+    "en": "Not saved: {{name}} does not hold a driving seat."
+  },
+  "fleet.fixedRoster.refusal.notADriverUnnamed": {
+    "ar": "تعذّر الحفظ: أحد المختارين ليس على وظيفة سائق.",
+    "en": "Not saved: one of the chosen people does not hold a driving seat."
+  },
+  "fleet.fixedRoster.refusal.vehicleNotActive": {
+    "ar": "تعذّر الحفظ: السيارة {{code}} لم تعد في الخدمة، فلا يمكن حفظ طقم لها.",
+    "en": "Not saved: vehicle {{code}} is no longer in service, so it cannot carry a crew."
+  },
+  "fleet.fixedRoster.refusal.missionInactive": {
+    "ar": "تعذّر الحفظ: نوع المهمة المختار لم يعد متاحًا — اختر نوعًا آخر.",
+    "en": "Not saved: the chosen mission type is no longer available — choose another."
+  },
+  "fleet.fixedRoster.refusal.needsFirst": {
+    "ar": "تعذّر الحفظ: عيّن السائق الأول قبل الثاني.",
+    "en": "Not saved: assign driver 1 before driver 2."
+  },
+  "fleet.fixedRoster.refusal.generic": {
+    "ar": "تعذّر حفظ الطقم الثابت، وتعديلاتك باقية — راجع السيارات المعدَّلة ثم أعد المحاولة.",
+    "en": "The fixed crews were not saved; your changes are kept — check the edited vehicles and try again."
+  }
+}

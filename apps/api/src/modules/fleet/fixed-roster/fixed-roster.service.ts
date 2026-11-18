@@ -17,6 +17,7 @@
 // daily plan enforces, and the second is checked against the END STATE of the whole board — a
 // payload that claims a driver another row still holds is refused rather than duplicating them.
 import {
+  ErrorCodes,
   type AuditChange,
   type FleetFixedCrewRowDto,
   type FleetFixedRosterDto,
@@ -24,7 +25,7 @@ import {
   type SaveFleetFixedCrewRow,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
-import { ConflictError, ValidationError } from '../../../shared/errors';
+import { AppError, ValidationError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
@@ -86,6 +87,35 @@ const rowDrivers = (row: SaveFleetFixedCrewRow): string[] =>
 
 /** A row that puts somebody on a car, as opposed to one that only empties it. */
 const assigns = (row: SaveFleetFixedCrewRow): boolean => rowDrivers(row).length > 0;
+
+/**
+ * The refusal DETAILS — what lets the screen say WHICH driver and WHICH car, in its own words.
+ *
+ * Every refusal below keeps its status, its error code and its English message; that message is
+ * for the logs and is never shown. What a reader needs is in `details`, as plain facts the client
+ * can resolve: the employee id (the screen names the driver from the people list it already has),
+ * the car's CODE, the mission type id. Never a name — an error body is not a way around the
+ * permission that gates names — and never the id of a car the caller cannot read.
+ *
+ * These are string literals on purpose, pinned on BOTH sides — here, by the fixed-crew specs of
+ * tests/integration/fleet.spec.ts, and in the web's refusal line, by its own spec
+ * (apps/web/src/modules/fleet/lib/fixed-save-refusal.ts). No contract field carries them, so a
+ * rename here is a change the web side must make too.
+ */
+export const FIXED_CREW_REFUSAL = {
+  /** A payload driver another (unsent) row still holds. `message` = the employee id. */
+  held: 'FIXED_CREW_DRIVER_HELD',
+  /** Beside `held`, ONLY when the holding car reads in the caller's scope. `message` = its code. */
+  holder: 'FIXED_CREW_HOLDER',
+  /** A crewed car that is not `active`. `message` = its code. */
+  vehicleNotActive: 'FIXED_CREW_VEHICLE_NOT_ACTIVE',
+  /** The driver's fleet profile exists and is switched off. `message` = the employee id. */
+  profileInactive: 'FIXED_CREW_PROFILE_INACTIVE',
+  /** The employee holds no driving seat. `message` = the employee id. */
+  notADriver: 'FIXED_CREW_NOT_A_DRIVER',
+  /** The mission type is not a live `missionType`. `message` = the catalog item id. */
+  missionInactive: 'FIXED_CREW_MISSION_INACTIVE',
+} as const;
 
 interface PendingAudit {
   entityId: string;
@@ -180,9 +210,17 @@ class FleetFixedRosterService {
     for (const row of input.rows.filter(assigns)) {
       const vehicle = vehicles.get(row.vehicleId);
       if (vehicle !== undefined && vehicle.status !== 'active') {
-        throw new ConflictError(
-          `vehicle ${vehicle.code} is ${vehicle.status} and cannot be crewed (§4.1)`,
-        );
+        const message = `vehicle ${vehicle.code} is ${vehicle.status} and cannot be crewed (§4.1)`;
+        // A payload car was read IN the caller's scope just above, so its code may travel.
+        throw new AppError(ErrorCodes.DUPLICATE, 409, message, {
+          details: [
+            {
+              field: 'vehicleCode',
+              code: FIXED_CREW_REFUSAL.vehicleNotActive,
+              message: vehicle.code,
+            },
+          ],
+        });
       }
     }
 
@@ -224,6 +262,7 @@ class FleetFixedRosterService {
             code: 'UNKNOWN',
             message: 'this employee does not hold a driving seat',
           },
+          { field: 'driverEmployeeId', code: FIXED_CREW_REFUSAL.notADriver, message: employeeId },
         ]);
       }
       if (switchedOff.has(employeeId)) {
@@ -232,6 +271,11 @@ class FleetFixedRosterService {
             field: 'body.rows.driverEmployeeId',
             code: 'UNKNOWN',
             message: 'this driver’s fleet profile is inactive',
+          },
+          {
+            field: 'driverEmployeeId',
+            code: FIXED_CREW_REFUSAL.profileInactive,
+            message: employeeId,
           },
         ]);
       }
@@ -254,6 +298,11 @@ class FleetFixedRosterService {
             code: 'UNKNOWN',
             message: 'mission type not found or inactive',
           },
+          {
+            field: 'missionTypeId',
+            code: FIXED_CREW_REFUSAL.missionInactive,
+            message: missionTypeId,
+          },
         ]);
       }
     }
@@ -271,12 +320,26 @@ class FleetFixedRosterService {
         if (payloadVehicles.has(String(row.vehicleId))) continue;
         for (const slot of [row.driver1EmployeeId, row.driver2EmployeeId]) {
           if (slot !== null && payloadDrivers.has(String(slot))) {
+            // The holder is read IN THE CALLER'S SCOPE: a car another branch owns is not this
+            // caller's to name, so its code is added only when it reads — and its id never is.
             const holder = await fleetVehicleRepository
               .getById(String(row.vehicleId), scope)
               .catch(() => null);
-            throw new ConflictError(
-              `driver ${String(slot)} already belongs to the fixed crew of vehicle ${holder?.code ?? String(row.vehicleId)}; include that vehicle's row to release them`,
-            );
+            const message = `driver ${String(slot)} already belongs to the fixed crew of vehicle ${holder?.code ?? String(row.vehicleId)}; include that vehicle's row to release them`;
+            throw new AppError(ErrorCodes.DUPLICATE, 409, message, {
+              details: [
+                { field: 'driverEmployeeId', code: FIXED_CREW_REFUSAL.held, message: String(slot) },
+                ...(holder === null
+                  ? []
+                  : [
+                      {
+                        field: 'vehicleCode',
+                        code: FIXED_CREW_REFUSAL.holder,
+                        message: holder.code,
+                      },
+                    ]),
+              ],
+            });
           }
         }
       }
@@ -356,9 +419,7 @@ class FleetFixedRosterService {
   async switchedOffProfiles(employeeIds: readonly string[]): Promise<Set<string>> {
     if (employeeIds.length === 0) return new Set();
     const profiles = await fleetDriverProfileRepository.findForEmployeesSystem(employeeIds);
-    return new Set(
-      profiles.filter((doc) => !doc.isActive).map((doc) => String(doc.employeeId)),
-    );
+    return new Set(profiles.filter((doc) => !doc.isActive).map((doc) => String(doc.employeeId)));
   }
 
   private async allActiveVehicles(scope: ScopeSelector): Promise<FleetVehicleDoc[]> {
@@ -375,7 +436,6 @@ class FleetFixedRosterService {
       if (batch.items.length < 100) return vehicles;
     }
   }
-
 }
 
 export const fleetFixedRosterService = new FleetFixedRosterService();

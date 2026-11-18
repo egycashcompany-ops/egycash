@@ -1,94 +1,48 @@
-// The fixed crew (الطقم الثابت) — who a car's standing crew IS, dragged into place.
+// «الطقم الثابت» — who each car's STANDING crew is, in the look of «تعيين السيارات» («واعمل ديزاين
+// شاشة الطاقم الثابت زى التعيين اليومى»): the computer's table with the drivers panel beside it, and
+// on a phone or a tablet the daily board's cards and sheets — the same pieces, minus the day.
 //
-// A sibling of the daily roster board (§4.5) and deliberately not a copy of it. The roster
-// answers "who was planned on this car on day D", so it has a date picker, an availability
-// verdict per driver and an unassignable-in-workshop rule — all facts ABOUT A DAY. This screen
-// has no day: it answers "who is this car's crew", which stays true until somebody changes it.
-// So there is no date anywhere, and the pool has no unavailable half — the same active driver
-// profiles the roster draws from, undivided, because "free next Tuesday" is not a question here.
+// A standing crew is a fact about a CAR, true until somebody changes it, so this screen has no day:
+// no stepper, no «يوم سابق», no availability word, no absence. It reads the one board
+// (`GET /fleet/fixed-roster`) and writes it through «حفظ» (`POST /fleet/fixed-roster`); in between
+// every edit lands on a DRAFT that survives a reload, with «تراجع» for the last edit — the board
+// model (`lib/fixed-roster-model.ts`), which lives HERE, above both boards, so a rotate or a resize
+// across 1280px keeps the draft and its undo steps.
 //
-// The interaction is a real drag, not buttons that mimic one: HTML5 dragstart/dragover/drop, no
-// library. What a drop MEANS lives in `lib/fixed-roster-board` as pure functions, so the two
-// rules the server enforces — one person cannot hold both slots of a car, one driver belongs to
-// one crew — are the same rules the UI proposes, and they are testable without a DOM.
+// This file is the SHELL: it reads the URL (the code filter `q`, the missions, the view, the sort —
+// all remembered across visits), builds the query, holds the model, and draws the page header ON
+// TOP AT EVERY WIDTH (owner's answer 2 ج): «الطقم الثابت» under «الحركة», and nothing else in it —
+// the Excel control is the board's own, one per width. Then the board for the screen:
+// `FixedDeskBoard` from 1280px, `FixedTouchBoard` below.
 //
-// Saving is explicit. A drag edits a DRAFT; the banner and the button read the difference
-// between draft and saved board, and only «حفظ» writes. A reload before saving therefore keeps
-// the saved crews, exactly as an unsaved form does everywhere else in the app.
-//
-// The board is the daily roster's own `DataTable`, not a grid of cards, so the two assignment
-// screens read as one family — same columns in the same order, same badges, same empty states,
-// and the table's own `overflow-x-auto` keeps a narrow screen scrolling inside the table rather
-// than shoving the page sideways. The DRIVER CELLS are the drop targets.
-//
-// «نوع المهمة» and «ملاحظات» are present for that likeness and are always «—»: a standing crew
-// stores neither — see §2.7b, which is deliberately the two driver slots and nothing else.
-import { useMemo, useState } from 'react';
+// Who may edit is `fleetRoster.plan`, the daily roster's own grant; a reader without it sees the
+// board and changes nothing.
+import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   compareFleetVehicleCodes,
   fleetVehicleCodeOrderKey,
   type FleetFixedCrewRowDto,
-  type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { SearchInput } from '../../../shared/ui/SearchInput';
-import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { ExportSheetButton } from '../components/ExportSheetButton';
-import { saveSheet } from '../lib/fleet-sheet';
-import { Button } from '../../../shared/ui/Button';
-import { Badge } from '../../../shared/ui/Badge';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Field, Select, Textarea } from '../../../shared/ui/form';
-import { EmptyState } from '../../../shared/ui/states/EmptyState';
-import { toast } from '../../../shared/ui/toast/toast-store';
-import { ResetIcon, TrashIcon } from '../../../shared/ui/icons';
-import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
-import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
-import { formatNumber, localized } from '../../../shared/lib/format';
-import { errorMessage, validationDetails } from '../../../shared/lib/errors';
-import { cn } from '../../../shared/lib/cn';
-import { vehicleColour } from '../lib/vehicle-colour';
-import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/fleet-queries';
-import { useEmployeeName, useEmployeeRecords } from '../components/EmployeeName';
-import { CatalogSelect } from '../components/CatalogSelect';
-import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { readList } from '../../../shared/lib/list-param';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { sortRows } from '../lib/sort-rows';
-import { readList, toggleValue, writeList } from '../../../shared/lib/list-param';
-import { DriverChip } from '../components/DriverChip';
-import { DriverSlotPicker } from '../components/DriverSlotPicker';
-import { InWorkshopBadge } from '../components/VehicleStatusBadge';
-import { useVehicleHoverCard } from '../components/VehicleHoverCard';
-import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
-import { FIXED_ROSTER_DRAFT_KEY, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
-import { useDraftBoard } from '../lib/useDraftBoard';
-import {
-  applyEdit,
-  assignDriver,
-  availableDrivers,
-  changedRows,
-  clearCrew,
-  clearSlot,
-  type CrewSlot,
-} from '../lib/fixed-roster-board';
-import {
-  COUNTER_TONES,
-  hasDriver,
-  missionTone,
-  readFixedView,
-  UNSAVED_ROW,
-  visibleFixedRows,
-  type FixedRosterView,
-} from '../lib/roster-view';
-import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { hasDriver, readFixedView, type FixedRosterView } from '../lib/roster-view';
+import { useFixedRosterBoard, type FixedRosterQuery } from '../lib/fixed-roster-model';
+import { useRosterLayout, type RosterLayout } from '../lib/roster-layout';
+import { FixedDeskBoard } from '../components/roster/FixedDeskBoard';
+import { FixedTouchBoard } from '../components/roster/FixedTouchBoard';
 
-/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-/** What one column of one row is worth — «الحالة» ranked, not spelled. See the daily board. */
+/**
+ * What one column of one row is worth, for the order the reader clicked.
+ *
+ * «الحالة» is ranked rather than spelled: the workshop first, then a car with a crew, then a car
+ * nobody is on — the daily board's own ranking.
+ */
 const fixedSortValue = (row: FleetFixedCrewRowDto, key: string): string | number | null => {
   // The CODE, as the fleet reads it — 150 upward, then the worded ones, then «الملاكى». The bare
   // code would sort «9» after «150», and this board holds the whole fleet in one answer.
@@ -97,437 +51,43 @@ const fixedSortValue = (row: FleetFixedCrewRowDto, key: string): string | number
   return null;
 };
 
+/** Remembered across visits: this screen's filters and its order. */
 const REMEMBERED_FILTERS = ['mission', 'q', 'sort', 'view'] as const;
 
-/** The one thing a drag carries. Read on drop; nothing else is inferred from the event. */
-const DRAG_TYPE = 'application/x-ecms-driver';
-
-const SLOT_LABEL: Record<CrewSlot, string> = {
-  driver1EmployeeId: 'fleet.odometer.fields.driver1',
-  driver2EmployeeId: 'fleet.odometer.fields.driver2',
-};
-
-/** One driver as a <option>. A component, because resolving the name is a hook. */
-const DriverOption = ({ employeeId }: { employeeId: string }): JSX.Element => {
-  const { name, code } = useEmployeeName(employeeId);
-  return (
-    <option value={employeeId}>
-      {name === null ? employeeId.slice(-8) : `${name}${code === null ? '' : ` · ${code}`}`}
-    </option>
-  );
-};
-
 /**
- * One driver slot as a labelled select — module level for the same reason `CrewSlotCell` is.
- *
- * Written inside the dialog it was a fresh element type on every keystroke, so React threw the
- * `<select>` away and built another one each time the draft changed. Out here the element
- * survives, which is what a native control needs to stay the one the reader is interacting with.
+ * The order this screen opens in, before the reader has asked for one — named once, because the
+ * table is DRAWN in it and a first click REPLACES it (`clickSort`).
  */
-const DriverSelect = ({
-  value,
-  onChange,
-  label,
-  exclude,
-  candidates,
-  disabled,
-  hint,
-  t,
-}: {
-  value: string | null;
-  onChange: (id: string | null) => void;
-  label: string;
-  exclude: string | null;
-  candidates: string[];
-  /** Slot 2 while slot 1 is empty: a pair the record may not hold, so it is not offerable. */
-  disabled?: boolean;
-  hint?: string | undefined;
-  t: (key: string) => string;
-}): JSX.Element => (
-  <Field label={label}>
-    <Select
-      value={value ?? ''}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value || null)}
-    >
-      <option value="">{t('fleet.fixedRoster.noDriver')}</option>
-      {candidates
-        .filter((id) => id !== exclude || id === value)
-        .map((id) => (
-          <DriverOption key={id} employeeId={id} />
-        ))}
-    </Select>
-    {hint !== undefined && (
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p>
-    )}
-  </Field>
-);
-
-/**
- * Edit one vehicle's four editable facts together — «تعديل».
- *
- * The dialog holds its OWN draft and hands it back only on save, which is what makes «إلغاء»
- * mean cancel: nothing outside this component changes until `onSave` runs, so a closed dialog
- * leaves the board draft — and therefore the pool, the dirty banner and the server — untouched.
- *
- * It does NOT re-implement the driver rules. The options it offers are the derived pool plus
- * this vehicle's own two drivers (who are absent from the pool precisely because they are
- * seated here), and the chosen values go back through `applyEdit`, which routes each one
- * through `assignDriver`. So seating somebody who is fixed to another car releases that car,
- * exactly as dragging them would — one rule, reached two ways.
- */
-const EditCrewDialog = ({
-  row,
-  pool,
-  missionTypes,
-  onClose,
-  onSave,
-}: {
-  row: FleetFixedCrewRowDto;
-  pool: { employeeId: string }[];
-  missionTypes: ReturnType<typeof useFleetCatalog>;
-  onClose: () => void;
-  onSave: (edit: {
-    missionTypeId: string | null;
-    driver1EmployeeId: string | null;
-    driver2EmployeeId: string | null;
-    notes: string | null;
-  }) => void;
-}): JSX.Element => {
-  const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [missionTypeId, setMissionTypeId] = useState<string | null>(row.missionTypeId);
-  const [driver1, setDriver1] = useState<string | null>(row.driver1EmployeeId);
-  const [driver2, setDriver2] = useState<string | null>(row.driver2EmployeeId);
-  const [notes, setNotes] = useState<string>(row.notes ?? '');
-
-  // Everyone the board leaves unseated, PLUS this car's own crew — they are missing from the
-  // pool because they sit here, and a dialog that could not re-select them would look broken.
-  const candidates = useMemo(() => {
-    const ids = pool.map((d) => d.employeeId);
-    for (const own of [row.driver1EmployeeId, row.driver2EmployeeId])
-      if (own !== null && !ids.includes(own)) ids.push(own);
-    return ids;
-  }, [pool, row.driver1EmployeeId, row.driver2EmployeeId]);
-
-  // The one rule the dialog enforces itself, because it is the one a two-select form can break
-  // that a drag cannot: the same person chosen in both slots. `applyEdit` would silently
-  // displace the first with the second, so it is refused here instead, before it is applied.
-  const sameTwice = driver1 !== null && driver1 === driver2;
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      dismissOnOutsideClick={false}
-      title={`${t('common.edit')} · ${row.code}`}
-      description={t('fleet.fixedRoster.editHint')}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            disabled={sameTwice}
-            onClick={() =>
-              onSave({
-                missionTypeId,
-                driver1EmployeeId: driver1,
-                driver2EmployeeId: driver2,
-                // '' is not a note. The contract refuses an empty string, and `null` is how
-                // this module spells "nothing" everywhere else.
-                notes: notes.trim() === '' ? null : notes.trim(),
-              })
-            }
-          >
-            {t('common.save')}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <Field label={t('fleet.roster.fields.mission')}>
-          {missionTypes.isError ? (
-            <p className="text-sm text-rose-600 dark:text-rose-400">
-              {t('fleet.fixedRoster.missionTypesFailed')}
-            </p>
-          ) : (
-            <Select
-              value={missionTypeId ?? ''}
-              disabled={missionTypes.isPending}
-              onChange={(e) => setMissionTypeId(e.target.value || null)}
-            >
-              <option value="">{t('fleet.fixedRoster.noMissionType')}</option>
-              {(missionTypes.data?.items ?? []).map((item) => (
-                <option key={item.id} value={item.id}>
-                  {localized(item.name, locale)}
-                </option>
-              ))}
-            </Select>
-          )}
-          {!missionTypes.isPending &&
-            !missionTypes.isError &&
-            (missionTypes.data?.items.length ?? 0) === 0 && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {t('fleet.fixedRoster.noMissionTypesYet')}
-              </p>
-            )}
-        </Field>
-
-        <DriverSelect
-          label={t('fleet.odometer.fields.driver1')}
-          value={driver1}
-          // Choosing «بدون سائق» here does not leave a second driver stranded in slot 2 — the
-          // remaining driver is PROMOTED, which is what `clearSlot` does for the same gesture on
-          // the board. The dialog therefore shows exactly the crew the save will write.
-          onChange={(id) => {
-            if (id === null && driver2 !== null) {
-              setDriver1(driver2);
-              setDriver2(null);
-              return;
-            }
-            setDriver1(id);
-          }}
-          exclude={driver2}
-          candidates={candidates}
-          t={t}
-        />
-        <DriverSelect
-          label={t('fleet.odometer.fields.driver2')}
-          value={driver2}
-          onChange={setDriver2}
-          exclude={driver1}
-          candidates={candidates}
-          disabled={driver1 === null}
-          hint={driver1 === null ? t('fleet.fixedRoster.needsFirstDriver') : undefined}
-          t={t}
-        />
-        {sameTwice && (
-          <p className="text-sm text-rose-600 dark:text-rose-400">
-            {t('fleet.fixedRoster.sameDriverTwice')}
-          </p>
-        )}
-
-        <Field label={t('fleet.attendance.fields.notes')}>
-          <Textarea
-            rows={3}
-            maxLength={500}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </Field>
-      </div>
-    </Dialog>
-  );
-};
-
-/** The id of one drop target. Module level so the cell below can be too. */
-const zoneKey = (vehicleId: string, slot: CrewSlot): string => `${vehicleId}:${slot}`;
-
-/**
- * One slot, as a table CELL: a drop target that either holds a driver or asks for one.
- *
- * No label of its own — the column header above it already says which slot this is, and
- * repeating it in every row is the noise a table exists to remove.
- *
- * DECLARED HERE, not inside the page, and that is the fix for a real bug rather than tidiness.
- * A component written inside another component is a NEW function — a new element TYPE — on every
- * render, so React cannot match it against the previous tree: it unmounts the whole cell and
- * mounts a fresh one. `onDragStart` sets the dragging id, that render replaced the very DOM node
- * the browser had just picked up, and the browser cancelled the drag before it could begin. The
- * seated driver was therefore undraggable in one gesture, while the pool — whose rows are inline
- * JSX and keep their nodes across renders — was always fine. Hoisting it keeps the node alive,
- * so mouse-down → drag → drop works in one motion, with no click to "wake" the chip first.
- */
-const CrewSlotCell = ({
-  row,
-  slot,
-  mayPlan,
-  over,
-  dragging,
-  t,
-  pool,
-  searchIndex,
-  setOver,
-  onDrop,
-  onClear,
-  setDragging,
-}: {
-  row: FleetFixedCrewRowDto;
-  slot: CrewSlot;
-  mayPlan: boolean;
-  over: string | null;
-  dragging: string | null;
-  t: (key: string, params?: Record<string, string | number>) => string;
-  /** The free drivers — the very list the panel drags from, already free of anyone seated. */
-  pool: readonly { employeeId: string }[];
-  searchIndex: ReadonlyMap<string, DriverSearchRecord>;
-  setOver: (update: (key: string | null) => string | null) => void;
-  onDrop: (vehicleId: string, slot: CrewSlot, employeeId: string) => void;
-  onClear: (vehicleId: string, slot: CrewSlot) => void;
-  setDragging: (employeeId: string | null) => void;
-}): JSX.Element => {
-  const employeeId = row[slot];
-  const key = zoneKey(row.vehicleId, slot);
-  const active = over === key;
-  // A second driver needs a first. Slot 2 of a crew whose slot 1 is empty is not a drop target
-  // at all: the schema and the service both refuse to store that pair, so offering the drop
-  // would be offering a save that comes back 400. The cell says WHY in place of «اسحب هنا»
-  // rather than silently ignoring the gesture.
-  const needsFirst = slot === 'driver2EmployeeId' && row.driver1EmployeeId === null;
-  const droppable = mayPlan && !needsFirst;
-  return (
-    <div className="min-w-[9rem]">
-      <div
-        data-drop-zone={key}
-        data-drop-disabled={needsFirst ? 'needsFirstDriver' : undefined}
-        aria-label={`${row.code} · ${t(SLOT_LABEL[slot])}`}
-        onDragOver={(e) => {
-          if (!droppable) return;
-          // Preventing the default IS what makes an element a drop target.
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          setOver(() => key);
-        }}
-        onDragLeave={() => setOver((k) => (k === key ? null : k))}
-        onDrop={(e) => {
-          if (!droppable) return;
-          e.preventDefault();
-          const id = e.dataTransfer.getData(DRAG_TYPE);
-          if (id !== '') onDrop(row.vehicleId, slot, id);
-        }}
-        className={[
-          'flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-dashed px-2 py-1.5 transition-colors',
-          active
-            ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-950'
-            : needsFirst
-              ? 'border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-800/30'
-              : employeeId === null
-                ? 'border-slate-300 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/40'
-                : 'border-transparent bg-slate-50 dark:bg-slate-800/60',
-        ].join(' ')}
-      >
-        {employeeId === null ? (
-          // `droppable` and nothing else — it already carries the permission and «الأول قبل
-          // الثاني», so a slot that refuses a drop offers no picker either.
-          droppable ? (
-            <DriverSlotPicker
-              drivers={pool}
-              index={searchIndex}
-              slotKey={key}
-              label={`${row.code} · ${t(SLOT_LABEL[slot])}`}
-              onSelect={(id) => onDrop(row.vehicleId, slot, id)}
-            />
-          ) : (
-            <span className="text-xs text-slate-400 dark:text-slate-500">
-              {/* Same rule as the daily board: a reader who cannot plan is told what the slot
-                  is, not asked for a gesture they are not being offered. */}
-              {/* Exhaustive, for the same reason: `droppable` is `mayPlan && !needsFirst`. */}
-              {t(!mayPlan ? 'fleet.fixedRoster.noDriver' : 'fleet.fixedRoster.needsFirstDriver')}
-            </span>
-          )
-        ) : (
-          <>
-            <span
-              draggable={mayPlan}
-              onDragStart={(e) => {
-                e.dataTransfer.setData(DRAG_TYPE, employeeId);
-                e.dataTransfer.effectAllowed = 'move';
-                setDragging(employeeId);
-              }}
-              onDragEnd={() => setDragging(null)}
-              className={[
-                'min-w-0 flex-1',
-                mayPlan ? 'cursor-grab active:cursor-grabbing' : '',
-                dragging === employeeId ? 'opacity-50' : '',
-              ].join(' ')}
-            >
-              <DriverChip employeeId={employeeId} className="w-full" />
-            </span>
-            {mayPlan && (
-              <button
-                type="button"
-                aria-label={t('fleet.fixedRoster.removeDriver')}
-                title={t('fleet.fixedRoster.removeDriver')}
-                onClick={() => onClear(row.vehicleId, slot)}
-                className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-              >
-                <TrashIcon className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
-
-/**
- * The order this screen opens in, before the reader has asked for one.
- *
- * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
- * first click REPLACES it rather than joining it — see `clickSort`.
- */
-/**
- * The car's code in the car's own colour (see the «السيارة» column) — and the car card's trigger,
- * by hover only, as the board's driver chips carry theirs: a board of drag-and-drop slots keeps its
- * Tab order for the slots and the row's buttons.
- */
-const CrewCarCode = ({ row }: { row: FleetFixedCrewRowDto }): JSX.Element => {
-  const { triggerProps, card } = useVehicleHoverCard(
-    { vehicleId: row.vehicleId, code: row.code },
-    { focusable: false },
-  );
-  return (
-    <>
-      <span
-        data-vehicle-colour={row.vehicleId}
-        className={cn(
-          'inline-block rounded-md px-2 py-0.5 font-figures text-xs',
-          vehicleColour(row.vehicleId),
-        )}
-        dir="ltr"
-        {...triggerProps}
-      >
-        {row.code}
-      </span>
-      {card}
-    </>
-  );
-};
-
 const DEFAULT_SORT = 'code:asc';
 
 export const FixedRosterPage = (): JSX.Element => {
+  const { layout, short } = useRosterLayout();
+  return <FixedRosterScreen layout={layout} short={short} />;
+};
+
+/** Exported for specs: render any layout without a window (no window → the computer's board). */
+export const FixedRosterScreen = ({
+  layout,
+  short = false,
+}: {
+  layout: RosterLayout;
+  short?: boolean;
+}): JSX.Element => {
   const t = useT();
   const can = useCan();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
-  const mayPlan = can('fleetRoster.plan');
 
+  /** The picked car codes, as a comma list («كود السيارة»). */
   const search = sp.get('q') ?? '';
-  /**
-   * SEVERAL missions at once — the daily board's rule, on the board that copies it. The key is
-   * still `mission`, now a comma-separated list, so a saved link narrows to what it always did.
-   */
+  /** SEVERAL missions at once — the `mission` key, a comma-separated list. */
   const missions = readList(sp, 'mission');
-  /** The list as ONE value, so the memos below are not invalidated by a fresh array each render. */
-  const missionsKey = missions.join(',');
-  /** The columns the board is read in, in the order they were clicked. */
+  /** Which STATE the board is narrowed to — `readFixedView`, so a hand-typed `?view=` shows all. */
+  const view: FixedRosterView | null = readFixedView(sp.get('view'));
+  /** The columns the table is read in, in the order they were clicked. */
   const sortParam = sp.get('sort');
   const sorts = useMemo(() => readSorts(sortParam, DEFAULT_SORT), [sortParam]);
-  /**
-   * Which STATE the board is narrowed to, if any — «بطقم» or «بدون طقم».
-   *
-   * Through `readFixedView`, so a hand-typed `?view=nonsense` shows the whole board rather than
-   * an empty one nobody can explain. The daily board's two states are not this board's: a car in
-   * the workshop still HAS a standing crew, so «صيانة» is not an axis here, and «تشغيل» — a
-   * mission OR a driver — is not either, because a standing crew is the two seats and nothing
-   * else. A mission is not a view on either board: the mission chips write the `mission`
-   * parameter the dropdown beside them owns, which is what keeps the two in step.
-   */
-  const view: FixedRosterView | null = readFixedView(sp.get('view'));
+
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
     for (const [key, val] of Object.entries(updates)) {
@@ -537,529 +97,30 @@ export const FixedRosterPage = (): JSX.Element => {
     setSp(next);
   };
 
-  const boardQuery = useFixedRoster();
-  const save = useSaveFixedRoster();
-  const saved = useMemo(() => boardQuery.data?.rows ?? [], [boardQuery.data]);
+  /** One flag, and every editing affordance reads it — the server enforces the same grant. */
+  const mayPlan = can('fleetRoster.plan');
 
-  // The draft the drags edit — the same render-time rule as before, now with a memory across a
-  // reload. See `useDraftBoard`.
-  //
-  // The key carries NO DATE, deliberately. `fleet_fixed_crews` is the standing crew of a
-  // vehicle, one row per car, with no date or weekday anywhere in it — this board is not a day.
-  // Inventing a date key here would split one board's draft across as many keys as there are
-  // days, so a reader would lose their work by doing nothing but waiting past midnight.
-  const {
-    draft,
-    setDraft,
-    discard,
-    accept: acceptDraft,
-  } = useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, ROSTER_EDITABLE_FIELDS);
+  const query: FixedRosterQuery = { mayPlan, search, missions, view, patch };
+  const m = useFixedRosterBoard(query);
 
-  const pending = useMemo(() => changedRows(saved, draft), [saved, draft]);
-  const dirty = pending.length > 0;
-  /**
-   * WHICH CARS ARE EDITED AND NOT YET SAVED — «العربيه اللى حصل عليها تغيير ولسه معملش حفظ ...
-   * عشان ممكن يعمل تعديل ويخودش باله هو عدل ايه».
-   *
-   * Straight off `pending`, which on this board already IS the reader's own edits, so the tint
-   * and the «حفظ» button are answering the same question and can never disagree about it.
-   *
-   * It clears itself on save with no extra step: a completed save hands the screen a new server
-   * board, `useDraftBoard` resets the draft against it, and a draft equal to the baseline has no
-   * changed rows. The same reset is what makes «إلغاء» clear the tint too.
-   */
-  const unsavedIds = useMemo(() => new Set(pending.map((row) => row.vehicleId)), [pending]);
-
-  // «نوع المهمة» is a reference to the fleet's own vocabulary — the SAME `missionType` catalog
-  // the DAILY roster reads (أنواع المهمات), through the same cached hook, so the two boards
-  // cannot drift into two lists. The id is what is stored; the name is resolved for display.
-  //
-  // It pointed at `workType` (أنواع الأعمال) for one release. That is the WORKSHOP's vocabulary —
-  // it carries `countsForAlarm` and names maintenance jobs — so the column labelled «نوع المهمة»
-  // was offering «صيانة» as a car's standing mission. Corrected here; the rows written under the
-  // old name are retired by `npm run fleet:fix-crew-mission`.
-  const missionTypes = useFleetCatalog('missionType');
-
-  /**
-   * THE BOARD'S TALLY AS CHIPS, AND THE CHIPS AS FILTERS — «عاوز الطاقم الثابت الفلاتر بتاعته
-   * تكون زى تعيين السيارات».
-   *
-   * Same shape, same tones, same arithmetic-off-the-DRAFT as the daily board: what is counted is
-   * what is on screen right now, not the server's last answer, so the numbers move as the reader
-   * crews cars. The search, the mission and the view narrow the TABLE; these count the whole
-   * board — a tally that changed when you filtered it would be a tally of the filter.
-   *
-   * They were read-outs for one release, on the argument that this board had no axis to filter
-   * on. It has two — a car with a crew and a car without — and the same mission vocabulary the
-   * daily board narrows by, so the chips now do here exactly what they do there: «إجمالي»
-   * clears, «بطقم» / «بدون طقم» set the view, and each mission sets the dropdown's own parameter.
-   */
-  const counters = useMemo(() => {
-    const byMission = new Map<string, number>();
-    for (const row of draft) {
-      if (row.missionTypeId === null) continue;
-      byMission.set(row.missionTypeId, (byMission.get(row.missionTypeId) ?? 0) + 1);
-    }
-    const crewed = draft.filter(hasDriver).length;
-    return [
-      {
-        key: 'total',
-        label: t('fleet.roster.counter.total'),
-        value: draft.length,
-        tone: COUNTER_TONES.total,
-        // «إجمالي» is the absence of a filter, so applying it CLEARS both keys rather than
-        // setting a third value that would then have to mean "no filter".
-        apply: { mission: null, view: null },
-        active: missions.length === 0 && view === null,
-      },
-      {
-        // «صيانة», the daily board's own counter, in the daily board's position and tone — the
-        // board already draws this badge on every row it applies to.
-        key: 'workshop',
-        label: t('fleet.roster.counter.workshop'),
-        value: draft.filter((row) => row.inMaintenance).length,
-        tone: COUNTER_TONES.workshop,
-        apply: { view: 'workshop' },
-        active: view === 'workshop',
-      },
-      {
-        key: 'crewed',
-        label: t('fleet.fixedRoster.counter.crewed'),
-        value: crewed,
-        tone: COUNTER_TONES.assigned,
-        apply: { view: 'crewed' },
-        active: view === 'crewed',
-      },
-      {
-        key: 'uncrewed',
-        label: t('fleet.fixedRoster.counter.uncrewed'),
-        value: draft.length - crewed,
-        tone: COUNTER_TONES.workshop,
-        apply: { view: 'uncrewed' },
-        active: view === 'uncrewed',
-      },
-      ...(missionTypes.data?.items ?? [])
-        .filter((item) => item.isActive)
-        .map((item) => ({
-          key: item.id,
-          label: localized(item.name, locale),
-          value: byMission.get(item.id) ?? 0,
-          tone: missionTone(item.id),
-          // The chip drives the DROPDOWN's parameter, not one of its own: one axis, one filter,
-          // and the select beside it visibly follows.
-          // TOGGLED in and out, the same as the dropdown's checkboxes: the chip and the select
-          // are one filter, so a click has to mean the same thing in both.
-          apply: { mission: writeList(toggleValue(missions, item.id)) },
-          active: missions.includes(item.id),
-        })),
-    ];
-  }, [draft, missionTypes.data, locale, t, missionsKey, view]);
-
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
-  /** The vehicle whose edit dialog is open, or null. The dialog holds its own draft. */
-  const [editing, setEditing] = useState<string | null>(null);
-
-  const missionTypeName = (id: string | null): string | null => {
-    if (id === null) return null;
-    const item = missionTypes.data?.items.find((entry) => entry.id === id);
-    // `undefined` = the catalog has not answered yet, or the item was archived after it was
-    // chosen. Either way the id is real and the row is not broken, so the cell shows the dash
-    // rather than a raw ObjectId no reader could act on.
-    return item === undefined ? null : localized(item.name, locale);
-  };
-
-  // The pool is DERIVED, never the server's list rendered raw: everyone the draft already seats
-  // leaves it the instant the drop lands, and comes back the instant a slot is cleared. Deriving
-  // it is also why a move between vehicles cannot flicker a driver back into the list and why a
-  // slot change cannot duplicate a card — membership is computed from the seats, not adjusted.
-  const pool = useMemo(
-    () => availableDrivers(boardQuery.data?.drivers ?? [], draft),
-    [boardQuery.data, draft],
-  );
-
-  /**
-   * What the table SHOWS — the draft, narrowed by code AND mission AND state, through the rule
-   * module the daily board reads. The code goes through the same parser every filter bar in the
-   * application reads a code box with, so `150 - 151` names two cars here too.
-   *
-   * DISPLAY ONLY. `draft`, the counters, the pool and what «حفظ» sends all read the whole board
-   * and never this — a filter is a way of looking at the board, not a way of editing it.
-   *
-   * Computed ABOVE the driver pool's search index rather than below it, because that index
-   * now covers these rows' SEATED drivers as well as the free ones — see the note on `records`.
-   */
-  const rows = useMemo(
-    // Narrowed first, then ordered, with the code closing every tie — which is the order this
-    // board arrives in, so a reader who has clicked nothing sees what they saw before.
-    () =>
-      sortRows(
-        visibleFixedRows(draft, { term: search, missions, view }),
-        sorts,
-        fixedSortValue,
-        (a, b) => compareFleetVehicleCodes(a.code, b.code),
-      ),
-    [draft, search, missionsKey, view, sortParam],
-  );
-  const filtered = search !== '' || missions.length > 0 || view !== null;
-  /** «إعادة ضبط» — every filter off in ONE update, the daily board's three keys. */
+  /** «إعادة ضبط» — every filter off in ONE update, the three keys this board narrows by. */
   const resetFilters = (): void => patch({ q: null, mission: null, view: null });
 
-  // ── finding somebody in the pool ──────────────────────────────────────────
-  //
-  // Panel-local state, not a URL parameter: this filters a side list, it does not select what
-  // the page is about. The vehicle search above is `?q=` because it changes which rows the board
-  // shows — a thing worth sharing in a link. Which driver you were hunting for is not.
-  const [driverSearch, setDriverSearch] = useState('');
-
-  /**
-   * The records the cards already load, read once here so the whole pool can be searched. Same
-   * query keys, so this subscribes to the existing entries rather than fetching a second time.
-   *
-   * THE SEATED DRIVERS RIDE ALONG IN THE SAME MAP. The pool is only the people nobody has, and
-   * the Excel export has to name the ones who are ON the cars — so the one map this page builds
-   * answers both questions rather than the export growing a second one beside it. It costs
-   * nothing: every seated driver on a visible row already has a `DriverChip` asking for that
-   * exact record under that exact key, so this subscribes to requests the board has already paid
-   * for. Keyed on `rows` and not on `draft` for that very reason — a row the filter hides draws
-   * no chip, and asking for its driver would be a request the screen never needed.
-   */
-  const records = useEmployeeRecords(
-    useMemo(
-      () => [
-        ...pool.map((d) => d.employeeId),
-        ...rows.flatMap((row) =>
-          [row.driver1EmployeeId, row.driver2EmployeeId].filter((id): id is string => id !== null),
-        ),
-      ],
-      [pool, rows],
-    ),
-  );
-  const searchIndex = useMemo(() => {
-    const index = new Map<string, DriverSearchRecord>();
-    for (const [employeeId, person] of records) {
-      index.set(employeeId, {
-        employeeId,
-        nameAr: person.fullNameAr,
-        // Fleet's own roster carries ONE name and ONE code — the two a search on this board is
-        // ever typed with. The English name and the employee NUMBER were HR-record fields that
-        // came along for free when this read HR's endpoint; they are not facts Fleet publishes,
-        // and searching by them was never something anybody did on a driver chip.
-        nameEn: null,
-        code: person.code,
-        employeeNumber: null,
-      });
-    }
-    return index;
-  }, [records]);
-
-  const shownDrivers = useMemo(
-    () => filterDrivers(pool, searchIndex, driverSearch),
-    [pool, searchIndex, driverSearch],
-  );
-
-  /**
-   * A seated driver as the CHIP spells them — the name HR knows, or the id's tail where it does
-   * not (no `employee.view`, or the record has not landed). Never a raw id, and never a name the
-   * board is not showing: one resolution, read by the cell and by the file alike.
-   */
-  const driverName = (employeeId: string | null): string =>
-    employeeId === null
-      ? ''
-      : (records.get(employeeId)?.fullNameAr ?? employeeId.slice(-8));
-
-  // Ascending, then descending, then out of the order altogether — the daily board's rule.
+  // Ascending, then descending, then out of the order altogether — and a column the table is NOT
+  // sorted by joins the end of it rather than replacing what is there.
   const changeSort = (by: string): void => {
     patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) });
   };
-  /** Every car this board reports on, as the picker's options — no request for what is on screen. */
-  const codeOptions = useMemo(
-    () => draft.map((row) => ({ value: row.code, label: row.code })),
-    [draft],
-  );
 
-  const drop = (vehicleId: string, slot: CrewSlot, employeeId: string): void => {
-    setOver(null);
-    setDragging(null);
-    // Every drop lands: onto another car it is a move, onto this car's other slot it is a swap,
-    // onto the slot already held it is a no-op. `assignDriver` is what keeps all three legal.
-    setDraft(() => assignDriver(draft, vehicleId, slot, employeeId));
-  };
-
-  const commit = async (): Promise<void> => {
-    if (!dirty) return;
-    try {
-      await save.mutateAsync({ rows: pending });
-      // The save succeeded, so what was persisted is now the SERVER's board and stops being a
-      // draft. Dropped here rather than left to expire, so the next reload reads the board the
-      // server holds and nothing else.
-      acceptDraft();
-      toast.success(t('fleet.fixedRoster.saved'));
-    } catch (error) {
-      // The hook defines its own `onError` so a failed save re-reads the board — and defining one
-      // opts the mutation OUT of the global error toast. Without this the refusal would be
-      // silent: the button would stop spinning, the refetch would drop the drags, and the reader
-      // would be left guessing. The commonest refusal here is a driver another row still holds.
-      //
-      // A refusal on THIS screen names the row it refused, and that is worth more than the
-      // friendly generic: the offending vehicle could be any of a hundred, and "some fields need
-      // your attention" gives the reader nothing to act on. `validationDetails` carries the
-      // field and the rule the server actually applied.
-      //
-      // Scoped to this page ON PURPOSE. The server's detail messages are English-only, so
-      // preferring them inside `errorMessage` would put English in front of an Arabic reader on
-      // every screen in the app. Here the trade is worth making — a save of a hundred rows is
-      // unactionable without it — and localising validation details properly is its own change.
-      const detail = validationDetails(error).find((d) => d.message.trim() !== '');
-      toast.error(
-        detail === undefined
-          ? errorMessage(error, locale)
-          : detail.field === undefined || detail.field === ''
-            ? detail.message
-            : `${detail.message} (${detail.field})`,
-      );
-    }
-  };
-
-  const dash = <span className="text-slate-400">—</span>;
-
-  // Everything the (module-level) slot cell needs from this page, gathered once. Spread rather
-  // than threaded one by one so the two columns below stay readable.
-  const slotProps = {
-    mayPlan,
-    over,
-    dragging,
-    t,
-    pool,
-    searchIndex,
-    setOver,
-    onDrop: drop,
-    onClear: (vehicleId: string, slot: CrewSlot): void =>
-      setDraft((rows) => clearSlot(rows, vehicleId, slot)),
-    setDragging,
-  };
-
-  /**
-   * Change one vehicle's mission type from the CELL.
-   *
-   * Routed through `applyEdit` — the very function the dialog's save calls — rather than writing
-   * the row here, so one place knows what an edit means and the cell cannot drift from the
-   * dialog. The drivers and the note are handed back unchanged; `applyEdit` runs them through
-   * `assignDriver`, where re-seating the driver already in the slot is a no-op.
-   *
-   * It edits the DRAFT, exactly as a drag does. «حفظ» is still the only thing that writes, so a
-   * mistaken pick is undone by «إلغاء» like any other change on this board.
-   */
-  const setMission = (row: FleetFixedCrewRowDto, missionTypeId: string | null): void =>
-    setDraft((rows) =>
-      applyEdit(rows, row.vehicleId, {
-        missionTypeId,
-        driver1EmployeeId: row.driver1EmployeeId,
-        driver2EmployeeId: row.driver2EmployeeId,
-        notes: row.notes,
-      }),
-    );
-
-  /**
-   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
-   *
-   * THIS BOARD IS NOT PAGED, so there is nothing to walk. `useFixedRoster` answers with every
-   * car that can carry a standing crew in one reply — no `meta`, no page parameter, no second
-   * page — which is why this does not reach for `fetchFilteredRows` the way the paged registers
-   * do: `rows` IS the filter's whole answer, already narrowed by the car picker, the mission
-   * filter and the view chips, and already in the order the reader has clicked the board into.
-   *
-   * It writes the DRAFT, not the server's board: what is on screen, unsaved edits included. The
-   * «غير محفوظ» banner is what says so, and a file that disagreed with the board it was taken
-   * from would be the more surprising of the two.
-   *
-   * «الحالة» is SPLIT across two columns. On screen the cell stacks two badges — the workshop
-   * pill and the crewed/uncrewed verdict — and a spreadsheet cell cannot stack anything, so each
-   * badge gets a column of its own rather than two facts being folded into one. The actions
-   * column is left out: it is buttons, not facts about a car.
-   */
-  const exportSheet = (): Promise<void> => {
-    saveSheet(
-      {
-        name: t('fleet.nav.fixedRoster'),
-        serialHeader: t('fleet.violations.report.serial'),
-        header: [
-          t('fleet.odometer.columns.vehicle'),
-          t('fleet.vehicles.inWorkshop'),
-          t('fleet.vehicles.columns.status'),
-          t('fleet.roster.fields.mission'),
-          t('fleet.odometer.fields.driver1'),
-          t('fleet.odometer.fields.driver2'),
-          t('fleet.attendance.fields.notes'),
-        ],
-        rows: rows.map((row) => [
-          row.code,
-          row.inMaintenance ? t('common.yes') : t('common.no'),
-          hasDriver(row) ? t('fleet.roster.assigned') : t('fleet.fixedRoster.unassigned'),
-          missionTypeName(row.missionTypeId) ?? '',
-          driverName(row.driver1EmployeeId),
-          driverName(row.driver2EmployeeId),
-          row.notes ?? '',
-        ]),
-        // No money on this board — a standing crew is people, a car and a note.
-      },
-    );
-    // Nothing is awaited: the rows are already in hand, and the button's contract is a promise.
-    return Promise.resolve();
-  };
-
-  /**
-   * The seven columns, in the daily roster's own order and idiom (§4.5's board, minus its date).
-   *
-   * «نوع المهمة» and «ملاحظات» are here for that likeness and are always «—»: a standing crew is
-   * §2.7b's two driver slots and nothing else, and inventing a value for a fact the row does not
-   * hold would be worse than an honest dash.
-   */
-  const columns: Column<FleetFixedCrewRowDto>[] = [
-    {
-      key: 'vehicle',
-      header: t('fleet.odometer.columns.vehicle'),
-      // SORTED IN THE BROWSER, honestly: this board is every car that can carry a standing crew,
-      // never a page of them, so there is no second page for the arrow to be wrong about.
-      sortable: true,
-      sortKey: 'code',
-      // The CODE alone, and it is also the only thing the box above searches. The plate sat under
-      // it as a second line and cost every row the height of a line to say a thing this board
-      // never asks: a fixed crew belongs to the vehicle, and the vehicle is identified here by its
-      // code. The plate is still on the vehicle record and still shown on the screens that are
-      // ABOUT the vehicle; what it no longer does is decide which rows this board shows.
-      //
-      // The code carries the VEHICLE'S OWN COLOUR — see `vehicleColour`. A hundred rows of
-      // three-digit numbers that differ by one glyph are hard to keep your place in; a tint
-      // attached to the car gives the eye something to land on before it reads the digits. The
-      // colour is hashed from the vehicle's id, so it is the same on every render and survives
-      // filtering, sorting and the arrival of new vehicles — it says WHICH car, never how the
-      // car is doing.
-      render: (row) => <CrewCarCode row={row} />,
-    },
-    {
-      key: 'state',
-      header: t('fleet.vehicles.columns.status'),
-      // Grouped by what the badges SAY — the workshop, then the crewed cars, then the ones with
-      // nobody on them. The daily board ranks its own «الحالة» the same way.
-      sortable: true,
-      render: (row) => (
-        <span className="flex flex-wrap items-center gap-1">
-          <InWorkshopBadge inWorkshop={row.inMaintenance} />
-          {row.driver1EmployeeId !== null || row.driver2EmployeeId !== null ? (
-            <Badge tone="success">{t('fleet.roster.assigned')}</Badge>
-          ) : (
-            <Badge tone="neutral">{t('fleet.fixedRoster.unassigned')}</Badge>
-          )}
-        </span>
+  // Narrowed first (the model, in code order), then ordered as the reader clicked. The code closes
+  // every tie, so a reader who has clicked nothing sees the board in code order.
+  const rows = useMemo(
+    () =>
+      sortRows(m.visible, sorts, fixedSortValue, (a, b) =>
+        compareFleetVehicleCodes(a.code, b.code),
       ),
-    },
-    {
-      key: 'mission',
-      header: t('fleet.roster.fields.mission'),
-      // Editable IN THE CELL, not only behind «تعديل». This is the fact on the board a
-      // dispatcher changes most often after the crew itself, and reaching it through a dialog
-      // cost four interactions to answer a one-word question.
-      //
-      // `CatalogSelect` is the app's own catalog select, given the SAME `missionType` kind the
-      // daily board uses. It reads the same cached hook, so N rows still cost ONE request, and
-      // it keeps an archived current value visible rather than silently dropping a historical
-      // reference. A reader without `fleetRoster.plan` sees the name as text, as before.
-      render: (row) =>
-        !mayPlan ? (
-          (missionTypeName(row.missionTypeId) ?? dash)
-        ) : (
-          // The click stops here. This row's other cells are drag sources and drop targets, and
-          // `DataTable` isolates its own selection cell the same way — a control inside a row
-          // must not hand its interaction to the row.
-          // `min-w-[11rem]`: the shared `Select` reserves `pe-9` (36px) for its chevron plus a
-          // 12px start gutter, so a 9rem box left 94px of text — and «نقل أموال (يومي)», the
-          // commonest mission there is, needs 104px. Measured, not guessed: a select clips its
-          // label internally and reports no overflow, so nothing but comparing the rendered text
-          // against the inner width catches it.
-          <div
-            className="min-w-[11rem]"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <CatalogSelect
-              kind="missionType"
-              value={row.missionTypeId ?? ''}
-              ariaLabel={`${row.code} · ${t('fleet.roster.fields.mission')}`}
-              allLabel={t('fleet.fixedRoster.noMissionType')}
-              onChange={(id) => setMission(row, id === '' ? null : id)}
-            />
-          </div>
-        ),
-    },
-    {
-      key: 'driver1',
-      header: t('fleet.odometer.fields.driver1'),
-      render: (row) => <CrewSlotCell {...slotProps} row={row} slot="driver1EmployeeId" />,
-    },
-    {
-      key: 'driver2',
-      header: t('fleet.odometer.fields.driver2'),
-      render: (row) => <CrewSlotCell {...slotProps} row={row} slot="driver2EmployeeId" />,
-    },
-    {
-      key: 'notes',
-      header: t('fleet.attendance.fields.notes'),
-      render: (row) =>
-        row.notes === null ? (
-          dash
-        ) : (
-          // Long notes are truncated rather than allowed to set the column's width — the note is
-          // context here, and the dialog is where it is read and written in full. The ceiling is
-          // wider than it was: the width the driver panel gave up is spent HERE, which is the
-          // column that was actually running out of room.
-          <span className="block max-w-[22rem] truncate text-sm" title={row.notes}>
-            {row.notes}
-          </span>
-        ),
-    },
-    {
-      key: 'actions',
-      header: t('fleet.vehicles.columns.actions'),
-      align: 'center',
-      render: (row) =>
-        mayPlan ? (
-          // «اعملى الالوان دى»: the pen and the bin in the owner's box (`row-actions-look`).
-          <span className={ACTION_GROUP} data-row-actions="fixed-roster">
-            {/* Edit is offered on EVERY row, crewed or not: a car with no crew is exactly the
-                one that needs a work type or a note set on it. */}
-            <button
-              type="button"
-              className={actionTone('edit')}
-              aria-label={t('common.edit')}
-              title={t('common.edit')}
-              data-edit-row={row.vehicleId}
-              onClick={() => setEditing(row.vehicleId)}
-            >
-              <SquarePenIcon className="h-4 w-4" />
-            </button>
-            {row.driver1EmployeeId !== null || row.driver2EmployeeId !== null ? (
-              <button
-                type="button"
-                className={actionTone('delete')}
-                aria-label={t('fleet.fixedRoster.clearCrew')}
-                title={t('fleet.fixedRoster.clearCrew')}
-                // BOTH SEATS, IN ONE WRITE. Folding `clearSlot` over the slots promoted seat 2
-                // into seat 1 between the two clears, so the row kept a driver — the bin beside
-                // the pencil is «امسح الطاقم», not «امسح واحد».
-                onClick={() => setDraft((c) => clearCrew(c, row.vehicleId))}
-              >
-                <Trash2Icon className="h-4 w-4" />
-              </button>
-            ) : null}
-          </span>
-        ) : (
-          dash
-        ),
-    },
-  ];
-
-  const editingRow = draft.find((row) => row.vehicleId === editing) ?? null;
+    [m.visible, sorts],
+  );
 
   return (
     <PageContainer fullHeight>
@@ -1069,296 +130,23 @@ export const FixedRosterPage = (): JSX.Element => {
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.fixedRoster') },
         ]}
-        // «حفظ» and «إلغاء» stay down in the filter strip, beside the tally they answer to.
-        // Excel is not one of that pair — it writes nothing and undoes nothing — so it sits in
-        // the header, where every other Fleet list screen keeps it.
-        actions={<ExportSheetButton name="fixed-roster" onExport={exportSheet} />}
       />
-
-      {/* THE DAILY BOARD'S STRIP, in the daily board's PLACE.
-
-          «فلاتر الطقم الثابت زى تعيين السيارات ... على نفس الصف كله». It already held the right
-          controls; what it did not have was the daily board's ROOM. It sat inside the board's own
-          grid column — four fifths of the page — so the eleven controls the daily board fits on
-          one row wrapped onto two or three here. Above the grid it has the whole width, and the
-          two screens read as the pair they are.
-
-          Not the shared `FilterBar`, on either screen: that bar writes its own reset and its own
-          active-filter count, which is a good bar and the wrong one HERE — a reader moving
-          between the two roster screens was meeting two different ones. */}
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
-        {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES, and the same one the daily roster
-            carries, at the same width — «تظبط ابعاد الفلاتر». `visibleFixedRows` above
-            already reads a list, so what narrows the rows is unchanged; the options come from
-            the draft, which is every car this board reports on. */}
-        <VehicleCodeFilter
-          className="w-40 shrink-0"
-          fullWidth
-          value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
-          options={codeOptions}
-          onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
+      {layout === 'desktop' ? (
+        <FixedDeskBoard
+          m={m}
+          query={query}
+          resetFilters={resetFilters}
+          rows={rows}
+          sort={sorts}
+          onSortChange={changeSort}
         />
-        {/* THE DAILY BOARD'S MISSION FILTER, at the daily board's width, on the same catalog
-            the mission column and the mission chips read. `mission` is ONE parameter: the
-            chip below writes it, this select shows it, and the table narrows on it. */}
-        <div className="w-36">
-          <CatalogMultiSelect
-            kind="missionType"
-            value={missions}
-            onChange={(ids) => patch({ mission: writeList(ids) })}
-            label={t('fleet.roster.allMissions')}
-            className="w-full"
-            fullWidth
-          />
-        </div>
-
-        {/* THE CHIPS WRAP INSIDE THEIR OWN BOX, not inside the strip — «عاوز شكل الفلاتر بتوع
-            الطاقم الثابت بزراير حفظ والغاء يكونوا زى شاشه تعيين السيارات».
-
-            Both boards laid the selects, the chips and the save pair out as one wrapping row with
-            `ms-auto` on the pair. That reads as the daily board's single line only while the row
-            happens to fit: this board carries one counter more («بلا طقم» beside «بطقم»), so on
-            the same screen it overflowed and `ms-auto` — which pushes to the end of the LAST
-            line — dropped the pair onto a second row by itself.
-
-            Giving the chips a `flex-1` box of their own settles it whatever the counter list
-            grows to: the box takes the width the selects and the buttons leave, and the pair
-            stays on the first line at the strip's end.
-
-            AND THE CHIPS THEMSELVES DO NOT WRAP EITHER — «خلى كله على سطر واحد حتى لو هتصغر كود
-            السيارة شويه، المهم يكونوا كلهم على صف واحد». Wrapping inside the box still cost the
-            strip a second line, for one chip. So the box is `flex-nowrap` and the width comes out
-            of the two selects instead, which have it to give: the car picker drops 224px → 160px
-            and the mission picker 176px → 144px, both still wider than the text they hold. A chip
-            is `shrink-0` so the row gives up width in the one place the reader is not reading.
-
-            `overflow-x-auto` is the floor, not the plan. On a screen too narrow for sixteen chips
-            the box scrolls sideways within itself — the strip stays ONE line and the page is
-            never taken sideways with it, which is what wrapping was avoiding in the first place.
-            The `py-1`/`-my-1` pair is that scroll box paying for itself: `overflow-x` computes
-            `overflow-y` to `auto` too, which would clip a focused chip's 3px ring, so the box
-            carries room for it and gives the height straight back to the strip. `pr-1` is the
-            same debt on the other axis — the first chip sits flush against the box's right edge,
-            and «إجمالي» is the one that is active (and ringed) on an unfiltered board.
-
-            Each counter is a real <button>, as on the daily board: it narrows the table, so it
-            must be reachable by keyboard and announce its state, which a tinted <span> with an
-            onClick never does. `aria-pressed` is the announcement. The colour belongs to the
-            CATEGORY and stays put whether or not the chip is the one applied; the active state
-            is a ring drawn on top. */}
-        <div className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1 pr-1">
-          {counters.map((counter) => (
-            <button
-              key={counter.key}
-              type="button"
-              data-counter={counter.key}
-              data-active={counter.active ? 'true' : undefined}
-              aria-pressed={counter.active}
-              onClick={() => patch(counter.apply)}
-              className={[
-                'flex min-w-[3rem] shrink-0 flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
-                'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
-                counter.tone,
-                counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
-              ].join(' ')}
-            >
-              <span className="truncate">{counter.label}</span>
-              <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Offered only when there is something to undo — the daily board's rule and its
-            button, down to the hue. Clears the three view filters together. */}
-        {filtered && (
-          <button
-            type="button"
-            data-reset-filters="true"
-            onClick={resetFilters}
-            aria-label={t('common.filters.clear')}
-            title={t('common.filters.clear')}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
-          >
-            <ResetIcon className="h-3.5 w-3.5" />
-            {t('common.filters.clear')}
-          </button>
-        )}
-
-        {/* «حفظ» at the END of the strip, where the daily board keeps it — not in the page
-            header. It belongs beside the tally that says what the board currently IS, and the
-            chips' own box above holds it there, on the FIRST line, whatever they add up to. */}
-        {mayPlan && (
-          <div className="flex shrink-0 items-center gap-2">
-            {dirty && (
-              <span data-unsaved="true" className="text-xs text-amber-700 dark:text-amber-300">
-                {t('fleet.fixedRoster.unsaved')}
-              </span>
-            )}
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!dirty || save.isPending}
-              onClick={discard}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              size="sm"
-              disabled={!dirty}
-              loading={save.isPending}
-              onClick={() => void commit()}
-            >
-              {t('common.save')}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      {/* THE BOARD IS EXACTLY THE SCREEN, and the page itself never scrolls. The shell hands the
-          page its height (`PageContainer fullHeight`), this grid takes it (`min-h-0 flex-1`), and
-          the two regions scroll INSIDE themselves — the table in its own box, the pool in its own
-          list. It replaces `sticky top-4` + `max-h-[calc(100vh-2rem)]` on the pool, which bounded
-          the panel by the viewport but not by where it started, so its foot still hung a
-          page-scroll below the fold. */}
-      <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-5">
-        {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
-            content, so without it the table's own `overflow-x-auto` never engages — the wrapper
-            just grows and takes the PAGE sideways with it. With it, a narrow screen scrolls
-            inside the table, which is where the scrolling belongs. `min-h-0` is the same rule in
-            the other axis, and is what keeps the table's height off the grid row. */}
-        <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:col-span-4">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <DataTable
-              columns={columns}
-              rows={rows}
-              rowKey={(row) => row.vehicleId}
-              // The same amber the daily roster paints an unsaved row with, from the same
-              // constant — two boards showing one state in two colours is the thing this avoids.
-              rowClassName={(row) => (unsavedIds.has(row.vehicleId) ? UNSAVED_ROW : undefined)}
-              loading={boardQuery.isPending}
-              error={boardQuery.isError ? boardQuery.error : undefined}
-              onRetry={() => void boardQuery.refetch()}
-              sort={sorts}
-              onSortChange={changeSort}
-              empty={<EmptyState title={t('fleet.fixedRoster.noVehicles')} />}
-            />
-          </div>
-        </div>
-
-        <div className="flex min-h-0 min-w-0 flex-col">
-          {/* Tinted like the reference: the pool is a CONTROL surface, not another data panel,
-              and the green ties it to the chips it holds — so the eye reads list-and-chips as one
-              thing beside the board rather than a second table competing with it.
-
-              A plain surface rather than `<Card>`, because a Card cannot be re-tinted: `cn` joins
-              class names without resolving Tailwind conflicts (see `CardBody`'s own note), so the
-              base `bg-white border-slate-200` and an incoming `bg-green-50 border-green-200` both
-              land on the element and the winner is stylesheet order — which put white on top and
-              left the tint silently doing nothing. Every other tinted surface in this app is built
-              exactly like this one, from the same three tokens. */}
-          <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-green-200 bg-green-50 shadow-card dark:border-green-900 dark:bg-green-950/30">
-            {/* Compact header: the count belongs beside the title, and the search directly under
-                it, so the panel spends its height on drivers rather than on chrome. */}
-            <div className="shrink-0 space-y-2 px-3 pb-2 pt-3">
-              <h2 className="text-center text-sm font-semibold text-green-900 dark:text-green-200">
-                {t('fleet.fixedRoster.driversTitle')}
-                <span className="ms-1 font-normal text-green-700 dark:text-green-400">
-                  ({formatNumber(pool.length, locale)})
-                </span>
-              </h2>
-              <SearchInput
-                value={driverSearch}
-                onChange={setDriverSearch}
-                placeholder={t('fleet.fixedRoster.driverSearchPlaceholder')}
-                className="w-full"
-              />
-            </div>
-            {/* THE POOL IS THE SCREEN, TO THE PIXEL. It was a fixed `max-h-[26rem]` box — 416px
-                of list with a scrollbar inside it, and on a 950px screen that left a quarter of
-                the page blank underneath while the reader paged through a fleet of three
-                hundred. Then it was `sticky` + `max-h-[calc(100vh-2rem)]`, which bounded the
-                panel by the viewport but not by where the panel STARTS: it still began below the
-                page header, so its last drivers sat past the fold and only came into view once
-                you scrolled — the pool you drag FROM, out of reach.
-
-                The height is now inherited rather than computed. The shell hands the page its
-                exact height, the board grid takes it, this panel fills its share of the grid row,
-                and the list takes whatever the title and search box leave (`min-h-0 flex-1
-                overflow-y-auto`). No `100vh` arithmetic, no number picked for one screen, and no
-                page scroll: the only thing that scrolls is the list itself. */}
-            {pool.length === 0 ? (
-              <EmptyState title={t('fleet.roster.availableEmpty')} />
-            ) : shownDrivers.length === 0 ? (
-              // Searched and found nobody — distinct from "the pool is empty", which means every
-              // driver is already crewed and is a fact about the board rather than about the term.
-              <p className="px-3 pb-3 text-center text-sm text-green-800 dark:text-green-300">
-                {t('fleet.fixedRoster.driverSearchEmpty')}
-              </p>
-            ) : (
-              <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
-                {shownDrivers.map((driver) => {
-                  // Everyone here is unseated ON THIS BOARD — that is what the pool now means.
-                  // But the board carries only the vehicles this reader may see, so a driver
-                  // fixed to a car outside that scope is not free either: calling them free
-                  // would be false, and would invite a drag the server then refuses, because
-                  // the row that has to release them is one this client cannot send.
-                  const heldElsewhere =
-                    driver.assignedVehicleId !== null &&
-                    !draft.some((row) => row.vehicleId === driver.assignedVehicleId);
-                  return (
-                    <li key={driver.employeeId}>
-                      <div
-                        data-driver-card={driver.employeeId}
-                        draggable={mayPlan}
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData(DRAG_TYPE, driver.employeeId);
-                          e.dataTransfer.effectAllowed = 'move';
-                          setDragging(driver.employeeId);
-                        }}
-                        onDragEnd={() => setDragging(null)}
-                        className={[
-                          // The chip IS the row now, so the row itself adds no padding of its
-                          // own — the old `px-3 py-1.5` sat around a content-width pill and is
-                          // exactly the space the reference gives back to the board.
-                          'flex items-center gap-1.5',
-                          mayPlan ? 'cursor-grab active:cursor-grabbing' : '',
-                          dragging === driver.employeeId ? 'opacity-50' : '',
-                        ].join(' ')}
-                      >
-                        <DriverChip
-                          employeeId={driver.employeeId}
-                          className={
-                            mayPlan ? 'min-w-0 flex-1 hover:bg-green-800' : 'min-w-0 flex-1'
-                          }
-                        />
-                        {/* Only the exception is badged now. "Free" is what every other row in
-                            this list already means, so saying it on each one spends the width
-                            the name needs without telling the reader anything. */}
-                        {heldElsewhere && (
-                          <Badge tone="warning" size="sm" className="shrink-0">
-                            {t('fleet.roster.otherVehicle')}
-                          </Badge>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {editingRow !== null && (
-        <EditCrewDialog
-          row={editingRow}
-          pool={pool}
-          missionTypes={missionTypes}
-          onClose={() => setEditing(null)}
-          onSave={(edit) => {
-            setDraft((rows) => applyEdit(rows, editingRow.vehicleId, edit));
-            setEditing(null);
-          }}
+      ) : (
+        <FixedTouchBoard
+          m={m}
+          query={query}
+          resetFilters={resetFilters}
+          layout={layout}
+          short={short}
         />
       )}
     </PageContainer>

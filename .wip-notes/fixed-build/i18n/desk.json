@@ -1,0 +1,8 @@
+{
+  "fleet.fixedRoster.carCount.one": { "ar": "سيارة واحدة", "en": "One vehicle" },
+  "fleet.fixedRoster.carCount.two": { "ar": "سيارتان", "en": "Two vehicles" },
+  "fleet.fixedRoster.carCount.few": { "ar": "{{count}} سيارات", "en": "{{count}} vehicles" },
+  "fleet.fixedRoster.carCount.many": { "ar": "{{count}} سيارة", "en": "{{count}} vehicles" },
+  "fleet.fixedRoster.carCount.other": { "ar": "{{count}} سيارة", "en": "{{count}} vehicles" },
+  "fleet.fixedRoster.matchedRows": { "ar": "عدد الصفوف بعد عوامل التصفية", "en": "Rows after the filters" }
+}

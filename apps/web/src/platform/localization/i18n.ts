@@ -8469,14 +8469,10 @@ const en: Record<string, string> = {
 
   // Fleet — fixed crew (FW-7 sibling): the standing crew of a car, with no date and no
   // availability verdict — those belong to the DAILY roster above.
-  'fleet.fixedRoster.subtitle':
-    'The standing crew of each vehicle — no date, and it stays until you change it',
   'fleet.fixedRoster.driversTitle': 'Drivers',
-  'fleet.fixedRoster.driversHint': 'Drag a driver onto a slot',
   'fleet.fixedRoster.driverSearchPlaceholder': 'Search by name, code or number',
   'fleet.fixedRoster.driverSearchEmpty': 'No driver matches that search',
   'fleet.fixedRoster.needsFirstDriver': 'Assign driver 1 first',
-  'fleet.fixedRoster.removeDriver': 'Remove from this slot',
   'fleet.fixedRoster.clearCrew': 'Clear this crew',
   'fleet.fixedRoster.editHint': 'Mission type, crew and notes — saved together',
   'fleet.fixedRoster.noMissionType': 'No mission type',
@@ -8485,10 +8481,8 @@ const en: Record<string, string> = {
   'fleet.fixedRoster.noDriver': 'No driver',
   'fleet.fixedRoster.sameDriverTwice': 'The two slots cannot hold the same person',
   'fleet.fixedRoster.unassigned': 'No crew',
-  'fleet.fixedRoster.unsaved': 'You have unsaved changes',
   'fleet.fixedRoster.saved': 'Fixed crews saved',
   'fleet.fixedRoster.noVehicles': 'No vehicles',
-  'fleet.fixedRoster.summary': '{{total}} vehicles · {{crewed}} crewed',
   // How many cars the CURRENT filter matches — the registry's own tally, in its bar.
   'fleet.vehicles.count': '{{count}} vehicles',
   'fleet.vehicles.sortReset': 'Default order',
@@ -8510,6 +8504,37 @@ const en: Record<string, string> = {
   // The standing board counts crews, not missions — see `FixedRosterPage`.
   'fleet.fixedRoster.counter.crewed': 'Crewed',
   'fleet.fixedRoster.counter.uncrewed': 'No crew',
+  // The fixed board: its car count in five forms, the empty pool line, and the save refusal in
+  // words — the driver by name, the holding car by code; never an id, never the server's English.
+  'fleet.fixedRoster.poolEmpty': 'Every driver is on a fixed crew',
+  'fleet.fixedRoster.refusal.held':
+    'Not saved: driver {{name}} is on the fixed crew of vehicle {{code}}.',
+  'fleet.fixedRoster.refusal.heldUnnamed':
+    'Not saved: one of the drivers is on the fixed crew of vehicle {{code}}.',
+  'fleet.fixedRoster.refusal.heldElsewhere':
+    'Not saved: driver {{name}} is on the fixed crew of another vehicle that is not on this screen (another branch, or a vehicle out of service).',
+  'fleet.fixedRoster.refusal.heldElsewhereUnnamed':
+    'Not saved: one of the drivers is on the fixed crew of another vehicle that is not on this screen (another branch, or a vehicle out of service).',
+  'fleet.fixedRoster.refusal.profileInactive':
+    'Not saved: driver {{name}}’s fleet profile is switched off, so he cannot be on a fixed crew.',
+  'fleet.fixedRoster.refusal.profileInactiveUnnamed':
+    'Not saved: one driver’s fleet profile is switched off, so he cannot be on a fixed crew.',
+  'fleet.fixedRoster.refusal.notADriver': 'Not saved: {{name}} does not hold a driving seat.',
+  'fleet.fixedRoster.refusal.notADriverUnnamed':
+    'Not saved: one of the chosen people does not hold a driving seat.',
+  'fleet.fixedRoster.refusal.vehicleNotActive':
+    'Not saved: vehicle {{code}} is no longer in service, so it cannot carry a crew.',
+  'fleet.fixedRoster.refusal.missionInactive':
+    'Not saved: the chosen mission type is no longer available — choose another.',
+  'fleet.fixedRoster.refusal.needsFirst': 'Not saved: assign driver 1 before driver 2.',
+  'fleet.fixedRoster.refusal.generic':
+    'The fixed crews were not saved; your changes are kept — check the edited vehicles and try again.',
+  'fleet.fixedRoster.carCount.one': 'One vehicle',
+  'fleet.fixedRoster.carCount.two': 'Two vehicles',
+  'fleet.fixedRoster.carCount.few': '{{count}} vehicles',
+  'fleet.fixedRoster.carCount.many': '{{count}} vehicles',
+  'fleet.fixedRoster.carCount.other': '{{count}} vehicles',
+  'fleet.fixedRoster.matchedRows': 'Rows after the filters',
   'fleet.roster.allMissions': 'All missions',
   // The go-live notice — what the boot-time import recorded, printed where the data should be.
   // The licence scan's own zoom — the browser's enlarges the page, this enlarges the picture.
@@ -23665,13 +23690,10 @@ const ar: Record<string, string> = {
   'fleet.alarms.refresh': 'تحديث',
 
   // Fleet — fixed crew (FW-7 sibling)
-  'fleet.fixedRoster.subtitle': 'الطقم الثابت لكل سيارة — بلا تاريخ، ويظل كما هو حتى تغيّره',
   'fleet.fixedRoster.driversTitle': 'السائقون',
-  'fleet.fixedRoster.driversHint': 'اسحب السائق إلى الخانة',
   'fleet.fixedRoster.driverSearchPlaceholder': 'ابحث بالاسم أو الكود أو الرقم',
   'fleet.fixedRoster.driverSearchEmpty': 'لا يوجد سائق مطابق للبحث',
   'fleet.fixedRoster.needsFirstDriver': 'عيّن السائق الأول أولاً',
-  'fleet.fixedRoster.removeDriver': 'إزالة من هذه الخانة',
   'fleet.fixedRoster.clearCrew': 'إفراغ الطقم',
   'fleet.fixedRoster.editHint': 'نوع المهمة والطقم والملاحظات — تُحفظ معًا',
   'fleet.fixedRoster.noMissionType': 'بدون نوع مهمة',
@@ -23680,10 +23702,8 @@ const ar: Record<string, string> = {
   'fleet.fixedRoster.noDriver': 'بدون سائق',
   'fleet.fixedRoster.sameDriverTwice': 'لا يمكن أن يحمل الخانتين نفس الشخص',
   'fleet.fixedRoster.unassigned': 'بلا طقم',
-  'fleet.fixedRoster.unsaved': 'لديك تغييرات غير محفوظة',
   'fleet.fixedRoster.saved': 'تم حفظ الطقم الثابت',
   'fleet.fixedRoster.noVehicles': 'لا توجد سيارات',
-  'fleet.fixedRoster.summary': '{{total}} سيارة · {{crewed}} بطقم',
   'fleet.vehicles.count': '{{count}} سيارة',
   'fleet.vehicles.sortReset': 'الترتيب الافتراضي',
   'fleet.vehicles.sortResetTitle': 'إعادة الجدول إلى ترتيبه الأصلي حسب الكود',
@@ -23702,6 +23722,35 @@ const ar: Record<string, string> = {
   'fleet.roster.counter.assigned': 'تشغيل',
   'fleet.fixedRoster.counter.crewed': 'بطقم',
   'fleet.fixedRoster.counter.uncrewed': 'بلا طقم',
+  // الطقم الثابت: عدد السيارات بصيغ العدد الخمس، والقائمة الفارغة، وسطر رفض الحفظ بالعربية.
+  'fleet.fixedRoster.poolEmpty': 'لا يوجد سائقون بلا طقم ثابت',
+  'fleet.fixedRoster.refusal.held':
+    'تعذّر الحفظ: السائق {{name}} في الطقم الثابت للسيارة {{code}}.',
+  'fleet.fixedRoster.refusal.heldUnnamed':
+    'تعذّر الحفظ: أحد السائقين في الطقم الثابت للسيارة {{code}}.',
+  'fleet.fixedRoster.refusal.heldElsewhere':
+    'تعذّر الحفظ: السائق {{name}} في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة خارج الخدمة).',
+  'fleet.fixedRoster.refusal.heldElsewhereUnnamed':
+    'تعذّر الحفظ: أحد السائقين في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة خارج الخدمة).',
+  'fleet.fixedRoster.refusal.profileInactive':
+    'تعذّر الحفظ: ملف السائق {{name}} موقوف، فلا يمكن وضعه في طقم ثابت.',
+  'fleet.fixedRoster.refusal.profileInactiveUnnamed':
+    'تعذّر الحفظ: ملف أحد السائقين موقوف، فلا يمكن وضعه في طقم ثابت.',
+  'fleet.fixedRoster.refusal.notADriver': 'تعذّر الحفظ: {{name}} ليس على وظيفة سائق.',
+  'fleet.fixedRoster.refusal.notADriverUnnamed': 'تعذّر الحفظ: أحد المختارين ليس على وظيفة سائق.',
+  'fleet.fixedRoster.refusal.vehicleNotActive':
+    'تعذّر الحفظ: السيارة {{code}} لم تعد في الخدمة، فلا يمكن حفظ طقم لها.',
+  'fleet.fixedRoster.refusal.missionInactive':
+    'تعذّر الحفظ: نوع المهمة المختار لم يعد متاحًا — اختر نوعًا آخر.',
+  'fleet.fixedRoster.refusal.needsFirst': 'تعذّر الحفظ: عيّن السائق الأول قبل الثاني.',
+  'fleet.fixedRoster.refusal.generic':
+    'تعذّر حفظ الطقم الثابت، وتعديلاتك باقية — راجع السيارات المعدَّلة ثم أعد المحاولة.',
+  'fleet.fixedRoster.carCount.one': 'سيارة واحدة',
+  'fleet.fixedRoster.carCount.two': 'سيارتان',
+  'fleet.fixedRoster.carCount.few': '{{count}} سيارات',
+  'fleet.fixedRoster.carCount.many': '{{count}} سيارة',
+  'fleet.fixedRoster.carCount.other': '{{count}} سيارة',
+  'fleet.fixedRoster.matchedRows': 'عدد الصفوف بعد عوامل التصفية',
   'fleet.roster.allMissions': 'كل المهمات',
   // إشعار بدء التشغيل — ما سجّله الاستيراد عند الإقلاع، مطبوعًا حيث كان ينبغي أن تظهر البيانات.
   // زوم الصورة نفسها — زوم المتصفح يكبّر الصفحة، وهذا يكبّر الرخصة.

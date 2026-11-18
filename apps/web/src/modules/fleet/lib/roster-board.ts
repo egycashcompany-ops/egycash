@@ -656,7 +656,7 @@ export const useRosterBoard = (
 
   // Held on a car OFF this board — another branch's car, or a car planned today that has since
   // left the board (D01). No edit here can release him, so he is never in the pool: he is listed
-  // apart, under «معيّنون على سيارات أخرى», as the fixed roster badges him.
+  // apart, under «معيّنون على سيارات أخرى», badged «سيارة أخرى».
   const heldOff = useMemo(() => heldOffBoard(board?.availableDrivers ?? [], saved), [board, saved]);
   const heldOffIds = useMemo(() => new Set(heldOff.map((driver) => driver.employeeId)), [heldOff]);
   // The pool is DERIVED from the draft: everyone the draft seats leaves it the moment the edit

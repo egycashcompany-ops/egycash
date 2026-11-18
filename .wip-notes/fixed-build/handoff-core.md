@@ -57,3 +57,76 @@ Notes for desk / touch:
 - `m.actions.apply` measures the change itself (no step when nothing changed) — a dialog may
   still compare first, as the daily does.
 - `toSeatRow` sets `inMaintenance: false, planned: true`; `toCardRow` sets `planned: true`.
+
+## STATUS (end of the core run, 2026-11-18): DONE, nothing committed by core
+
+Files (core's work = `git diff 2b9467a3 -- <these>`):
+- NEW `apps/web/src/modules/fleet/lib/fixed-roster-model.ts` (+ `.spec.ts`, 56 cases)
+- NEW `apps/web/src/modules/fleet/lib/fixed-save-refusal.ts` (+ `.spec.ts`, 25 cases)
+- NEW `apps/web/src/modules/fleet/fixed-roster-spec-sources.ts`
+- NEW `apps/web/src/modules/fleet/components/roster/roster-optional-props.spec.tsx` (23 cases)
+- REWRITTEN `apps/web/src/modules/fleet/pages/FixedRosterPage.tsx` (the shell)
+- `apps/web/src/modules/fleet/lib/fixed-roster-board.ts` (+ swap cases in its spec)
+- the daily pieces (optional props / `export` only): `components/roster/RosterDeskBoard.tsx`,
+  `roster-desk-parts.tsx`, `roster-desk-cells.tsx`, `roster-drivers.tsx`, `roster-touch-parts.tsx`,
+  `RosterCarCard.tsx`, `components/DriverSlotPicker.tsx`
+- `.wip-notes/fixed-build/i18n/core.json` (13 keys, ar + en, formal — checked with
+  `offendersIn`, placeholders equal in both)
+
+Runs (each alone under the flock lock):
+- own specs: model 56/56, board (with swap) green, optional-props 23/23, refusal 23/25 — the 2 red
+  are the "real words" block (no Latin letter in any Arabic line; placeholders filled in ar + en):
+  GREEN ONLY AFTER THE HUB MERGES `i18n/core.json`. Verified with a throw-away zz harness that fed
+  core.json into `translate`: every line Arabic, no Latin letter, names + code filled (harness
+  deleted).
+- daily specs UNEDITED: fleet-daily-roster, fleet-roster-touch, fleet-roster-filter-row,
+  fleet-roster-licence, roster-shared, roster-board, roster-layout, daily-roster-board, roster-view,
+  useDraftBoard, draft-storage, fleet-driver-card — all green. `fleet-roster-picker.spec.tsx`
+  cannot load until `components/roster/FixedTouchBoard.tsx` exists (it imports FixedRosterPage) —
+  re-run after touch lands (its fixed half reads the desk seat: see R3, desk's to confirm).
+- also green: fleet-date-picker, fleet-table-sort (the shell keeps every pinned sort line),
+  remembered-filters-coverage, fleet-row-actions-look, fleet-figures-font.
+- web typecheck: the ONLY error is the missing `components/roster/FixedTouchBoard` import
+  (desk's files compile against §4 as written).
+- eslint + prettier clean on every core file and spec. `scripts/check-formal-arabic.mjs` clean.
+
+## To the HUB
+1. Merge `i18n/core.json` (13 keys: `fleet.fixedRoster.poolEmpty` + 12 `fleet.fixedRoster.refusal.*`).
+   Then `lib/fixed-save-refusal.spec.ts` › «the real words» goes green (2 cases).
+2. Red until re-pointed (the fixed code column / hover code / code filter now live in
+   `components/roster/FixedDeskBoard.tsx`, the shell keeps DEFAULT_SORT + the state rank):
+   - fleet-sort-arrows › «offers both rosters the code and the state» (`pages/FixedRosterPage.tsx`
+     → `components/roster/FixedDeskBoard.tsx` for the `vehicle`/`state` columns; the «ranks
+     الحالة» and «default order» cases still pass on the shell).
+   - fleet-vehicle-card-census › ««الطاقم الثابت» — the coloured code…» and «hover only where…».
+   - vehicle-code-selectors › «only the boards pass their own options to the car filter».
+   - `fleet-fixed-roster.spec.tsx` is desk's rewrite.
+3. Stale comments fixed by core: the page header (the old «a reload … keeps the saved crews»,
+   «نوع المهمة/ملاحظات always «—»», the per-car colour) and its two orphan JSDoc blocks («Remembered
+   across visits…» stacked on `fixedSortValue`, «The order this screen opens in» stacked on
+   `CrewCarCode`) — gone with the rewrite; the orphan `clearSlot` doc block in
+   `lib/fixed-roster-board.ts` moved onto `clearSlot`; `isDirty`'s doc (no banner reads it);
+   roster-drivers' two «as the fixed roster badges them» comments (the fixed screen now lists the
+   held-off driver in blue).
+   NOT core's file, still stale: `lib/roster-board.ts` (daily model) says the held-off driver is
+   listed «as the fixed roster badges him» (amber) — the fixed screen now draws him blue. Comment
+   only; touch nothing else there (`roster-board.ts` is pinned by daily specs).
+4. EmployeeName: untouched (D3) — the gap is desk's local face in `FixedCrewDialog.tsx`.
+5. D5 (fullHeight on phone / portrait): no report from touch yet. If touch's browser check says the
+   sticky rows break, the fallback is core's one-line change in the shell:
+   `<PageContainer fullHeight={layout === 'desktop' || layout === 'landscape'}>` (check that
+   `PageContainer` accepts a boolean `fullHeight`; the header stays on top at every width).
+   Note `fleet-fixed-roster` / my model spec pin `<PageContainer fullHeight>` in the shell source —
+   update `lib/fixed-roster-model.spec.ts` › «the shell (answer 2 ج)» with it.
+
+## Behaviour notes (for the told list / CHANGELOG)
+- `actions.discard / undo / save` and every edit are no-ops without `fleetRoster.plan`;
+  `exportSheet` works for every reader (same 8 columns, today's file name, the rows given).
+- «حفظ» stored → draft dropped (storage + memory), undo steps forgotten, «تم الحفظ» toast.
+  Refused → `toast.error(fixedSaveRefusal(...))`, draft AND undo steps kept.
+- The refusal line: held + holder code → «… للسيارة {code}»; held, no holder code (another
+  branch) → «… لسيارة أخرى ليست في هذه الشاشة …»; a holder value that is an internal id or blank is
+  treated as no code; no name in reach → the unnamed sentence; a 400/409 payload refusal with no
+  known detail (incl. the contract's `CUSTOM` issues, and an older server's bare 409) → the generic
+  line; stale / forbidden / network → the app's friendly line; any code the app has no words for →
+  the generic line (never the server's English).

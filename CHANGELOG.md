@@ -2749,6 +2749,66 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Fleet: «الطقم الثابت» (`/fleet/fixed-roster`) in the look of «تعيين السيارات», as the approved
+  sample.** «واعمل ديزاين شاشة الطاقم الثابت زى التعيين اليومى», the owner's answers to the sample
+  «1 ب / 2 ج», then «انت لسه معملتش بيدج الطاقم الثابت». The screen is now the daily roster's board
+  without a day: no date, no day arrows, no «يوم سابق», no availability words, no absence or leave —
+  a standing crew stays as it is until somebody changes it.
+  - The page header «الطقم الثابت» under «الحركة» stays on top at every width (answer 2 ج), and
+    its own Excel button is gone: the one Excel control is the daily «تصدير Excel» pill on a
+    computer and the daily Excel button on a tablet or a phone. The file is unchanged: the rows on
+    show, eight columns.
+  - On a computer (1280 px and up): under the header, the cars the filters leave, in Arabic's own
+    plural («سيارة واحدة»، «سيارتان»، «3 سيارات»، «11 سيارة»; this screen only), beside the Excel
+    pill. Then the dark filter bar — «كود السيارة», the counters and the red reset; the «كل المهمات»
+    dropdown is gone, the mission chips are the filter — and the boards' dark table. The code is
+    bold white with the car card on hover and no colour of its own per car. The two seats are the
+    daily seat, the code under the name. «ملاحظات» shows three lines at most, the whole note on
+    hover. «إجراءات» is pinned. «بلا طقم» is yellow, as the daily «بلا سائق»; rose is the
+    workshop's alone. A workshop car's row is rose and its standing crew stays editable.
+  - The drivers panel beside the table: «السائقون (n)», n the drivers with no fixed crew, listed
+    first (name, code under it, no «متاح»). Then «معيّنون على سيارات أخرى» with the blue «سيارة
+    أخرى» for a driver held on a car that is not on the board (another branch's, or a car out of
+    service). He is no longer dragged from the list, nor counted. «لا يوجد سائقون بلا طقم ثابت»
+    replaces the old line that said «في هذا التاريخ».
+  - «إجراءات»: the pen on every row opens «تعديل · {code}» with the mission, the two seats drawn as
+    the daily dialog's (name and code with ✕, «اختيار سائق» on an empty seat) and the note, under
+    the same rules (seat 2 waits for seat 1, never the same person twice). A new swap button
+    (both seats filled) trades seat 1 and seat 2. The bin «إفراغ الطقم» still empties both seats
+    at once, keeps the mission and the note, and asks nothing.
+  - On a tablet or a phone (under 1280 px): cards instead of the table, always in code order (the
+    workshop car in its place, unlocked); «ابحث بكود السيارة…» with the Excel button beside it; the
+    filter row («عوامل التصفية», where the mission filter is, the counters, and «السائقون» with its
+    count — an icon and the number on a phone). A seat tap opens a list that also offers the drivers
+    on other cars with their car's code — a pick moves him; or choose the driver first in «السائقون»
+    and tap the seat. The swap sits between the seats; ⋮ holds «تعديل» (the note) and «إفراغ الطقم»;
+    the mission is the button by the code. A landscape tablet shows cars 60% and drivers 40%.
+  - Every edit is a draft. The save bar at the foot shows only with unsaved work: the edited car
+    codes (a tap brings the car into view, lifting only the filter that hides it), «تراجع» (the last
+    edit, up to 50), «إلغاء» (asks first when more than one car is edited) and «حفظ». A reload keeps
+    the unsaved edits; «تراجع» starts again. A driver taken from another car shows «سيُنقل من
+    السيارة 214 عند الحفظ» under his new seat until the save. A viewer sees no «إجراءات» and no
+    save bar.
+  - A refused save keeps the draft and now says why in Arabic, naming the driver and the car that
+    holds him, never an internal id or the server's English — or «سيارة أخرى ليست في هذه الشاشة»
+    when that car is outside the reader's branches. A car no longer in service, a switched-off
+    driver profile, an employee not on a driving seat and a retired mission type each have their
+    own line.
+  - `POST /fleet/fixed-roster`'s refusals carry `details` for that line: `FIXED_CREW_DRIVER_HELD`
+    (the driver's employee id) with `FIXED_CREW_HOLDER` (the holding car's code, only when the
+    caller's scope reads that car), `FIXED_CREW_VEHICLE_NOT_ACTIVE` (the car's code),
+    `FIXED_CREW_PROFILE_INACTIVE` and `FIXED_CREW_NOT_A_DRIVER` (the employee id, after the existing
+    detail), and `FIXED_CREW_MISSION_INACTIVE` (the mission type id). Same status, error code and
+    message; no names in the body.
+  - Unchanged: the fixed crew's rules, endpoints and data (no new field, no migration); the
+    permissions (`fleetRoster.plan` edits; the branch picker narrows the cars, the drivers are the
+    whole company); the hover cards (today's car and drivers, from the daily roster); and «تعيين
+    السيارات» itself — its shared pieces gained optional props whose defaults draw it exactly as
+    before. Answer 1 ب: this screen flags no standing member who can no longer drive; that stays on
+    «تعيين السيارات».
+  - Five words only the old screen read are removed: `fleet.fixedRoster.subtitle`, `.summary`,
+    `.driversHint`, `.removeDriver` and `.unsaved`.
+
 - **«لوحة تحكم الحركة» at `/fleet`: «العهدة», a NEW tab right after «الوقود والمصروفات», and
   «التراخيص والتجديدات», which replaces the old «التراخيص» body under the same key, as approved.**
   «اعتمد سامبل العهدة» and «اعمل اللى بتفضلوا» (the custody), «أ جدول بالسواقين» and «اعتمد» (the

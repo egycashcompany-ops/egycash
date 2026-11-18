@@ -10,7 +10,8 @@
 // car's code; a move is promised («سيُنقل من السيارة … عند الحفظ») in one place only — on the seat,
 // after the pick. Under the same head, ALWAYS, the drivers the server holds on a car that is not
 // on this board (another branch's car, or a car that left the board after it was planned), badged
-// «سيارة أخرى» as the fixed roster badges them: listed, never pickable, never counted.
+// «سيارة أخرى»: listed, never pickable, never counted. (The standing-crew screen lists the same
+// fact as a seated row with no code — the blue «سيارة أخرى» — because a seat it fills may take him.)
 //
 // The markup hooks the specs and the dashboard links read are the employee ids: a free row
 // `data-driver-card`, a licence-block row `data-licence-expired-driver`, an unavailable row
@@ -301,7 +302,7 @@ export const AvailableList = ({
         {t('fleet.roster.licenceExpired')}
       </Badge>
     ) : away ? (
-      // The fixed roster's badge for the same fact: the car is not on this board, so no code.
+      // The car is not on this board, so no code — only the word.
       <Badge tone="warning" size="sm" className="shrink-0">
         {t('fleet.roster.otherVehicle')}
       </Badge>

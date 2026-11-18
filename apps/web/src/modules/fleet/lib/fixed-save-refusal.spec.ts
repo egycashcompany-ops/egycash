@@ -60,7 +60,9 @@ const clean = (line: string): void => {
   expect(line, 'no employee id').not.toContain(E2);
   expect(line, 'no vehicle id').not.toContain(V_HOLDER);
   expect(line, 'no mission id').not.toContain(MT);
-  expect(line, 'not the server’s English').not.toMatch(/already belongs|cannot be crewed|Validation/u);
+  expect(line, 'not the server’s English').not.toMatch(
+    /already belongs|cannot be crewed|Validation/u,
+  );
 };
 
 describe('a driver another car still holds (409)', () => {
@@ -138,7 +140,11 @@ describe('the other refusals the server words', () => {
 
   it('a mission type archived since it was picked', () => {
     const error = new ApiError('VALIDATION_FAILED', 'Validation failed', 400, [
-      { field: 'body.rows.missionTypeId', code: 'UNKNOWN', message: 'mission type not found or inactive' },
+      {
+        field: 'body.rows.missionTypeId',
+        code: 'UNKNOWN',
+        message: 'mission type not found or inactive',
+      },
       { field: 'missionTypeId', code: 'FIXED_CREW_MISSION_INACTIVE', message: MT },
     ]);
     const line = fixedSaveRefusal(error, words());
@@ -161,7 +167,11 @@ describe('the other refusals the server words', () => {
 describe('a refusal the line has no sentence for', () => {
   it('a contract 400 with no detail it knows — the generic line, draft kept', () => {
     const error = new ApiError('VALIDATION_FAILED', 'Validation failed', 400, [
-      { field: 'body.rows.0.notes', code: 'too_big', message: 'String must contain at most 500 character(s)' },
+      {
+        field: 'body.rows.0.notes',
+        code: 'too_big',
+        message: 'String must contain at most 500 character(s)',
+      },
     ]);
     const line = fixedSaveRefusal(error, words());
     expect(line).toBe(`${K}.generic`);
@@ -178,9 +188,7 @@ describe('a refusal the line has no sentence for', () => {
     expect(fixedSaveRefusal(new ApiError('CONFLICT', 'conflict', 409), words())).toBe(
       `${K}.generic`,
     );
-    expect(fixedSaveRefusal(new ApiError('BAD_REQUEST', 'bad', 400), words())).toBe(
-      `${K}.generic`,
-    );
+    expect(fixedSaveRefusal(new ApiError('BAD_REQUEST', 'bad', 400), words())).toBe(`${K}.generic`);
   });
 
   it('a stale board says what the app says about a stale record', () => {

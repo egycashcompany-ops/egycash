@@ -278,7 +278,7 @@ export const changedRows = (
     .map((row) => ({ vehicleId: row.vehicleId, ...editable(row) }));
 };
 
-/** Is there anything to save? The unsaved-changes banner and the save button both ask this. */
+/** Is there anything to save? `changedRows` has a row — the board model reads that list itself. */
 export const isDirty = (
   saved: readonly FleetFixedCrewRowDto[],
   draft: readonly FleetFixedCrewRowDto[],

@@ -687,8 +687,10 @@ describe('a second driver needs a first', () => {
               `assign ${who} -> ${vehicleId}.${slot}`,
             ).toEqual([]);
           }
-          expect(lonelySecond(clearSlot(start, vehicleId, slot)), `clear ${vehicleId}.${slot}`)
-            .toEqual([]);
+          expect(
+            lonelySecond(clearSlot(start, vehicleId, slot)),
+            `clear ${vehicleId}.${slot}`,
+          ).toEqual([]);
         }
       }
     }
@@ -763,7 +765,11 @@ describe('the save payload is the edit, not the board', () => {
     const saved = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
     const after = assignDriver(saved, 'v2', 'driver1EmployeeId', 'e1');
     expect(crews(after)).toEqual(['150:e2/-', '151:e1/-']);
-    expect(changedRows(saved, after).map((r) => r.vehicleId).sort()).toEqual(['v1', 'v2']);
+    expect(
+      changedRows(saved, after)
+        .map((r) => r.vehicleId)
+        .sort(),
+    ).toEqual(['v1', 'v2']);
   });
 
   it('STILL normalises a row edited through the dialog', () => {
@@ -818,10 +824,9 @@ describe('clearCrew takes every driver off one vehicle', () => {
   it('and folding clearSlot over the seats does NOT — which is why it exists', () => {
     // The old expression, kept here as the counterexample. Seat 2 is promoted, then "cleared"
     // finds nothing, and a driver survives a gesture that said «امسح الطاقم».
-    const folded = CREW_SLOTS.reduce(
-      (rows, slot) => clearSlot(rows, 'v1', slot),
-      [crewed('v1', 'a', 'b')] as readonly FleetFixedCrewRowDto[],
-    );
+    const folded = CREW_SLOTS.reduce((rows, slot) => clearSlot(rows, 'v1', slot), [
+      crewed('v1', 'a', 'b'),
+    ] as readonly FleetFixedCrewRowDto[]);
     expect(folded[0]?.driver1EmployeeId, 'the promoted driver survives').toBe('b');
   });
 

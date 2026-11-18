@@ -25,31 +25,87 @@ export interface DepartmentColumns {
   jobCount: number;
 }
 
-/** Each column's jobs, from the jobs' own places — only places that are shown (§4.2). */
+/**
+ * Each column's jobs, from the jobs' own places — only places that are shown (§4.2) — in the order
+ * the column was given (§5.7): by the place's position, unpositioned places after the positioned ones,
+ * and among those the order of the chart's job list. The server's reorder sorts by the same rule
+ * (`org-chart.order.ts`), so what is dragged is what it compares against.
+ */
 export const columnsOf = (
   department: OrgChartDepartmentDto,
   jobs: readonly OrgChartJobDto[],
 ): DepartmentColumns => {
-  const direct: OrgChartJobDto[] = [];
-  const bySection = new Map<string, OrgChartJobDto[]>();
+  type Entry = { job: OrgChartJobDto; position: number | null; at: number };
+  const direct: Entry[] = [];
+  const bySection = new Map<string, Entry[]>();
   const entryId = lower(department.departmentCatalogId);
   const counted = new Set<string>();
-  if (entryId === null) return { direct, bySection, jobCount: 0 };
-  for (const job of jobs) {
+  if (entryId === null) return { direct: [], bySection: new Map(), jobCount: 0 };
+  jobs.forEach((job, at) => {
     for (const place of job.places) {
       if (!place.shown || place.departmentCatalogId.toLowerCase() !== entryId) continue;
       counted.add(job.id);
-      if (place.sectionCatalogId === null) direct.push(job);
+      const entry = { job, position: place.position ?? null, at };
+      if (place.sectionCatalogId === null) direct.push(entry);
       else {
         const key = place.sectionCatalogId.toLowerCase();
         const list = bySection.get(key) ?? [];
-        list.push(job);
+        list.push(entry);
         bySection.set(key, list);
       }
     }
-  }
-  return { direct, bySection, jobCount: counted.size };
+  });
+  const ordered = (list: Entry[]): OrgChartJobDto[] =>
+    [...list]
+      .sort(
+        (a, b) =>
+          (a.position ?? Number.POSITIVE_INFINITY) - (b.position ?? Number.POSITIVE_INFINITY) ||
+          a.at - b.at,
+      )
+      .map((entry) => entry.job);
+  return {
+    direct: ordered(direct),
+    bySection: new Map([...bySection].map(([key, list]) => [key, ordered(list)])),
+    jobCount: counted.size,
+  };
 };
+
+/**
+ * A column's job ids after moving one job to `toIndex` — the index it is to have in the NEW list.
+ * The same list when the job is not in it or would not move.
+ */
+export const reorderedIds = (
+  ids: readonly string[],
+  jobId: string,
+  toIndex: number,
+): string[] => {
+  const from = ids.indexOf(jobId);
+  if (from === -1) return [...ids];
+  const rest = ids.filter((id) => id !== jobId);
+  const at = Math.max(0, Math.min(toIndex, rest.length));
+  return [...rest.slice(0, at), jobId, ...rest.slice(at)];
+};
+
+/**
+ * Where a drop lands, as the index the dragged job will have: before the row it was dropped on, or
+ * after it when the pointer was in that row's lower half. `overIndex` is the row's index in the list
+ * as it is now, with the dragged job still in it.
+ */
+export const dropIndex = (
+  ids: readonly string[],
+  jobId: string,
+  overIndex: number,
+  after: boolean,
+): number => {
+  const from = ids.indexOf(jobId);
+  const slot = overIndex + (after ? 1 : 0);
+  // Removing the dragged job first shifts every later row up by one.
+  return from !== -1 && from < slot ? slot - 1 : slot;
+};
+
+/** Did the order change? (A drop where the job already was writes nothing.) */
+export const sameOrder = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((id, i) => id === b[i]);
 
 /** The places a job may move to inside its department: «directly under» first, then each editable section. */
 export const moveTargets = (

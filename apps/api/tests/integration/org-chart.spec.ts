@@ -459,6 +459,130 @@ describe('job places, saved with the job (P-ORG-3 §5.2)', () => {
   });
 });
 
+/**
+ * «لما باجي أشد حاجة عشان أغير ترتيبها مش بتتشد» — a column's jobs in the order the editor sets
+ * (P-ORG-3 §5.7). The order is the PLACE's: one job in two columns stands where each puts it.
+ */
+describe('the order of a column\'s jobs (P-ORG-3 §5.7)', () => {
+  const setup = async () => {
+    const marketing = await linkedDepartment({ ar: 'التسويق', en: 'Marketing' }, branches.slice(0, 1));
+    const sales = await linkedSection({ ar: 'المبيعات', en: 'Sales' }, marketing.entry._id, marketing.rows);
+    const senior = await job('Senior marketer', 'أخصائي أول تسويق');
+    const manager = await job('Marketing manager', 'مدير التسويق');
+    const consultant = await job('Marketing consultant', 'استشاري تسويق');
+    const dept = String(marketing.entry._id);
+    for (const j of [senior, manager, consultant]) {
+      await JobPlaceModel.create({ jobTitleId: j._id, departmentCatalogId: marketing.entry._id, sectionCatalogId: null });
+    }
+    // The manager is in Sales too, so one job stands in two columns.
+    await JobPlaceModel.create({ jobTitleId: manager._id, departmentCatalogId: marketing.entry._id, sectionCatalogId: sales._id });
+    return { dept, sales: String(sales._id), senior: String(senior._id), manager: String(manager._id), consultant: String(consultant._id) };
+  };
+  const order = (body: object, token = adminToken) =>
+    request(app).put('/api/v1/platform/org-chart/order').set('Authorization', `Bearer ${token}`).send(body);
+  /** The column as the page sorts it: by position, unpositioned after, else the chart's job order. */
+  const columnOf = (dto: OrgChartDto, dept: string, section: string | null): string[] => {
+    const jobOrder = new Map(dto.jobs.map((j, i) => [j.id, i]));
+    return dto.jobs
+      .flatMap((j) =>
+        j.places
+          .filter((p) => p.departmentCatalogId === dept && p.sectionCatalogId === section)
+          .map((p) => ({ id: j.id, position: p.position })),
+      )
+      .sort(
+        (a, b) =>
+          (a.position ?? Infinity) - (b.position ?? Infinity) ||
+          (jobOrder.get(a.id) ?? 0) - (jobOrder.get(b.id) ?? 0),
+      )
+      .map((entry) => entry.id);
+  };
+
+  it('saves the new order, answers with the chart in it, and keeps the other column as it was', async () => {
+    const { dept, sales, senior, manager, consultant } = await setup();
+    const res = await order({ departmentCatalogId: dept, sectionCatalogId: null, jobTitleIds: [manager, senior, consultant] });
+    expect(res.status).toBe(200);
+    const answered = data<OrgChartDto>(res);
+    expect(columnOf(answered, dept, null)).toEqual([manager, senior, consultant]);
+    expect(columnOf(await chart(), dept, null)).toEqual([manager, senior, consultant]);
+    // The manager's place in Sales was not touched.
+    const managerInSales = answered.jobs.find((j) => j.id === manager)?.places.find((p) => p.sectionCatalogId === sales);
+    expect(managerInSales?.position).toBeNull();
+  });
+
+  it('orders a section column on its own', async () => {
+    const { dept, sales, manager } = await setup();
+    const res = await order({ departmentCatalogId: dept, sectionCatalogId: sales, jobTitleIds: [manager] });
+    expect(res.status).toBe(200);
+    expect(data<OrgChartDto>(res).jobs.find((j) => j.id === manager)?.places.find((p) => p.sectionCatalogId === sales)?.position).toBe(0);
+  });
+
+  it('keeps the order through the job\'s own update, and a job added later follows the ordered ones', async () => {
+    const { dept, senior, manager, consultant } = await setup();
+    await order({ departmentCatalogId: dept, sectionCatalogId: null, jobTitleIds: [consultant, manager, senior] });
+    // A rename of the manager sends its places back unchanged: its position stays.
+    const current = await request(app).get(`/api/v1/platform/job-titles/${manager}`).set('Authorization', `Bearer ${adminToken}`);
+    const dto = data<JobTitleDto>(current);
+    const renamed = await request(app)
+      .patch(`/api/v1/platform/job-titles/${manager}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        version: dto.version,
+        name: { ar: 'مدير التسويق والتعاقدات', en: 'Marketing and contracts manager' },
+        places: dto.places.map((p) => ({ departmentCatalogId: p.department.departmentCatalogId, sectionCatalogId: p.section?.sectionCatalogId ?? null })),
+      });
+    expect(renamed.status).toBe(200);
+    const later = await job('Marketing analyst', 'محلل تسويق');
+    await JobPlaceModel.create({ jobTitleId: later._id, departmentCatalogId: new Types.ObjectId(dept), sectionCatalogId: null });
+    expect(columnOf(await chart(), dept, null)).toEqual([consultant, manager, senior, String(later._id)]);
+  });
+
+  it('refuses a list made from an older chart — a job missing, or one the column does not have', async () => {
+    const { dept, sales, senior, manager, consultant } = await setup();
+    const missing = await order({ departmentCatalogId: dept, sectionCatalogId: null, jobTitleIds: [manager, senior] });
+    expect(missing.status).toBe(409);
+    expect(errorCode(missing)).toBe('STALE_DOCUMENT');
+    const extra = await order({ departmentCatalogId: dept, sectionCatalogId: sales, jobTitleIds: [manager, consultant] });
+    expect(extra.status).toBe(409);
+    // Nothing was written.
+    expect(await JobPlaceModel.countDocuments({ position: { $ne: null } })).toBe(0);
+  });
+
+  it('refuses a list that names a job twice, and a section of another department', async () => {
+    const { dept, senior, manager } = await setup();
+    const twice = await order({ departmentCatalogId: dept, sectionCatalogId: null, jobTitleIds: [manager, manager, senior] });
+    expect(twice.status).toBe(400);
+    const other = await linkedDepartment({ ar: 'المالية', en: 'Finance' }, branches.slice(0, 1));
+    const audit = await linkedSection({ ar: 'المراجعة', en: 'Audit' }, other.entry._id, other.rows);
+    const foreign = await order({ departmentCatalogId: dept, sectionCatalogId: String(audit._id), jobTitleIds: [manager] });
+    expect(foreign.status).toBe(422);
+    expect(errorCode(foreign)).toBe('ORG_UNIT_NOT_EDITABLE');
+  });
+
+  it('needs jobTitle.edit: a job editor may, a chart viewer may not', async () => {
+    const { dept, senior, manager, consultant } = await setup();
+    const body = { departmentCatalogId: dept, sectionCatalogId: null, jobTitleIds: [consultant, senior, manager] };
+    expect((await order(body, viewerToken)).status).toBe(403);
+    expect((await order(body, nobodyToken)).status).toBe(403);
+    expect((await order(body, jobEditorToken)).status).toBe(200);
+  });
+
+  it('audits the order on the department, before and after, by name', async () => {
+    const { dept, senior, manager, consultant } = await setup();
+    await order({ departmentCatalogId: dept, sectionCatalogId: null, jobTitleIds: [manager, senior, consultant] });
+    const audit = await AuditLogModel.findOne({ 'entityRef.entityId': dept, action: 'update' }).lean();
+    expect(audit?.entityRef.entityType).toBe('departmentCatalog');
+    expect(audit?.changes[0]).toMatchObject({
+      field: 'jobOrder',
+      old: ['أخصائي أول تسويق', 'مدير التسويق', 'استشاري تسويق'],
+      new: ['مدير التسويق', 'أخصائي أول تسويق', 'استشاري تسويق'],
+    });
+    // The same order again writes no second row.
+    const rows = await AuditLogModel.countDocuments({ 'entityRef.entityId': dept, action: 'update' });
+    await order({ departmentCatalogId: dept, sectionCatalogId: null, jobTitleIds: [manager, senior, consultant] });
+    expect(await AuditLogModel.countDocuments({ 'entityRef.entityId': dept, action: 'update' })).toBe(rows);
+  });
+});
+
 describe('section writes from the chart (P-ORG-3 §5.3)', () => {
   const addSection = async (body: object, token = adminToken) =>
     request(app).post('/api/v1/platform/org-chart/sections').set('Authorization', `Bearer ${token}`).send(body);

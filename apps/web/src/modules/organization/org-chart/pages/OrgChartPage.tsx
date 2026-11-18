@@ -26,6 +26,7 @@ import { useHealedGroupKeys } from '../../../../shared/lib/useHealedGroupKeys';
 import {
   useAddChartSection,
   useChangeJobPlaces,
+  useOrderChartColumn,
   useOrgChart,
   useRenameChartSection,
   useStopChartSection,
@@ -61,6 +62,7 @@ export const OrgChartPage = (): JSX.Element => {
   const renameSection = useRenameChartSection();
   const stopSection = useStopChartSection();
   const changePlaces = useChangeJobPlaces();
+  const orderColumn = useOrderChartColumn();
 
   const canPlace = can('jobTitle.edit');
   const canAddSection = can('section.create');
@@ -72,6 +74,7 @@ export const OrgChartPage = (): JSX.Element => {
     renameSection.isPending ||
     stopSection.isPending ||
     changePlaces.isPending ||
+    orderColumn.isPending ||
     chart.isFetching;
 
   // By name in the current language (§2.1); the server's order is by the Arabic name.
@@ -133,6 +136,16 @@ export const OrgChartPage = (): JSX.Element => {
     canEditSection,
     busy,
     onMove: (job, from, to) => change(job, { kind: 'move', departmentCatalogId, from, to }),
+    // The column's new order, the whole of it (§5.7); a chart that moved on meanwhile is refused
+    // with STALE_DOCUMENT and refetched, as a stale job version is.
+    onReorder: (sectionCatalogId, jobTitleIds) =>
+      orderColumn.mutate(
+        { departmentCatalogId, sectionCatalogId, jobTitleIds },
+        {
+          onSuccess: () => toast.success(t('organization.chart.orderSaved')),
+          onError: () => void chart.refetch(),
+        },
+      ),
     onRemove: (job, sectionCatalogId) =>
       change(job, { kind: 'remove', departmentCatalogId, sectionCatalogId }),
     onAddJob: (sectionCatalogId) => setOpen({ kind: 'addJob', sectionCatalogId }),

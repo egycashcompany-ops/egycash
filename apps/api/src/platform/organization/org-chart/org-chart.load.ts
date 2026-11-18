@@ -109,7 +109,12 @@ export const loadOrgChart = async (options: LoadOptions = {}): Promise<ChartInpu
           .lean()
           .exec(),
       () =>
-        JobPlaceModel.find(live, { jobTitleId: 1, departmentCatalogId: 1, sectionCatalogId: 1 })
+        JobPlaceModel.find(live, {
+          jobTitleId: 1,
+          departmentCatalogId: 1,
+          sectionCatalogId: 1,
+          position: 1,
+        })
           .session(session)
           .lean()
           .exec(),
@@ -165,6 +170,7 @@ export const loadOrgChart = async (options: LoadOptions = {}): Promise<ChartInpu
       jobTitleId: String(place.jobTitleId),
       departmentCatalogId: String(place.departmentCatalogId),
       sectionCatalogId: str(place.sectionCatalogId),
+      position: typeof place.position === 'number' ? place.position : null,
     })),
   };
 };

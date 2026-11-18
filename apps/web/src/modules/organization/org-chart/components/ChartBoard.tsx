@@ -4,7 +4,13 @@
 // mirror in RTL by themselves; below `sm` the same content is an indented tree.
 //
 // Edit mode follows the organize board (`OrganizeApplicationsPage`): every gesture is one write, and
-// dragging is never the only way — each job row also has «نقل إلى» and «إزالة من هنا».
+// dragging is never the only way — each job row also has «نقل إلى» and «إزالة من هنا», and ↑ / ↓ for
+// its place in the column.
+//
+// TWO DRAGS, ONE GRIP. «لما باجي أشد حاجة عشان أغير ترتيبها مش بتتشد» (§5.7): dropped on a row of its
+// OWN column, a job takes that row's place — above it from the row's upper half, below it from the
+// lower — and the column's new order is saved. Dropped on another column, it moves there (and stands
+// last until that column is ordered). The grip shows only where one of the two can happen.
 import { useState } from 'react';
 import {
   type Locale,
@@ -17,7 +23,13 @@ import { Button } from '../../../../shared/ui/Button';
 import { Select } from '../../../../shared/ui/form';
 import { cn } from '../../../../shared/lib/cn';
 import { localized } from '../../../../shared/lib/format';
-import { moveTargets, type DepartmentColumns } from '../lib/chart-model';
+import {
+  dropIndex,
+  moveTargets,
+  reorderedIds,
+  sameOrder,
+  type DepartmentColumns,
+} from '../lib/chart-model';
 
 export interface ChartActions {
   /** May place, move and remove jobs (`jobTitle.edit`). */
@@ -29,6 +41,8 @@ export interface ChartActions {
   /** A write is on its way: every control waits for it (§2.2). */
   busy: boolean;
   onMove: (job: OrgChartJobDto, from: string | null, to: string | null) => void;
+  /** A column's jobs in a new order: the whole column (§5.7). */
+  onReorder: (sectionCatalogId: string | null, jobIds: string[]) => void;
   onRemove: (job: OrgChartJobDto, sectionCatalogId: string | null) => void;
   onAddJob: (sectionCatalogId: string | null) => void;
   onAddSection: () => void;
@@ -43,6 +57,12 @@ const BRANCH =
 const STEM =
   "relative flex justify-center pt-5 before:absolute before:start-1/2 before:top-0 before:h-5 before:border-s before:border-slate-300 before:content-[''] dark:before:border-slate-700";
 
+/** Where a drag over a column would put the job: before or after the row at `index`. */
+interface DropMark {
+  index: number;
+  after: boolean;
+}
+
 const JobRow = ({
   job,
   sectionCatalogId,
@@ -51,8 +71,11 @@ const JobRow = ({
   editing,
   locale,
   draggableRow,
+  columnIds,
+  mark,
   onDragStart,
   onDragEnd,
+  onDragOverRow,
 }: {
   job: OrgChartJobDto;
   sectionCatalogId: string | null;
@@ -61,8 +84,14 @@ const JobRow = ({
   editing: boolean;
   locale: Locale;
   draggableRow: boolean;
+  /** The column's job ids, in the order shown. */
+  columnIds: readonly string[];
+  /** A drag of a job of THIS column is over this row: where it would land. */
+  mark: 'before' | 'after' | null;
   onDragStart: () => void;
   onDragEnd: () => void;
+  /** Over this row: true when in its lower half. Undefined while nothing of this column is dragged. */
+  onDragOverRow: ((after: boolean) => void) | undefined;
 }): JSX.Element => {
   const t = useT();
   const controls = editing && actions.canPlace && department.editable;
@@ -74,9 +103,16 @@ const JobRow = ({
           department.sections.find((s) => s.sectionCatalogId === id)?.name ?? { ar: '', en: '' },
           locale,
         );
-  // «نقل إلى» only where there is somewhere else to go; then it sits under the name, so a narrow
-  // column never squeezes the name out.
+  // «نقل إلى» only where there is somewhere else to go; ↑ / ↓ only where there is someone to pass.
   const canMove = controls && targets.length > 1;
+  const canOrder = controls && columnIds.length > 1;
+  // The grip only where a drag can do something: reorder this column, or move to another.
+  const grip = controls && draggableRow && (canMove || canOrder);
+  const index = columnIds.indexOf(job.id);
+  const step = (by: -1 | 1): void => {
+    const next = reorderedIds(columnIds, job.id, index + by);
+    if (!sameOrder(next, columnIds)) actions.onReorder(sectionCatalogId, next);
+  };
   const remove = (
     <Button
       size="sm"
@@ -90,49 +126,106 @@ const JobRow = ({
       ✕
     </Button>
   );
+  const arrows = canOrder && (
+    <>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="shrink-0"
+        aria-label={t('organization.chart.moveUp')}
+        title={t('organization.chart.moveUp')}
+        disabled={actions.busy || index <= 0}
+        onClick={() => step(-1)}
+      >
+        ↑
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="shrink-0"
+        aria-label={t('organization.chart.moveDown')}
+        title={t('organization.chart.moveDown')}
+        disabled={actions.busy || index === -1 || index >= columnIds.length - 1}
+        onClick={() => step(1)}
+      >
+        ↓
+      </Button>
+    </>
+  );
+  const secondLine = canMove || canOrder;
   return (
     <div
-      draggable={controls && draggableRow && !actions.busy}
+      draggable={grip && !actions.busy}
       // Only the row itself starts a move — never a drag of selected text, never outside edit mode.
       onDragStart={(e) => {
-        if (e.target === e.currentTarget && controls && draggableRow && !actions.busy)
-          onDragStart();
+        if (e.target !== e.currentTarget || !grip || actions.busy) return;
+        // Firefox starts no drag without data, and «move» is what the cursor should say.
+        e.dataTransfer.setData('text/plain', job.id);
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStart();
       }}
       onDragEnd={onDragEnd}
+      onDragOver={
+        onDragOverRow === undefined
+          ? undefined
+          : (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              const box = e.currentTarget.getBoundingClientRect();
+              onDragOverRow(e.clientY > box.top + box.height / 2);
+            }
+      }
       aria-label={localized(job.name, locale)}
-      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+      className={cn(
+        'relative rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900',
+        grip && 'cursor-grab active:cursor-grabbing',
+      )}
     >
+      {mark !== null && (
+        // Where the job would land: a bar on the row's upper or lower edge.
+        <span
+          aria-hidden
+          data-drop-mark={mark}
+          className={cn(
+            'pointer-events-none absolute inset-x-1 h-0.5 rounded bg-brand-500',
+            mark === 'before' ? '-top-1' : '-bottom-1',
+          )}
+        />
+      )}
       <div className="flex min-h-8 items-center gap-2">
-        {controls && draggableRow && (
-          <span aria-hidden className="cursor-grab select-none text-slate-400">
+        {grip && (
+          <span aria-hidden className="select-none text-slate-400">
             ↕
           </span>
         )}
         <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200">
           {localized(job.name, locale)}
         </span>
-        {controls && !canMove && remove}
+        {controls && !secondLine && remove}
       </div>
-      {canMove && (
+      {secondLine && (
         <div className="mt-2 flex items-center gap-1">
-          <div className="min-w-0 flex-1">
-            <Select
-              aria-label={t('organization.chart.moveTo')}
-              title={t('organization.chart.moveTo')}
-              value={sectionCatalogId ?? ''}
-              disabled={actions.busy}
-              onChange={(e) => {
-                const to = e.target.value === '' ? null : e.target.value;
-                if (to !== sectionCatalogId) actions.onMove(job, sectionCatalogId, to);
-              }}
-            >
-              {targets.map((target) => (
-                <option key={target.sectionCatalogId ?? ''} value={target.sectionCatalogId ?? ''}>
-                  {sectionName(target.sectionCatalogId)}
-                </option>
-              ))}
-            </Select>
-          </div>
+          {arrows}
+          {canMove && (
+            <div className="min-w-0 flex-1">
+              <Select
+                aria-label={t('organization.chart.moveTo')}
+                title={t('organization.chart.moveTo')}
+                value={sectionCatalogId ?? ''}
+                disabled={actions.busy}
+                onChange={(e) => {
+                  const to = e.target.value === '' ? null : e.target.value;
+                  if (to !== sectionCatalogId) actions.onMove(job, sectionCatalogId, to);
+                }}
+              >
+                {targets.map((target) => (
+                  <option key={target.sectionCatalogId ?? ''} value={target.sectionCatalogId ?? ''}>
+                    {sectionName(target.sectionCatalogId)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           {remove}
         </div>
       )}
@@ -149,8 +242,11 @@ const JobList = ({
   editing,
   locale,
   draggableRows,
+  dragFrom,
+  mark,
   onDragStart,
   onDragEnd,
+  onDragOverRow,
   onDrop,
   connector = true,
   targetEditable = true,
@@ -162,8 +258,13 @@ const JobList = ({
   editing: boolean;
   locale: Locale;
   draggableRows: boolean;
+  /** The column the dragged job comes from; undefined while nothing is dragged. */
+  dragFrom: string | null | undefined;
+  /** Where a drag inside this column would land, when one is over it. */
+  mark: DropMark | null;
   onDragStart: (job: OrgChartJobDto, from: string | null) => void;
   onDragEnd: () => void;
+  onDragOverRow: (sectionCatalogId: string | null, mark: DropMark) => void;
   onDrop: (to: string | null) => void;
   /** Whether a job may be placed here: not under a section stopped or filed elsewhere in the list. */
   targetEditable?: boolean;
@@ -172,6 +273,9 @@ const JobList = ({
 }): JSX.Element => {
   const t = useT();
   const canAdd = editing && actions.canPlace && department.editable && targetEditable;
+  const ids = jobs.map((job) => job.id);
+  // A drag of one of THIS column's jobs reorders it; the rows then say where it would land.
+  const ordering = dragFrom !== undefined && dragFrom === sectionCatalogId && canAdd;
   return (
     <ul
       className={cn(
@@ -186,7 +290,7 @@ const JobList = ({
         if (canAdd) onDrop(sectionCatalogId);
       }}
     >
-      {jobs.map((job) => (
+      {jobs.map((job, index) => (
         <li key={job.id}>
           <JobRow
             job={job}
@@ -196,8 +300,15 @@ const JobList = ({
             editing={editing}
             locale={locale}
             draggableRow={draggableRows}
+            columnIds={ids}
+            mark={mark?.index === index ? (mark.after ? 'after' : 'before') : null}
             onDragStart={() => onDragStart(job, sectionCatalogId)}
             onDragEnd={onDragEnd}
+            onDragOverRow={
+              ordering
+                ? (after) => onDragOverRow(sectionCatalogId, { index, after })
+                : undefined
+            }
           />
         </li>
       ))}
@@ -303,6 +414,13 @@ export const ChartBoard = ({
 }): JSX.Element => {
   const t = useT();
   const [drag, setDrag] = useState<{ job: OrgChartJobDto; from: string | null } | null>(null);
+  // Where a drag inside its own column would land, and in which column.
+  const [over, setOver] = useState<{ column: string | null; mark: DropMark } | null>(null);
+  const columnIdsOf = (sectionCatalogId: string | null): string[] =>
+    (sectionCatalogId === null
+      ? columns.direct
+      : (columns.bySection.get(sectionCatalogId.toLowerCase()) ?? [])
+    ).map((job) => job.id);
   const sections = department.sections;
   const showDirect = sections.length === 0 || columns.direct.length > 0 || editing;
   const canAddSection = editing && actions.canAddSection && department.editable;
@@ -310,10 +428,20 @@ export const ChartBoard = ({
   const drop = (to: string | null): void => {
     if (drag === null) return;
     const { job, from } = drag;
+    const landing = over;
     setDrag(null);
+    setOver(null);
     if (!editing || !actions.canPlace || !department.editable || actions.busy) return;
+    if (to === from) {
+      // Its own column: the row it was dropped on says where it goes (§5.7).
+      if (landing === null || landing.column !== to) return;
+      const ids = columnIdsOf(to);
+      const next = reorderedIds(ids, job.id, dropIndex(ids, job.id, landing.mark.index, landing.mark.after));
+      if (!sameOrder(next, ids)) actions.onReorder(to, next);
+      return;
+    }
     const target = moveTargets(department).some((place) => place.sectionCatalogId === to);
-    if (to !== from && target) actions.onMove(job, from, to);
+    if (target) actions.onMove(job, from, to);
   };
   const listProps = (draggableRows: boolean) => ({
     department,
@@ -321,11 +449,29 @@ export const ChartBoard = ({
     editing,
     locale,
     draggableRows,
-    onDragStart: (job: OrgChartJobDto, from: string | null) => setDrag({ job, from }),
+    dragFrom: drag === null ? undefined : drag.from,
+    onDragStart: (job: OrgChartJobDto, from: string | null) => {
+      setOver(null);
+      setDrag({ job, from });
+    },
     // A drag released anywhere else leaves nothing behind (the drop, when there is one, comes first).
-    onDragEnd: () => setDrag(null),
+    onDragEnd: () => {
+      setDrag(null);
+      setOver(null);
+    },
+    onDragOverRow: (column: string | null, mark: DropMark) =>
+      setOver((now) =>
+        now !== null &&
+        now.column === column &&
+        now.mark.index === mark.index &&
+        now.mark.after === mark.after
+          ? now
+          : { column, mark },
+      ),
     onDrop: drop,
   });
+  const markOf = (sectionCatalogId: string | null): DropMark | null =>
+    over !== null && over.column === sectionCatalogId ? over.mark : null;
 
   const nothing = sections.length === 0 && columns.direct.length === 0 && !editing;
 
@@ -356,6 +502,7 @@ export const ChartBoard = ({
                   <JobList
                     jobs={columns.direct}
                     sectionCatalogId={null}
+                    mark={markOf(null)}
                     {...listProps(true)}
                     connector={false}
                   />
@@ -375,7 +522,12 @@ export const ChartBoard = ({
                       locale={locale}
                       dashed
                     />
-                    <JobList jobs={columns.direct} sectionCatalogId={null} {...listProps(true)} />
+                    <JobList
+                      jobs={columns.direct}
+                      sectionCatalogId={null}
+                      mark={markOf(null)}
+                      {...listProps(true)}
+                    />
                   </div>
                 </li>
               )}
@@ -393,6 +545,7 @@ export const ChartBoard = ({
                       <JobList
                         jobs={columns.bySection.get(section.sectionCatalogId.toLowerCase()) ?? []}
                         sectionCatalogId={section.sectionCatalogId}
+                        mark={markOf(section.sectionCatalogId)}
                         {...listProps(true)}
                         targetEditable={section.editable}
                       />
@@ -452,6 +605,7 @@ export const ChartBoard = ({
                 <JobList
                   jobs={columns.direct}
                   sectionCatalogId={null}
+                  mark={null}
                   {...listProps(false)}
                   connector={sections.length > 0}
                 />
@@ -470,6 +624,7 @@ export const ChartBoard = ({
                   <JobList
                     jobs={columns.bySection.get(section.sectionCatalogId.toLowerCase()) ?? []}
                     sectionCatalogId={section.sectionCatalogId}
+                    mark={null}
                     {...listProps(false)}
                     targetEditable={section.editable}
                   />

@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { type OrgChartDepartmentDto, type OrgChartDto, type OrgChartJobDto } from '@ecms/contracts';
 import {
   columnsOf,
+  dropIndex,
   isPlacedAt,
   moveTargets,
   otherPlaceLabels,
   pickDepartment,
   placesAfter,
+  reorderedIds,
+  sameOrder,
 } from './chart-model';
 
 const OPS = 'a'.repeat(24);
@@ -74,12 +77,12 @@ describe('the org chart page model (P-ORG-3)', () => {
 
   it('puts each job in its columns, skipping places that are not shown, and counts jobs once', () => {
     const driver = job('driver', [
-      { departmentCatalogId: OPS, sectionCatalogId: null, shown: true },
-      { departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true },
-      { departmentCatalogId: SEC, sectionCatalogId: null, shown: true },
+      { departmentCatalogId: OPS, sectionCatalogId: null, shown: true, position: null },
+      { departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true, position: null },
+      { departmentCatalogId: SEC, sectionCatalogId: null, shown: true, position: null },
     ]);
     const hidden = job('hidden', [
-      { departmentCatalogId: OPS, sectionCatalogId: COUNTING, shown: false },
+      { departmentCatalogId: OPS, sectionCatalogId: COUNTING, shown: false, position: null },
     ]);
     const columns = columnsOf(ops, [driver, hidden]);
     expect(columns.direct.map((j) => j.id)).toEqual(['driver']);
@@ -94,9 +97,9 @@ describe('the org chart page model (P-ORG-3)', () => {
 
   it('sends the whole set after one change, keeping stopped places and merging a move onto an existing one', () => {
     const driver = job('driver', [
-      { departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true },
-      { departmentCatalogId: OPS, sectionCatalogId: COUNTING, shown: true },
-      { departmentCatalogId: SEC, sectionCatalogId: null, shown: false },
+      { departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true, position: null },
+      { departmentCatalogId: OPS, sectionCatalogId: COUNTING, shown: true, position: null },
+      { departmentCatalogId: SEC, sectionCatalogId: null, shown: false, position: null },
     ]);
     expect(
       placesAfter(driver, { kind: 'move', departmentCatalogId: OPS, from: TREASURY, to: COUNTING }),
@@ -117,11 +120,46 @@ describe('the org chart page model (P-ORG-3)', () => {
   it("names a job's other places for the add dialog", () => {
     const chart: OrgChartDto = { departments: [ops, sec], jobs: [] };
     const driver = job('driver', [
-      { departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true },
-      { departmentCatalogId: SEC, sectionCatalogId: null, shown: true },
+      { departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true, position: null },
+      { departmentCatalogId: SEC, sectionCatalogId: null, shown: true, position: null },
     ]);
     expect(
       otherPlaceLabels(driver, chart, 'ar', { departmentCatalogId: SEC, sectionCatalogId: null }),
     ).toEqual(['العمليات › الخزينة']);
+  });
+
+  // «لما باجي أشد حاجة عشان أغير ترتيبها» (§5.7).
+  it('orders a column by position, unpositioned places after, else in the chart\'s job order', () => {
+    const at = (position: number | null, sectionCatalogId: string | null = null) => ({
+      departmentCatalogId: OPS,
+      sectionCatalogId,
+      shown: true,
+      position,
+    });
+    const senior = job('senior', [at(1), at(null, TREASURY)]);
+    const manager = job('manager', [at(0), at(0, TREASURY)]);
+    const consultant = job('consultant', [at(null)]);
+    const analyst = job('analyst', [at(null)]);
+    const columns = columnsOf(ops, [consultant, senior, analyst, manager]);
+    expect(columns.direct.map((j) => j.id)).toEqual(['manager', 'senior', 'consultant', 'analyst']);
+    // Each column on its own: in Treasury the manager is first, the senior unpositioned after it.
+    expect(columns.bySection.get(TREASURY)?.map((j) => j.id)).toEqual(['manager', 'senior']);
+  });
+
+  it('moves a job to the index it is to have, and reads a drop above or below a row', () => {
+    const ids = ['a', 'b', 'c', 'd'];
+    expect(reorderedIds(ids, 'c', 0)).toEqual(['c', 'a', 'b', 'd']);
+    expect(reorderedIds(ids, 'a', 3)).toEqual(['b', 'c', 'd', 'a']);
+    expect(reorderedIds(ids, 'a', 99)).toEqual(['b', 'c', 'd', 'a']);
+    expect(reorderedIds(ids, 'x', 0)).toEqual(ids);
+    // Dropped on the upper half of «b» → before it; on its lower half → after it.
+    expect(reorderedIds(ids, 'd', dropIndex(ids, 'd', 1, false))).toEqual(['a', 'd', 'b', 'c']);
+    expect(reorderedIds(ids, 'a', dropIndex(ids, 'a', 1, true))).toEqual(['b', 'a', 'c', 'd']);
+    // Dropped on itself, either half: no change.
+    expect(sameOrder(reorderedIds(ids, 'b', dropIndex(ids, 'b', 1, false)), ids)).toBe(true);
+    expect(sameOrder(reorderedIds(ids, 'b', dropIndex(ids, 'b', 1, true)), ids)).toBe(true);
+    // Just below the row before it, or just above the row after it: no change either.
+    expect(sameOrder(reorderedIds(ids, 'b', dropIndex(ids, 'b', 0, true)), ids)).toBe(true);
+    expect(sameOrder(reorderedIds(ids, 'b', dropIndex(ids, 'b', 2, false)), ids)).toBe(true);
   });
 });

@@ -60,21 +60,21 @@ const jobs: OrgChartJobDto[] = [
     code: 'J1',
     name: { ar: 'أمين خزينة', en: 'Cashier' },
     version: 1,
-    places: [{ departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true }],
+    places: [{ departmentCatalogId: OPS, sectionCatalogId: TREASURY, shown: true, position: null }],
   },
   {
     id: 'j2',
     code: 'J2',
     name: { ar: 'مدير العمليات', en: 'Ops manager' },
     version: 1,
-    places: [{ departmentCatalogId: OPS, sectionCatalogId: null, shown: true }],
+    places: [{ departmentCatalogId: OPS, sectionCatalogId: null, shown: true, position: null }],
   },
   {
     id: 'j3',
     code: 'J3',
     name: { ar: 'سائق', en: 'Driver' },
     version: 1,
-    places: [{ departmentCatalogId: 'e'.repeat(24), sectionCatalogId: null, shown: true }],
+    places: [{ departmentCatalogId: 'e'.repeat(24), sectionCatalogId: null, shown: true, position: null }],
   },
 ];
 
@@ -85,6 +85,7 @@ const actions = (over: Partial<ChartActions> = {}): ChartActions => ({
   canEditSection: true,
   busy: false,
   onMove: noop,
+  onReorder: noop,
   onRemove: noop,
   onAddJob: noop,
   onAddSection: noop,
@@ -168,6 +169,71 @@ describe('the org chart board', () => {
     const html = board(ops, false);
     expect(html).toContain('sm:hidden');
     expect(html).toContain('hidden overflow-x-auto sm:block');
+  });
+});
+
+// «لما باجي أشد حاجة عشان أغير ترتيبها مش بتتشد» (§5.7): the owner's own department — no sections,
+// three jobs in one column.
+describe('reordering a column', () => {
+  const MARKETING = 'f'.repeat(24);
+  const marketing: OrgChartDepartmentDto = {
+    ...movement,
+    key: `catalog:${MARKETING}`,
+    departmentCatalogId: MARKETING,
+    name: { ar: 'التسويق و التعاقدات', en: 'Marketing' },
+    sections: [],
+  };
+  const at = (position: number | null) => [
+    { departmentCatalogId: MARKETING, sectionCatalogId: null, shown: true, position },
+  ];
+  const three: OrgChartJobDto[] = [
+    { id: 'm1', code: 'M1', name: { ar: 'اخصائى اول تسويق', en: 'Senior' }, version: 1, places: at(1) },
+    { id: 'm2', code: 'M2', name: { ar: 'مدير التسويق', en: 'Manager' }, version: 1, places: at(0) },
+    { id: 'm3', code: 'M3', name: { ar: 'استشارى تسويق', en: 'Consultant' }, version: 1, places: at(null) },
+  ];
+  const draw = (list: OrgChartJobDto[], editing = true): string =>
+    render(
+      <ChartBoard
+        department={marketing}
+        columns={columnsOf(marketing, list)}
+        editing={editing}
+        actions={actions()}
+        locale="ar"
+      />,
+    );
+
+  it('shows the saved order, and in edit mode a grip and ↑ / ↓ on every row', () => {
+    const html = draw(three);
+    const order = ['مدير التسويق', 'اخصائى اول تسويق', 'استشارى تسويق'].map((name) => html.indexOf(name));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // Desktop rows are draggable; each row of the desktop and the phone tree has the arrows.
+    expect(html.match(/draggable="true"/g)).toHaveLength(3);
+    expect(html.match(/aria-label="تحريك لأعلى"/g)).toHaveLength(6);
+    expect(html.match(/aria-label="تحريك لأسفل"/g)).toHaveLength(6);
+  });
+
+  it('cannot move the first row up or the last one down', () => {
+    const html = draw(three);
+    const up = [...html.matchAll(/<button[^>]*aria-label="تحريك لأعلى"[^>]*>/g)].map((m) => m[0]);
+    const down = [...html.matchAll(/<button[^>]*aria-label="تحريك لأسفل"[^>]*>/g)].map((m) => m[0]);
+    // The attribute, not the `disabled:` styles every button carries in its class.
+    expect(up[0]).toContain('disabled=""');
+    expect(up[1]).not.toContain('disabled=""');
+    expect(down[2]).toContain('disabled=""');
+    expect(down[0]).not.toContain('disabled=""');
+  });
+
+  it('offers no grip and no arrows to a lone job with nowhere else to go', () => {
+    const html = draw([three[0] as OrgChartJobDto]);
+    expect(html).not.toContain('draggable="true"');
+    expect(html).not.toContain('تحريك لأعلى');
+    expect(html).not.toContain('↕');
+  });
+
+  it('shows no reorder controls outside edit mode', () => {
+    const html = draw(three, false);
+    expect(html).not.toContain('draggable="true"');
+    expect(html).not.toContain('تحريك لأعلى');
   });
 });
 

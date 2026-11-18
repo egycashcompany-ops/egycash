@@ -8,6 +8,10 @@ import { created, ok, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { attendanceBackfillService } from './attendance-backfill.service';
 
+interface IdParam {
+  id: string;
+}
+
 export const startAttendanceBackfill = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<StartAttendanceBackfill, never, never>(req);
@@ -21,13 +25,16 @@ export const listAttendanceBackfills = async (req: Request, res: Response): Prom
 };
 
 export const readAttendanceBackfill = async (req: Request, res: Response): Promise<void> => {
-  ok(res, await attendanceBackfillService.progress(String(req.params.id)));
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await attendanceBackfillService.progress(params.id));
 };
 
 export const cancelAttendanceBackfill = async (req: Request, res: Response): Promise<void> => {
-  ok(res, await attendanceBackfillService.cancel(authContext(req), String(req.params.id)));
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await attendanceBackfillService.cancel(authContext(req), params.id));
 };
 
 export const resumeAttendanceBackfill = async (req: Request, res: Response): Promise<void> => {
-  ok(res, await attendanceBackfillService.resume(authContext(req), String(req.params.id)));
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, await attendanceBackfillService.resume(authContext(req), params.id));
 };

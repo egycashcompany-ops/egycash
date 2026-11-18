@@ -137,6 +137,13 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_attendance_regularizations: { action: 'purge', why: 'a correction to somebody’s attendance' },
   hr_attendance_day_decisions: { action: 'purge', why: 'a decision about somebody’s day' },
   hr_attendance_enrollments: { action: 'purge', why: 'somebody’s device enrolment' },
+  // Task 2 — the backfill's bookkeeping. A chunk says «recompute this person's days», which is
+  // meaningless once the person is gone; the run document beside it names nobody and is left
+  // alone, so a finished backfill still reads as having happened.
+  hr_attendance_backfill_chunks: {
+    action: 'purge',
+    why: 'work queued against somebody’s days',
+  },
   hr_shift_assignments: { action: 'purge', why: 'somebody’s shift' },
   hr_leave_requests: { action: 'purge', why: 'somebody’s leave request' },
   hr_leave_balances: { action: 'purge', why: 'somebody’s leave balance' },

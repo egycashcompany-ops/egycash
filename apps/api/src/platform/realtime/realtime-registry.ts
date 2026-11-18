@@ -132,6 +132,11 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.attendanceRegularization': { permission: 'attendance.view' },
   // A decision is read by whoever may read the day it decides, so it carries the same key.
   'hr.attendanceDayDecision': { permission: 'attendance.view' },
+  // Task 2. A backfill and a quarantined device row are both OPERATIONAL facts about the
+  // machines rather than about anybody's attendance: the backfill is governed by the key that
+  // may recompute, and the quarantine by the key that may look at the devices.
+  'hr.attendanceBackfill': { permission: 'attendance.recompute' },
+  'hr.attendanceQuarantine': { permission: 'attendanceDevice.view' },
   'hr.attendanceShift': { permission: 'attendance.view' },
   'hr.attendanceShiftAssignment': { permission: 'attendance.view' },
   'hr.holiday': { permission: 'workCalendar.manage' },

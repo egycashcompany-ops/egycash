@@ -5,8 +5,10 @@
 // Reading progress sits behind the same key rather than `attendance.view`: it says nothing about
 // anybody's attendance, only about how far a piece of operational work has got.
 import { Router } from 'express';
+import { z } from 'zod';
 import {
   ListAttendanceBackfillsQuerySchema,
+  objectId,
   StartAttendanceBackfillSchema,
 } from '@ecms/contracts';
 import { asyncHandler, validate } from '../../../../platform/web';
@@ -19,6 +21,9 @@ import {
   resumeAttendanceBackfill,
   startAttendanceBackfill,
 } from './attendance-backfill.controller';
+
+/** The run id, validated like every other path parameter — the controller reads it as given. */
+const IdParamSchema = z.object({ id: objectId() }).strict();
 
 export const buildAttendanceBackfillsRouter = (): Router => {
   const router = Router();
@@ -41,18 +46,21 @@ export const buildAttendanceBackfillsRouter = (): Router => {
     '/:id',
     authenticate,
     authorize('attendance.recompute'),
+    validate({ params: IdParamSchema }),
     asyncHandler(readAttendanceBackfill),
   );
   router.post(
     '/:id/cancel',
     authenticate,
     authorize('attendance.recompute'),
+    validate({ params: IdParamSchema }),
     asyncHandler(cancelAttendanceBackfill),
   );
   router.post(
     '/:id/resume',
     authenticate,
     authorize('attendance.recompute'),
+    validate({ params: IdParamSchema }),
     asyncHandler(resumeAttendanceBackfill),
   );
 

@@ -9,6 +9,54 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **Eight hours is eight hours: worked time, lateness and the attendance report, by the owner's
+  two rulings of 18 November.** «worked time = last check-out − first check-in», «Late = check-in
+  after 09:00», and «The CSV export of the daily sheet isn't usable by HR … Rebuild it as a report
+  for people, not a database dump.»
+  - **Worked time is last check-out − first check-in, flat.** No break subtracted, nothing clamped
+    to the roster: the question is how long the person was at work. A check-out after midnight is
+    simply a later instant, so a night shift needs no special case.
+  - **The company working day is 09:00–17:00, eight hours, with no grace** — the default pattern,
+    which shipped inert and is now on. A branch may override every hour of it, and an employee with
+    a real shift assignment is unaffected.
+  - **Lateness is conditional, and this is the rule that matters.** An arrival after nine is late
+    ONLY IF the eight hours were not completed. In at 09:40, out at 17:40: eight hours, nothing
+    owed, «حاضر». The owner had asked a day earlier for no company-wide start time at all, because
+    departments arrive between six and ten and one hour would mark honest people late — and then
+    answered that objection with this rule rather than withdrawing it.
+  - **A short day reports two numbers, because they answer two questions:** «التأخير» (check-in −
+    09:00) and «النقص» (480 − worked). In at 09:00, out at 16:00 is not late at all and is an hour
+    short. Overtime is worked − required rather than «after 17:00», so 07:00–17:00 earns two hours.
+  - **A day with a check-in and no check-out reports nothing at all.** «حضر فقط», and worked, late,
+    shortfall, early leave and overtime are blank rather than zero. This answers the owner's own
+    export of 18 November, where five people read «حاضر» with zero worked minutes: the cause was a
+    re-tap on the reader paired positionally as a departure — fixed by collapsing scans within ten
+    minutes (`hr.attendance.minPunchGapMinutes`) — and the second half of the cause was a display
+    that printed «0:00» with confidence where it had nothing to say.
+  - **A working day with no scan reads «لا يوجد تسجيل», not «غائب»** («lateness only for now»),
+    behind `hr.attendance.countAbsence`, which ships OFF. Nothing new reaches payroll's absent-day
+    count — which matters with two years of history being re-derived from machines whose quiet days
+    may mean a broken reader rather than an absence. A manager's own `markAbsent` is unaffected.
+  - **Weekly rest stays Friday and Saturday**, which was already the shipped default.
+  - **The CSV is a report now, not a dump.** Eighteen columns in the owner's order — code, name,
+    branch, department, job title, date as dd/mm/yyyy, the status in the words the screen uses,
+    check-in and check-out on a twelve-hour clock, worked, required, late, shortfall, early leave,
+    calculated overtime, approved overtime, the day's punch count, and notes as sentences
+    («لا يوجد انصراف», «الشهر مغلق من المرتبات», «بصمة يدوية»). UTF-8 BOM so Excel reads the
+    Arabic, every value quoted so a spreadsheet cannot eat the leading zero of «0100052».
+  - **And it is no longer a query over day documents.** It resolves the days through the same call
+    the screens make, so the file IS the sheet: a person with no stored row still has a line, the
+    statuses agree with the screen, and the file inherits the screen's filters, search and sort.
+    The raw technical shape is gone rather than hidden behind an option — nothing consumed it.
+  - **The daily sheet is ordered by clicking its headings**, server-side across the whole day and
+    before pagination, so page 2 continues page 1. Check-in ascending by default; check-out, hours
+    worked, late, shortfall, name, code and status all sortable; people with no time stay last in
+    both directions; `?sort=` and `?dir=` keep the choice through a refresh, the Back button and a
+    shared link, and the export follows it. The employee page's daily record toggles the same way
+    on its date, check-in, check-out and hours columns.
+
 ### Added
 
 - **The inactivity sign-out window is set on the settings page, and it is 30 minutes.** «فين أقدر

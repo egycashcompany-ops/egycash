@@ -13,7 +13,9 @@
 // are still in flight it shows a loading state rather than a screen of zeros that a reader would
 // believe.
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
+  NO_FIGURES,
   type AttendanceEmployeeDayDto,
   type AttendanceEmployeeSummaryDto,
   type AttendanceSheetRowDto,
@@ -38,7 +40,10 @@ import {
   type PeriodRange,
 } from './period';
 import { cairoToday, datesBetween, toEmployeeDay } from '../view-model';
-import { EmployeeAttendanceView, Segmented, type EmployeeHeader } from '../views';
+import { EmployeeAttendanceView, Segmented, type EmployeeHeader,
+  type EmployeeDaySort,
+  type EmployeeDaysSort,
+} from '../views';
 
 export interface PeriodState extends PeriodRange {
   key: PeriodKey;
@@ -46,6 +51,45 @@ export interface PeriodState extends PeriodRange {
 
 /** The three presets the owner asked for, plus the custom range the screens already had. */
 const PERIOD_OPTIONS: PeriodKey[] = ['thisMonth', 'lastMonth', 'last30', 'custom'];
+
+/**
+ * THE ORDER OF THE DAILY RECORD, KEPT IN THE URL — `?sort=checkIn&dir=asc`.
+ *
+ * It is read here rather than threaded in from each of the three screens that render this view
+ * (HR's month page, the profile tab, «حضوري») because all three would hold identical copies of it,
+ * and a reader who learns the toggle on one expects it on the others. The default — newest first —
+ * is left OUT of the address, so a link only carries a sort somebody actually chose.
+ */
+const DAY_SORTS: readonly EmployeeDaySort[] = ['date', 'checkIn', 'checkOut', 'worked'];
+
+const useDaySort = (): { sort: EmployeeDaysSort; onSort: (by: EmployeeDaySort, dir: 'asc' | 'desc') => void } => {
+  const [sp, setSp] = useSearchParams();
+  const asked = sp.get('sort') ?? '';
+  const by: EmployeeDaySort = (DAY_SORTS as readonly string[]).includes(asked)
+    ? (asked as EmployeeDaySort)
+    : 'date';
+  // A date column with no explicit direction reads newest first; any other column reads ascending,
+  // which is the natural reading order for a time and for a duration alike.
+  const dir: 'asc' | 'desc' =
+    sp.get('dir') === 'asc' ? 'asc' : sp.get('dir') === 'desc' ? 'desc' : by === 'date' ? 'desc' : 'asc';
+  return {
+    sort: { by, dir },
+    onSort: (nextBy, nextDir) => {
+      const next = new URLSearchParams(sp);
+      const isDefault = nextBy === 'date' && nextDir === 'desc';
+      if (isDefault) {
+        next.delete('sort');
+        next.delete('dir');
+      } else {
+        next.set('sort', nextBy);
+        next.set('dir', nextDir);
+      }
+      // `replace`, like the filters: reordering a list is a view of this screen, not a place to go
+      // Back to.
+      setSp(next, { replace: true });
+    },
+  };
+};
 
 export const EmployeePeriodView = ({
   employeeId,
@@ -91,6 +135,7 @@ export const EmployeePeriodView = ({
    * the kind of thing a screen should just do.
    */
   const [picked, setPicked] = useState<string | null>(null);
+  const { sort, onSort } = useDaySort();
 
   const spanDays = (from: string, to: string): number =>
     (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000 + 1;
@@ -261,6 +306,11 @@ export const EmployeePeriodView = ({
           employeeName: header.name,
           employeePhotoFileId: null,
           employeeDepartment: null,
+          employeeBranch: null,
+          employeeJobTitle: null,
+          punchCount: 0,
+          // The dialog shows no figures — it is deciding what the day WAS, not reporting it.
+          figures: NO_FIGURES,
           branchId: '',
           date: decidingDate,
           status: 'pending',
@@ -286,6 +336,8 @@ export const EmployeePeriodView = ({
         }}
         periodPicker={periodPicker}
         periodLabel={rangeLabel(period, locale)}
+        sort={sort}
+        onSort={onSort}
         kpis={{
           daysPresent: summary.daysPresent,
           daysExpected: summary.daysExpected,
@@ -295,6 +347,7 @@ export const EmployeePeriodView = ({
           totalWorked: summary.totalWorkedMinutes,
           lateDays: summary.lateDays,
           lateMinutesTotal: summary.lateMinutesTotal,
+          shortfallTotal: summary.shortfallMinutesTotal,
           absentDays: summary.absentDays,
           incompleteDays: summary.incompleteDays,
         }}

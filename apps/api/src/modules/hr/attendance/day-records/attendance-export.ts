@@ -24,7 +24,6 @@
 // abandoned is audited too, with the rows that reached it.
 import { type Response } from 'express';
 import {
-  figuresOf,
   type AttendanceSheetSort,
   type ExportAttendanceQuery,
   type LocalizedString,

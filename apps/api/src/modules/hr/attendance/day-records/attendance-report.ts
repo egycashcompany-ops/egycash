@@ -121,10 +121,10 @@ export const asClockTime = (at: string | null, locale: ReportLocale): string => 
   if (at === null) return '';
   const formatted = cairoParts(locale).format(new Date(at));
   return formatted
-    .replace(/[٠-٩]/g, (digit) => WESTERN_DIGITS[digit] ?? digit)
+    .replace(/[\u0660-\u0669]/g, (digit) => WESTERN_DIGITS[digit] ?? digit)
     // Bidirectional marks and the narrow no-break space Intl inserts: invisible here, and visible
     // as mojibake in a spreadsheet that does not expect them.
-    .replace(/[‎‏‪-‮⁦-⁩ ]/gu, ' ')
+    .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\u202f]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 };

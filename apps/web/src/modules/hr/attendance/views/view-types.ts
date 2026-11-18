@@ -7,8 +7,10 @@ export type ViewStatus =
   | 'late'
   | 'earlyLeave' // present, and left before the hour they were due to
   | 'lateAndEarly'
-  | 'checkedIn' // checked in today, no check-out yet
-  | 'incomplete' // a past day with a check-in and no check-out
+  // A check-in with no check-out, on ANY date. «حضر فقط», and every figure on such a day is blank
+  // rather than zero — the owner's ruling of 18 November, which also removed the separate «في
+  // العمل» reading this list used to carry for today.
+  | 'incomplete'
   | 'notYetIn'
   | 'absent'
   | 'onLeave'
@@ -34,7 +36,16 @@ export interface SheetRow {
   expected: TimeSpan | null;
   inAt: number | null;
   outAt: number | null;
-  lateMinutes: number;
+  /**
+   * The day's figures, in minutes, and `null` MEANS NULL: nothing was measured, so nothing is
+   * drawn. A day with a check-in and no check-out carries null in all three, which is why the
+   * sheet can show «حضر فقط» beside an arrival time and no hours — the case that used to read
+   * «ساعات العمل 0:00» against somebody still at work.
+   */
+  worked: number | null;
+  lateMinutes: number | null;
+  /** How much of the required day is missing — «النقص». Different from `lateMinutes`. */
+  shortfallMinutes: number | null;
   /** Approved / derived overtime in minutes; both 0 hides the cell. */
   overtimeApproved: number;
   overtimeDerived: number;
@@ -114,6 +125,8 @@ export interface EmployeeKpis {
   totalWorked: number;
   lateDays: number;
   lateMinutesTotal: number;
+  /** «إجمالي النقص» — the period's missing time, which is the figure a deduction reads. */
+  shortfallTotal: number;
   absentDays: number;
   incompleteDays: number;
 }
@@ -127,8 +140,45 @@ export interface EmployeeDay {
   expected: TimeSpan | null;
   /** Worked minutes; null when it cannot be counted (no check-out). */
   worked: number | null;
-  lateMinutes: number;
+  lateMinutes: number | null;
+  /** The day's missing time, or null when the day cannot be judged. */
+  shortfall: number | null;
   tags: string[];
   /** Optional per-day action (e.g. «اتخاذ قرار»). */
   action?: React.ReactNode;
+}
+
+/**
+ * THE COLUMNS THE SHEET CAN BE ORDERED BY.
+ *
+ * Spelled out here rather than imported from `@ecms/contracts` because this file is the views'
+ * own vocabulary and deliberately imports nothing — the components only draw, and the page maps
+ * its DTOs to these shapes. The two lists must agree all the same, since the value travels to the
+ * server as `sortBy`, so `view-types.spec.ts` asserts they do.
+ */
+export type SheetSortKey =
+  | 'checkIn'
+  | 'checkOut'
+  | 'worked'
+  | 'late'
+  | 'shortfall'
+  | 'name'
+  | 'code'
+  | 'status';
+
+export interface SheetSort {
+  by: SheetSortKey;
+  dir: 'asc' | 'desc';
+}
+
+/**
+ * THE COLUMNS AN EMPLOYEE'S DAILY RECORD CAN BE ORDERED BY — the date and the three figures a
+ * reader scans a month for. Fewer than the sheet's, because a period is one person: their name,
+ * code and status do not vary down the list in a way worth sorting on.
+ */
+export type EmployeeDaySort = 'date' | 'checkIn' | 'checkOut' | 'worked';
+
+export interface EmployeeDaysSort {
+  by: EmployeeDaySort;
+  dir: 'asc' | 'desc';
 }

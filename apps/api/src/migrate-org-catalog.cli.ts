@@ -139,6 +139,7 @@ const main = async (): Promise<void> => {
       companyListBefore: report.existing,
       joinedExisting: report.joined,
       recoded: report.recoded,
+      englishKept: report.englishKept,
       approvalChainsSwitchedOn: report.approvals.chains,
       rowsRenamed: report.renames.length,
       jobPapers: { moves: report.papers.moves, retired: report.papers.retired, conflicts: report.papers.conflicts.length },

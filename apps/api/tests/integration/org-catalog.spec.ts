@@ -703,6 +703,51 @@ describe('the migration, against real rows', () => {
       expect((await DepartmentModel.findById(row._id).lean().exec())?.name).toEqual({ ar: 'العليا', en: 'Top Management' });
     });
 
+    it('carries that English to the rows already linked to the entry, and lists them', async () => {
+      const entry = await departmentCatalogService.create({ code: 'TOP', name: { ar: 'العليا', en: 'العليا' } }, ACTOR);
+      const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
+      // The importer's own row, linked from the start with the entry's spelling.
+      const linked = await legacyDepartment({ code: 'DEP-8201', branchId: String(a._id), name: { ar: 'العليا', en: 'العليا' } }, ACTOR);
+      await DepartmentModel.updateOne({ _id: linked._id }, { $set: { catalogId: entry._id } });
+      await legacyDepartment({ code: 'CAI-91', branchId: String(b._id), name: { ar: 'العليا', en: 'Top Management' } }, ACTOR);
+
+      const dry = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(dry.renames).toEqual([
+        { code: 'DEP-8201', from: { ar: 'العليا', en: 'العليا' }, to: { ar: 'العليا', en: 'Top Management' } },
+      ]);
+      await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect((await DepartmentModel.findById(linked._id).lean().exec())?.name.en).toBe('Top Management');
+    });
+
+    it('takes the English of a department merged away when its survivor has none', async () => {
+      const branch = await makeBranch('أ');
+      await legacyDepartment({ code: 'DEP-8301', branchId: String(branch._id), name: { ar: 'العليا', en: 'Top Management' } }, ACTOR);
+      await legacyDepartment({ code: 'CAI-93', branchId: String(branch._id), name: { ar: 'العليا', en: 'العليا' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({
+        write: true,
+        actorId: ACTOR,
+        merges: [{ loserCode: 'DEP-8301', winnerCode: 'CAI-93' }],
+      });
+      expect(report.plan.problems).toEqual([]);
+      expect(report.englishKept.map((kept) => kept.en)).toEqual(['Top Management']);
+      expect((await DepartmentCatalogModel.findOne({ isDeleted: false }).lean().exec())?.name.en).toBe('Top Management');
+    });
+
+    it('keeps no English another entry already holds, and says so', async () => {
+      await departmentCatalogService.create({ code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } }, ACTOR);
+      const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
+      // The oldest copy has no English; a younger one has an English name OPS already holds.
+      await legacyDepartment({ code: 'DEP-8401', branchId: String(a._id), name: { ar: 'التشغيل', en: 'التشغيل' } }, ACTOR);
+      await legacyDepartment({ code: 'DEP-8403', branchId: String(b._id), name: { ar: 'التشغيل', en: 'operations' } }, ACTOR);
+      // An Arabic spelling in the English field is no English at all.
+      await legacyDepartment({ code: 'DEP-8402', branchId: String(a._id), name: { ar: 'العد و الفرز', en: 'العد والفرز' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(report.englishKept).toEqual([]);
+      expect(report.warnings.join(' ')).toContain('already another entry');
+    });
+
     it('gives a new entry the first real English name among its rows, oldest first', async () => {
       const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
       await legacyDepartment({ code: 'DEP-8101', branchId: String(a._id), name: { ar: 'الحركة', en: 'الحركة' } }, ACTOR);

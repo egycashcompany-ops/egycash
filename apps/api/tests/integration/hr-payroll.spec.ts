@@ -9,6 +9,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
+  HrAttendanceSettingKeys,
   type BulkCreatePayrollAdjustmentsResultDto,
   type PayrollAdjustmentDto,
   platformPermissions,
@@ -116,6 +117,20 @@ beforeAll(async () => {
     key: SettingKeys.TotpEnforcedForPrivileged,
     scope: 'organization',
     value: false,
+  });
+  // ABSENCE ON, FOR THIS FILE, and the shipped default is the opposite. The «attendance
+  // quantities» block below prices an absence deduction from a frozen feed — rate × absent days —
+  // and that needs an absence to exist. The owner's ruling of 18 November is «lateness only for
+  // now», so a working day with no scan now reads «لا يوجد تسجيل» and contributes nothing to
+  // `absentDays`; with the setting left off these tests would price zero and pass while proving
+  // nothing about pricing. Whether the company publishes absences is his switch
+  // (`hr.attendance.countAbsence`, covered where settings are covered); whether payroll prices one
+  // correctly when it exists is this file's subject, and the two questions should not be answered
+  // by the same assertion.
+  await settingsService.set(ctx, {
+    key: HrAttendanceSettingKeys.CountAbsence,
+    scope: 'organization',
+    value: true,
   });
   adminToken = await login('admin@ecms.local');
   await mkUser('outsider@ecms.local');

@@ -198,6 +198,17 @@ beforeAll(async () => {
     scope: 'organization',
     value: false,
   });
+
+  // ABSENCE ON for this file, against the shipped default. Its subject is two years of imported
+  // history and what the read paths make of it, and «absent» is the word the derivation produces
+  // for an expected day nobody turned up to. The owner's ruling of 18 November — «lateness only
+  // for now», so such a day reads «لا يوجد تسجيل» — is a decision about what the company
+  // publishes, covered in `attendance-settings-defaults.spec.ts` and `derive-day.spec.ts`.
+  await settingsService.set(ctx, {
+    key: HrAttendanceSettingKeys.CountAbsence,
+    scope: 'organization',
+    value: true,
+  });
   adminToken = await login('admin@ecms.local');
   await mkUser('outsider@ecms.local');
   outsiderToken = await login('outsider@ecms.local');
@@ -1035,7 +1046,10 @@ describe('the read paths — what the owner was actually looking at', () => {
     }
     expect(found, 'the employee whose code sorts past the first page').toBeDefined();
     expect(['present', 'checkedIn', 'late', 'lateAndEarly', 'earlyLeave']).toContain(found?.status);
-  });
+    // TWO MINUTES. This registers up to a hundred and four employees one HTTP call at a time to
+    // cross the clamp it is about, and then pages the sheet to find one of them. It is the slowest
+    // test in the file by a wide margin and has nothing to do with the default five seconds.
+  }, 120_000);
 
   /**
    * REGRESSION: `GET /punches?from=D&to=D` answered ZERO for a day with seventy-four scans.

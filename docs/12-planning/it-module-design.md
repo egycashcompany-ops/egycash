@@ -613,8 +613,26 @@ on the answer, never stored.
   installed on one, the asset; `reason` is `new` or `replacement` («بدل تالف») on an issue and the
   written cause on a scrap. A replacement counts the damaged unit it replaces as scrap too, but takes
   only the new unit off the shelf — the broken one came back from the person and was never on hand.
-  A return puts stock back and never lowers `issuedQty` (everything EVER issued). Nothing edits a
-  movement; a mistake is corrected by an opposing one.
+  A return puts stock back and never lowers `issuedQty` (everything EVER issued). The ledger is
+  append-only for QUANTITIES: nothing edits what a movement moved, and a mistake in it is corrected
+  by an opposing one.
+  **The one correctable fact** (§17 2026-11-17, «تعديل الجهاز»): the device an `issued` unit sits in
+  (`assetId`) may be set, changed or cleared after the issue, because it describes where the unit
+  went and moves no counter — an opposing movement could not say it. Every other field of every
+  row is still never edited; the repository's one write for it (`setInstalledOn`) matches by id,
+  the caller's scope, the version they read, the device they read and kind `issued`, sets
+  `assetId` alone and moves the row's `__v` on (the ledger's answer carries it as `version`). The
+  device it named before is kept on the row (`installedOnBefore`, sparse index
+  `ix_installed_on_before`), read by nothing but FR-5's delete guard: the signed copy on file and the
+  trail still name it, so it is not «registered in error». The rules are the issue's own:
+  gated on `itConsumable.assign`, the movement found within the caller's `itConsumable.view` (else
+  **404**, a deleted one too); any other kind **422**; a device named only within the caller's OWN
+  `itAsset.view` — without that grant every id is **404** «asset not found» — and not disposed
+  (**422**); clearing (null, «بدون جهاز») needs no asset grant; a stale version **409**; the device
+  it already names **200** with nothing written. ONE transaction moves the row and its memo line
+  (below); after the commit, an `update` audit row on the item (`installedOn` old → new asset id,
+  with the `movementId`) and one on the memo (the line's device as printed, before → after), and
+  the refresh signals of both topics with the store.
 - **Transfer to another branch** («تحويل إلى فرع», §17 2026-11-11) — one or more items of ONE store,
   each with its quantity (at most `IT_CONSUMABLE_TRANSFER_MAX_LINES`, 50), to ONE other active
   branch, at once and with no paper: no memo, no «in transit», nothing to confirm at the other end
@@ -661,6 +679,13 @@ on the answer, never stored.
   issue writes the movements, the counters and the memo in ONE transaction, its number reserved
   inside it, so a refused issue leaves no gap and the paper never lists what the store did not give.
   `signedCopy` under Files category `it-consumable-memos`, authorizer `it/consumableMemo`.
+  **The reprint rule** (§17 2026-11-17, «تتحدّث بالجهاز الجديد»): when an issued unit's device is
+  changed, the line whose `movementId` is that movement gets `assetId`, `assetCode` and `assetName`
+  re-snapshotted from the register at that moment (all three null when cleared), in the same
+  transaction as the movement, and the memo's version moves on — so a reprint prints the new device
+  under the same number. Nothing else of the paper changes, and the `signedCopy` already filed stays
+  as it is: it is the paper that was signed that day, and the audit trail says what changed after.
+  A movement whose memo is gone (the reset below) is corrected all the same, with no memo row.
 - The workforce reset KEEPS the items and the ledger (the ledger is the stock's explanation) and
   PURGES the memos, which name a person, as it does the other papers; a movement whose memo is gone
   offers none.
@@ -800,7 +825,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 - **FR-5** Assets are never hard-deleted once they carry any §2.3 event beyond `registered`;
   a registered-in-error asset with no history may be deleted by `itAsset.delete` (audited). Used
   means any trace: a history event, a custody interval, a maintenance order, or a consumable
-  installed on it (FR-20).
+  installed on it (FR-20) — now, or before a «تعديل الجهاز» moved the unit to another device
+  (`installedOnBefore`, §2.11).
 - **FR-6** SLA breach stamps are set exactly once and never cleared — a later resolution does
   not rewrite the breach; reports read stamps, not recomputed clocks.
 - **FR-7** Internal comments are never returned to callers lacking `itTicket.edit` — enforced in
@@ -923,7 +949,7 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it/assets/import` («رفع جماعي», the register's toolbar) | `itAsset.create` | `itAsset.create` (preview the sheet; register its new lines, in a branch that is active and that grant reaches — 403 otherwise; the branch picker lists no other — the server names them, `GET /it/assets/import/branches`, under the same grant) · `.edit` within its scope (fill what a device the register holds lacks) · `.assign` within its scope AND reaching the chosen branch (move a device in stock in another branch to it — the move's own test, §2.2) — a line whose device the caller may see but not write as it needs is `outOfScope`, the device named and the right missing said; only a device `itAsset.view` does not reach is hidden (`outOfScope` with nothing of it shown). No key was added (§17, 2026-11-16) |
 | `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer + the move to another branch — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
 | `/it/mobile-lines` | `itMobileLine.view` (the register, a line, its history, its intervals, its acknowledgments read back and reprinted, the lines section of an employee's IT history, the home's lines panel) | `itMobileLine.create` (register a line), `.edit` (edit — its branch included, to one that grant reaches — suspend, reactivate), `.assign` (hand over + return + the line's acknowledgment: print it first, file and withdraw its signed copy), `.viewNationalId` (the holder's national ID on the line acknowledgment — Security Architecture §3's sensitive-data grant, the line's own; the device receipt keeps `itAsset.viewNationalId`). Page `it.mobile-lines` («خطوط المحمول»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-20 until then, and open nothing here now |
-| `/it/consumables` (+ `/movements`) | `itConsumable.view` (each store, an item, its movements, the ledger, the memos read back and reprinted, the consumables section of an employee's IT history, the home's consumables panel, an asset page's «installed» card — the asset labels a ledger row shows are part of the item's record and read under this grant) | `itConsumable.create` (add an item to a store that grant reaches), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee with its memo, take back from one, file and withdraw the memo's signed copy, transfer stock to another branch's store that grant reaches — the picker lists no other: the server names them, `GET /it/consumables/transfer-targets`, under the same grant). An issue's «installed on» names an asset within the caller's OWN `itAsset.view` — without that grant every asset is «not found». Page `it.consumables` («المستهلكات»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-28 until then, and open nothing here now |
+| `/it/consumables` (+ `/movements`) | `itConsumable.view` (each store, an item, its movements, the ledger, the memos read back and reprinted, the consumables section of an employee's IT history, the home's consumables panel, an asset page's «installed» card — the asset labels a ledger row shows are part of the item's record and read under this grant) | `itConsumable.create` (add an item to a store that grant reaches), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee with its memo, take back from one, file and withdraw the memo's signed copy, transfer stock to another branch's store that grant reaches — the picker lists no other: the server names them, `GET /it/consumables/transfer-targets`, under the same grant; «تعديل الجهاز» on an issued row of the ledger — set, change or clear the device it sits in, the row found within `itConsumable.view`, §2.11, §17 2026-11-17). An issue's «installed on», and a device «تعديل الجهاز» names, is an asset within the caller's OWN `itAsset.view` — without that grant every asset is «not found», and only clearing it is left; the screen offers the action only with `itConsumable.assign` AND `itAsset.view`. Page `it.consumables` («المستهلكات»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-28 until then, and open nothing here now |
 | `/it/people` (the holder boxes, the employees register, a person's head) | ANY of `itAsset.view`, `itMobileLine.view`, `itConsumable.view` | read-only; a person is found when ANY of those three the caller holds reaches them — one selector per held grant, OR-ed by the directory (`anyOfScopes`) — never one key's units standing for the others' (two grants can reach different branches, or one be `own`), and each person's `openCustodyCount` — the assets they hold — is counted within the caller's `itAsset.view` only: 0 for everyone to a caller without it (§17, 2026-11-17) |
 | `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories and the consumables' types — one grant, the `fleetCatalog.manage` precedent) |
 | `/it/tickets` | `itTicket.view` (scoped; requesters see own) | `itTicket.create`, `.edit` (work the ticket: status, priority, internal comments), `.assign` (dispatch decision, its own grant), `.close` (close + reopen + cancel, both-directions precedent) |
@@ -1083,7 +1109,7 @@ cars ([design §11](it-vehicle-checks-design.md)).
 | `/it/mobile-line-assignments` | read-only: `GET /` (open, line, employee, branch) — FR-19 |
 | `/it/mobile-line-receipts` | `POST /preview` · `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-19 |
 | `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo) · `POST /transfer` (`TransferItConsumablesSchema`: up to 50 items of one store, each with a quantity, to another branch's store; one `transferId`; 201 → `ItConsumableTransferResultDto`; 403 target out of reach · 404 an item out of scope · 422 two stores, the same store, more than on hand, another unit or a retired item there · 400 no such active branch — §2.11) · `GET /transfer-targets` (→ `ItMoveTargetsDto`: the transfer picker's branches — the active branches `itConsumable.assign` reaches whole, by the transfer's own test; before `/:id` — §17 2026-11-17) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
-| `/it/consumable-movements` | read-only: `GET /` (kind — `transferredOut` and `transferredIn` among them — item, type, employee, asset, branch, from/to, search) — FR-20 |
+| `/it/consumable-movements` | `GET /` (kind — `transferredOut` and `transferredIn` among them — item, type, employee, asset, branch, from/to, search; each row carries its `version`) · `PATCH /:id/installed-on` («تعديل الجهاز», under `itConsumable.assign`; `SetItConsumableInstalledOnSchema { assetId: objectId \| null, version }`; 200 → the `ItConsumableMovementDto` as it now stands, the same device included with nothing written; 404 a movement out of `itConsumable.view`'s scope or deleted, or a device out of the caller's own `itAsset.view` — any device without it · 422 not an `issued` movement, or a disposed device · 409 a stale version; the memo line follows it — §2.11, §17 2026-11-17) — FR-20 |
 | `/it/consumable-memos` | `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-20 |
 | `/it/vehicle-checks` | `GET /vehicles` (the active cars `{ id, code }` in Fleet's code order, paginated; the form walks the pages — the owner's «تظهر كلها», an ADR-019 deviation the design records) · `POST /` (file; a known `clientRequestId` returns the existing report) · `POST /:id/photos` (one photo, the reporter only, within 24 hours, ≤ 5) — under `itVehicleCheck.create` · `GET /dashboard` (the figures, the latest per car, the overdue cars) · `GET /` (the reports: window, branch, car, a code, faults, a device) · `GET /:id` · `GET /:id/photos/:fileId` (the bytes) — under `itVehicleCheck.view`, scoped · `DELETE /:id` (soft) — under `itVehicleCheck.delete` — FR-21 |
 | `/it/dashboard` | `GET /assets` (status counts: totals, by category, by branch, and «يحتاج متابعة»; `categoryId` one or more, `branchId`) · `GET /activity` (the latest movements, same filters) — built; `/tickets` · `/maintenance` · `GET /reports/warranty` still planned |
@@ -1833,3 +1859,50 @@ starts only on an explicit owner GO.
     conflict. The run row counts the delegated grants copied.
   - §2.10, §2.11, FR-19, FR-20, §7, §9.1 and §12 amended. Contracts: comments only (`ItMoveTargetsDto`, `ItPersonDto`,
     the lines' and consumables' headers).
+- **The issue's person and device find each other, and the device can be changed afterwards**
+  (2026-11-17) — owner request: «عند تسليم المستهلكات .. عايز حاجة مهمة جداً .. لما أكتب اسم الشخص اللى
+  هسلمه تظهر الأجهزة اللى معاه بس.. لأن الطبيعي اسلمله مستهلك لجهاز .. والعكس بردو .. لو كتبت سيرال فى
+  الجهاز اللى هيتركب عليه المستهلك .. تظهر على طول الشخص اللى مستلم الجهاز دا انه بردو هو اللى هيستلم
+  المستهلك». Asked «بعد ما تختار الموظف، تظهر أجهزته بس ولا تقدر كمان تختار جهاز تاني مش في عهدته (زي
+  طابعة في المخزن)؟», he chose **«أجهزته أولاً + «جهاز آخر»»**. And: «وضيف إمكانية تعديل الجهاز اللى
+  عليه المستهلك بعد التسليم»; asked what the printed memo does then, he chose **«تتحدّث بالجهاز
+  الجديد»** — a reprint shows the new device, the change is recorded (who, when, from which device
+  to which), and the signed copy already filed stays as it is.
+  - **«صرف لموظف», person first** (web only — the API already answered it: `GET /it/assets
+    ?holderEmployeeId=`, every asset's `holder` and `serialNumber`, `GET /it/people/:id`): once a
+    person is chosen, each line's «مركّب على» lists the devices they hold now, at once and without
+    typing, each with its code and serial, a hint saying whose they are, and plainly «none» when
+    they hold none — the field stays optional. Under them, «جهاز آخر» opens the search over the
+    whole register (a shared printer's toner, a device in stock), its rows still showing serial
+    and holder; a device somebody else holds, picked that way, never changes the person — the
+    line notes whose it is.
+  - **Device first**: with nobody chosen, the search's rows show the serial and who holds the device
+    («في عهدة …» / «في المخزن»), so a typed serial names its holder at once; picking a held device
+    fills the person with that holder (the employee box's own label) only if HR shows them still
+    working here — a leaver fills nothing and is said under the field; a device in stock fills
+    nothing.
+  - **Keeping the two consistent**: changing the person from P to Q clears a line's device only if
+    P held it (it was picked as P's device), said once under the lines; Q's own device, one in
+    stock, or a third person's picked through «جهاز آخر» stays. Clearing the person keeps every
+    device. Nothing is ever picked for the user, not even a person's only device. The other
+    `AssetPicker` callers (custody, maintenance, software, plans, the movements filter) are
+    unchanged — every new prop is optional.
+  - **«تعديل الجهاز»** — `PATCH /it/consumable-movements/:id/installed-on`
+    (`SetItConsumableInstalledOnSchema { assetId | null, version }`, under `itConsumable.assign`,
+    the issue's own rules — §2.11, §7, §12): the device an issued unit sits in is the ledger's ONE
+    correctable fact, because it is a description, not a quantity — it moves no counter; every
+    other field of every row is still never edited, and the movement repository gains one narrow
+    write for exactly this. The memo line that is the movement is re-snapshotted from the register
+    in the same transaction (so a reprint prints the new device); the signed copy is untouched; two
+    `update` audit rows (the item's, the memo's) and both topics' refresh follow the commit. The
+    ledger's rows carry their `version`. On the ledger component (the movements page, an item's
+    movements, an employee's history, the asset page's card) every issued row offers it with
+    `itConsumable.assign` AND `itAsset.view`: the person's devices first, «جهاز آخر», «بدون جهاز».
+    Its dialog is held beside the table, not in the row, so a re-read that takes the row off the
+    list (on an asset's card a 409 means the unit now sits elsewhere) leaves the dialog and its
+    refusal on screen, saying the row has left the list.
+  - **The device it was moved off stays protected** (FR-5): the row keeps every device it named
+    before (`installedOnBefore`), and the delete guard reads it — the signed copy on file and the
+    trail still name that device, so it is not «registered in error». Disposing it stays open.
+  - §2.11, §7, §12 and FR-5 amended. Contracts: `SetItConsumableInstalledOnSchema`,
+    `ItConsumableMovementDto.version`.

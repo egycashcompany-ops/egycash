@@ -5,6 +5,7 @@ export { buildEmployeesRouter } from './employee.routes';
 export { employeeService } from './employee.service';
 export { toEmployeeDto, toRehireCheckResultDto } from './employee.mapper';
 export { employeeRepository } from './employee.repository';
+export { resolvePlacements, type PlacementLookup } from './employee-placement';
 export {
   ensureEmployeePhotoCategory,
   hrEmployeePhotoFileAuthorizers,

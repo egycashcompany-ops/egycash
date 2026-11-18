@@ -57,6 +57,7 @@ import {
 } from '../lib/crew-picker';
 import { AWAY_BADGE, ROLE_DOT } from './CrewPlanChip';
 import { CrewFlagMarks } from './crew-plan-icons';
+import { scopedKey, useCrewPlanScope } from './crew-plan-scope';
 
 /** The list's width and its tallest on a computer — a name, its code and its badge on one line. */
 const PICKER_WIDTH = 352;
@@ -173,6 +174,8 @@ export const useSlotPickerParts = ({
   close: (back: boolean) => void;
 } => {
   const t = useT();
+  // «في التشغيلة — اختياره ينقله إلى هنا» on the board; «في الطاقم الثابت — …» on its screen.
+  const scope = useCrewPlanScope();
   const locale = useAppSelector((state) => state.locale.locale);
   const id = useId();
   const [search, setSearch] = useState('');
@@ -421,7 +424,7 @@ export const useSlotPickerParts = ({
               )}
             >
               <span className="min-w-0 truncate">
-                {t(`operations.crewPlan.picker.section.${section}`)}
+                {t(scopedKey(scope, `operations.crewPlan.picker.section.${section}`))}
               </span>
               <span className={cn(NUM, 'shrink-0 opacity-80')}>
                 {formatNumber(part.length, locale)}

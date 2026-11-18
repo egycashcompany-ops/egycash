@@ -53,6 +53,28 @@ class PunchRepository extends BaseRepository<AttendancePunchDoc> {
     });
   }
 
+  /**
+   * The newest scan any of these employees made inside a window, or null.
+   *
+   * It is the daily sheet's «آخر بصمة»: one indexed read (`ix_employee_at`), sorted descending and
+   * stopped at the first row, rather than loading a day of punches to look at the last one.
+   * Superseded punches are left out — a correction replaced them, and the device moment they
+   * recorded is no longer the one the screen should report.
+   */
+  async lastPunchIn(
+    employeeIds: Types.ObjectId[],
+    from: Date,
+    to: Date,
+  ): Promise<Date | null> {
+    const newest = await this.model
+      .findOne({ employeeId: { $in: employeeIds }, at: { $gte: from, $lt: to }, supersededBy: null })
+      .sort({ at: -1 })
+      .select({ at: 1 })
+      .lean<{ at: Date } | null>()
+      .exec();
+    return newest?.at ?? null;
+  }
+
   /** The engine's read: every punch for one employee inside a window, oldest first. */
   async listForWindow(
     employeeId: Types.ObjectId,

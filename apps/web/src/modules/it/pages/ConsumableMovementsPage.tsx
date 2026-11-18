@@ -48,7 +48,7 @@ import { AssetPicker } from '../components/AssetPicker';
 import { EmployeePicker } from '../components/EmployeePicker';
 import { ItCatalogSelect } from '../components/ItCatalogSelect';
 import { RegisterExportButtons } from '../components/RegisterExportButtons';
-import { useConsumableMovementColumns } from '../components/ConsumableMovements';
+import { useConsumableMovementLedger } from '../components/ConsumableMovements';
 import { saveSheet } from '../../fleet/lib/fleet-sheet';
 import {
   consumableMovementRegisterFilters,
@@ -195,7 +195,7 @@ export const ConsumableMovementsPage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useItConsumableMovements(params);
   const rows = data?.items ?? [];
-  const columns = useConsumableMovementColumns();
+  const { columns, editor } = useConsumableMovementLedger(rows);
 
   // The employee chip's label: the pick supplies it, kept WITH the id it was picked for (back and
   // forward change the id underneath); arriving on a link with only an id, the rows name the
@@ -475,6 +475,7 @@ export const ConsumableMovementsPage = (): JSX.Element => {
             onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
           />
         )}
+        {editor}
       </div>
     </PageContainer>
   );

@@ -15,6 +15,19 @@
 // A transfer between two stores («ممكن أنقل 5 لفرع تاني») is a pair of movements: «تحويل إلى فرع» out
 // of one, coloured as an issue is, and «تحويل من فرع» into the other, coloured as a receipt is. Each
 // names the other side in the reason's place — the branch, and that store's item when known.
+//
+// «تعديل الجهاز» (2026-11-17 — «وضيف إمكانية تعديل الجهاز اللى عليه المستهلك بعد التسليم»): every
+// issued row offers to correct the device its unit sits in — the ledger's one correctable fact, as
+// it moves no quantity — in the four places alike, the asset's card included (where the device
+// column is left out, the page being that device). Its own column at the row's end, as every IT
+// register's actions are, drawn only for a reader who holds both grants it needs (the issue's
+// `itConsumable.assign`, and `itAsset.view` for the box that searches the devices): a reader
+// without them gets the ledger exactly as before, with no empty column. The dialog is
+// `ConsumableInstalledOnDialog.tsx`, and it is held BESIDE the table, never in a row: a re-read can
+// take the row off the list while the dialog is open (a 409 on an asset's card means the unit moved
+// to another device, so the card no longer lists it), and a dialog mounted in that row would vanish
+// with it, its refusal unsaid. `useConsumableMovementLedger` returns the columns and that dialog;
+// each place renders both.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -29,10 +42,11 @@ import { Badge, type Tone } from '../../../shared/ui/Badge';
 import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Pagination } from '../../../shared/ui/Pagination';
-import { ClipboardIcon } from '../../../shared/ui/icons';
+import { ClipboardIcon, EditIcon } from '../../../shared/ui/icons';
 import { cn } from '../../../shared/lib/cn';
 import { formatDateTime, formatNumber, localized } from '../../../shared/lib/format';
 import { useItBranchOptions, useItCatalog, useItConsumableMovements } from '../api/it-queries';
+import { mayChangeDevices, mayChangeInstalledOn } from '../lib/consumable-installed-on';
 import {
   MOVEMENT_SIGN,
   movementAsset,
@@ -40,6 +54,7 @@ import {
   movementEmployee,
   movementReason,
 } from '../lib/consumable-movement-register-export';
+import { ConsumableInstalledOnDialog } from './ConsumableInstalledOnDialog';
 import { ConsumableMemoActions } from './ConsumableMemo';
 import { ItUserName } from './ItUserName';
 
@@ -70,6 +85,29 @@ export const ConsumableMovementKindBadge = ({
   );
 };
 
+/** «تعديل الجهاز» on one issued row — the button; the dialog it opens is the ledger's, not the row's. */
+const InstalledOnAction = ({
+  movement,
+  onEdit,
+}: {
+  movement: ItConsumableMovementDto;
+  onEdit: (movement: ItConsumableMovementDto) => void;
+}): JSX.Element => {
+  const t = useT();
+  return (
+    <button
+      type="button"
+      data-movement-device-edit={movement.id}
+      className="inline-flex cursor-pointer items-center gap-1 whitespace-nowrap rounded px-1 py-0.5 text-xs text-slate-500 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:text-slate-100"
+      title={t('it.consumables.installedOn.actionHint')}
+      onClick={() => onEdit(movement)}
+    >
+      <EditIcon className="h-4 w-4" aria-hidden="true" />
+      {t('it.consumables.installedOn.action')}
+    </button>
+  );
+};
+
 /** Which columns a place shows — the item on a screen of many items, not on one item's list. */
 export interface MovementColumnOptions {
   item?: boolean;
@@ -78,13 +116,14 @@ export interface MovementColumnOptions {
   by?: boolean;
 }
 
-/** The ledger's columns, in the screens' order: date, kind, item, qty, employee, asset, reason, memo, by. */
-export const useConsumableMovementColumns = ({
-  item = true,
-  employee = true,
-  asset = true,
-  by = true,
-}: MovementColumnOptions = {}): Column<ItConsumableMovementDto>[] => {
+/**
+ * The ledger's columns, in the screens' order: date, kind, item, qty, employee, asset, reason, memo,
+ * by — and «تعديل الجهاز» last, for a reader who may correct a device.
+ */
+const useConsumableMovementColumns = (
+  { item = true, employee = true, asset = true, by = true }: MovementColumnOptions,
+  onEditDevice: (movement: ItConsumableMovementDto) => void,
+): Column<ItConsumableMovementDto>[] => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -240,8 +279,75 @@ export const useConsumableMovementColumns = ({
       header: t('it.consumables.movements.columns.by'),
       render: (m) => <ItUserName id={m.byUserId} className="text-xs" />,
     },
+    // «تعديل الجهاز» — only for a reader who holds both grants, and only on an issued row.
+    mayChangeDevices(can) && {
+      key: 'actions',
+      header: t('it.assets.columns.actions'),
+      align: 'end',
+      render: (m) =>
+        mayChangeInstalledOn(m, can) ? (
+          <InstalledOnAction movement={m} onEdit={onEditDevice} />
+        ) : null,
+    },
   ];
   return columns.filter((column): column is Column<ItConsumableMovementDto> => column !== false);
+};
+
+/** The ledger a place renders: its columns, and the «تعديل الجهاز» dialog while one is open. */
+export interface ConsumableLedger {
+  columns: Column<ItConsumableMovementDto>[];
+  /** Rendered beside the table, never inside it — `null` while no device is being changed. */
+  editor: JSX.Element | null;
+}
+
+/**
+ * The row the open dialog shows: the list's own while the list still has it — its version and its
+ * device as last read, so a refusal re-read shows what now stands — and, once a re-read has taken
+ * it off this list, the last copy the list showed (`kept`), marked `left` so the dialog says so
+ * rather than point at a device it can no longer see.
+ */
+export const installedOnEditing = (
+  kept: ItConsumableMovementDto | null,
+  rows: readonly ItConsumableMovementDto[],
+): { movement: ItConsumableMovementDto; left: boolean } | null => {
+  if (kept === null) return null;
+  const fresh = rows.find((row) => row.id === kept.id);
+  return fresh === undefined ? { movement: kept, left: true } : { movement: fresh, left: false };
+};
+
+/**
+ * The ledger's columns for one place, with the «تعديل الجهاز» dialog held here — above the table,
+ * so a row leaving the list (moved to another device, pushed to the next page) never closes it.
+ * `rows` are the rows the place shows now.
+ */
+export const useConsumableMovementLedger = (
+  rows: readonly ItConsumableMovementDto[],
+  options: MovementColumnOptions = {},
+): ConsumableLedger => {
+  // The row being edited, as the list last showed it: set by the row's button, and carried forward
+  // on every re-read that still lists it (React's adjust-state-while-rendering pattern), so a row
+  // that later leaves the list falls back to its latest version, never to the click's.
+  const [kept, setKept] = useState<ItConsumableMovementDto | null>(null);
+  const columns = useConsumableMovementColumns(options, setKept);
+  const editing = installedOnEditing(kept, rows);
+  if (editing !== null && !editing.left && editing.movement !== kept) setKept(editing.movement);
+  const id = editing?.movement.id;
+  return {
+    columns,
+    editor:
+      editing === null ? null : (
+        <ConsumableInstalledOnDialog
+          // One dialog per row: opening another row never carries this one's choice or refusal.
+          key={id}
+          open
+          // Closes only its own row: a save that settles after its dialog was closed, and another
+          // row opened, leaves that other dialog alone.
+          onClose={() => setKept((current) => (current?.id === id ? null : current))}
+          movement={editing.movement}
+          left={editing.left}
+        />
+      ),
+  };
 };
 
 const CARD_PAGE_SIZE = 10;
@@ -257,16 +363,18 @@ const MovementsCard = ({
   description,
   empty,
   filter,
-  columns,
+  options,
 }: {
   title: string;
   description: string;
   empty: string;
   filter: { assetId: string } | { employeeId: string };
-  columns: Column<ItConsumableMovementDto>[];
+  options: MovementColumnOptions;
 }): JSX.Element => {
   const [page, setPage] = useState(1);
   const movements = useItConsumableMovements({ ...filter, page, pageSize: CARD_PAGE_SIZE });
+  const rows = movements.data?.items ?? [];
+  const { columns, editor } = useConsumableMovementLedger(rows, options);
   return (
     <Card className="lg:col-span-3">
       <CardHeader title={title} description={description} />
@@ -274,7 +382,7 @@ const MovementsCard = ({
         <DataTable
           embedded
           columns={columns}
-          rows={movements.data?.items ?? []}
+          rows={rows}
           rowKey={(m) => m.id}
           loading={movements.isLoading}
           error={movements.isError ? movements.error : undefined}
@@ -284,6 +392,7 @@ const MovementsCard = ({
         {movements.data !== undefined && movements.data.meta.totalPages > 1 && (
           <Pagination meta={movements.data.meta} onPageChange={setPage} />
         )}
+        {editor}
       </CardBody>
     </Card>
   );
@@ -296,14 +405,13 @@ const MovementsCard = ({
  */
 export const AssetConsumablesCard = ({ assetId }: { assetId: string }): JSX.Element => {
   const t = useT();
-  const columns = useConsumableMovementColumns({ asset: false });
   return (
     <MovementsCard
       title={t('it.consumables.assetCard.title')}
       description={t('it.consumables.assetCard.hint')}
       empty={t('it.consumables.assetCard.empty')}
       filter={{ assetId }}
-      columns={columns}
+      options={{ asset: false }}
     />
   );
 };
@@ -311,14 +419,13 @@ export const AssetConsumablesCard = ({ assetId }: { assetId: string }): JSX.Elem
 /** «اتبدل لمين» — what was issued to this person, and what they gave back, each issue with its memo. */
 export const EmployeeConsumablesCard = ({ employeeId }: { employeeId: string }): JSX.Element => {
   const t = useT();
-  const columns = useConsumableMovementColumns({ employee: false });
   return (
     <MovementsCard
       title={t('it.nav.consumables')}
       description={t('it.consumables.employeeCard.hint')}
       empty={t('it.consumables.employeeCard.empty')}
       filter={{ employeeId }}
-      columns={columns}
+      options={{ employee: false }}
     />
   );
 };

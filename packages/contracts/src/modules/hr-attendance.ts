@@ -391,8 +391,131 @@ export const ListAttendanceSheetQuerySchema = PaginationQuerySchema.extend({
   date: z.coerce.date(),
   branchId: listQuery(objectId()),
   sectionId: listQuery(objectId()),
+  /**
+   * The quick status filter, on the RESOLVED status — which is not a stored field, so the server
+   * resolves the whole branch-day before paging rather than filtering rows in the database. That
+   * is also what makes the summary counts exact instead of per-page.
+   */
+  status: listQuery(AttendanceDayStatusSchema),
+  /** Name or code, matched the way the employee directory matches them. */
+  search: z.string().trim().min(1).max(100).optional(),
 }).strict();
 export type ListAttendanceSheetQuery = z.infer<typeof ListAttendanceSheetQuerySchema>;
+
+/**
+ * The sheet's counts, over the WHOLE filtered day rather than the page on screen — which is the
+ * only way a card reading "18 absent" can be true while the table shows fifty of thirteen hundred.
+ *
+ * It is a sibling endpoint rather than a field on the list because `Paginated.meta` is a shared
+ * shape the whole product returns, and widening it for one screen would change every list in the
+ * system. The two reads are cached separately and refresh together.
+ *
+ * Every status gets its own count, and the screen groups them: nothing here decides that `late`
+ * is "present", because a count the server has already blended cannot be unblended by a reader
+ * who wants the other grouping.
+ */
+export const AttendanceSheetSummaryQuerySchema = z
+  .object({
+    date: z.coerce.date(),
+    branchId: listQuery(objectId()),
+    sectionId: listQuery(objectId()),
+    search: z.string().trim().min(1).max(100).optional(),
+  })
+  .strict();
+export type AttendanceSheetSummaryQuery = z.infer<typeof AttendanceSheetSummaryQuerySchema>;
+
+/** Arrivals in one quarter of an hour — the shape the sheet's arrival chart is drawn from. */
+export interface AttendanceArrivalSlotDto {
+  /** Start of the 15-minute slot, minutes after Cairo midnight (so 9:15 is 555). */
+  slot: number;
+  /** How many people's FIRST check-in of the day landed in it. */
+  count: number;
+}
+
+export interface AttendanceSheetSummaryDto {
+  date: string;
+  /** Everybody the sheet covers for this date, before any status filter. */
+  total: number;
+  byStatus: Record<AttendanceDayStatus, number>;
+  /**
+   * First check-ins per quarter hour, over the WHOLE filtered day rather than the page on screen.
+   *
+   * It is aggregated here, beside the counts, for the same reason the counts are: a chart drawn
+   * from one page of fifty rows would redraw itself every time the reader turned a page, and the
+   * question it answers — when did people arrive this morning — is about the day, not the page.
+   * Slots with nobody in them are omitted; the chart draws the gaps.
+   */
+  arrivals: AttendanceArrivalSlotDto[];
+  /**
+   * When the working day starts and the grace after it, Cairo minutes — the roster MOST of the
+   * people on this sheet are held to, resolved from their shift or their branch's default pattern.
+   *
+   * `null` when nobody on the sheet has a roster at all. The screen must not invent one: a line
+   * drawn at nine o'clock on a sheet where nobody has been given hours is a claim about lateness
+   * that nobody in the company has made.
+   */
+  dayStart: number | null;
+  graceMinutes: number;
+  /**
+   * The most recent scan on this date inside the same scope, or null when nothing has arrived.
+   * Read from the punches themselves, not from the derived rows, so it tells the truth about the
+   * devices even in the seconds before a recompute lands.
+   */
+  lastPunchAt: string | null;
+}
+
+/**
+ * ONE EMPLOYEE'S PERIOD, ADDED UP — the figures above their attendance page.
+ *
+ * Computed on the server, over every day of the period rather than the page on screen, and from
+ * the same day rows the record below shows. The client does no arithmetic over a month: two
+ * readers on two screens would otherwise be one rounding rule apart from disagreeing about
+ * somebody's attendance.
+ *
+ * `from`/`to` are inclusive date-only, and the window is capped like the export and the recompute:
+ * a figure is a report, not a dump.
+ */
+export const AttendanceEmployeeSummaryQuerySchema = z
+  .object({
+    employeeId: objectId().optional(),
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the period is capped at 92 days',
+  });
+export type AttendanceEmployeeSummaryQuery = z.infer<typeof AttendanceEmployeeSummaryQuerySchema>;
+
+export interface AttendanceEmployeeSummaryDto {
+  from: string;
+  to: string;
+  /** Days that count as a day at work, by the same list payroll pays (`attendance-quantities`). */
+  daysPresent: number;
+  /** Days anybody was due in: the period's rows less weekends, holidays, rest days and leave. */
+  daysExpected: number;
+  /**
+   * The average first check-in and last check-out, Cairo minutes after midnight, over the days
+   * that have one. `null` when there were none — never 0, which would read as midnight.
+   */
+  usualArrival: number | null;
+  usualDeparture: number | null;
+  /** Averaged over the days that HAVE measured hours, and their total. */
+  avgWorkedMinutes: number | null;
+  totalWorkedMinutes: number;
+  lateDays: number;
+  lateMinutesTotal: number;
+  absentDays: number;
+  /** Days with a check-in and no check-out: present, hours unknown. */
+  incompleteDays: number;
+  /** This employee's own roster for the period — their shift, or their branch's default pattern. */
+  dayStart: number | null;
+  graceMinutes: number;
+  /** Their most recent scan inside the period, or null. */
+  lastPunchAt: string | null;
+}
 
 /**
  * One line of the daily sheet: an EMPLOYEE, what was expected of them, and the day row if one
@@ -414,6 +537,14 @@ export interface AttendanceSheetRowDto {
   employeeId: string;
   employeeCode: string;
   employeeName: string;
+  /** The employee's photo, for the row's avatar; null is the ordinary case, not an error. */
+  employeePhotoFileId: string | null;
+  /**
+   * Where they sit, resolved to names by the server. The row carries the id of a department and
+   * nothing else; a client that had to name it would need the catalogue AND the key that guards
+   * it, and a reader of attendance alone would see a blank beside every name.
+   */
+  employeeDepartment: LocalizedString | null;
   branchId: string;
   date: string;
   status: AttendanceDayStatus;

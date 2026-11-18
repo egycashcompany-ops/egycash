@@ -1,9 +1,17 @@
-// `it_consumable_movements` — the consumables store's ledger, append-only (ADR-024's shape): every
-// unit in («توريد», «مرتجع») and out («صرف», «هالك») — and between two branches' stores («تحويل إلى
-// فرع»: a `transferredOut` row in one, a `transferredIn` row in the other, sharing one
-// `transferId`) — one row per movement, never edited. A mistake
-// is corrected by an opposing movement — which is what keeps every on-hand figure explainable six
-// months later — and the repository offers nothing that changes a row.
+// `it_consumable_movements` — the consumables store's ledger, append-only FOR QUANTITIES (ADR-024's
+// shape): every unit in («توريد», «مرتجع») and out («صرف», «هالك») — and between two branches' stores
+// («تحويل إلى فرع»: a `transferredOut` row in one, a `transferredIn` row in the other, sharing one
+// `transferId`) — one row per movement. A mistake in what moved is corrected by an opposing
+// movement — which is what keeps every on-hand figure explainable six months later.
+//
+// ONE fact of a row may be corrected in place: the device an `issued` unit sits in (`assetId`) —
+// «وضيف إمكانية تعديل الجهاز اللى عليه المستهلك بعد التسليم» (2026-11-17). It is a description of
+// where the unit went, not a quantity: it moves no counter, and an opposing movement could not say
+// it. Every other field is still never edited, and the repository's one write for it
+// (`setInstalledOn`) reaches that field of an issued row and nothing else; the row's `__v` moves
+// with it, the audit trail keeps the device it named before, and so does the row itself
+// (`installedOnBefore`), for the one rule that must still see it: an asset a unit was once recorded
+// in is not «registered in error» (FR-5) — the signed copy on file and the trail still name it.
 //
 // `qty` is always POSITIVE and the kind says which way it moved: a ledger read by people, where
 // «−3» beside «صرف» would say the same thing twice and invite the sign to disagree with the word.
@@ -31,6 +39,11 @@ export interface ItConsumableMovementDoc extends BaseDocFields {
   employeeId: Types.ObjectId | null;
   /** `issued`: the asset it was installed on, when it was. Null otherwise. */
   assetId: Types.ObjectId | null;
+  /**
+   * `issued`, after a «تعديل الجهاز»: every device the row named before — added to, never taken
+   * from, and read by nothing but FR-5's delete guard. Absent on a row never corrected.
+   */
+  installedOnBefore?: Types.ObjectId[];
   /** `issued`: `new` | `replacement`; `scrapped`: why, as written. Null otherwise. */
   reason: string | null;
   /** `issued`: the memo the employee signed for it. */
@@ -58,6 +71,8 @@ const movementSchema = new Schema<ItConsumableMovementDoc>(
     byUserId: { type: Schema.Types.ObjectId, default: null },
     employeeId: { type: Schema.Types.ObjectId, default: null },
     assetId: { type: Schema.Types.ObjectId, default: null },
+    // No empty array on every row: only a corrected issue carries it.
+    installedOnBefore: { type: [Schema.Types.ObjectId], default: undefined },
     reason: { type: String, default: null },
     memoId: { type: Schema.Types.ObjectId, default: null },
     notes: { type: String, default: null },
@@ -77,6 +92,8 @@ movementSchema.index({ branchId: 1, at: -1 }, { name: 'ix_branch_at' });
 movementSchema.index({ employeeId: 1, at: -1 }, { name: 'ix_employee_at' });
 // «المستهلكات المركّبة عليه» — what was installed on an asset: its detail page.
 movementSchema.index({ assetId: 1, at: -1 }, { name: 'ix_asset_at' });
+// FR-5's guard: an asset a corrected issue named before. Sparse — few rows are ever corrected.
+movementSchema.index({ installedOnBefore: 1 }, { name: 'ix_installed_on_before', sparse: true });
 // The movements one memo lists.
 movementSchema.index({ memoId: 1 }, { name: 'ix_memo' });
 // The movements one transfer wrote — both halves of every line, in both stores.

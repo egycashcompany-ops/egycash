@@ -20,6 +20,8 @@ import {
   type AttendanceDecisionDto,
   type AttendanceDecisionSignalsDto,
   type AttendanceSheetRowDto,
+  type AttendanceEmployeeSummaryDto,
+  type AttendanceSheetSummaryDto,
   type EmployeeDto,
   type ImportPunchesResultDto,
   type ShiftDto,
@@ -951,6 +953,291 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     const longAgo = new Date(Date.UTC(2023, 5, 15));
     const rows = (await sheet(longAgo)).rows;
     expect(rows.find((r) => r.employeeId === emp.id)).toBeUndefined();
+  });
+
+  it('COUNTS THE WHOLE DAY, not the page — the cards would otherwise lie (stage 6)', async () => {
+    const scanned = await inBranch();
+    await inBranch();
+    await inBranch();
+    const today = cairoToday();
+    await switchPatternOn();
+    await recompute(scanned.id, today);
+
+    // ONE ROW PER PAGE. A count taken from the page would say "1"; the property under test is
+    // that both the page meta and the summary describe the whole day instead. The branch's exact
+    // headcount is whatever this block has registered by now, which is deliberately not asserted
+    // — tying the test to it would make it fail every time a sibling test added an employee.
+    const paged = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&pageSize=1`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(paged.status).toBe(200);
+    expect((paged.body.data as AttendanceSheetRowDto[])).toHaveLength(1);
+    const total = (paged.body.meta as { totalItems: number }).totalItems;
+    expect(total).toBeGreaterThanOrEqual(3);
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const summary = res.body.data as AttendanceSheetSummaryDto;
+    // The cards and the table agree about how many people the day covers.
+    expect(summary.total).toBe(total);
+    // Every status is counted separately — the screen does the grouping, not the server.
+    const counted = Object.values(summary.byStatus).reduce((sum, n) => sum + n, 0);
+    expect(counted).toBe(total);
+  });
+
+  it('filters by the RESOLVED status, which is not a stored field', async () => {
+    const emp = await inBranch();
+    await inBranch();
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    // With the pattern off and no assignment, every one of them has no schedule — a status that
+    // exists nowhere in the database and can only be filtered after it is worked out.
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=noSchedule&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = res.body.data as AttendanceSheetRowDto[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.status === 'noSchedule')).toBe(true);
+
+    // And a status nobody on this date holds narrows to nothing rather than to everybody.
+    const none = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=onLeave&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((none.body.data as AttendanceSheetRowDto[])).toHaveLength(0);
+  });
+
+  it('searches by name or code', async () => {
+    const emp = await inBranch();
+    const today = cairoToday();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&search=${emp.code}&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = res.body.data as AttendanceSheetRowDto[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.employeeId).toBe(emp.id);
+    // The summary narrows with it, so the cards describe what the table is showing.
+    const summary = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&search=${emp.code}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((summary.body.data as AttendanceSheetSummaryDto).total).toBe(1);
+  });
+
+  /**
+   * THE ARRIVAL CHART, THE ROSTER AND THE LAST SCAN — the three things the redesigned sheet needs
+   * that no row carries. All three are aggregated over the WHOLE filtered day beside the counts,
+   * because a chart drawn from one page of fifty would redraw itself every time somebody turned a
+   * page, and the question it answers is about the day.
+   */
+  it('aggregates the arrivals, the roster and the last scan for the whole day', async () => {
+    const early = await inBranch();
+    const late = await inBranch();
+    const workday = recentWorkday();
+    await switchPatternOn();
+    // 08:52 and 09:42 Cairo — one inside the 9:00 + 15 grace, one well past it.
+    for (const [emp, at] of [
+      [early, '08:52'],
+      [late, '09:42'],
+    ] as const) {
+      const rec = await recordPunch({
+        employeeId: emp.id,
+        at: cairoInstant(workday, at).toISOString(),
+        direction: 'in',
+      });
+      expect(rec.status).toBe(201);
+      await recompute(emp.id, workday);
+    }
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const summary = res.body.data as AttendanceSheetSummaryDto;
+
+    // The roster the sheet is held to, read from the default pattern rather than assumed.
+    expect(summary.dayStart).toBe(9 * 60);
+    expect(summary.graceMinutes).toBe(15);
+
+    // One arrival in the 08:45 quarter and one in the 09:30 quarter — slots are quarter hours,
+    // counted from each person's FIRST check-in, and empty quarters are left out entirely.
+    const bySlot = new Map(summary.arrivals.map((a) => [a.slot, a.count]));
+    expect(bySlot.get(8 * 60 + 45)).toBeGreaterThanOrEqual(1);
+    expect(bySlot.get(9 * 60 + 30)).toBeGreaterThanOrEqual(1);
+    expect(summary.arrivals.every((a) => a.slot % 15 === 0 && a.count > 0)).toBe(true);
+
+    // The last scan comes from the PUNCHES, so it is a fact the moment one is imported rather
+    // than a second after the row it belongs to is rewritten.
+    expect(summary.lastPunchAt).not.toBeNull();
+    expect(new Date(summary.lastPunchAt as string).toISOString()).toBe(
+      cairoInstant(workday, '09:42').toISOString(),
+    );
+  });
+
+  it('reports no roster at all rather than a working day nobody set', async () => {
+    // The pattern is off and nobody is assigned a shift. The screen must not draw a «بداية الدوام»
+    // line at nine o'clock: that is a claim about lateness nobody in the company has made.
+    await settingsService.set(patternCtx(), {
+      key: HrAttendanceSettingKeys.DefaultPatternEnabled,
+      scope: 'organization',
+      value: false,
+    });
+    await inBranch();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(recentWorkday())}&branchId=${SHEET_BRANCH}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect((res.body.data as AttendanceSheetSummaryDto).dayStart).toBeNull();
+    await switchPatternOn();
+  });
+
+  it('names the department on every line, so the client needs no catalogue', async () => {
+    const emp = await inBranch();
+    const { rows } = await sheet(cairoToday());
+    const line = rows.find((r) => r.employeeId === emp.id);
+    expect(line?.employeeDepartment?.ar).toBeTruthy();
+  });
+
+  /**
+   * ONE EMPLOYEE'S PERIOD, ADDED UP BY THE SERVER — the six figures above their attendance page.
+   *
+   * The client does no arithmetic over a month: the figures are computed beside the rows they come
+   * from, so the page, the profile tab and My Attendance cannot drift into three answers about the
+   * same person.
+   */
+  it('adds up one employee period, in the same words payroll uses', async () => {
+    const emp = await inBranch();
+    const workday = recentWorkday();
+    await switchPatternOn();
+    // In 09:42 (past the 9:00 + 15 grace) and out 17:30 — one late day, measured hours.
+    for (const [at, direction] of [
+      ['09:42', 'in'],
+      ['17:30', 'out'],
+    ] as const) {
+      const rec = await recordPunch({
+        employeeId: emp.id,
+        at: cairoInstant(workday, at).toISOString(),
+        direction,
+      });
+      expect(rec.status).toBe(201);
+    }
+    await recompute(emp.id, workday);
+
+    const iso = dateOnlyIso(workday);
+    const res = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${iso}&to=${iso}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const figures = res.body.data as AttendanceEmployeeSummaryDto;
+
+    expect(figures.daysPresent).toBe(1);
+    expect(figures.daysExpected).toBe(1);
+    expect(figures.lateDays).toBe(1);
+    expect(figures.lateMinutesTotal).toBeGreaterThan(0);
+    expect(figures.absentDays).toBe(0);
+    expect(figures.incompleteDays).toBe(0);
+    // Cairo minutes after midnight, not the server's zone: 09:42 and 17:30.
+    expect(figures.usualArrival).toBe(9 * 60 + 42);
+    expect(figures.usualDeparture).toBe(17 * 60 + 30);
+    expect(figures.avgWorkedMinutes).toBe(figures.totalWorkedMinutes);
+    // This employee's own roster, for the punctuality band.
+    expect(figures.dayStart).toBe(9 * 60);
+    expect(figures.graceMinutes).toBe(15);
+    expect(figures.lastPunchAt).toBe(cairoInstant(workday, '17:30').toISOString());
+  });
+
+  it('averages hours over the days that HAVE hours, never over the ones without', async () => {
+    // On this payroll most days are a scan in and nothing out. Dividing the month's minutes by
+    // every attended day would report half the real figure.
+    const emp = await inBranch();
+    const full = recentWorkday();
+    const openEnded = addDays(full, 1);
+    await switchPatternOn();
+    for (const [day, at, direction] of [
+      [full, '09:00', 'in'],
+      [full, '17:00', 'out'],
+      [openEnded, '09:00', 'in'],
+    ] as const) {
+      await recordPunch({
+        employeeId: emp.id,
+        at: cairoInstant(day, at).toISOString(),
+        direction,
+      });
+    }
+    await recompute(emp.id, full);
+    await recompute(emp.id, openEnded);
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${dateOnlyIso(full)}&to=${dateOnlyIso(openEnded)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    const figures = res.body.data as AttendanceEmployeeSummaryDto;
+    // Both days are days at work; only one of them has hours, and that one sets the average.
+    expect(figures.daysPresent).toBe(2);
+    expect(figures.incompleteDays).toBe(1);
+    expect(figures.avgWorkedMinutes).toBe(figures.totalWorkedMinutes);
+  });
+
+  it('answers an employee with nothing recorded without inventing a zero', async () => {
+    const emp = await inBranch();
+    const iso = dateOnlyIso(recentWorkday());
+    const res = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${iso}&to=${iso}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const figures = res.body.data as AttendanceEmployeeSummaryDto;
+    // Null, not 0 — a zero here would print as midnight on the screen.
+    expect(figures.usualArrival).toBeNull();
+    expect(figures.usualDeparture).toBeNull();
+    expect(figures.avgWorkedMinutes).toBeNull();
+    expect(figures.lastPunchAt).toBeNull();
+  });
+
+  it('caps the period, like the export and the recompute', async () => {
+    const emp = await inBranch();
+    const to = cairoToday();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${dateOnlyIso(addDays(to, -200))}&to=${dateOnlyIso(to)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('is governed by attendance.view, and answers /me for the caller alone', async () => {
+    const emp = await inBranch();
+    const iso = dateOnlyIso(recentWorkday());
+    const denied = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${iso}&to=${iso}`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect(denied.status).toBe(403);
+
+    // `/me/summary` carries no permission because it is own-scope BY CONSTRUCTION: the employee
+    // comes from the login and the query cannot name one. An employee id in the query string is
+    // not merely ignored — the schema refuses the request outright.
+    const strict = await request(app)
+      .get(`/api/v1/hr/attendance/days/me/summary?employeeId=${emp.id}&from=${iso}&to=${iso}`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect([400, 404]).toContain(strict.status);
   });
 
   it('is governed by attendance.view, like the list it is a view of', async () => {

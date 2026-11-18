@@ -13,6 +13,8 @@ import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
+import { useHealedGroupKeys } from '../../../../../shared/lib/useHealedGroupKeys';
+import { groupChoicesOf } from '../lib/placement-filters';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
@@ -100,6 +102,11 @@ export const EmployeesReadyPage = (): JSX.Element => {
   // A company department stands for its branch copies, in the branches picked when any are — the
   // job offers screen's own rule. The server filters the accepted terms by them.
   const { data: departmentOptions = [] } = useDepartmentReferenceOptions();
+  // A department remembered from before it was linked to the company list, re-keyed.
+  useHealedGroupKeys(
+    [sp, setSp],
+    [{ param: 'department', choices: groupChoicesOf(departmentOptions), read: splitNameList, write: joinNameList }],
+  );
   const departmentIds = departmentIdsOf(filters.department, departmentOptions, filters.branchId);
   const placementNames = useOfferPlacementNames();
   const params = useMemo(

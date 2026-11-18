@@ -10,13 +10,14 @@ import {
   NO_VAN,
   directionFilterOptions,
   directionParts,
+  hidesAnyOf,
   isRowFiltering,
   matchesPerson,
   matchesRowFilter,
   vanFilterOptions,
   type PlanRowFilter,
 } from './crew-plan-filter';
-import { vehiclelessRow, type PlanRow } from './crew-plan';
+import { loadStandingIntoPlan, vehiclelessRow, type PlanRow } from './crew-plan';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
@@ -171,5 +172,50 @@ describe('AND-ed, view only', () => {
       'المعروض ٥ من ٤٨',
     );
     expect(translate('ar', 'operations.crewPlan.countsHint')).toContain('كل صفوف اليوم');
+  });
+});
+
+// Round 28b critic — once a filled van takes its standing «الاتجاه», «بدون اتجاه» hid it at the press:
+// «حفظ (N)» counted changes the planner could not see, though the toggle asks him to review them.
+describe('the standing crew’s load is shown — the filters go when they would hide it', () => {
+  const AREAS_HERE = ['المعادي', 'حلوان'];
+  const noDirection: PlanRowFilter = { ...EMPTY_ROW_FILTER, directions: [NO_DIRECTION] };
+  const isShownBy =
+    (filter: PlanRowFilter) =>
+    (candidate: PlanRow): boolean =>
+      matchesRowFilter(candidate, filter, { memberOf: () => undefined, areaNames: AREAS_HERE });
+  const board = [van('1'), van('2'), van('3', { direction: 'حلوان' })];
+  const load = loadStandingIntoPlan(
+    board,
+    [
+      {
+        vehicleId: 'v-1',
+        captainEmployeeIds: ['a'],
+        specialist1EmployeeIds: [],
+        specialist2EmployeeIds: [],
+        direction: 'المعادي',
+      },
+      {
+        vehicleId: 'v-2',
+        captainEmployeeIds: ['b'],
+        specialist1EmployeeIds: [],
+        specialist2EmployeeIds: [],
+        direction: null,
+      },
+    ],
+    AREAS_HERE,
+  );
+
+  it('says when a filter hides a row the load filled — «بدون اتجاه» and the van that took one', () => {
+    expect(load.filledKeys).toEqual(['van:v-1', 'van:v-2']);
+    expect(load.rows.filter(isShownBy(noDirection)).map((r) => r.key)).toEqual(['van:v-2']);
+    expect(hidesAnyOf(load.rows, load.filledKeys, isShownBy(noDirection))).toBe(true);
+    expect(hidesAnyOf(load.rows, load.filledKeys, isShownBy(EMPTY_ROW_FILTER))).toBe(false);
+  });
+
+  it('a row it did not fill, hidden, keeps the filters', () => {
+    // Van 3 holds its own «حلوان»: hidden by «بدون اتجاه», but not the load's — van 2 is shown.
+    expect(hidesAnyOf(load.rows, ['van:v-2'], isShownBy(noDirection))).toBe(false);
+    expect(hidesAnyOf(load.rows, [], isShownBy(noDirection))).toBe(false);
   });
 });

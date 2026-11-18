@@ -25,8 +25,10 @@
 //   · ROUND 28 — «الاتجاه» as the day stores it (`crew/crew-direction.ts`): «عاوز الاتجاه اقدر اكتبه
 //     بايدى لو مش موجود فى الليست». A NEW or CHANGED direction naming active areas is stored in
 //     their spelling, anything else as typed (tidied); the row's own stays while sent unchanged.
-//     The same rule for the two boxes' sake only: the day is seeded from this row's PEOPLE, never
-//     its direction or time («تحميل الطاقم الثابت», `standing-load.ts` on the board).
+//     The same rule as the day's, and since Round 28b the day takes it: «تحميل الطاقم الثابت»
+//     (`standing-load.ts` on the board) seeds a van it fills with this row's PEOPLE AND DIRECTION —
+//     the direction only where the day's row has none, never one the day's save would refuse —
+//     never its time.
 //   · A vehicle must exist in the Fleet registry — but NOT be on a duty roster. Being rostered is
 //     a per-DAY fact and this row has no day; demanding it would make the permanent crew of a
 //     vehicle un-editable on any day Fleet had not yet rostered it.
@@ -282,8 +284,8 @@ class OperationsStandingCrewService {
 
       // «الاتجاه» — the day's rule (Round 28, `crew-direction.ts`): an area's name in the area's
       // spelling, anything else as typed, the row's own kept exactly while sent unchanged. One
-      // rule so the two boxes behave alike — the day does NOT read this direction: «تحميل الطاقم
-      // الثابت» copies the people only (`standing-load.ts` on the board).
+      // rule so the two boxes behave alike — and (Round 28b) because the day reads it: «تحميل
+      // الطاقم الثابت» copies the people and the direction, never the time (`standing-load.ts`).
       const directionOf = directionResolver();
 
       for (const [index, row] of input.rows.entries()) {

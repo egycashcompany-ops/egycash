@@ -256,6 +256,55 @@ describe('the direction read against the areas (canonicalOperationsDirection)', 
     }
   });
 
+  // Round 28b critic — split at «/» too, «شبرا/الخيمة - المعادي» was «شبرا» and «الخيمة», no areas:
+  // this function's own respelling, read again, was no answer, so the save held it to the
+  // hand-typed ceiling and refused it (400 TOO_BIG) — «تحميل الطاقم الثابت»'s copy of a standing
+  // direction of eight areas, and the picker's own pick, alike.
+  it('reads an area whose name holds a separator inside a longer direction — its answer read again is the same', () => {
+    expect(canonicalOperationsDirection('شبرا/الخيمة - المعادي', AREAS)).toEqual({
+      direction: 'شبرا/الخيمة - المعادي',
+    });
+    expect(canonicalOperationsDirection('حلوان و شبرا الخيمه', AREAS)).toEqual({
+      direction: 'حلوان - شبرا/الخيمة',
+    });
+    expect(canonicalOperationsDirection('المعادى / شبرا / الخيمة / حلوان', AREAS)).toEqual({
+      direction: 'المعادي - شبرا/الخيمة - حلوان',
+    });
+    const EIGHT = [...AREAS, 'التجمع الخامس', 'مصر الجديدة', 'الدقي', 'المهندسين'];
+    const typed = [
+      'شبرا الخيمة',
+      'المعادي',
+      'حلوان',
+      'مدينة نصر',
+      'التجمع الخامس',
+      'مصر الجديدة',
+      'الدقي',
+      'المهندسين',
+    ].join(' - ');
+    const once = canonicalOperationsDirection(typed, EIGHT);
+    expect(once).toEqual({
+      direction:
+        'شبرا/الخيمة - المعادي - حلوان - مدينة نصر - التجمع الخامس - مصر الجديدة - الدقي - المهندسين',
+    });
+    const stored = (once as { direction: string }).direction;
+    expect(stored.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
+    expect(canonicalOperationsDirection(stored, EIGHT)).toEqual(once);
+    // Every answer, read again, is the same answer.
+    for (const direction of [
+      'المعادى و حلوان',
+      'شبرا - الخيمة',
+      'مدينة نصر، شبرا/الخيمه، حلوان',
+      'حلوان، حلوان',
+    ]) {
+      const first = canonicalOperationsDirection(direction, AREAS);
+      expect('direction' in first, direction).toBe(true);
+      expect(
+        canonicalOperationsDirection((first as { direction: string }).direction, AREAS),
+        direction,
+      ).toEqual(first);
+    }
+  });
+
   it('names every part no area answers — equality, never "contains" (Round 28: kept as typed)', () => {
     expect(canonicalOperationsDirection('طريق السويس', AREAS)).toEqual({
       unknown: ['طريق السويس'],
@@ -264,6 +313,13 @@ describe('the direction read against the areas (canonicalOperationsDirection)', 
     expect(canonicalOperationsDirection('مدينة', AREAS)).toEqual({ unknown: ['مدينة'] });
     expect(canonicalOperationsDirection(' - ', AREAS)).toEqual({ unknown: [' - '] });
     expect(canonicalOperationsDirection('المعادي', [])).toEqual({ unknown: ['المعادي'] });
+    // A part inside an area's run is that area's, never unknown: only what no run answers is named.
+    expect(canonicalOperationsDirection('شبرا/الخيمة - الهرم', AREAS)).toEqual({
+      unknown: ['الهرم'],
+    });
+    expect(canonicalOperationsDirection('شبرا - الهرم', AREAS)).toEqual({
+      unknown: ['شبرا', 'الهرم'],
+    });
   });
 });
 

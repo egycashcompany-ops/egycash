@@ -2540,8 +2540,10 @@ const standingCrewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  * «الاتجاه» follows the day's rule (Round 28, see `PlanOperationsCrewRowSchema`): a NEW or CHANGED
  * direction that names active areas is stored in their spelling, anything else as typed (tidied);
  * one the row already holds stays as written while it is sent unchanged. One rule so the two boxes
- * behave alike — NOT because the day reads it: «تحميل الطاقم الثابت» copies the people only, never
- * the direction or the time (`standing-load.ts` on the board).
+ * behave alike — and, since Round 28b, because the day reads it: «تحميل الطاقم الثابت» copies the
+ * people AND the direction, never the time (`standing-load.ts` on the board) — the direction onto a
+ * van it fills whose day row has none, and never one the day's save would refuse (blank, «-», or
+ * typed by hand past `OPERATIONS_DIRECTION_MAX_LENGTH`, as a row's own legacy one may be).
  */
 export const SetOperationsStandingCrewRowSchema = z
   .object({
@@ -3660,6 +3662,15 @@ export const operationsDirectionAreas = (direction: string | null | undefined): 
  * WHOLE text is tried as one area first, so an area whose name holds a separator («شبرا/الخيمة»)
  * is never split.
  *
+ * Round 28b critic — and so is a RUN of parts inside a longer direction: «شبرا/الخيمة - المعادي»,
+ * split at «/» too, was «شبرا» and «الخيمة» — no areas — so the answer read again was no answer.
+ * The save judged this function's own respelling hand-typed text, held it to
+ * `OPERATIONS_DIRECTION_MAX_LENGTH`, and refused «تحميل الطاقم الثابت»'s copy of a standing
+ * direction of eight areas (400 `TOO_BIG`), as it refused the picker's. Consecutive parts are now
+ * read as ONE area wherever the text between them folds to its name, the longest run first (as the
+ * whole text is), so this function's answer, read again, is an answer too — and stays savable
+ * however long.
+ *
  * `{ unknown }` lists the parts no area answers, as typed. Round 20 refused those («لازم اختار من
  * الاتجاهات اللى موجوده بتاعت البنوك»); Round 28 reverses it («عاوز الاتجاه اقدر اكتبه بايدى لو مش
  * موجود فى الليست»): the save then stores the text as typed (`normalizeOperationsDirection`), and
@@ -3677,15 +3688,80 @@ export const canonicalOperationsDirection = (
   }
   const whole = byFold.get(foldOperationsAreaName(direction));
   if (whole !== undefined) return { direction: whole };
-  const parts = direction
-    .split(DIRECTION_SEPARATOR)
-    .map((part) => part.trim())
-    .filter((part) => foldOperationsAreaName(part) !== '');
-  const unknown = parts.filter((part) => !byFold.has(foldOperationsAreaName(part)));
-  if (parts.length === 0) return { unknown: [direction] };
+  const parts = directionPartSpans(direction);
+  const count = parts.length;
+  if (count === 0) return { unknown: [direction] };
+  // Each part folds to a word at least, so no run of more parts than the widest name has words is
+  // an area: the runs tried stay a few per part, however long the text.
+  let widest = 0;
+  for (const folded of byFold.keys()) widest = Math.max(widest, folded.split(' ').length);
+  const areaOf = (from: number, to: number): string | undefined =>
+    byFold.get(
+      foldOperationsAreaName(
+        direction.slice((parts[from] as PartSpan).start, (parts[to - 1] as PartSpan).end),
+      ),
+    );
+  // From the last part back: how the parts from `from` on read as areas, the longest run first.
+  const read: ({ to: number; name: string } | null)[] = new Array(count + 1).fill(null);
+  const reads: boolean[] = new Array(count + 1).fill(false);
+  reads[count] = true;
+  for (let from = count - 1; from >= 0; from -= 1) {
+    for (let to = Math.min(count, from + widest); to > from; to -= 1) {
+      if (!reads[to]) continue;
+      const name = areaOf(from, to);
+      if (name === undefined) continue;
+      read[from] = { to, name };
+      reads[from] = true;
+      break;
+    }
+  }
+  if (reads[0]) {
+    const names: string[] = [];
+    for (let at = read[0] ?? null; at !== null; at = read[at.to] ?? null) names.push(at.name);
+    return { direction: [...new Set(names)].join(' - ') };
+  }
+  // The parts no run answers, as typed.
+  const answered = new Set<number>();
+  for (let from = 0; from < count; from += 1) {
+    for (let to = from + 1; to <= Math.min(count, from + widest); to += 1) {
+      if (areaOf(from, to) === undefined) continue;
+      for (let at = from; at < to; at += 1) answered.add(at);
+    }
+  }
+  const text = (span: PartSpan): string => direction.slice(span.start, span.end);
+  const unknown = parts.filter((_, at) => !answered.has(at)).map(text);
   if (unknown.length > 0) return { unknown };
-  const names = [...new Set(parts.map((part) => byFold.get(foldOperationsAreaName(part)) as string))];
-  return { direction: names.join(' - ') };
+  // Every part is in some area's run, but no runs read the whole text: those not areas alone.
+  const alone = parts.filter((_, at) => areaOf(at, at + 1) === undefined).map(text);
+  return { unknown: alone.length > 0 ? alone : [direction] };
+};
+
+interface PartSpan {
+  start: number;
+  end: number;
+}
+
+const DIRECTION_SEPARATORS = new RegExp(DIRECTION_SEPARATOR.source, 'gu');
+
+/**
+ * The parts of a direction between its separators (rule 1), where each sits in the text — trimmed,
+ * and a part that folds to nothing («- -») left out.
+ */
+const directionPartSpans = (direction: string): PartSpan[] => {
+  const spans: PartSpan[] = [];
+  const cut = (start: number, end: number): void => {
+    const raw = direction.slice(start, end);
+    const from = start + (raw.length - raw.trimStart().length);
+    const trimmed = raw.trim();
+    if (foldOperationsAreaName(trimmed) !== '') spans.push({ start: from, end: from + trimmed.length });
+  };
+  let from = 0;
+  for (const match of direction.matchAll(DIRECTION_SEPARATORS)) {
+    cut(from, match.index);
+    from = match.index + match[0].length;
+  }
+  cut(from, direction.length);
+  return spans;
 };
 
 /** Does this van's direction name this shipment's area (rules 3-4)? */

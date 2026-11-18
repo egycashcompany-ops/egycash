@@ -57,7 +57,7 @@ import { ApiError } from '../../../shared/lib/api-client';
 import { foldIncludes } from '../../../shared/lib/fold';
 import { CREW_SLOTS, SLOT_POSITIONS, type BoardRow, type CrewSlot } from './crew-board';
 import { REQUIREMENT_FLAGS, type RequirementFlag } from './requirements';
-import { loadStandingCrew, type StandingCrewSource } from './standing-load';
+import { loadStandingCrew, wroteDirection, type StandingCrewSource } from './standing-load';
 
 export { CREW_SLOTS, type CrewSlot };
 
@@ -706,20 +706,35 @@ export const standingForDay = (
       captainEmployeeIds: keep('captain'),
       specialist1EmployeeIds: keep('specialist1'),
       specialist2EmployeeIds: keep('specialist2'),
+      // Round 28b — the direction rides along; the load judges it (`standingDirectionForDay`).
+      direction: source.direction,
     };
   });
   return { sources, away: [...away], wrongSlot };
 };
 
 /**
- * The toggle's load, on this board's rows — by `loadStandingCrew` itself, so its two rules (only an
- * EMPTY van; nobody twice) stay one implementation. A vehicle-less row goes through under its own
+ * The toggle's load, on this board's rows — by `loadStandingCrew` itself, so its rules (only an
+ * EMPTY van; nobody twice; Round 28b — the direction on a van it fills whose row has none, never
+ * one the save refuses) stay one implementation. A vehicle-less row goes through under its own
  * key, which no standing crew names: it is never filled, but whoever is on it counts as taken.
+ *
+ * `directions` — the direction the load wrote, by row key: what its «off» clears again, while the
+ * row still holds exactly that. `areaNames`: the ACTIVE operations areas, as the save reads them.
+ * `directionsLeftBehind` (Round 28b critic) — the rows (by key) it filled that kept no direction
+ * though their standing one names something: the save would refuse it, so the screen names them.
  */
 export const loadStandingIntoPlan = (
   rows: readonly PlanRow[],
   standing: readonly StandingCrewSource[],
-): { rows: PlanRow[]; filledKeys: string[]; unavailable: number } => {
+  areaNames: readonly string[],
+): {
+  rows: PlanRow[];
+  filledKeys: string[];
+  directions: Record<string, string>;
+  directionsLeftBehind: string[];
+  unavailable: number;
+} => {
   const asBoard = rows.map((row): BoardRow => ({
     vehicleId: row.vehicleId ?? row.key,
     vehicleCode: row.vehicleCode ?? '',
@@ -731,7 +746,7 @@ export const loadStandingIntoPlan = (
     plannedTime: row.plannedTime,
     notes: row.notes,
   }));
-  const load = loadStandingCrew(asBoard, standing);
+  const load = loadStandingCrew(asBoard, standing, areaNames);
   const filled = new Set(load.filledVehicleIds);
   const loaded = new Map(load.rows.map((row) => [row.vehicleId, row]));
   const compact = (cells: readonly (string | null)[]): string[] =>
@@ -746,26 +761,46 @@ export const loadStandingIntoPlan = (
         specialist1: compact(source.specialist1EmployeeIds),
         specialist2: compact(source.specialist2EmployeeIds),
       },
+      direction: source.direction,
     };
   });
+  // By row key, as the draft names its rows: only a van the load filled has one.
+  const directions: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.vehicleId === null || !Object.hasOwn(load.directionsPut, row.vehicleId)) continue;
+    directions[row.key] = load.directionsPut[row.vehicleId] as string;
+  }
+  const leftBehind = new Set(load.directionsLeftBehind);
   return {
     rows: next,
     filledKeys: rows
       .filter((row) => row.vehicleId !== null && filled.has(row.vehicleId))
       .map((row) => row.key),
+    directions,
+    directionsLeftBehind: rows
+      .filter((row) => row.vehicleId !== null && leftBehind.has(row.vehicleId))
+      .map((row) => row.key),
     unavailable: load.unavailableVehicleIds.length,
   };
 };
 
-/** The toggle back off: empty exactly the rows its load filled (`clearStandingCrew`'s rule). */
+/**
+ * The toggle back off: empty exactly the rows its load filled, and clear the direction it wrote
+ * (`directions`, by row key) where the row still holds exactly that — `clearStandingCrew`'s rule.
+ */
 export const clearStandingFromPlan = (
   rows: readonly PlanRow[],
   filledKeys: readonly string[],
+  directions: Readonly<Record<string, string>>,
 ): PlanRow[] => {
   const filled = new Set(filledKeys);
   return rows.map((row) =>
     filled.has(row.key)
-      ? { ...row, slots: { captain: [], specialist1: [], specialist2: [] } }
+      ? {
+          ...row,
+          slots: { captain: [], specialist1: [], specialist2: [] },
+          direction: wroteDirection(directions, row.key, row.direction) ? null : row.direction,
+        }
       : row,
   );
 };

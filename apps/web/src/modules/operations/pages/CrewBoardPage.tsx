@@ -89,6 +89,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttribut
 import { useSearchParams } from 'react-router-dom';
 import {
   CREW_SLOT_CAPACITY,
+  OPERATIONS_DIRECTION_MAX_LENGTH,
   type Locale,
   type OperationsCrewMemberDto,
   type OperationsShiftTypeDto,
@@ -225,6 +226,7 @@ import {
   NO_DIRECTION,
   NO_VAN,
   directionFilterOptions,
+  hidesAnyOf,
   isRowFiltering,
   matchesRowFilter,
   vanFilterOptions,
@@ -420,11 +422,10 @@ export const CrewBoardPage = (): JSX.Element => {
   // keeps its changes, and «حفظ» saves them all. The chips below count the WHOLE DAY.
   const [rowFilter, setRowFilter] = useState<PlanRowFilter>(EMPTY_ROW_FILTER);
   const filtering = isRowFiltering(rowFilter) || typeFilter !== '';
-  const shown = rows.filter(
-    (row) =>
-      matchesShiftType(row, typeFilter) &&
-      matchesRowFilter(row, rowFilter, { memberOf, areaNames: directions }),
-  );
+  const isShown = (row: PlanRow): boolean =>
+    matchesShiftType(row, typeFilter) &&
+    matchesRowFilter(row, rowFilter, { memberOf, areaNames: directions });
+  const shown = rows.filter(isShown);
   const clearFilters = (): void => {
     setTypeFilter('');
     setRowFilter(EMPTY_ROW_FILTER);
@@ -857,6 +858,7 @@ export const CrewBoardPage = (): JSX.Element => {
         captainEmployeeIds: row.captainEmployeeIds,
         specialist1EmployeeIds: row.specialist1EmployeeIds,
         specialist2EmployeeIds: row.specialist2EmployeeIds,
+        direction: row.direction,
       })),
     [standing.data],
   );
@@ -866,21 +868,57 @@ export const CrewBoardPage = (): JSX.Element => {
    * that day (Round 22 — no row takes him, and the save would refuse him), and somebody whose
    * standing seat is not his role's (Round 23 — written before the rule, or before his flags
    * changed; loaded, he would take a seat the save refuses). Each counts as not loaded.
+   *
+   * Round 28b — «اه»: a van it fills takes its standing «الاتجاه» too, when its row has none (never
+   * one the save refuses; in the areas' spelling, read against EVERY active area as the save reads
+   * them). Never the time. Off again clears the direction it wrote, unless it was changed since.
+   *
+   * Round 28b critic — so it waits for those areas (the toggle is held while their list loads: read
+   * against none, a direction of areas past the hand-typed ceiling was left behind without a word,
+   * and a shorter one came down in the standing row's spelling); names the vans whose standing
+   * direction it left behind all the same (the save would refuse it — a legacy hand-typed one, or
+   * any while the areas' list failed); and shows what it filled, the filters going when they would
+   * hide it (a van that took its direction left «بدون اتجاه» at the press).
    */
   const toggleStanding = (): void => {
     if (standingKeys !== null) {
       apply({ kind: 'standingClear' }, (draft) => ({
-        rows: clearStandingFromPlan(draft.rows, draft.standingKeys ?? []),
+        rows: clearStandingFromPlan(
+          draft.rows,
+          draft.standingKeys ?? [],
+          draft.standingDirections ?? {},
+        ),
         standingKeys: null,
       }));
       return;
     }
     const day = standingForDay(standingSources, memberOf);
-    const load = loadStandingIntoPlan(rows, day.sources);
-    // One operation, however many vans it filled: one press of «تراجع» takes the whole load back.
-    apply({ kind: 'standingLoad' }, () => ({ rows: load.rows, standingKeys: load.filledKeys }));
+    const load = loadStandingIntoPlan(rows, day.sources, areaNames.data ?? []);
+    // One operation, however many vans it filled: one press of «تراجع» takes the whole load back —
+    // its people and its directions together.
+    apply({ kind: 'standingLoad' }, () => ({
+      rows: load.rows,
+      standingKeys: load.filledKeys,
+      standingDirections: load.directions,
+    }));
+    // What it filled is what the planner reviews before «حفظ»: no filter may hide it.
+    if (hidesAnyOf(load.rows, load.filledKeys, isShown)) clearFilters();
     if (load.unavailable > 0) {
       toast.error(t('operations.crew.standing.unavailable', { count: load.unavailable }));
+    }
+    if (load.directionsLeftBehind.length > 0) {
+      // The vans and why on the second line: the toast cuts its first one to its width.
+      toast.error(
+        t('operations.crewPlan.standingDirectionLeft'),
+        t('operations.crewPlan.standingDirectionLeftWho', {
+          names: load.directionsLeftBehind
+            .map((key) => load.rows.find((row) => row.key === key))
+            .filter((row): row is PlanRow => row !== undefined)
+            .map((row) => rowName(row, load.rows))
+            .join('، '),
+          max: formatNumber(OPERATIONS_DIRECTION_MAX_LENGTH, locale),
+        }),
+      );
     }
     if (day.away.length > 0) {
       // The names on the second line: the toast cuts its first one to its width.
@@ -1543,11 +1581,18 @@ export const CrewBoardPage = (): JSX.Element => {
                 type="button"
                 data-standing-toggle="true"
                 aria-pressed={standingKeys !== null}
-                disabled={standingSources.length === 0 && standingKeys === null}
+                // Round 28b critic — on, it reads each direction against the areas: not before
+                // their list answers. Off never waits.
+                disabled={
+                  standingKeys === null && (standingSources.length === 0 || areaNames.isPending)
+                }
+                aria-busy={standingKeys === null && areaNames.isPending}
                 title={
                   standingSources.length === 0
                     ? t('operations.crew.standing.none')
-                    : t('operations.crew.standing.hint')
+                    : standingKeys === null && areaNames.isPending
+                      ? t('operations.crew.standing.areasLoading')
+                      : t('operations.crew.standing.hint')
                 }
                 onClick={toggleStanding}
                 className={cn(

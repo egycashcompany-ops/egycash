@@ -1964,7 +1964,9 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
 
   it('Round 28 — «الاتجاه» typed by hand: an area’s name respelled, anything else kept as typed, the row’s own kept exactly', async () => {
     // «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست» — the day's rule, here too, so the two
-    // boxes behave alike (the day does not read it: «تحميل الطاقم الثابت» copies the people only).
+    // boxes behave alike and (Round 28b) so the day can take it: «تحميل الطاقم الثابت» copies the
+    // people and the direction, never the time — judged on the board by the same rule
+    // (`standingDirectionForDay`, apps/web lib/standing-load.ts).
     // 'الجيزة' is an active area of this file; nothing else typed is.
     const directionOf = (res: request.Response): string | null | undefined =>
       data<OperationsStandingCrewBoardDto>(res).rows.find((r) => r.vehicleId === vehicleBId)

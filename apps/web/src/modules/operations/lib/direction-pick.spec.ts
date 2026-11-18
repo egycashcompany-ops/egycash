@@ -122,6 +122,31 @@ describe('a near miss of an area is offered that area first — before the typed
     expect(isHandTypedDirection('شبرا الخيمة', AREAS)).toBe(false);
   });
 
+  // Round 28b critic — inside a longer direction the box's own pick, «شبرا/الخيمة - المعادي», was
+  // split at «/» when read again: marked hand-typed once saved, and past 80 characters (eight
+  // areas) refused by the save as hand-typed text. A run of parts now reads as the area it names.
+  it('«شبرا/الخيمة» inside a longer direction: picked, read again, and long, it is still areas', () => {
+    expect(directionOnLeave('شبرا الخيمة - المعادى', AREAS)).toBe('شبرا/الخيمة - المعادي');
+    expect(isHandTypedDirection('شبرا/الخيمة - المعادي', AREAS)).toBe(false);
+    expect(directionItems('شبرا/الخيمة - المعادي', AREAS)[0]).toEqual(
+      area('شبرا/الخيمة - المعادي'),
+    );
+    const EIGHT = [...AREAS, 'التجمع الخامس', 'مصر الجديدة', 'الدقي', 'المهندسين'];
+    const long = [
+      'شبرا/الخيمة',
+      'المعادي',
+      'حلوان',
+      'مدينة نصر',
+      'التجمع الخامس',
+      'مصر الجديدة',
+      'الدقي',
+      'المهندسين',
+    ].join(' - ');
+    expect(long.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
+    expect(directionTooLong(long, EIGHT)).toBeNull();
+    expect(directionOnLeave(long, EIGHT)).toBe(long);
+  });
+
   it('the words in another order', () => {
     expect(directionItems('نصر مدينة', AREAS)).toEqual([area('مدينة نصر'), typed('نصر مدينة')]);
   });

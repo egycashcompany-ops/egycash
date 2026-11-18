@@ -12135,10 +12135,13 @@ const en: Record<string, string> = {
   'operations.crew.unsaved': '{{count}} unsaved change(s)',
   // The toggle — تحميل الطاقم الثابت على التشغيلة
   'operations.crew.standing.toggle': 'Load the standing crew',
-  'operations.crew.standing.hint': 'Fills empty vehicles only. Review, then save.',
+  'operations.crew.standing.hint':
+    'Fills empty vehicles only: the crew, and the direction where the row has none. Review, then save.',
   'operations.crew.standing.none': 'No standing crew has been set up yet',
   'operations.crew.standing.unavailable':
     '{{count}} standing crew(s) stayed in the pool — their vehicle is not on today\u2019s fleet roster',
+  'operations.crew.standing.areasLoading':
+    'Loading the areas list — each direction is read against it before the crew is loaded…',
   // ── The standing crew (الطاقم الثابت) — no legacy screen, no day ────────────────────────────
   'operations.standingCrew.title': 'Standing crew',
   'operations.standingCrew.subtitle':
@@ -12385,6 +12388,9 @@ const en: Record<string, string> = {
   'operations.crewPlan.refused.slot': 'Somebody on this row is in a slot that is not their role’s.',
   'operations.crewPlan.standingWrongSlot':
     'Left off the standing crew — in a slot that is not their role’s',
+  'operations.crewPlan.standingDirectionLeft': 'Standing direction not copied',
+  'operations.crewPlan.standingDirectionLeftWho':
+    '{{names}} — longer than {{max}} characters and not the names of areas. Type it on the vehicle.',
   'operations.crewPlan.vanWrongSlot':
     'No vehicle for a row with somebody in a slot that is not their role’s',
   'operations.crewPlan.vanWrongSlotWho':
@@ -27258,10 +27264,13 @@ const ar: Record<string, string> = {
   'operations.crew.unsaved': '{{count}} تغيير غير محفوظ',
   // تحميل الطاقم الثابت على التشغيلة
   'operations.crew.standing.toggle': 'تحميل الطاقم الثابت',
-  'operations.crew.standing.hint': 'يملأ المركبات الفارغة فقط. راجِع ثم احفظ.',
+  'operations.crew.standing.hint':
+    'يملأ المركبات الفارغة فقط: الطاقم، والاتجاه إن لم يكن للصف اتجاه. راجِع ثم احفظ.',
   'operations.crew.standing.none': 'لم يتم إعداد طاقم ثابت بعد',
   'operations.crew.standing.unavailable':
     '{{count}} طاقم ثابت ظلّ في القائمة — مركبته ليست في تشغيلة الأسطول اليوم',
+  'operations.crew.standing.areasLoading':
+    'جارٍ تحميل قائمة المناطق — يُقرأ بها كل اتجاه قبل تحميل الطاقم…',
   // ── الطاقم الثابت — لا نظير في النظام القديم، ولا تاريخ ──────────────────────────────────────
   'operations.standingCrew.title': 'الطاقم الثابت',
   'operations.standingCrew.subtitle':
@@ -27496,6 +27505,9 @@ const ar: Record<string, string> = {
     '{{name}} قائد فقط — أخرِجه من خانة الأخصائي في هذا الصف.',
   'operations.crewPlan.refused.slot': 'على هذا الصف من يجلس في خانة لا تناسبه.',
   'operations.crewPlan.standingWrongSlot': 'لم يُوضع من الطاقم الثابت من كانت خانته لا تناسبه',
+  'operations.crewPlan.standingDirectionLeft': 'لم يُنقل الاتجاه الثابت',
+  'operations.crewPlan.standingDirectionLeftWho':
+    '{{names}} — أطول من {{max}} حرفًا وليس أسماء مناطق. اكتبه على المركبة.',
   'operations.crewPlan.vanWrongSlot': 'لا تُعطى سيارة لصف عليه من يجلس في خانة لا تناسبه',
   'operations.crewPlan.vanWrongSlotWho': '{{names}} — أخرِجه أو انقله إلى خانة تناسبه أولًا.',
   'operations.crewPlan.card.attendance': 'الحضور',

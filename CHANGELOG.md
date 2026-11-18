@@ -1761,9 +1761,9 @@ its entry here in the same PR.
         المكتوب يدويًا …»). Each row has an id the box names as active (`aria-activedescendant`),
         «مسح الاتجاه» is reached by the arrows, and the hand-typed note is the box's
         `aria-describedby`.
-      - Comments corrected: the standing crew's direction is NOT carried to the day. «تحميل الطاقم
-        الثابت» copies the people only. The two saves share the rule only so the two boxes behave
-        alike.
+      - Comments corrected: the two saves share one rule so the two boxes behave alike. (Round 28
+        left «تحميل الطاقم الثابت» copying the people only; since Round 28b it copies the direction
+        too, never the time — below.)
       - Tests rewritten to the critic's rule (the build's, never the owner's): (web) «text some area
         holds → nothing taken» → «text that ends part-way through an area's word → nothing taken»
         («نصر» is now taken), «caps the typing at the save's ceiling» → «cuts nothing typed or
@@ -1771,6 +1771,79 @@ its entry here in the same PR.
         empty once tidied, and leaves the length to the save» → «refuses only the empty string, and
         leaves the rest to the save — blank, «-» and length included». The blank and «-» refusals
         are pinned by the API's integration tests.
+  - Round 28b — «تحميل الطاقم الثابت» ينزّل الاتجاه. Asked «لما تعمل «تحميل الطاقم الثابت» على «لوحة
+    التشغيلة»، بينزل الناس بس من غير الاتجاه والتوقيت … تحب الاتجاه ينزل كمان؟», the owner answered:
+    «اه». He was asked about the direction only, so only the direction comes down with the crew —
+    never the time (التوقيت), the notes, the type or the colour. Web only: no server path seeds a day
+    from the standing crew (the load edits the board's draft, and «حفظ» writes it, as before).
+    - A van the load fills (somebody placed, by its two rules: only an empty van, nobody twice) takes
+      its standing row's «الاتجاه» when the day's row has none. A direction the day's row already
+      holds — typed by the planner, saved this morning — is kept, never overwritten. A van the load
+      does not fill takes nothing.
+    - Never a direction the day's save would refuse. The save's rule (`crew/crew-direction.ts`) is
+      mirrored line for line in `standingDirectionForDay` (`lib/standing-load.ts`): tidied
+      (`normalizeOperationsDirection`); one that names nothing (blank, «-», a zero-width space) is not
+      copied; one that names active areas is copied in the areas' own spelling, as the save stores it
+      («المعادى» → «المعادي», «معادي/حلوان» → «المعادي - حلوان»), however long; anything else is
+      hand-typed, copied as typed unless it is longer than `OPERATIONS_DIRECTION_MAX_LENGTH` (80). A
+      standing row may still hold such a legacy direction (its own, kept while sent unchanged), but
+      on the day's row it would be new. So «حفظ» after a load goes through — judged, since the
+      critic below, on the very text the load writes.
+    - Switching «الطاقم الثابت» off clears the direction it wrote, as it empties the vans it filled —
+      but only while the row still holds exactly that direction: one the planner typed over it after
+      the load stays his. The board's draft keeps what the load wrote beside the vans it filled
+      (`CrewDraft.standingDirections`, `lib/crew-undo.ts`; `sameCrewDraft` compares it), so one press
+      of «تراجع» takes the people and the directions back together, and «حفظ (n)» counts each filled
+      van once — 0 again after on → off.
+    - The toggle's hint says so: «يملأ المركبات الفارغة فقط: الطاقم، والاتجاه إن لم يكن للصف اتجاه.
+      راجِع ثم احفظ.» («Fills empty vehicles only: the crew, and the direction where the row has none.
+      Review, then save.»).
+    - Comments corrected where Round 28 wrote that the load copies the people only
+      (`crew/crew-direction.ts`, `standing-crew.service.ts`, the doc of
+      `SetOperationsStandingCrewRowSchema`, the standing crew's Round 28 integration test): it copies
+      the people and the direction, never the time.
+    - Tests rewritten to the new rule: (web) «keeps direction and plannedTime as the board had them»
+      (its standing row had no direction, and its comment said the toggle loads a crew only) → «keeps
+      the day row's own direction and time — a standing direction never overwrites one». New: the
+      direction copied onto a filled van with none; kept when the day's row has one; not copied onto
+      a van not filled; skipped when the save would refuse it (empty, blank, «-», a zero-width space,
+      «!!!», hand-typed past 80 — taken at 80); tidied, and in the areas' spelling; a direction of
+      areas past 80 copied; off clears it only while unchanged, with «حفظ (n)»; one press of «تراجع»
+      for the people and the directions; the page's wiring (`standing-load.spec.ts`,
+      `crew-plan.spec.ts`, `crew-undo.spec.ts`).
+    - Round 28b critic (the build's, never the owner's):
+      - «حفظ» after a load was refused whole (400 `TOO_BIG`) for a standing direction of eight areas
+        naming «شبرا/الخيمة». The load judged the STANDING text; the save judges the text it is sent
+        — the respelling «شبرا/الخيمة - المعادي - …» (91 characters) — and, split at «/» too, that
+        was «شبرا» and «الخيمة», no areas: hand-typed text past 80. `canonicalOperationsDirection`
+        (contracts) now reads a RUN of parts as one area wherever the text between them folds to its
+        name, the longest run first (as it already read the whole text), so its answer read again
+        is the same answer. The day's save, the standing crew's save and the board's picker take
+        «شبرا/الخيمة - …» however long, and the picker no longer marks «شبرا/الخيمة - المعادي»
+        hand-typed. `standingDirectionForDay` judges the text it writes, as the save does (and
+        writes the standing row's own text when a respelling would not read as areas again).
+      - The toggle waits for the areas' list: held while it loads («جارٍ تحميل قائمة المناطق — يُقرأ
+        بها كل اتجاه قبل تحميل الطاقم…» on it). Pressed before, a direction of areas past 80 was left
+        behind without a word, and a shorter one came down in the standing row's spelling. Switching
+        off never waits.
+      - A van it fills whose standing direction names something the save would refuse (hand-typed
+        past 80 — a legacy one, or any while the areas' list failed) is named in a notice, as the
+        people left off are: «لم يُنقل الاتجاه الثابت», then the vans' codes and why — «… — أطول من
+        ٨٠ حرفًا وليس أسماء مناطق. اكتبه على المركبة.» (`directionsLeftBehind`).
+      - What the load filled is in view: when a filter would hide a van it filled (`hidesAnyOf`,
+        `lib/crew-plan-filter.ts` — «بدون اتجاه» hid each van the moment it took its direction, and
+        «حفظ (n)» counted changes the planner could not see), the filters go, as they go for a new
+        row and for the row a refusal names.
+      - Not changed, the owner's call: at 1440 the direction column (8rem since Round 27) cuts a
+        longer direction («طريق السويس» beside the hand-typed pen, «المعادي - حلوان»); the whole text
+        is in the box's tooltip. The load now writes such directions across the board, so it shows
+        more often; the screenshot shows «طريق السويس» as it is.
+      - Tests, each failing before and passing after: (contracts) a run of parts read as one area,
+        every answer read again the same, and only what no run answers named unknown; (api) the
+        91-character respelling sent new on the day's save — 400 `TOO_BIG` before, 200 now
+        (`operations-crew-plan.spec.ts`); (web) the load writes what the save takes, judges the text
+        it writes, names the directions it left behind, `hidesAnyOf`, the page's wiring, and the
+        three new strings in both catalogs.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

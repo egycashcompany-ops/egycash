@@ -1,7 +1,9 @@
 // «الاتجاه» as both crew saves store it — the day's board (`crew.service.ts`) and the standing
-// crew (`standing-crew.service.ts`): one rule for the two, so the two boxes behave alike. (Not
-// because the day reads the standing crew's direction: «تحميل الطاقم الثابت» on the board copies the
-// people only — `standing-load.ts` — never the direction or the time.)
+// crew (`standing-crew.service.ts`): one rule for the two, so the two boxes behave alike — and
+// since Round 28b so the day takes what the standing crew holds: «تحميل الطاقم الثابت» on the board
+// copies the people AND the direction, never the time (`standing-load.ts`, the owner's «اه»). It
+// copies a direction onto a van it fills whose row has none, and never one THIS rule would refuse
+// there (`standingDirectionForDay` mirrors it line for line), so «حفظ» after a load goes through.
 //
 // Round 28 — «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست», which REVERSES Round 20's «اقدر
 // اكتب بس فى الاخر لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك» (422

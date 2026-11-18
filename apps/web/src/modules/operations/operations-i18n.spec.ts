@@ -893,6 +893,11 @@ const CREW_PLAN_KEYS = [
   ...['refused.slot', 'standingWrongSlot', 'vanWrongSlot', 'vanWrongSlotWho'].map(
     (key) => `operations.crewPlan.${key}`,
   ),
+  // Round 28b critic — the standing crew's load: the vans whose standing direction it left behind,
+  // and the toggle held while the areas' list loads.
+  'operations.crewPlan.standingDirectionLeft',
+  'operations.crewPlan.standingDirectionLeftWho',
+  'operations.crew.standing.areasLoading',
   ...[...PLAN_POOLS, 'free', 'search', 'filters', 'noMatch', 'dropBack', 'returnPicked'].map(
     (key) => `operations.crewPlan.pools.${key}`,
   ),

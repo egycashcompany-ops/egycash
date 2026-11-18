@@ -970,6 +970,40 @@ describe('«الاتجاه» — an area respelled, anything else typed by hand 
     expect(strayRow).toBeUndefined();
   });
 
+  // Round 28b critic — split at «/» too, «شبرا/الخيمة - المعادي …» read again was no areas: the save
+  // stored typed «شبرا الخيمة - …» as «شبرا/الخيمة - …» (91 characters), then refused that very text
+  // sent NEW (400 TOO_BIG, hand-typed past the ceiling) — the form «تحميل الطاقم الثابت» copies a
+  // standing direction in, onto a day row with none, and the form the board's picker picks.
+  it('Round 28b critic — an area whose name holds a separator, inside a longer direction: its own respelling, sent new, is taken past the ceiling', async () => {
+    const names = ['العاشر من رمضان', 'السادس من أكتوبر', 'مدينة بدر', 'حدائق الأهرام', 'الرحاب'];
+    for (const name of ['شبرا/الخيمة', ...names]) await area(name);
+    const respelled = ['شبرا/الخيمة', 'المعادي', 'حلوان', ...names].join(' - ');
+    expect(respelled.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
+
+    // Typed as a desk types it: stored in the areas' spelling.
+    const typed = await saved({
+      rows: [
+        { vehicleId: van3, direction: ['شبرا الخيمة', 'المعادى', 'حلوان', ...names].join(' - ') },
+      ],
+    });
+    expect(vanRow(typed, van3)?.crew?.direction).toBe(respelled);
+
+    // That respelling sent NEW, on a row with no direction of its own: taken, stored unchanged.
+    const sent = await save({
+      rows: [{ vehicleId: null, direction: respelled, notes: 'r28b شبرا' }],
+    });
+    expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+    const loose = data<OperationsCrewBoardDto>(sent).vehiclelessRows.find(
+      (row) => row.notes === 'r28b شبرا',
+    );
+    expect(loose?.direction).toBe(respelled);
+    // The row was only the vehicle: gone again, for the rows-without-a-van tests that count them.
+    await saved({ rows: [], removeCrewAssignmentIds: [loose?.id as string] });
+    // Short, too: «شبرا/الخيمة - المعادي» is areas — respelled, not stored as hand-typed text.
+    const short = await saved({ rows: [{ vehicleId: van3, direction: 'شبرا/الخيمه - معادي' }] });
+    expect(vanRow(short, van3)?.crew?.direction).toBe('شبرا/الخيمة - المعادي');
+  });
+
   // Round 28 critic — a row's OWN direction that names nothing (the board before Round 20 stored any
   // text: «  », «-»), sent back unchanged beside another change: kept exactly, the row saved. The
   // shape refused «  » once tidied, so nothing on that row could be saved until somebody cleared

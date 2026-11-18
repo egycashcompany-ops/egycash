@@ -154,18 +154,39 @@ export const rebaseHistory = <S>(
 export interface CrewDraft {
   rows: readonly PlanRow[];
   standingKeys: readonly string[] | null;
+  /**
+   * Round 28b — the «الاتجاه» the standing crew's load wrote, by row key (`loadStandingIntoPlan`'s
+   * `directions`): its «off» clears each only while the row still holds exactly it. Absent with
+   * the toggle off, and on a screen with no toggle («الطاقم الثابت» itself).
+   */
+  standingDirections?: Readonly<Record<string, string>>;
 }
 
 const sameKeys = (a: readonly string[] | null, b: readonly string[] | null): boolean =>
   a === b ||
   (a !== null && b !== null && a.length === b.length && a.every((key, at) => key === b[at]));
 
+const NO_DIRECTIONS: Readonly<Record<string, string>> = {};
+
+const sameDirections = (
+  a: Readonly<Record<string, string>> = NO_DIRECTIONS,
+  b: Readonly<Record<string, string>> = NO_DIRECTIONS,
+): boolean => {
+  if (a === b) return true;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && a[key] === b[key])
+  );
+};
+
 /**
  * The same board: the same rows in the same order, each the same to the save (`sameRow`) and showing
- * the same van — and the standing crew toggled the same way.
+ * the same van — and the standing crew toggled the same way, with the same directions of its own.
  */
 export const sameCrewDraft = (a: CrewDraft, b: CrewDraft): boolean =>
   sameKeys(a.standingKeys, b.standingKeys) &&
+  sameDirections(a.standingDirections, b.standingDirections) &&
   (a.rows === b.rows ||
     (a.rows.length === b.rows.length &&
       a.rows.every((row, at) => {

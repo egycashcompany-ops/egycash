@@ -672,32 +672,149 @@ describe('the standing crew on this board', () => {
       van('2', { slots: slots(['x']) }),
       { ...vehiclelessRow(1), slots: slots(['b']) },
     ];
-    const load = loadStandingIntoPlan(rows, [
-      {
-        vehicleId: 'v-1',
-        captainEmployeeIds: ['a'],
-        specialist1EmployeeIds: ['b'],
-        specialist2EmployeeIds: ['c'],
-      },
-      {
-        vehicleId: 'v-2',
-        captainEmployeeIds: ['d'],
-        specialist1EmployeeIds: [],
-        specialist2EmployeeIds: [],
-      },
-      {
-        vehicleId: 'v-9',
-        captainEmployeeIds: ['e'],
-        specialist1EmployeeIds: [],
-        specialist2EmployeeIds: [],
-      },
-    ]);
+    const load = loadStandingIntoPlan(
+      rows,
+      [
+        {
+          vehicleId: 'v-1',
+          captainEmployeeIds: ['a'],
+          specialist1EmployeeIds: ['b'],
+          specialist2EmployeeIds: ['c'],
+          direction: null,
+        },
+        {
+          vehicleId: 'v-2',
+          captainEmployeeIds: ['d'],
+          specialist1EmployeeIds: [],
+          specialist2EmployeeIds: [],
+          direction: null,
+        },
+        {
+          vehicleId: 'v-9',
+          captainEmployeeIds: ['e'],
+          specialist1EmployeeIds: [],
+          specialist2EmployeeIds: [],
+          direction: null,
+        },
+      ],
+      [],
+    );
     // «b» already sits on the vehicle-less row: not copied onto van 1.
     expect(load.rows[0]?.slots).toEqual(slots(['a'], [], ['c']));
     expect(load.rows[1]?.slots).toEqual(slots(['x']));
     expect(load.filledKeys).toEqual(['van:v-1']);
     expect(load.unavailable).toBe(1);
-    expect(clearStandingFromPlan(load.rows, load.filledKeys)[0]?.slots).toEqual(slots([]));
+    expect(clearStandingFromPlan(load.rows, load.filledKeys, load.directions)[0]?.slots).toEqual(
+      slots([]),
+    );
+  });
+
+  // Round 28b — «لما تعمل «تحميل الطاقم الثابت» … بينزل الناس بس من غير الاتجاه والتوقيت … تحب الاتجاه
+  // ينزل كمان؟» — «اه». The direction only, never the time.
+  describe('Round 28b — the standing «الاتجاه» comes down with the crew', () => {
+    const AREAS = ['المعادي', 'حلوان'];
+    const source = (vehicleId: string, captain: string, direction: string | null) => ({
+      vehicleId,
+      captainEmployeeIds: [captain],
+      specialist1EmployeeIds: [],
+      specialist2EmployeeIds: [],
+      direction,
+    });
+
+    it('a van it fills takes it where the row has none; the day’s own is kept; an unfilled van takes nothing', () => {
+      const rows = [
+        van('1'),
+        van('2', { direction: 'بنها' }),
+        van('3', { slots: slots(['mine']) }),
+        van('4'),
+        van('5'),
+      ];
+      const load = loadStandingIntoPlan(
+        rows,
+        [
+          source('v-1', 'a', 'حلوان'),
+          source('v-2', 'b', 'المعادي'),
+          source('v-3', 'c', 'المعادي'),
+          source('v-4', 'd', '  طريق   السويس '),
+          source('v-5', 'e', '-'),
+        ],
+        AREAS,
+      );
+      expect(load.filledKeys).toEqual(['van:v-1', 'van:v-2', 'van:v-4', 'van:v-5']);
+      expect(load.rows.map((row) => row.direction)).toEqual([
+        'حلوان',
+        'بنها',
+        null,
+        'طريق السويس',
+        null,
+      ]);
+      // By ROW key, as the draft names its rows — only what the load wrote.
+      expect(load.directions).toEqual({ 'van:v-1': 'حلوان', 'van:v-4': 'طريق السويس' });
+      // Never the time, the notes, the type or the colour.
+      for (const row of load.rows) {
+        expect([row.plannedTime, row.notes, row.shiftTypeId, row.rowColour]).toEqual([
+          null,
+          null,
+          null,
+          null,
+        ]);
+      }
+    });
+
+    it('in the areas’ own spelling, as the save stores it — so the read-back changes nothing', () => {
+      const load = loadStandingIntoPlan(
+        [van('1'), van('2')],
+        [source('v-1', 'a', 'المعادى'), source('v-2', 'b', 'معادي/حلوان')],
+        AREAS,
+      );
+      expect(load.rows.map((row) => row.direction)).toEqual(['المعادي', 'المعادي - حلوان']);
+    });
+
+    it('skips a direction the save would refuse: blank, «-», hand-typed past the ceiling', () => {
+      const long = 'ط'.repeat(contracts.OPERATIONS_DIRECTION_MAX_LENGTH + 1);
+      const load = loadStandingIntoPlan(
+        [van('1'), van('2'), van('3'), van('4')],
+        [
+          source('v-1', 'a', '   '),
+          source('v-2', 'b', '-'),
+          source('v-3', 'c', long),
+          source('v-4', 'd', ''),
+        ],
+        AREAS,
+      );
+      expect(load.filledKeys).toHaveLength(4);
+      expect(load.rows.map((row) => row.direction)).toEqual([null, null, null, null]);
+      expect(load.directions).toEqual({});
+      // Round 28b critic — the one that names something is named, by row key, for the notice.
+      expect(load.directionsLeftBehind).toEqual(['van:v-3']);
+      // So the save carries no direction the server would refuse with 400 on the row.
+      expect(
+        toPlan(
+          '2026-11-19',
+          planChanges(load.rows, [van('1'), van('2'), van('3'), van('4')]),
+        ).rows.map((row) => row.direction ?? null),
+      ).toEqual([null, null, null, null]);
+    });
+
+    it('off clears the direction it wrote — unless the planner changed it since; «حفظ (n)» follows', () => {
+      const server = [van('1'), van('2'), van('3', { direction: 'بنها' })];
+      const load = loadStandingIntoPlan(
+        server,
+        [source('v-1', 'a', 'حلوان'), source('v-2', 'b', 'المعادي'), source('v-3', 'c', 'حلوان')],
+        AREAS,
+      );
+      expect(changeCount(planChanges(load.rows, server))).toBe(3);
+      // Untouched since: off is exactly the board it started from — nothing to save.
+      const off = clearStandingFromPlan(load.rows, load.filledKeys, load.directions);
+      expect(off).toEqual(server);
+      expect(changeCount(planChanges(off, server))).toBe(0);
+      // He typed his own over van 2's: off empties the van and keeps HIS direction — one to save.
+      const typed = patchRow(load.rows, 'van:v-2', { direction: 'طريق السويس' });
+      const offTyped = clearStandingFromPlan(typed, load.filledKeys, load.directions);
+      expect(offTyped.map((row) => row.direction)).toEqual([null, 'طريق السويس', 'بنها']);
+      expect(offTyped.map((row) => row.slots)).toEqual([slots([]), slots([]), slots([])]);
+      expect(planChanges(offTyped, server).changed.map((row) => row.key)).toEqual(['van:v-2']);
+    });
   });
 
   // Round 22 F and Round 23 — what the day may take of the standing crew, before it is loaded.
@@ -721,12 +838,14 @@ describe('the standing crew on this board', () => {
           captainEmployeeIds: ['cap', 'redInCap'],
           specialist1EmployeeIds: ['blue', 'capInSpec'],
           specialist2EmployeeIds: ['red'],
+          direction: 'حلوان',
         },
         {
           vehicleId: 'v-2',
           captainEmployeeIds: ['gone', 'nobody'],
           specialist1EmployeeIds: ['nobody2'],
           specialist2EmployeeIds: [],
+          direction: null,
         },
       ],
       (employeeId) => roster.get(employeeId),
@@ -737,6 +856,8 @@ describe('the standing crew on this board', () => {
         captainEmployeeIds: ['cap'],
         specialist1EmployeeIds: ['blue'],
         specialist2EmployeeIds: ['red'],
+        // Round 28b — the direction rides along untouched; the load judges it.
+        direction: 'حلوان',
       },
       // Somebody the roster no longer names: his requirements cannot be read here, so he is not
       // judged here — loaded as before, and the save (which reads them) decides.
@@ -745,6 +866,7 @@ describe('the standing crew on this board', () => {
         captainEmployeeIds: ['nobody'],
         specialist1EmployeeIds: ['nobody2'],
         specialist2EmployeeIds: [],
+        direction: null,
       },
     ]);
     expect(day.away).toEqual(['gone']);
@@ -753,8 +875,9 @@ describe('the standing crew on this board', () => {
       { employeeId: 'capInSpec', slot: 'specialist1' },
     ]);
     // Loaded, the van gets exactly what is left — nobody the save would refuse.
-    const load = loadStandingIntoPlan([van('1'), van('2')], day.sources);
+    const load = loadStandingIntoPlan([van('1'), van('2')], day.sources, ['حلوان']);
     expect(load.rows[0]?.slots).toEqual(slots(['cap'], ['blue'], ['red']));
+    expect(load.rows[0]?.direction).toBe('حلوان');
     for (const row of load.rows) {
       expect(
         rowMisfits(row, (id) => {
@@ -775,10 +898,46 @@ describe('the standing crew on this board', () => {
       page.indexOf('const giveVan ='),
     );
     expect(toggle).toContain('standingForDay(standingSources, memberOf)');
-    expect(toggle).toContain('loadStandingIntoPlan(rows, day.sources)');
+    // Round 28b — the load reads EVERY active area (the save's respelling), and its «off» clears
+    // the directions it wrote, which the draft keeps beside the keys it filled.
+    expect(toggle).toContain('loadStandingIntoPlan(rows, day.sources, areaNames.data ?? [])');
+    expect(toggle).toContain('standingDirections: load.directions');
+    expect(toggle).toContain('draft.standingDirections ?? {}');
+    const sources = page.slice(
+      page.indexOf('const standingSources = useMemo('),
+      page.indexOf('const toggleStanding ='),
+    );
+    expect(sources).toContain('direction: row.direction');
     expect(toggle).toContain("t('operations.crewPlan.standingAway')");
     expect(toggle).toContain("t('operations.crewPlan.standingWrongSlot')");
     expect(translate('ar', 'operations.crewPlan.standingWrongSlot')).toContain('الطاقم الثابت');
+    // Round 28b critic — the vans whose standing direction it left behind are named too; what it
+    // filled is in view (the filters go when they would hide it — «بدون اتجاه» hid each van that
+    // took its direction); and it is not pressed before the areas' list answers.
+    expect(toggle).toContain("t('operations.crewPlan.standingDirectionLeft')");
+    expect(toggle).toContain("t('operations.crewPlan.standingDirectionLeftWho', {");
+    expect(toggle).toContain('load.directionsLeftBehind');
+    expect(toggle).toContain(
+      'if (hidesAnyOf(load.rows, load.filledKeys, isShown)) clearFilters();',
+    );
+    expect(page).toContain('const shown = rows.filter(isShown);');
+    const button = page.slice(page.indexOf('data-standing-toggle="true"'));
+    expect(button.slice(0, button.indexOf('onClick={toggleStanding}'))).toContain(
+      'standingKeys === null && (standingSources.length === 0 || areaNames.isPending)',
+    );
+    expect(button.slice(0, button.indexOf('onClick={toggleStanding}'))).toContain(
+      "t('operations.crew.standing.areasLoading')",
+    );
+    expect(translate('ar', 'operations.crewPlan.standingDirectionLeft')).toBe(
+      'لم يُنقل الاتجاه الثابت',
+    );
+    expect(
+      translate('ar', 'operations.crewPlan.standingDirectionLeftWho', {
+        names: '300، 301',
+        max: '٨٠',
+      }),
+    ).toBe('300، 301 — أطول من ٨٠ حرفًا وليس أسماء مناطق. اكتبه على المركبة.');
+    expect(translate('ar', 'operations.crew.standing.areasLoading')).toContain('قائمة المناطق');
     // A row holding such a seat is given no van: on the van's row it would be a new seat.
     const giveVan = page.slice(
       page.indexOf('const giveVan ='),

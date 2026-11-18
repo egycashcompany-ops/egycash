@@ -4,7 +4,7 @@
 import { type Locale } from '@ecms/contracts';
 
 const en: Record<string, string> = {
-  // The inactivity window (`SESSION_IDLE_MINUTES`). Worded for somebody who stepped away, not
+  // The inactivity window (`auth.session.idleMinutes`). Worded for somebody who stepped away, not
   // for somebody who did something wrong.
   'auth.idle.warningTitle': 'Still there?',
   'auth.idle.warningBody': 'Your session closes in {{seconds}} seconds.',
@@ -11261,6 +11261,7 @@ const en: Record<string, string> = {
   'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'Setup-link validity (hours)',
   'systemAdmin.settings.keys.auth.lockout.maxAttempts': 'Failed sign-ins before lockout',
   'systemAdmin.settings.keys.auth.lockout.minutes': 'Lockout duration (minutes)',
+  'systemAdmin.settings.keys.auth.session.idleMinutes': 'Sign out after inactivity (minutes)',
   'systemAdmin.settings.keys.auth.loginIdentifiers': 'Accepted sign-in identifiers',
   'systemAdmin.settings.keys.auth.passkeys.enabled':
     'Allow sign-in with fingerprint or face (passkeys)',
@@ -11364,6 +11365,8 @@ const en: Record<string, string> = {
     'After this many wrong passwords in a row, the account is locked for the lockout duration. A successful sign-in resets the count.',
   'systemAdmin.settings.descriptions.auth.lockout.minutes':
     'How long a locked account cannot sign in, from 1 to 1,440 minutes (24 hours). After that, the user can try again.',
+  'systemAdmin.settings.descriptions.auth.session.idleMinutes':
+    'A session nobody uses for this long is signed out automatically, after a one-minute warning on screen. From 10 to 1,440 minutes (24 hours). Someone who is using the system is never signed out, however long they work. A change reaches screens that are already open within a few minutes.',
   'systemAdmin.settings.descriptions.auth.loginIdentifiers':
     'What staff may type on the sign-in page to identify themselves: username, email address or employee code. At least one must stay enabled.',
   'systemAdmin.settings.descriptions.auth.passkeys.enabled':
@@ -26412,6 +26415,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'صلاحية رابط التفعيل (بالساعات)',
   'systemAdmin.settings.keys.auth.lockout.maxAttempts': 'عدد محاولات الدخول الفاشلة قبل القفل',
   'systemAdmin.settings.keys.auth.lockout.minutes': 'مدة القفل (بالدقائق)',
+  'systemAdmin.settings.keys.auth.session.idleMinutes': 'تسجيل الخروج بعد عدم الاستخدام (بالدقائق)',
   'systemAdmin.settings.keys.auth.loginIdentifiers': 'معرّفات الدخول المقبولة',
   'systemAdmin.settings.keys.auth.passkeys.enabled':
     'السماح بالدخول بالبصمة أو الوجه (مفاتيح المرور)',
@@ -26518,6 +26522,8 @@ const ar: Record<string, string> = {
     'بعد هذا العدد من محاولات كلمة المرور الخاطئة المتتالية، يُقفل الحساب طوال مدة القفل. ويُصفَّر العدّ عند نجاح تسجيل الدخول.',
   'systemAdmin.settings.descriptions.auth.lockout.minutes':
     'المدة التي يُمنع فيها الحساب المقفل من تسجيل الدخول، من 1 إلى 1440 دقيقة (24 ساعة). بعدها يمكن للمستخدم المحاولة من جديد.',
+  'systemAdmin.settings.descriptions.auth.session.idleMinutes':
+    'إذا لم يُستخدم الحساب طوال هذه المدة يُسجَّل خروجه تلقائيًا، بعد تنبيه يظهر على الشاشة قبلها بدقيقة. من 10 إلى 1440 دقيقة (24 ساعة). لا يُسجَّل خروج من يستخدم النظام مهما طالت مدة عمله، ويصل التغيير إلى الشاشات المفتوحة خلال دقائق.',
   'systemAdmin.settings.descriptions.auth.loginIdentifiers':
     'ما يمكن للموظف إدخاله في صفحة الدخول للتعريف بنفسه: اسم المستخدم أو البريد الإلكتروني أو الكود الوظيفي. يجب أن يبقى واحد منها على الأقل مفعّلًا.',
   'systemAdmin.settings.descriptions.auth.passkeys.enabled':

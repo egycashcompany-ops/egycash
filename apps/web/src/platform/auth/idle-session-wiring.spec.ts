@@ -9,6 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { translate } from '../localization/i18n';
+import { RENEW_AT_MOST_EVERY_MS } from './idle-session';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (path: string): string => readFileSync(resolve(HERE, path), 'utf8');
@@ -132,15 +133,15 @@ describe.each([
 describe('the window is the SERVER’s number', () => {
   it('is read from the api client, never hard-coded in the component', () => {
     expect(GUARD).toContain('getIdleMinutes()');
-    // A literal window here would drift from `SESSION_IDLE_MINUTES` the first time an operator
-    // changed it, and the two failure modes are both bad: signing a live session out, or leaving
-    // a dead one on screen until the next save fails.
+    // A literal window here would drift from `auth.session.idleMinutes` the first time an
+    // administrator changed it on the settings page, and the two failure modes are both bad:
+    // signing a live session out, or leaving a dead one on screen until the next save fails.
     expect(GUARD).not.toMatch(/idleM(s|inutes)\s*=\s*\d/);
   });
 
   it('is relearned on every renewal and at every way in', () => {
-    // The refresh response carries it, so a deployment that changes the number is obeyed within
-    // one cycle rather than at the next full page load.
+    // The refresh response carries it, so a change on the settings page is obeyed within one
+    // cycle rather than at the next full page load.
     expect(API_CLIENT).toContain('setIdleMinutes(data.idleMinutes)');
     // …and login, TOTP and the portal all learn it at the same moment they learn the token.
     expect(AUTH_API.match(/setIdleMinutes\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
@@ -175,5 +176,44 @@ describe('the window is the SERVER’s number', () => {
     expect(GUARD.match(/renewSession\(\)/g)?.length, 'one renewal call, shared').toBe(1);
     expect(GUARD).toMatch(/noteActivity\(\);\s+renewNow\(getIdleMinutes\(\) \* 60_000\);/);
     expect(GUARD).toMatch(/shouldRenew\([^)]*\)\) \{\s+renewNow\(idleMs\);/);
+  });
+});
+
+describe('the settings page cannot set a window that signs out somebody who is working', () => {
+  // The window is `auth.session.idleMinutes`, set on the settings page, and a browser learns a new
+  // value only at its next renewal. Until then it renews on the cadence of the window it was last
+  // told, which is never slower than `RENEW_AT_MOST_EVERY_MS`. So the server can see a working
+  // session's `lastUsedAt` that old, under the NEW window: the setting's floor must be at least two
+  // of those cadences, or lowering it would close a live session at its first renewal. The floor
+  // lives in the api (`auth.settings.ts`); this reads it from there so neither side can move alone.
+  const SETTINGS = read('../../../../api/src/platform/auth/auth.settings.ts');
+  const declared = /SESSION_IDLE_MINUTES = \{ min: (\d+), max: ([\d *]+), default: (\d+) \}/.exec(
+    SETTINGS,
+  );
+
+  it('keeps the floor at two renewal cadences or more', () => {
+    expect(declared, 'SESSION_IDLE_MINUTES in auth.settings.ts').not.toBeNull();
+    const floorMinutes = Number(declared?.[1]);
+    expect(floorMinutes * 60_000).toBeGreaterThanOrEqual(2 * RENEW_AT_MOST_EVERY_MS);
+  });
+
+  it('declares the window with that floor and the 30-minute default', () => {
+    expect(SETTINGS).toContain('key: SettingKeys.SessionIdleMinutes,');
+    expect(SETTINGS).toContain(
+      'schema: z.number().int().min(SESSION_IDLE_MINUTES.min).max(SESSION_IDLE_MINUTES.max),',
+    );
+    expect(Number(declared?.[3])).toBe(30);
+  });
+
+  it('names the setting and its range in both languages', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      for (const kind of ['keys', 'descriptions'] as const) {
+        const id = `systemAdmin.settings.${kind}.auth.session.idleMinutes`;
+        expect(translate(locale, id), `${locale} ${kind}`).not.toBe(id);
+      }
+      expect(translate(locale, 'systemAdmin.settings.descriptions.auth.session.idleMinutes')).toMatch(
+        /10.*1[,]?440/,
+      );
+    }
   });
 });

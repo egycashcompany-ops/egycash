@@ -47,6 +47,7 @@ decision, write a new ADR that supersedes the old one.
 | [ADR-036](ADR-036-passkey-switch-keeps-own-list-and-removal.md) | With passkeys switched off, the server refuses sign-in, adding and renaming; people can still see and remove their own (`GET` answers `meta.enabled`) | Accepted |
 | [ADR-037](ADR-037-vehicle-code-pickers-list-every-active-car.md) | A vehicle-code picker lists every car it may offer — the owner's «لازم تظهر كلها»; still paged on the wire (`fetchWholeCatalog`), `{ id, code }` rows outside Fleet | Accepted |
 | [ADR-038](ADR-038-job-titles-placed-in-the-structure.md) | A job title names where it sits in the company structure — a department, or a section of it, several allowed — descriptively (enforces nothing, counts nothing), keyed on the company catalog entries, written from the job form and the org chart alike; filled once per department from where holders sit; new department and section rows are linked when created | Accepted; supersedes ADR-031 in part |
+| [ADR-039](ADR-039-inactivity-window-is-a-setting.md) | The inactivity sign-out window is the organization setting `auth.session.idleMinutes` («الدخول وكلمات المرور»), default 30, from 10 to 1440 minutes, no off switch; read at every sign-in and renewal and sent with it; the `SESSION_IDLE_MINUTES` variable is retired | Accepted |
 
 ADR-001…014 were accepted with Milestone 1 approval (2026-07-08). ADR-015 records the
 single-organization correction from [Architecture Review 01](../10-reviews/2026-07-architecture-review-01.md),

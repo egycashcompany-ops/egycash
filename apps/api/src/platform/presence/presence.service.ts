@@ -93,8 +93,8 @@ class PresenceService {
   }
 
   /** The window that makes a session OPEN, in minutes — the idle window, or the token's life. */
-  windowMinutes(): number {
-    return liveWindowMinutes(authService.idleMinutes(), env.JWT_ACCESS_TTL_SECONDS);
+  async windowMinutes(): Promise<number> {
+    return liveWindowMinutes(await authService.idleMinutes(), env.JWT_ACCESS_TTL_SECONDS);
   }
 
   async listActiveUsers(
@@ -112,7 +112,7 @@ class PresenceService {
       ]);
     }
     const today = day === todayYmd;
-    const windowMinutes = this.windowMinutes();
+    const windowMinutes = await this.windowMinutes();
 
     const [sessions, activity] = await Promise.all([
       today ? this.liveSessions(now, windowMinutes) : Promise.resolve([]),

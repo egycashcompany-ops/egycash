@@ -144,9 +144,10 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
   }
   const tokens = await authService.refresh(presented);
   setRefreshCookie(res, tokens);
-  // The inactivity window rides along with every renewal, so the countdown the browser shows and
-  // the rule this server enforces cannot drift apart.
-  ok(res, { accessToken: tokens.accessToken, idleMinutes: authService.idleMinutes() });
+  // The inactivity window rides along with every renewal — the very number this renewal was
+  // judged by — so the countdown the browser shows and the rule this server enforces cannot drift
+  // apart.
+  ok(res, { accessToken: tokens.accessToken, idleMinutes: tokens.idleMinutes });
 };
 
 export const logout = async (req: Request, res: Response): Promise<void> => {

@@ -11,6 +11,22 @@ its entry here in the same PR.
 
 ### Added
 
+- **The inactivity sign-out window is set on the settings page, and it is 30 minutes.** «فين أقدر
+  أتحكم فى المدة اللى بعدها بيحصل تسجيل خروج لو محدش بيستخدم الحساب الخاص بيه؟ دورت هنا ملقيتش
+  /system/settings?dept=general», then «ضيفها في صفحة الإعدادات وخليها 30 دقيقة»
+  ([ADR-039](docs/03-decisions/ADR-039-inactivity-window-is-a-setting.md)).
+  - «تسجيل الخروج بعد عدم الاستخدام (بالدقائق)» sits under «عام» → «الدخول وكلمات المرور». It is the
+    organization setting `auth.session.idleMinutes`: default 30, from 10 to 1440 minutes, with no
+    off switch. Changes are audited like every setting.
+  - Every sign-in and renewal reads it, and the renewal sends back the number it was judged by, so
+    the countdown on screen and the rule on the server stay the same. A change reaches open screens
+    at their next renewal, within a few minutes, with no deploy.
+  - The floor is ten minutes because a browser renews at least every five minutes and learns a new
+    window only at that renewal. Lowering the setting can therefore never sign out someone who is
+    working. A web test reads the floor from the API and holds it to that cadence.
+  - The `SESSION_IDLE_MINUTES` deployment variable is retired and ignored if set. Production never
+    set it, so it ran at the 10-minute default until this change.
+
 - **IT: in «صرف لموظف» the person and the device find each other — and the device can be changed
   after the issue.** «لما أكتب اسم الشخص اللى هسلمه تظهر الأجهزة اللى معاه بس … والعكس بردو .. لو
   كتبت سيرال فى الجهاز اللى هيتركب عليه المستهلك .. تظهر على طول الشخص اللى مستلم الجهاز دا», and

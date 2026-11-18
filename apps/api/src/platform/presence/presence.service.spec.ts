@@ -23,7 +23,7 @@ const directory = vi.hoisted(() => ({ getDirectoryEmployees: vi.fn() }));
 
 vi.mock('./presence.model', () => ({ UserActivityDayModel: activityModel }));
 vi.mock('../auth/session.model', () => ({ SessionModel: sessionModel }));
-vi.mock('../auth/auth.service', () => ({ authService: { idleMinutes: () => 10 } }));
+vi.mock('../auth/auth.service', () => ({ authService: { idleMinutes: async () => 10 } }));
 vi.mock('../users/user.repository', () => ({ userRepository: users }));
 vi.mock('../organization/branches/branch.repository', () => ({ branchRepository: branches }));
 vi.mock('../directory', () => directory);

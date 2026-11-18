@@ -526,7 +526,7 @@ class AuthService {
         accessToken,
         me,
         mustChangePassword: user.security.mustChangePassword ?? false,
-        idleMinutes: env.SESSION_IDLE_MINUTES,
+        idleMinutes: await this.idleMinutes(),
       },
       tokens: { accessToken, refreshToken, refreshExpiresAt },
     };
@@ -733,7 +733,7 @@ class AuthService {
         accessToken,
         me: await this.buildMe(user),
         mustChangePassword: false,
-        idleMinutes: env.SESSION_IDLE_MINUTES,
+        idleMinutes: await this.idleMinutes(),
       },
       tokens: { accessToken, refreshToken, refreshExpiresAt },
     };
@@ -759,7 +759,7 @@ class AuthService {
     await userService.setPortalChallenge(userId, state);
   }
 
-  async refresh(presentedToken: string): Promise<IssuedTokens> {
+  async refresh(presentedToken: string): Promise<IssuedTokens & { idleMinutes: number }> {
     const presentedHash = sha256(presentedToken);
     const now = new Date();
 
@@ -811,7 +811,7 @@ class AuthService {
       throw new UnauthenticatedError(ErrorCodes.AUTH_TOKEN_EXPIRED, 'Session expired');
     }
 
-    // NOBODY HAS TOUCHED THIS SESSION FOR `SESSION_IDLE_MINUTES` — close it.
+    // NOBODY HAS TOUCHED THIS SESSION FOR `auth.session.idleMinutes` — close it.
     //
     // `lastUsedAt` is written by this very method, and the web app renews on a cadence well
     // inside the window WHILE SOMEBODY IS THERE and stops the moment they are not. So a stale
@@ -822,7 +822,11 @@ class AuthService {
     // leaving the session alive would let anyone holding that cookie carry on as if the window
     // had never passed — which is the whole control. A separate reason and error code, because
     // «you stepped away» and «your session was taken over» are different things to be told.
-    const idleMs = env.SESSION_IDLE_MINUTES * 60_000;
+    //
+    // The window is read here, at the renewal, and the same number goes back to the browser below,
+    // so a change on the settings page is enforced and shown together from this renewal on.
+    const idleMinutes = await this.idleMinutes();
+    const idleMs = idleMinutes * 60_000;
     if (idleMs > 0 && now.getTime() - session.lastUsedAt.getTime() > idleMs) {
       await this.revokeSession(session, 'idle-timeout');
       await auditService.record({
@@ -877,17 +881,22 @@ class AuthService {
       String(session._id),
       user.security.permissionVersion,
     );
-    return { accessToken, refreshToken: newRefreshToken, refreshExpiresAt };
+    return { accessToken, refreshToken: newRefreshToken, refreshExpiresAt, idleMinutes };
   }
 
   /**
-   * The inactivity window, for the browser to count down to the same number the server enforces.
+   * The inactivity window in minutes (`auth.session.idleMinutes`, «الدخول وكلمات المرور» on the
+   * settings page), for the server to enforce and the browser to count down to.
    *
-   * A getter rather than a constant on the client so a deployment that changes the variable is
-   * obeyed without shipping a new bundle.
+   * Asked of the settings service on every sign-in and renewal rather than held, so a change made
+   * on the page is obeyed within the settings cache's minute, with no deploy and no new bundle.
+   * One organization-wide value: the subject carries no user or branch.
    */
-  idleMinutes(): number {
-    return env.SESSION_IDLE_MINUTES;
+  async idleMinutes(): Promise<number> {
+    return settingsService.resolve<number>(SettingKeys.SessionIdleMinutes, {
+      userId: null,
+      branchId: null,
+    });
   }
 
   async logout(ctx: AuthContext): Promise<void> {

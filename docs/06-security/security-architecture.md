@@ -55,8 +55,11 @@ decided, the limit was ten sign-in attempts of any kind per address, and the dec
 revisited if the login page became reachable from outside the company network. **It is**
 (ecms.egycash.com.eg), so the owner should re-confirm it with the limits above in mind.
 
-**Inactivity timeout (`SESSION_IDLE_MINUTES`, default 10; `0` switches it off).** A session whose
-`lastUsedAt` is older than the window is **revoked** at its next renewal — not merely refused,
+**Inactivity timeout (the setting `auth.session.idleMinutes`, default 30, from 10 to 1440 minutes;
+[ADR-039](../03-decisions/ADR-039-inactivity-window-is-a-setting.md)).** It is set on the settings
+page under «عام» → «الدخول وكلمات المرور»; it replaced the `SESSION_IDLE_MINUTES` deployment
+variable, and nothing switches it off. A session whose `lastUsedAt` is older than the window is
+**revoked** at its next renewal — not merely refused,
 because a valid cookie that survives the deadline is the hole the control exists to close. The
 reason is recorded (`idle-timeout`) and a `sessionRevoked` row is written, so an administrator
 reading the log can tell «stepped away» from «taken over» (`refresh-reuse`).
@@ -66,15 +69,17 @@ and stops the moment they are not (`platform/auth/idle-session.ts`): a renewal o
 there has been activity since the previous one, so a working session never times out however long
 it lasts, and an abandoned one is not held open by a timer. The window travels to the browser in
 the refresh response, so the countdown on screen and the rule on the server are the same number,
-and changing the variable is obeyed within one renewal cycle. The last minute is a warning with a
+and a change on the settings page is obeyed at the first renewal after the settings cache's minute.
+The floor of ten minutes is two of the browser's longest renewal cadences (five minutes), so
+lowering the setting cannot close a session that is being used. The last minute is a warning with a
 countdown, which is also what protects unsaved work from vanishing without notice.
 
 The guard (`platform/auth/IdleSessionGuard.tsx`) is mounted on **every** signed-in surface: the
 staff app (`RequireAuth`) and both portals (`RequirePortal` for gold customers,
 `RequireApplicantPortal` for candidates), each sending an expired session back to its own sign-in
 with `?reason=idle`. A surface without it renews only when its 15-minute access token runs out —
-later than the 10-minute window — so the server would read a working portal session as abandoned
-and close it mid-use.
+later than a window at the 10-minute floor — so the server would read a working portal session
+as abandoned and close it mid-use.
 
 ## 2. Authorization
 

@@ -351,7 +351,7 @@ describe('GET /platform/presence/active-users', () => {
     const page = await listAs(adminToken);
     expect(page.day).toBe(today());
     expect(page.today).toBe(true);
-    expect(page.idleMinutes).toBe(presenceService.windowMinutes());
+    expect(page.idleMinutes).toBe(await presenceService.windowMinutes());
 
     const row = rowOf(page, userId);
     expect(row).toBeDefined();
@@ -393,7 +393,7 @@ describe('GET /platform/presence/active-users', () => {
     const email = nextEmail();
     const userId = await seedUser(email, { ar: 'غائب', en: 'Away' });
     await tokenOf(email);
-    const stale = new Date(Date.now() - (presenceService.windowMinutes() + 1) * 60_000);
+    const stale = new Date(Date.now() - ((await presenceService.windowMinutes()) + 1) * 60_000);
     await SessionModel.updateMany(
       { userId: new Types.ObjectId(userId) },
       { $set: { lastUsedAt: stale } },

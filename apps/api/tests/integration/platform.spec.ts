@@ -7,7 +7,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { authenticator } from 'otplib';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { platformPermissions, SettingKeys, type JobTitleDto, type MeDto } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -17,7 +17,9 @@ import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { SessionModel } from '../../src/platform/auth/session.model';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { SettingValueModel } from '../../src/platform/settings/setting-value.model';
 import { FAILED_SIGN_IN_WINDOW_SECONDS } from '../../src/platform/auth/failed-sign-ins';
+import { SESSION_IDLE_MINUTES } from '../../src/platform/auth/auth.settings';
 import { env } from '../../src/infrastructure/config/env';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
@@ -1521,14 +1523,19 @@ describe('refresh rotation with reuse detection (ADR-006)', () => {
 });
 
 /**
- * A screen nobody is looking at stops being a signed-in screen (`SESSION_IDLE_MINUTES`).
+ * A screen nobody is looking at stops being a signed-in screen (`auth.session.idleMinutes`, a
+ * setting on the settings page: 30 minutes unless changed there).
  *
  * The clock the rule reads is `sessions.lastUsedAt`, which the browser keeps fresh by renewing
- * while somebody is there. These tests move that timestamp rather than waiting ten minutes, which
+ * while somebody is there. These tests move that timestamp rather than waiting half an hour, which
  * is the only honest way to test a deadline — the alternative is a sleep that makes the suite
  * slower than the feature.
  */
 describe('a session nobody has touched is closed', () => {
+  // Nothing in this block stores a value, so the code default is the window (the block that
+  // changes it, below, puts it back).
+  const WINDOW_MINUTES = SESSION_IDLE_MINUTES.default;
+
   const idleCookieFor = async (): Promise<{ cookie: string; sessionId: string }> => {
     const login = await doLogin('admin@ecms.local', PASSWORD);
     const cookie = (login.cookie ?? '').split(';')[0] ?? '';
@@ -1542,17 +1549,17 @@ describe('a session nobody has touched is closed', () => {
     const refreshed = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
     expect(refreshed.status).toBe(200);
     expect((refreshed.body as { data: { idleMinutes: number } }).data.idleMinutes).toBe(
-      env.SESSION_IDLE_MINUTES,
+      WINDOW_MINUTES,
     );
     // And at the way in, so a fresh tab is counting before its first renewal.
     expect((login.body as { data: { idleMinutes?: number } }).data.idleMinutes).toBe(
-      env.SESSION_IDLE_MINUTES,
+      WINDOW_MINUTES,
     );
   });
 
   it('refuses to renew one that has sat past the window, and REVOKES it', async () => {
     const { cookie, sessionId } = await idleCookieFor();
-    const pastTheWindow = new Date(Date.now() - (env.SESSION_IDLE_MINUTES + 1) * 60_000);
+    const pastTheWindow = new Date(Date.now() - (WINDOW_MINUTES + 1) * 60_000);
     await SessionModel.updateOne({ _id: sessionId }, { $set: { lastUsedAt: pastTheWindow } });
 
     const refused = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
@@ -1592,11 +1599,113 @@ describe('a session nobody has touched is closed', () => {
     const { cookie, sessionId } = await idleCookieFor();
     await SessionModel.updateOne(
       { _id: sessionId },
-      { $set: { lastUsedAt: new Date(Date.now() - env.SESSION_IDLE_MINUTES * 60_000 + 2_000) } },
+      { $set: { lastUsedAt: new Date(Date.now() - WINDOW_MINUTES * 60_000 + 2_000) } },
     );
     const renewed = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
     expect(renewed.status).toBe(200);
   });
+});
+
+/**
+ * The window is set on the settings page («الدخول وكلمات المرور»), not in the deployment.
+ *
+ * «فين أقدر أتحكم فى المدة اللى بعدها بيحصل تسجيل خروج … ضيفها في صفحة الإعدادات وخليها 30
+ * دقيقة». What has to hold: the page's write is the number the next renewal enforces AND the
+ * number it tells the browser; it is audited like any setting; and the page cannot store a window
+ * that would close a working session (below ten minutes) or switch the control off.
+ */
+describe('the inactivity window is a setting', () => {
+  const setWindow = async (token: string, value: unknown): Promise<request.Response> =>
+    request(app)
+      .patch('/api/v1/platform/settings/values')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ key: SettingKeys.SessionIdleMinutes, scope: 'organization', value });
+
+  const signIn = async (): Promise<{ token: string; cookie: string; sessionId: string }> => {
+    const login = await doLogin('admin@ecms.local', PASSWORD);
+    const cookie = (login.cookie ?? '').split(';')[0] ?? '';
+    const session = await SessionModel.findOne({ revokedAt: null }).sort({ createdAt: -1 }).exec();
+    return {
+      token: login.body.data?.accessToken ?? '',
+      cookie,
+      sessionId: String(session?._id ?? ''),
+    };
+  };
+
+  const ageSession = async (sessionId: string, minutes: number): Promise<void> => {
+    await SessionModel.updateOne(
+      { _id: sessionId },
+      { $set: { lastUsedAt: new Date(Date.now() - minutes * 60_000) } },
+    );
+  };
+
+  afterEach(async () => {
+    // Back to the code default, so no other test inherits a changed window.
+    await SettingValueModel.deleteMany({ key: SettingKeys.SessionIdleMinutes });
+    await getCache().delByPrefix(`settings:${SettingKeys.SessionIdleMinutes}:`);
+  });
+
+  it('is listed with its 30-minute default for the settings page', async () => {
+    const { token } = await signIn();
+    const res = await request(app)
+      .get('/api/v1/platform/settings/definitions')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const definition = (res.body as { data: { key: string; defaultValue: unknown }[] }).data.find(
+      (d) => d.key === SettingKeys.SessionIdleMinutes,
+    );
+    expect(definition?.defaultValue).toBe(30);
+  });
+
+  it('a value saved on the page is enforced and told at the next renewal', async () => {
+    const { token, cookie, sessionId } = await signIn();
+    expect((await setWindow(token, 15)).status).toBe(204);
+
+    // Twenty minutes is inside the default window and past the new one.
+    await ageSession(sessionId, 20);
+    const refused = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(refused.status).toBe(401);
+    expect((refused.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_IDLE');
+
+    // A session inside the new window renews, and is told the new number.
+    const fresh = await signIn();
+    await ageSession(fresh.sessionId, 14);
+    const renewed = await request(app).post('/api/v1/auth/refresh').set('Cookie', fresh.cookie);
+    expect(renewed.status).toBe(200);
+    expect((renewed.body as { data: { idleMinutes: number } }).data.idleMinutes).toBe(15);
+  });
+
+  it('a longer window saved on the page keeps open a session the default would close', async () => {
+    const { token, cookie, sessionId } = await signIn();
+    expect((await setWindow(token, 120)).status).toBe(204);
+    await ageSession(sessionId, 90);
+    const renewed = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(renewed.status).toBe(200);
+    expect((renewed.body as { data: { idleMinutes: number } }).data.idleMinutes).toBe(120);
+  });
+
+  it('records the change in the audit log, old and new', async () => {
+    const { token } = await signIn();
+    expect((await setWindow(token, 45)).status).toBe(204);
+    const row = await AuditLogModel.findOne({
+      action: 'settingChanged',
+      'entityRef.entityId': SettingKeys.SessionIdleMinutes,
+    })
+      .sort({ _id: -1 })
+      .lean<{ changes: { field: string; old: unknown; new: unknown }[] }>()
+      .exec();
+    expect(row?.changes[0]).toMatchObject({ field: 'organization', new: 45 });
+  });
+
+  it.each([0, 9, 1441, 12.5, '30'])(
+    'refuses %p: no off switch, no window that would close a working session',
+    async (value) => {
+      const { token } = await signIn();
+      const res = await setWindow(token, value);
+      expect(res.status).toBe(422);
+      expect((res.body as { error: { code: string } }).error.code).toBe('SETTING_INVALID_VALUE');
+    },
+  );
 });
 
 describe('account lockout (settings-driven policy)', () => {

@@ -47,7 +47,10 @@ import { LeaveRequestModel, type LeaveRequestDoc } from '../../leave-management/
 import { workCalendarService } from '../../work-calendar';
 import { shiftRepository, type ShiftDoc } from '../shifts';
 import { shiftAssignmentService } from '../assignments';
-import { punchRepository } from '../punches';
+// The direct file, NOT the `../punches` barrel: the barrel re-exports `punch.service`, which now
+// calls back into this service to derive the days an import touched. Importing the repository
+// straight keeps that dependency one-way.
+import { punchRepository } from '../punches/punch.repository';
 import {
   cairoInstant,
   deriveDay,
@@ -366,6 +369,51 @@ class DayRecordService {
       });
     }
     return out;
+  }
+
+  /**
+   * One employee's resolved period, WITH THE CALLER'S SCOPE APPLIED.
+   *
+   * The scope question is answered by the one authority that decides it — the employee list with
+   * the selector attached — rather than by spelling the branch/department hierarchy again here. A
+   * reader who cannot see this person gets nothing, which is also what they get for a person who
+   * does not exist: a narrower question is never answered with somebody else's days.
+   */
+  async employeePeriodScoped(
+    employeeId: string,
+    from: Date,
+    to: Date,
+    scope?: ScopeSelector,
+  ): Promise<AttendanceEmployeeDayDto[]> {
+    if (scope !== undefined && scope.scope === 'own') {
+      const own = await employeeRepository.findByUserIdSystem(scope.userId);
+      if (own === null) throw new NotFoundError('no employee is linked to this login');
+      // "Show me employee X" must not come back as "here is you" — it would read as an answer
+      // about X. The same stance `list()` takes.
+      if (String(own._id) !== employeeId) return [];
+      return this.employeePeriod(employeeId, from, to);
+    }
+    const visible = await employeeRepository.listEmployees({
+      filter: { ids: [employeeId] },
+      page: 1,
+      pageSize: 1,
+      sortBy: 'code',
+      sortDir: 'asc',
+      ...(scope === undefined ? {} : { scope }),
+    });
+    if (visible.items.length === 0) return [];
+    return this.employeePeriod(employeeId, from, to);
+  }
+
+  /** The caller's own resolved period — own by construction, the employee comes from the login. */
+  async employeePeriodMine(
+    userId: string,
+    from: Date,
+    to: Date,
+  ): Promise<AttendanceEmployeeDayDto[]> {
+    const employee = await employeeRepository.findByUserIdSystem(userId);
+    if (employee === null) throw new NotFoundError('no employee is linked to this login');
+    return this.employeePeriod(String(employee._id), from, to);
   }
 
   /**

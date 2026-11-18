@@ -484,6 +484,20 @@ export interface ImportPunchesResultDto {
    * shift it belongs to; the count is a warning about a range, not an accounting of rows.
    */
   onFrozenDays: number;
+  /**
+   * Employee-days this batch DERIVED before answering — recent ones only, so a check-out arriving
+   * in a later batch than its check-in turns «حضر فقط» into a full day within the request rather
+   * than whenever something next happens to recompute that person.
+   */
+  daysRecomputed: number;
+  /**
+   * Employee-days this batch touched that are older than the live window, left for the backfill.
+   *
+   * It is reported so that «imported 26,493» can never again be read as «done»: a history send
+   * stores two years of evidence and derives almost none of it, and this is the number that tells
+   * an operator the backfill still has to run.
+   */
+  daysLeftToBackfill: number;
 }
 
 // ── Day records (§2, §4) ────────────────────────────────────────────────────

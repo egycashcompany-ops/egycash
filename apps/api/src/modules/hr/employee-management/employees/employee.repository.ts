@@ -15,6 +15,13 @@ import {
 } from '../../shared/employee-code-sort';
 
 export interface EmployeeListFilter {
+  /**
+   * Named employees, ORed — and the reason it exists is SCOPE, not convenience. Asking this list
+   * for one id with the caller's scope attached is how a feature answers «may this reader see this
+   * person?» through the one authority that decides it (`BaseRepository.scopeFilter`), instead of
+   * spelling the hierarchy again beside its own query.
+   */
+  ids?: readonly string[] | undefined;
   /** Lists, ORed within each — «هنخلي كل الفلترز multi». */
   status?: readonly string[] | undefined;
   employed?: boolean | undefined;
@@ -650,6 +657,12 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
 
   private buildFilter(f: EmployeeListFilter): FilterQuery<EmployeeDoc> {
     const clauses: FilterQuery<EmployeeDoc>[] = [];
+    if (f.ids !== undefined) {
+      // An invalid id narrows to nothing rather than throwing: this is a filter, and a caller
+      // passing rubbish must get an empty answer, never somebody else's.
+      const valid = f.ids.filter((id) => Types.ObjectId.isValid(id));
+      clauses.push({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } });
+    }
     if (f.status !== undefined && f.status.length > 0) clauses.push({ status: { $in: [...f.status] } });
     if (f.employed !== undefined)
       clauses.push(f.employed ? { status: { $in: [...EMPLOYED_STATUSES] } } : { status: 'exited' });

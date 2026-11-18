@@ -40,9 +40,12 @@ const declaredPaths = (): string[] =>
 describe('Attendance routes', () => {
   const paths = declaredPaths();
 
-  it('declares the AT-1 + AT-6 surface and nothing unshipped', () => {
+  it('declares the AT-1 + AT-6 + AT-D4 surface and nothing unshipped', () => {
+    // `devices` is AT-D4, the device health screen. It is the page `attendanceDevice.view` and
+    // `attendanceDevice.manage` had been waiting for since AT-D1, where they were declared
+    // deliberately page-less rather than parked on an unrelated screen.
     expect(paths.sort()).toEqual(
-      ['assignments', 'daily', 'employees/:id', 'me', 'regularizations', 'shifts'].sort(),
+      ['assignments', 'daily', 'devices', 'employees/:id', 'me', 'regularizations', 'shifts'].sort(),
     );
   });
 
@@ -50,13 +53,14 @@ describe('Attendance routes', () => {
     const guarded = [...ROUTES.matchAll(/<RequirePermission permission="([^"]+)">/g)].map(
       (m) => m[1],
     );
-    // daily + employees/:id share one guard (an Outlet), so four guards cover five admin routes.
+    // daily + employees/:id share one guard (an Outlet), so five guards cover six admin routes.
     expect(guarded.sort()).toEqual(
       [
         'attendance.assign',
         'attendance.decideRegularization',
         'attendance.manageShifts',
         'attendance.view',
+        'attendanceDevice.view',
       ].sort(),
     );
     // `me` and the index render My Attendance with no permission — deliberately.
@@ -76,7 +80,12 @@ describe('Attendance routes', () => {
       for (const match of source.matchAll(/permission="([^"]+)"/g)) {
         const key = match[1] ?? '';
         expect(
-          key.startsWith('attendance.') || key.startsWith('branch.') || key.startsWith('section.'),
+          key.startsWith('attendance.') ||
+            // `attendanceDevice.*` is the punch-device resource of this same module — a sibling
+            // key, not another module's. The prefix differs because the RESOURCE differs.
+            key.startsWith('attendanceDevice.') ||
+            key.startsWith('branch.') ||
+            key.startsWith('section.'),
           `${key} is not an attendance (or org-lookup) key`,
         ).toBe(true);
       }

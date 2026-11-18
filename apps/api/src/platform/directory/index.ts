@@ -266,9 +266,11 @@ export const findDirectoryEmployeesByNames = async (
  * placement: what a register prints, and nothing a register does not.
  *
  * A PAGE, never the company (ADR-019 rule 5). Scoped when the caller hands a scope — the reader's
- * own grant, so a branch-scoped technician finds their branch — and unscoped when the caller has
- * already bounded the population itself (IT's technicians are the IT departments' people, whoever
- * is asking). Fail-closed like every lookup here: no HR, an empty page.
+ * own grant, so a branch-scoped technician finds their branch — except a hand-over's box — and
+ * unscoped when the caller has already bounded the population itself (IT's technicians are the IT
+ * departments' people, whoever is asking; IT's hand-over recipients are the employed of every
+ * branch, for whoever may hand something over, searched a few at a time). Fail-closed like every
+ * lookup here: no HR, an empty page.
  */
 export interface DirectoryEmployeeQuery {
   /** Free text over the code and the name, matched the way HR's own register matches it. */

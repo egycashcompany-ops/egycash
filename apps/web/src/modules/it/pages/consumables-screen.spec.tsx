@@ -632,9 +632,10 @@ describe('the ledger’s cards on an asset and on a person', () => {
   });
 });
 
-// «صرف لموظف» on the store's own grants: who receives is found on them alone (`/it/people` answers
-// any register's read grant), while «مركّب على» — a search of the ASSETS — is offered only to a
-// reader of the assets; anyone else issues the item without naming a device.
+// «صرف لموظف» on the store's own grants: who receives is found on them alone, in every branch
+// (`/it/people/recipients` answers any register's hand-over grant, 2026-11-18), while «مركّب على»
+// — a search of the ASSETS — is offered only to a reader of the assets; anyone else issues the
+// item without naming a device.
 describe('the issue — «مركّب على» only for a reader of the assets', () => {
   const issue = (permissions: string[]): string =>
     render({
@@ -648,6 +649,7 @@ describe('the issue — «مركّب على» only for a reader of the assets', 
     const html = issue(ALL);
     expect(html).toContain(ar('it.consumables.movements.columns.item'));
     expect(html).not.toContain(ar('it.custody.pickerNoAccess'));
+    expect(html).not.toContain(ar('it.custody.pickerNoAccessHandOver'));
     expect(html).not.toContain(ar('it.consumables.issue.installedOn'));
     expect(html).not.toContain(ar('it.assets.pickerNoAccess'));
   });

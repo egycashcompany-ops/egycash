@@ -403,7 +403,12 @@ expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
   (FR-18) and, unless the transfer request gives its own, its `expectedReturnAt`,
   `conditionOnIssue` and `notes`; a new holder's interval takes them from the request alone. The
   asset's `location` is left as it was (only the move, below, clears it). Its audit row (and a new
-  holder's receipt row before it) is written after the commit (§10).
+  holder's receipt row before it) is written after the commit (§10). A `toBranchId` that is not
+  the asset's own branch must be an active branch the caller's `itAsset.assign` reaches whole —
+  the move's own test (`keyReachesBranch`; **403** otherwise, **400** `body.toBranchId` `UNKNOWN`
+  for one unknown or inactive), so a branch keeper cannot send a device into a branch they cannot
+  see; the same branch, or none named, is unchanged (§17 2026-11-18). The new holder may work in
+  any branch: the asset stays registered in its own.
 - **Move to another branch** (§2.2, «نقل إلى فرع»): the move of a held asset IS the transfer to a
   new branch in the same hands — the open interval closed, the next opened in the new branch for
   the same holder, carrying the receipt already signed (FR-18), the due date, the condition and the
@@ -850,7 +855,7 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   new holder, refuse an employee HR reports as `exited` (422). A branch move in the same hands is
   not a hand-over and stays open to a departed holder. The custody register's holder search finds
   every status, leavers included; the hand-over pickers offer the employed alone (§17,
-  2026-09-27).
+  2026-09-27), of every branch (`/it/people/recipients`, §17 2026-11-18).
 - **FR-16** Every IT filter that picks a person (custody holder, asset holder, ticket requester,
   ticket technician) finds every employee HR has, leavers included and marked; every hand-over
   (custody assign/transfer, a ticket's technician) offers current employees only (§17, 2026-09-27).
@@ -947,10 +952,11 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it` (home/dashboards) | any `it*` view permission | — |
 | `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only), `.assign` («نقل إلى فرع», several at once — the custody grant, as the move of a held asset IS a transfer; no key was added, §17 2026-11-11 — and only to a branch that grant reaches: the picker lists no other — the server names them, `GET /it/assets/move-targets`, under the same grant — and the move answers 403 to one) |
 | `/it/assets/import` («رفع جماعي», the register's toolbar) | `itAsset.create` | `itAsset.create` (preview the sheet; register its new lines, in a branch that is active and that grant reaches — 403 otherwise; the branch picker lists no other — the server names them, `GET /it/assets/import/branches`, under the same grant) · `.edit` within its scope (fill what a device the register holds lacks) · `.assign` within its scope AND reaching the chosen branch (move a device in stock in another branch to it — the move's own test, §2.2) — a line whose device the caller may see but not write as it needs is `outOfScope`, the device named and the right missing said; only a device `itAsset.view` does not reach is hidden (`outOfScope` with nothing of it shown). No key was added (§17, 2026-11-16) |
-| `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer + the move to another branch — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
+| `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer + the move to another branch — one custody grant, the roster-precedent: one operational surface; a transfer to ANOTHER branch only to an active one that grant reaches whole, as «نقل إلى فرع» — 403 / 400 otherwise, §2.5, §17 2026-11-18; the recipient of a hand-over may work in any branch, and what is handed over stays in the asset's branch), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
 | `/it/mobile-lines` | `itMobileLine.view` (the register, a line, its history, its intervals, its acknowledgments read back and reprinted, the lines section of an employee's IT history, the home's lines panel) | `itMobileLine.create` (register a line), `.edit` (edit — its branch included, to one that grant reaches — suspend, reactivate), `.assign` (hand over + return + the line's acknowledgment: print it first, file and withdraw its signed copy), `.viewNationalId` (the holder's national ID on the line acknowledgment — Security Architecture §3's sensitive-data grant, the line's own; the device receipt keeps `itAsset.viewNationalId`). Page `it.mobile-lines` («خطوط المحمول»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-20 until then, and open nothing here now |
 | `/it/consumables` (+ `/movements`) | `itConsumable.view` (each store, an item, its movements, the ledger, the memos read back and reprinted, the consumables section of an employee's IT history, the home's consumables panel, an asset page's «installed» card — the asset labels a ledger row shows are part of the item's record and read under this grant) | `itConsumable.create` (add an item to a store that grant reaches), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee with its memo, take back from one, file and withdraw the memo's signed copy, transfer stock to another branch's store that grant reaches — the picker lists no other: the server names them, `GET /it/consumables/transfer-targets`, under the same grant; «تعديل الجهاز» on an issued row of the ledger — set, change or clear the device it sits in, the row found within `itConsumable.view`, §2.11, §17 2026-11-17). An issue's «installed on», and a device «تعديل الجهاز» names, is an asset within the caller's OWN `itAsset.view` — without that grant every asset is «not found», and only clearing it is left; the screen offers the action only with `itConsumable.assign` AND `itAsset.view`. Page `it.consumables` («المستهلكات»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-28 until then, and open nothing here now |
-| `/it/people` (the holder boxes, the employees register, a person's head) | ANY of `itAsset.view`, `itMobileLine.view`, `itConsumable.view` | read-only; a person is found when ANY of those three the caller holds reaches them — one selector per held grant, OR-ed by the directory (`anyOfScopes`) — never one key's units standing for the others' (two grants can reach different branches, or one be `own`), and each person's `openCustodyCount` — the assets they hold — is counted within the caller's `itAsset.view` only: 0 for everyone to a caller without it (§17, 2026-11-17) |
+| `/it/people` (the filter boxes, the employees register, a person's head) | ANY of `itAsset.view`, `itMobileLine.view`, `itConsumable.view` | read-only; a person is found when ANY of those three the caller holds reaches them — one selector per held grant, OR-ed by the directory (`anyOfScopes`) — never one key's units standing for the others' (two grants can reach different branches, or one be `own`), and each person's `openCustodyCount` — the assets they hold — is counted within the caller's `itAsset.view` only: 0 for everyone to a caller without it (§17, 2026-11-17). A person's head (`GET /it/people/:employeeId`) is ALSO found when the caller's own registers NAME the person — an asset custody interval (open or closed) within `itAsset.view`, a line custody interval within `itMobileLine.view`, or a consumables movement (an issue or a return) naming them within `itConsumable.view`, each asked only for a grant the caller holds and scoped exactly as that register's own list (the row's own `branchId`) — and is then read from the directory unscoped: the sender of a hand-over to another branch opens the recipient's page, and every section of it is still the sender's own registers («المُسلِّم يرى ما سلّمه», §17 2026-11-18). The list itself is unchanged |
+| `/it/people/recipients` (a hand-over's box: «المستلم» on the asset hand-over, the new holder on a transfer, the consumables issue and return, the line hand-over) | ANY of `itAsset.assign`, `itMobileLine.assign`, `itConsumable.assign` — the act's own grant, no key added | read-only; anybody who works here today (`employed` — FR-15/16) in EVERY branch, for a required search, a few at a time (`pageSize` ≤ 20, default 8), by name — neither a grant's reach nor the command bar's branch is applied (the `/it/technicians` precedent: the population is bounded by the act, the search and the page). Each row is `{ employeeId, code, fullNameAr, branchId }` and nothing else — no dates, no login, no custody counts (§17 2026-11-18) |
 | `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories and the consumables' types — one grant, the `fleetCatalog.manage` precedent) |
 | `/it/tickets` | `itTicket.view` (scoped; requesters see own) | `itTicket.create`, `.edit` (work the ticket: status, priority, internal comments), `.assign` (dispatch decision, its own grant), `.close` (close + reopen + cancel, both-directions precedent) |
 | `/it/helpdesk-settings` | — | `itSlaPolicy.manage` (priorities + their SLA targets — behaviour-carrying, its own grant: the `fleetMaintenanceRule.manage` precedent) |
@@ -964,8 +970,10 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it/vehicle-checks/new` (phone, outside the console frame) | `itVehicleCheck.create` | `itVehicleCheck.create` (list the active cars, file a report, add photos to one's own report within 24 hours) — NOT limited by the reporter's data scope, a design decision (the roles screen's default `own` scope would leave no car; [design §4](it-vehicle-checks-design.md)); `itVehicleCheck.view` and `.delete` belong to the dashboard (row above) — FR-21 |
 
 Data scopes on every read/write via the standard base-repository path: `branchId` on assets and
-tickets is the anchor; a branch-scoped technician sees that branch's world; `own` gives every
-employee their requester view. All permissions land in the generated matrix.
+tickets is the anchor; a branch-scoped technician sees that branch's world — except a hand-over's
+box, which names a recipient in any branch (`/it/people/recipients`, §17 2026-11-18); what is
+handed over stays registered in the sender's branch; `own` gives every employee their requester
+view. All permissions land in the generated matrix.
 
 ## 8. Events, notifications, settings
 
@@ -1009,10 +1017,15 @@ responsible; asset assigned → notify the holder.
 
 **9.1 HR (live):** custody references employees; requesters/technicians are platform users.
 IT NAMES employees through its own read-only `/it/people` (under any of `itAsset.view`,
-`itMobileLine.view` and `itConsumable.view` — §7, §17 2026-11-17) and
-`/it/technicians` (under `itTicket.assign`/`itTicket.edit`), which read HR through the platform
-directory seam (`searchDirectoryEmployees`) — no IT screen needs HR's `employee.view` (§17,
-2026-09-27).
+`itMobileLine.view` and `itConsumable.view` — §7, §17 2026-11-17), `/it/people/recipients`
+(under any of `itAsset.assign`, `itMobileLine.assign` and `itConsumable.assign` — §7, §17
+2026-11-18) and `/it/technicians` (under `itTicket.assign`/`itTicket.edit`), which read HR through
+the platform directory seam (`searchDirectoryEmployees`) — no IT screen needs HR's `employee.view`
+(§17, 2026-09-27). The registers' filter boxes and the employees register search `/it/people`,
+in the reader's scope; every HAND-OVER box — the asset hand-over and transfer, the consumables
+issue and return, the line hand-over — searches `/it/people/recipients`, every branch's current
+employees, unscoped (§17 2026-11-18). Neither stores anything about a person: the hand-over still
+reads its recipient through the directory, unscoped, as it always did (`receipt-holder.ts`).
 Subscribes to `hr.employee.exited`: assets held by the leaver are **flagged** (dashboard panel
 "assets held by exited employees" + notification to IT) — never auto-returned (FR-13); the exit
 checklist is the human process, the flag is its safety net. The leaver's mobile lines are flagged
@@ -1102,7 +1115,7 @@ cars ([design §11](it-vehicle-checks-design.md)).
 | `/it/software-products`, `/it/software-installations` | remove (stamps `removedAt`) |
 | `/it/licenses` | — |
 | `/it/vendors` | — |
-| `/it/people` | read-only: `GET /` (search, `status` all/employed/exited, branch) · `GET /:employeeId` — HR's people through the directory (§9.1), under any of the three registers' read grants (§7) |
+| `/it/people` | read-only: `GET /` (search, `status` all/employed/exited, branch) · `GET /:employeeId` (also found when the caller's own registers name the person — §7, §17 2026-11-18) — HR's people through the directory (§9.1), under any of the three registers' read grants (§7) · `GET /recipients` (`ListItRecipientsQuerySchema`: `search` required, 1–100 · `pageSize` 1–20, default 8; strict; → `ItRecipientDto[]` `{ employeeId, code, fullNameAr, branchId }`, the `data` the array, no meta; the employed of every branch by name, unscoped and not narrowed by the command bar; under any of `itAsset.assign`, `itMobileLine.assign`, `itConsumable.assign` — 403 otherwise; registered before `/:employeeId` — §7, §17 2026-11-18) |
 | `/it/technicians` | read-only: `GET /` — the IT departments' people (FR-17) |
 | `/it/custody-receipts` | `POST /preview` (the paper and its new number; nothing else written) · `POST /` (the hand-over: intervals + receipt) · `GET /:id` · `POST /:id/print` (print again, under its number) · `GET+POST+DELETE /:id/signed-copy` — FR-18; plus `POST /it/assignments/:id/receipt` for an interval from before receipts |
 | `/it/mobile-lines` | `GET /summary` (each network's figures under the filters) · `POST /:id/assign` (employee or car) · `/:id/return` · `/:id/suspend` · `/:id/reactivate` · `GET /:id/history` — FR-19 |
@@ -1836,6 +1849,8 @@ starts only on an explicit owner GO.
     counted only within the caller's `itAsset.view`; without it the register is not asked and every
     person reads 0 — by the DTO's own definition («open custody intervals the reader may see»), so
     no contract change: a lines or store keeper finds people and learns nothing of anybody's devices.
+    (Since 2026-11-18 the HAND-OVER boxes ask `/it/people/recipients` instead, and the filter boxes
+    keep this rule — below.)
   - **An issue's «installed on»** names an asset within the caller's OWN `itAsset.view`; without it,
     every asset id is the existing «asset not found» refusal and the register is not asked. The
     asset labels a ledger row and a memo show stay as they were — part of the item's record, read
@@ -1906,3 +1921,56 @@ starts only on an explicit owner GO.
     trail still name that device, so it is not «registered in error». Disposing it stays open.
   - §2.11, §7, §12 and FR-5 amended. Contracts: `SetItConsumableInstalledOnSchema`,
     `ItConsumableMovementDto.version`.
+- **A hand-over to somebody in another branch** (2026-11-18) — owner request: «لما حد فى فرع بيسلم
+  جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح إنه يعرف يسلم لحد فى
+  فرع تاني». Every hand-over box searched `/it/people`, which finds a person only inside the
+  reader's read grants — a branch keeper's own branch — while the server already accepted any
+  employee as a recipient (the hand-overs read the holder unscoped, `receipt-holder.ts`). Asked
+  four questions, he chose each recommended answer:
+  1. **Who may search every branch: «صاحب صلاحية التسليم»** — whoever holds that register's
+     hand-over grant (`itAsset.assign`, `itMobileLine.assign`, `itConsumable.assign`), and ONLY
+     inside the hand-over boxes. The employees register, the filter boxes and the list
+     `/it/people` stay as they were.
+  2. **The device stays registered in the sender's branch** — today's behaviour: nothing moves on a
+     hand-over, and consumables leave the sender's store.
+  3. **«المُسلِّم يرى ما سلّمه»** — the sender opens the recipient's IT page, and it shows only what
+     the sender's reach holds; the recipient's own branch sees nothing of the sender's items
+     (unchanged).
+  4. **A single asset's «نقل»** goes only to the branches the user's `itAsset.assign` reaches whole,
+     as «نقل إلى فرع» already did.
+
+  What was built:
+  - **`GET /it/people/recipients`** (`ListItRecipientsQuerySchema`: `search` required, trimmed,
+    1–100; `pageSize` 1–20, default 8; strict → `ItRecipientDto[]`), under `authorizeAny` of the
+    three hand-over grants, registered before `/:employeeId`. It asks the directory with NO scope
+    and NO `anyOfScopes` — the `/it/technicians` precedent, «unscoped when the caller has already
+    bounded the population itself»: here the act's grant, a typed search and a small page — so the
+    command bar's branch is not applied either. `employed` only (FR-15/16: a hand-over names
+    somebody who works here today), by name. Each row is `{ employeeId, code, fullNameAr, branchId }`
+    and nothing else — no hire or exit date, no login id, no department, no custody count — so the
+    company's staff list is not opened beyond what the box prints (the branch tells two people of
+    one name apart). The web's hand-over boxes («المستلم» on the asset hand-over, the new holder on
+    a transfer, the consumables issue and return, the line hand-over) ask it and show each row's
+    branch; every filter box keeps `/it/people`.
+  - **A person's page** (`GET /it/people/:employeeId`): found by the scoped read as before, OR —
+    only after it missed — when the reader's own registers NAME the person: an asset custody
+    interval, open or closed, within `itAsset.view`; a line custody interval within
+    `itMobileLine.view`; a consumables movement naming them (an issue or a return) within
+    `itConsumable.view` — one count per register, each only for a grant the reader holds, each
+    scoped exactly as that register's own list (the row's own `branchId`: the interval's, the
+    movement's store), the first that names the person ending it. The person is then read from the
+    directory unscoped and answered as `ItPersonDto`, `openCustodyCount` still within the reader's
+    `itAsset.view`. Otherwise 404 as before. The page's sections are the reader's own registers, so
+    the sender sees what they handed over and nothing else of the person's; the device-first fill of
+    the consumables issue (`GET /it/people/:id` for a device's holder) now answers for a holder in
+    another branch of a device the reader sees.
+  - **The single-asset transfer** (`POST /it/assets/:id/transfer`): a `toBranchId` other than the
+    asset's own branch must be an active branch the caller's `itAsset.assign` reaches whole — the
+    move's own check, now one helper both call (`assertBranchTarget`: 403, then 400 `UNKNOWN`). A
+    branch keeper could otherwise send a held device into a branch they cannot see, where it
+    vanished from their register. The same branch, or none named, is unchanged; the web's
+    «الفرع الجديد» offers only the asset's branch and the move's targets.
+  - Not changed: what a hand-over writes, where it is registered, the leaver rule, the national ID
+    on the receipt (still under `itAsset.viewNationalId` / `itMobileLine.viewNationalId`, whichever
+    branch the recipient works in), and who else sees the item.
+  - §2.5, §7, §9.1 and §12 amended. Contracts: `ListItRecipientsQuerySchema`, `ItRecipientDto`.

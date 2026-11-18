@@ -72,6 +72,19 @@ describe('the employee search — IT’s own endpoint, never HR’s', () => {
     expect(asked[0]?.searchParams.get('status')).toBe('all');
   });
 
+  // 2026-11-18 — «أسمح إنه يعرف يسلم لحد فى فرع تاني»: a hand-over's box asks its own route, in every
+  // branch. The server forces the employed, so the box sends no status at all — only what is typed
+  // and the box's few rows.
+  it('asks the recipients route for a hand-over — what was typed and a page of eight', async () => {
+    await api.searchRecipients('وليد');
+
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.pathname).toMatch(/\/it\/people\/recipients$/u);
+    expect(asked[0]?.searchParams.get('search')).toBe('وليد');
+    expect(asked[0]?.searchParams.get('pageSize')).toBe('8');
+    expect([...(asked[0]?.searchParams.keys() ?? [])].sort()).toEqual(['pageSize', 'search']);
+  });
+
   it('asks the technicians list for who works here today, unless a filter asks for everyone', async () => {
     await api.searchTechnicians('أحمد');
     await api.searchTechnicians('أحمد', { includeExited: true });
@@ -134,6 +147,9 @@ describe('which box asks for which population', () => {
     for (const rel of filters) {
       for (const element of pickers(code(rel))) {
         expect(element, rel).toMatch(/\bincludeExited\b/u);
+        // A filter narrows a register the reader's scope already bounds: it keeps `/it/people`,
+        // never the hand-over's every-branch search.
+        expect(element, rel).not.toMatch(/\bhandOver\b/u);
       }
     }
   });
@@ -151,18 +167,55 @@ describe('which box asks for which population', () => {
     expect(pickers(code('components/TicketDialogs.tsx')).join('')).toContain('<TechnicianPicker');
   });
 
+  // 2026-11-18 — «لما حد فى فرع بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو
+  // المستهلكات .. أسمح إنه يعرف يسلم لحد فى فرع تاني»: every box a person is HANDED something in
+  // searches every branch — the asset's hand-over and transfer, the line's hand-over, the
+  // consumables' issue and return — and no other box does.
+  it('every hand-over’s person box searches every branch — the five of them, by name', () => {
+    const employeeBoxes = (rel: string): string[] =>
+      pickers(code(rel)).filter((element) => element.startsWith('<EmployeePicker'));
+    const handOvers = HAND_OVERS.flatMap((rel) =>
+      employeeBoxes(rel).map((element) => [rel, element] as const),
+    );
+    for (const [rel, element] of handOvers) expect(element, rel).toMatch(/\bhandOver\b/u);
+    // Named by the field each one fills, so a box added or lost is a decision, not a drift.
+    const fields = handOvers.map(([rel, element]) => [
+      rel,
+      /ariaLabel=\{t\('([^']+)'\)\}/u.exec(element)?.[1],
+    ]);
+    expect(fields).toEqual([
+      ['components/ConsumableDialogs.tsx', 'it.consumables.returnFrom'],
+      ['components/ConsumableDialogs.tsx', 'it.consumables.issue.employee'],
+      ['components/CustodyDialogs.tsx', 'it.custody.holder'],
+      ['components/CustodyDialogs.tsx', 'it.custody.newHolder'],
+      ['components/MobileLineDialogs.tsx', 'it.custody.holder'],
+    ]);
+    // Nowhere else: the employees register, a person's page and every filter keep `/it/people`.
+    const elsewhere = sources()
+      .filter((rel) => !HAND_OVERS.includes(rel))
+      .flatMap((rel) => pickers(code(rel)).map((element) => [rel, element] as const));
+    expect(elsewhere.length).toBeGreaterThanOrEqual(5);
+    for (const [rel, element] of elsewhere) expect(element, rel).not.toMatch(/\bhandOver\b/u);
+  });
+
   it('a box that does not choose gets the hand-over population', () => {
     for (const rel of ['components/EmployeePicker.tsx', 'components/TechnicianPicker.tsx']) {
       expect(code(rel), rel).toContain('includeExited = false');
     }
+    // …and, unless it says it IS a hand-over, the reader's own scope: the every-branch search is
+    // opted into, never fallen into.
+    expect(code('components/EmployeePicker.tsx')).toContain('handOver = false');
   });
 
-  it('keeps the two answers apart in the cache', () => {
-    // Typed with the same letters, the two boxes must not share one cached answer — or a
-    // hand-over box would be served the search's leavers for the next thirty seconds.
+  it('keeps the answers apart in the cache', () => {
+    // Typed with the same letters, the boxes must not share one cached answer — or a hand-over
+    // box would be served the search's leavers for the next thirty seconds, or a filter the
+    // hand-over's every-branch rows.
     const picker = code('components/EmployeePicker.tsx');
     expect(picker).toContain("listKey('it', 'employeeSearch', { search, includeExited })");
     expect(picker).toContain('api.searchPeople(search, { includeExited })');
+    expect(picker).toContain("listKey('it', 'recipientSearch', { search })");
+    expect(picker).toContain('api.searchRecipients(search)');
   });
 
   it('marks a leaver in the results, so a search tells them apart', () => {
@@ -178,7 +231,15 @@ describe('which box asks for which population', () => {
     expect(picker).toContain(
       "IT_PEOPLE_GRANTS = ['itAsset.view', 'itMobileLine.view', 'itConsumable.view']",
     );
-    expect(picker).toContain('const allowed = IT_PEOPLE_GRANTS.some((grant) => can(grant));');
+    // A hand-over's box opens on the ACT's grant instead — any register's «تسليم» (the owner's
+    // «صاحب صلاحية التسليم»), as `/it/people/recipients` answers.
+    expect(picker.replace(/\s+/gu, ' ')).toContain(
+      "IT_RECIPIENT_GRANTS = [ 'itAsset.assign', 'itMobileLine.assign', 'itConsumable.assign', ]",
+    );
+    expect(picker).toContain('handOver ? IT_RECIPIENT_GRANTS : IT_PEOPLE_GRANTS');
+    expect(picker).toContain(
+      'const allowed = employeePickerGrants(handOver).some((grant) => can(grant));',
+    );
     expect(picker).not.toContain('employee.view');
     const client = code('api/it-api.ts');
     expect(client).not.toContain('/hr/employees');

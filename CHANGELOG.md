@@ -11,6 +11,27 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: hand a device, a line or consumables to an employee of another branch.** «لما حد فى فرع
+  بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح إنه يعرف يسلم
+  لحد فى فرع تاني».
+  - Every hand-over box («المستلم» on the asset hand-over, the new holder on a transfer, «صرف
+    لموظف», «مرتجع من», the line hand-over) now finds the current employees of EVERY branch, for
+    whoever holds that register's hand-over grant (`itAsset.assign`, `itMobileLine.assign` or
+    `itConsumable.assign`): `GET /it/people/recipients?search=&pageSize=` — a required search, at
+    most 20 a time, each row only the name, the code and the branch. The command bar's branch does
+    not narrow it. The employees register and every filter box are unchanged: still the reader's
+    own scope.
+  - What is handed over stays registered in the sender's branch, as before — consumables leave the
+    sender's store; the recipient's own branch sees nothing of it.
+  - The sender can open the recipient's IT page (`GET /it/people/:employeeId`): it is found once
+    the sender's own registers name the person — a custody interval of an asset or a line, or a
+    consumables issue or return, each within that register's own read scope — and every section of
+    it still shows only what the sender's grants reach.
+  - Fixed: a single asset's «نقل» to another branch now goes only to an active branch the user's
+    `itAsset.assign` reaches whole, as «نقل إلى فرع» does (403 otherwise; 400 for an inactive
+    branch) — a branch user could send a device into a branch they cannot see, where it vanished
+    from their register. Moving to the same branch, or naming none, is unchanged.
+
 - **Org chart: drag a job to change its order, and print the chart.**
   ([org-chart design](docs/12-planning/org-chart-design.md) §2.2, §2.4, §5.7)
   - «لما باجي أشد حاجة عشان أغير ترتيبها مش بتتشد»: the ↕ grip suggested a drag, but a drop on the job's

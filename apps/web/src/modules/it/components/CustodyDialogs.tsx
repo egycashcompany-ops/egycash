@@ -24,11 +24,13 @@ import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { localized } from '../../../shared/lib/format';
+import { errorMessage } from '../../../shared/lib/errors';
 import { PrinterIcon, TrashIcon } from '../../../shared/ui/icons';
 import { EmployeePicker } from './EmployeePicker';
 import { AssetPicker } from './AssetPicker';
 import { useReceiptPrinter } from './CustodyReceipt';
 import { canHandOver, handOverPaper } from '../lib/hand-over-paper';
+import { branchMoveTargets } from '../lib/branch-move-targets';
 import * as api from '../api/it-api';
 import { fromLines, toLines } from '../lib/asset-specs';
 import {
@@ -36,6 +38,7 @@ import {
   useHandOverItAssets,
   useItAsset,
   useItBranchOptions,
+  useItMoveTargets,
   useReturnItAsset,
   useTransferItAsset,
 } from '../api/it-queries';
@@ -345,6 +348,7 @@ export const AssignAssetDialog = ({
             setEmployeeLabel(label);
           }}
           ariaLabel={t('it.custody.holder')}
+          handOver
         />
       </Field>
       <Field label={t('it.custody.receipt.lines')} required hint={t('it.custody.receipt.linesHint')}>
@@ -527,6 +531,7 @@ export const TransferAssetDialog = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const transfer = useTransferItAsset();
   const branches = useItBranchOptions();
+  const reach = useItMoveTargets(open);
   const [employeeId, setEmployeeId] = useState('');
   const [employeeLabel, setEmployeeLabel] = useState('');
   const [branchId, setBranchId] = useState('');
@@ -552,14 +557,23 @@ export const TransferAssetDialog = ({
     }
   }, [open]);
 
+  // «الفرع الجديد» offers the asset's own branch («إبقاء الفرع الحالي») and only the branches the
+  // SERVER says `itAsset.assign` reaches whole (`GET /it/assets/move-targets`, «نقل إلى فرع»'s own
+  // list) — the transfer answers 403 for any other since 2026-11-18. Null while either list is on
+  // its way: the field waits instead of offering what may be refused.
+  const targets = branchMoveTargets(branches.data, reach.data?.branchIds, asset.branchId);
+  const unread = targets === null ? (reach.error ?? branches.error) : null;
+  // A choice no longer offered is no choice: nothing is sent to it.
+  const chosen = targets?.some((branch) => branch.id === branchId) === true ? branchId : '';
+
   // A transfer must MOVE something. The server enforces this too; catching it here saves the user
   // a round trip to be told they changed nothing.
   const movesHolder = employeeId !== '' && employeeId !== current?.assignedToEmployeeId;
-  const movesBranch = branchId !== '' && branchId !== asset.branchId;
+  const movesBranch = chosen !== '' && chosen !== asset.branchId;
 
   const body = {
     ...(movesHolder ? { toEmployeeId: employeeId } : {}),
-    ...(movesBranch ? { toBranchId: branchId } : {}),
+    ...(movesBranch ? { toBranchId: chosen } : {}),
     ...(at === '' ? {} : { at: new Date(at) }),
     ...(movesHolder && condition.trim() !== '' ? { conditionOnIssue: condition.trim() } : {}),
     ...(notes.trim() === '' ? {} : { notes: notes.trim() }),
@@ -669,18 +683,26 @@ export const TransferAssetDialog = ({
             setEmployeeLabel(label);
           }}
           ariaLabel={t('it.custody.newHolder')}
+          handOver
         />
       </Field>
-      <Field label={t('it.custody.newBranch')}>
-        <Select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-          <option value="">{t('it.custody.sameBranch')}</option>
-          {(branches.data ?? [])
-            .filter((branch) => branch.id !== asset.branchId)
-            .map((branch) => (
-              <option key={branch.id} value={branch.id}>
-                {localized(branch.name, locale)}
-              </option>
-            ))}
+      <Field
+        label={t('it.custody.newBranch')}
+        error={unread !== null ? errorMessage(unread, locale) : undefined}
+      >
+        <Select
+          value={chosen}
+          disabled={targets === null || targets.length === 0}
+          onChange={(e) => setBranchId(e.target.value)}
+        >
+          <option value="">
+            {targets === null && unread === null ? t('common.loading') : t('it.custody.sameBranch')}
+          </option>
+          {(targets ?? []).map((branch) => (
+            <option key={branch.id} value={branch.id}>
+              {localized(branch.name, locale)}
+            </option>
+          ))}
         </Select>
       </Field>
       <Field label={t('it.custody.transferredAt')}>

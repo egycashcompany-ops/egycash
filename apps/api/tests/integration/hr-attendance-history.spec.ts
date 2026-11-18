@@ -70,14 +70,16 @@ const resolveMongoUri = async (): Promise<string> => {
   return replSet.getUri(dbName);
 };
 
-const mkUser = async (email: string): Promise<string> => {
+const mkUser = async (email: string, branchId: string | null = null): Promise<string> => {
   const { user } = await userService.create(
     {
       email,
       firstName: { ar: 'م', en: 'T' },
       lastName: { ar: 'م', en: 'T' },
       locale: 'en',
-      organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      // A branch is needed for a `branch`-scoped grant to resolve to anything: the scope filter
+      // reads the caller's own unit.
+      organization: { branchId, departmentId: null, sectionId: null, jobTitleId: null },
     },
     null,
   );
@@ -1192,5 +1194,77 @@ describe('the read paths — what the owner was actually looking at', () => {
     };
     const summed = Object.values(byStatus).reduce((a, b) => a + b, 0);
     expect(summed).toBe(total);
+  });
+});
+
+
+/**
+ * THE SCOPE RIDES ON THE READ THAT IS ACTUALLY USED, which is a rule worth a test because this
+ * change nearly broke it.
+ *
+ * `employee-summary` used to fetch a page of day ROWS through the scoped list and hand them to the
+ * arithmetic. When the arithmetic started resolving the period itself, that page briefly became the
+ * only thing carrying the scope check while contributing nothing to the answer — a branch-scoped
+ * reader asking about somebody in another branch would have got an empty page and then the full
+ * figures anyway. Both endpoints are pinned here, in both directions.
+ */
+describe('one employee period, in the caller scope', () => {
+  it('answers nothing about an employee outside the reader branch, and everything inside it', async () => {
+    // A second branch, and an employee who scans in it.
+    const otherBranchRes = await request(app)
+      .post('/api/v1/platform/branches')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: '077', name: { ar: 'فرع آخر', en: 'Other branch' } });
+    expect(otherBranchRes.status).toBe(201);
+    const otherBranchId = (otherBranchRes.body as { data: { id: string } }).data.id;
+    const otherDepRes = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'D77', name: { ar: 'قسم آخر', en: 'Other dept' }, branchId: otherBranchId });
+    expect(otherDepRes.status).toBe(201);
+    const outsiderEmp = await regEmployee({
+      branchId: otherBranchId,
+      departmentId: (otherDepRes.body as { data: { id: string } }).data.id,
+    });
+    const insiderEmp = await regEmployee();
+
+    // A reader holding `attendance.view` at BRANCH scope, sitting in this suite's branch.
+    const readerRole = await rbacService.createRole(
+      {
+        name: { en: 'Branch attendance reader', ar: 'قارئ حضور الفرع' },
+        permissionKeys: ['attendance.view'],
+      },
+      // `by` is an id, and no actor is passed: the fixture is not testing who may mint a role.
+      new Types.ObjectId().toString(),
+    );
+    const readerId = await mkUser('branch.reader@ecms.local', BRANCH_ID);
+    await rbacService.ensureAssignment(readerId, String(readerRole._id), 'branch');
+    const readerToken = await login('branch.reader@ecms.local');
+
+    const day = recentWorkday();
+    const window = `from=${dateOnlyIso(day)}&to=${dateOnlyIso(day)}`;
+
+    // OUTSIDE the branch: nothing, from both endpoints — not an error, and certainly not figures.
+    const outPeriod = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-period?employeeId=${outsiderEmp.id}&${window}`)
+      .set('Authorization', `Bearer ${readerToken}`);
+    expect(outPeriod.status).toBe(200);
+    expect(outPeriod.body.data).toEqual([]);
+
+    const outSummary = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-summary?employeeId=${outsiderEmp.id}&${window}`)
+      .set('Authorization', `Bearer ${readerToken}`);
+    expect(outSummary.status).toBe(200);
+    // Every figure is a figure OF the resolved days, so an empty resolution is an empty answer.
+    expect((outSummary.body.data as { daysPresent: number }).daysPresent).toBe(0);
+    expect((outSummary.body.data as { daysExpected: number }).daysExpected).toBe(0);
+
+    // INSIDE the branch: the day is there, which proves the empty answer above was the scope and
+    // not simply a broken read.
+    const inPeriod = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-period?employeeId=${insiderEmp.id}&${window}`)
+      .set('Authorization', `Bearer ${readerToken}`);
+    expect(inPeriod.status).toBe(200);
+    expect((inPeriod.body.data as unknown[]).length).toBe(1);
   });
 });

@@ -253,20 +253,20 @@ class DayRecordService {
     if (query.employeeId === undefined) {
       throw new BusinessRuleError('an employee is required for this summary');
     }
-    const page = await this.list(
-      {
-        employeeId: query.employeeId,
-        from: query.from,
-        to: query.to,
-        page: 1,
-        pageSize: PERIOD_PAGE_SIZE,
-        sortDir: 'asc',
-        branchId: [],
-        sectionId: [],
-      },
+    // THE SCOPED RESOLUTION, and the figures are added up from exactly it.
+    //
+    // This used to fetch a page of day ROWS through `list()` — which enforced the scope — and hand
+    // them to `figuresFor`. When `figuresFor` started resolving the period itself, that page became
+    // the only thing carrying the scope check while contributing nothing to the answer: a
+    // branch-scoped reader asking about somebody outside their branch got an empty page and then
+    // the full figures anyway. So the scope rides on the resolution that is actually read.
+    const days = await this.employeePeriodScoped(
+      query.employeeId,
+      query.from,
+      query.to,
       scope,
     );
-    return this.figuresFor(query, query.employeeId, page.items);
+    return this.figuresFor(query, query.employeeId, days);
   }
 
   /** The caller's own, own-scope by construction: the employee comes from the login, not the query. */
@@ -276,15 +276,10 @@ class DayRecordService {
   ): Promise<AttendanceEmployeeSummaryDto> {
     const employee = await employeeRepository.findByUserIdSystem(userId);
     if (employee === null) throw new NotFoundError('no employee is linked to this login');
-    const page = await this.listMine(userId, {
-      from: query.from,
-      to: query.to,
-      page: 1,
-      pageSize: PERIOD_PAGE_SIZE,
-      sortDir: 'asc',
-      sectionId: [],
-    });
-    return this.figuresFor(query, String(employee._id), page.items);
+    // Own by construction: the employee came from the LOGIN, not from the query, so there is
+    // nothing left for a scope selector to decide.
+    const days = await this.employeePeriod(String(employee._id), query.from, query.to);
+    return this.figuresFor(query, String(employee._id), days);
   }
 
   /**
@@ -427,12 +422,11 @@ class DayRecordService {
   private async figuresFor(
     query: { from: Date; to: Date },
     employeeId: string,
-    _rows: AttendanceDayDoc[],
+    days: AttendanceEmployeeDayDto[],
   ): Promise<AttendanceEmployeeSummaryDto> {
     const employee = await employeeRepository.findById(employeeId);
     const to = toDateOnly(query.to);
     const from = toDateOnly(query.from);
-    const days = await this.employeePeriod(employeeId, from, to);
     const figures = periodFigures(
       days.map((day) => ({
         status: day.status,

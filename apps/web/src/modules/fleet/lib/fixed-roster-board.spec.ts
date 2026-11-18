@@ -16,6 +16,7 @@ import {
   CREW_SLOTS,
   findSeat,
   isDirty,
+  swapDrivers,
 } from './fixed-roster-board';
 
 const row = (
@@ -686,8 +687,10 @@ describe('a second driver needs a first', () => {
               `assign ${who} -> ${vehicleId}.${slot}`,
             ).toEqual([]);
           }
-          expect(lonelySecond(clearSlot(start, vehicleId, slot)), `clear ${vehicleId}.${slot}`)
-            .toEqual([]);
+          expect(
+            lonelySecond(clearSlot(start, vehicleId, slot)),
+            `clear ${vehicleId}.${slot}`,
+          ).toEqual([]);
         }
       }
     }
@@ -762,7 +765,11 @@ describe('the save payload is the edit, not the board', () => {
     const saved = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
     const after = assignDriver(saved, 'v2', 'driver1EmployeeId', 'e1');
     expect(crews(after)).toEqual(['150:e2/-', '151:e1/-']);
-    expect(changedRows(saved, after).map((r) => r.vehicleId).sort()).toEqual(['v1', 'v2']);
+    expect(
+      changedRows(saved, after)
+        .map((r) => r.vehicleId)
+        .sort(),
+    ).toEqual(['v1', 'v2']);
   });
 
   it('STILL normalises a row edited through the dialog', () => {
@@ -817,10 +824,9 @@ describe('clearCrew takes every driver off one vehicle', () => {
   it('and folding clearSlot over the seats does NOT — which is why it exists', () => {
     // The old expression, kept here as the counterexample. Seat 2 is promoted, then "cleared"
     // finds nothing, and a driver survives a gesture that said «امسح الطاقم».
-    const folded = CREW_SLOTS.reduce(
-      (rows, slot) => clearSlot(rows, 'v1', slot),
-      [crewed('v1', 'a', 'b')] as readonly FleetFixedCrewRowDto[],
-    );
+    const folded = CREW_SLOTS.reduce((rows, slot) => clearSlot(rows, 'v1', slot), [
+      crewed('v1', 'a', 'b'),
+    ] as readonly FleetFixedCrewRowDto[]);
     expect(folded[0]?.driver1EmployeeId, 'the promoted driver survives').toBe('b');
   });
 
@@ -847,5 +853,50 @@ describe('clearCrew takes every driver off one vehicle', () => {
     const [only] = clearSlot([crewed('v1', 'a', 'b')], 'v1', 'driver1EmployeeId');
     expect(only?.driver1EmployeeId, 'the evening driver moves up').toBe('b');
     expect(only?.driver2EmployeeId).toBeNull();
+  });
+});
+
+// ── the swap — «السائق الأول يبقى التاني والعكس» ─────────────────────────────
+
+describe('swapDrivers', () => {
+  it('trades the two seats of a car whose both seats are filled', () => {
+    expect(crews(swapDrivers([row('v1', '150', 'e1', 'e2'), row('v2', '151')], 'v1'))).toEqual([
+      '150:e2/e1',
+      '151:-/-',
+    ]);
+  });
+
+  it('is the drop the board already knows — seat 2 onto seat 1 of the same car', () => {
+    const board = [row('v1', '150', 'e1', 'e2'), row('v2', '151', 'e3')];
+    expect(swapDrivers(board, 'v1')).toEqual(assignDriver(board, 'v1', 'driver1EmployeeId', 'e2'));
+  });
+
+  it('leaves every other car the very same object', () => {
+    const other = row('v2', '151', 'e3', 'e4');
+    const after = swapDrivers([row('v1', '150', 'e1', 'e2'), other], 'v1');
+    expect(after[1]).toBe(other);
+  });
+
+  it('changes nothing on a car with one driver, none, or no such car — no step to save', () => {
+    for (const board of [
+      [row('v1', '150', 'e1')],
+      [row('v1', '150')],
+      [row('v9', '159', 'e1', 'e2')],
+    ]) {
+      const after = swapDrivers(board, 'v1');
+      expect(after, 'a fresh array').not.toBe(board);
+      expect(changedRows(board, after), 'with every value as it was').toEqual([]);
+    }
+  });
+
+  it('swaps a car the workshop holds too — a standing crew is still a crew there', () => {
+    const workshop = { ...row('v1', '150', 'e1', 'e2'), inMaintenance: true };
+    expect(crews(swapDrivers([workshop], 'v1'))).toEqual(['150:e2/e1']);
+  });
+
+  it('keeps one driver, one crew: twice is the board it started from', () => {
+    const board = [row('v1', '150', 'e1', 'e2')];
+    expect(crews(swapDrivers(swapDrivers(board, 'v1'), 'v1'))).toEqual(crews(board));
+    expect(changedRows(board, swapDrivers(swapDrivers(board, 'v1'), 'v1'))).toEqual([]);
   });
 });

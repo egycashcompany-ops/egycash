@@ -369,13 +369,14 @@ describe('every Fleet car picker offers the WHOLE registry', () => {
     expect(passing).toEqual([
       // The balance transfer — every place that holds a card, a car or a label on no car.
       'modules/fleet/components/FuelTransferDialog.tsx',
+      // «الطقم الثابت» on a computer — every active car on the standing board (its touch board,
+      // like the daily one, types its codes instead).
+      'modules/fleet/components/roster/FixedDeskBoard.tsx',
       // «تعيين السيارات» on a computer — every car on the day's board (the touch board types its
       // codes instead: «مينفعش ابحث فى الفون او التابلت ؟»).
       'modules/fleet/components/roster/RosterDeskBoard.tsx',
       // «مذكرة جديدة» — the cars of the kind's receipts no memo holds yet, in the period on show.
       'modules/fleet/pages/CustodyMemoEditorPage.tsx',
-      // The standing roster — every active car on its board.
-      'modules/fleet/pages/FixedRosterPage.tsx',
       // «التراخيص» — the «ت» licence-class cars, as the owner asked.
       'modules/fleet/pages/LicensingPage.tsx',
       // «إنذارات الصيانة» — the board of every active car.

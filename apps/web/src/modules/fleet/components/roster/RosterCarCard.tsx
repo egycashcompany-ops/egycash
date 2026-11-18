@@ -121,12 +121,17 @@ const MoreMenu = ({
   row,
   onEdit,
   onClearAll,
+  editLabel,
+  clearLabel,
 }: {
   row: FleetRosterRowDto;
   /** «تعديل التعيين» — the note (not on a car the workshop holds, as the computer's pen). */
   onEdit: (() => void) | null;
   /** «إلغاء التعيين» — only on a car that carries a plan. */
   onClearAll: (() => void) | null;
+  /** The two items' words (the card's `menu`). */
+  editLabel: string;
+  clearLabel: string;
 }): JSX.Element => {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -173,7 +178,7 @@ const MoreMenu = ({
               )}
             >
               <SquarePenIcon className="h-[18px] w-[18px] text-brand-600 dark:text-brand-300" />
-              {t('fleet.roster.editAssignment')}
+              {editLabel}
             </button>
           )}
           {onClearAll !== null && (
@@ -191,7 +196,7 @@ const MoreMenu = ({
               )}
             >
               <Trash2Icon className="h-[18px] w-[18px]" />
-              {t('fleet.roster.clearAssignment')}
+              {clearLabel}
             </button>
           )}
         </div>
@@ -450,6 +455,13 @@ const SlotRow = ({
   );
 };
 
+/** The ⋮ menu's words, and when its «clear» item shows (the card's `menu`). */
+export interface CardMenu {
+  edit: string;
+  clear: string;
+  canClear: (row: FleetRosterRowDto) => boolean;
+}
+
 export const CarCard = ({
   row,
   layout,
@@ -459,6 +471,9 @@ export const CarCard = ({
   missionName,
   target,
   handlers,
+  workshopLock = true,
+  badges,
+  menu: words,
 }: {
   row: FleetRosterRowDto;
   layout: TouchLayout;
@@ -468,9 +483,25 @@ export const CarCard = ({
   missionName: (id: string | null) => string;
   target: SeatTarget | null;
   handlers: CardHandlers;
+  /**
+   * A car the workshop holds is LOCKED — the day's rule (FR-5), on by default. A board whose
+   * workshop car still has its crew edited (the standing crew) turns it off: the card is drawn as
+   * any other and its seats take drivers, while its badges still read the real row.
+   */
+  workshopLock?: boolean | undefined;
+  /** In place of the row's badges (both places they are drawn) — `RowBadges` by default. */
+  badges?: ReactNode;
+  /** The ⋮ words and when «clear» shows — «تعديل التعيين» / «إلغاء التعيين» / `carriesPlan`. */
+  menu?: CardMenu | undefined;
 }): JSX.Element => {
   const t = useT();
-  const locked = row.inMaintenance;
+  const locked = workshopLock && row.inMaintenance;
+  /** What the seats are told: an unlocked workshop car's seats are the road's. */
+  const seatRow = locked || !row.inMaintenance ? row : { ...row, inMaintenance: false };
+  const rowBadges = badges === undefined ? <RowBadges row={row} /> : badges;
+  const editWord = words?.edit ?? t('fleet.roster.editAssignment');
+  const clearWord = words?.clear ?? t('fleet.roster.clearAssignment');
+  const mayClear = words?.canClear ?? carriesPlan;
   const canSwap =
     mayPlan && !locked && row.driver1EmployeeId !== null && row.driver2EmployeeId !== null;
   const showSwap = mayPlan && !locked;
@@ -479,7 +510,7 @@ export const CarCard = ({
 
   const slot = (s: DutySlot): JSX.Element => (
     <SlotRow
-      row={row}
+      row={seatRow}
       slot={s}
       mayPlan={mayPlan}
       unsaved={unsaved}
@@ -536,10 +567,16 @@ export const CarCard = ({
     );
 
   const menuEdit = mayPlan && !locked ? () => handlers.onEditNotes(row) : null;
-  const menuClear = mayPlan && carriesPlan(row) ? () => handlers.onClearAll(row) : null;
+  const menuClear = mayPlan && mayClear(row) ? () => handlers.onClearAll(row) : null;
   const menu =
     menuEdit !== null || menuClear !== null ? (
-      <MoreMenu row={row} onEdit={menuEdit} onClearAll={menuClear} />
+      <MoreMenu
+        row={row}
+        onEdit={menuEdit}
+        onClearAll={menuClear}
+        editLabel={editWord}
+        clearLabel={clearWord}
+      />
     ) : null;
 
   const code = (
@@ -633,7 +670,7 @@ export const CarCard = ({
         data-notes={row.code}
         data-notes-edit="true"
         onClick={menuEdit}
-        aria-label={`${row.code} · ${t('fleet.roster.editAssignment')}`}
+        aria-label={`${row.code} · ${editWord}`}
         className="mt-2.5 flex min-h-11 w-full items-start gap-2 rounded-lg bg-slate-100/80 px-3 py-2 text-start text-[13px] leading-5 text-slate-700 transition-colors hover:bg-slate-200/70 active:bg-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800"
       >
         <span className="min-w-0 flex-1">{notesText}</span>
@@ -676,15 +713,11 @@ export const CarCard = ({
           ) : (
             <span className="flex min-h-8 min-w-0 items-center">{pill}</span>
           )}
-          {!stacked && <RowBadges row={row} />}
+          {!stacked && rowBadges}
         </div>
         {menu}
       </div>
-      {stacked && (
-        <div className="mt-2 empty:hidden">
-          <RowBadges row={row} />
-        </div>
-      )}
+      {stacked && <div className="mt-2 empty:hidden">{rowBadges}</div>}
       {stacked ? (
         <div className="mt-3 flex items-stretch gap-2">
           {/* Each seat in its own box: `h-full` (for side-by-side seats) resolves to auto here. */}

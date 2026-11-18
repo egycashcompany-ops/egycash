@@ -1916,8 +1916,10 @@ export type FleetRosterQuery = z.infer<typeof FleetRosterQuerySchema>;
 // (vehicle, date), a driver's eligibility is `driverAvailabilityOn(D)`, and an open workshop
 // visit covering D makes the vehicle unassignable. Every one of those facts is a fact ABOUT A
 // DAY. The fixed crew answers "who is this vehicle's standing crew" — a fact about the vehicle,
-// true until somebody changes it. So there is no date here, no mission, no notes, and no
-// availability verdict: a driver on leave next Tuesday is still the car's fixed driver.
+// true until somebody changes it. So there is no date here and no availability verdict: a driver
+// on leave next Tuesday is still the car's fixed driver. What a row carries beside its two slots —
+// the mission type the car normally runs and a note — is dateless too: facts about the car, kept
+// until somebody changes them, never a plan for a day.
 //
 // The two exclusivity rules ARE shared, because they are not about days: the same person cannot
 // hold both slots of one vehicle, and one driver belongs to one crew. They are re-stated below
@@ -1950,7 +1952,8 @@ export interface FleetFixedCrewRowDto {
 export interface FleetFixedRosterDto {
   rows: FleetFixedCrewRowDto[];
   /**
-   * The pool: every ACTIVE driver profile, undivided.
+   * The pool: the drivers registry — every employee in a driving seat — undivided, less only a
+   * fleet profile that EXISTS and has been switched off (the one thing the save also refuses).
    *
    * There is no unavailable half. `driverAvailabilityOn` answers a question about a DATE, and
    * this screen has none — so the pool is exactly the drivers the fleet has, each carrying the

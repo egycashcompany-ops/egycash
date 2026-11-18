@@ -79,8 +79,7 @@ export const assignDriver = (
     // Any OTHER car releases them — that is what makes one driver, one crew true. A car that
     // gives up its FIRST driver this way is left holding only a second, so it is re-seated.
     if (row.vehicleId !== vehicleId) {
-      const releases =
-        row.driver1EmployeeId === employeeId || row.driver2EmployeeId === employeeId;
+      const releases = row.driver1EmployeeId === employeeId || row.driver2EmployeeId === employeeId;
       // A car that had nothing to do with this drag comes back UNTOUCHED — the same object, not
       // an equal one. That is not a micro-optimisation, it is the difference between a save that
       // works and one that 400s.
@@ -117,7 +116,29 @@ export const assignDriver = (
 };
 
 /**
- * The pool: every active driver the server sent, MINUS everyone the DRAFT already seats.
+ * The two seats of one vehicle trade places — «السائق الأول يبقى التاني والعكس».
+ *
+ * Not a rule of its own: it is the drop the board already knows, seat 2's driver onto seat 1 of
+ * the same car, which `assignDriver` reads as a swap within the car. So the one-driver-one-crew
+ * rule and the seat order hold exactly as for a drag. With fewer than two drivers there is
+ * nothing to trade, and the rows come back with every value as it was.
+ */
+export const swapDrivers = (
+  rows: readonly FleetFixedCrewRowDto[],
+  vehicleId: string,
+): FleetFixedCrewRowDto[] => {
+  const row = rows.find((candidate) => candidate.vehicleId === vehicleId);
+  if (row === undefined || row.driver1EmployeeId === null || row.driver2EmployeeId === null) {
+    return [...rows];
+  }
+  return assignDriver(rows, vehicleId, 'driver1EmployeeId', row.driver2EmployeeId);
+};
+
+/**
+ * The pool: every driver the server sent (the drivers registry — every employee in a driving seat,
+ * less a fleet profile that exists and has been switched off), MINUS everyone the DRAFT already
+ * seats. The board model also takes out the drivers held on a car off this board
+ * (`lib/fixed-roster-model.ts`, `heldOffBoard`).
  *
  * Derived from the draft rather than from the server's own `assignedVehicleId`, because the pool
  * has to answer the board as it stands right now: a drag that has not been saved yet must still
@@ -180,14 +201,6 @@ export const applyEdit = (
 };
 
 /**
- * Empty one slot. Every other row is left exactly as it was.
- *
- * Clearing slot 1 of a crew that still has a second driver PROMOTES that driver into slot 1
- * rather than leaving the car holding only a second man — see `seatOrder`. Clearing slot 2 is
- * the ordinary case and simply empties it.
- */
-
-/**
  * Take EVERY driver off one vehicle, in one step.
  *
  * Not `CREW_SLOTS.reduce(clearSlot)`, and the difference is a defect somebody reported: clearing
@@ -209,6 +222,13 @@ export const clearCrew = (
       : row,
   );
 
+/**
+ * Empty one slot. Every other row is left exactly as it was.
+ *
+ * Clearing slot 1 of a crew that still has a second driver PROMOTES that driver into slot 1
+ * rather than leaving the car holding only a second man — see `seatOrder`. Clearing slot 2 is
+ * the ordinary case and simply empties it.
+ */
 export const clearSlot = (
   rows: readonly FleetFixedCrewRowDto[],
   vehicleId: string,
@@ -261,7 +281,7 @@ export const changedRows = (
     .map((row) => ({ vehicleId: row.vehicleId, ...editable(row) }));
 };
 
-/** Is there anything to save? The unsaved-changes banner and the save button both ask this. */
+/** Is there anything to save? `changedRows` has a row — the board model reads that list itself. */
 export const isDirty = (
   saved: readonly FleetFixedCrewRowDto[],
   draft: readonly FleetFixedCrewRowDto[],

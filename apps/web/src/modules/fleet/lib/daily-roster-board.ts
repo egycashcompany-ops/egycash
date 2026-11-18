@@ -256,8 +256,9 @@ export const availableDrivers = <T extends { employeeId: string }>(
  * fact about the day, and the draft holds the same cars. A driver held on a car that IS on the
  * board is the draft's to place, and `availableDrivers` alone decides him.
  *
- * A sibling of `availableDrivers` and not a change to it: the fixed roster shares that function
- * and badges such a driver in its own pool (`heldElsewhere`), which stays as it is.
+ * A sibling of `availableDrivers` and not a change to it. The standing-crew board reads it too
+ * (`lib/fixed-roster-model.ts`): it lists such a driver as a seated row with no code — the blue
+ * «سيارة أخرى» — and, as here, never offers him to a seat and never counts him.
  */
 export const heldOffBoard = <T extends { employeeId: string; assignedVehicleId: string | null }>(
   all: readonly T[],

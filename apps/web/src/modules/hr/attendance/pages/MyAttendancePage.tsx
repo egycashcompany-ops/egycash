@@ -27,8 +27,8 @@ import {
 import { useMyEmployeeSummary } from '../../../../platform/home/home-api';
 import { useEmployeePhotoUrl } from '../../employee-management/employees/api/employee-photo';
 
-/** One page of days: 92 is the longest period the picker allows, and 100 is the server's cap. */
-const PAGE_SIZE = 100;
+// No page size any more: `/days/employee-period` answers one entry per calendar DATE rather than a
+// page of stored rows, so there is no page to size and no tail to lose.
 
 export const MyAttendancePage = (): JSX.Element => {
   const t = useT();

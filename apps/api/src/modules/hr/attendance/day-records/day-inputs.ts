@@ -74,8 +74,6 @@ export interface AssembledDay {
 export interface DayInputs {
   /** Null when the employee was not employed on that date. */
   assemble: (employee: EmployeeDoc, workDate: Date, now: Date) => AssembledDay | null;
-  /** Whether that date has any scan for that employee — the sheet's unlinked line reads this too. */
-  hasPunches: (employeeId: string, workDate: Date) => boolean;
 }
 
 const leaveKey = (employeeId: string, workDate: Date): string =>
@@ -159,7 +157,9 @@ export const loadDayInputs = async (
   const assignmentsByEmployee = new Map<string, ShiftAssignmentDoc[]>();
   for (const row of assignmentRows) {
     const key = String(row.employeeId);
-    assignmentsByEmployee.set(key, [...(assignmentsByEmployee.get(key) ?? []), row]);
+    const list = assignmentsByEmployee.get(key);
+    if (list === undefined) assignmentsByEmployee.set(key, [row]);
+    else list.push(row);
   }
   const namedShiftIds = [...new Set(assignmentRows.map((r): string => String(r.shiftId)))];
   const shiftDocs =
@@ -205,10 +205,15 @@ export const loadDayInputs = async (
       outAt: row.outAt ?? null,
     });
   }
+  // Appended in place, NOT rebuilt per row: one employee's year holds hundreds of punches, and
+  // `[...prev, row]` per row copies the whole array each time. The sheet would never have noticed
+  // (two punches a person); a two-year employee period would.
   const punchesByEmployee = new Map<string, AttendancePunchDoc[]>();
   for (const punch of punchRows) {
     const key = String(punch.employeeId);
-    punchesByEmployee.set(key, [...(punchesByEmployee.get(key) ?? []), punch]);
+    const list = punchesByEmployee.get(key);
+    if (list === undefined) punchesByEmployee.set(key, [punch]);
+    else list.push(punch);
   }
 
   const expectationFor = (employee: EmployeeDoc, workDate: Date): ResolvedExpectation | null => {
@@ -267,14 +272,6 @@ export const loadDayInputs = async (
           now,
         },
       };
-    },
-    hasPunches: (employeeId, workDateInput) => {
-      const workDate = toDateOnly(workDateInput);
-      const dayFrom = cairoInstant(workDate, '00:00').getTime();
-      const dayTo = cairoInstant(addDays(workDate, 1), '00:00').getTime();
-      return (punchesByEmployee.get(employeeId) ?? []).some(
-        (p) => p.at.getTime() >= dayFrom && p.at.getTime() < dayTo,
-      );
     },
   };
 };

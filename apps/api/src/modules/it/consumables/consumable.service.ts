@@ -160,8 +160,8 @@ class ItConsumableService {
   }
 
   /**
-   * Add an item to a branch's store — only a branch the caller's `itAsset.create` reaches: the
-   * scope that hides another store from them must not let them stock it.
+   * Add an item to a branch's store — only a branch the caller's `itConsumable.create` reaches:
+   * the scope that hides another store from them must not let them stock it.
    *
    * No quantity is a field. An opening quantity is a `received` movement written in the SAME
    * transaction, and the counters are what that movement makes of an empty item — so the opening
@@ -169,8 +169,8 @@ class ItConsumableService {
    * inside the transaction too: a refused add gives it back.
    */
   async create(input: CreateItConsumable, ctx: AuthContext): Promise<ItConsumableDoc> {
-    if (!keyReachesBranch(ctx, 'itAsset.create', input.branchId)) {
-      throw new ForbiddenError('itAsset.create does not reach this branch');
+    if (!keyReachesBranch(ctx, 'itConsumable.create', input.branchId)) {
+      throw new ForbiddenError('itConsumable.create does not reach this branch');
     }
     await this.assertType(input.typeId);
     const branchId = new Types.ObjectId(input.branchId);
@@ -442,7 +442,10 @@ class ItConsumableService {
    * read with them for its code: the row already names that store, and the code is what the other
    * shelf calls the same thing), the employees through the directory, the assets THROUGH the
    * caller's scope (an asset from a branch they cannot see is not named), and the memos with their
-   * signed state (a memo that is gone is not listed, so the row offers none).
+   * signed state (a memo that is gone is not listed, so the row offers none). That scope is the
+   * store's read grant, the one the rows themselves were read under: the device an item went on
+   * is part of the item's record — its memo printed it — so the ledger names it to whoever may read
+   * the ledger, whether or not they also read the asset register.
    */
   async movementLabels(
     rows: readonly ItConsumableMovementDoc[],

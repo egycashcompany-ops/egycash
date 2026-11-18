@@ -390,7 +390,7 @@ describe('exitBreakdown — the figures (R-17, R-18, R-26)', () => {
     expect(out.topVehicles[4]).toMatchObject({ lastWorkType: null });
   });
 
-  it('an old-book exit with no registry car is never ranked (the facet groups registry cars only)', async () => {
+  it('an old-book exit is not in the registry cars’ facet (it is grouped by its code apart)', async () => {
     await breakdown();
     const facet = (aggregates[0]?.[1] as { $facet: Record<string, unknown[]> }).$facet;
     expect(facet['byVehicle']?.[0]).toEqual({ $match: { vehicleId: { $type: 'objectId' } } });
@@ -438,6 +438,187 @@ describe('exitBreakdown — the figures (R-17, R-18, R-26)', () => {
   });
 });
 
+describe('exitBreakdown — the old book folded into the live car of its code (D20)', () => {
+  const day = (ymd: string): Date => new Date(`${ymd}T00:00:00.000Z`);
+  /** An id that sorts after every id made so far — a visit recorded later. */
+  const later = (): Types.ObjectId => new Types.ObjectId();
+  const [V_CAR1_LAST, V_CAR2_LAST] = [oid(), oid()];
+  beforeEach(() => {
+    vi.spyOn(fleetVehicleTypeRepository, 'listAll').mockResolvedValue([]);
+    // The list's code match: the LIVE cars carrying a code, whitespace and Latin case aside.
+    vi.mocked(fleetVehicleRepository.liveIdsByCodes).mockImplementation(
+      async (codes: readonly string[]) =>
+        [...CARS.values()]
+          .filter(
+            (car) =>
+              !car.isDeleted && codes.some((code) => code.trim().replace(/\s+/g, ' ') === car.code),
+          )
+          .map((car) => String(car._id)),
+    );
+  });
+
+  const exits = (byBook: unknown[], raw: Record<string, unknown> = {}) => {
+    facets = [
+      {
+        state: [{ count: 14, open: 0, unregistered: 6, staySum: 14 }],
+        byWorkType: [],
+        byWorkshop: [],
+        byVehicle: [
+          {
+            _id: CAR1,
+            visits: 3,
+            lastInDate: day('2026-10-09'),
+            lastWorkTypeId: WT_BRAKES,
+            lastVisitId: V_CAR1_LAST,
+          },
+          {
+            _id: CAR2,
+            visits: 3,
+            lastInDate: day('2026-10-20'),
+            lastWorkTypeId: WT_OIL,
+            lastVisitId: V_CAR2_LAST,
+          },
+          {
+            _id: CAR_GONE,
+            visits: 2,
+            lastInDate: day('2026-10-20'),
+            lastWorkTypeId: WT_OIL,
+            lastVisitId: oid(),
+          },
+        ],
+        byBook,
+      },
+    ];
+    return fleetMaintenanceService.exitBreakdown(
+      filterPart(parse({ outFrom: '2026-10-01', outTo: '2026-10-31', ...raw })),
+    );
+  };
+  const book = (
+    code: string,
+    visits: number,
+    lastIn: string,
+    over: Record<string, unknown> = {},
+  ) => ({
+    _id: code,
+    visits,
+    lastInDate: day(lastIn),
+    lastWorkTypeId: WT_TYRES,
+    lastVisitId: later(),
+    ...over,
+  });
+
+  it('a book visit under a live car’s code joins that car: its exits, its later check-in, its work type', async () => {
+    // MT-3: «194» said 2 while its «فتح» (vehicleCodes=194) listed 3 — the car’s 2 and the book’s 1.
+    const out = await exits([book('201', 2, '2026-10-12')]);
+    expect(out.topVehicles[0]).toEqual({
+      vehicleId: String(CAR1),
+      code: '201',
+      typeName: null,
+      visits: 5,
+      lastInDate: '2026-10-12',
+      lastWorkType: { ar: 'إطارات', en: 'Tyres' },
+    });
+    // Folded visits are the car’s now, no longer «غير مسجّلة»: 6 − 2.
+    expect(out.unregistered).toBe(4);
+    // One read of the live registry by the book’s codes — the list’s own code match.
+    expect(fleetVehicleRepository.liveIdsByCodes).toHaveBeenCalledTimes(1);
+    expect(fleetVehicleRepository.liveIdsByCodes).toHaveBeenCalledWith(['201']);
+  });
+
+  it('the code matches as the list matches it — whitespace aside — and the earlier book check-in keeps the car’s', async () => {
+    const out = await exits([book(' 202 ', 1, '2026-10-02')]);
+    expect(out.topVehicles.find((row) => row.code === '202')).toMatchObject({
+      visits: 4,
+      lastInDate: '2026-10-20',
+      lastWorkType: { ar: 'تغيير زيت', en: 'Oil' },
+    });
+    expect(out.unregistered).toBe(5);
+  });
+
+  it('on the same check-in day the later recorded visit names the last work type', async () => {
+    // The car’s visit was recorded before the book’s (a later id): the book’s work type.
+    let out = await exits([book('202', 1, '2026-10-20')]);
+    expect(out.topVehicles.find((row) => row.code === '202')).toMatchObject({
+      visits: 4,
+      lastInDate: '2026-10-20',
+      lastWorkType: { ar: 'إطارات', en: 'Tyres' },
+    });
+    // A book visit recorded BEFORE the car’s (an older id): the car’s own work type stays.
+    out = await exits([
+      book('202', 1, '2026-10-20', { lastVisitId: new Types.ObjectId('000000000000000000000001') }),
+    ]);
+    expect(out.topVehicles.find((row) => row.code === '202')).toMatchObject({
+      visits: 4,
+      lastWorkType: { ar: 'تغيير زيت', en: 'Oil' },
+    });
+  });
+
+  it('a live car whose only exits are the book’s is ranked by them', async () => {
+    const out = await exits([book('205', 4, '2026-10-25')]);
+    expect(out.topVehicles[0]).toEqual({
+      vehicleId: String(CAR4),
+      code: '205',
+      typeName: null,
+      visits: 4,
+      lastInDate: '2026-10-25',
+      lastWorkType: { ar: 'إطارات', en: 'Tyres' },
+    });
+    expect(out.unregistered).toBe(2);
+  });
+
+  it('a code no live car carries — a deleted car’s, or none — stays «غير مسجّلة», never ranked', async () => {
+    const out = await exits([book('204', 1, '2026-10-25'), book('B-77', 2, '2026-10-26')]);
+    expect(out.topVehicles.map((row) => [row.code, row.visits])).toEqual([
+      ['202', 3],
+      ['201', 3],
+    ]);
+    expect(out.unregistered).toBe(6);
+  });
+
+  it('a type, operation or branch narrows the old book out: nothing is folded, no extra read', async () => {
+    for (const raw of [{ operationIds: O1 }, { typeIds: T1 }, { branchIds: B1 }]) {
+      vi.mocked(fleetVehicleRepository.liveIdsByCodes).mockClear();
+      const out = await exits([book('201', 2, '2026-10-12')], raw);
+      expect(out.topVehicles.find((row) => row.code === '201')?.visits, JSON.stringify(raw)).toBe(
+        3,
+      );
+      expect(out.unregistered).toBeNull();
+    }
+  });
+
+  it('typed codes keep the old book (the list’s `byVehicleOrBookCode`): it is folded there too', async () => {
+    const out = await exits([book('201', 2, '2026-10-12')], { vehicleCodes: '201' });
+    expect(out.topVehicles.find((row) => row.code === '201')?.visits).toBe(5);
+    // A vehicle clause applies: «غير مسجّلة» is not reported (R-13).
+    expect(out.unregistered).toBeNull();
+  });
+
+  it('no book visit in the view: the registry is not read again', async () => {
+    vi.mocked(fleetVehicleRepository.liveIdsByCodes).mockClear();
+    const out = await exits([]);
+    expect(out.unregistered).toBe(6);
+    expect(fleetVehicleRepository.liveIdsByCodes).not.toHaveBeenCalled();
+  });
+
+  it('the facet groups the old book’s rows by the code it wrote, in the same `$facet`', async () => {
+    await exits([]);
+    expect(aggregates).toHaveLength(1);
+    const facet = (aggregates[0]?.[1] as { $facet: Record<string, unknown[]> }).$facet;
+    expect(facet['byBook']?.[0]).toEqual({
+      $match: { vehicleId: null, vehicleCode: { $type: 'string' } },
+    });
+    const group = JSON.stringify(facet['byBook']?.[1]);
+    expect(group).toContain('"_id":"$vehicleCode"');
+    expect(group).toContain(
+      '"lastVisitId":{"$top":{"sortBy":{"inDate":-1,"_id":-1},"output":"$_id"}}',
+    );
+    // The registry cars’ facet carries the same tie-break id.
+    expect(JSON.stringify(facet['byVehicle']?.[1])).toContain(
+      '"lastVisitId":{"$top":{"sortBy":{"inDate":-1,"_id":-1},"output":"$_id"}}',
+    );
+  });
+});
+
 describe('openNow — «في الورشة الآن» (R-09)', () => {
   const T_MERC = oid();
   const stay = (over: Record<string, unknown>) => ({
@@ -455,24 +636,45 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
     ] as never);
   });
 
-  it('is the list with state=open, over the same vehicle filter', async () => {
+  it('is the list with state=open&to=<today>, over the same vehicle filter (D07)', async () => {
     facets = [{ total: [], longest: [], cars: [] }];
-    const listed = await listCountFilter({ open: 'true', branchIds: B1 });
+    const listed = await listCountFilter({ open: 'true', to: '2026-11-01', branchIds: B1 });
     await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: { branchIds: [B1] } });
     expect(matchOf(aggregates[0])).toEqual(listed);
+    // The check-in day is bounded by the end of Cairo today: a visit recorded for tomorrow is not
+    // in the workshop yet (the roster's covering-day rule), so no stay reads «منذ -1 يومًا».
+    expect(JSON.stringify(matchOf(aggregates[0]))).toContain(
+      '"inDate":{"$lt":"2026-11-02T00:00:00.000Z"}',
+    );
   });
 
-  it('splits by the car’s status now; a deleted car or a book row is in neither part', async () => {
+  it('the company view is bounded by the same day — the list with to=<today>, no vehicle clause', async () => {
+    facets = [{ total: [], longest: [], cars: [] }];
+    const listed = await listCountFilter({ open: 'true', to: '2026-11-01' });
+    await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: {} });
+    expect(matchOf(aggregates[0])).toEqual(listed);
+    // …and NOT the unbounded open list any more.
+    expect(matchOf(aggregates[0])).not.toEqual(await listCountFilter({ open: 'true' }));
+  });
+
+  it('splits by the car’s status now into four parts that add up to `open` (D06)', async () => {
     const visit = oid();
+    const CAR_DISPOSED = oid();
+    const CAR_MISSING = oid();
     facets = [
       {
-        total: [{ n: 5 }],
+        // 2 old-book visits (no `vehicleId`, so outside `cars`) + 7 registry-car visits.
+        total: [{ n: 9 }],
         longest: [stay({ _id: visit, vehicleId: CAR2 })],
         cars: [
           { _id: CAR1, visits: 1 },
           { _id: CAR2, visits: 1 },
           { _id: CAR3, visits: 1 },
           { _id: CAR_GONE, visits: 1 },
+          { _id: CAR4, visits: 1 },
+          { _id: CAR_DISPOSED, visits: 1 },
+          // A car the registry does not answer for at all.
+          { _id: CAR_MISSING, visits: 1 },
         ],
       },
     ];
@@ -480,13 +682,20 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       { _id: CAR1, code: '201', status: 'active', isDeleted: false },
       { _id: CAR2, code: '202', status: 'outOfService', isDeleted: false, typeId: T_MERC },
       { _id: CAR3, code: '203', status: 'active', isDeleted: false },
+      // Soft-deleted while in the workshop: no live car — whatever status it had.
       { _id: CAR_GONE, code: '204', status: 'active', isDeleted: true },
+      { _id: CAR4, code: '205', status: 'disposed', isDeleted: false },
+      { _id: CAR_DISPOSED, code: '206', status: 'disposed', isDeleted: false },
     ] as never);
     const out = await fleetMaintenanceService.openNow({ today: '2026-11-01', filter: {} });
     expect(out).toEqual({
-      open: 5,
+      open: 9,
       openActive: 2,
       openOutOfService: 1,
+      // «مكهنة»: live cars disposed of while in the workshop.
+      openDisposed: 2,
+      // «بلا سيارة في السجل»: the deleted car, the missing car and the two old-book visits.
+      openNoCar: 4,
       oldest: {
         vehicleId: String(CAR2),
         code: '202',
@@ -552,6 +761,11 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
     expect(out.longest[1]).toMatchObject({ vehicleId: null, typeName: null, workshop: null });
     expect(out.longest[3]).toMatchObject({ workType: null });
     expect(out.longest.length).toBeLessThanOrEqual(out.open);
+    // 3 live active cars; the deleted car and the 5 visits outside `cars` have no live car.
+    expect([out.openActive, out.openOutOfService, out.openDisposed, out.openNoCar]).toEqual([
+      3, 0, 0, 6,
+    ]);
+    expect(out.openActive + out.openOutOfService + out.openDisposed + out.openNoCar).toBe(out.open);
     expect(fleetCatalogItemRepository.namesByIds).toHaveBeenCalledTimes(1);
     expect(fleetVehicleTypeRepository.listAll).toHaveBeenCalledTimes(1);
   });
@@ -577,6 +791,9 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       open: 1,
       openActive: 0,
       openOutOfService: 0,
+      openDisposed: 0,
+      // The old book's visit has no registry car: its own part, so the parts still add up.
+      openNoCar: 1,
       oldest: { vehicleId: null, code: 'B-77', inDate: '2026-11-01', days: 0, deleted: false },
     });
     expect(out.longest).toEqual([
@@ -604,6 +821,8 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
       open: 0,
       openActive: 0,
       openOutOfService: 0,
+      openDisposed: 0,
+      openNoCar: 0,
       oldest: null,
       longest: [],
     });

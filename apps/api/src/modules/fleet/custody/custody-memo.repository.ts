@@ -1,7 +1,12 @@
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
-import { type FleetReceiptMemoLinkDto, type Paginated } from '@ecms/contracts';
+import {
+  type FleetCustodyMemoStatus,
+  type FleetReceiptMemoLinkDto,
+  type Paginated,
+} from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { BusinessRuleError } from '../../../shared/errors';
+import { custodyMemoStatusOf } from './custody-dashboard';
 import { FleetCustodyMemoModel, type FleetCustodyMemoDoc } from './custody-memo.model';
 
 const dayOf = (value: Date | null | undefined): string | null =>
@@ -71,6 +76,29 @@ class FleetCustodyMemoRepository extends BaseRepository<FleetCustodyMemoDoc> {
       .lean<{ _id: Types.ObjectId; no: number }[]>()
       .exec();
     return new Map(rows.map((row) => [String(row._id), row.no]));
+  }
+
+  /**
+   * id → the status of each LIVE memo among `ids` (`custodyMemoStatusOf`: pending, held, or
+   * replenished) — ONE read, their replenishment only. A deleted or unknown id is simply absent, so a
+   * receipt naming it reads as «خارج المذكرات» (`custodyMemoStateOf`). «لوحة تحكم المصروفات»'s
+   * `memoStates` and the fleet dashboard's `custodyStates` both ask here.
+   */
+  async statusesByIds(ids: readonly string[]): Promise<Map<string, FleetCustodyMemoStatus>> {
+    const valid = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .select({ replenishmentId: 1, replenishmentHeld: 1 })
+      .lean<
+        {
+          _id: Types.ObjectId;
+          replenishmentId?: Types.ObjectId | null;
+          replenishmentHeld?: boolean;
+        }[]
+      >()
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), custodyMemoStatusOf(row)]));
   }
 
   /**

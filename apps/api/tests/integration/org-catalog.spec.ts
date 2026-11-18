@@ -26,6 +26,7 @@ import {
   toDepartmentDto,
 } from '../../src/platform/organization';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { JobPapersModel } from '../../src/modules/hr/contracts/job-papers/job-papers.model';
 import { runOrgCatalogMigration } from '../../src/org-catalog-migration/apply';
 
 let replSet: MongoMemoryReplSet | null = null;
@@ -78,6 +79,7 @@ beforeEach(async () => {
     DepartmentCatalogModel.deleteMany({}),
     SectionCatalogModel.deleteMany({}),
     EmployeeModel.deleteMany({}),
+    JobPapersModel.deleteMany({}),
   ]);
 });
 
@@ -495,6 +497,317 @@ describe('the migration, against real rows', () => {
       .exec();
     expect(String(entry?.departmentCatalogId)).toBe(String(departmentEntry?._id));
     expect(await SectionModel.countDocuments({ catalogId: entry?._id })).toBe(2);
+  });
+
+  /**
+   * «مستندات الوظائف» keep a department's lines under `catalogId ?? row id`, so linking would leave
+   * every line saved on a branch copy unread. The migration moves them with the department.
+   */
+  describe('«مستندات الوظائف» follow their department', () => {
+    const paperLine = async (
+      departmentId: Types.ObjectId,
+      jobTitleId: Types.ObjectId,
+      added: string[],
+      updatedAt: Date,
+    ) => {
+      const doc = await JobPapersModel.create({ departmentId, jobTitleId, added, removed: [] });
+      await JobPapersModel.collection.updateOne({ _id: doc._id }, { $set: { updatedAt } });
+      return doc;
+    };
+    const live = async () => JobPapersModel.find({ isDeleted: false }).lean().exec();
+
+    it('moves each line to the entry, keeps one per job, and names the lines that disagreed', async () => {
+      const ids = await sevenBranches('العمليات');
+      const [driver, guard] = [new Types.ObjectId(), new Types.ObjectId()];
+      await JobPapersModel.db.collection('job_titles').insertMany([
+        { _id: driver, name: { ar: 'سائق', en: 'Driver' } },
+        { _id: guard, name: { ar: 'حارس', en: 'Guard' } },
+      ]);
+      const row = (n: number) => new Types.ObjectId(ids[n]);
+      // The driver's line on two copies, saying different things; the guard's on two, the same.
+      await paperLine(row(0), driver, ['weapon'], new Date('2026-10-01'));
+      const newest = await paperLine(row(1), driver, ['card'], new Date('2026-11-01'));
+      await paperLine(row(2), guard, ['weapon'], new Date('2026-10-01'));
+      await paperLine(row(3), guard, ['weapon'], new Date('2026-10-02'));
+
+      const dry = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(dry.papers.moves).toBe(2);
+      expect(dry.papers.retired).toBe(2);
+      expect(dry.papers.conflicts).toEqual([
+        {
+          department: 'العمليات',
+          job: 'سائق',
+          kept: { from: expect.any(String), added: ['card'], removed: [] },
+          dropped: [{ from: expect.any(String), added: ['weapon'], removed: [] }],
+        },
+      ]);
+      expect(await live()).toHaveLength(4); // the dry run moved nothing
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.written).toBe(true);
+      const entry = await DepartmentCatalogModel.findOne({ isDeleted: false }).lean().exec();
+      const lines = await live();
+      expect(lines).toHaveLength(2);
+      for (const line of lines) expect(String(line.departmentId)).toBe(String(entry?._id));
+      const driverLine = lines.find((line) => String(line.jobTitleId) === String(driver));
+      expect(String(driverLine?._id)).toBe(String(newest._id));
+      expect(driverLine?.added).toEqual(['card']);
+    });
+
+    it('moves a merged department\'s lines to where its survivor\'s go', async () => {
+      const branch = await makeBranch('المهندسين');
+      const loser = await legacyDepartment(
+        { code: 'DEP-8041', branchId: String(branch._id), name: { ar: 'العليا', en: 'Top' } },
+        ACTOR,
+      );
+      await legacyDepartment(
+        { code: 'CAI-80', branchId: String(branch._id), name: { ar: 'العليا', en: 'Top' } },
+        ACTOR,
+      );
+      await paperLine(loser._id, new Types.ObjectId(), ['weapon'], new Date('2026-10-01'));
+
+      const report = await runOrgCatalogMigration({
+        write: true,
+        actorId: ACTOR,
+        merges: [{ loserCode: 'DEP-8041', winnerCode: 'CAI-80' }],
+      });
+      expect(report.plan.problems).toEqual([]);
+      const entry = await DepartmentCatalogModel.findOne({ isDeleted: false }).lean().exec();
+      const lines = await live();
+      expect(lines.map((line) => String(line.departmentId))).toEqual([String(entry?._id)]);
+    });
+  });
+
+  /**
+   * The company list may already hold the department: given by hand on its page, or created when a
+   * department was added on its own page since P-ORG-3 (§5.6). The rows join that entry.
+   */
+  describe('an entry the company list already has', () => {
+    it('is joined, not duplicated', async () => {
+      const existing = await departmentCatalogService.create(
+        { code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } },
+        ACTOR,
+      );
+      const ids = await sevenBranches('العمليات');
+
+      const dry = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(dry.joined.departments).toEqual([
+        { code: expect.any(String), name: 'العمليات', entryCode: 'OPS' },
+      ]);
+      // Every copy takes the entry's spelling, and the dry run lists each one that changes.
+      expect(dry.renames).toHaveLength(7);
+      expect(dry.renames[0]?.to).toEqual({ ar: 'العمليات', en: 'Operations' });
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.plan.problems).toEqual([]);
+      expect(report.created.departmentEntries).toBe(0);
+      expect(await DepartmentCatalogModel.countDocuments({ isDeleted: false })).toBe(1);
+      const rows = await DepartmentModel.find({ _id: { $in: ids } }).lean().exec();
+      for (const row of rows) {
+        expect(String(row.catalogId)).toBe(String(existing._id));
+        expect(row.name.en).toBe('Operations'); // the entry's spelling
+      }
+    });
+
+    it('joins a section under it too, rather than making a second', async () => {
+      const entry = await departmentCatalogService.create(
+        { code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } },
+        ACTOR,
+      );
+      const section = await sectionCatalogService.create(
+        { code: 'TRS', name: { ar: 'الخزينة', en: 'Treasury' }, departmentCatalogId: String(entry._id) },
+        ACTOR,
+      );
+      const branch = await makeBranch('أ');
+      const department = await legacyDepartment(
+        { code: code('DEP'), branchId: String(branch._id), name: { ar: 'العمليات', en: 'Ops' } },
+        ACTOR,
+      );
+      const row = await legacySection(
+        { code: code('SEC'), departmentId: String(department._id), name: { ar: 'الخزينه', en: 'Treasury' } },
+        ACTOR,
+      );
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.plan.problems).toEqual([]);
+      expect(report.joined.sections).toHaveLength(1);
+      expect(report.created.sectionEntries).toBe(0);
+      expect(await SectionCatalogModel.countDocuments({ isDeleted: false })).toBe(1);
+      expect(String((await SectionModel.findById(row._id).lean().exec())?.catalogId)).toBe(String(section._id));
+    });
+
+    it('refuses while a branch already holds a linked copy beside an unlinked one, and names the merge', async () => {
+      const entry = await departmentCatalogService.create(
+        { code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } },
+        ACTOR,
+      );
+      const branch = await makeBranch('أ');
+      const linked = await legacyDepartment(
+        { code: 'DEP-L1', branchId: String(branch._id), name: { ar: 'العمليات', en: 'Operations' } },
+        ACTOR,
+      );
+      await DepartmentModel.updateOne({ _id: linked._id }, { $set: { catalogId: entry._id } });
+      await legacyDepartment(
+        { code: 'DEP-U1', branchId: String(branch._id), name: { ar: 'العمليات', en: 'Ops' } },
+        ACTOR,
+      );
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.written).toBe(false);
+      expect(report.plan.problems.join(' ')).toContain('--merge DEP-U1=DEP-L1');
+      expect(await DepartmentModel.countDocuments({ catalogId: entry._id })).toBe(1);
+
+      // The merge it names resolves it.
+      const merged = await runOrgCatalogMigration({
+        write: true,
+        actorId: ACTOR,
+        merges: [{ loserCode: 'DEP-U1', winnerCode: 'DEP-L1' }],
+      });
+      expect(merged.plan.problems).toEqual([]);
+      expect(merged.written).toBe(true);
+      expect(await DepartmentCatalogModel.countDocuments({ isDeleted: false })).toBe(1);
+    });
+  });
+
+  describe('what the dry run checks before anything is written', () => {
+    const db = () => DepartmentModel.db;
+
+    it('gives a planned entry a free code when the company list already holds its code', async () => {
+      await departmentCatalogService.create({ code: 'DEP-7001', name: { ar: 'الأمن', en: 'Security' } }, ACTOR);
+      const branch = await makeBranch('أ');
+      await legacyDepartment({ code: 'DEP-7001', branchId: String(branch._id), name: { ar: 'العمليات', en: 'Ops' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.plan.problems).toEqual([]);
+      expect(report.recoded).toEqual([{ name: 'العمليات', from: 'DEP-7001', to: 'DC-0001' }]);
+      expect(report.written).toBe(true);
+      expect(await DepartmentCatalogModel.countDocuments({ isDeleted: false })).toBe(2);
+    });
+
+    it('keeps a row\'s English name where the company list has only the Arabic again', async () => {
+      // As the workforce importer wrote them: the Arabic name in English too.
+      const entry = await departmentCatalogService.create({ code: 'TOP', name: { ar: 'العليا', en: 'العليا' } }, ACTOR);
+      const branch = await makeBranch('أ');
+      const row = await legacyDepartment(
+        { code: 'CAI-90', branchId: String(branch._id), name: { ar: 'العليا', en: 'Top Management' } },
+        ACTOR,
+      );
+
+      const dry = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(dry.englishKept).toEqual([{ code: 'TOP', name: 'العليا', en: 'Top Management' }]);
+      expect(dry.renames).toEqual([]);
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.written).toBe(true);
+      expect((await DepartmentCatalogModel.findById(entry._id).lean().exec())?.name.en).toBe('Top Management');
+      expect((await DepartmentModel.findById(row._id).lean().exec())?.name).toEqual({ ar: 'العليا', en: 'Top Management' });
+    });
+
+    it('carries that English to the rows already linked to the entry, and lists them', async () => {
+      const entry = await departmentCatalogService.create({ code: 'TOP', name: { ar: 'العليا', en: 'العليا' } }, ACTOR);
+      const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
+      // The importer's own row, linked from the start with the entry's spelling.
+      const linked = await legacyDepartment({ code: 'DEP-8201', branchId: String(a._id), name: { ar: 'العليا', en: 'العليا' } }, ACTOR);
+      await DepartmentModel.updateOne({ _id: linked._id }, { $set: { catalogId: entry._id } });
+      await legacyDepartment({ code: 'CAI-91', branchId: String(b._id), name: { ar: 'العليا', en: 'Top Management' } }, ACTOR);
+
+      const dry = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(dry.renames).toEqual([
+        { code: 'DEP-8201', from: { ar: 'العليا', en: 'العليا' }, to: { ar: 'العليا', en: 'Top Management' } },
+      ]);
+      await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect((await DepartmentModel.findById(linked._id).lean().exec())?.name.en).toBe('Top Management');
+    });
+
+    it('takes the English of a department merged away when its survivor has none', async () => {
+      const branch = await makeBranch('أ');
+      await legacyDepartment({ code: 'DEP-8301', branchId: String(branch._id), name: { ar: 'العليا', en: 'Top Management' } }, ACTOR);
+      await legacyDepartment({ code: 'CAI-93', branchId: String(branch._id), name: { ar: 'العليا', en: 'العليا' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({
+        write: true,
+        actorId: ACTOR,
+        merges: [{ loserCode: 'DEP-8301', winnerCode: 'CAI-93' }],
+      });
+      expect(report.plan.problems).toEqual([]);
+      expect(report.englishKept.map((kept) => kept.en)).toEqual(['Top Management']);
+      expect((await DepartmentCatalogModel.findOne({ isDeleted: false }).lean().exec())?.name.en).toBe('Top Management');
+    });
+
+    it('keeps no English another entry already holds, and says so', async () => {
+      await departmentCatalogService.create({ code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } }, ACTOR);
+      const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
+      // The oldest copy has no English; a younger one has an English name OPS already holds.
+      await legacyDepartment({ code: 'DEP-8401', branchId: String(a._id), name: { ar: 'التشغيل', en: 'التشغيل' } }, ACTOR);
+      await legacyDepartment({ code: 'DEP-8403', branchId: String(b._id), name: { ar: 'التشغيل', en: 'operations' } }, ACTOR);
+      // An Arabic spelling in the English field is no English at all.
+      await legacyDepartment({ code: 'DEP-8402', branchId: String(a._id), name: { ar: 'العد و الفرز', en: 'العد والفرز' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(report.englishKept).toEqual([]);
+      expect(report.warnings.join(' ')).toContain('already another entry');
+    });
+
+    it('gives a new entry the first real English name among its rows, oldest first', async () => {
+      const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
+      await legacyDepartment({ code: 'DEP-8101', branchId: String(a._id), name: { ar: 'الحركة', en: 'الحركة' } }, ACTOR);
+      await legacyDepartment({ code: 'DEP-8102', branchId: String(b._id), name: { ar: 'الحركة', en: 'Fleet' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.englishKept).toEqual([{ code: 'DEP-8101', name: 'الحركة', en: 'Fleet' }]);
+      const entry = await DepartmentCatalogModel.findOne({ isDeleted: false }).lean().exec();
+      expect(entry?.name).toEqual({ ar: 'الحركة', en: 'Fleet' });
+      expect(await DepartmentModel.countDocuments({ catalogId: entry?._id, 'name.en': 'Fleet' })).toBe(2);
+    });
+
+    it('refuses to join an entry the company list has stopped', async () => {
+      const entry = await departmentCatalogService.create({ code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } }, ACTOR);
+      await DepartmentCatalogModel.updateOne({ _id: entry._id }, { $set: { status: 'inactive' } });
+      await sevenBranches('العمليات');
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.written).toBe(false);
+      expect(report.plan.problems.join(' ')).toContain('stopped in the company list');
+      expect(await DepartmentModel.countDocuments({ catalogId: { $ne: null } })).toBe(0);
+    });
+
+    it('lists an approval chain that starts applying, and waits for leave requests already awaiting it', async () => {
+      const entry = await departmentCatalogService.create({ code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } }, ACTOR);
+      const ids = await sevenBranches('العمليات');
+      await db().collection('approval_workflows').insertOne({
+        requestType: 'leave', departmentCatalogId: entry._id, branchId: null, isActive: true, isDeleted: false, steps: [],
+      });
+      const pending = await db().collection('hr_leave_requests').insertOne({
+        status: 'pendingApproval', departmentId: new Types.ObjectId(ids[0]), isDeleted: false,
+      });
+      try {
+        const refused = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+        expect(refused.written).toBe(false);
+        expect(refused.approvals).toEqual({ chains: [{ requestType: 'leave', department: 'العمليات' }], pendingRequests: 1 });
+        expect(refused.plan.problems.join(' ')).toContain('awaiting approval');
+
+        // Decided: the chain is still listed, and nothing stops the run.
+        await db().collection('hr_leave_requests').updateOne({ _id: pending.insertedId }, { $set: { status: 'approved' } });
+        const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+        expect(report.approvals.pendingRequests).toBe(0);
+        expect(report.approvals.chains).toHaveLength(1);
+        expect(report.written).toBe(true);
+      } finally {
+        await db().collection('approval_workflows').deleteMany({});
+        await db().collection('hr_leave_requests').deleteMany({});
+      }
+    });
+
+    it('warns where the plan groups names the screens show apart', async () => {
+      // The importer's fold joins ظ and ض; the screens' does not.
+      const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
+      await legacyDepartment({ code: code('DEP'), branchId: String(a._id), name: { ar: 'الحفظ', en: 'Keeping' } }, ACTOR);
+      await legacyDepartment({ code: code('DEP'), branchId: String(b._id), name: { ar: 'الحفض', en: 'Keeping' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(report.plan.departments).toHaveLength(1);
+      expect(report.warnings.join(' ')).toContain('joins names the screens show apart');
+    });
   });
 
   it('leaves an organization with nothing in it alone', async () => {

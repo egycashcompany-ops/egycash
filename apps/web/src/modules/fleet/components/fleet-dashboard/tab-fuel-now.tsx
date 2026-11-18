@@ -290,7 +290,18 @@ const ExpiryKpi = ({ f, links }: { f: Cards; links: NowLinks }): JSX.Element => 
         )
       }
       red={
-        f.expired > 0 ? (
+        f.expired === 0 ? undefined : expired === null ? (
+          // A reader whose reach holds no branch (D21): the red phrase stands plain.
+          <span
+            data-fuel-expired={String(f.expired)}
+            className={cn('inline-flex items-center gap-1', RED)}
+          >
+            <Phrase
+              text={w('kpi.expiring.expired')}
+              parts={{ cards: <Dual n={f.expired} noun="card" figure={RED} /> }}
+            />
+          </span>
+        ) : (
           <Link
             to={expired.to}
             data-metric={expired.metric}
@@ -303,7 +314,7 @@ const ExpiryKpi = ({ f, links }: { f: Cards; links: NowLinks }): JSX.Element => 
             />
             <Icon d={I.arrow} className="h-3.5 w-3.5" />
           </Link>
-        ) : undefined
+        )
       }
       footIcon={I.cog}
       foot={w('kpi.expiring.foot')}

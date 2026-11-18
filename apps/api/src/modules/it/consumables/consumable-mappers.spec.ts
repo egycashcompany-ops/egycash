@@ -105,6 +105,12 @@ describe('a movement on the ledger', () => {
     });
   });
 
+  it('carries its version — what «تعديل الجهاز» sends back, so a change made first is a conflict', () => {
+    const corrected = { ...issued(null), __v: 2 } as unknown as ItConsumableMovementDoc;
+    expect(toItConsumableMovementDto(issued(null), labels()).version).toBe(0);
+    expect(toItConsumableMovementDto(corrected, labels()).version).toBe(2);
+  });
+
   it('keeps the ids of what it cannot name — an asset outside the reader’s scope stays unnamed', () => {
     const row = toItConsumableMovementDto(issued(null), labels({ assets: new Map() }));
     expect(row).toMatchObject({ assetId: String(ASSET), assetCode: null, assetName: null });

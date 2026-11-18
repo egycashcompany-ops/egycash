@@ -18,7 +18,7 @@
 // «تحويل إلى فرع» (2026-11-11) — «لو مثلاً فى 10 ماوس .. فممكن أنقل 5 لفرع تاني»: one or more items
 // of one store, each with how many, to another branch's store, at once and with no paper. Its rules
 // are `lib/consumable-transfer.ts`.
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import {
   IT_CONSUMABLE_ISSUE_MAX_LINES,
   IT_CONSUMABLE_ISSUE_REASONS,
@@ -32,6 +32,7 @@ import {
 } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable } from '../../../shared/ui/DataTable';
@@ -46,7 +47,8 @@ import {
   useIssueItConsumables,
   useItBranchOptions,
   useItConsumableMovements,
-  useItMoveTargets,
+  useItConsumableTransferTargets,
+  useItPerson,
   useReceiveItConsumable,
   useReturnItConsumable,
   useScrapItConsumable,
@@ -61,10 +63,22 @@ import {
   type ConsumableTransferDraftLine,
 } from '../lib/consumable-transfer';
 import { branchMoveTargets } from '../lib/branch-move-targets';
+import {
+  clearedLineNumbers,
+  heldByOther,
+  holderAnswer,
+  holderName,
+  issueHolderReducer,
+  issueHolderStart,
+  lineNumber,
+  type IssueDeviceLine,
+  type IssueHolderEvent,
+  type IssueHolderState,
+} from '../lib/consumable-issue-holder';
 import { AssetPicker } from './AssetPicker';
 import { ConsumablePicker } from './ConsumablePicker';
 import { useConsumableMemoPrinter } from './ConsumableMemo';
-import { useConsumableMovementColumns } from './ConsumableMovements';
+import { useConsumableMovementLedger } from './ConsumableMovements';
 import { EmployeePicker } from './EmployeePicker';
 import { ItCatalogSelect } from './ItCatalogSelect';
 
@@ -707,14 +721,19 @@ export const ReturnConsumableDialog = ({
 //
 // Each line may name the register's asset the item was installed on («مركّب على»), and why it was
 // issued: new, or in place of a damaged one — and then the damaged unit counts as scrap.
+//
+// The person and the devices find each other (2026-11-17, `lib/consumable-issue-holder.ts`): a
+// person chosen first lists what they hold now in every line's «مركّب على», with «جهاز آخر» under
+// it for any other device of the register; a device picked first fills the person with whoever
+// holds it — when they still work here. Changing the person takes only the previous person's
+// devices off the lines.
 
-interface IssueLine {
+interface IssueLine extends IssueDeviceLine {
   /** A stable key for the row, so a removed line does not hand its boxes to the next. */
   key: number;
   consumable: ItConsumableDto | null;
   qty: string;
   reason: ItConsumableIssueReason;
-  assetId: string;
 }
 
 const blankLine = (key: number, consumable: ItConsumableDto | null = null): IssueLine => ({
@@ -723,7 +742,19 @@ const blankLine = (key: number, consumable: ItConsumableDto | null = null): Issu
   qty: '1',
   reason: 'new',
   assetId: '',
+  asset: null,
 });
+
+const issueReducer = (
+  state: IssueHolderState<IssueLine>,
+  event: IssueHolderEvent<IssueLine>,
+): IssueHolderState<IssueLine> => issueHolderReducer(state, event);
+
+/** «٢ و٣» — the lines a message is about, as the dialog numbers them. */
+const lineList = (numbers: readonly number[], locale: Locale): string =>
+  new Intl.ListFormat(locale, { type: 'conjunction' }).format(
+    numbers.map((n) => formatNumber(n, locale)),
+  );
 
 export const IssueConsumablesDialog = ({
   open,
@@ -736,38 +767,58 @@ export const IssueConsumablesDialog = ({
   item: ItConsumableDto | null;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branches = useItBranchOptions();
   const issue = useIssueItConsumables();
   const printer = useConsumableMemoPrinter();
-  const [employeeId, setEmployeeId] = useState('');
-  const [employeeLabel, setEmployeeLabel] = useState('');
+  // «مركّب على» names one of the register's ASSETS, and its search reads `/it/assets`: offered
+  // only to a reader of the assets. The store's own grants issue an item; they do not open the
+  // register of devices (the server refuses an asset outside `itAsset.view` too).
+  const canAssets = can('itAsset.view');
+  // Who receives and the lines, in one reducer: choosing a person and a line's device each change
+  // the other (`lib/consumable-issue-holder.ts`).
+  const [state, dispatch] = useReducer(issueReducer, [blankLine(0, item)], issueHolderStart);
+  const { employeeId, employeeLabel, lines } = state;
   const [issuedAt, setIssuedAt] = useState('');
   const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<IssueLine[]>([blankLine(0, item)]);
   const [nextKey, setNextKey] = useState(1);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      setEmployeeId('');
-      setEmployeeLabel('');
+      dispatch({ type: 'reset', lines: [blankLine(0, item)] });
       setIssuedAt(nowLocal());
       setNotes('');
-      setLines([blankLine(0, item)]);
       setNextKey(1);
       setError(null);
     }
   }, [open, item]);
 
-  const patchLine = (key: number, update: Partial<IssueLine>): void =>
-    setLines((prev) => prev.map((line) => (line.key === key ? { ...line, ...update } : line)));
+  // A device picked with nobody chosen: its holder is read before the person is filled, so a
+  // leaver is never filled in (the employee box offers none either). The answer is handed to the
+  // reducer, which drops it if the user has moved on meanwhile. What to hand it is `holderAnswer`.
+  const asking = state.asking;
+  const holderRead = useItPerson(asking?.employeeId ?? '', canAssets);
+  useEffect(() => {
+    const answer = holderAnswer<IssueLine>(asking, {
+      data: holderRead.data,
+      isError: holderRead.isError,
+    });
+    if (answer !== null) dispatch(answer);
+  }, [asking, holderRead.data, holderRead.isError]);
+
+  const patchLine = (
+    key: number,
+    update: Partial<Omit<IssueLine, 'key' | 'assetId' | 'asset'>>,
+  ): void => dispatch({ type: 'patch', key, update });
   const addLine = (): void => {
-    setLines((prev) => [...prev, blankLine(nextKey)]);
+    dispatch({ type: 'add', line: blankLine(nextKey) });
     setNextKey((k) => k + 1);
   };
-  const removeLine = (key: number): void =>
-    setLines((prev) => (prev.length === 1 ? prev : prev.filter((line) => line.key !== key)));
+  const removeLine = (key: number): void => dispatch({ type: 'remove', key });
+  const cleared = clearedLineNumbers(state);
+  const noteLine = state.note === null ? null : lineNumber(state, state.note.lineKey);
 
   // One memo is one branch's store: the first item chosen decides it, and the other lines search
   // that branch only.
@@ -834,12 +885,34 @@ export const IssueConsumablesDialog = ({
           <EmployeePicker
             value={employeeId}
             valueLabel={employeeLabel}
-            onChange={(id, label) => {
-              setEmployeeId(id);
-              setEmployeeLabel(label);
-            }}
+            onChange={(id, label) => dispatch({ type: 'person', employeeId: id, label })}
             ariaLabel={t('it.consumables.issue.employee')}
           />
+          {/* Whether a picked device filled the person — or why it could not. */}
+          <div aria-live="polite">
+            {state.note !== null && noteLine !== null && (
+              <p
+                role="note"
+                data-issue-holder-note={state.note.kind}
+                className={
+                  state.note.kind === 'filled'
+                    ? 'text-xs text-slate-500 dark:text-slate-400'
+                    : 'rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+                }
+              >
+                {state.note.kind === 'filled'
+                  ? t('it.consumables.issue.holderFilled', { n: formatNumber(noteLine, locale) })
+                  : state.note.kind === 'exited'
+                    ? t('it.consumables.issue.holderExited', {
+                        n: formatNumber(noteLine, locale),
+                        name: state.note.name,
+                      })
+                    : t('it.consumables.issue.holderUnreadable', {
+                        n: formatNumber(noteLine, locale),
+                      })}
+              </p>
+            )}
+          </div>
         </Field>
         <Field label={t('it.consumables.fields.at')}>
           <Input
@@ -866,6 +939,8 @@ export const IssueConsumablesDialog = ({
             const qty = lineQty(line);
             const tooMany =
               line.consumable !== null && Number.isInteger(qty) && qty > line.consumable.onHandQty;
+            // A device somebody else holds, picked through «جهاز آخر»: the person stays.
+            const otherHolder = heldByOther(line, employeeId);
             return (
               <li
                 key={line.key}
@@ -939,21 +1014,56 @@ export const IssueConsumablesDialog = ({
                     </Field>
                   </div>
                 </div>
-                <Field
-                  label={t('it.consumables.issue.installedOn')}
-                  hint={t('it.consumables.issue.installedOnHint')}
-                >
-                  <AssetPicker
-                    value={line.assetId}
-                    withoutStatus="disposed"
-                    onChange={(assetId) => patchLine(line.key, { assetId })}
-                    ariaLabel={t('it.consumables.issue.installedOn')}
-                  />
-                </Field>
+                {canAssets && (
+                  <Field
+                    label={t('it.consumables.issue.installedOn')}
+                    hint={t('it.consumables.issue.installedOnHint')}
+                  >
+                    <AssetPicker
+                      value={line.assetId}
+                      withoutStatus="disposed"
+                      holderEmployeeId={employeeId}
+                      holderLabel={employeeLabel}
+                      showHolder
+                      allowOther
+                      onChange={(assetId, asset) =>
+                        dispatch({ type: 'device', key: line.key, assetId, asset: asset ?? null })
+                      }
+                      ariaLabel={t('it.consumables.issue.installedOn')}
+                    />
+                    <div aria-live="polite">
+                      {otherHolder !== null && (
+                        <p
+                          role="note"
+                          data-issue-line-holder={otherHolder.employeeId}
+                          className="text-xs text-slate-500 dark:text-slate-400"
+                        >
+                          {t('it.consumables.issue.deviceHeldByOther', {
+                            name: holderName(otherHolder),
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  </Field>
+                )}
               </li>
             );
           })}
         </ol>
+        {/* Said once, for every line a change of person emptied. */}
+        <div aria-live="polite">
+          {cleared.length > 0 && (
+            <p
+              role="note"
+              data-issue-devices-cleared={cleared.join(',')}
+              className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              {cleared.length === 1
+                ? t('it.consumables.issue.deviceCleared', { lines: lineList(cleared, locale) })
+                : t('it.consumables.issue.devicesCleared', { lines: lineList(cleared, locale) })}
+            </p>
+          )}
+        </div>
         {lines.length < IT_CONSUMABLE_ISSUE_MAX_LINES && (
           <Button
             size="sm"
@@ -988,8 +1098,8 @@ export const IssueConsumablesDialog = ({
 // many» is answered, never assumed. An item with nothing on hand is listed and left out. The other
 // store's item of the same name receives it, and is made there when it has none — the toast says
 // which, from the server's answer. The branches offered are the ones the SERVER says the caller's
-// `itAsset.assign` reaches (`GET /it/assets/move-targets` — the consumables ride the assets'
-// grants, §2.11); it answers 403 for any other.
+// `itConsumable.assign` reaches (`GET /it/consumables/transfer-targets` — the store's own custody
+// grant since 2026-11-17, §2.11, not the assets' `move-targets`); it answers 403 for any other.
 
 export const TransferConsumablesDialog = ({
   open,
@@ -1007,7 +1117,7 @@ export const TransferConsumablesDialog = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branches = useItBranchOptions();
-  const reach = useItMoveTargets(open);
+  const reach = useItConsumableTransferTargets(open);
   const transfer = useTransferItConsumables();
   const [toBranchId, setToBranchId] = useState('');
   const [at, setAt] = useState('');
@@ -1236,11 +1346,12 @@ export const ConsumableMovementsDialog = ({
 }): JSX.Element => {
   const t = useT();
   const [page, setPage] = useState(1);
-  const columns = useConsumableMovementColumns({ item: false });
   const movements = useItConsumableMovements(
     { consumableId: item.id, page, pageSize: MOVEMENTS_PAGE_SIZE },
     open,
   );
+  const rows = movements.data?.items ?? [];
+  const { columns, editor } = useConsumableMovementLedger(rows, { item: false });
 
   return (
     // Its rows open a memo's signed copy in a viewer of its own, a second dialog beside this one:
@@ -1263,16 +1374,20 @@ export const ConsumableMovementsDialog = ({
         <DataTable
           embedded
           columns={columns}
-          rows={movements.data?.items ?? []}
+          rows={rows}
           rowKey={(m) => m.id}
           loading={movements.isLoading}
           error={movements.isError ? movements.error : undefined}
           onRetry={() => void movements.refetch()}
           empty={t('it.consumables.noMovements')}
+          // Nine columns with «تعديل الجهاز» in a 64rem panel: a 6.5rem floor keeps the row's
+          // action in view instead of past the table's left edge.
+          minColumnWidth={6.5}
         />
         {movements.data !== undefined && movements.data.meta.totalPages > 1 && (
           <Pagination meta={movements.data.meta} onPageChange={setPage} />
         )}
+        {editor}
       </div>
     </Dialog>
   );

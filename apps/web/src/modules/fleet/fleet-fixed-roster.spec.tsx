@@ -1887,3 +1887,35 @@ describe('Reset, on the standing board', () => {
     );
   });
 });
+
+describe('the picked code is ONE car on the standing board too (D16)', () => {
+  // `?q=` holds the code filter's picks. Read as a part of the code, «كورولا 1» also showed
+  // «كورولا 10» and «كورولا 11»; it is now read as the server reads `?vehicleCodes=`, whole — the
+  // same rule as «تعيين السيارات». Only the matcher moved: the board looks exactly as it did.
+  const MODELS: FleetFixedRosterDto = {
+    ...BOARD,
+    rows: [
+      row(V1, 'كورولا 1'),
+      row(V2, 'كورولا 10'),
+      row('650000000000000000000003', 'كورولا 11'),
+      row('650000000000000000000004', '150', E1),
+    ],
+  };
+  /** The cars the body shows, by each row's own code mark. */
+  const shown = (markup: string): string[] =>
+    [...tbody(markup).matchAll(/data-vehicle-colour="[^"]+"[^>]*>([^<]+)</gu)].flatMap((m) =>
+      m[1] ? [m[1]] : [],
+    );
+
+  it('«كورولا 1» is car «كورولا 1» alone', () => {
+    expect(shown(at(`?q=${encodeURIComponent('كورولا 1')}`, MODELS))).toEqual(['كورولا 1']);
+  });
+
+  it('a list of picks shows each picked car, and no pick the whole board', () => {
+    expect(shown(at(`?q=${encodeURIComponent('كورولا 1,كورولا 10')}`, MODELS))).toEqual([
+      'كورولا 1',
+      'كورولا 10',
+    ]);
+    expect(shown(at('', MODELS))).toHaveLength(4);
+  });
+});

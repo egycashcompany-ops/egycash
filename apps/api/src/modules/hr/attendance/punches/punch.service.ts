@@ -12,6 +12,7 @@ import {
   type AttendancePunchDto,
   type ImportPunches,
   type ImportPunchesResultDto,
+  type ImportPunchRow,
   type ListPunchesQuery,
   type Paginated,
   type RecordPunch,
@@ -21,29 +22,53 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { settingsService } from '../../../../platform/settings';
+import { cairoCalendarDate, dateOnlyIso } from '../../shared/business-date';
+import { AttendanceDayModel } from '../day-records/day-record.model';
 import { employeeRepository } from '../../employee-management/employees';
 import { attendanceDeviceRepository } from '../devices/attendance-device.repository';
 import { attendanceEnrollmentRepository } from '../enrollments/attendance-enrollment.repository';
 import { AttendancePunchModel, type AttendancePunchDoc } from './punch.model';
 import { punchRepository } from './punch.repository';
+import { holdQuarantinedRows, type HeldRow } from '../quarantine/attendance-quarantine.store';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'attendancePunch', entityId: id });
 
 /**
- * Sanity window for punch instants (§13 clock-drift mitigation): nothing older than 90 days,
- * nothing more than an hour in the future. A constant rather than a setting — the v1.1 settings
- * list is closed at four, and a window nobody has asked to move does not earn a fifth.
+ * Sanity window for punch instants (§13 clock-drift mitigation).
+ *
+ * THE FUTURE GUARD IS A CONSTANT AND STAYS ONE. A scan dated an hour from now is a device whose
+ * clock is wrong, in every case anyone has ever had; no import of real history needs one.
+ *
+ * THE AGE GUARD IS NOT. It was 90 days, written as the same kind of sanity check — and it was
+ * doing something else entirely. The branch machines hold 67,839 scans going back to December
+ * 2024, and 62,505 of them had never reached ECMS: the branch app refuses to offer anything the
+ * limit would reject, so two years of attendance was invisible here and nothing said why. It is
+ * now `hr.attendance.importMaxAgeDays`, and it defaults to NO LIMIT.
  */
-export const PUNCH_MAX_AGE_DAYS = 90;
 export const PUNCH_MAX_FUTURE_MS = 60 * 60 * 1000;
 
-/** null when acceptable; the quarantine reason otherwise. Pure, tested directly. */
-export const punchWindowProblem = (at: Date, now: Date): string | null => {
+/**
+ * null when acceptable; the quarantine reason otherwise. Pure, tested directly.
+ *
+ * `maxAgeDays` is the resolved setting: `null` or 0 means no limit. It is passed in rather than
+ * read here so this stays a pure function of its inputs — one import batch reads the setting once
+ * and holds every one of its thousands of rows to the same answer, which is also what keeps a
+ * batch from being judged by two different limits if somebody changes it mid-import.
+ */
+export const punchWindowProblem = (
+  at: Date,
+  now: Date,
+  maxAgeDays: number | null = null,
+): string | null => {
   if (Number.isNaN(at.getTime())) return 'invalid timestamp';
   if (at.getTime() > now.getTime() + PUNCH_MAX_FUTURE_MS) return 'timestamp is in the future';
-  if (at.getTime() < now.getTime() - PUNCH_MAX_AGE_DAYS * 86_400_000) {
-    return `timestamp is older than ${String(PUNCH_MAX_AGE_DAYS)} days`;
+  if (
+    maxAgeDays !== null &&
+    maxAgeDays > 0 &&
+    at.getTime() < now.getTime() - maxAgeDays * 86_400_000
+  ) {
+    return `timestamp is older than ${String(maxAgeDays)} days`;
   }
   return null;
 };
@@ -159,9 +184,31 @@ class PunchService {
   async import(ctx: AuthContext, input: ImportPunches): Promise<ImportPunchesResultDto> {
     const batchId = randomUUID();
     const now = new Date();
+    // Read ONCE for the batch: thousands of rows judged by one answer, and a setting changed
+    // mid-import cannot split a batch into rows that were allowed and rows that were not.
+    const maxAgeDays = await settingsService.resolve<number>(
+      HrAttendanceSettingKeys.ImportMaxAgeDays,
+      ORG_SUBJECT,
+    );
     let imported = 0;
     let duplicates = 0;
     const quarantined: { index: number; reason: string }[] = [];
+    /**
+     * The rows that could not be placed, held for a retry as well as reported.
+     *
+     * Task 2 §4: 153 people are no longer on the branch machines and so have no enrolment link, so
+     * their whole history quarantines on arrival — in a nightly batch nobody reads the response of.
+     * `quarantined` stays exactly what it was (the §13 answer, by row index); `held` is the same
+     * rows kept so that linking the enrolment tomorrow recovers the scans instead of needing the
+     * device to send them again.
+     */
+    const held: HeldRow[] = [];
+    const hold = (index: number, row: ImportPunchRow, reason: string): void => {
+      quarantined.push({ index, reason });
+      held.push({ row, reason });
+    };
+    /** `employeeId|YYYY-MM-DD` of every punch actually stored, for the frozen-day count below. */
+    const storedDays: string[] = [];
 
     // Employee lookup once per distinct number — device exports repeat the same person all day.
     const byNumber = new Map<string, { id: Types.ObjectId; branchId: Types.ObjectId } | null>();
@@ -182,9 +229,9 @@ class PunchService {
       { id: Types.ObjectId; branchId: Types.ObjectId } | 'orphaned' | null
     >();
     for (const [index, row] of input.rows.entries()) {
-      const windowProblem = punchWindowProblem(row.at, now);
+      const windowProblem = punchWindowProblem(row.at, now, maxAgeDays);
       if (windowProblem !== null) {
-        quarantined.push({ index, reason: windowProblem });
+        hold(index, row, windowProblem);
         continue;
       }
       // D12.5 — an unregistered device is QUARANTINED, never guessed at. Accepting it would mean
@@ -206,11 +253,11 @@ class PunchService {
       }
       const device = byDevice.get(row.deviceId) ?? null;
       if (device === null) {
-        quarantined.push({ index, reason: `unknown deviceId ${row.deviceId}` });
+        hold(index, row, `unknown deviceId ${row.deviceId}`);
         continue;
       }
       if (!device.isActive) {
-        quarantined.push({ index, reason: `device ${row.deviceId} is deactivated` });
+        hold(index, row, `device ${row.deviceId} is deactivated`);
         continue;
       }
 
@@ -247,17 +294,15 @@ class PunchService {
         if (resolved === null) {
           // Named, not silent, and named PRECISELY: the fix is «map this enrolment on this
           // device», which is a job somebody can do, unlike «some rows did not import».
-          quarantined.push({
-            index,
-            reason: `unmapped enrollmentNo ${row.enrollmentNo} on device ${row.deviceId}`,
-          });
+          hold(index, row, `unmapped enrollmentNo ${row.enrollmentNo} on device ${row.deviceId}`);
           continue;
         }
         if (resolved === 'orphaned') {
-          quarantined.push({
+          hold(
             index,
-            reason: `enrollmentNo ${row.enrollmentNo} maps to an employee that no longer exists`,
-          });
+            row,
+            `enrollmentNo ${row.enrollmentNo} maps to an employee that no longer exists`,
+          );
           continue;
         }
         employee = resolved;
@@ -274,7 +319,7 @@ class PunchService {
         }
         employee = byNumber.get(employeeNumber) ?? null;
         if (employee === null) {
-          quarantined.push({ index, reason: `unknown employeeNumber ${employeeNumber}` });
+          hold(index, row, `unknown employeeNumber ${employeeNumber}`);
           continue;
         }
       }
@@ -299,12 +344,20 @@ class PunchService {
           { by: ctx.userId },
         );
         imported += 1;
+        storedDays.push(`${String(employee.id)}|${dateOnlyIso(cairoCalendarDate(row.at))}`);
       } catch (error) {
         // ConflictError from the unique {deviceId, at, employeeId} key = an idempotent re-import.
         if (error instanceof ConflictError) duplicates += 1;
         else throw error;
       }
     }
+
+    await holdQuarantinedRows(batchId, held);
+
+    // HOW MUCH OF THIS LANDED IN A CLOSED MONTH. The punches are stored either way — they are
+    // evidence — but no recompute will rewrite those day records, so a backfill that says
+    // «12,000 imported» and nothing else would look complete while a season of it changed nothing.
+    const onFrozenDays = await this.countOnFrozenDays(storedDays);
 
     await auditService.record({
       entityRef: { moduleId: 'hr', entityType: 'attendancePunchBatch', entityId: batchId },
@@ -314,6 +367,7 @@ class PunchService {
         { field: 'imported', old: null, new: String(imported) },
         { field: 'duplicates', old: null, new: String(duplicates) },
         { field: 'quarantined', old: null, new: String(quarantined.length) },
+        { field: 'onFrozenDays', old: null, new: String(onFrozenDays) },
         ...(input.fileId === undefined
           ? []
           : [{ field: 'fileId', old: null, new: input.fileId }]),
@@ -325,7 +379,40 @@ class PunchService {
       duplicates,
       quarantined: quarantined.length,
     });
-    return { batchId, imported, duplicates, quarantined };
+    return { batchId, imported, duplicates, quarantined, onFrozenDays };
+  }
+
+  /**
+   * How many of the stored punches fall on a day record payroll has frozen.
+   *
+   * One query for the whole batch: the distinct employee-days are looked up together, and each
+   * stored punch is then counted against that set. A batch is one device repeated for thousands of
+   * rows over a handful of dates, so the distinct set is small even when the batch is not.
+   */
+  private async countOnFrozenDays(storedDays: readonly string[]): Promise<number> {
+    if (storedDays.length === 0) return 0;
+    const distinct = [...new Set(storedDays)];
+    const employeeIds = new Set<string>();
+    const dates = new Set<string>();
+    for (const key of distinct) {
+      const [employeeId, date] = key.split('|') as [string, string];
+      employeeIds.add(employeeId);
+      dates.add(date);
+    }
+    const frozen = await AttendanceDayModel.find({
+      employeeId: { $in: [...employeeIds].map((id) => new Types.ObjectId(id)) },
+      workDate: { $in: [...dates].map((date) => new Date(`${date}T00:00:00.000Z`)) },
+      frozenAt: { $ne: null },
+      isDeleted: false,
+    })
+      .select({ employeeId: 1, workDate: 1 })
+      .lean<{ employeeId: Types.ObjectId; workDate: Date }[]>()
+      .exec();
+    if (frozen.length === 0) return 0;
+    const frozenKeys = new Set(
+      frozen.map((row) => `${String(row.employeeId)}|${dateOnlyIso(row.workDate)}`),
+    );
+    return storedDays.filter((key) => frozenKeys.has(key)).length;
   }
 }
 

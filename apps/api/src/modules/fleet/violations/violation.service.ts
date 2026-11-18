@@ -17,6 +17,7 @@ import {
   type FleetViolationKind,
   type FleetViolationRollupDto,
   type FleetViolationSide,
+  type FleetViolationsListMeta,
   type ListFleetViolationsQuery,
   type MoveFleetViolations,
   type Paginated,
@@ -29,7 +30,7 @@ import {
   type UpdateFleetViolation,
   type LocalizedString,
 } from '@ecms/contracts';
-import { Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import { ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -385,16 +386,44 @@ class FleetViolationService {
     };
   }
 
-  async list(query: ListFleetViolationsQuery): Promise<Paginated<FleetViolationDoc>> {
+  /** The register's filter for a list query — its cars as `carsOf` resolves them, its whole days. */
+  private async listFilter(query: ListFleetViolationsQuery) {
     const cars = await this.carsOf(query);
+    return fleetViolationRepository.violationFilter({
+      ...query,
+      ...(cars.vehicleIds === undefined ? {} : { vehicleIds: cars.vehicleIds }),
+      vehicleCodes: cars.vehicleCodes,
+      // «من / إلى» — the fine's day, whole days (a statement row has none, so it never matches).
+      ...dayBounds(query),
+    });
+  }
+
+  async list(query: ListFleetViolationsQuery): Promise<Paginated<FleetViolationDoc>> {
+    return this.pageOf(query, await this.listFilter(query));
+  }
+
+  /**
+   * `GET /fleet/violations`: the page, and under it `meta.outstandingAmount` — the owed amount over
+   * EVERY row the same filter finds (D03), so the drivers' footer «إجمالي السائقين» is the whole
+   * filter's and not the hundred rows in hand. ONE filter for both, built once.
+   */
+  async listWithOutstanding(
+    query: ListFleetViolationsQuery,
+  ): Promise<{ items: FleetViolationDoc[]; meta: FleetViolationsListMeta }> {
+    const filter = await this.listFilter(query);
+    const [page, outstanding] = await Promise.all([
+      this.pageOf(query, filter),
+      fleetViolationRepository.outstandingAmount(filter),
+    ]);
+    return { items: page.items, meta: { ...page.meta, outstandingAmount: money(outstanding) } };
+  }
+
+  private pageOf(
+    query: ListFleetViolationsQuery,
+    filter: FilterQuery<FleetViolationDoc>,
+  ): Promise<Paginated<FleetViolationDoc>> {
     return fleetViolationRepository.listViolations({
-      filter: fleetViolationRepository.violationFilter({
-        ...query,
-        ...(cars.vehicleIds === undefined ? {} : { vehicleIds: cars.vehicleIds }),
-        vehicleCodes: cars.vehicleCodes,
-        // «من / إلى» — the fine's day, whole days (a statement row has none, so it never matches).
-        ...dayBounds(query),
-      }),
+      filter,
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,

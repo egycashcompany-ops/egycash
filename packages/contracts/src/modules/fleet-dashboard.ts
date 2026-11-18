@@ -1,21 +1,23 @@
 // «لوحة تحكم الحركة» — the fleet module's home (/fleet), Phase 1.
 //
-// Two reads feed eleven tabs, in the strip's order (FLEET_DASHBOARD_TABS): the six rebuilt tabs
+// Two reads feed twelve tabs, in the strip's order (FLEET_DASHBOARD_TABS): the six rebuilt tabs
 // «نظرة عامة» (overview), «الحركة اليوم» (today), «توزيع السيارات» (distribution),
 // «الصيانة والورش» (maintenance), «العدادات والكيلومترات» (km) and «الحوادث ومطالبات التأمين»
 // (accidents) — the last four rebuilt in place, under their old keys, so every old link opens the
 // new body («ترتيب السيارات» lives inside «العدادات والكيلومترات» now: a link to the retired
-// `ranking` opens `km`) — then two NEW tabs with no old tab of their own, «المخالفات المرورية
-// والتسويات» (violations) and «الوقود والمصروفات» (fuel), then the three old tabs, each standing
-// where its rebuilt replacement will stand and drawn as before until it is rebuilt:
+// `ranking` opens `km`) — then three NEW tabs with no old tab of their own, «المخالفات المرورية
+// والتسويات» (violations), «الوقود والمصروفات» (fuel) and «العهدة» (custody), then «التراخيص
+// والتجديدات» (licences), rebuilt under the old «التراخيص» key (an old link opens the new body),
+// then the two old tabs «أرقام الفترة» (period) and «ملخصات» (summaries), drawn as before:
 //   · R1 `GET /fleet/dashboard/now`    — the state of the fleet NOW, one Cairo `today`;
 //   · R2 `GET /fleet/dashboard/period` — a period's figures, a preset or a custom range. The overview
 //     and «توزيع السيارات» also read R2 for «هذا الشهر» on their own (never the page filters) — the
 //     'month' read.
 // FLEET_DASHBOARD_TAB_READS says which read(s) each tab draws. «الصيانة والورش», «العدادات
-// والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات» and «الوقود
-// والمصروفات» are MIXED tabs: R1 «الآن» parts and R2 parts under the page filters, each read with
-// its own loading and error.
+// والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات», «الوقود والمصروفات»
+// and «التراخيص والتجديدات» are MIXED tabs: R1 «الآن» parts and R2 parts under the page filters,
+// each read with its own loading and error. «العهدة» is mixed too, its «الآن» part from the custody
+// screen's own reads in the browser ('web') instead of R1.
 // The server resolves every date (R-01) and echoes it; the browser builds every label, chip and link
 // from that echo, never from its own clock. Every section is NULLABLE: `null` is "the reader may not
 // see it" or, when it is also named in `unavailable`, "its source failed" — never a zero.
@@ -42,13 +44,13 @@ import {
 /**
  * The strip, in its visible order: «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» ·
  * «الصيانة والورش» · «العدادات والكيلومترات» · «الحوادث ومطالبات التأمين» · «المخالفات المرورية
- * والتسويات» · «الوقود والمصروفات» · «أرقام الفترة» · «ملخصات» · «التراخيص». `overview` and
- * `today` replaced the old `alerts` and `now` (a link to either opens its replacement);
- * `distribution`, `maintenance`, `km` and `accidents` were rebuilt under their own keys (an old link
- * opens the new body); the old `ranking` («ترتيب السيارات») is retired — its top and bottom five live
- * in «العدادات والكيلومترات», and a link to it opens `km`. `violations` and `fuel` are NEW tabs (no
- * old tab of their own, so no old key maps onto them). The last three are the old tabs, unchanged,
- * each where its rebuilt replacement will stand.
+ * والتسويات» · «الوقود والمصروفات» · «العهدة» · «التراخيص والتجديدات» · «أرقام الفترة» · «ملخصات».
+ * `overview` and `today` replaced the old `alerts` and `now` (a link to either opens its
+ * replacement); `distribution`, `maintenance`, `km`, `accidents` and `licences` were rebuilt under
+ * their own keys (an old link opens the new body); the old `ranking` («ترتيب السيارات») is retired —
+ * its top and bottom five live in «العدادات والكيلومترات», and a link to it opens `km`.
+ * `violations`, `fuel` and `custody` are NEW tabs (no old tab of their own, so no old key maps onto
+ * them). The last two are the old tabs, unchanged, kept until the owner retires them.
  */
 export const FLEET_DASHBOARD_TABS = [
   'overview',
@@ -59,9 +61,10 @@ export const FLEET_DASHBOARD_TABS = [
   'accidents',
   'violations',
   'fuel',
+  'custody',
+  'licences',
   'period',
   'summaries',
-  'licences',
 ] as const;
 export type FleetDashboardTab = (typeof FLEET_DASHBOARD_TABS)[number];
 
@@ -82,17 +85,18 @@ export const FLEET_DASHBOARD_TAB_READS: Readonly<
   accidents: ['now', 'period'],
   violations: ['now', 'period'],
   fuel: ['now', 'period'],
+  custody: ['web', 'period'],
+  licences: ['now', 'period'],
   period: ['period'],
   summaries: ['now', 'web'],
-  licences: ['now'],
 });
 
 /**
  * The old tab drawn under the page filter bar (the old `PeriodTab` wrapper), read from R2 alone —
- * «أرقام الفترة», kept until it is rebuilt. The five MIXED tabs draw the bar inside their body:
- * «الصيانة والورش», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات» and «الوقود
- * والمصروفات» between their «الآن» band (R1) and their period band (R2); «العدادات والكيلومترات»
- * at the top of its body.
+ * «أرقام الفترة», kept until the owner retires it. The seven MIXED tabs draw the bar inside their
+ * body: «الصيانة والورش», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات», «الوقود
+ * والمصروفات», «العهدة» and «التراخيص والتجديدات» between their «الآن» band (R1, or the custody
+ * screen's own reads) and their period band (R2); «العدادات والكيلومترات» at the top of its body.
  */
 export const FLEET_DASHBOARD_PERIOD_TABS = ['period'] as const;
 
@@ -109,13 +113,26 @@ export const FLEET_DASHBOARD_DEFAULT_PRESET: FleetDashboardPreset = 'thisMonth';
 export const FLEET_DASHBOARD_MAX_CUSTOM_DAYS = 366;
 /** R-10: the grey licence bucket's far edge, in days after today (the owner's spec number). */
 export const FLEET_LICENCE_GREY_DAYS = 60;
-/** R-12: the recent-records window, in Cairo days (today included). */
-export const FLEET_DASHBOARD_RECENT_DAYS = 30;
-export const FLEET_DASHBOARD_RECENT_ROWS = 8;
 /** «الحركة اليوم»: rows of each list («سيارات بلا سائق اليوم», «الغائبون اليوم») before «عرض الكل (N)». */
 export const FLEET_DASHBOARD_TODAY_ROWS = 8;
-/** T4.4: licence rows listed before «+N». */
+/**
+ * «التراخيص والتجديدات»: rows of «أقرب تراخيص السيارات» (`licenceVehicles.list`) and of «أقرب رخص
+ * السائقين» (`licenceDrivers.list.rows`), each before «عرض الباقي (N)».
+ */
 export const FLEET_DASHBOARD_LICENCE_ROWS = 6;
+/**
+ * «التراخيص المستحقة للتجديد — 12 شهرًا»: the month slots of `licenceVehicles.months` and
+ * `licenceDrivers.months`, from this (Cairo) month on.
+ */
+export const FLEET_DASHBOARD_LICENCE_MONTHS = 12;
+/** «آخر عمليات العهدة»: the custody register's newest rows on «العهدة». */
+export const FLEET_DASHBOARD_CUSTODY_RECENT_ROWS = 6;
+/**
+ * «العهدة»: rows of «في مذكرات لم تُستعَض بعد» (pending memos) before «و N أخرى» — the same 5 as
+ * «لوحة تحكم العهدة» shows (CustodyDashboardFund `SHOWN_MEMOS`). «تنتظر التسوية» (licensing
+ * parts) is not cut: it lists every part, as the screen does.
+ */
+export const FLEET_DASHBOARD_CUSTODY_WAIT_ROWS = 5;
 /** «حوادث الفترة» (`accidentList.rows`): accident rows listed before «عرض الباقي (N) في السجل». */
 export const FLEET_DASHBOARD_ACCIDENT_ROWS = 6;
 /**
@@ -376,8 +393,6 @@ export const FLEET_DASHBOARD_NOW_SECTIONS = [
   'fuelCharging',
   'fuelCardList',
   'fuelSheets',
-  'recentWorkshop',
-  'recentAccidents',
   'notices',
   'dealershipPending',
   'accidentsOpen',
@@ -394,8 +409,10 @@ export const FLEET_DASHBOARD_PERIOD_SECTIONS = [
   'violationList',
   'opex',
   'opexSeries',
+  'custodyStates',
   'dealership',
   'dealershipList',
+  'licenceSpend',
 ] as const;
 export type FleetDashboardNowSection = (typeof FLEET_DASHBOARD_NOW_SECTIONS)[number];
 export type FleetDashboardPeriodSection = (typeof FLEET_DASHBOARD_PERIOD_SECTIONS)[number];
@@ -406,6 +423,18 @@ export type FleetDashboardPeriodSection = (typeof FLEET_DASHBOARD_PERIOD_SECTION
  */
 export const FLEET_DASHBOARD_PART_SECTIONS = ['supplyContracts'] as const;
 export type FleetDashboardPartSection = (typeof FLEET_DASHBOARD_PART_SECTIONS)[number];
+/**
+ * R2 sections whose key READS R2 but never opens the page: `licenceSpend` = «مصروفات التراخيص في
+ * الفترة» on «التراخيص والتجديدات». `fleetLicenseExpense.view` is in FLEET_DASHBOARD_PERIOD_KEYS (so
+ * a reader who sees the tab for its R1 figures gets the spend too) and NOT in
+ * FLEET_DASHBOARD_PAGE_KEYS: a reader who holds only that key still cannot open `/fleet` (§11 A2).
+ * It is drawn only beside the tab's R1 figures (FLEET_DASHBOARD_TAB_PARTS), never a reason for the
+ * tab to show.
+ */
+export const FLEET_DASHBOARD_PAGELESS_SECTIONS = [
+  'licenceSpend',
+] as const satisfies readonly FleetDashboardPeriodSection[];
+export type FleetDashboardPagelessSection = (typeof FLEET_DASHBOARD_PAGELESS_SECTIONS)[number];
 
 /**
  * `custodyFund` is computed in the browser from the custody hooks (D3), and `supplyContracts` from
@@ -447,7 +476,6 @@ export const FLEET_DASHBOARD_GATES: Readonly<Record<FleetDashboardSection, Fleet
     licenceVehicles: gate('now', 'fleetVehicle.view', '/fleet/vehicles'),
     roster: gate('now', 'fleetRoster.view', '/fleet/roster'),
     workshop: gate('now', 'fleetMaintenance.view', '/fleet/maintenance'),
-    recentWorkshop: gate('now', 'fleetMaintenance.view', '/fleet/maintenance'),
     maintenanceAlarm: gate('now', 'fleetOdometer.view', '/fleet/maintenance-alarms'),
     noReading: gate('now', 'fleetOdometer.view', '/fleet/odometer'),
     distributionDrivers: gate('now', 'fleetDriver.view', '/fleet/drivers'),
@@ -472,7 +500,6 @@ export const FLEET_DASHBOARD_GATES: Readonly<Record<FleetDashboardSection, Fleet
       '/fleet/fuel-cards/reconcile',
       'fleetFuelCharge.view',
     ),
-    recentAccidents: gate('now', 'fleetAccident.view', '/fleet/accidents'),
     accidentsOpen: gate('now', 'fleetAccident.view', '/fleet/accidents'),
     notices: gate('now', 'fleetNotice.view', '/fleet/notices'),
     dealershipPending: gate('now', 'fleetDealership.view', '/fleet/dealership'),
@@ -487,8 +514,19 @@ export const FLEET_DASHBOARD_GATES: Readonly<Record<FleetDashboardSection, Fleet
     violationList: gate('period', 'fleetViolation.view', '/fleet/violations'),
     opex: gate('period', 'fleetReceipt.view', '/fleet/receipts'),
     opexSeries: gate('period', 'fleetReceipt.view', '/fleet/receipts'),
+    /**
+     * «منها حتى الآن» on «العهدة»: the period's custody receipts (the receipts' key) against the
+     * memos (the custody key), and its figures open «مصروفات العهدة» (the custody screens' key).
+     */
+    custodyStates: Object.freeze({
+      read: 'period',
+      api: ['fleetReceipt.view', 'fleetCustody.view'],
+      page: ['fleetCustody.view'],
+      path: '/fleet/custody-expenses',
+    }),
     dealership: gate('period', 'fleetDealership.view', '/fleet/dealership'),
     dealershipList: gate('period', 'fleetDealership.view', '/fleet/dealership'),
+    licenceSpend: gate('period', 'fleetLicenseExpense.view', '/fleet/license-expenses'),
     custodyFund: gate('web', 'fleetCustody.view', '/fleet/custody/dashboard'),
     supplyContracts: gate('web', 'fleetVehicleContract.view', '/fleet/vehicle-contracts'),
   });
@@ -503,6 +541,9 @@ const ALL_SECTIONS: readonly FleetDashboardSection[] = [
 const isPartSection = (section: FleetDashboardSection): boolean =>
   (FLEET_DASHBOARD_PART_SECTIONS as readonly string[]).includes(section);
 
+const isPagelessSection = (section: FleetDashboardSection): boolean =>
+  (FLEET_DASHBOARD_PAGELESS_SECTIONS as readonly string[]).includes(section);
+
 const distinct = (keys: Iterable<string>): readonly string[] => Object.freeze([...new Set(keys)]);
 
 /** A section is returned only when the reader holds EVERY key of api ∪ page. */
@@ -511,33 +552,61 @@ export const fleetDashboardGateKeys = (section: FleetDashboardSection): readonly
   return distinct([...api, ...page]);
 };
 
-/** A PART section is never a key of a read or of the page (FLEET_DASHBOARD_PART_SECTIONS). */
+/**
+ * A PART section is never a key of a read or of the page (FLEET_DASHBOARD_PART_SECTIONS); a PAGELESS
+ * section is a key of its read, never of the page (FLEET_DASHBOARD_PAGELESS_SECTIONS).
+ */
 const keysOfRead = (read: FleetDashboardGate['read'] | null): readonly string[] =>
   distinct(
-    ALL_SECTIONS.filter(
-      (section) =>
-        !isPartSection(section) && (read === null || FLEET_DASHBOARD_GATES[section].read === read),
-    ).flatMap((section) => fleetDashboardGateKeys(section)),
+    ALL_SECTIONS.filter((section) => {
+      if (isPartSection(section)) return false;
+      if (read === null) return !isPagelessSection(section);
+      return FLEET_DASHBOARD_GATES[section].read === read;
+    }).flatMap((section) => fleetDashboardGateKeys(section)),
   );
 
-/** ∪ of the 'now' gates → `authorizeAny` on `/now`. */
+/**
+ * ∪ of the 'now' gates → `authorizeAny` on `/now`. The same SET as before «التراخيص والتجديدات»
+ * retired `recentWorkshop` / `recentAccidents` (their keys still gate `workshop` / `accidentsOpen`);
+ * only the first-seen order moved (`fleetAccident.view` now comes after `fleetDealership.view`).
+ */
 export const FLEET_DASHBOARD_NOW_KEYS: readonly string[] = keysOfRead('now');
 /**
  * ∪ of the 'period' gates → `authorizeAny` on `/period`. `fleetViolation.view` is in it since
  * «المخالفات المرورية والتسويات» (its period band: `violations`, `violationList`), so a reader who
- * holds only that key reads R2 too; the NOW and PAGE unions did not change (the key already gated
- * `violationsYear` / `violationsOpen`).
+ * holds only that key reads R2 too. «العهدة» (`custodyStates`) added `fleetCustody.view` and
+ * «التراخيص والتجديدات» (`licenceSpend`, PAGELESS) `fleetLicenseExpense.view`; the NOW and PAGE
+ * unions did not change as sets (the custody key already opened the page through `custodyFund`, and
+ * the licence-expense key never opens it).
  */
 export const FLEET_DASHBOARD_PERIOD_KEYS: readonly string[] = keysOfRead('period');
 /**
- * ∪ of all gates, custodyFund included, the PART sections left out → the index route's anyOf (so
- * `fleetVehicleContract.view` alone does not open the dashboard).
+ * ∪ of all gates, custodyFund included, the PART and PAGELESS sections left out → the index route's
+ * anyOf (so `fleetVehicleContract.view` alone, or `fleetLicenseExpense.view` alone, does not open
+ * the dashboard).
  */
 export const FLEET_DASHBOARD_PAGE_KEYS: readonly string[] = keysOfRead(null);
 
 /**
- * Which sections make a tab visible (hidden when every one is null / not permitted). A PART section
- * is in none of them (FLEET_DASHBOARD_TAB_PARTS).
+ * The keys of the two reads that decide WHAT THE FIGURES COVER — the widest grant among them names
+ * the reader's branches (`dashboardBranches` on the server). Two keys of the R2 union never decide
+ * it: the custody fund's (its «الآن» is the browser's own read, company-wide; its R2 part follows
+ * the receipt's car under the receipts' key) and the licence expenses' (a memo has no branch). A
+ * screen that counts "what the dashboard counts" (the drivers' «الإحصائيات», audit D31) folds the
+ * same keys.
+ */
+export const FLEET_DASHBOARD_UNSCOPED_KEYS: readonly string[] = [
+  'fleetCustody.view',
+  'fleetLicenseExpense.view',
+];
+export const FLEET_DASHBOARD_SCOPE_KEYS: readonly string[] = distinct([
+  ...FLEET_DASHBOARD_NOW_KEYS,
+  ...FLEET_DASHBOARD_PERIOD_KEYS,
+]).filter((key) => !FLEET_DASHBOARD_UNSCOPED_KEYS.includes(key));
+
+/**
+ * Which sections make a tab visible (hidden when every one is null / not permitted). A PART or a
+ * PAGELESS section is in none of them (FLEET_DASHBOARD_TAB_PARTS).
  */
 export const FLEET_DASHBOARD_TAB_SECTIONS: Readonly<
   Record<FleetDashboardTab, readonly FleetDashboardSection[]>
@@ -568,14 +637,20 @@ export const FLEET_DASHBOARD_TAB_SECTIONS: Readonly<
   ],
   today: ['vehicles', 'roster', 'workshop'],
   distribution: ['distributionVehicles', 'distributionDrivers'],
-  licences: [
-    'licenceVehicles',
-    'licenceDrivers',
-    'papers',
-    'fuelCards',
-    'recentWorkshop',
-    'recentAccidents',
-  ],
+  /**
+   * «التراخيص والتجديدات» (rebuilt under the old key), each KPI under its own gate: the cars'
+   * licences (`fleetVehicle.view`), the drivers' licences (`fleetDriver.view`) and the board's open
+   * papers (`fleetLicensing.view` — so a licensing-only reader keeps `/fleet` and sees the tab with
+   * the papers alone, §11 A2). The fuel cards' expiry lives on «الوقود والمصروفات» now; the old
+   * «آخر ما سُجّل» (`recentWorkshop`, `recentAccidents`) is retired.
+   */
+  licences: ['licenceVehicles', 'licenceDrivers', 'papers'],
+  /**
+   * «العهدة» (NEW): the custody fund's reader alone sees it (its «الآن» band is the custody screen's
+   * own reads); the period band (FLEET_DASHBOARD_TAB_PARTS) is drawn beside it, never a reason to
+   * show the tab.
+   */
+  custody: ['custodyFund'],
   summaries: ['fuelCharging', 'custodyFund', 'accidentsOpen', 'violationsYear'],
   period: ['km', 'visits', 'accidents', 'opex', 'dealership'],
   /**
@@ -624,12 +699,17 @@ export const FLEET_DASHBOARD_TAB_SECTIONS: Readonly<
 /**
  * Sections a tab DRAWS that never make it visible on their own: «توزيع السيارات» shows the km of
  * «هذا الشهر» (the 'month' read) and the supply contracts (a PART section) only beside its R1
- * figures.
+ * figures; «العهدة» its period band (the custody spend `opex` and where it stands `custodyStates`)
+ * only beside the fund — a receipts-only reader keeps that spend on «أرقام الفترة» and «الوقود
+ * والمصروفات»; «التراخيص والتجديدات» the period's licence expenses (`licenceSpend`, PAGELESS) only
+ * beside its R1 figures.
  */
 export const FLEET_DASHBOARD_TAB_PARTS: Readonly<
   Partial<Record<FleetDashboardTab, readonly FleetDashboardSection[]>>
 > = Object.freeze({
   distribution: ['km', 'supplyContracts'],
+  custody: ['opex', 'custodyStates'],
+  licences: ['licenceSpend'],
 });
 
 // ── Alerts (the overview's action centre). The server derives them LAST from the sections; custody
@@ -737,8 +817,6 @@ export interface FleetDashboardNowDto {
    * sheet day.
    */
   fuelSheets: Record<FleetFuelCardCompany, FleetDashboardNowFuelSheetDto | null> | null;
-  recentWorkshop: FleetDashboardRecentVisitDto[] | null;
-  recentAccidents: FleetDashboardRecentAccidentDto[] | null;
   /**
    * The open notices — the notices screen's own `status=open` filter, over the cars of the reader's
    * scope by the car's CURRENT branch (a notice with no car counts in the company view only).
@@ -862,11 +940,27 @@ export interface FleetDashboardAbsentDriverDto {
   crewVehicle: { vehicleId: string; code: string } | null;
 }
 
-/** T2.4, R-09 — open visits of ANY status. */
+/**
+ * T2.4, R-09 — open visits of ANY status, checked in on or before Cairo today.
+ *
+ * The four parts add up to the headline, always: `open = openActive + openOutOfService +
+ * openDisposed + openNoCar`. A visit is in exactly one part, by its car NOW (no write is refused
+ * for it: a car may be disposed of, or deleted, while its visit is still open).
+ */
 export interface FleetDashboardNowWorkshopDto {
+  /** Every open visit the list's own filter finds (`/fleet/maintenance?state=open&to=<today>`). */
   open: number;
+  /** Open visits of a live registry car whose status is `active`. */
   openActive: number;
+  /** Open visits of a live registry car whose status is `outOfService`. */
   openOutOfService: number;
+  /** «مكهنة»: open visits of a live registry car whose status is `disposed`. */
+  openDisposed: number;
+  /**
+   * «بلا سيارة في السجل»: open visits with no live registry car — the car was soft-deleted since it
+   * checked in, or the visit came from the old book with no registry car (`vehicleId` null).
+   */
+  openNoCar: number;
   /** `longest[0]`, its `deleted` flag included. */
   oldest: {
     vehicleId: string | null;
@@ -1052,10 +1146,23 @@ export interface FleetDashboardNowDistributionVehiclesDto {
 }
 
 /** T3.4, T3.6, T3.8 — the registry (R-08). */
+/**
+ * Per card: `drivers` = the catalog's specialisation alone (= `/fleet/drivers?specializationId`
+ * total; a `both` profile is on neither card); `legacy` = the files on the old classification only,
+ * a line apart — never part of `drivers` (D13).
+ */
 export interface FleetDashboardNowDistributionDriversDto {
   total: number;
   cash: { drivers: number; legacy: number; specializationIds: string[] };
   atm: { drivers: number; legacy: number; specializationIds: string[] };
+}
+
+/** One month slot of «التراخيص المستحقة للتجديد — 12 شهرًا». */
+export interface FleetDashboardLicenceMonthDto {
+  /** 'YYYY-MM' — FLEET_DASHBOARD_LICENCE_MONTHS slots from this (Cairo) month, in order. */
+  key: string;
+  /** The licences whose expiry day falls in that month (0 kept: every slot is listed). */
+  count: number;
 }
 
 /** T1.2, T4.1–T4.4 — status = active (Q-15). */
@@ -1066,9 +1173,46 @@ export interface FleetDashboardNowLicenceVehiclesDto {
   soon: number;
   /** «وخارج الخدمة N». */
   outOfServiceExpired: number;
-  /** ≤ 6, nearest first; days < 0 = expired. */
-  list: { vehicleId: string; code: string; expiresAt: string; days: number }[];
+  /**
+   * «أقرب تراخيص السيارات»: ≤ FLEET_DASHBOARD_LICENCE_ROWS of the cars with an expiry up to today +
+   * 60 (FLEET_LICENCE_GREY_DAYS), expiry day ascending — the longest-expired first (days < 0 =
+   * expired); `more` = the cars left out, so `list.length + more` = expired + expiring + soon while
+   * `warnDays` ≤ 60.
+   */
+  list: FleetDashboardNowLicenceVehicleRowDto[];
   more: number;
+  /**
+   * The licensing board's paper lookup for the listed rows failed: every row's `papers` is `null`
+   * because the board could not be read, NOT because no paper is open — the browser says so in the
+   * papers column instead of a «—». `false` when the lookup answered or was not asked (no rows, or a
+   * reader without `fleetLicensing.view`).
+   */
+  papersFailed: boolean;
+  /**
+   * Active cars by the month their licence expires, FLEET_DASHBOARD_LICENCE_MONTHS slots from this
+   * (Cairo) month (`key` order = the chart's order), over the same cars as the counts.
+   */
+  months: FleetDashboardLicenceMonthDto[];
+}
+
+/** One row of «أقرب تراخيص السيارات»; every name resolved on the server. */
+export interface FleetDashboardNowLicenceVehicleRowDto {
+  vehicleId: string;
+  code: string;
+  /** The licence's expiry day, 'YYYY-MM-DD'. */
+  expiresAt: string;
+  /** expiresAt − Cairo today, in whole days: < 0 expired, 0 expires today. */
+  days: number;
+  /** The make («مرسيدس اسيليو 915») — the vehicle type's name; `null` when the car has none. */
+  typeName: LocalizedString | null;
+  /** «الترخيص» — the licence-class catalog name («برقاش م»); `null` when none is recorded. */
+  licenceClass: LocalizedString | null;
+  /**
+   * The licensing board's two papers (`paperStage`) — only for a car on the board (its «ت» licence
+   * classes) and only for a reader who holds `fleetLicensing.view`; `null` otherwise (no column), or
+   * when the board's lookup failed (`papersFailed` on the list).
+   */
+  papers: { insurance: 'none' | 'open' | 'done'; tax: 'none' | 'open' | 'done' } | null;
 }
 
 /** T1.3, T4.5. */
@@ -1079,6 +1223,33 @@ export interface FleetDashboardNowLicenceDriversDto {
   soon: number;
   notRecorded: number;
   unregistered: number;
+  /**
+   * The drivers' Fleet files by the month their licence expires — the same keys as
+   * `licenceVehicles.months`, over the same files as the counts (suspended files included).
+   */
+  months: FleetDashboardLicenceMonthDto[];
+  /**
+   * «أقرب رخص السائقين»: ≤ FLEET_DASHBOARD_LICENCE_ROWS files with an expiry up to today + 60
+   * (FLEET_LICENCE_GREY_DAYS), expiry day ascending — the longest-expired first — then the employee;
+   * `rows.length + more` = expired + expiring + soon while `warnDays` ≤ 60 (suspended files
+   * included, as in the counts).
+   */
+  list: { rows: FleetDashboardNowLicenceDriverRowDto[]; more: number };
+}
+
+/** One row of «أقرب رخص السائقين»; the name is the browser's (`/fleet/people`), never sent here. */
+export interface FleetDashboardNowLicenceDriverRowDto {
+  /** The driver's Fleet file («فتح» → `/fleet/drivers/:profileId`). */
+  profileId: string;
+  employeeId: string;
+  /** The licence's expiry day on the Fleet file, 'YYYY-MM-DD'. */
+  expiresAt: string;
+  /** expiresAt − Cairo today, in whole days: < 0 expired, 0 expires today. */
+  days: number;
+  /** «درجة الرخصة» — the driver licence type catalog name («اولى»); `null` when none is recorded. */
+  licenceType: LocalizedString | null;
+  /** The Fleet file is active; `false` → «الملف موقوف» (still counted, as the counts are). */
+  active: boolean;
 }
 
 /**
@@ -1159,7 +1330,11 @@ export interface FleetDashboardNowFuelSheetDto {
   undecidedNet: number;
 }
 
-/** T4.8, R-12. */
+/**
+ * The rows of the maintenance and accident modules' `recentWritten` reads (R-12). No dashboard
+ * section reads them any more: «آخر ما سُجّل» left with the old «التراخيص» body (the accidents are
+ * in «حوادث الفترة», the visits on «الصيانة والورش»). Kept for those reads until a later cleanup.
+ */
 export interface FleetDashboardRecentVisitDto {
   visitId: string;
   vehicleId: string | null;
@@ -1173,7 +1348,7 @@ export interface FleetDashboardRecentVisitDto {
   open: boolean;
 }
 
-/** T4.9 — date only, never a time. */
+/** See FleetDashboardRecentVisitDto — date only, never a time. */
 export interface FleetDashboardRecentAccidentDto {
   accidentId: string;
   vehicleId: string | null;
@@ -1327,6 +1502,11 @@ export interface FleetDashboardPeriodDto {
     litres: number;
     /** Fuel receipts with no litre price: they are in `fuel`, never in `litres`. */
     unpricedFuel: number;
+    /**
+     * «N إيصالًا» on «مصروفات العهدة»: the custody-paid receipts — the receipts screen's
+     * `source=custody` count over the same filter (the receipts in `custody`).
+     */
+    custodyCount: number;
   } | null;
   /**
    * «مصروف التشغيل يومًا بيوم» (or «شهرًا بشهر»): EVERY bucket of the range in order, by the receipt's
@@ -1334,6 +1514,14 @@ export interface FleetDashboardPeriodDto {
    * Σ count = `opex.count`.
    */
   opexSeries: { buckets: FleetDashboardOpexBucketDto[] } | null;
+  /**
+   * «منها حتى الآن» on «مصروفات العهدة»: where the period's custody receipts (the same receipts as
+   * `opex.custody`: same filter, same day rule, the branch by the receipt's car) stand NOW against
+   * the memos — FLEET_CUSTODY_MEMO_STATE_OF_STATUS (a held memo counts as pending); a receipt on no
+   * live memo is `outside`. replenished + pending + outside = `opex.custody`, to the piastre. As of
+   * now for any period: a later replenishment moves a past month's split.
+   */
+  custodyStates: FleetDashboardPeriodCustodyStatesDto | null;
   /** R-20 by outDate. */
   dealership: { amount: number; rows: number; pending: number; dataFrom: string } | null;
   /**
@@ -1342,7 +1530,50 @@ export interface FleetDashboardPeriodDto {
    * first page of its link; `more` + `rows.length` = `dealership.rows`.
    */
   dealershipList: { rows: FleetDashboardPeriodDealershipRowDto[]; more: number } | null;
+  /**
+   * «مصروفات التراخيص في الفترة»: the licence-expense memos whose memo day is in the range (whole
+   * days on both ends) — the WHOLE company: a memo carries no branch, no car type, no operation and
+   * no amount per car, so neither the vehicle set nor the branch reaches it (PAGELESS: its key reads
+   * R2, never opens the page).
+   */
+  licenceSpend: FleetDashboardPeriodLicenceSpendDto | null;
   unavailable: FleetDashboardPeriodSection[];
+}
+
+/** Where the period's custody spend stands now; the three parts sum to `opex.custody`. */
+export interface FleetDashboardPeriodCustodyStatesDto {
+  /** «تمت الاستعاضة» — on a memo whose replenishment was transferred (or a legacy one). */
+  replenished: number;
+  /** «في مذكرات لم تُستعَض» — on a memo still waiting, or held («في انتظار التحويل»). */
+  pending: number;
+  /** «خارج المذكرات» — on no live memo yet. */
+  outside: number;
+}
+
+/**
+ * «مصروفات التراخيص في الفترة» and «تفصيل مصروفات الفترة» — the licence-expense register's own
+ * totals over the range: renewal + extension = visa + cash = total, to the piastre.
+ */
+export interface FleetDashboardPeriodLicenceSpendDto {
+  /**
+   * «عدد المذكرات» — the memos, as the register counts them: a record holding a renewal memo and an
+   * extension memo is two (D05).
+   */
+  count: number;
+  /**
+   * «السيارات» — the car entries written on the memos, as the register counts them (hand-typed
+   * plates too; a car on both memos of a record counts twice).
+   */
+  cars: number;
+  /** «فيزا». */
+  visa: number;
+  /** «نقدي». */
+  cash: number;
+  /** «تجديد تراخيص» — the renewal memos' lines. */
+  renewal: number;
+  /** «مد مدة» — the extension memos' lines. */
+  extension: number;
+  total: number;
 }
 
 export interface FleetDashboardKmBucketDto {
@@ -1414,7 +1645,10 @@ export interface FleetDashboardPeriodKmDto {
   average: number | null;
   buckets: FleetDashboardKmBucketDto[];
   spans: { km: number; count: number };
-  /** Current branch (K-12). */
+  /**
+   * Current branch (K-12): the register's km by branch. `name: null` only for `branchId: null`
+   * («بلا فرع»); a branch the live list no longer holds is named «—» and keeps its id (D33).
+   */
   byBranch: { branchId: string | null; name: LocalizedString | null; km: number }[];
   /**
    * «الكيلومترات حسب النوع» — only when exactly one branch is in scope (a chosen branch, or a reader's
@@ -1422,8 +1656,19 @@ export interface FleetDashboardPeriodKmDto {
    * «كل فروعي».
    */
   byType: { typeId: string; name: LocalizedString; km: number }[] | null;
-  /** km of vehicleId-null rows; null when a set exists. */
+  /**
+   * km of the old book's rows (vehicleId null) that no live car's code takes in — a row under a live
+   * car's code counts as that car's (D20); null when a set exists.
+   */
   unregistered: number | null;
+  /**
+   * km of the old book's rows a live car's code took in (D20): counted for that car in `total`, the
+   * rankings and the average, but in no `byBranch` / `byType` column — each column is what the
+   * register shows for its branch, and the register's branch filter never reads the old book. So
+   * Σ byBranch + (unregistered ?? 0) + bookOnRegistered = total. 0 when a type, operation or branch
+   * narrows the view (nothing is folded then).
+   */
+  bookOnRegistered: number;
   /** «أعلى 5»: ≤ FLEET_DASHBOARD_RANK_ROWS; `typeName` = the make. */
   top5: { vehicleId: string; code: string; km: number; typeName: LocalizedString | null }[];
   /** «أقل 5»: ≤ FLEET_DASHBOARD_RANK_ROWS, active cars only; `typeName` = the make. */
@@ -1505,12 +1750,16 @@ export interface FleetDashboardPeriodExitsDto {
   byWorkshop: FleetDashboardPeriodExitBarDto[];
   /**
    * ≤ FLEET_DASHBOARD_RANK_ROWS: exits desc, latest check-in desc, then code. A car deleted from the
-   * registry is not ranked (its code opens an empty list), and — a choice, not a dead link — neither
-   * is an old-book visit with no registry car: every row names a registry car. Both stay in `count`
-   * and the bars (the old-book ones also in `unregistered`).
+   * registry is not ranked (its code opens an empty list). When no type, operation or branch narrows
+   * the view, an old-book visit filed under the code a live car carries counts as that car's (its
+   * link lists it too, audit D20); an old-book visit no live car's code takes in is not ranked.
+   * Every visit stays in `count` and the bars.
    */
   topVehicles: FleetDashboardPeriodTopVehicleDto[];
-  /** Exits of old-book visits with no registry car; `null` when a vehicle clause applies. */
+  /**
+   * Exits of old-book visits that no live car's code takes in (D20); `null` when a vehicle clause
+   * applies.
+   */
   unregistered: number | null;
 }
 
@@ -1635,6 +1884,6 @@ export interface FleetDashboardPeriodDealershipRowDto {
   /** «صيانة», «إصلاح» or «إصلاح (كهرباء)» — the dealership screen's work-type column. */
   workTypeLabel: string;
   invoiceNumber: string | null;
-  /** `null` = «بانتظار تسجيل القيمة» (counted in `dealership.pending`). */
+  /** `null` = «بانتظار الفاتورة» (counted in `dealership.pending`). */
   invoiceAmount: number | null;
 }

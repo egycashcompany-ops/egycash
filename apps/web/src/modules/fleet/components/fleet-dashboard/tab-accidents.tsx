@@ -484,6 +484,8 @@ const NoticesTable = ({
   const F = NOTICE_FOLD;
   // The rows the server left out: its count less the rows it caps the table at — never a length.
   const more = notices.missingAny - FLEET_DASHBOARD_NOTICE_ROWS;
+  // `null` for a reader whose reach holds no branch (D21): no foot link, never the whole company.
+  const cheque = links.noticesCheckImage();
   const th = cn(CELL, TH, 'py-2.5 text-start');
   return (
     <Card data-acc-block="notices" className="mt-5">
@@ -541,7 +543,7 @@ const NoticesTable = ({
             <Phrase text={w('missing.allOpen')} parts={{ count: <N>{count(notices.open)}</N> }} />
           </span>
         </FootLink>
-        <FootLink link={{ ...links.noticesCheckImage(), metric: 'notices.missingCheckImage.all' }}>
+        <FootLink link={cheque && { ...cheque, metric: 'notices.missingCheckImage.all' }}>
           <span data-acc-foot="cheque">
             <Phrase
               text={w('missing.noCheque')}

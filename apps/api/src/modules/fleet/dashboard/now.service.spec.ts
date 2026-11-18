@@ -28,6 +28,7 @@ import {
 } from '@ecms/contracts';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
+import type * as DriverProfileModule from '../driver-profiles/driver-profile.service';
 
 const fn = (): Mock => vi.fn();
 const vehicles = {
@@ -36,6 +37,7 @@ const vehicles = {
   activeByTypeAndBranch: fn(),
   countListed: fn(),
   nearestLicences: fn(),
+  licenceMonthCounts: fn(),
   countLive: fn(),
   codesByIds: fn(),
 };
@@ -49,7 +51,7 @@ const types = { listAll: fn() };
 const branches = { listAll: fn() };
 const catalog = { listKind: fn(), namesByIds: fn() };
 const drivers = { registryDigest: fn() };
-const licensing = { openPaperCounts: fn() };
+const licensing = { openPaperCounts: fn(), paperStagesFor: fn() };
 const fuel = { summary: fn(), nearestExpiry: fn(), attentionList: fn(), cardIdsOf: fn() };
 const reconcile = { lastSheets: fn() };
 const accidents = { recentWritten: fn(), summaryOver: fn() };
@@ -75,7 +77,9 @@ vi.mock('../../../platform/organization/branches/branch.repository', () => ({
   branchRepository: branches,
 }));
 vi.mock('../catalogs/catalog-item.repository', () => ({ fleetCatalogItemRepository: catalog }));
-vi.mock('../driver-profiles/driver-profile.service', () => ({
+// The registry is stubbed; its pure month keys (`monthKeysFrom`) are the real ones.
+vi.mock('../driver-profiles/driver-profile.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof DriverProfileModule>()),
   fleetDriverProfileService: drivers,
 }));
 vi.mock('../licensing/licensing.service', () => ({ fleetLicensingService: licensing }));
@@ -97,7 +101,7 @@ const {
   distributionMatrix,
   unmannedClassOf,
 } = await import('./now.service');
-const { dashboardBranches } = await import('./dashboard-context');
+const { dashboardBranches, DASHBOARD_KEYS } = await import('./dashboard-context');
 const { selectorBranches } = await import('../../../shared/types');
 
 const NOW = new Date('2026-10-31T23:30:00.000Z');
@@ -110,6 +114,26 @@ const OP_CASH = '650000000000000000000301';
 const OP_ATM = '650000000000000000000302';
 const SP_CASH = '650000000000000000000401';
 const MISSION = '650000000000000000000501';
+/** «فئة الرخصة» and the driver licence type, by catalog id. */
+const LICENCE_CLASS = '650000000000000000000502';
+const FIRST_GRADE = '650000000000000000000503';
+const BARQASH_T = { ar: 'برقاش ت', en: 'Barqash T' };
+const FIRST = { ar: 'اولى', en: 'First' };
+/** The 12 month keys from Cairo's 2026-11 (NOW is 2026-10-31T23:30Z). */
+const MONTHS = [
+  '2026-11',
+  '2026-12',
+  '2027-01',
+  '2027-02',
+  '2027-03',
+  '2027-04',
+  '2027-05',
+  '2027-06',
+  '2027-07',
+  '2027-08',
+  '2027-09',
+  '2027-10',
+];
 const CAIRO = { ar: 'القاهرة', en: 'Cairo' };
 const GIZA = { ar: 'الجيزة', en: 'Giza' };
 /** One «إخطارات ينقصها مرفق» row as the notices module gives it. */
@@ -254,9 +278,24 @@ beforeEach(() => {
   ]);
   vehicles.countListed.mockResolvedValue(1);
   vehicles.nearestLicences.mockResolvedValue({
-    rows: [{ vehicleId: 'v3', code: '3', expiresAt: '2026-10-30T00:00:00.000Z' }],
+    rows: [
+      {
+        vehicleId: 'v3',
+        code: '3',
+        expiresAt: '2026-10-30T00:00:00.000Z',
+        typeId: T1,
+        licenseClassId: LICENCE_CLASS,
+      },
+    ],
     total: 4,
   });
+  vehicles.licenceMonthCounts.mockResolvedValue(
+    new Map([
+      ['2026-11', 2],
+      ['2027-01', 1],
+    ]),
+  );
+  licensing.paperStagesFor.mockResolvedValue(new Map([['v3', { insurance: 'open', tax: 'done' }]]));
   roster.boardWithCrews.mockImplementation(async () => ({
     board: BOARD,
     fixedCrews: await crews.findAll(),
@@ -268,6 +307,8 @@ beforeEach(() => {
     open: 0,
     openActive: 0,
     openOutOfService: 0,
+    openDisposed: 0,
+    openNoCar: 0,
     oldest: null,
   });
   maintenance.recentWritten.mockResolvedValue([]);
@@ -305,7 +346,15 @@ beforeEach(() => {
   ]);
   catalog.namesByIds.mockImplementation((ids: readonly string[]) =>
     Promise.resolve(
-      new Map(ids.includes(MISSION) ? [[MISSION, { ar: 'نقل أموال', en: 'Cash run' }]] : []),
+      new Map(
+        (
+          [
+            [MISSION, { ar: 'نقل أموال', en: 'Cash run' }],
+            [LICENCE_CLASS, BARQASH_T],
+            [FIRST_GRADE, FIRST],
+          ] as const
+        ).filter(([id]) => ids.includes(id)),
+      ),
     ),
   );
   vehicles.codesByIds.mockImplementation((ids: readonly string[]) =>
@@ -323,7 +372,33 @@ beforeEach(() => {
   );
   drivers.registryDigest.mockResolvedValue({
     total: 7,
-    licence: { expired: 1, expiring: 2, soon: 0, notRecorded: 1, unregistered: 1 },
+    licence: {
+      expired: 1,
+      expiring: 2,
+      soon: 0,
+      notRecorded: 1,
+      unregistered: 1,
+      months: MONTHS.map((key, i) => ({ key, count: i === 0 ? 2 : 0 })),
+      nearest: {
+        rows: [
+          {
+            profileId: 'p1',
+            employeeId: 'e1',
+            expiresAt: '2026-10-20',
+            licenceTypeId: FIRST_GRADE,
+            active: false,
+          },
+          {
+            profileId: 'p2',
+            employeeId: 'e2',
+            expiresAt: '2026-11-03',
+            licenceTypeId: null,
+            active: true,
+          },
+        ],
+        total: 3,
+      },
+    },
     cash: { drivers: 3, legacy: 1 },
     atm: { drivers: 0, legacy: 0 },
   });
@@ -394,16 +469,22 @@ const USES: Record<FleetDashboardNowSection, readonly Mock[]> = {
     vehicles.countListed,
   ],
   distributionDrivers: [drivers.registryDigest],
-  licenceVehicles: [vehicles.countListed, vehicles.nearestLicences],
-  licenceDrivers: [drivers.registryDigest],
+  // The rows are named by the type list (shared with the matrix) and one catalog read; the papers
+  // (`licensing.paperStagesFor`) only beside the board's own key — pinned on their own below.
+  licenceVehicles: [
+    vehicles.countListed,
+    vehicles.nearestLicences,
+    vehicles.licenceMonthCounts,
+    types.listAll,
+    catalog.namesByIds,
+  ],
+  licenceDrivers: [drivers.registryDigest, catalog.namesByIds],
   papers: [licensing.openPaperCounts],
   fuelCards: [fuel.summary, fuel.nearestExpiry],
   fuelCharging: [fuel.summary],
   fuelCardList: [fuel.attentionList],
   // The branch's cards are asked only under a branch (`cardIdsOf`) — the company view reads none.
   fuelSheets: [reconcile.lastSheets],
-  recentWorkshop: [maintenance.recentWritten],
-  recentAccidents: [accidents.recentWritten],
   // ONE read of the open notices: the counts and the rows (never the screen's two full reads).
   notices: [notices.dashboardDigest],
   dealershipPending: [dealership.summaryOver],
@@ -607,9 +688,6 @@ describe('R1 — data scope (R-27)', () => {
     expect(accidents.summaryOver).toHaveBeenCalledWith({ status: 'open', branchIds: both });
     expect(dealership.summaryOver).toHaveBeenCalledWith({ pending: true, branchIds: both });
     expect(maintenance.openNow).toHaveBeenCalledWith({ today: TODAY, filter: { branchIds: both } });
-    expect(maintenance.recentWritten).toHaveBeenCalledWith(
-      expect.objectContaining({ filter: { branchIds: both } }),
-    );
     expect(violations.yearDigest).toHaveBeenCalledWith({ year: 2026, filter: { branchIds: both } });
     expect(violations.openDigest).toHaveBeenCalledWith({
       filter: { branchIds: both },
@@ -721,7 +799,7 @@ describe('R1 — data scope (R-27)', () => {
     // The known limit of one answer per request: the figures are narrowed by ONE key's reach. Two
     // branch grants of the same rank tie, and the last of them in the two reads' key order wins —
     // pinned so the choice cannot drift silently (exact per-key narrowing is a later hand-off).
-    const keys = [...new Set([...FLEET_DASHBOARD_NOW_KEYS, ...FLEET_DASHBOARD_PERIOD_KEYS])];
+    const keys = DASHBOARD_KEYS;
     const first = keys[0] ?? '';
     const last = keys[keys.length - 1] ?? '';
     const ctx = ctxWith([first, last], { branchId: B1 }, 'branch');
@@ -741,6 +819,24 @@ describe('R1 — data scope (R-27)', () => {
     const ctx = ctxWith(['fleetVehicle.view'], { branchId: B1 }, 'branch');
     ctx.permissions['fleetCustody.view'] = 'organization';
     expect(dashboardBranches(ctx)).toEqual([B1]);
+  });
+
+  it('nor does the licence expenses’ key — a memo has no branch (`licenceSpend` is the company)', () => {
+    const ctx = ctxWith(['fleetVehicle.view'], { branchId: B1 }, 'branch');
+    ctx.permissions['fleetLicenseExpense.view'] = 'organization';
+    expect(dashboardBranches(ctx)).toEqual([B1]);
+    // Both keys are in the R2 union (they gate `custodyStates` and `licenceSpend`), never in the
+    // keys that decide the cover.
+    expect(FLEET_DASHBOARD_PERIOD_KEYS).toEqual(
+      expect.arrayContaining(['fleetCustody.view', 'fleetLicenseExpense.view']),
+    );
+    expect(DASHBOARD_KEYS).not.toContain('fleetCustody.view');
+    expect(DASHBOARD_KEYS).not.toContain('fleetLicenseExpense.view');
+    expect([...DASHBOARD_KEYS].sort()).toEqual(
+      [...new Set([...FLEET_DASHBOARD_NOW_KEYS, ...FLEET_DASHBOARD_PERIOD_KEYS])]
+        .filter((key) => key !== 'fleetCustody.view' && key !== 'fleetLicenseExpense.view')
+        .sort(),
+    );
   });
 
   it('each alarm level carries its own codes, capped on its own: 70 green cars never hide 3 red ones', async () => {
@@ -920,23 +1016,26 @@ describe('R1 — one clock, Cairo day', () => {
       {},
       { today: TODAY, warnDays: 30, yellowAt: 300, redAt: 100, limit: 8 },
     );
-    expect(maintenance.recentWritten).toHaveBeenCalledWith({
-      sinceYmd: '2026-10-03',
-      limit: 8,
-      filter: {},
-    });
-    expect(accidents.recentWritten).toHaveBeenCalledWith({
-      sinceYmd: '2026-10-03',
-      limit: 8,
-      filter: {},
-    });
+    // «التراخيص المستحقة للتجديد — 12 شهرًا» from Cairo's month, not the instant's UTC October.
+    expect(vehicles.licenceMonthCounts).toHaveBeenCalledWith(
+      expect.anything(),
+      '2026-11',
+      '2027-10',
+    );
+    expect(dto.licenceVehicles?.months.map((month) => month.key)).toEqual(MONTHS);
     expect(drivers.registryDigest).toHaveBeenCalledWith({
       today: TODAY,
       warnDays: 30,
       branchIds: null,
       cashSpecIds: [SP_CASH],
       atmSpecIds: [],
+      nearestLimit: 6,
     });
+    // «آخر ما سُجّل» is retired: neither module's recent rows are asked any more.
+    expect(maintenance.recentWritten).not.toHaveBeenCalled();
+    expect(accidents.recentWritten).not.toHaveBeenCalled();
+    expect(dto).not.toHaveProperty('recentWorkshop');
+    expect(dto).not.toHaveProperty('recentAccidents');
   });
 
   it('counts the licence windows of R-10 through the list filter, active cars only (Q-15)', async () => {
@@ -969,10 +1068,126 @@ describe('R1 — one clock, Cairo day', () => {
       own,
     );
     expect(vehicles.nearestLicences).toHaveBeenCalledWith(own, '2026-12-31', 6);
+    // A reader of the registry alone: the row is named, its papers are not (no board grant).
     expect(dto.licenceVehicles?.list).toEqual([
-      { vehicleId: 'v3', code: '3', expiresAt: '2026-10-30T00:00:00.000Z', days: -2 },
+      {
+        vehicleId: 'v3',
+        code: '3',
+        expiresAt: '2026-10-30',
+        days: -2,
+        typeName: MERCEDES,
+        licenceClass: BARQASH_T,
+        papers: null,
+      },
     ]);
+    expect(licensing.paperStagesFor).not.toHaveBeenCalled();
     expect(dto.licenceVehicles?.more).toBe(3);
+    // Not asked is not failed.
+    expect(dto.licenceVehicles?.papersFailed).toBe(false);
+  });
+
+  it('«أقرب تراخيص السيارات»: the board’s papers only beside the board’s key, under ITS scope', async () => {
+    const ctx = ctxWith(['fleetVehicle.view', 'fleetLicensing.view'], {}, 'own');
+    const dto = await fleetDashboardNowService.read(ctx, NOW);
+    expect(licensing.paperStagesFor).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: 'own', userId: ctx.userId }),
+      ['v3'],
+    );
+    expect(dto.licenceVehicles?.list[0]?.papers).toEqual({ insurance: 'open', tax: 'done' });
+    expect(dto.licenceVehicles?.papersFailed).toBe(false);
+    // A car off the board (absent from the answer) has no papers — and the board did answer.
+    licensing.paperStagesFor.mockResolvedValueOnce(new Map());
+    const off = await fleetDashboardNowService.read(ctx, NOW);
+    expect(off.licenceVehicles?.list[0]?.papers).toBeNull();
+    expect(off.licenceVehicles?.papersFailed).toBe(false);
+  });
+
+  it('the board failing costs the papers only — SAID, so no row reads «no open paper»', async () => {
+    licensing.paperStagesFor.mockRejectedValueOnce(new Error('boom'));
+    const dto = await fleetDashboardNowService.read(
+      ctxWith(['fleetVehicle.view', 'fleetLicensing.view']),
+      NOW,
+    );
+    expect(dto.unavailable).toEqual([]);
+    expect(dto.licenceVehicles?.list[0]).toMatchObject({ code: '3', papers: null });
+    expect(dto.licenceVehicles?.papersFailed).toBe(true);
+    expect(dto.licenceVehicles?.expired).toBe(1);
+  });
+
+  it('a row whose make or class the lists do not hold is named `null`, never invented; no rows ask nothing', async () => {
+    vehicles.nearestLicences.mockResolvedValueOnce({
+      rows: [
+        {
+          vehicleId: 'v4',
+          code: '4',
+          expiresAt: '2026-11-20T00:00:00.000Z',
+          typeId: null,
+          licenseClassId: null,
+        },
+      ],
+      total: 1,
+    });
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetVehicle.view']), NOW);
+    expect(dto.licenceVehicles?.list[0]).toMatchObject({
+      expiresAt: '2026-11-20',
+      days: 19,
+      typeName: null,
+      licenceClass: null,
+    });
+    vi.clearAllMocks();
+    settings.resolve.mockImplementation((key: string) => Promise.resolve(SETTINGS[key]));
+    vehicles.countListed.mockResolvedValue(0);
+    vehicles.nearestLicences.mockResolvedValue({ rows: [], total: 0 });
+    vehicles.licenceMonthCounts.mockResolvedValue(new Map());
+    const none = await fleetDashboardNowService.read(ctxWith(['fleetVehicle.view']), NOW);
+    expect(none.licenceVehicles?.list).toEqual([]);
+    expect(catalog.namesByIds).not.toHaveBeenCalled();
+  });
+
+  it('the cars’ 12 months: this Cairo month first, a month with no car kept as 0', async () => {
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetVehicle.view']), NOW);
+    expect(dto.licenceVehicles?.months).toEqual(
+      MONTHS.map((key) => ({ key, count: key === '2026-11' ? 2 : key === '2027-01' ? 1 : 0 })),
+    );
+    // Over the registry reader's own scope — the same as the counts.
+    expect(vehicles.licenceMonthCounts.mock.calls[0]?.[0]).toBe(
+      vehicles.countListed.mock.calls[0]?.[1],
+    );
+  });
+
+  it('«رخص السائقين»: the digest’s months and nearest files, each day counted and type named', async () => {
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetDriver.view']), NOW);
+    expect(dto.licenceDrivers).toEqual({
+      warnDays: 30,
+      expired: 1,
+      expiring: 2,
+      soon: 0,
+      notRecorded: 1,
+      unregistered: 1,
+      months: MONTHS.map((key, i) => ({ key, count: i === 0 ? 2 : 0 })),
+      list: {
+        rows: [
+          {
+            profileId: 'p1',
+            employeeId: 'e1',
+            expiresAt: '2026-10-20',
+            days: -12,
+            licenceType: FIRST,
+            active: false,
+          },
+          {
+            profileId: 'p2',
+            employeeId: 'e2',
+            expiresAt: '2026-11-03',
+            days: 2,
+            licenceType: null,
+            active: true,
+          },
+        ],
+        more: 1,
+      },
+    });
+    expect(catalog.namesByIds).toHaveBeenCalledWith([FIRST_GRADE]);
   });
 });
 
@@ -1227,6 +1442,8 @@ describe('distributionMatrix — T3.1–T3.3', () => {
     { id: B2, name: { ar: 'الجيزة', en: 'Giza' } },
   ];
   const OP_OTHER = '650000000000000000000303';
+  /** A branch soft-deleted while its cars stayed active: the live list no longer holds it. */
+  const B4 = '650000000000000000000104';
   /** The operation kinds as `operationKind` names them; an unknown id or none is neither. */
   const kindOf = (id: string | null): 'cash' | 'atm' | null =>
     id === OP_CASH ? 'cash' : id === OP_ATM ? 'atm' : null;
@@ -1349,7 +1566,7 @@ describe('distributionMatrix — T3.1–T3.3', () => {
     expect(m.other).toEqual({ vehicles: 0 });
   });
 
-  it('a car in a branch outside the list (a reader-scope miss) still gets a column and its kinds', () => {
+  it('a car in a branch the live list no longer holds (deleted) gets a column «—» and its kinds (D11)', () => {
     const m = distributionMatrix({
       cells: [cell(T1, B3, 2, OP_CASH)],
       typeNames: new Map(),
@@ -1357,10 +1574,86 @@ describe('distributionMatrix — T3.1–T3.3', () => {
       scopeBranches: new Set([B1]),
       kindOf,
     });
-    // B3 is not in the live branch list: its cars still count, under their own id.
-    expect(m.branches.map((b) => b.id)).toEqual([B1]);
+    // B3 is not in the live branch list: its cars still count, under their own id — and are DRAWN.
+    expect(m.branches).toEqual([
+      { id: B3, name: { ar: '—', en: '—' } },
+      { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } },
+    ]);
     expect(m.kinds[B3]).toEqual({ cash: 2, atm: 0, other: 0 });
     expect(m.totals.counts[B3]).toBe(2);
+  });
+
+  it('a deleted branch holding cars: grand total = Σ drawn columns + «بلا فرع», for every row and kind (D11)', () => {
+    // The audit's world: B1 3 cars, B2 1, B3 none, B4 (deleted) 1, one car with no branch.
+    const m = distributionMatrix({
+      cells: [
+        cell(T1, B1, 1, OP_CASH),
+        cell('T2', B1, 1, OP_ATM),
+        cell('T2', B1, 1, null),
+        cell(T1, B2, 1, OP_CASH),
+        cell(T1, B4, 1, null),
+        cell('T2', null, 1, OP_OTHER),
+      ],
+      typeNames: new Map(),
+      branches: [...branchList, { id: B3, name: { ar: 'فرع ج', en: 'C' } }],
+      scopeBranches: null,
+      kindOf,
+    });
+    expect(m.branches.map((b) => b.id)).toEqual([B1, B2, B4, B3]);
+    expect(m.branches.find((b) => b.id === B4)?.name).toEqual({ ar: '—', en: '—' });
+    const drawn = (counts: Record<string, number>): number =>
+      m.branches.reduce((sum, b) => sum + (counts[b.id] ?? 0), 0);
+    expect(m.totals.total).toBe(6);
+    expect(drawn(m.totals.counts) + m.totals.noBranch).toBe(m.totals.total);
+    for (const row of m.rows) expect(drawn(row.counts) + row.noBranch, row.typeId).toBe(row.total);
+    // Card 1's «أخرى» = Σ the cards' «أخرى» + «بلا فرع»'s: the deleted branch's car is in a card.
+    const others = m.branches.reduce((sum, b) => sum + (m.kinds[b.id]?.other ?? 0), 0);
+    expect(others + m.noBranchKinds.other).toBe(m.other.vehicles);
+    expect(m.other.vehicles).toBe(3);
+    expect(Object.keys(m.kinds).sort()).toEqual(m.branches.map((b) => b.id).sort());
+    // The overview's count and the drawn columns holding a car agree: B1, B2 and the deleted B4.
+    expect(m.branchCount).toBe(3);
+  });
+
+  it('a CLOSED branch with no active car is no column for the company; with a car it stays (D12)', () => {
+    const closedB3 = { id: B3, name: { ar: 'فرع ج', en: 'C' }, active: false };
+    const empty = distributionMatrix({
+      cells: [cell(T1, B1, 2)],
+      typeNames: new Map(),
+      branches: [...branchList, closedB3],
+      scopeBranches: null,
+      kindOf,
+    });
+    // B2 is open (no car): its «0» card stays; the closed, empty B3 has none.
+    expect(empty.branches.map((b) => b.id)).toEqual([B1, B2]);
+    expect(Object.keys(empty.kinds).sort()).toEqual([B1, B2].sort());
+    const held = distributionMatrix({
+      cells: [cell(T1, B1, 2), cell(T1, B3, 1, OP_CASH)],
+      typeNames: new Map(),
+      branches: [...branchList, closedB3],
+      scopeBranches: null,
+      kindOf,
+    });
+    expect(held.branches.map((b) => b.id)).toEqual([B1, B3, B2]);
+    // Its own name (the list still holds a closed branch) — and the flag never reaches the DTO.
+    expect(held.branches.find((b) => b.id === B3)).toEqual({
+      id: B3,
+      name: { ar: 'فرع ج', en: 'C' },
+    });
+    expect(held.kinds[B3]).toEqual({ cash: 1, atm: 0, other: 0 });
+  });
+
+  it('a branch reader keeps their own branch closed or open; another closed branch never shows (D12)', () => {
+    const closedB1 = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' }, active: false };
+    const m = distributionMatrix({
+      cells: [],
+      typeNames: new Map(),
+      branches: [closedB1, branchList[1]!],
+      scopeBranches: new Set([B1]),
+      kindOf,
+    });
+    expect(m.branches).toEqual([{ id: B1, name: { ar: 'القاهرة', en: 'Cairo' } }]);
+    expect(m.kinds).toEqual({ [B1]: { cash: 0, atm: 0, other: 0 } });
   });
 
   it('the columns are ordered by active cars desc; a tie keeps the branch list’s order', () => {
@@ -1417,6 +1710,27 @@ describe('distributionMatrix — T3.1–T3.3', () => {
       ([query]) => (query as Record<string, unknown>)['operationId'] !== undefined,
     );
     expect(byOperation).toHaveLength(2);
+  });
+
+  it('the section reads the branch status: a closed, empty branch is dropped, a deleted one named «—» (D11, D12)', async () => {
+    branches.listAll.mockResolvedValue([
+      { _id: B1, name: CAIRO, status: 'active' },
+      { _id: B2, name: GIZA, status: 'inactive' },
+      { _id: B3, name: { ar: 'الإسكندرية', en: 'Alexandria' }, status: 'inactive' },
+    ]);
+    vehicles.activeByTypeAndBranch.mockResolvedValue([
+      cell(T1, B1, 2, OP_CASH),
+      cell(T1, B3, 1, OP_ATM),
+      // A branch the list no longer holds (soft-deleted) still holding an active car.
+      cell(T1, '650000000000000000000199', 1, null),
+    ]);
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetVehicle.view']), NOW);
+    expect(dto.distributionVehicles?.branches).toEqual([
+      { id: B1, name: CAIRO },
+      { id: B3, name: { ar: 'الإسكندرية', en: 'Alexandria' } },
+      { id: '650000000000000000000199', name: { ar: '—', en: '—' } },
+    ]);
+    expect(dto.distributionVehicles?.branchCount).toBe(3);
   });
 });
 

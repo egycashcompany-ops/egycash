@@ -23,6 +23,8 @@ const E2 = '650000000000000000000012';
 const E3 = '650000000000000000000013';
 const E4 = '650000000000000000000014';
 const E5 = '650000000000000000000015';
+const E6 = '650000000000000000000016';
+const E7 = '650000000000000000000017';
 
 const PEOPLE = new Map<string, FleetPersonDto>(
   (
@@ -32,6 +34,8 @@ const PEOPLE = new Map<string, FleetPersonDto>(
       [E3, 'سعيد سعد', '11003'],
       [E4, 'كريم علي', '11004'],
       [E5, 'عمرو حسن', '11005'],
+      [E6, 'ياسر فتحي', '11006'],
+      [E7, 'هاني سمير', '11007'],
     ] as const
   ).map(([employeeId, fullNameAr, code]) => [
     employeeId,
@@ -67,6 +71,7 @@ const OPTIONS: DriverOptions = {
     option(E5, { licenceExpired: true, state: 'seated', seatedCode: '154' }),
   ],
   seated: [option(E1, { state: 'seated', seatedCode: '150' })],
+  elsewhere: [],
 };
 const LICENCE = {
   count: 2,
@@ -137,7 +142,7 @@ describe('AvailableList — the pool and the licence block', () => {
   });
 
   it('keeps the licence block on a day with nobody available — the vehicles still have their check', () => {
-    const empty: DriverOptions = { free: [], flagged: [], seated: [] };
+    const empty: DriverOptions = { free: [], flagged: [], seated: [], elsewhere: [] };
     const none = { ...LICENCE, count: 0 };
     const all = render(
       <AvailableList
@@ -231,7 +236,7 @@ describe('AvailableList — the pool and the licence block', () => {
   });
 
   it('says why the list is empty — the day, or the term', () => {
-    const empty = { free: [], flagged: [], seated: [] };
+    const empty = { free: [], flagged: [], seated: [], elsewhere: [] };
     const day = render(
       <AvailableList
         options={empty}
@@ -258,6 +263,96 @@ describe('AvailableList — the pool and the licence block', () => {
 
   it('writes no figure in Arabic-Indic digits', () => {
     expect(desk('list') + desk('licence')).not.toMatch(ARABIC_INDIC);
+  });
+});
+
+describe('AvailableList — a driver the server holds on a car OFF this board (D01)', () => {
+  // E6 is planned today on another branch's car; E7 likewise, and his licence is flagged. No edit
+  // on this board can release either (FR-7), so neither is the pool's: both are listed apart under
+  // «معيّنون على سيارات أخرى» with the fixed roster's «سيارة أخرى», and neither is ever a pick.
+  const HELD: DriverOptions = {
+    ...OPTIONS,
+    flagged: [...OPTIONS.flagged, option(E7, { licenceExpired: true, state: 'elsewhere' })],
+    seated: [],
+    elsewhere: [option(E6, { state: 'elsewhere' })],
+  };
+  const list = (
+    over: Partial<Parameters<typeof AvailableList>[0]> = {},
+    options: DriverOptions = HELD,
+  ): string =>
+    render(
+      <AvailableList
+        options={options}
+        person={person}
+        onPick={null}
+        licence={LICENCE}
+        dayHasDrivers
+        searched={false}
+        draggable
+        part="list"
+        {...over}
+      />,
+    );
+
+  it('lists him under «معيّنون على سيارات أخرى» on every list — with no seat being filled too', () => {
+    const markup = list();
+    const head = markup.slice(markup.indexOf('data-on-other-vehicles="true"'));
+    expect(head, 'the section is drawn without a seat to fill').toContain(
+      t('fleet.roster.onOtherVehicles'),
+    );
+    const row = item(markup, `data-held-elsewhere="${E6}"`);
+    expect(row, 'his name').toContain('ياسر فتحي');
+    expect(row, 'and the fixed roster’s badge').toContain(t('fleet.roster.otherVehicle'));
+    expect(row).toContain('data-driver-state="elsewhere"');
+  });
+
+  it('never offers him: not the pool’s card, no drag, no button, marked disabled', () => {
+    for (const markup of [
+      list(),
+      list({ onPick: () => undefined }),
+      list({ onIdlePick: () => undefined }),
+    ]) {
+      const row = item(markup, `data-held-elsewhere="${E6}"`);
+      expect(row).not.toBe('');
+      expect(row, 'not the pool’s card').not.toContain('data-driver-card');
+      expect(row, 'nor a pool driver').not.toContain('data-pool-driver');
+      expect(row, 'not dragged from here').not.toContain('draggable="true"');
+      expect(row, 'not picked from here').not.toContain('<button');
+      expect(row).toContain('aria-disabled="true"');
+      expect(markup, 'the free driver is still the pool').toContain(`data-driver-card="${E3}"`);
+    }
+  });
+
+  it('counts him under that head, beside a move the draft offers for a seat', () => {
+    const both = list({ onPick: () => undefined }, { ...HELD, seated: OPTIONS.seated });
+    const section = both.slice(both.indexOf('data-on-other-vehicles="true"'));
+    expect(section.slice(0, section.indexOf('</div>'))).toContain('>2<');
+    expect(item(both, `data-seated-driver="${E1}"`), 'the move is still a pick').toContain(
+      '<button',
+    );
+    expect(both.indexOf(`data-seated-driver="${E1}"`)).toBeLessThan(
+      both.indexOf(`data-held-elsewhere="${E6}"`),
+    );
+  });
+
+  it('keeps a flagged driver held off the board in the licence block — saying so, never a pick', () => {
+    for (const markup of [
+      list({ part: 'licence' }),
+      list({ part: 'all', onPick: () => undefined }),
+    ]) {
+      const row = item(markup, `data-licence-expired-driver="${E7}"`);
+      expect(row).toContain(t('fleet.roster.licenceExpired'));
+      expect(row, 'says it is another car').toContain(t('fleet.roster.otherVehicle'));
+      expect(row).not.toContain('draggable="true"');
+      expect(row).not.toContain('<button');
+    }
+    expect(list(), 'and he is not listed twice').not.toContain(`data-held-elsewhere="${E7}"`);
+  });
+
+  it('draws nothing apart when nobody is held off the board and no seat is being filled', () => {
+    const plain = list({}, { ...OPTIONS, seated: [] });
+    expect(plain).not.toContain('data-on-other-vehicles');
+    expect(plain).not.toContain('data-held-elsewhere');
   });
 });
 

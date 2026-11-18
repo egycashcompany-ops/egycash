@@ -2,9 +2,10 @@
 //
 // A figure on the dashboard opens the screen that shows the same number. The server half of that
 // promise is A-DASH's parity spec (every figure = its screen's endpoint called with the link's
-// parameters). This is the browser half: render all eleven tabs from the fixtures — the company, a
+// parameters). This is the browser half: render all twelve tabs from the fixtures — the company, a
 // chosen branch, a reader of several branches («كل فروعي»), and period filters that narrow by type,
-// operation, codes and branch («أرقام الفترة» and the period parts of the five mixed panels) — collect
+// operation, codes and branch («أرقام الفترة» and the period parts of the seven mixed panels), for a
+// reader of every key the gates name (the PAGELESS licence expenses' too) — collect
 // EVERY figure link the page draws (the overview's links to other tabs of the page included), and
 // hold each to the screen it opens:
 //   · its path is a route of the fleet module, and the page that route mounts is known;
@@ -13,8 +14,7 @@
 //   · it is never a bare list link (a bare URL restores the reader's remembered filters, CR-11);
 //   · it names its figure, `<section>.<field>`, after a gated section.
 // It also keeps the pins of the retired old-page spec that no other spec carries (the whole page
-// counts nothing in the browser; an empty matrix cell is a dash, never a zero; an empty «آخر ما
-// سُجّل» says so in words).
+// counts nothing in the browser; an empty matrix cell is a dash, never a zero).
 //
 // Named exceptions of the two new tabs (a figure no list shows exactly is plain, plan D16): on
 // «المخالفات المرورية والتسويات» every COUNT of the «الآن» cards (the register sums amounts),
@@ -22,7 +22,14 @@
 // the collected amount and share, a type's amount; on «الوقود والمصروفات» every figure of the sheet
 // card, the «أول 8» sentence, the litres and the unpriced line, the dealership's pending AMOUNT and
 // the day columns. «شُحن اليوم» opens `state=charged` (the screen's own «شُحن اليوم»), and the
-// drivers' period fines travel as `dfrom` / `dto` / `dcodes` (the register's drivers' half).
+// drivers' period fines travel as `dfrom` / `dto` / `dcodes` (the register's drivers' half). On
+// «العهدة»: every count chip (receipts, memos, a letter's memos, parts, alerts, cars), a strip tile's
+// foot, a pending memo's and a held memo's amount, a settle part's amount and its visa / cash, the
+// three «منها حتى الآن» states, the bars' shares, the chart and its readout, the table's amount and
+// «بعدها» cells; on «التراخيص والتجديدات»: «بلا ملف سائق», «وخارج الخدمة», the memos' count and cars,
+// the two split groups (no screen filter matches them) and the chart's readout. A licence-expense
+// link carries the range alone (a memo has no branch, type or operation), and «سجل العهدة» /
+// «المذكرات» carry no echo at all (company-wide since the fund's first day).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +39,8 @@ import {
   FLEET_DASHBOARD_PERIOD_TABS,
   FLEET_DASHBOARD_TABS,
   FLEET_DASHBOARD_TAB_READS,
+  formatFleetSort,
+  parseFleetSort,
   type FleetDashboardNowAlarmDto,
   type FleetDashboardPeriodDto,
 } from '@ecms/contracts';
@@ -39,18 +48,20 @@ import {
   ALL_KEYS,
   B1,
   B2,
+  EVERY_KEY,
   NOW_DTO,
   OP_CASH,
   T1,
   T2,
   TODAY,
-  ar,
   dashboardClient,
   renderDashboard,
 } from './fleet-dashboard-fixtures';
 import { PERIOD_FULL, PERIOD_YEAR, renderPeriod } from './fleet-dashboard-period-fixtures';
 import {
   PATH_ONLY,
+  custodyDashboardLink,
+  custodyLinks,
   nowLinks,
   periodLinks,
   tabLink,
@@ -148,9 +159,9 @@ const NOW_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('now'),
 );
 /**
- * The tabs drawn over the PAGE's R2: «أرقام الفترة» under the filter bar, and the five mixed
+ * The tabs drawn over the PAGE's R2: «أرقام الفترة» under the filter bar, and the seven mixed
  * panels («الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية
- * والتسويات», «الوقود والمصروفات»).
+ * والتسويات», «الوقود والمصروفات», «العهدة», «التراخيص والتجديدات»).
  */
 const PAGE_PERIOD_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('period'),
@@ -228,27 +239,36 @@ const PERIOD_MINE: FleetDashboardPeriodDto = {
   ...PERIOD_FULL,
   vehicleScope: { ...PERIOD_FULL.vehicleScope, count: 39, scopeBranches: [CAIRO, GIZA] },
 };
+/** A reader whose branch reach holds no branch (audit D21): R1 and R2 echo `scopeBranches: []`. */
+const NOW_NONE_LINKS = nowLinks({ today: TODAY, branchId: null, scopeBranches: [] });
+const PERIOD_NONE: FleetDashboardPeriodDto = {
+  ...PERIOD_FULL,
+  vehicleScope: { ...PERIOD_FULL.vehicleScope, count: 0, scopeBranches: [] },
+};
 /** The overview opened under page filters: its links to other tabs carry them as they stand. */
 const PAGE_FILTERS = `&period=last30&type=${T1}&operation=${OP_CASH}&vehicleCodes=133`;
 
 const rendered = (): Anchor[] => {
   const pages: string[] = [];
+  const permissions = EVERY_KEY;
   for (const tab of NOW_TABS) {
-    pages.push(renderDashboard({ url: `/fleet?tab=${tab}` }));
+    pages.push(renderDashboard({ url: `/fleet?tab=${tab}`, permissions }));
     pages.push(
       renderDashboard({
         url: `/fleet?tab=${tab}`,
         client: dashboardClient({ now: NOW_BRANCH }),
+        permissions,
       }),
     );
     pages.push(
       renderDashboard({
         url: `/fleet?tab=${tab}`,
         client: dashboardClient({ now: NOW_MINE }),
+        permissions,
       }),
     );
   }
-  pages.push(renderDashboard({ url: `/fleet?tab=overview${PAGE_FILTERS}` }));
+  pages.push(renderDashboard({ url: `/fleet?tab=overview${PAGE_FILTERS}`, permissions }));
   // «توزيع السيارات» for a reader of the supply contracts (a part of the tab, not a page key).
   pages.push(
     renderDashboard({
@@ -256,21 +276,36 @@ const rendered = (): Anchor[] => {
       permissions: [...ALL_KEYS, 'fleetVehicleContract.view'],
     }),
   );
-  // The five mixed panels under a narrowed page R2, with the switcher's branch on R1 too.
-  for (const tab of ['maintenance', 'km', 'accidents', 'violations', 'fuel']) {
+  // The seven mixed panels under a narrowed page R2, with the switcher's branch on R1 too.
+  for (const tab of [
+    'maintenance',
+    'km',
+    'accidents',
+    'violations',
+    'fuel',
+    'custody',
+    'licences',
+  ]) {
     const narrowedUrl = `/fleet?tab=${tab}&period=last30${SET}`;
     pages.push(
       renderDashboard({
         url: narrowedUrl,
         client: dashboardClient({ now: NOW_BRANCH, page: { url: narrowedUrl, dto: NARROWED } }),
+        permissions,
       }),
     );
   }
   for (const tab of PAGE_PERIOD_TABS) {
-    pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30` }));
-    pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=thisYear`, dto: PERIOD_YEAR }));
-    pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30${SET}`, dto: NARROWED }));
-    pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30`, dto: PERIOD_MINE }));
+    pages.push(renderPeriod({ url: `/fleet?tab=${tab}&period=last30`, permissions }));
+    pages.push(
+      renderPeriod({ url: `/fleet?tab=${tab}&period=thisYear`, dto: PERIOD_YEAR, permissions }),
+    );
+    pages.push(
+      renderPeriod({ url: `/fleet?tab=${tab}&period=last30${SET}`, dto: NARROWED, permissions }),
+    );
+    pages.push(
+      renderPeriod({ url: `/fleet?tab=${tab}&period=last30`, dto: PERIOD_MINE, permissions }),
+    );
     // A reader without the custody screen: D20's fallback for the custody part.
     pages.push(
       renderPeriod({
@@ -297,9 +332,18 @@ const built = (): Anchor[] => {
     nowLinks({ today: TODAY, branchId: null, scopeBranches: null }),
     nowLinks({ today: TODAY, branchId: B1, scopeBranches: [CAIRO] }),
     nowLinks({ today: TODAY, branchId: null, scopeBranches: [CAIRO, GIZA] }),
+    // A reader whose reach holds no branch (audit D21): the company+set links are `null`.
+    NOW_NONE_LINKS,
   ]) {
     all.push(
       L.rosterCar('133'),
+      // «في الورشة الآن» and «كل السيارات في الورشة» (D07 `to`, D37 oldest first).
+      L.workshopOpen(),
+      L.workshopOpen('workshop.all'),
+      // «إخطارات مفتوحة ينقصها مرفق» (D10 `missing=any`).
+      L.noticesOpen(),
+      // «عرض الباقي» of the nearest car licences (D37 nearest first).
+      L.vehicleLicencesWithin60(),
       L.rosterAbsentAll(),
       L.rosterUnavailableAll(),
       L.violationsOpen(),
@@ -316,9 +360,12 @@ const built = (): Anchor[] => {
       L.supplyContracts('supplyContracts.yellow', 'yellow'),
       L.noReading(['133']),
       L.neverRead(['141']),
-      L.visitDay('231', TODAY, true),
-      L.visitDay('231', TODAY, false),
       L.driverLicencesNotRecorded(),
+      L.driverLicencesWithin60(),
+      L.driverLicenceMonth('2027-02'),
+      L.vehicleLicenceMonth('2027-02'),
+      L.driver('p520', 'licenceDrivers.row'),
+      L.papersOpen('tax'),
       L.fuelCardsExpiring(30),
       L.violationsUnknown(2026),
       L.rosterAbsent('hrLeave'),
@@ -347,12 +394,30 @@ const built = (): Anchor[] => {
       }),
     );
   }
+  // «العهدة»'s «الآن» links, every one the tab can draw (the fixtures draw some of them only).
+  all.push(
+    ...(['charge', 'spend', 'replenish', 'settle'] as const).map((op) =>
+      custodyLinks.log(op, 'custodyFund.log'),
+    ),
+    custodyLinks.log(null, 'custodyFund.log'),
+    custodyLinks.open('op-held', 'custodyFund.letter'),
+    custodyLinks.memos({ status: 'held' }, 'custodyFund.held'),
+    custodyLinks.memos({ status: 'pending' }, 'custodyFund.inMemos'),
+    // A kind outside any memo opens «لوحة تحكم العهدة», the screen with the same line (D27); the
+    // memos builder's kind argument stays checked against the memos screen.
+    custodyDashboardLink('custodyFund.outside.tyres'),
+    custodyLinks.memos({ kind: 'tyres' }, 'custodyFund.inMemos'),
+    custodyLinks.days('2026-10-06', '2026-10-11', 'custodyFund.recent'),
+    custodyLinks.licenceWaiting('extension', 'custodyFund.settlePart'),
+    custodyLinks.licenceWaiting(null, 'custodyFund.settle'),
+  );
   const sp = new URLSearchParams(`tab=overview${PAGE_FILTERS}`);
   for (const tab of FLEET_DASHBOARD_TABS) all.push(tabLink(tab, 'vehicles.tab', sp, [tab]));
   for (const vehicleScope of [
     PERIOD_FULL.vehicleScope,
     NARROWED.vehicleScope,
     PERIOD_MINE.vehicleScope,
+    PERIOD_NONE.vehicleScope,
   ]) {
     const P = periodLinks({ range: { from: '2026-10-03', to: TODAY }, vehicleScope });
     all.push(
@@ -383,20 +448,27 @@ const built = (): Anchor[] => {
       P.dealershipRow({ code: '221', date: '2026-10-29', workKind: 'maintenance' }),
       P.dealershipRow({ code: '263', date: '2026-10-31', workKind: 'repair' }),
       P.dealershipRow({ code: null, date: '2026-10-31', workKind: 'repair' }),
+      P.custodySpend('opex.custody'),
+      ...(['maintenance', 'fuel', 'tyres', 'wash'] as const).map((kind) =>
+        P.custodySpend(`opex.custody.${kind}`, kind),
+      ),
+      P.licenceSpend('licenceSpend.total'),
     );
   }
   return all.flatMap(asAnchor);
 };
 
-const LINKS = [...rendered(), ...built()];
+/** The links the fixtures draw, rendered once for every test that asks. */
+const RENDERED = rendered();
+const LINKS = [...RENDERED, ...built()];
 const parse = (href: string): { pathname: string; params: URLSearchParams } => {
   const [pathname = '', search = ''] = href.split('?');
   return { pathname, params: new URLSearchParams(search) };
 };
 
 describe('the link census — every figure link against the screen it opens', () => {
-  it('collects the page’s links from all eleven tabs (the census is not empty by accident)', () => {
-    expect(FLEET_DASHBOARD_TABS).toHaveLength(11);
+  it('collects the page’s links from all twelve tabs (the census is not empty by accident)', () => {
+    expect(FLEET_DASHBOARD_TABS).toHaveLength(12);
     expect([...PAGE_PERIOD_TABS].sort()).toEqual(
       [
         ...FLEET_DASHBOARD_PERIOD_TABS,
@@ -405,6 +477,8 @@ describe('the link census — every figure link against the screen it opens', ()
         'accidents',
         'violations',
         'fuel',
+        'custody',
+        'licences',
       ].sort(),
     );
     expect(LINKS.length).toBeGreaterThan(150);
@@ -433,9 +507,48 @@ describe('the link census — every figure link against the screen it opens', ()
       'opex',
       'dealership',
       'dealershipList',
+      'custodyFund',
+      'licenceVehicles',
+      'licenceDrivers',
+      'papers',
+      'licenceSpend',
     ]) {
       expect(metrics.has(section), section).toBe(true);
     }
+    // «العهدة» and «التراخيص والتجديدات» are drawn and linked from the fixtures, not only built.
+    const drawn = new Set(RENDERED.map((l) => l.metric));
+    for (const metric of [
+      'custodyFund.charged',
+      'custodyFund.total',
+      'custodyFund.held',
+      'custodyFund.inMemos',
+      'custodyFund.letter',
+      'custodyFund.settlePart',
+      'custodyFund.alertStale',
+      'custodyFund.alertMemo',
+      'custodyFund.alertLicence',
+      'custodyFund.recent',
+      'custodyFund.log',
+      'opex.custody',
+      'opex.custody.tyres',
+      'opex.custody.tab',
+      'licenceVehicles.expiredCar',
+      'licenceVehicles.month',
+      'licenceVehicles.row',
+      'licenceDrivers.month',
+      'licenceDrivers.row',
+      'papers.insurance',
+      'licenceSpend.total',
+      'licenceSpend.custody.tab',
+      'fuelCards.tab',
+      // D23: the owed amount opens the register that shows it; the period amount stands plain.
+      'violations.owed.amount',
+    ]) {
+      expect(drawn.has(metric), metric).toBe(true);
+    }
+    // D45: «تنتظر التسوية» lists every part, so it draws no «و N أخرى»; D23: no link on the total.
+    expect(drawn.has('custodyFund.settleMore')).toBe(false);
+    expect(drawn.has('violations.amount')).toBe(false);
   });
 
   it('opens only routes of the fleet module, each mounting a known page', () => {
@@ -472,6 +585,7 @@ describe('the link census — every figure link against the screen it opens', ()
         '/fleet/roster?view',
         '/fleet/roster?unavailable',
         '/fleet/maintenance?to',
+        '/fleet/maintenance?sort',
         '/fleet/maintenance?type',
         '/fleet/maintenance?outFrom',
         '/fleet/maintenance?outTo',
@@ -490,6 +604,7 @@ describe('the link census — every figure link against the screen it opens', ()
         '/fleet/odometer?vehicleCodes',
         '/fleet/odometer?from',
         '/fleet/notices?status',
+        '/fleet/notices?missing',
         '/fleet/notices?branch',
         '/fleet/notices?checkImage',
         '/fleet/notices?vehicleCodes',
@@ -526,6 +641,59 @@ describe('the link census — every figure link against the screen it opens', ()
         '/fleet?tab',
         '/fleet?period',
         '/fleet?type',
+        // «العهدة» and «التراخيص والتجديدات».
+        '/fleet/custody/log?op',
+        '/fleet/custody/log?open',
+        '/fleet/custody/log?sort',
+        '/fleet/custody/memos?status',
+        '/fleet/custody/memos?kind',
+        '/fleet/license-expenses?kind',
+        '/fleet/license-expenses?status',
+        '/fleet/license-expenses?from',
+        '/fleet/license-expenses?to',
+        '/fleet/custody-expenses?source',
+        '/fleet/custody-expenses?to',
+        '/fleet/licensing?paper',
+        '/fleet/vehicles?licenseMonths',
+        '/fleet/vehicles?status',
+        '/fleet/vehicles?sort',
+        '/fleet/drivers?licExpBefore',
+        '/fleet/drivers?sort',
+      ]),
+    );
+  });
+
+  it('orders a list only by a column the page it opens sorts by — in the contract’s spelling (D37)', () => {
+    const sorted = LINKS.filter((l) => parse(l.href).params.has('sort'));
+    const pairs = new Set<string>();
+    for (const link of sorted) {
+      const { pathname, params } = parse(link.href);
+      const page = pageOf(pathname) as string;
+      const raw = params.get('sort') ?? '';
+      const entries = parseFleetSort(raw);
+      expect(entries.length, link.href).toBeGreaterThan(0);
+      // Read back exactly as the table writes it, so the arrow the page draws is this order.
+      expect(formatFleetSort(entries), link.href).toBe(raw);
+      const src = read(page);
+      for (const { by } of entries) {
+        // The page's own column: `key: '<by>'` (or a `sortKey`) marked `sortable: true`.
+        const column = new RegExp(
+          String.raw`(?:key|sortKey): '${by}',(?:(?!\bkey: ')[\s\S]){0,400}?sortable: true`,
+          'u',
+        );
+        expect(column.test(src), `${page} sorts by ${by} (${link.metric})`).toBe(true);
+        pairs.add(`${pathname} ${by}:${entries[0]?.dir ?? ''}`);
+      }
+    }
+    // Not vacuous: the audit's four orders (D37) are among them, with the older ones.
+    expect([...pairs]).toEqual(
+      expect.arrayContaining([
+        '/fleet/maintenance inDate:asc',
+        '/fleet/maintenance outDate:desc',
+        '/fleet/vehicles licenseExpiresAt:asc',
+        '/fleet/drivers licenseExpiresAt:asc',
+        '/fleet/drivers employeeCode:asc',
+        '/fleet/custody/log date:desc',
       ]),
     );
   });
@@ -533,7 +701,9 @@ describe('the link census — every figure link against the screen it opens', ()
   it('is never a bare list link — only a record or a screen that keeps no filter goes without one', () => {
     const bare = LINKS.filter((l) => !l.href.includes('?'))
       .map((l) => l.href)
-      .filter((to) => !PATH_ONLY.includes(to) && !/^\/fleet\/vehicles\/[^/?]+$/u.test(to));
+      .filter(
+        (to) => !PATH_ONLY.includes(to) && !/^\/fleet\/(?:vehicles|drivers)\/[^/?]+$/u.test(to),
+      );
     expect([...new Set(bare)]).toEqual([]);
   });
 
@@ -601,6 +771,8 @@ describe('the two rebuilt tabs’ own reads (plan D3, D4, D7)', () => {
       expect(params.has('to'), link.href).toBe(false);
       expect(params.get('outFrom'), link.href).toBe('2026-10-03');
       expect(params.get('outTo'), link.href).toBe(TODAY);
+      // By the exit day, newest first — never the screen's check-in order (D37).
+      expect(params.get('sort'), link.href).toBe('outDate:desc');
       // A ranked car's code replaces the set's codes; every other link keeps the set's.
       if (link.metric !== 'exits.topVehicle') {
         expect(params.get('vehicleCodes'), link.href).toBe('133,141');
@@ -623,8 +795,171 @@ describe('the two rebuilt tabs’ own reads (plan D3, D4, D7)', () => {
       const { pathname, params } = parse(link.href);
       expect(pathname).toBe('/fleet/maintenance');
       expect(params.get('state')).toBe('open');
+      expect(params.get('to'), link.href).toBe(TODAY);
       expect(params.get('vehicleCodes')?.split(',')).toHaveLength(1);
     }
+  });
+
+  it('«في الورشة الآن» opens the open visits checked in by TODAY — «كل السيارات» oldest first (D07, D37)', () => {
+    // The workshop's «الآن» links that open the visits list (a car's record and the tab link aside).
+    const now = LINKS.filter(
+      (l) => l.metric.startsWith('workshop.') && parse(l.href).pathname === '/fleet/maintenance',
+    );
+    expect(new Set(now.map((l) => l.metric))).toEqual(
+      new Set(['workshop.open', 'workshop.all', 'workshop.longest']),
+    );
+    for (const link of now) {
+      const { pathname, params } = parse(link.href);
+      expect(pathname, link.href).toBe('/fleet/maintenance');
+      expect([params.get('state'), params.get('to')], link.href).toEqual(['open', TODAY]);
+      expect(params.get('sort'), link.href).toBe(
+        link.metric === 'workshop.all' ? 'inDate:asc' : null,
+      );
+    }
+    // Drawn from the fixtures, not only built: the KPI and the card's foot.
+    const drawn = new Set(RENDERED.map((l) => l.metric));
+    for (const metric of ['workshop.open', 'workshop.all', 'workshop.longest'])
+      expect(drawn.has(metric), metric).toBe(true);
+  });
+
+  it('«إخطارات مفتوحة ينقصها مرفق» opens the notices screen’s own «ينقصها مرفق» — the only notices link that does (D10)', () => {
+    const notices = LINKS.filter((l) => parse(l.href).pathname === '/fleet/notices');
+    expect(notices.some((l) => l.metric === 'notices.missingAny')).toBe(true);
+    for (const link of notices) {
+      expect(parse(link.href).params.get('missing'), link.href).toBe(
+        link.metric === 'notices.missingAny' ? 'any' : null,
+      );
+    }
+    expect(new Set(RENDERED.map((l) => l.metric)).has('notices.missingAny')).toBe(true);
+  });
+
+  it('a ranked car’s km opens the register under the whole period set less the codes (D20)', () => {
+    const cars = LINKS.filter(
+      (l) =>
+        ['km.top5', 'km.bottom5'].includes(l.metric) && l.href.includes(`operation=${OP_CASH}`),
+    );
+    expect(cars.length).toBeGreaterThan(0);
+    for (const link of cars) {
+      const { pathname, params } = parse(link.href);
+      expect(pathname).toBe('/fleet/odometer');
+      expect(params.get('type'), link.href).toBe(`${T1},${T2}`);
+      expect(params.get('branch'), link.href).toBe(B1);
+      expect(params.get('vehicleCodes')?.split(','), link.href).toHaveLength(1);
+    }
+  });
+
+  it('builds no company+set link for a reader whose reach holds no branch (D21)', () => {
+    const L = NOW_NONE_LINKS;
+    const P = periodLinks({
+      range: { from: '2026-10-03', to: TODAY },
+      vehicleScope: PERIOD_NONE.vehicleScope,
+    });
+    for (const link of [
+      L.accidentsOpen(),
+      L.accidentsOpenAll(),
+      L.noticesOpen(),
+      L.noticesOpenAll(),
+      L.noticesCheckImage(),
+      L.violationsOpen(),
+      L.violationsOpenCompany(),
+      L.violationsOpenDrivers(),
+      L.violationsOpenUnknown(),
+      L.workshopOpen(),
+      L.workshopOpen('workshop.all'),
+      L.drivers(),
+      L.driverLicencesExpired(),
+      L.fuelCardsExpired(),
+      L.charging('requested'),
+      L.dealershipPending(),
+      P.km(),
+      P.carKm('133', 'km.top5'),
+      P.exits(),
+      P.accidents(),
+      P.violations('violations.count'),
+      P.opex(),
+      P.custodySpend('opex.custody'),
+      P.dealership(),
+    ]) {
+      expect(link).toBeNull();
+    }
+    // What stays: the screens that read no branch, a record, a row's own car, the licence memos.
+    expect(L.rosterReady().to).toBe(`/fleet/roster?date=${TODAY}&view=ready`);
+    expect(L.vehicleLicencesExpired().to).toBe(
+      `/fleet/vehicles?status=active&licExpBefore=${TODAY}`,
+    );
+    expect(P.licenceSpend('licenceSpend.total').to).toBe(
+      `/fleet/license-expenses?from=2026-10-03&to=${TODAY}`,
+    );
+  });
+
+  it('draws every tab for that reader with no company+set link, the figures plain (D21)', () => {
+    // R1 and both R2 reads echo the empty reach; the parts a narrowed R1 leaves out stay out.
+    const nowNone = {
+      ...NOW_DTO,
+      branchId: null,
+      scopeBranches: [],
+      notices: NOTICES_NARROWED,
+      ...NARROWED_PARTS,
+    };
+    const pages: string[] = [];
+    for (const tab of FLEET_DASHBOARD_TABS) {
+      const url = `/fleet?tab=${tab}&period=last30`;
+      pages.push(
+        renderDashboard({
+          url,
+          client: dashboardClient({
+            now: nowNone,
+            period: PERIOD_NONE,
+            page: { url, dto: PERIOD_NONE },
+          }),
+          permissions: EVERY_KEY,
+        }),
+      );
+    }
+    const drawn = pages.flatMap(anchors).filter((a) => a.metric !== '');
+    // The page still draws its other links (records, a row's own car, the screens that read no
+    // branch), so an empty list would say nothing.
+    expect(drawn.length).toBeGreaterThan(20);
+    // A link to another TAB keeps the page's filters only; a record or a row's own car is no
+    // company figure.
+    const companySet = ({ metric, href }: Anchor): boolean =>
+      // Another tab of this page, a record, or the reconcile screen (it reads no branch).
+      parse(href).pathname !== '/fleet' &&
+      !/^\/fleet\/(vehicles|drivers)\/[^/]+$/u.test(parse(href).pathname) &&
+      parse(href).pathname !== '/fleet/fuel-cards/reconcile' &&
+      !metric.endsWith('.row') &&
+      [
+        /^accidentsOpen\./u,
+        /^notices\./u,
+        /^violationsOpen\./u,
+        /^violationsYear\./u,
+        /^workshop\.(open|all|longest)$/u,
+        /^distributionDrivers\./u,
+        /^licenceDrivers\./u,
+        /^fuelCharging\./u,
+        /^fuelCards\./u,
+        /^fuelCardList\.(expiry|chargingStates)/u,
+        /^dealershipPending\.rows$/u,
+        /^exits\./u,
+        /^visits\./u,
+        /^km\.(total|top5|bottom5)$/u,
+        /^accidents\./u,
+        /^violations\./u,
+        /^opex\./u,
+      ].some((re) => re.test(metric));
+    expect([...new Set(drawn.filter(companySet).map((a) => `${a.metric} ${a.href}`))]).toEqual([]);
+    // No link of these pages narrows to the figures' branch: there is none to narrow to. (A
+    // matrix column or a km column names its OWN branch, the column's, as for every reader.)
+    expect(
+      drawn
+        .filter(
+          (a) =>
+            parse(a.href).params.has('branch') &&
+            !a.metric.startsWith('distributionVehicles.') &&
+            a.metric !== 'km.byBranch',
+        )
+        .map((a) => `${a.metric} ${a.href}`),
+    ).toEqual([]);
   });
 });
 
@@ -840,15 +1175,5 @@ describe('what the retired page spec pinned, kept', () => {
     expect(
       anchors(firstRow).filter((a) => a.href.includes(`type=${row.typeId}&branch=${B1}`)),
     ).toEqual([]);
-  });
-
-  it('says plainly that nothing was recorded lately, rather than drawing an empty list', () => {
-    const html = renderDashboard({
-      url: '/fleet?tab=licences',
-      client: dashboardClient({ now: { ...NOW_DTO, recentWorkshop: [], recentAccidents: [] } }),
-    });
-    expect(html).toContain(ar('fleet.dash.licences.latestNone'));
-    expect(html).not.toContain('data-recent-visit=');
-    expect(html).not.toContain('data-recent-accident=');
   });
 });

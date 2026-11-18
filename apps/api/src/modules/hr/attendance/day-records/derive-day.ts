@@ -3,7 +3,8 @@
 //
 // The resolution order is the specification, first match wins:
 //   not employed → no row · leave → onLeave · holiday → holiday · weekend → weekend ·
-//   no shift → what the device saw (dayOff · checkedIn · present) ·
+//   manager decision → absent ·
+//   no shift → what the device saw (noSchedule · checkedIn · present) ·
 //   no punches → pending while the day is still being lived, else absent ·
 //   one punch → checkedIn · else compute.
 //
@@ -101,6 +102,25 @@ export interface DeriveDayInput {
   /** Punches attributed to this work date, superseded ones already excluded, any order. */
   punches: EnginePunch[];
   employeeBranchId: string;
+  /**
+   * A manager's live decision about this day (stage 3), or null.
+   *
+   * IT IS AN INPUT, NOT AN EDIT, and that is what makes it survive: a branch server calls
+   * `days/recompute` every few seconds all morning, so a judgement written onto the derived row
+   * would be erased by the next one. Passed in here, it is re-applied on every derivation.
+   *
+   * THE DEVICE'S PUNCHES ARE NEVER TOUCHED BY IT. A decision does not supersede, edit or delete
+   * evidence — it stands beside it, and the day it produces carries `overriddenByManager` so a
+   * reviewer can see that the status was judged rather than read. That also makes revoking exact:
+   * the decision stops being live, the day is recomputed, and what the devices saw is still
+   * exactly what they saw.
+   */
+  decision: {
+    type: 'markPresent' | 'markAbsent' | 'editTimes';
+    /** What the manager vouches for; `markAbsent` carries neither. */
+    inAt: Date | null;
+    outAt: Date | null;
+  } | null;
   /**
    * The instant the derivation is being made at — INJECTED, never read from the clock, because
    * this file's contract is "same inputs, byte-identical output" and a function that reads the
@@ -202,14 +222,16 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // 1 — not employed on that date: no row at all.
   if (!input.employed) return null;
 
-  const punches = byTime(input.punches);
-  const flags = flagsOf(punches, input.employeeBranchId);
+  // What the DEVICES saw. Kept under its own name because a decision may replace what the day is
+  // derived FROM without changing what was observed — the flags below still describe the evidence.
+  const evidence = byTime(input.punches);
+  const flags = flagsOf(evidence, input.employeeBranchId);
 
   // 2 — leave wins over absence. A half-day keeps the worked half: presence minutes are computed
   // when they exist, but nothing is "late" against a day the employee was excused from.
   if (input.leave !== null) {
-    const first = punches[0] ?? null;
-    const last = punches.length >= 2 ? (punches[punches.length - 1] ?? null) : null;
+    const first = evidence[0] ?? null;
+    const last = evidence.length >= 2 ? (evidence[evidence.length - 1] ?? null) : null;
     const worked =
       input.leave.halfDay && first !== null && last !== null
         ? Math.max(0, minutesBetween(first.at, last.at) - (input.shift?.breakMinutes ?? 0))
@@ -229,6 +251,38 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   if (input.holiday) return { ...empty, status: 'holiday', flags };
   if (input.weekend) return { ...empty, status: 'weekend', flags };
 
+  // 4b — A MANAGER DECIDED THIS DAY. It comes after the calendar and before the schedule, so a
+  // decision cannot talk over a weekend or a public holiday — nobody was expected on those, and
+  // marking somebody absent from a day they were never due is not a judgement anyone should be
+  // able to record.
+  //
+  // The punches are NOT deleted and NOT superseded: the device saw what it saw, and that evidence
+  // is the whole reason a reviewer can later tell whether the manager was right. The flag is what
+  // marks the status as a judgement rather than a reading.
+  //
+  // `markAbsent` answers here and stops. `markPresent` and `editTimes` instead REPLACE the day's
+  // punches with the times the manager vouched for, and then every rule below runs over those
+  // exactly as it would over the device's own — so a vouched-for arrival is late against the same
+  // grace, and a vouched-for span earns overtime by the same arithmetic. Nothing about lateness or
+  // overtime is special-cased for a decision, which is the point: the manager supplies the
+  // evidence, not the verdict.
+  const decided = input.decision;
+  if (decided !== null) {
+    flags.push('overriddenByManager');
+    if (decided.type === 'markAbsent') return { ...empty, status: 'absent', flags };
+  }
+  const punches: EnginePunch[] =
+    decided === null || decided.type === 'markAbsent'
+      ? evidence
+      : [decided.inAt, decided.outAt]
+          .filter((at): at is Date => at !== null)
+          .map((at) => ({
+            at,
+            direction: 'unknown' as const,
+            source: 'manual' as const,
+            branchIdAtPunch: input.employeeBranchId,
+          }));
+
   // 5 — no shift and no default pattern: nobody said WHEN they were expected, so nothing here can
   // be late, early or overtime. What the devices saw is reported all the same, which is the whole
   // difference between this and the `dayOff` this branch used to return for everyone.
@@ -239,7 +293,12 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // shift and an arrival at dawn. Night work gets a real shift or a pattern, where
   // `crossesMidnight` answers it properly.
   if (input.shift === null) {
-    if (punches.length === 0) return { ...empty, status: 'dayOff', flags };
+    // NOT `dayOff`, which is what this returned until production showed an entire branch marked
+    // «يوم راحة» on a Tuesday. A rest day is a positive claim that the company owed this person no
+    // work, and nobody had made it: the weekend and the holidays are already decided above, so
+    // reaching here on a working day means only that NOBODY HAS SAID WHEN THIS PERSON WORKS.
+    // `noSchedule` says that, which is a gap HR can close; «يوم راحة» said the opposite and hid it.
+    if (punches.length === 0) return { ...empty, status: 'noSchedule', flags };
     if (punches.length === 1) {
       return { ...empty, status: 'checkedIn', firstInAt: (punches[0] as EnginePunch).at, flags };
     }

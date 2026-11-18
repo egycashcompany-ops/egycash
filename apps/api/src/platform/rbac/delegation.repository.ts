@@ -1,5 +1,5 @@
 // Data access only (ADR-003) — the sole place Mongoose is queried for delegated grants.
-import { Types } from 'mongoose';
+import { Types, type ClientSession } from 'mongoose';
 import { BaseRepository } from '../../shared/base/base.repository';
 import { DelegatedGrantModel, type DelegatedGrantDoc } from './delegation.model';
 
@@ -87,6 +87,46 @@ class DelegatedGrantRepository extends BaseRepository<DelegatedGrantDoc> {
       })
       .exec();
     return ids.map(String);
+  }
+
+  /** Live grants carrying any of `keys`, read inside the caller's transaction (`grantAlongside`). */
+  async findHoldingAny(
+    keys: readonly string[],
+    session: ClientSession,
+  ): Promise<DelegatedGrantDoc[]> {
+    if (keys.length === 0) return [];
+    return this.model
+      .find({ permissionKeys: { $in: [...keys] }, isDeleted: false })
+      .session(session)
+      .lean<DelegatedGrantDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Union `add` into one live grant's keys — the role repository's `addPermissionKeys`, for a
+   * delegated grant: atomic, only while it still carries every key of `because`, strictly
+   * additive, a system write, and it moves the version the delegation write checks, so a write
+   * that read the grant before this one is refused instead of landing over it. Its unit — branch,
+   * department — is untouched: the keys stay exactly where the grant already reached.
+   */
+  async addPermissionKeys(
+    id: Types.ObjectId,
+    because: readonly string[],
+    add: readonly string[],
+    session: ClientSession,
+  ): Promise<DelegatedGrantDoc | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, isDeleted: false, permissionKeys: { $all: [...because] } },
+        {
+          $addToSet: { permissionKeys: { $each: [...add] } },
+          $set: { updatedBy: null },
+          $inc: { __v: 1 },
+        },
+        { new: true, session },
+      )
+      .lean<DelegatedGrantDoc>()
+      .exec();
   }
 }
 

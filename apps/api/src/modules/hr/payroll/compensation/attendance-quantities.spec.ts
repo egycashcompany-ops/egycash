@@ -89,19 +89,23 @@ describe('day sources', () => {
     expect(quantityFor(month, 'leaveDays', MARCH, ALWAYS_EMPLOYED)).toBe(1);
   });
 
-  // The decision this asserts: `incomplete`, `weekend`, `holiday` and `dayOff` belong to NO group.
+  // The decision this asserts: `incomplete`, `weekend`, `holiday`, `dayOff` and `noSchedule`
+  // belong to NO group. `noSchedule` is there for its own reason — nobody has said when the person
+  // works, which is a gap in the roster rather than a fact about their attendance, and pricing it
+  // in either direction would invent a labour rule out of missing configuration.
   //
   // `incomplete` is here for a DIFFERENT reason from the other three now. Nothing derives it any
   // more — a single punch is `checkedIn` — so the only rows carrying it were computed before that
   // ruling, and most of them sit in frozen months whose payslips are paid. Counting them now would
   // restate those months. A closed month keeps the figures it closed with; an unfrozen day picks
   // up the new rule when it is next recomputed.
-  it('puts incomplete, weekend, holiday and dayOff in no group at all', () => {
+  it('puts incomplete, weekend, holiday, dayOff and noSchedule in no group at all', () => {
     const unruled = [
       row('2026-03-11', 'incomplete'),
       row('2026-03-07', 'weekend'),
       row('2026-03-08', 'holiday'),
       row('2026-03-12', 'dayOff'),
+      row('2026-03-13', 'noSchedule'),
     ];
     expect(quantityFor(unruled, 'attendedDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);
     expect(quantityFor(unruled, 'absentDays', MARCH, ALWAYS_EMPLOYED)).toBe(0);

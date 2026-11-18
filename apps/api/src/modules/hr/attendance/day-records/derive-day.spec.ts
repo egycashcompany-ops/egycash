@@ -61,6 +61,7 @@ const base = (over: Partial<DeriveDayInput> = {}): DeriveDayInput => ({
   shift: GENERAL,
   punches: [],
   employeeBranchId: BRANCH,
+  decision: null,
   now: AFTER_THE_FACT,
   ...over,
 });
@@ -106,10 +107,10 @@ describe('the resolution order — first match wins', () => {
     expect(row?.lateMinutes).toBe(0);
   });
 
-  it('holiday beats weekend beats dayOff beats absent', () => {
+  it('holiday beats weekend beats noSchedule beats absent', () => {
     expect(deriveDay(base({ holiday: true, weekend: true }))?.status).toBe('holiday');
     expect(deriveDay(base({ weekend: true }))?.status).toBe('weekend');
-    expect(deriveDay(base({ shift: null }))?.status).toBe('dayOff');
+    expect(deriveDay(base({ shift: null }))?.status).toBe('noSchedule');
     expect(deriveDay(base())?.status).toBe('absent');
   });
 
@@ -142,7 +143,10 @@ describe('no shift and no default pattern — report what the devices saw', () =
   const noShift = (punches: EnginePunch[]) => deriveDay(base({ shift: null, punches }));
 
   it('no punches at all is still a day nobody owes anything for', () => {
-    expect(noShift([])?.status).toBe('dayOff');
+    // NOT `dayOff`: nobody has said when this person works, which is a gap in the roster and not
+    // a rest day the company granted. Production showed a whole branch marked «يوم راحة» on a
+    // Tuesday before this was split.
+    expect(noShift([])?.status).toBe('noSchedule');
   });
 
   it('one punch is a check-in, and nothing is late with no expected start', () => {
@@ -211,10 +215,11 @@ describe('pending — an expected day nobody has concluded yet', () => {
     });
   });
 
-  it('never applies without an expectation: no shift and no pattern stays dayOff all day', () => {
-    // Nobody said when this person was due, so there is no hour for them to be "not yet in" by.
-    expect(deriveDay(base({ shift: null, now: at(10) }))?.status).toBe('dayOff');
-    expect(deriveDay(base({ shift: null, now: at(23) }))?.status).toBe('dayOff');
+  it('never applies without an expectation: no shift and no pattern is noSchedule all day', () => {
+    // Nobody said when this person was due, so there is no hour for them to be "not yet in" by —
+    // and equally no grounds to call the day a rest day.
+    expect(deriveDay(base({ shift: null, now: at(10) }))?.status).toBe('noSchedule');
+    expect(deriveDay(base({ shift: null, now: at(23) }))?.status).toBe('noSchedule');
   });
 
   it('never outranks the calendar or a punch', () => {
@@ -238,6 +243,94 @@ describe('pending — an expected day nobody has concluded yet', () => {
     );
     expect(deriveDay(base({ shift: NIGHT, now: new Date(nightEnd.getTime() + 60_000) }))?.status).toBe(
       'absent',
+    );
+  });
+});
+
+describe("a manager's decision is an input, not an edit (stage 3)", () => {
+  const decided = (
+    type: 'markPresent' | 'markAbsent' | 'editTimes',
+    inAt: Date | null = null,
+    outAt: Date | null = null,
+  ) => ({ type, inAt, outAt });
+
+  it('markAbsent decides the day against the evidence, and SAYS it did', () => {
+    // The punches are not deleted and not superseded — the device saw what it saw. The flag is
+    // what tells a reviewer the status was judged rather than read.
+    const out = deriveDay(
+      base({ punches: [punch(at(9)), punch(at(17))], decision: decided('markAbsent') }),
+    );
+    expect(out?.status).toBe('absent');
+    expect(out?.flags).toContain('overriddenByManager');
+    expect(out?.workedMinutes).toBe(0);
+  });
+
+  it('markPresent on a day with no punches at all gives a checked-in day', () => {
+    // A manager vouching for an arrival should not have to invent a departure: on this payroll
+    // most people never scan out, so an arrival alone is the ordinary shape of a working day.
+    const out = deriveDay(base({ punches: [], decision: decided('markPresent', at(9)) }));
+    expect(out?.status).toBe('checkedIn');
+    expect(out?.firstInAt).toEqual(at(9));
+    expect(out?.lastOutAt).toBeNull();
+    expect(out?.flags).toContain('overriddenByManager');
+  });
+
+  it('applies the SAME lateness rule to a vouched-for arrival as to a scanned one', () => {
+    // GENERAL starts 09:00 with 15 minutes of grace. The manager supplies the evidence, never the
+    // verdict — so somebody vouched in at 10:00 is an hour late, exactly as the device would say.
+    const out = deriveDay(base({ decision: decided('markPresent', at(10)) }));
+    expect(out?.status).toBe('checkedIn');
+    expect(out?.lateMinutes).toBe(60);
+  });
+
+  it('editTimes replaces the span and earns overtime by the ordinary arithmetic', () => {
+    const out = deriveDay(base({ punches: [punch(at(9))], decision: decided('editTimes', at(9), at(19)) }));
+    // 09:00→19:00 is 600 minutes less GENERAL's 30-minute break; the shift ends at 17:00, so the
+    // last two hours are overtime and nothing about that is special-cased for a decision.
+    expect(out?.workedMinutes).toBe(600 - GENERAL.breakMinutes);
+    expect(out?.overtimeMinutes).toBe(120);
+    expect(out?.status).toBe('present');
+    expect(out?.flags).toContain('overriddenByManager');
+  });
+
+  it('leaves the day it replaces entirely alone otherwise — the evidence still shapes the flags', () => {
+    // A cross-branch punch stays reported even when the manager overrode the day: the flags
+    // describe what was OBSERVED, and that does not stop being true because somebody judged it.
+    const out = deriveDay(
+      base({
+        punches: [punch(at(9), { branchIdAtPunch: 'branch-2' })],
+        decision: decided('markAbsent'),
+      }),
+    );
+    expect(out?.flags).toContain('crossBranchPunch');
+    expect(out?.flags).toContain('overriddenByManager');
+  });
+
+  it('NEVER talks over the calendar or an approved leave', () => {
+    // Marking somebody absent from a day they were never due is not a judgement anyone should be
+    // able to record, so the decision sits below leave, holidays and the weekend in the order.
+    expect(deriveDay(base({ weekend: true, decision: decided('markAbsent') }))?.status).toBe('weekend');
+    expect(deriveDay(base({ holiday: true, decision: decided('markAbsent') }))?.status).toBe('holiday');
+    expect(
+      deriveDay(
+        base({ leave: { leaveId: 'lv-1', halfDay: false }, decision: decided('markAbsent') }),
+      )?.status,
+    ).toBe('onLeave');
+  });
+
+  it('is re-applied on every derivation, which is what makes a re-send harmless', () => {
+    // THE GUARANTEE OF THE WHOLE FEATURE. A branch server re-sending its punches and calling
+    // `days/recompute` runs exactly this: same decision, more punches, same verdict.
+    const input = base({ punches: [punch(at(9))], decision: decided('markAbsent') });
+    const first = deriveDay(input);
+    const resend = deriveDay({ ...input, punches: [punch(at(9)), punch(at(17))] });
+    expect(resend?.status).toBe('absent');
+    expect(resend?.status).toBe(first?.status);
+  });
+
+  it('with no decision the day derives exactly as it always did', () => {
+    expect(deriveDay(base({ punches: [punch(at(9)), punch(at(17))] }))?.flags).not.toContain(
+      'overriddenByManager',
     );
   });
 });

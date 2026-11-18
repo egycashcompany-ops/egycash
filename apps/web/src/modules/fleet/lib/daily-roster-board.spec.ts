@@ -15,6 +15,7 @@ import {
   DUTY_SLOTS,
   findSeat,
   hasEdits,
+  heldOffBoard,
   isDirty,
   rowsToSave,
   setMission,
@@ -185,6 +186,68 @@ describe('availableDrivers', () => {
     const draft = assignDriver(BOARD, 'v1', 'driver1EmployeeId', 'e2');
     availableDrivers(pool, draft);
     expect(ids(pool)).toEqual(['e1', 'e2', 'e3']);
+  });
+
+  it('still reads only the draft’s seats — the server’s car is `heldOffBoard`’s question', () => {
+    // Unchanged, because the fixed roster shares it and badges such a driver in its own pool.
+    const held = [
+      { employeeId: 'e1', assignedVehicleId: 'vB2' },
+      { employeeId: 'e2', assignedVehicleId: null },
+    ];
+    expect(ids(availableDrivers(held, BOARD))).toEqual(['e1', 'e2']);
+  });
+});
+
+// ── held OFF the board: the server's plan, across every branch (D01) ───────
+describe('heldOffBoard', () => {
+  // B1's board holds v1 and v2. The server's `assignedVehicleId` covers the whole day: dA is
+  // planned on a B2 car, dB on 612, planned today and since put out of service (off every board),
+  // dP on v1 (this board), dG on nothing.
+  const all = [
+    { employeeId: 'dP', assignedVehicleId: 'v1' },
+    { employeeId: 'dA', assignedVehicleId: 'vB2' },
+    { employeeId: 'dB', assignedVehicleId: 'v612' },
+    { employeeId: 'dG', assignedVehicleId: null },
+  ];
+
+  it('names the drivers held on a car that is not a row of the board', () => {
+    expect(ids(heldOffBoard(all, BOARD))).toEqual(['dA', 'dB']);
+  });
+
+  it('leaves a driver held on a row of the board to the draft, and a free driver alone', () => {
+    const offBoard = ids(heldOffBoard(all, BOARD));
+    expect(offBoard).not.toContain('dP');
+    expect(offBoard).not.toContain('dG');
+  });
+
+  it('reads which cars are on the board, not where the draft seats anyone', () => {
+    // Clearing v1 in the draft does not make dP held elsewhere — v1 is still on the board.
+    const cleared = clearSlot(
+      [row('v1', '150', 'dP'), row('v2', '151')],
+      'v1',
+      'driver1EmployeeId',
+    );
+    expect(ids(heldOffBoard(all, cleared))).toEqual(['dA', 'dB']);
+  });
+
+  it('holds everyone held on a car somewhere when the board has no rows, and nobody free', () => {
+    expect(ids(heldOffBoard(all, []))).toEqual(['dP', 'dA', 'dB']);
+  });
+
+  it('is the pool’s other half: with `availableDrivers`, the pool is the dashboard’s «بلا سيارة»', () => {
+    // The day as the server derived it: dP sits on v1, everyone else on no row of this board.
+    const day = [row('v1', '150', 'dP'), row('v2', '151')];
+    const away = new Set(ids(heldOffBoard(all, day)));
+    const pool = availableDrivers(all, day).filter((driver) => !away.has(driver.employeeId));
+    expect(ids(pool)).toEqual(['dG']);
+    expect(ids(pool)).toEqual(
+      all.filter((driver) => driver.assignedVehicleId === null).map((d) => d.employeeId),
+    );
+  });
+
+  it('does not mutate the server array it was given', () => {
+    heldOffBoard(all, BOARD);
+    expect(ids(all)).toEqual(['dP', 'dA', 'dB', 'dG']);
   });
 });
 

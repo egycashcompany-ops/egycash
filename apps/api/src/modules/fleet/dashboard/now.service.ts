@@ -12,9 +12,8 @@
 import {
   FLEET_DASHBOARD_ALARM_ROWS,
   FLEET_DASHBOARD_FUEL_CARD_ROWS,
+  FLEET_DASHBOARD_LICENCE_MONTHS,
   FLEET_DASHBOARD_LICENCE_ROWS,
-  FLEET_DASHBOARD_RECENT_DAYS,
-  FLEET_DASHBOARD_RECENT_ROWS,
   FLEET_DASHBOARD_TODAY_ROWS,
   FLEET_DRIVER_UNAVAILABLE_REASONS,
   FLEET_LICENCE_GREY_DAYS,
@@ -49,7 +48,10 @@ import { hasPermission, type AuthContext, type ScopeSelector } from '../../../sh
 import { fleetAccidentService } from '../accidents/accident.service';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetDealershipService } from '../dealership/dealership.service';
-import { fleetDriverProfileService } from '../driver-profiles/driver-profile.service';
+import {
+  fleetDriverProfileService,
+  monthKeysFrom,
+} from '../driver-profiles/driver-profile.service';
 import { fleetFuelCardService } from '../fuel-cards/fuel-card.service';
 import { fleetFuelReconcileService } from '../fuel-cards/reconcile/fuel-reconcile.service';
 import { fleetLicensingService } from '../licensing/licensing.service';
@@ -109,10 +111,6 @@ const catalog = (d: DashboardContext, kind: 'operation' | 'driverSpecialization'
 const dayStart = (ymd: string): Date => calendarDayBounds(ymd, ymd).from;
 const dayEnd = (ymd: string): Date => calendarDayBounds(ymd, ymd).before;
 
-/** The R-12 window's first day: the last 30 Cairo days, today included. */
-const recentSince = (d: DashboardContext): string =>
-  addDaysYmd(d.today, 1 - FLEET_DASHBOARD_RECENT_DAYS);
-
 /** The drivers registry's digest (R-08, R-10) — T3.4/T3.6/T3.8 and T1.3/T4.5 read the same call. */
 const driverRegistry = (d: DashboardContext) =>
   d.memo('driverRegistry', async () => {
@@ -129,6 +127,7 @@ const driverRegistry = (d: DashboardContext) =>
       branchIds: d.branchIds,
       cashSpecIds,
       atmSpecIds,
+      nearestLimit: FLEET_DASHBOARD_LICENCE_ROWS,
     });
     return { warnDays, cashSpecIds, atmSpecIds, digest };
   });
@@ -313,7 +312,10 @@ export const listedUnmanned = (
     )
     .slice(0, FLEET_DASHBOARD_TODAY_ROWS);
 
-/** employeeId → the car whose STANDING crew holds that driver, on either seat. */
+/**
+ * employeeId → the car whose STANDING crew holds that driver, on either seat — over the crews the
+ * board hands back, which are those of live ACTIVE cars only (the «الطقم الثابت» board's set, D36).
+ */
 const crewCarOf = (fixedCrews: readonly FixedCrewLike[]): Map<string, string> => {
   const carOf = new Map<string, string>();
   for (const crew of fixedCrews) {
@@ -328,8 +330,10 @@ const crewCarOf = (fixedCrews: readonly FixedCrewLike[]): Map<string, string> =>
 /**
  * The absent drivers `rosterLists` lists (pure): the pool's «تمام: غير متاح» and «إجازة معتمدة»
  * (`isAbsenceReason`), each with the car whose STANDING crew holds them — read from the fixed
- * crews, so it is named even when that car is in the workshop or the seat is covered today. Crew
- * members first, then «تمام» before leave, then the employee code; capped.
+ * crews, so it is named even when that car is in the workshop or the seat is covered today, but
+ * never a car the «الطقم الثابت» board does not list (out of service, disposed, deleted: the board
+ * hands back only live active cars' crews, D36). Crew members first, then «تمام» before leave, then
+ * the employee code; capped.
  */
 export const listedAbsent = (
   board: FleetRosterDayDto,
@@ -462,10 +466,20 @@ const scopeBranchIds = (scope: ScopeSelector): ReadonlySet<string> | null => {
  * with no branch is «بلا فرع». Row total = Σ cells + noBranch; the grand total = vehicles.active.
  * `branchCount` (the overview's «توزيع السيارات») = the columns that hold a car.
  *
+ * Which branches are columns (D11, D12):
+ *   · a branch a counted car sits in, always — and when the live list no longer holds it (the
+ *     branch was deleted while its cars stayed active) it still gets its column and card, named «—»
+ *     as the echo names such an id (`scopeBranchesOf`) and as the vehicles list prints its cars'
+ *     «الفرع»; so the grand total = Σ columns + «بلا فرع», every car drawn somewhere;
+ *   · a branch of the reader's scope (a branch reader's own, open or closed);
+ *   · for the whole company, every OPEN branch — a closed one with no active car is no column.
+ * `active` is the branch list's status; it only decides the column and never reaches the DTO.
+ *
  * The cells come split by the car's operation as well; the type rows ignore that split, and each
  * column folds it into `kinds` through `kindOf` (the very test the cash / ATM links' ids come from),
  * so a branch's cash + atm + other = its column. The columns are ordered by active cars, largest
- * first, a tie keeping the branch list's order — one order for the branch cards and the matrix.
+ * first, a tie keeping the branch list's order (the unnamed ones after it) — one order for the
+ * branch cards and the matrix.
  */
 export const distributionMatrix = (input: {
   cells: readonly {
@@ -475,20 +489,33 @@ export const distributionMatrix = (input: {
     count: number;
   }[];
   typeNames: ReadonlyMap<string, LocalizedString>;
-  branches: readonly FleetDashboardNamedDto[];
+  /** The live branch list; `active: false` = a closed branch (absent = open). */
+  branches: readonly (FleetDashboardNamedDto & { active?: boolean })[];
   scopeBranches: ReadonlySet<string> | null;
   kindOf: (operationId: string | null) => 'cash' | 'atm' | null;
 }): Pick<
   FleetDashboardNowDistributionVehiclesDto,
   'branches' | 'rows' | 'totals' | 'branchCount' | 'kinds' | 'noBranchKinds' | 'other'
 > => {
+  // A branch "holds" a car only through a cell that counts one (a zero cell adds no column).
   const seen = new Set(
-    input.cells.flatMap((cell) => (cell.branchId === null ? [] : [cell.branchId])),
+    input.cells.flatMap((cell) =>
+      cell.branchId === null || cell.count <= 0 ? [] : [cell.branchId],
+    ),
   );
-  const listed = input.branches.filter(
-    (branch) =>
-      input.scopeBranches === null || input.scopeBranches.has(branch.id) || seen.has(branch.id),
-  );
+  const inReach = (branch: { id: string; active?: boolean }): boolean =>
+    input.scopeBranches === null ? branch.active !== false : input.scopeBranches.has(branch.id);
+  const live = new Set(input.branches.map((branch) => branch.id));
+  const listed: FleetDashboardNamedDto[] = [
+    ...input.branches
+      .filter((branch) => inReach(branch) || seen.has(branch.id))
+      .map(({ id, name }) => ({ id, name })),
+    // A deleted branch still holding active cars: its own id, never a made-up name.
+    ...[...seen]
+      .filter((id) => !live.has(id))
+      .sort()
+      .map((id) => ({ id, name: UNNAMED })),
+  ];
   const rows = new Map<string, FleetDashboardNowDistributionVehiclesDto['rows'][number]>();
   const totals: FleetDashboardNowDistributionVehiclesDto['totals'] = {
     counts: {},
@@ -734,7 +761,12 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
       ...distributionMatrix({
         cells,
         typeNames: new Map(types.map((type) => [String(type._id), type.name as LocalizedString])),
-        branches: branches.map((b) => ({ id: String(b._id), name: b.name as LocalizedString })),
+        // The status only decides the column (a closed branch with no active car is none, D12).
+        branches: branches.map((b) => ({
+          id: String(b._id),
+          name: b.name as LocalizedString,
+          active: b.status !== 'inactive',
+        })),
         scopeBranches: scopeBranchIds(scope),
         // The same name test the cash / ATM ids (and so their links) come from.
         kindOf: (operationId) => operationKind(operations, operationId),
@@ -754,7 +786,9 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
     };
   }),
 
-  // T1.2, T4.1–T4.4 — ACTIVE cars (Q-15) in the three disjoint windows of R-10.
+  // T1.2, T4.1–T4.4 — ACTIVE cars (Q-15) in the three disjoint windows of R-10; «أقرب تراخيص
+  // السيارات» (each row named: its make, its licence class, and — for a board car, to a reader of the
+  // board — its two papers) and «التراخيص المستحقة للتجديد — 12 شهرًا» (the cars' columns).
   licenceVehicles: section('licenceVehicles', 'screen', async (d) => {
     const scope = d.scope('fleetVehicle.view');
     const warnDays = await d.setting<number>(FleetSettingKeys.VehicleLicenseWarnDays);
@@ -768,7 +802,8 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         },
         scope,
       );
-    const [expired, expiring, soon, outOfServiceExpired, nearest] = await Promise.all([
+    const monthKeys = monthKeysFrom(d.today, FLEET_DASHBOARD_LICENCE_MONTHS);
+    const [expired, expiring, soon, outOfServiceExpired, nearest, byMonth] = await Promise.all([
       count('active', null, w.expired.to),
       count('active', w.expiring.from, w.expiring.to),
       w.soon === null ? Promise.resolve(0) : count('active', w.soon.from, w.soon.to),
@@ -778,11 +813,63 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         addDaysYmd(d.today, FLEET_LICENCE_GREY_DAYS),
         FLEET_DASHBOARD_LICENCE_ROWS,
       ),
+      fleetVehicleRepository.licenceMonthCounts(
+        scope,
+        monthKeys[0] ?? d.today.slice(0, 7),
+        monthKeys.at(-1) ?? d.today.slice(0, 7),
+      ),
     ]);
-    const list = nearest.rows.map((row) => ({
-      ...row,
-      days: daysBetweenYmd(d.today, ymdOf(row.expiresAt)),
-    }));
+    // Only the listed rows are named: the makes (the memoised type list), their licence classes
+    // (one catalog read) and — only for a reader of the licensing board — their papers (the
+    // board's own READ-ONLY rule). A lookup that fails costs its names, never the counts; the
+    // papers' failure is SAID (`papersFailed`), so the browser never reads it as «no open paper».
+    const classIds = [
+      ...new Set(
+        nearest.rows.flatMap((row) => (row.licenseClassId === null ? [] : [row.licenseClassId])),
+      ),
+    ];
+    type PaperRead = {
+      stages: Awaited<ReturnType<typeof fleetLicensingService.paperStagesFor>> | null;
+      failed: boolean;
+    };
+    const [types, classNames, papers] = await Promise.all([
+      nearest.rows.length === 0 ? Promise.resolve([]) : namesOnly('types', typeList(d), []),
+      classIds.length === 0
+        ? Promise.resolve(new Map<string, LocalizedString>())
+        : namesOnly(
+            'licenceClasses',
+            fleetCatalogItemRepository.namesByIds(classIds),
+            new Map<string, LocalizedString>(),
+          ),
+      nearest.rows.length === 0 || !d.permits('papers')
+        ? Promise.resolve<PaperRead>({ stages: null, failed: false })
+        : namesOnly<PaperRead>(
+            'licencePapers',
+            fleetLicensingService
+              .paperStagesFor(
+                d.scope('fleetLicensing.view'),
+                nearest.rows.map((row) => row.vehicleId),
+              )
+              .then((stages) => ({ stages, failed: false })),
+            { stages: null, failed: true },
+          ),
+    ]);
+    const typeNames = new Map(
+      types.map((type) => [String(type._id), type.name as LocalizedString]),
+    );
+    const list = nearest.rows.map((row) => {
+      const expiresAt = ymdOf(row.expiresAt);
+      return {
+        vehicleId: row.vehicleId,
+        code: row.code,
+        expiresAt,
+        days: daysBetweenYmd(d.today, expiresAt),
+        typeName: row.typeId === null ? null : (typeNames.get(row.typeId) ?? null),
+        licenceClass:
+          row.licenseClassId === null ? null : (classNames.get(row.licenseClassId) ?? null),
+        papers: papers.stages?.get(row.vehicleId) ?? null,
+      };
+    });
     return {
       warnDays,
       expired,
@@ -791,13 +878,43 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
       outOfServiceExpired,
       list,
       more: nearest.total - list.length,
+      papersFailed: papers.failed,
+      months: monthKeys.map((key) => ({ key, count: byMonth.get(key) ?? 0 })),
     };
   }),
 
-  // T1.3, T4.5 — the same registry digest, its licence windows.
+  // T1.3, T4.5 — the same registry digest: its licence windows, the files by expiry month, and
+  // «أقرب رخص السائقين» (the nearest files; the browser names each driver from `/fleet/people`).
   licenceDrivers: section('licenceDrivers', 'company+set', async (d) => {
     const { warnDays, digest } = await driverRegistry(d);
-    return { warnDays, ...digest.licence };
+    const { months, nearest, ...counts } = digest.licence;
+    const typeIds = [
+      ...new Set(
+        nearest.rows.flatMap((row) => (row.licenceTypeId === null ? [] : [row.licenceTypeId])),
+      ),
+    ];
+    const typeNames =
+      typeIds.length === 0
+        ? new Map<string, LocalizedString>()
+        : await namesOnly(
+            'licenceTypes',
+            fleetCatalogItemRepository.namesByIds(typeIds),
+            new Map<string, LocalizedString>(),
+          );
+    const rows = nearest.rows.map((row) => ({
+      profileId: row.profileId,
+      employeeId: row.employeeId,
+      expiresAt: row.expiresAt,
+      days: daysBetweenYmd(d.today, row.expiresAt),
+      licenceType: row.licenceTypeId === null ? null : (typeNames.get(row.licenceTypeId) ?? null),
+      active: row.active,
+    }));
+    return {
+      warnDays,
+      ...counts,
+      months,
+      list: { rows, more: nearest.total - rows.length },
+    };
   }),
 
   // T4.6, R-11 — open papers through the licensing module's READ-ONLY count (never the writing GET).
@@ -884,24 +1001,6 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
         ? {}
         : { cardIds: await fleetFuelCardService.cardIdsOf(branchFilter(d)) },
     ),
-  ),
-
-  // T4.8, R-12 — the most recently written visits of the last 30 Cairo days.
-  recentWorkshop: section('recentWorkshop', 'company+set', (d) =>
-    fleetMaintenanceService.recentWritten({
-      sinceYmd: recentSince(d),
-      limit: FLEET_DASHBOARD_RECENT_ROWS,
-      filter: branchFilter(d),
-    }),
-  ),
-
-  // T4.9, R-12 — the same over accidents; date only, undated files never recent.
-  recentAccidents: section('recentAccidents', 'company+set', (d) =>
-    fleetAccidentService.recentWritten({
-      sinceYmd: recentSince(d),
-      limit: FLEET_DASHBOARD_RECENT_ROWS,
-      filter: branchFilter(d),
-    }),
   ),
 
   // T1.10 and «إخطارات ينقصها مرفق» — the open notices (their count, the two parts, the union

@@ -14,6 +14,8 @@ import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
+import { useHealedGroupKeys } from '../../../../../shared/lib/useHealedGroupKeys';
+import { groupChoicesOf } from '../../../employee-management/employees/lib/placement-filters';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
@@ -85,6 +87,11 @@ export const JobOffersListPage = (): JSX.Element => {
   };
 
   const { data: departments = [] } = useDepartmentReferenceOptions();
+  // A department remembered from before it was linked to the company list, re-keyed.
+  useHealedGroupKeys(
+    [sp, setSp],
+    [{ param: 'department', choices: groupChoicesOf(departments), read: splitNameList, write: joinNameList }],
+  );
   const departmentIds = departmentIdsOf(filters.department, departments, filters.branch);
   const placementNames = useOfferPlacementNames();
 

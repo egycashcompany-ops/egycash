@@ -17,7 +17,11 @@ import {
   HrLeaveSettingKeys,
   type AttendanceDayDto,
   type AttendanceRegularizationDto,
+  type AttendanceDecisionDto,
+  type AttendanceDecisionSignalsDto,
   type AttendanceSheetRowDto,
+  type AttendanceEmployeeSummaryDto,
+  type AttendanceSheetSummaryDto,
   type EmployeeDto,
   type ImportPunchesResultDto,
   type ShiftDto,
@@ -38,6 +42,7 @@ import {
   cairoInstant,
   dayRecordService,
   AttendanceDayModel,
+  AttendancePunchModel,
 } from '../../src/modules/hr/attendance';
 import { Types } from 'mongoose';
 import { NotificationModel } from '../../src/platform/notifications/notification.model';
@@ -538,7 +543,7 @@ describe('the derivation engine over HTTP', () => {
 // INERT until switched on, and a real assignment BEATS it.
 //
 // Every test here puts the switch back, because these settings are process-wide and the rest of
-// this file is written against a shift-less day deriving as `dayOff`.
+// this file is written against a shift-less day deriving as `noSchedule`.
 describe('the default working pattern (1b)', () => {
   const patternCtx = (): AuthContext => ({
     // `settingsService.set` stamps `updatedBy`, so this has to be a real ObjectId.
@@ -600,11 +605,11 @@ describe('the default working pattern (1b)', () => {
     }
   });
 
-  it('is inert until it is switched on — a day with no shift is still dayOff', async () => {
+  it('is inert until it is switched on — a day with no shift has no schedule', async () => {
     const emp = await regEmployee();
     const workday = recentWorkday();
     await recompute(emp.id, workday);
-    expect((await dayRow(emp.id, workday)).status).toBe('dayOff');
+    expect((await dayRow(emp.id, workday)).status).toBe('noSchedule');
   });
 
   it('once on, an unassigned employee with no punches is ABSENT', async () => {
@@ -893,17 +898,27 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     expect(mine?.status).toBe('weekend');
   });
 
-  it('is a day off, not an absence, when nobody said when the person was due', async () => {
-    // The pattern stays OFF here and the employee has no assignment, so there is no hour for them
-    // to be "not yet in" by. An empty day is one the company never claimed. Recomputed first, so
-    // the engine's own answer for the same inputs is what the sheet is checked against.
+  it('says the SCHEDULE IS MISSING, not «يوم راحة», when nobody said when the person was due', async () => {
+    // THE PRODUCTION BUG. The pattern is off and the employee has no assignment, on a working day.
+    // This answered `dayOff`, so every employee on the sheet read «يوم راحة» on a Tuesday — the
+    // company claiming it owed them no work, which nobody had decided, and which hid the real
+    // problem: an empty roster. Recomputed first, so the stored row and the sheet are checked to
+    // give the same answer rather than two.
     const emp = await inBranch();
     const workday = recentWorkday();
     await recompute(emp.id, workday);
-    expect((await dayRow(emp.id, workday)).status).toBe('dayOff');
+    expect((await dayRow(emp.id, workday)).status).toBe('noSchedule');
     const mine = (await sheet(workday)).rows.find((r) => r.employeeId === emp.id);
-    expect(mine?.status).toBe('dayOff');
+    expect(mine?.status).toBe('noSchedule');
     expect(mine?.expectedEndAt).toBeNull();
+  });
+
+  it('a missing schedule does NOT overrule the weekend — that really is a rest day', async () => {
+    // The two answers must stay separate in the direction that matters as well: a Friday is a rest
+    // day for everybody, roster or no roster, and must not start reading «لا يوجد جدول».
+    const emp = await inBranch();
+    const mine = (await sheet(nextWeekendDay())).rows.find((r) => r.employeeId === emp.id);
+    expect(mine?.status).toBe('weekend');
   });
 
   it('reads a row the nightly pass never reached as the absence it turned out to be', async () => {
@@ -940,6 +955,291 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     expect(rows.find((r) => r.employeeId === emp.id)).toBeUndefined();
   });
 
+  it('COUNTS THE WHOLE DAY, not the page — the cards would otherwise lie (stage 6)', async () => {
+    const scanned = await inBranch();
+    await inBranch();
+    await inBranch();
+    const today = cairoToday();
+    await switchPatternOn();
+    await recompute(scanned.id, today);
+
+    // ONE ROW PER PAGE. A count taken from the page would say "1"; the property under test is
+    // that both the page meta and the summary describe the whole day instead. The branch's exact
+    // headcount is whatever this block has registered by now, which is deliberately not asserted
+    // — tying the test to it would make it fail every time a sibling test added an employee.
+    const paged = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&pageSize=1`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(paged.status).toBe(200);
+    expect((paged.body.data as AttendanceSheetRowDto[])).toHaveLength(1);
+    const total = (paged.body.meta as { totalItems: number }).totalItems;
+    expect(total).toBeGreaterThanOrEqual(3);
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const summary = res.body.data as AttendanceSheetSummaryDto;
+    // The cards and the table agree about how many people the day covers.
+    expect(summary.total).toBe(total);
+    // Every status is counted separately — the screen does the grouping, not the server.
+    const counted = Object.values(summary.byStatus).reduce((sum, n) => sum + n, 0);
+    expect(counted).toBe(total);
+  });
+
+  it('filters by the RESOLVED status, which is not a stored field', async () => {
+    const emp = await inBranch();
+    await inBranch();
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    // With the pattern off and no assignment, every one of them has no schedule — a status that
+    // exists nowhere in the database and can only be filtered after it is worked out.
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=noSchedule&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = res.body.data as AttendanceSheetRowDto[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.status === 'noSchedule')).toBe(true);
+
+    // And a status nobody on this date holds narrows to nothing rather than to everybody.
+    const none = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=onLeave&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((none.body.data as AttendanceSheetRowDto[])).toHaveLength(0);
+  });
+
+  it('searches by name or code', async () => {
+    const emp = await inBranch();
+    const today = cairoToday();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&search=${emp.code}&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = res.body.data as AttendanceSheetRowDto[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.employeeId).toBe(emp.id);
+    // The summary narrows with it, so the cards describe what the table is showing.
+    const summary = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(today)}&branchId=${SHEET_BRANCH}&search=${emp.code}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((summary.body.data as AttendanceSheetSummaryDto).total).toBe(1);
+  });
+
+  /**
+   * THE ARRIVAL CHART, THE ROSTER AND THE LAST SCAN — the three things the redesigned sheet needs
+   * that no row carries. All three are aggregated over the WHOLE filtered day beside the counts,
+   * because a chart drawn from one page of fifty would redraw itself every time somebody turned a
+   * page, and the question it answers is about the day.
+   */
+  it('aggregates the arrivals, the roster and the last scan for the whole day', async () => {
+    const early = await inBranch();
+    const late = await inBranch();
+    const workday = recentWorkday();
+    await switchPatternOn();
+    // 08:52 and 09:42 Cairo — one inside the 9:00 + 15 grace, one well past it.
+    for (const [emp, at] of [
+      [early, '08:52'],
+      [late, '09:42'],
+    ] as const) {
+      const rec = await recordPunch({
+        employeeId: emp.id,
+        at: cairoInstant(workday, at).toISOString(),
+        direction: 'in',
+      });
+      expect(rec.status).toBe(201);
+      await recompute(emp.id, workday);
+    }
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const summary = res.body.data as AttendanceSheetSummaryDto;
+
+    // The roster the sheet is held to, read from the default pattern rather than assumed.
+    expect(summary.dayStart).toBe(9 * 60);
+    expect(summary.graceMinutes).toBe(15);
+
+    // One arrival in the 08:45 quarter and one in the 09:30 quarter — slots are quarter hours,
+    // counted from each person's FIRST check-in, and empty quarters are left out entirely.
+    const bySlot = new Map(summary.arrivals.map((a) => [a.slot, a.count]));
+    expect(bySlot.get(8 * 60 + 45)).toBeGreaterThanOrEqual(1);
+    expect(bySlot.get(9 * 60 + 30)).toBeGreaterThanOrEqual(1);
+    expect(summary.arrivals.every((a) => a.slot % 15 === 0 && a.count > 0)).toBe(true);
+
+    // The last scan comes from the PUNCHES, so it is a fact the moment one is imported rather
+    // than a second after the row it belongs to is rewritten.
+    expect(summary.lastPunchAt).not.toBeNull();
+    expect(new Date(summary.lastPunchAt as string).toISOString()).toBe(
+      cairoInstant(workday, '09:42').toISOString(),
+    );
+  });
+
+  it('reports no roster at all rather than a working day nobody set', async () => {
+    // The pattern is off and nobody is assigned a shift. The screen must not draw a «بداية الدوام»
+    // line at nine o'clock: that is a claim about lateness nobody in the company has made.
+    await settingsService.set(patternCtx(), {
+      key: HrAttendanceSettingKeys.DefaultPatternEnabled,
+      scope: 'organization',
+      value: false,
+    });
+    await inBranch();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(recentWorkday())}&branchId=${SHEET_BRANCH}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect((res.body.data as AttendanceSheetSummaryDto).dayStart).toBeNull();
+    await switchPatternOn();
+  });
+
+  it('names the department on every line, so the client needs no catalogue', async () => {
+    const emp = await inBranch();
+    const { rows } = await sheet(cairoToday());
+    const line = rows.find((r) => r.employeeId === emp.id);
+    expect(line?.employeeDepartment?.ar).toBeTruthy();
+  });
+
+  /**
+   * ONE EMPLOYEE'S PERIOD, ADDED UP BY THE SERVER — the six figures above their attendance page.
+   *
+   * The client does no arithmetic over a month: the figures are computed beside the rows they come
+   * from, so the page, the profile tab and My Attendance cannot drift into three answers about the
+   * same person.
+   */
+  it('adds up one employee period, in the same words payroll uses', async () => {
+    const emp = await inBranch();
+    const workday = recentWorkday();
+    await switchPatternOn();
+    // In 09:42 (past the 9:00 + 15 grace) and out 17:30 — one late day, measured hours.
+    for (const [at, direction] of [
+      ['09:42', 'in'],
+      ['17:30', 'out'],
+    ] as const) {
+      const rec = await recordPunch({
+        employeeId: emp.id,
+        at: cairoInstant(workday, at).toISOString(),
+        direction,
+      });
+      expect(rec.status).toBe(201);
+    }
+    await recompute(emp.id, workday);
+
+    const iso = dateOnlyIso(workday);
+    const res = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${iso}&to=${iso}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const figures = res.body.data as AttendanceEmployeeSummaryDto;
+
+    expect(figures.daysPresent).toBe(1);
+    expect(figures.daysExpected).toBe(1);
+    expect(figures.lateDays).toBe(1);
+    expect(figures.lateMinutesTotal).toBeGreaterThan(0);
+    expect(figures.absentDays).toBe(0);
+    expect(figures.incompleteDays).toBe(0);
+    // Cairo minutes after midnight, not the server's zone: 09:42 and 17:30.
+    expect(figures.usualArrival).toBe(9 * 60 + 42);
+    expect(figures.usualDeparture).toBe(17 * 60 + 30);
+    expect(figures.avgWorkedMinutes).toBe(figures.totalWorkedMinutes);
+    // This employee's own roster, for the punctuality band.
+    expect(figures.dayStart).toBe(9 * 60);
+    expect(figures.graceMinutes).toBe(15);
+    expect(figures.lastPunchAt).toBe(cairoInstant(workday, '17:30').toISOString());
+  });
+
+  it('averages hours over the days that HAVE hours, never over the ones without', async () => {
+    // On this payroll most days are a scan in and nothing out. Dividing the month's minutes by
+    // every attended day would report half the real figure.
+    const emp = await inBranch();
+    const full = recentWorkday();
+    const openEnded = addDays(full, 1);
+    await switchPatternOn();
+    for (const [day, at, direction] of [
+      [full, '09:00', 'in'],
+      [full, '17:00', 'out'],
+      [openEnded, '09:00', 'in'],
+    ] as const) {
+      await recordPunch({
+        employeeId: emp.id,
+        at: cairoInstant(day, at).toISOString(),
+        direction,
+      });
+    }
+    await recompute(emp.id, full);
+    await recompute(emp.id, openEnded);
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${dateOnlyIso(full)}&to=${dateOnlyIso(openEnded)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    const figures = res.body.data as AttendanceEmployeeSummaryDto;
+    // Both days are days at work; only one of them has hours, and that one sets the average.
+    expect(figures.daysPresent).toBe(2);
+    expect(figures.incompleteDays).toBe(1);
+    expect(figures.avgWorkedMinutes).toBe(figures.totalWorkedMinutes);
+  });
+
+  it('answers an employee with nothing recorded without inventing a zero', async () => {
+    const emp = await inBranch();
+    const iso = dateOnlyIso(recentWorkday());
+    const res = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${iso}&to=${iso}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const figures = res.body.data as AttendanceEmployeeSummaryDto;
+    // Null, not 0 — a zero here would print as midnight on the screen.
+    expect(figures.usualArrival).toBeNull();
+    expect(figures.usualDeparture).toBeNull();
+    expect(figures.avgWorkedMinutes).toBeNull();
+    expect(figures.lastPunchAt).toBeNull();
+  });
+
+  it('caps the period, like the export and the recompute', async () => {
+    const emp = await inBranch();
+    const to = cairoToday();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${dateOnlyIso(addDays(to, -200))}&to=${dateOnlyIso(to)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('is governed by attendance.view, and answers /me for the caller alone', async () => {
+    const emp = await inBranch();
+    const iso = dateOnlyIso(recentWorkday());
+    const denied = await request(app)
+      .get(`/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${iso}&to=${iso}`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect(denied.status).toBe(403);
+
+    // `/me/summary` carries no permission because it is own-scope BY CONSTRUCTION: the employee
+    // comes from the login and the query cannot name one. An employee id in the query string is
+    // not merely ignored — the schema refuses the request outright.
+    const strict = await request(app)
+      .get(`/api/v1/hr/attendance/days/me/summary?employeeId=${emp.id}&from=${iso}&to=${iso}`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect([400, 404]).toContain(strict.status);
+  });
+
   it('is governed by attendance.view, like the list it is a view of', async () => {
     const res = await request(app)
       .get(`/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(cairoToday())}`)
@@ -954,6 +1254,450 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
       )
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('manager day decisions (stage 3)', () => {
+  /**
+   * The approval threshold, set to FOURTEEN days for this block and restored afterwards.
+   *
+   * `recentWorkday()` lands about ten days back, which is past the shipped default of seven — so
+   * every decision here would arrive as `pendingHr` and the applied-path tests would be testing
+   * the queue instead. Widening it puts the ordinary workday firmly on the manager's side of the
+   * line and leaves the twenty-day-old date firmly on HR's, which is what these tests are about.
+   * Where the boundary itself falls is pinned exactly, and without a database, in
+   * `decision-rules.spec.ts`.
+   */
+  const THRESHOLD = HrAttendanceSettingKeys.DecisionApprovalAfterDays;
+
+  beforeAll(async () => {
+    await settingsService.set(
+      {
+        userId: new Types.ObjectId().toString(),
+        sessionId: 'seed',
+        branchId: null,
+        departmentId: null,
+        sectionId: null,
+        locale: 'en',
+        permissions: { 'setting.edit': 'organization' },
+        permissionVersion: 1,
+        isPrivileged: true,
+      },
+      { key: THRESHOLD, scope: 'organization', value: 14 },
+    );
+  });
+
+  afterAll(async () => {
+    await SettingValueModel.deleteMany({ key: THRESHOLD }).exec();
+    await getCache().delByPrefix(`settings:${THRESHOLD}:`);
+  });
+
+  /** A caller who is BOTH a decider and an employee — the only way to test the self-prohibition. */
+  const decidingEmployee = async (): Promise<{ emp: EmployeeDto; token: string }> => {
+    const emp = await regEmployee();
+    const reread = await request(app)
+      .get(`/api/v1/hr/employees/${emp.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const userId = String((reread.body.data as EmployeeDto).userId);
+    await userService.setPassword(userId, PASSWORD, 'passwordReset');
+    await userService.forceActivate(userId);
+    const superAdmin = await rbacService.ensureSystemRole(
+      'super-admin',
+      { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
+      [...platformPermissions, ...hrPermissions].map((p) => p.key),
+    );
+    await rbacService.ensureAssignment(userId, String(superAdmin._id), 'organization');
+    return { emp, token: await login(emp.code) };
+  };
+
+  const decide = (body: Record<string, unknown>, token = adminToken) =>
+    request(app)
+      .post('/api/v1/hr/attendance/decisions')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+
+  const livePunches = async (employeeId: string, day: Date): Promise<number> =>
+    AttendancePunchModel.countDocuments({
+      employeeId: new Types.ObjectId(employeeId),
+      at: { $gte: cairoInstant(day, '00:00'), $lte: cairoInstant(addDays(day, 1), '00:00') },
+      supersededBy: null,
+    }).exec();
+
+  it('marks a day absent against the evidence, and leaves the evidence standing', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
+    await recompute(emp.id, workday);
+    expect((await dayRow(emp.id, workday)).status).toBe('present');
+
+    const res = await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason: 'لم يكن على رأس العمل رغم وجود البصمة',
+    });
+    expect(res.status).toBe(201);
+    expect((res.body.data as AttendanceDecisionDto).status).toBe('applied');
+    expect((res.body.data as AttendanceDecisionDto).overrodePunch).toBe(true);
+
+    const row = await dayRow(emp.id, workday);
+    expect(row.status).toBe('absent');
+    expect(row.flags).toContain('overriddenByManager');
+    // THE PUNCHES ARE UNTOUCHED — not deleted, not superseded. The device saw what it saw, and
+    // that is exactly what lets somebody later judge whether the manager was right.
+    expect(await livePunches(emp.id, workday)).toBe(2);
+  });
+
+  it('SURVIVES a branch re-send and a recompute — the guarantee the feature exists for', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    await recompute(emp.id, workday);
+    await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason: 'غادر قبل بداية الوردية',
+    });
+    expect((await dayRow(emp.id, workday)).status).toBe('absent');
+
+    // Exactly what a branch server does all morning: more punches, then recompute.
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:30').toISOString() });
+    await recompute(emp.id, workday);
+    expect((await dayRow(emp.id, workday)).status).toBe('absent');
+  });
+
+  it('vouches somebody in on a day the devices never saw', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    expect((await dayRow(emp.id, workday)).status).toBe('absent');
+
+    const res = await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markPresent',
+      inAt: cairoInstant(workday, '09:05').toISOString(),
+      reason: 'الجهاز كان متوقفًا وتم التحقق من الحضور',
+    });
+    expect(res.status).toBe(201);
+    // No device evidence existed, so nothing was overridden — the §4 warning keys on this.
+    expect((res.body.data as AttendanceDecisionDto).overrodePunch).toBe(false);
+
+    const row = await dayRow(emp.id, workday);
+    expect(row.status).toBe('checkedIn');
+    expect(row.firstInAt).toBe(cairoInstant(workday, '09:05').toISOString());
+    // 09:05 is inside GENERAL's 30-minute grace: a vouched-for arrival is judged by the same rule
+    // as a scanned one, never more kindly.
+    expect(row.lateMinutes).toBe(0);
+    // And still no punch was written — the decision is an input, not a forged scan.
+    expect(await livePunches(emp.id, workday)).toBe(0);
+  });
+
+  it('sends an OLD day to HR, changing nothing until it is approved', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    // Past the default seven-day threshold.
+    const old = addDays(cairoToday(), -20);
+    await recompute(emp.id, old);
+    const before = (await dayRow(emp.id, old)).status;
+
+    const res = await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(old),
+      type: 'markPresent',
+      inAt: cairoInstant(old, '09:00').toISOString(),
+      reason: 'تأكيد الحضور من دفتر الفرع',
+    });
+    expect(res.status).toBe(201);
+    const decision = res.body.data as AttendanceDecisionDto;
+    expect(decision.status).toBe('pendingHr');
+    // Recorded, and inert: the day has not moved.
+    expect((await dayRow(emp.id, old)).status).toBe(before);
+
+    const approved = await request(app)
+      .post(`/api/v1/hr/attendance/decisions/${decision.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ verdict: 'approve', version: decision.version });
+    // The admin filed it, so the admin may not clear it: an approval step its own author can
+    // perform is not a step.
+    expect(approved.status).toBe(403);
+  });
+
+  it('applies an old-day decision once somebody OTHER than its author approves it', async () => {
+    const author = await decidingEmployee();
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const old = addDays(cairoToday(), -20);
+    await recompute(emp.id, old);
+
+    const res = await decide(
+      {
+        employeeId: emp.id,
+        workDate: dateOnlyIso(old),
+        type: 'markPresent',
+        inAt: cairoInstant(old, '09:00').toISOString(),
+        reason: 'تأكيد الحضور من دفتر الفرع',
+      },
+      author.token,
+    );
+    expect(res.status).toBe(201);
+    const decision = res.body.data as AttendanceDecisionDto;
+    expect(decision.status).toBe('pendingHr');
+
+    const approved = await request(app)
+      .post(`/api/v1/hr/attendance/decisions/${decision.id}/decide`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ verdict: 'approve', version: decision.version });
+    expect(approved.status).toBe(200);
+    expect((approved.body.data as AttendanceDecisionDto).status).toBe('applied');
+    expect((await dayRow(emp.id, old)).status).toBe('checkedIn');
+  });
+
+  it('REVOKING puts the day back, and records the undoing rather than erasing it', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
+    await recompute(emp.id, workday);
+
+    const res = await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason: 'بصمة بالخطأ من زميل',
+    });
+    const decision = res.body.data as AttendanceDecisionDto;
+    expect((await dayRow(emp.id, workday)).status).toBe('absent');
+
+    const revoked = await request(app)
+      .post(`/api/v1/hr/attendance/decisions/${decision.id}/revoke`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'تبيّن أن البصمة صحيحة', version: decision.version });
+    expect(revoked.status).toBe(200);
+    const record = revoked.body.data as AttendanceDecisionDto;
+    expect(record.type).toBe('revoke');
+    expect(record.revokesId).toBe(decision.id);
+
+    // The day returns to what the devices saw — possible precisely because nothing of theirs was
+    // ever changed — and the original decision still stands in the record, marked revoked.
+    const row = await dayRow(emp.id, workday);
+    expect(row.status).toBe('present');
+    expect(row.flags).not.toContain('overriddenByManager');
+    const list = await request(app)
+      .get(`/api/v1/hr/attendance/decisions?employeeId=${emp.id}&pageSize=50`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const rows = list.body.data as AttendanceDecisionDto[];
+    expect(rows.find((r) => r.id === decision.id)?.status).toBe('revoked');
+    expect(rows).toHaveLength(2);
+  });
+
+  it('refuses a day nobody has lived yet', async () => {
+    const emp = await regEmployee();
+    const res = await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(addDays(cairoToday(), 1)),
+      type: 'markAbsent',
+      reason: 'لن يحضر غدًا',
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it('refuses a FROZEN day, and says the correction goes forward', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    // Stamped directly: freezing a whole period here would recompute every employee the suite has
+    // created, and the condition under test is the stamp on this one row.
+    await AttendanceDayModel.updateOne(
+      { employeeId: new Types.ObjectId(emp.id), workDate: workday },
+      { $set: { frozenAt: new Date() } },
+    ).exec();
+
+    const res = await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason: 'محاولة تعديل شهر مغلق',
+    });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(res.body)).toContain('الشهر مغلق من المرتبات');
+  });
+
+  it('bars a caller from deciding their OWN attendance, whatever they hold', async () => {
+    // A super-admin grant and all: the prohibition is about the act, not about scope.
+    const self = await decidingEmployee();
+    const res = await decide(
+      {
+        employeeId: self.emp.id,
+        workDate: dateOnlyIso(recentWorkday()),
+        type: 'markPresent',
+        inAt: cairoInstant(recentWorkday(), '09:00').toISOString(),
+        reason: 'أثبت حضوري بنفسي',
+      },
+      self.token,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('is governed by attendance.decide', async () => {
+    const emp = await regEmployee();
+    const res = await decide(
+      {
+        employeeId: emp.id,
+        workDate: dateOnlyIso(recentWorkday()),
+        type: 'markAbsent',
+        reason: 'بدون صلاحية',
+      },
+      outsiderToken,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('reports WHO has been deciding days, and how often against the devices (stage 4)', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    // One day with device evidence, one without — the two shapes the signal distinguishes.
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:00').toISOString() });
+    await recompute(emp.id, workday);
+    await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason: 'لم يكن على رأس العمل',
+    });
+
+    const other = await regEmployee();
+    const quietDay = addDays(workday, -1);
+    await decide({
+      employeeId: other.id,
+      workDate: dateOnlyIso(quietDay),
+      type: 'markPresent',
+      inAt: cairoInstant(quietDay, '09:00').toISOString(),
+      reason: 'الجهاز كان متوقفًا',
+    });
+
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/decisions/signals?from=${dateOnlyIso(addDays(workday, -5))}&to=${dateOnlyIso(workday)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const data = res.body.data as AttendanceDecisionSignalsDto;
+    const mine = data.managers.find((m) => m.total >= 2);
+    expect(mine).toBeDefined();
+    // One of the two went against a punch; the other had nothing to go against.
+    expect(mine?.overrodePunch).toBeGreaterThanOrEqual(1);
+    expect(mine?.overrodePunch).toBeLessThan(mine?.total ?? 0);
+    // A prompt, not a verdict: two decisions are nowhere near the threshold.
+    expect(mine?.flagged).toBe(false);
+    expect(data.threshold).toBeGreaterThan(0);
+  });
+
+  it('leaves revocations OUT of the counts — undoing is not a second decision', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    const made = await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason: 'قرار سيُلغى',
+    });
+    const decision = made.body.data as AttendanceDecisionDto;
+
+    const window = `from=${dateOnlyIso(addDays(workday, -2))}&to=${dateOnlyIso(workday)}&branchId=${BRANCH_ID}`;
+    const before = await request(app)
+      .get(`/api/v1/hr/attendance/decisions/signals?${window}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const countBefore = (before.body.data as AttendanceDecisionSignalsDto).managers.reduce(
+      (sum, m) => sum + m.total,
+      0,
+    );
+
+    await request(app)
+      .post(`/api/v1/hr/attendance/decisions/${decision.id}/revoke`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'تراجع عن القرار', version: decision.version });
+
+    const after = await request(app)
+      .get(`/api/v1/hr/attendance/decisions/signals?${window}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const countAfter = (after.body.data as AttendanceDecisionSignalsDto).managers.reduce(
+      (sum, m) => sum + m.total,
+      0,
+    );
+    // The revocation wrote a row; it must not make the manager look busier for undoing their own
+    // mistake than they would have looked leaving it standing.
+    expect(countAfter).toBe(countBefore);
+  });
+
+  it('exports the decisions as CSV, behind attendance.export, with the reason in a column', async () => {
+    const emp = await regEmployee();
+    await assign(emp.id, GENERAL.id);
+    const workday = recentWorkday();
+    await recompute(emp.id, workday);
+    const reason = 'سبب يظهر في الملف';
+    await decide({
+      employeeId: emp.id,
+      workDate: dateOnlyIso(workday),
+      type: 'markAbsent',
+      reason,
+    });
+
+    const range = `from=${dateOnlyIso(addDays(workday, -2))}&to=${dateOnlyIso(workday)}&employeeId=${emp.id}`;
+    const res = await request(app)
+      .get(`/api/v1/hr/attendance/decisions/export?${range}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('employeeCode,employeeName,workDate,type,status');
+    expect(res.text).toContain(reason);
+    expect(res.text).toContain(emp.code);
+
+    // Its own key: a caller who may read the screen but not take files off the system is refused.
+    const refused = await request(app)
+      .get(`/api/v1/hr/attendance/decisions/export?${range}`)
+      .set('Authorization', `Bearer ${outsiderToken}`);
+    expect(refused.status).toBe(403);
+  });
+
+  it('caps the review and export windows, like every other range read here', async () => {
+    const wide = `from=2026-01-01&to=2026-06-01`;
+    for (const path of ['signals', 'export']) {
+      const res = await request(app)
+        .get(`/api/v1/hr/attendance/decisions/${path}?${wide}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, path).toBe(400);
+    }
+  });
+
+  it('refuses a markAbsent that tries to carry times, and a markPresent with none', async () => {
+    const emp = await regEmployee();
+    const workday = dateOnlyIso(recentWorkday());
+    const withTimes = await decide({
+      employeeId: emp.id,
+      workDate: workday,
+      type: 'markAbsent',
+      inAt: new Date().toISOString(),
+      reason: 'غير متسق',
+    });
+    expect(withTimes.status).toBe(400);
+    const withoutTimes = await decide({
+      employeeId: emp.id,
+      workDate: workday,
+      type: 'markPresent',
+      reason: 'بدون وقت',
+    });
+    expect(withoutTimes.status).toBe(400);
   });
 });
 

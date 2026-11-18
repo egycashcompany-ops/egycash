@@ -3,8 +3,12 @@
 import {
   type ApproveOvertime,
   type AttendanceDayDto,
+  type AttendanceDecisionDto,
+  type AttendanceDecisionSignalsDto,
   type AttendanceRegularizationDto,
   type AttendanceSheetRowDto,
+  type AttendanceEmployeeSummaryDto,
+  type AttendanceSheetSummaryDto,
   type CreateAttendanceRegularization,
   type CreateShift,
   type CreateShiftAssignment,
@@ -62,9 +66,71 @@ export const listAttendanceSheet = (
 ): Promise<Paginated<AttendanceSheetRowDto>> =>
   getPage<AttendanceSheetRowDto>(`/hr/attendance/days/sheet${buildQuery(params)}`);
 
+/**
+ * The sheet's counts over the WHOLE day. A sibling read rather than a field on the list, because
+ * the page envelope's `meta` is a shape every list in the product returns.
+ */
+export const attendanceSheetSummary = (
+  params: QueryParams,
+): Promise<AttendanceSheetSummaryDto> =>
+  get<AttendanceSheetSummaryDto>(`/hr/attendance/days/sheet/summary${buildQuery(params)}`);
+
+/**
+ * One employee's period, added up by the server — never by this client.
+ *
+ * The figures are over EVERY day of the period, not the page on screen, and they are computed
+ * beside the rows they come from so the page and the payslip cannot drift apart.
+ */
+export const attendanceEmployeeSummary = (
+  params: QueryParams,
+): Promise<AttendanceEmployeeSummaryDto> =>
+  get<AttendanceEmployeeSummaryDto>(`/hr/attendance/days/employee-summary${buildQuery(params)}`);
+
+/** The same figures about me — own by construction on the server; no employee filter is accepted. */
+export const myAttendanceSummary = (
+  params: QueryParams,
+): Promise<AttendanceEmployeeSummaryDto> =>
+  get<AttendanceEmployeeSummaryDto>(`/hr/attendance/days/me/summary${buildQuery(params)}`);
+
 /** My own days — own by construction on the server; no employee filter is accepted. */
 export const listMyAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>
   getPage<AttendanceDayDto>(`/hr/attendance/days/me${buildQuery(params)}`);
+
+/**
+ * Manager day decisions (stage 3). A decision is an INPUT to the derivation rather than an edit of
+ * it, so there is no "undo" verb here — undoing one is `revoke`, which records a second decision.
+ */
+export const listAttendanceDecisions = (
+  params: QueryParams,
+): Promise<Paginated<AttendanceDecisionDto>> =>
+  getPage<AttendanceDecisionDto>(`/hr/attendance/decisions${buildQuery(params)}`);
+
+export const createAttendanceDecision = (body: unknown): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>('/hr/attendance/decisions', body);
+
+export const decideAttendanceDecision = (
+  id: string,
+  body: unknown,
+): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>(`/hr/attendance/decisions/${id}/decide`, body);
+
+export const revokeAttendanceDecision = (
+  id: string,
+  body: unknown,
+): Promise<AttendanceDecisionDto> =>
+  post<AttendanceDecisionDto>(`/hr/attendance/decisions/${id}/revoke`, body);
+
+/** Who has been deciding days over a window, and how often against the devices (stage 4). */
+export const attendanceDecisionSignals = (
+  params: QueryParams,
+): Promise<AttendanceDecisionSignalsDto> =>
+  get<AttendanceDecisionSignalsDto>(`/hr/attendance/decisions/signals${buildQuery(params)}`);
+
+export const downloadDecisionsExport = (params: QueryParams): Promise<void> =>
+  downloadBlob(
+    `/hr/attendance/decisions/export${buildQuery(params)}`,
+    `attendance-decisions-${new Date().toISOString().slice(0, 10)}.csv`,
+  );
 
 export const listRegularizations = (
   params: QueryParams,

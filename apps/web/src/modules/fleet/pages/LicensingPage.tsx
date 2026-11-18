@@ -12,6 +12,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  cairoYmd,
   compareFleetVehicleCodes,
   paperStage as licensingPaperStage,
   type FleetLicensingMark,
@@ -33,6 +34,8 @@ import { BoardIcon, PATH, expiryState } from '../components/FuelCardBoard';
 import { saveSheet } from '../lib/fleet-sheet';
 import { boardVehicleOptions } from '../lib/board-vehicle-options';
 import { licenceMonthOptions } from '../lib/licence-months';
+import { useLicenceWarnDays } from '../lib/licence-warn-days';
+import { LICENCE_STATE_KEY } from '../components/VehicleStatusBadge';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Skeleton } from '../../../shared/ui/Skeleton';
@@ -86,6 +89,7 @@ const REMEMBERED_FILTERS = [
   'month',
   'ins',
   'tax',
+  'paper',
   'sort',
 ] as const;
 
@@ -125,6 +129,16 @@ export const matchesPaper = (
 };
 
 /**
+ * «أوراق لم تُستلم بعد» — the dashboard's papers figure opens the board on ONE paper's OPEN papers
+ * (`paper=insurance|tax`): the cars whose paper has exactly one of its two squares ticked
+ * (`paperStage === 'open'`, R-11 — the rule the figure counts with), so the board lists the number
+ * the dashboard showed. The squares' own filters (`ins` / `tax`) ask ANY of the picked squares,
+ * which is not that reading. Any other value is ignored.
+ */
+export const openPaperOf = (value: string | null): Paper | null =>
+  PAPERS.find((paper) => paper.key === value) ?? null;
+
+/**
  * HOW FAR THIS PAPER HAS GOT, which is the only thing the colour says.
  *
  * «لما اعمل صح على تسليم فى التأمينات يبقى العمودين بتوع تسليم واستلام بتوع التأمينات يتعمله الصف
@@ -154,7 +168,7 @@ const STAGE_TINT: Record<'none' | 'open' | 'done', string> = {
 const day = (iso: string): string => iso.slice(0, 10).replace(/-/gu, '/');
 const BRAND_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
-/** The licence's state as the vehicles board words it — ساري / ينتهي قريبًا / منتهي. */
+/** The licence's state as the vehicles board words it — ساري / ينتهي قريبًا / منتهٍ. */
 const EXPIRY_TAG: Record<'valid' | 'soon' | 'expired', string> = {
   valid: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
   soon: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -164,6 +178,27 @@ const EXPIRY_TEXT: Record<'valid' | 'soon' | 'expired', string> = {
   valid: 'text-slate-900 dark:text-slate-100',
   soon: 'text-amber-600 dark:text-amber-400',
   expired: 'text-red-600 dark:text-red-400',
+};
+
+/**
+ * «الإحصائيات» over the rows the filters left. «تنتهي هذا الشهر» is the CAIRO month, as the
+ * dashboard's «هذا الشهر» column: the browser's UTC month is still last month for the first hours
+ * of the 1st in Cairo. «منتهية» by the Cairo day — expired ON its expiry day.
+ */
+export const licensingFiguresOf = (
+  rows: readonly FleetLicensingRowDto[],
+  warnDays: number,
+  now = Date.now(),
+): { cars: number; thisMonth: number; expired: number; insuranceOut: number; taxOut: number } => {
+  const thisMonth = cairoYmd(new Date(now)).slice(0, 7);
+  return {
+    cars: rows.length,
+    thisMonth: rows.filter((row) => inMonth(row.licenseExpiresAt, thisMonth)).length,
+    expired: rows.filter((row) => expiryState(row.licenseExpiresAt, warnDays, now) === 'expired')
+      .length,
+    insuranceOut: rows.filter((row) => paperStage(row, PAPERS[0]) === 'open').length,
+    taxOut: rows.filter((row) => paperStage(row, PAPERS[1]) === 'open').length,
+  };
 };
 
 export const LicensingPage = (): JSX.Element => {
@@ -186,6 +221,7 @@ export const LicensingPage = (): JSX.Element => {
   const chassis = sp.get('chassis') ?? '';
   const insurance = readList(sp, 'ins');
   const tax = readList(sp, 'tax');
+  const openPaper = openPaperOf(sp.get('paper'));
   // The months the licences run out in — «زى شاشه السيارات»: several at once, each with its count
   // of cars, picked from a list. A link from before carries one month; it reads as a list of one.
   const months = readList(sp, 'month');
@@ -216,6 +252,7 @@ export const LicensingPage = (): JSX.Element => {
       month: null,
       ins: null,
       tax: null,
+      paper: null,
     });
   const hasFilters =
     vehicleCodes.length > 0 ||
@@ -223,7 +260,8 @@ export const LicensingPage = (): JSX.Element => {
     chassis !== '' ||
     months.length > 0 ||
     insurance.length > 0 ||
-    tax.length > 0;
+    tax.length > 0 ||
+    openPaper !== null;
 
   const all = board.data ?? [];
   /**
@@ -244,7 +282,8 @@ export const LicensingPage = (): JSX.Element => {
           contains(row.chassisNumber, chassis) &&
           (months.length === 0 || months.some((m) => inMonth(row.licenseExpiresAt, m))) &&
           matchesPaper(row, PAPERS[0], insurance) &&
-          matchesPaper(row, PAPERS[1], tax),
+          matchesPaper(row, PAPERS[1], tax) &&
+          (openPaper === null || paperStage(row, openPaper) === 'open'),
       ),
     [
       all,
@@ -254,6 +293,7 @@ export const LicensingPage = (): JSX.Element => {
       months.join(','),
       insurance.join(','),
       tax.join(','),
+      openPaper,
     ],
   );
 
@@ -289,17 +329,11 @@ export const LicensingPage = (): JSX.Element => {
     [rows, expiryDir],
   );
 
-  // «الإحصائيات» — over what the filters left, as every board counts.
-  const figures = useMemo(() => {
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    return {
-      cars: rows.length,
-      thisMonth: rows.filter((row) => inMonth(row.licenseExpiresAt, thisMonth)).length,
-      expired: rows.filter((row) => expiryState(row.licenseExpiresAt, 30) === 'expired').length,
-      insuranceOut: rows.filter((row) => paperStage(row, PAPERS[0]) === 'open').length,
-      taxOut: rows.filter((row) => paperStage(row, PAPERS[1]) === 'open').length,
-    };
-  }, [rows]);
+  // «الإحصائيات» — over what the filters left, as every board counts. The licence colour is drawn
+  // inside the warning days the admin set in «إعدادات الحركة», as the dashboard counts «تنتهي
+  // خلال N يومًا».
+  const warnDays = useLicenceWarnDays().vehicle;
+  const figures = useMemo(() => licensingFiguresOf(rows, warnDays), [rows, warnDays]);
 
   const stepOptions = [
     { value: 'handover', label: t('fleet.licensing.columns.handover') },
@@ -393,7 +427,7 @@ export const LicensingPage = (): JSX.Element => {
 
   /** The expiry as the vehicles board writes it: the date in its state's colour, and the word. */
   const expiryCell = (iso: string): JSX.Element => {
-    const state = expiryState(iso, 30);
+    const state = expiryState(iso, warnDays);
     const known = state === 'unknown' ? 'valid' : state;
     return (
       <span className="inline-flex items-center gap-1.5" data-licensing-expiry={known}>
@@ -406,7 +440,7 @@ export const LicensingPage = (): JSX.Element => {
             EXPIRY_TAG[known],
           )}
         >
-          {t(`fleet.fuelCards.expiry.${known}`)}
+          {t(LICENCE_STATE_KEY[known])}
         </span>
       </span>
     );
@@ -560,6 +594,19 @@ export const LicensingPage = (): JSX.Element => {
                 fullWidth
               />
             </FilterWithIcon>
+            {/* The dashboard's papers figure: one removable chip, never a control of its own. */}
+            {openPaper !== null && (
+              <button
+                type="button"
+                data-licensing-paper={openPaper.key}
+                onClick={() => patch({ paper: null })}
+                aria-label={`${t('common.remove')} ${t(`fleet.licensing.paperOpen.${openPaper.key}`)}`}
+                className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-violet-300 bg-violet-50 px-2 text-sm font-medium text-violet-700 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300 dark:hover:bg-violet-900"
+              >
+                {t(`fleet.licensing.paperOpen.${openPaper.key}`)}
+                <span aria-hidden="true">×</span>
+              </button>
+            )}
           </FilterBar>
         </div>
 

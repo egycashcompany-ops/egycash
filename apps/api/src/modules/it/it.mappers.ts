@@ -269,7 +269,8 @@ export const toItAssetAssignmentDto = (
 };
 
 /**
- * «بطاقة رقم قومي» on the way out: the full number for a caller holding `itAsset.viewNationalId`,
+ * «بطاقة رقم قومي» on the way out: the full number for a caller holding the paper's own grant —
+ * `itAsset.viewNationalId` on a device receipt, `itMobileLine.viewNationalId` on a line's —
  * withheld from anyone else (Security Architecture §3) — paired with the flag that tells «not
  * shown to you» from «HR has none», the employee mapper's `…Visible` convention.
  */
@@ -611,6 +612,9 @@ export const toItConsumableMovementDto = (
     counterpartConsumableCode: counterpart?.code ?? null,
     byUserId: idOrNull(doc.byUserId),
     notes: doc.notes ?? null,
+    // «تعديل الجهاز» sends it back: the one correction a row takes is refused once somebody else's
+    // has moved it on.
+    version: doc.__v,
     createdAt: iso(doc.createdAt),
   };
 };

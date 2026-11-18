@@ -11,6 +11,7 @@ import {
   booleanQuery,
   listQuery,
   objectId,
+  type PageMeta,
 } from '../common/index.js';
 
 /** Money in EGP. A plain nonnegative number — multi-currency is not a fleet fact. */
@@ -1423,15 +1424,28 @@ export interface FleetMaintenanceAlarmDto {
  * `GET /fleet/odometer/latest-readings` (`fleetOdometer.view` or `fleetMaintenance.view`): one
  * row for EVERY registry car (not soft-deleted, ANY status) that has a reading on file. The alarm
  * projection covers active cars only, so a car taken out of service after an accident would have
- * read «—» there although its log has readings. The figure is the alarm's own (`latestReadings`):
- * `latestReading`/`latestReadingAt` here equal the alarm row's for an active car.
+ * read «—» there although its log has readings. The figures are the alarm's own (`latestReadings`):
+ * `latestReading`/`latestReadingAt` and `newest` here equal the alarm row's `latestReading`/
+ * `latestReadingAt` and `newestReading` for an active car. The card shows `newest` as «آخر قراءة
+ * عداد», and names `latestReading` as «أعلى قراءة» beside it only when the two differ.
  */
 export interface FleetVehicleLatestReadingDto {
   vehicleId: string;
-  /** How far the car's top reading got — `FleetMaintenanceAlarmDto.latestReading`. */
+  /**
+   * How far the car's top reading got — `FleetMaintenanceAlarmDto.latestReading`: the HIGHEST
+   * reading, the alarm's figure («أعلى قراءة»). Not necessarily the newest; see `newest`.
+   */
   latestReading: number;
   /** The day of `latestReading`, as the alarm row carries it. */
   latestReadingAt: string;
+  /**
+   * «آخر قراءة عداد» — the NEWEST row on the car's chain, as the odometer register lists it first:
+   * the latest day (the last entered on a tie), reported by its effective reading. The alarm row's
+   * `newestReading`; `date` in the format of `latestReadingAt`. Equal to (`latestReading`, `latestReadingAt`) on a healthy
+   * chain; it differs only when the highest reading is not the newest (a typo, or a reading
+   * entered on the wrong car), and then the card names both.
+   */
+  newest: FleetAlarmChainPointDto;
 }
 
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────
@@ -2691,6 +2705,17 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;
 
+/**
+ * `GET /fleet/violations`'s `meta`: the page block, plus the figure under the drivers' table.
+ *
+ * `outstandingAmount` — the OWED amount (`collected !== true`) over EVERY row the list's filter
+ * finds: all pages, under the very filter the list was asked (its `kind` half, dates, set, …), not
+ * the loaded page's sum. With no `kind` it spans both halves. The drivers' footer «إجمالي
+ * السائقين» prints it, so the footer and the dashboard's «قائمة على السائقين» that opens the list
+ * name one figure.
+ */
+export type FleetViolationsListMeta = PageMeta & { outstandingAmount: number };
+
 /** FL-6 additive: the rollup's axis is the YEAR; one vehicle optionally narrows it. */
 export const FleetViolationRollupQuerySchema = z
   .object({
@@ -3319,6 +3344,14 @@ const noticeFilters = {
   to: z.coerce.date().optional(),
   status: FleetNoticeStatusSchema.optional(),
   checkImage: FleetNoticeImageStateSchema.optional(),
+  /**
+   * «ينقصها مرفق» — the notices missing ANY attachment: the car's or the driver's licence image
+   * (each by its source rule: uploaded with the notice, else the registry's when the reader may
+   * open it — the rule `missingLicences` counts with) OR «صورة الشيك». The very rule of the
+   * dashboard's «إخطارات مفتوحة ينقصها مرفق», so its «فتح» (`status=open&missing=any`) lists the
+   * notices that line counts. Absent = no such filter.
+   */
+  missing: z.enum(['any']).optional(),
   /**
    * The notice follows its CAR: the car's type, operation and CURRENT branch, as every other period
    * screen asks (the dashboard's notices on a branch are that branch's cars' notices). A notice with
@@ -4987,6 +5020,8 @@ export interface FleetReceiptTotalsDto {
   fuelCustodyTotal: number;
   /** Fuel receipts with no litre price: counted in `fuelTotal`, never in `fuelLitres`. */
   fuelUnpriced: number;
+  /** The custody-paid receipts (source custody) — the receipts in `custodyTotal`. */
+  custodyCount: number;
 }
 
 /**
@@ -5345,6 +5380,10 @@ export type FleetLicenseExpenseSummaryQuery = z.infer<typeof FleetLicenseExpense
  * page: how many, how many cars on them, and what was paid by the card and in cash.
  */
 export interface FleetLicenseExpenseTotalsDto {
+  /**
+   * The memos of the matched records that match `kind` / `status` (a record holding a renewal and
+   * an extension is two); cars and money over those memos alone (D05).
+   */
   count: number;
   cars: number;
   /** To the piastre. */
@@ -6132,7 +6171,15 @@ export interface FleetCustodyFundSummaryDto {
   /** Transferred replenishments, and legacy ones — what came back into the fund. */
   replenished: FleetCustodyCountAmountDto & { memos: number };
   /** Replenishments waiting for their transfer — not in `fundTotal`. */
-  held: FleetCustodyCountAmountDto & { memos: number; receipts: number };
+  held: FleetCustodyCountAmountDto & {
+    memos: number;
+    receipts: number;
+    /**
+     * Each of them («استعاضة معلّقة»), the oldest letter first: `length` = `count`, Σ `amount` =
+     * `amount`, Σ `receipts` = `receipts`, Σ `memos.length` = `memos`.
+     */
+    letters: FleetCustodyHeldLetterDto[];
+  };
   /** Cancelled replenishments — never in `fundTotal`. */
   cancelled: FleetCustodyCountAmountDto;
   settled: FleetCustodyCountAmountDto & { parts: number };
@@ -6146,6 +6193,25 @@ export interface FleetCustodyFundSummaryDto {
   outside: FleetCustodyOutsideKindDto[];
   /** Operations in «العمليات المحذوفة» — the toolbar pill. */
   deleted: { count: number };
+}
+/** One replenishment waiting for its transfer, with the memos it took. */
+export interface FleetCustodyHeldLetterDto {
+  /** The operation's id («فتح» → the custody register at that operation). */
+  id: string;
+  /** The letter's day, YYYY-MM-DD («في انتظار التحويل منذ …»). */
+  date: string;
+  /** The letter's period, YYYY-MM-DD; `null` when none was written. */
+  from: string | null;
+  to: string | null;
+  /** The operation's own amount, to the piastre. */
+  amount: number;
+  /** Σ of its memos' live receipts. */
+  receipts: number;
+  /** Its memos, `no` ascending — each as the memos list gives it (live receipts and total). */
+  memos: Pick<
+    FleetCustodyMemoRowDto,
+    'id' | 'no' | 'kind' | 'name' | 'date' | 'receipts' | 'total'
+  >[];
 }
 export interface FleetCustodyReplenishCandidatesDto {
   /** The memos no replenishment has taken yet (neither held nor transferred), oldest `no` first. */

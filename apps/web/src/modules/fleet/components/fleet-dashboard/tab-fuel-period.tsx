@@ -256,7 +256,7 @@ const barName = (key: BarKey): string =>
       ? 'fleet.custody.totals.fuel'
       : `fleet.receipts.kind.${key}`;
 
-const barLink = (key: BarKey, links: PeriodLinks): DashLink =>
+const barLink = (key: BarKey, links: PeriodLinks): DashLink | null =>
   key === 'card'
     ? links.opexKind('opex.card', 'fuel', 'card')
     : key === 'fuelCustody'

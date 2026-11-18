@@ -3,10 +3,14 @@
 // is an operational capability, and you cannot enroll someone who is no longer employed.
 // No domain events: the frozen surface (§8) has none for profiles; enrollment is configuration.
 import {
+  FLEET_DASHBOARD_LICENCE_MONTHS,
+  FLEET_LICENCE_GREY_DAYS,
   FleetEvents,
+  addDaysYmd,
   calendarDayBounds,
   licenceWindows,
   parseFleetSort,
+  ymdOf,
   type CreateFleetDriverProfile,
   type FleetCatalogKind,
   type ListFleetDriversQuery,
@@ -55,11 +59,57 @@ export interface FleetDriverRegistryDigest {
     notRecorded: number;
     /** A seat-holder with no profile at all — «غير مسجّلين» (no list parameter: named exception). */
     unregistered: number;
+    /**
+     * The files by the Cairo month their licence expires, `FLEET_DASHBOARD_LICENCE_MONTHS` months
+     * from today's (key 'YYYY-MM', zeros kept, this month first) — each the total of
+     * `?licExpFrom=<its first day>&licExpBefore=<its last day>`, suspended files included.
+     */
+    months: { key: string; count: number }[];
+    /**
+     * «أقرب رخص السائقين»: the files whose licence runs out on or before today + 60 (the expired
+     * included), the longest-expired first (then by employee), at most `nearestLimit` of them;
+     * `total` = `?licExpBefore=<today + 60>`'s total = expired + expiring + soon (suspended
+     * included) while `warnDays` ≤ 60.
+     */
+    nearest: { rows: FleetDriverLicenceRow[]; total: number };
   };
-  /** `drivers` includes `legacy`: the profiles matched only through the legacy «التخصص» enum. */
+  /**
+   * `drivers` = the catalog alone (`?specializationId=`'s total, the screen's «التخصص»); `legacy` =
+   * the profiles only the old «التخصص» enum classifies — a figure APART, never inside `drivers`.
+   */
   cash: { drivers: number; legacy: number };
   atm: { drivers: number; legacy: number };
 }
+
+/** One file of «أقرب رخص السائقين» — the dashboard names the driver from `/fleet/people`. */
+export interface FleetDriverLicenceRow {
+  profileId: string;
+  employeeId: string;
+  /** The expiry's day, 'YYYY-MM-DD'. */
+  expiresAt: string;
+  /** The licence type, by catalog id — the caller names it; `null` when none was chosen. */
+  licenceTypeId: string | null;
+  /** `false`: the file is suspended («الملف موقوف»). */
+  active: boolean;
+}
+
+/** 'YYYY-MM' → its first and last calendar day, 'YYYY-MM-DD'. */
+const monthDays = (key: string): { first: string; last: string } => {
+  const year = Number(key.slice(0, 4));
+  const month = Number(key.slice(5, 7));
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { first: `${key}-01`, last: `${key}-${String(lastDay).padStart(2, '0')}` };
+};
+
+/** `count` month keys ('YYYY-MM') from the month of `ymd`, in order. */
+export const monthKeysFrom = (ymd: string, count: number): string[] => {
+  const year = Number(ymd.slice(0, 4));
+  const month = Number(ymd.slice(5, 7)) - 1;
+  return Array.from({ length: count }, (_, i) => {
+    const at = new Date(Date.UTC(year, month + i, 1));
+    return `${String(at.getUTCFullYear()).padStart(4, '0')}-${String(at.getUTCMonth() + 1).padStart(2, '0')}`;
+  });
+};
 
 /** The legacy enum's reading of a profile nobody re-classified — `both` counts on both sides. */
 const legacyKinds = (profile: DriverProfileFacts): { cash: boolean; atm: boolean } => {
@@ -264,10 +314,11 @@ class FleetDriverProfileService {
    * The licence windows are `licenceWindows` (contracts), turned into instants by
    * `calendarDayBounds` — the first and last instant of the named days, the bounds the page sends.
    *
-   * «نقل أموال» / «ATM» (T3.6/T3.8): the catalog ids the caller resolved (`cashSpecIds`,
-   * `atmSpecIds`) — what `?spec=` matches — plus the profiles still classified only by the legacy
-   * enum, which `?spec=` cannot list and the screen therefore shows as «منها N بتصنيف قديم». A
-   * profile with a catalog specialization is read by it alone; the enum is only a second chance.
+   * «نقل أموال» / «ATM» (T3.6/T3.8): `drivers` = the catalog ids the caller resolved (`cashSpecIds`,
+   * `atmSpecIds`) — what `?spec=` matches, so the figure is the list's total and the screen's
+   * «التخصص» (D13). The profiles still classified only by the legacy enum, which `?spec=` cannot
+   * list, are `legacy` — counted apart, never added in («و N سائقين بتصنيف قديم لم يُحدَّد تخصصهم»).
+   * A profile with a catalog specialization is read by it alone.
    */
   async registryDigest(input: {
     today: string;
@@ -281,6 +332,8 @@ class FleetDriverProfileService {
     branchIds: readonly string[] | null;
     cashSpecIds: readonly string[];
     atmSpecIds: readonly string[];
+    /** How many of «أقرب رخص السائقين»'s files to return (`nearest.rows`). */
+    nearestLimit: number;
   }): Promise<FleetDriverRegistryDigest> {
     const nobody = input.branchIds !== null && input.branchIds.length === 0;
     const roster = nobody ? [] : await drivingSeatRoster();
@@ -301,13 +354,30 @@ class FleetDriverProfileService {
       return count({ licenseExpiresFrom: bounds.from, licenseExpiresBefore: bounds.before });
     };
 
-    const kind = (specIds: readonly string[], legacy: 'cash' | 'atm') => {
-      const viaCatalog = specIds.length === 0 ? 0 : count({ specializationId: [...specIds] });
-      const viaLegacy = rows.filter(
-        (profile) => profile !== null && legacyKinds(profile)[legacy],
-      ).length;
-      return { drivers: viaCatalog + viaLegacy, legacy: viaLegacy };
-    };
+    // `drivers` is the catalog alone — the very rows `?specializationId=` lists and the drivers
+    // screen's «التخصص» tallies (D13). `legacy` is a figure APART, never added in: the profiles the
+    // old enum alone classifies, which neither the list nor the screen can name (a `both` one is in
+    // each card's `legacy`, and in neither card's `drivers`).
+    const kind = (specIds: readonly string[], legacy: 'cash' | 'atm') => ({
+      drivers: specIds.length === 0 ? 0 : count({ specializationId: [...specIds] }),
+      legacy: rows.filter((profile) => profile !== null && legacyKinds(profile)[legacy]).length,
+    });
+
+    // «أقرب رخص السائقين»: the very files `?licExpBefore=<today + 60>` keeps, nearest first.
+    const horizon = addDaysYmd(input.today, FLEET_LICENCE_GREY_DAYS);
+    const within = rows
+      .filter(
+        (profile): profile is NonNullable<typeof profile> =>
+          profile !== null &&
+          matchesFleetFilters(profile, {
+            licenseExpiresBefore: calendarDayBounds(horizon, horizon).before,
+          }),
+      )
+      .sort(
+        (a, b) =>
+          (a.licenseExpiresAt?.getTime() ?? 0) - (b.licenseExpiresAt?.getTime() ?? 0) ||
+          String(a.employeeId).localeCompare(String(b.employeeId)),
+      );
 
     return {
       total: rows.length,
@@ -319,6 +389,20 @@ class FleetDriverProfileService {
         soon: windows.soon === null ? 0 : between(windows.soon.from, windows.soon.to),
         notRecorded: count({ licenseNotRecorded: true }),
         unregistered: rows.filter((profile) => profile === null).length,
+        months: monthKeysFrom(input.today, FLEET_DASHBOARD_LICENCE_MONTHS).map((key) => {
+          const { first, last } = monthDays(key);
+          return { key, count: between(first, last) };
+        }),
+        nearest: {
+          rows: within.slice(0, Math.max(0, input.nearestLimit)).map((profile) => ({
+            profileId: String(profile._id),
+            employeeId: String(profile.employeeId),
+            expiresAt: ymdOf(profile.licenseExpiresAt as Date),
+            licenceTypeId: ref(profile.licenseTypeId),
+            active: profile.isActive,
+          })),
+          total: within.length,
+        },
       },
       cash: kind(input.cashSpecIds, 'cash'),
       atm: kind(input.atmSpecIds, 'atm'),

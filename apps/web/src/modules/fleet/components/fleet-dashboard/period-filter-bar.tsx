@@ -15,6 +15,12 @@
 //
 // A list the reader may not read is never asked for (no 403 on the dashboard): its control is not
 // drawn, and its chip names the filter without the names.
+//
+// `periodOnly` («التراخيص والتجديدات», critic A3): the period choices alone — the preset, the custom
+// dates and the range chip. A licence-expense memo carries no branch, car type, operation or amount
+// per car, so nothing else moves that tab's figures: its type / operation / codes controls and chips
+// are not drawn (their lists never asked for), and «مسح الفلاتر» there brings back the default period
+// only — the set the other tabs hold stays in the address bar untouched.
 import {
   FLEET_DASHBOARD_DEFAULT_PRESET,
   FLEET_DASHBOARD_PRESETS,
@@ -66,6 +72,16 @@ export const isCleared = (f: PeriodFilters): boolean =>
   f.operationIds.length === 0 &&
   f.vehicleCodes.length === 0;
 
+/** Nothing left for «مسح الفلاتر» to undo: on a period-only bar, the default period alone (the set
+ *  it does not draw is not its to clear). */
+export const isClearedFor = (f: PeriodFilters, periodOnly: boolean): boolean =>
+  periodOnly ? f.preset === FLEET_DASHBOARD_DEFAULT_PRESET : isCleared(f);
+
+/** What «مسح الفلاتر» leaves: the default state, or — on a period-only bar — the default period
+ *  with the other tabs' set kept as it is in the address bar. */
+export const clearedFor = (f: PeriodFilters, periodOnly: boolean): PeriodFilters =>
+  periodOnly ? { ...f, preset: CLEARED.preset, from: '', to: '' } : CLEARED;
+
 /** A new preset. «مخصص» starts from the range on show (the server's echo), the others carry no dates. */
 export const withPreset = (
   f: PeriodFilters,
@@ -114,18 +130,22 @@ export const PeriodFilterBar = ({
   onFilters,
   data,
   can,
+  periodOnly = false,
 }: {
   filters: PeriodFilters;
   onFilters: (next: PeriodFilters) => void;
   /** R2's answer on screen: its echo names the chips. */
   data: FleetDashboardPeriodDto | undefined;
   can: (permission: string) => boolean;
+  /** The period choices alone (the preset, the custom dates, the range chip): a tab whose figures
+   *  no vehicle set reaches. */
+  periodOnly?: boolean;
 }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
-  const mayTypes = mayAny(TYPE_READERS, can);
-  const mayOperations = mayAny(OPERATION_READERS, can);
-  const mayCodes = mayAny(CODE_READERS, can);
+  const mayTypes = !periodOnly && mayAny(TYPE_READERS, can);
+  const mayOperations = !periodOnly && mayAny(OPERATION_READERS, can);
+  const mayCodes = !periodOnly && mayAny(CODE_READERS, can);
   const typeOptions = useVehicleTypeOptions(mayTypes);
   const custom = filters.preset === 'custom';
   const shown = data?.range ?? null;
@@ -160,7 +180,11 @@ export const PeriodFilterBar = ({
   );
 
   return (
-    <Card data-period-filters="true" className="mb-5 p-3">
+    <Card
+      data-period-filters="true"
+      {...(periodOnly ? { 'data-period-only': 'true' } : {})}
+      className="mb-5 p-3"
+    >
       <div
         role="group"
         data-period-controls="true"
@@ -247,8 +271,8 @@ export const PeriodFilterBar = ({
         <button
           type="button"
           data-period-clear="true"
-          disabled={isCleared(filters)}
-          onClick={() => onFilters(CLEARED)}
+          disabled={isClearedFor(filters, periodOnly)}
+          onClick={() => onFilters(clearedFor(filters, periodOnly))}
           className={cn(
             'ms-auto rounded-xl px-3 py-2 text-[13px] font-bold transition-colors enabled:hover:bg-slate-100 enabled:hover:text-slate-800 disabled:cursor-default disabled:opacity-60 dark:enabled:hover:bg-slate-800/60 dark:enabled:hover:text-white',
             MUTED,
@@ -273,36 +297,40 @@ export const PeriodFilterBar = ({
               parts={{ from: <N>{slashDay(shown.from)}</N>, to: <N>{slashDay(shown.to)}</N> }}
             />
           </span>
-          <span data-period-chip="type" className={CHIP_FACE}>
-            {scope.typeIds.length === 0
-              ? t('fleet.dash.filters.allTypes')
-              : mayTypes
-                ? scope.typeIds.map((id) => optionLabel(typeOptions, id)).join(', ')
-                : t('fleet.dash.filters.someTypes')}
-          </span>
-          {mayOperations ? (
-            <OperationChip ids={scope.operationIds} />
-          ) : (
-            <span data-period-chip="operation" className={CHIP_FACE}>
-              {scope.operationIds.length === 0
-                ? t('fleet.dash.filters.allOperations')
-                : t('fleet.dash.filters.someOperations')}
-            </span>
-          )}
-          <span data-period-chip="codes" className={CHIP_FACE}>
-            {scope.vehicleCodes.length === 0 ? (
-              t('fleet.dash.filters.allCars')
-            ) : (
-              <N>{scope.vehicleCodes.join(', ')}</N>
-            )}
-          </span>
-          {scope.count !== null && (
-            <span data-period-chip="count" className={CHIP_FACE}>
-              <Phrase
-                text={t('fleet.dash.filters.setCount')}
-                parts={{ count: <N>{count(scope.count)}</N>, noun: noun('car', scope.count) }}
-              />
-            </span>
+          {!periodOnly && (
+            <>
+              <span data-period-chip="type" className={CHIP_FACE}>
+                {scope.typeIds.length === 0
+                  ? t('fleet.dash.filters.allTypes')
+                  : mayTypes
+                    ? scope.typeIds.map((id) => optionLabel(typeOptions, id)).join(', ')
+                    : t('fleet.dash.filters.someTypes')}
+              </span>
+              {mayOperations ? (
+                <OperationChip ids={scope.operationIds} />
+              ) : (
+                <span data-period-chip="operation" className={CHIP_FACE}>
+                  {scope.operationIds.length === 0
+                    ? t('fleet.dash.filters.allOperations')
+                    : t('fleet.dash.filters.someOperations')}
+                </span>
+              )}
+              <span data-period-chip="codes" className={CHIP_FACE}>
+                {scope.vehicleCodes.length === 0 ? (
+                  t('fleet.dash.filters.allCars')
+                ) : (
+                  <N>{scope.vehicleCodes.join(', ')}</N>
+                )}
+              </span>
+              {scope.count !== null && (
+                <span data-period-chip="count" className={CHIP_FACE}>
+                  <Phrase
+                    text={t('fleet.dash.filters.setCount')}
+                    parts={{ count: <N>{count(scope.count)}</N>, noun: noun('car', scope.count) }}
+                  />
+                </span>
+              )}
+            </>
           )}
         </div>
       )}

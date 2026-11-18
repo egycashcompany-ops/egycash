@@ -7,6 +7,10 @@
 //
 // Proved two ways: every write the licensing module can make is spied and must stay uncalled, and
 // the counts equal the board's own stats bar computed over `board()`'s rows for the same world.
+//
+// `paperStagesFor` is the same rule per car for «أقرب تراخيص السيارات»'s «أوراق الترخيص» column:
+// only the listed cars that are ON the board (a «ت» class, under the reader's scope), each paper's
+// `paperStage` from the same live marks — read-only too.
 import { Types } from 'mongoose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FLEET_LICENSING_PAPERS, paperStage } from '@ecms/contracts';
@@ -138,5 +142,75 @@ describe('openPaperCounts — R-11', () => {
     ] as never);
     expect(await fleetLicensingService.openPaperCounts(SCOPE)).toEqual({ insurance: 0, tax: 0 });
     expect(listedWith).toEqual([]);
+  });
+});
+
+describe('paperStagesFor — «أوراق الترخيص» beside «أقرب تراخيص السيارات»', () => {
+  const ids = (list: readonly FleetVehicleDoc[]) => list.map((vehicle) => String(vehicle._id));
+  /** The registry answers which of the asked cars it holds on the board (`onBoard`). */
+  let askedWith: unknown[][] = [];
+  const boardHolds = (onBoard: readonly FleetVehicleDoc[]) =>
+    vi
+      .spyOn(fleetVehicleRepository, 'idsOfClassesInScope')
+      .mockImplementation(async (scope, vehicleIds, classIds) => {
+        askedWith.push([scope, vehicleIds, classIds]);
+        return new Set(ids(onBoard).filter((id) => vehicleIds.includes(id)));
+      });
+  beforeEach(() => {
+    askedWith = [];
+  });
+
+  it('gives each board car both stages — the rule `openPaperCounts` counts by', async () => {
+    boardHolds(cars);
+    const stages = await fleetLicensingService.paperStagesFor(SCOPE, ids(cars));
+    expect(ids(cars).map((id) => stages.get(id))).toEqual([
+      { insurance: 'open', tax: 'none' },
+      { insurance: 'done', tax: 'none' },
+      { insurance: 'open', tax: 'open' },
+      { insurance: 'none', tax: 'done' },
+      { insurance: 'none', tax: 'open' },
+      // Nobody ticked anything: four falses, no row.
+      { insurance: 'none', tax: 'none' },
+    ]);
+    const open = { insurance: 0, tax: 0 };
+    for (const stage of stages.values()) {
+      if (stage.insurance === 'open') open.insurance += 1;
+      if (stage.tax === 'open') open.tax += 1;
+    }
+    expect(open).toEqual(await fleetLicensingService.openPaperCounts(SCOPE));
+  });
+
+  it('asks only about the listed cars, the board’s classes, under the reader’s scope — a car off it is absent', async () => {
+    const elsewhere = car('300');
+    boardHolds(cars.slice(0, 2));
+    const stages = await fleetLicensingService.paperStagesFor(SCOPE, [
+      ...ids(cars.slice(0, 2)),
+      String(elsewhere._id),
+    ]);
+    expect([...stages.keys()]).toEqual(ids(cars.slice(0, 2)));
+    expect(askedWith).toEqual([
+      [SCOPE, [...ids(cars.slice(0, 2)), String(elsewhere._id)], [String(T_CLASS)]],
+    ]);
+    // Never the whole board: no list of its cars is read.
+    expect(listedWith).toEqual([]);
+    // The marks of the cars on it only.
+    expect(fleetVehicleLicensingRepository.findForVehicles).toHaveBeenCalledWith(
+      ids(cars.slice(0, 2)),
+    );
+  });
+
+  it('performs NO write, and asks nothing for no cars or a board with no «ت» class', async () => {
+    boardHolds(cars);
+    await fleetLicensingService.paperStagesFor(SCOPE, ids(cars));
+    for (const spy of writes) expect(spy).not.toHaveBeenCalled();
+    expect(fleetVehicleLicensingRepository.markedVehicleIds).not.toHaveBeenCalled();
+
+    askedWith = [];
+    expect((await fleetLicensingService.paperStagesFor(SCOPE, [])).size).toBe(0);
+    vi.spyOn(fleetCatalogItemRepository, 'listKind').mockResolvedValue([
+      { _id: M_CLASS, name: { ar: 'برقاش م', en: 'B M' } },
+    ] as never);
+    expect((await fleetLicensingService.paperStagesFor(SCOPE, ids(cars))).size).toBe(0);
+    expect(askedWith).toEqual([]);
   });
 });

@@ -107,6 +107,20 @@ export const signalConsumable = (consumableId: string, branchId: string): void =
 };
 
 /**
+ * The same signal on the memo's topic, WITH its store. A memo's `update` audit row announces itself
+ * to the organization-wide room only (it names no branch); this reaches the branch-scoped readers of
+ * that store too, so an open memo or a ledger row's paper reads again wherever it is shown.
+ */
+export const signalConsumableMemo = (memoId: string, branchId: string): void => {
+  publishAuditedChange({
+    entityRef: consumableMemoEntityRef(memoId),
+    action: 'update',
+    at: new Date().toISOString(),
+    branchId,
+  });
+};
+
+/**
  * The audit row a movement writes on its item — AFTER the commit, like every custody audit: the
  * audit service is not part of the transaction, so a row written inside it would outlive a write
  * the database then refused, and a retried transaction would write it twice. The item as it now

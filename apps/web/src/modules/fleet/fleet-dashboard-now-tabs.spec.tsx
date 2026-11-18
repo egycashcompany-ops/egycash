@@ -1,18 +1,19 @@
-// «لوحة تحكم الحركة» — the old R1 tabs still waiting for their redesign: «التراخيص وآخر ما سُجّل»
-// and «ملخصات» (plan §8.1–§8.5, unified.md W-SHELL). The four rebuilt tabs have their own specs:
-// «نظرة عامة» and «الحركة اليوم» — which took the retired «التنبيهات» and «الحركة الآن»
-// (fleet-dashboard-tab-overview.spec.tsx, fleet-dashboard-tab-today.spec.tsx), «توزيع السيارات» and
-// «الصيانة والورش» — rebuilt under their old keys (fleet-dashboard-tab-distribution.spec.tsx, which
-// carries the old tab 3's pins, and fleet-dashboard-tab-maintenance.spec.tsx); «العدادات
-// والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات» and «الوقود والمصروفات»
-// have theirs (fleet-dashboard-tab-{km,accidents,violations,fuel}.spec.tsx).
+// «لوحة تحكم الحركة» — the one old R1 tab still waiting for its redesign: «ملخصات» (plan §8.1–§8.5,
+// unified.md W-SHELL). The rebuilt tabs have their own specs: «نظرة عامة» and «الحركة اليوم» — which
+// took the retired «التنبيهات» and «الحركة الآن» (fleet-dashboard-tab-overview.spec.tsx,
+// fleet-dashboard-tab-today.spec.tsx), «توزيع السيارات» and «الصيانة والورش» — rebuilt under their
+// old keys (fleet-dashboard-tab-distribution.spec.tsx, which carries the old tab 3's pins, and
+// fleet-dashboard-tab-maintenance.spec.tsx); «العدادات والكيلومترات», «الحوادث ومطالبات التأمين»,
+// «المخالفات المرورية والتسويات», «الوقود والمصروفات», «العهدة» and «التراخيص والتجديدات» — which
+// replaced the old «التراخيص وآخر ما سُجّل» body under its key — have theirs
+// (fleet-dashboard-tab-{km,accidents,violations,fuel,custody,licences}.spec.tsx).
 //
 // What this file pins is that each figure reads the field it is about, opens the screen that shows
 // the same number (through the one link builder), says what the approved sample says, and draws
 // nothing the owner ruled out: no Q marker, no receipt-audit part, no export or print, no custody
-// ceiling, no Phase-2 piece — on every tab of the bar (the year's supply contracts, approved for
-// «توزيع السيارات», on that tab alone and for their reader alone). A null section renders nothing; a
-// failed one shows its error.
+// ceiling or ranking, no Phase-2 piece — on every tab of the bar (the year's supply contracts,
+// approved for «توزيع السيارات», on that tab alone and for their reader alone). A null section
+// renders nothing; a failed one shows its error.
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,9 +21,9 @@ import { describe, expect, it } from 'vitest';
 import { FLEET_DASHBOARD_TABS, FLEET_DASHBOARD_TAB_READS, addDaysYmd } from '@ecms/contracts';
 import {
   ALL_KEYS,
+  EVERY_KEY,
   B1,
   B2,
-  DRIVER,
   NOW_DTO,
   TODAY,
   ar,
@@ -60,107 +61,61 @@ const part = (html: string, marker: string, next: RegExp): string => {
   return marker + (end < 0 ? rest : rest.slice(0, end));
 };
 
-// ── Tab 4 «التراخيص وآخر ما سُجّل» ────────────────────────────────────────────────────────────
+// ── The ten-tab audit's own words (2026-11-17) ────────────────────────────────────────────────
 
-describe('tab 4 — licences and the latest records', () => {
-  const html = tab('licences');
-  const vehicles = part(html, 'data-licences-card="vehicle-licences"', /data-licences-card="/u);
-  const latest = part(html, 'data-licences-card="latest"', /data-licences-card="/u);
-
-  it('links the three disjoint licence windows, each to its exact days (R-10)', () => {
-    expect(hrefOf(vehicles, 'licenceVehicles.expired')).toEqual([
-      `/fleet/vehicles?status=active&licExpBefore=${TODAY}`,
-    ]);
-    expect(hrefOf(vehicles, 'licenceVehicles.expiring')).toEqual([
-      `/fleet/vehicles?status=active&licExpFrom=${addDaysYmd(TODAY, 1)}&licExpBefore=${addDaysYmd(TODAY, 30)}`,
-    ]);
-    expect(hrefOf(vehicles, 'licenceVehicles.soon')).toEqual([
-      `/fleet/vehicles?status=active&licExpFrom=${addDaysYmd(TODAY, 31)}&licExpBefore=${addDaysYmd(TODAY, 60)}`,
-    ]);
+describe('the words the audit changed on the dashboard (D26, D34, D38, D39, D49)', () => {
+  it('«فروع التشغيل» is «فروع بها سيارات نشطة» — it counts the branches with an active car (D34)', () => {
+    expect(ar('fleet.dash.overview.hub.distribution.branches')).toBe('فروع بها سيارات نشطة');
+    expect(text(tab('overview'))).toContain('فروع بها سيارات نشطة');
   });
 
-  it('lists the nearest first with how long ago or how soon, then «+N»', () => {
-    const body = text(vehicles);
-    expect(body).toContain('منتهٍ منذ 18 يومًا');
-    expect(body).toContain('بعد 4 أيام');
-    expect(body.indexOf('249')).toBeLessThan(body.indexOf('176'));
-    expect(body).toContain('+2');
-    expect(hrefOf(vehicles, 'licenceVehicles.row')).toContain('/fleet/vehicles/v249');
+  it('the maintenance tags say «منها N متأخرة», the alarms board’s word (D38)', () => {
+    for (const key of [
+      'fleet.dash.maintenance.red.tag',
+      'fleet.dash.overview.actions.line.maintenanceRed.sub',
+    ]) {
+      expect(ar(key, { count: 2 }), key).toBe('منها 2 متأخرة');
+    }
+    const words = text(tab('maintenance', {}, EVERY_KEY)) + text(tab('overview'));
+    expect(words).not.toContain('تجاوزته');
+    expect(words).not.toContain('تجاوز الحد بـ');
   });
 
-  it('colours a row amber up to the warn-days SETTING, as the bucket above counts it', () => {
-    const toneOf = (html: string, id: string): string | undefined =>
-      new RegExp(`data-licence-row="${id}"[\\s\\S]*?data-licence-tone="(\\w+)"`, 'u').exec(
-        html,
-      )?.[1];
-    expect(toneOf(vehicles, 'v297')).toBe('amber'); // 16 days, warnDays 30
-    const lic = NOW_DTO.licenceVehicles as NonNullable<typeof NOW_DTO.licenceVehicles>;
-    const short = tab('licences', {
-      now: { ...NOW_DTO, licenceVehicles: { ...lic, warnDays: 10 } },
-    });
-    expect(toneOf(short, 'v152')).toBe('amber'); // 4 days
-    expect(toneOf(short, 'v297')).toBe('grey'); // 16 days: past 10, counted in the grey bucket
-    expect(toneOf(short, 'v249')).toBe('red');
-  });
-
-  it('writes a workshop row’s day and when it was written, in Cairo time', () => {
-    expect(text(latest)).toContain('سُجّلت 09:12');
-    expect(text(latest)).toContain('سُجّلت 15:47');
-    expect(hrefOf(latest, 'recentWorkshop.row')).toContain(
-      `/fleet/maintenance?vehicleCodes=231&from=${TODAY}&to=${TODAY}`,
+  it('a dealership row with no amount is «بانتظار الفاتورة» on every tab (D39)', () => {
+    expect(ar('fleet.dash.maintenance.dealer.tag')).toBe(ar('fleet.dealership.pending'));
+    expect(ar('fleet.dash.fuel.dealerTable.pendingTag')).toBe(ar('fleet.dealership.pending'));
+    expect(ar('fleet.dash.overview.actions.line.dealershipPending.title')).toBe(
+      'صفوف توكيل بانتظار الفاتورة',
     );
-    // A closed visit's business day is its check-out day (R-12): it opens on `outFrom`/`outTo`.
-    expect(hrefOf(latest, 'recentWorkshop.row')).toContain(
-      '/fleet/maintenance?vehicleCodes=295&outFrom=2026-10-31&outTo=2026-10-31',
+    expect(ar('fleet.dash.fuel.dealer.pending', { rows: 3 })).toBe(
+      'منها 3 بانتظار الفاتورة (حتى الآن)',
     );
+    for (const key of FLEET_DASHBOARD_TABS) {
+      expect(text(tab(key, {}, EVERY_KEY)), key).not.toContain('بانتظار تسجيل القيمة');
+    }
   });
 
-  it('writes an accident row’s DATE ONLY — no time at all — and opens its day', () => {
-    const accident = part(latest, 'data-recent-accident="a1"', /data-recent-(?:accident|visit)="/u);
-    expect(text(accident)).toContain('2026/11/01');
-    expect(text(accident)).not.toMatch(/\d{2}:\d{2}/u);
-    expect(hrefOf(accident, 'recentAccidents.row')).toEqual([
-      `/fleet/accidents?vehicleCodes=154&from=${TODAY}&to=${TODAY}`,
-    ]);
-  });
-
-  it('opens the driver card on a culprit who is one of ours, and only then', () => {
-    const client = dashboardClient();
-    client.setQueryData(
-      ['fleet', 'people'],
-      [
-        {
-          employeeId: DRIVER,
-          code: 'HR-D1',
-          fullNameAr: 'محمود عبد العزيز سالم',
-          status: 'active',
-          branchId: null,
-          address: null,
-          governorate: null,
-          phone: null,
-          hiredAt: null,
-        },
-      ],
+  it('the km tab’s «all read» lines say «خارج الورشة»: a car in the workshop is not asked (D26)', () => {
+    expect(ar('fleet.dash.km.stale.allRead')).toBe(
+      'لا توجد سيارات نشطة خارج الورشة بلا قراءة حديثة.',
     );
-    const withCard = renderDashboard({ url: '/fleet?tab=licences', client });
-    const ours = part(withCard, 'data-recent-accident="a2"', /data-recent-(?:accident|visit)="/u);
-    expect(ours).toContain('data-driver-hover="true"');
-    const third = part(withCard, 'data-recent-accident="a1"', /data-recent-(?:accident|visit)="/u);
-    expect(third).not.toContain('data-driver-hover');
-  });
-
-  it('keeps the drivers’ licences apart, with «بلا تاريخ» linked and «بلا ملف سائق» shown as it is', () => {
-    const drivers = part(html, 'data-licences-card="driver-licences"', /data-licences-card="/u);
-    expect(hrefOf(drivers, 'licenceDrivers.notRecorded')).toEqual(['/fleet/drivers?licExp=none']);
-    expect(text(drivers)).toContain(ar('fleet.dash.licences.unregistered'));
-  });
-
-  it('opens the open papers on the licensing board, never the bare page (D17), and the expiring cards on both bounds', () => {
-    const papers = part(html, 'data-licences-card="papers-cards"', /data-licences-card="/u);
-    expect(hrefOf(papers, 'papers.insurance')).toContain('/fleet/licensing?sort=asc');
-    expect(hrefOf(papers, 'fuelCards.expiring')).toContain(
-      `/fleet/fuel-cards?expiresFrom=${addDaysYmd(TODAY, 1)}&expiresBefore=${addDaysYmd(TODAY, 30)}`,
+    expect(ar('fleet.dash.km.exceptions.none.never')).toBe(
+      'لا توجد سيارات نشطة خارج الورشة بلا أي قراءة.',
     );
+    expect(ar('fleet.dash.km.exceptions.never.note')).toBe(
+      'سيارات نشطة خارج الورشة لم يُسجَّل لها أي عداد.',
+    );
+    for (const key of [
+      'fleet.dash.km.exceptions.end.never',
+      'fleet.dash.km.exceptions.end.neverBranch',
+    ]) {
+      expect(ar(key), key).toContain('خارج الورشة');
+    }
+    expect(text(tab('km', {}, EVERY_KEY))).not.toContain('كل السيارات النشطة قُرئت حديثًا');
+  });
+
+  it('the vehicles screen’s «أنواع التشغيل» says it counts every status (D49)', () => {
+    expect(ar('fleet.vehicles.board.operations')).toBe('أنواع التشغيل (كل الحالات)');
   });
 });
 
@@ -209,9 +164,9 @@ describe('tab 5 — the summaries', () => {
   });
 });
 
-// ── The fuel parts of the old tabs follow the car's branch (plan D10, D23) ─────────────────────
+// ── The fuel parts of «ملخصات» follow the car's branch (plan D10, D23) ────────────────────────
 
-describe('«ملخصات» and «التراخيص» under a branch — the fuel parts are the branch’s, the custody parts the company’s', () => {
+describe('«ملخصات» under a branch — the fuel parts are the branch’s, the custody parts the company’s', () => {
   const CAIRO = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
   const GIZA = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
   const narrowed = { now: { ...NOW_DTO, branchId: B1, scopeBranches: [CAIRO] } };
@@ -233,20 +188,6 @@ describe('«ملخصات» and «التراخيص» under a branch — the fuel 
       const branch = seed === narrowed ? B1 : `${B1},${B2}`;
       for (const href of hrefOf(html, 'fuelCharging.wataniya'))
         expect(new URLSearchParams(href.split('?')[1]).get('branch'), href).toBe(branch);
-    }
-  });
-
-  it('«التراخيص»: the papers and cards panel carries no «الشركة كلها»; its expiring cards open the branch’s', () => {
-    const html = tab('licences', narrowed);
-    const papers = part(html, 'data-licences-card="papers-cards"', /data-licences-card="/u);
-    expect(papers).not.toBe('');
-    expect(papers).not.toContain('data-company-wide');
-    const expiring = hrefOf(papers, 'fuelCards.expiring');
-    expect(expiring.length).toBeGreaterThan(0);
-    for (const href of expiring) {
-      expect(href).toBe(
-        `/fleet/fuel-cards?expiresFrom=${addDaysYmd(TODAY, 1)}&expiresBefore=${addDaysYmd(TODAY, 30)}&branch=${B1}`,
-      );
     }
   });
 });
@@ -283,7 +224,7 @@ describe('the dashboard’s tabs count nothing in the browser and draw no ruled-
     }
   });
 
-  it('draws no Phase-2 piece, and nothing the owner ruled out, on any of the eleven tabs', () => {
+  it('draws no Phase-2 piece, and nothing the owner ruled out, on any of the twelve tabs', () => {
     const SUPPLY = ['عقود التوريد', 'عقد توريد'];
     const RULED_OUT = [
       'ترتيب السائقين',
@@ -292,11 +233,17 @@ describe('the dashboard’s tabs count nothing in the browser and draw no ruled-
       'ج.م/كم',
       'تكلفة الكيلو',
       'أمر حركة',
+      // «العهدة» (DECISIONS §9): no ranking of who spent most, no floor or safety line on the fund.
+      'أعلى السيارات صرفًا',
+      'أعلى السائقين صرفًا',
+      'الحد الأدنى',
+      'حد الأمان',
     ];
     const contracts = (html: string) =>
       links(html).filter((l) => l.href.startsWith('/fleet/vehicle-contracts'));
-    // Every key of the page — the contracts' is not one of them — and then with it as well.
-    for (const permissions of [ALL_KEYS, [...ALL_KEYS, 'fleetVehicleContract.view']]) {
+    // Every key of the page and the licence memos' (a PAGELESS key: «التراخيص والتجديدات»'s period
+    // band) — the contracts' is not one of them — and then with it as well.
+    for (const permissions of [EVERY_KEY, [...EVERY_KEY, 'fleetVehicleContract.view']]) {
       const supplyReader = permissions.includes('fleetVehicleContract.view');
       for (const key of FLEET_DASHBOARD_TABS) {
         // A tab that draws the page's R2 is seeded with every period section, so its period part

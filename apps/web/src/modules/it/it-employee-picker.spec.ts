@@ -171,9 +171,14 @@ describe('which box asks for which population', () => {
     expect(picker).toContain("t('it.custody.pickerExited')");
   });
 
-  it('needs IT’s grant, not HR’s', () => {
+  // Any of the three registers that hand things to people opens the box — the assets, the lines and
+  // the consumables, each on its own read grant since 2026-11-17 — as `/it/people` itself answers.
+  it('needs IT’s grant — any register’s that hands things to people — not HR’s', () => {
     const picker = code('components/EmployeePicker.tsx');
-    expect(picker).toContain("can('itAsset.view')");
+    expect(picker).toContain(
+      "IT_PEOPLE_GRANTS = ['itAsset.view', 'itMobileLine.view', 'itConsumable.view']",
+    );
+    expect(picker).toContain('const allowed = IT_PEOPLE_GRANTS.some((grant) => can(grant));');
     expect(picker).not.toContain('employee.view');
     const client = code('api/it-api.ts');
     expect(client).not.toContain('/hr/employees');

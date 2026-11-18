@@ -246,19 +246,29 @@ const BandTile = ({
   </div>
 );
 
-/** «منهم N بتصنيف قديم» — drivers counted through the old specialisation; only when there are. */
+/**
+ * «و N سائقين بتصنيف قديم لم يُحدَّد تخصصهم» — the files that hold only the old classification, on
+ * their own line and only when there are. They are NOT in the card's drivers (the server counts the
+ * catalog's specialisation alone, the drivers screen's «التخصص»), nor in the ratio or the sentence:
+ * never «منهم», never subtracted. Plain: no screen lists exactly them.
+ */
 const Legacy = ({ n }: { n: number }): JSX.Element | null => {
   const t = useT();
+  const noun = useNoun();
   if (n <= 0) return null;
   return (
     <p data-dist-legacy="true" className={cn('mt-1 px-1 text-[12px] font-semibold', MUTED)}>
-      <Phrase text={t(`${W}.legacy`)} parts={{ count: <N className="font-bold">{count(n)}</N> }} />
+      <Phrase
+        text={t(n === 1 ? `${W}.legacyOne` : `${W}.legacy`)}
+        parts={{ count: <N className="font-bold">{count(n)}</N>, noun: noun('driver', n) }}
+      />
     </p>
   );
 };
 
-/** The drivers against the cars: the drivers (a link), «سائق لكل سيارة» (a plain ratio — no mark, no
- *  colour, no target) and the system's more/fewer sentence. */
+/** The drivers against the cars: the drivers (a link — the specialisation's list, the same
+ *  count), «سائق لكل سيارة» (a plain ratio — no mark, no colour, no target) and the system's
+ *  more/fewer sentence, all over the catalog's count; the old classification after them, apart. */
 const DriversBand = ({
   id,
   drivers,
@@ -884,9 +894,17 @@ const KmByBranch = ({ data, km }: { data: FleetDashboardPeriodDto; km: Km }): JS
   // The month read's OWN echo: its range and its set, one branch narrower per column.
   const narrowed = (branchId: string) =>
     periodLinks({ range: data.range, vehicleScope: { ...data.vehicleScope, branchId } });
+  // «بلا فرع» is the cars with NO branch alone (unlinked: no list holds exactly them). A branch the
+  // live list no longer holds (deleted) keeps its id: the server names it «—», as the vehicles screen
+  // writes such a car's branch, and the register still opens by that branch.
   const columns: ColumnDatum[] = km.byBranch.map((row) => ({
     key: row.branchId ?? 'none',
-    name: row.name === null ? t('fleet.dash.km.noBranch') : localized(row.name, locale),
+    name:
+      row.branchId === null
+        ? t('fleet.dash.km.noBranch')
+        : row.name === null
+          ? '—'
+          : localized(row.name, locale),
     value: row.km,
     valueText: kmText(row.km),
     unit,
@@ -902,6 +920,22 @@ const KmByBranch = ({ data, km }: { data: FleetDashboardPeriodDto; km: Km }): JS
       valueText: kmText(km.unregistered),
       unit,
       share: shareText(km.unregistered, km.total),
+      link: null,
+      muted: true,
+    });
+  }
+  // The old book's km under a live car's code (D20): that car's in the total, the rankings and the
+  // average, but in no branch column — each column is the register its «فتح» opens, and the
+  // register's branch filter never reads the old book. Drawn apart (never a link) so the columns
+  // still add up to the headline.
+  if (km.bookOnRegistered > 0) {
+    columns.push({
+      key: 'bookOnRegistered',
+      name: t('fleet.dash.km.bookOnRegistered'),
+      value: km.bookOnRegistered,
+      valueText: kmText(km.bookOnRegistered),
+      unit,
+      share: shareText(km.bookOnRegistered, km.total),
       link: null,
       muted: true,
     });

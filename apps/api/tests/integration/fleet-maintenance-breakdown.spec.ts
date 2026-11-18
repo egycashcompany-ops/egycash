@@ -10,7 +10,8 @@
 //   1b. `exitBreakdown` over [outFrom, outTo] («الصيانة والورش», EXIT day) is the list over the
 //      exit day: the count, every bar and every ranked car link to a list that shows its figure,
 //      and the mean stay is the mean of the listed rows' whole days;
-//   2. `openNow` is `/fleet/maintenance?state=open` (`open=true`) with the longest stays in days;
+//   2. `openNow` is `/fleet/maintenance?state=open&to=<today>` (`open=true`, checked in by the end
+//      of the day asked about) with the longest stays in days, split into four parts that add up;
 //   3. `recentWritten` keeps the window (a row the day before it is out) and the write order;
 //   4. the period read is planned on an index, never a collection scan;
 //   5. every row — and every write's answer — carries its CAR's «الفرع», the branch `?branchIds`
@@ -585,7 +586,7 @@ describe('exitBreakdown — «الصيانة والورش» by EXIT day is the l
   });
 });
 
-// ── 2 · openNow = /fleet/maintenance?state=open ───────────────────────────────────────────────
+// ── 2 · openNow = /fleet/maintenance?state=open&to=<today> ───────────────────────────────────
 
 describe('openNow — «في الورشة الآن» (R-09)', () => {
   it('the company: every open visit of any status, the longest stays in Cairo days', async () => {
@@ -593,10 +594,13 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
     expect(out).toMatchObject({
       open: 3,
       openActive: 1, // c1
-      openOutOfService: 1, // c5 — the book's row is in neither part
+      openOutOfService: 1, // c5
+      openDisposed: 0,
+      openNoCar: 1, // the book's row — no registry car (D06)
       oldest: { vehicleId: c5.id, code: c5.code, inDate: '2026-10-01', days: 31 },
     });
-    expect(out.open).toBe(await total({ open: true }));
+    expect(out.openActive + out.openOutOfService + out.openDisposed + out.openNoCar).toBe(out.open);
+    expect(out.open).toBe(await total({ open: true, to: TODAY }));
     // «أطول بقاء في الورشة الآن»: the oldest check-in first — the out-of-service car and the
     // book's row are listed too, as the list shows them.
     expect(out.longest.map((row) => [row.code, row.inDate, row.days])).toEqual([
@@ -638,16 +642,23 @@ describe('openNow — «في الورشة الآن» (R-09)', () => {
     it(`with ${name}: the same rows as the list`, async () => {
       const f = filter();
       const out = await fleetMaintenanceService.openNow({ today: TODAY, filter: f });
-      expect(out.open).toBe(await total({ ...f, open: true }));
+      expect(out.open).toBe(await total({ ...f, open: true, to: TODAY }));
       expect(out.longest.length).toBe(Math.min(out.open, FLEET_DASHBOARD_WORKSHOP_ROWS));
+      expect(out.openActive + out.openOutOfService + out.openDisposed + out.openNoCar).toBe(
+        out.open,
+      );
     });
   }
 
-  it('the days follow the day asked about', async () => {
+  it('the days follow the day asked about — and so does the check-in bound (D07)', async () => {
     const out = await fleetMaintenanceService.openNow({
       today: '2026-10-11',
       filter: { branchIds: [B1] },
     });
+    // c1 checked in on 20 Oct: on 11 Oct it was not in the workshop yet — the list's `to` says so.
+    expect(out.open).toBe(1);
+    expect(out.open).toBe(await total({ branchIds: [B1], open: true, to: '2026-10-11' }));
+    expect(out.longest.map((row) => row.code)).toEqual([c5.code]);
     expect(out.oldest).toEqual({
       vehicleId: c5.id,
       code: c5.code,
@@ -848,7 +859,10 @@ describe('openNow — a car deleted while in the workshop', () => {
 
   it('still counted and listed, flagged: its code finds no list row, the open list does', async () => {
     const out = await fleetMaintenanceService.openNow({ today: TODAY, filter: {} });
-    expect(out.open).toBe(await total({ open: true }));
+    expect(out.open).toBe(await total({ open: true, to: TODAY }));
+    // «بلا سيارة في السجل» (D06): the deleted car's visit beside the book's — the parts add up.
+    expect(out).toMatchObject({ open: 4, openActive: 1, openOutOfService: 1, openNoCar: 2 });
+    expect(out.openActive + out.openOutOfService + out.openDisposed + out.openNoCar).toBe(out.open);
     const row = out.longest.find((stay) => stay.visitId === leftVisit);
     expect(row).toMatchObject({ vehicleId: left.id, code: left.code, deleted: true });
     // Every other stay — the live cars and the old book's row — is not flagged.
@@ -869,6 +883,8 @@ describe('openNow — a car deleted while in the workshop', () => {
       filter: { branchIds: [B1] },
     });
     expect(branch.longest.find((stay) => stay.visitId === leftVisit)?.deleted).toBe(true);
-    expect(branch.open).toBe(await total({ open: true, branchIds: [B1] }));
+    expect(branch.open).toBe(await total({ open: true, branchIds: [B1], to: TODAY }));
+    // B1 keeps the deleted car (the set resolves deleted cars too); the book's row has no branch.
+    expect(branch).toMatchObject({ openActive: 1, openOutOfService: 1, openNoCar: 1 });
   });
 });

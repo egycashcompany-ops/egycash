@@ -38,7 +38,20 @@ import { type JobValueSource } from './hr-employee.js';
  * `attendance-quantities.ts`, so it contributes zero to every quantity, and a month cannot be
  * frozen until it has passed, by which time the nightly pass has written `absent`.
  *
- * It is never the FINAL answer for a date, and the read paths enforce that: once the work date is
+ * `noSchedule` IS "NOBODY HAS SAID WHEN THIS PERSON WORKS", and it exists because that was being
+ * reported as «يوم راحة». An employee with no shift assignment and no default pattern used to
+ * derive `dayOff` on a Tuesday — a positive claim that the company owed them no work that day,
+ * which nobody had made. It is a gap in the schedule, not a rest day, and HR can act on it only if
+ * the screen says which one it is.
+ *
+ * A REST DAY HAS EXACTLY TWO SOURCES, and neither of them is silence: the work calendar, which
+ * yields `weekend` or `holiday`, and a shift that genuinely does not run that day. `dayOff`
+ * accordingly STAYS in the vocabulary and nothing derives it any more — the same posture as
+ * `incomplete` — because rows written before this carry it.
+ *
+ * It is payroll-neutral for the same reason `dayOff` was: in no quantity group, contributing zero.
+ *
+ * `pending` is never the FINAL answer for a date, and the read paths enforce that: once the work date is
  * in the past a stored `pending` reads as `absent`, because the day ended and nobody arrived. This
  * matters because the branch servers only recompute employees who scanned, so a no-show's row is
  * never rewritten during the day and sits at `pending` until the nightly pass — the resolution is
@@ -57,6 +70,7 @@ export const ATTENDANCE_DAY_STATUSES = [
   'holiday',
   'incomplete',
   'dayOff',
+  'noSchedule',
 ] as const;
 export const AttendanceDayStatusSchema = z.enum(ATTENDANCE_DAY_STATUSES);
 export type AttendanceDayStatus = z.infer<typeof AttendanceDayStatusSchema>;
@@ -104,6 +118,14 @@ export const ATTENDANCE_DAY_FLAGS = [
   'crossBranchPunch',
   'manualPunch',
   'regularizedPunch',
+  /**
+   * A manager's `markAbsent` decision (stage 3) decided this day against the evidence. The device
+   * punches are NOT deleted — they stay visible and superseded by nothing — so the flag is what
+   * tells a reviewer that the status they are reading was a judgement rather than a derivation.
+   * `markPresent` and `editTimes` need no flag of their own: they write manual punches and so
+   * already raise `manualPunch`.
+   */
+  'overriddenByManager',
 ] as const;
 export const AttendanceDayFlagSchema = z.enum(ATTENDANCE_DAY_FLAGS);
 export type AttendanceDayFlag = z.infer<typeof AttendanceDayFlagSchema>;
@@ -298,6 +320,102 @@ export const ImportPunchesSchema = z
   .strict();
 export type ImportPunches = z.infer<typeof ImportPunchesSchema>;
 
+// ── Quarantined device rows (Task 2 §4) ─────────────────────────────────────
+//
+// The import has always REPORTED its quarantine (§13) and never stored it, which was right while
+// an import was a few hundred rows a relay could send again. It is wrong for the history: 153
+// people are no longer on the machines and therefore have no enrolment link, so their two years of
+// scans quarantine on arrival — and a reason returned in an HTTP response that nobody is reading
+// at 2 AM is the same thing as a dropped row. Kept here, each one is a row HR can act on: link the
+// enrolment, retry, and the history lands. Nothing about a punch is decided here; a quarantined
+// row is not evidence of attendance, it is evidence that a scan could not be placed.
+export const AttendanceQuarantineStatuses = ['pending', 'imported', 'discarded'] as const;
+export const AttendanceQuarantineStatusSchema = z.enum(AttendanceQuarantineStatuses);
+export type AttendanceQuarantineStatus = (typeof AttendanceQuarantineStatuses)[number];
+
+export interface AttendanceQuarantineRowDto {
+  id: string;
+  /** The import batch that FIRST held this row; a retry does not restate it. */
+  batchId: string;
+  deviceId: string;
+  enrollmentNo: string | null;
+  employeeNumber: string | null;
+  at: string;
+  direction: AttendancePunchDirection;
+  /** Why it could not be placed — the latest answer, refreshed by every retry. */
+  reason: string;
+  status: AttendanceQuarantineStatus;
+  retries: number;
+  firstSeenAt: string;
+  lastTriedAt: string | null;
+  resolvedAt: string | null;
+}
+
+export const ListAttendanceQuarantineQuerySchema = z
+  .object({
+    deviceId: z.string().trim().min(1).max(100).optional(),
+    status: AttendanceQuarantineStatusSchema.default('pending'),
+    limit: z.coerce.number().int().min(1).max(500).default(100),
+  })
+  .strict();
+export type ListAttendanceQuarantineQuery = z.infer<typeof ListAttendanceQuarantineQuerySchema>;
+
+/**
+ * One machine id nothing in ECMS answers to, and how much history is waiting on it.
+ *
+ * This is the report §4 asks for: «link or ignore», per id, with the span it would recover — a
+ * list of 153 names with a row count beside each is a morning's work, where 62,000 individual
+ * quarantined rows are not.
+ */
+export interface AttendanceUnmatchedIdDto {
+  deviceId: string;
+  enrollmentNo: string | null;
+  employeeNumber: string | null;
+  reason: string;
+  rows: number;
+  firstAt: string;
+  lastAt: string;
+}
+
+export const RetryAttendanceQuarantineSchema = z
+  .object({
+    deviceId: z.string().trim().min(1).max(100).optional(),
+    enrollmentNo: z.string().trim().min(1).max(64).optional(),
+    limit: z.coerce.number().int().min(1).max(5_000).default(1_000),
+  })
+  .strict();
+export type RetryAttendanceQuarantine = z.infer<typeof RetryAttendanceQuarantineSchema>;
+
+/** A retry is an import, so it answers in the same terms — plus how many are still stuck. */
+export interface AttendanceQuarantineRetryResultDto {
+  tried: number;
+  imported: number;
+  duplicates: number;
+  stillQuarantined: number;
+  onFrozenDays: number;
+  /** The batch the retry imported under, or null when there was nothing pending to try. */
+  batchId: string | null;
+}
+
+/** «Ignore them» — an id that will never be a person here, marked so it stops being offered. */
+export const DiscardAttendanceQuarantineSchema = z
+  .object({
+    ids: z.array(objectId()).min(1).max(1_000).optional(),
+    deviceId: z.string().trim().min(1).max(100).optional(),
+    enrollmentNo: z.string().trim().min(1).max(64).optional(),
+    employeeNumber: z.string().trim().min(1).max(20).optional(),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.ids !== undefined ||
+      v.deviceId !== undefined ||
+      v.enrollmentNo !== undefined ||
+      v.employeeNumber !== undefined,
+    { message: 'name the rows to discard: ids, or a device / enrolment / employee number' },
+  );
+export type DiscardAttendanceQuarantine = z.infer<typeof DiscardAttendanceQuarantineSchema>;
+
 export const ListPunchesQuerySchema = PaginationQuerySchema.extend({
   employeeId: objectId().optional(),
   from: z.coerce.date().optional(),
@@ -333,6 +451,20 @@ export interface ImportPunchesResultDto {
   /** Rows already present (unique {deviceId, at, employeeId}) — idempotent re-import. */
   duplicates: number;
   quarantined: { index: number; reason: string }[];
+  /**
+   * How many of the imported punches landed on a day PAYROLL HAS FROZEN.
+   *
+   * The punches are stored — they are evidence, and evidence is never refused — but the day
+   * records they belong to will not be rewritten by any recompute, because a closed month keeps
+   * the figures it was paid on. Without this number a history backfill would look like it had
+   * worked completely while the part of it that falls inside closed months changed nothing, and
+   * nobody would know which part that was.
+   *
+   * Counted by the punch's own Cairo calendar date. A night shift is keyed to the date it STARTED
+   * (D3), so a scan after midnight is attributed here to the day it happened on rather than to the
+   * shift it belongs to; the count is a warning about a range, not an accounting of rows.
+   */
+  onFrozenDays: number;
 }
 
 // ── Day records (§2, §4) ────────────────────────────────────────────────────
@@ -369,8 +501,131 @@ export const ListAttendanceSheetQuerySchema = PaginationQuerySchema.extend({
   date: z.coerce.date(),
   branchId: listQuery(objectId()),
   sectionId: listQuery(objectId()),
+  /**
+   * The quick status filter, on the RESOLVED status — which is not a stored field, so the server
+   * resolves the whole branch-day before paging rather than filtering rows in the database. That
+   * is also what makes the summary counts exact instead of per-page.
+   */
+  status: listQuery(AttendanceDayStatusSchema),
+  /** Name or code, matched the way the employee directory matches them. */
+  search: z.string().trim().min(1).max(100).optional(),
 }).strict();
 export type ListAttendanceSheetQuery = z.infer<typeof ListAttendanceSheetQuerySchema>;
+
+/**
+ * The sheet's counts, over the WHOLE filtered day rather than the page on screen — which is the
+ * only way a card reading "18 absent" can be true while the table shows fifty of thirteen hundred.
+ *
+ * It is a sibling endpoint rather than a field on the list because `Paginated.meta` is a shared
+ * shape the whole product returns, and widening it for one screen would change every list in the
+ * system. The two reads are cached separately and refresh together.
+ *
+ * Every status gets its own count, and the screen groups them: nothing here decides that `late`
+ * is "present", because a count the server has already blended cannot be unblended by a reader
+ * who wants the other grouping.
+ */
+export const AttendanceSheetSummaryQuerySchema = z
+  .object({
+    date: z.coerce.date(),
+    branchId: listQuery(objectId()),
+    sectionId: listQuery(objectId()),
+    search: z.string().trim().min(1).max(100).optional(),
+  })
+  .strict();
+export type AttendanceSheetSummaryQuery = z.infer<typeof AttendanceSheetSummaryQuerySchema>;
+
+/** Arrivals in one quarter of an hour — the shape the sheet's arrival chart is drawn from. */
+export interface AttendanceArrivalSlotDto {
+  /** Start of the 15-minute slot, minutes after Cairo midnight (so 9:15 is 555). */
+  slot: number;
+  /** How many people's FIRST check-in of the day landed in it. */
+  count: number;
+}
+
+export interface AttendanceSheetSummaryDto {
+  date: string;
+  /** Everybody the sheet covers for this date, before any status filter. */
+  total: number;
+  byStatus: Record<AttendanceDayStatus, number>;
+  /**
+   * First check-ins per quarter hour, over the WHOLE filtered day rather than the page on screen.
+   *
+   * It is aggregated here, beside the counts, for the same reason the counts are: a chart drawn
+   * from one page of fifty rows would redraw itself every time the reader turned a page, and the
+   * question it answers — when did people arrive this morning — is about the day, not the page.
+   * Slots with nobody in them are omitted; the chart draws the gaps.
+   */
+  arrivals: AttendanceArrivalSlotDto[];
+  /**
+   * When the working day starts and the grace after it, Cairo minutes — the roster MOST of the
+   * people on this sheet are held to, resolved from their shift or their branch's default pattern.
+   *
+   * `null` when nobody on the sheet has a roster at all. The screen must not invent one: a line
+   * drawn at nine o'clock on a sheet where nobody has been given hours is a claim about lateness
+   * that nobody in the company has made.
+   */
+  dayStart: number | null;
+  graceMinutes: number;
+  /**
+   * The most recent scan on this date inside the same scope, or null when nothing has arrived.
+   * Read from the punches themselves, not from the derived rows, so it tells the truth about the
+   * devices even in the seconds before a recompute lands.
+   */
+  lastPunchAt: string | null;
+}
+
+/**
+ * ONE EMPLOYEE'S PERIOD, ADDED UP — the figures above their attendance page.
+ *
+ * Computed on the server, over every day of the period rather than the page on screen, and from
+ * the same day rows the record below shows. The client does no arithmetic over a month: two
+ * readers on two screens would otherwise be one rounding rule apart from disagreeing about
+ * somebody's attendance.
+ *
+ * `from`/`to` are inclusive date-only, and the window is capped like the export and the recompute:
+ * a figure is a report, not a dump.
+ */
+export const AttendanceEmployeeSummaryQuerySchema = z
+  .object({
+    employeeId: objectId().optional(),
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the period is capped at 92 days',
+  });
+export type AttendanceEmployeeSummaryQuery = z.infer<typeof AttendanceEmployeeSummaryQuerySchema>;
+
+export interface AttendanceEmployeeSummaryDto {
+  from: string;
+  to: string;
+  /** Days that count as a day at work, by the same list payroll pays (`attendance-quantities`). */
+  daysPresent: number;
+  /** Days anybody was due in: the period's rows less weekends, holidays, rest days and leave. */
+  daysExpected: number;
+  /**
+   * The average first check-in and last check-out, Cairo minutes after midnight, over the days
+   * that have one. `null` when there were none — never 0, which would read as midnight.
+   */
+  usualArrival: number | null;
+  usualDeparture: number | null;
+  /** Averaged over the days that HAVE measured hours, and their total. */
+  avgWorkedMinutes: number | null;
+  totalWorkedMinutes: number;
+  lateDays: number;
+  lateMinutesTotal: number;
+  absentDays: number;
+  /** Days with a check-in and no check-out: present, hours unknown. */
+  incompleteDays: number;
+  /** This employee's own roster for the period — their shift, or their branch's default pattern. */
+  dayStart: number | null;
+  graceMinutes: number;
+  /** Their most recent scan inside the period, or null. */
+  lastPunchAt: string | null;
+}
 
 /**
  * One line of the daily sheet: an EMPLOYEE, what was expected of them, and the day row if one
@@ -392,6 +647,14 @@ export interface AttendanceSheetRowDto {
   employeeId: string;
   employeeCode: string;
   employeeName: string;
+  /** The employee's photo, for the row's avatar; null is the ordinary case, not an error. */
+  employeePhotoFileId: string | null;
+  /**
+   * Where they sit, resolved to names by the server. The row carries the id of a department and
+   * nothing else; a client that had to name it would need the catalogue AND the key that guards
+   * it, and a reader of attendance alone would see a blank beside every name.
+   */
+  employeeDepartment: LocalizedString | null;
   branchId: string;
   date: string;
   status: AttendanceDayStatus;
@@ -437,6 +700,87 @@ export const RecomputeAttendanceDaysSchema = z
     message: 'recompute window is capped at 92 days',
   });
 export type RecomputeAttendanceDays = z.infer<typeof RecomputeAttendanceDaysSchema>;
+
+// ── The history backfill (Task 2) ───────────────────────────────────────────
+//
+// `days/recompute` above is capped at 92 days ON PURPOSE: it runs inside the request, and the
+// branch servers call it every few seconds all morning. The backfill is the other job — ~655
+// people across ~23 months, which is roughly 450,000 employee-days — and it cannot be done inside
+// a request at all. So it is a RECORD plus worker jobs: the caller starts one, gets an id, and
+// reads its progress; nothing waits on the HTTP connection.
+export const AttendanceBackfillScopes = ['withPunches', 'all'] as const;
+export const AttendanceBackfillScopeSchema = z.enum(AttendanceBackfillScopes);
+export type AttendanceBackfillScope = (typeof AttendanceBackfillScopes)[number];
+
+/**
+ * `running` → `completed`, or `cancelled` if somebody stops it. There is deliberately no `failed`:
+ * a run whose chunks failed is still a run that finished looking, and `failedChunks` with
+ * `lastError` says so without pretending the whole thing never happened. A finished run with
+ * failures is resumable, which is what one actually wants from it.
+ */
+export const AttendanceBackfillStatuses = ['running', 'completed', 'cancelled'] as const;
+export const AttendanceBackfillStatusSchema = z.enum(AttendanceBackfillStatuses);
+export type AttendanceBackfillStatus = (typeof AttendanceBackfillStatuses)[number];
+
+/** Three years: the machines hold scans from December 2024, and a limit keeps a typo cheap. */
+export const BACKFILL_MAX_SPAN_DAYS = 1_100;
+
+export const StartAttendanceBackfillSchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    /** Omitted means everyone the engine may owe a row. */
+    employeeIds: z.array(objectId()).min(1).max(2_000).optional(),
+    /**
+     * `withPunches` (the default) recomputes only the employee-days that actually carry a scan —
+     * which is what an import changed, and a fraction of the span. `all` walks every day of the
+     * window for every employee, which is what you want after a shift or pattern change, and
+     * which also mints the `absent` / `noSchedule` rows for the days nobody scanned.
+     */
+    scope: AttendanceBackfillScopeSchema.default('withPunches'),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= BACKFILL_MAX_SPAN_DAYS, {
+    path: ['to'],
+    message: `the backfill window is capped at ${String(BACKFILL_MAX_SPAN_DAYS)} days`,
+  });
+export type StartAttendanceBackfill = z.infer<typeof StartAttendanceBackfillSchema>;
+
+export const ListAttendanceBackfillsQuerySchema = z
+  .object({ limit: z.coerce.number().int().min(1).max(50).default(10) })
+  .strict();
+export type ListAttendanceBackfillsQuery = z.infer<typeof ListAttendanceBackfillsQuerySchema>;
+
+/**
+ * A backfill and how far it has got. Every count is READ FROM THE CHUNKS rather than tallied onto
+ * this record as the run goes: a worker killed between finishing a chunk and tallying it would
+ * leave a counter permanently short, and a progress figure that drifts is worse than none.
+ */
+export interface AttendanceBackfillDto {
+  id: string;
+  from: string;
+  to: string;
+  scope: AttendanceBackfillScope;
+  status: AttendanceBackfillStatus;
+  /** How many people the plan covers. */
+  employees: number;
+  totalChunks: number;
+  doneChunks: number;
+  failedChunks: number;
+  /** The denominator of «x of y days recomputed», and its numerator. */
+  totalDays: number;
+  doneDays: number;
+  /** Of the days done: rows written, rows refused because Payroll froze them, days that threw. */
+  computed: number;
+  skippedFrozen: number;
+  failedDays: number;
+  /** 0–100, rounded; 100 only once every chunk has been accounted for. */
+  percent: number;
+  startedAt: string;
+  finishedAt: string | null;
+  lastError: string | null;
+}
 
 /**
  * One derived answer for one employee on one work date — the row shape behind the §15.1
@@ -597,6 +941,217 @@ export interface AttendanceRegularizationDto {
   employeeCode?: string;
   employeeName?: string;
 }
+
+// ── Manager day decisions (§3 stage 3) ──────────────────────────────────────
+
+/**
+ * What a manager can decide about one employee-day.
+ *
+ * NONE OF THEM EDITS THE DAY ROW, AND NONE OF THEM TOUCHES A PUNCH. A decision is an INPUT to the
+ * derivation: `computeDay` loads it and the engine applies it, every time. That is what makes it
+ * survive the branch servers calling `days/recompute` every few seconds — a judgement written onto
+ * the derived row would be erased by the next recompute, which is the one thing it must not be.
+ *
+ * It also means the device's evidence is never altered to make a decision stick. `markPresent` and
+ * `editTimes` supply the times the manager vouches for and the engine derives from those instead;
+ * `markAbsent` decides the day outright. Either way the punches stay exactly as the devices
+ * recorded them, and the day carries the `overriddenByManager` flag so a reviewer can see that the
+ * status was judged rather than read. Revoking is then exact: the decision stops being live, the
+ * day is recomputed, and what the devices saw is still what they saw.
+ *
+ * Nothing about lateness or overtime is special-cased for a decision. A vouched-for arrival is
+ * late against the same grace and a vouched-for span earns overtime by the same arithmetic — the
+ * manager supplies the evidence, not the verdict.
+ *
+ * `revoke` undoes a decision by RECORDING one, never by deleting: the original row stays, marked
+ * `revoked`, and the new row says who undid it and why.
+ */
+export const ATTENDANCE_DECISION_TYPES = [
+  'markPresent',
+  'markAbsent',
+  'editTimes',
+  'revoke',
+] as const;
+export const AttendanceDecisionTypeSchema = z.enum(ATTENDANCE_DECISION_TYPES);
+export type AttendanceDecisionType = z.infer<typeof AttendanceDecisionTypeSchema>;
+
+/**
+ * `applied` is the ordinary outcome — a manager deciding a recent day acts on their own authority
+ * and it takes effect at once. `pendingHr` is the OLD-DAY path: past
+ * `hr.attendance.decisionApprovalAfterDays`, the decision is recorded but changes nothing until
+ * HR approves it. There is no `pendingManager`: the manager IS the first step here, unlike a
+ * regularization, which an employee files and a manager then judges.
+ */
+export const ATTENDANCE_DECISION_STATUSES = [
+  'applied',
+  'pendingHr',
+  'rejected',
+  'revoked',
+] as const;
+export const AttendanceDecisionStatusSchema = z.enum(ATTENDANCE_DECISION_STATUSES);
+export type AttendanceDecisionStatus = z.infer<typeof AttendanceDecisionStatusSchema>;
+
+/**
+ * A REASON IS MANDATORY on every decision, including the revocation. The whole value of this
+ * feature to a later reviewer — and the whole protection for the manager who used it — is that the
+ * record says why, in their own words, at the time.
+ *
+ * `inAt`/`outAt` carry the times for `markPresent` and `editTimes`. A `markPresent` with `inAt`
+ * alone is honest and expected: on this payroll most people scan on arrival and never scan out, so
+ * a manager vouching for an arrival should not have to invent a departure. It derives `checkedIn`,
+ * exactly as the device's own single punch does.
+ */
+export const CreateAttendanceDecisionSchema = z
+  .object({
+    employeeId: objectId(),
+    workDate: z.coerce.date(),
+    type: z.enum(['markPresent', 'markAbsent', 'editTimes']),
+    inAt: z.coerce.date().optional(),
+    outAt: z.coerce.date().optional(),
+    reason: z.string().trim().min(3).max(500),
+  })
+  .strict()
+  .refine((v) => v.type !== 'markAbsent' || (v.inAt === undefined && v.outAt === undefined), {
+    path: ['inAt'],
+    message: 'markAbsent records no times — it decides the day, it does not describe one',
+  })
+  .refine((v) => v.type === 'markAbsent' || v.inAt !== undefined, {
+    path: ['inAt'],
+    message: 'an arrival time is required',
+  })
+  .refine((v) => v.type !== 'editTimes' || v.outAt !== undefined, {
+    path: ['outAt'],
+    message: 'editTimes corrects a span — give both ends',
+  })
+  .refine((v) => v.outAt === undefined || v.inAt === undefined || v.outAt > v.inAt, {
+    path: ['outAt'],
+    message: 'the departure must be after the arrival',
+  });
+export type CreateAttendanceDecision = z.infer<typeof CreateAttendanceDecisionSchema>;
+
+export const DecideAttendanceDecisionSchema = z
+  .object({
+    verdict: z.enum(['approve', 'reject']),
+    comment: z.string().max(500).optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type DecideAttendanceDecision = z.infer<typeof DecideAttendanceDecisionSchema>;
+
+/** Revoking is itself a decision, so it carries its own mandatory reason. */
+export const RevokeAttendanceDecisionSchema = z
+  .object({
+    reason: z.string().trim().min(3).max(500),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type RevokeAttendanceDecision = z.infer<typeof RevokeAttendanceDecisionSchema>;
+
+export const ListAttendanceDecisionsQuerySchema = PaginationQuerySchema.extend({
+  status: listQuery(AttendanceDecisionStatusSchema),
+  type: listQuery(AttendanceDecisionTypeSchema),
+  employeeId: objectId().optional(),
+  branchId: listQuery(objectId()),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  /** The manager whose decisions are being reviewed — the §4 accountability read. */
+  decidedBy: objectId().optional(),
+}).strict();
+export type ListAttendanceDecisionsQuery = z.infer<typeof ListAttendanceDecisionsQuerySchema>;
+
+export interface AttendanceDecisionDto {
+  id: string;
+  employeeId: string;
+  workDate: string;
+  type: AttendanceDecisionType;
+  inAt: string | null;
+  outAt: string | null;
+  reason: string;
+  status: AttendanceDecisionStatus;
+  /** True when the day held device evidence that this decision decided against (§4 warning). */
+  overrodePunch: boolean;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  hrDecidedBy: string | null;
+  hrDecidedAt: string | null;
+  hrComment: string | null;
+  /** The decision this one revokes, on a `revoke` row; null on every other row. */
+  revokesId: string | null;
+  branchId: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Display labels, enriched on the list reads — never stored on the row. */
+  employeeCode?: string;
+  employeeName?: string;
+  /**
+   * Who decided, and who approved it, by name. Resolved on the read like the employee labels and
+   * for the same reason: a decision is answerable to a PERSON, and a screen showing an opaque id
+   * cannot be used to hold anybody to it.
+   */
+  decidedByName?: LocalizedString;
+  hrDecidedByName?: LocalizedString;
+}
+
+/**
+ * The §4 accountability read: who has been deciding days, how often, and how often against the
+ * devices.
+ *
+ * `flagged` is a PROMPT TO LOOK, not a verdict and not a limit. Nothing is blocked by crossing the
+ * threshold — a manager whose fingerprint reader broke will legitimately cross it, and that is
+ * precisely the week somebody should look at. The count and the threshold are both returned so the
+ * screen can say how far over, rather than only that it is.
+ */
+export interface AttendanceDecisionSignalDto {
+  decidedBy: string;
+  /** Localized, because a person's name is shown in the reader's language everywhere else. */
+  decidedByName: LocalizedString;
+  total: number;
+  /** Of those, the ones taken on a day that DID hold device evidence at the time. */
+  overrodePunch: number;
+  flagged: boolean;
+}
+
+export interface AttendanceDecisionSignalsDto {
+  from: string;
+  to: string;
+  /** Scaled from the weekly setting to the window actually asked about. */
+  threshold: number;
+  managers: AttendanceDecisionSignalDto[];
+}
+
+/** The decisions CSV — its own permission and its own audit row, like the attendance export. */
+export const ExportAttendanceDecisionsQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    employeeId: objectId().optional(),
+    branchId: listQuery(objectId()),
+    status: listQuery(AttendanceDecisionStatusSchema),
+    type: listQuery(AttendanceDecisionTypeSchema),
+    decidedBy: objectId().optional(),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the export window is capped at 92 days',
+  });
+export type ExportAttendanceDecisionsQuery = z.infer<typeof ExportAttendanceDecisionsQuerySchema>;
+
+export const AttendanceDecisionSignalsQuerySchema = z
+  .object({
+    from: z.coerce.date(),
+    to: z.coerce.date(),
+    branchId: listQuery(objectId()),
+  })
+  .strict()
+  .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+    path: ['to'],
+    message: 'the review window is capped at 92 days',
+  });
+export type AttendanceDecisionSignalsQuery = z.infer<typeof AttendanceDecisionSignalsQuerySchema>;
 
 // ── Overtime approval (D5) ──────────────────────────────────────────────────
 
@@ -802,6 +1357,35 @@ export const HrAttendanceSettingKeys = {
   DefaultPatternBreakMinutes: 'hr.attendance.defaultPattern.breakMinutes',
   DefaultPatternGraceInMinutes: 'hr.attendance.defaultPattern.graceInMinutes',
   DefaultPatternGraceOutMinutes: 'hr.attendance.defaultPattern.graceOutMinutes',
+  /**
+   * How many days back a manager may decide a day on their own authority (stage 3). Beyond it the
+   * decision is recorded as `pendingHr` and takes effect only when HR approves it — the older the
+   * day, the more likely the correction is reconstruction rather than recollection.
+   */
+  DecisionApprovalAfterDays: 'hr.attendance.decisionApprovalAfterDays',
+  /**
+   * How many decisions a single manager may record in a week before the review screen flags them
+   * (stage 4). It is a PROMPT TO LOOK, never a limit: nothing is blocked, refused or undone by it.
+   * A manager whose devices are broken will legitimately cross it, which is exactly the case
+   * somebody should see.
+   */
+  DecisionWeeklyReviewThreshold: 'hr.attendance.decisionWeeklyReviewThreshold',
+
+  /**
+   * HOW OLD A SCAN MAY BE AND STILL BE IMPORTED, in days. `0` means no limit, and that is the
+   * default.
+   *
+   * It used to be a constant of 90, written as a sanity window against device clock drift. The
+   * branch machines turned out to hold 67,839 scans going back to December 2024, of which 62,505
+   * had never reached ECMS at all: the branch app refuses to offer anything older than the limit,
+   * so every one of those days was invisible here and nobody could see that it was. A window that
+   * was protecting against a mistyped clock was quietly deciding that two years of attendance did
+   * not exist.
+   *
+   * The FUTURE guard is untouched and is not a setting: a scan dated next week is a broken clock
+   * in every case, and no history import needs one.
+   */
+  ImportMaxAgeDays: 'hr.attendance.importMaxAgeDays',
 } as const;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────

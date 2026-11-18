@@ -224,7 +224,7 @@ const FUND: FleetCustodyFundSummaryDto = {
   spent: { count: 97, amount: 82508 },
   replenished: { count: 0, amount: 0, memos: 0 },
   settled: { count: 0, amount: 0, parts: 0 },
-  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+  held: { count: 0, amount: 0, memos: 0, receipts: 0, letters: [] },
   cancelled: { count: 0, amount: 0 },
   operations: 1,
   memos: { count: 5, pending: 5, pendingTotal: 81908 },

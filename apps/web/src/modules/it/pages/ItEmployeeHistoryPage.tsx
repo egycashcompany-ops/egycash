@@ -9,10 +9,13 @@
 // A leaver's history is exactly as complete as anybody's: the reason this page exists is that the
 // person who left with a laptop is still somebody the company has to be able to look up.
 //
-// Every section is a read the page's own route already allows (`itAsset.view`), except tickets,
-// which ride `itTicket.view` and its scope — a reader who may not see tickets sees no tickets
-// section rather than a 403. Tickets are joined through the person's LOGIN; someone without one
-// has custody but cannot have tickets, and the page says so rather than showing an empty table.
+// Custody is a read the page's own route already allows (`itAsset.view`). Every other section rides
+// its own register's read grant, and a reader who may not see that register sees no section — and
+// asks nothing — rather than a 403: the lines `itMobileLine.view` and the consumables
+// `itConsumable.view` (each its own since 2026-11-17, «فى الـ IT ظبط صلاحيات الشاشات عشان أقدر
+// أتحكم فيها»), the tickets `itTicket.view` and its scope. Tickets are joined through the person's
+// LOGIN; someone without one has custody but cannot have tickets, and the page says so rather than
+// showing an empty table.
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -101,10 +104,12 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
     employeeId !== '',
   );
 
-  // Mobile lines — the same grant as custody. What they hold now is a handful: one page holds it.
+  // Mobile lines — the lines' own read grant, and only for a reader who holds it. What they hold
+  // now is a handful: one page holds it.
+  const linesVisible = can('itMobileLine.view');
   const currentLines = useItMobileLineAssignments(
     { employeeId, open: true, pageSize: 100, sortBy: 'assignedAt', sortDir: 'desc' },
-    employeeId !== '',
+    linesVisible && employeeId !== '',
   );
   const pastLines = useItMobileLineAssignments(
     {
@@ -115,7 +120,7 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
       sortBy: 'returnedAt',
       sortDir: 'desc',
     },
-    employeeId !== '',
+    linesVisible && employeeId !== '',
   );
 
   // Tickets — through the login, and only for a reader who may see tickets at all.
@@ -420,47 +425,50 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
         </Card>
 
         {/* «خطوط المحمول» — what they hold now, then what they held before, each with the
-            acknowledgment they signed for it. */}
-        <Card>
-          <CardHeader
-            title={t('it.nav.mobileLines')}
-            description={t('it.employees.mobileLinesHint')}
-          />
-          <CardBody>
-            <div className="space-y-4">
-              <DataTable
-                embedded
-                columns={lineColumns.open}
-                rows={currentLines.data?.items ?? []}
-                rowKey={(a) => a.id}
-                loading={currentLines.isLoading}
-                error={currentLines.isError ? currentLines.error : undefined}
-                onRetry={() => void currentLines.refetch()}
-                empty={t('it.employees.noCurrentLines')}
-              />
-              <h4 className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                {t('it.employees.pastLines')}
-              </h4>
-              <DataTable
-                embedded
-                columns={lineColumns.closed}
-                rows={pastLines.data?.items ?? []}
-                rowKey={(a) => a.id}
-                loading={pastLines.isLoading}
-                error={pastLines.isError ? pastLines.error : undefined}
-                onRetry={() => void pastLines.refetch()}
-                empty={t('it.employees.noPastLines')}
-              />
-              {pastLines.data !== undefined && pastLines.data.meta.totalPages > 1 && (
-                <Pagination meta={pastLines.data.meta} onPageChange={setPastLinesPage} />
-              )}
-            </div>
-          </CardBody>
-        </Card>
+            acknowledgment they signed for it. On the lines' own read grant. */}
+        {linesVisible && (
+          <Card>
+            <CardHeader
+              title={t('it.nav.mobileLines')}
+              description={t('it.employees.mobileLinesHint')}
+            />
+            <CardBody>
+              <div className="space-y-4">
+                <DataTable
+                  embedded
+                  columns={lineColumns.open}
+                  rows={currentLines.data?.items ?? []}
+                  rowKey={(a) => a.id}
+                  loading={currentLines.isLoading}
+                  error={currentLines.isError ? currentLines.error : undefined}
+                  onRetry={() => void currentLines.refetch()}
+                  empty={t('it.employees.noCurrentLines')}
+                />
+                <h4 className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {t('it.employees.pastLines')}
+                </h4>
+                <DataTable
+                  embedded
+                  columns={lineColumns.closed}
+                  rows={pastLines.data?.items ?? []}
+                  rowKey={(a) => a.id}
+                  loading={pastLines.isLoading}
+                  error={pastLines.isError ? pastLines.error : undefined}
+                  onRetry={() => void pastLines.refetch()}
+                  empty={t('it.employees.noPastLines')}
+                />
+                {pastLines.data !== undefined && pastLines.data.meta.totalPages > 1 && (
+                  <Pagination meta={pastLines.data.meta} onPageChange={setPastLinesPage} />
+                )}
+              </div>
+            </CardBody>
+          </Card>
+        )}
 
         {/* «المستهلكات» (FR-20) — «وأتبدل لمين»: what the store issued to this person and what they
-            gave back, each issue with the memo they signed. The page's own grant reads it. */}
-        <EmployeeConsumablesCard employeeId={employeeId} />
+            gave back, each issue with the memo they signed. On the store's own read grant: without
+            it the card is not drawn, so its ledger read is never asked. */}
+        {can('itConsumable.view') && <EmployeeConsumablesCard employeeId={employeeId} />}
 
         {can('itTicket.view') && (
           <Card>

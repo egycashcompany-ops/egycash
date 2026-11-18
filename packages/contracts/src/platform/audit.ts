@@ -132,6 +132,10 @@ export const AUDIT_ACTIONS = [
   // own verb rather than hiding under `update`. Individual punches audit as plain `create`.
   'attendancePunchImport',
   'attendanceRecompute',
+  // Task 2: the history backfill. ONE verb for the whole run — started, cancelled, resumed,
+  // finished — because what a reviewer asks about is the run, and the `act` field on the row
+  // says which moment it was. Four verbs for one object would make that question four filters.
+  'attendanceBackfill',
   // AT-4: freezing a period makes a month's rows immutable — the single most consequential
   // mutation of derived attendance data, so it audits under its own verb.
   'attendanceFreeze',
@@ -141,6 +145,13 @@ export const AUDIT_ACTIONS = [
   'attendanceRegularization',
   'attendanceRegularizationDecision',
   'attendanceOvertimeApproval',
+  // Stage 3 — a MANAGER judging a day, which is a different act from an employee requesting a
+  // correction and must be filterable on its own. Three verbs because three different people are
+  // accountable for three different things: the manager who decided, the HR approver who let an
+  // old-day decision take effect, and whoever later undid one.
+  'attendanceDecision',
+  'attendanceDecisionApproval',
+  'attendanceDecisionRevoke',
   // Gold vault (module port). `receive` and `transfer` already say exactly what confirming a
   // receiving receipt and an ownership transfer do, so only two verbs are new:
   //   · `deliver` — confirming a delivery order, the moment metal physically leaves the vault.

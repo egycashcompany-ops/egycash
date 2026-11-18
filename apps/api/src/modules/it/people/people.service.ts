@@ -11,9 +11,11 @@
 // answering a question, and publishes exactly what its screens print.
 //
 // Two populations:
-//   • PEOPLE — everyone HR has, leavers included, inside the reader's `itAsset.view` scope: the
-//     holder searches, the employees register, a person's history. `employed` narrows the box a
-//     hand-over picks from.
+//   • PEOPLE — everyone HR has, leavers included, inside the reader's scope over the custody
+//     registers (a person ANY of `itAsset.view`, `itMobileLine.view` and `itConsumable.view` they
+//     hold reaches, each in its own scope): the holder searches, the employees register, a person's history. `employed` narrows
+//     the box a hand-over picks from. What each holds of the ASSETS is counted only within
+//     `itAsset.view`, and not at all without it.
 //   • TECHNICIANS — the IT departments' people (`it.technicianDepartmentIds`), whoever is asking:
 //     a branch dispatcher hands work to head-office IT like anybody else.
 //
@@ -35,22 +37,44 @@ import { toItPersonDto, toItTechnicianDto } from '../it.mappers';
 
 const ORG = { userId: null, branchId: null };
 
+/**
+ * The assets each person holds now, within `assetScope` — or none counted at all when it is null
+ * (a reader without `itAsset.view`): the register is not asked, and every person carries 0, the
+ * DTO's own «open custody intervals the reader may see».
+ */
+const openAssetCounts = async (
+  employeeIds: readonly string[],
+  assetScope: ScopeSelector | null,
+): Promise<Map<string, number>> =>
+  assetScope === null
+    ? new Map()
+    : itAssetAssignmentRepository.countOpenByEmployees(employeeIds, assetScope);
+
 class ItPeopleService {
-  /** The register and every holder search: one page of people, each with what they hold now. */
-  async list(query: ListItPeopleQuery, scope: ScopeSelector): Promise<Paginated<ItPersonDto>> {
+  /**
+   * The register and every holder search: one page of people, each with what they hold now.
+   * A person is found when ANY of `scopes` reaches them — one selector per register read grant the
+   * caller holds, OR-ed by the directory (`anyOfScopes`); `assetScope` counts their assets (null:
+   * nothing counted).
+   */
+  async list(
+    query: ListItPeopleQuery,
+    scopes: readonly ScopeSelector[],
+    assetScope: ScopeSelector | null,
+  ): Promise<Paginated<ItPersonDto>> {
     const page = await searchDirectoryEmployees({
       search: query.search,
       status: query.status,
       branchId: query.branchId,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      scope,
+      anyOfScopes: scopes,
       page: query.page,
       pageSize: query.pageSize,
     });
-    const held = await itAssetAssignmentRepository.countOpenByEmployees(
+    const held = await openAssetCounts(
       page.items.map((person) => person.employeeId),
-      scope,
+      assetScope,
     );
     return {
       items: page.items.map((person) => toItPersonDto(person, held.get(person.employeeId) ?? 0)),
@@ -62,17 +86,21 @@ class ItPeopleService {
    * One person — the head of their history page. Found through the same scoped read as the list,
    * so a person the reader could not find by searching is a 404 here too, whoever typed the URL.
    */
-  async get(employeeId: string, scope: ScopeSelector): Promise<ItPersonDto> {
+  async get(
+    employeeId: string,
+    scopes: readonly ScopeSelector[],
+    assetScope: ScopeSelector | null,
+  ): Promise<ItPersonDto> {
     const page = await searchDirectoryEmployees({
       employeeIds: [employeeId],
       status: 'all',
-      scope,
+      anyOfScopes: scopes,
       page: 1,
       pageSize: 1,
     });
     const person = page.items[0];
     if (person === undefined) throw new NotFoundError('employee not found');
-    const held = await itAssetAssignmentRepository.countOpenByEmployees([employeeId], scope);
+    const held = await openAssetCounts([employeeId], assetScope);
     return toItPersonDto(person, held.get(employeeId) ?? 0);
   }
 

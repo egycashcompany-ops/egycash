@@ -240,6 +240,35 @@ export const availableDrivers = <T extends { employeeId: string }>(
   return all.filter((driver) => !seated.has(driver.employeeId));
 };
 
+/**
+ * The drivers the SERVER holds on a car this board has no row for — another branch's car, or a
+ * car planned on this date that has since left the board (out of service, deleted).
+ *
+ * `availableDrivers` answers the board as it stands, from the draft's seats, and the draft can
+ * only seat the board's own rows. The server's `assignedVehicleId` covers the whole day's plan and
+ * the standing crews of every active car, across all branches. A driver it holds on a car that is
+ * not a row here can be moved by no edit on this board: the row that has to release him is one
+ * this board cannot send, so a save seating him here is refused (FR-7, 409). He is not free, and
+ * the pool must not offer him or count him — «السائقون المتاحون (n)» is then the same count as the
+ * dashboard's «بلا سيارة اليوم» (`assignedVehicleId === null`).
+ *
+ * `rows` is the SERVER's board (`board.rows`), not the draft: which cars are on the board is a
+ * fact about the day, and the draft holds the same cars. A driver held on a car that IS on the
+ * board is the draft's to place, and `availableDrivers` alone decides him.
+ *
+ * A sibling of `availableDrivers` and not a change to it: the fixed roster shares that function
+ * and badges such a driver in its own pool (`heldElsewhere`), which stays as it is.
+ */
+export const heldOffBoard = <T extends { employeeId: string; assignedVehicleId: string | null }>(
+  all: readonly T[],
+  rows: readonly Pick<FleetRosterRowDto, 'vehicleId'>[],
+): T[] => {
+  const onBoard = new Set(rows.map((row) => row.vehicleId));
+  return all.filter(
+    (driver) => driver.assignedVehicleId !== null && !onBoard.has(driver.assignedVehicleId),
+  );
+};
+
 /** The row shape the plan endpoint upserts — the payload, and nothing more. */
 export interface DutyPayloadRow {
   vehicleId: string;

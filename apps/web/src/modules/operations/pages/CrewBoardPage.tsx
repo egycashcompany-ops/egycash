@@ -101,7 +101,6 @@ import { cn } from '../../../shared/lib/cn';
 import { formatNumber } from '../../../shared/lib/format';
 import { pluralKey } from '../../../shared/lib/plural';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { CloseIcon } from '../../../shared/ui/icons';
 import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Spinner } from '../../../shared/ui/Spinner';
@@ -109,7 +108,7 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAppSelector } from '../../../store';
 import { useMinWidth } from '../../atm/lib/useMinWidth';
 import { useUnsavedGuard } from '../../atm/lib/useUnsavedGuard';
-import { BOARD_FRAME, BOARD_TABLE_FILL } from '../../fleet/components/board-scroll';
+import { BOARD_FRAME } from '../../fleet/components/board-scroll';
 import { pickOne } from '../../fleet/components/dark-filter-bar';
 import { DesignCancel, DesignDialog, DesignSave } from '../../fleet/components/DesignDialog';
 import { FILTER_ICON, FilterWithIcon } from '../../fleet/components/FilterWithIcon';
@@ -123,7 +122,24 @@ import {
   usePlanOperationsCrew,
 } from '../api/operations-queries';
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
-import { CrewPlanChip, RoleLegend } from '../components/CrewPlanChip';
+import { CrewPlanChip } from '../components/CrewPlanChip';
+import {
+  COUNT_CHIP,
+  CREW_PLAN_BAR,
+  CREW_PLAN_CELLS,
+  CREW_PLAN_GRID,
+  CREW_PLAN_POOL_HEIGHT,
+  CREW_PLAN_POOLS,
+  CREW_PLAN_TABLE,
+  CREW_PLAN_TABLE_SIDE,
+  CrewPlanHand,
+  FilteredCount,
+  PlainDot,
+  ReturnPickedButton,
+  countChipTone,
+  targetAt,
+  unknownMember,
+} from '../components/CrewPlanFrame';
 import {
   CELL_BOX,
   DirectionPicker,
@@ -137,8 +153,8 @@ import { CrewRosterNotice } from '../components/CrewRosterNotice';
 import { CrewSlotPicker } from '../components/CrewSlotPicker';
 import { CrewVehiclePicker } from '../components/CrewVehiclePicker';
 import { PLAN_ICON } from '../components/crew-plan-icons';
-import { DAY_BAR, DayBox } from '../components/SecuredDistributionParts';
-import { ADD_BUTTON, BOARD_TABLE_LOOK, BRAND_BUTTON } from '../components/ShipmentsBoard';
+import { DayBox } from '../components/SecuredDistributionParts';
+import { ADD_BUTTON, BRAND_BUTTON } from '../components/ShipmentsBoard';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
 import { ON_TINT, ShiftTypeDot, rowTint, shiftTypeName } from '../components/shift-type-look';
 import { TypeColoursCard } from '../components/TypeColoursCard';
@@ -197,7 +213,6 @@ import {
   refusedAsAway,
   refusedAsWrongSlot,
   resolveDrop,
-  targetFromMarks,
   targetKey,
   type DropDecision,
   type DropTarget,
@@ -245,83 +260,23 @@ export const resolveCrewDate = (raw: string | null): string | null =>
   raw !== null && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 
 /**
- * The boards' table, fitted to a row of controls:
- *   · the boards size every button in a cell as a 28px icon square (`DARK_TABLE`); the chips and the
- *     cell's own controls (`data-cell-control`) take their own size instead — the attribute outranks
- *     the boards' rule;
- *   · the cells' sides 4px rather than 9: eleven columns of controls beside the pools on a laptop;
+ * The boards' table, fitted to a row of controls (`CREW_PLAN_TABLE`, shared with «الطاقم الثابت»
+ * since Round 27 — the chips' and controls' own size, the cells' 4px sides), and the board's own:
  *   · a control that IS a box (`data-cell-box` — the type) keeps the box's own height and fills its
  *     column, as the time's and the notes' inputs do: the boards' button rules would otherwise
  *     shrink it to its words, and a column of boxes of every width is what the owner pointed at
  *     («مفيش حاجه داخلة وحاجه خارجه»). The selector names both attributes, to outrank the line above.
  */
 const PLAN_TABLE = cn(
-  BOARD_TABLE_LOOK,
-  BOARD_TABLE_FILL,
-  '[&_td_button[data-cell-control]]:!h-auto [&_td_button[data-cell-control]]:!w-auto',
+  CREW_PLAN_TABLE,
   '[&_td_button[data-cell-control][data-cell-box]]:!h-8 [&_td_button[data-cell-control][data-cell-box]]:!w-full',
-  '[&_tbody_td]:!px-1 [&_thead_th]:!px-1.5 [&_tbody_td]:!py-1.5 [&_tbody_td]:align-top',
+  CREW_PLAN_CELLS,
   // Round 24b — on a row drawn in its colour, a marked chip (picked up, refused, away that day, in a
   // seat not his role's) stands on a halo of the page's own colour: an amber ring or dashed outline
   // on an amber row, a rose one on a rose row, would otherwise melt into the tint.
   '[&_tr[data-row-colour]_[data-crew-chip]:is([data-selected],[data-refused],[data-away],[data-wrong-slot])]:shadow-[0_0_0_3px_#fff]',
   'dark:[&_tr[data-row-colour]_[data-crew-chip]:is([data-selected],[data-refused],[data-away],[data-wrong-slot])]:shadow-[0_0_0_3px_#0b1226]',
 );
-
-/** The bar's lists in the boards' colours (`DARK_FILTER_BAR`'s), on the day's bar. */
-const PLAN_BAR = cn(
-  DAY_BAR,
-  '[&_button[aria-haspopup]]:!border-slate-300 dark:[&_button[aria-haspopup]]:!border-slate-700/80 [&_button[aria-haspopup]]:!bg-slate-50 dark:[&_button[aria-haspopup]]:!bg-[#080C14] [&_button[aria-haspopup]]:!text-slate-800 dark:[&_button[aria-haspopup]]:!text-slate-200',
-  '[&_[role=listbox]]:!border-slate-300 dark:[&_[role=listbox]]:!border-slate-700 [&_[role=listbox]]:!bg-white dark:[&_[role=listbox]]:!bg-[#111827]',
-);
-
-/**
- * A count chip of the strip — a button that filters the table to its type. A hair tighter below
- * 1440: there the twelve chips were 50px short of one line, and the second line they wrapped onto
- * came off a 768px-high laptop's table and pools.
- */
-const COUNT_CHIP =
-  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border px-1 py-1 text-[11.5px] font-bold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 min-[1440px]:px-1.5';
-
-/** A dot of the strip that is no type's colour — «الإجمالي», «بدون نوع». */
-const PlainDot = ({ tone }: { tone: string }): JSX.Element => (
-  <span aria-hidden className={cn('h-2 w-2 shrink-0 rounded-full', tone)} />
-);
-
-/**
- * Somebody the roster no longer names (left since the plan was saved): still shown, never a raw id.
- * Asserted rather than annotated: the roster's DTO grows fields this stand-in has no value for. The
- * ones the chip's person card reads (Round 22) are here, as «nothing on file» — a dash on the card.
- */
-const unknownMember = (employeeId: string, name: string): OperationsCrewMemberDto =>
-  ({
-    employeeId,
-    code: '—',
-    fullNameAr: name,
-    status: 'unknown',
-    jobTitle: null,
-    phone: null,
-    branchId: null,
-    requirements: null,
-    assignedVehicleId: null,
-  }) as OperationsCrewMemberDto;
-
-/**
- * What is under the pointer during a drag, read off the marks the board draws (the DOM half of
- * `targetFromMarks`): the nearest slot, row and pool around the element. A text node answers through
- * its parent.
- */
-const targetAt = (node: EventTarget | null): DropTarget | null => {
-  const element = node instanceof Element ? node : node instanceof Node ? node.parentElement : null;
-  if (element === null) return null;
-  const mark = (name: string): string | null =>
-    element.closest(`[${name}]`)?.getAttribute(name) ?? null;
-  return targetFromMarks({
-    slotZone: mark('data-slot-zone'),
-    rowKey: mark('data-plan-row'),
-    pool: mark('data-plan-pool'),
-  });
-};
 
 export const CrewBoardPage = (): JSX.Element => {
   const t = useT();
@@ -1558,11 +1513,8 @@ export const CrewBoardPage = (): JSX.Element => {
         onClick={() => setTypeFilter(on && filter !== '' ? '' : filter)}
         className={cn(
           COUNT_CHIP,
-          on
-            ? 'border-brand-500 bg-brand-500/15 text-brand-800 dark:border-brand-400 dark:text-brand-100'
-            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-[#0a1233] dark:text-slate-200 dark:hover:border-slate-600',
+          countChipTone(on, count),
           archived && !on && 'border-dashed border-amber-400 dark:border-amber-500/60',
-          count === 0 && !on && 'opacity-55',
         )}
       >
         {dot}
@@ -1582,32 +1534,11 @@ export const CrewBoardPage = (): JSX.Element => {
           className="flex flex-wrap items-center justify-between gap-2"
           data-crew-plan-toolbar="true"
         >
-          <div aria-live="polite" className="min-w-0 flex-1">
-            {pickedName !== null ? (
-              <p
-                data-crew-picked="true"
-                className="inline-flex max-w-full items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-[12.5px] font-bold text-amber-900 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-100"
-              >
-                <span className="min-w-0 truncate">
-                  {t('operations.crewPlan.picked', { name: pickedName })}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="shrink-0 rounded-md bg-amber-200/70 px-2 py-0.5 text-[11.5px] font-black text-amber-900 hover:bg-amber-200 dark:bg-amber-400/20 dark:text-amber-100"
-                >
-                  {t('operations.crewPlan.cancelPick')}
-                </button>
-              </p>
-            ) : (
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                <RoleLegend />
-                <p className="text-xs font-bold leading-5 text-slate-500 dark:text-slate-400">
-                  {canPlan ? t('operations.crewPlan.hint') : t('operations.crewPlan.viewOnly')}
-                </p>
-              </div>
-            )}
-          </div>
+          <CrewPlanHand
+            pickedName={pickedName}
+            onCancel={() => setSelected(null)}
+            hint={canPlan ? t('operations.crewPlan.hint') : t('operations.crewPlan.viewOnly')}
+          />
           <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
             {canPlan && (
               <button
@@ -1721,7 +1652,7 @@ export const CrewBoardPage = (): JSX.Element => {
 
         {/* The day, the van, the person, the direction (Round 24), the type, and the strip counting
             the rows by type. */}
-        <div className={PLAN_BAR} data-crew-plan-bar="true">
+        <div className={CREW_PLAN_BAR} data-crew-plan-bar="true">
           <DayBox label={t('operations.crewPlan.day')} value={day} min="" onChange={setDay} />
           {/* «يفلتر ب كود عربيه»: the board's vans by code, and «بدون سيارة». */}
           <FilterWithIcon
@@ -1808,32 +1739,7 @@ export const CrewBoardPage = (): JSX.Element => {
           {/* What the filters leave, beside the chips that count the WHOLE day — and one press
               to show every row again. */}
           {filtering && (
-            <span className="flex shrink-0 items-center gap-1.5" data-crew-plan-filtered="true">
-              <span
-                className={cn(
-                  COUNT_CHIP,
-                  'border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-100',
-                )}
-                data-shown-count={String(shown.length)}
-              >
-                {t('operations.crewPlan.filter.shown', {
-                  shown: formatNumber(shown.length, locale),
-                  total: formatNumber(rows.length, locale),
-                })}
-              </span>
-              <button
-                type="button"
-                data-crew-plan-clear-filters="true"
-                onClick={clearFilters}
-                className={cn(
-                  COUNT_CHIP,
-                  'border-slate-200 bg-white text-slate-700 hover:border-rose-300 hover:text-rose-700 dark:border-slate-700 dark:bg-[#0a1233] dark:text-slate-200 dark:hover:text-rose-300',
-                )}
-              >
-                <CloseIcon className="h-3 w-3" />
-                {t('operations.crewPlan.filter.clear')}
-              </button>
-            </span>
+            <FilteredCount shown={shown.length} total={rows.length} onClear={clearFilters} />
           )}
           <div
             role="group"
@@ -1900,11 +1806,8 @@ export const CrewBoardPage = (): JSX.Element => {
             also squeezed the pools to nothing on a phone (a flex column shrinks a child allowed
             `min-h-0` before it scrolls). From 1360 the grid takes the height left, and the table
             and each pool scroll inside it. */}
-        <div
-          className="grid shrink-0 gap-3 min-[1360px]:min-h-0 min-[1360px]:flex-1 min-[1360px]:shrink min-[1360px]:grid-cols-[minmax(0,1fr)_14rem] min-[1700px]:grid-cols-[minmax(0,1fr)_29rem]"
-          data-crew-plan-grid="true"
-        >
-          <div className="grid gap-3 sm:grid-cols-2 min-[1360px]:col-start-2 min-[1360px]:row-start-1 min-[1360px]:min-h-0 min-[1360px]:grid-cols-1 min-[1360px]:grid-rows-2 min-[1700px]:grid-cols-2 min-[1700px]:grid-rows-1">
+        <div className={CREW_PLAN_GRID} data-crew-plan-grid="true">
+          <div className={CREW_PLAN_POOLS}>
             {PLAN_POOLS.map((pool) => {
               const listing = listPool(members, pool, rows, queries[pool]);
               const poolAccepts = (employeeId: string): boolean =>
@@ -1913,7 +1816,7 @@ export const CrewBoardPage = (): JSX.Element => {
                 <CrewPlanPool
                   key={pool}
                   pool={pool}
-                  className="h-[20rem] min-[1360px]:h-auto"
+                  className={CREW_PLAN_POOL_HEIGHT}
                   listed={listing.listed}
                   total={listing.total}
                   free={listing.free}
@@ -1938,15 +1841,11 @@ export const CrewBoardPage = (): JSX.Element => {
                   }}
                   returnSelected={
                     canPlan && selectedSeated && selected !== null ? (
-                      <button
-                        type="button"
-                        data-return-picked={pool}
-                        onClick={() => free(selected)}
-                        className="mb-1 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-brand-400 bg-brand-500/10 py-1.5 text-[12px] font-black text-brand-700 hover:bg-brand-500/20 dark:text-brand-200"
-                      >
-                        <BoardIcon d={SHIPMENT_PATH.undo} className="h-3.5 w-3.5" />
-                        {t('operations.crewPlan.pools.returnPicked', { name: pickedName ?? '' })}
-                      </button>
+                      <ReturnPickedButton
+                        pool={pool}
+                        name={pickedName ?? ''}
+                        onReturn={() => free(selected)}
+                      />
                     ) : null
                   }
                 />
@@ -1954,7 +1853,7 @@ export const CrewBoardPage = (): JSX.Element => {
             })}
           </div>
 
-          <div className="flex min-w-0 flex-col min-[1360px]:col-start-1 min-[1360px]:row-start-1 min-[1360px]:min-h-0">
+          <div className={CREW_PLAN_TABLE_SIDE}>
             <div className={PLAN_TABLE} data-crew-plan-table="true">
               <DataTable
                 columns={columns}

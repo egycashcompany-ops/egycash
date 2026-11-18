@@ -8,7 +8,10 @@
 // branch's cars by operation kind add up to its column (Σ cash = 24, Σ ATM = 11, «أخرى» 5); the alarm
 // rows are the first 8 of the 3 red + 6 yellow (red first, the most overdue first); the longest stays
 // are the 5 oldest of the 6 open visits (the oldest first, = `oldest`); every exit bar list adds up
-// to the exits (19).
+// to the exits (19). The licence rows are the first 6 of the 2 expired + 4 expiring + 2 soon cars
+// (`more` the other 2), the drivers' rows all 6 of theirs (1 + 3 + 2, one on a suspended file).
+// The custody fund ties: 300,000 − 97,794 + 81,908 − 124,139.46 = 159,974.54, and what waits for
+// replenishment, 97,794 − 81,908 = 15,886 = 4,000 held + 5,566 in two memos + 6,320 in none.
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -16,18 +19,30 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  FLEET_DASHBOARD_LICENCE_MONTHS,
   FLEET_DASHBOARD_PAGE_KEYS,
+  FLEET_DASHBOARD_PAGELESS_SECTIONS,
+  addDaysYmd,
+  fleetDashboardGateKeys,
   type FleetCustodyFundSummaryDto,
+  type FleetCustodyHeldLetterDto,
+  type FleetCustodyLedgerRowDto,
+  type FleetCustodyMemoRowDto,
   type FleetCustodyOutsideKindDto,
+  type FleetCustodySettleCandidateDto,
+  type FleetDashboardLicenceMonthDto,
   type FleetDashboardNowDto,
   type FleetDashboardPeriodDto,
+  type FleetLicenseExpenseDto,
   type Locale,
   type MeDto,
+  type Paginated,
 } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { custodyQueryKeys } from './api/fleet-queries';
+import { CUSTODY_LEDGER_PARAMS } from './components/CustodyDashboardFund';
 import { fleetDashboardKeys } from './api/fleet-dashboard-queries';
 import { periodLiveness } from './lib/fleet-dashboard-refresh';
 import { readPeriodFilters, toPeriodQuery } from './lib/fleet-dashboard-url';
@@ -56,6 +71,12 @@ const COMPANY_WS = { ar: 'ورشة الشركة', en: 'Company workshop' };
 const HARAMAIN_WS = { ar: 'ورشة الحرمين', en: 'Haramain workshop' };
 const TYRES = { ar: 'كاوتش', en: 'Tyres' };
 const BRAKES = { ar: 'فرامل', en: 'Brakes' };
+/** Licence classes: a «ت» class is on the licensing board (its cars carry their paper stages). */
+const BARQASH_T = { ar: 'برقاش ت', en: 'Barqash T' };
+const BARQASH_M = { ar: 'برقاش م', en: 'Barqash M' };
+const AGOUZA_T = { ar: 'العجوزة ت', en: 'Agouza T' };
+const FIRST = { ar: 'اولى', en: 'First' };
+const SECOND = { ar: 'تانيه', en: 'Second' };
 
 type AlarmRow = NonNullable<FleetDashboardNowDto['maintenanceAlarm']>['rows'][number];
 const alarmRow = (
@@ -96,6 +117,14 @@ const fuelCard = (
 
 export const TODAY = '2026-11-01';
 export const AS_OF = '2026-11-01T08:00:00.000Z';
+
+/** The twelve months of «التراخيص المستحقة للتجديد», from TODAY's month (the server's keys). */
+export const LICENCE_MONTH_KEYS: readonly string[] = Array.from(
+  { length: FLEET_DASHBOARD_LICENCE_MONTHS },
+  (_, i) => `${2026 + Math.floor((10 + i) / 12)}-${String(((10 + i) % 12) + 1).padStart(2, '0')}`,
+);
+const licenceMonths = (counts: readonly number[]): FleetDashboardLicenceMonthDto[] =>
+  LICENCE_MONTH_KEYS.map((key, i) => ({ key, count: counts[i] ?? 0 }));
 
 export const NOW_DTO: FleetDashboardNowDto = {
   today: TODAY,
@@ -197,8 +226,11 @@ export const NOW_DTO: FleetDashboardNowDto = {
   },
   workshop: {
     open: 6,
+    // The four parts add up to `open` (D06): no disposed car and no visit without a registry car here.
     openActive: 5,
     openOutOfService: 1,
+    openDisposed: 0,
+    openNoCar: 0,
     oldest: { vehicleId: 'v141', code: '141', inDate: '2026-10-23', days: 9, deleted: false },
     // The 5 oldest of the 6 open visits, the oldest first (`oldest` = the first).
     longest: [
@@ -338,15 +370,67 @@ export const NOW_DTO: FleetDashboardNowDto = {
     expiring: 4,
     soon: 2,
     outOfServiceExpired: 1,
+    // The «ت» cars carry their paper stages (the board's own); one car has no make or class recorded.
     list: [
-      { vehicleId: 'v249', code: '249', expiresAt: '2026-10-14T00:00:00.000Z', days: -18 },
-      { vehicleId: 'v118', code: '118', expiresAt: '2026-10-26T00:00:00.000Z', days: -6 },
-      { vehicleId: 'v152', code: '152', expiresAt: '2026-11-05T00:00:00.000Z', days: 4 },
-      { vehicleId: 'v211', code: '211', expiresAt: '2026-11-09T00:00:00.000Z', days: 8 },
-      { vehicleId: 'v297', code: '297', expiresAt: '2026-11-17T00:00:00.000Z', days: 16 },
-      { vehicleId: 'v176', code: '176', expiresAt: '2026-11-24T00:00:00.000Z', days: 23 },
+      {
+        vehicleId: 'v249',
+        code: '249',
+        expiresAt: '2026-10-14',
+        days: -18,
+        typeName: ARMOURED,
+        licenceClass: BARQASH_T,
+        papers: { insurance: 'open', tax: 'done' },
+      },
+      {
+        vehicleId: 'v118',
+        code: '118',
+        expiresAt: '2026-10-26',
+        days: -6,
+        typeName: JEEP,
+        licenceClass: BARQASH_M,
+        papers: null,
+      },
+      {
+        vehicleId: 'v152',
+        code: '152',
+        expiresAt: '2026-11-05',
+        days: 4,
+        typeName: ARMOURED,
+        licenceClass: AGOUZA_T,
+        papers: { insurance: 'none', tax: 'open' },
+      },
+      {
+        vehicleId: 'v211',
+        code: '211',
+        expiresAt: '2026-11-09',
+        days: 8,
+        typeName: null,
+        licenceClass: null,
+        papers: null,
+      },
+      {
+        vehicleId: 'v297',
+        code: '297',
+        expiresAt: '2026-11-17',
+        days: 16,
+        typeName: ARMOURED,
+        licenceClass: BARQASH_M,
+        papers: null,
+      },
+      {
+        vehicleId: 'v176',
+        code: '176',
+        expiresAt: '2026-11-24',
+        days: 23,
+        typeName: JEEP,
+        licenceClass: BARQASH_T,
+        papers: { insurance: 'open', tax: 'open' },
+      },
     ],
     more: 2,
+    papersFailed: false,
+    // This month holds the 4 expiring cars; the 2 «soon» ones run out in December.
+    months: licenceMonths([4, 2, 5, 3, 0, 6, 2, 1, 4, 3, 0, 2]),
   },
   licenceDrivers: {
     warnDays: 30,
@@ -355,6 +439,26 @@ export const NOW_DTO: FleetDashboardNowDto = {
     soon: 2,
     notRecorded: 2,
     unregistered: 1,
+    months: licenceMonths([3, 2, 1, 4, 2, 0, 3, 1, 2, 2, 1, 0]),
+    // All 6 (1 expired + 3 expiring + 2 soon): the expired one on a suspended file.
+    list: {
+      rows: [
+        { id: '520', days: -4, licenceType: FIRST, active: false },
+        { id: '487', days: 4, licenceType: SECOND, active: true },
+        { id: '553', days: 11, licenceType: FIRST, active: true },
+        { id: '702', days: 22, licenceType: null, active: true },
+        { id: '438', days: 36, licenceType: FIRST, active: true },
+        { id: '611', days: 51, licenceType: SECOND, active: true },
+      ].map(({ id, days, licenceType, active }) => ({
+        profileId: `p${id}`,
+        employeeId: `e${id}`,
+        expiresAt: addDaysYmd(TODAY, days),
+        days,
+        licenceType,
+        active,
+      })),
+      more: 0,
+    },
   },
   papers: { insurance: 3, tax: 1 },
   // The flagged cards («كروت تحتاج متابعة») are these figures' cards: 1 expired, 4 with a request,
@@ -458,48 +562,6 @@ export const NOW_DTO: FleetDashboardNowDto = {
       undecidedNet: 0,
     },
   },
-  recentWorkshop: [
-    {
-      visitId: 'w1',
-      vehicleId: 'v231',
-      code: '231',
-      date: TODAY,
-      recordedAt: '2026-11-01T07:12:00.000Z',
-      workshop: { ar: 'ورشة الحرمين', en: 'Haramain workshop' },
-      workType: { ar: 'كاوتش', en: 'Tyres' },
-      open: true,
-    },
-    {
-      visitId: 'w2',
-      vehicleId: 'v295',
-      code: '295',
-      date: '2026-10-31',
-      recordedAt: '2026-10-31T13:47:00.000Z',
-      workshop: { ar: 'ورشة الشركة', en: 'Company workshop' },
-      workType: { ar: 'فرامل', en: 'Brakes' },
-      open: false,
-    },
-  ],
-  recentAccidents: [
-    {
-      accidentId: 'a1',
-      vehicleId: 'v154',
-      code: '154',
-      date: TODAY,
-      culprit: 'طرف ثالث',
-      culpritEmployeeIds: [],
-      status: 'open',
-    },
-    {
-      accidentId: 'a2',
-      vehicleId: 'v207',
-      code: '207',
-      date: '2026-10-30',
-      culprit: 'محمود عبد العزيز',
-      culpritEmployeeIds: [DRIVER],
-      status: 'closed',
-    },
-  ],
   // The three open notices missing an attachment, the oldest notice day first and the undated
   // (carless) one last: two miss a licence image, two the cheque image.
   notices: {
@@ -611,6 +673,7 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
     byBranch: [],
     byType: null,
     unregistered: 0,
+    bookOnRegistered: 0,
     top5: [],
     bottom5: [],
     withoutReadings: [],
@@ -671,8 +734,10 @@ export const PERIOD_DTO: FleetDashboardPeriodDto = {
   violationList: null,
   opex: null,
   opexSeries: null,
+  custodyStates: null,
   dealership: null,
   dealershipList: null,
+  licenceSpend: null,
   unavailable: [],
 };
 
@@ -691,44 +756,253 @@ const outside = (
   stale: { count: stale[0], total: stale[1] },
 });
 
-/** One kind with receipts past 30 days: exactly ONE line on the fund's banner. */
+/** One kind with receipts past 30 days: ONE stale line on the fund's banner. */
 export const CUSTODY_OUTSIDE: FleetCustodyOutsideKindDto[] = [
   outside('maintenance', 3, 5720, [0, 0]),
   outside('wash', 4, 600, [2, 300]),
 ];
+
+/**
+ * A day `n` days before the browser's own day — the custody board ages its rows by the clock, so a
+ * row that must stay under 30 days old is dated from it; a late row has a fixed day long past.
+ */
+const daysAgo = (n: number): string => addDaysYmd(new Date().toISOString().slice(0, 10), -n);
+const STAMP = '2026-11-01T08:00:00.000Z';
+
+/** «في انتظار التحويل»: one letter, its three memos (4,000.00 over 17 receipts). */
+export const CUSTODY_HELD_LETTER: FleetCustodyHeldLetterDto = {
+  id: 'op-held',
+  date: '2026-10-28',
+  from: '2026-10-19',
+  to: '2026-10-26',
+  amount: 4000,
+  receipts: 17,
+  memos: [
+    { id: 'm41', no: 41, kind: 'fuel', name: '', date: '2026-10-26', receipts: 9, total: 1850 },
+    { id: 'm42', no: 42, kind: 'tyres', name: '', date: '2026-10-26', receipts: 2, total: 1400 },
+    { id: 'm43', no: 43, kind: 'wash', name: '', date: '2026-10-26', receipts: 6, total: 750 },
+  ],
+};
+
 export const CUSTODY_FUND: FleetCustodyFundSummaryDto = {
   fundTotal: 159974.54,
   charged: { count: 2, amount: 300000 },
   spent: { count: 126, amount: 97794 },
   replenished: { count: 1, amount: 81908, memos: 5 },
   settled: { count: 1, amount: 124139.46, parts: 3 },
-  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
-  cancelled: { count: 0, amount: 0 },
-  operations: 4,
-  memos: { count: 5, pending: 0, pendingTotal: 9566 },
+  held: { count: 1, amount: 4000, memos: 3, receipts: 17, letters: [CUSTODY_HELD_LETTER] },
+  cancelled: { count: 1, amount: 2500 },
+  operations: 6,
+  memos: { count: 10, pending: 2, pendingTotal: 5566 },
   outside: CUSTODY_OUTSIDE,
   // Batch 3's «العمليات المحذوفة» pill: none deleted, so the fund reads as it always did.
   deleted: { count: 0 },
 };
 
+const pendingMemo = (
+  id: string,
+  no: number,
+  kind: FleetCustodyMemoRowDto['kind'],
+  date: string,
+  receipts: number,
+  total: number,
+): FleetCustodyMemoRowDto => ({
+  id,
+  no,
+  kind,
+  name: '',
+  date,
+  from: date,
+  to: date,
+  receipts,
+  total,
+  replenishment: null,
+  version: 0,
+  createdAt: STAMP,
+  updatedAt: STAMP,
+});
+/** The two memos not replenished yet (5,566.00), the oldest first: one past 30 days. */
+export const CUSTODY_PENDING_MEMOS: FleetCustodyMemoRowDto[] = [
+  pendingMemo('m39', 39, 'maintenance', '2026-09-15', 7, 3416),
+  pendingMemo('m44', 44, 'fuel', daysAgo(3), 11, 2150),
+];
+
+const settlePart = (
+  expenseId: string,
+  part: FleetCustodySettleCandidateDto['part'],
+  date: string,
+  codes: string[],
+  visa: number,
+  cash: number,
+): FleetCustodySettleCandidateDto => ({
+  expenseId,
+  part,
+  date,
+  cars: codes.length,
+  codes,
+  visaTotal: visa,
+  cashTotal: cash,
+  total: visa + cash,
+  expense: { id: expenseId, date } as unknown as FleetLicenseExpenseDto,
+});
+/**
+ * «تنتظر التسوية»: seven licence parts (past the dashboard's six), the oldest first — one past 30
+ * days; 10,320.00 in all, well inside the fund.
+ */
+export const CUSTODY_SETTLE_PARTS: FleetCustodySettleCandidateDto[] = [
+  settlePart('lx1', 'renewal', '2026-09-25', ['249', '118'], 2400, 1200),
+  settlePart('lx2', 'renewal', daysAgo(8), ['152'], 900, 300),
+  settlePart('lx2', 'extension', daysAgo(8), ['152'], 600, 0),
+  settlePart('lx3', 'renewal', daysAgo(6), ['211', '297'], 1500, 600),
+  settlePart('lx4', 'extension', daysAgo(5), ['176'], 450, 150),
+  settlePart('lx5', 'renewal', daysAgo(3), ['133'], 800, 400),
+  settlePart('lx6', 'renewal', daysAgo(2), ['141'], 700, 320),
+];
+
+const ledgerLine = (over: Partial<FleetCustodyLedgerRowDto>): FleetCustodyLedgerRowDto => ({
+  id: 'x',
+  op: 'charge',
+  status: 'done',
+  date: '2026-09-01',
+  dateTo: null,
+  letterDate: null,
+  amount: 0,
+  before: 0,
+  after: 0,
+  latest: false,
+  reason: null,
+  from: null,
+  to: null,
+  memos: null,
+  licence: null,
+  receipts: null,
+  byKind: null,
+  memoNos: null,
+  transfer: null,
+  cancellation: null,
+  ...over,
+});
+const spendRun = (from: string, to: string, amount: number, after: number, receipts: number) =>
+  ledgerLine({
+    id: `spend:${from}:${to}`,
+    op: 'spend',
+    date: from,
+    dateTo: to,
+    amount: -amount,
+    before: after + amount,
+    after,
+    receipts,
+    byKind: {
+      maintenance: { count: receipts, amount, outside: 0 },
+      fuel: { count: 0, amount: 0, outside: 0 },
+      tyres: { count: 0, amount: 0, outside: 0 },
+      wash: { count: 0, amount: 0, outside: 0 },
+    },
+    memoNos: [],
+  });
+/**
+ * «سجل العهدة» newest first, as the board reads it (`CUSTODY_LEDGER_PARAMS`): two charges, four
+ * «صرف» runs (97,794.00 over the 126 receipts), the 05/10 settlement, the transferred replenishment
+ * (with its reference), a cancelled one and the held one — the fund after the latest done line is
+ * 159,974.54.
+ */
+export const CUSTODY_LEDGER: Paginated<FleetCustodyLedgerRowDto> = (() => {
+  const items: FleetCustodyLedgerRowDto[] = [
+    ledgerLine({
+      id: 'op-held',
+      op: 'replenish',
+      status: 'held',
+      date: '2026-10-28',
+      amount: 4000,
+      before: 159974.54,
+      after: 159974.54,
+      from: '2026-10-19',
+      to: '2026-10-26',
+      memos: { count: 3, kinds: ['fuel', 'tyres', 'wash'] },
+    }),
+    ledgerLine({
+      id: 'op-cancelled',
+      op: 'replenish',
+      status: 'cancelled',
+      date: '2026-10-20',
+      amount: 2500,
+      before: 159974.54,
+      after: 159974.54,
+      memos: { count: 1, kinds: ['wash'] },
+      cancellation: { reason: '', byName: null, at: STAMP },
+    }),
+    { ...spendRun('2026-10-13', '2026-10-18', 5286, 159974.54, 8), latest: true },
+    ledgerLine({
+      id: 'op-replenish',
+      op: 'replenish',
+      date: '2026-10-12',
+      letterDate: '2026-10-08',
+      amount: 81908,
+      before: 83352.54,
+      after: 165260.54,
+      from: '2026-09-02',
+      to: '2026-10-04',
+      memos: { count: 5, kinds: ['maintenance', 'fuel', 'tyres', 'wash'] },
+      transfer: { date: '2026-10-12', reference: '58203', note: '', byName: null, at: STAMP },
+    }),
+    spendRun('2026-10-06', '2026-10-11', 10000, 83352.54, 14),
+    ledgerLine({
+      id: 'op-settle',
+      op: 'settle',
+      date: '2026-10-05',
+      amount: -124139.46,
+      before: 217492,
+      after: 93352.54,
+      licence: { renewal: { count: 2, cars: 9 }, extension: { count: 1, cars: 3 } },
+    }),
+    spendRun('2026-09-22', '2026-10-04', 42508, 217492, 56),
+    ledgerLine({
+      id: 'op-charge-2',
+      op: 'charge',
+      date: '2026-09-21',
+      amount: 150000,
+      before: 110000,
+      after: 260000,
+    }),
+    spendRun('2026-09-02', '2026-09-20', 40000, 110000, 48),
+    ledgerLine({
+      id: 'op-charge-1',
+      op: 'charge',
+      date: '2026-09-01',
+      amount: 150000,
+      after: 150000,
+    }),
+  ];
+  return { items, meta: { page: 1, pageSize: 100, totalItems: items.length, totalPages: 1 } };
+})();
+
 export const seedCustody = (qc: QueryClient): void => {
   qc.setQueryData(custodyQueryKeys.fund(), CUSTODY_FUND);
   qc.setQueryData(custodyQueryKeys.candidates('replenish'), {
-    memos: [],
+    memos: CUSTODY_PENDING_MEMOS,
     outside: CUSTODY_OUTSIDE,
     fundTotal: CUSTODY_FUND.fundTotal,
     chargedTotal: 300000,
   });
   qc.setQueryData(custodyQueryKeys.candidates('settle'), {
-    parts: [],
+    parts: CUSTODY_SETTLE_PARTS,
     fundTotal: CUSTODY_FUND.fundTotal,
   });
+  qc.setQueryData(custodyQueryKeys.ledger(CUSTODY_LEDGER_PARAMS), CUSTODY_LEDGER);
 };
 
 // ── Mounting the page ─────────────────────────────────────────────────────────────────────────
 
 /** Every key the page's gates name, and the attendance screen's guard (a secondary link). */
 export const ALL_KEYS: readonly string[] = [...FLEET_DASHBOARD_PAGE_KEYS, 'fleetAvailability.view'];
+/**
+ * ALL_KEYS and the PAGELESS sections' keys («مصروفات التراخيص»: it reads R2 but opens no page) —
+ * a reader who sees every part of every tab.
+ */
+export const EVERY_KEY: readonly string[] = [
+  ...ALL_KEYS,
+  ...FLEET_DASHBOARD_PAGELESS_SECTIONS.flatMap((section) => fleetDashboardGateKeys(section)),
+];
 
 export const PERIOD_KEY = fleetDashboardKeys.period('live', { preset: 'thisMonth' });
 

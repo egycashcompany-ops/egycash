@@ -52,6 +52,7 @@ import {
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
+  type SetItConsumableInstalledOn,
   type TransferItConsumables,
   type UpdateItConsumable,
   type ItCatalogKind,
@@ -125,15 +126,29 @@ export const useItBranchOptions = () =>
   });
 
 /**
- * The branches «نقل إلى فرع» and «تحويل إلى فرع» may go to, as the server judges the caller's
- * `itAsset.assign` (`GET /it/assets/move-targets`). Asked only while a dialog is OPEN: both
- * dialogs stay mounted on pages anyone with `itAsset.view` opens, and the route answers 403 to
- * whoever lacks the grant. Its own subtree: no asset or item write changes a grant's reach.
+ * The branches «نقل إلى فرع» may take assets to, as the server judges the caller's
+ * `itAsset.assign` (`GET /it/assets/move-targets`). Asked only while the dialog is OPEN: it stays
+ * mounted on pages anyone with `itAsset.view` opens, and the route answers 403 to whoever lacks
+ * the grant. Its own subtree: no asset write changes a grant's reach.
  */
 export const useItMoveTargets = (enabled: boolean) =>
   useQuery({
     queryKey: listKey(MODULE, 'moveTargets'),
     queryFn: api.moveTargets,
+    enabled,
+  });
+
+/**
+ * The branches «تحويل إلى فرع» may send consumables to, as the server judges the caller's
+ * `itConsumable.assign` (`GET /it/consumables/transfer-targets`) — the store's own grant, not the
+ * assets'. Asked only while the dialog is OPEN, for the same reason as the assets' list. Its own
+ * subtree, apart from the assets' (two grants, two reaches) and from the consumables' (no item
+ * write changes a grant's reach, so none refetches it).
+ */
+export const useItConsumableTransferTargets = (enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'consumableTransferTargets'),
+    queryFn: api.consumableTransferTargets,
     enabled,
   });
 
@@ -711,6 +726,27 @@ export const useUploadConsumableMemoSignedCopy = () =>
   );
 export const useDeleteConsumableMemoSignedCopy = () =>
   useConsumableMutation((id: string) => api.deleteConsumableMemoSignedCopy(id));
+
+/**
+ * «تعديل الجهاز» — the device an issued unit sits in, corrected after the issue. The one subtree
+ * again: the ledger's row wherever it is read (the movements screen, the item's movements, the
+ * person's card, and BOTH assets' cards — the one it left and the one it went to, each a read of the
+ * ledger by `assetId`), and the memo whose line now names the new device. Read again on a refusal
+ * too: a 409 is somebody's change first, and the dialog then shows the row — its device, its
+ * version — as it now stands. A refusal is the dialog's to say, once: the declared `onError` keeps
+ * the global handler's second toast away.
+ */
+export const useSetItConsumableInstalledOn = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: SetItConsumableInstalledOn }) =>
+      api.setConsumableInstalledOn(id, body),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.consumables });
+    },
+    onError: () => undefined,
+  });
+};
 
 // ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ───────────────────────
 

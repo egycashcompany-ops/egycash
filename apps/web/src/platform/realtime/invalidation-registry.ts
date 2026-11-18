@@ -35,16 +35,28 @@ const shipmentSweep: readonly KeyPrefix[] = [
 const attendanceDaySweep: readonly KeyPrefix[] = [
   ['hr', 'attendanceDays'],
   ['hr', 'attendanceMyDays'],
+  // The daily sheet is a view of the same days (stage 2) — it just starts from the employees — so
+  // anything that rewrites a day has to refresh it too. It was missed when the sheet arrived:
+  // this registry guards that every TOPIC is mapped, not that every cache of a topic is swept.
+  ['hr', 'attendanceSheet'],
+  // And the decisions themselves (stage 3): approving or revoking one changes both the day and
+  // the queue it was sitting in.
+  ['hr', 'attendanceDecisions'],
 ];
 
 /**
  * «لوحة تحكم الحركة» (D13): R1, the «الآن» tabs, and R2 while its period is still LIVE. A period
- * that ended — `past` — counts rows whose days are behind it, so only one signal names it: a
- * fine's, because the period's drivers' fines carry their state AS OF NOW (a tick turns «قائمة»
- * into «محصَّلة» even in «الشهر الماضي»). A dashboard counts over every fleet screen at once, so a
- * busy morning would re-read it on every save: these prefixes are NOT swept like the rest — the
- * provider hands them to the platform throttle (`throttle.ts`), which marks them stale at once and
- * refetches what is on screen at most once per window.
+ * that ended — `past` — counts rows whose days are behind it, so only the signals of figures read AS
+ * OF NOW name it: a fine's (the period's drivers' fines carry their state as of now — a tick turns
+ * «قائمة» into «محصَّلة» even in «الشهر الماضي»), an accident's (the period's files carry their
+ * status and money as of now — «منها N مفتوحة حتى الآن», the four money totals and each row's
+ * «المتبقي (حتى الآن)» — so closing a file, a money edit or a transfer moves a past month too) and
+ * a custody memo's or operation's (the period's custody spend says where it stands now — «تمت
+ * الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج المذكرات» — so a replenishment moves a past month
+ * too). A dashboard counts over every fleet screen at once, so a busy morning would re-read it on
+ * every save: these prefixes are NOT swept like the rest — the provider hands them to the platform
+ * throttle (`throttle.ts`), which marks them stale at once and refetches what is on screen at most
+ * once per window.
  */
 const FLEET_DASHBOARD_NOW: KeyPrefix = ['fleet', 'dashboard', 'now'];
 const FLEET_DASHBOARD_LIVE: KeyPrefix = ['fleet', 'dashboard', 'period', 'live'];
@@ -376,6 +388,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'hr.attendancePunch': attendanceDaySweep,
   'hr.attendancePunchBatch': attendanceDaySweep,
   'hr.attendanceRegularization': attendanceDaySweep,
+  'hr.attendanceDayDecision': attendanceDaySweep,
   'hr.attendanceShift': [
     ['hr', 'attendanceShifts'],
     ['hr', 'attendanceAssignments'],
@@ -494,7 +507,16 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['fleet', 'alarms'],
     ...fleetDashboardBoth,
   ],
-  'fleet.accident': [['fleet', 'accidents'], ['fleet', 'vehicles'], ...fleetDashboardBoth],
+  // An accident moves «الآن»'s open files AND the period's files — both reads, and a CLOSED period
+  // too: «حوادث الفترة» shows each file's status, «منها N مفتوحة حتى الآن», the four money totals
+  // and «المتبقي (حتى الآن)» as of now, so closing a file, a money edit or a transfer moves
+  // «الشهر الماضي» as a fine's tick does.
+  'fleet.accident': [
+    ['fleet', 'accidents'],
+    ['fleet', 'vehicles'],
+    ...fleetDashboardBoth,
+    FLEET_DASHBOARD_PAST,
+  ],
   // A fine moves «الآن»'s owed totals AND the period's drivers' fines (a tick turns «قائمة» into
   // «محصَّلة»; a new fine or a moved day changes the period's count) — both reads, and a CLOSED
   // period too: its fines' states are as of now, whatever range is chosen.
@@ -512,10 +534,13 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // notices screen and its editor (and in the overview's action centre, «إخطارات ناقصة المرفقات»).
   'fleet.fleetNotice': [['fleet', 'notices'], ...fleetDashboardNow],
   'fleet.noticeSettings': [['fleet', 'notices'], ...fleetDashboardNow],
-  // A licence record is a settle candidate of the custody fund («تسوية العهدة») too.
+  // A licence record is a settle candidate of the custody fund («تسوية العهدة») too, and a memo of
+  // «مصروفات التراخيص في الفترة» («التراخيص والتجديدات»): R2 while its period is live (a back-dated
+  // memo reaches a past period on «تحديث» or a reload, as a receipt does).
   'fleet.licenseExpense': [
     ['fleet', 'licenseExpenses'],
     ['fleet', 'custody'],
+    FLEET_DASHBOARD_LIVE,
   ],
   'fleet.licenseExpenseSettings': [['fleet', 'licenseExpenses']],
   // «عقود توريد السيارات» alone: a contract, a delivery or an attachment moves nothing else.
@@ -536,13 +561,19 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // «المذكرات», «سجل العهدة» and «إعداد المذكرات» live under the custody subtree. A memo also
   // moves the receipts screen (each receipt says which memo holds it); an operation moves the
   // licence screen's «الحالة» (a settle) — a replenish also signals `custodyMemo` for its memos.
+  // Both move «منها حتى الآن» of «العهدة»'s period card (`custodyStates`, as of now for ANY period:
+  // R2 live AND past); its «الآن» band rides `['fleet', 'custody']`.
   'fleet.custodyMemo': [
     ['fleet', 'custody'],
     ['fleet', 'receipts'],
+    FLEET_DASHBOARD_LIVE,
+    FLEET_DASHBOARD_PAST,
   ],
   'fleet.custodyOperation': [
     ['fleet', 'custody'],
     ['fleet', 'licenseExpenses'],
+    FLEET_DASHBOARD_LIVE,
+    FLEET_DASHBOARD_PAST,
   ],
   'fleet.custodyPaperSettings': [['fleet', 'custody']],
 
@@ -629,10 +660,30 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'platform.branch': [['org'], ['platform', 'organization'], ['system-admin', 'branch-options']],
   // P-ORG-3 §6.2: the organization module's own keys start with 'organization' — the two rows above
   // matched no /organization/* query, so another user's edit refreshed nothing there.
-  'platform.department': [['org'], ['platform', 'organization'], ['organization', 'departments'], ['organization', 'org-chart']],
-  'platform.departmentCatalog': [['org'], ['platform', 'organization'], ['organization', 'departments'], ['organization', 'org-chart']],
-  'platform.sectionCatalog': [['org'], ['platform', 'organization'], ['organization', 'sections'], ['organization', 'org-chart']],
-  'platform.section': [['org'], ['platform', 'organization'], ['organization', 'sections'], ['organization', 'org-chart']],
+  'platform.department': [
+    ['org'],
+    ['platform', 'organization'],
+    ['organization', 'departments'],
+    ['organization', 'org-chart'],
+  ],
+  'platform.departmentCatalog': [
+    ['org'],
+    ['platform', 'organization'],
+    ['organization', 'departments'],
+    ['organization', 'org-chart'],
+  ],
+  'platform.sectionCatalog': [
+    ['org'],
+    ['platform', 'organization'],
+    ['organization', 'sections'],
+    ['organization', 'org-chart'],
+  ],
+  'platform.section': [
+    ['org'],
+    ['platform', 'organization'],
+    ['organization', 'sections'],
+    ['organization', 'org-chart'],
+  ],
   'platform.costCenter': [
     ['hr', 'assignableCostCenters'],
     ['platform', 'costCenters'],

@@ -130,6 +130,8 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.attendancePunch': { permission: 'attendance.view' },
   'hr.attendancePunchBatch': { permission: 'attendance.view' },
   'hr.attendanceRegularization': { permission: 'attendance.view' },
+  // A decision is read by whoever may read the day it decides, so it carries the same key.
+  'hr.attendanceDayDecision': { permission: 'attendance.view' },
   'hr.attendanceShift': { permission: 'attendance.view' },
   'hr.attendanceShiftAssignment': { permission: 'attendance.view' },
   'hr.holiday': { permission: 'workCalendar.manage' },
@@ -210,14 +212,14 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'it.asset': { permission: 'itAsset.view' },
   // FR-18 — a receipt names who signed for which assets: exactly what the custody register shows.
   'it.custodyReceipt': { permission: 'itAsset.view' },
-  // FR-19 — the mobile lines ride the asset grants: a line and its acknowledgment are shown to
-  // exactly whoever sees the asset register and the custody papers.
-  'it.mobileLine': { permission: 'itAsset.view' },
-  'it.mobileLineReceipt': { permission: 'itAsset.view' },
-  // FR-20 — the consumables ride the asset grants too: a store's item, its stock and the memo an
-  // employee signs are shown to exactly whoever sees the asset register.
-  'it.consumable': { permission: 'itAsset.view' },
-  'it.consumableMemo': { permission: 'itAsset.view' },
+  // FR-19 — the mobile lines, on their own read grant (2026-11-17): a line and its acknowledgment
+  // are shown to exactly whoever may read the lines screen.
+  'it.mobileLine': { permission: 'itMobileLine.view' },
+  'it.mobileLineReceipt': { permission: 'itMobileLine.view' },
+  // FR-20 — the consumables, on their own read grant too: a store's item, its stock and the memo
+  // an employee signs are shown to exactly whoever may read the stores.
+  'it.consumable': { permission: 'itConsumable.view' },
+  'it.consumableMemo': { permission: 'itConsumable.view' },
   'it.catalogItem': { permission: 'itCatalog.manage' },
   'it.license': { permission: 'itLicense.view' },
   'it.maintenanceOrder': { permission: 'itMaintenance.view' },
@@ -300,6 +302,12 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // AT-D3's enrolment map is the same shape and leaves at the same moment: it is administered
   // from the device screen, so it has no surface of its own to react.
   'hr.attendanceEnrollment': 'no screen until AT-D4 builds device health',
+  // Task 2's two, excluded for the SAME reason and not a new one. The quarantine is read from the
+  // device-health screen that AT-D4 will build, and the backfill's progress is polled over the
+  // API by the branch relay — neither has a screen to refresh, so neither earns a topic. Both
+  // leave this map in the change that builds a surface for them, never before.
+  'hr.attendanceQuarantine': 'no screen until AT-D4 builds device health',
+  'hr.attendanceBackfill': 'progress is polled over the API — no screen reacts to a backfill',
   // A decision is audited on the CHAIN, whose id is «type:rung» and not a record anybody lists.
   // The screen that has to refresh is the request's own — a leave request, a regularization — and
   // that request's entity topic already fires from the same decision, because deciding writes the

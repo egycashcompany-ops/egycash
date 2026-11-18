@@ -640,6 +640,66 @@ describe('«الكيلومترات يومًا بيوم» — the R-15 drawing, i
     expect(column(year, '2026-11')).toContain('data-km-part="open"');
   });
 
+  /** The readout above the drawing: the column it names, up to the drawing itself. */
+  const readout = (html: string, key: string): string =>
+    slice(html, 'data-km-readout', key, 'role="group"');
+  /** The page with its days cut after `last` — the readout opens on the latest confirmed one. */
+  const upTo = (last: string): string =>
+    block(
+      tab({
+        page: { ...PAGE, km: { ...KM, buckets: BASE_KM.buckets.filter((b) => b.key <= last) } },
+      }),
+      'chart',
+    );
+
+  it('reads out the register’s total for the day it names — the single-day km alone on a plain day', () => {
+    const plain = readout(chart, '2026-10-30');
+    const day = BASE_KM.buckets.find((b) => b.key === '2026-10-30');
+    expect(day?.spanKm).toBe(0);
+    expect(plain).toContain(`data-km-readout-total="${day?.confirmedKm}"`);
+    expect(text(plain)).toContain(
+      `${KMF.format(day?.confirmedKm ?? -1)} ${ar('fleet.dash.km.unit')}`,
+    );
+    expect(hrefOf(plain, 'km.day')).toBe('/fleet/odometer?from=2026-10-30&to=2026-10-30');
+  });
+
+  it('reads out a span’s start day as the register totals it: its km AND the span, «منها» under it (D02)', () => {
+    // 10/15: 3,910 km closed on it and 1,960 km over the two unread days after it. The register
+    // over 10/15 totals every row dated 10/15 — 5,870 — so the linked figure is 5,870, never 3,910.
+    const html = upTo('2026-10-15');
+    const day = BASE_KM.buckets.find((b) => b.key === '2026-10-15');
+    expect([day?.confirmedKm, day?.spanKm]).toEqual([3910, 1960]);
+    const out = readout(html, '2026-10-15');
+    expect(out).toContain('data-km-readout-total="5870"');
+    const figure = slice(out, 'data-metric', 'km.day', '</a>');
+    expect(text(figure)).toContain('5,870');
+    expect(text(figure)).not.toContain('3,910');
+    expect(hrefOf(out, 'km.day')).toBe('/fleet/odometer?from=2026-10-15&to=2026-10-15');
+    // The span is named under the total, never added a second time.
+    const span = slice(out, 'data-km-readout-span', '1960', '</span></span>');
+    expect(text(span)).toContain('1,960');
+    const lead = ar('fleet.dash.km.readout.span').split('{{')[0]?.trim() ?? '';
+    expect(lead).not.toBe('');
+    expect(text(span)).toContain(lead);
+    // The column's own name says the same figure its readout links.
+    expect(column(html, '2026-10-15')).toContain('aria-label="2026/10/15: 5,870');
+  });
+
+  it('reads out a month as the register totals it over the month — its spans too (D02)', () => {
+    const year = block(
+      tab({
+        url: '/fleet?tab=km&period=thisYear',
+        page: { ...PERIOD_YEAR, km: { ...KM, buckets: (PERIOD_YEAR.km as Km).buckets } },
+      }),
+      'chart',
+    );
+    // The latest confirmed month: 130,000 km closed and 6,000 km over unread days in it.
+    const out = readout(year, '2026-10');
+    expect(out).toContain('data-km-readout-total="136000"');
+    expect(text(slice(out, 'data-metric', 'km.month', '</a>'))).toContain('136,000');
+    expect(hrefOf(out, 'km.month')).toBe('/fleet/odometer?from=2026-10-01&to=2026-10-31');
+  });
+
   it('opens a phone’s scrolled plot on its latest days (the ltr group’s right end), not its oldest', () => {
     const scroller = slice(chart, 'data-km-scroller', 'true', 'data-km-column=');
     expect(scroller).toMatch(/class="[^"]*max-sm:overflow-x-auto/u);

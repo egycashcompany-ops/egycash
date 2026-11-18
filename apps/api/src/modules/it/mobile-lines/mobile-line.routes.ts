@@ -1,7 +1,7 @@
-// The mobile-line register's routes (FR-19), on the assets' own grants — no key of its own: whoever
-// keeps the devices keeps the lines («الأصول» covers both). Reads ride `itAsset.view`; registering
-// `itAsset.create`; editing, suspending and reactivating `itAsset.edit`; handing over and taking
-// back `itAsset.assign`, the one custody grant.
+// The mobile-line register's routes (FR-19), on the lines' own grants (2026-11-17 — «فى الـ IT ظبط
+// صلاحيات الشاشات عشان أقدر أتحكم فيها»; until then the assets' grants carried them). Reads ride
+// `itMobileLine.view`; registering `itMobileLine.create`; editing, suspending and reactivating
+// `itMobileLine.edit`; handing over and taking back `itMobileLine.assign`, the one custody grant.
 import { Router } from 'express';
 import {
   AssignItMobileLineSchema,
@@ -35,7 +35,7 @@ export const buildItMobileLinesRouter = (): Router => {
   router.get(
     '/',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itMobileLine.view'),
     validate({ query: ListItMobileLinesQuerySchema }),
     asyncHandler(listItMobileLines),
   );
@@ -43,35 +43,35 @@ export const buildItMobileLinesRouter = (): Router => {
   router.get(
     '/summary',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itMobileLine.view'),
     validate({ query: ItMobileLinesSummaryQuerySchema }),
     asyncHandler(getItMobileLinesSummary),
   );
   router.post(
     '/',
     authenticate,
-    authorize('itAsset.create'),
+    authorize('itMobileLine.create'),
     validate({ body: CreateItMobileLineSchema }),
     asyncHandler(createItMobileLine),
   );
   router.get(
     '/:id',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itMobileLine.view'),
     validate({ params: ItMobileLineIdParamSchema }),
     asyncHandler(getItMobileLine),
   );
   router.patch(
     '/:id',
     authenticate,
-    authorize('itAsset.edit'),
+    authorize('itMobileLine.edit'),
     validate({ body: UpdateItMobileLineSchema, params: ItMobileLineIdParamSchema }),
     asyncHandler(updateItMobileLine),
   );
   router.get(
     '/:id/history',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itMobileLine.view'),
     validate({ query: ListItMobileLineHistoryQuerySchema, params: ItMobileLineIdParamSchema }),
     asyncHandler(listItMobileLineHistory),
   );
@@ -80,14 +80,14 @@ export const buildItMobileLinesRouter = (): Router => {
   router.post(
     '/:id/assign',
     authenticate,
-    authorize('itAsset.assign'),
+    authorize('itMobileLine.assign'),
     validate({ body: AssignItMobileLineSchema, params: ItMobileLineIdParamSchema }),
     asyncHandler(assignItMobileLine),
   );
   router.post(
     '/:id/return',
     authenticate,
-    authorize('itAsset.assign'),
+    authorize('itMobileLine.assign'),
     validate({ body: ReturnItMobileLineSchema, params: ItMobileLineIdParamSchema }),
     asyncHandler(returnItMobileLine),
   );
@@ -96,14 +96,14 @@ export const buildItMobileLinesRouter = (): Router => {
   router.post(
     '/:id/suspend',
     authenticate,
-    authorize('itAsset.edit'),
+    authorize('itMobileLine.edit'),
     validate({ body: ItMobileLineStatusActionSchema, params: ItMobileLineIdParamSchema }),
     asyncHandler(suspendItMobileLine),
   );
   router.post(
     '/:id/reactivate',
     authenticate,
-    authorize('itAsset.edit'),
+    authorize('itMobileLine.edit'),
     validate({ body: ItMobileLineStatusActionSchema, params: ItMobileLineIdParamSchema }),
     asyncHandler(reactivateItMobileLine),
   );

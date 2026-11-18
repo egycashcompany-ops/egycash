@@ -4,6 +4,7 @@ import { Types, type FilterQuery } from 'mongoose';
 import {
   FLEET_LICENSE_EXPENSE_KINDS,
   type CreateFleetLicenseExpense,
+  type FleetDashboardPeriodLicenceSpendDto,
   type FleetLicenseExpenseDto,
   type FleetLicenseExpenseKind,
   type FleetLicenseExpensePart,
@@ -26,7 +27,10 @@ import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
-import { fleetLicenseExpenseRepository } from './license-expense.repository';
+import {
+  fleetLicenseExpenseRepository,
+  type LicenseExpenseHalves,
+} from './license-expense.repository';
 import { fleetLicenseExpenseSettingsRepository } from './license-expense-settings.repository';
 import {
   type FleetLicenseExpenseDoc,
@@ -178,6 +182,16 @@ const expenseFilter = async (
 };
 
 /**
+ * WHICH MEMOS of each matched record the figures add up (D05) — the same two filters `expenseFilter`
+ * applies memo by memo. The filter clauses decide which RECORDS are listed; this decides which of
+ * their memos the money, the cars and the count are read from.
+ */
+const halvesOf = (query: FleetLicenseExpenseSummaryQuery): LicenseExpenseHalves => ({
+  kind: query.kind,
+  status: query.status,
+});
+
+/**
  * The registry's codes for a page of memos — one read, not one per car. Exported for «تسوية عهدة»,
  * which writes the codes onto its letter.
  */
@@ -249,22 +263,43 @@ export const toLicenseExpenseDto = (
 
 class FleetLicenseExpenseService {
   async list(query: ListFleetLicenseExpensesQuery): Promise<Paginated<FleetLicenseExpenseDto>> {
-    const page = await fleetLicenseExpenseRepository.listExpenses({
-      filter: await expenseFilter(query),
-      page: query.page,
-      pageSize: query.pageSize,
-      sortBy: query.sortBy ?? 'date',
-      sortDir: query.sortDir ?? 'desc',
-      // «انا عاوز اقدر اعمل الاتنين مع بعض»: the arrows' whole order, as on every Fleet board.
-      sorts: parseFleetSort(query.sort),
-    });
+    const page = await fleetLicenseExpenseRepository.listExpenses(
+      {
+        filter: await expenseFilter(query),
+        page: query.page,
+        pageSize: query.pageSize,
+        sortBy: query.sortBy ?? 'date',
+        sortDir: query.sortDir ?? 'desc',
+        // «انا عاوز اقدر اعمل الاتنين مع بعض»: the arrows' whole order, as on every Fleet board.
+        sorts: parseFleetSort(query.sort),
+      },
+      // The money and cars arrows order the MATCHED memos' figures (D05), as the strip sums them.
+      halvesOf(query),
+    );
     const codes = await codesFor(page.items);
     return { ...page, items: page.items.map((doc) => toLicenseExpenseDto(doc, codes)) };
   }
 
-  /** «الإحصائيات» — over every memo the filters match, never the page on screen. */
+  /**
+   * «الإحصائيات» — over every record the filters match, never the page on screen, and over the
+   * memos of them that matched (D05): «النوع» and «التسوية» filter memo by memo, so a record's
+   * other memo — another kind, or already settled — is not in the figures. `count` is memos.
+   */
   async summary(query: FleetLicenseExpenseSummaryQuery): Promise<FleetLicenseExpenseTotalsDto> {
-    return fleetLicenseExpenseRepository.totals(await expenseFilter(query));
+    return fleetLicenseExpenseRepository.totals(await expenseFilter(query), halvesOf(query));
+  }
+
+  /**
+   * The fleet dashboard's «مصروفات التراخيص في الفترة» (R2 `licenceSpend`): the memos whose memo
+   * day is in `from` … `to` — the register's own day rule (`expenseFilter`: whole days at both
+   * ends) — and nothing else: a memo carries no branch, no car type and no operation. Its `count`
+   * (memos — a record holding both is two, D05), `cars`, `visa` and `cash` are `/summary`'s over
+   * the same range, to the piastre (D51).
+   */
+  async periodSpend(range: { from: Date; to: Date }): Promise<FleetDashboardPeriodLicenceSpendDto> {
+    return fleetLicenseExpenseRepository.spendDigest(
+      await expenseFilter({ from: range.from, to: range.to }),
+    );
   }
 
   async get(id: string): Promise<FleetLicenseExpenseDto> {

@@ -125,9 +125,11 @@ export interface TabBadge {
 /**
  * «الحركة اليوم» carries the ready cars without a driver today (amber, plain at 0); «الصيانة والورش»
  * the cars that reached the service limit (red, and only when there are some — it hides at 0 and
- * with its section); «نظرة عامة», «توزيع السيارات», «العدادات والكيلومترات», «الحوادث ومطالبات
- * التأمين», «المخالفات المرورية والتسويات» and «الوقود والمصروفات» have no count (the approved bar
- * draws none); «التراخيص» keeps its own.
+ * with its section); «التراخيص والتجديدات» the expired car licences plus the expired driver licences
+ * (red — its two red KPIs — and only when there are some; a reader with one of the two sections gets
+ * that part). «نظرة عامة», «توزيع السيارات», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين»,
+ * «المخالفات المرورية والتسويات», «الوقود والمصروفات» and «العهدة» have no count (the approved bar
+ * draws none).
  */
 export const tabBadges = (
   answers: DashboardAnswers,
@@ -139,10 +141,8 @@ export const tabBadges = (
   }
   const vehicles = now?.licenceVehicles?.expired;
   const drivers = now?.licenceDrivers?.expired;
-  if (vehicles !== undefined || drivers !== undefined) {
-    const n = (vehicles ?? 0) + (drivers ?? 0);
-    badges.licences = { n, tone: n > 0 ? 'red' : 'plain' };
-  }
+  const expired = (vehicles ?? 0) + (drivers ?? 0);
+  if (expired > 0) badges.licences = { n: expired, tone: 'red' };
   const red = now?.maintenanceAlarm?.red;
   if (red !== undefined && red > 0) badges.maintenance = { n: red, tone: 'red' };
   return badges;

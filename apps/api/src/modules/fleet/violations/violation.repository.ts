@@ -11,8 +11,25 @@ import {
   type FleetViolationDoc,
 } from './violation.model';
 
-/** «مجهول» with any spacing round it, or an empty name — `isUnknownFleetDriver`'s rule, in Mongo. */
-const UNKNOWN_DRIVER_NAME_PATTERN = new RegExp(`^\\s*(${FLEET_UNKNOWN_DRIVER_NAME})?\\s*$`, 'u');
+/**
+ * A space as `isUnknownFleetDriver` reads one — its `trim()` strips every Unicode space, the
+ * no-break space among them — in the database too, whose `\s` is ASCII only. The class
+ * `vehicles/vehicle-code-match.ts` spells for the same reason, copied rather than shared (it is
+ * that file's own): `\s` for ASCII; `\v` for the line and paragraph separators U+2028 / U+2029
+ * (the database refuses them written as `\u` escapes, and in JavaScript `\v` is the vertical tab,
+ * already in `\s`); every other Unicode space as the character itself.
+ */
+const SPACE = '[\\s\\v\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\ufeff]';
+
+/**
+ * «مجهول» with any spacing round it, or an empty name — `isUnknownFleetDriver`'s rule, in Mongo:
+ * « مجهول» written with a no-break space is «مجهول» to the register's filter as it is to the
+ * dashboard (D42).
+ */
+const UNKNOWN_DRIVER_NAME_PATTERN = new RegExp(
+  `^${SPACE}*(${FLEET_UNKNOWN_DRIVER_NAME})?${SPACE}*$`,
+  'u',
+);
 
 /** Per-vehicle sums for one year — the aggregate half of the FR-9 rollup. */
 export interface ViolationYearSums {
@@ -166,6 +183,29 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       sortableFields: ['year', 'date', 'createdAt', VEHICLE_CODE_SORT.key],
       sortDerived: [VEHICLE_CODE_SORT],
     });
+  }
+
+  /**
+   * The OWED amount (`collected !== true`) over EVERY live row `filter` finds — `GET
+   * /fleet/violations`' `meta.outstandingAmount` (D03): every page, never the one in hand, under
+   * the very filter the list was asked (its `kind` half, dates, cars, drivers, …); with no `kind`,
+   * both halves. A statement row's `amount` is already its count × unit value, so a row adds its
+   * amount as the rollup's `outstanding*Amount` does. Unrounded — the caller rounds to the piastre.
+   */
+  async outstandingAmount(filter: FilterQuery<FleetViolationDoc>): Promise<number> {
+    const owed: FilterQuery<FleetViolationDoc> = { collected: { $ne: true } };
+    const [row] = await this.model
+      .aggregate<{ amount: number }>([
+        {
+          $match: this.baseFilter(
+            undefined,
+            Object.keys(filter).length === 0 ? owed : { $and: [filter, owed] },
+          ),
+        },
+        { $group: { _id: null, amount: { $sum: '$amount' } } },
+      ])
+      .exec();
+    return row?.amount ?? 0;
   }
 
   violationFilter(query: {

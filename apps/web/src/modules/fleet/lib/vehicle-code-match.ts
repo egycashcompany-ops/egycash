@@ -21,7 +21,14 @@
 // The plate is deliberately not consulted. Both boards used to accept it, which meant a dispatcher
 // typing a plate got a row whose only visible identifier — the code in the cell — was not what
 // they typed, and no way to tell why that row was the answer.
-import { normalizeVehicleCode, splitVehicleCodeList } from '@ecms/contracts';
+//
+// TWO QUESTIONS, TWO ANSWERS. A box being TYPED into is a search: «كورولا» finds every Corolla
+// and «41» finds 410 (`matchesVehicleCode`). A list of codes PICKED from the board's own options,
+// or carried on a link («فتح» beside a car on the fleet dashboard), names those cars and no other:
+// «كورولا 1» is car «كورولا 1», never «كورولا 10» or «كورولا 11» (`isAnyVehicleCode`) — which is
+// what the same codes mean on every other screen, where `?vehicleCodes=` reaches the server's
+// `anyVehicleCode`.
+import { asciiDigits, normalizeVehicleCode, splitVehicleCodeList } from '@ecms/contracts';
 import { foldIncludes } from '../../../shared/lib/fold';
 
 /**
@@ -36,4 +43,29 @@ export const matchesVehicleCode = (code: string, term: string): boolean => {
   if (wanted.length === 0) return true;
   const held = normalizeVehicleCode(code);
   return wanted.some((one) => foldIncludes(held, one));
+};
+
+/**
+ * One code as a whole-code comparison reads it — the server's `vehicleCodePattern` rule: its
+ * whitespace as one space, Latin case ignored; and Arabic-Indic digits as Latin, the fold every
+ * code box in the browser applies.
+ */
+const wholeCode = (code: string): string => asciiDigits(normalizeVehicleCode(code)).toLowerCase();
+
+/**
+ * Is this vehicle code one of the codes listed — the WHOLE code, never a part of it?
+ *
+ * The browser's twin of the server's `anyVehicleCode` (api vehicles/vehicle-code-match.ts): the
+ * list is read by the canonical parser (`150 - 151`, `150,151`, «كورولا 1» as one code), and each
+ * code is compared whole, so «كورولا 1» answers car «كورولا 1» alone and «5» answers car 5 alone,
+ * not 15, 150 or 215. What the two roster boards narrow their picked codes (`?q=`) by.
+ *
+ * A list naming no code at all — empty, whitespace, a lone dash — narrows nothing, as on the
+ * server, where such a `?vehicleCodes=` is no filter.
+ */
+export const isAnyVehicleCode = (code: string, term: string): boolean => {
+  const wanted = splitVehicleCodeList(term);
+  if (wanted.length === 0) return true;
+  const held = wholeCode(code);
+  return wanted.some((one) => wholeCode(one) === held);
 };

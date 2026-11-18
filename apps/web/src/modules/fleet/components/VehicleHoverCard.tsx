@@ -4,7 +4,8 @@
 // The CAR card, the driver card's sibling: on every Fleet register table and board chip that shows
 // a car's code — never inside a picker, a filter or a form dialog — a short hover on the code (or
 // Tab onto it) opens a card about the car: its code, make and state, then the plate, the car's OWN
-// branch, its operation, today's drivers, the licence's expiry and the last odometer reading.
+// branch, its operation, today's drivers, the licence's expiry and the last odometer reading (the
+// newest, with the highest beside it when the two differ).
 //
 // How it behaves is the driver card's, to the class — the open/close control, the layer that
 // places it and the frame are the shared ones (`HoverCardLayer`), so a car's card and a driver's
@@ -33,6 +34,7 @@ import {
   useRosterToday,
   useVehicleTypes,
 } from '../api/fleet-queries';
+import { useLicenceWarnDays } from '../lib/licence-warn-days';
 import {
   findCardVehicle,
   vehicleCardFacts,
@@ -179,6 +181,45 @@ const LICENCE_INK: Record<ExpiryState, string> = {
   unknown: '',
 };
 
+/**
+ * One reading and its day, on one line: the figures' face is monospaced, so a six-figure reading
+ * and a date always take the same room; thin spaces round the dot keep it inside the width.
+ */
+const ReadingFigure = ({
+  km,
+  at,
+  mark,
+}: {
+  km: number;
+  at: string;
+  mark: 'newest' | 'highest';
+}): JSX.Element => {
+  const t = useT();
+  return (
+    <span
+      data-vehicle-card-reading={mark === 'newest' ? 'true' : undefined}
+      data-vehicle-card-highest={mark === 'highest' ? 'true' : undefined}
+      className="whitespace-nowrap"
+    >
+      <span>
+        <span dir="ltr" className="font-figures">
+          {LATIN.format(km)}
+        </span>{' '}
+        {t('fleet.vehicle.km')}
+      </span>
+      <span className="text-slate-400 dark:text-slate-500">{' · '}</span>
+      {/* The reading's day, a size down and muted: the km is the fact, the day says how fresh
+          it is. */}
+      <span
+        dir="ltr"
+        className="whitespace-nowrap font-figures text-xs font-semibold text-slate-500 dark:text-slate-400"
+      >
+        {ymd(at)}
+      </span>
+    </span>
+  );
+};
+
 /** A name that is still loading, or missing, as the card says it. */
 const Named = ({ value }: { value: string | 'loading' | null }): JSX.Element =>
   value === null || value === 'loading' ? <Missing loading={value === 'loading'} /> : <>{value}</>;
@@ -254,26 +295,15 @@ export const VehicleFacts = ({ facts }: { facts: VehicleCardFacts }): JSX.Elemen
             {reading.kind !== 'reading' ? (
               <Missing loading={reading.kind === 'loading'} />
             ) : (
-              // One line: the figures' face is monospaced, so a six-figure reading and a date
-              // always take the same room; thin spaces round the dot keep it inside the width.
-              <span data-vehicle-card-reading="true" className="whitespace-nowrap">
-                <span>
-                  <span dir="ltr" className="font-figures">
-                    {LATIN.format(reading.km)}
-                  </span>{' '}
-                  {t('fleet.vehicle.km')}
-                </span>
-                <span className="text-slate-400 dark:text-slate-500">{' · '}</span>
-                {/* The reading's day, a size down and muted: the km is the fact, the day says
-                    how fresh it is. */}
-                <span
-                  dir="ltr"
-                  className="whitespace-nowrap font-figures text-xs font-semibold text-slate-500 dark:text-slate-400"
-                >
-                  {ymd(reading.at)}
-                </span>
-              </span>
+              <ReadingFigure km={reading.km} at={reading.at} mark="newest" />
             )}
+          </Fact>
+        )}
+        {/* «آخر قراءة عداد» is the NEWEST reading; where the chain went backwards the highest is
+            another figure, and it is named beside it rather than passed off as the last one. */}
+        {reading.kind === 'reading' && reading.highest !== null && (
+          <Fact label={t('fleet.odometer.alarmReason.figure.highestReading')}>
+            <ReadingFigure km={reading.highest.km} at={reading.highest.at} mark="highest" />
           </Fact>
         )}
       </dl>
@@ -306,6 +336,8 @@ export const VehicleCardBody = ({ vehicle }: { vehicle: CardVehicle }): JSX.Elem
   const people = useFleetPeople(drivers);
   // Every car's last reading, any status — not the alarms, which cover active cars only.
   const latest = useLatestReadings();
+  // The licence's «ينتهي قريبًا» inside the admin's warning days, as the vehicles list says it.
+  const warnDays = useLicenceWarnDays();
   return (
     <VehicleFacts
       facts={vehicleCardFacts({
@@ -317,6 +349,7 @@ export const VehicleCardBody = ({ vehicle }: { vehicle: CardVehicle }): JSX.Elem
         people: !drivers || people.isError ? 'hidden' : (people.data ?? 'loading'),
         readings: !mayReadReadings || latest.isError ? 'hidden' : (latest.data ?? 'loading'),
         locale,
+        warnDays: warnDays.vehicle,
       })}
     />
   );

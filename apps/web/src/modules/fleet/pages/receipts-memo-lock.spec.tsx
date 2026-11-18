@@ -112,6 +112,7 @@ const TOTALS: FleetReceiptTotalsDto = {
   maintenanceTotal: 0,
   fuelCustodyTotal: 0,
   fuelUnpriced: 0,
+  custodyCount: 3,
 };
 const FILTERS = {
   from: undefined,

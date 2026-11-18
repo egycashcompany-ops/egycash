@@ -61,14 +61,14 @@ const LINE = String(new Types.ObjectId());
 const HOME = String(new Types.ObjectId());
 const ELSEWHERE = String(new Types.ObjectId());
 
-/** Holds `itAsset.*` over ONE branch — the home one. */
+/** Holds `itMobileLine.*` over ONE branch — the home one. */
 const ctx = {
   userId: String(new Types.ObjectId()),
   locale: 'ar',
   branchId: HOME,
   departmentId: null,
   sectionId: null,
-  permissions: { 'itAsset.create': 'branch', 'itAsset.edit': 'branch' },
+  permissions: { 'itMobileLine.create': 'branch', 'itMobileLine.edit': 'branch' },
   identity: { displayName: { ar: 'فني', en: 'Technician' } },
 } as never;
 /** The same technician, reaching every branch — to move a line between two of them. */
@@ -78,7 +78,7 @@ const everywhere = {
   branchId: HOME,
   departmentId: null,
   sectionId: null,
-  permissions: { 'itAsset.create': 'organization', 'itAsset.edit': 'organization' },
+  permissions: { 'itMobileLine.create': 'organization', 'itMobileLine.edit': 'organization' },
   identity: { displayName: { ar: 'فني', en: 'Technician' } },
 } as never;
 const scope = {} as never;
@@ -130,9 +130,20 @@ describe('registering a line', () => {
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ action: 'create' }));
   });
 
-  it('refuses a branch the caller’s itAsset.create does not reach — nothing is written', async () => {
+  it('refuses a branch the caller’s itMobileLine.create does not reach — nothing is written', async () => {
     await expect(
       itMobileLineService.register({ ...input, branchId: ELSEWHERE }, ctx),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(mocks.createLine).not.toHaveBeenCalled();
+  });
+
+  it('refuses a branch only the ASSETS’ grant reaches — the lines’ own grant decides', async () => {
+    const assetKeeper = {
+      ...(ctx as object),
+      permissions: { 'itAsset.create': 'organization', 'itMobileLine.create': 'branch' },
+    } as never;
+    await expect(
+      itMobileLineService.register({ ...input, branchId: ELSEWHERE }, assetKeeper),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(mocks.createLine).not.toHaveBeenCalled();
   });
@@ -189,7 +200,7 @@ describe('editing a line', () => {
     expect(entry.metadata.fields).toEqual(['ratePlan']);
   });
 
-  it('refuses a move into a branch the caller’s itAsset.edit does not reach', async () => {
+  it('refuses a move into a branch the caller’s itMobileLine.edit does not reach', async () => {
     mocks.findLine.mockResolvedValue(line());
     await expect(
       itMobileLineService.update(LINE, { branchId: ELSEWHERE, version: 2 }, ctx, scope),

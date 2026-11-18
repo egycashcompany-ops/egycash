@@ -1,47 +1,70 @@
-// The daily sheet (AT-6, frozen design v1.1 §10): one branch/section on one date, read-only.
+// «الحضور اليومي» — one branch-day, read from the database and drawn by `DailySheetView`.
 //
-// IT LISTS PEOPLE, NOT ROWS, and that is a correctness fix rather than a presentation choice. It
-// used to read the day list, which filters day DOCUMENTS — so an employee the engine had written
-// no row for was missing from the sheet instead of showing as not-yet-in. The branch servers
-// recompute only the employees who scanned, so the people this screen is opened to find were
-// exactly the people it could not show, and the sheet reported near-perfect attendance every
-// morning by construction. `/hr/attendance/days/sheet` starts from the employees and resolves
-// «لم يحضر بعد» / «غائب» from the clock against the hour they were due — writing nothing.
+// THE PAGE OWNS THE DATA AND THE CONTROLS; THE VIEW ONLY DRAWS. Every figure on the screen comes
+// from the API: the six counters and their shares, the arrival chart, the start of the working day
+// and its grace, the last scan, and every row. Nothing is computed here that the server has not
+// sent, and nothing is assumed — a sheet whose people have no roster draws no «بداية الدوام» line
+// rather than a line at nine o'clock nobody set.
 //
-// Every number here is a QUANTITY the engine derived — worked, late, early-leave, overtime — and
-// none of them is priced: pricing is Payroll's, and nothing on this screen knows a rate exists
-// (§1, D5). The one write the sheet offers is the overtime APPROVAL, which releases derived
-// minutes rather than valuing them, and it appears only for a caller holding the key.
+// IT LISTS PEOPLE, NOT ROWS. `listDays` filters day DOCUMENTS, so an employee the engine has
+// written no row for would be missing from the answer instead of shown as absent from work — and
+// the branch servers recompute only the people who scanned, so the ones this screen exists to find
+// are exactly the ones with no row. `/days/sheet` starts from the employees and resolves «لم يحضر
+// بعد» / «غائب» from the clock against the hour they were due, writing nothing.
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { type AttendanceDayDto, type Locale } from '@ecms/contracts';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  type AttendanceDayDto,
+  type AttendanceDayStatus,
+  type AttendanceSheetRowDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
-import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
-import { Can, useCan } from '../../../../platform/rbac/Can';
+import { PageContainer } from '../../../../platform/layout/PageContainer';
+import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
-import { Button, EmptyState, Pagination } from '../../../../shared/ui';
+import { Button, Pagination } from '../../../../shared/ui';
+import { DebouncedInput } from '../../../../shared/ui/DebouncedInput';
 import { Input } from '../../../../shared/ui/form';
-import { FilterBar } from '../../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../../shared/ui/MultiSelect';
 import { readList, writeList } from '../../../../shared/lib/list-param';
 import { localized, orgUnitLabel } from '../../../../shared/lib/format';
-import { useBranchOptions, useSectionOptions } from '../../../organization/shared/references';
-import { SheetTable } from '../components/SheetTable';
-import { OvertimeApprovalDialog } from '../components/OvertimeApprovalDialog';
-import { downloadAttendanceExport } from '../api/attendance-api';
-import { useAttendanceSheet } from '../api/attendance-queries';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+import { useBranchOptions, useSectionOptions } from '../../../organization/shared/references';
+import { OvertimeApprovalDialog } from '../components/OvertimeApprovalDialog';
+import { DayDecisionDialog } from '../components/DayDecisionDialog';
+import { downloadAttendanceExport } from '../api/attendance-api';
+import { useAttendanceSheet, useAttendanceSheetSummary } from '../api/attendance-queries';
+import { addDays } from '../components/period';
+import { cairoNowMinutes, cairoToday, toSheetRow } from '../view-model';
+import { DailySheetView, type SheetFilter } from '../views';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['branch', 'section'] as const;
+const REMEMBERED_FILTERS = ['branch', 'section', 'status', 'q'] as const;
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+/**
+ * Which day statuses each counter stands for.
+ *
+ * THE GROUPING LIVES HERE, not on the server, which counts all thirteen separately. `late` is a
+ * presence — the person is at work — but a supervisor scanning the band wants it called out, so it
+ * is its own counter; a count the server had already blended could not be unblended by a reader
+ * who wanted the other grouping. `checkedIn` sits with `present`: on this payroll most people scan
+ * on arrival and never scan out, so an arrival alone IS the ordinary present day.
+ */
+export const FILTER_STATUSES: Record<Exclude<SheetFilter, 'all'>, AttendanceDayStatus[]> = {
+  present: ['present', 'checkedIn'],
+  late: ['late', 'lateAndEarly', 'earlyLeave'],
+  notYetIn: ['pending'],
+  absent: ['absent'],
+  onLeave: ['onLeave'],
+};
 
 export const DailySheetPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
+  const navigate = useNavigate();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(cairoToday);
   // The filters live in the URL so the screen is shareable and survives a reload — and so the
   // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
   // list is a view of this screen rather than a place to go Back to.
@@ -60,9 +83,12 @@ export const DailySheetPage = (): JSX.Element => {
   // «هنخلي كل الفلترز multi»: several branches and several sections, each ORed, as comma lists.
   const branchIds = readList(sp, 'branch');
   const sectionIds = readList(sp, 'section');
+  const statuses = readList(sp, 'status') as AttendanceDayStatus[];
+  const search = sp.get('q') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
   const [approving, setApproving] = useState<AttendanceDayDto | null>(null);
+  const [deciding, setDeciding] = useState<AttendanceSheetRowDto | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
@@ -72,20 +98,63 @@ export const DailySheetPage = (): JSX.Element => {
   const branches = useBranchOptions();
   const sections = useSectionOptions(undefined);
 
-  const filters = useMemo(
+  /** What both reads narrow by. The status filter is the sheet's alone — the counts never narrow. */
+  const scopeFilters = useMemo(
     () => ({
       date,
-      page,
-      pageSize: 50,
       ...(branchIds.length === 0 ? {} : { branchId: branchIds }),
       ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
+      ...(search === '' ? {} : { search }),
     }),
     // Keyed by the lists' text: a fresh array each render is not a new filter.
-    [date, branchIds.join(','), sectionIds.join(','), page],
+    [date, branchIds.join(','), sectionIds.join(','), search],
+  );
+  const filters = useMemo(
+    () => ({
+      ...scopeFilters,
+      page,
+      pageSize: 50,
+      ...(statuses.length === 0 ? {} : { status: statuses }),
+    }),
+    [scopeFilters, page, statuses.join(',')],
   );
   const days = useAttendanceSheet(filters, date !== '');
+  // Deliberately NOT narrowed by the status filter: the band is what the filter is chosen FROM, so
+  // pressing «غائب» must not collapse every other count to zero.
+  const summary = useAttendanceSheetSummary(scopeFilters, date !== '');
+
+  const counts = summary.data;
+  const countOf = (key: Exclude<SheetFilter, 'all'>): number =>
+    counts === undefined
+      ? 0
+      : FILTER_STATUSES[key].reduce((sum, status) => sum + (counts.byStatus[status] ?? 0), 0);
+
+  /** Which counter is currently applied — read back from the URL, so a reload keeps it. */
+  const activeFilter: SheetFilter = useMemo(() => {
+    if (statuses.length === 0) return 'all';
+    const applied = writeList([...statuses]);
+    const match = (Object.keys(FILTER_STATUSES) as Exclude<SheetFilter, 'all'>[]).find(
+      (key) => writeList([...FILTER_STATUSES[key]]) === applied,
+    );
+    return match ?? 'all';
+  }, [statuses.join(',')]);
+
+  const onFilter = (next: SheetFilter): void => {
+    // Pressing the applied counter again clears back to everybody, which is what «عرض الكل» does.
+    patch({
+      status:
+        next === 'all' || next === activeFilter ? null : writeList([...FILTER_STATUSES[next]]),
+    });
+  };
+
+  const goToDay = (step: number): void => {
+    setDate((current) => addDays(current, step));
+    setPage(1);
+  };
 
   const runExport = (): void => {
+    // A second press while the first file is still being built would download the same day twice.
+    if (exporting) return;
     setExporting(true);
     setExportError(null);
     downloadAttendanceExport({
@@ -100,90 +169,149 @@ export const DailySheetPage = (): JSX.Element => {
       .finally(() => setExporting(false));
   };
 
+  const rowActions = (row: AttendanceSheetRowDto): JSX.Element | null => {
+    const parts: JSX.Element[] = [];
+    // Deciding needs no day row — the commonest case for it is somebody with no row at all — but
+    // a frozen day is refused by the server, so it is not offered.
+    if (can('attendance.decide') && (row.day === null || row.day.frozenAt === null)) {
+      parts.push(
+        <Button key="decide" size="sm" variant="secondary" onClick={() => setDeciding(row)}>
+          {t('attendance.decision.action')}
+        </Button>,
+      );
+    }
+    // The approval is offered only where it can succeed: a derived surplus, an unfrozen row, and
+    // the key in hand. A line with no day row has nothing to approve — no version, no overtime.
+    if (
+      can('attendance.approveOvertime') &&
+      row.day !== null &&
+      row.day.overtimeMinutes > 0 &&
+      row.day.frozenAt === null
+    ) {
+      const day = row.day;
+      parts.push(
+        <Button key="ot" size="sm" variant="secondary" onClick={() => setApproving(day)}>
+          {t('attendance.overtime.approve')}
+        </Button>,
+      );
+    }
+    return parts.length === 0 ? null : <>{parts}</>;
+  };
+
+  const today = cairoToday();
+  const rows = (days.data?.items ?? []).map((row) =>
+    toSheetRow(row, { today, locale, label: t, actions: rowActions(row) ?? undefined }),
+  );
+
+  const dateTitle = new Intl.DateTimeFormat(locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${date}T00:00:00.000Z`));
+
+  /** «منذ دقيقتين» — the browser's own relative formatter, from the real scan time. */
+  const lastScan = useMemo(() => {
+    const at = counts?.lastPunchAt ?? null;
+    if (at === null) return null;
+    const minutes = Math.round((Date.now() - new Date(at).getTime()) / 60_000);
+    const rtf = new Intl.RelativeTimeFormat(locale === 'ar' ? 'ar-EG' : 'en-GB', {
+      numeric: 'auto',
+    });
+    if (minutes < 60) return rtf.format(-minutes, 'minute');
+    if (minutes < 60 * 24) return rtf.format(-Math.round(minutes / 60), 'hour');
+    return rtf.format(-Math.round(minutes / (60 * 24)), 'day');
+  }, [counts?.lastPunchAt, locale]);
+
   return (
     <PageContainer>
-      <PageHeader
-        title={t('attendance.daily.title')}
-        breadcrumbs={[{ label: t('attendance.module.title') }, { label: t('attendance.daily.title') }]}
-        actions={
-          <Can permission="attendance.export">
-            <Button size="sm" variant="secondary" loading={exporting} onClick={runExport}>
-              {t('attendance.daily.export')}
-            </Button>
-          </Can>
-        }
-      />
-
-      {/* The shared filter bar: the date stays one day; each list is as wide as its name and takes
-          several picks («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»). */}
-      <div className="mb-4">
-        <FilterBar
-          onClear={() => patch({ branch: null, section: null })}
-          hasActiveFilters={branchIds.length > 0 || sectionIds.length > 0}
-        >
-          <label className="flex items-center gap-1.5 text-sm text-slate-500">
-            <span className="hidden whitespace-nowrap sm:inline">{t('attendance.daily.date')}</span>
-            <Input
-              type="date"
-              value={date}
-              onChange={(e) => {
-                setDate(e.target.value);
-                setPage(1);
-              }}
-              aria-label={t('attendance.daily.date')}
-              dir="ltr"
-              className="w-auto"
-            />
-          </label>
-          <MultiSelect
-            label={t('attendance.daily.branch')}
-            value={branchIds}
-            onChange={(next) => patch({ branch: writeList(next) })}
-            options={(branches.data ?? []).map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
-          />
-          <MultiSelect
-            label={t('attendance.daily.section')}
-            value={sectionIds}
-            onChange={(next) => patch({ section: writeList(next) })}
-            options={(sections.data ?? []).map((s) => ({ value: s.id, label: orgUnitLabel(s, locale) }))}
-          />
-        </FilterBar>
-      </div>
-
       {exportError !== null && (
         <p role="alert" className="mb-3 text-sm text-red-600">
           {exportError}
         </p>
       )}
 
-      <SheetTable
-        rows={days.data?.items ?? []}
-        loading={days.isLoading}
-        error={days.isError ? days.error : undefined}
-        onRetry={() => void days.refetch()}
-        empty={<EmptyState title={t('attendance.daily.empty')} />}
-        rowActions={(row) =>
-          // The approval is offered only where it can succeed: a derived surplus, an unfrozen
-          // row, and the key in hand. A line with no day row has nothing to approve — there is no
-          // version to send and no overtime to release.
-          can('attendance.approveOvertime') &&
-          row.day !== null &&
-          row.day.overtimeMinutes > 0 &&
-          row.day.frozenAt === null ? (
-            <Button size="sm" variant="secondary" onClick={() => setApproving(row.day)}>
-              {t('attendance.overtime.approve')}
-            </Button>
-          ) : null
+      <DailySheetView
+        dateTitle={dateTitle}
+        dateInput={
+          <Input
+            type="date"
+            value={date}
+            onChange={(e) => {
+              if (e.target.value === '') return;
+              setDate(e.target.value);
+              setPage(1);
+            }}
+            aria-label={t('attendance.daily.date')}
+            dir="ltr"
+            className="w-auto border-0 bg-transparent px-1 py-0 focus:ring-0"
+          />
         }
+        onPrevDay={() => goToDay(-1)}
+        onNextDay={() => goToDay(1)}
+        filters={
+          <div className="flex flex-wrap items-center gap-2">
+            <DebouncedInput
+              value={search}
+              onValueChange={(value) => patch({ q: value })}
+              placeholder={t('attendance.daily.search')}
+              aria-label={t('attendance.daily.search')}
+              className="w-full sm:w-64"
+            />
+            <MultiSelect
+              label={t('attendance.daily.branch')}
+              value={branchIds}
+              onChange={(next) => patch({ branch: writeList(next) })}
+              options={(branches.data ?? []).map((b) => ({
+                value: b.id,
+                label: localized(b.name, locale),
+              }))}
+            />
+            <MultiSelect
+              label={t('attendance.daily.section')}
+              value={sectionIds}
+              onChange={(next) => patch({ section: writeList(next) })}
+              options={(sections.data ?? []).map((s) => ({
+                value: s.id,
+                label: orgUnitLabel(s, locale),
+              }))}
+            />
+          </div>
+        }
+        summary={{
+          employees: counts?.total ?? 0,
+          present: countOf('present'),
+          late: countOf('late'),
+          notYetIn: countOf('notYetIn'),
+          absent: countOf('absent'),
+          onLeave: countOf('onLeave'),
+        }}
+        arrivals={counts?.arrivals ?? []}
+        dayStart={counts?.dayStart ?? null}
+        grace={counts?.graceMinutes ?? 0}
+        // The marker is drawn only on the day being lived; on any other date "now" is not a fact
+        // about the sheet, and a line through yesterday at this hour would mean nothing.
+        now={date === today ? cairoNowMinutes() : null}
+        lastScan={lastScan}
+        activeFilter={activeFilter}
+        onFilter={onFilter}
+        rows={rows}
+        loading={days.isLoading}
+        footer={
+          days.data === undefined ? undefined : (
+            <Pagination meta={days.data.meta} onPageChange={setPage} />
+          )
+        }
+        {...(can('attendance.export') ? { onExport: runExport } : {})}
+        onOpenEmployee={(id) => navigate(`/attendance/employees/${id}?from=${date}&to=${date}`)}
       />
-
-      {days.data !== undefined && (
-        <Pagination meta={days.data.meta} onPageChange={setPage} />
-      )}
 
       {approving !== null && (
         <OvertimeApprovalDialog day={approving} onClose={() => setApproving(null)} />
       )}
+
+      {deciding !== null && <DayDecisionDialog row={deciding} onClose={() => setDeciding(null)} />}
     </PageContainer>
   );
 };

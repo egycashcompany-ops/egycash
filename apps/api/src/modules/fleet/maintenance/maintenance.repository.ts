@@ -101,6 +101,32 @@ const dayAfter = (date: Date): Date => {
   return next;
 };
 
+/**
+ * One group's visits in the exit breakdown: how many, the latest check-in day, and that visit's
+ * work type and id — the later recorded of two on one day (`_id` desc), so two groups folded into
+ * one car (D20) still agree on which visit was the last.
+ */
+const lastVisitOf = {
+  visits: { $sum: 1 },
+  lastInDate: { $max: '$inDate' },
+  lastWorkTypeId: {
+    $top: { sortBy: { inDate: -1, _id: -1 }, output: { $ifNull: ['$workTypeId', null] } },
+  },
+  lastVisitId: { $top: { sortBy: { inDate: -1, _id: -1 }, output: '$_id' } },
+} as const;
+
+const lastVisitFacts = (row: {
+  visits: number;
+  lastInDate: Date;
+  lastWorkTypeId: Types.ObjectId | null;
+  lastVisitId: Types.ObjectId;
+}): VisitGroupFacts => ({
+  visits: row.visits,
+  lastInDate: row.lastInDate,
+  lastWorkTypeId: row.lastWorkTypeId == null ? null : String(row.lastWorkTypeId),
+  lastVisitId: String(row.lastVisitId),
+});
+
 class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc> {
   constructor() {
     super(FleetMaintenanceVisitModel, {});
@@ -674,7 +700,9 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
    * the whole-day stays of the closed ones, per work type, per workshop and per registry car (its
    * visits, its latest check-in and that visit's work type). The state, work-type and workshop
    * facets partition the same matched rows, so each sums to `count`. A row kept from the old book
-   * with no registry car is in `count`, the bars and `unregistered` — never in `byVehicle`.
+   * with no registry car is in `count`, the bars and `unregistered` — never in `byVehicle`; it is
+   * grouped by the code the book wrote in `byBook`, so the service can fold it into the live car
+   * that carries that code now (D20), as the list's own code filter does.
    *
    * A stay is `$dateDiff` in days, check-in → check-out: the calendar days crossed in UTC, which is
    * the day every visit date is read as (`ymdOf`) — the same day = 0, whatever the stored time.
@@ -692,6 +720,14 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
         visits: number;
         lastInDate: Date;
         lastWorkTypeId: Types.ObjectId | null;
+        lastVisitId: Types.ObjectId;
+      }[];
+      byBook: {
+        _id: string;
+        visits: number;
+        lastInDate: Date;
+        lastWorkTypeId: Types.ObjectId | null;
+        lastVisitId: Types.ObjectId;
       }[];
     }>([
       { $match: this.baseFilter(undefined, filter) },
@@ -722,20 +758,13 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
             // Registry cars only (a choice: the ranking names a registry car); the old book's rows
             // with no car stay in `state` (count, `unregistered`) and the bars.
             { $match: { vehicleId: { $type: 'objectId' } } },
-            {
-              $group: {
-                _id: '$vehicleId',
-                visits: { $sum: 1 },
-                lastInDate: { $max: '$inDate' },
-                // The latest check-in's work type; the later recorded of two on one day.
-                lastWorkTypeId: {
-                  $top: {
-                    sortBy: { inDate: -1, _id: -1 },
-                    output: { $ifNull: ['$workTypeId', null] },
-                  },
-                },
-              },
-            },
+            { $group: { _id: '$vehicleId', ...lastVisitOf } },
+          ],
+          byBook: [
+            // The old book's rows with no registry car, by the code the book wrote (a row with no
+            // code names no car and is left out: it stays in `unregistered` only).
+            { $match: { vehicleId: null, vehicleCode: { $type: 'string' } } },
+            { $group: { _id: '$vehicleCode', ...lastVisitOf } },
           ],
         },
       },
@@ -756,9 +785,11 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       })),
       byVehicle: (facets?.byVehicle ?? []).map((row) => ({
         vehicleId: String(row._id),
-        visits: row.visits,
-        lastInDate: row.lastInDate,
-        lastWorkTypeId: row.lastWorkTypeId == null ? null : String(row.lastWorkTypeId),
+        ...lastVisitFacts(row),
+      })),
+      byBook: (facets?.byBook ?? []).map((row) => ({
+        code: row._id,
+        ...lastVisitFacts(row),
       })),
     };
   }
@@ -815,13 +846,22 @@ export interface VisitBreakdownFacts {
   byWorkType: { id: string; count: number }[];
   byWorkshop: { id: string; count: number }[];
   /** Per registry car (a visit with no registry car is not here). */
-  byVehicle: {
-    vehicleId: string;
-    visits: number;
-    lastInDate: Date;
-    /** The work type of its latest check-in (the later recorded on a tie). */
-    lastWorkTypeId: string | null;
-  }[];
+  byVehicle: ({ vehicleId: string } & VisitGroupFacts)[];
+  /**
+   * The old book's visits with no registry car, per code the book wrote (a visit with no code is
+   * not here; like every book row, each is also in `unregistered`).
+   */
+  byBook: ({ code: string } & VisitGroupFacts)[];
+}
+
+/** One group of visits in the exit breakdown — a registry car's, or an old-book code's. */
+export interface VisitGroupFacts {
+  visits: number;
+  lastInDate: Date;
+  /** The work type of its latest check-in (the later recorded on a tie). */
+  lastWorkTypeId: string | null;
+  /** That latest visit's id — the tie-break when two groups meet on one day. */
+  lastVisitId: string;
 }
 
 export const fleetMaintenanceRepository = new FleetMaintenanceRepository();

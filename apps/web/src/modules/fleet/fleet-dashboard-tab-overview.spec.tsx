@@ -8,7 +8,9 @@
 // say, and links over its own read's echo; the company-wide figures (the custody fund) wear «الشركة
 // كلها» only while the rest are narrowed (the notices and the fuel cards follow the car's branch, so
 // their lines never do, and their links carry the branch); nothing the owner ruled
-// out is drawn. It also carries the pins of the retired «التنبيهات» tab that still hold.
+// out is drawn; the workshop card's parts add up to its headline (D06: «مكهنة» and «بلا سيارة في
+// السجل» only when they hold a visit). It also carries the pins of the retired «التنبيهات» tab that
+// still hold.
 //
 // Rendered through the real page over seeded caches (`renderDashboard`), the fleet-dashboard way; the
 // month card's states the cache cannot hold (failed, not asked) through the tab itself.
@@ -33,6 +35,7 @@ import { readPeriodFilters, toPeriodQuery } from './lib/fleet-dashboard-url';
 import { alertLines } from './lib/fleet-dashboard-tabs';
 import { OverviewTab } from './components/fleet-dashboard/tab-overview';
 import { type MonthRead } from './components/fleet-dashboard/dash-shell';
+import { type CustodyFigures } from './components/fleet-dashboard/custody-fund-line';
 import {
   ALL_KEYS,
   B1,
@@ -106,6 +109,8 @@ const MONTH: FleetDashboardPeriodDto = {
     maintenance: 1800,
     litres: 470,
     unpricedFuel: 0,
+    // The custody-paid receipts of the 40 (the overview reads none).
+    custodyCount: 22,
   },
   unavailable: [],
 };
@@ -188,7 +193,7 @@ const parse = (href: string): { pathname: string; params: URLSearchParams } => {
 
 // ── The tab itself, for the month card's states a seeded cache cannot hold ─────────────────────
 
-const CUSTODY = {
+const CUSTODY: CustodyFigures = {
   lines: 1,
   fundTotal: 159974.54,
   waiting: 0,
@@ -197,6 +202,10 @@ const CUSTODY = {
   error: false,
   updatedAt: 1,
   refetch: () => undefined,
+  // «العهدة»'s own parts (its «الآن» band): the overview draws none of them.
+  detail: null,
+  failure: null,
+  fetching: false,
 };
 const MONTH_READ: MonthRead = {
   data: MONTH,
@@ -303,7 +312,8 @@ describe('«نظرة عامة» — the heading and the six KPI cards', () => {
     expect(text(body)).toContain('6 سيارات في الورشة');
     expect(text(body)).toContain('منذ 9 أيام');
     expect(text(body)).toContain('نشطة 5 · خارج الخدمة 1');
-    expect(hrefOf(body, 'workshop.open')).toEqual(['/fleet/maintenance?state=open']);
+    // The visits checked in by today (the server's own bound, D07).
+    expect(hrefOf(body, 'workshop.open')).toEqual([`/fleet/maintenance?state=open&to=${TODAY}`]);
     expect(hrefOf(body, 'workshop.oldest')).toEqual(['/fleet/vehicles/v141']);
     // The car's file has its own guard; a car that came in today is «منذ اليوم», never «منذ 0».
     const blind = kpi(
@@ -324,6 +334,64 @@ describe('«نظرة عامة» — the heading and the six KPI cards', () => {
     );
     expect(text(today)).toContain(ar('fleet.dash.common.sinceToday'));
     expect(text(today)).not.toContain('منذ 0');
+  });
+
+  it('K3: «مكهنة» and «بلا سيارة في السجل» join the split when they hold a visit — the parts add up to the headline (D06)', () => {
+    const workshop = need(NOW.workshop);
+    const parts = { open: 9, openActive: 5, openOutOfService: 1, openDisposed: 1, openNoCar: 2 };
+    expect(parts.openActive + parts.openOutOfService + parts.openDisposed + parts.openNoCar).toBe(
+      parts.open,
+    );
+    const body = kpi(
+      page('/fleet?tab=overview', { now: { ...NOW, workshop: { ...workshop, ...parts } } }),
+      'workshop',
+    );
+    const split = part(body, 'data-dash-workshop-split="true"', /data-dash-kpi=|<\/section>/u);
+    expect(text(split)).toContain(
+      `نشطة 5 · خارج الخدمة 1 · ${ar('fleet.dash.now.statusDisposed')} 1 · ${ar('fleet.dash.now.statusNoCar')} 2`,
+    );
+    // Each extra part holds its own «·» inside its unbreakable span: a wrapped line never ends on
+    // a lone «·» (the shot at 1920 and 375 did, before).
+    expect(split).toContain(
+      `<span class="whitespace-nowrap">· ${ar('fleet.dash.now.statusDisposed')}`,
+    );
+    expect(split).toContain(
+      `<span class="whitespace-nowrap">· ${ar('fleet.dash.now.statusNoCar')}`,
+    );
+    // The headline is unchanged: the open visits, the one linked figure; the parts are plain.
+    expect(text(body)).toContain('9 سيارات في الورشة');
+    expect(hrefOf(body, 'workshop.open')).toEqual([`/fleet/maintenance?state=open&to=${TODAY}`]);
+    expect(links(split)).toEqual([]);
+    // One part alone, the other empty: only the one with a visit is said.
+    const one = kpi(
+      page('/fleet?tab=overview', {
+        now: { ...NOW, workshop: { ...workshop, open: 7, openDisposed: 0, openNoCar: 1 } },
+      }),
+      'workshop',
+    );
+    expect(text(one)).toContain(`نشطة 5 · خارج الخدمة 1 · ${ar('fleet.dash.now.statusNoCar')} 1`);
+    expect(text(one)).not.toContain(ar('fleet.dash.now.statusDisposed'));
+    // None: the approved two parts alone.
+    const none = kpi(
+      page('/fleet?tab=overview', {
+        now: { ...NOW, workshop: { ...workshop, openDisposed: 0, openNoCar: 0 } },
+      }),
+      'workshop',
+    );
+    expect(text(none)).not.toContain(ar('fleet.dash.now.statusDisposed'));
+    expect(text(none)).not.toContain(ar('fleet.dash.now.statusNoCar'));
+  });
+
+  it('K3: the words of the two new parts are the vehicles screen’s and the owner’s (green once the HUB merges i18n/W3.json)', () => {
+    const workshop = need(NOW.workshop);
+    const body = kpi(
+      page('/fleet?tab=overview', {
+        now: { ...NOW, workshop: { ...workshop, open: 9, openDisposed: 1, openNoCar: 2 } },
+      }),
+      'workshop',
+    );
+    expect(text(body)).toContain('نشطة 5 · خارج الخدمة 1 · مكهنة 1 · بلا سيارة في السجل 2');
+    expect(ar('fleet.dash.now.statusDisposed')).toBe(ar('fleet.vehicles.status.disposed'));
   });
 
   it('K4 «تنبيهات عاجلة» counts the red LINES, of all the lines that fired — a plain figure', () => {
@@ -406,7 +474,8 @@ describe('«نظرة عامة» — the action centre', () => {
       fuelRequests: '/fleet/fuel-cards/charging?state=requested',
       fuelLow: '/fleet/fuel-cards/charging?state=low',
       dealershipPending: '/fleet/dealership?state=pending',
-      noticesMissing: '/fleet/notices?status=open',
+      // «ينقصها مرفق» — the notices the line counts, no more (D10).
+      noticesMissing: '/fleet/notices?status=open&missing=any',
       custody: '/fleet/custody/dashboard',
       noReading: '/fleet/odometer?vehicleCodes=304,112&period=all',
     };
@@ -436,7 +505,9 @@ describe('«نظرة عامة» — the action centre', () => {
   it('keeps the figures the retired «التنبيهات» said on the alarm and crew lines — nobody loses one', () => {
     // The cars approaching the limit (yellow), opening their own board; under a branch, their codes.
     const alarm = row(html, 'maintenanceRed');
-    expect(text(alarm)).toContain('منها 1 تجاوزته');
+    expect(text(alarm)).toContain(
+      ar('fleet.dash.overview.actions.line.maintenanceRed.sub', { count: '1' }),
+    );
     expect(text(alarm)).toContain('6 تقترب منه');
     expect(hrefOf(alarm, 'maintenanceAlarm.yellow')).toEqual([
       '/fleet/maintenance-alarms?level=yellow',
@@ -510,8 +581,11 @@ describe('«نظرة عامة» — the action centre', () => {
   });
 
   it('counts EXACTLY the custody dashboard’s banner lines, from the one hook (D3)', () => {
-    expect(row(html, 'custody')).toContain('data-dash-action-count="1"');
-    expect(text(row(html, 'custody'))).toContain('1 تنبيه');
+    // The seeded custody screen fires three of its five lines: a kind with receipts outside the
+    // memos past 30 days (b), a memo not replenished past 30 days (c) and a licence part waiting
+    // for its settlement past 30 days (d) — the fund is positive (a) and covers the parts (e).
+    expect(row(html, 'custody')).toContain('data-dash-action-count="3"');
+    expect(text(row(html, 'custody'))).toContain('3 تنبيهات');
     expect(hrefOf(row(html, 'custody'), 'custodyFund.lines')).toEqual(['/fleet/custody/dashboard']);
   });
 
@@ -538,7 +612,18 @@ describe('«نظرة عامة» — the action centre', () => {
         ...NOW,
         licenceVehicles: {
           ...lic,
-          list: [{ vehicleId: 'v500', code: '500', expiresAt: `${TODAY}T00:00:00.000Z`, days: 0 }],
+          // The row's make, class and papers: the overview reads none of them.
+          list: [
+            {
+              vehicleId: 'v500',
+              code: '500',
+              expiresAt: TODAY,
+              days: 0,
+              typeName: null,
+              licenceClass: null,
+              papers: null,
+            },
+          ],
         },
       },
     });
@@ -927,7 +1012,9 @@ describe('«نظرة عامة» — scope, readers and the ruled-out words', () 
       'noticesMissing',
     );
     expect(one).not.toContain('data-company-wide');
-    expect(hrefOf(one, 'notices.missingAny')).toEqual([`/fleet/notices?status=open&branch=${B1}`]);
+    expect(hrefOf(one, 'notices.missingAny')).toEqual([
+      `/fleet/notices?status=open&missing=any&branch=${B1}`,
+    ]);
     expect(hrefOf(one, 'notices.missingCheckImage')).toEqual([
       `/fleet/notices?status=open&checkImage=missing&branch=${B1}`,
     ]);
@@ -936,7 +1023,7 @@ describe('«نظرة عامة» — scope, readers and the ruled-out words', () 
       'noticesMissing',
     );
     expect(hrefOf(several, 'notices.missingAny')).toEqual([
-      `/fleet/notices?status=open&branch=${B1},${GIZA_BRANCH.id}`,
+      `/fleet/notices?status=open&missing=any&branch=${B1},${GIZA_BRANCH.id}`,
     ]);
   });
 

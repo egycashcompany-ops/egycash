@@ -12,9 +12,15 @@
 //   • today's drivers — TODAY's «تعيين السيارات» (the roster board's own Cairo day) under
 //     `fleetRoster.view`, named from Fleet's people under `fleetDriver.view`;
 //   • the last odometer reading — every registry car's last reading, ANY status
-//     (`GET /fleet/odometer/latest-readings`, the alarms' own figure), under the alarms' own
+//     (`GET /fleet/odometer/latest-readings`, the alarms' own read), under the alarms' own
 //     permissions. Not the alarms list itself: that covers ACTIVE cars only, so a car out of
 //     service after an accident read «—» («none on file») although its log has readings.
+//     «آخر قراءة عداد» is the NEWEST row on the car's chain (`newest`), the one the odometer
+//     register lists first and the dashboard's «آخر قراءة» dates; the HIGHEST reading (the
+//     alarm's figure) is named beside it as «أعلى قراءة» only when the two differ — a chain that
+//     went backwards. It used to print the highest under «آخر قراءة عداد».
+//   • the licence's state — the Cairo day, against the warning days the admin set in «إعدادات
+//     الحركة» (`useLicenceWarnDays`), as the vehicles list and the dashboard colour it.
 //
 // Kept pure, out of the component, so every way a fact can be missing is testable without a
 // browser — and so a missing fact is always said as missing, never filled with a guess.
@@ -22,10 +28,10 @@ import {
   cairoYmd,
   expiryStateOn,
   normalizeVehicleCode,
+  type FleetAlarmChainPointDto,
   type FleetPersonDto,
   type FleetRosterDayDto,
   type FleetVehicleDto,
-  type FleetVehicleLatestReadingDto,
   type FleetVehicleStatus,
   type Locale,
   type LocalizedString,
@@ -106,16 +112,51 @@ export type VehicleCardDrivers =
 
 /**
  * The last odometer reading.
- * - `reading`: the car's current reading and its day.
- * - `none`: the projection has no reading for the car — drawn as a dash. (It covers the ACTIVE
- *   cars; a car out of service or disposed of reads as none here.)
+ * - `reading`: the car's NEWEST reading and its day — «آخر قراءة عداد», the register's first row.
+ *   `highest` is the highest reading and its day when it is not that one (a chain that went
+ *   backwards), drawn beside it as «أعلى قراءة»; `null` on a healthy chain.
+ * - `none`: no reading on file for the car — drawn as a dash.
  * - `loading`, `hidden` (no alarms permission, or the read failed — the line is left out).
  */
 export type VehicleCardReading =
-  | { kind: 'reading'; km: number; at: string }
+  | { kind: 'reading'; km: number; at: string; highest: { km: number; at: string } | null }
   | { kind: 'none' }
   | { kind: 'loading' }
   | { kind: 'hidden' };
+
+/**
+ * One car's row of `GET /fleet/odometer/latest-readings` (`FleetVehicleLatestReadingDto`), as the
+ * card reads it — the figures nullable, so a row with none reads as none on file.
+ */
+export interface CardLatestReading {
+  vehicleId: string;
+  /** The HIGHEST reading — the alarm's figure. */
+  latestReading: number | null;
+  latestReadingAt: string | null;
+  /** The NEWEST row on the chain; `null` when the row carries none (read as the highest). */
+  newest: FleetAlarmChainPointDto | null;
+}
+
+/**
+ * What the card (and the car record's «آخر قراءة عداد») says about a car's readings, from its row:
+ * the newest reading, and the highest beside it only when it is a different figure. No row, or a
+ * row with no reading, is none on file.
+ */
+export const cardReadingOf = (row: CardLatestReading | undefined): VehicleCardReading => {
+  if (row === undefined || row.latestReading === null || row.latestReadingAt === null) {
+    return { kind: 'none' };
+  }
+  const newest = row.newest ?? { reading: row.latestReading, date: row.latestReadingAt };
+  return {
+    kind: 'reading',
+    km: newest.reading,
+    at: newest.date,
+    highest:
+      newest.reading === row.latestReading
+        ? null
+        : { km: row.latestReading, at: row.latestReadingAt },
+  };
+};
 
 export interface VehicleCardFacts {
   vehicleId: string;
@@ -150,10 +191,16 @@ const nameIn = (
 
 /**
  * Where a licence stands TODAY — the vehicles board's rule (`expiryState` there): the Cairo day,
- * expired ON its expiry day, «soon» inside thirty days.
+ * expired ON its expiry day, «soon» inside the warning days the admin set
+ * (`useLicenceWarnDays().vehicle`, thirty by default) — the days the dashboard counts
+ * «تنتهي خلال N يومًا» with.
  */
-export const licenceState = (expiresAt: string | null, now = Date.now()): ExpiryState => {
-  const state = expiryStateOn(expiresAt, cairoYmd(new Date(now)), 30);
+export const licenceState = (
+  expiresAt: string | null,
+  warnDays: number,
+  now = Date.now(),
+): ExpiryState => {
+  const state = expiryStateOn(expiresAt, cairoYmd(new Date(now)), warnDays);
   return state === 'notRecorded' ? 'unknown' : state === 'expiring' ? 'soon' : state;
 };
 
@@ -180,6 +227,7 @@ export const vehicleCardFacts = ({
   people,
   readings,
   locale,
+  warnDays,
   now = Date.now(),
 }: {
   vehicle: CardVehicle;
@@ -195,14 +243,10 @@ export const vehicleCardFacts = ({
    * Every car's last reading, any status (no row = no reading on file); `loading`; `hidden` — no
    * odometer/workshop permission, or the read failed. A null reading reads as none, too.
    */
-  readings:
-    | readonly (Pick<FleetVehicleLatestReadingDto, 'vehicleId'> & {
-        latestReading: number | null;
-        latestReadingAt: string | null;
-      })[]
-    | 'loading'
-    | 'hidden';
+  readings: readonly CardLatestReading[] | 'loading' | 'hidden';
   locale: Locale;
+  /** The car-licence warning days (`useLicenceWarnDays().vehicle`). */
+  warnDays: number;
   now?: number;
 }): VehicleCardFacts => {
   let drivers: VehicleCardDrivers;
@@ -210,15 +254,10 @@ export const vehicleCardFacts = ({
   else if (roster === 'loading' || people === 'loading') drivers = { kind: 'loading' };
   else drivers = { kind: 'names', names: driversOn(roster, people, vehicle.id) };
 
-  let reading: VehicleCardReading;
-  if (readings === 'hidden' || readings === 'loading') reading = { kind: readings };
-  else {
-    const row = readings.find((r) => r.vehicleId === vehicle.id);
-    reading =
-      row === undefined || row.latestReading === null || row.latestReadingAt === null
-        ? { kind: 'none' }
-        : { kind: 'reading', km: row.latestReading, at: row.latestReadingAt };
-  }
+  const reading: VehicleCardReading =
+    readings === 'hidden' || readings === 'loading'
+      ? { kind: readings }
+      : cardReadingOf(readings.find((r) => r.vehicleId === vehicle.id));
 
   const plate = vehicle.plateNumber.trim();
   const licence = vehicle.licenseExpiresAt === '' ? null : vehicle.licenseExpiresAt;
@@ -232,7 +271,7 @@ export const vehicleCardFacts = ({
     branch: nameIn(branches, vehicle.branchId, locale),
     operation: nameIn(operations, vehicle.operationId, locale),
     drivers,
-    licence: { date: licence, state: licenceState(licence, now) },
+    licence: { date: licence, state: licenceState(licence, warnDays, now) },
     reading,
   };
 };

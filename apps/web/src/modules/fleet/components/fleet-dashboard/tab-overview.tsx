@@ -293,13 +293,37 @@ const KpiRow = ({
         }
         footIcon={I.cog}
         foot={
-          <Phrase
-            text={w('kpi.workshop.split')}
-            parts={{
-              active: <N>{count(workshop.openActive)}</N>,
-              out: <N>{count(workshop.openOutOfService)}</N>,
-            }}
-          />
+          // The parts add up to the headline: «مكهنة» and «بلا سيارة في السجل» (a car deleted since,
+          // or an old-book visit) join «نشطة · خارج الخدمة» only when they hold a visit. Plain: the
+          // maintenance screen reads no vehicle-status parameter. Each extra part carries its own
+          // «·» inside its unbreakable span, so a wrapped line never ends on a dangling «·».
+          <span data-dash-workshop-split="true">
+            <Phrase
+              text={w('kpi.workshop.split')}
+              parts={{
+                active: <N>{count(workshop.openActive)}</N>,
+                out: <N>{count(workshop.openOutOfService)}</N>,
+              }}
+            />
+            {workshop.openDisposed > 0 && (
+              <>
+                {' '}
+                <span className="whitespace-nowrap">
+                  {'· '}
+                  {t('fleet.dash.now.statusDisposed')} <N>{count(workshop.openDisposed)}</N>
+                </span>
+              </>
+            )}
+            {workshop.openNoCar > 0 && (
+              <>
+                {' '}
+                <span className="whitespace-nowrap">
+                  {'· '}
+                  {t('fleet.dash.now.statusNoCar')} <N>{count(workshop.openNoCar)}</N>
+                </span>
+              </>
+            )}
+          </span>
         }
       />,
     );
@@ -945,7 +969,8 @@ const MONTH_FIG = cn(
   CAIRO,
 );
 
-const MONTH_SECTIONS = [
+/** The month card's four figures; the page asks for the month read only for a reader of one. */
+export const MONTH_SECTIONS = [
   'km',
   'opex',
   'exits',

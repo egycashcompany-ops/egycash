@@ -178,14 +178,24 @@ const WIRED: readonly Wired[] = [
     ],
   },
   {
-    file: 'components/fleet-dashboard/tab-licences.tsx',
-    screen: 'the dashboard’s licences tab — each licence row’s code box (by id)',
+    file: 'components/fleet-dashboard/tab-licences-now.tsx',
+    screen: 'the dashboard’s «التراخيص والتجديدات» — the expired cars named on their KPI (by id)',
     pins: [
-      /<VehicleHoverCode\s+vehicleId=\{vehicleId\}\s+code=\{code\}\s+focusable=\{link === null\}/u,
-      /<CodeBox\s+vehicleId=\{row\.vehicleId\}/u,
-      // A chip inside the visit line's own link hovers; Tab reaches the link.
-      /<CarChip code=\{row\.code\} focusable=\{false\} \/>/u,
+      /<CarChip\s+code=\{row\.code\}\s+link=\{links\.vehicle\(row\.vehicleId, 'licenceVehicles\.expiredCar'\)\}/u,
     ],
+  },
+  {
+    file: 'components/fleet-dashboard/tab-licences-tables.tsx',
+    screen: 'the dashboard’s «التراخيص والتجديدات» — each row of «أقرب تراخيص السيارات» (by id)',
+    pins: [
+      /<CarChip code=\{row\.code\} link=\{links\.vehicle\(row\.vehicleId, 'licenceVehicles\.row'\)\} \/>/u,
+    ],
+  },
+  {
+    file: 'components/fleet-dashboard/tab-custody-now.tsx',
+    screen:
+      'the dashboard’s «العهدة» — the cars of each licence part waiting for its settlement (by code)',
+    pins: [/<CarChip key=\{`\$\{code\}:\$\{i\}`\} code=\{code\} \/>/u],
   },
   ...(
     [
@@ -485,7 +495,7 @@ describe('the shared chips carry the card', () => {
 });
 
 describe('the dashboard draws its cars’ codes with the card', () => {
-  it.each(['overview', 'today', 'maintenance', 'licences'])('the %s tab', (tab) => {
+  it.each(['overview', 'today', 'maintenance', 'licences', 'custody'])('the %s tab', (tab) => {
     expect(renderDashboard({ url: `/fleet?tab=${tab}` })).toContain(MARK);
   });
 
@@ -505,16 +515,29 @@ describe('the dashboard draws its cars’ codes with the card', () => {
     }
   });
 
-  it('every licence row’s code box', () => {
+  it('every licence row’s code box — the table’s rows and their phone blocks, and the expired cars named on the KPI', () => {
     const html = renderDashboard({ url: '/fleet?tab=licences' });
-    const rows = html.split('data-licence-row="').slice(1);
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) expect(row.slice(0, row.indexOf('</li>'))).toContain(MARK);
+    for (const [marker, end] of [
+      ['data-lic-car="', '</tr>'],
+      ['data-lic-car-block="', '</li>'],
+      ['data-lic-expired-car="', '</span></span>'],
+    ] as const) {
+      const rows = html.split(marker).slice(1);
+      expect(rows.length, marker).toBeGreaterThan(0);
+      for (const row of rows) expect(row.slice(0, row.indexOf(end)), marker).toContain(MARK);
+    }
+  });
+
+  it('every car of a licence part waiting for its settlement on «العهدة»', () => {
+    const html = renderDashboard({ url: '/fleet?tab=custody' });
+    const parts = html.split('data-cust-settle="').slice(1);
+    expect(parts.length).toBeGreaterThan(0);
+    for (const part of parts) expect(part.slice(0, part.indexOf('</li>'))).toContain(MARK);
   });
 
   it('none for a reader who may not see the registry', () => {
     const permissions = ALL_KEYS.filter((key) => key !== 'fleetVehicle.view');
-    for (const tab of ['overview', 'today', 'maintenance', 'licences']) {
+    for (const tab of ['overview', 'today', 'maintenance', 'licences', 'custody']) {
       expect(renderDashboard({ url: `/fleet?tab=${tab}`, permissions }), tab).not.toContain(MARK);
     }
   });

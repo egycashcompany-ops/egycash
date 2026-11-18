@@ -23,6 +23,7 @@ import {
   FleetSettingKeys,
   type FleetFuelCardDto,
   type FleetFuelCardTotalsDto,
+  type FleetReceiptTotalsDto,
   type FleetVehicleDto,
   type Locale,
   type MeDto,
@@ -114,18 +115,23 @@ const screenAt = (
     cards = [card()],
     totals = BRANCH_TOTALS,
     vehicles = [],
+    permissions = ALL,
+    receipts,
   }: {
     filters: Record<string, unknown>;
     cards?: FleetFuelCardDto[];
     totals?: FleetFuelCardTotalsDto;
     vehicles?: FleetVehicleDto[];
+    permissions?: readonly string[];
+    /** The receipts summary, seeded ONLY under `{ summary: true, ...query }`. */
+    receipts?: { query: Record<string, unknown>; totals: FleetReceiptTotalsDto };
   },
 ): string => {
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
     preloadedState: {
       locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
-      auth: { me: me(ALL), status: 'signedIn' as const },
+      auth: { me: me(permissions), status: 'signedIn' as const },
       ui: { theme: 'light' as const, sidebarOpen: false },
     },
   });
@@ -137,6 +143,12 @@ const screenAt = (
     meta: { page: 1, pageSize: 100, totalItems: cards.length, totalPages: 1 },
   });
   qc.setQueryData(listKey('fleet', 'fuelCards', { summary: true, ...filters }), totals);
+  if (receipts !== undefined) {
+    qc.setQueryData(
+      listKey('fleet', 'receipts', { summary: true, ...receipts.query }),
+      receipts.totals,
+    );
+  }
   qc.setQueryData(listKey('fleet', 'vehicles', { whole: true, anyStatus: true }), {
     items: vehicles,
     meta: { page: 1, pageSize: 100, totalItems: vehicles.length, totalPages: 1 },
@@ -219,15 +231,85 @@ describe('/fleet/fuel-cards reads the branch of the card’s current car (`branc
   });
 });
 
+describe('/fleet/fuel-cards asks its month’s fuel receipts for the same branch (audit-10 D04)', () => {
+  // «استهلاك الوقود الحالي (الشهر)» is the dashboard's «الوقود كله» for «هذا الشهر»: the receipts of
+  // the cars of the branch (the receipt's car's), the Cairo month's 1st to Cairo today.
+  const fuel = (fuelTotal: number): FleetReceiptTotalsDto => ({
+    count: 2,
+    custodyTotal: 120.4,
+    cardTotal: 300.15,
+    fuelTotal,
+    fuelLitres: 27.13,
+    tyresTotal: 0,
+    washTotal: 0,
+    maintenanceTotal: 0,
+    fuelCustodyTotal: 120.4,
+    fuelUnpriced: 0,
+    custodyCount: 1,
+  });
+  const READER = [...ALL, 'fleetReceipt.view'];
+  const at = (run: () => void): void => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-31T23:30:00.000Z')); // 01:30, 1 November, in Cairo
+      run();
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
+  it('asks { summary, kind, from, to, branchIds } — the branch’s 420.55', () =>
+    at(() => {
+      const html = screenAt('cards', `${PAGES.cards.path}?branch=${B1}`, {
+        filters: { branchIds: [B1] },
+        permissions: READER,
+        receipts: {
+          query: { kind: 'fuel', from: '2026-11-01', to: '2026-11-01', branchIds: [B1] },
+          totals: fuel(420.55),
+        },
+      });
+      expect(html).toContain('data-fuel-kpi="consumption"');
+      expect(html).toContain('>420.55<');
+    }));
+
+  it('never answers a narrowed address from the company’s month (520.54)', () =>
+    at(() => {
+      const html = screenAt('cards', `${PAGES.cards.path}?branch=${B1}`, {
+        filters: { branchIds: [B1] },
+        permissions: READER,
+        receipts: {
+          query: { kind: 'fuel', from: '2026-11-01', to: '2026-11-01' },
+          totals: fuel(520.54),
+        },
+      });
+      expect(html).not.toContain('data-fuel-kpi="consumption"');
+      expect(html).not.toContain('520.54');
+    }));
+
+  it('carries several branches («كل فروعي») as one list', () =>
+    at(() => {
+      const html = screenAt('cards', `${PAGES.cards.path}?branch=${B1},${B2}`, {
+        filters: { branchIds: [B1, B2] },
+        permissions: READER,
+        receipts: {
+          query: { kind: 'fuel', from: '2026-11-01', to: '2026-11-01', branchIds: [B1, B2] },
+          totals: fuel(520.54),
+        },
+      });
+      expect(html).toContain('>520.54<');
+    }));
+});
+
 describe('/fleet/fuel-cards/charging reads the branch for its list AND its totals', () => {
   it('asks both reads for that branch: the cards and «أرصدة …» / «شُحن اليوم» above them', () => {
     const html = screenAt('charging', `${PAGES.charging.path}?branch=${B1}`, {
       filters: { branchIds: [B1] },
     });
     expect(html).toContain('data-fuel-tile="v-204"');
-    // The totals of the branch (`wataniyaBalance` 71,320 and today's 5,000), not a dash.
-    expect(html).toContain('71,320');
-    expect(html).toContain('5,000');
+    // The totals of the branch (`wataniyaBalance` 71,320 and today's 5,000), not a dash — to the
+    // piastre, as the dashboard writes them (audit-10 D09).
+    expect(html).toContain('>71,320.00<');
+    expect(html).toContain('>5,000.00<');
   });
 
   it('never answers a narrowed address from the company’s reads', () => {

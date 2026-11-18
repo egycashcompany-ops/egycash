@@ -26,6 +26,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { AssetConsumablesCard, EmployeeConsumablesCard } from '../components/ConsumableMovements';
+import { IssueConsumablesDialog } from '../components/ConsumableDialogs';
 import { ConsumablesPage } from './ConsumablesPage';
 import { ConsumableMovementsPage } from './ConsumableMovementsPage';
 
@@ -57,7 +58,16 @@ const me = (permissions: string[]): MeDto =>
     external: null,
   }) as unknown as MeDto;
 
-const ALL = ['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.assign'];
+// The store's own grants (2026-11-17) — and no asset key: «فى الـ IT ظبط صلاحيات الشاشات عشان أقدر
+// أتحكم فيها», so every screen here is proven to work for a reader who holds only these.
+const ALL = [
+  'itConsumable.view',
+  'itConsumable.create',
+  'itConsumable.edit',
+  'itConsumable.assign',
+];
+/** Every asset key — none of which opens anything on the store's screens any more. */
+const ASSET_KEYS = ['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.assign'];
 
 const item = (over: Partial<ItConsumableDto> = {}): ItConsumableDto => ({
   id: 'c-1',
@@ -122,6 +132,7 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   byUserId: 'u-it',
   notes: null,
   createdAt: '2026-10-21T08:30:00.000Z',
+  version: 0,
   ...over,
 });
 
@@ -360,12 +371,43 @@ describe('the consumables register', () => {
   });
 
   it('a reader holding only the view grant may look at the movements, and nothing else', () => {
-    const html = store({ permissions: ['itAsset.view'], rows: [item(), LOW] });
+    const html = store({ permissions: ['itConsumable.view'], rows: [item(), LOW] });
     expect(actions(tableBody(html))).toEqual(['movements', 'movements']);
     expect(html).not.toContain(ar('it.consumables.create'));
     expect(html).not.toContain(ar('it.consumables.issueAction'));
     // The ledger is a read, so its way in is offered to every reader.
     expect(html).toContain('href="/it/consumables/movements"');
+  });
+
+  // The store's actions ride the store's keys alone: its grants give them all with no asset key,
+  // and every asset key together gives none of them.
+  it('offers its actions on the store’s own keys — and none on an asset key', () => {
+    const own = store({ permissions: ALL });
+    expect(actions(tableBody(own))).toEqual([
+      'receive',
+      'issue',
+      'scrap',
+      'return',
+      'transfer',
+      'edit',
+      'movements',
+    ]);
+    expect(own).toContain(ar('it.consumables.create'));
+    expect(own).toContain(ar('it.consumables.issueAction'));
+    const assetsOnly = store({ permissions: ['itConsumable.view', ...ASSET_KEYS] });
+    expect(actions(tableBody(assetsOnly))).toEqual(['movements']);
+    expect(assetsOnly).not.toContain(ar('it.consumables.create'));
+    expect(assetsOnly).not.toContain(ar('it.consumables.issueAction'));
+  });
+
+  it('gives each action to its own key: receive, scrap and edit on edit; issue, return and transfer on assign', () => {
+    const body = (permissions: string[]): string[] =>
+      actions(tableBody(store({ permissions: ['itConsumable.view', ...permissions] })));
+    expect(body(['itConsumable.edit'])).toEqual(['receive', 'scrap', 'edit', 'movements']);
+    expect(body(['itConsumable.assign'])).toEqual(['issue', 'return', 'transfer', 'movements']);
+    const create = store({ permissions: ['itConsumable.view', 'itConsumable.create'] });
+    expect(create).toContain(ar('it.consumables.create'));
+    expect(create).not.toContain(ar('it.consumables.issueAction'));
   });
 
   it('lets the rows be ticked — «تحويل إلى فرع (n)» acts on what is ticked', () => {
@@ -409,7 +451,9 @@ const ledger = ({
 
 describe('the consumables ledger («حركات المستهلكات»)', () => {
   it('asks for exactly the filters the URL names — kind, type, branch, person, asset, days, search', () => {
+    // A reader of the assets as well: the «مركّب على» filter is theirs (it searches the assets).
     const html = ledger({
+      permissions: [...ALL, 'itAsset.view'],
       search:
         '?kind=issued&type=ty-mice&branch=b-hq&employee=e-1&asset=a-12&from=2026-10-01&to=2026-10-31&q=mouse',
       query: {
@@ -434,8 +478,25 @@ describe('the consumables ledger («حركات المستهلكات»)', () => {
     expect(tableBody(ledger({ search: '?kind=stolen' }))).toContain('CON-00004');
   });
 
+  // The «مركّب على» filter searches the ASSETS' register, so a reader of the store alone is not
+  // offered it — and an `asset` a link carries narrows nothing they cannot see or clear.
+  it('offers the asset filter to a reader of the assets only, and never narrows by one unseen', () => {
+    const filterAsset = `data-filter-field="${ar('it.consumables.movements.columns.installedOn')}"`;
+    expect(ledger({ permissions: [...ALL, 'itAsset.view'] })).toContain(filterAsset);
+    const storeOnly = ledger({
+      search: '?asset=a-12',
+      // The request WITHOUT the asset — answered only if that is what the screen asked for.
+      query: { movements: true, page: 1, pageSize: 25 },
+    });
+    expect(storeOnly).not.toContain(filterAsset);
+    expect(tableBody(storeOnly)).toContain('CON-00004');
+  });
+
   it('reads an issue by its kind: who received it, what it went into, why, and its memo', () => {
-    const row = rowOf(tableBody(ledger()), 'data-movement-qty="issued"');
+    const row = rowOf(
+      tableBody(ledger({ permissions: [...ALL, 'itAsset.view'] })),
+      'data-movement-qty="issued"',
+    );
     expect(row).toContain(ar('it.consumables.kind.issued'));
     // Out of the store: the sign is the kind's.
     expect(row).toMatch(/data-movement-qty="issued"[^>]*>−٢</u);
@@ -450,6 +511,19 @@ describe('the consumables ledger («حركات المستهلكات»)', () => {
     expect(row).toContain('EGYCASH-IT-CON-0007');
     expect(row).toContain('data-receipt-print="memo-1"');
     expect(row).toContain(ar('it.custody.receipt.awaitingSignature'));
+  });
+
+  // The person's history and the asset's page are the ASSETS' screens: a reader of the store alone
+  // reads who received it and what it went into, as text rather than links to «no access».
+  it('names the person and the asset as text to a reader who does not hold the assets', () => {
+    const row = rowOf(tableBody(ledger()), 'data-movement-qty="issued"');
+    expect(row).toContain('محمد أحمد علي (0100052)');
+    expect(row).toContain('AST-00012 — لاب توب Lenovo');
+    expect(row).toContain('data-installed-on="a-12"');
+    expect(row).not.toContain('href="/it/employees/');
+    expect(row).not.toContain('href="/it/assets/');
+    // The memo is the store's own paper: it stays, with its controls.
+    expect(row).toContain('data-receipt-print="memo-1"');
   });
 
   it('reads a scrap by its kind: its own reason, no person, no paper', () => {
@@ -483,8 +557,19 @@ describe('the consumables ledger («حركات المستهلكات»)', () => {
     expect(html).toContain('value="transferredIn"');
   });
 
+  // The memo's signed copy is filed and withdrawn on the store's custody grant, as the issue that
+  // wrote it — the assets' custody grant files a device's receipt, not a memo.
+  it('files a memo’s signed copy on the store’s custody grant, never the assets’', () => {
+    const issued = (permissions: string[]): string =>
+      rowOf(tableBody(ledger({ permissions })), 'data-movement-qty="issued"');
+    expect(issued(ALL)).toContain('data-receipt-upload="memo-1"');
+    const assetsOnly = issued(['itConsumable.view', ...ASSET_KEYS]);
+    expect(assetsOnly).not.toContain('data-receipt-upload');
+    expect(assetsOnly).toContain(ar('it.custody.receipt.awaitingSignature'));
+  });
+
   it('offers its files to every reader, before the way back to the store', () => {
-    const html = ledger({ permissions: ['itAsset.view'] });
+    const html = ledger({ permissions: ['itConsumable.view'] });
     expect(html).toContain('data-export="it-consumable-movements"');
     expect(html.indexOf('data-print="it-consumable-movements"')).toBeLessThan(
       html.indexOf(ar('it.consumables.backToStore')),
@@ -544,5 +629,30 @@ describe('the ledger’s cards on an asset and on a person', () => {
         ),
     });
     expect(html).toContain(ar('it.consumables.assetCard.empty'));
+  });
+});
+
+// «صرف لموظف» on the store's own grants: who receives is found on them alone (`/it/people` answers
+// any register's read grant), while «مركّب على» — a search of the ASSETS — is offered only to a
+// reader of the assets; anyone else issues the item without naming a device.
+describe('the issue — «مركّب على» only for a reader of the assets', () => {
+  const issue = (permissions: string[]): string =>
+    render({
+      path: '/it/consumables',
+      element: <IssueConsumablesDialog open onClose={() => {}} item={item()} />,
+      permissions,
+      seed: () => {},
+    });
+
+  it('a keeper of the store alone issues and finds whom to — but is offered no asset box', () => {
+    const html = issue(ALL);
+    expect(html).toContain(ar('it.consumables.movements.columns.item'));
+    expect(html).not.toContain(ar('it.custody.pickerNoAccess'));
+    expect(html).not.toContain(ar('it.consumables.issue.installedOn'));
+    expect(html).not.toContain(ar('it.assets.pickerNoAccess'));
+  });
+
+  it('a keeper who also reads the assets may name the device it went into', () => {
+    expect(issue([...ALL, 'itAsset.view'])).toContain(ar('it.consumables.issue.installedOn'));
   });
 });

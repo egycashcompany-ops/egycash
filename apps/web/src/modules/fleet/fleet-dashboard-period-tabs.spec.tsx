@@ -65,6 +65,27 @@ const DATES = `from=${FROM_30}&to=${TODAY}`;
 
 // ── Tab 6 ─────────────────────────────────────────────────────────────────────────────────────
 
+describe('«أرقام الفترة» — only the audit’s two word changes (D39, D48)', () => {
+  const words = text(tabBody(renderPeriod({ url: URL_30('period') }), 'period'));
+
+  it('«من N سيارة» drops «نشطة»: the count is the set’s cars, not every active one (D48)', () => {
+    expect(ar('fleet.dash.period.km.coverage')).toBe('قراءات لـ{{with}} من {{of}} {{noun}}');
+    expect(words).not.toMatch(/قراءات لـ\S+ من \S+ \S+ نشطة/u);
+  });
+
+  it('the visits bar reads «خرج منها حتى الآن» — the check-in-day card counts its exits so far (D48)', () => {
+    expect(ar('fleet.dash.period.visits.bar')).toBe('خرج منها حتى الآن');
+    expect(words).not.toContain('خرجت من الورشة');
+  });
+
+  it('a dealership row with no amount is «بانتظار الفاتورة», the dealership screen’s word (D39)', () => {
+    expect(ar('fleet.dash.period.dealership.pending')).toBe(
+      '{{count}} بانتظار الفاتورة (حتى الآن)',
+    );
+    expect(words).not.toContain('بانتظار تسجيل القيمة');
+  });
+});
+
 describe('tab 6 «أرقام الفترة»', () => {
   const html = renderPeriod({ url: URL_30('period') });
   const body = tabBody(html, 'period');
@@ -146,6 +167,8 @@ describe('tab 6 «أرقام الفترة»', () => {
             maintenance: 1,
             litres: 0,
             unpricedFuel: 0,
+            // The custody receipt of the two.
+            custodyCount: 1,
           },
           dealership: { amount: 5, rows: 1, pending: 0, dataFrom: '2026-10-05' },
         },

@@ -18,7 +18,7 @@ import {
 } from './hr-attendance.js';
 
 describe('closed vocabularies', () => {
-  it('pins the twelve day statuses of §2 — one enum, one value per day', () => {
+  it('pins the thirteen day statuses of §2 — one enum, one value per day', () => {
     // `checkedIn` is a deliberate contract change (owner ruling, 2026-11-17). The branch devices
     // show 70–90% of employees scan on arrival and never scan out, so a check-in with no
     // check-out is the ordinary working day here; it used to derive as `incomplete`, which is
@@ -28,6 +28,11 @@ describe('closed vocabularies', () => {
     // before that ruling carry it, and a value that exists in the database must stay nameable by
     // the enum that reads it. Payroll deliberately leaves it out of the attended statuses so no
     // frozen month is restated — see `attendance-quantities.ts`.
+    //
+    // `noSchedule` is the thirteenth: nobody has said when this person works. It was reported as
+    // `dayOff` until production showed a whole branch marked «يوم راحة» on a Tuesday — a claim
+    // that the company owed them no work, which nobody had made. `dayOff` stays in the enum for
+    // the rows already carrying it, and nothing derives it any more.
     //
     // `pending` is the twelfth (stage 2): the day that is still being lived. It is written only
     // for a date in progress and is payroll-neutral by construction, and once the date is past the
@@ -46,6 +51,7 @@ describe('closed vocabularies', () => {
       'holiday',
       'incomplete',
       'dayOff',
+      'noSchedule',
     ]);
   });
 
@@ -56,10 +62,15 @@ describe('closed vocabularies', () => {
     // day flag, so a reviewer could not tell a decision from a keystroke.
     expect([...ATTENDANCE_PUNCH_SOURCES]).toEqual(['device', 'manual', 'regularization', 'web']);
     expect([...ATTENDANCE_PUNCH_DIRECTIONS]).toEqual(['in', 'out', 'unknown']);
+    // Stage 3 added `overriddenByManager`: a day whose status a manager DECIDED rather than the
+    // engine derived. It is a flag and not a status because the status is still a real answer
+    // about the day — the flag says where that answer came from, and that the device's punches
+    // are still standing underneath it.
     expect([...ATTENDANCE_DAY_FLAGS]).toEqual([
       'crossBranchPunch',
       'manualPunch',
       'regularizedPunch',
+      'overriddenByManager',
     ]);
   });
 
@@ -88,6 +99,14 @@ describe('closed vocabularies', () => {
       'hr.attendance.defaultPattern.breakMinutes',
       'hr.attendance.defaultPattern.graceInMinutes',
       'hr.attendance.defaultPattern.graceOutMinutes',
+      // Stage 3: how far back a manager decides alone before HR has to approve.
+      'hr.attendance.decisionApprovalAfterDays',
+      // Stage 4: the volume above which the review screen flags a manager for a LOOK. It blocks
+      // nothing — a broken reader produces many legitimate changes — so it is a prompt, not a cap.
+      'hr.attendance.decisionWeeklyReviewThreshold',
+      // Task 2: how old a scan may be and still be imported, 0 meaning no limit. It replaces the
+      // 90-day constant that was keeping two years of the branch machines' history out of ECMS.
+      'hr.attendance.importMaxAgeDays',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

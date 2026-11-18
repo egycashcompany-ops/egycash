@@ -74,12 +74,27 @@ const keyboardFocus = (el: HTMLElement): boolean => {
  */
 export const useHoverCard = (
   active: boolean,
-  { focusable = true }: { focusable?: boolean } = {},
+  {
+    focusable = true,
+    when,
+  }: {
+    focusable?: boolean;
+    /**
+     * Round 26 — a last word before the card opens, asked as the pointer (or the focus) comes AND
+     * again when the delay ends: «توزيع المحصنات»'s van card says no while a drag is on, while a
+     * «نقل إلى…» menu is open, or over a captain's own name. Left out: always yes.
+     */
+    when?: () => boolean;
+  } = {},
 ): {
   open: boolean;
   id: string;
   anchor: RefObject<HTMLElement | null>;
   triggerProps: HoverCardTriggerProps;
+  /** Round 26 — the hover's own delayed open, for a trigger that re-arms inside itself. */
+  arm: () => void;
+  /** Round 26 — the waiting open called off, and the card closed. */
+  dismiss: () => void;
 } => {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLElement | null>(null);
@@ -87,6 +102,11 @@ export const useHoverCard = (
   /** How it opened: a hover closes when the pointer leaves; a keyboard focus stays until blur. */
   const via = useRef<'hover' | 'focus'>('hover');
   const id = useId();
+  // The latest `when`, read when the delay ends — not the one of the render that armed it.
+  const allowed = useRef(when);
+  useEffect(() => {
+    allowed.current = when;
+  });
 
   const control = useMemo(() => {
     const clear = (): void => {
@@ -100,6 +120,7 @@ export const useHoverCard = (
     };
     const show = (): void => {
       clear();
+      if (allowed.current !== undefined && !allowed.current()) return;
       if (closeOpenCard !== null && closeOpenCard !== close) closeOpenCard();
       closeOpenCard = close;
       setOpen(true);
@@ -107,7 +128,13 @@ export const useHoverCard = (
     const setAnchor = (el: HTMLElement | null): void => {
       anchor.current = el;
     };
-    return { clear, close, show, setAnchor };
+    const arm = (): void => {
+      if (allowed.current !== undefined && !allowed.current()) return;
+      via.current = 'hover';
+      clear();
+      timer.current = window.setTimeout(show, OPEN_DELAY_MS);
+    };
+    return { clear, close, show, setAnchor, arm };
   }, []);
 
   // Gone with its trigger: no timer left to fire, no card left open.
@@ -128,15 +155,22 @@ export const useHoverCard = (
     };
   }, [open, control]);
 
-  if (!active) return { open: false, id, anchor, triggerProps: {} };
+  if (!active) {
+    return {
+      open: false,
+      id,
+      anchor,
+      triggerProps: {},
+      arm: () => undefined,
+      dismiss: () => undefined,
+    };
+  }
 
   const triggerProps: HoverCardTriggerProps = {
     ref: control.setAnchor,
     onMouseEnter: () => {
       if (open) return;
-      via.current = 'hover';
-      control.clear();
-      timer.current = window.setTimeout(control.show, OPEN_DELAY_MS);
+      control.arm();
     },
     onMouseLeave: () => {
       if (via.current === 'hover') control.close();
@@ -162,7 +196,16 @@ export const useHoverCard = (
     ...(focusable ? { tabIndex: 0 } : {}),
     ...(open ? { 'aria-describedby': id } : {}),
   };
-  return { open, id, anchor, triggerProps };
+  return {
+    open,
+    id,
+    anchor,
+    triggerProps,
+    arm: () => {
+      if (!open) control.arm();
+    },
+    dismiss: control.close,
+  };
 };
 
 /** A box on the screen, as `getBoundingClientRect` gives it. */
@@ -272,7 +315,8 @@ export const HoverCardLayer = ({
    * member card on «كشف طاقم العمليات» (`RosterMemberCard`), on these mechanics. On «لوحة التشغيلة»
    * (Round 22): `crew-plan` the person card on a name, `crew-flag` the small tip that names a
    * requirement icon (`crew-plan-icons`). On «توزيع المحصنات» (Round 25): `secured-shipment` the
-   * card of a محصنة's small chip.
+   * card of a محصنة's small chip; (Round 26) `secured-van` the van's card — everyone on it and what
+   * it carries — on its head and its captain's line, on «تسليم المحصنات» too.
    */
   mark:
     | 'driver'
@@ -282,7 +326,8 @@ export const HoverCardLayer = ({
     | 'roster'
     | 'crew-plan'
     | 'crew-flag'
-    | 'secured-shipment';
+    | 'secured-shipment'
+    | 'secured-van';
   /**
    * The look. Every card keeps the cards' frame; a TIP — a word or two for an icon — takes
    * `HOVER_TIP_FRAME`, on the same mechanics.

@@ -72,6 +72,7 @@ const JobRow = ({
   locale,
   draggableRow,
   columnIds,
+  columnEditable,
   mark,
   onDragStart,
   onDragEnd,
@@ -86,6 +87,8 @@ const JobRow = ({
   draggableRow: boolean;
   /** The column's job ids, in the order shown. */
   columnIds: readonly string[];
+  /** The column takes writes: not a section stopped in the company list (§4.2, §5.7). */
+  columnEditable: boolean;
   /** A drag of a job of THIS column is over this row: where it would land. */
   mark: 'before' | 'after' | null;
   onDragStart: () => void;
@@ -105,7 +108,7 @@ const JobRow = ({
         );
   // «نقل إلى» only where there is somewhere else to go; ↑ / ↓ only where there is someone to pass.
   const canMove = controls && targets.length > 1;
-  const canOrder = controls && columnIds.length > 1;
+  const canOrder = controls && columnEditable && columnIds.length > 1;
   // The grip only where a drag can do something: reorder this column, or move to another.
   const grip = controls && draggableRow && (canMove || canOrder);
   const index = columnIds.indexOf(job.id);
@@ -247,6 +250,7 @@ const JobList = ({
   onDragStart,
   onDragEnd,
   onDragOverRow,
+  onLeaveColumn,
   onDrop,
   connector = true,
   targetEditable = true,
@@ -265,6 +269,8 @@ const JobList = ({
   onDragStart: (job: OrgChartJobDto, from: string | null) => void;
   onDragEnd: () => void;
   onDragOverRow: (sectionCatalogId: string | null, mark: DropMark) => void;
+  /** The drag is no longer over this column's rows: forget where it would have landed. */
+  onLeaveColumn: () => void;
   onDrop: (to: string | null) => void;
   /** Whether a job may be placed here: not under a section stopped or filed elsewhere in the list. */
   targetEditable?: boolean;
@@ -285,6 +291,14 @@ const JobList = ({
       // Takes a drop only where a job could be added (the browser refuses it elsewhere).
       onDragOver={(e) => {
         if (canAdd) e.preventDefault();
+        // Over ANOTHER column the drop will move the job, so the bar in its own column must go.
+        if (!ordering) onLeaveColumn();
+      }}
+      onDragLeave={(e) => {
+        // Out of its own column altogether (the department box, the gap between columns): the
+        // drop there does nothing, so nothing may say where it would land.
+        const to = e.relatedTarget;
+        if (ordering && !(to instanceof Node && e.currentTarget.contains(to))) onLeaveColumn();
       }}
       onDrop={() => {
         if (canAdd) onDrop(sectionCatalogId);
@@ -301,6 +315,7 @@ const JobList = ({
             locale={locale}
             draggableRow={draggableRows}
             columnIds={ids}
+            columnEditable={targetEditable}
             mark={mark?.index === index ? (mark.after ? 'after' : 'before') : null}
             onDragStart={() => onDragStart(job, sectionCatalogId)}
             onDragEnd={onDragEnd}
@@ -459,6 +474,7 @@ export const ChartBoard = ({
       setDrag(null);
       setOver(null);
     },
+    onLeaveColumn: () => setOver((now) => (now === null ? now : null)),
     onDragOverRow: (column: string | null, mark: DropMark) =>
       setOver((now) =>
         now !== null &&
@@ -474,6 +490,9 @@ export const ChartBoard = ({
     over !== null && over.column === sectionCatalogId ? over.mark : null;
 
   const nothing = sections.length === 0 && columns.direct.length === 0 && !editing;
+  // Wider in edit mode: a row's second line holds ↑ / ↓, «نقل إلى» and ✕, and the select must still
+  // show the section's name.
+  const columnWidth = editing ? 'w-64' : 'w-56';
 
   const departmentBox = (
     <div className="rounded-lg bg-brand-600 px-5 py-2.5 text-center text-white shadow-card">
@@ -498,7 +517,7 @@ export const ChartBoard = ({
             // No sections: the jobs hang directly under the department.
             <ul className={STEM}>
               <li className={BRANCH}>
-                <div className="w-56">
+                <div className={columnWidth}>
                   <JobList
                     jobs={columns.direct}
                     sectionCatalogId={null}
@@ -513,7 +532,7 @@ export const ChartBoard = ({
             <ul className={STEM}>
               {showDirect && (
                 <li className={BRANCH}>
-                  <div className="w-56">
+                  <div className={columnWidth}>
                     <SectionBox
                       section={null}
                       department={department}
@@ -533,7 +552,7 @@ export const ChartBoard = ({
               )}
               {sections.map((section) => (
                 <li key={section.key} className={BRANCH}>
-                  <div className="w-56">
+                  <div className={columnWidth}>
                     <SectionBox
                       section={section}
                       department={department}

@@ -65,6 +65,9 @@ export const chartOrder = {
       const department = index.departmentByEntry.get(input.departmentCatalogId.toLowerCase());
       if (department === undefined || !department.shown || !department.editable)
         return notEditable('This department');
+      // The ids as the server holds them (lower case): the audit row must land in the entry's history.
+      const departmentEntryId = department.entry?.id ?? input.departmentCatalogId.toLowerCase();
+      let sectionEntryId: string | null = null;
       if (input.sectionCatalogId !== null) {
         const found = index.sectionByEntry.get(input.sectionCatalogId.toLowerCase());
         if (
@@ -74,6 +77,7 @@ export const chartOrder = {
           !found.section.editable
         )
           return notEditable('This section');
+        sectionEntryId = found.section.entry?.id ?? input.sectionCatalogId.toLowerCase();
       }
 
       const column = columnInChartOrder(chart, input.departmentCatalogId, input.sectionCatalogId);
@@ -107,9 +111,9 @@ export const chartOrder = {
       if (before.every((id, i) => id === wanted[i])) return null; // numbered, not reordered
       return {
         entityRef:
-          input.sectionCatalogId === null
-            ? { moduleId: 'platform', entityType: 'departmentCatalog', entityId: input.departmentCatalogId }
-            : { moduleId: 'platform', entityType: 'sectionCatalog', entityId: input.sectionCatalogId },
+          sectionEntryId === null
+            ? { moduleId: 'platform', entityType: 'departmentCatalog', entityId: departmentEntryId }
+            : { moduleId: 'platform', entityType: 'sectionCatalog', entityId: sectionEntryId },
         action: 'update',
         changes: [{ field: 'jobOrder', old: labels(before), new: labels(wanted) }],
       };

@@ -25,6 +25,34 @@ export const TREE_COLUMNS = 7;
 /** A column longer than this prints in the compact size, so a big section still fits its sheet. */
 export const DENSE_FROM = 14;
 
+// THE SHEET'S BUDGET, ESTIMATED. Counting jobs is not enough: at seven columns a box is about 35 mm
+// wide and an ordinary name («مشرف عمليات الخزينة») takes two lines, so ten such jobs already spill
+// onto a second sheet that carries no letterhead and no section title. So each column's height is
+// estimated from its names, wrapped to the width the column will have, and the compact size is used
+// whenever the normal one would not fit. The numbers were measured on the rendered page (Chromium,
+// A4 landscape, the sizes below): a row at the normal size is 16 px plus 19 px a line, and the sheet
+// leaves about 500 px for one column's jobs under the letterhead, the department and the section.
+const SHEET_WIDTH_MM = 273;
+const COLUMN_MAX_MM = 75;
+const PX_PER_MM = 3.78;
+/** Padding and border of a job box, and of its column, in px. */
+const BOX_SIDES_PX = 18 + 4 * PX_PER_MM;
+/** The average advance of a character of a job's name at the normal size, in px. */
+const CHAR_PX = 6.3;
+const ROW_PX = 16;
+const LINE_PX = 19;
+export const COLUMN_BUDGET_PX = 500;
+
+/** Characters of a name that fit on one line of its box, when `columns` share the sheet's width. */
+export const charsPerLine = (columns: number): number => {
+  const widthMm = Math.min(COLUMN_MAX_MM, SHEET_WIDTH_MM / Math.max(1, Math.min(columns, TREE_COLUMNS)));
+  return Math.max(8, Math.floor((widthMm * PX_PER_MM - BOX_SIDES_PX) / CHAR_PX));
+};
+
+/** A column's jobs at the normal size, in px: each box's lines, as the names wrap. */
+export const columnHeightPx = (names: readonly string[], perLine: number): number =>
+  names.reduce((px, name) => px + ROW_PX + LINE_PX * Math.max(1, Math.ceil(name.length / perLine)), 0);
+
 const COLORS = {
   brand: '#2e2e74',
   text: '#1f2340',
@@ -91,12 +119,40 @@ const pageHtml = (
     labels.jobsCount(columns.jobCount),
   ].join(' · ');
 
-  const longest = Math.max(
-    department.sections.length === 0 ? 0 : columns.direct.length,
-    ...[...columns.bySection.values()].map((jobs) => jobs.length),
-    0,
-  );
-  const dense = longest > DENSE_FROM;
+  const names = (jobs: readonly OrgChartJobDto[]): string[] =>
+    jobs.map((job) => localized(job.name, locale));
+  // The columns as the sheet will draw them, and so how wide each will be.
+  const printed: OrgChartJobDto[][] =
+    department.sections.length === 0
+      ? []
+      : [
+          ...(columns.direct.length > 0 ? [columns.direct] : []),
+          ...department.sections.map((section) =>
+            section.sectionCatalogId === null
+              ? []
+              : (columns.bySection.get(section.sectionCatalogId.toLowerCase()) ?? []),
+          ),
+        ];
+  let tallest: number;
+  if (printed.length === 0) {
+    // No sections: the jobs spread over up to four columns of a box each (below).
+    const spread = Math.min(4, Math.max(1, Math.ceil(columns.direct.length / 12)));
+    const perColumn = Math.ceil(columns.direct.length / spread);
+    tallest = columnHeightPx(names(columns.direct.slice(0, perColumn)), charsPerLine(1));
+  } else if (printed.length <= TREE_COLUMNS) {
+    const perLine = charsPerLine(printed.length);
+    tallest = Math.max(0, ...printed.map((jobs) => columnHeightPx(names(jobs), perLine)));
+  } else {
+    // Rows of columns: every row of the grid stacks under the one before it.
+    const perLine = charsPerLine(TREE_COLUMNS);
+    tallest = 0;
+    for (let i = 0; i < printed.length; i += TREE_COLUMNS) {
+      const row = printed.slice(i, i + TREE_COLUMNS);
+      tallest += Math.max(0, ...row.map((jobs) => columnHeightPx(names(jobs), perLine))) + (i === 0 ? 0 : 54);
+    }
+  }
+  const longest = Math.max(0, ...printed.map((jobs) => jobs.length));
+  const dense = longest > DENSE_FROM || tallest > COLUMN_BUDGET_PX;
   let body: string;
   if (department.sections.length === 0) {
     // The jobs hang directly under the department; a long list spreads across the sheet's width.

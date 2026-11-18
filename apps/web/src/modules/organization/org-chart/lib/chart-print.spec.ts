@@ -164,3 +164,21 @@ describe('a long column', () => {
     expect(print([ops])).toContain('<section class="page">');
   });
 });
+
+describe('the compact size follows the height a column will take, not only its count', () => {
+  it('a seven-column department with ten two-line names goes compact; nine one-line ones do not', async () => {
+    const { charsPerLine, columnHeightPx, COLUMN_BUDGET_PX } = await import('./chart-print');
+    const sevenSections = Array.from({ length: 7 }, (_, i) => section(String(i + 1).repeat(24), `قسم ${String(i)}`));
+    const wide = department(OPS, 'العمليات', sevenSections);
+    const first = sevenSections[0]?.sectionCatalogId ?? '';
+    const two = 'مشرف عمليات الخزينة الرئيسية';
+    expect(Math.ceil(two.length / charsPerLine(7))).toBe(2);
+    const tall = Array.from({ length: 10 }, (_, i) => job(`t${String(i)}`, `${two} ${String(i)}`, OPS, first, i));
+    expect(columnHeightPx(tall.map((j) => j.name.ar), charsPerLine(7))).toBeGreaterThan(COLUMN_BUDGET_PX);
+    const html = (list: OrgChartJobDto[]) =>
+      buildChartPrintHtml({ pages: [{ department: wide, columns: columnsOf(wide, list) }], locale: 'ar', labels, printedOn: 'x' });
+    expect(html(tall)).toContain('<section class="page dense">');
+    const short = Array.from({ length: 9 }, (_, i) => job(`s${String(i)}`, `أمين ${String(i)}`, OPS, first, i));
+    expect(html(short)).toContain('<section class="page">');
+  });
+});

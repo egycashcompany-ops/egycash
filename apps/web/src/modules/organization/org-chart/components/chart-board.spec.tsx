@@ -230,6 +230,34 @@ describe('reordering a column', () => {
     expect(html).not.toContain('↕');
   });
 
+  it('offers no order controls in a section stopped in the company list (the server refuses them)', () => {
+    const LOCKED = '9'.repeat(24);
+    const withLocked: OrgChartDepartmentDto = {
+      ...marketing,
+      sections: [
+        { key: `catalog:${LOCKED}`, sectionCatalogId: LOCKED, editable: false, name: { ar: 'موقوف', en: 'Stopped' }, branches: [], catalogVersion: 0 },
+      ],
+    };
+    const inLocked = (id: string, name: string): OrgChartJobDto => ({
+      id,
+      code: id,
+      name: { ar: name, en: name },
+      version: 1,
+      places: [{ departmentCatalogId: MARKETING, sectionCatalogId: LOCKED, shown: true, position: null }],
+    });
+    const html = render(
+      <ChartBoard
+        department={withLocked}
+        columns={columnsOf(withLocked, [inLocked('l1', 'أ'), inLocked('l2', 'ب')])}
+        editing
+        actions={actions()}
+        locale="ar"
+      />,
+    );
+    expect(html).toContain('موقوف');
+    expect(html).not.toContain('تحريك لأعلى');
+  });
+
   it('shows no reorder controls outside edit mode', () => {
     const html = draw(three, false);
     expect(html).not.toContain('draggable="true"');

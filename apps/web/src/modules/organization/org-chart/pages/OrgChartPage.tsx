@@ -208,8 +208,9 @@ export const OrgChartPage = (): JSX.Element => {
         { label: t('organization.title'), to: '/organization' },
         { label: t('organization.chart.title') },
       ]}
+      // Only over a chart on screen: the error state renders no dialog, so its buttons would do nothing.
       actions={
-        departments.length > 0 ? (
+        !chart.isError && departments.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"

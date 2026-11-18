@@ -1,7 +1,7 @@
 // «طباعة الهيكل» (P-ORG-3 §2.4): «زرار لطباعة الكل أو اللى أحدده». Every department, or the ones
 // ticked — the one open on the page is ticked first — each printed on its own landscape A4 sheet.
 import { useMemo, useState } from 'react';
-import { type Locale, type OrgChartDepartmentDto } from '@ecms/contracts';
+import { foldOrgUnitName, type Locale, type OrgChartDepartmentDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
@@ -39,12 +39,15 @@ export const PrintChartDialog = ({
     () => new Set(currentKey === null ? [] : [currentKey]),
   );
   const [search, setSearch] = useState('');
+  // By fold, as the page's own tiles search (أ/إ/آ as ا, ى as ي, ة as ه): what finds a department on
+  // the page finds it here.
   const shown = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = foldOrgUnitName(search);
     return term === ''
       ? departments
       : departments.filter(
-          (d) => d.name.ar.toLowerCase().includes(term) || d.name.en.toLowerCase().includes(term),
+          (d) =>
+            foldOrgUnitName(d.name.ar).includes(term) || foldOrgUnitName(d.name.en).includes(term),
         );
   }, [departments, search]);
   const toggle = (key: string): void =>
@@ -117,16 +120,22 @@ export const PrintChartDialog = ({
                 {t('organization.chart.printTickNone')}
               </Button>
             </div>
-            <div className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
-              {shown.map((department) => (
-                <Checkbox
-                  key={department.key}
-                  checked={ticked.has(department.key)}
-                  onChange={() => toggle(department.key)}
-                  label={localized(department.name, locale)}
-                />
-              ))}
-            </div>
+            {shown.length === 0 ? (
+              <p className="py-2 text-sm text-slate-500 dark:text-slate-400">
+                {t('common.noResults')}
+              </p>
+            ) : (
+              <div className="grid max-h-72 gap-2 overflow-y-auto sm:grid-cols-2">
+                {shown.map((department) => (
+                  <Checkbox
+                    key={department.key}
+                    checked={ticked.has(department.key)}
+                    onChange={() => toggle(department.key)}
+                    label={localized(department.name, locale)}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>

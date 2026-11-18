@@ -389,6 +389,28 @@ describe('GET /platform/presence/active-users', () => {
     expect(row?.devices).toHaveLength(1);
   });
 
+  it('a session still inside the longer window its screen was told is listed as open (ADR-039)', async () => {
+    // After the setting is lowered, a session told the old, longer window stays renewable until a
+    // person renews it, so «open now» must count it the way the renewal would.
+    const email = nextEmail();
+    const userId = await seedUser(email, { ar: 'مُبلَّغ', en: 'Told' });
+    await tokenOf(email);
+    const windowMinutes = await presenceService.windowMinutes();
+    const pastTheCurrentWindow = new Date(Date.now() - (windowMinutes + 5) * 60_000);
+    await SessionModel.updateMany(
+      { userId: new Types.ObjectId(userId) },
+      { $set: { lastUsedAt: pastTheCurrentWindow, idleMinutesTold: windowMinutes + 60 } },
+    ).exec();
+    expect(rowOf(await listAs(adminToken), userId)?.devices).toHaveLength(1);
+
+    // Told nothing longer, the same clock is closed and the session is not listed.
+    await SessionModel.updateMany(
+      { userId: new Types.ObjectId(userId) },
+      { $set: { idleMinutesTold: windowMinutes } },
+    ).exec();
+    expect(rowOf(await listAs(adminToken), userId)).toBeUndefined();
+  });
+
   it('a session renewed longer ago than the idle window is not idle', async () => {
     const email = nextEmail();
     const userId = await seedUser(email, { ar: 'غائب', en: 'Away' });

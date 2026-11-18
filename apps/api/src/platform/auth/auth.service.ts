@@ -847,11 +847,17 @@ class AuthService {
     // (`idleMinutesTold`), and that is the number this renewal is judged by when it is the longer
     // one. Judged by a lowered setting instead, a person away for less than the window on their
     // screen would come back to a session already closed, with no warning, and lose what they had
-    // typed. A raised setting applies at once: it can only keep a session open longer. Either way
-    // the CURRENT setting goes back to the browser below and onto the session, so from this renewal
-    // on the countdown and the rule are the same number again (ADR-039).
+    // typed. A raised setting applies at once: it can only keep a session open longer.
+    //
+    // WHICH WINDOW TO TELL. A person's renewal moves `lastUsedAt` and tells the CURRENT setting, so
+    // the clock and the countdown restart together on the same number. A request's renewal does
+    // not move the clock, so it must not shorten the countdown either: it tells the window it was
+    // judged by. Otherwise a badge poll on an idle screen would bring a lowered value in early,
+    // against the old clock, and the screen would expire on its next tick without the warning
+    // (ADR-039).
     const idleMinutes = await this.idleMinutes();
     const judgedBy = Math.max(idleMinutes, session.idleMinutesTold ?? idleMinutes);
+    const tellMinutes = presence ? idleMinutes : judgedBy;
     const idleMs = judgedBy * 60_000;
     if (idleMs > 0 && now.getTime() - session.lastUsedAt.getTime() > idleMs) {
       await this.revokeSession(session, 'idle-timeout');
@@ -892,7 +898,7 @@ class AuthService {
           currentTokenHash: sha256(newRefreshToken),
           ...(presence ? { lastUsedAt: now } : {}),
           expiresAt: refreshExpiresAt,
-          idleMinutesTold: idleMinutes,
+          idleMinutesTold: tellMinutes,
         },
         $push: { usedTokenHashes: { $each: [presentedHash], $slice: -USED_HASHES_KEPT } },
       },
@@ -910,7 +916,7 @@ class AuthService {
       String(session._id),
       user.security.permissionVersion,
     );
-    return { accessToken, refreshToken: newRefreshToken, refreshExpiresAt, idleMinutes };
+    return { accessToken, refreshToken: newRefreshToken, refreshExpiresAt, idleMinutes: tellMinutes };
   }
 
   /**

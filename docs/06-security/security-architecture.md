@@ -73,9 +73,10 @@ renewal that a request needed after its access token expired (a badge poll, say)
 polls cannot keep an abandoned screen open on the server, even with a window longer than the
 15-minute token. The window travels to the browser in every sign-in and refresh response. A
 renewal is judged by the longer of the current setting and the window that session's screen was
-last told (`sessions.idleMinutesTold`). So a lowered setting never closes a session before its
-screen has counted down, and from that renewal on, the countdown on screen and the rule on the
-server are the same number. Saving the setting clears its cache, so the next renewal reads the new
+last told (`sessions.idleMinutesTold`). A person's renewal brings the current value in, together
+with the clock; a request's renewal keeps telling the longer one. So a lowered setting never
+closes a session before its screen has counted down, and from a person's renewal on, the countdown
+on screen and the rule on the server are the same number. Saving the setting clears its cache, so the next renewal reads the new
 value. The last minute is a warning with a
 countdown, which is also what protects unsaved work from vanishing without notice.
 

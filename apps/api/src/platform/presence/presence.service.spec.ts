@@ -173,13 +173,26 @@ describe('listActiveUsers — the join', () => {
     });
   });
 
-  it('reads sessions renewed inside the idle window only, and never their address', async () => {
+  it('reads sessions a renewal would still accept, and never their address', async () => {
     await presenceService.listActiveUsers({}, scope, 'en', now);
     const [filter] = sessionModel.find.mock.calls[0] as [Record<string, unknown>];
+    // The indexed range is the widest window a session can have been told (a day); each session is
+    // then held to the longer of the current window (10 here) and its own told one (ADR-039).
     expect(filter).toEqual({
       revokedAt: null,
       expiresAt: { $gt: now },
-      lastUsedAt: { $gte: new Date(now.getTime() - 10 * 60_000) },
+      lastUsedAt: { $gte: new Date(now.getTime() - 1440 * 60_000) },
+      $expr: {
+        $gte: [
+          '$lastUsedAt',
+          {
+            $subtract: [
+              now,
+              { $multiply: [{ $max: [10, { $ifNull: ['$idleMinutesTold', 10] }] }, 60_000] },
+            ],
+          },
+        ],
+      },
     });
     const query = sessionModel.find.mock.results[0]?.value as ReturnType<typeof chain>;
     const [selected] = query.select.mock.calls[0] as unknown as [string];

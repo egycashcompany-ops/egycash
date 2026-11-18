@@ -43,7 +43,10 @@ review of the first version of this change found both:
    The session stores that value (`sessions.idleMinutesTold`) at sign-in and at every renewal, so
    the server judges a renewal by `max(current, told)`.
    - A raised value applies at once.
-   - A lowered value applies to a session from the renewal that tells its screen.
+   - A lowered value applies to a session from the next renewal **by a person**, which moves the
+     clock and tells the screen the new value together. A request's renewal (decision 6) does not
+     move the clock, so it tells the window it was judged by, and the screen keeps counting to the
+     longer number.
 
    So the countdown on screen and the server's rule are the same number again from that renewal
    on. Sessions from before the field are judged by the current value: they were told 10, which
@@ -84,8 +87,8 @@ Lowering the value is made safe by decision 5, not by the floor.
 - **Report the time since the last activity on every renewal, and set `lastUsedAt` from it.** The
   server's clock would then follow real activity exactly. But the server's deadline would fall on
   the browser's own deadline, so a «stay signed in» pressed in the last second could race it and
-  lose. Today `lastUsedAt` is the time of the last renewal, which is a little later than the last
-  activity, and the browser always reaches its deadline first.
+  lose. Today `lastUsedAt` is the time of the last renewal a person made (decision 6), which is a
+  little later than the last activity, and the browser always reaches its deadline first.
 - **Stop background requests from renewing at all.** A screen in use would then have to wait for
   the next activity renewal before a request could carry on after its token expired.
 

@@ -23,8 +23,10 @@ its entry here in the same PR.
     deploy: within about five minutes on a screen in use.
   - **A lowered value waits for the screen to be told it.** Each session stores the window its
     screen was last shown (`sessions.idleMinutesTold`), and a renewal is judged by the longer of
-    that and the current value. Lowering the setting therefore never closes a session before its
-    countdown has finished, and so never closes it without the one-minute warning.
+    that and the current value. Only a person's renewal brings the lower value in, together with
+    the clock; a request's renewal keeps the longer one. Lowering the setting therefore never
+    closes a session before its countdown has finished, and so never closes it without the
+    one-minute warning. The active users page counts open sessions by the same rule.
   - **Background requests no longer keep an abandoned screen open.** A renewal that a request
     needed after its token expired (the notification badge polling, for one) sends
     `presence: false`. It rotates the token but does not move `lastUsedAt`. Before, any window

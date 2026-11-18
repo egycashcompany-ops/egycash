@@ -1724,9 +1724,9 @@ describe('the inactivity window is a setting', () => {
   });
 
   it('a lowered window waits for the screen to be told it: the renewal is judged by the longer', async () => {
-    // The screen was told 30 at sign-in and is counting down to 30. Ten minutes after the setting
-    // drops to 10 it is still inside ITS window, so its first renewal must be served — and tell it
-    // 10. Judged by 10 straight away, the person would come back to a session closed without the
+    // The screen was told 30 at sign-in and is counting down to 30. Fifteen minutes in, past the
+    // new 10 but inside the 30 it was told, it is still inside ITS window, so its first renewal by
+    // a person must be served — and tell it 10. Judged by 10 straight away, the person would come back to a session closed without the
     // one-minute warning and lose what they had typed.
     const { token, cookie, sessionId } = await signIn();
     expect((await setWindow(token, 10)).status).toBe(204);
@@ -1738,6 +1738,30 @@ describe('the inactivity window is a setting', () => {
     // From that renewal on, the session is judged by 10.
     await ageSession(sessionId, 11);
     const refused = await renew(cookieOf(told), { presence: true });
+    expect(refused.status).toBe(401);
+    expect((refused.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_IDLE');
+  });
+
+  it('a request’s renewal never shortens the countdown: a lowered window waits for a person', async () => {
+    // A badge poll on an idle screen meets an expired token after the setting has dropped. It is
+    // served, but it does not move the clock, so it must not bring the lower number in either:
+    // told 10 against a clock fifteen minutes old, the screen would expire on its next tick.
+    const { token, cookie, sessionId } = await signIn();
+    expect((await setWindow(token, 10)).status).toBe(204);
+    await ageSession(sessionId, 15);
+    const polled = await renew(cookie, { presence: false });
+    expect(polled.status).toBe(200);
+    expect((polled.body as { data: { idleMinutes: number } }).data.idleMinutes).toBe(30);
+
+    // The person comes back inside the 30 their screen showed: served, and told 10 from now on.
+    await ageSession(sessionId, 16);
+    const back = await renew(cookieOf(polled), { presence: true });
+    expect(back.status).toBe(200);
+    expect((back.body as { data: { idleMinutes: number } }).data.idleMinutes).toBe(10);
+
+    // From that renewal on, 10 is the rule.
+    await ageSession(sessionId, 11);
+    const refused = await renew(cookieOf(back), { presence: true });
     expect(refused.status).toBe(401);
     expect((refused.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_IDLE');
   });

@@ -84,12 +84,14 @@ Indexes: `ux_email`, `ix_companyId_branchId_status`.
 ```
 Indexes: `ux_currentTokenHash`, `ix_usedTokenHashes`, `ix_userId`, `ttl_expiresAt`.
 
-A renewal is judged by the longer of `idleMinutesTold` and the current `auth.session.idleMinutes`,
-and writes the current value back. A renewal sent with `presence: false` (a request whose access
-token expired, not a person) rotates the token without moving `lastUsedAt`.
+A renewal is judged by the longer of `idleMinutesTold` and the current `auth.session.idleMinutes`.
+A renewal by a person moves `lastUsedAt` and writes the current value back. A renewal sent with
+`presence: false` (a request whose access token expired, not a person) rotates the token, leaves
+`lastUsedAt` alone and keeps the window it was judged by.
 
 Also `ix_live_lastUsedAt` — `{ lastUsedAt: -1 }`, partial on `revokedAt: null` — for the active users
-page, which reads every session renewed inside the idle window.
+page. It lists every session a renewal would still accept: `lastUsedAt` inside the longer of the
+current window and `idleMinutesTold`.
 
 ### user_activity_days  *(presence)*
 ```jsonc

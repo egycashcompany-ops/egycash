@@ -2292,6 +2292,13 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Linking a department keeps its English name.** The company list's entries were given their
+  Arabic name in English too by the workforce importer, and linking copies the entry's name onto every
+  row, so «Top Management», «Fleet», «IT» and «Complaince and Risk» would have read «العليا», «الحركة»,
+  «تكنولوجيا المعلومات» and «الالتزام والمخاطر» on the English screens. An entry with no English of its
+  own now takes the first real English name among its rows, oldest first; the dry run lists each one
+  (`englishKept`).
+
 - **Fleet: the ten dashboard tabs and the fleet screens they open now say the same thing.**
   «اتاكد من ال10 شاشات دول المعلومات اللى فيها هى هى اللى فى باقى الشاشه ولو لاحظت حاجة عدلها».
   An audit of every figure, name and state on the ten tabs against the screen each «فتح» opens, the

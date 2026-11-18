@@ -684,6 +684,37 @@ describe('the migration, against real rows', () => {
       expect(await DepartmentCatalogModel.countDocuments({ isDeleted: false })).toBe(2);
     });
 
+    it('keeps a row\'s English name where the company list has only the Arabic again', async () => {
+      // As the workforce importer wrote them: the Arabic name in English too.
+      const entry = await departmentCatalogService.create({ code: 'TOP', name: { ar: 'العليا', en: 'العليا' } }, ACTOR);
+      const branch = await makeBranch('أ');
+      const row = await legacyDepartment(
+        { code: 'CAI-90', branchId: String(branch._id), name: { ar: 'العليا', en: 'Top Management' } },
+        ACTOR,
+      );
+
+      const dry = await runOrgCatalogMigration({ write: false, actorId: ACTOR });
+      expect(dry.englishKept).toEqual([{ code: 'TOP', name: 'العليا', en: 'Top Management' }]);
+      expect(dry.renames).toEqual([]);
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.written).toBe(true);
+      expect((await DepartmentCatalogModel.findById(entry._id).lean().exec())?.name.en).toBe('Top Management');
+      expect((await DepartmentModel.findById(row._id).lean().exec())?.name).toEqual({ ar: 'العليا', en: 'Top Management' });
+    });
+
+    it('gives a new entry the first real English name among its rows, oldest first', async () => {
+      const [a, b] = await Promise.all([makeBranch('أ'), makeBranch('ب')]);
+      await legacyDepartment({ code: 'DEP-8101', branchId: String(a._id), name: { ar: 'الحركة', en: 'الحركة' } }, ACTOR);
+      await legacyDepartment({ code: 'DEP-8102', branchId: String(b._id), name: { ar: 'الحركة', en: 'Fleet' } }, ACTOR);
+
+      const report = await runOrgCatalogMigration({ write: true, actorId: ACTOR });
+      expect(report.englishKept).toEqual([{ code: 'DEP-8101', name: 'الحركة', en: 'Fleet' }]);
+      const entry = await DepartmentCatalogModel.findOne({ isDeleted: false }).lean().exec();
+      expect(entry?.name).toEqual({ ar: 'الحركة', en: 'Fleet' });
+      expect(await DepartmentModel.countDocuments({ catalogId: entry?._id, 'name.en': 'Fleet' })).toBe(2);
+    });
+
     it('refuses to join an entry the company list has stopped', async () => {
       const entry = await departmentCatalogService.create({ code: 'OPS', name: { ar: 'العمليات', en: 'Operations' } }, ACTOR);
       await DepartmentCatalogModel.updateOne({ _id: entry._id }, { $set: { status: 'inactive' } });

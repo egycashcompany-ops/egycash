@@ -65,6 +65,7 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   byUserId: 'u-it',
   notes: null,
   createdAt: AT,
+  version: 0,
   ...over,
 });
 

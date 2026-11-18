@@ -92,6 +92,7 @@ import {
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
   type ItConsumableTransferResultDto,
+  type SetItConsumableInstalledOn,
   type TransferItConsumables,
   type ReceiveItConsumable,
   type ReturnItConsumable,
@@ -511,6 +512,19 @@ export const listConsumableMovements = (
   params: ItListParams,
 ): Promise<Paginated<ItConsumableMovementDto>> =>
   getPage<ItConsumableMovementDto>(`/it/consumable-movements${buildQuery(params)}`);
+
+/**
+ * «تعديل الجهاز» (2026-11-17) — the device an ISSUED unit sits in, corrected after the issue: the
+ * ledger's one correctable fact, because it moves no quantity. `assetId: null` is «بدون جهاز»; the
+ * row's `version` rides along, so a change somebody made first answers 409. The memo's line follows
+ * it — a reprint prints the new device — and its signed copy stays as filed. Answers the row as the
+ * ledger now shows it.
+ */
+export const setConsumableInstalledOn = (
+  id: string,
+  body: SetItConsumableInstalledOn,
+): Promise<ItConsumableMovementDto> =>
+  patch<ItConsumableMovementDto>(`/it/consumable-movements/${id}/installed-on`, body);
 
 // The memo (مذكرة صرف مستهلكات): recorded by the issue, printed again any time with the same
 // number, and the employee's signed copy filed against it — the line acknowledgment's steps.

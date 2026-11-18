@@ -113,6 +113,9 @@ describe('the consumables answer to their own grants', () => {
       'POST /it/consumables/:id/scrap': single('itConsumable.edit'),
       'POST /it/consumables/:id/return': single('itConsumable.assign'),
       'GET /it/consumable-movements/': single('itConsumable.view'),
+      // «تعديل الجهاز» (2026-11-17) — the issue's own grant; a device it names needs the caller's
+      // own `itAsset.view`, which the service asks, not the gate.
+      'PATCH /it/consumable-movements/:id/installed-on': single('itConsumable.assign'),
       'GET /it/consumable-memos/:id': single('itConsumable.view'),
       'POST /it/consumable-memos/:id/print': single('itConsumable.view'),
       'GET /it/consumable-memos/:id/signed-copy': single('itConsumable.view'),

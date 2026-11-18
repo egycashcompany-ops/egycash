@@ -132,6 +132,7 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   byUserId: 'u-it',
   notes: null,
   createdAt: '2026-10-21T08:30:00.000Z',
+  version: 0,
   ...over,
 });
 

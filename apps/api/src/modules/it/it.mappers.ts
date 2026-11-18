@@ -612,6 +612,9 @@ export const toItConsumableMovementDto = (
     counterpartConsumableCode: counterpart?.code ?? null,
     byUserId: idOrNull(doc.byUserId),
     notes: doc.notes ?? null,
+    // «تعديل الجهاز» sends it back: the one correction a row takes is refused once somebody else's
+    // has moved it on.
+    version: doc.__v,
     createdAt: iso(doc.createdAt),
   };
 };

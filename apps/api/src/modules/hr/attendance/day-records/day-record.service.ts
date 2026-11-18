@@ -81,8 +81,8 @@ const ORG_SUBJECT = { userId: null, branchId: null };
  */
 const SHEET_CAP = 10_000;
 
-/** One page of days: the period is capped at 92, and `MAX_PAGE_SIZE` is 100. */
-const PERIOD_PAGE_SIZE = 100;
+// No page size for a period any more: `employeePeriod` answers one entry per calendar DATE, with
+// its inputs batched once for the whole span, so there is no page to size and no tail to lose.
 
 /** What one resolved branch-day carries beyond its rows: who it covered, and the roster it holds them to. */
 interface ResolvedSheetDay {

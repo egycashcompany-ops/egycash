@@ -9,19 +9,30 @@
 // update — the same write the job form makes — so the two screens never disagree (§5.2, ADR-038).
 // One change is in flight at a time, and the controls wait until the chart in the cache carries the
 // job's new version, so the next gesture never sends a stale one (§2.2, §6.1).
+//
+// PRINTING (§2.4): «إمكانية طباعة كل إدارة بشكل A4 بالعرض وزرار لطباعة الكل أو اللى أحدده .. حطهم فوق
+// بجانب زر تعديل الهيكل». «طباعة» sits beside «تعديل الهيكل» and prints every department, or the
+// ones ticked, each on its own landscape sheet, from the chart already on the page.
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { type Locale, type OrgChartJobDto, type OrgChartSectionDto } from '@ecms/contracts';
+import {
+  type Locale,
+  type OrgChartDepartmentDto,
+  type OrgChartJobDto,
+  type OrgChartSectionDto,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { useCan } from '../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { Button, EmptyState } from '../../../../shared/ui';
+import { PrinterIcon } from '../../../../shared/ui/icons';
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { LoadingState } from '../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
-import { localized } from '../../../../shared/lib/format';
+import { formatDate, localized } from '../../../../shared/lib/format';
+import { openPrintDocument } from '../../../../shared/lib/print-window';
 import { useHealedGroupKeys } from '../../../../shared/lib/useHealedGroupKeys';
 import {
   useAddChartSection,
@@ -34,6 +45,8 @@ import {
 import { columnsOf, pickDepartment, placesAfter, type PlaceChange } from '../lib/chart-model';
 import { DepartmentTiles } from '../components/DepartmentTiles';
 import { ChartBoard, type ChartActions } from '../components/ChartBoard';
+import { PrintChartDialog } from '../components/PrintChartDialog';
+import { buildChartPrintHtml } from '../lib/chart-print';
 import {
   AddJobDialog,
   AddSectionDialog,
@@ -46,6 +59,7 @@ type Open =
   | { kind: 'rename'; section: OrgChartSectionDto }
   | { kind: 'stop'; section: OrgChartSectionDto }
   | { kind: 'addJob'; sectionCatalogId: string | null }
+  | { kind: 'print' }
   | null;
 
 export const OrgChartPage = (): JSX.Element => {
@@ -155,6 +169,30 @@ export const OrgChartPage = (): JSX.Element => {
   };
 
   const close = (): void => setOpen(null);
+
+  /** One landscape sheet per department, from the chart on the page (§2.4). */
+  const print = (chosen: readonly OrgChartDepartmentDto[]): void => {
+    const html = buildChartPrintHtml({
+      pages: chosen.map((d) => ({ department: d, columns: columnsOf(d, jobs) })),
+      locale,
+      printedOn: formatDate(new Date(), locale),
+      labels: {
+        company: t('organization.chart.printCompany'),
+        structureOf: (name) => t('organization.chart.structureOf', { name }),
+        inBranches: (n) => t('organization.chart.inBranches', { n }),
+        sectionsCount: (n) => t('organization.chart.sectionsCount', { n }),
+        noSections: t('organization.chart.noSections'),
+        jobsCount: (n) => t('organization.chart.jobsCount', { n }),
+        direct: t('organization.chart.direct'),
+        noJobs: t('organization.chart.noJobs'),
+        printedOn: (date) => t('organization.chart.printedOn', { date }),
+        documentTitle: t('organization.chart.title'),
+      },
+    });
+    // Opened inside the click: a tab opened later is one a popup blocker refuses.
+    if (openPrintDocument(html) === null) toast.error(t('organization.chart.popupBlocked'));
+    else close();
+  };
   /** Each section act says what it did, as the organize board's do. */
   const doneThenClose = (message: string) => ({
     onSuccess: () => {
@@ -171,10 +209,22 @@ export const OrgChartPage = (): JSX.Element => {
         { label: t('organization.chart.title') },
       ]}
       actions={
-        mayEdit && departments.length > 0 ? (
-          <Button size="sm" onClick={() => setEditing((on) => !on)}>
-            {editing ? t('organization.chart.doneEditing') : t('organization.chart.edit')}
-          </Button>
+        departments.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              leftIcon={<PrinterIcon className="h-4 w-4" />}
+              onClick={() => setOpen({ kind: 'print' })}
+            >
+              {t('organization.chart.print')}
+            </Button>
+            {mayEdit && (
+              <Button size="sm" onClick={() => setEditing((on) => !on)}>
+                {editing ? t('organization.chart.doneEditing') : t('organization.chart.edit')}
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     />
@@ -265,6 +315,15 @@ export const OrgChartPage = (): JSX.Element => {
         </>
       )}
 
+      {open?.kind === 'print' && (
+        <PrintChartDialog
+          departments={departments}
+          currentKey={department?.key ?? null}
+          locale={locale}
+          onClose={close}
+          onPrint={print}
+        />
+      )}
       {open?.kind === 'addSection' && department !== null && (
         <AddSectionDialog
           department={department}

@@ -115,6 +115,17 @@ export const registerHrAttendanceSettings = (): void => {
     allowedScopes: ['organization', 'branch'],
   });
   declareSetting({
+    key: HrAttendanceSettingKeys.ImportMaxAgeDays,
+    description:
+      'How old a device scan may be and still be imported, in days — 0 means no limit (history backfill)',
+    schema: z.number().int().min(0).max(3650),
+    // NO LIMIT BY DEFAULT. The 90-day constant this replaces was not protecting anything the
+    // future guard does not already protect; what it was doing was hiding two years of attendance
+    // that the branch machines had been holding all along.
+    defaultValue: 0,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
     key: HrAttendanceSettingKeys.DecisionApprovalAfterDays,
     description:
       'Days back a manager may decide an attendance day alone; older days wait for HR approval',

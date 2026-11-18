@@ -69,7 +69,10 @@ import {
   registerHrWorkCalendarSettings,
 } from './work-calendar';
 import {
+  attendanceBackfillJobHandlers,
+  attendanceQuarantineJobHandlers,
   buildAttendanceAssignmentsRouter,
+  buildAttendanceBackfillsRouter,
   buildAttendanceDaysRouter,
   buildAttendanceDecisionsRouter,
   buildAttendanceExportRouter,
@@ -77,6 +80,7 @@ import {
   buildAttendanceDevicesRouter,
   buildAttendanceEnrollmentsRouter,
   buildAttendancePunchesRouter,
+  buildAttendanceQuarantineRouter,
   buildAttendanceRegularizationsRouter,
   buildAttendanceShiftsRouter,
   attendanceSweepService,
@@ -1727,6 +1731,8 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/attendance/regularizations', router: buildAttendanceRegularizationsRouter() },
     { prefix: '/hr/attendance/overtime', router: buildAttendanceOvertimeRouter() },
     { prefix: '/hr/attendance/decisions', router: buildAttendanceDecisionsRouter() },
+    { prefix: '/hr/attendance/backfills', router: buildAttendanceBackfillsRouter() },
+    { prefix: '/hr/attendance/quarantine', router: buildAttendanceQuarantineRouter() },
     { prefix: '/hr/attendance/export', router: buildAttendanceExportRouter() },
     { prefix: '/hr/payroll/pay-items', router: buildPayItemsRouter() },
     { prefix: '/hr/payroll/runs', router: buildPayrollRunsRouter() },
@@ -1799,6 +1805,9 @@ export const hrModule: ModuleManifest = {
     'hr_attendance_punches',
     'hr_attendance_days',
     'hr_attendance_regularizations',
+    'hr_attendance_backfills',
+    'hr_attendance_backfill_chunks',
+    'hr_attendance_quarantine',
     'hr_pay_items',
     'hr_employee_pay_items',
     'hr_payroll_runs',
@@ -2257,5 +2266,9 @@ export const hrModule: ModuleManifest = {
       },
     },
   ],
+  // Task 2 — the history backfill's chunk worker. Declared here rather than registered from the
+  // service, like every other piece of wiring this module owns, so the work the worker process can
+  // be asked to do is readable in one place.
+  jobHandlers: [...attendanceBackfillJobHandlers, ...attendanceQuarantineJobHandlers],
   seed: seedHrRecruitment,
 };

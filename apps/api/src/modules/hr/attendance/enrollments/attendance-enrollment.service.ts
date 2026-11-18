@@ -18,6 +18,7 @@ import { auditService } from '../../../../platform/audit';
 import { diffChanges } from '../../../../shared/utils/diff';
 import { employeeRepository } from '../../employee-management/employees';
 import { attendanceDeviceRepository } from '../devices';
+import { queueQuarantineRetry } from '../quarantine/attendance-quarantine.service';
 import { type AttendanceEnrollmentDoc } from './attendance-enrollment.model';
 import { attendanceEnrollmentRepository } from './attendance-enrollment.repository';
 
@@ -116,6 +117,11 @@ class AttendanceEnrollmentService {
         { field: 'employeeId', old: null, new: input.employeeId },
       ],
     });
+    // Task 2 §4 — THE LINK IS WHAT THE WAITING SCANS WERE WAITING FOR. 153 people are no longer on
+    // the branch machines, so their history quarantined on arrival for want of exactly this row.
+    // Queued, not inline: linking a finger must answer at once, and recovering two years of that
+    // person's scans is work for a worker. Nothing here can fail the link.
+    await queueQuarantineRetry(device.code, enrollmentNo, ctx.userId);
     return doc;
   }
 
@@ -155,6 +161,14 @@ class AttendanceEnrollmentService {
       action: 'update',
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
+    // Re-pointing WHO an enrolment means can also be the answer rows were waiting for — an id that
+    // mapped to somebody since deleted quarantines as «orphaned», and this is the fix for it.
+    if (input.employeeId !== undefined && input.employeeId !== String(before.employeeId)) {
+      const device = await attendanceDeviceRepository.findById(String(updated.deviceId));
+      if (device !== null) {
+        await queueQuarantineRetry(device.code, updated.enrollmentNo, ctx.userId);
+      }
+    }
     return updated;
   }
 

@@ -2487,6 +2487,9 @@ const en: Record<string, string> = {
   'attendanceView.noSchedule': 'No schedule',
   'attendanceView.noRecord': 'No record',
   'attendanceView.offDay': 'Rest day',
+  'attendanceView.provisional': 'Not yet computed',
+  'attendanceView.prevMonth': 'Previous month',
+  'attendanceView.nextMonth': 'Next month',
   'attendanceView.unlinkedScans':
     '{people} machine IDs scanned on this date are not linked to any employee, holding {rows} scans. They are in no count below.',
   'attendance.days.employee': 'Employee',
@@ -17851,6 +17854,9 @@ const ar: Record<string, string> = {
   'attendanceView.noSchedule': 'لا يوجد جدول',
   'attendanceView.noRecord': 'لا يوجد تسجيل',
   'attendanceView.offDay': 'يوم راحة',
+  'attendanceView.provisional': 'لم يُحتسب بعد',
+  'attendanceView.prevMonth': 'الشهر السابق',
+  'attendanceView.nextMonth': 'الشهر التالي',
   'attendanceView.unlinkedScans':
     'سجّل {people} من أرقام البصمة في هذا التاريخ دون ارتباط بأي موظف، وتحتفظ بـ {rows} عملية تسجيل. وهي غير محتسبة في الأرقام أدناه.',
   'attendance.days.employee': 'الموظف',

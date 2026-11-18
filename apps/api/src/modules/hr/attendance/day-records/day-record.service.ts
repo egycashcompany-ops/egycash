@@ -464,6 +464,11 @@ class DayRecordService {
     return {
       from: dateOnlyIso(from),
       to: dateOnlyIso(to),
+      // Who the figures are about. Carried here because the resolved period is one person's days
+      // and carries no directory label — a reader holding `attendance.view` and not `employee.view`
+      // would otherwise be looking at a nameless page.
+      employeeName: employee === null ? null : employee.personal.fullNameAr,
+      employeeCode: employee === null ? null : employee.code,
       ...figures,
       noRecordDays: days.filter((day) => day.status === 'noRecord').length,
       noScheduleDays: days.filter((day) => day.status === 'noSchedule').length,

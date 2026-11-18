@@ -656,6 +656,25 @@ export type AttendanceEmployeeSummaryQuery = z.infer<typeof AttendanceEmployeeSu
 export interface AttendanceEmployeeSummaryDto {
   from: string;
   to: string;
+  /**
+   * WHO THIS IS ABOUT, resolved by the server.
+   *
+   * It is here because the screen's other source stopped carrying it. The employee page used to
+   * read the name off the enriched day rows, so a reader holding `attendance.view` and NOT
+   * `employee.view` still saw a name; the resolved period is one person's days and carries no
+   * directory label, which would have left that reader looking at a nameless page. One object the
+   * header already fetches is the right place for it, rather than repeating it on 366 days.
+   *
+   * A PLAIN STRING, the Arabic legal name, exactly as `AttendanceSheetRowDto.employeeName` carries
+   * it — not a localized pair. A person's name on these screens is their name on their file, and
+   * `fullNameEn` is usually absent; two DTOs about the same person disagreeing on the shape of it
+   * is how a screen ends up showing one name in one place and another elsewhere.
+   *
+   * Null where the employee record has gone (a purge, a bad link) — the page then shows initials
+   * and the code, which is what it always did for a missing photo.
+   */
+  employeeName: string | null;
+  employeeCode: string | null;
   /** Days that count as a day at work, by the same list payroll pays (`attendance-quantities`). */
   daysPresent: number;
   /** Days anybody was due in: the period's rows less weekends, holidays, rest days and leave. */

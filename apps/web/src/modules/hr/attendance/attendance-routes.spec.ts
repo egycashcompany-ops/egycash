@@ -114,9 +114,14 @@ describe('Attendance routes', () => {
   // My Attendance must never read the scoped endpoints: `/me` is the whole own-scope guarantee.
   it('keeps My Attendance on the own-scope endpoints only', () => {
     const page = SOURCES.find(([file]) => file.endsWith('MyAttendancePage.tsx'))?.[1] ?? '';
-    expect(page).toContain('useMyAttendanceDays');
+    // `useMyAttendancePeriod` replaced `useMyAttendanceDays`: the screen reads one entry per
+    // calendar date rather than a page of stored rows, and `/days/me/period` is own-scope by
+    // construction in exactly the way `/days/me` was — the employee comes from the login and the
+    // query cannot name one.
+    expect(page).toContain('useMyAttendancePeriod');
     expect(page).toContain('useMyRegularizations');
     expect(page).not.toContain('useAttendanceDays(');
+    expect(page).not.toContain('useAttendanceEmployeePeriod(');
     expect(page).not.toContain('employeeId:');
   });
 });

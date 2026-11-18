@@ -30,7 +30,9 @@ import { Input } from '../../../../shared/ui/form';
 import {
   addDays,
   MAX_PERIOD_DAYS,
+  nextMonth,
   periodRange,
+  previousMonth,
   rangeLabel,
   type PeriodKey,
   type PeriodRange,
@@ -118,8 +120,53 @@ export const EmployeePeriodView = ({
     });
   };
 
+  /**
+   * The previous/next month arrows.
+   *
+   * They walk WHOLE MONTHS, which is the unit an attendance question is asked in: «did he come on
+   * the 1st of the month?» is about a month, and «last month» only reaches one of them. `next` is
+   * null in the month being lived, which is what disables the arrow — there is no month after it
+   * to show, and an arrow that produced an empty future period would be a worse answer than none.
+   * The floor is the employee's first scan: stepping back past the day the machines first saw them
+   * can only draw blank months.
+   */
+  // `summary` is still loading when the picker is first drawn (the loading state renders it), so
+  // the floor is simply unknown then and the arrow is offered — the server refuses a period before
+  // the hire anyway, and an arrow disabled by a race would be worse than one that answers empty.
+  const firstPunchDay =
+    summary?.firstPunchAt === null || summary?.firstPunchAt === undefined
+      ? null
+      : summary.firstPunchAt.slice(0, 10);
+  const prev = previousMonth(period.from);
+  const next = nextMonth(period.from);
+  const canGoBack = firstPunchDay === null || prev.to >= firstPunchDay;
+  const step = (range: PeriodRange | null): void => {
+    if (range === null) return;
+    onPeriodChange({ key: 'custom', ...range });
+  };
+
   const periodPicker = (
     <span className="flex flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => step(prev)}
+        disabled={!canGoBack}
+        aria-label={t('attendanceView.prevMonth')}
+        title={t('attendanceView.prevMonth')}
+      >
+        ‹
+      </Button>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={() => step(next)}
+        disabled={next === null}
+        aria-label={t('attendanceView.nextMonth')}
+        title={t('attendanceView.nextMonth')}
+      >
+        ›
+      </Button>
       <Segmented
         value={period.key}
         options={PERIOD_OPTIONS.map((key) => ({

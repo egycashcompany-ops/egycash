@@ -1,168 +1,123 @@
 // The read-time resolution, pinned at every boundary it has.
 //
-// This function exists because of one operational fact: the branch servers recompute only the
-// employees who scanned, so a no-show's row is written at most once and then left alone until the
-// nightly pass — and very often there is no row at all. Every case below is a shape that really
-// occurs on this deployment, not a hypothetical.
+// This function exists because of two operational facts. The branch servers recompute only the
+// employees who scanned, so a no-show's row is written at most once and then left alone — and very
+// often there is no row at all. And production carries two years of imported punches that nothing
+// has re-derived, so "no row" is the ordinary case for most of the history rather than an edge.
+//
+// Every case below is a shape that really occurs on this deployment, not a hypothetical. The two
+// marked REGRESSION are the ones the owner was looking at: a hundred employees shown as five, and
+// a day with punches reading «يوم راحة».
 import { describe, expect, it } from 'vitest';
-import { resolveDisplayStatus } from './resolve-display-status';
+import { resolveDayStatus } from './resolve-display-status';
 
-const TODAY = new Date(Date.UTC(2026, 10, 17)); // 2026-11-17, Cairo standard time (UTC+2)
-const YESTERDAY = new Date(Date.UTC(2026, 10, 16));
-const TOMORROW = new Date(Date.UTC(2026, 10, 18));
+const resolve = (stored: Parameters<typeof resolveDayStatus>[0]['stored'],
+                 derived: Parameters<typeof resolveDayStatus>[0]['derived']) =>
+  resolveDayStatus({ stored, derived });
 
-/** 17:00 Cairo on the 17th = 15:00 UTC. */
-const EXPECTED_END = new Date(Date.UTC(2026, 10, 17, 15, 0));
-const MORNING = new Date(Date.UTC(2026, 10, 17, 8, 0)); // 10:00 Cairo
-const EVENING = new Date(Date.UTC(2026, 10, 17, 17, 0)); // 19:00 Cairo
-
-const resolve = (over: Partial<Parameters<typeof resolveDisplayStatus>[0]> = {}) =>
-  resolveDisplayStatus({
-    stored: null,
-    workDate: TODAY,
-    today: TODAY,
-    expectedEnd: EXPECTED_END,
-    calendar: 'working',
-    now: MORNING,
-    ...over,
+describe('the one line that is left out', () => {
+  it('omits a date the employee was not employed on, and nothing else', () => {
+    // `deriveDay` returns null for a date outside somebody's employment, and so does this.
+    expect(resolve(null, null)).toBeNull();
+    expect(resolve('present', null)).toBeNull();
   });
 
-describe('today, which is the whole reason this function exists', () => {
-  it('shows «لم يحضر بعد» before the expected end and «غائب» after it, with NO row at all', () => {
-    // Nobody has written anything for this person, and nothing is written by looking: this is how
-    // 1,300 employees per branch appear on a sheet for a date that is not over.
-    expect(resolve({ stored: null, now: MORNING })).toBe('pending');
-    expect(resolve({ stored: null, now: EVENING })).toBe('absent');
-  });
-
-  it('reads a row the branch left at `pending` the same way', () => {
-    expect(resolve({ stored: 'pending', now: MORNING })).toBe('pending');
-    expect(resolve({ stored: 'pending', now: EVENING })).toBe('absent');
-  });
-
-  it('reads back an `absent` stored earlier TODAY as pending — the clock, not the row, decides', () => {
-    // A row written at 08:00 by an older build, or by a recompute that ran before the expectation
-    // was set, says `absent` for somebody who is simply not in yet. The stored value is not the
-    // authority for a date still being lived.
-    expect(resolve({ stored: 'absent', now: MORNING })).toBe('pending');
-    expect(resolve({ stored: 'absent', now: EVENING })).toBe('absent');
-  });
-
-  it('turns over exactly at the expected end', () => {
-    expect(resolve({ now: new Date(EXPECTED_END.getTime() - 1) })).toBe('pending');
-    expect(resolve({ now: EXPECTED_END })).toBe('absent');
-  });
-
-  it('says the schedule is MISSING when nobody said when this person was due', () => {
-    // No assignment and no branch pattern, on a working day. This is the production bug: it
-    // answered `dayOff`, so an entire branch read «يوم راحة» on a Tuesday — a claim that the
-    // company owed them no work, which nobody had made, and which hid the real problem (an empty
-    // roster) behind a settled-looking answer.
-    expect(resolve({ expectedEnd: null, now: MORNING })).toBe('noSchedule');
-    expect(resolve({ expectedEnd: null, now: EVENING })).toBe('noSchedule');
-    expect(resolve({ expectedEnd: null, stored: 'pending' })).toBe('noSchedule');
-  });
-
-  it('still defers to the calendar — a missing roster does not overrule a weekend', () => {
-    // The two are different answers to different questions, and the calendar's comes first: a
-    // Friday is a rest day for everybody whether or not their schedule was ever filled in.
-    expect(resolve({ expectedEnd: null, calendar: 'weekend' })).toBe('weekend');
-    expect(resolve({ expectedEnd: null, calendar: 'holiday' })).toBe('holiday');
+  it('REGRESSION: an employed person with no row is a LINE, not a silence', () => {
+    // This is the defect that made a sheet for any past date show four or five names out of a
+    // hundred: the resolution answered null for a missing row and both callers dropped the line.
+    // Whatever the derivation says, there is now an answer.
+    for (const derived of ['present', 'checkedIn', 'absent', 'noSchedule', 'weekend'] as const) {
+      expect(resolve(null, derived)).not.toBeNull();
+    }
   });
 });
 
-describe('a settled row answers for itself, whatever the clock says', () => {
-  // Every status but `pending` and `absent` is a conclusion drawn from evidence, and evidence does
-  // not change as the afternoon wears on. This also means no expectation has to be looked up for
-  // these rows — which is what keeps a month of history cheap to read.
-  const settled = [
-    'present',
-    'checkedIn',
-    'late',
-    'earlyLeave',
-    'lateAndEarly',
-    'onLeave',
-    'weekend',
-    'holiday',
-    'incomplete',
-    'dayOff',
-    'noSchedule',
-  ] as const;
-
-  it.each(settled)('%s is returned untouched, today and in the past', (status) => {
-    expect(resolve({ stored: status, now: MORNING })).toBe(status);
-    expect(resolve({ stored: status, now: EVENING })).toBe(status);
-    expect(resolve({ stored: status, workDate: YESTERDAY, expectedEnd: null })).toBe(status);
-  });
-
-  it('does not need an expectation to return one', () => {
-    expect(resolve({ stored: 'present', expectedEnd: null })).toBe('present');
-  });
-});
-
-describe('a date that has passed', () => {
-  it('reads a stale `pending` as the absence it turned out to be', () => {
-    // THE CASE THE OWNER CAUGHT. A branch recompute in the afternoon leaves the row at `pending`,
-    // nothing rewrites it until 2 AM, and in between the sheet must not keep claiming the person
-    // might still arrive on a day that has ended.
-    expect(resolve({ stored: 'pending', workDate: YESTERDAY, expectedEnd: null })).toBe('absent');
-  });
-
-  it('needs no expectation to say so — the day ended, and that is the whole argument', () => {
-    // Deliberate: resolving a month of history must not cost an assignment lookup per row.
-    expect(resolve({ stored: 'pending', workDate: YESTERDAY, expectedEnd: null, now: MORNING })).toBe(
-      'absent',
-    );
-    expect(resolve({ stored: 'absent', workDate: YESTERDAY, expectedEnd: null })).toBe('absent');
-  });
-
-  it('does NOT invent an absence where the engine wrote no row', () => {
-    // No row on a past date means the engine never concluded that day for that person — most often
-    // because they were not employed on it, which is exactly when `deriveDay` returns no row.
-    // `null` means "leave this line out", not "absent".
-    expect(resolve({ stored: null, workDate: YESTERDAY, expectedEnd: null })).toBeNull();
-    expect(resolve({ stored: null, workDate: YESTERDAY, expectedEnd: EXPECTED_END })).toBeNull();
-  });
-});
-
-describe('the calendar speaks before absence does', () => {
-  // Without this the whole company reads «لم يحضر بعد» every Friday morning and «غائب» every
-  // Friday evening — 1,300 fabricated absences a week, on the screen a supervisor trusts.
-  it('says weekend or holiday for a line with no row, whatever the clock says', () => {
-    for (const calendar of ['weekend', 'holiday'] as const) {
-      expect(resolve({ calendar, stored: null, now: MORNING })).toBe(calendar);
-      expect(resolve({ calendar, stored: null, now: EVENING })).toBe(calendar);
-      expect(resolve({ calendar, stored: null, expectedEnd: null })).toBe(calendar);
+describe('a settled row is the answer', () => {
+  it('returns a conclusion drawn from evidence untouched', () => {
+    // Evidence does not change as the clock moves, so these are never re-decided — and note the
+    // derivation is deliberately given a DIFFERENT value, to prove the stored one wins.
+    for (const stored of ['present', 'checkedIn', 'late', 'earlyLeave', 'lateAndEarly',
+                          'onLeave', 'weekend', 'holiday', 'incomplete'] as const) {
+      expect(resolve(stored, 'absent')).toBe(stored);
     }
   });
 
-  it('corrects a `pending` or `absent` row written before the calendar said so', () => {
-    // The engine would write `weekend` for this day today; a row that predates the calendar change
-    // must not keep claiming an absence the next recompute would erase.
-    expect(resolve({ calendar: 'weekend', stored: 'pending' })).toBe('weekend');
-    expect(resolve({ calendar: 'holiday', stored: 'absent', workDate: YESTERDAY })).toBe('holiday');
-  });
-
-  it('does NOT overrule a day somebody actually worked', () => {
-    // A present or late row on a public holiday is the truth about that person's day, and the
-    // settled-row rule runs first precisely so the calendar cannot talk over it.
-    expect(resolve({ calendar: 'holiday', stored: 'present' })).toBe('present');
-    expect(resolve({ calendar: 'weekend', stored: 'checkedIn' })).toBe('checkedIn');
-    expect(resolve({ calendar: 'holiday', stored: 'onLeave' })).toBe('onLeave');
-  });
-
-  it('still omits a past date the engine never concluded, holiday or not', () => {
-    // No row and not employed then: there is no day here to label at all.
-    expect(resolve({ calendar: 'holiday', stored: null, workDate: YESTERDAY })).toBeNull();
+  it('keeps a legacy `incomplete` row, because payroll still prices it as one', () => {
+    // It is legacy and nothing derives it any more, but it carries real times and a frozen month
+    // was priced from it. Re-labelling it on screen would make the screen disagree with the
+    // payslip, so it stays settled while `dayOff` does not.
+    expect(resolve('incomplete', 'checkedIn')).toBe('incomplete');
   });
 });
 
-describe('a date in the future', () => {
-  it('is not yet in, because nothing has happened and the end is still ahead', () => {
-    expect(resolve({ workDate: TOMORROW, stored: null })).toBe('pending');
+describe('the three statuses that are re-decided', () => {
+  it('re-resolves a row left at `pending` by a branch recompute', () => {
+    // Written while the day was being lived; the derivation now reads the clock against the
+    // expected end and says what the day became.
+    expect(resolve('pending', 'present')).toBe('present');
+    expect(resolve('pending', 'absent')).toBe('absent');
+    expect(resolve('pending', 'pending')).toBe('pending');
   });
 
-  it('still lets the calendar speak — a weekend written ahead stays a weekend', () => {
-    expect(resolve({ workDate: TOMORROW, stored: 'weekend' })).toBe('weekend');
+  it('re-resolves an `absent` written earlier in the same day', () => {
+    // A branch recompute at ten in the morning can write `absent` for somebody due at five. When
+    // they scan, the derivation sees the punch.
+    expect(resolve('absent', 'checkedIn')).toBe('checkedIn');
+    // And a real absence stays one: `absent` stored and `absent` derived is a conclusion.
+    expect(resolve('absent', 'absent')).toBe('absent');
+  });
+
+  it('REGRESSION: a legacy `dayOff` row never holds a rest day over real punches', () => {
+    // Nothing derives `dayOff` any more, so every stored one predates `noSchedule`. These are the
+    // rows behind «12 and 15 November read يوم راحة although I scanned on both»: taking them at
+    // face value would keep a wrong answer on screen for as long as the row sits in the database.
+    expect(resolve('dayOff', 'present')).toBe('present');
+    expect(resolve('dayOff', 'checkedIn')).toBe('checkedIn');
+    // And when the date really is a rest day, the calendar says so through the derivation.
+    expect(resolve('dayOff', 'weekend')).toBe('weekend');
+    expect(resolve('dayOff', 'holiday')).toBe('holiday');
+  });
+});
+
+describe('an absence must be concluded, never inferred by a screen', () => {
+  it('reports a derived absence with no row at all as `noRecord`', () => {
+    // Nothing has decided this date and no scan was seen for it. On a deployment whose history was
+    // imported but never re-derived, that covers most of two years — and «غائب» across two years
+    // would be a claim nobody made, carried onward by every figure above the table.
+    expect(resolve(null, 'absent')).toBe('noRecord');
+  });
+
+  it('reports a derived absence behind a legacy `dayOff` row as `noRecord` too', () => {
+    // There is a row, but it is not an absence conclusion — it is a row from before the engine
+    // could tell a missing schedule from a rest day.
+    expect(resolve('dayOff', 'absent')).toBe('noRecord');
+  });
+
+  it('keeps a CONCLUDED absence as `absent`', () => {
+    // A stored `pending` or `absent` was written by the engine about this date. Once the date has
+    // passed the derivation says `absent`, and that is a conclusion, so it reads as one.
+    expect(resolve('pending', 'absent')).toBe('absent');
+    expect(resolve('absent', 'absent')).toBe('absent');
+  });
+
+  it('never turns a non-absence into `noRecord`', () => {
+    // The substitution is narrow on purpose: it applies to a derived `absent` and nothing else.
+    expect(resolve(null, 'noSchedule')).toBe('noSchedule');
+    expect(resolve(null, 'pending')).toBe('pending');
+    expect(resolve(null, 'weekend')).toBe('weekend');
+    expect(resolve(null, 'holiday')).toBe('holiday');
+    expect(resolve(null, 'onLeave')).toBe('onLeave');
+  });
+});
+
+describe('what a reader sees is what a recompute would store', () => {
+  it('passes the derivation through for every status but an inferred absence', () => {
+    // The property every screen depends on: the sheet, the employee page and their CSVs all
+    // resolve through here, so none of them can invent a status the engine would not write. The
+    // ONE deliberate divergence is the inferred absence above, which is reported as the gap it is.
+    for (const derived of ['present', 'checkedIn', 'late', 'earlyLeave', 'lateAndEarly',
+                           'pending', 'onLeave', 'weekend', 'holiday', 'noSchedule'] as const) {
+      expect(resolve(null, derived)).toBe(derived);
+    }
   });
 });

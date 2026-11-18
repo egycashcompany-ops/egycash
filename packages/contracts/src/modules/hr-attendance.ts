@@ -56,6 +56,24 @@ import { type JobValueSource } from './hr-employee.js';
  * matters because the branch servers only recompute employees who scanned, so a no-show's row is
  * never rewritten during the day and sits at `pending` until the nightly pass — the resolution is
  * a read-time rule precisely so that gap is invisible to whoever is looking.
+ *
+ * `noRecord` IS "ECMS HAS NOTHING TO SAY ABOUT THIS PERSON ON THIS DAY", and it exists because the
+ * alternative was to say nothing at all. A read path used to answer `null` for an employed person
+ * with no stored row on a past date and the caller DROPPED THE LINE, so a daily sheet for any past
+ * date listed only the handful of people a recompute happened to have run for — four or five names
+ * out of a hundred — and every count beneath it counted those four or five. The people a sheet is
+ * opened to find were the ones it could not show.
+ *
+ * It is NOT an absence, and that distinction is the reason it is its own value rather than
+ * `absent`. An absence is a conclusion: the person was due and did not come. No row means the
+ * engine never drew a conclusion — most often because the punches arrived but nothing re-derived
+ * the days, which is exactly what a pending backfill looks like. Writing «غائب» there would put a
+ * claim on screen that nobody made, against two years of history, and payroll would carry it.
+ *
+ * So it is payroll-neutral by construction, in no quantity group, contributing zero — and it is
+ * NEVER STORED. The engine does not produce it; only the read-time resolution does, for a day it
+ * found no row for. The moment a recompute concludes that day the row says what it really was.
+ *
  */
 export const ATTENDANCE_DAY_STATUSES = [
   'present',
@@ -71,6 +89,7 @@ export const ATTENDANCE_DAY_STATUSES = [
   'incomplete',
   'dayOff',
   'noSchedule',
+  'noRecord',
 ] as const;
 export const AttendanceDayStatusSchema = z.enum(ATTENDANCE_DAY_STATUSES);
 export type AttendanceDayStatus = z.infer<typeof AttendanceDayStatusSchema>;
@@ -572,6 +591,22 @@ export interface AttendanceSheetSummaryDto {
    * devices even in the seconds before a recompute lands.
    */
   lastPunchAt: string | null;
+  /**
+   * THE SCANS THIS SHEET CANNOT SHOW: people who presented a finger on this date under a machine
+   * id no enrolment maps to an employee. They are not in `total` and they are in no bucket,
+   * BECAUSE ECMS DOES NOT KNOW WHO THEY ARE — and that is precisely why the figure has to be on
+   * the screen. Thirty-nine people scanned and five lines appeared, and nothing on the page said
+   * the other thirty-four existed.
+   *
+   * `identities` counts distinct machine ids, `rows` the scans behind them, and `ids` names them so
+   * HR can take them straight to the link screen. Capped at a readable number; `identities` is the
+   * true count even when `ids` is shorter.
+   */
+  unlinkedScans: {
+    identities: number;
+    rows: number;
+    ids: { deviceCode: string; enrollmentNo: string | null; rows: number }[];
+  };
 }
 
 /**
@@ -593,9 +628,14 @@ export const AttendanceEmployeeSummaryQuerySchema = z
   })
   .strict()
   .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
-  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
+  // A YEAR, not 92 days. The old cap was sized for a month view; the period picker now offers a
+  // custom range reaching back to the employee's first scan, and «did he come on the 1st of
+  // January?» is a question about a period this endpoint has to admit. The cost is bounded by the
+  // resolution being one employee's own days — a bounded number of queries whatever the span, with
+  // the daily record paged beneath the figures.
+  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 366, {
     path: ['to'],
-    message: 'the period is capped at 92 days',
+    message: 'the period is capped at 366 days',
   });
 export type AttendanceEmployeeSummaryQuery = z.infer<typeof AttendanceEmployeeSummaryQuerySchema>;
 
@@ -625,6 +665,58 @@ export interface AttendanceEmployeeSummaryDto {
   graceMinutes: number;
   /** Their most recent scan inside the period, or null. */
   lastPunchAt: string | null;
+  /**
+   * Days ECMS has nothing for: employed, the date has passed, and no row was ever concluded. On a
+   * deployment whose history has been imported but not yet re-derived this is most of the period,
+   * and it is reported as its own figure rather than folded into `absentDays` so that the screen
+   * can say «لا يوجد تسجيل» instead of accusing somebody of not coming.
+   */
+  noRecordDays: number;
+  /** Days nobody has said when this person works. */
+  noScheduleDays: number;
+  /**
+   * The employee's FIRST EVER scan, whatever the period asked about — the floor the period picker
+   * stops at, so «previous month» cannot walk back past the day the machines first saw them.
+   * Null when they have never scanned.
+   */
+  firstPunchAt: string | null;
+}
+
+/**
+ * ONE RESOLVED DAY of an employee's period — and there is exactly one of these per calendar date
+ * in the range, which is the whole point.
+ *
+ * The employee page used to be served from `GET /hr/attendance/days`, which filters day DOCUMENTS.
+ * A date with no row simply was not in the answer, so the month skipped it: punches had been
+ * imported for the 12th and the 15th and the page showed neither, while days whose legacy row
+ * still said `dayOff` read «يوم راحة» on top of real scans. The sheet meanwhile resolved its own
+ * answer for the same dates, so the two screens disagreed about the same employee on the same day.
+ *
+ * So this is resolved exactly as a sheet line is, by the same function, and the two cannot drift:
+ * the stored row when there is one, else the day derived from that date's punches, else the
+ * calendar, else «لا يوجد جدول» or «لا يوجد تسجيل».
+ *
+ * `provisional` is true when nothing is stored — the day is being reported from its punches alone,
+ * and a recompute has not concluded it. A client may mark it; payroll never sees it, because
+ * payroll reads frozen rows and a provisional day has no row at all.
+ */
+export interface AttendanceEmployeeDayDto {
+  date: string;
+  status: AttendanceDayStatus;
+  firstInAt: string | null;
+  lastOutAt: string | null;
+  workedMinutes: number;
+  lateMinutes: number;
+  earlyLeaveMinutes: number;
+  /** What they were due that date, resolved at read time; null when nobody has said. */
+  expectedStartAt: string | null;
+  expectedEndAt: string | null;
+  /** True when there is no stored row and this day was read from its punches. */
+  provisional: boolean;
+  /** Frozen by payroll — the day is evidence now and no recompute will touch it. */
+  frozen: boolean;
+  /** Every scan of that date, in order, so the timeline can draw them. */
+  punches: { at: string; direction: AttendancePunchDirection; source: AttendancePunchSource }[];
 }
 
 /**
@@ -661,6 +753,27 @@ export interface AttendanceSheetRowDto {
   expectedStartAt: string | null;
   expectedEndAt: string | null;
   day: AttendanceDayDto | null;
+  /**
+   * THE TIMES OF A DAY NOTHING HAS STORED YET — derived from that date's punches when the reader
+   * looked, and `null` whenever `day` is present.
+   *
+   * It exists because `day` cannot be synthesized honestly. A stored row carries an id, a
+   * `computedAt` and a version; a day read from its punches has none of those, and inventing them
+   * would make a provisional reading indistinguishable from a concluded one. So the stored row and
+   * the read-time derivation are two different fields, and a client renders the times from
+   * `day ?? provisionalDay` while knowing which it got.
+   *
+   * This is what puts somebody who scanned onto a sheet whose recompute has not run — the case that
+   * had thirty-nine people scanning and five lines on screen. Payroll never sees it: payroll reads
+   * frozen rows, and a provisional day has no row at all.
+   */
+  provisionalDay: {
+    firstInAt: string | null;
+    lastOutAt: string | null;
+    workedMinutes: number;
+    lateMinutes: number;
+    earlyLeaveMinutes: number;
+  } | null;
 }
 
 /**

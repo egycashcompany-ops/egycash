@@ -1,113 +1,108 @@
-// What a day READS AS, which is not always what the row SAYS.
+// WHAT A DAY READS AS, which is not always what the row SAYS — and never a claim the engine has
+// not made.
 //
-// THE PROBLEM THIS SOLVES. The branch servers push their scans and then call `days/recompute` for
-// the employees who scanned — only for those employees, because they are the only ones the device
-// has anything to say about. So the people a daily sheet is read to find, the ones who have not
-// turned up, are precisely the people whose rows nobody rewrites all day. A no-show's row is
-// written at most once, by whatever recompute happened to run, and then sits untouched until the
-// nightly pass at 2 AM. Very often there is no row at all.
+// THE PROBLEM THIS SOLVES, in two halves.
 //
-// A stored status therefore cannot be trusted to answer "what is this day?" while the date is
-// still being lived. The answer has to be worked out when somebody looks, from the clock against
-// the hour the person was due. That is this function, and every read path uses it — the sheet
-// today, the summary endpoint when it arrives — so that all of them say the same thing about the
-// same day.
+// The first half is that a stored status cannot answer "what is this day?" while the date is still
+// being lived. The branch servers push their scans and call `days/recompute` for the employees who
+// scanned — only those, because they are the only ones the device has anything to say about. So the
+// people a daily sheet is read to find, the ones who have not turned up, are precisely the people
+// whose rows nobody rewrites all day. A no-show's row is written at most once and then sits until
+// the nightly pass.
+//
+// The second half is worse, and it is what production showed. For an employed person with no
+// stored row on a PAST date this function used to answer `null`, and both callers DROPPED THE
+// LINE. A sheet for any past date therefore listed only the handful of people a recompute happened
+// to have run for — four or five names out of a hundred — and the counts beneath it counted those
+// four or five. Two years of imported history read as an empty company.
+//
+// So the resolution now has a different shape. It is handed BOTH the stored row and what the engine
+// says about that date from live inputs (`deriveDay`, the same function `computeDay` stores from),
+// and it picks between them. That has one property worth stating plainly, because every screen
+// depends on it:
+//
+//   WHAT A READER SEES IS WHAT A RECOMPUTE WOULD STORE.
+//
+// The sheet, the employee page, their CSVs and the summary all resolve through here, so they cannot
+// disagree about the same employee on the same day — which they did, for months, because the sheet
+// resolved its own answer and the employee page read a status straight off the row.
 //
 // NOTHING IS WRITTEN BY LOOKING. Resolving at read time is what makes it possible to show 1,300
-// employees' standing today without minting 1,300 rows for a date that is not over, and it is
-// also why no `expectedEndAt` is stored on the row: a stored expectation goes stale the moment HR
-// edits the working pattern mid-day, and it would then be consulted for exactly the date it is
-// wrong about.
-//
-// Pure, and injected with both `now` and `today`, for the usual reason: a function that reads the
-// clock cannot be tested against the boundary it exists to implement.
+// employees' standing today without minting 1,300 rows for a date that is not over, and it is also
+// why no expectation is stored on a row: a stored expectation goes stale the moment HR edits the
+// working pattern mid-day, and it would then be consulted for exactly the date it is wrong about.
 import { type AttendanceDayStatus } from '@ecms/contracts';
 
-export interface DisplayStatusInput {
-  /**
-   * The stored row's status, or null when the engine has written no row for this employee-day —
-   * which is the ordinary case for somebody who has not scanned today.
-   */
+/**
+ * The stored statuses this resolution REFUSES TO TAKE AT FACE VALUE, each for its own reason.
+ *
+ * `pending` and `absent` are the two the engine writes provisionally: `pending` is a day in
+ * progress, and an `absent` written at ten in the morning is a statement about a day that had not
+ * finished. Both are re-decided from the clock.
+ *
+ * `dayOff` is here because NOTHING DERIVES IT ANY MORE. Every stored `dayOff` is a legacy row from
+ * before `noSchedule` existed, written when an employee with no shift assignment was reported as
+ * owed no work. Production is full of them, and they are exactly the rows the owner is looking at
+ * when he says that 12 and 15 November read «يوم راحة» although he scanned on both. Taking such a
+ * row at face value would hold a wrong answer on screen for as long as it sits in the database; re-
+ * resolving it means a day with punches shows the punches, and a day without them says which kind
+ * of nothing it was.
+ *
+ * `incomplete` is deliberately NOT here. It is also legacy, but it carries real times and reads
+ * correctly, and payroll prices frozen `incomplete` rows exactly as they were priced when the month
+ * closed — so re-labelling them on screen would make the screen disagree with the payslip.
+ */
+const RE_RESOLVED: readonly AttendanceDayStatus[] = ['pending', 'absent', 'dayOff'];
+
+export interface DayResolutionInput {
+  /** The stored row's status, or null when the engine has written no row for this employee-day. */
   stored: AttendanceDayStatus | null;
-  /** The day in question: UTC-midnight date-only, as everything date-only in HR is. */
-  workDate: Date;
-  /** Today in Cairo, UTC-midnight date-only. Injected with `now`, from one reading of the clock. */
-  today: Date;
   /**
-   * The instant this employee was due to finish on `workDate`, resolved from their assignment or
-   * their branch's default pattern AS THOSE STAND NOW, or null when nobody has said when they are
-   * due. Null is a real answer here, not a missing one.
+   * What `deriveDay` says about this date, computed now from live inputs — the punches, the leave,
+   * the calendar, the manager's decision and the expectation as they stand. `null` means the
+   * employee was not employed on the date, which is the one case that yields no line at all.
    */
-  expectedEnd: Date | null;
-  /**
-   * What the WORK CALENDAR says about the date — organization-wide, so one answer serves a whole
-   * page of employees. Without it a Friday morning would read as «لم يحضر بعد» for the entire
-   * company and a Friday evening as «غائب»: nobody is expected on a weekend or a public holiday,
-   * and the engine says so for the rows it writes, so the resolution has to say so for the rows
-   * it does not.
-   */
-  calendar: 'working' | 'weekend' | 'holiday';
-  /** The instant the reader is reading at. */
-  now: Date;
+  derived: AttendanceDayStatus | null;
 }
 
 /**
- * The display status, or null for "this employee has no day here at all" — a line the caller
- * leaves out rather than filling in.
+ * The display status, or null for "this person has no day here at all".
  *
  * The rules, in order:
  *
- *  1. **A settled row is the answer.** Every status except `pending` and `absent` is a conclusion
- *     drawn from evidence — a presence, a leave, a holiday, a weekend — and evidence does not
- *     change as the clock moves. Those rows are returned untouched, which also means this function
- *     never needs an expectation for them.
+ *  1. **Not employed on the date, no line.** `deriveDay` returns nothing for a date outside
+ *     somebody's employment, and so does this. It is the ONLY null, and that is the fix: it used
+ *     to be returned for a missing row too, which is how a hundred people became five.
  *
- *  2. **A past date is over, and needs no expectation either.** A `pending` row on a date that has
- *     passed reads as `absent`: the day ended and nobody arrived. This is the case that covers the
- *     hours between an afternoon branch recompute and the nightly pass, and it is answered without
- *     looking anything up, which is what keeps a month's worth of rows cheap to read.
+ *  2. **A settled row is the answer.** Everything except the three in `RE_RESOLVED` is a conclusion
+ *     drawn from evidence — a presence, a leave, a holiday, a weekend — and evidence does not change
+ *     as the clock moves.
  *
- *  3. **No row on a past date is NOT an absence.** It means the engine never concluded that day
- *     for that person — most often because they were not employed on it, which is exactly when
- *     `deriveDay` returns no row at all. Inventing «غائب» there would put a claim on screen that
- *     nobody ever made, so the answer is null and the line is omitted.
+ *  3. **Otherwise the live derivation answers**, which is what keeps the screen and a recompute in
+ *     agreement: a day with punches shows them, a weekend reads as a weekend, a day nobody has
+ *     rostered reads «لا يوجد جدول».
  *
- *  4. **The calendar speaks before absence does**, exactly as it does in the engine. Nobody is
- *     expected on a weekend or a public holiday, so a line with no row — or one left at `pending`
- *     or `absent` by a calendar that has since changed — reads as the day it actually is. Without
- *     this the whole company would read «لم يحضر بعد» every Friday morning.
- *
- *  5. **Today (or later) is decided from the expected end.** Before it, «لم يحضر بعد»; after it,
- *     «غائب». This is where a row the branch left at `absent` earlier in the day is read back as
- *     `pending`, and where somebody with no row at all appears on the sheet without one being
- *     written for them.
- *
- *  6. **No expectation at all means no expectation.** With neither an assignment nor a pattern,
- *     nobody has said when this person works, so the day is `noSchedule` — not a failure to
- *     attend, and equally not a rest day. The same answer the engine gives, for the same reason.
+ *  4. **An absence must have been CONCLUDED, never inferred by a screen.** When the derivation would
+ *     say `absent` but no row ever concluded this day — no row at all, or only a legacy `dayOff` —
+ *     the honest answer is `noRecord`: nothing has been decided about this date and no scan was seen
+ *     for it. A reader gets «لا يوجد تسجيل», not an accusation. This is the difference between "the
+ *     backfill has not reached this day" and "this person did not come", and on a deployment whose
+ *     history was imported but never re-derived those two cover most of two years. A stored `pending`
+ *     or `absent` IS a conclusion, so it reads `absent` once the date has passed, exactly as before.
  */
-export const resolveDisplayStatus = (input: DisplayStatusInput): AttendanceDayStatus | null => {
-  const { stored, workDate, today, expectedEnd, calendar, now } = input;
+export const resolveDayStatus = ({
+  stored,
+  derived,
+}: DayResolutionInput): AttendanceDayStatus | null => {
+  // 1 — not employed on this date.
+  if (derived === null) return null;
 
-  // 1 — settled by evidence. Note this runs BEFORE the calendar: somebody who actually worked a
-  // public holiday has a `present` row, and that is the truth about their day.
-  if (stored !== null && stored !== 'pending' && stored !== 'absent') return stored;
+  // 2 — settled by evidence.
+  if (stored !== null && !RE_RESOLVED.includes(stored)) return stored;
 
-  // 3 — no row on a date that has passed is no answer at all, not an absence.
-  const past = workDate.getTime() < today.getTime();
-  if (past && stored === null) return null;
+  // 4 — an inferred absence is reported as the gap it is.
+  if (derived === 'absent' && (stored === null || stored === 'dayOff')) return 'noRecord';
 
-  // 4 — the calendar, for everything the engine has not already settled.
-  if (calendar !== 'working') return calendar;
-
-  // 2 — the date has passed and nobody arrived.
-  if (past) return 'absent';
-
-  // 6 — nobody said when they were due. A GAP, NOT A REST DAY: the weekend and the holidays have
-  // already answered above, so on a working day this means the schedule is missing, and saying
-  // «يوم راحة» would both be false and hide the thing HR has to fix.
-  if (expectedEnd === null) return 'noSchedule';
-
-  // 5 — still winnable, or not.
-  return now < expectedEnd ? 'pending' : 'absent';
+  // 3 — the live derivation.
+  return derived;
 };

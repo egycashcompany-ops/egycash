@@ -19,6 +19,7 @@ import {
   type AttendanceEmployeeSummaryQuery,
   type AttendanceSheetSummaryDto,
   type AttendanceSheetSummaryQuery,
+  type AttendanceEmployeeDayDto,
   type AttendanceDayStatus,
   ATTENDANCE_DAY_STATUSES,
   type Paginated,
@@ -60,7 +61,9 @@ import {
   type DayExpectation,
 } from './expectations';
 import { periodFigures } from './period-figures';
-import { resolveDisplayStatus } from './resolve-display-status';
+import { resolveDayStatus } from './resolve-display-status';
+import { loadDayInputs, employedOn, COVERING_LEAVE_STATUSES } from './day-inputs';
+import { unlinkedScansOn } from '../quarantine/attendance-quarantine.store';
 import { liveDecisionFor } from '../decisions/live-decision';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
 import { dayRecordRepository } from './day-record.repository';
@@ -158,7 +161,8 @@ const arrivalSlots = (rows: AttendanceSheetRowDto[]): AttendanceArrivalSlotDto[]
 };
 
 /** Leave that covers a day for the engine: decided-and-running, or already lived. */
-const COVERING_LEAVE_STATUSES = ['approved', 'active', 'completed'] as const;
+// `COVERING_LEAVE_STATUSES` and `employedOn` now live in `day-inputs.ts`, so the batch read paths
+// and this single-day one resolve both questions by one definition each.
 
 export const toAttendanceDayDto = (doc: AttendanceDayDoc): AttendanceDayDto => ({
   id: String(doc._id),
@@ -180,18 +184,6 @@ export const toAttendanceDayDto = (doc: AttendanceDayDoc): AttendanceDayDto => (
   frozenAt: doc.frozenAt === null ? null : doc.frozenAt.toISOString(),
   version: doc.__v,
 });
-
-/** Employed on the date per the derived hire→exit periods; the hire date covers legacy rows. */
-const employedOn = (employee: EmployeeDoc, workDate: Date): boolean => {
-  if (employee.employmentPeriods.length > 0) {
-    return employee.employmentPeriods.some(
-      (p) =>
-        toDateOnly(p.hiredAt).getTime() <= workDate.getTime() &&
-        (p.exitedAt === null || toDateOnly(p.exitedAt).getTime() >= workDate.getTime()),
-    );
-  }
-  return toDateOnly(employee.employment.startDate).getTime() <= workDate.getTime();
-};
 
 /** The shape `BaseRepository.list` returns, for the reads that resolve to nothing without a query. */
 const emptyPage = (query: { page: number; pageSize: number }): Paginated<AttendanceDayDoc> => ({
@@ -292,26 +284,118 @@ class DayRecordService {
     return this.figuresFor(query, String(employee._id), page.items);
   }
 
-  /** The shared half: the arithmetic, the roster for the last day, and the newest scan. */
+  /**
+   * EVERY CALENDAR DATE OF ONE EMPLOYEE'S PERIOD, RESOLVED — the employee page's single source, and
+   * the sheet's twin.
+   *
+   * WHY THIS EXISTS. The employee page was served from `GET /hr/attendance/days`, which filters day
+   * DOCUMENTS. A date with no row was simply not in the answer, so the month SKIPPED it: punches
+   * had been imported for the 12th and the 15th of November and the page showed neither of them,
+   * while dates whose legacy row still said `dayOff` read «يوم راحة» on top of real scans. The
+   * daily sheet meanwhile resolved its own answer for the same dates. Two screens, two sources, one
+   * employee — and they disagreed, which is the complaint this whole change answers.
+   *
+   * So there is exactly ONE ROW PER DATE here, resolved by the same pure functions the sheet uses
+   * and the stored rows come from: the stored row when it is settled, else the day derived from
+   * that date's punches, else the calendar, else «لا يوجد جدول» or «لا يوجد تسجيل».
+   *
+   * THE QUERY COUNT DOES NOT GROW WITH THE SPAN. `loadDayInputs` batches every input once for the
+   * whole period, so a year costs the same handful of queries a month does — which is what lets the
+   * period picker reach back to the first scan of 2024 without a screen that crawls.
+   */
+  async employeePeriod(
+    employeeId: string,
+    from: Date,
+    to: Date,
+  ): Promise<AttendanceEmployeeDayDto[]> {
+    const employee = await employeeRepository.findById(employeeId);
+    if (employee === null) throw new NotFoundError('no such employee');
+    const start = toDateOnly(from);
+    const end = toDateOnly(to);
+
+    const [storedRows, inputs] = await Promise.all([
+      AttendanceDayModel.find({
+        employeeId: employee._id,
+        workDate: { $gte: start, $lte: end },
+        isDeleted: false,
+      })
+        .lean<AttendanceDayDoc[]>()
+        .exec(),
+      loadDayInputs([employee], start, end),
+    ]);
+    const storedByDate = new Map(storedRows.map((row) => [dateOnlyIso(toDateOnly(row.workDate)), row]));
+
+    // ONE reading of the clock for the whole period, so two dates cannot be resolved against
+    // different "now"s — the same discipline the sheet keeps.
+    const now = new Date();
+    const out: AttendanceEmployeeDayDto[] = [];
+    for (let d = start; d.getTime() <= end.getTime(); d = addDays(d, 1)) {
+      const assembled = inputs.assemble(employee, d, now);
+      // Not employed on this date: no line, exactly as the sheet omits one.
+      if (assembled === null) continue;
+      const stored = storedByDate.get(dateOnlyIso(d)) ?? null;
+      const derived = deriveDay(assembled.input);
+      const status = resolveDayStatus({
+        stored: stored === null ? null : stored.status,
+        derived: derived === null ? null : derived.status,
+      });
+      if (status === null) continue;
+      // The times come from the stored row when there is one and from the derivation otherwise, so
+      // a date whose punches arrived but whose recompute has not run still shows its real hours.
+      const times = stored ?? derived;
+      out.push({
+        date: dateOnlyIso(d),
+        status,
+        firstInAt:
+          times === null || times.firstInAt === null ? null : times.firstInAt.toISOString(),
+        lastOutAt: times === null || times.lastOutAt === null ? null : times.lastOutAt.toISOString(),
+        workedMinutes: times === null ? 0 : times.workedMinutes,
+        lateMinutes: times === null ? 0 : times.lateMinutes,
+        earlyLeaveMinutes: times === null ? 0 : times.earlyLeaveMinutes,
+        expectedStartAt:
+          assembled.expectation === null ? null : assembled.expectation.start.toISOString(),
+        expectedEndAt:
+          assembled.expectation === null ? null : assembled.expectation.end.toISOString(),
+        provisional: stored === null,
+        frozen: stored !== null && stored.frozenAt !== null,
+        punches: assembled.punches.map((punch) => ({
+          at: punch.at.toISOString(),
+          direction: punch.direction,
+          source: punch.source,
+        })),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * The shared half: the arithmetic, the roster for the last day, and the newest scan.
+   *
+   * IT ADDS UP THE RESOLVED PERIOD, not the stored rows it was handed. The figures above the page
+   * have to be the figures of the days drawn beneath it — «حضر 12 يومًا» over a table showing
+   * fourteen presences is the same disagreement in miniature — so the days are resolved once here
+   * and both the figures and the list are read off that one answer.
+   */
   private async figuresFor(
     query: { from: Date; to: Date },
     employeeId: string,
-    rows: AttendanceDayDoc[],
+    _rows: AttendanceDayDoc[],
   ): Promise<AttendanceEmployeeSummaryDto> {
     const employee = await employeeRepository.findById(employeeId);
     const to = toDateOnly(query.to);
     const from = toDateOnly(query.from);
+    const days = await this.employeePeriod(employeeId, from, to);
     const figures = periodFigures(
-      rows.map((row) => ({
-        status: row.status,
-        firstInAt: row.firstInAt,
-        lastOutAt: row.lastOutAt,
-        workedMinutes: row.workedMinutes,
-        lateMinutes: row.lateMinutes,
+      days.map((day) => ({
+        status: day.status,
+        firstInAt: day.firstInAt === null ? null : new Date(day.firstInAt),
+        lastOutAt: day.lastOutAt === null ? null : new Date(day.lastOutAt),
+        workedMinutes: day.workedMinutes,
+        lateMinutes: day.lateMinutes,
       })),
     );
 
-    const [expectations, lastPunchAt] = await Promise.all([
+    const [expectations, lastPunchAt, firstPunchAt] = await Promise.all([
       employee === null
         ? Promise.resolve(new Map<string, DayExpectation | null>())
         : expectationsForDate(
@@ -323,6 +407,9 @@ class DayRecordService {
         cairoInstant(from, '00:00'),
         cairoInstant(addDays(to, 1), '00:00'),
       ),
+      // THE FLOOR THE PERIOD PICKER STOPS AT, and deliberately not bounded by the period being
+      // asked about: «previous month» has to know whether there is an earlier month to go to.
+      punchRepository.firstPunchEver(new Types.ObjectId(employeeId)),
     ]);
     const roster = rosterOf(expectations);
 
@@ -330,9 +417,12 @@ class DayRecordService {
       from: dateOnlyIso(from),
       to: dateOnlyIso(to),
       ...figures,
+      noRecordDays: days.filter((day) => day.status === 'noRecord').length,
+      noScheduleDays: days.filter((day) => day.status === 'noSchedule').length,
       dayStart: roster.dayStart,
       graceMinutes: roster.graceMinutes,
       lastPunchAt: lastPunchAt === null ? null : lastPunchAt.toISOString(),
+      firstPunchAt: firstPunchAt === null ? null : firstPunchAt.toISOString(),
     };
   }
 
@@ -423,10 +513,13 @@ class DayRecordService {
       return { rows: [], employeeIds: [], dayStart: null, graceMinutes: 0 };
     }
 
-    // THE CALENDAR IS READ ONCE FOR THE WHOLE DAY — it is organization-wide (the owner's ruling
-    // that the weekend stays global), so one answer serves every line. Without it a line with no
-    // row would read «لم يحضر بعد» on a Friday morning for the entire company.
-    const [dayRows, expectations, holidays, weekendDays, placements] = await Promise.all([
+    // THE WHOLE DAY'S INPUTS IN ONE BATCH — the punches included, which is the change that makes
+    // this sheet complete. It used to load day ROWS and resolve a label beside them, so a person
+    // who scanned on a date no recompute had reached contributed nothing to the screen: thirty-nine
+    // fingers on the glass, five lines in the table. Now every line is DERIVED by the same pure
+    // function the stored rows come from, so a scan shows up the moment it is imported and the
+    // sheet says exactly what a recompute would store.
+    const [dayRows, inputs, placements] = await Promise.all([
       AttendanceDayModel.find({
         employeeId: { $in: employees.map((employee) => employee._id) },
         workDate,
@@ -434,48 +527,35 @@ class DayRecordService {
       })
         .lean<AttendanceDayDoc[]>()
         .exec(),
-      expectationsForDate(
-        employees.map((employee) => ({
-          id: String(employee._id),
-          branchId: String(employee.employment.branchId),
-        })),
-        workDate,
-      ),
-      workCalendarService.listHolidays(workDate, workDate),
-      workCalendarService.weekendDays(),
+      loadDayInputs(employees, workDate, workDate),
       // One read per catalogue for the whole sheet, never one per row — and resolved here because
       // naming a department on the client would need the catalogue and the key that guards it.
       resolvePlacements(employees),
     ]);
     const dayByEmployee = new Map(dayRows.map((row) => [String(row.employeeId), row]));
-    const calendar: 'working' | 'weekend' | 'holiday' =
-      holidays.length > 0
-        ? 'holiday'
-        : weekendDays.includes(isoWeekday(workDate))
-          ? 'weekend'
-          : 'working';
 
     // ONE reading of the clock for the whole day, so two lines of the same sheet cannot land on
     // opposite sides of an expected end — and so the cards cannot disagree with the rows beneath.
     const now = new Date();
-    const today = cairoToday();
 
+    const expectations = new Map<string, DayExpectation | null>();
     const rows: AttendanceSheetRowDto[] = [];
     for (const employee of employees) {
       const employeeId = String(employee._id);
+      // null means NOT EMPLOYED ON THIS DATE, and it is now the only reason a line is left out.
+      // Previously a missing row was treated the same way, which is how a sheet for a past date
+      // came to list four or five people out of a hundred.
+      const assembled = inputs.assemble(employee, workDate, now);
+      if (assembled === null) continue;
+      const { expectation } = assembled;
+      expectations.set(employeeId, expectation);
+
       const day = dayByEmployee.get(employeeId) ?? null;
-      const expectation = expectations.get(employeeId) ?? null;
-      const status = resolveDisplayStatus({
+      const derived = deriveDay(assembled.input);
+      const status = resolveDayStatus({
         stored: day === null ? null : day.status,
-        workDate,
-        today,
-        expectedEnd: expectation === null ? null : expectation.end,
-        calendar,
-        now,
+        derived: derived === null ? null : derived.status,
       });
-      // null means "this person has no day here at all" — a past date the engine never concluded
-      // for them, most often because they were not employed on it. The line is left out rather
-      // than filled in with a claim nobody made.
       if (status === null) continue;
       rows.push({
         employeeId,
@@ -492,6 +572,18 @@ class DayRecordService {
         expectedStartAt: expectation === null ? null : expectation.start.toISOString(),
         expectedEndAt: expectation === null ? null : expectation.end.toISOString(),
         day: day === null ? null : toAttendanceDayDto(day),
+        // The times of a day nothing has concluded, so a scan is visible before any recompute —
+        // and deliberately a SEPARATE field from `day`, so nobody mistakes a reading for a record.
+        provisionalDay:
+          day !== null || derived === null
+            ? null
+            : {
+                firstInAt: derived.firstInAt === null ? null : derived.firstInAt.toISOString(),
+                lastOutAt: derived.lastOutAt === null ? null : derived.lastOutAt.toISOString(),
+                workedMinutes: derived.workedMinutes,
+                lateMinutes: derived.lateMinutes,
+                earlyLeaveMinutes: derived.earlyLeaveMinutes,
+              },
       });
     }
     return { rows, employeeIds: employees.map((employee) => employee._id), ...rosterOf(expectations) };
@@ -558,14 +650,22 @@ class DayRecordService {
     // THE LAST SCAN COMES FROM THE PUNCHES, not from the derived rows. A punch is a fact the
     // moment it is imported; the row it belongs to is rewritten a second later by the recompute.
     // Reading the rows would make the device look silent for exactly the seconds that matter.
-    const lastPunchAt =
+    const [lastPunchAt, unlinked] = await Promise.all([
       day.employeeIds.length === 0
-        ? null
-        : await punchRepository.lastPunchIn(
+        ? Promise.resolve(null)
+        : punchRepository.lastPunchIn(
             day.employeeIds,
             cairoInstant(workDate, '00:00'),
             cairoInstant(addDays(workDate, 1), '00:00'),
-          );
+          ),
+      // THE SCANS THIS SHEET CANNOT SHOW. Deliberately NOT narrowed by the branch or section
+      // filters: a machine id linked to nobody belongs to no branch, so narrowing it would hide it
+      // on exactly the filtered screens HR works from.
+      unlinkedScansOn(
+        cairoInstant(workDate, '00:00'),
+        cairoInstant(addDays(workDate, 1), '00:00'),
+      ),
+    ]);
 
     return {
       date: dateOnlyIso(workDate),
@@ -575,6 +675,13 @@ class DayRecordService {
       dayStart: day.dayStart,
       graceMinutes: day.graceMinutes,
       lastPunchAt: lastPunchAt === null ? null : lastPunchAt.toISOString(),
+      unlinkedScans: {
+        identities: unlinked.length,
+        rows: unlinked.reduce((sum, group) => sum + group.rows, 0),
+        // Capped for the screen; `identities` stays the true count, so a page saying "50 of 153"
+        // is reading one number rather than estimating the other.
+        ids: unlinked.slice(0, 50),
+      },
     };
   }
 

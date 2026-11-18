@@ -75,6 +75,23 @@ class PunchRepository extends BaseRepository<AttendancePunchDoc> {
     return newest?.at ?? null;
   }
 
+  /**
+   * ONE EMPLOYEE'S FIRST SCAN EVER, whatever period is being looked at.
+   *
+   * The period picker needs a floor. «Previous month» has to know whether there IS an earlier month
+   * to walk back to, and the custom range has to refuse a start before the machines first saw this
+   * person rather than drawing an empty year. Indexed on `ix_employee_at`, so it is one row read.
+   */
+  async firstPunchEver(employeeId: Types.ObjectId): Promise<Date | null> {
+    const oldest = await this.model
+      .findOne({ employeeId, supersededBy: null, isDeleted: false })
+      .sort({ at: 1 })
+      .select({ at: 1 })
+      .lean<{ at: Date } | null>()
+      .exec();
+    return oldest?.at ?? null;
+  }
+
   /** The engine's read: every punch for one employee inside a window, oldest first. */
   async listForWindow(
     employeeId: Types.ObjectId,

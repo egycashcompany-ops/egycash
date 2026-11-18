@@ -126,3 +126,9 @@ daily-phone-sheet-dark (shoot them again from the real daily screen).
   «2 سيارات» → «سيارتين»; ErrorState raw «INTERNAL» small fix; delete the accidental artifact
   https://claude.ai/artifact/3sUFjosQJWS6kB5esVhibD?; follow-ups from #753: ar-EG digits in «شهر انتهاء الترخيص»
   options (3 screens), car page digits, car record accidents count by code.
+
+## Run log
+
+- 2026-11-18 07:5x build workflow relaunched on the new machine: task wk1km9qtn, run wf_94ec4d81-8ec, script copy
+  .wip-notes/fixed-build/workflow.js (if the machine is lost again, relaunch it from this copy; agents finish what
+  the WIP commits already hold). Check-ins every ~40 min commit the tree as signed WIP and push.

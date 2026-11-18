@@ -63,6 +63,8 @@ export interface ChartPlace {
   jobTitleId: string;
   departmentCatalogId: string;
   sectionCatalogId: string | null;
+  /** Where the job stands in its column; null until the column is ordered (design §5.7). */
+  position: number | null;
 }
 
 export interface ChartInput {
@@ -260,6 +262,7 @@ export const toOrgChartDto = (input: ChartInput, index: ChartIndex = indexOrgCha
       departmentCatalogId: place.departmentCatalogId,
       sectionCatalogId: place.sectionCatalogId,
       shown: index.placeShown(place),
+      position: place.position,
     })),
   }));
 

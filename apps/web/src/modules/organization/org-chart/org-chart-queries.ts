@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import {
   type AddChartSection,
   type JobPlaceInput,
+  type OrderChartColumn,
   type JobTitleDto,
   type OrgChartDto,
   type RenameChartSection,
@@ -41,11 +42,25 @@ export const refreshAfterJobWrite = (qc: QueryClient, job?: JobTitleDto): void =
                 : {
                     ...entry,
                     version: job.version,
-                    places: job.places.map((place) => ({
-                      departmentCatalogId: place.department.departmentCatalogId,
-                      sectionCatalogId: place.section?.sectionCatalogId ?? null,
-                      shown: place.shown,
-                    })),
+                    places: job.places.map((place) => {
+                      const departmentCatalogId = place.department.departmentCatalogId;
+                      const sectionCatalogId = place.section?.sectionCatalogId ?? null;
+                      // A place the job kept keeps its position (§5.7): the job's DTO does not
+                      // carry it, and dropping it here would shuffle the column until the refetch.
+                      const kept = entry.places.find(
+                        (old) =>
+                          old.departmentCatalogId.toLowerCase() ===
+                            departmentCatalogId.toLowerCase() &&
+                          (old.sectionCatalogId?.toLowerCase() ?? null) ===
+                            (sectionCatalogId?.toLowerCase() ?? null),
+                      );
+                      return {
+                        departmentCatalogId,
+                        sectionCatalogId,
+                        shown: place.shown,
+                        position: kept?.position ?? null,
+                      };
+                    }),
                   },
             ),
           },
@@ -96,5 +111,14 @@ export const useChangeJobPlaces = () => {
       places: JobPlaceInput[];
     }) => updateJobTitle(id, { version, places }),
     onSuccess: (job) => refreshAfterJobWrite(qc, job),
+  });
+};
+
+/** A column's jobs in a new order (§5.7): the fresh chart goes straight into its key. */
+export const useOrderChartColumn = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrderChartColumn) => api.orderChartColumn(body),
+    onSuccess: (chart) => qc.setQueryData(ORG_CHART_KEY, chart),
   });
 };

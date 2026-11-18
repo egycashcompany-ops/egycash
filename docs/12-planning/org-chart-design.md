@@ -8,6 +8,10 @@ his messages in the Claude Code session of 2026-11-17. The decision this rests o
 [ADR-038](../03-decisions/ADR-038-job-titles-placed-in-the-structure.md). §11 will record the
 fresh-context design review that checked this document over three rounds.
 
+**Amended 2026-11-18** with two requests the owner made after using the page: the order of a column's
+jobs («لما باجي أشد حاجة عشان أغير ترتيبها مش بتتشد», §2.2, §5.7) and printing («إمكانية طباعة كل
+إدارة بشكل A4 بالعرض وزرار لطباعة الكل أو اللى أحدده .. حطهم فوق بجانب زر تعديل الهيكل», §2.4).
+
 ## 0. Terms
 
 | Term | Meaning |
@@ -144,9 +148,16 @@ their sections and their jobs in one tree".
   - One change is in flight at a time. The controls are disabled from the moment a change is sent until
     the chart in the cache reflects it (§6.1), so the next change always carries the current `version`.
 - **Jobs.** These controls appear only on a catalog group, and only to someone holding `jobTitle.edit`.
-  - **Drag:** each job has a ↕ grip. Dropping it on another section of the same department, or on
-    «تابعة للإدارة مباشرة», moves it there. This uses native HTML5 drag-and-drop, as
-    `OrganizeApplicationsPage` does, with no new dependency.
+  - **Drag:** each job has a ↕ grip, shown only where a drag can do something. This uses native HTML5
+    drag-and-drop, as `OrganizeApplicationsPage` does, with no new dependency.
+    - Dropped on a row of its **own** column, the job takes that row's place: above it from the row's
+      upper half, below it from the lower half. A bar on the row's edge shows where it will land. The
+      column's new order is saved (§5.7).
+    - Dropped on another section of the same department, or on «تابعة للإدارة مباشرة», the job moves
+      there and stands last in that column until it is ordered.
+  - **«تحريك لأعلى» / "Move up" and «تحريك لأسفل» / "Move down" (↑ / ↓):** the same reorder without
+    dragging, one step at a time, on the phone tree too. They appear when the column has more than one
+    job; the first row cannot go up and the last cannot go down.
   - **«نقل إلى» / "Move to":** a `Select` of the same targets.
   - **«إزالة من هنا» / "Remove from here" (✕):** removes that job place. The job itself stays.
   - **«إضافة وظيفة» / "Add job":** under each section and under the direct column. It opens a `Dialog`
@@ -191,6 +202,29 @@ their sections and their jobs in one tree".
   "Not set yet".
 - **Delete.** Deleting a job removes its job places.
 
+### 2.4 Printing
+
+- **«طباعة» / "Print"** sits in the page header beside «تعديل الهيكل», for anyone who can open the page.
+- **The dialog** «طباعة الهيكل التنظيمي» / "Print the org chart" offers «كل الإدارات (n)» / "All
+  departments (n)" or «إدارات أحددها» / "Departments I choose". The second lists every department with
+  a tick box; the one open on the page is ticked first, and «تحديد الكل» / «إلغاء التحديد» tick or clear
+  them all. With more than 7 departments the list has a search box. «طباعة (n)» prints the chosen
+  departments, in the tiles' order, and is disabled while none is chosen.
+- **The document** (`org-chart/lib/chart-print.ts`) is written into a new tab through
+  `shared/lib/print-window.ts`, from the chart already on the page, and carries no script of its own.
+  - One department to a sheet: A4 in landscape, each department starting a new page.
+  - Each sheet has the company letterhead (the logo and «ايجى كاش للحلول النقدية»), the title
+    «الهيكل التنظيمي لإدارة {name}», the counts, and «طُبع في {date}» at the foot.
+  - The chart is drawn as the screen draws it, in the order of §5.7: the department, the direct jobs
+    first (only when there are some: paper has no edit mode), then the sections side by side, each with
+    its jobs under it. A department with no sections has its jobs under its box, spread over up to four
+    columns when there are more than 12.
+  - Up to 7 columns are drawn as a tree with connectors. A department with more is laid out in rows of
+    columns under one rule, because a tree's connectors cannot follow across a line break.
+  - A column longer than 14 jobs prints in a compact size. A column that still does not fit continues
+    on the next sheet rather than shrinking out of legibility.
+- **A blocked tab** shows «منع المتصفح نافذة الطباعة…» in the toast.
+
 ## 3. The records
 
 ### 3.1 `job_title_places`
@@ -201,6 +235,7 @@ their sections and their jobs in one tree".
   "jobTitleId": "<ObjectId job_titles>",
   "departmentCatalogId": "<ObjectId department_catalog>",
   "sectionCatalogId": "<ObjectId section_catalog> | null", // null: directly under the department
+  "position": "<number> | null", // where the job stands in its column, from 0 (§5.7)
   "isDeleted": false, "deletedAt": "<Date> | null", "deletedBy": "<ObjectId users> | null",
   "createdBy": "<ObjectId users> | null", "updatedBy": "<ObjectId users> | null",
   "createdAt": "<Date>", "updatedAt": "<Date>", "__v": 0
@@ -218,6 +253,9 @@ their sections and their jobs in one tree".
     keeps its places.
   - Nothing here counts, reserves or limits anything (D-ORG3-1).
   - `createdBy` is null when the fill (§7) wrote the place.
+  - `position` is written only by the column order (§5.7). It is null until the column is first ordered,
+    and on a place added after that, which then follows the ordered ones. The job's own update (§5.2)
+    never changes it: a place the job keeps keeps its position.
 - **Why catalog entries, not rows:** "Operations" means Operations in every branch, including one that
   opens next year. Places held against rows would need one per branch, and none for a branch added
   later.
@@ -311,7 +349,10 @@ OrgChartDto = {
   }[];
   jobs: {                               // every active job
     id: string; code: string; name: { ar: string; en: string }; version: number;
-    places: { departmentCatalogId: string; sectionCatalogId: string | null; shown: boolean }[];
+    places: {
+      departmentCatalogId: string; sectionCatalogId: string | null; shown: boolean;
+      position: number | null;           // §5.7
+    }[];
   }[];
 };
 ```
@@ -534,6 +575,32 @@ them).
 and a row in each of N branches. Half of that would leave a section that exists in some branches, a
 state no screen can repair. Here the only half-state is the row without its link, and that is the
 state every row was in before this design.
+
+### 5.7 The order of a column's jobs
+
+A column is the jobs placed directly under a department, or the jobs of one of its sections. The page
+shows each column ordered by the place's `position`; places with none come after the ordered ones, and
+among themselves in the order of the chart's `jobs` list. The server compares against the same order.
+
+| Endpoint | Key | Body |
+|---|---|---|
+| `PUT /api/v1/platform/org-chart/order` | `jobTitle.edit` | `{departmentCatalogId, sectionCatalogId: string \| null, jobTitleIds: string[]}` (1–500, each once) |
+
+- **One write per gesture.** The body is the whole column in its new order. In one transaction the
+  write loads the chart through its session, as the section writes do (§5.4).
+- **Allowed columns:** the department must be an editable catalog group, and the section an editable,
+  shown section of that department (§4.2). Otherwise the write fails with `ORG_UNIT_NOT_EDITABLE`.
+- **A stale list is refused.** The list must be exactly the active jobs placed in that column. A list
+  that misses one, or names one the column does not have, was made from an older chart. It is refused
+  with `STALE_DOCUMENT`, so a reorder never silently drops or misplaces a job somebody else just added.
+  The page then refetches the chart.
+- **The write** numbers the column's places 0…n−1, in the order given. The job documents are not
+  touched, so no job's `version` changes and an open job form is not made stale.
+- **Audit:** one `update` row on the department entry (`departmentCatalog`) for the direct column, or on
+  the section entry (`sectionCatalog`), with `jobOrder` as the jobs' Arabic names before and after. The
+  same order sent again writes nothing.
+- **The answer** is the fresh chart, which the page puts straight into its cache (§6.1).
+- **Why the place, not the job:** a job placed in two sections stands where each of them puts it.
 
 ## 6. Keeping the chart and the job form in step
 

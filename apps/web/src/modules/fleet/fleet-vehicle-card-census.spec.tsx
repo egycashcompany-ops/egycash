@@ -97,11 +97,12 @@ const WIRED: readonly Wired[] = [
     ],
   },
   {
-    file: 'pages/FixedRosterPage.tsx',
-    screen: '«الطاقم الثابت» — the coloured code, hover only',
+    // The standing roster's computer board, drawn like the daily one — its page
+    // (`FixedRosterPage.tsx`) is a shell that only picks the board.
+    file: 'components/roster/FixedDeskBoard.tsx',
+    screen: '«الطاقم الثابت» — the code column, hover only',
     pins: [
-      /useVehicleHoverCard\(\s*\{ vehicleId: row\.vehicleId, code: row\.code \},\s*\{ focusable: false \},?\s*\)/u,
-      /render: \(row\) => <CrewCarCode row=\{row\} \/>/u,
+      /<VehicleHoverCode\s+vehicleId=\{row\.vehicleId\}\s+code=\{row\.code\}\s+focusable=\{false\}/u,
     ],
   },
   {
@@ -384,7 +385,7 @@ describe('the wired screens: the code cell is the card’s trigger', () => {
   it('hover only where the code sits in something that takes clicks or drags', () => {
     for (const file of [
       'components/roster/RosterDeskBoard.tsx',
-      'pages/FixedRosterPage.tsx',
+      'components/roster/FixedDeskBoard.tsx',
       'pages/CustodyPage.tsx',
       'components/FuelCarGroup.tsx',
       'components/CustodyDashboardCharts.tsx',

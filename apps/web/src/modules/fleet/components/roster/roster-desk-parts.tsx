@@ -57,7 +57,14 @@ const PILL_BUTTON =
  * file at a time (busy → a spinner, the button disabled) and a failure NAMED in a toast
  * (`errorMessage`), never an uncaught error and a button that silently did nothing.
  */
-export const ExcelPill = ({ onExport }: { onExport: () => void | Promise<void> }): JSX.Element => {
+export const ExcelPill = ({
+  onExport,
+  name = 'roster',
+}: {
+  onExport: () => void | Promise<void>;
+  /** The screen's export hook (`data-export`) — the daily board's own by default. */
+  name?: string | undefined;
+}): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [busy, setBusy] = useState(false);
@@ -76,7 +83,7 @@ export const ExcelPill = ({ onExport }: { onExport: () => void | Promise<void> }
     <div className={PILL}>
       <button
         type="button"
-        data-export="roster"
+        data-export={name}
         title={t('fleet.export.excel')}
         disabled={busy}
         aria-busy={busy}
@@ -407,11 +414,11 @@ export const DeskCounters = ({
  * their controls resized. (Reached by role and by the footer, so the panel's class never spells the
  * lists' own hooks.)
  */
-const DESK_CONTROLS =
+export const DESK_CONTROLS =
   '[&_input]:!h-9 [&_input]:!text-sm [&_[role=group]_button]:!h-8 [&_[role=group]_button]:!px-2.5 [&_[role=group]_button]:!text-xs [&_[data-licence-footer]_a]:!min-h-8';
 
 /** A list's own scroll, inside its tab. */
-const LIST_SCROLL = 'min-h-0 flex-1 overflow-y-auto overscroll-contain';
+export const LIST_SCROLL = 'min-h-0 flex-1 overflow-y-auto overscroll-contain';
 
 /**
  * ONE panel, two tabs, in place of the two side-by-side columns that took «إجراءات» off the

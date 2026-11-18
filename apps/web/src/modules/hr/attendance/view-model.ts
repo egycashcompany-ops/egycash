@@ -9,6 +9,7 @@
 // nothing about says so, and no figure is computed that the server did not send.
 import {
   type AttendanceDayDto,
+  type AttendanceEmployeeDayDto,
   type AttendanceDayStatus,
   type AttendanceSheetRowDto,
   type Locale,
@@ -84,6 +85,11 @@ export const toViewStatus = (status: AttendanceDayStatus, isToday: boolean): Vie
       return 'holiday';
     case 'noSchedule':
       return 'noSchedule';
+    // The engine has concluded nothing about this date and no scan was seen for it. The view
+    // status already existed for "no row at all"; now the SERVER says it too, for a date it
+    // resolved rather than one the client found missing, and both arrive at the same word.
+    case 'noRecord':
+      return 'noRecord';
   }
 };
 
@@ -114,7 +120,12 @@ export const toSheetRow = (
   },
 ): SheetRow => {
   const day = row.day;
-  const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
+  // THE TIMES COME FROM EITHER, and the fallback is the point: a scan imported onto a date no
+  // recompute has reached has no stored row, and reading only `day` is what put thirty-nine people
+  // at the door and five sets of times on screen. `day` wins where it exists — it is the concluded
+  // record — and `provisionalDay` is the reading of the punches the server took when it answered.
+  const times = day ?? row.provisionalDay;
+  const inAt = times?.firstInAt == null ? null : cairoMinutes(times.firstInAt);
   return {
     id: row.employeeId,
     name: row.employeeName,
@@ -126,8 +137,8 @@ export const toSheetRow = (
     status: toViewStatus(row.status, row.date.slice(0, 10) === options.today),
     expected: expectedSpan(row.expectedStartAt, row.expectedEndAt),
     inAt,
-    outAt: day?.lastOutAt == null ? null : after(inAt, cairoMinutes(day.lastOutAt)),
-    lateMinutes: day?.lateMinutes ?? 0,
+    outAt: times?.lastOutAt == null ? null : after(inAt, cairoMinutes(times.lastOutAt)),
+    lateMinutes: times?.lateMinutes ?? 0,
     overtimeApproved: day?.approvedOvertimeMinutes ?? 0,
     overtimeDerived: day?.overtimeMinutes ?? 0,
     tags: marksOf(day, options.label),
@@ -136,16 +147,18 @@ export const toSheetRow = (
 };
 
 /**
- * One day of an employee's period.
+ * One day of an employee's period, from the SERVER'S RESOLUTION of that date.
  *
- * `day` is null for a date the engine has concluded nothing about — before the hire, after the
- * exit, or a day the nightly pass has not reached. The calendar needs a cell for every date in the
- * period or its weeks stop lining up, so the date is kept and says «لا يوجد سجل» rather than
- * borrowing the look of a rest day.
+ * It used to be handed a day ROW or null, and null meant "the client found no row for this date" —
+ * which the client then had to interpret. That is where the two screens came apart: the sheet asked
+ * the server what a date WAS and the employee page guessed from what it had been sent. Now the
+ * server answers one entry per date, with the status it would store, and this only renders it.
+ *
+ * `day` is still nullable for the one case the server omits: a date outside the employment.
  */
 export const toEmployeeDay = (
   date: string,
-  day: AttendanceDayDto | null,
+  day: AttendanceEmployeeDayDto | null,
   options: { today: string; label: (key: string) => string; action?: React.ReactNode },
 ): EmployeeDay => {
   const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
@@ -154,13 +167,19 @@ export const toEmployeeDay = (
     status: day === null ? 'noRecord' : toViewStatus(day.status, date === options.today),
     inAt,
     outAt: day?.lastOutAt == null ? null : after(inAt, cairoMinutes(day.lastOutAt)),
-    // The sheet carries the expectation; the day list does not, and inventing one here would be a
-    // second derivation of the hours the server already resolves.
-    expected: null,
+    // THE EXPECTATION NOW ARRIVES, resolved per date by the server. The old comment here said the
+    // day list did not carry one and that inventing it would be a second derivation — true then,
+    // and the reason the period endpoint carries it.
+    expected: day === null ? null : expectedSpan(day.expectedStartAt, day.expectedEndAt),
     // Hours that were measured, or null — never a confident zero against a day with no check-out.
     worked: day === null || day.workedMinutes === 0 ? null : day.workedMinutes,
     lateMinutes: day?.lateMinutes ?? 0,
-    tags: marksOf(day, options.label),
+    // A provisional day is one the engine has not concluded: the punches are real and the status is
+    // a reading of them. Marked so a reader knows which, and so «لا يوجد تسجيل» is not the only
+    // clue that the backfill still has work to do.
+    tags: day !== null && day.provisional && day.punches.length > 0
+      ? [options.label('attendanceView.provisional')]
+      : [],
     ...(options.action === undefined ? {} : { action: options.action }),
   };
 };

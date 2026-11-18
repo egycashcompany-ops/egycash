@@ -14,6 +14,7 @@ import { ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { scopeSelector } from '../../../../shared/types';
 import { employeeLabelMap, labelFields } from '../../shared/employee-labels';
+import { BusinessRuleError } from '../../../../shared/errors';
 import { dayRecordService, toAttendanceDayDto } from './day-record.service';
 import { streamAttendanceExport } from './attendance-export';
 
@@ -61,6 +62,38 @@ export const attendanceEmployeeSummary = async (req: Request, res: Response): Pr
   const ctx = authContext(req);
   const { query } = validated<never, AttendanceEmployeeSummaryQuery, never>(req);
   ok(res, await dayRecordService.employeeSummary(query, scopeSelector(ctx, 'attendance.view')));
+};
+
+/**
+ * EVERY CALENDAR DATE of one employee's period, resolved — the employee page's own source.
+ *
+ * It is a sibling of `/employee-summary` rather than a field on it because the two are read at
+ * different rates: the figures are one small object the header draws once, and this is up to a
+ * year of days the table and the calendar page through. Both are resolved from the same days, so
+ * they cannot disagree.
+ */
+export const attendanceEmployeePeriod = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, AttendanceEmployeeSummaryQuery, never>(req);
+  if (query.employeeId === undefined) {
+    throw new BusinessRuleError('an employee is required for this period');
+  }
+  ok(
+    res,
+    await dayRecordService.employeePeriodScoped(
+      query.employeeId,
+      query.from,
+      query.to,
+      scopeSelector(ctx, 'attendance.view'),
+    ),
+  );
+};
+
+/** The caller's own resolved period. Own-scope by construction, like `/me` and `/me/summary`. */
+export const myAttendancePeriod = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, AttendanceEmployeeSummaryQuery, never>(req);
+  ok(res, await dayRecordService.employeePeriodMine(String(ctx.userId), query.from, query.to));
 };
 
 /** The same figures about the caller. The employee comes from the login; the query cannot name one. */

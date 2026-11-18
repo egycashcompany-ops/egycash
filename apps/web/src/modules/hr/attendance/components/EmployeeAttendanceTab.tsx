@@ -19,14 +19,14 @@ import { RegularizationDialog } from './RegularizationDialog';
 import { periodRange } from './period';
 import { downloadAttendanceExport } from '../api/attendance-api';
 import {
-  useAttendanceDays,
+  useAttendanceEmployeePeriod,
   useAttendanceEmployeeSummary,
   useRegularizations,
 } from '../api/attendance-queries';
 import { useEmployeePhotoUrl } from '../../employee-management/employees/api/employee-photo';
 
-/** One page of days: 92 is the longest period the picker allows, and 100 is the server's cap. */
-const PAGE_SIZE = 100;
+// No page size any more: `/days/employee-period` answers one entry per calendar DATE rather than a
+// page of stored rows, so there is no page to size and no tail to lose.
 
 const EmployeeAttendanceTab = ({ employee }: { employee: EmployeeDto }): JSX.Element => {
   const t = useT();
@@ -41,16 +41,15 @@ const EmployeeAttendanceTab = ({ employee }: { employee: EmployeeDto }): JSX.Ele
   const [exportError, setExportError] = useState<string | null>(null);
 
   const dayFilters = useMemo(
+    // One entry per calendar DATE, not a page of stored rows (see `/days/employee-period`).
     () => ({
       from: period.from,
       to: period.to,
       employeeId: employee.id,
-      page: 1,
-      pageSize: PAGE_SIZE,
     }),
     [period.from, period.to, employee.id],
   );
-  const days = useAttendanceDays(dayFilters);
+  const days = useAttendanceEmployeePeriod(dayFilters);
   const summary = useAttendanceEmployeeSummary({
     employeeId: employee.id,
     from: period.from,
@@ -107,7 +106,7 @@ const EmployeeAttendanceTab = ({ employee }: { employee: EmployeeDto }): JSX.Ele
           branch: employee.placement.branch?.name[locale] ?? null,
           jobTitle: employee.placement.jobTitle?.name[locale] ?? null,
         }}
-        rows={days.data?.items ?? []}
+        rows={days.data ?? []}
         summary={summary.data}
         loading={days.isLoading || summary.isLoading}
         error={summary.isError ? summary.error : days.isError ? days.error : undefined}

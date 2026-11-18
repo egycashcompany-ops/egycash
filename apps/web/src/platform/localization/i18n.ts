@@ -2484,6 +2484,14 @@ const en: Record<string, string> = {
   'attendanceView.status.holiday': 'Holiday',
   'attendanceView.status.noSchedule': 'No schedule',
   'attendanceView.status.noRecord': 'No record',
+  'attendanceView.noSchedule': 'No schedule',
+  'attendanceView.noRecord': 'No record',
+  'attendanceView.offDay': 'Rest day',
+  'attendanceView.provisional': 'Not yet computed',
+  'attendanceView.prevMonth': 'Previous month',
+  'attendanceView.nextMonth': 'Next month',
+  'attendanceView.unlinkedScans':
+    '{{people}} machine IDs scanned on this date are not linked to any employee, holding {{rows}} scans. They are in no count below.',
   'attendance.days.employee': 'Employee',
   'attendance.days.arrived': 'Arrived',
   'attendance.days.left': 'Left',
@@ -2565,6 +2573,37 @@ const en: Record<string, string> = {
   'attendance.dayStatus.holiday': 'Holiday',
   'attendance.dayStatus.dayOff': 'Day off',
   'attendance.dayStatus.noSchedule': 'No schedule',
+  'attendance.dayStatus.noRecord': 'No record',
+  'attendance.devices.title': 'Punch devices',
+  'attendance.devices.subtitle':
+    'Machine IDs that scanned but are not linked to any employee. Their scans are kept and are not counted anywhere until an ID is linked or ignored.',
+  'attendance.devices.machineId': 'Machine ID',
+  'attendance.devices.device': 'Device',
+  'attendance.devices.heldRows': 'Scans held',
+  'attendance.devices.span': 'First and last scan',
+  'attendance.devices.suggestion': 'Possible code',
+  'attendance.devices.link': 'Link',
+  'attendance.devices.ignore': 'Ignore',
+  'attendance.devices.resume': 'Resume',
+  'attendance.devices.summary': '{{ids}} machine IDs, holding {{rows}} scans.',
+  'attendance.devices.empty': 'Every machine ID that has scanned is linked to an employee.',
+  'attendance.devices.linkTitle': 'Link a machine ID to an employee',
+  'attendance.devices.linkBody':
+    'Machine ID {{id}} is holding {{rows}} scans. Choose the employee they belong to; the scans are then imported onto that employee and their days are recomputed.',
+  'attendance.devices.linkSuggestion':
+    'A machine ID is not an employee code. Code {{code}} would match if the two were the same, which they often are not — check the person before confirming.',
+  'attendance.devices.employee': 'Employee',
+  'attendance.devices.employeePlaceholder': 'Choose an employee',
+  'attendance.devices.search': 'Search by code or name',
+  'attendance.devices.searchPlaceholder': 'e.g. 0102818',
+  'attendance.devices.confirmLink': 'Link and import the scans',
+  'attendance.devices.backfillTitle': 'History recompute',
+  'attendance.devices.backfillNone': 'No recompute has been started.',
+  'attendance.devices.backfillFailed': '{{n}} failed chunks',
+  'attendance.devices.backfillStatus.running': 'Running',
+  'attendance.devices.backfillStatus.completed': 'Completed',
+  'attendance.devices.backfillStatus.cancelled': 'Cancelled',
+
   'attendance.dayStatus.incomplete': 'Incomplete',
   'attendance.month.title': 'Employee month',
   'attendance.month.subtitle': 'One employee, one month — quantities only',
@@ -3824,6 +3863,20 @@ const en: Record<string, string> = {
   'organization.chart.sectionLocked':
     'Stopped in the company list, or filed there under another department, so it cannot be edited here.',
   'organization.chart.moveTo': 'Move to',
+  'organization.chart.moveUp': 'Move up',
+  'organization.chart.moveDown': 'Move down',
+  'organization.chart.orderSaved': 'Order saved',
+  'organization.chart.print': 'Print',
+  'organization.chart.printTitle': 'Print the org chart',
+  'organization.chart.printHint': 'Each department prints on its own landscape A4 page.',
+  'organization.chart.printAll': 'All departments ({{n}})',
+  'organization.chart.printChosen': 'Departments I choose',
+  'organization.chart.printTickAll': 'Select all',
+  'organization.chart.printTickNone': 'Clear',
+  'organization.chart.printCount': 'Print ({{n}})',
+  'organization.chart.printCompany': 'EGYCASH for Cash Solutions',
+  'organization.chart.printedOn': 'Printed on {{date}}',
+  'organization.chart.popupBlocked': 'The print window was blocked — allow pop-ups for this site.',
   'organization.chart.remove': 'Remove from here',
   'organization.chart.addJob': 'Add job',
   'organization.chart.addJobTitle': 'Add a job to {{place}}',
@@ -8469,14 +8522,10 @@ const en: Record<string, string> = {
 
   // Fleet — fixed crew (FW-7 sibling): the standing crew of a car, with no date and no
   // availability verdict — those belong to the DAILY roster above.
-  'fleet.fixedRoster.subtitle':
-    'The standing crew of each vehicle — no date, and it stays until you change it',
   'fleet.fixedRoster.driversTitle': 'Drivers',
-  'fleet.fixedRoster.driversHint': 'Drag a driver onto a slot',
   'fleet.fixedRoster.driverSearchPlaceholder': 'Search by name, code or number',
   'fleet.fixedRoster.driverSearchEmpty': 'No driver matches that search',
   'fleet.fixedRoster.needsFirstDriver': 'Assign driver 1 first',
-  'fleet.fixedRoster.removeDriver': 'Remove from this slot',
   'fleet.fixedRoster.clearCrew': 'Clear this crew',
   'fleet.fixedRoster.editHint': 'Mission type, crew and notes — saved together',
   'fleet.fixedRoster.noMissionType': 'No mission type',
@@ -8485,10 +8534,8 @@ const en: Record<string, string> = {
   'fleet.fixedRoster.noDriver': 'No driver',
   'fleet.fixedRoster.sameDriverTwice': 'The two slots cannot hold the same person',
   'fleet.fixedRoster.unassigned': 'No crew',
-  'fleet.fixedRoster.unsaved': 'You have unsaved changes',
   'fleet.fixedRoster.saved': 'Fixed crews saved',
   'fleet.fixedRoster.noVehicles': 'No vehicles',
-  'fleet.fixedRoster.summary': '{{total}} vehicles · {{crewed}} crewed',
   // How many cars the CURRENT filter matches — the registry's own tally, in its bar.
   'fleet.vehicles.count': '{{count}} vehicles',
   'fleet.vehicles.sortReset': 'Default order',
@@ -8507,9 +8554,41 @@ const en: Record<string, string> = {
   'fleet.roster.counter.total': 'Total',
   'fleet.roster.counter.workshop': 'Workshop',
   'fleet.roster.counter.assigned': 'Operating',
-  // The standing board counts crews, not missions — see `FixedRosterPage`.
+  // The standing board counts crews, not missions — see `fixedCounters` in `lib/fixed-roster-model.ts`.
   'fleet.fixedRoster.counter.crewed': 'Crewed',
   'fleet.fixedRoster.counter.uncrewed': 'No crew',
+  // The fixed board: its car count in five forms, the empty pool line, and the save refusal in
+  // words — the driver by name, the holding car by code; never an id, never the server's English.
+  // The refusal is a toast: «title» on its one line, the reason under it (it wraps, whole).
+  'fleet.fixedRoster.poolEmpty': 'Every driver is on a fixed crew',
+  'fleet.fixedRoster.refusal.title': 'Fixed crews not saved',
+  'fleet.fixedRoster.refusal.held': 'Driver {{name}} is on the fixed crew of vehicle {{code}}.',
+  'fleet.fixedRoster.refusal.heldUnnamed':
+    'One of the drivers is on the fixed crew of vehicle {{code}}.',
+  'fleet.fixedRoster.refusal.heldElsewhere':
+    'Driver {{name}} is on the fixed crew of another vehicle that is not on this screen (another branch, or a deleted vehicle).',
+  'fleet.fixedRoster.refusal.heldElsewhereUnnamed':
+    'One of the drivers is on the fixed crew of another vehicle that is not on this screen (another branch, or a deleted vehicle).',
+  'fleet.fixedRoster.refusal.profileInactive':
+    'Driver {{name}}’s fleet profile is switched off, so he cannot be on a fixed crew.',
+  'fleet.fixedRoster.refusal.profileInactiveUnnamed':
+    'One driver’s fleet profile is switched off, so he cannot be on a fixed crew.',
+  'fleet.fixedRoster.refusal.notADriver': '{{name}} does not hold a driving seat.',
+  'fleet.fixedRoster.refusal.notADriverUnnamed':
+    'One of the chosen people does not hold a driving seat.',
+  'fleet.fixedRoster.refusal.vehicleNotActive':
+    'Vehicle {{code}} is no longer in service, so it cannot carry a crew.',
+  'fleet.fixedRoster.refusal.missionInactive':
+    'The chosen mission type is no longer available — choose another.',
+  'fleet.fixedRoster.refusal.needsFirst': 'Assign driver 1 before driver 2.',
+  'fleet.fixedRoster.refusal.generic':
+    'Your changes are kept — check the edited vehicles and try again.',
+  'fleet.fixedRoster.carCount.one': 'One vehicle',
+  'fleet.fixedRoster.carCount.two': 'Two vehicles',
+  'fleet.fixedRoster.carCount.few': '{{count}} vehicles',
+  'fleet.fixedRoster.carCount.many': '{{count}} vehicles',
+  'fleet.fixedRoster.carCount.other': '{{count}} vehicles',
+  'fleet.fixedRoster.matchedRows': 'Rows after the filters',
   'fleet.roster.allMissions': 'All missions',
   // The go-live notice — what the boot-time import recorded, printed where the data should be.
   // The licence scan's own zoom — the browser's enlarges the page, this enlarges the picture.
@@ -9570,6 +9649,9 @@ const en: Record<string, string> = {
   'it.custody.pickerNoResults': 'No employee matches that search.',
   'it.custody.pickerNoAccess':
     'Choosing an employee needs the view permission of the IT assets, the mobile lines or the consumables.',
+  'it.custody.pickerNoAccessHandOver':
+    'Choosing a recipient needs the hand-over permission of the IT assets, the mobile lines or the consumables.',
+  'it.custody.pickerBranch': 'Branch: {{name}}',
   'it.custody.pickerExited': 'Left',
   'it.custody.clearPick': 'Clear the selected employee',
   'it.custody.method.sold': 'Sold',
@@ -17852,7 +17934,15 @@ const ar: Record<string, string> = {
   'attendanceView.status.dayOff': 'يوم راحة',
   'attendanceView.status.holiday': 'عطلة رسمية',
   'attendanceView.status.noSchedule': 'لا يوجد جدول',
-  'attendanceView.status.noRecord': 'لا يوجد سجل',
+  'attendanceView.status.noRecord': 'لا يوجد تسجيل',
+  'attendanceView.noSchedule': 'لا يوجد جدول',
+  'attendanceView.noRecord': 'لا يوجد تسجيل',
+  'attendanceView.offDay': 'يوم راحة',
+  'attendanceView.provisional': 'لم يُحتسب بعد',
+  'attendanceView.prevMonth': 'الشهر السابق',
+  'attendanceView.nextMonth': 'الشهر التالي',
+  'attendanceView.unlinkedScans':
+    'سجّل {{people}} من أرقام البصمة في هذا التاريخ دون ارتباط بأي موظف، وتحتفظ بـ {{rows}} عملية تسجيل. وهي غير محتسبة في الأرقام أدناه.',
   'attendance.days.employee': 'الموظف',
   'attendance.days.arrived': 'الحضور',
   'attendance.days.left': 'الانصراف',
@@ -17933,6 +18023,37 @@ const ar: Record<string, string> = {
   'attendance.dayStatus.holiday': 'عطلة رسمية',
   'attendance.dayStatus.dayOff': 'يوم راحة',
   'attendance.dayStatus.noSchedule': 'لا يوجد جدول',
+  'attendance.dayStatus.noRecord': 'لا يوجد تسجيل',
+  'attendance.devices.title': 'أجهزة البصمة',
+  'attendance.devices.subtitle':
+    'أرقام البصمة التي سجّلت حضورًا دون ارتباط بأي موظف. تُحفظ عمليات التسجيل الخاصة بها ولا تُحتسب في أي رقم حتى يتم ربط الرقم أو تجاهله.',
+  'attendance.devices.machineId': 'رقم البصمة',
+  'attendance.devices.device': 'الجهاز',
+  'attendance.devices.heldRows': 'عمليات التسجيل المحتفظ بها',
+  'attendance.devices.span': 'أول وآخر تسجيل',
+  'attendance.devices.suggestion': 'الكود المحتمل',
+  'attendance.devices.link': 'ربط',
+  'attendance.devices.ignore': 'تجاهل',
+  'attendance.devices.resume': 'استئناف',
+  'attendance.devices.summary': '{{ids}} من أرقام البصمة، تحتفظ بـ {{rows}} عملية تسجيل.',
+  'attendance.devices.empty': 'كل رقم بصمة سجّل حضورًا مرتبط بموظف.',
+  'attendance.devices.linkTitle': 'ربط رقم بصمة بموظف',
+  'attendance.devices.linkBody':
+    'يحتفظ رقم البصمة {{id}} بـ {{rows}} عملية تسجيل. اختر الموظف الذي تخصّه، ثم تُستورد العمليات باسمه ويُعاد احتساب أيامه.',
+  'attendance.devices.linkSuggestion':
+    'رقم البصمة ليس كود الموظف. الكود {{code}} هو ما يطابقه لو كان الاثنان متماثلين، وهو ما لا يتحقق في كثير من الحالات، فيُرجى التحقق من الموظف قبل التأكيد.',
+  'attendance.devices.employee': 'الموظف',
+  'attendance.devices.employeePlaceholder': 'اختر موظفًا',
+  'attendance.devices.search': 'البحث بالكود أو بالاسم',
+  'attendance.devices.searchPlaceholder': 'مثال: 0102818',
+  'attendance.devices.confirmLink': 'الربط واستيراد عمليات التسجيل',
+  'attendance.devices.backfillTitle': 'إعادة احتساب السجل التاريخي',
+  'attendance.devices.backfillNone': 'لم تبدأ أي عملية إعادة احتساب.',
+  'attendance.devices.backfillFailed': '{{n}} من الدفعات أخفقت',
+  'attendance.devices.backfillStatus.running': 'جارية',
+  'attendance.devices.backfillStatus.completed': 'مكتملة',
+  'attendance.devices.backfillStatus.cancelled': 'ملغاة',
+
   'attendance.dayStatus.incomplete': 'غير مكتمل',
   'attendance.month.title': 'شهر الموظف',
   'attendance.month.subtitle': 'موظف واحد في شهر واحد — كميات فقط',
@@ -19181,6 +19302,20 @@ const ar: Record<string, string> = {
   'organization.chart.stoppedInList': 'الإدارة موقوفة في قائمة الشركة.',
   'organization.chart.sectionLocked': 'موقوف في قائمة الشركة أو مسجّل فيها تحت إدارة أخرى، فلا يمكن تعديله من هنا.',
   'organization.chart.moveTo': 'نقل إلى',
+  'organization.chart.moveUp': 'تحريك لأعلى',
+  'organization.chart.moveDown': 'تحريك لأسفل',
+  'organization.chart.orderSaved': 'تم حفظ الترتيب',
+  'organization.chart.print': 'طباعة',
+  'organization.chart.printTitle': 'طباعة الهيكل التنظيمي',
+  'organization.chart.printHint': 'تُطبع كل إدارة في صفحة A4 مستقلة بالعرض.',
+  'organization.chart.printAll': 'كل الإدارات ({{n}})',
+  'organization.chart.printChosen': 'إدارات أحددها',
+  'organization.chart.printTickAll': 'تحديد الكل',
+  'organization.chart.printTickNone': 'إلغاء التحديد',
+  'organization.chart.printCount': 'طباعة ({{n}})',
+  'organization.chart.printCompany': 'ايجى كاش للحلول النقدية',
+  'organization.chart.printedOn': 'طُبع في {{date}}',
+  'organization.chart.popupBlocked': 'منع المتصفح نافذة الطباعة. اسمح بالنوافذ المنبثقة لهذا الموقع ثم حاول مرة أخرى.',
   'organization.chart.remove': 'إزالة من هنا',
   'organization.chart.addJob': 'إضافة وظيفة',
   'organization.chart.addJobTitle': 'إضافة وظيفة إلى {{place}}',
@@ -23676,13 +23811,10 @@ const ar: Record<string, string> = {
   'fleet.alarms.refresh': 'تحديث',
 
   // Fleet — fixed crew (FW-7 sibling)
-  'fleet.fixedRoster.subtitle': 'الطقم الثابت لكل سيارة — بلا تاريخ، ويظل كما هو حتى تغيّره',
   'fleet.fixedRoster.driversTitle': 'السائقون',
-  'fleet.fixedRoster.driversHint': 'اسحب السائق إلى الخانة',
   'fleet.fixedRoster.driverSearchPlaceholder': 'ابحث بالاسم أو الكود أو الرقم',
   'fleet.fixedRoster.driverSearchEmpty': 'لا يوجد سائق مطابق للبحث',
   'fleet.fixedRoster.needsFirstDriver': 'عيّن السائق الأول أولاً',
-  'fleet.fixedRoster.removeDriver': 'إزالة من هذه الخانة',
   'fleet.fixedRoster.clearCrew': 'إفراغ الطقم',
   'fleet.fixedRoster.editHint': 'نوع المهمة والطقم والملاحظات — تُحفظ معًا',
   'fleet.fixedRoster.noMissionType': 'بدون نوع مهمة',
@@ -23691,10 +23823,8 @@ const ar: Record<string, string> = {
   'fleet.fixedRoster.noDriver': 'بدون سائق',
   'fleet.fixedRoster.sameDriverTwice': 'لا يمكن أن يحمل الخانتين نفس الشخص',
   'fleet.fixedRoster.unassigned': 'بلا طقم',
-  'fleet.fixedRoster.unsaved': 'لديك تغييرات غير محفوظة',
   'fleet.fixedRoster.saved': 'تم حفظ الطقم الثابت',
   'fleet.fixedRoster.noVehicles': 'لا توجد سيارات',
-  'fleet.fixedRoster.summary': '{{total}} سيارة · {{crewed}} بطقم',
   'fleet.vehicles.count': '{{count}} سيارة',
   'fleet.vehicles.sortReset': 'الترتيب الافتراضي',
   'fleet.vehicles.sortResetTitle': 'إعادة الجدول إلى ترتيبه الأصلي حسب الكود',
@@ -23713,6 +23843,33 @@ const ar: Record<string, string> = {
   'fleet.roster.counter.assigned': 'تشغيل',
   'fleet.fixedRoster.counter.crewed': 'بطقم',
   'fleet.fixedRoster.counter.uncrewed': 'بلا طقم',
+  // الطقم الثابت: عدد السيارات بصيغ العدد الخمس، والقائمة الفارغة، وسطر رفض الحفظ بالعربية:
+  // العنوان في سطر الإشعار، والسبب تحته كاملًا.
+  'fleet.fixedRoster.poolEmpty': 'لا يوجد سائقون بلا طقم ثابت',
+  'fleet.fixedRoster.refusal.title': 'تعذّر حفظ الطقم الثابت',
+  'fleet.fixedRoster.refusal.held': 'السائق {{name}} في الطقم الثابت للسيارة {{code}}.',
+  'fleet.fixedRoster.refusal.heldUnnamed': 'أحد السائقين في الطقم الثابت للسيارة {{code}}.',
+  'fleet.fixedRoster.refusal.heldElsewhere':
+    'السائق {{name}} في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة محذوفة).',
+  'fleet.fixedRoster.refusal.heldElsewhereUnnamed':
+    'أحد السائقين في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة محذوفة).',
+  'fleet.fixedRoster.refusal.profileInactive':
+    'ملف السائق {{name}} موقوف، فلا يمكن وضعه في طقم ثابت.',
+  'fleet.fixedRoster.refusal.profileInactiveUnnamed':
+    'ملف أحد السائقين موقوف، فلا يمكن وضعه في طقم ثابت.',
+  'fleet.fixedRoster.refusal.notADriver': '{{name}} ليس على وظيفة سائق.',
+  'fleet.fixedRoster.refusal.notADriverUnnamed': 'أحد المختارين ليس على وظيفة سائق.',
+  'fleet.fixedRoster.refusal.vehicleNotActive':
+    'السيارة {{code}} لم تعد في الخدمة، فلا يمكن حفظ طقم لها.',
+  'fleet.fixedRoster.refusal.missionInactive': 'نوع المهمة المختار لم يعد متاحًا — اختر نوعًا آخر.',
+  'fleet.fixedRoster.refusal.needsFirst': 'عيّن السائق الأول قبل الثاني.',
+  'fleet.fixedRoster.refusal.generic': 'تعديلاتك باقية — راجع السيارات المعدَّلة ثم أعد المحاولة.',
+  'fleet.fixedRoster.carCount.one': 'سيارة واحدة',
+  'fleet.fixedRoster.carCount.two': 'سيارتان',
+  'fleet.fixedRoster.carCount.few': '{{count}} سيارات',
+  'fleet.fixedRoster.carCount.many': '{{count}} سيارة',
+  'fleet.fixedRoster.carCount.other': '{{count}} سيارة',
+  'fleet.fixedRoster.matchedRows': 'عدد الصفوف بعد عوامل التصفية',
   'fleet.roster.allMissions': 'كل المهمات',
   // إشعار بدء التشغيل — ما سجّله الاستيراد عند الإقلاع، مطبوعًا حيث كان ينبغي أن تظهر البيانات.
   // زوم الصورة نفسها — زوم المتصفح يكبّر الصفحة، وهذا يكبّر الرخصة.
@@ -24763,6 +24920,9 @@ const ar: Record<string, string> = {
   'it.custody.pickerNoResults': 'لا يوجد موظف مطابق لهذا البحث.',
   'it.custody.pickerNoAccess':
     'اختيار الموظف يتطلب صلاحية عرض أصول تقنية المعلومات أو خطوط المحمول أو المستهلكات.',
+  'it.custody.pickerNoAccessHandOver':
+    'اختيار المستلِم يتطلب صلاحية التسليم في أصول تقنية المعلومات أو خطوط المحمول أو المستهلكات.',
+  'it.custody.pickerBranch': 'الفرع: {{name}}',
   'it.custody.pickerExited': 'منتهي الخدمة',
   'it.custody.clearPick': 'إلغاء اختيار الموظف',
   'it.custody.method.sold': 'بيع',

@@ -1185,6 +1185,35 @@ export interface ItTechniciansPageDto {
   items: ItTechnicianDto[];
 }
 
+// ── Recipients: who a hand-over may name, in every branch ──────────────────────
+//
+// «لما حد فى فرع بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح
+// إنه يعرف يسلم لحد فى فرع تاني» (owner, 2026-11-18). The person search above is the registers' own
+// and reaches only the people the reader's read grants reach — a branch keeper's own branch. A
+// HAND-OVER's box asks this instead: anybody who works here today, in any branch, opened by the act's
+// own grant (`itAsset.assign`, `itMobileLine.assign` or `itConsumable.assign` — the owner's choice:
+// «صاحب صلاحية التسليم»), with only what the box prints — a name, a code, the branch — so the
+// company's staff list is not opened beyond the box. Searched always, a few at a time: it answers
+// a name or a code typed, never a page to scroll through.
+
+export const ListItRecipientsQuerySchema = z
+  .object({
+    /** The code or the name — required: the box answers what is typed, and lists nobody unasked. */
+    search: z.string().trim().min(1).max(100),
+    pageSize: z.coerce.number().int().min(1).max(20).default(8),
+  })
+  .strict();
+export type ListItRecipientsQuery = z.infer<typeof ListItRecipientsQuerySchema>;
+
+/** One person a hand-over may name: who, and where HR places them — nothing else. */
+export interface ItRecipientDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  /** HR's placement — the box says the branch, so two people of one name are told apart. */
+  branchId: string | null;
+}
+
 // ── Custody: the asset's business history (design §2.3) ─────────────────────
 
 /**

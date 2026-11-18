@@ -231,12 +231,22 @@ export const MonthHeatmap = ({
   statusLabel,
   locale,
   today,
+  picked,
+  onPick,
 }: {
   days: EmployeeDay[];
   weekdays: string[];
   statusLabel: (s: EmployeeDay['status']) => string;
   locale: 'ar' | 'en';
   today?: string;
+  /** The date the reader picked, ringed here and highlighted in the daily record. */
+  picked?: string | null;
+  /**
+   * Picking a date. Given, the cells become buttons — a calendar cell is the natural way to ask
+   * about one day, and over a year of them hunting the same date in a list of 366 lines is work
+   * the screen should do. Omitted, the cells stay plain text, which is what a print view wants.
+   */
+  onPick?: (date: string) => void;
 }): JSX.Element => {
   if (days.length === 0) return <div />;
   // Weeks start on Saturday (Egypt). Pad the first week.
@@ -256,20 +266,37 @@ export const MonthHeatmap = ({
           if (d === null) return <span key={`p${i}`} />;
           const tone = statusTone(d.status);
           const quiet = d.status === 'dayOff' || d.status === 'noSchedule';
-          return (
-            <span
-              key={d.date}
-              title={`${fmt.format(new Date(`${d.date}T00:00:00Z`))} · ${statusLabel(d.status)}${d.inAt !== null ? ` · ${clock(d.inAt)}` : ''}`}
-              className={cn(
-                'relative flex aspect-square flex-col items-center justify-center rounded-[8px] text-[12px] font-semibold',
-                FIG,
-                quiet ? cn('bg-transparent ring-1 ring-inset ring-[var(--att-line)]', INK3) : SOFT[tone],
-                d.date === today && 'ring-2 ring-[var(--att-accent)]',
-              )}
-            >
+          const label = `${fmt.format(new Date(`${d.date}T00:00:00Z`))} · ${statusLabel(d.status)}${d.inAt !== null ? ` · ${clock(d.inAt)}` : ''}`;
+          const shell = cn(
+            'relative flex aspect-square flex-col items-center justify-center rounded-[8px] text-[12px] font-semibold',
+            FIG,
+            quiet ? cn('bg-transparent ring-1 ring-inset ring-[var(--att-line)]', INK3) : SOFT[tone],
+            d.date === today && 'ring-2 ring-[var(--att-accent)]',
+            // The picked date wins the ring, so it is findable even when it is also today.
+            d.date === picked && 'ring-2 ring-offset-1 ring-[var(--att-ink)]',
+          );
+          const face = (
+            <>
               {Number(d.date.slice(8))}
               {d.inAt !== null && <span className="mt-0.5 hidden text-[9.5px] font-normal opacity-80 sm:block">{clock(d.inAt)}</span>}
+            </>
+          );
+          return onPick === undefined ? (
+            <span key={d.date} title={label} className={shell}>
+              {face}
             </span>
+          ) : (
+            <button
+              key={d.date}
+              type="button"
+              title={label}
+              aria-label={label}
+              aria-pressed={d.date === picked}
+              onClick={() => onPick(d.date)}
+              className={cn(shell, 'cursor-pointer transition hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--att-accent)]')}
+            >
+              {face}
+            </button>
           );
         })}
       </div>

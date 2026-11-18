@@ -18,8 +18,8 @@ export {
   type EngineShift,
 } from './derive-day';
 export {
-  resolveDisplayStatus,
-  type DisplayStatusInput,
+  resolveDayStatus,
+  type DayResolutionInput,
 } from './resolve-display-status';
 export {
   defaultPatternForBranch,

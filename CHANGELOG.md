@@ -11,6 +11,44 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: hand a device, a line or consumables to an employee of another branch.** «لما حد فى فرع
+  بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح إنه يعرف يسلم
+  لحد فى فرع تاني».
+  - Every hand-over box («المستلم» on the asset hand-over, the new holder on a transfer, «صرف
+    لموظف», «مرتجع من», the line hand-over) now finds the current employees of EVERY branch, for
+    whoever holds that register's hand-over grant (`itAsset.assign`, `itMobileLine.assign` or
+    `itConsumable.assign`): `GET /it/people/recipients?search=&pageSize=` — a required search, at
+    most 20 a time, each row only the name, the code and the branch. The command bar's branch does
+    not narrow it. The employees register and every filter box are unchanged: still the reader's
+    own scope.
+  - What is handed over stays registered in the sender's branch, as before — consumables leave the
+    sender's store; the recipient's own branch sees nothing of it.
+  - The sender can open the recipient's IT page (`GET /it/people/:employeeId`): it is found once
+    the sender's own registers name the person — a custody interval of an asset or a line, or a
+    consumables issue or return, each within that register's own read scope — and every section of
+    it still shows only what the sender's grants reach.
+  - Fixed: a single asset's «نقل» to another branch now goes only to an active branch the user's
+    `itAsset.assign` reaches whole, as «نقل إلى فرع» does (403 otherwise; 400 for an inactive
+    branch) — a branch user could send a device into a branch they cannot see, where it vanished
+    from their register. Moving to the same branch, or naming none, is unchanged.
+
+- **Org chart: drag a job to change its order, and print the chart.**
+  ([org-chart design](docs/12-planning/org-chart-design.md) §2.2, §2.4, §5.7)
+  - «لما باجي أشد حاجة عشان أغير ترتيبها مش بتتشد»: the ↕ grip suggested a drag, but a drop on the job's
+    own column did nothing and no order was stored. Now a job dropped on a row of its own column takes
+    that row's place (a bar shows above or below which row), and the column's new order is saved;
+    dropped on another column it moves there, as before. ↑ / ↓ on each row do the same without
+    dragging, on phones too. The grip shows only where a drag can do something.
+  - The order belongs to the place (`job_title_places.position`), so a job in two sections stands where
+    each puts it. `PUT /platform/org-chart/order` (`jobTitle.edit`) takes a column's whole list in one
+    transaction, refuses a list made from an older chart with `STALE_DOCUMENT`, and is audited as
+    `jobOrder` on the department or section entry. The job's own update never changes a position.
+  - «إمكانية طباعة كل إدارة بشكل A4 بالعرض وزرار لطباعة الكل أو اللى أحدده .. حطهم فوق بجانب زر تعديل
+    الهيكل»: «طباعة» beside «تعديل الهيكل» opens a choice of every department or the ones ticked (the
+    open one ticked first). Each prints on its own A4 sheet in landscape under the company letterhead,
+    drawn as the screen draws it and in the saved order. Up to seven columns print as a tree. A
+    department with more prints as rows of columns, and a long column prints in a compact size.
+
 - **The inactivity sign-out window is set on the settings page, and it is 30 minutes.** «فين أقدر
   أتحكم فى المدة اللى بعدها بيحصل تسجيل خروج لو محدش بيستخدم الحساب الخاص بيه؟ دورت هنا ملقيتش
   /system/settings?dept=general», then «ضيفها في صفحة الإعدادات وخليها 30 دقيقة»
@@ -2470,6 +2508,56 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **HR/attendance: the daily sheet showed five people out of a hundred, and the employee pages
+  showed almost nothing before 17 November — both were reads, and the data was never wrong.**
+  65,579 punches were in ECMS from 2024-12-26 on, the history backfill had run to completion
+  (2,062 of 2,062 chunks, 52,237 days computed, 0 failed), and an audit of all 1,430 enrolments on
+  the المهندسين wall found NO machine id whose employee code disagreed with it. Four defects, each
+  silent.
+  - **The sheet resolved the first hundred employees by code, on every date.** It asked the employee
+    list for `pageSize: 10_000` to mean "everyone", and `BaseRepository.list` clamps pageSize to
+    `MAX_PAGE_SIZE` — 100. So a company of 1,755 answered «total 100» for every day of the year, and
+    the four shown as present were whichever of that day's thirty-nine scanners sorted into the
+    first page. Resolved unpaged now, with the filter and the scope intact and the sheet's own cap
+    as a guard. It cannot page first: the display status comes from the clock and the calendar
+    rather than a stored field, so «how many are absent» can only be read off the whole resolved
+    day — paging first gives a card saying «3 غائب» that means «3 on this page».
+  - **`GET /punches?from=D&to=D` answered zero for a day with seventy-four scans.** `to` coerced to
+    `00:00Z` and was compared `$lte` against the punch instant, so one day asked for a zero-width
+    window and every other window sat two hours inside the previous Cairo day. Both ends are Cairo
+    calendar days now, the window closing at the next midnight exclusive. The day-row windows are
+    normalised too, in the day list and the CSV export, where a time component on `from` silently
+    excluded its own day.
+  - **A day was read from two different sources, so two screens disagreed about it.** The sheet
+    resolved its own answer; the employee page read a status straight off whichever stored rows it
+    was sent, so a date with no row was absent from the month entirely — the days that had punches
+    and no recompute — and a legacy `dayOff` row showed «يوم راحة» over real scans. A day is now
+    DERIVED wherever it is read, by the same pure function the stored rows are written from, which
+    buys one property every screen depends on: what a reader sees is what a recompute would store.
+  - **The counters named eight of the thirteen statuses the server counts.** Everyone in the other
+    five was counted, listed, and in no counter at all — «5 of 100» with ninety-five people
+    unaccounted for. Three counters added, «لا يوجد جدول», «لا يوجد تسجيل» and «يوم راحة», with a
+    test asserting every status is in exactly one.
+  - New `noRecord` («لا يوجد تسجيل»): a derived absence with no row behind it. An absence is a
+    conclusion the engine draws, and a screen must not infer one across two years of history nobody
+    has re-derived. Payroll-neutral, never stored.
+  - An import now derives the days it touched — today and the two either side — so a check-out
+    arriving in a later batch than its check-in turns «حضر فقط» into a full day inside the request.
+    It answers with `daysRecomputed` and `daysLeftToBackfill`, because «imported 26,493» read as
+    «done» and no number anywhere said otherwise. Older days stay the backfill's work.
+  - The employee period reaches a year, with previous/next month arrows that walk whole months back
+    to the employee's first scan, the period in the URL, and a month calendar whose cells are
+    buttons that highlight the day in the daily record.
+  - **New page `/attendance/devices` («أجهزة البصمة»), AT-D4**, behind `attendanceDevice.view` —
+    the screen those two keys were declared page-less for in AT-D1. Each unmatched machine id with
+    its wall, its held scan count and its first and last scan, «ربط» and «تجاهل» per id behind
+    `attendanceDevice.manage`, and the backfill's progress with cancel and resume. It SUGGESTS the
+    exact-code match and never acts on it: machine `102815` belongs to ECMS `0102818`, so a screen
+    that auto-linked by that rule would file one employee's attendance under another.
+  - The sheet also reports the scans it cannot show — how many machine ids are linked to nobody and
+    how many of the date's rows they hold — because a scan belonging to nobody has no employee line
+    to sit on, and saying nothing is how thirty-nine people at the door read as five.
+
 - **Linking a department keeps its English name.** The company list's entries were given their
   Arabic name in English too by the workforce importer, and linking copies the entry's name onto every
   row, so «Top Management», «Fleet», «IT» and «Complaince and Risk» would have read «العليا», «الحركة»,
@@ -2933,6 +3021,72 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **Fleet: «الطقم الثابت» (`/fleet/fixed-roster`) in the look of «تعيين السيارات», as the approved
+  sample.** «واعمل ديزاين شاشة الطاقم الثابت زى التعيين اليومى», the owner's answers to the sample
+  «1 ب / 2 ج», then «انت لسه معملتش بيدج الطاقم الثابت». The screen is now the daily roster's board
+  without a day: no date, no day arrows, no «يوم سابق», no availability words, no absence or leave —
+  a standing crew stays as it is until somebody changes it.
+  - The page header «الطقم الثابت» under «الحركة» stays on top at every width (answer 2 ج), and
+    its own Excel button is gone: the one Excel control is the daily «تصدير Excel» pill on a
+    computer and the daily Excel button on a tablet or a phone. The file is unchanged: the rows on
+    show, eight columns.
+  - On a computer (1280 px and up): under the header, the cars the filters leave, in Arabic's own
+    plural («سيارة واحدة»، «سيارتان»، «3 سيارات»، «11 سيارة»; this screen only), beside the Excel
+    pill. Then the dark filter bar — «كود السيارة», the counters and the red reset; the «كل المهمات»
+    dropdown is gone, the mission chips are the filter — and the boards' dark table. The code is
+    bold white with the car card on hover and no colour of its own per car. The two seats are the
+    daily seat, the code under the name. «ملاحظات» shows three lines at most, the whole note on
+    hover. «إجراءات» is pinned. «بلا طقم» is yellow, as the daily «بلا سائق»; rose is the
+    workshop's alone. A workshop car's row is rose and its standing crew stays editable. On a
+    1280 px screen a seat's name may take a second line, so the whole table fits with nothing under
+    «إجراءات» (measured with two 24-letter names in one row); from 1366 px it keeps one line.
+  - The drivers panel beside the table: «السائقون (n)», n the drivers with no fixed crew, listed
+    first (name, code under it, no «متاح»). Then «معيّنون على سيارات أخرى» with the blue «سيارة
+    أخرى» for a driver held on a car that is not on the board (another branch's, or a car out of
+    service). As on the daily board he is listed only: not counted, not dragged, and not offered by
+    any seat's list or the pen dialog — no edit here can release him, so such a save could only be
+    refused. «لا يوجد سائقون بلا طقم ثابت» replaces the old line that said «في هذا التاريخ».
+  - «إجراءات»: the pen on every row opens «تعديل · {code}» with the mission, the two seats drawn as
+    the daily dialog's (name and code with ✕, «اختيار سائق» on an empty seat) and the note, under
+    the same rules (seat 2 waits for seat 1, never the same person twice). A new swap button
+    (both seats filled) trades seat 1 and seat 2. The bin «إفراغ الطقم» still empties both seats
+    at once, keeps the mission and the note, and asks nothing.
+  - On a tablet or a phone (under 1280 px): cards instead of the table, always in code order (the
+    workshop car in its place, unlocked); «ابحث بكود السيارة…» with the Excel button beside it; the
+    filter row («عوامل التصفية», where the mission filter is, the counters, and «السائقون» with its
+    count — an icon and the number on a phone). A seat tap opens a list that also offers the drivers
+    on other cars with their car's code — a pick moves him; or choose the driver first in «السائقون»
+    and tap the seat. The swap sits between the seats; ⋮ holds «تعديل» (the note) and «إفراغ الطقم»;
+    the mission is the button by the code. A landscape tablet shows cars 60% and drivers 40%.
+  - Every edit is a draft. The save bar at the foot shows only with unsaved work: the edited car
+    codes (a tap brings the car into view, lifting only the filter that hides it), «تراجع» (the last
+    edit, up to 50), «إلغاء» (asks first when more than one car is edited) and «حفظ». A reload keeps
+    the unsaved edits; «تراجع» starts again. A driver taken from another car shows «سيُنقل من
+    السيارة 214 عند الحفظ» under his new seat until the save. A viewer sees no «إجراءات» and no
+    save bar.
+  - A refused save keeps the draft and now says why in Arabic, naming the driver and the car that
+    holds him, never an internal id or the server's English — or «سيارة أخرى ليست في هذه الشاشة»
+    when that car is outside the reader's branches. A car no longer in service, a switched-off
+    driver profile, an employee not on a driving seat and a retired mission type each have their
+    own line. The toast's title is «تعذّر حفظ الطقم الثابت» and the reason is the line under it,
+    which wraps whole (a one-line title would cut the car's code off).
+  - `POST /fleet/fixed-roster`'s refusals carry `details` for that line: `FIXED_CREW_DRIVER_HELD`
+    (the driver's employee id) with `FIXED_CREW_HOLDER` (the holding car's code, only when the
+    caller's scope reads that car), `FIXED_CREW_VEHICLE_NOT_ACTIVE` (the car's code),
+    `FIXED_CREW_PROFILE_INACTIVE` and `FIXED_CREW_NOT_A_DRIVER` (the employee id, after the existing
+    detail), and `FIXED_CREW_MISSION_INACTIVE` (the mission type id). Same status and error code,
+    and the same message — except that a holding car outside the caller's scope is now «a vehicle
+    outside your scope» in it rather than its internal id; no names and no out-of-scope id in the
+    body.
+  - Unchanged: the fixed crew's rules, endpoints and data (no new field, no migration); the
+    permissions (`fleetRoster.plan` edits; the branch picker narrows the cars, the drivers are the
+    whole company); the hover cards (today's car and drivers, from the daily roster); and «تعيين
+    السيارات» itself — its shared pieces gained optional props whose defaults draw it exactly as
+    before. Answer 1 ب: this screen flags no standing member who can no longer drive; that stays on
+    «تعيين السيارات».
+  - Five words only the old screen read are removed: `fleet.fixedRoster.subtitle`, `.summary`,
+    `.driversHint`, `.removeDriver` and `.unsaved`.
 
 - **«لوحة تحكم الحركة» at `/fleet`: «العهدة», a NEW tab right after «الوقود والمصروفات», and
   «التراخيص والتجديدات», which replaces the old «التراخيص» body under the same key, as approved.**

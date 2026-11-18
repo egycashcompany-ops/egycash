@@ -555,7 +555,7 @@ export const HandOverMobileLineDialog = ({
                 ? t('it.custody.receipt.changedSincePrint')
                 : t('it.custody.receipt.printFirst')}
           </p>
-          {/* A hand-over: the people who work here today, and nobody else. */}
+          {/* A hand-over: the people who work here today, in every branch, and nobody else. */}
           <Field label={t('it.custody.holder')} required>
             <EmployeePicker
               value={employeeId}
@@ -565,6 +565,7 @@ export const HandOverMobileLineDialog = ({
                 setEmployeeLabel(label);
               }}
               ariaLabel={t('it.custody.holder')}
+              handOver
             />
           </Field>
         </>

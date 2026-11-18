@@ -62,7 +62,7 @@ import { DeskCounters, DeskDayStepper, DriversPanel, ExcelPill } from './roster-
 import { CodeList, EditsBar, PastDayBanner, num } from './roster-parts';
 
 /** A figure on the row — monospace, tabular, one line (Accidents' `FIGURE`). */
-const FIGURE = cn('whitespace-nowrap', NUM);
+export const FIGURE = cn('whitespace-nowrap', NUM);
 
 /**
  * The row tints, on the row's own data attribute with a hover of their own (the boards'
@@ -72,7 +72,7 @@ const FIGURE = cn('whitespace-nowrap', NUM);
  * An unsaved edit outranks the workshop: the workshop is still said by its badge, while an unsaved
  * edit has nothing but this colour.
  */
-const ROW_TINTS = cn(
+export const ROW_TINTS = cn(
   '[&_tbody_tr]:!bg-white dark:[&_tbody_tr]:!bg-[#111827]',
   '[&_tbody_tr[data-tint=unsaved]]:!bg-[#fffbeb] dark:[&_tbody_tr[data-tint=unsaved]]:!bg-[#261919] [&_tbody_tr[data-tint=unsaved]:hover]:!bg-[#fef3c7] dark:[&_tbody_tr[data-tint=unsaved]:hover]:!bg-[#301911]',
   '[&_tbody_tr[data-tint=workshop]]:!bg-[#fff1f2] dark:[&_tbody_tr[data-tint=workshop]]:!bg-[#291021] [&_tbody_tr[data-tint=workshop]:hover]:!bg-[#ffe4e6] dark:[&_tbody_tr[data-tint=workshop]:hover]:!bg-[#340d1f]',
@@ -98,19 +98,19 @@ const ROW_TINTS = cn(
  * than about 150px can still widen the table a few px past its frame, and at 1280 its floor is
  * wider than the frame: then the table scrolls under the pinned «إجراءات».
  */
-const LAPTOP_GUTTERS = 'max-[1439px]:[&_td]:!px-1 max-[1439px]:[&_th]:!px-1';
+export const LAPTOP_GUTTERS = 'max-[1439px]:[&_td]:!px-1 max-[1439px]:[&_th]:!px-1';
 /** The row's three icons closer together below 1440px (8px → 2px apart and from the box). */
-const LAPTOP_ACTIONS = 'max-[1439px]:gap-0.5 max-[1439px]:px-0.5';
+export const LAPTOP_ACTIONS = 'max-[1439px]:gap-0.5 max-[1439px]:px-0.5';
 
 /** The seats and the mission select fill their cell: a 6px gutter (4px below 1440px), not 9px. */
-const TIGHT_CELL = '[&&]:!px-1.5 max-[1439px]:[&&]:!px-1';
+export const TIGHT_CELL = '[&&]:!px-1.5 max-[1439px]:[&&]:!px-1';
 
 /**
  * «إجراءات» pinned to the table's end edge — never the casualty of a narrow screen. The cell takes
  * its row's (opaque) colour; the head takes the head row's.
  */
-const PINNED_CELL = 'sticky end-0 z-[1] [background-color:inherit]';
-const PINNED_HEAD = 'sticky end-0 z-[2] [background-color:inherit]';
+export const PINNED_CELL = 'sticky end-0 z-[1] [background-color:inherit]';
+export const PINNED_HEAD = 'sticky end-0 z-[2] [background-color:inherit]';
 /**
  * …and while the table is wider than its frame (1280px, or a long name at any width), the pinned
  * column's EDGE shows that the rest slides under it: a soft shade on the scrolled side and a 1px
@@ -118,7 +118,7 @@ const PINNED_HEAD = 'sticky end-0 z-[2] [background-color:inherit]';
  * no box-shadow. In RTL `end-full` is `left: 100%`: the shade lies on the side the seats scroll in
  * from.
  */
-const PINNED_EDGE = cn(
+export const PINNED_EDGE = cn(
   "before:pointer-events-none before:absolute before:inset-y-0 before:end-full before:w-3 before:content-['']",
   'rtl:before:bg-gradient-to-r ltr:before:bg-gradient-to-l before:from-slate-900/15 before:to-transparent dark:before:from-black/60',
   "after:pointer-events-none after:absolute after:inset-y-0 after:start-0 after:w-px after:content-['']",
@@ -132,7 +132,7 @@ const PINNED_EDGE = cn(
  * (seats and bins named by their own marks, so the table's class never spells the hooks the
  * seats are read by — `data-drop-zone`, `data-clear-slot`).
  */
-const ROSTER_TABLE = cn(
+export const ROSTER_TABLE = cn(
   DARK_TABLE,
   BOARD_TABLE_FILL,
   'min-w-0',
@@ -152,11 +152,11 @@ const ROSTER_TABLE = cn(
  * box sized for Cairo. On a laptop the box is 9rem: «نقل أموال (يومي)» still whole beside the
  * chevron, with about 5px to spare.
  */
-const MISSION_BOX =
+export const MISSION_BOX =
   "mx-auto w-[9.5rem] max-[1535px]:w-36 [&_select]:![font-family:'Cairo',ui-sans-serif,sans-serif]";
 
 /** Is the table wider than its frame? (Measured, not guessed from the screen's width.) */
-const useOverflowing = (): [RefObject<HTMLDivElement>, boolean] => {
+export const useOverflowing = (): [RefObject<HTMLDivElement>, boolean] => {
   const box = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);
   useEffect(() => {

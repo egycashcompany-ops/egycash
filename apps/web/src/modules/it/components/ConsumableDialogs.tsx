@@ -699,6 +699,7 @@ export const ReturnConsumableDialog = ({
             setEmployeeLabel(label);
           }}
           ariaLabel={t('it.consumables.returnFrom')}
+          handOver
         />
       </Field>
       <Field label={t('it.consumables.fields.at')}>
@@ -880,13 +881,14 @@ export const IssueConsumablesDialog = ({
       onSubmit={() => void submit()}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        {/* A hand-over: the people who work here today, and nobody else. */}
+        {/* A hand-over: the people who work here today, in every branch, and nobody else. */}
         <Field label={t('it.consumables.issue.employee')} required>
           <EmployeePicker
             value={employeeId}
             valueLabel={employeeLabel}
             onChange={(id, label) => dispatch({ type: 'person', employeeId: id, label })}
             ariaLabel={t('it.consumables.issue.employee')}
+            handOver
           />
           {/* Whether a picked device filled the person — or why it could not. */}
           <div aria-live="polite">

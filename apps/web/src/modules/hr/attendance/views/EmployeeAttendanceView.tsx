@@ -27,6 +27,13 @@ export interface EmployeeAttendanceViewProps {
   grace: number;
   /** ISO date of today, to ring it on the calendar. */
   today?: string;
+  /**
+   * The date the reader picked on the calendar. Ringed there and highlighted in the daily record,
+   * which is the point: over a year, finding the same date in 366 lines by eye is the screen's job.
+   */
+  picked?: string | null;
+  /** Given, the calendar's cells become buttons. Omitted, it stays a plain read-only grid. */
+  onPickDay?: (date: string) => void;
   onExport?: () => void;
 }
 
@@ -86,7 +93,15 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
         <Sheet>
           <SheetHead title={t('calendarTitle')} note={t('calendarNote', { a: kpis.absentDays, l: kpis.lateDays })} />
           <div className="pt-4">
-            <MonthHeatmap days={days} weekdays={t('weekdays').split(',')} statusLabel={status} locale={locale} {...(p.today !== undefined ? { today: p.today } : {})} />
+            <MonthHeatmap
+              days={days}
+              weekdays={t('weekdays').split(',')}
+              statusLabel={status}
+              locale={locale}
+              {...(p.today !== undefined ? { today: p.today } : {})}
+              {...(p.picked !== undefined ? { picked: p.picked } : {})}
+              {...(p.onPickDay !== undefined ? { onPick: p.onPickDay } : {})}
+            />
           </div>
           <Legend
             items={[
@@ -141,7 +156,16 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
                 </thead>
                 <tbody>
                   {newestFirst.map((d) => (
-                    <tr key={d.date} className="border-b border-[var(--att-line)] last:border-b-0 hover:bg-[var(--att-sheet-2)]">
+                    <tr
+                      key={d.date}
+                      // The anchor the calendar scrolls to, and the row it rings. One id per date
+                      // on this screen, so a second table on the page cannot collide with it.
+                      id={`att-day-${d.date}`}
+                      className={cn(
+                        'border-b border-[var(--att-line)] last:border-b-0 hover:bg-[var(--att-sheet-2)]',
+                        d.date === p.picked && 'bg-[var(--att-sheet-2)] ring-2 ring-inset ring-[var(--att-accent)]',
+                      )}
+                    >
                       <td className={cn('whitespace-nowrap py-3 pe-3 ps-6 text-sm font-semibold', INK)}>{dayLabel(d.date, locale)}</td>
                       <td className="px-3 py-3">
                         <StatusText status={d.status} label={status(d.status)} />
@@ -169,7 +193,14 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
             </div>
             <ul className="mt-4 border-t border-[var(--att-line)] md:hidden">
               {newestFirst.map((d) => (
-                <li key={d.date} className="border-b border-[var(--att-line)] px-5 py-4 last:border-b-0">
+                <li
+                  key={d.date}
+                  id={`att-day-m-${d.date}`}
+                  className={cn(
+                    'border-b border-[var(--att-line)] px-5 py-4 last:border-b-0',
+                    d.date === p.picked && 'bg-[var(--att-sheet-2)] ring-2 ring-inset ring-[var(--att-accent)]',
+                  )}
+                >
                   <div className="flex items-center justify-between gap-3">
                     <span className={cn('text-sm font-semibold', INK)}>{dayLabel(d.date, locale)}</span>
                     <StatusText status={d.status} label={status(d.status)} />

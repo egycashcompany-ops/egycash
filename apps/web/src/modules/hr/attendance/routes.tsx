@@ -9,6 +9,7 @@ import { AppShell } from '../../../platform/layout/AppShell';
 import { ShiftsPage } from './pages/ShiftsPage';
 import { AssignmentsPage } from './pages/AssignmentsPage';
 import { DailySheetPage } from './pages/DailySheetPage';
+import { DeviceHealthPage } from './pages/DeviceHealthPage';
 import { EmployeeMonthPage } from './pages/EmployeeMonthPage';
 import { MyAttendancePage } from './pages/MyAttendancePage';
 import { RegularizationQueuePage } from './pages/RegularizationQueuePage';
@@ -34,6 +35,20 @@ export default function AttendanceRoutes(): JSX.Element {
           element={
             <RequirePermission permission="attendance.decideRegularization">
               <RegularizationQueuePage />
+            </RequirePermission>
+          }
+        />
+        {/*
+          AT-D4. Behind `attendanceDevice.view` — the key that now names this page in the registry,
+          after sitting deliberately page-less since AT-D1. The manage-only actions inside it are
+          hidden rather than disabled, which is this product's rule for a control a reader may not
+          use: a disabled button still says «this is for you» and then refuses.
+        */}
+        <Route
+          path="devices"
+          element={
+            <RequirePermission permission="attendanceDevice.view">
+              <DeviceHealthPage />
             </RequirePermission>
           }
         />

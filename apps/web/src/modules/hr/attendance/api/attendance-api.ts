@@ -8,6 +8,7 @@ import {
   type AttendanceRegularizationDto,
   type AttendanceSheetRowDto,
   type AttendanceEmployeeSummaryDto,
+  type AttendanceEmployeeDayDto,
   type AttendanceSheetSummaryDto,
   type CreateAttendanceRegularization,
   type CreateShift,
@@ -18,6 +19,15 @@ import {
   type ShiftAssignmentDto,
   type ShiftDto,
   type UpdateShift,
+  type AttendanceUnmatchedIdDto,
+  type AttendanceQuarantineRowDto,
+  type AttendanceQuarantineRetryResultDto,
+  type RetryAttendanceQuarantine,
+  type DiscardAttendanceQuarantine,
+  type AttendanceBackfillDto,
+  type AttendanceDeviceDto,
+  type AttendanceEnrollmentDto,
+  type CreateAttendanceEnrollment,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -91,6 +101,25 @@ export const myAttendanceSummary = (
   params: QueryParams,
 ): Promise<AttendanceEmployeeSummaryDto> =>
   get<AttendanceEmployeeSummaryDto>(`/hr/attendance/days/me/summary${buildQuery(params)}`);
+
+/**
+ * EVERY CALENDAR DATE of one employee's period, resolved by the server.
+ *
+ * It replaces reading `/hr/attendance/days` for this screen, and the difference is the whole point:
+ * that endpoint filters day DOCUMENTS, so a date with no row was simply absent from the answer and
+ * the month skipped it — punches imported for the 12th and the 15th and the page showing neither,
+ * while dates whose legacy row said `dayOff` read «يوم راحة» on top of real scans. This answers one
+ * entry per date, resolved by the same function the daily sheet resolves its lines with, so the two
+ * screens cannot disagree about the same employee on the same day.
+ */
+export const attendanceEmployeePeriod = (
+  params: QueryParams,
+): Promise<AttendanceEmployeeDayDto[]> =>
+  get<AttendanceEmployeeDayDto[]>(`/hr/attendance/days/employee-period${buildQuery(params)}`);
+
+/** The same, about me — own by construction on the server; no employee filter is accepted. */
+export const myAttendancePeriod = (params: QueryParams): Promise<AttendanceEmployeeDayDto[]> =>
+  get<AttendanceEmployeeDayDto[]>(`/hr/attendance/days/me/period${buildQuery(params)}`);
 
 /** My own days — own by construction on the server; no employee filter is accepted. */
 export const listMyAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>
@@ -173,3 +202,60 @@ export const downloadAttendanceExport = (params: QueryParams): Promise<void> =>
     `/hr/attendance/export${buildQuery(params)}`,
     `attendance-${new Date().toISOString().slice(0, 10)}.csv`,
   );
+
+// ── AT-D4: device health ──────────────────────────────────────────────────────
+//
+// The screen these serve exists because production had two facts nothing in the product showed:
+// seventeen machine ids on the المهندسين wall answer to no employee and hold 353 scans, and 306
+// enrolments point at people who have left. Both are invisible everywhere else by construction —
+// the daily sheet is a page of EMPLOYEES, so a scan belonging to nobody has no line to sit on.
+
+/** Machine ids nothing in ECMS answers to, with the span and the row count each is holding. */
+export const attendanceUnmatchedIds = (
+  params: QueryParams,
+): Promise<AttendanceUnmatchedIdDto[]> =>
+  get<AttendanceUnmatchedIdDto[]>(`/hr/attendance/quarantine/unmatched${buildQuery(params)}`);
+
+/** The quarantined rows themselves, for looking at one id's scans before deciding about it. */
+export const attendanceQuarantine = (
+  params: QueryParams,
+): Promise<AttendanceQuarantineRowDto[]> =>
+  get<AttendanceQuarantineRowDto[]>(`/hr/attendance/quarantine${buildQuery(params)}`);
+
+/**
+ * Re-run a machine id's held scans through the IMPORT, now that it is linked.
+ *
+ * Deliberately an import rather than a direct insert: the history must never be placed by a second
+ * set of rules. Duplicates count as resolved, because a row that is already a punch is exactly what
+ * "resolved" means.
+ */
+export const retryAttendanceQuarantine = (
+  body: RetryAttendanceQuarantine,
+): Promise<AttendanceQuarantineRetryResultDto> =>
+  post<AttendanceQuarantineRetryResultDto>('/hr/attendance/quarantine/retry', body);
+
+/** «تجاهل» — the scans stay as evidence, marked discarded, and stop being offered. */
+export const discardAttendanceQuarantine = (
+  body: DiscardAttendanceQuarantine,
+): Promise<{ discarded: number }> =>
+  post<{ discarded: number }>('/hr/attendance/quarantine/discard', body);
+
+/** The backfill runs, newest first — how much of the imported history has been derived. */
+export const attendanceBackfills = (params: QueryParams): Promise<AttendanceBackfillDto[]> =>
+  get<AttendanceBackfillDto[]>(`/hr/attendance/backfills${buildQuery(params)}`);
+
+export const cancelAttendanceBackfill = (id: string): Promise<AttendanceBackfillDto> =>
+  post<AttendanceBackfillDto>(`/hr/attendance/backfills/${id}/cancel`, {});
+
+export const resumeAttendanceBackfill = (id: string): Promise<AttendanceBackfillDto> =>
+  post<AttendanceBackfillDto>(`/hr/attendance/backfills/${id}/resume`, {});
+
+/** The registered walls, so an unmatched id can be read beside the device that produced it. */
+export const attendanceDevices = (params: QueryParams): Promise<Paginated<AttendanceDeviceDto>> =>
+  getPage<AttendanceDeviceDto>(`/hr/attendance/devices${buildQuery(params)}`);
+
+/** Linking an id to an employee. The server queues the retry of that id's held scans itself. */
+export const createAttendanceEnrollment = (
+  body: CreateAttendanceEnrollment,
+): Promise<AttendanceEnrollmentDto> =>
+  post<AttendanceEnrollmentDto>('/hr/attendance/enrollments', body);

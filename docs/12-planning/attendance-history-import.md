@@ -166,10 +166,17 @@ rows on demand — the same path, for the cases the automatic retry did not cove
 import's own terms plus `stillQuarantined`.
 
 Reading the quarantine needs `attendanceDevice.view`; retrying and discarding need
-`attendanceDevice.manage`. Both are HR keys, not the integration account's — and these two surfaces
-are **API-only today**: there is no device-health screen in ECMS yet (the device keys are
-deliberately unassigned to a page), so HR reaches this report through the API until that screen is
-built.
+`attendanceDevice.manage`. Both are HR keys, not the integration account's.
+
+**There is a screen for this now**: `/attendance/devices` («أجهزة البصمة»), behind
+`attendanceDevice.view`. It lists each unmatched machine id with the wall it was seen on, how many
+scans it is holding and its first and last, and offers «ربط» and «تجاهل» per id to a holder of
+`attendanceDevice.manage`. It also carries the backfill's progress, with cancel and resume. So HR
+no longer needs the API for any of §4 — though the API is unchanged and still works.
+
+The screen **suggests** the exact-code match and never acts on it. That is deliberate and the
+reason is in the data: machine id `102815` belongs to ECMS `0102818`, so «machine id with a leading
+zero» is not a rule anything may apply by itself. A person confirms each link.
 
 ## 5. The order to run the backfill in
 
@@ -185,3 +192,64 @@ built.
 
 Resume the relay's ordinary forward push (import + `days/recompute`) at any point; the two paths do
 not interfere, and both are idempotent.
+
+
+## 6. What is still to press, and when (added 2026-11-18)
+
+The history send and the first backfill are **done**: 65,579 punches are in ECMS from 2024-12-26
+on, and run `6afd6afa` covered 2024-12-26 → 2026-11-18 with `scope: "withPunches"` — 2,062 of 2,062
+chunks, 52,299 of 52,299 days, 52,237 computed, **0 failed**. Nothing needs re-sending and nothing
+needs re-running for that span.
+
+### Nothing to press for the ordinary day
+
+The relay's forward push is enough. An import now **derives the days it touched itself**, for today
+and the two days either side, so a check-out that arrives in a later batch than its check-in turns
+«حضر فقط» into a full day inside that same request. `days/recompute` is still accepted and still
+idempotent — keep calling it if that is simpler — but it is no longer what makes a recent day
+correct.
+
+Each import answers with two new numbers, and the relay's log should keep both:
+
+- `daysRecomputed` — employee-days derived inside the request;
+- `daysLeftToBackfill` — employee-days it touched that are older than the live window.
+
+A non-zero `daysLeftToBackfill` is the signal that a backfill is owed. It exists because «imported
+26,493» read as «done» when almost nothing had been derived, and no number anywhere said so.
+
+### The one backfill still to run: `scope: "all"`, once the shifts are assigned
+
+Every backfill so far used `scope: "withPunches"`, which plans only the employee-days a scan
+actually touched. That is right for importing history and wrong for **pricing** it: a day somebody
+was due and did not come has no punch, so nothing planned it, so no `absent` row exists for it.
+While no working pattern is set this costs nothing — with no expectation there is no lateness and
+no absence to compute, and those days read «لا يوجد جدول», which is honest.
+
+The moment the real hours are assigned per department, those two years need walking day by day:
+
+```
+POST /hr/attendance/backfills
+{ "from": "2024-12-26", "to": "<the day before the shifts take effect>", "scope": "all" }
+```
+
+Then poll `GET /hr/attendance/backfills` (or watch `/attendance/devices`) to completion. Expect it
+to be **much larger** than the first run — `withPunches` planned 52,299 employee-days, and `all`
+over the same span plans roughly 1,750 employees × 690 days, so plan for a long run and let it
+resume rather than restarting it. Frozen months are refused per day and reported as
+`skippedFrozen`: a closed payroll month is never re-priced by this, which is the point.
+
+Run it **after** the assignments exist, never before — a backfill prices each day against the
+expectation that stands when it runs, so an early run would write the same «no schedule» answer it
+is being run to replace.
+
+### If an id is linked later
+
+Nothing to press. Writing the enrolment imports that id's held scans automatically, and the import
+derives the recent ones. Only if the link covers days older than the live window is a backfill
+owed, and then a narrow one is enough:
+
+```
+POST /hr/attendance/backfills
+{ "from": "<that id's first scan>", "to": "<today>", "scope": "withPunches",
+  "employeeIds": ["<the employee it was linked to>"] }
+```

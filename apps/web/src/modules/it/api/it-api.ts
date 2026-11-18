@@ -66,6 +66,7 @@ import {
   type ItCatalogItemDto,
   type ItVendorDto,
   type ItPersonDto,
+  type ItRecipientDto,
   type ItTechniciansPageDto,
   type HandOverItAssets,
   type ItCustodyReceiptDocumentDto,
@@ -181,6 +182,16 @@ export const searchPeople = (
   pageSize = 8,
 ): Promise<Paginated<ItPersonDto>> =>
   listPeople({ search, status: includeExited ? 'all' : 'employed', pageSize });
+
+/**
+ * A hand-over's box (2026-11-18 — «أسمح إنه يعرف يسلم لحد فى فرع تاني»): whoever works here today,
+ * in EVERY branch, opened by the act's own grant (`itAsset.assign`, `itMobileLine.assign` or
+ * `itConsumable.assign`) rather than the registers' reads. The server forces the employed and
+ * ignores the command-bar branch; a row is a name, a code and the branch HR places the person in —
+ * nothing else. The answer is the list itself: no paging, a few names for what was typed.
+ */
+export const searchRecipients = (search: string, pageSize = 8): Promise<ItRecipientDto[]> =>
+  get<ItRecipientDto[]>(`/it/people/recipients${buildQuery({ search, pageSize })}`);
 
 /**
  * The IT departments' people — who a ticket may be assigned to (`it.technicianDepartmentIds`).

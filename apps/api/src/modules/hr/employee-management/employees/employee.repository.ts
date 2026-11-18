@@ -15,6 +15,13 @@ import {
 } from '../../shared/employee-code-sort';
 
 export interface EmployeeListFilter {
+  /**
+   * Named employees, ORed — and the reason it exists is SCOPE, not convenience. Asking this list
+   * for one id with the caller's scope attached is how a feature answers «may this reader see this
+   * person?» through the one authority that decides it (`BaseRepository.scopeFilter`), instead of
+   * spelling the hierarchy again beside its own query.
+   */
+  ids?: readonly string[] | undefined;
   /** Lists, ORed within each — «هنخلي كل الفلترز multi». */
   status?: readonly string[] | undefined;
   employed?: boolean | undefined;
@@ -650,6 +657,12 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
 
   private buildFilter(f: EmployeeListFilter): FilterQuery<EmployeeDoc> {
     const clauses: FilterQuery<EmployeeDoc>[] = [];
+    if (f.ids !== undefined) {
+      // An invalid id narrows to nothing rather than throwing: this is a filter, and a caller
+      // passing rubbish must get an empty answer, never somebody else's.
+      const valid = f.ids.filter((id) => Types.ObjectId.isValid(id));
+      clauses.push({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } });
+    }
     if (f.status !== undefined && f.status.length > 0) clauses.push({ status: { $in: [...f.status] } });
     if (f.employed !== undefined)
       clauses.push(f.employed ? { status: { $in: [...EMPLOYED_STATUSES] } } : { status: 'exited' });
@@ -739,6 +752,48 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     if (clauses.length === 0) return {};
     if (clauses.length === 1) return clauses[0] as FilterQuery<EmployeeDoc>;
     return { $and: clauses } as FilterQuery<EmployeeDoc>;
+  }
+
+  /**
+   * EVERY employee a filter and a scope reach, UNPAGED — the daily sheet's register.
+   *
+   * WHY IT EXISTS, and it is a bug fix rather than a convenience. The sheet called `listEmployees`
+   * with `pageSize: SHEET_CAP` to mean "all of them", and `BaseRepository.list` clamps pageSize to
+   * `MAX_PAGE_SIZE`, which is 100. So the sheet resolved the first HUNDRED employees by code, on
+   * every date, and every count beneath it counted those hundred: a company of 1,755 read «100»
+   * and the thirty-nine people who had actually scanned were whichever four of them happened to
+   * sort into the first page. Silently — a clamp is not an error.
+   *
+   * The sheet cannot page before resolving, either, and that is not a shortcut: the display status
+   * is worked out from the clock and the calendar rather than read off a row, so "how many are
+   * absent" and "show me the absences" cannot be database questions. They can only be read off the
+   * whole resolved day. Paging first would give a card saying «3 غائب» that meant «3 on this page».
+   *
+   * `cap` is a guard against a filter nobody meant — every branch at once — not an expected limit,
+   * and it is applied as a `limit` so an enormous company degrades by truncating rather than by
+   * exhausting memory. The caller passes the sheet's own cap so the two cannot drift.
+   */
+  async listAllForSheet(
+    filter: EmployeeListFilter,
+    cap: number,
+    scope?: ScopeSelector,
+  ): Promise<EmployeeDoc[]> {
+    const clauses: FilterQuery<EmployeeDoc>[] = [
+      this.buildFilter(filter),
+      { isDeleted: false },
+      // The one authority for the hierarchy — the same filter every paged read is scoped by.
+      this.scopeFilter(scope),
+    ];
+    return this.model
+      .find({ $and: clauses })
+      // By code, which is the order the sheet shows and the order its pages are cut from.
+      // `numericOrdering` is what makes `0100099` sort before `0100100` on a plain `find`, without
+      // the derived numeric field the paged reads compute in an aggregation.
+      .sort({ code: 1 })
+      .collation({ locale: 'en', numericOrdering: true })
+      .limit(cap)
+      .lean<EmployeeDoc[]>()
+      .exec();
   }
 
   /**

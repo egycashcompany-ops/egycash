@@ -107,14 +107,15 @@ describe('the org chart read model (P-ORG-3 §4)', () => {
     input.sectionRows = [sectionRow({ branchId: 'b0', departmentId: opsRow.id, catalogId: treasury.id, status: 'inactive' })];
     input.jobs = [{ id: 'j1', code: 'J1', name: { ar: 'أمين خزينة', en: 'Cashier' }, version: 4, status: 'active' }];
     input.places = [
-      { id: 'p1', jobTitleId: 'j1', departmentCatalogId: ops.id, sectionCatalogId: treasury.id },
-      { id: 'p2', jobTitleId: 'j1', departmentCatalogId: ops.id, sectionCatalogId: null },
+      { id: 'p1', jobTitleId: 'j1', departmentCatalogId: ops.id, sectionCatalogId: treasury.id, position: null },
+      { id: 'p2', jobTitleId: 'j1', departmentCatalogId: ops.id, sectionCatalogId: null, position: 2 },
     ];
     const dto = toOrgChartDto(input);
     expect(dto.departments[0]?.sections).toHaveLength(0);
     expect(dto.jobs[0]?.places).toEqual([
-      { departmentCatalogId: ops.id, sectionCatalogId: treasury.id, shown: false },
-      { departmentCatalogId: ops.id, sectionCatalogId: null, shown: true },
+      { departmentCatalogId: ops.id, sectionCatalogId: treasury.id, shown: false, position: null },
+      // The position travels to the chart, which orders the column by it (design §5.7).
+      { departmentCatalogId: ops.id, sectionCatalogId: null, shown: true, position: 2 },
     ]);
     expect(dto.jobs[0]?.version).toBe(4);
   });

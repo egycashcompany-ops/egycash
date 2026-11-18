@@ -92,9 +92,42 @@ export const rangeLabel = (range: PeriodRange, locale: Locale): string => {
 /**
  * The longest stretch a screen will ask for in one request.
  *
- * It is the cap the server already puts on an export and on a recompute, and it is also what one
- * page of day rows can carry (`MAX_PAGE_SIZE` is 100). Asking for more would not fail loudly — it
- * would return the first hundred days and leave the rest out of the table and out of every figure
- * computed from it.
+ * It was 92 — the server's old cap, and also what one page of day rows could carry, so asking for
+ * more did not fail loudly: it returned the first hundred days and left the rest out of the table
+ * AND out of every figure computed from it.
+ *
+ * Neither limit applies now. `/days/employee-period` answers one entry per calendar date rather
+ * than a page of rows, and its inputs are batched once for the whole span, so a year costs the
+ * same handful of queries a month does. A year is what «did he come on the 1st of January?» needs,
+ * and the server refuses more.
  */
-export const MAX_PERIOD_DAYS = 92;
+export const MAX_PERIOD_DAYS = 366;
+
+/**
+ * The month `date` sits in, as a whole — the previous/next arrows' destination.
+ *
+ * `thisMonth` deliberately ends TODAY rather than at the month's end; stepping BACK from it has to
+ * give the whole previous month, and stepping forward from there the whole next one, clamped to
+ * today so an arrow never walks into days nobody has lived.
+ */
+export const monthAround = (date: string, today: string = cairoToday()): PeriodRange => {
+  const first = `${date.slice(0, 7)}-01`;
+  const last = endOfMonth(first);
+  return { from: first, to: last > today ? today : last };
+};
+
+/** The whole month before the one `from` sits in, clamped to today at the far end. */
+export const previousMonth = (from: string, today: string = cairoToday()): PeriodRange =>
+  monthAround(addDays(`${from.slice(0, 7)}-01`, -1), today);
+
+/**
+ * The whole month after the one `from` sits in, or null when that would be the future.
+ *
+ * Null is what disables the arrow, and it is a real answer: there is no «next» from the month
+ * being lived.
+ */
+export const nextMonth = (from: string, today: string = cairoToday()): PeriodRange | null => {
+  const firstOfNext = addDays(endOfMonth(`${from.slice(0, 7)}-01`), 1);
+  if (firstOfNext > today) return null;
+  return monthAround(firstOfNext, today);
+};

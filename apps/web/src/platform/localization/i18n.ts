@@ -2461,6 +2461,12 @@ const en: Record<string, string> = {
   'attendanceView.avg': 'avg {{t}}',
   'attendanceView.dailyRecord': 'Daily record',
   'attendanceView.newestFirst': 'newest first',
+  'attendanceView.oldestFirst': 'in this order',
+  'attendanceView.codeCol': 'Code',
+  'attendanceView.shortfallCol': 'Shortfall',
+  'attendanceView.shortfallTotal': 'missing from the required hours',
+  'attendanceView.sortAscending': 'Sort ascending',
+  'attendanceView.sortDescending': 'Sort descending',
   'attendanceView.date': 'Date',
   'attendanceView.arrived': 'Arrived',
   'attendanceView.left': 'Left',
@@ -2475,7 +2481,6 @@ const en: Record<string, string> = {
   'attendanceView.status.late': 'Late',
   'attendanceView.status.earlyLeave': 'Left early',
   'attendanceView.status.lateAndEarly': 'Late and left early',
-  'attendanceView.status.checkedIn': 'At work',
   'attendanceView.status.incomplete': 'Checked in only',
   'attendanceView.status.notYetIn': 'Not yet in',
   'attendanceView.status.absent': 'Absent',
@@ -11396,6 +11401,10 @@ const en: Record<string, string> = {
     'Days a manager may decide an attendance day alone',
   'systemAdmin.settings.keys.hr.attendance.importMaxAgeDays':
     'How old a scan may be and still be imported',
+  'systemAdmin.settings.keys.hr.attendance.minPunchGapMinutes':
+    'Minutes within which two scans count as one',
+  'systemAdmin.settings.keys.hr.attendance.countAbsence':
+    'Record a working day with no scan as an absence',
   'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
     'Weekly changes by one manager before review flags them',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
@@ -11525,6 +11534,10 @@ const en: Record<string, string> = {
     'How far back a supervisor may decide a day on their own authority. An older day is recorded and takes effect only after HR approves it.',
   'systemAdmin.settings.descriptions.hr.attendance.importMaxAgeDays':
     'In days. 0 means no limit, which is the default, so a branch can send its whole history. A scan dated in the future is always refused, whatever this says — that is a device clock, not history.',
+  'systemAdmin.settings.descriptions.hr.attendance.minPunchGapMinutes':
+    'A finger that reads poorly is often presented again a few seconds later. The device records two scans, and without this the second one is read as a departure — which produced days marked present with no working hours at all. Ten minutes is the default: longer than any repeated attempt, and shorter than any real working day. Zero switches it off.',
+  'systemAdmin.settings.descriptions.hr.attendance.countAbsence':
+    'When off, which is the default, a working day with no scan reads «no record» — a statement about the evidence rather than about the person — and it is not counted as an absence for payroll. When on, the same day is recorded as an absence. A supervisor\u2019s own decision to mark somebody absent is unaffected either way.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
     'The number of attendance days one supervisor may change in a week before the change log highlights them for a look. Nothing is blocked or refused by it — a broken reader produces many legitimate changes.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
@@ -17904,6 +17917,12 @@ const ar: Record<string, string> = {
   'attendanceView.avg': 'المتوسط {{t}}',
   'attendanceView.dailyRecord': 'السجل اليومي',
   'attendanceView.newestFirst': 'الأحدث أولًا',
+  'attendanceView.oldestFirst': 'بهذا الترتيب',
+  'attendanceView.codeCol': 'الكود',
+  'attendanceView.shortfallCol': 'النقص',
+  'attendanceView.shortfallTotal': 'الوقت الناقص من الساعات المطلوبة',
+  'attendanceView.sortAscending': 'ترتيب تصاعدي',
+  'attendanceView.sortDescending': 'ترتيب تنازلي',
   'attendanceView.date': 'التاريخ',
   'attendanceView.arrived': 'الحضور',
   'attendanceView.left': 'الانصراف',
@@ -17918,8 +17937,7 @@ const ar: Record<string, string> = {
   'attendanceView.status.late': 'متأخر',
   'attendanceView.status.earlyLeave': 'انصراف مبكر',
   'attendanceView.status.lateAndEarly': 'تأخير وانصراف مبكر',
-  'attendanceView.status.checkedIn': 'في العمل',
-  'attendanceView.status.incomplete': 'دخول فقط',
+  'attendanceView.status.incomplete': 'حضر فقط',
   'attendanceView.status.notYetIn': 'لم يحضر بعد',
   'attendanceView.status.absent': 'غائب',
   'attendanceView.status.onLeave': 'في إجازة',
@@ -26631,6 +26649,10 @@ const ar: Record<string, string> = {
     'عدد الأيام التي يبتّ فيها المسؤول منفردًا',
   'systemAdmin.settings.keys.hr.attendance.importMaxAgeDays':
     'أقصى عمر للبصمة المقبولة عند الاستيراد',
+  'systemAdmin.settings.keys.hr.attendance.minPunchGapMinutes':
+    'الدقائق التي تُحتسب خلالها بصمتان كبصمة واحدة',
+  'systemAdmin.settings.keys.hr.attendance.countAbsence':
+    'تسجيل يوم العمل بدون بصمة كغياب',
   'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
     'عدد التعديلات الأسبوعية قبل تمييزها للمراجعة',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
@@ -26760,6 +26782,10 @@ const ar: Record<string, string> = {
     'المدة التي يجوز خلالها للمسؤول أن يبتّ في يوم حضور بسلطته وحده. وما كان أقدم من ذلك يُسجَّل القرار بشأنه ولا يسري إلا بعد اعتماد الموارد البشرية.',
   'systemAdmin.settings.descriptions.hr.attendance.importMaxAgeDays':
     'بالأيام. والقيمة صفر تعني بلا حد، وهي الأصل، حتى يتمكن الفرع من إرسال تاريخه كاملًا. أما البصمة المؤرخة في المستقبل فمرفوضة دائمًا مهما كانت هذه القيمة، لأنها خلل في ساعة الجهاز لا تاريخ.',
+  'systemAdmin.settings.descriptions.hr.attendance.minPunchGapMinutes':
+    'البصمة التي لا تُقرأ جيدًا تُعاد بعد ثوانٍ قليلة في كثير من الأحيان، فيسجل الجهاز بصمتين، وبدون هذا الإعداد تُقرأ الثانية كانصراف — وهو ما جعل أيامًا تظهر بحالة حاضر وبدون أي ساعات عمل. القيمة الافتراضية عشر دقائق: أطول من أي محاولة مُعادة، وأقصر من أي يوم عمل حقيقي. والصفر يوقف الإعداد.',
+  'systemAdmin.settings.descriptions.hr.attendance.countAbsence':
+    'عند الإيقاف، وهو الوضع الافتراضي، يُقرأ يوم العمل بدون بصمة «لا يوجد تسجيل» — وهو وصف للدليل المتاح لا للموظف — ولا يُحتسب غيابًا في المرتبات. وعند التشغيل يُسجل اليوم نفسه غيابًا. أما قرار المسؤول بتسجيل الغياب بنفسه فلا يتأثر في الحالتين.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
     'عدد أيام الحضور التي يجوز لمسؤول واحد تعديلها في الأسبوع قبل أن يُميّزها سجل التغييرات للاطّلاع عليها. ولا يترتب على تجاوز هذا العدد منع ولا رفض؛ فالجهاز المعطّل ينتج تعديلات كثيرة ومشروعة.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':

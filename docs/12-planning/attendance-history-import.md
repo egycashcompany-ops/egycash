@@ -253,3 +253,57 @@ POST /hr/attendance/backfills
 { "from": "<that id's first scan>", "to": "<today>", "scope": "withPunches",
   "employeeIds": ["<the employee it was linked to>"] }
 ```
+
+## 7. The backfill the two business rules now need (added 2026-11-18, later the same day)
+
+The owner set two company-wide rules and answered the three questions that were open:
+
+- worked time is **last check-out − first check-in**, flat;
+- the company day is **09:00–17:00, eight hours, no grace**, and an arrival after nine is late
+  **only if those eight hours were not completed**;
+- weekly rest is **Friday and Saturday** (already the shipped default — nothing to set);
+- early leave and overtime are measured against the **completed hours**, not the clock;
+- a working day with no scan reads **«لا يوجد تسجيل»**, not «غائب» (`hr.attendance.countAbsence`
+  ships off).
+
+Section 6 said the `scope: "all"` run was owed once the real hours per department were assigned.
+**That condition is now met a different way**: the hours are set company-wide by the default
+pattern rather than per department, and the pattern is on by default, so every employee without a
+shift assignment has an expectation from the moment this deploys.
+
+### Run this once the deploy is confirmed
+
+```
+POST /hr/attendance/backfills
+{ "from": "2024-12-26", "to": "<today>", "scope": "all" }
+```
+
+`scope: "all"` rather than `"withPunches"`, and the reason is the same as in §6 with one addition:
+`withPunches` plans only the employee-days a scan touched, and the new rules change **two** kinds
+of day that no scan touched — a day that now has an expectation it did not have (so it can be
+`pending` or «لا يوجد تسجيل» rather than «لا يوجد جدول»), and nothing else. It also re-derives
+every day that DID have scans, which is what applies the flexible rule, the flat worked time and
+the re-tap collapse to the history.
+
+Size it the way §6 says: roughly 1,750 employees × 690 days, so expect it to take far longer than
+the 52,299-day first run, and let it resume rather than restarting it.
+
+### What it will and will not change
+
+- **Frozen payroll months are refused per day** and reported as `skippedFrozen`. A closed month is
+  never re-priced, so none of this reaches a payslip already issued.
+- **Manager decisions survive it.** A decision is an input to the derivation, not a row the
+  derivation overwrites, so each re-derived day is computed with the decision still applied.
+- **Days with a check-in and only a re-tap after it** stop reading «حاضر, 0 minutes» and start
+  reading «حضر فقط» with every figure blank — the owner's five named codes (0100197, 0100319,
+  0100477, 0100509, 0100757) and the sixth with five minutes (0100691).
+- **No absences are minted**, because `hr.attendance.countAbsence` is off. Turning it on later is
+  a settings change plus a second `scope: "all"` run over whatever span should carry absences.
+
+### The one thing to decide before running it
+
+Whether `countAbsence` should be on for the history at all. The owner's answer today was «lateness
+only for now», so the run below writes «لا يوجد تسجيل» for every scan-less working day of the two
+years. If he later wants absences counted from a date forward, the cheapest shape is: turn the
+setting on, then run `scope: "all"` from that date only — the earlier span keeps the honest
+«nothing recorded» answer rather than acquiring absences retroactively.

@@ -24,6 +24,7 @@ import {
   useRegularizations,
 } from '../api/attendance-queries';
 import { useEmployeePhotoUrl } from '../../employee-management/employees/api/employee-photo';
+import { exportFileName } from '../export-name';
 
 // No page size any more: `/days/employee-period` answers one entry per calendar DATE rather than a
 // page of stored rows, so there is no page to size and no tail to lose.
@@ -62,7 +63,12 @@ const EmployeeAttendanceTab = ({ employee }: { employee: EmployeeDto }): JSX.Ele
     if (exporting) return;
     setExporting(true);
     setExportError(null);
-    downloadAttendanceExport({ from: period.from, to: period.to, employeeId: employee.id })
+    downloadAttendanceExport(
+      { from: period.from, to: period.to, employeeId: employee.id },
+      // The code rather than the name: a file name is read in a folder listing, where «0100052»
+      // identifies one person and a repeated Arabic given name does not.
+      exportFileName(period.from, period.to, employee.code),
+    )
       .catch((error: unknown) => {
         setExportError(error instanceof Error ? error.message : String(error));
       })

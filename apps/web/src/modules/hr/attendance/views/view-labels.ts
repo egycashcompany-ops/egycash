@@ -90,6 +90,13 @@ export const VIEW_LABEL_KEYS = [
   'noDays',
   'hours',
   'minutes',
+  // The sortable sheet, and the two figures the flexible-hours rule added.
+  'codeCol',
+  'shortfallCol',
+  'shortfallTotal',
+  'sortAscending',
+  'sortDescending',
+  'oldestFirst',
 ] as const;
 export type ViewLabelKey = (typeof VIEW_LABEL_KEYS)[number];
 

@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { type AttendanceDayStatus } from '@ecms/contracts';
+import { figuresOf, type AttendanceDayStatus } from '@ecms/contracts';
 import {
   ATTENDED_STATUSES,
   cairoMinutesOfDay,
@@ -15,14 +15,40 @@ import {
   type FigureRow,
 } from './period-figures';
 
-const row = (over: Partial<FigureRow> = {}): FigureRow => ({
-  status: 'present',
-  firstInAt: new Date('2026-11-02T07:00:00.000Z'),
-  lastOutAt: new Date('2026-11-02T15:00:00.000Z'),
-  workedMinutes: 480,
-  lateMinutes: 0,
-  ...over,
-});
+/**
+ * A row, with the two figures these tests actually vary spelled flat for readability.
+ *
+ * `workedMinutes` and `lateMinutes` reach the figures object rather than the row, because the
+ * counters read the REPORTED figures now: a day with no check-out reports nulls and so lands in no
+ * total at all, which several cases below rely on.
+ */
+const row = (
+  over: Partial<Omit<FigureRow, 'figures'>> & {
+    workedMinutes?: number;
+    lateMinutes?: number;
+    shortfallMinutes?: number;
+  } = {},
+): FigureRow => {
+  const { workedMinutes = 480, lateMinutes = 0, shortfallMinutes = 0, ...rest } = over;
+  const firstInAt = 'firstInAt' in rest ? rest.firstInAt : new Date('2026-11-02T07:00:00.000Z');
+  const lastOutAt = 'lastOutAt' in rest ? rest.lastOutAt : new Date('2026-11-02T15:00:00.000Z');
+  return {
+    status: 'present',
+    ...rest,
+    firstInAt: firstInAt ?? null,
+    lastOutAt: lastOutAt ?? null,
+    figures: figuresOf({
+      firstInAt: firstInAt ?? null,
+      lastOutAt: lastOutAt ?? null,
+      workedMinutes,
+      lateMinutes,
+      shortfallMinutes,
+      earlyLeaveMinutes: 0,
+      overtimeMinutes: 0,
+      requiredMinutes: 480,
+    }),
+  };
+};
 
 describe('the Cairo clock', () => {
   it('reads an instant on the business calendar, not the server zone', () => {

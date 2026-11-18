@@ -67,7 +67,9 @@ const STATUS_TONE: Record<ViewStatus, Tone> = {
   late: 'warn',
   earlyLeave: 'warn',
   lateAndEarly: 'warn',
-  checkedIn: 'ok',
+  // «حضر فقط» — an arrival with no departure, on any date. WARN rather than OK, and that is the
+  // honest tone: it is not a complete day, nothing about it can be judged, and somebody has to
+  // decide what it was before payroll can price it.
   incomplete: 'warn',
   notYetIn: 'muted',
   absent: 'bad',
@@ -82,7 +84,10 @@ export const statusTone = (s: ViewStatus): Tone => STATUS_TONE[s];
 /** Status as a dot and a word. */
 export const StatusText = ({ status, label }: { status: ViewStatus; label: string }): JSX.Element => (
   <span className={cn('inline-flex items-center gap-2 whitespace-nowrap text-[13px] font-medium', STATUS_TONE[status] === 'muted' ? INK3 : INK)}>
-    <span aria-hidden className={cn('h-2 w-2 rounded-full', DOT[STATUS_TONE[status]], status === 'checkedIn' && 'att-live')} />
+    {/* The live pulse marks a day still being lived — a check-in with no check-out yet. It is
+        keyed to the status, not to the date, because that is the only state that can still change
+        while somebody is looking at the screen. */}
+    <span aria-hidden className={cn('h-2 w-2 rounded-full', DOT[STATUS_TONE[status]], status === 'incomplete' && 'att-live')} />
     {label}
   </span>
 );
@@ -198,3 +203,60 @@ export const SheetHead = ({ title, note, actions }: { title: ReactNode; note?: R
     {actions}
   </div>
 );
+
+/**
+ * A COLUMN HEADING YOU CAN ORDER BY.
+ *
+ * Three things make it usable rather than merely clickable:
+ *
+ *  · It is a real `<button>`, so it is in the tab order and answers Enter and Space with no
+ *    key handling of our own — the owner asked for keyboard-accessible headers.
+ *  · The `<th>` carries `aria-sort`, which is what a screen reader announces; the arrow is
+ *    `aria-hidden` because it is the same information drawn for the eye.
+ *  · THE ARROWS ARE VERTICAL (▲ ▼) and so need no mirroring in Arabic. A horizontal arrow would
+ *    have to flip with the writing direction and would then mean the opposite of itself on half
+ *    the screens in this company; up and down mean the same thing in both.
+ */
+export const SortableHead = <Column extends string>({
+  column,
+  label,
+  sort,
+  onSort,
+  hint,
+}: {
+  column: Column;
+  label: string;
+  sort?: { by: Column; dir: 'asc' | 'desc' } | undefined;
+  onSort?: ((by: Column, dir: 'asc' | 'desc') => void) | undefined;
+  /** «ترتيب تصاعدي» / «ترتيب تنازلي» — what this click will do, for the tooltip. */
+  hint: (dir: 'asc' | 'desc') => string;
+}): JSX.Element => {
+  const active = sort?.by === column;
+  // Clicking the active column toggles it; clicking a new one starts ascending, which is the
+  // reading order for every column here (earliest arrival, shortest day, smallest delay, A to ي).
+  const next: 'asc' | 'desc' = active && sort?.dir === 'asc' ? 'desc' : 'asc';
+  if (onSort === undefined) return <span>{label}</span>;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column, next)}
+      title={hint(next)}
+      className={cn(
+        'inline-flex items-center gap-1 rounded px-1 -mx-1 font-medium transition-colors hover:text-[color:var(--att-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--att-accent)]',
+        active && INK,
+      )}
+    >
+      {label}
+      <span aria-hidden="true" className={active ? undefined : 'opacity-0 group-hover/head:opacity-40'}>
+        {active ? (sort?.dir === 'asc' ? '\u25b2' : '\u25bc') : '\u25b2'}
+      </span>
+    </button>
+  );
+};
+
+/** `aria-sort` for a `<th>`: what a screen reader says about this column's order. */
+export const ariaSort = <Column extends string>(
+  column: Column,
+  sort?: { by: Column; dir: 'asc' | 'desc' },
+): 'ascending' | 'descending' | 'none' =>
+  sort?.by === column ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';

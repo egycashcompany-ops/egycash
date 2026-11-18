@@ -24,6 +24,7 @@ import {
 } from '../api/attendance-queries';
 import { useEmployee } from '../../employee-management/employees/api/employee-queries';
 import { useEmployeePhotoUrl } from '../../employee-management/employees/api/employee-photo';
+import { exportFileName } from '../export-name';
 
 // No page size here any more. `/days/employee-period` answers one entry per calendar DATE of the
 // period rather than a page of stored rows — which is the fix: a date with no row was simply
@@ -106,7 +107,10 @@ export const EmployeeMonthPage = (): JSX.Element => {
     if (exporting) return;
     setExporting(true);
     setExportError(null);
-    downloadAttendanceExport({ from: period.from, to: period.to, employeeId: id })
+    downloadAttendanceExport(
+      { from: period.from, to: period.to, employeeId: id },
+      exportFileName(period.from, period.to, employee.data?.code),
+    )
       .catch((error: unknown) => {
         setExportError(error instanceof Error ? error.message : String(error));
       })

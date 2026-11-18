@@ -196,12 +196,16 @@ export const cancelRegularization = (
 export const approveOvertime = (id: string, body: ApproveOvertime): Promise<AttendanceDayDto> =>
   post<AttendanceDayDto>(`/hr/attendance/overtime/${id}/approve`, body);
 
-/** The CSV, through the shared download seam — a separate grant from reading. */
-export const downloadAttendanceExport = (params: QueryParams): Promise<void> =>
-  downloadBlob(
-    `/hr/attendance/export${buildQuery(params)}`,
-    `attendance-${new Date().toISOString().slice(0, 10)}.csv`,
-  );
+/**
+ * The CSV, through the shared download seam — a separate grant from reading.
+ *
+ * The caller names the file, because the caller is the screen: it knows which dates were exported
+ * and which branch was filtered, and the owner's naming rule needs both. It used to stamp the file
+ * with TODAY whatever date had been exported, so a folder of files about different days all had
+ * the same name but one.
+ */
+export const downloadAttendanceExport = (params: QueryParams, filename: string): Promise<void> =>
+  downloadBlob(`/hr/attendance/export${buildQuery(params)}`, filename);
 
 // ── AT-D4: device health ──────────────────────────────────────────────────────
 //

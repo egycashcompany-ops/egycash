@@ -19,6 +19,7 @@ import {
   compareFleetVehicleCodes,
   daysBetweenYmd,
   periodGranularity,
+  sameVehicleCode,
   ymdToUtcDate,
   type FleetDashboardKmBucketDto,
   type FleetDashboardInvalidReadingDto,
@@ -41,6 +42,13 @@ export interface KmRow {
   km: number | null;
   /** The insert order (the `_id`'s hex): several rows of one day keep the order they were written in. */
   order: string;
+  /**
+   * Set by `foldBookRows` (D20) on a row the old book wrote with no car (`vehicleId` stored null)
+   * under a code a live car now carries: `vehicleId` is then that car, so the row counts for it as
+   * the register's code filter counts it. It is still no REGISTRY row: the set filters («النوع /
+   * التشغيل / الفرع») never read the old book, so the km by branch and type leave it out.
+   */
+  fromBook?: true;
 }
 
 /**
@@ -98,7 +106,36 @@ export interface ClassifiedRow {
   next: string | null;
 }
 
+/**
+ * The car a row counts for: its registry car — for a book row `foldBookRows` folded, the live car of
+ * its code — else the old book's code (`book:<code>`), a car of its own the registry never had.
+ */
 const carKey = (row: KmRow): string => row.vehicleId ?? `book:${row.vehicleCode ?? ''}`;
+
+/**
+ * D20 — the old book's rows under a code a live car now carries, counted for that car.
+ *
+ * The register's code filter (`byVehicleOrBookCode`) reads a row kept from the old book under the
+ * code the book wrote, so `/fleet/odometer/summary?vehicleCodes=790` adds the book's rows of «790»
+ * to the registered car's own. `bookCars` maps each such code, AS STORED on the row, to the live
+ * car carrying it (`sameVehicleCode`); a row under that code then takes the car's id — its chain,
+ * its km in the rankings, the cars «متوسط لكل سيارة» divides by, and no more «غير مسجّلة». A code
+ * no live car carries (a deleted car's, or one the registry never had) stays a car of its own.
+ *
+ * Given only when no type, operation or branch narrows the view: the set filters never read the
+ * old book, so a narrowed view keeps book rows apart (it has none to fold).
+ */
+export const foldBookRows = (
+  rows: readonly KmRow[],
+  bookCars: ReadonlyMap<string, string> | undefined,
+): readonly KmRow[] => {
+  if (bookCars === undefined || bookCars.size === 0) return rows;
+  return rows.map((row) => {
+    if (row.vehicleId !== null || row.vehicleCode === null) return row;
+    const car = bookCars.get(row.vehicleCode);
+    return car === undefined ? row : { ...row, vehicleId: car, fromBook: true };
+  });
+};
 
 const byChainOrder = (a: KmRow, b: KmRow): number =>
   a.date === b.date ? a.order.localeCompare(b.order) : a.date.localeCompare(b.date);
@@ -413,7 +450,36 @@ export interface KmBreakdownInput {
    * ANY date — the service asks the register once (`latestChainDates`); none when not given.
    */
   neverReadIds?: ReadonlySet<string>;
+  /**
+   * D20 — each old-book code (as stored on the rows) → the live car now carrying it; see
+   * `foldBookRows`. Only when no type, operation or branch narrows the view; absent = no fold.
+   */
+  bookCars?: ReadonlyMap<string, string>;
 }
+
+/**
+ * D20 — `KmBreakdownInput.bookCars`: each old-book code (as stored on the rows) → the live car
+ * carrying it, by the register's own comparison (`sameVehicleCode`: whitespace and Latin case
+ * aside). `candidates` are the live ids the registry's code index answered for those codes
+ * (`liveIdsByCodes`). Should two live cars answer one code (two spellings of it), the lowest id
+ * takes it, so the fold is the same on every read. A code no live car carries is left out.
+ */
+export const bookCarsOf = (
+  bookCodes: readonly string[],
+  candidates: readonly string[],
+  vehicles: ReadonlyMap<string, KmVehicle>,
+): Map<string, string> => {
+  const live = [...candidates].sort().flatMap((id) => {
+    const car = vehicles.get(id);
+    return car === undefined || car.isDeleted ? [] : [car];
+  });
+  const out = new Map<string, string>();
+  for (const code of bookCodes) {
+    const car = live.find((candidate) => sameVehicleCode(candidate.code, code));
+    if (car !== undefined) out.set(code, car.vehicleId);
+  }
+  return out;
+};
 
 /** The set's registry cars as the rules count them: live ones, in the order the set names them. */
 const setCarsOf = (input: Pick<KmBreakdownInput, 'vehicles' | 'setIds'>): KmVehicle[] =>
@@ -427,9 +493,9 @@ const setCarsOf = (input: Pick<KmBreakdownInput, 'vehicles' | 'setIds'>): KmVehi
  * the register which of them were never read at all before it builds the breakdown.
  */
 export const noDistanceIdsOf = (
-  input: Pick<KmBreakdownInput, 'rows' | 'vehicles' | 'setIds' | 'range'>,
+  input: Pick<KmBreakdownInput, 'rows' | 'vehicles' | 'setIds' | 'range' | 'bookCars'>,
 ): string[] => {
-  const facts = carFacts(classifyRows(input.rows, input.range));
+  const facts = carFacts(classifyRows(foldBookRows(input.rows, input.bookCars), input.range));
   return setCarsOf(input)
     .filter((car) => eligible(car, input.range) && (facts.get(car.vehicleId)?.valid ?? 0) === 0)
     .map((car) => car.vehicleId);
@@ -441,12 +507,19 @@ const grouped = <K>(entries: readonly { key: K; km: number }[]): Map<K, number> 
   return out;
 };
 
+/**
+ * A branch the live list cannot name (soft-deleted since, its cars still on it): «—», as the
+ * vehicles list prints its «الفرع» and the dashboard's matrix and echo draw it (`scopeBranchesOf`).
+ */
+const UNNAMED_BRANCH: LocalizedString = { ar: '—', en: '—' };
+
 const byKmThenName = (a: { km: number; name: string }, b: { km: number; name: string }): number =>
   a.km === b.km ? a.name.localeCompare(b.name, 'ar') : b.km - a.km;
 
 export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDto => {
   const { range, today } = input;
-  const classified = classifyRows(input.rows, range);
+  // D20: the book's rows under a live car's code count for that car from here on.
+  const classified = classifyRows(foldBookRows(input.rows, input.bookCars), range);
   const days = kmDays(classified, { today, staleDays: input.staleDays });
   const facts = carFacts(classified);
   const valid = classified.filter((entry) => entry.kind === 'valid');
@@ -469,8 +542,9 @@ export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDt
   const makeOf = (car: KmVehicle | undefined): LocalizedString | null =>
     car?.typeId == null ? null : (input.typeNames.get(car.typeId) ?? null);
   // R-16 «متوسط لكل سيارة» = the period km ÷ the cars that CARRY that km: every car with a valid row
-  // in the total (out of service or deleted now, and each old-book code, included). The coverage
-  // bar's X counts the active set only, so it is not the divisor.
+  // in the total (out of service or deleted now, and each old-book code no live car carries,
+  // included — a folded code is its car, counted once). The coverage bar's X counts the active set
+  // only, so it is not the divisor.
   const carsWithKm = new Set(valid.map((entry) => carKey(entry.row))).size;
 
   const through = confirmedThrough(days, range, today);
@@ -485,6 +559,8 @@ export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDt
     )
     .map(({ car, km }) => ({ car, km, code: car.code }));
 
+  // «غير مسجّلة»: the old book's rows that no live car's code took in (`foldBookRows`) — a folded
+  // row is its car's, as `/fleet/odometer/summary?vehicleCodes=<code>` counts it.
   const bookKm = valid
     .filter((entry) => entry.row.vehicleId === null)
     .reduce((sum, entry) => sum + (entry.row.km ?? 0), 0);
@@ -515,9 +591,13 @@ export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDt
     )
     .slice(0, FLEET_DASHBOARD_EXCEPTION_ROWS);
 
-  // The registry's rows with their car as it is NOW — «حسب الفرع الحالي للسيارة».
+  // The registry's rows with their car as it is NOW — «حسب الفرع الحالي للسيارة». Each column is
+  // what the register shows for that branch (type), and the set filters never read the old book: a
+  // book row folded into a live car (D20) counts for that car above — its ranking, the average —
+  // but in no branch or type here, nor in «غير مسجّلة». So Σ byBranch + unregistered = total less
+  // the folded book km (none unless the book wrote rows under a live car's code).
   const registryKm = valid.flatMap((entry) =>
-    entry.row.vehicleId === null
+    entry.row.vehicleId === null || entry.row.fromBook === true
       ? []
       : [{ car: carOf(entry.row.vehicleId), km: entry.row.km ?? 0 }],
   );
@@ -556,7 +636,9 @@ export const kmBreakdownOf = (input: KmBreakdownInput): FleetDashboardPeriodKmDt
     byBranch: [...branchKm.entries()]
       .map(([branchId, km]) => ({
         branchId,
-        name: branchId === null ? null : (input.branchNames.get(branchId) ?? null),
+        // D33: `null` is «بلا فرع» — a car with no branch — only. A branch the live list no longer
+        // holds (soft-deleted since) keeps its id, so its column still opens its cars' register.
+        name: branchId === null ? null : (input.branchNames.get(branchId) ?? UNNAMED_BRANCH),
         km,
       }))
       .sort((a, b) =>

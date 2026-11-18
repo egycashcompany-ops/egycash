@@ -92,6 +92,7 @@ const REMEMBERED_FILTERS = [
   'templates',
   'status',
   'checkImage',
+  'missing',
   'type',
   'operation',
   'branch',
@@ -131,6 +132,11 @@ export const NoticesPage = (): JSX.Element => {
   const templates = readList(sp, 'templates');
   const status = sp.get('status') ?? '';
   const checkImage = sp.get('checkImage') ?? '';
+  // «ينقصها مرفق» — the notices missing ANY attachment: a licence image (the car's or the driver's,
+  // each by its source rule) or «صورة الشيك» — the dashboard's «إخطارات مفتوحة ينقصها مرفق» rule,
+  // so its «فتح» lists the notices that line counts (D10). Only `any` is a filter; anything else
+  // in the address is none, rather than a request the server refuses.
+  const missingAny = sp.get('missing') === 'any';
   // The cars a dashboard figure was counted over — «النوع» · «التشغيل» · «الفرع» — resolved by the
   // server against the registry (a notice follows its car's CURRENT branch; one with no car is in no
   // set), so the notices here are the ones the figure counted.
@@ -160,6 +166,7 @@ export const NoticesPage = (): JSX.Element => {
     templates: templates.length === 0 ? undefined : templates.join(','),
     status: status === '' ? undefined : status,
     checkImage: checkImage === '' ? undefined : checkImage,
+    missing: missingAny ? ('any' as const) : undefined,
     // Only the lists that hold something: an un-narrowed screen asks exactly what it asked before.
     ...vehicleSetQuery(vehicleSet),
   };
@@ -597,6 +604,7 @@ export const NoticesPage = (): JSX.Element => {
                 templates: null,
                 status: null,
                 checkImage: null,
+                missing: null,
                 ...CLEAR_VEHICLE_SET,
               })
             }
@@ -662,6 +670,20 @@ export const NoticesPage = (): JSX.Element => {
                 onChange={(next) => patch({ checkImage: pickOne(one(checkImage), next) })}
               />
             </FilterWithIcon>
+            {/* «ينقصها مرفق» — on the bar while it narrows the list (a dashboard link, or a
+                remembered visit), and off with a press, like the vehicle set's chips. */}
+            {missingAny && (
+              <button
+                type="button"
+                data-notice-missing="any"
+                onClick={() => patch({ missing: null })}
+                aria-label={`${t('common.remove')} ${t('fleet.notices.filters.missingAny')}`}
+                className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-300 bg-brand-50 px-2 text-sm font-medium text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900"
+              >
+                {t('fleet.notices.filters.missingAny')}
+                <span aria-hidden="true">×</span>
+              </button>
+            )}
             {/* The vehicle set a dashboard link narrowed the notices to — shown only while it does,
                 so a remembered one is never a filter with nothing on the bar saying so. The same
                 controls the accidents register shows; a set this reader cannot name is a nameless

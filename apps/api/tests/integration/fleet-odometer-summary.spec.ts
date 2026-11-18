@@ -707,7 +707,15 @@ describe('explain() — the period reads never scan the collection', () => {
 describe('GET /fleet/odometer/latest-readings — the car card’s «آخر قراءة عداد», every car', () => {
   // «تمام وزود اخر عداد». The card read the alarms list, which covers ACTIVE cars only, so a car
   // out of service after an accident showed «—» («none on file») although its log has readings.
-  type Latest = { vehicleId: string; latestReading: number; latestReadingAt: string };
+  // D25: beside the highest reading (the alarm's figure) it carries the NEWEST row on the chain —
+  // what the dashboard's «آخر قراءة» dates and the register lists first.
+  type Point = { reading: number; date: string };
+  type Latest = {
+    vehicleId: string;
+    latestReading: number;
+    latestReadingAt: string;
+    newest: Point;
+  };
   const URL = '/fleet/odometer/latest-readings';
   const byCar = (rows: readonly Latest[]) => new Map(rows.map((row) => [row.vehicleId, row]));
   let odometerOnly = '';
@@ -733,6 +741,7 @@ describe('GET /fleet/odometer/latest-readings — the car card’s «آخر قر
       vehicleId: oos.id,
       latestReading: 30_150,
       latestReadingAt: '2026-10-05T00:00:00.000Z',
+      newest: { reading: 30_150, date: '2026-10-05T00:00:00.000Z' },
     });
     const alarms = ok<{ vehicleId: string }[]>(await get('/fleet/odometer/alarms'));
     expect(alarms.map((row) => row.vehicleId)).not.toContain(oos.id);
@@ -741,18 +750,49 @@ describe('GET /fleet/odometer/latest-readings — the car card’s «آخر قر
   it('is the alarm’s own figure for an active car, and leaves out a deleted or never-read car', async () => {
     const latest = byCar(ok<Latest[]>(await get(URL)));
     const alarms = ok<
-      { vehicleId: string; latestReading: number | null; latestReadingAt: string | null }[]
+      {
+        vehicleId: string;
+        latestReading: number | null;
+        latestReadingAt: string | null;
+        newestReading: Point | null;
+      }[]
     >(await get('/fleet/odometer/alarms'));
     for (const alarm of alarms.filter((row) => row.latestReading !== null)) {
       expect(latest.get(alarm.vehicleId), alarm.vehicleId).toEqual({
         vehicleId: alarm.vehicleId,
         latestReading: alarm.latestReading,
         latestReadingAt: alarm.latestReadingAt,
+        newest: alarm.newestReading,
       });
     }
     expect(latest.get(a1.id)?.latestReading).toBe(10_800);
     expect(latest.has(gone.id), 'a deleted car gets no card').toBe(false);
     expect(latest.has(never.id), 'no reading on file → no row; the card says «—»').toBe(false);
+  });
+
+  it('D25: the newest chain row beside the highest — apart only where the readings went backwards', async () => {
+    const latest = byCar(ok<Latest[]>(await get(URL)));
+    // «neg»: 9,000 → 8,950 on the 6th (−50, a reading to review), opened again at 8,950 on the 9th.
+    // The highest reading is the 6th's 9,000; the card's «آخر قراءة عداد» is the 9th's 8,950 —
+    // the day the register lists first for the car and the dashboard's «آخر قراءة» names.
+    expect(latest.get(neg.id)).toEqual({
+      vehicleId: neg.id,
+      latestReading: 9_000,
+      latestReadingAt: '2026-10-06T00:00:00.000Z',
+      newest: { reading: 8_950, date: '2026-10-09T00:00:00.000Z' },
+    });
+    const register = ok<FleetOdometerLogDto[]>(
+      await get('/fleet/odometer', { vehicleCodes: neg.code, sort: 'date:desc', pageSize: 1 }),
+    );
+    expect(register.map((row) => [row.date, row.outReading])).toEqual([
+      ['2026-10-09T00:00:00.000Z', 8_950],
+    ]);
+    // A healthy chain: the two are one row.
+    expect(latest.get(a1.id)?.newest).toEqual({
+      reading: 10_800,
+      date: '2026-10-09T00:00:00.000Z',
+    });
+    expect(latest.get(a1.id)?.latestReadingAt).toBe('2026-10-09T00:00:00.000Z');
   });
 
   it('answers either audience the alarms serve, and no one else', async () => {

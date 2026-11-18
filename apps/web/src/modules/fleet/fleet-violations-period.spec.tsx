@@ -57,7 +57,8 @@ const client = (): QueryClient =>
 
 const paged = <T,>(items: T[], pageSize: number) => ({
   items,
-  meta: { page: 1, pageSize, totalItems: items.length, totalPages: 1 },
+  // The register's meta carries what is owed over the whole filter (D03) — the one fine's 400.
+  meta: { page: 1, pageSize, totalItems: items.length, totalPages: 1, outstandingAmount: 400 },
 });
 
 const rollupRow = (): FleetViolationRollupDto => ({

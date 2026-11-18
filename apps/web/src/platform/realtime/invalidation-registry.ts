@@ -48,12 +48,15 @@ const attendanceDaySweep: readonly KeyPrefix[] = [
  * «لوحة تحكم الحركة» (D13): R1, the «الآن» tabs, and R2 while its period is still LIVE. A period
  * that ended — `past` — counts rows whose days are behind it, so only the signals of figures read AS
  * OF NOW name it: a fine's (the period's drivers' fines carry their state as of now — a tick turns
- * «قائمة» into «محصَّلة» even in «الشهر الماضي») and a custody memo's or operation's (the period's
- * custody spend says where it stands now — «تمت الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج
- * المذكرات» — so a replenishment moves a past month too). A dashboard counts over every fleet
- * screen at once, so a busy morning would re-read it on every save: these prefixes are NOT swept
- * like the rest — the provider hands them to the platform throttle (`throttle.ts`), which marks them
- * stale at once and refetches what is on screen at most once per window.
+ * «قائمة» into «محصَّلة» even in «الشهر الماضي»), an accident's (the period's files carry their
+ * status and money as of now — «منها N مفتوحة حتى الآن», the four money totals and each row's
+ * «المتبقي (حتى الآن)» — so closing a file, a money edit or a transfer moves a past month too) and
+ * a custody memo's or operation's (the period's custody spend says where it stands now — «تمت
+ * الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج المذكرات» — so a replenishment moves a past month
+ * too). A dashboard counts over every fleet screen at once, so a busy morning would re-read it on
+ * every save: these prefixes are NOT swept like the rest — the provider hands them to the platform
+ * throttle (`throttle.ts`), which marks them stale at once and refetches what is on screen at most
+ * once per window.
  */
 const FLEET_DASHBOARD_NOW: KeyPrefix = ['fleet', 'dashboard', 'now'];
 const FLEET_DASHBOARD_LIVE: KeyPrefix = ['fleet', 'dashboard', 'period', 'live'];
@@ -504,7 +507,16 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['fleet', 'alarms'],
     ...fleetDashboardBoth,
   ],
-  'fleet.accident': [['fleet', 'accidents'], ['fleet', 'vehicles'], ...fleetDashboardBoth],
+  // An accident moves «الآن»'s open files AND the period's files — both reads, and a CLOSED period
+  // too: «حوادث الفترة» shows each file's status, «منها N مفتوحة حتى الآن», the four money totals
+  // and «المتبقي (حتى الآن)» as of now, so closing a file, a money edit or a transfer moves
+  // «الشهر الماضي» as a fine's tick does.
+  'fleet.accident': [
+    ['fleet', 'accidents'],
+    ['fleet', 'vehicles'],
+    ...fleetDashboardBoth,
+    FLEET_DASHBOARD_PAST,
+  ],
   // A fine moves «الآن»'s owed totals AND the period's drivers' fines (a tick turns «قائمة» into
   // «محصَّلة»; a new fine or a moved day changes the period's count) — both reads, and a CLOSED
   // period too: its fines' states are as of now, whatever range is chosen.
@@ -648,10 +660,30 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'platform.branch': [['org'], ['platform', 'organization'], ['system-admin', 'branch-options']],
   // P-ORG-3 §6.2: the organization module's own keys start with 'organization' — the two rows above
   // matched no /organization/* query, so another user's edit refreshed nothing there.
-  'platform.department': [['org'], ['platform', 'organization'], ['organization', 'departments'], ['organization', 'org-chart']],
-  'platform.departmentCatalog': [['org'], ['platform', 'organization'], ['organization', 'departments'], ['organization', 'org-chart']],
-  'platform.sectionCatalog': [['org'], ['platform', 'organization'], ['organization', 'sections'], ['organization', 'org-chart']],
-  'platform.section': [['org'], ['platform', 'organization'], ['organization', 'sections'], ['organization', 'org-chart']],
+  'platform.department': [
+    ['org'],
+    ['platform', 'organization'],
+    ['organization', 'departments'],
+    ['organization', 'org-chart'],
+  ],
+  'platform.departmentCatalog': [
+    ['org'],
+    ['platform', 'organization'],
+    ['organization', 'departments'],
+    ['organization', 'org-chart'],
+  ],
+  'platform.sectionCatalog': [
+    ['org'],
+    ['platform', 'organization'],
+    ['organization', 'sections'],
+    ['organization', 'org-chart'],
+  ],
+  'platform.section': [
+    ['org'],
+    ['platform', 'organization'],
+    ['organization', 'sections'],
+    ['organization', 'org-chart'],
+  ],
   'platform.costCenter': [
     ['hr', 'assignableCostCenters'],
     ['platform', 'costCenters'],

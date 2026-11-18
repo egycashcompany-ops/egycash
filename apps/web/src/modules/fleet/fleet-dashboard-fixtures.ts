@@ -226,8 +226,11 @@ export const NOW_DTO: FleetDashboardNowDto = {
   },
   workshop: {
     open: 6,
+    // The four parts add up to `open` (D06): no disposed car and no visit without a registry car here.
     openActive: 5,
     openOutOfService: 1,
+    openDisposed: 0,
+    openNoCar: 0,
     oldest: { vehicleId: 'v141', code: '141', inDate: '2026-10-23', days: 9, deleted: false },
     // The 5 oldest of the 6 open visits, the oldest first (`oldest` = the first).
     longest: [

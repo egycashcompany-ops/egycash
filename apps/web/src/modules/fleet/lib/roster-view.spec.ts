@@ -177,6 +177,44 @@ describe('filters combine with AND — none cancels another', () => {
   });
 });
 
+describe('the picked codes are WHOLE codes, on both boards (D16)', () => {
+  // `?q=` holds the code filter's picks — or the one code «فتح» beside a car on the fleet
+  // dashboard's «سيارات بلا سائق اليوم» names. Matched as a part of the code, «كورولا 1» opened
+  // «كورولا 10» and «كورولا 11» too, and «5» opened 15, 150, 151 and 215.
+  const CODES = [
+    '5',
+    '15',
+    '150',
+    '151',
+    '215',
+    'كورولا 1',
+    'كورولا 10',
+    'كورولا 11',
+    'MG 2',
+    'MG 20',
+  ];
+  const daily = CODES.map((code) => row({ vehicleId: `v-${code}`, code }));
+  const standing = CODES.map((code) => crew({ vehicleId: `v-${code}`, code }));
+
+  it.each([
+    ['كورولا 1', ['كورولا 1']],
+    ['MG 2', ['MG 2']],
+    ['5', ['5']],
+    ['15', ['15']],
+    ['كورولا 1,كورولا 11', ['كورولا 1', 'كورولا 11']],
+    ['150 - 151', ['150', '151']],
+  ])('«%s» shows exactly %j — on «تعيين السيارات» and on «الطقم الثابت»', (term, found) => {
+    expect(codes(visibleRows(daily, { term }))).toEqual(found);
+    expect(fixedCodes(visibleFixedRows(standing, { term }))).toEqual(found);
+  });
+
+  it('still narrows on top of the other filters, and an empty pick narrows nothing', () => {
+    expect(codes(visibleRows(daily, { term: '' }))).toHaveLength(CODES.length);
+    expect(fixedCodes(visibleFixedRows(standing, { term: '  ' }))).toHaveLength(CODES.length);
+    expect(codes(visibleRows(daily, { term: 'كورولا 1', view: 'workshop' }))).toEqual([]);
+  });
+});
+
 describe('readView — the URL is user-writable', () => {
   it('accepts the two states it knows', () => {
     expect(readView('workshop')).toBe('workshop');

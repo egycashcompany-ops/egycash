@@ -33,7 +33,7 @@ import {
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
-import { formatDate, formatNumber } from '../../shared/lib/format';
+import { formatMoney, formatNumber } from '../../shared/lib/format';
 import { listKey } from '../../shared/lib/query-keys';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { CompanyViolationsDetailLayer } from './components/CompanyViolationsDetailLayer';
@@ -185,6 +185,7 @@ const page = ({
   drivers = [driverRow()],
   driverPages,
   driverTotal,
+  driverOutstanding,
   permissions,
   seedCatalogs = true,
   year,
@@ -197,6 +198,11 @@ const page = ({
   driverPages?: FleetViolationDto[][];
   /** How many rows MATCHED, when that is more than the pages seeded here hold. */
   driverTotal?: number;
+  /**
+   * What the server says is still owed over the WHOLE filter (`meta.outstandingAmount`, D03) —
+   * by default the owed rows seeded here, as a fully loaded answer would carry.
+   */
+  driverOutstanding?: number;
   permissions?: string[];
   seedCatalogs?: boolean;
   year?: string;
@@ -244,6 +250,9 @@ const page = ({
     // is what the >100 cases need; the common case is one page holding everything.
     const pages = driverPages ?? [drivers];
     const matched = driverTotal ?? drivers.length;
+    const owed =
+      driverOutstanding ??
+      pages.flat().reduce((sum, row) => (row.collected ? sum : sum + row.amount), 0);
     const size = pages[0]?.length ?? 25;
     qc.setQueryData(
       listKey('fleet', 'violations', {
@@ -267,6 +276,7 @@ const page = ({
             pageSize: size,
             totalItems: matched,
             totalPages: Math.max(1, Math.ceil(matched / Math.max(1, size))),
+            outstandingAmount: owed,
           },
         })),
         pageParams: pages.map((_, at) => at + 1),
@@ -947,6 +957,21 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(markup, 'with a way to the other 340').toContain('data-driver-load-more');
   });
 
+  it('prints what is owed over the WHOLE answer under the board — not the hundred rows in hand', () => {
+    // D03, the audit's figures: 130 owed fines, 100 loaded at 12.88 each = 1,288.00 in hand; the
+    // server's owed sum over the filter, which the dashboard's «قائمة على السائقين» also says, is
+    // 1,588.00 — and that is the footer, with or without «تحميل المزيد».
+    const first = Array.from({ length: 100 }, (_, i) =>
+      driverRow({ id: `vio-${i + 1}`, amount: 12.88 }),
+    );
+    const markup = page({ driverPages: [first], driverTotal: 130, driverOutstanding: 1588 });
+    const at = markup.indexOf('data-driver-outstanding');
+    expect(at, 'the footer is drawn').toBeGreaterThan(-1);
+    const said = markup.slice(markup.indexOf('>', at) + 1, markup.indexOf('</td>', at));
+    expect(said).toBe(formatMoney(1588, 'EGP', 'ar'));
+    expect(said, 'never the loaded rows’ sum').not.toBe(formatMoney(1288, 'EGP', 'ar'));
+  });
+
   it('stops offering «تحميل المزيد» once every matched row is on screen', () => {
     const all = Array.from({ length: 12 }, (_, i) => driverRow({ id: `vio-${i + 1}` }));
     const markup = page({ driverPages: [all], driverTotal: 12 });
@@ -1167,8 +1192,9 @@ describe('the next round of reports, as rules the markup carries', () => {
     const markup = page({ drivers: [driverRow({ filedYear: 2026, vehicleCode: '150' })] });
     expect(markup, 'the column is there').toContain(t('fleet.violations.columns.carriedOnto'));
     expect(markup, 'and it names both').toContain('150 — 2026');
-    // «برضو يفضلوا فى جدول السائقيين» — the row still shows the day it actually happened.
-    expect(markup).toContain(formatDate('2026-02-01T00:00:00.000Z', 'ar'));
+    // «برضو يفضلوا فى جدول السائقيين» — the row still shows the day it actually happened: the
+    // stored day, Latin digits, as the Excel writes it (D41).
+    expect(markup).toContain('>2026-02-01</span>');
 
     // …and the marker is the way out of a drop: pressing it files the fine under its own date.
     expect(markup).toContain('data-filed-year="vio-1"');
@@ -1266,11 +1292,16 @@ describe('the next round of reports, as rules the markup carries', () => {
     );
   });
 
-  it('a settled fine is out of the drivers’ page total too', () => {
-    // The company half is narrowed on the server; this figure is computed in the browser, so it
-    // has to apply the same rule or the two halves of one screen disagree.
+  it('a settled fine is out of the drivers’ total too — the SERVER’s owed sum, not the rows in hand', () => {
+    // The company half is narrowed on the server, and so is this figure now (D03): what is still
+    // owed over the whole filter, every page, `meta.outstandingAmount`. A sum of the rows loaded
+    // so far stopped at the first hundred — 1,288 under a dashboard figure of 1,588.
     const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
-    expect(panel).toMatch(/rows\s*\.filter\(\(row\) => !row\.collected\)\s*\.reduce/);
+    const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code).toContain('formatMoney(meta.outstandingAmount');
+    expect(code, 'no sum of the rows in hand').not.toMatch(
+      /rows\s*\.filter\(\(row\) => !row\.collected\)\s*\.reduce/,
+    );
   });
 
   it('the count beside each filter bar is readable, not a hairline', () => {

@@ -6,11 +6,15 @@
 // What this file pins (plan D9–D13): every figure of «الآن» is the custody screen's own field — the
 // strip the fund's summary, «تنتظر الاستعاضة» and «تنتظر التسوية» the very CFL figures «ملخصات»
 // shows, held money INSIDE the waiting figure, the held card's letters and their age from the
-// oldest, the lists cut at FLEET_DASHBOARD_CUSTODY_WAIT_ROWS with «و N أخرى», the alerts the
-// banner's own lines (amber, red only for (a) and (e)), the chart over the done lines only in the
+// oldest, the memos waiting cut at FLEET_DASHBOARD_CUSTODY_WAIT_ROWS (5, «لوحة تحكم العهدة»'s cut)
+// with «و N أخرى» and every licensing part listed as that screen lists them (audit D45), a kind's
+// receipts in no memo opening that screen — where its line stands — with «لا توجد إيصالات» dimmed
+// for a kind with none (D27, D46), the alerts the banner's own lines (amber, red only for (a) and
+// (e)), the stale one opening that screen too (D27), the chart over the done lines only in the
 // brand, the latest six lines of the log; «الشركة كلها» on «الآن» whenever the page is narrowed (a
 // branch AND «كل فروعي»), never on the period band; the period's custody spend and its states (plain)
-// and brand bars in the custody order with one-decimal shares, links by the D20 rule; the sentence
+// and brand bars in the custody order with one-decimal shares, links by the D20 rule, the foot naming
+// the screen it opens («عرض إيصالات العهدة» on the receipts, audit D46); the sentence
 // that they are the fuel tab's columns, never added to them; each band its own read's face; the
 // licensing links only for a reader of «مصروفات التراخيص»; never `?fund=`, `letter=1` or a bare
 // list; the words the tab never says.
@@ -638,23 +642,65 @@ describe('«تنتظر الاستعاضة» — what «استعاضة العهد
     const fuel = slice(card, 'data-cust-outside', 'fuel');
     expect(fuel).toContain('data-cust-late="true"');
     expect(text(fuel)).toContain('أقدمها منذ 37 يومًا');
-    expect(target(hrefOf(card, 'custodyFund.outside.fuel'))).toEqual({
-      path: '/fleet/custody/memos',
-      params: { kind: 'fuel' },
-    });
     expect(slice(card, 'data-cust-outside', 'tyres')).not.toContain('data-cust-late');
     expect(text(card)).toContain(ar('fleet.custody.dashboard.waiting.note'));
   });
 
-  it('lists at most FLEET_DASHBOARD_CUSTODY_WAIT_ROWS memos, then «و N أخرى» to the list', () => {
-    expect(FLEET_DASHBOARD_CUSTODY_WAIT_ROWS).toBe(6);
+  it('opens «لوحة تحكم العهدة» from a kind’s amount — its line stands there, not the kind’s memos (D27)', () => {
+    // The kind's memos are another set (audit: wash 40.00 here, the wash memos 60.50 there).
+    for (const kind of ['maintenance', 'fuel', 'tyres', 'wash']) {
+      const box = slice(card, 'data-cust-outside', kind);
+      expect(target(hrefOf(box, `custodyFund.outside.${kind}`)), kind).toEqual({
+        path: '/fleet/custody/dashboard',
+        params: {},
+      });
+    }
+    expect(links(card).filter((l) => l.href.includes('kind='))).toEqual([]);
+  });
+
+  it('writes a kind with no receipt as the screen does: «لا توجد إيصالات», dimmed (D46)', () => {
+    const fund = {
+      ...FUND,
+      outside: OUTSIDE.map((o) =>
+        o.kind === 'wash' ? { ...o, count: 0, total: 0, oldest: null } : o,
+      ),
+    };
+    const box = slice(wait(tab({ fund }), 'waiting'), 'data-cust-outside', 'wash');
+    expect(box).toContain('data-cust-none="true"');
+    expect(box).toContain('opacity-50');
+    expect(text(box)).toContain(ar('fleet.custody.dashboard.waiting.noOutside'));
+    expect(text(box)).toContain('0.00');
+    expect(box).not.toContain('data-cust-count');
+    expect(box).not.toContain('data-cust-age');
+    // A kind with receipts keeps its count, at full strength.
+    const fuel = slice(card, 'data-cust-outside', 'fuel');
+    expect(fuel).not.toContain('data-cust-none');
+    expect(fuel).not.toContain('opacity-50');
+    expect(text(fuel)).toContain('61 إيصالًا');
+  });
+
+  it('lists at most five memos as «لوحة تحكم العهدة» does, then «و N أخرى» to the list (D45)', () => {
+    // The screen's SHOWN_MEMOS: the same list, the same «more» number.
+    expect(FLEET_DASHBOARD_CUSTODY_WAIT_ROWS).toBe(5);
     const eight = Array.from({ length: 8 }, (_, i) =>
       memoRow(`p${i}`, 50 + i, 'fuel', '2026-11-10', 1, 100),
     );
     const html = wait(tab({ pending: eight }), 'waiting');
-    expect(html.match(/data-cust-memo="/gu)).toHaveLength(6);
-    expect(html).toContain('data-cust-rest="2"');
-    expect(squash(text(html))).toContain(squash(w('more', { count: 2 })));
+    expect(html.match(/data-cust-memo="/gu)).toHaveLength(5);
+    expect(html).toContain('data-cust-rest="3"');
+    expect(squash(text(html))).toContain(squash(w('more', { count: 3 })));
+    // The oldest five, in the candidates' own order.
+    expect([...html.matchAll(/data-cust-memo="(\d+)"/gu)].map((m) => m[1])).toEqual([
+      '50',
+      '51',
+      '52',
+      '53',
+      '54',
+    ]);
+    // Exactly five: nothing «أخرى».
+    const five = wait(tab({ pending: eight.slice(0, 5) }), 'waiting');
+    expect(five.match(/data-cust-memo="/gu)).toHaveLength(5);
+    expect(five).not.toContain('data-cust-more');
     expect(target(hrefOf(html, 'custodyFund.inMemosMore'))).toEqual({
       path: '/fleet/custody/memos',
       params: { status: 'pending' },
@@ -781,13 +827,21 @@ describe('«تنتظر التسوية» — the licensing memos waiting for «ت
     expect(text(wait(without, 'settle'))).toContain('13,620.00');
   });
 
-  it('lists at most six memos, then «و N أخرى»; none says the custody pages’ empty words', () => {
+  it('lists EVERY part as «لوحة تحكم العهدة» does — no cut, no «و N أخرى» (D45)', () => {
     const eight = Array.from({ length: 8 }, (_, i) =>
       part(`l${i}`, 'renewal', '2026-11-10', ['101'], 100, 0),
     );
     const html = wait(tab({ parts: eight }), 'settle');
-    expect(html.match(/data-cust-settle="/gu)).toHaveLength(6);
-    expect(html).toContain('data-cust-rest="2"');
+    expect(html.match(/data-cust-settle="/gu)).toHaveLength(8);
+    expect([...html.matchAll(/data-cust-settle="(l\d):renewal"/gu)].map((m) => m[1])).toEqual(
+      eight.map((p) => p.expenseId),
+    );
+    expect(html).not.toContain('data-cust-more');
+    expect(html).not.toContain('data-cust-rest');
+    expect(hrefs(html, 'custodyFund.settleMore')).toEqual([]);
+  });
+
+  it('says the custody pages’ empty words when no part waits', () => {
     const empty = wait(tab({ parts: [] }), 'settle');
     expect(empty).toContain('data-cust-settle-none="true"');
     expect(text(empty)).toContain(ar('fleet.custody.fundForm.settle.empty'));
@@ -814,9 +868,10 @@ describe('«تنبيهات العهدة» — the banner’s lines that fire, in
   });
 
   it('opens each line’s list (D13); the licensing ones only for that screen’s reader', () => {
+    // (b) opens «لوحة تحكم العهدة»: its banner says this line, beside the kind's receipts (D27).
     expect(target(hrefOf(card, 'custodyFund.alertStale'))).toEqual({
-      path: '/fleet/custody/memos',
-      params: { kind: 'fuel' },
+      path: '/fleet/custody/dashboard',
+      params: {},
     });
     expect(target(hrefOf(card, 'custodyFund.alertMemo'))).toEqual({
       path: '/fleet/custody/memos',
@@ -1052,6 +1107,43 @@ describe('«خلال الفترة» — the period’s custody spend and where i
       path: '/fleet/receipts',
       params: { kind: 'tyres', source: 'custody', from, to, branch: B1 },
     });
+  });
+
+  it('names the screen its foot opens: «عرض إيصالات العهدة» on the receipts (D46)', () => {
+    const { from, to } = PAGE.range;
+    const foot = (html: string): string =>
+      slice(partOf(html, 'data-cust-period', 'spend'), 'data-cust-foot', 'spend');
+    // Nothing but codes narrows: «مصروفات العهدة», named as such.
+    const plain = foot(DEFAULT);
+    expect(plain).toContain('data-cust-foot-screen="custodyExpenses"');
+    expect(text(plain)).toContain(ar('fleet.custody.dashboard.waiting.showExpenses'));
+    expect(text(plain)).not.toContain(ar('fleet.dash.custody.period.showReceipts'));
+    expect(target(hrefOf(plain, 'opex.custodyScreen'))).toEqual({
+      path: '/fleet/custody-expenses',
+      params: { from, to },
+    });
+    // A branch, a type or an operation: the custody receipts on «خصم الإيصالات», named as such.
+    const url = `/fleet?tab=custody&type=${T1}`;
+    const typed = {
+      ...PAGE,
+      vehicleScope: { ...PAGE.vehicleScope, typeIds: [T1] },
+    };
+    for (const html of [
+      tab({ now: NOW_BRANCH, page: PAGE_BRANCH }),
+      tab({
+        now: NOW_MINE,
+        page: { ...PAGE, vehicleScope: { ...PAGE.vehicleScope, scopeBranches: [CAIRO, GIZA] } },
+      }),
+      tab({ url, page: typed }),
+    ]) {
+      const narrowed = foot(html);
+      expect(narrowed).toContain('data-cust-foot-screen="receipts"');
+      expect(text(narrowed)).toContain(ar('fleet.dash.custody.period.showReceipts'));
+      expect(text(narrowed)).not.toContain(ar('fleet.custody.dashboard.waiting.showExpenses'));
+      const opened = target(hrefOf(narrowed, 'opex.custodyScreen'));
+      expect(opened.path).toBe('/fleet/receipts');
+      expect(opened.params.source).toBe('custody');
+    }
   });
 
   it('says these are the fuel tab’s very columns, never added to them — and opens that tab', () => {

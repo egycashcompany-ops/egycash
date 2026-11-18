@@ -13,7 +13,8 @@
 // as sent (at most FLEET_DASHBOARD_TODAY_ROWS; the absent list draws the first ABSENT_ROWS of them),
 // and «عرض الكل (N)» takes N from the server's count, never from the rows. A share is display
 // arithmetic on two server figures; so are «استُبعدت» (rows − ready), «المسجّلة» (active + out of
-// service) and the absent total (attendance + leave).
+// service + disposed: the vehicles screen's «إجمالي السيارات»), «على سيارات» (available − without a
+// vehicle) and the absent total (attendance + leave).
 //
 // WHAT EACH FIGURE COVERS. The cars follow the reader's branches; the drivers' pool is the company's
 // (R-27). So while the figures are narrowed (`scopeBranches !== null`, one branch or «كل فروعي») the
@@ -113,12 +114,14 @@ const Sep = ({ className }: { className?: string }): JSX.Element => (
 
 /** A mini tile of a card's breakdown: the figure over its label. */
 const Tile = ({
+  id,
   n,
   label,
   tone,
   link = null,
   className,
 }: {
+  id: string;
   n: number;
   label: string;
   tone?: Tone;
@@ -126,6 +129,7 @@ const Tile = ({
   className?: string | undefined;
 }): JSX.Element => (
   <div
+    data-today-tile={id}
     className={cn(
       BOX,
       BOX_HOVER,
@@ -164,6 +168,7 @@ const Tiles = ({
     {tiles.map((tile, i) => (
       <Tile
         key={tile.id}
+        id={tile.id}
         n={tile.n}
         label={tile.label}
         {...(tile.tone === undefined ? {} : { tone: tile.tone })}
@@ -375,7 +380,9 @@ const ReadyHalf = ({ roster, links }: { roster: Roster; links: NowLinks }): JSX.
             <N className={cn('font-bold', TONE.amber.text)}>{count(roster.inWorkshop)}</N>
           </Fig>{' '}
           <Sep className="mx-1" />{' '}
-          {/* No list holds the cars whose licence expired (the roster has no such view): plain. */}
+          {/* No list holds the cars whose licence expired (the roster has no such view): plain. The
+              part is disjoint from «في الورشة» (an expired car in the workshop counts there), so
+              its words say «(خارج الورشة)» — the licences tab's «منتهية» counts every active car. */}
           <span className="font-semibold">
             {t('fleet.dash.now.licenceExpired')}{' '}
             <N className={cn('font-bold', TONE.red.text)}>{count(roster.licenceExpired)}</N>
@@ -486,8 +493,9 @@ const BalanceHalf = ({
           tone="teal"
           label={t('fleet.dash.now.balanceDrivers')}
           n={roster.available}
-          // A named exception: «المتاحون» counts the seated drivers too, and the roster lists only
-          // those still without a car — that count is the sentence's «بلا سيارة», and it is linked.
+          // A named exception: this figure counts the seated drivers too — its words say so
+          // («المتاحون اليوم (مع المعيَّنين)») — while the roster's «السائقون المتاحون» lists only
+          // those still without a car: that count is the sentence's «بلا سيارة», and it is linked.
           link={null}
           tag={<CompanyWide show={scope !== 'company'} />}
         />
@@ -547,7 +555,8 @@ const VehiclesKpi = ({
   links: NowLinks;
 }): JSX.Element => {
   const t = useT();
-  const registered = vehicles.active + vehicles.outOfService;
+  // «المسجّلة» = every status the vehicles screen's «إجمالي السيارات» counts, «مكهنة» included.
+  const registered = vehicles.active + vehicles.outOfService + vehicles.disposed;
   return (
     <Kpi
       id="vehicles"
@@ -700,8 +709,9 @@ const WorkshopKpi = ({
             <Icon d={I.layers} className="h-3.5 w-3.5 text-slate-400" />
             {t('fleet.dash.now.workshopByStatus')}
           </div>
-          {/* Plain: the maintenance screen reads no vehicle-status parameter, so neither part has an
-              exact list (the headline's open visits do). */}
+          {/* Plain: the maintenance screen reads no vehicle-status parameter, so no part has an
+              exact list (the headline's open visits do). The parts add up to the headline: «مكهنة»
+              and «بلا سيارة في السجل» (a car deleted since, or an old-book visit) only when > 0. */}
           <Tiles
             tiles={[
               {
@@ -711,6 +721,18 @@ const WorkshopKpi = ({
                 tone: 'amber',
               },
               { id: 'out', n: workshop.openOutOfService, label: t('fleet.dash.now.statusOut') },
+              ...(workshop.openDisposed > 0
+                ? [
+                    {
+                      id: 'disposed',
+                      n: workshop.openDisposed,
+                      label: t('fleet.dash.now.statusDisposed'),
+                    },
+                  ]
+                : []),
+              ...(workshop.openNoCar > 0
+                ? [{ id: 'noCar', n: workshop.openNoCar, label: t('fleet.dash.now.statusNoCar') }]
+                : []),
             ]}
           />
         </>
@@ -841,11 +863,14 @@ const AvailableKpi = ({
         </>
       }
       sub={
-        <span className={MUTED}>
+        // The headline in two parts: the seated (plain — no list holds exactly them) and those still
+        // without a car, the roster's own «السائقون المتاحون» (linked).
+        <span data-today-available-split="true" className={MUTED}>
           <Phrase
-            text={t('fleet.dash.now.withoutVehicleSub')}
+            text={t('fleet.dash.now.availableSplit')}
             parts={{
-              count: (
+              seated: <Small>{count(roster.available - roster.availableWithoutVehicle)}</Small>,
+              free: (
                 <Small link={links.rosterAvailable()} className={TONE.amber.text}>
                   {count(roster.availableWithoutVehicle)}
                 </Small>

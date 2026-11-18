@@ -28,7 +28,7 @@ import {
   type FleetRosterDayDto,
   type FleetRosterRowDto,
 } from '@ecms/contracts';
-import { matchesVehicleCode } from './vehicle-code-match';
+import { isAnyVehicleCode } from './vehicle-code-match';
 
 /**
  * The STATE views. A mission is not one of these — it travels as `mission=<id>`.
@@ -88,6 +88,12 @@ export const hasDriver = (row: Seated): boolean =>
  * parser every other code box in the application is read with — so it takes a list (`150 - 151`
  * shows both cars) and it matches the code alone. It used to match the plate as well, which meant
  * the board could answer with a row whose only visible identifier was not what had been typed.
+ *
+ * `term` is the PICKED codes (`?q=`: the code filter's choices, or the code a «فتح» link names),
+ * so each is matched WHOLE (`isAnyVehicleCode`, the server's `anyVehicleCode` rule): «كورولا 1»
+ * shows car «كورولا 1» alone, as the same code does on every other screen. It used to be matched
+ * as a part of the code, and «كورولا 1» also showed «كورولا 10» and «كورولا 11». A TYPED term
+ * (the touch board's box) is still a search — `touchCars`, over this result.
  *
  * This is display only. The draft, the counters, the driver pool and what «حفظ» sends all read
  * the WHOLE day and never this result — a filter is a way of looking at the board, not a way of
@@ -149,7 +155,7 @@ export const visibleRows = (
   const term = filters.term ?? '';
   const view = filters.view ?? null;
   return rows.filter((row) => {
-    if (!matchesVehicleCode(row.code, term)) return false;
+    if (!isAnyVehicleCode(row.code, term)) return false;
     if (!matchesMission(row.missionTypeId, filters.missions)) return false;
     if (view === 'workshop' && !row.inMaintenance) return false;
     if (view === 'assigned' && !carriesPlan(row)) return false;
@@ -283,7 +289,7 @@ export const readFixedView = (raw: string | null): FixedRosterView | null =>
  * mission with nobody in either seat is not a crew.
  *
  * Display only, like its twin: the draft, the counters, the pool and what «حفظ» sends all read
- * the whole board.
+ * the whole board. The picked codes are matched WHOLE here too (`isAnyVehicleCode`).
  */
 export const visibleFixedRows = (
   rows: readonly FleetFixedCrewRowDto[],
@@ -292,7 +298,7 @@ export const visibleFixedRows = (
   const term = filters.term ?? '';
   const view = filters.view ?? null;
   return rows.filter((row) => {
-    if (!matchesVehicleCode(row.code, term)) return false;
+    if (!isAnyVehicleCode(row.code, term)) return false;
     if (!matchesMission(row.missionTypeId, filters.missions)) return false;
     if (view === 'workshop' && !row.inMaintenance) return false;
     if (view === 'crewed' && !hasDriver(row)) return false;

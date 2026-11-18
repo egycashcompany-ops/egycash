@@ -25,8 +25,20 @@ export const InWorkshopBadge = ({ inWorkshop }: { inWorkshop: boolean }): JSX.El
 };
 
 /**
- * «ساري» / «ينتهي قريباً» / «منتهي» beside a licence's expiry date — the vehicles board's tag, here
- * beside the car's other badges so the car card (`VehicleHoverCard`) says it the same way.
+ * A car licence's state, in its one spelling — «منتهٍ» / «ينتهي قريبًا» / «ساري» — wherever a car's
+ * licence is said: the vehicles list, the car record, the car card and the licensing board. The
+ * four used to spell it four ways («منتهي», «منتهٍ», «سارية», «ساري»…), two of them borrowed from the
+ * fuel cards' words (`fleet.fuelCards.expiry.*`), which stay the fuel cards' own.
+ */
+export const LICENCE_STATE_KEY: Record<Exclude<ExpiryState, 'unknown'>, string> = {
+  expired: 'fleet.vehicles.licenceState.expired',
+  soon: 'fleet.vehicles.licenceState.soon',
+  valid: 'fleet.vehicles.licenceState.valid',
+};
+
+/**
+ * The licence's state beside its expiry date — the vehicles board's tag, here beside the car's
+ * other badges so the car card (`VehicleHoverCard`) says it the same way.
  */
 export const LicenceTag = ({ state }: { state: ExpiryState }): JSX.Element | null => {
   const t = useT();
@@ -43,7 +55,7 @@ export const LicenceTag = ({ state }: { state: ExpiryState }): JSX.Element | nul
           'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400',
       )}
     >
-      {t(`fleet.fuelCards.expiry.${state}`)}
+      {t(LICENCE_STATE_KEY[state])}
     </span>
   );
 };

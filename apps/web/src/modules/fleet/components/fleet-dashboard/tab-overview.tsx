@@ -293,13 +293,34 @@ const KpiRow = ({
         }
         footIcon={I.cog}
         foot={
-          <Phrase
-            text={w('kpi.workshop.split')}
-            parts={{
-              active: <N>{count(workshop.openActive)}</N>,
-              out: <N>{count(workshop.openOutOfService)}</N>,
-            }}
-          />
+          // The parts add up to the headline: «مكهنة» and «بلا سيارة في السجل» (a car deleted since,
+          // or an old-book visit) join «نشطة · خارج الخدمة» only when they hold a visit. Plain: the
+          // maintenance screen reads no vehicle-status parameter.
+          <span data-dash-workshop-split="true">
+            <Phrase
+              text={w('kpi.workshop.split')}
+              parts={{
+                active: <N>{count(workshop.openActive)}</N>,
+                out: <N>{count(workshop.openOutOfService)}</N>,
+              }}
+            />
+            {workshop.openDisposed > 0 && (
+              <>
+                {' · '}
+                <span className="whitespace-nowrap">
+                  {t('fleet.dash.now.statusDisposed')} <N>{count(workshop.openDisposed)}</N>
+                </span>
+              </>
+            )}
+            {workshop.openNoCar > 0 && (
+              <>
+                {' · '}
+                <span className="whitespace-nowrap">
+                  {t('fleet.dash.now.statusNoCar')} <N>{count(workshop.openNoCar)}</N>
+                </span>
+              </>
+            )}
+          </span>
         }
       />,
     );

@@ -595,11 +595,20 @@ describe('«الوقود والمصروفات» — the heading, the two bands a
       'شحن عاجل',
       'إصدار أمر فحص',
       'توزيع التكاليف',
-      'بانتظار الفاتورة',
     ]) {
       expect(words, word).not.toContain(word);
     }
     expect(DEFAULT).not.toMatch(/data-zz-/u);
+  });
+
+  it('calls a dealership row with no amount «بانتظار الفاتورة», the dealership screen’s word (D39)', () => {
+    // The audit (D39) moved the dashboard to the register's word; the build's «بانتظار تسجيل القيمة»
+    // is gone from the card line and the table tag alike.
+    const words = text(DEFAULT);
+    expect(ar('fleet.dash.fuel.dealerTable.pendingTag')).toBe(ar('fleet.dealership.pending'));
+    expect(words).toContain(ar('fleet.dash.fuel.dealer.pending', { rows: '3 صفوف' }));
+    expect(words).toContain('بانتظار الفاتورة');
+    expect(words).not.toContain('بانتظار تسجيل القيمة');
   });
 
   it('counts nothing in the browser and never reaches for a sample file', () => {

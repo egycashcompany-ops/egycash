@@ -6,7 +6,9 @@
 // الخدمة», the average stay); the alarm counts are the server's `red` / `yellow`, never the rows drawn;
 // every period figure is by EXIT day — its links carry `outFrom` / `outTo` and never `from` / `to`, with
 // the page's own set; each card shows under its own gate; the page's filter bar stands between the
-// two bands; R1 and R2 each have their own face, so one failing never blanks the other. It also carries
+// two bands; R1 and R2 each have their own face, so one failing never blanks the other; the workshop
+// card's parts add up to its headline (D06) and a car past its limit is «متأخر» as on the alarms board
+// and the car record (D38). It also carries
 // the pins of the old tab 9 that still hold (each work type, workshop and car opens the maintenance
 // screen over the period; «غير محدد» for a nameless bar; no money anywhere, and where the cost is).
 //
@@ -126,6 +128,8 @@ const WORKSHOP: Workshop = {
   open: 9,
   openActive: 8,
   openOutOfService: 1,
+  openDisposed: 0,
+  openNoCar: 0,
   oldest: { vehicleId: 'v247', code: '247', inDate: '2026-10-20', days: 12, deleted: false },
   longest: [
     stay('247', 12, KADER, named('صيانة + إصلاح', 'Service + repair')),
@@ -448,14 +452,16 @@ describe('«الآن» — the four cards, each under its own gate', () => {
   it('«بلغت حد الصيانة»: the red count, its list, how many passed it, the red threshold', () => {
     const card = kpi(html, 'red');
     expect(text(card)).toContain('بلغت حد الصيانة');
-    expect(text(card)).toContain('منها 2 تجاوزته');
+    expect(text(card)).toContain(ar('fleet.dash.maintenance.red.tag', { count: '2' }));
     expect(text(card)).toContain('2 سيارات');
     expect(text(card)).toContain('متبقٍ 300 كم أو أقل حتى الصيانة');
     expect(text(card)).toContain('حد الإنذار الأحمر من الإعدادات');
     expect(hrefOf(card, 'maintenanceAlarm.red')).toEqual(['/fleet/maintenance-alarms?level=red']);
-    // No car past its limit: no «منها … تجاوزته».
+    // No car past its limit: no «منها … متأخرة» tag.
     const none = tab({ now: { ...NOW, maintenanceAlarm: { ...ALARM, overdue: 0 } } });
-    expect(text(kpi(none, 'red'))).not.toContain('تجاوزته');
+    const [, tagTail = ''] = ar('fleet.dash.maintenance.red.tag', { count: '|' }).split('|');
+    expect(tagTail.trim()).not.toBe('');
+    expect(text(kpi(none, 'red'))).not.toContain(tagTail.trim());
   });
 
   it('«تقترب من حد الصيانة»: the yellow count, its list, the yellow threshold', () => {
@@ -487,7 +493,8 @@ describe('«الآن» — the four cards, each under its own gate', () => {
     expect(text(card)).toContain('في الورشة الآن');
     expect(text(card)).toContain('دخلت ولم تخرج بعد');
     expect(text(card)).toContain('9 سيارات');
-    expect(hrefOf(card, 'workshop.open')).toEqual(['/fleet/maintenance?state=open']);
+    // The visits checked in by today (the server's own bound, D07).
+    expect(hrefOf(card, 'workshop.open')).toEqual([`/fleet/maintenance?state=open&to=${TODAY}`]);
     expect(text(card)).toContain('أقدمها 247 منذ 12 يومًا');
     expect(hrefOf(card, 'workshop.oldest')).toEqual(['/fleet/vehicles/v247']);
     // The car's file only for a reader of the vehicles screen.
@@ -502,10 +509,48 @@ describe('«الآن» — the four cards, each under its own gate', () => {
     expect(links(status)).toEqual([]);
   });
 
+  it('«في الورشة الآن»: «مكهنة» and «بلا سيارة في السجل» join the parts when they hold a visit — the four add up to the headline (D06)', () => {
+    const parts = { open: 12, openActive: 8, openOutOfService: 1, openDisposed: 1, openNoCar: 2 };
+    expect(parts.openActive + parts.openOutOfService + parts.openDisposed + parts.openNoCar).toBe(
+      parts.open,
+    );
+    const card = kpi(tab({ now: { ...NOW, workshop: { ...WORKSHOP, ...parts } } }), 'workshop');
+    const status = part(card, 'data-maint-status="true"', /data-maint-kpi=/u);
+    expect(text(status)).toContain(
+      `نشطة 8 · خارج الخدمة 1 · ${ar('fleet.dash.now.statusDisposed')} 1 · ${ar('fleet.dash.now.statusNoCar')} 2`,
+    );
+    expect(links(status)).toEqual([]);
+    // The headline is unchanged: the open visits, linked to the list checked in by today.
+    expect(text(card)).toContain('12 سيارة');
+    expect(hrefOf(card, 'workshop.open')).toEqual([`/fleet/maintenance?state=open&to=${TODAY}`]);
+    // Only the parts that hold a visit.
+    const book = kpi(
+      tab({ now: { ...NOW, workshop: { ...WORKSHOP, open: 10, openNoCar: 1 } } }),
+      'workshop',
+    );
+    expect(text(part(book, 'data-maint-status="true"', /data-maint-kpi=/u))).toContain(
+      `نشطة 8 · خارج الخدمة 1 · ${ar('fleet.dash.now.statusNoCar')} 1`,
+    );
+    expect(text(book)).not.toContain(ar('fleet.dash.now.statusDisposed'));
+    const plainCard = text(kpi(html, 'workshop'));
+    expect(plainCard).not.toContain(ar('fleet.dash.now.statusDisposed'));
+    expect(plainCard).not.toContain(ar('fleet.dash.now.statusNoCar'));
+  });
+
+  it('the words of the two new parts (green once the HUB merges i18n/W3.json)', () => {
+    const card = kpi(
+      tab({ now: { ...NOW, workshop: { ...WORKSHOP, open: 12, openDisposed: 1, openNoCar: 2 } } }),
+      'workshop',
+    );
+    expect(text(part(card, 'data-maint-status="true"', /data-maint-kpi=/u))).toContain(
+      'نشطة 8 · خارج الخدمة 1 · مكهنة 1 · بلا سيارة في السجل 2',
+    );
+  });
+
   it('«صفوف توكيل بلا قيمة»: the dealership rows waiting for an amount, and their list', () => {
     const card = kpi(html, 'dealer');
     expect(text(card)).toContain('صفوف توكيل بلا قيمة');
-    expect(text(card)).toContain('بانتظار تسجيل القيمة');
+    expect(text(card)).toContain(ar('fleet.dash.maintenance.dealer.tag'));
     expect(text(card)).toContain('4 صفوف');
     expect(text(card)).toContain('فواتير توكيل لم تُسجَّل قيمتها بعد');
     expect(text(card)).toContain('زيارة الصيانة والإصلاح معًا تُسجَّل صفين');
@@ -609,15 +654,18 @@ describe('«إنذارات الصيانة بالكيلومتر» — the page’
   });
 
   it('writes each row as approved: past the limit or left, the open visit, the interval, the day', () => {
+    // Past its limit: «متأخر», the alarms board's and the car record's own word (D38).
     const over = text(alarmRowOf(table, '247'));
-    expect(over).toContain('تجاوز الحد بـ 1,800 كم');
+    expect(over).toContain('متأخر 1,800 كم');
+    expect(over).toContain(ar('fleet.dashboard.overdueKm', { km: '1,800' }));
+    expect(over).not.toContain('تجاوز الحد');
     expect(over).toContain('في الورشة: مصنع قادر');
     expect(over).toContain('مرسيدس اسبرانتر 515');
     expect(over).toContain('11,800 كم من كل 10,000 كم');
     expect(over).toContain('2026/07/21');
     const left = text(alarmRowOf(table, '305'));
     expect(left).toContain('متبقٍ 340 كم');
-    expect(left).not.toContain('تجاوز');
+    expect(left).not.toContain('متأخر');
     expect(left).not.toContain('في الورشة');
     // An open visit with no workshop named; a make the registry no longer names.
     const unnamed = alarmRowOf(table, '167');
@@ -904,9 +952,13 @@ describe('«أطول بقاء في الورشة الآن» — R1’s, the perio
     expect(open?.pathname).toBe('/fleet/maintenance');
     expect(open?.params.get('state')).toBe('open');
     expect(open?.params.get('vehicleCodes')).toBe('247');
+    expect(open?.params.get('to')).toBe(TODAY);
     expect(open?.params.has('outFrom')).toBe(false);
     expect(text(card)).toContain('كل السيارات في الورشة (9)');
-    expect(hrefOf(card, 'workshop.all')).toEqual(['/fleet/maintenance?state=open']);
+    // The open list checked in by today, the oldest first — the card's own order (D07, D37).
+    expect(hrefOf(card, 'workshop.all')).toEqual([
+      `/fleet/maintenance?state=open&to=${TODAY}&sort=inDate:asc`,
+    ]);
     // Nine in, five listed: no end row.
     expect(card).not.toContain('data-maint-end="longest"');
   });
@@ -916,6 +968,8 @@ describe('«أطول بقاء في الورشة الآن» — R1’s, the perio
       open: 2,
       openActive: 2,
       openOutOfService: 0,
+      openDisposed: 0,
+      openNoCar: 0,
       oldest: { vehicleId: 'v188', code: '188', inDate: '2026-10-25', days: 7, deleted: false },
       longest: [stay('188', 7, TECHNO, SERVICE, ATEGO), stay('129', 0, null, null, null)],
     };
@@ -953,12 +1007,12 @@ describe('«أطول بقاء في الورشة الآن» — R1’s, the perio
     const row = part(c, 'data-longest-row="247"', /data-longest-row="/u);
     expect(text(row)).toContain('247');
     expect(hrefOf(row, 'workshop.vehicle')).toEqual([]);
-    expect(hrefOf(row, 'workshop.longest')).toEqual(['/fleet/maintenance?state=open']);
+    expect(hrefOf(row, 'workshop.longest')).toEqual([`/fleet/maintenance?state=open&to=${TODAY}`]);
     // The live rows keep their car and their own open visit.
     const live = part(c, 'data-longest-row="188"', /data-longest-row="/u);
     expect(hrefOf(live, 'workshop.vehicle')).toEqual(['/fleet/vehicles/v188']);
     expect(hrefOf(live, 'workshop.longest')).toEqual([
-      '/fleet/maintenance?state=open&vehicleCodes=188',
+      `/fleet/maintenance?state=open&to=${TODAY}&vehicleCodes=188`,
     ]);
     // «أقدمها» names the car, unlinked.
     const card = kpi(html2, 'workshop');
@@ -984,6 +1038,8 @@ describe('«أطول بقاء في الورشة الآن» — R1’s, the perio
       open: 0,
       openActive: 0,
       openOutOfService: 0,
+      openDisposed: 0,
+      openNoCar: 0,
       oldest: null,
       longest: [],
     };

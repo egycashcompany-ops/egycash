@@ -6,7 +6,10 @@
 // they hold a car; the two lists are the server's rows as sent, «فتح» opening the car on the roster,
 // «عرض الكل (N)» counted by the server; the roster's own words name a driver's reason; names only with
 // the drivers' view; the branch column only while more than one branch is covered; the drivers wear
-// «الشركة كلها» whenever the cars are narrowed, «كل فروعي» included. It also carries the pins of the
+// «الشركة كلها» whenever the cars are narrowed, «كل فروعي» included. The audit's fixes (D06, D15,
+// D17, D18): the workshop tiles add up to the headline, «المسجّلة» counts «مكهنة» as the vehicles
+// screen does, the available drivers split into «على سيارات · بلا سيارة», and «ترخيص منتهٍ» says it
+// counts the cars outside the workshop. It also carries the pins of the
 // retired «الحركة الآن» tab that still hold (badge share, ready = active − workshop − licence, reasons
 // verbatim, the oldest stay with no ceiling, the absent parts each with its own list).
 //
@@ -19,6 +22,7 @@ import {
   type FleetPersonDto,
 } from '@ecms/contracts';
 import { featureKey } from '../../shared/lib/query-keys';
+import { shareText } from './lib/fleet-dashboard-tabs';
 import {
   ALL_KEYS,
   B1,
@@ -271,7 +275,10 @@ describe('«الحركة اليوم» — the five cards', () => {
     expect(text(workshop)).toContain('منذ 9 أيام');
     expect(text(workshop)).not.toContain('سقف');
     expect(text(workshop)).toContain(ar('fleet.dash.now.workshopByStatus'));
-    expect(hrefOf(workshop, 'workshop.open')).toEqual(['/fleet/maintenance?state=open']);
+    // The visits checked in by today (the server's own bound, D07).
+    expect(hrefOf(workshop, 'workshop.open')).toEqual([
+      `/fleet/maintenance?state=open&to=${TODAY}`,
+    ]);
     expect(metricsOf(workshop).sort()).toEqual(['workshop.oldest', 'workshop.open']);
   });
 
@@ -360,7 +367,10 @@ describe('«الحركة اليوم» — the five cards', () => {
         'roster.licenceExpiredDrivers',
       ),
     ).toEqual([roster({ unavailable: 'licenceExpired' })]);
-    expect(text(available)).toContain('منهم 6 بلا سيارة اليوم');
+    // The headline's two parts (D15): the seated, and the roster's «السائقون المتاحون».
+    expect(text(available)).toContain(
+      ar('fleet.dash.now.availableSplit', { seated: '38', free: '6' }),
+    );
   });
 
   it('splits the absent by the roster’s reasons, each part opening its own list, the sheet only with its grant', () => {
@@ -634,5 +644,114 @@ describe('«الحركة اليوم» — the company, one branch, «كل فرو
     for (const key of ['balance', 'available', 'absent', 'absent-list']) {
       expect(companyWide(mine, key), key).toBe(true);
     }
+  });
+});
+
+// ── The audit's fixes: one figure, one meaning, the parts adding up ──────────────────────────
+
+describe('«الحركة اليوم» — the parts add up and each word means one number (D06, D15, D17, D18)', () => {
+  const WORKSHOP = need(NOW.workshop);
+  const VEHICLES = need(NOW.vehicles);
+  const tilesOf = (html: string): string[] =>
+    [...html.matchAll(/data-today-tile="(\w+)"/gu)].map((m) => m[1] ?? '');
+
+  it('D06: «مكهنة» and «بلا سيارة في السجل» join the status tiles when they hold a visit — the four add up to the headline, which is unchanged', () => {
+    const parts = { open: 9, openActive: 5, openOutOfService: 1, openDisposed: 1, openNoCar: 2 };
+    expect(parts.openActive + parts.openOutOfService + parts.openDisposed + parts.openNoCar).toBe(
+      parts.open,
+    );
+    const html = card(tab({ ...NOW, workshop: { ...WORKSHOP, ...parts } }), 'workshop');
+    expect(tilesOf(html)).toEqual(['active', 'out', 'disposed', 'noCar']);
+    const body = squash(text(html));
+    expect(body).toContain(squash(`5${ar('fleet.dash.now.statusActive')}`));
+    expect(body).toContain(squash(`1${ar('fleet.dash.now.statusOut')}`));
+    expect(body).toContain(squash(`1${ar('fleet.dash.now.statusDisposed')}`));
+    expect(body).toContain(squash(`2${ar('fleet.dash.now.statusNoCar')}`));
+    // The headline is the open visits, still the one linked figure; the parts are plain.
+    expect(body).toContain(
+      squash(
+        `9${ar('fleet.dash.now.workshopUnit', { noun: ar('fleet.dash.common.noun.car.few') })}`,
+      ),
+    );
+    expect(hrefOf(html, 'workshop.open')).toEqual([`/fleet/maintenance?state=open&to=${TODAY}`]);
+    expect(metricsOf(html).sort()).toEqual(['workshop.oldest', 'workshop.open']);
+    // The share stays «نشطة» of the active cars.
+    expect(text(html)).toContain(`${shareText(5, VEHICLES.active)}`);
+  });
+
+  it('D06: no «مكهنة» / «بلا سيارة في السجل» tile while it holds no visit', () => {
+    const none = card(
+      tab({ ...NOW, workshop: { ...WORKSHOP, openDisposed: 0, openNoCar: 0 } }),
+      'workshop',
+    );
+    expect(tilesOf(none)).toEqual(['active', 'out']);
+    expect(text(none)).not.toContain(ar('fleet.dash.now.statusDisposed'));
+    expect(text(none)).not.toContain(ar('fleet.dash.now.statusNoCar'));
+    const onlyBook = card(
+      tab({ ...NOW, workshop: { ...WORKSHOP, openDisposed: 0, openNoCar: 1 } }),
+      'workshop',
+    );
+    expect(tilesOf(onlyBook)).toEqual(['active', 'out', 'noCar']);
+  });
+
+  it('D15: the available drivers in two parts — on vehicles (plain) and without one (the roster’s «السائقون المتاحون», linked)', () => {
+    const available = card(HTML, 'available');
+    const split = part(available, 'data-today-available-split="true"', /data-dash-box=/u);
+    // 44 available today = 38 seated + 6 without a vehicle.
+    expect(text(split)).toContain(ar('fleet.dash.now.availableSplit', { seated: '38', free: '6' }));
+    expect(hrefOf(split, 'roster.availableWithoutVehicle')).toEqual([roster({})]);
+    expect(metricsOf(split)).toEqual(['roster.availableWithoutVehicle']);
+    // The approved title stays; the headline (seated included) is still plain.
+    expect(text(available)).toContain(ar('fleet.dash.now.availableTitle'));
+    expect(metricsOf(available)).not.toContain('roster.available');
+    // The balance tile says what it counts: the seated too.
+    const tile = part(card(HTML, 'balance'), 'data-today-figure="available"', /<\/section>/u);
+    expect(text(tile)).toContain(ar('fleet.dash.now.balanceDrivers'));
+    expect(text(tile)).toContain('44');
+    const none = card(withRoster({ available: 6, availableWithoutVehicle: 6 }), 'available');
+    expect(text(none)).toContain(ar('fleet.dash.now.availableSplit', { seated: '0', free: '6' }));
+  });
+
+  it('D17: «من المسجّلة» counts every status the vehicles screen’s «إجمالي السيارات» counts — «مكهنة» included', () => {
+    // 40 active + 2 out of service + 1 disposed = 43, as the vehicles screen.
+    const vehicles = card(HTML, 'vehicles');
+    expect(text(vehicles)).toContain(ar('fleet.dash.now.activeOf', { count: '43' }));
+    expect(text(vehicles)).toContain(shareText(40, 43));
+    const noDisposed = card(tab({ ...NOW, vehicles: { ...VEHICLES, disposed: 0 } }), 'vehicles');
+    expect(text(noDisposed)).toContain(ar('fleet.dash.now.activeOf', { count: '42' }));
+    const many = card(tab({ ...NOW, vehicles: { ...VEHICLES, disposed: 7 } }), 'vehicles');
+    expect(text(many)).toContain(ar('fleet.dash.now.activeOf', { count: '49' }));
+    expect(text(many)).toContain(shareText(40, 49));
+  });
+
+  it('D18: the readiness foot’s expired licences say they are the cars outside the workshop — the split stays disjoint', () => {
+    const foot = part(HTML, 'data-today-excluded="true"', /<\/section>/u);
+    // 7 left out = 5 in the workshop + 2 expired outside it (each car counted once).
+    expect(squash(text(foot))).toContain(squash(`${ar('fleet.dash.now.inWorkshop')} 5`));
+    expect(squash(text(foot))).toContain(squash(`${ar('fleet.dash.now.licenceExpired')} 2`));
+  });
+});
+
+// ── The words the owner was told (i18n/W3.json; green once the HUB merges it) ────────────────
+
+describe('«الحركة اليوم» — the words the owner was told', () => {
+  it('D15: «منهم N على سيارات · N بلا سيارة» under the approved title; the balance tile «المتاحون اليوم (مع المعيَّنين)»', () => {
+    expect(text(card(HTML, 'available'))).toContain('منهم 38 على سيارات · 6 بلا سيارة');
+    expect(text(card(HTML, 'available'))).toContain('السائقون المتاحون اليوم');
+    expect(text(card(HTML, 'balance'))).toContain('المتاحون اليوم (مع المعيَّنين)');
+  });
+
+  it('D18: «ترخيص منتهٍ (خارج الورشة)»', () => {
+    const foot = part(HTML, 'data-today-excluded="true"', /<\/section>/u);
+    expect(text(foot)).toContain('ترخيص منتهٍ (خارج الورشة) 2');
+  });
+
+  it('D06: «مكهنة» and «بلا سيارة في السجل»', () => {
+    const html = card(
+      tab({ ...NOW, workshop: { ...need(NOW.workshop), openDisposed: 1, openNoCar: 2 } }),
+      'workshop',
+    );
+    expect(text(html)).toContain('1مكهنة');
+    expect(text(html)).toContain('2بلا سيارة في السجل');
   });
 });

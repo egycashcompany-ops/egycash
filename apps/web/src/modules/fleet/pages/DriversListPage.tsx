@@ -38,6 +38,7 @@ import {
   MAX_PAGE_SIZE,
   cairoYmd,
   expiryStateOn,
+  type DataScope,
   type FleetCatalogKind,
   type FleetDriverProfileDto,
   type FleetDriverRowDto,
@@ -56,6 +57,7 @@ import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
 import { listKey } from '../../../shared/lib/query-keys';
+import { getActiveBranch } from '../../../shared/lib/api-client';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
@@ -67,7 +69,7 @@ import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
 import * as fleetApi from '../api/fleet-api';
 import { useDriverHrFilter, type DriverHrFilter } from '../api/driver-hr-filter';
 import { useDrivingJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
-import { useBranchOptions } from '../../organization/shared/references';
+import { useBranchNames, useBranchOptions } from '../../organization/shared/references';
 import { useEmployeeRecord } from '../components/EmployeeName';
 import { useDriverHoverCard } from '../components/DriverHoverCard';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
@@ -93,6 +95,7 @@ import { driverIdFilter } from '../lib/driver-filter-selection';
 import { expiryWindowLabel, expiryWindowQuery } from '../lib/vehicle-set-params';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { useLicenceWarnDays } from '../lib/licence-warn-days';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -278,6 +281,69 @@ const PrintLicenceButton = ({ driver }: { driver: FleetDriverProfileDto }): JSX.
 // falls back to, so a first load and a cleared sort agree.
 const DEFAULT_SORT = 'employeeCode:asc';
 
+/**
+ * The branches «الإحصائيات» count (audit D31): the branches the dashboard's driver figures cover,
+ * so «رخص منتهية» here and the dashboard's figure that opens this screen count the same drivers.
+ *
+ * `/fleet/drivers` reads no branch scope of its own — every reader's token answers the whole
+ * roster — so the header used to count the whole company under a switcher on «فرع ب» (4 beside
+ * the dashboard's 0). The vehicles header narrows through its API's scope; this one asks for the
+ * branches by name, folded the way the server folds the command bar's branch into a grant
+ * (`scopeSelector`):
+ * - an `organization` grant: the switcher's branch, or `null` — the whole company — without one;
+ * - a branch reach («فرعي» / «كل فروعي»): the switcher's branch when it is one of them, else every
+ *   branch the reach holds;
+ * - `[]`: a reach that holds no branch at all (a branch user moved out of their branch). The
+ *   figures then count nobody, as the dashboard's and the vehicles header's do — never the whole
+ *   company under a reach of none.
+ *
+ * The TABLE is not narrowed by this: it follows the URL's «الفرع», as before.
+ */
+export const registryBranchesOf = (reader: {
+  /** The reader's widest grant of `fleetDriver.view` (`MeDto.permissions`). */
+  scope: DataScope | undefined;
+  /** The command bar's branch — the `X-Active-Branch` every request carries. */
+  active: string | null;
+  /** The reader's own branch (`MeDto.branchId`). */
+  home: string | null;
+  /** Every branch the reader's grants reach (`MeDto.branchIds`; empty for a single branch). */
+  reach: readonly string[];
+}): readonly string[] | null => {
+  // `own` reads the whole roster on the server too (`selectorBranches`), and no switcher narrows it.
+  if (reader.scope === undefined || reader.scope === 'own') return null;
+  if (reader.scope === 'organization') return reader.active === null ? null : [reader.active];
+  const reach = [...new Set([...(reader.home === null ? [] : [reader.home]), ...reader.reach])];
+  return reader.active !== null && reach.includes(reader.active) ? [reader.active] : reach;
+};
+
+/**
+ * The counters across the top of «الإحصائيات», over the registry `registryBranchesOf` names —
+ * each by the rule the dashboard's driver figure beside it counts with, on the Cairo calendar
+ * (R-02):
+ * - «رخص منتهية»: expired ON its expiry day (`expiryStateOn`).
+ * - «رخص تنتهي هذا الشهر»: the licences of the CAIRO month (audit D28). The browser's UTC month is
+ *   still the previous one for the first two hours of a Cairo month, so at 01:30 on 1 November
+ *   the header counted October's licences (3) beside the dashboard's November (2).
+ * - `recorded` / `total − recorded`: the drivers with and without a Fleet file — «بلا ملف سائق».
+ */
+export const driverLicenceFiguresOf = (
+  items: readonly Pick<FleetDriverRowDto, 'profile'>[],
+  now = Date.now(),
+): { total: number; recorded: number; thisMonth: number; expired: number; noImage: number } => {
+  const today = cairoYmd(new Date(now));
+  const thisMonth = today.slice(0, 7);
+  const expiries = items.flatMap((d) =>
+    d.profile?.licenseExpiresAt == null ? [] : [d.profile.licenseExpiresAt],
+  );
+  return {
+    total: items.length,
+    recorded: items.filter((d) => d.profile !== null).length,
+    thisMonth: expiries.filter((expiry) => expiry.slice(0, 7) === thisMonth).length,
+    expired: expiries.filter((expiry) => expiryStateOn(expiry, today, 0) === 'expired').length,
+    noImage: items.filter((d) => d.profile === null || d.profile.licenseImage === null).length,
+  };
+};
+
 export const DriversListPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -347,7 +413,13 @@ export const DriversListPage = (): JSX.Element => {
   // Branch NAMES come from `/platform/branches/options` — authenticated, not `branch.view`-gated.
   // Read from the administration list instead, the «الفرع» column printed a dash and the «الفرع»
   // filter was not drawn at all for a reader whose fleet grants reach the whole company.
+  //
+  // TWO LISTS, for two jobs (audit D14). The PICKER offers the active branches only. The NAMES —
+  // the column, the sheet and the picker's chip for a branch already chosen — come from every
+  // branch, the closed ones too (`useBranchNames`): a driver keeps the branch HR placed him in
+  // after it closes, and the dashboard names it, so the list its link opens must not print «—».
   const { data: branches = [] } = useBranchOptions();
+  const { data: allBranches = [] } = useBranchNames();
   // WHO THIS REGISTRY IS: everyone whose job title requires a driving test. Handing those titles
   // to step ① is what keeps «الجيزة» a question about DRIVERS rather than about the payroll — see
   // `useDriverHrFilter`. Without `jobTitle.view` the list is empty and the hook does not narrow,
@@ -439,9 +511,19 @@ export const DriversListPage = (): JSX.Element => {
         : data.meta.totalItems;
 
   const branchName = useMemo(
-    () => new Map(branches.map((b) => [b.id, localized(b.name, locale)])),
-    [branches, locale],
+    () => new Map(allBranches.map((b) => [b.id, localized(b.name, locale)])),
+    [allBranches, locale],
   );
+  // The picker's options: the active branches, plus a chosen one that is not among them — a closed
+  // branch an old link or a dashboard «فتح» carries — named, never its raw id; «—» for one no list
+  // holds any more (a deleted branch), as the dashboard names it.
+  const branchOptions = useMemo(() => {
+    const offered = branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }));
+    const extra = branchIds
+      .filter((id) => !branches.some((b) => b.id === id))
+      .map((id) => ({ value: id, label: branchName.get(id) ?? '—' }));
+    return [...offered, ...extra];
+  }, [branches, branchIds.join(','), branchName, locale]);
 
   // The three fleet catalogs. The COLUMN and the FILTER read the same list — `useFleetCatalog` is
   // one cache entry per kind and `CatalogSelect` subscribes to it too — so a value an admin adds
@@ -451,23 +533,41 @@ export const DriversListPage = (): JSX.Element => {
   const licenseTypeName = useCatalogNames('driverLicenseType', locale);
   const licenseTypeIndex = useCatalogIndex('driverLicenseType');
   const signatories = useReportSignatories();
+  // «تنتهي قريبًا» inside the warning days the admin set in «إعدادات الحركة» (audit D29) — the days
+  // the dashboard counts «رخص تنتهي خلال N يومًا» with, so a driver counted there is amber here too.
+  const warnDays = useLicenceWarnDays().driver;
 
-  // The figures describe the WHOLE registry, as the vehicles board's do — read when the reader
-  // opens them, never on the way in.
+  // The figures describe the WHOLE registry of the branches the dashboard's driver figures cover —
+  // the top bar's branch, or the reader's own (audit D31) — as the vehicles board's describe the
+  // cars its scope reaches. Read when the reader opens them, never on the way in. The table is not
+  // narrowed by it: it follows the URL's «الفرع».
   const [statsOpen, setStatsOpen] = useState(false);
+  const me = useAppSelector((state) => state.auth.me);
+  const registryBranches = registryBranchesOf({
+    scope: me?.permissions['fleetDriver.view'],
+    // The header every request already carries; a switch reloads the page, so it is read here.
+    active: getActiveBranch(),
+    home: me?.branchId ?? null,
+    reach: me?.branchIds ?? [],
+  });
   const wholeRegistry = useQuery({
-    queryKey: listKey('fleet', 'drivers', { whole: true }),
+    queryKey: listKey('fleet', 'drivers', { whole: true, branchId: registryBranches }),
     queryFn: () =>
-      fetchFilteredRows((pageNo, size) => fleetApi.listDrivers({ page: pageNo, pageSize: size })),
+      // A reach that holds no branch counts nobody — and an empty `branchId` is no filter at all.
+      registryBranches !== null && registryBranches.length === 0
+        ? Promise.resolve([])
+        : fetchFilteredRows((pageNo, size) =>
+            fleetApi.listDrivers({
+              page: pageNo,
+              pageSize: size,
+              branchId: registryBranches ?? undefined,
+            }),
+          ),
     enabled: statsOpen,
     staleTime: 60_000,
   });
   const figures = useMemo(() => {
     const items = wholeRegistry.data ?? [];
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    // «منتهية»: expired ON its expiry day, by the Cairo calendar (R-02 / Q-02) — the rule the
-    // dashboard figure that links here counts with (`expiryStateOn`).
-    const today = cairoYmd(new Date());
     /** How many drivers sit on each entry of one catalog; the unrecorded ones last. */
     const tally = (
       pick: (profile: FleetDriverProfileDto) => string | null,
@@ -486,15 +586,9 @@ export const DriversListPage = (): JSX.Element => {
         }))
         .sort((a, b) => (a.id === '' ? 1 : b.id === '' ? -1 : b.count - a.count));
     };
-    const expiries = items.flatMap((d) =>
-      d.profile?.licenseExpiresAt == null ? [] : [d.profile.licenseExpiresAt],
-    );
     return {
-      total: items.length,
-      recorded: items.filter((d) => d.profile !== null).length,
-      thisMonth: expiries.filter((day) => day.slice(0, 7) === thisMonth).length,
-      expired: expiries.filter((day) => expiryStateOn(day, today, 0) === 'expired').length,
-      noImage: items.filter((d) => d.profile === null || d.profile.licenseImage === null).length,
+      // «رخص منتهية» / «رخص تنتهي هذا الشهر» by the Cairo day and month — the dashboard's rules.
+      ...driverLicenceFiguresOf(items),
       jobs: tally((profile) => profile.jobId, jobName),
       specializations: tally((profile) => profile.specializationId, specializationName),
       licenseTypes: tally((profile) => profile.licenseTypeId, licenseTypeName),
@@ -777,7 +871,7 @@ export const DriversListPage = (): JSX.Element => {
       render: (d) => {
         // A driver with no Fleet file yet is «قيد المراجعة»; a file with no expiry has no date to
         // show — never the epoch `new Date(null)` would paint red. As the vehicles table writes
-        // a licence: red once lapsed, amber within the month.
+        // a licence: red once lapsed, amber within the warning days of «إعدادات الحركة».
         if (d.profile === null) {
           return (
             <span className="text-amber-600 dark:text-amber-400">
@@ -787,7 +881,7 @@ export const DriversListPage = (): JSX.Element => {
         }
         const { licenseExpiresAt } = d.profile;
         if (licenseExpiresAt === null) return <span className="text-slate-400">—</span>;
-        const state = expiryState(licenseExpiresAt, 30);
+        const state = expiryState(licenseExpiresAt, warnDays);
         return (
           <span
             dir="ltr"
@@ -1099,7 +1193,7 @@ export const DriversListPage = (): JSX.Element => {
               <MultiSelect
                 clearable
                 label={t('fleet.drivers.columns.branch')}
-                options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+                options={branchOptions}
                 value={branchIds}
                 onChange={(ids) => patch({ branch: writeList(ids) })}
                 showSelectedValues
@@ -1172,10 +1266,11 @@ export const DriversListPage = (): JSX.Element => {
                 onChange={(next) => patch({ img: pickOne(image === '' ? [] : [image], next) })}
               />
             </FilterWithIcon>
-            {/* The licence date a dashboard link narrowed the registry to — the window, «غير
-                مسجَّل», or both as it was asked — shown only while it narrows, so a remembered one
+            {/* The licence date a dashboard link narrowed the registry to — the window, «رخصة غير
+                مسجّلة», or both as it was asked — shown only while it narrows, so a remembered one
                 is never a filter with nothing on the bar saying so. Taking an option off drops
-                its parameter. */}
+                its parameter. The chip says the dashboard line's own words (audit D30): «غير
+                مسجَّل» alone also named the drivers with no file at all, in the header above. */}
             {(licenceWindowLabel !== null || licenceNotRecorded) && (
               <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
                 <MultiSelect
@@ -1190,7 +1285,7 @@ export const DriversListPage = (): JSX.Element => {
                       ? []
                       : [{ value: 'window', label: licenceWindowLabel }]),
                     ...(licenceNotRecorded
-                      ? [{ value: 'none', label: t('fleet.drivers.notRecorded') }]
+                      ? [{ value: 'none', label: t('fleet.drivers.licenceNotRecorded') }]
                       : []),
                   ]}
                   value={[

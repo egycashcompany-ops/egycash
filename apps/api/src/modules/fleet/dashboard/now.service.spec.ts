@@ -307,6 +307,8 @@ beforeEach(() => {
     open: 0,
     openActive: 0,
     openOutOfService: 0,
+    openDisposed: 0,
+    openNoCar: 0,
     oldest: null,
   });
   maintenance.recentWritten.mockResolvedValue([]);
@@ -1440,6 +1442,8 @@ describe('distributionMatrix — T3.1–T3.3', () => {
     { id: B2, name: { ar: 'الجيزة', en: 'Giza' } },
   ];
   const OP_OTHER = '650000000000000000000303';
+  /** A branch soft-deleted while its cars stayed active: the live list no longer holds it. */
+  const B4 = '650000000000000000000104';
   /** The operation kinds as `operationKind` names them; an unknown id or none is neither. */
   const kindOf = (id: string | null): 'cash' | 'atm' | null =>
     id === OP_CASH ? 'cash' : id === OP_ATM ? 'atm' : null;
@@ -1562,7 +1566,7 @@ describe('distributionMatrix — T3.1–T3.3', () => {
     expect(m.other).toEqual({ vehicles: 0 });
   });
 
-  it('a car in a branch outside the list (a reader-scope miss) still gets a column and its kinds', () => {
+  it('a car in a branch the live list no longer holds (deleted) gets a column «—» and its kinds (D11)', () => {
     const m = distributionMatrix({
       cells: [cell(T1, B3, 2, OP_CASH)],
       typeNames: new Map(),
@@ -1570,10 +1574,86 @@ describe('distributionMatrix — T3.1–T3.3', () => {
       scopeBranches: new Set([B1]),
       kindOf,
     });
-    // B3 is not in the live branch list: its cars still count, under their own id.
-    expect(m.branches.map((b) => b.id)).toEqual([B1]);
+    // B3 is not in the live branch list: its cars still count, under their own id — and are DRAWN.
+    expect(m.branches).toEqual([
+      { id: B3, name: { ar: '—', en: '—' } },
+      { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } },
+    ]);
     expect(m.kinds[B3]).toEqual({ cash: 2, atm: 0, other: 0 });
     expect(m.totals.counts[B3]).toBe(2);
+  });
+
+  it('a deleted branch holding cars: grand total = Σ drawn columns + «بلا فرع», for every row and kind (D11)', () => {
+    // The audit's world: B1 3 cars, B2 1, B3 none, B4 (deleted) 1, one car with no branch.
+    const m = distributionMatrix({
+      cells: [
+        cell(T1, B1, 1, OP_CASH),
+        cell('T2', B1, 1, OP_ATM),
+        cell('T2', B1, 1, null),
+        cell(T1, B2, 1, OP_CASH),
+        cell(T1, B4, 1, null),
+        cell('T2', null, 1, OP_OTHER),
+      ],
+      typeNames: new Map(),
+      branches: [...branchList, { id: B3, name: { ar: 'فرع ج', en: 'C' } }],
+      scopeBranches: null,
+      kindOf,
+    });
+    expect(m.branches.map((b) => b.id)).toEqual([B1, B2, B4, B3]);
+    expect(m.branches.find((b) => b.id === B4)?.name).toEqual({ ar: '—', en: '—' });
+    const drawn = (counts: Record<string, number>): number =>
+      m.branches.reduce((sum, b) => sum + (counts[b.id] ?? 0), 0);
+    expect(m.totals.total).toBe(6);
+    expect(drawn(m.totals.counts) + m.totals.noBranch).toBe(m.totals.total);
+    for (const row of m.rows) expect(drawn(row.counts) + row.noBranch, row.typeId).toBe(row.total);
+    // Card 1's «أخرى» = Σ the cards' «أخرى» + «بلا فرع»'s: the deleted branch's car is in a card.
+    const others = m.branches.reduce((sum, b) => sum + (m.kinds[b.id]?.other ?? 0), 0);
+    expect(others + m.noBranchKinds.other).toBe(m.other.vehicles);
+    expect(m.other.vehicles).toBe(3);
+    expect(Object.keys(m.kinds).sort()).toEqual(m.branches.map((b) => b.id).sort());
+    // The overview's count and the drawn columns holding a car agree: B1, B2 and the deleted B4.
+    expect(m.branchCount).toBe(3);
+  });
+
+  it('a CLOSED branch with no active car is no column for the company; with a car it stays (D12)', () => {
+    const closedB3 = { id: B3, name: { ar: 'فرع ج', en: 'C' }, active: false };
+    const empty = distributionMatrix({
+      cells: [cell(T1, B1, 2)],
+      typeNames: new Map(),
+      branches: [...branchList, closedB3],
+      scopeBranches: null,
+      kindOf,
+    });
+    // B2 is open (no car): its «0» card stays; the closed, empty B3 has none.
+    expect(empty.branches.map((b) => b.id)).toEqual([B1, B2]);
+    expect(Object.keys(empty.kinds).sort()).toEqual([B1, B2].sort());
+    const held = distributionMatrix({
+      cells: [cell(T1, B1, 2), cell(T1, B3, 1, OP_CASH)],
+      typeNames: new Map(),
+      branches: [...branchList, closedB3],
+      scopeBranches: null,
+      kindOf,
+    });
+    expect(held.branches.map((b) => b.id)).toEqual([B1, B3, B2]);
+    // Its own name (the list still holds a closed branch) — and the flag never reaches the DTO.
+    expect(held.branches.find((b) => b.id === B3)).toEqual({
+      id: B3,
+      name: { ar: 'فرع ج', en: 'C' },
+    });
+    expect(held.kinds[B3]).toEqual({ cash: 1, atm: 0, other: 0 });
+  });
+
+  it('a branch reader keeps their own branch closed or open; another closed branch never shows (D12)', () => {
+    const closedB1 = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' }, active: false };
+    const m = distributionMatrix({
+      cells: [],
+      typeNames: new Map(),
+      branches: [closedB1, branchList[1]!],
+      scopeBranches: new Set([B1]),
+      kindOf,
+    });
+    expect(m.branches).toEqual([{ id: B1, name: { ar: 'القاهرة', en: 'Cairo' } }]);
+    expect(m.kinds).toEqual({ [B1]: { cash: 0, atm: 0, other: 0 } });
   });
 
   it('the columns are ordered by active cars desc; a tie keeps the branch list’s order', () => {
@@ -1630,6 +1710,27 @@ describe('distributionMatrix — T3.1–T3.3', () => {
       ([query]) => (query as Record<string, unknown>)['operationId'] !== undefined,
     );
     expect(byOperation).toHaveLength(2);
+  });
+
+  it('the section reads the branch status: a closed, empty branch is dropped, a deleted one named «—» (D11, D12)', async () => {
+    branches.listAll.mockResolvedValue([
+      { _id: B1, name: CAIRO, status: 'active' },
+      { _id: B2, name: GIZA, status: 'inactive' },
+      { _id: B3, name: { ar: 'الإسكندرية', en: 'Alexandria' }, status: 'inactive' },
+    ]);
+    vehicles.activeByTypeAndBranch.mockResolvedValue([
+      cell(T1, B1, 2, OP_CASH),
+      cell(T1, B3, 1, OP_ATM),
+      // A branch the list no longer holds (soft-deleted) still holding an active car.
+      cell(T1, '650000000000000000000199', 1, null),
+    ]);
+    const dto = await fleetDashboardNowService.read(ctxWith(['fleetVehicle.view']), NOW);
+    expect(dto.distributionVehicles?.branches).toEqual([
+      { id: B1, name: CAIRO },
+      { id: B3, name: { ar: 'الإسكندرية', en: 'Alexandria' } },
+      { id: '650000000000000000000199', name: { ar: '—', en: '—' } },
+    ]);
+    expect(dto.distributionVehicles?.branchCount).toBe(3);
   });
 });
 

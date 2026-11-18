@@ -147,13 +147,17 @@ describe('the throttled prefixes in the registry', () => {
     expect(carrying(LIVE)).not.toContain('fleet.violationGrievance');
     // A closed range counts rows whose days are behind it, so only the figures read as of now reach
     // it: the period's fines carry their state as of now («الشهر الماضي»'s «قائمة» turns «محصَّلة»
-    // on a tick), and so does the custody spend's «منها حتى الآن» (a replenishment moves a past
-    // month's «تمت الاستعاضة»). Every other write — a back-dated licence memo too — leaves a past
-    // range alone until «تحديث» or a reload.
+    // on a tick), so do the period's accident files (their status, «منها N مفتوحة حتى الآن», the
+    // money totals and «المتبقي (حتى الآن)» — closing a file or a transfer moves a past month), and
+    // so does the custody spend's «منها حتى الآن» (a replenishment moves a past month's «تمت
+    // الاستعاضة»). Every other write — a back-dated licence memo too — leaves a past range alone
+    // until «تحديث» or a reload.
     expect(carrying(PAST).sort()).toEqual(
-      ['fleet.custodyMemo', 'fleet.custodyOperation', 'fleet.violation'].sort(),
+      ['fleet.accident', 'fleet.custodyMemo', 'fleet.custodyOperation', 'fleet.violation'].sort(),
     );
     expect(carrying(PAST)).not.toContain('fleet.licenseExpense');
+    expect(carrying(PAST)).not.toContain('fleet.odometerLog');
+    expect(carrying(PAST)).not.toContain('fleet.maintenanceVisit');
     // The custody rows reach the custody «الآن» parts (tab 1's line, «العهدة»'s band) through the
     // custody hooks' own key, not R1.
     expect(carrying(NOW)).not.toContain('fleet.custodyOperation');

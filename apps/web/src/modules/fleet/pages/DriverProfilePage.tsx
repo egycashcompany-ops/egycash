@@ -13,6 +13,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  cairoYmd,
+  expiryStateOn,
   type FleetCatalogKind,
   type FleetDriverUnavailabilityDto,
   type Locale,
@@ -33,7 +35,7 @@ import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatAmount, formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { listKey } from '../../../shared/lib/query-keys';
 import { cn } from '../../../shared/lib/cn';
-import { useBranchOptions } from '../../organization/shared/references';
+import { useBranchNames } from '../../organization/shared/references';
 import * as fleetApi from '../api/fleet-api';
 import {
   useAccidents,
@@ -101,7 +103,9 @@ export const DriverProfilePage = (): JSX.Element => {
   const { name } = useEmployeeName(employeeId);
   // The person's own facts — code, phone, governorate, branch, address — from Fleet's roster.
   const person = useEmployeeRecord(employeeId);
-  const { data: branches = [] } = useBranchOptions();
+  // EVERY branch's name, the closed ones too (audit D14): a driver keeps the branch HR placed him
+  // in after it closes, and the active list alone printed «—» for it.
+  const { data: branches = [] } = useBranchNames();
   const job = useCatalogItem('driverJob', profile?.jobId ?? null);
   const specialization = useCatalogItem('driverSpecialization', profile?.specializationId ?? null);
   const licenseType = useCatalogItem('driverLicenseType', profile?.licenseTypeId ?? null);
@@ -176,8 +180,13 @@ export const DriverProfilePage = (): JSX.Element => {
   // NO EXPIRY ON FILE IS NOT AN EXPIRED ONE. `new Date(null)` is the epoch, which would have
   // painted every driver whose paperwork has not arrived yet in the red reserved for a licence
   // that has actually lapsed — the loudest possible wrong answer.
+  //
+  // EXPIRED ON ITS EXPIRY DAY, by the Cairo calendar (R-02, audit D08) — the rule the dashboard's
+  // «رخص سائقين منتهية» and the drivers list count with. Compared with the clock instead, a licence
+  // running out today read valid until its stored hour passed, so the driver the dashboard lists as
+  // «منتهٍ اليوم» opened onto a file with no «رخصة القيادة منتهية».
   const licenseExpired =
-    profile.licenseExpiresAt !== null && new Date(profile.licenseExpiresAt).getTime() < Date.now();
+    expiryStateOn(profile.licenseExpiresAt, cairoYmd(new Date()), 0) === 'expired';
   const records = unavailability.data?.items ?? [];
 
   const confirmCancel = async (): Promise<void> => {

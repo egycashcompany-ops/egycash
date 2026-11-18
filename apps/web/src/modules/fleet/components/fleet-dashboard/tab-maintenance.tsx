@@ -363,12 +363,29 @@ const WorkshopKpi = ({
         )
       }
       foot={
-        // Plain: the maintenance screen reads no vehicle-status parameter, so neither part has an
-        // exact list (the headline's open visits do).
+        // Plain: the maintenance screen reads no vehicle-status parameter, so no part has an exact
+        // list (the headline's open visits do). The parts add up to the headline: «مكهنة» and «بلا
+        // سيارة في السجل» (a car deleted since, or an old-book visit) only when they hold a visit.
         <span data-maint-status="true">
           {t('fleet.dash.now.statusActive')} {plain(workshop.openActive)}
           <Sep />
           {t('fleet.dash.now.statusOut')} {plain(workshop.openOutOfService)}
+          {workshop.openDisposed > 0 && (
+            <>
+              <Sep />
+              <span className="whitespace-nowrap">
+                {t('fleet.dash.now.statusDisposed')} {plain(workshop.openDisposed)}
+              </span>
+            </>
+          )}
+          {workshop.openNoCar > 0 && (
+            <>
+              <Sep />
+              <span className="whitespace-nowrap">
+                {t('fleet.dash.now.statusNoCar')} {plain(workshop.openNoCar)}
+              </span>
+            </>
+          )}
         </span>
       }
       footIcon={I.layers}
@@ -510,7 +527,11 @@ const AlarmRow = ({
         <span data-alarm-figure={row.code} className={cn(COUNT_CHIP, 'py-0.5', TONE[tone].soft)}>
           <Dot tone={tone} />
           {row.remainingKm < 0 ? (
-            <Phrase text={w('alarms.over')} parts={{ km: <N>{count(-row.remainingKm)}</N> }} />
+            // «متأخر N كم» — the alarms board's and the car record's own word for a car past its limit.
+            <Phrase
+              text={t('fleet.dashboard.overdueKm')}
+              parts={{ km: <N>{count(-row.remainingKm)}</N> }}
+            />
           ) : (
             <Phrase
               text={t('fleet.dashboard.remainingKm')}

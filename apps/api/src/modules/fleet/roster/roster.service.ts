@@ -138,6 +138,11 @@ class FleetRosterService {
     scope: ScopeSelector,
   ): Promise<{
     board: FleetRosterDayDto;
+    /**
+     * The standing crews of the day's live ACTIVE cars, the whole company's — the set the
+     * «الطقم الثابت» board lists (D36): a crew left on a car that is out of service, disposed or
+     * deleted since is no standing crew of anything today.
+     */
     fixedCrews: Awaited<ReturnType<typeof fleetFixedCrewRepository.findAll>>;
     /** vehicleId → the car's branch now (`null` = «بلا فرع»), for every row of the board. */
     branchOf: Map<string, string | null>;
@@ -156,19 +161,29 @@ class FleetRosterService {
     // board used to walk the drivers' only once the cars' had finished, on the dashboard's every
     // refresh as well as here.
     const [
-      { vehicles, inWorkshop },
+      { vehicles, everyActive, inWorkshop },
       { seatRoster, verdicts },
       assignments,
-      fixedCrews,
+      allCrews,
       licenceRule,
     ] = await Promise.all([
-      this.allActiveVehicles(scope).then(async (scoped) => ({
-        vehicles: scoped,
-        inWorkshop: await fleetVehicleService.openVisitVehicleIds(
-          scoped.map((v) => String(v._id)),
-          day,
-        ),
-      })),
+      // The board's rows are the SCOPED cars; the standing crews are projected over EVERY active
+      // car of the day (D19), so the workshop is asked about all of them — one read either way.
+      // A reader whose scope is the whole company reads the registry once.
+      Promise.all([
+        this.allActiveVehicles(scope),
+        scope.scope === 'organization' ? null : this.allActiveVehicles(),
+      ]).then(async ([scoped, whole]) => {
+        const every = whole ?? scoped;
+        return {
+          vehicles: scoped,
+          everyActive: every,
+          inWorkshop: await fleetVehicleService.openVisitVehicleIds(
+            every.map((v) => String(v._id)),
+            day,
+          ),
+        };
+      }),
       // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset
       // Fleet has recorded a profile for. See `drivingSeatRoster`.
       //
@@ -186,6 +201,9 @@ class FleetRosterService {
       licenceRuleRead,
     ]);
     const byVehicle = new Map(assignments.map((row) => [String(row.vehicleId), row]));
+    const activeIds = new Set(everyActive.map((vehicle) => String(vehicle._id)));
+    // Only a live active car's crew is a standing crew today — the fixed board's own set (D36).
+    const fixedCrews = allCrews.filter((row) => activeIds.has(String(row.vehicleId)));
     const fixedByVehicle = new Map(fixedCrews.map((row) => [String(row.vehicleId), row]));
     // Taken is computed over the WHOLE day's plan, not just scoped vehicles — a driver assigned
     // to another branch's vehicle is still taken.
@@ -224,8 +242,36 @@ class FleetRosterService {
       return verdict.licence === 'expired' ? 'licenceExpired' : null;
     };
 
-    /** Where the overlay seats somebody, so the pool below can say so as the plan does. */
+    /**
+     * THE OVERLAY — the standing crews carried into the day, computed over EVERY active car of the
+     * day, the whole company's, in the registry's code order (D19). Not over the scoped rows only:
+     * a driver on another branch's standing crew is seated THERE whichever branch reads the board,
+     * so «بلا سيارة» does not change with the branch, and a branch board never carries a driver
+     * whom his own car's board would carry too. The rows below stay the scoped cars; this only
+     * decides who sits where.
+     *
+     * A car that cannot be assigned today carries nobody (§9): the standing crew stays in
+     * `fleet_fixed_crews`, it simply is not on duty on a day the car is in the workshop. A driver
+     * unavailable today, or already planned onto a car for this date (FR-7), or already carried
+     * by an earlier car, is not carried: the standing configuration overrides none of these.
+     */
     const seatedByOverlay = new Map<string, string>();
+    const projectedSeats = new Map<string, [string | null, string | null]>();
+    for (const vehicle of everyActive) {
+      const id = String(vehicle._id);
+      const fixed = fixedByVehicle.get(id);
+      // PLANNED cars speak for themselves (their document IS the day), crewless ones carry nobody.
+      if (byVehicle.has(id) || fixed === undefined) continue;
+      const inMaintenance = inWorkshop.has(id);
+      const carry = (employeeId: Types.ObjectId | null): string | null => {
+        if (employeeId === null || inMaintenance) return null;
+        const driver = String(employeeId);
+        if (!freeToday.has(driver) || taken.has(driver) || seatedByOverlay.has(driver)) return null;
+        seatedByOverlay.set(driver, id);
+        return driver;
+      };
+      projectedSeats.set(id, [carry(fixed.driver1EmployeeId), carry(fixed.driver2EmployeeId)]);
+    }
 
     /**
      * The row's DERIVED facts (R-03, R-06) — computed from the row as it stands, planned or
@@ -286,20 +332,9 @@ class FleetRosterService {
         return { ...stored, ...derive(stored, vehicle, inMaintenance) };
       }
 
-      // UNPLANNED — start from the standing crew, then let the day cut it down.
+      // UNPLANNED — the standing crew as the day cut it down (the overlay above).
       const fixed = fixedByVehicle.get(id);
-      const carry = (employeeId: Types.ObjectId | null): string | null => {
-        if (employeeId === null) return null;
-        const driver = String(employeeId);
-        // A vehicle that cannot be assigned today carries nobody (§9): the standing crew stays in
-        // `fleet_fixed_crews`, it simply is not on duty on a day the car is in the workshop.
-        if (inMaintenance) return null;
-        // Unavailable today, or already planned onto another vehicle for this date (FR-7): the
-        // standing configuration does not get to override either.
-        if (!freeToday.has(driver) || taken.has(driver) || seatedByOverlay.has(driver)) return null;
-        seatedByOverlay.set(driver, id);
-        return driver;
-      };
+      const [driver1EmployeeId, driver2EmployeeId] = projectedSeats.get(id) ?? [null, null];
 
       const projected = {
         ...vehicleFacts,
@@ -311,8 +346,8 @@ class FleetRosterService {
         // car is in the workshop; the CREW is what the day withdraws. `notes` is deliberately not
         // carried — a note on a day is about that day, and the standing remark is not.
         missionTypeId: fixed === undefined ? null : (fixed.missionTypeId?.toString() ?? null),
-        driver1EmployeeId: carry(fixed?.driver1EmployeeId ?? null),
-        driver2EmployeeId: carry(fixed?.driver2EmployeeId ?? null),
+        driver1EmployeeId,
+        driver2EmployeeId,
         notes: null,
       };
       return { ...projected, ...derive(projected, vehicle, inMaintenance) };
@@ -587,7 +622,8 @@ class FleetRosterService {
     return { changedCount: outcome.changed.length };
   }
 
-  private async allActiveVehicles(scope: ScopeSelector): Promise<FleetVehicleDoc[]> {
+  /** The active cars in `scope`, in the registry's code order; no scope = the whole company's. */
+  private async allActiveVehicles(scope?: ScopeSelector): Promise<FleetVehicleDoc[]> {
     const vehicles: FleetVehicleDoc[] = [];
     for (let page = 1; ; page += 1) {
       const batch = await fleetVehicleRepository.listVehicles({
@@ -595,7 +631,7 @@ class FleetRosterService {
         page,
         pageSize: 100,
         sortBy: 'code',
-        scope,
+        ...(scope === undefined ? {} : { scope }),
       });
       vehicles.push(...batch.items);
       if (batch.items.length < 100) return vehicles;

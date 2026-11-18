@@ -15,7 +15,10 @@
 //   · above 31 days the columns are months (no Friday, no weekday, no per-day average line).
 //
 // Every column opens the odometer screen over its own day (or month) and the period's filters; the
-// readout above the drawing names the column the pointer or the keyboard is on. The foot lines (what
+// readout above the drawing names the column the pointer or the keyboard is on, with the figure that
+// screen totals for it — the single-day km AND the spans that start on it (`column.total`, audit
+// D02), the span part named under it («منها … كم مسافة على أكثر من يوم»). A reader whose reach holds
+// no branch gets no link (audit D21): the column is drawn, plain. The foot lines (what
 // is confirmed, what is still open, the spans, the stale cars, the old book's km) are `KmChartNotes`,
 // drawn in the block's ruled foot. Nothing is counted here: every figure is the server's.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
@@ -222,9 +225,10 @@ export const KmDayChart = ({
         {!column.empty && !today && (
           <>
             <Dot />
-            <span>
+            {/* What the register totals over the column's days (its link): spans included. */}
+            <span data-km-readout-total={String(column.total)}>
               <Fig link={linkOf(column)} className={cn('text-sm font-bold', STRONG)}>
-                <N>{kmText(b.confirmedKm)}</N>
+                <N>{kmText(column.total)}</N>
               </Fig>{' '}
               {t('fleet.dash.km.unit')}
             </span>
@@ -235,7 +239,7 @@ export const KmDayChart = ({
         {b.spanKm > 0 && (
           <>
             <Dot />
-            <span>
+            <span data-km-readout-span={String(b.spanKm)}>
               {b.spanTo === null ? (
                 <Phrase
                   text={t('fleet.dash.km.readout.spanOnly')}
@@ -317,8 +321,9 @@ export const KmDayChart = ({
                 />
               ))}
               <div className={cn('absolute inset-0 flex', gap)}>
-                {model.columns.map((column, i) =>
-                  column.empty ? (
+                {model.columns.map((column, i) => {
+                  const link = column.empty ? null : linkOf(column);
+                  return column.empty ? (
                     <div
                       key={column.bucket.key}
                       data-km-column={column.bucket.key}
@@ -330,14 +335,29 @@ export const KmDayChart = ({
                         className="absolute bottom-0 left-1/2 h-2 w-2 -translate-x-1/2 translate-y-1/2 rounded-full border border-slate-400 bg-white dark:border-slate-500 dark:bg-[#0e1422]"
                       />
                     </div>
+                  ) : link === null ? (
+                    // No list for this reader (D21): the same column, plain, its readout on hover.
+                    <div
+                      key={column.bucket.key}
+                      role="img"
+                      data-km-column={column.bucket.key}
+                      {...(column.friday ? { 'data-km-friday': 'true' } : {})}
+                      aria-label={`${label(column.bucket.key)}: ${kmText(column.total)} ${t('fleet.dash.km.unit')}`}
+                      onMouseEnter={() => setPicked(i)}
+                      onMouseLeave={() => setPicked(null)}
+                      className={cn(SLOT, column.friday && FRIDAY_SLOT)}
+                    >
+                      <Parts column={column} on={i === index} />
+                      <Marker column={column} />
+                    </div>
                   ) : (
                     <Link
                       key={column.bucket.key}
-                      to={linkOf(column).to}
+                      to={link.to}
                       data-km-column={column.bucket.key}
                       data-metric={metric}
                       {...(column.friday ? { 'data-km-friday': 'true' } : {})}
-                      aria-label={`${label(column.bucket.key)}: ${kmText(column.bucket.confirmedKm + column.bucket.spanKm)} ${t('fleet.dash.km.unit')}`}
+                      aria-label={`${label(column.bucket.key)}: ${kmText(column.total)} ${t('fleet.dash.km.unit')}`}
                       onMouseEnter={() => setPicked(i)}
                       onMouseLeave={() => setPicked(null)}
                       onFocus={() => setPicked(i)}
@@ -347,8 +367,8 @@ export const KmDayChart = ({
                       <Parts column={column} on={i === index} />
                       <Marker column={column} />
                     </Link>
-                  ),
-                )}
+                  );
+                })}
               </div>
               {model.average !== null && (
                 <div

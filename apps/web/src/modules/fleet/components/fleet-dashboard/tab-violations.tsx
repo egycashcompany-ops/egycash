@@ -21,7 +21,10 @@
 //
 // THE COUNTS ON THE «الآن» CARDS HAVE NO LINK: the register's footers sum amounts, not fines, so no
 // screen shows those counts; the amounts open the register (every year, unpaid), and «مجهول» opens
-// the drivers' unpaid fines with nobody named. «اسم غير مربوط» has no list parameter: plain. A period
+// the drivers' unpaid fines with nobody named. «اسم غير مربوط» has no list parameter: plain. The
+// period's amount (owed AND collected) is plain too: the register's drivers' footer sums the unpaid
+// fines only, so the OWED amount under it is the one that opens them (audit D23). A reader whose
+// reach holds no branch gets none of these links (audit D21): every figure stands plain. A period
 // link names the period by the FINE's day on the drivers' half (`dfrom`/`dto`) and its cars as that
 // half reads them (`dcodes`) — never the page's `from`/`to`/`vehicleCodes`, which the register's
 // halves do not read. A row's «فتح» opens the register on its car, its day and its type (that fine
@@ -51,7 +54,7 @@ import {
 } from '../../lib/fleet-dashboard-links';
 import { sectionPermitted, slashDay } from '../../lib/fleet-dashboard-tabs';
 import { DriverHoverText } from '../DriverHoverCard';
-import { DriverName, useEmployeeRecords } from '../EmployeeName';
+import { DriverName, WithExitedDrivers, useEmployeeRecords } from '../EmployeeName';
 import {
   Btn,
   CHIP,
@@ -228,7 +231,8 @@ const NowCard = ({
   icon: IconPath;
   title: string;
   sum: Sum;
-  link: DashLink;
+  /** `null`: no list for this reader (D21) — the amount stands plain. */
+  link: DashLink | null;
   parts?: ReactNode;
   foot: ReactNode;
   /** Where the card sits in the row (the total spans the tablet row). */
@@ -299,17 +303,22 @@ const DriverParts = ({ open, links }: { open: Open; links: NowLinks }): JSX.Elem
         data-viol-count={String(unknown.count)}
         className={cn(PART_COL, 'border-s', RULE)}
       >
-        <Link
-          to={unknownLink.to}
-          data-metric={unknownLink.metric}
-          className={cn(
-            'inline-flex h-5 items-center gap-1 whitespace-nowrap text-xs font-bold text-emerald-700 hover:underline dark:font-semibold dark:text-emerald-400',
-            FOCUS,
-          )}
-        >
-          {w('drivers.unknown')}
-          <Icon d={I.arrow} className="h-3.5 w-3.5" />
-        </Link>
+        {unknownLink === null ? (
+          // No list for this reader (D21): the part's name, as its plain neighbours wear theirs.
+          <span className={PART_NAME}>{w('drivers.unknown')}</span>
+        ) : (
+          <Link
+            to={unknownLink.to}
+            data-metric={unknownLink.metric}
+            className={cn(
+              'inline-flex h-5 items-center gap-1 whitespace-nowrap text-xs font-bold text-emerald-700 hover:underline dark:font-semibold dark:text-emerald-400',
+              FOCUS,
+            )}
+          >
+            {w('drivers.unknown')}
+            <Icon d={I.arrow} className="h-3.5 w-3.5" />
+          </Link>
+        )}
         <span className={cn(PART_LINE, MUTED)}>
           <Small>{count(unknown.count)}</Small> {noun('violation', unknown.count)}
         </span>
@@ -515,12 +524,10 @@ const PeriodKpi = ({ v, links }: { v: Violations; links: PeriodLinks }): JSX.Ele
       }
       sub={
         <div className="flex flex-col">
+          {/* Owed AND collected: no screen sums both (the register's footer is the unpaid part),
+              so it stands plain; the owed amount under it opens its list (D23). */}
           <div data-viol-period-amount={String(v.amount)} className="flex h-7 items-center">
-            <Money
-              value={v.amount}
-              link={links.violations('violations.amount')}
-              className="text-[17px] leading-7"
-            />
+            <Money value={v.amount} className="text-[17px] leading-7" />
           </div>
           <div className={cn('mt-2 flex flex-col gap-1 text-[13px] leading-6', MUTED)}>
             <span data-viol-owed={String(v.owed.count)} className="whitespace-nowrap">
@@ -535,7 +542,11 @@ const PeriodKpi = ({ v, links }: { v: Violations; links: PeriodLinks }): JSX.Ele
                 }}
               />
               <Sep />
-              <Money value={v.owed.amount} className="text-[13px]" />
+              <Money
+                value={v.owed.amount}
+                link={links.violations('violations.owed.amount', { dset: 'false' })}
+                className="text-[13px]"
+              />
             </span>
             <span
               data-viol-collected={String(v.collected.amount)}
@@ -670,7 +681,9 @@ const PhoneLabel = ({ children }: { children: ReactNode }): JSX.Element => (
 
 /** The car and its make; the chip opens the car's record for a reader of the registry, and only
  *  while the car is in it (an old-book code or a deleted car has no record to open). A car deleted
- *  since says so («محذوفة»), as «كروت تحتاج متابعة» and the registers do. */
+ *  since says so («محذوفة»), as the dashboard's other tables do («كروت تحتاج متابعة», «فواتير
+ *  التوكيل في الفترة»). The violations register itself marks no deleted car: its row shows the code
+ *  alone (audit D44), and the make is the tab's own addition. */
 const CarCell = ({
   row,
   links,
@@ -707,8 +720,9 @@ const CarCell = ({
 
 /**
  * The driver as the register shows him: an HR driver underlined (his card on hover), «مجهول» muted,
- * a name the old book wrote as text, plain. The HR name is the roster's (the row carries the id);
- * a reader the roster does not answer gets the register's own fallback.
+ * a name the old book wrote as text, plain. The HR name is the roster's (the row carries the id) —
+ * the roster WITH the drivers who have left, as the register reads it (the table sits inside
+ * `WithExitedDrivers`, D24); a reader the roster does not answer gets the register's own fallback.
  */
 const DriverCell = ({ row }: { row: FleetDashboardPeriodViolationRowDto }): JSX.Element => {
   const t = useT();
@@ -944,7 +958,11 @@ const PeriodBody = ({
         <SectionError section="violationList" onRetry={onRetry} className="mt-5" />
       )}
       {list !== null && (
-        <FinesTable list={list} violations={violations} links={links} canVehicle={canVehicle} />
+        // Fines are history: the table names the drivers who have LEFT as well, as the register
+        // does (it wraps itself the same way) — never an id fragment for them (D24).
+        <WithExitedDrivers>
+          <FinesTable list={list} violations={violations} links={links} canVehicle={canVehicle} />
+        </WithExitedDrivers>
       )}
       {(violations !== null || list !== null) && (
         <div data-viol-notes="true" className="mt-4 flex flex-col gap-1.5 px-1">

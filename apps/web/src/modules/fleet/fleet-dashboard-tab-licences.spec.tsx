@@ -928,9 +928,10 @@ describe('«أقرب تراخيص السيارات» — the server’s nearest 
     expect(text(carRowOf(cars, 'v150'))).toContain(w('open'));
     expect(cars).toContain('data-lic-more="10"');
     expect(text(cars)).toContain(w('showRest', { count: 10 }));
+    // D37: the rest opens nearest-expiring first, as the table is ordered.
     expect(target(hrefOf(cars, 'licenceVehicles.more'))).toEqual({
       path: '/fleet/vehicles',
-      params: { status: 'active', licExpBefore: DAY(60) },
+      params: { status: 'active', licExpBefore: DAY(60), sort: 'licenseExpiresAt:asc' },
     });
   });
 
@@ -989,9 +990,10 @@ describe('«أقرب رخص السائقين» — the files with names (Q2 أ)'
       '/fleet/drivers/p520',
     );
     expect(drivers).toContain('data-lic-more="2"');
+    // D37: the rest opens nearest-expiring first, as the table is ordered.
     expect(target(hrefOf(drivers, 'licenceDrivers.more'))).toEqual({
       path: '/fleet/drivers',
-      params: { licExpBefore: DAY(60) },
+      params: { licExpBefore: DAY(60), sort: 'licenseExpiresAt:asc' },
     });
   });
 });

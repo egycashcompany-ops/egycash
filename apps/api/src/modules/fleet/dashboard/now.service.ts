@@ -312,7 +312,10 @@ export const listedUnmanned = (
     )
     .slice(0, FLEET_DASHBOARD_TODAY_ROWS);
 
-/** employeeId → the car whose STANDING crew holds that driver, on either seat. */
+/**
+ * employeeId → the car whose STANDING crew holds that driver, on either seat — over the crews the
+ * board hands back, which are those of live ACTIVE cars only (the «الطقم الثابت» board's set, D36).
+ */
 const crewCarOf = (fixedCrews: readonly FixedCrewLike[]): Map<string, string> => {
   const carOf = new Map<string, string>();
   for (const crew of fixedCrews) {
@@ -327,8 +330,10 @@ const crewCarOf = (fixedCrews: readonly FixedCrewLike[]): Map<string, string> =>
 /**
  * The absent drivers `rosterLists` lists (pure): the pool's «تمام: غير متاح» and «إجازة معتمدة»
  * (`isAbsenceReason`), each with the car whose STANDING crew holds them — read from the fixed
- * crews, so it is named even when that car is in the workshop or the seat is covered today. Crew
- * members first, then «تمام» before leave, then the employee code; capped.
+ * crews, so it is named even when that car is in the workshop or the seat is covered today, but
+ * never a car the «الطقم الثابت» board does not list (out of service, disposed, deleted: the board
+ * hands back only live active cars' crews, D36). Crew members first, then «تمام» before leave, then
+ * the employee code; capped.
  */
 export const listedAbsent = (
   board: FleetRosterDayDto,
@@ -461,10 +466,20 @@ const scopeBranchIds = (scope: ScopeSelector): ReadonlySet<string> | null => {
  * with no branch is «بلا فرع». Row total = Σ cells + noBranch; the grand total = vehicles.active.
  * `branchCount` (the overview's «توزيع السيارات») = the columns that hold a car.
  *
+ * Which branches are columns (D11, D12):
+ *   · a branch a counted car sits in, always — and when the live list no longer holds it (the
+ *     branch was deleted while its cars stayed active) it still gets its column and card, named «—»
+ *     as the echo names such an id (`scopeBranchesOf`) and as the vehicles list prints its cars'
+ *     «الفرع»; so the grand total = Σ columns + «بلا فرع», every car drawn somewhere;
+ *   · a branch of the reader's scope (a branch reader's own, open or closed);
+ *   · for the whole company, every OPEN branch — a closed one with no active car is no column.
+ * `active` is the branch list's status; it only decides the column and never reaches the DTO.
+ *
  * The cells come split by the car's operation as well; the type rows ignore that split, and each
  * column folds it into `kinds` through `kindOf` (the very test the cash / ATM links' ids come from),
  * so a branch's cash + atm + other = its column. The columns are ordered by active cars, largest
- * first, a tie keeping the branch list's order — one order for the branch cards and the matrix.
+ * first, a tie keeping the branch list's order (the unnamed ones after it) — one order for the
+ * branch cards and the matrix.
  */
 export const distributionMatrix = (input: {
   cells: readonly {
@@ -474,20 +489,33 @@ export const distributionMatrix = (input: {
     count: number;
   }[];
   typeNames: ReadonlyMap<string, LocalizedString>;
-  branches: readonly FleetDashboardNamedDto[];
+  /** The live branch list; `active: false` = a closed branch (absent = open). */
+  branches: readonly (FleetDashboardNamedDto & { active?: boolean })[];
   scopeBranches: ReadonlySet<string> | null;
   kindOf: (operationId: string | null) => 'cash' | 'atm' | null;
 }): Pick<
   FleetDashboardNowDistributionVehiclesDto,
   'branches' | 'rows' | 'totals' | 'branchCount' | 'kinds' | 'noBranchKinds' | 'other'
 > => {
+  // A branch "holds" a car only through a cell that counts one (a zero cell adds no column).
   const seen = new Set(
-    input.cells.flatMap((cell) => (cell.branchId === null ? [] : [cell.branchId])),
+    input.cells.flatMap((cell) =>
+      cell.branchId === null || cell.count <= 0 ? [] : [cell.branchId],
+    ),
   );
-  const listed = input.branches.filter(
-    (branch) =>
-      input.scopeBranches === null || input.scopeBranches.has(branch.id) || seen.has(branch.id),
-  );
+  const inReach = (branch: { id: string; active?: boolean }): boolean =>
+    input.scopeBranches === null ? branch.active !== false : input.scopeBranches.has(branch.id);
+  const live = new Set(input.branches.map((branch) => branch.id));
+  const listed: FleetDashboardNamedDto[] = [
+    ...input.branches
+      .filter((branch) => inReach(branch) || seen.has(branch.id))
+      .map(({ id, name }) => ({ id, name })),
+    // A deleted branch still holding active cars: its own id, never a made-up name.
+    ...[...seen]
+      .filter((id) => !live.has(id))
+      .sort()
+      .map((id) => ({ id, name: UNNAMED })),
+  ];
   const rows = new Map<string, FleetDashboardNowDistributionVehiclesDto['rows'][number]>();
   const totals: FleetDashboardNowDistributionVehiclesDto['totals'] = {
     counts: {},
@@ -733,7 +761,12 @@ const SECTIONS: { [K in FleetDashboardNowSection]: DashboardSection<K, NowValues
       ...distributionMatrix({
         cells,
         typeNames: new Map(types.map((type) => [String(type._id), type.name as LocalizedString])),
-        branches: branches.map((b) => ({ id: String(b._id), name: b.name as LocalizedString })),
+        // The status only decides the column (a closed branch with no active car is none, D12).
+        branches: branches.map((b) => ({
+          id: String(b._id),
+          name: b.name as LocalizedString,
+          active: b.status !== 'inactive',
+        })),
         scopeBranches: scopeBranchIds(scope),
         // The same name test the cash / ATM ids (and so their links) come from.
         kindOf: (operationId) => operationKind(operations, operationId),

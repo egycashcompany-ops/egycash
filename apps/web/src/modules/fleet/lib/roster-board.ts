@@ -49,6 +49,7 @@ import {
   clearSlot,
   findSeat,
   hasEdits,
+  heldOffBoard,
   rowsToSave,
   setMission,
   swapDrivers,
@@ -224,8 +225,9 @@ export interface TouchCars {
 
 /**
  * «مينفعش ابحث فى الفون او التابلت ؟» — the touch board's typed car code over what the URL already
- * narrows (`visible`: the picked codes, the missions, the counter view), ANDed, with one matcher
- * for all of it (`matchesVehicleCode`: Arabic-Indic digits folded, several codes at once).
+ * narrows (`visible`: the picked codes, the missions, the counter view), ANDed. The typed term is
+ * a SEARCH (`matchesVehicleCode`: a part of the code, Arabic-Indic digits folded, several codes at
+ * once) — «41» finds 410 — while the picked codes in `visible` are whole codes (`visibleRows`).
  * `shown` is the whole day, which only says whether the term finds a car at all.
  */
 export const touchCars = (
@@ -289,8 +291,12 @@ export interface SeatTarget {
 /** One row of the driver lists (picker sheet, pool sheet, tablet panel, desktop panel). */
 export interface DriverOption {
   employeeId: string;
-  /** `free` — in the pool; `seated` — the DRAFT has him on a car (a pick MOVES him). */
-  state: 'free' | 'seated';
+  /**
+   * `free` — in the pool; `seated` — the DRAFT has him on a car (a pick MOVES him); `elsewhere` —
+   * the SERVER holds him on a car that is not on this board (`heldOffBoard`): never pickable,
+   * never draggable, never counted as available.
+   */
+  state: 'free' | 'seated' | 'elsewhere';
   /** The car the draft seats him on, when `seated` — said as a fact, never as a promise. */
   seatedCode: string | null;
   /** …and whether that car is the very one being filled (shown, never pickable). */
@@ -303,6 +309,8 @@ export interface DriverOptions {
   free: DriverOption[];
   flagged: DriverOption[];
   seated: DriverOption[];
+  /** Held on a car off this board (`heldOffBoard`), licensed — listed always, picked never. */
+  elsewhere: DriverOption[];
 }
 
 /** One counter chip: tap = `query.patch(counter.apply)`. */
@@ -401,6 +409,8 @@ export interface RosterBoardModel {
   saving: boolean;
   pool: RosterDriver[];
   poolLicensed: RosterDriver[];
+  /** The available drivers the server holds on a car that is not on this board (`heldOffBoard`). */
+  heldOff: RosterDriver[];
   flagged: RosterDriver[];
   expired: ReadonlySet<string>;
   expiredVehicles: FleetRosterRowDto[];
@@ -644,11 +654,21 @@ export const useRosterBoard = (
     ];
   }, [shown, missionTypes.data, locale, t, missionsKey, view]);
 
+  // Held on a car OFF this board — another branch's car, or a car planned today that has since
+  // left the board (D01). No edit here can release him, so he is never in the pool: he is listed
+  // apart, under «معيّنون على سيارات أخرى», as the fixed roster badges him.
+  const heldOff = useMemo(() => heldOffBoard(board?.availableDrivers ?? [], saved), [board, saved]);
+  const heldOffIds = useMemo(() => new Set(heldOff.map((driver) => driver.employeeId)), [heldOff]);
   // The pool is DERIVED from the draft: everyone the draft seats leaves it the moment the edit
-  // lands, and comes back the moment a seat is cleared — no round trip in between.
+  // lands, and comes back the moment a seat is cleared — no round trip in between. Minus the
+  // drivers held off the board, so «السائقون المتاحون (n)» counts what the dashboard's «بلا سيارة
+  // اليوم» counts.
   const pool = useMemo(
-    () => availableDrivers(board?.availableDrivers ?? [], shown),
-    [board, shown],
+    () =>
+      availableDrivers(board?.availableDrivers ?? [], shown).filter(
+        (driver) => !heldOffIds.has(driver.employeeId),
+      ),
+    [board, shown, heldOffIds],
   );
   const unavailable = useMemo(() => board?.unavailableDrivers ?? [], [board]);
   // Both halves indexed together — and the seated drivers too, whose names the seats, the
@@ -657,12 +677,13 @@ export const useRosterBoard = (
     useMemo(
       () => [
         ...pool.map((driver) => driver.employeeId),
+        ...heldOff.map((driver) => driver.employeeId),
         ...unavailable.map((driver) => driver.employeeId),
         ...shown.flatMap((row) =>
           [row.driver1EmployeeId, row.driver2EmployeeId].filter((id): id is string => id !== null),
         ),
       ],
-      [pool, unavailable, shown],
+      [pool, heldOff, unavailable, shown],
     ),
   );
   const searchIndex = useMemo(() => {
@@ -759,10 +780,12 @@ export const useRosterBoard = (
 
   /**
    * The AVAILABLE list for a pick, searched by name or code:
-   *   free     the pool, licensed («السائقون المتاحون (n)»)
-   *   flagged  EVERY flagged driver of the day, seated or not («منهم رخصة منتهية»)
-   *   seated   when there is a seat to fill: the other available drivers the draft seats on
-   *            ANOTHER car, as the assign dialog lists `board.availableDrivers`
+   *   free       the pool, licensed («السائقون المتاحون (n)»)
+   *   flagged    EVERY flagged driver of the day, seated or not («منهم رخصة منتهية»)
+   *   seated     when there is a seat to fill: the other available drivers the draft seats on
+   *              ANOTHER car, as the assign dialog lists `board.availableDrivers`
+   *   elsewhere  ALWAYS: the licensed drivers the server holds on a car off this board
+   *              (`heldOffBoard`) — listed under «معيّنون على سيارات أخرى», never pickable
    * The target car's own crew is left out of `seated`: a swap is the card's own button.
    */
   const availableFor = useCallback(
@@ -773,7 +796,7 @@ export const useRosterBoard = (
         const seat = findSeat(shown, employeeId);
         return {
           employeeId,
-          state: seat === null ? 'free' : 'seated',
+          state: seat !== null ? 'seated' : heldOffIds.has(employeeId) ? 'elsewhere' : 'free',
           seatedCode: seat === null ? null : (codeByVehicle.get(seat.vehicleId) ?? null),
           onTarget: seat !== null && target !== null && seat.vehicleId === target.vehicleId,
           licenceExpired: expired.has(employeeId),
@@ -791,13 +814,22 @@ export const useRosterBoard = (
               const seat = findSeat(shown, driver.employeeId);
               return seat !== null && seat.vehicleId !== target.vehicleId;
             });
+      // Seated by the draft is the draft's fact and wins: such a driver is listed once, where the
+      // draft has him.
+      const elsewhere = searched.filter(
+        (driver) =>
+          heldOffIds.has(driver.employeeId) &&
+          !expired.has(driver.employeeId) &&
+          findSeat(shown, driver.employeeId) === null,
+      );
       return {
         free: free.map((driver) => option(driver.employeeId)),
         flagged: flaggedShown.map((driver) => option(driver.employeeId)),
         seated: seated.map((driver) => option(driver.employeeId)),
+        elsewhere: elsewhere.map((driver) => option(driver.employeeId)),
       };
     },
-    [board, searchIndex, pool, shown, codeByVehicle, expired],
+    [board, searchIndex, pool, heldOffIds, shown, codeByVehicle, expired],
   );
 
   /** The UNAVAILABLE list, searched by its own term and narrowed to the reasons asked for. */
@@ -993,6 +1025,7 @@ export const useRosterBoard = (
     saving: plan.isPending,
     pool,
     poolLicensed,
+    heldOff,
     flagged,
     expired,
     expiredVehicles,

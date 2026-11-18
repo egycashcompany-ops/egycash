@@ -269,21 +269,23 @@ const Column = ({
   </Card>
 );
 
+/** A screen button across the column's foot; none without a list to open (`null`, D21). */
 const Wide = ({
   link,
   icon,
   children,
 }: {
-  link: DashLink;
+  link: DashLink | null;
   icon: IconPath;
   children: ReactNode;
-}): JSX.Element => (
-  <Fig link={link} linkedClassName="" className={cn(BTN.outline, 'w-full gap-2')}>
-    <Icon d={icon} className={cn('h-4 w-4', MUTED)} />
-    {children}
-    <Icon d={I.arrow} className="h-3.5 w-3.5 opacity-60" />
-  </Fig>
-);
+}): JSX.Element | null =>
+  link === null ? null : (
+    <Fig link={link} linkedClassName="" className={cn(BTN.outline, 'w-full gap-2')}>
+      <Icon d={icon} className={cn('h-4 w-4', MUTED)} />
+      {children}
+      <Icon d={I.arrow} className="h-3.5 w-3.5 opacity-60" />
+    </Fig>
+  );
 
 const ScreenTile = ({
   link,
@@ -955,27 +957,36 @@ const QuickLinks = ({
 }): JSX.Element | null => {
   const t = useT();
   const items: { link: DashLink; icon: IconPath; label: string; n?: number }[] = [];
+  // A quick link with no list to open (`null`: a reader whose reach holds no branch, D21) is left out.
+  const push = (item: {
+    link: DashLink | null;
+    icon: IconPath;
+    label: string;
+    n?: number;
+  }): void => {
+    if (item.link !== null) items.push({ ...item, link: item.link });
+  };
   if (links !== null && now?.fuelCharging != null && can('fleetFuelCharge.view'))
-    items.push({
+    push({
       link: links.reconcile(),
       icon: I.card,
       label: t('fleet.dash.summaries.quickReconcile'),
     });
   if (custody !== null)
-    items.push({
+    push({
       link: custodyDashboardLink('custodyFund.quick'),
       icon: I.grid,
       label: t('fleet.dash.summaries.custodyDashboard'),
     });
   if (custody !== null && links !== null)
-    items.push({
+    push({
       link: links.custodyExpenses(),
       icon: I.cash,
       label: t('fleet.dash.summaries.custodyExpenses'),
     });
   const v = now?.violationsYear;
   if (links !== null && v != null)
-    items.push({
+    push({
       link: links.violationsUnknown(v.year),
       icon: I.userX,
       label: t('fleet.dash.summaries.quickUnknown'),
@@ -983,7 +994,7 @@ const QuickLinks = ({
     });
   const a = now?.accidentsOpen;
   if (links !== null && a != null)
-    items.push({
+    push({
       link: links.accidentsOpen(),
       icon: I.warn,
       label: t('fleet.dash.summaries.openAccidentsTitle'),

@@ -5,12 +5,14 @@
 // What this file pins: the words and the order the owner approved; «كل السنوات» said ONCE; the
 // period bar BETWEEN the two bands; every figure reads its server field (`violationsOpen.*`,
 // `violations.*`, `violationList.more` — never a list's length) and opens the list that shows it, or
-// nothing when no list does (every COUNT of «الآن», «سائقون معروفون», «اسم غير مربوط», the owed and
-// collected amounts, a type's amount); the tones (violet company, amber drivers, neutral total, sky
+// nothing when no list does (every COUNT of «الآن», «سائقون معروفون», «اسم غير مربوط», the period's
+// amount — owed AND collected, which no screen sums (audit D23) — the collected amount, a type's
+// amount), the owed amount opening the unpaid fines whose footer shows it; the tones (violet company, amber drivers, neutral total, sky
 // period, brand bars, «قائمة» amber, «محصَّلة» emerald — no red); the period links name the FINE's
 // days on the drivers' half (`dfrom` / `dto` / `dcodes`), never the page's `from` / `to` /
 // `vehicleCodes`; the rows on cars the registry never had in the company view only; the table's
-// rules (date only, a row's «فتح» = its car, day and type, «عرض الباقي» only when more are left);
+// rules (date only, a row's «فتح» = its car, day and type, «عرض الباقي» only when more are left, a
+// driver who has LEFT named as the register names him — audit D24);
 // R1 and R2 each with their own face; the violations-only reader; the words the tab never says.
 //
 // Rendered through the real page over seeded caches (`renderDashboard`): R1 under its key, R2 under
@@ -236,13 +238,19 @@ const PAGE_BRANCH: FleetDashboardPeriodDto = {
 };
 
 const URL_30 = '/fleet?tab=violations&period=last30';
+/** A driver who has LEFT: on the roster with the exited drivers only. */
+const EXITED = '64b1f0dddddddddddddddd09';
 const DAYS = { dfrom: FROM_30, dto: TODAY };
 
-const PERSON = (employeeId: string, fullNameAr: string): FleetPersonDto => ({
+const PERSON = (
+  employeeId: string,
+  fullNameAr: string,
+  status: FleetPersonDto['status'] = 'active',
+): FleetPersonDto => ({
   employeeId,
   code: employeeId.slice(-4),
   fullNameAr,
-  status: 'active',
+  status,
   branchId: B1,
   address: null,
   governorate: null,
@@ -290,10 +298,13 @@ const client = ({
   if (nowFails) failed(qc, fleetDashboardKeys.now);
   if (pageFails) failed(qc, pageKey(url));
   else if (page !== null) qc.setQueryData(pageKey(url), page);
-  // Fleet's people (the roster the driver cell names an HR driver from).
+  // Fleet's people: the roster of today, and — under its own key, as `useFleetPeople` keeps it —
+  // the roster WITH the drivers who have left, the one the register (and the fines' table) reads.
+  const today = [PERSON(DRIVER, 'كريم السيد منصور'), PERSON(DRIVER_2, 'محمد عادل الشاذلي')];
+  qc.setQueryData(['fleet', 'people'], today);
   qc.setQueryData(
-    ['fleet', 'people'],
-    [PERSON(DRIVER, 'كريم السيد منصور'), PERSON(DRIVER_2, 'محمد عادل الشاذلي')],
+    ['fleet', 'people', 'withExited'],
+    [...today, PERSON(EXITED, 'سامح عبد الحميد', 'exited')],
   );
   return qc;
 };
@@ -666,7 +677,7 @@ describe('the bands at a tablet’s width — never one card to a full row', () 
 });
 
 describe('«خلال الفترة» — the drivers’ fines of the period, by the fine’s day', () => {
-  it('«مخالفات السائقين في الفترة»: sky, its count and amount open the period’s fines', () => {
+  it('«مخالفات السائقين في الفترة»: sky, its count opens the period’s fines, its amount plain (D23)', () => {
     const card = kpi(DEFAULT, 'period');
     expect(card).toContain('border-l-sky-500');
     const words = text(card);
@@ -676,19 +687,33 @@ describe('«خلال الفترة» — the drivers’ fines of the period, by t
     expect(words).toContain('3,450.00');
     const period = { path: '/fleet/violations', params: DAYS };
     expect(target(hrefOf(card, 'violations.count'))).toEqual(period);
-    expect(target(hrefOf(card, 'violations.amount'))).toEqual(period);
     expect(target(hrefOf(card, 'violations.period'))).toEqual(period);
     expect(words).toContain(w('period.all'));
+    // Owed AND collected: the register's drivers' footer sums the unpaid fines only (2,550.00), so
+    // no screen shows 3,450.00 — the figure stands plain (audit D23: 259 vs 207).
+    const amount = slice(card, 'data-viol-period-amount', '3450', 'data-viol-owed');
+    expect(text(amount)).toContain('3,450.00');
+    expect(links(amount)).toEqual([]);
+    expect(hrefs(card, 'violations.amount')).toEqual([]);
   });
 
-  it('«منها N قائمة حتى الآن»: the count opens the period’s unpaid fines, the amount plain', () => {
+  it('«منها N قائمة حتى الآن»: the count AND the amount open the period’s unpaid fines (D23)', () => {
     const owed = slice(kpi(DEFAULT, 'period'), 'data-viol-owed', '6', 'data-viol-collected');
     expect(text(owed)).toContain('2,550.00');
-    expect(links(owed)).toHaveLength(1);
-    expect(target(hrefOf(owed, 'violations.owed'))).toEqual({
-      path: '/fleet/violations',
-      params: { ...DAYS, dset: 'false' },
-    });
+    expect(links(owed)).toHaveLength(2);
+    const unpaid = { path: '/fleet/violations', params: { ...DAYS, dset: 'false' } };
+    expect(target(hrefOf(owed, 'violations.owed'))).toEqual(unpaid);
+    // The amount is the one the register's drivers' footer shows over that list.
+    const amount = slice(owed, 'data-metric', 'violations.owed.amount', '</a>');
+    expect(text(amount)).toContain('2,550.00');
+    expect(target(hrefOf(owed, 'violations.owed.amount'))).toEqual(unpaid);
+  });
+
+  it('the owed amount narrows as its count does: the branch the period carries, unpaid only', () => {
+    const narrowed = kpi(tab({ now: NOW_BRANCH, page: PAGE_BRANCH }), 'period');
+    const unpaid = { path: '/fleet/violations', params: { ...DAYS, branch: B1, dset: 'false' } };
+    expect(target(hrefOf(narrowed, 'violations.owed'))).toEqual(unpaid);
+    expect(target(hrefOf(narrowed, 'violations.owed.amount'))).toEqual(unpaid);
   });
 
   it('«والمحصَّل منها حتى الآن»: the amount and its whole share, plain; «—» when the period is empty', () => {
@@ -897,6 +922,24 @@ describe('«مخالفات السائقين في الفترة» — the table, t
     // The period's branch, as every other link of the table carries it.
     expect(open.params.branch).toBe(target(hrefOf(html, 'violationList.all')).params.branch);
     expect(open.params.branch).toBeDefined();
+  });
+
+  it('names a driver who has LEFT as the register does — never an id fragment (D24)', () => {
+    const page: FleetDashboardPeriodDto = {
+      ...PAGE,
+      violationList: {
+        rows: [
+          row({ violationId: 'fx', code: '214', date: '2026-10-29', driverEmployeeId: EXITED }),
+        ],
+        more: 0,
+      },
+    };
+    const exited = fineRow(block(tab({ page }), 'list'), 'fx');
+    expect(exited).toContain('data-viol-driver="hr"');
+    expect(text(exited)).toContain('سامح عبد الحميد');
+    expect(text(exited)).not.toContain(EXITED.slice(-8));
+    // He is on the roster WITH the exited drivers only: the table reads that one, as the register.
+    expect(exited).toContain('decoration-dotted');
   });
 
   it('names the driver as the register does: HR underlined, «مجهول» muted, the book’s name plain', () => {

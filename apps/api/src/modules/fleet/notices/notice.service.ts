@@ -3,6 +3,7 @@
 import { Types, type FilterQuery } from 'mongoose';
 import {
   FLEET_DASHBOARD_NOTICE_ROWS,
+  MAX_PAGE_SIZE,
   ymdOf,
   type CreateFleetNotice,
   type FleetDashboardNoticeRowDto,
@@ -273,20 +274,90 @@ const oldestNoticeFirst = (a: FleetNoticeWithCode, b: FleetNoticeWithCode): numb
   return created !== 0 ? created : String(a._id).localeCompare(String(b._id));
 };
 
+/** The notices table's arrows — the fields `list` may order by; any other asks for `createdAt`. */
+const NOTICE_SORTS = ['updatedAt', 'createdAt', 'noticeDate', 'noticeNumber'] as const;
+type NoticeSort = (typeof NOTICE_SORTS)[number];
+
+const sortFieldOf = (sortBy: string | undefined): NoticeSort =>
+  NOTICE_SORTS.find((field) => field === (sortBy ?? 'createdAt')) ?? 'createdAt';
+
+/**
+ * Two values of one sortable field as the database orders them: nothing (null, missing) before
+ * any value, dates by their instant, text by its characters — no collation, as the plain `find`
+ * the list pages through has none (code-unit order, the same as the stored bytes' for every
+ * character the register holds).
+ */
+const compareStored = (
+  a: Date | string | null | undefined,
+  b: Date | string | null | undefined,
+) => {
+  if (a == null || b == null) return a == null ? (b == null ? 0 : -1) : 1;
+  const left = a instanceof Date ? a.getTime() : a;
+  const right = b instanceof Date ? b.getTime() : b;
+  return left < right ? -1 : left > right ? 1 : 0;
+};
+
 class FleetNoticeService {
   async list(
     query: ListFleetNoticesQuery,
     ctx?: AuthContext,
   ): Promise<Paginated<FleetNoticeWithCode>> {
+    if (query.missing === 'any') return this.listMissingAny(query, ctx);
     const page = await fleetNoticeRepository.list({
       filter: await noticeFilter(query),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy ?? 'createdAt',
       sortDir: query.sortDir ?? 'desc',
-      sortableFields: ['updatedAt', 'createdAt', 'noticeDate', 'noticeNumber'],
+      sortableFields: [...NOTICE_SORTS],
     });
     return { ...page, items: await withCodes(page.items, ctx) };
+  }
+
+  /**
+   * «ينقصها مرفق» (`missing=any`, D10) — the notices the filters leave that `missingAny` keeps,
+   * under the same `withCodes(ctx)` source rule the dashboard's «إخطارات مفتوحة ينقصها مرفق»
+   * counts with (a licence the reader may not open is missing, as the screen shows it). A missing
+   * image is a fact of the registry as well as of the notice, so no database filter can ask it:
+   * the rows are kept in memory and paged there, in the order the database would have handed them
+   * — the same sort field and direction (`createdAt` desc unless asked), the id behind it in the
+   * same direction — and only the page's own notices are read whole (their form values too).
+   */
+  private async listMissingAny(
+    query: ListFleetNoticesQuery,
+    ctx: AuthContext | undefined,
+  ): Promise<Paginated<FleetNoticeWithCode>> {
+    const field = sortFieldOf(query.sortBy);
+    const dir = query.sortDir === 'asc' ? 1 : -1;
+    const kept = (await this.liveWithCodes(query, ctx))
+      .filter(missingAny)
+      .sort(
+        (a, b) =>
+          dir * compareStored(a[field], b[field]) ||
+          dir * compareStored(String(a._id), String(b._id)),
+      );
+    const pageSize = Math.min(query.pageSize, MAX_PAGE_SIZE);
+    const page = Math.max(1, query.page);
+    const ids = kept.slice((page - 1) * pageSize, page * pageSize).map((doc) => String(doc._id));
+    const whole = new Map(
+      (await fleetNoticeRepository.findByIdsSystem(ids)).map((doc) => [String(doc._id), doc]),
+    );
+    const items = await withCodes(
+      ids.flatMap((id) => {
+        const doc = whole.get(id);
+        return doc === undefined ? [] : [doc];
+      }),
+      ctx,
+    );
+    return {
+      items,
+      meta: {
+        page,
+        pageSize,
+        totalItems: kept.length,
+        totalPages: Math.max(1, Math.ceil(kept.length / pageSize)),
+      },
+    };
   }
 
   /** The notices the filters leave, each with where its licences come from — one read, shared. */
@@ -302,7 +373,10 @@ class FleetNoticeService {
     query: FleetNoticesSummaryQuery,
     ctx?: AuthContext,
   ): Promise<FleetNoticesSummaryDto> {
-    const docs = await this.liveWithCodes(query, ctx);
+    // «ينقصها مرفق» narrows the figures as it narrows the table (D10): the same `missingAny` over
+    // the same `withCodes(ctx)`.
+    const live = await this.liveWithCodes(query, ctx);
+    const docs = query.missing === 'any' ? live.filter(missingAny) : live;
     const byTemplate = new Map<FleetNoticeTemplate, number>();
     const byMonth = new Map<string, number>();
     for (const doc of docs) {

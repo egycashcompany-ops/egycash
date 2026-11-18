@@ -1913,6 +1913,44 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Fleet: the ten dashboard tabs and the fleet screens they open now say the same thing.**
+  «اتاكد من ال10 شاشات دول المعلومات اللى فيها هى هى اللى فى باقى الشاشه ولو لاحظت حاجة عدلها».
+  An audit of every figure, name and state on the ten tabs against the screen each «فتح» opens, the
+  other fleet screens, «أرقام الفترة» and «ملخصات» found 51 differences (D01–D51). Each is fixed on
+  the side that was wrong; read-side only: no write guard, no migration, no data change, no new
+  permission key. The 23 known-by-design differences (T01–T23) are unchanged.
+  - **The screens:** «تعيين السيارات» lists a driver held on another car under «معيّنون على سيارات
+    أخرى», out of «السائقون المتاحون» (= «بلا سيارة اليوم»), and a picked code («كورولا 1») finds
+    that car alone there and on «الطقم الثابت»; «المخالفات»' drivers footer sums every fine the
+    filter finds (`meta.outstandingAmount`), not the loaded 100, names an archived type and an exited
+    driver, writes the fine's own day, and shows «مجهول» for a nameless fine (also with an odd
+    space); «بطاقات الوقود»' month fuel is the Cairo month to today under the page's branch;
+    «شحن الكروت» and «بطاقات الوقود» write piastres; «مصروفات التراخيص» sums the matching memo only
+    under a kind or «لم تُسوَّ», and every «عدد المذكرات» counts memos; «الإخطارات» reads
+    `missing=any` («ينقصها مرفق»); «المصروفات» has a «الإجمالي» tile; «السيارات», the car page and
+    «السائقين» take a licence ending today as expired from the start of the Cairo day, count «هذا
+    الشهر» in the Cairo month (vehicles: active only), colour licences by the warn-days setting, name
+    a closed branch (the branch filter too), and write the licence state one way («منتهٍ / ينتهي
+    قريبًا / ساري»); the car card shows the newest reading beside a different highest one; the
+    drivers' figures follow the top-bar branch, and «غير مسجَّل» splits into «رخصة غير مسجّلة» /
+    «بلا ملف سائق»; a suspended file reads «الملف موقوف».
+  - **The dashboard:** «في الورشة الآن» adds «مكهنة» and «بلا سيارة في السجل» so its parts make up
+    the headline, and a check-in dated tomorrow is no longer in the workshop now (also «داخل الورشة»
+    on «السيارات»); a deleted branch with active cars gets a «—» column and an empty closed branch no
+    card; cash/ATM drivers are the catalog's alone, the old classification a line apart; a standing
+    crew on another branch's car is not «بلا سيارة»; old-book visits and readings under a live car's
+    code count for that car; the km readout is the day's (or month's) register total; empty-reach
+    readers get plain figures instead of company-wide links; an accident refreshes a closed period
+    at once; the violations period amount is plain and the owed amount opens its register; the
+    custody outside-kind amount opens «لوحة تحكم العهدة», pending memos cut at 5 and «تنتظر التسوية»
+    lists every part; lists open in the card's order. Words: «بانتظار الفاتورة», «منها N متأخرة»,
+    «فروع بها سيارات نشطة», «خارج الورشة» on the km lines, «ترخيص منتهٍ (خارج الورشة)», «المتاحون
+    اليوم (مع المعيَّنين)», «أنواع التشغيل (كل الحالات)», and in «أرقام الفترة» «خرج منها حتى الآن»
+    and no «نشطة» on the coverage line.
+  - New parity specs pin each pair on the pinned clock (2026-11-01 Cairo): workshop, branches and
+    drivers, km and the old book, the registers (API); registers, receipts figures, vehicles and
+    drivers licence state (web).
+
 - **A role holding a retired permission can be saved again.** «لما بعدل صلاحيات دور بيظهر كدا !
   Unknown permission keys: applicant.returnToStage» (the role «الموارد البشرية Test»).
   - The cause: `applicant.returnToStage` was retired on 2026-11-16 (replaced by

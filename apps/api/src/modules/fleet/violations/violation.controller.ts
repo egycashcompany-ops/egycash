@@ -1,7 +1,9 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
 import {
+  type FleetViolationDto,
   type FleetViolationRollupQuery,
+  type FleetViolationsListMeta,
   type ListFleetViolationsQuery,
   type RecordFleetDriverViolation,
   type RecordFleetDriverViolations,
@@ -12,7 +14,7 @@ import {
   type SetRollupCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
-import { created, noContent, ok, okPage, validated } from '../../../platform/web';
+import { created, noContent, ok, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toGrievanceDto, toViolationDto, vehicleIdsOf } from '../fleet.mappers';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
@@ -23,10 +25,15 @@ type IdParam = { id: string };
 export const listViolations = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetViolationsQuery>(req);
   // The codes for the cars ON this page, in one read — a row kept from the old book for a car
-  // the registry never had carries its own code and needs no lookup.
-  const page = await fleetViolationService.list(query);
-  const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
-  okPage(res, page, (doc) => toViolationDto(doc, codes.get(String(doc.vehicleId)) ?? null));
+  // the registry never had carries its own code and needs no lookup. The page block carries the
+  // owed amount over the WHOLE filter beside it (D03): the drivers' footer prints that.
+  const { items, meta } = await fleetViolationService.listWithOutstanding(query);
+  const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(items));
+  ok<FleetViolationDto[], FleetViolationsListMeta>(
+    res,
+    items.map((doc) => toViolationDto(doc, codes.get(String(doc.vehicleId)) ?? null)),
+    meta,
+  );
 };
 
 export const getViolationRollup = async (req: Request, res: Response): Promise<void> => {
@@ -56,7 +63,10 @@ export const recordDriverViolation = async (req: Request, res: Response): Promis
 export const recordDriverViolations = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<RecordFleetDriverViolations>(req);
   const docs = await fleetViolationService.recordDriverBatch(body, authContext(req).userId);
-  created(res, docs.map((doc) => toViolationDto(doc)));
+  created(
+    res,
+    docs.map((doc) => toViolationDto(doc)),
+  );
 };
 
 /** Carry several driver fines onto one car's year-block — one act, one transaction. */

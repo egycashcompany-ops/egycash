@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { type FleetPersonDto, type FleetRosterDayDto } from '@ecms/contracts';
 import {
+  cardReadingOf,
   findCardVehicle,
   licenceState,
   vehicleCardFacts,
@@ -72,8 +73,18 @@ const day = (driver1: string | null, driver2: string | null): FleetRosterDayDto 
 });
 
 const READINGS = [
-  { vehicleId: CAR, latestReading: 154320, latestReadingAt: '2026-11-07' },
-  { vehicleId: 'v999', latestReading: 1, latestReadingAt: '2026-01-01' },
+  {
+    vehicleId: CAR,
+    latestReading: 154320,
+    latestReadingAt: '2026-11-07',
+    newest: { reading: 154320, date: '2026-11-07' },
+  },
+  {
+    vehicleId: 'v999',
+    latestReading: 1,
+    latestReadingAt: '2026-01-01',
+    newest: { reading: 1, date: '2026-01-01' },
+  },
 ];
 
 const facts = (over: Partial<Parameters<typeof vehicleCardFacts>[0]> = {}) =>
@@ -86,6 +97,7 @@ const facts = (over: Partial<Parameters<typeof vehicleCardFacts>[0]> = {}) =>
     people: PEOPLE,
     readings: READINGS,
     locale: 'ar',
+    warnDays: 30,
     now: NOW,
     ...over,
   });
@@ -103,7 +115,7 @@ describe('the car card’s facts', () => {
       operation: 'نقل أموال',
       drivers: { kind: 'names', names: ['سامر عادل منصور', 'محمود سعيد عبد الحميد'] },
       licence: { date: '2027-03-15T00:00:00.000Z', state: 'valid' },
-      reading: { kind: 'reading', km: 154320, at: '2026-11-07' },
+      reading: { kind: 'reading', km: 154320, at: '2026-11-07', highest: null },
     });
   });
 
@@ -167,14 +179,20 @@ describe('the car card’s facts', () => {
 
   describe('the last odometer reading («وزود اخر عداد»)', () => {
     it('the car’s own reading and its day — never another car’s', () => {
-      expect(facts().reading).toEqual({ kind: 'reading', km: 154320, at: '2026-11-07' });
+      expect(facts().reading).toEqual({
+        kind: 'reading',
+        km: 154320,
+        at: '2026-11-07',
+        highest: null,
+      });
       expect(facts({ vehicle: vehicle({ id: 'v214' }) }).reading).toEqual({ kind: 'none' });
     });
 
     it('none on file: a dash', () => {
       expect(
-        facts({ readings: [{ vehicleId: CAR, latestReading: null, latestReadingAt: null }] })
-          .reading,
+        facts({
+          readings: [{ vehicleId: CAR, latestReading: null, latestReadingAt: null, newest: null }],
+        }).reading,
       ).toEqual({ kind: 'none' });
     });
 
@@ -186,6 +204,7 @@ describe('the car card’s facts', () => {
           kind: 'reading',
           km: 154320,
           at: '2026-11-07',
+          highest: null,
         });
       }
     });
@@ -194,17 +213,68 @@ describe('the car card’s facts', () => {
       expect(facts({ readings: 'hidden' }).reading).toEqual({ kind: 'hidden' });
       expect(facts({ readings: 'loading' }).reading).toEqual({ kind: 'loading' });
     });
+
+    it('«آخر قراءة عداد» is the NEWEST row; the highest is named beside it only when it differs', () => {
+      // Car 704 of the audit: 5,000 on 15/10, then 4,980 on 16/10 — the register lists the 16th
+      // first and the dashboard dates «آخر قراءة» 16/10; the card printed 5,000 · 15/10.
+      const backwards = {
+        vehicleId: CAR,
+        latestReading: 5000,
+        latestReadingAt: '2026-10-15T00:00:00.000Z',
+        newest: { reading: 4980, date: '2026-10-16T00:00:00.000Z' },
+      };
+      expect(facts({ readings: [backwards] }).reading).toEqual({
+        kind: 'reading',
+        km: 4980,
+        at: '2026-10-16T00:00:00.000Z',
+        highest: { km: 5000, at: '2026-10-15T00:00:00.000Z' },
+      });
+      // The same figure read again on a later day: one reading, the later day, no «أعلى قراءة».
+      expect(
+        cardReadingOf({
+          vehicleId: CAR,
+          latestReading: 5000,
+          latestReadingAt: '2026-10-15T00:00:00.000Z',
+          newest: { reading: 5000, date: '2026-10-16T00:00:00.000Z' },
+        }),
+      ).toEqual({ kind: 'reading', km: 5000, at: '2026-10-16T00:00:00.000Z', highest: null });
+      // A row that carries no newest point reads its one figure, as before.
+      expect(
+        cardReadingOf({
+          vehicleId: CAR,
+          latestReading: 7,
+          latestReadingAt: '2026-10-01',
+          newest: null,
+        }),
+      ).toEqual({ kind: 'reading', km: 7, at: '2026-10-01', highest: null });
+      expect(cardReadingOf(undefined)).toEqual({ kind: 'none' });
+    });
   });
 
-  it('the licence by the vehicles board’s rule: the Cairo day, expired ON its day, soon within 30', () => {
-    expect(licenceState('2026-11-09T00:00:00.000Z', NOW)).toBe('expired');
-    expect(licenceState('2026-11-25T00:00:00.000Z', NOW)).toBe('soon');
-    expect(licenceState('2027-03-15T00:00:00.000Z', NOW)).toBe('valid');
-    expect(licenceState(null, NOW)).toBe('unknown');
+  it('the licence by the vehicles board’s rule: the Cairo day, expired ON its day, soon within W', () => {
+    expect(licenceState('2026-11-09T00:00:00.000Z', 30, NOW)).toBe('expired');
+    expect(licenceState('2026-11-25T00:00:00.000Z', 30, NOW)).toBe('soon');
+    expect(licenceState('2027-03-15T00:00:00.000Z', 30, NOW)).toBe('valid');
+    expect(licenceState(null, 30, NOW)).toBe('unknown');
     expect(facts({ vehicle: vehicle({ licenseExpiresAt: '' }) }).licence).toEqual({
       date: null,
       state: 'unknown',
     });
+  });
+
+  it('«ينتهي قريبًا» inside the admin’s warning days — not a fixed thirty (D29)', () => {
+    // Cairo 2026-11-01 01:30. A licence of 2026-12-10 is 39 days away: the dashboard counts it in
+    // «تنتهي خلال 45 يومًا» when the setting is 45, and the card must paint it amber then.
+    const at = Date.parse('2026-10-31T23:30:00.000Z');
+    const in39 = '2026-12-10T00:00:00.000Z';
+    expect(licenceState(in39, 45, at)).toBe('soon');
+    expect(licenceState(in39, 30, at)).toBe('valid');
+    expect(
+      facts({ vehicle: vehicle({ licenseExpiresAt: in39 }), warnDays: 45, now: at }).licence.state,
+    ).toBe('soon');
+    // Expired ON its day by the Cairo calendar — a licence of today, whatever its stored instant.
+    expect(licenceState('2026-11-01T00:00:00.000Z', 45, at)).toBe('expired');
+    expect(licenceState('2026-11-01T10:00:00.000Z', 45, at)).toBe('expired');
   });
 });
 

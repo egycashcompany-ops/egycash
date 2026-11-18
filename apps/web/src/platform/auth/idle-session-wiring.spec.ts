@@ -148,15 +148,15 @@ describe('the window is the SERVER’s number', () => {
     // The page-load way in resumes through the shared renewal, which is the one that learns it
     // (asserted above) — so it is learned there too, not restated beside it.
     expect(AUTH_API).toContain('if ((await refreshAtBootstrap()) !== \'renewed\') return null;');
-    expect(API_CLIENT).toContain('export const refreshAtBootstrap = (): Promise<RenewOutcome> => refreshWithRetry();');
+    expect(API_CLIENT).toContain('export const refreshAtBootstrap = (): Promise<RenewOutcome> => refreshWithRetry(true);');
   });
 
   it('renews through the shared single-flight, so it cannot race the lazy refresh', () => {
     // Two rotations of a single-use refresh token read as replay server-side, which revokes the
     // session — the exact opposite of what this feature is for.
     expect(GUARD).toContain('renewSession()');
-    expect(API_CLIENT).toContain('export const renewSession = (): Promise<RenewOutcome> => sharedRefresh();');
-    expect(API_CLIENT).toContain("const tryRefresh = async (): Promise<boolean> => (await sharedRefresh()) === 'renewed';");
+    expect(API_CLIENT).toContain('export const renewSession = (): Promise<RenewOutcome> => sharedRefresh(true);');
+    expect(API_CLIENT).toContain("const tryRefresh = async (): Promise<boolean> => (await sharedRefresh(false)) === 'renewed';");
   });
 
   it('signs out only on a refusal, and retries soon when the renewal got no answer', () => {
@@ -179,13 +179,14 @@ describe('the window is the SERVER’s number', () => {
   });
 });
 
-describe('the settings page cannot set a window that signs out somebody who is working', () => {
-  // The window is `auth.session.idleMinutes`, set on the settings page, and a browser learns a new
-  // value only at its next renewal. Until then it renews on the cadence of the window it was last
-  // told, which is never slower than `RENEW_AT_MOST_EVERY_MS`. So the server can see a working
-  // session's `lastUsedAt` that old, under the NEW window: the setting's floor must be at least two
-  // of those cadences, or lowering it would close a live session at its first renewal. The floor
-  // lives in the api (`auth.settings.ts`); this reads it from there so neither side can move alone.
+describe('the settings page cannot set a window shorter than two renewal cadences', () => {
+  // The window is `auth.session.idleMinutes`, set on the settings page. A working browser renews
+  // every half window, but never less often than `RENEW_AT_MOST_EVERY_MS`, so with the floor at two
+  // of those every allowed window gets the same five-minute cadence, and the server's clock for a
+  // person at work is never more than one cadence old against a window of at least two. (Lowering
+  // the setting is made safe separately: a renewal is judged by the window its screen was told,
+  // ADR-039.) The floor lives in the api (`auth.settings.ts`); this reads it from there so neither
+  // side can move alone.
   const SETTINGS = read('../../../../api/src/platform/auth/auth.settings.ts');
   const declared = /SESSION_IDLE_MINUTES = \{ min: (\d+), max: ([\d *]+), default: (\d+) \}/.exec(
     SETTINGS,
@@ -211,9 +212,16 @@ describe('the settings page cannot set a window that signs out somebody who is w
         const id = `systemAdmin.settings.${kind}.auth.session.idleMinutes`;
         expect(translate(locale, id), `${locale} ${kind}`).not.toBe(id);
       }
-      expect(translate(locale, 'systemAdmin.settings.descriptions.auth.session.idleMinutes')).toMatch(
-        /10.*1[,]?440/,
-      );
+      // The range the description states is the declared one, so moving either end without the
+      // words fails here.
+      const min = Number(declared?.[1]);
+      const max = (declared?.[2] ?? '').split('*').reduce((product, n) => product * Number(n), 1);
+      const text = translate(
+        locale,
+        'systemAdmin.settings.descriptions.auth.session.idleMinutes',
+      ).replace(/,/g, '');
+      expect(text).toContain(`${min} `);
+      expect(text).toContain(String(max));
     }
   });
 });

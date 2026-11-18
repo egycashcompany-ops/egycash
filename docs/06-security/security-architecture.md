@@ -67,11 +67,16 @@ reading the log can tell «stepped away» from «taken over» (`refresh-reuse`).
 The clock is `lastUsedAt`, which the browser keeps fresh by renewing **while somebody is there**
 and stops the moment they are not (`platform/auth/idle-session.ts`): a renewal only happens when
 there has been activity since the previous one, so a working session never times out however long
-it lasts, and an abandoned one is not held open by a timer. The window travels to the browser in
-the refresh response, so the countdown on screen and the rule on the server are the same number,
-and a change on the settings page is obeyed at the first renewal after the settings cache's minute.
-The floor of ten minutes is two of the browser's longest renewal cadences (five minutes), so
-lowering the setting cannot close a session that is being used. The last minute is a warning with a
+it lasts, and an abandoned one is not held open by a timer. Only a person moves that clock: a
+renewal that a request needed after its access token expired (a badge poll, say) says
+`presence: false`. It rotates the token but leaves `lastUsedAt` where the last person left it, so
+polls cannot keep an abandoned screen open on the server, even with a window longer than the
+15-minute token. The window travels to the browser in every sign-in and refresh response. A
+renewal is judged by the longer of the current setting and the window that session's screen was
+last told (`sessions.idleMinutesTold`). So a lowered setting never closes a session before its
+screen has counted down, and from that renewal on, the countdown on screen and the rule on the
+server are the same number. Saving the setting clears its cache, so the next renewal reads the new
+value. The last minute is a warning with a
 countdown, which is also what protects unsaved work from vanishing without notice.
 
 The guard (`platform/auth/IdleSessionGuard.tsx`) is mounted on **every** signed-in surface: the

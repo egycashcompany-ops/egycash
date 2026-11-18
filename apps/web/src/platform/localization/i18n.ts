@@ -11366,7 +11366,7 @@ const en: Record<string, string> = {
   'systemAdmin.settings.descriptions.auth.lockout.minutes':
     'How long a locked account cannot sign in, from 1 to 1,440 minutes (24 hours). After that, the user can try again.',
   'systemAdmin.settings.descriptions.auth.session.idleMinutes':
-    'A session nobody uses for this long is signed out automatically, after a one-minute warning on screen. From 10 to 1,440 minutes (24 hours). Someone who is using the system is never signed out, however long they work. A change reaches screens that are already open within a few minutes.',
+    'A session (a screen open on a device) that nobody uses for this long is closed automatically, after a one-minute warning on screen. From 10 to 1,440 minutes (24 hours). Someone who is using the system is never signed out, however long they work. A change applies to each open screen from its next renewal, within about five minutes on a screen in use; until then a screen keeps the duration it is counting down.',
   'systemAdmin.settings.descriptions.auth.loginIdentifiers':
     'What staff may type on the sign-in page to identify themselves: username, email address or employee code. At least one must stay enabled.',
   'systemAdmin.settings.descriptions.auth.passkeys.enabled':
@@ -26523,7 +26523,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.descriptions.auth.lockout.minutes':
     'المدة التي يُمنع فيها الحساب المقفل من تسجيل الدخول، من 1 إلى 1440 دقيقة (24 ساعة). بعدها يمكن للمستخدم المحاولة من جديد.',
   'systemAdmin.settings.descriptions.auth.session.idleMinutes':
-    'إذا لم يُستخدم الحساب طوال هذه المدة يُسجَّل خروجه تلقائيًا، بعد تنبيه يظهر على الشاشة قبلها بدقيقة. من 10 إلى 1440 دقيقة (24 ساعة). لا يُسجَّل خروج من يستخدم النظام مهما طالت مدة عمله، ويصل التغيير إلى الشاشات المفتوحة خلال دقائق.',
+    'إذا لم تُستخدم الجلسة (الشاشة المفتوحة على جهاز) طوال هذه المدة تُغلق تلقائيًا، بعد تنبيه يظهر على الشاشة قبلها بدقيقة. من 10 إلى 1440 دقيقة (24 ساعة). لا يُسجَّل خروج من يستخدم النظام مهما طالت مدة عمله. ويُطبَّق التغيير على كل شاشة مفتوحة من تجديدها التالي، أي خلال خمس دقائق تقريبًا للشاشة المستخدمة، وتحتفظ الشاشة حتى ذلك الحين بالمدة التي تعدّها تنازليًا.',
   'systemAdmin.settings.descriptions.auth.loginIdentifiers':
     'ما يمكن للموظف إدخاله في صفحة الدخول للتعريف بنفسه: اسم المستخدم أو البريد الإلكتروني أو الكود الوظيفي. يجب أن يبقى واحد منها على الأقل مفعّلًا.',
   'systemAdmin.settings.descriptions.auth.passkeys.enabled':

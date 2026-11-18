@@ -716,10 +716,11 @@ describe('the filters are addressable', () => {
 // — the inactivity window was a deployment variable; it is now this page's setting, where the
 // owner looked for it.
 describe('the inactivity sign-out window', () => {
-  it('is under «عام» → «الدخول وكلمات المرور», named in Arabic, with its 30-minute default', () => {
+  // The default itself (30) is pinned where it is declared: the api's definitions test and the
+  // wiring spec. Here the fixture supplies it, so asserting it would only test the fixture.
+  it('is under «عام» → «الدخول وكلمات المرور», named in Arabic', () => {
     const markup = render({ locale: 'ar', search: '?dept=general' });
     expect(sectionAround(markup, SettingKeys.SessionIdleMinutes)).toBe('general.signIn');
-    expect(markup).toContain(translate('ar', settingLabelKey(SettingKeys.SessionIdleMinutes)));
     expect(markup).toContain('تسجيل الخروج بعد عدم الاستخدام (بالدقائق)');
   });
 });

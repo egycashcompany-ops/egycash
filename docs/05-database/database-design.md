@@ -71,16 +71,23 @@ Indexes: `ux_email`, `ix_companyId_branchId_status`.
 
 ### sessions  *(auth)*
 
-> **Out of date (drift check, 2026-11-05).** The session holds `currentTokenHash` (unique) and
-> `usedTokenHashes` for replay detection, not `refreshTokenHash`, and records how it was opened
-> (`method`: password, passkey, portal challenge). Read the model under `apps/api/src` until this
-> block is rewritten.
-
 ```jsonc
-{ "userId": "…", "refreshTokenHash": "…", "family": "uuid",   // rotation family (ADR-006)
+{ "userId": "…", "family": "uuid",                       // rotation family (ADR-006)
+  "currentTokenHash": "…",                               // unique; hashed refresh token
+  "usedTokenHashes": ["…"],                              // bounded; a replay of one revokes the family
   "device": { "userAgent": "…", "ip": "…" },
+  "method": "password | passkey | portalChallenge",      // how it was opened (ADR-035)
+  "createdAt": "…",
+  "lastUsedAt": "…",          // the inactivity clock: moved only by a renewal a PERSON made (ADR-039)
+  "idleMinutesTold": 30,      // the window this session's screen was last told (ADR-039)
   "expiresAt": "TTL index", "revokedAt": null, "revokedReason": null }
 ```
+Indexes: `ux_currentTokenHash`, `ix_usedTokenHashes`, `ix_userId`, `ttl_expiresAt`.
+
+A renewal is judged by the longer of `idleMinutesTold` and the current `auth.session.idleMinutes`,
+and writes the current value back. A renewal sent with `presence: false` (a request whose access
+token expired, not a person) rotates the token without moving `lastUsedAt`.
+
 Also `ix_live_lastUsedAt` — `{ lastUsedAt: -1 }`, partial on `revokedAt: null` — for the active users
 page, which reads every session renewed inside the idle window.
 

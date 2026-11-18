@@ -1621,7 +1621,12 @@ describe('the inactivity window is a setting', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ key: SettingKeys.SessionIdleMinutes, scope: 'organization', value });
 
-  const signIn = async (): Promise<{ token: string; cookie: string; sessionId: string }> => {
+  const signIn = async (): Promise<{
+    token: string;
+    cookie: string;
+    sessionId: string;
+    idleMinutes: number | undefined;
+  }> => {
     const login = await doLogin('admin@ecms.local', PASSWORD);
     const cookie = (login.cookie ?? '').split(';')[0] ?? '';
     const session = await SessionModel.findOne({ revokedAt: null }).sort({ createdAt: -1 }).exec();
@@ -1629,8 +1634,25 @@ describe('the inactivity window is a setting', () => {
       token: login.body.data?.accessToken ?? '',
       cookie,
       sessionId: String(session?._id ?? ''),
+      idleMinutes: (login.body as { data?: { idleMinutes?: number } }).data?.idleMinutes,
     };
   };
+
+  const renew = (cookie: string, body?: unknown): Promise<request.Response> => {
+    const call = request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    return body === undefined ? call : call.send(body as object);
+  };
+
+  /** The cookie the last renewal set, for the next renewal of the same session. */
+  const cookieOf = (res: request.Response): string => {
+    const set = res.headers['set-cookie'] as unknown as string[] | string | undefined;
+    const first = Array.isArray(set) ? set[0] : set;
+    return (first ?? '').split(';')[0] ?? '';
+  };
+
+  const lastUsedAtOf = async (sessionId: string): Promise<number> =>
+    (await SessionModel.findById(sessionId).lean<{ lastUsedAt: Date }>().exec())?.lastUsedAt.getTime() ??
+    Number.NaN;
 
   const ageSession = async (sessionId: string, minutes: number): Promise<void> => {
     await SessionModel.updateOne(
@@ -1657,20 +1679,23 @@ describe('the inactivity window is a setting', () => {
     expect(definition?.defaultValue).toBe(30);
   });
 
-  it('a value saved on the page is enforced and told at the next renewal', async () => {
-    const { token, cookie, sessionId } = await signIn();
+  it('a value saved on the page is told at sign-in and enforced from then on', async () => {
+    const { token } = await signIn();
     expect((await setWindow(token, 15)).status).toBe(204);
 
-    // Twenty minutes is inside the default window and past the new one.
-    await ageSession(sessionId, 20);
-    const refused = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    // A session opened after the save is told 15 at the way in, so a fresh tab counts to 15
+    // before its first renewal — and is judged by it: twenty minutes is past it.
+    const told = await signIn();
+    expect(told.idleMinutes).toBe(15);
+    await ageSession(told.sessionId, 20);
+    const refused = await renew(told.cookie);
     expect(refused.status).toBe(401);
     expect((refused.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_IDLE');
 
-    // A session inside the new window renews, and is told the new number.
+    // Inside the window it renews, and is told the same number.
     const fresh = await signIn();
     await ageSession(fresh.sessionId, 14);
-    const renewed = await request(app).post('/api/v1/auth/refresh').set('Cookie', fresh.cookie);
+    const renewed = await renew(fresh.cookie);
     expect(renewed.status).toBe(200);
     expect((renewed.body as { data: { idleMinutes: number } }).data.idleMinutes).toBe(15);
   });
@@ -1694,7 +1719,70 @@ describe('the inactivity window is a setting', () => {
       .sort({ _id: -1 })
       .lean<{ changes: { field: string; old: unknown; new: unknown }[] }>()
       .exec();
-    expect(row?.changes[0]).toMatchObject({ field: 'organization', new: 45 });
+    // The first save of this block: no stored value before it (afterEach removes it).
+    expect(row?.changes[0]).toMatchObject({ field: 'organization', old: null, new: 45 });
+  });
+
+  it('a lowered window waits for the screen to be told it: the renewal is judged by the longer', async () => {
+    // The screen was told 30 at sign-in and is counting down to 30. Ten minutes after the setting
+    // drops to 10 it is still inside ITS window, so its first renewal must be served — and tell it
+    // 10. Judged by 10 straight away, the person would come back to a session closed without the
+    // one-minute warning and lose what they had typed.
+    const { token, cookie, sessionId } = await signIn();
+    expect((await setWindow(token, 10)).status).toBe(204);
+    await ageSession(sessionId, 15);
+    const told = await renew(cookie, { presence: true });
+    expect(told.status).toBe(200);
+    expect((told.body as { data: { idleMinutes: number } }).data.idleMinutes).toBe(10);
+
+    // From that renewal on, the session is judged by 10.
+    await ageSession(sessionId, 11);
+    const refused = await renew(cookieOf(told), { presence: true });
+    expect(refused.status).toBe(401);
+    expect((refused.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_IDLE');
+  });
+
+  it('a renewal a request asked for does not move the inactivity clock; a person’s does', async () => {
+    const { cookie, sessionId } = await signIn();
+    await ageSession(sessionId, 20);
+    const aged = await lastUsedAtOf(sessionId);
+
+    // A badge poll met an expired token: the token rotates, the clock stays where the person left it.
+    const polled = await renew(cookie, { presence: false });
+    expect(polled.status).toBe(200);
+    expect(await lastUsedAtOf(sessionId)).toBe(aged);
+
+    // A person renews: the clock moves.
+    const person = await renew(cookieOf(polled), { presence: true });
+    expect(person.status).toBe(200);
+    expect(await lastUsedAtOf(sessionId)).toBeGreaterThan(aged + 19 * 60_000);
+  });
+
+  it('a renewal with no body counts as a person, as every browser sent before the field', async () => {
+    const { cookie, sessionId } = await signIn();
+    await ageSession(sessionId, 20);
+    const aged = await lastUsedAtOf(sessionId);
+    const renewed = await renew(cookie);
+    expect(renewed.status).toBe(200);
+    expect(await lastUsedAtOf(sessionId)).toBeGreaterThan(aged + 19 * 60_000);
+  });
+
+  it('polls cannot keep an abandoned screen open: past the window, a request’s renewal is refused too', async () => {
+    const { cookie, sessionId } = await signIn();
+    await ageSession(sessionId, 20);
+    const polled = await renew(cookie, { presence: false });
+    expect(polled.status).toBe(200);
+    // Nobody came back; the poll's renewal did not reset the clock, so it runs out on time.
+    await ageSession(sessionId, SESSION_IDLE_MINUTES.default + 1);
+    const refused = await renew(cookieOf(polled), { presence: false });
+    expect(refused.status).toBe(401);
+    expect((refused.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_IDLE');
+  });
+
+  it('refuses a renewal body it does not understand', async () => {
+    const { cookie } = await signIn();
+    const res = await renew(cookie, { presence: 'yes' });
+    expect(res.status).toBe(400);
   });
 
   it.each([0, 9, 1441, 12.5, '30'])(

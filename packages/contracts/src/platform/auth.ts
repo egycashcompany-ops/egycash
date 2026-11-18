@@ -139,15 +139,34 @@ export type LoginResponse =
       idleMinutes: number;
     };
 
+/**
+ * The body of `POST /auth/refresh` (ADR-039).
+ *
+ * `presence: false` says a REQUEST asked for this renewal, not a person: a background poll met an
+ * expired access token. The token still rotates, but `sessions.lastUsedAt`, the clock the
+ * inactivity rule reads, stays where the last person left it. Otherwise a badge polling every
+ * minute would keep an abandoned screen's session open on the server for as long as the window is
+ * longer than the access token's life.
+ *
+ * Absent means a person. That is what every browser sent before the field existed, so a page left
+ * open across a deploy keeps its session alive while somebody uses it.
+ */
+export const RefreshSessionSchema = z
+  .object({ presence: z.boolean().optional() })
+  .strict()
+  .default({});
+export type RefreshSession = z.infer<typeof RefreshSessionSchema>;
+
 export interface RefreshResponse {
   accessToken: string;
   /**
-   * Minutes of inactivity after which the server closes this session; `0` means never.
+   * Minutes of inactivity after which the server closes this session (the setting
+   * `auth.session.idleMinutes`, ADR-039).
    *
    * It travels with the token rather than being configured in the browser because the SERVER is
    * what enforces it: a client counting to a different number either signs the user out while
    * their session is still good, or leaves a dead session on screen until the next save fails.
-   * Sent on every refresh, so a deployment that changes the window is obeyed within one cycle.
+   * Sent on every refresh, so a change on the settings page reaches a screen at its next renewal.
    */
   idleMinutes: number;
 }

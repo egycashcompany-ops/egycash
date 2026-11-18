@@ -223,10 +223,13 @@ class AuthService {
   private async createSession(
     user: UserDoc,
     method: SessionMethod,
-  ): Promise<IssuedTokens & { sessionId: string }> {
+  ): Promise<IssuedTokens & { sessionId: string; idleMinutes: number }> {
     const refreshToken = randomToken();
     const context = getContext();
     const now = new Date();
+    // Read once: the window stored on the session is the one the sign-in response tells the
+    // browser, so the two cannot differ even if the setting changes in between (ADR-039).
+    const idleMinutes = await this.idleMinutes();
     const refreshExpiresAt = new Date(now.getTime() + env.REFRESH_TTL_DAYS * 86_400_000);
     const [session] = await SessionModel.create([
       {
@@ -242,6 +245,7 @@ class AuthService {
         createdAt: now,
         lastUsedAt: now,
         expiresAt: refreshExpiresAt,
+        idleMinutesTold: idleMinutes,
       },
     ]);
     if (session === undefined) throw new NotFoundError('session create failed');
@@ -250,7 +254,13 @@ class AuthService {
       String(session._id),
       user.security.permissionVersion,
     );
-    return { accessToken, refreshToken, refreshExpiresAt, sessionId: String(session._id) };
+    return {
+      accessToken,
+      refreshToken,
+      refreshExpiresAt,
+      sessionId: String(session._id),
+      idleMinutes,
+    };
   }
 
   private async denylistSession(sessionId: string): Promise<void> {
@@ -503,10 +513,8 @@ class AuthService {
     method: SessionMethod = 'password',
     changes?: { field: string; old: unknown; new: unknown }[],
   ): Promise<{ response: LoginResponse; tokens: IssuedTokens }> {
-    const { accessToken, refreshToken, refreshExpiresAt, sessionId } = await this.createSession(
-      user,
-      method,
-    );
+    const { accessToken, refreshToken, refreshExpiresAt, sessionId, idleMinutes } =
+      await this.createSession(user, method);
     await userService.recordLogin(String(user._id)); // §16.5 — Last Login on the panel
     await auditService.record({
       entityRef: userEntityRef(String(user._id)),
@@ -526,7 +534,7 @@ class AuthService {
         accessToken,
         me,
         mustChangePassword: user.security.mustChangePassword ?? false,
-        idleMinutes: await this.idleMinutes(),
+        idleMinutes,
       },
       tokens: { accessToken, refreshToken, refreshExpiresAt },
     };
@@ -716,7 +724,7 @@ class AuthService {
     }
 
     await this.savePortalChallenge(String(user._id), afterSuccess(state));
-    const { accessToken, refreshToken, refreshExpiresAt } = await this.createSession(
+    const { accessToken, refreshToken, refreshExpiresAt, idleMinutes } = await this.createSession(
       user,
       'portalChallenge',
     );
@@ -733,7 +741,7 @@ class AuthService {
         accessToken,
         me: await this.buildMe(user),
         mustChangePassword: false,
-        idleMinutes: await this.idleMinutes(),
+        idleMinutes,
       },
       tokens: { accessToken, refreshToken, refreshExpiresAt },
     };
@@ -759,7 +767,18 @@ class AuthService {
     await userService.setPortalChallenge(userId, state);
   }
 
-  async refresh(presentedToken: string): Promise<IssuedTokens & { idleMinutes: number }> {
+  /**
+   * Renew a session from its refresh cookie.
+   *
+   * `presence` says whether a person asked for it (the browser's activity renewal, «stay signed
+   * in», a page load) or a request did (a background poll that met an expired access token). Both
+   * rotate the token and tell the browser the window. Only a person moves `lastUsedAt`, the clock
+   * the inactivity rule reads (`RefreshSessionSchema`, ADR-039).
+   */
+  async refresh(
+    presentedToken: string,
+    { presence = true }: { presence?: boolean } = {},
+  ): Promise<IssuedTokens & { idleMinutes: number }> {
     const presentedHash = sha256(presentedToken);
     const now = new Date();
 
@@ -823,10 +842,17 @@ class AuthService {
     // had never passed — which is the whole control. A separate reason and error code, because
     // «you stepped away» and «your session was taken over» are different things to be told.
     //
-    // The window is read here, at the renewal, and the same number goes back to the browser below,
-    // so a change on the settings page is enforced and shown together from this renewal on.
+    // WHICH WINDOW. The setting can change while a screen is open, and a screen learns the new
+    // number only at its next renewal. Until then it counts down to the number it was last told
+    // (`idleMinutesTold`), and that is the number this renewal is judged by when it is the longer
+    // one. Judged by a lowered setting instead, a person away for less than the window on their
+    // screen would come back to a session already closed, with no warning, and lose what they had
+    // typed. A raised setting applies at once: it can only keep a session open longer. Either way
+    // the CURRENT setting goes back to the browser below and onto the session, so from this renewal
+    // on the countdown and the rule are the same number again (ADR-039).
     const idleMinutes = await this.idleMinutes();
-    const idleMs = idleMinutes * 60_000;
+    const judgedBy = Math.max(idleMinutes, session.idleMinutesTold ?? idleMinutes);
+    const idleMs = judgedBy * 60_000;
     if (idleMs > 0 && now.getTime() - session.lastUsedAt.getTime() > idleMs) {
       await this.revokeSession(session, 'idle-timeout');
       await auditService.record({
@@ -854,7 +880,9 @@ class AuthService {
     const renewals = await consumeRateLimit(SESSION_RENEWAL_LIMIT, String(session._id));
     if (!renewals.allowed) throw new RateLimitedError(renewals.retryAfter);
 
-    // Rotate: current → used (bounded), new token becomes current; sliding expiry.
+    // Rotate: current → used (bounded), new token becomes current; sliding expiry. `lastUsedAt`
+    // moves only for a person (see the method's comment): a poll renewing the token must not
+    // reset the inactivity clock of a screen nobody is at.
     const newRefreshToken = randomToken();
     const refreshExpiresAt = new Date(now.getTime() + env.REFRESH_TTL_DAYS * 86_400_000);
     const rotated = await SessionModel.findOneAndUpdate(
@@ -862,8 +890,9 @@ class AuthService {
       {
         $set: {
           currentTokenHash: sha256(newRefreshToken),
-          lastUsedAt: now,
+          ...(presence ? { lastUsedAt: now } : {}),
           expiresAt: refreshExpiresAt,
+          idleMinutesTold: idleMinutes,
         },
         $push: { usedTokenHashes: { $each: [presentedHash], $slice: -USED_HASHES_KEPT } },
       },
@@ -888,9 +917,10 @@ class AuthService {
    * The inactivity window in minutes (`auth.session.idleMinutes`, «الدخول وكلمات المرور» on the
    * settings page), for the server to enforce and the browser to count down to.
    *
-   * Asked of the settings service on every sign-in and renewal rather than held, so a change made
-   * on the page is obeyed within the settings cache's minute, with no deploy and no new bundle.
-   * One organization-wide value: the subject carries no user or branch.
+   * Asked of the settings service on every sign-in and renewal rather than held. Saving the
+   * setting clears its cache entry, so the next sign-in or renewal anywhere reads the new value,
+   * with no deploy and no new bundle. One organization-wide value: the subject carries no user or
+   * branch.
    */
   async idleMinutes(): Promise<number> {
     return settingsService.resolve<number>(SettingKeys.SessionIdleMinutes, {

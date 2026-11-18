@@ -6,14 +6,17 @@ import { declareSetting } from '../settings';
 
 /**
  * The inactivity window, in minutes: a session nobody has used for this long is closed at its next
- * renewal (`auth.service.ts`, `refresh`).
+ * renewal (`auth.service.ts`, `refresh`; ADR-039).
  *
- * THE FLOOR IS TEN, NOT ONE. An active browser renews every half window but never less often than
- * every five minutes (`RENEW_AT_MOST_EVERY_MS`, web `idle-session.ts`), and it learns a new window
- * only at that renewal. So a session can reach the server up to five minutes after its last
- * renewal, under whatever window it was last told. A window of ten or more is still open then,
- * whatever the old value was: lowering the setting can never sign out someone who is working. A
- * smaller window could, at the first renewal after the change.
+ * Changing it is safe while screens are open. A renewal is judged by the longer of the current
+ * value and the one that session's screen was last told (`sessions.idleMinutesTold`), so a lowered
+ * value never closes a session before its screen has counted down to the number it showed.
+ *
+ * THE FLOOR IS TEN. A working browser renews every half window, but never less often than every
+ * five minutes (`RENEW_AT_MOST_EVERY_MS`, web `idle-session.ts`). At ten or more, every allowed
+ * window renews on that same five-minute cadence, and the server's clock for a person at work is
+ * never more than half the window old. It is also the old default; below it the one-minute warning
+ * would be a large part of the window. A web test holds the floor to the cadence.
  *
  * NO OFF SWITCH. The deployment variable this replaced took `0` to switch the control off; a
  * settings page is reachable by every holder of `setting.edit`, and the rule is a security control,

@@ -18,12 +18,21 @@ its entry here in the same PR.
   - «تسجيل الخروج بعد عدم الاستخدام (بالدقائق)» sits under «عام» → «الدخول وكلمات المرور». It is the
     organization setting `auth.session.idleMinutes`: default 30, from 10 to 1440 minutes, with no
     off switch. Changes are audited like every setting.
-  - Every sign-in and renewal reads it, and the renewal sends back the number it was judged by, so
-    the countdown on screen and the rule on the server stay the same. A change reaches open screens
-    at their next renewal, within a few minutes, with no deploy.
-  - The floor is ten minutes because a browser renews at least every five minutes and learns a new
-    window only at that renewal. Lowering the setting can therefore never sign out someone who is
-    working. A web test reads the floor from the API and holds it to that cadence.
+  - Every sign-in and renewal reads it and sends it back, so the countdown on screen and the rule on
+    the server stay the same. A change reaches each open screen at its next renewal, with no
+    deploy: within about five minutes on a screen in use.
+  - **A lowered value waits for the screen to be told it.** Each session stores the window its
+    screen was last shown (`sessions.idleMinutesTold`), and a renewal is judged by the longer of
+    that and the current value. Lowering the setting therefore never closes a session before its
+    countdown has finished, and so never closes it without the one-minute warning.
+  - **Background requests no longer keep an abandoned screen open.** A renewal that a request
+    needed after its token expired (the notification badge polling, for one) sends
+    `presence: false`. It rotates the token but does not move `lastUsedAt`. Before, any window
+    longer than the 15-minute token would have let polls hold an empty desk's session open on the
+    server. In the browser, a person's renewal is never folded into one of those. A renewal with no
+    body counts as a person, which keeps pages left open across the deploy working.
+  - The floor is ten minutes, two of the browser's five-minute renewal cadences. A web test reads
+    it from the API and holds it to that cadence.
   - The `SESSION_IDLE_MINUTES` deployment variable is retired and ignored if set. Production never
     set it, so it ran at the 10-minute default until this change.
 

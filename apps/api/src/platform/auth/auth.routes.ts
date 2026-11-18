@@ -15,6 +15,7 @@ import {
   PasskeyIdParamSchema,
   PasskeyRegistrationOptionsSchema,
   PasskeyRegistrationVerifySchema,
+  RefreshSessionSchema,
   RenamePasskeySchema,
   SessionIdParamSchema,
   StartPortalChallengeSchema,
@@ -186,6 +187,7 @@ export const buildAuthRouter = (): Router => {
   router.post(
     '/refresh',
     perIpCeiling('auth-refresh', env.AUTH_REFRESH_RATE_LIMIT_PER_IP),
+    validate({ body: RefreshSessionSchema }),
     asyncHandler(refresh),
   );
   router.post(

@@ -396,13 +396,33 @@ describe('punchWindowFor — no punch belongs to two days', () => {
     expect(next.from.getTime() - w.to.getTime()).toBe(1);
   });
 
-  it('with a shift it is the shift span plus the D3 margins, which DO overlap on purpose', () => {
+  it('with a same-day shift it is the span plus the D3 margins, the tail trimmed where it would collide', () => {
     const w = punchWindowFor(DAY, GENERAL);
-    const { start, end } = shiftWindow(DAY, GENERAL);
+    const { start } = shiftWindow(DAY, GENERAL);
+    expect(w.from.getTime()).toBe(start.getTime() - 6 * 60 * 60 * 1000);
+
+    // THIS ASSERTION USED TO READ THE OTHER WAY, and it was wrong in this describe block of all
+    // places. It asserted that consecutive windows overlap «on purpose» — true of a roster that
+    // crosses midnight, where the shift itself says which night a 17:00 scan belongs to, and NOT
+    // true of a nine-to-five, where the twelve-hour tail reached 05:00 and the next day's window
+    // opened at 03:00. A scan in those two hours belonged to both days: yesterday's departure
+    // after nineteen hours, and this morning's arrival. The block is titled «no punch belongs to
+    // two days»; this is the case that did.
+    //
+    // The tail is trimmed to the instant before the next day's window opens — 03:00, still ten
+    // hours past the end and past any real departure — and not one millisecond further.
+    const next = punchWindowFor(dayAfter(DAY), GENERAL);
+    expect(w.to.getTime()).toBe(next.from.getTime() - 1);
+  });
+
+  it('with a MIDNIGHT-CROSSING shift the margins still overlap, which is the roster talking', () => {
+    // Kept as a property, for the reason the trimmed case is not: a night shift's own definition
+    // says a scan at five in the afternoon follows the night that started the evening before.
+    const w = punchWindowFor(DAY, NIGHT);
+    const { start, end } = shiftWindow(DAY, NIGHT);
     expect(w.from.getTime()).toBe(start.getTime() - 6 * 60 * 60 * 1000);
     expect(w.to.getTime()).toBe(end.getTime() + 12 * 60 * 60 * 1000);
-    // Stated as a property so nobody "fixes" it later: an overtime tail belongs to the day worked.
-    expect(punchWindowFor(dayAfter(DAY), GENERAL).from.getTime()).toBeLessThan(w.to.getTime());
+    expect(punchWindowFor(dayAfter(DAY), NIGHT).from.getTime()).toBeLessThan(w.to.getTime());
   });
 });
 
@@ -793,5 +813,41 @@ describe('«lateness only for now» — the word for a day with no scan', () => 
     );
     expect(row?.status).toBe('absent');
     expect(row?.flags).toContain('overriddenByManager');
+  });
+});
+
+describe('two consecutive days may not claim the same scan', () => {
+  const nextDay = new Date(DAY.getTime() + 86_400_000);
+
+  it('leaves no gap and no overlap between a same-day pattern‘s windows', () => {
+    const today = punchWindowFor(DAY, COMPANY);
+    const tomorrow = punchWindowFor(nextDay, COMPANY);
+    // Touching, not overlapping: the last millisecond of one is the one before the next begins.
+    expect(today.to.getTime()).toBe(tomorrow.from.getTime() - 1);
+  });
+
+  it('keeps a four-in-the-morning scan out of the PREVIOUS day', () => {
+    // THE DEFECT THIS CLOSES, and it only appeared when the 09:00–17:00 company default was
+    // switched on: before that most employees had no expectation at all and their window was the
+    // strict Cairo day. With the pattern on, 09:00−6h to 17:00+12h runs to 05:00 the next morning
+    // while the next day's window opens at 03:00 — so a night guard's 04:00 scan sat in both, and
+    // positional pairing would have made it yesterday's departure after a nineteen-hour day.
+    const atFour = cairoInstant(nextDay, '04:00');
+    expect(atFour >= punchWindowFor(DAY, COMPANY).to).toBe(true);
+    expect(atFour >= punchWindowFor(nextDay, COMPANY).from).toBe(true);
+  });
+
+  it('still keeps a long overtime tail — to three in the morning', () => {
+    const window = punchWindowFor(DAY, COMPANY);
+    expect(cairoInstant(nextDay, '02:00') < window.to).toBe(true);
+    expect(cairoInstant(DAY, '23:30') < window.to).toBe(true);
+  });
+
+  it('leaves a shift that crosses midnight overlapping, as it always has', () => {
+    // Deliberate, and older than this change: the roster says which day a night worker's 17:00
+    // scan belongs to, so a late exit belongs to the night that was worked rather than the next.
+    const today = punchWindowFor(DAY, NIGHT);
+    const tomorrow = punchWindowFor(nextDay, NIGHT);
+    expect(today.to.getTime()).toBeGreaterThan(tomorrow.from.getTime());
   });
 });

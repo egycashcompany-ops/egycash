@@ -218,10 +218,30 @@ export const punchWindowFor = (
     return { from: cairoInstant(workDate, '00:00'), to: new Date(nextMidnight.getTime() - 1) };
   }
   const { start, end } = shiftWindow(workDate, shift);
-  return {
-    from: new Date(start.getTime() - PUNCH_WINDOW_BEFORE_MS),
-    to: new Date(end.getTime() + PUNCH_WINDOW_AFTER_MS),
-  };
+  const from = new Date(start.getTime() - PUNCH_WINDOW_BEFORE_MS);
+  const to = new Date(end.getTime() + PUNCH_WINDOW_AFTER_MS);
+  if (shift.crossesMidnight) return { from, to };
+  // A SAME-DAY PATTERN MAY NOT REACH INTO THE NEXT DAY'S OWN MARGIN.
+  //
+  // This became load-bearing the moment the 09:00–17:00 company default was switched on, because
+  // until then most employees had NO expectation and their window was the strict Cairo day. With
+  // the pattern on, day D's window runs to 05:00 on D+1 and day D+1's begins at 03:00 — so a scan
+  // at four in the morning fell inside BOTH. Positional pairing would then make it D's last-out,
+  // reporting a nineteen-hour day, and D+1's first-in at the same time. Night security scanning at
+  // 04:00 is exactly who that would have happened to.
+  //
+  // The tail is kept as long as it can honestly be: for 09:00–17:00 it still runs to 03:00 the
+  // next morning, which is ten hours past the end and far beyond any real departure. What it can
+  // no longer do is claim a punch the next day has a better claim to.
+  //
+  // A shift that genuinely CROSSES MIDNIGHT is left alone. Consecutive night shifts' windows do
+  // overlap, deliberately and from the start: the roster says which day a 17:00 scan belongs to,
+  // and a night worker's late exit belongs to the night that was worked.
+  const nextWindowStart = new Date(
+    shiftWindow(new Date(workDate.getTime() + 86_400_000), shift).start.getTime() -
+      PUNCH_WINDOW_BEFORE_MS,
+  );
+  return { from, to: to < nextWindowStart ? to : new Date(nextWindowStart.getTime() - 1) };
 };
 
 const minutesBetween = (from: Date, to: Date): number =>

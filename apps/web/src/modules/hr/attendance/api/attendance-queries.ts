@@ -12,6 +12,9 @@ import {
   type DecideAttendanceDecision,
   type DecideAttendanceRegularization,
   type RevokeAttendanceDecision,
+  type RetryAttendanceQuarantine,
+  type DiscardAttendanceQuarantine,
+  type CreateAttendanceEnrollment,
   type UpdateShift,
 } from '@ecms/contracts';
 import { listKey } from '../../../../shared/lib/query-keys';
@@ -26,10 +29,15 @@ const SHEET_SUMMARY = 'attendanceSheetSummary';
 const DECISIONS = 'attendanceDecisions';
 const DECISION_SIGNALS = 'attendanceDecisionSignals';
 const EMPLOYEE_SUMMARY = 'attendanceEmployeeSummary';
+const EMPLOYEE_PERIOD = 'attendanceEmployeePeriod';
 const MY_DAYS = 'attendanceMyDays';
 const REGULARIZATIONS = 'attendanceRegularizations';
 const MY_REGULARIZATIONS = 'attendanceMyRegularizations';
 const PENDING = 'attendancePendingRegularizations';
+const UNMATCHED = 'attendanceUnmatchedIds';
+const QUARANTINE = 'attendanceQuarantine';
+const BACKFILLS = 'attendanceBackfills';
+const DEVICES = 'attendanceDevices';
 
 export const useShifts = () =>
   useQuery({
@@ -192,6 +200,27 @@ export const useMyAttendanceSummary = (params: Params) =>
     placeholderData: (prev) => prev,
   });
 
+/**
+ * One employee's resolved period. Keyed apart from the summary because the two are read at
+ * different rates — the figures are one small object the header draws, this is up to a year of
+ * days the table and the calendar page through — and both come from the same resolution, so they
+ * cannot disagree.
+ */
+export const useAttendanceEmployeePeriod = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, EMPLOYEE_PERIOD, params),
+    queryFn: () => api.attendanceEmployeePeriod(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useMyAttendancePeriod = (params: Params) =>
+  useQuery({
+    queryKey: listKey(MODULE, EMPLOYEE_PERIOD, { ...params, me: 1 }),
+    queryFn: () => api.myAttendancePeriod(params),
+    placeholderData: (prev) => prev,
+  });
+
 export const useMyAttendanceDays = (params: Params) =>
   useQuery({
     queryKey: listKey(MODULE, MY_DAYS, params),
@@ -262,6 +291,123 @@ export const useApproveOvertime = () => {
       void client.invalidateQueries({ queryKey: [MODULE, DAYS] });
       void client.invalidateQueries({ queryKey: [MODULE, MY_DAYS] });
       void client.invalidateQueries({ queryKey: [MODULE, EMPLOYEE_SUMMARY] });
+    },
+  });
+};
+
+// ── AT-D4: device health ──────────────────────────────────────────────────────
+
+export const useAttendanceUnmatchedIds = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, UNMATCHED, params),
+    queryFn: () => api.attendanceUnmatchedIds(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useAttendanceQuarantine = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, QUARANTINE, params),
+    queryFn: () => api.attendanceQuarantine(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * The backfill runs. Polled while one is running, because progress is the question the card
+ * answers — and NOT polled otherwise, so a finished run costs nothing to look at. The established
+ * pattern (`refetchIntervalInBackground: false`): a tab nobody is looking at asks for nothing.
+ */
+export const useAttendanceBackfills = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, BACKFILLS, params),
+    queryFn: () => api.attendanceBackfills(params),
+    placeholderData: (prev) => prev,
+    enabled,
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((run) => run.status === 'running') ? 5_000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+export const useAttendanceDevices = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, DEVICES, params),
+    queryFn: () => api.attendanceDevices(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * Linking a machine id, then retrying its held scans.
+ *
+ * Both caches are invalidated, and so are the DAY caches: a retry turns held rows into punches,
+ * which rewrites those days — a screen still showing the pre-link numbers would be telling the
+ * person who just did the linking that nothing happened.
+ */
+export const useLinkAttendanceEnrollment = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAttendanceEnrollment) => api.createAttendanceEnrollment(body),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: [MODULE, UNMATCHED] }),
+        qc.invalidateQueries({ queryKey: [MODULE, QUARANTINE] }),
+        qc.invalidateQueries({ queryKey: [MODULE, DAYS] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET_SUMMARY] }),
+        qc.invalidateQueries({ queryKey: [MODULE, EMPLOYEE_PERIOD] }),
+      ]);
+    },
+  });
+};
+
+export const useRetryAttendanceQuarantine = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RetryAttendanceQuarantine) => api.retryAttendanceQuarantine(body),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: [MODULE, UNMATCHED] }),
+        qc.invalidateQueries({ queryKey: [MODULE, QUARANTINE] }),
+        qc.invalidateQueries({ queryKey: [MODULE, DAYS] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET_SUMMARY] }),
+        qc.invalidateQueries({ queryKey: [MODULE, EMPLOYEE_PERIOD] }),
+      ]);
+    },
+  });
+};
+
+export const useDiscardAttendanceQuarantine = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DiscardAttendanceQuarantine) => api.discardAttendanceQuarantine(body),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: [MODULE, UNMATCHED] }),
+        qc.invalidateQueries({ queryKey: [MODULE, QUARANTINE] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET_SUMMARY] }),
+      ]);
+    },
+  });
+};
+
+export const useCancelAttendanceBackfill = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.cancelAttendanceBackfill(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: [MODULE, BACKFILLS] });
+    },
+  });
+};
+
+export const useResumeAttendanceBackfill = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.resumeAttendanceBackfill(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: [MODULE, BACKFILLS] });
     },
   });
 };

@@ -1,5 +1,6 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type ListAttendanceDaysQuery, type Paginated } from '@ecms/contracts';
+import { toDateOnly } from '../../shared/business-date';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { BusinessRuleError } from '../../../../shared/errors';
 import { type ScopeSelector } from '../../../../shared/types';
@@ -33,7 +34,11 @@ class DayRecordRepository extends BaseRepository<AttendanceDayDoc> {
     options: { employeeIds?: string[] | undefined; scope?: ScopeSelector | undefined } = {},
   ): Promise<Paginated<AttendanceDayDoc>> {
     const filter: FilterQuery<AttendanceDayDoc> = {
-      workDate: { $gte: query.from, $lte: query.to },
+      // DATE-ONLY AT BOTH ENDS. `workDate` is a UTC-midnight date-only field, so a `from` carrying
+      // any time at all excludes its own day — the kind of off-by-one that answers «لا يوجد» for a
+      // date whose rows are right there. Normalised here so every caller of this read is safe,
+      // rather than in each of them.
+      workDate: { $gte: toDateOnly(query.from), $lte: toDateOnly(query.to) },
     };
     if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
     // Several branches, ORed (the daily sheet's filter takes several).

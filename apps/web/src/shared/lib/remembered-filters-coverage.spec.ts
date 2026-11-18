@@ -277,6 +277,11 @@ const MIGRATION_PENDING: readonly string[] = [];
  */
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
+  // AT-D4 has no filters to remember, and the detector does not flag it — so no note either, which
+  // this file's own rule calls a stale look. It is the WHOLE list of machine ids nothing in ECMS
+  // answers to, short by nature and shorter every time one is linked or ignored, beside the
+  // backfill's progress. Narrowing it would only hide the thing it exists to show.
+  ['modules/hr/attendance/pages/DeviceHealthPage.tsx'],
   ['modules/atm/pages/AtmSettingsPage.tsx'],
   [
     'modules/atm/pages/LayoutImportPage.tsx',

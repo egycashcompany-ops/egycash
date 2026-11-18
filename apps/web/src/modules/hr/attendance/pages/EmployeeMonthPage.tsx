@@ -18,15 +18,17 @@ import { DecisionsTable } from '../components/DecisionsTable';
 import { periodRange } from '../components/period';
 import { downloadAttendanceExport } from '../api/attendance-api';
 import {
-  useAttendanceDays,
   useAttendanceDecisions,
+  useAttendanceEmployeePeriod,
   useAttendanceEmployeeSummary,
 } from '../api/attendance-queries';
 import { useEmployee } from '../../employee-management/employees/api/employee-queries';
 import { useEmployeePhotoUrl } from '../../employee-management/employees/api/employee-photo';
 
-/** One page of days: 92 is the longest period the picker allows, and 100 is the server's cap. */
-const PAGE_SIZE = 100;
+// No page size here any more. `/days/employee-period` answers one entry per calendar DATE of the
+// period rather than a page of stored rows — which is the fix: a date with no row was simply
+// absent from the old answer, so a month skipped the days it had punches for, and a period longer
+// than one page silently lost its tail.
 
 export const EmployeeMonthPage = (): JSX.Element => {
   const t = useT();
@@ -59,15 +61,15 @@ export const EmployeeMonthPage = (): JSX.Element => {
   };
 
   const filters = useMemo(
-    () => ({ from: period.from, to: period.to, employeeId: id, page: 1, pageSize: PAGE_SIZE }),
+    () => ({ from: period.from, to: period.to, employeeId: id }),
     [period.from, period.to, id],
   );
-  const days = useAttendanceDays(filters, id !== '');
+  const days = useAttendanceEmployeePeriod(filters, id !== '');
   const summary = useAttendanceEmployeeSummary(
     { employeeId: id, from: period.from, to: period.to },
     id !== '',
   );
-  const rows = days.data?.items ?? [];
+  const rows = days.data ?? [];
 
   // The employee record carries the photo and where they sit, which no day row does. Asked for
   // only by a caller who may read it: a reader of attendance alone still gets the whole screen,
@@ -75,7 +77,10 @@ export const EmployeeMonthPage = (): JSX.Element => {
   const employee = useEmployee(can('employee.view') ? id : '');
   const record = employee.data;
   const photo = useEmployeePhotoUrl(id, record?.personal.photoFileId ?? null);
-  const nameFromRows = rows.find((row) => row.employeeName !== undefined)?.employeeName;
+  // The resolved period carries no name — it is one employee's days, not a directory — so the
+  // fallback is the SUMMARY, which the server labels. That keeps a reader holding `attendance.view`
+  // and not `employee.view` looking at a named page, which is what the enriched day rows used to do.
+  const nameFromRows = summary.data?.employeeName ?? undefined;
   const name =
     record === undefined
       ? (nameFromRows ?? t('attendance.month.title'))
@@ -120,8 +125,7 @@ export const EmployeeMonthPage = (): JSX.Element => {
         employeeId={id}
         header={{
           name,
-          code:
-            record?.code ?? rows.find((row) => row.employeeCode !== undefined)?.employeeCode ?? '',
+          code: record?.code ?? summary.data?.employeeCode ?? '',
           photoUrl: photo.url,
           department: record?.placement.department?.name[locale] ?? null,
           branch: record?.placement.branch?.name[locale] ?? null,

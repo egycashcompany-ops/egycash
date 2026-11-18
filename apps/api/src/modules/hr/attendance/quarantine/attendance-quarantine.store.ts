@@ -79,3 +79,39 @@ export const holdQuarantinedRows = async (
     );
   }
 };
+
+/** One machine id nobody is linked to, and how many of this date's scans it is holding. */
+export interface UnlinkedScanGroup {
+  deviceCode: string;
+  enrollmentNo: string | null;
+  rows: number;
+}
+
+/**
+ * THE SCANS A DAY'S SHEET CANNOT SHOW — grouped by the machine id that produced them.
+ *
+ * The sheet is a page of EMPLOYEES, so a scan whose machine id maps to nobody has no line to sit on
+ * and no bucket to be counted in. That is correct, and on its own it is also how thirty-nine people
+ * at the door became five rows on screen with nothing on the page to say the other thirty-four had
+ * happened. This is read beside the counts so the screen can say it out loud.
+ *
+ * Read from the quarantine rather than the punches on purpose: a quarantined row is precisely a
+ * scan that could not become a punch, which is the thing being reported.
+ *
+ * Still a READ — nothing is linked, discarded or guessed here.
+ */
+export const unlinkedScansOn = async (from: Date, to: Date): Promise<UnlinkedScanGroup[]> => {
+  const groups = await AttendanceQuarantineModel.aggregate<{
+    _id: { deviceId: string; enrollmentNo: string | null };
+    rows: number;
+  }>([
+    { $match: { status: 'pending', at: { $gte: from, $lt: to } } },
+    { $group: { _id: { deviceId: '$deviceId', enrollmentNo: '$enrollmentNo' }, rows: { $sum: 1 } } },
+    { $sort: { rows: -1 } },
+  ]).exec();
+  return groups.map((g) => ({
+    deviceCode: g._id.deviceId,
+    enrollmentNo: g._id.enrollmentNo,
+    rows: g.rows,
+  }));
+};

@@ -1,4 +1,6 @@
 import { Types, type FilterQuery } from 'mongoose';
+import { addDays, toDateOnly } from '../../shared/business-date';
+import { cairoInstant } from '../day-records/derive-day';
 import { type ListPunchesQuery, type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../../shared/types';
@@ -36,10 +38,26 @@ class PunchRepository extends BaseRepository<AttendancePunchDoc> {
     if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
     if (query.source !== undefined) filter.source = query.source;
     if (query.importBatchId !== undefined) filter.importBatchId = query.importBatchId;
+    // THE DATES ARE CAIRO CALENDAR DAYS, AND BOTH ENDS ARE INCLUSIVE.
+    //
+    // They were compared against the punch INSTANT as they arrived, and `z.coerce.date()` turns
+    // `2026-11-18` into `2026-11-18T00:00:00Z`. Two consequences, both wrong and both silent:
+    // `from=D&to=D` asked for a zero-width window and answered 0 punches for a day that had
+    // seventy-four, and every other window was shifted two hours into the previous Cairo day
+    // (`00:00Z` is `02:00` in Cairo), so the first two hours of `to` were dropped and the last two
+    // of the day before `from` were counted.
+    //
+    // So `from` opens at Cairo midnight of that date and `to` closes at Cairo midnight of the day
+    // AFTER it, exclusive — which is the same window `deriveDay` attributes a shift-less day from,
+    // and the reason it is spelled with `$lt` rather than `$lte`.
     if (query.from !== undefined || query.to !== undefined) {
       filter.at = {
-        ...(query.from === undefined ? {} : { $gte: query.from }),
-        ...(query.to === undefined ? {} : { $lte: query.to }),
+        ...(query.from === undefined
+          ? {}
+          : { $gte: cairoInstant(toDateOnly(query.from), '00:00') }),
+        ...(query.to === undefined
+          ? {}
+          : { $lt: cairoInstant(addDays(toDateOnly(query.to), 1), '00:00') }),
       };
     }
     return this.list({
@@ -73,6 +91,23 @@ class PunchRepository extends BaseRepository<AttendancePunchDoc> {
       .lean<{ at: Date } | null>()
       .exec();
     return newest?.at ?? null;
+  }
+
+  /**
+   * ONE EMPLOYEE'S FIRST SCAN EVER, whatever period is being looked at.
+   *
+   * The period picker needs a floor. «Previous month» has to know whether there IS an earlier month
+   * to walk back to, and the custom range has to refuse a start before the machines first saw this
+   * person rather than drawing an empty year. Indexed on `ix_employee_at`, so it is one row read.
+   */
+  async firstPunchEver(employeeId: Types.ObjectId): Promise<Date | null> {
+    const oldest = await this.model
+      .findOne({ employeeId, supersededBy: null, isDeleted: false })
+      .sort({ at: 1 })
+      .select({ at: 1 })
+      .lean<{ at: Date } | null>()
+      .exec();
+    return oldest?.at ?? null;
   }
 
   /** The engine's read: every punch for one employee inside a window, oldest first. */

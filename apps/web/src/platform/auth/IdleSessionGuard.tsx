@@ -1,4 +1,4 @@
-// The browser's half of the inactivity rule (`SESSION_IDLE_MINUTES`).
+// The browser's half of the inactivity rule (the setting `auth.session.idleMinutes`).
 //
 // Two jobs, and they are opposites:
 //

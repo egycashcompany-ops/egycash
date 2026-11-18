@@ -97,6 +97,11 @@ export interface OrgCatalogReport {
    * is linked) and start governing that department's requests in every branch once it is linked.
    */
   approvals: { chains: { requestType: string; department: string }[]; pendingRequests: number };
+  /**
+   * Entries given the English name one of their rows already had, because theirs was only the
+   * Arabic again (`keepEnglishNames`).
+   */
+  englishKept: { code: string; name: string; en: string }[];
   /** Rows whose name changes to their entry's spelling (`name` is set from the entry on link). */
   renames: { code: string; from: { ar: string; en: string }; to: { ar: string; en: string } }[];
   /** Things worth reading before `--write` that do not stop it (see `foldWarnings`, `nameClashWarnings`). */
@@ -383,6 +388,118 @@ const joinExisting = (
   return joins;
 };
 
+/** An English name that is only the Arabic name again — what the workforce importer wrote. */
+const noEnglish = (name: { ar: string; en: string }): boolean =>
+  name.en.trim() === '' ||
+  // The Arabic again, or another spelling of it — no English at all.
+  /[\u0600-\u06FF]/u.test(name.en) ||
+  foldOrgUnitName(name.en) === foldOrgUnitName(name.ar);
+
+/**
+ * Keep the English names the branches were given by hand.
+ *
+ * Linking copies the entry's name onto every row it links, and the workforce importer gave the
+ * company list's entries their Arabic name in English too. «Top Management» would become «العليا»
+ * on every English screen. So an entry with no English of its own takes the first real English
+ * name among its rows, oldest row first — a planned entry before it is created, an existing entry
+ * on `--write` (`englishUpdates`). An entry that has a real English name keeps it.
+ */
+const keepEnglishNames = (
+  plan: CatalogPlan,
+  joins: Joins,
+  departments: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+  sections: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+  departmentEntries: readonly LeanEntry[],
+  sectionEntries: readonly LeanEntry[],
+): {
+  kept: OrgCatalogReport['englishKept'];
+  englishUpdates: Map<string, { model: 'department' | 'section'; en: string }>;
+  warnings: string[];
+} => {
+  const kept: OrgCatalogReport['englishKept'] = [];
+  const englishUpdates = new Map<string, { model: 'department' | 'section'; en: string }>();
+  const warnings: string[] = [];
+  // A merged-away row's English counts too — after the members, so the oldest member still wins.
+  // A section's department entry when it already exists (joined, or catalogued by an earlier run).
+  const departmentEntryByFold = new Map<string, string>();
+  for (const [fold, matches] of groupByFold(departmentEntries)) {
+    if (matches.length === 1) departmentEntryByFold.set(fold, String((matches[0] as LeanEntry)._id));
+  }
+  const losersOf = new Map<string, string[]>();
+  for (const merge of plan.merges) {
+    const winner = merge.winnerId.toLowerCase();
+    losersOf.set(winner, [...(losersOf.get(winner) ?? []), merge.loserId.toLowerCase()]);
+  }
+  const pass = (
+    model: 'department' | 'section',
+    entries: PlannedCatalogEntry[],
+    rows: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+    existingEntries: readonly LeanEntry[],
+    joined: (entry: PlannedCatalogEntry) => LeanEntry | undefined,
+    scope: (entry: PlannedCatalogEntry) => string,
+  ): void => {
+    const byId = new Map(rows.map((row) => [String(row._id).toLowerCase(), row]));
+    // English names already held — company-wide for departments, under one department for sections
+    // — so a name taken from a row never gives two entries the same English.
+    const held = new Set(
+      existingEntries
+        .filter((entry) => !noEnglish(entry.name))
+        .map((entry) => `${model === 'section' ? String(entry.departmentCatalogId ?? '') : ''}|${entry.name.en.trim().toLowerCase()}`),
+    );
+    for (const entry of entries) {
+      const existing = joined(entry);
+      const target = existing ?? entry;
+      if (!noEnglish(target.name)) continue;
+      const candidates = [
+        ...entry.memberIds,
+        ...entry.memberIds.flatMap((id) => losersOf.get(id.toLowerCase()) ?? []),
+      ];
+      const english = candidates
+        .map((id) => byId.get(id.toLowerCase())?.name)
+        .find((name) => name !== undefined && !noEnglish(name))?.en.trim();
+      if (english === undefined) continue;
+      const parent =
+        model === 'section'
+          ? String(
+              existing?.departmentCatalogId ??
+                joins.departments.get(entry.parentKey ?? '')?._id ??
+                departmentEntryByFold.get(entry.parentKey ?? '') ??
+                scope(entry),
+            )
+          : '';
+      const key = `${parent}|${english.toLowerCase()}`;
+      if (held.has(key)) {
+        warnings.push(
+          `${model} ${existing?.code ?? entry.code} «${target.name.ar}» keeps no English: «${english}» is ` +
+            'already another entry\'s English name.',
+        );
+        continue;
+      }
+      held.add(key);
+      target.name = { ar: target.name.ar, en: english };
+      if (existing !== undefined) englishUpdates.set(String(existing._id), { model, en: english });
+      kept.push({ code: existing?.code ?? entry.code, name: target.name.ar, en: english });
+    }
+  };
+  pass(
+    'department',
+    plan.departments,
+    departments,
+    departmentEntries,
+    (entry) => joins.departments.get(entry.foldedKey),
+    () => '',
+  );
+  pass(
+    'section',
+    plan.sections,
+    sections,
+    sectionEntries,
+    (entry) => joins.sections.get(sectionKey(entry)),
+    (entry) => entry.parentKey ?? '',
+  );
+  return { kept, englishUpdates, warnings };
+};
+
 /**
  * A planned entry takes its oldest member's code; an entry of the company list may already hold it
  * (one added by hand, or by the workforce importer). Created as it stands, `--write` would stop on
@@ -587,6 +704,23 @@ const renamesOf = (
   return out;
 };
 
+/** Rows already linked to an entry that takes an English name: they take it too (`createEntries`). */
+const linkedRenamesOf = (
+  englishUpdates: ReadonlyMap<string, { model: 'department' | 'section'; en: string }>,
+  departments: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+  sections: readonly (LeanUnit & { name: { ar: string; en: string } })[],
+): OrgCatalogReport['renames'] => {
+  const out: OrgCatalogReport['renames'] = [];
+  for (const [id, update] of englishUpdates) {
+    const rows = update.model === 'department' ? departments : sections;
+    for (const row of rows) {
+      if (String(row.catalogId ?? '') !== id || row.name.en === update.en) continue;
+      out.push({ code: row.code, from: { ar: row.name.ar, en: row.name.en }, to: { ar: row.name.ar, en: update.en } });
+    }
+  }
+  return out;
+};
+
 /** «مستندات الوظائف» — named rather than imported: this migration may not reach into HR's code. */
 const JOB_PAPERS = 'hr_job_papers';
 
@@ -725,8 +859,25 @@ const movePapers = async (
 const createEntries = async (
   plan: CatalogPlan,
   joins: Joins,
+  englishUpdates: ReadonlyMap<string, { model: 'department' | 'section'; en: string }>,
   by: Types.ObjectId,
 ): Promise<{ departments: Map<string, Types.ObjectId>; departmentsCreated: number; sections: number }> => {
+  // An existing entry with no English of its own takes its rows' (`keepEnglishNames`), first.
+  for (const [id, update] of englishUpdates) {
+    const filter = { _id: new Types.ObjectId(id) };
+    const set = { $set: { 'name.en': update.en, updatedBy: by }, $inc: { __v: 1 } };
+    // …and so do the rows ALREADY linked to it (the importer's, or ones created since P-ORG-3), as
+    // a rename on «قائمة الشركة» carries down to every branch that declared the entry.
+    const linked = { catalogId: filter._id, isDeleted: false };
+    const rowSet = { $set: { 'name.en': update.en, updatedBy: by } };
+    if (update.model === 'department') {
+      await DepartmentCatalogModel.updateOne(filter, set);
+      await DepartmentModel.updateMany(linked, rowSet);
+    } else {
+      await SectionCatalogModel.updateOne(filter, set);
+      await SectionModel.updateMany(linked, rowSet);
+    }
+  }
   const departmentIdByKey = new Map<string, Types.ObjectId>();
   const departmentDocs: { entry: PlannedCatalogEntry; id: Types.ObjectId; name: { ar: string; en: string } }[] = [];
   let departmentsCreated = 0;
@@ -882,6 +1033,8 @@ export const runOrgCatalogMigration = async (options: {
   const plan = planOrgCatalog(departments.map(toRow), sections.map(toRow), options.merges ?? []);
   const joins = joinExisting(plan, departments, sections, departmentEntries, sectionEntries);
   const recoded = recodeClashes(plan, joins, departmentEntries, sectionEntries);
+  // Before the renames and warnings are worked out: they read the names this settles.
+  const english = keepEnglishNames(plan, joins, departments, sections, departmentEntries, sectionEntries);
   const approvals = await surveyApprovals(plan, joins);
   const loserIds = plan.merges.map((merge) => merge.loserId);
   const references = await surveyReferences(loserIds, plan.problems);
@@ -910,9 +1063,14 @@ export const runOrgCatalogMigration = async (options: {
     plan,
     references,
     recoded,
+    englishKept: english.kept,
     approvals,
-    renames: renamesOf(plan, joins, departments, sections),
+    renames: [
+      ...renamesOf(plan, joins, departments, sections),
+      ...linkedRenamesOf(english.englishUpdates, departments, sections),
+    ],
     warnings: [
+      ...english.warnings,
       ...foldWarnings(plan, departments, sections),
       ...nameClashWarnings(plan, joins, departmentEntries),
     ],
@@ -932,7 +1090,7 @@ export const runOrgCatalogMigration = async (options: {
   };
   if (!options.write || plan.problems.length > 0) return report;
 
-  const created = await createEntries(plan, joins, by);
+  const created = await createEntries(plan, joins, english.englishUpdates, by);
   const merged = await applyMerges(plan, references, by);
   const paperResult = await movePapers(papers, created.departments, by);
 

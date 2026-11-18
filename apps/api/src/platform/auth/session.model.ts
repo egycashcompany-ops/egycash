@@ -17,6 +17,14 @@ export interface SessionDoc {
   revokedReason: string | null;
   /** How the session was opened (ADR-035). Absent on sessions from before the field: a password. */
   method?: SessionMethod;
+  /**
+   * The inactivity window, in minutes, that this session's browser was last told (ADR-039): written
+   * at sign-in and at every renewal, from `auth.session.idleMinutes`. A renewal is judged by the
+   * longer of this and the current setting, so lowering the setting never closes a session before
+   * its screen has counted down to the number it was shown. Absent on sessions from before the
+   * field: the current setting is used.
+   */
+  idleMinutesTold?: number;
 }
 
 const sessionSchema = new Schema<SessionDoc>(
@@ -35,6 +43,7 @@ const sessionSchema = new Schema<SessionDoc>(
     revokedAt: { type: Date, default: null },
     revokedReason: { type: String, default: null },
     method: { type: String, enum: SESSION_METHODS },
+    idleMinutesTold: { type: Number },
   },
   { strict: true, versionKey: false },
 );

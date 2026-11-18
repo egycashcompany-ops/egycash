@@ -17,6 +17,7 @@ import { env } from '../../infrastructure/config/env';
 import { ValidationError } from '../../shared/errors';
 import { type ScopeSelector } from '../../shared/types';
 import { authService } from '../auth/auth.service';
+import { SESSION_IDLE_MINUTES } from '../auth/auth.settings';
 import { SessionModel } from '../auth/session.model';
 import { getDirectoryEmployees } from '../directory';
 import { branchRepository } from '../organization/branches/branch.repository';
@@ -93,8 +94,8 @@ class PresenceService {
   }
 
   /** The window that makes a session OPEN, in minutes — the idle window, or the token's life. */
-  windowMinutes(): number {
-    return liveWindowMinutes(authService.idleMinutes(), env.JWT_ACCESS_TTL_SECONDS);
+  async windowMinutes(): Promise<number> {
+    return liveWindowMinutes(await authService.idleMinutes(), env.JWT_ACCESS_TTL_SECONDS);
   }
 
   async listActiveUsers(
@@ -112,7 +113,7 @@ class PresenceService {
       ]);
     }
     const today = day === todayYmd;
-    const windowMinutes = this.windowMinutes();
+    const windowMinutes = await this.windowMinutes();
 
     const [sessions, activity] = await Promise.all([
       today ? this.liveSessions(now, windowMinutes) : Promise.resolve([]),
@@ -152,12 +153,36 @@ class PresenceService {
     };
   }
 
-  /** Sessions open now: not revoked, not expired, renewed inside the window. Never the address. */
+  /**
+   * Sessions open now: not revoked, not expired, and inside the window a renewal would judge them
+   * by — the longer of the current one and the one their screen was last told (`refresh`,
+   * ADR-039). After the setting is lowered, a session told the old value stays renewable until its
+   * next renewal by a person, so it is still open and is listed. The indexed range is the widest
+   * window a session can have been told; the exact window is applied per session. Never the
+   * address.
+   */
   private async liveSessions(now: Date, windowMinutes: number): Promise<PresenceSession[]> {
+    const widestMinutes = Math.max(windowMinutes, SESSION_IDLE_MINUTES.max);
     const docs = await SessionModel.find({
       revokedAt: null,
       expiresAt: { $gt: now },
-      lastUsedAt: { $gte: new Date(now.getTime() - windowMinutes * 60_000) },
+      lastUsedAt: { $gte: new Date(now.getTime() - widestMinutes * 60_000) },
+      $expr: {
+        $gte: [
+          '$lastUsedAt',
+          {
+            $subtract: [
+              now,
+              {
+                $multiply: [
+                  { $max: [windowMinutes, { $ifNull: ['$idleMinutesTold', windowMinutes] }] },
+                  60_000,
+                ],
+              },
+            ],
+          },
+        ],
+      },
     })
       .select('userId device.userAgent createdAt lastUsedAt')
       .lean<

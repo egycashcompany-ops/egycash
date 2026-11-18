@@ -1,7 +1,8 @@
 // When an unattended screen stops being a signed-in screen.
 //
-// THE RULE, in one line: a session that nobody has touched for `SESSION_IDLE_MINUTES` is closed,
-// and a session somebody IS touching is never closed at all.
+// THE RULE, in one line: a session that nobody has touched for `auth.session.idleMinutes` is
+// closed, and a session somebody IS touching is never closed at all. The window is a setting
+// («الدخول وكلمات المرور» on the settings page, 10 to 1440 minutes); the server sends it.
 //
 // The server owns the rule and enforces it from `sessions.lastUsedAt` (see `auth.service.ts`).
 // This module is the browser's half: it watches for a human, renews the session while one is

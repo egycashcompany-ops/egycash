@@ -346,3 +346,74 @@ describe('a read carries the query’s AbortSignal to fetch', () => {
     expect(inits.every((init) => init !== undefined && !('signal' in init))).toBe(true);
   });
 });
+
+// ADR-039: only a PERSON moves the server's inactivity clock. A renewal a request needed (a badge
+// poll meeting an expired access token on a screen nobody is at) says so, and a person's renewal
+// is never folded into one of those.
+describe('a renewal says whether a person is behind it', () => {
+  let mod: ApiClient;
+  let bodies: unknown[];
+  let inFlight: number;
+  let mostAtOnce: number;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    bodies = [];
+    inFlight = 0;
+    mostAtOnce = 0;
+    mod = await import('./api-client');
+    let minted = 0;
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.includes('/auth/refresh')) {
+        bodies.push(JSON.parse(String(init?.body ?? 'null')));
+        inFlight += 1;
+        mostAtOnce = Math.max(mostAtOnce, inFlight);
+        await settle(20);
+        inFlight -= 1;
+        minted += 1;
+        return okData({ accessToken: `fresh-${minted}`, idleMinutes: 30 });
+      }
+      const auth = authOf(init);
+      if (auth !== null && auth.startsWith('Bearer fresh-')) return okData({ value: 42 });
+      return errData(401, 'AUTH_TOKEN_EXPIRED', 'Access token expired');
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('a request that met an expired token renews as no person', async () => {
+    mod.setAccessToken('stale');
+    await expect(mod.api('/badge')).resolves.toEqual({ value: 42 });
+    expect(bodies).toEqual([{ presence: false }]);
+  });
+
+  it('the guard and a page load renew as a person', async () => {
+    await expect(mod.renewSession()).resolves.toBe('renewed');
+    await expect(mod.refreshAtBootstrap()).resolves.toBe('renewed');
+    expect(bodies).toEqual([{ presence: true }, { presence: true }]);
+  });
+
+  it("a person's renewal asked for during a request's is made after it, never folded into it", async () => {
+    mod.setAccessToken('stale');
+    const request = mod.api('/badge');
+    await settle(5); // the request's renewal is now in flight
+    const guards = Promise.all([mod.renewSession(), mod.renewSession()]);
+    await expect(request).resolves.toEqual({ value: 42 });
+    await expect(guards).resolves.toEqual(['renewed', 'renewed']);
+    // One renewal for the request, then ONE for the person (both guard calls share it), in turn.
+    expect(bodies).toEqual([{ presence: false }, { presence: true }]);
+    expect(mostAtOnce).toBe(1);
+  });
+
+  it("a request's renewal asked for during a person's joins it", async () => {
+    mod.setAccessToken('stale');
+    const guard = mod.renewSession();
+    await settle(5);
+    await expect(mod.api('/badge')).resolves.toEqual({ value: 42 });
+    await expect(guard).resolves.toBe('renewed');
+    expect(bodies).toEqual([{ presence: true }]);
+  });
+});

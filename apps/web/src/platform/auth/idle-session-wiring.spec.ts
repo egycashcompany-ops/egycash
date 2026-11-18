@@ -9,6 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { translate } from '../localization/i18n';
+import { RENEW_AT_MOST_EVERY_MS } from './idle-session';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (path: string): string => readFileSync(resolve(HERE, path), 'utf8');
@@ -132,30 +133,30 @@ describe.each([
 describe('the window is the SERVER’s number', () => {
   it('is read from the api client, never hard-coded in the component', () => {
     expect(GUARD).toContain('getIdleMinutes()');
-    // A literal window here would drift from `SESSION_IDLE_MINUTES` the first time an operator
-    // changed it, and the two failure modes are both bad: signing a live session out, or leaving
-    // a dead one on screen until the next save fails.
+    // A literal window here would drift from `auth.session.idleMinutes` the first time an
+    // administrator changed it on the settings page, and the two failure modes are both bad:
+    // signing a live session out, or leaving a dead one on screen until the next save fails.
     expect(GUARD).not.toMatch(/idleM(s|inutes)\s*=\s*\d/);
   });
 
   it('is relearned on every renewal and at every way in', () => {
-    // The refresh response carries it, so a deployment that changes the number is obeyed within
-    // one cycle rather than at the next full page load.
+    // The refresh response carries it, so a change on the settings page is obeyed within one
+    // cycle rather than at the next full page load.
     expect(API_CLIENT).toContain('setIdleMinutes(data.idleMinutes)');
     // …and login, TOTP and the portal all learn it at the same moment they learn the token.
     expect(AUTH_API.match(/setIdleMinutes\(/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
     // The page-load way in resumes through the shared renewal, which is the one that learns it
     // (asserted above) — so it is learned there too, not restated beside it.
     expect(AUTH_API).toContain('if ((await refreshAtBootstrap()) !== \'renewed\') return null;');
-    expect(API_CLIENT).toContain('export const refreshAtBootstrap = (): Promise<RenewOutcome> => refreshWithRetry();');
+    expect(API_CLIENT).toContain('export const refreshAtBootstrap = (): Promise<RenewOutcome> => refreshWithRetry(true);');
   });
 
   it('renews through the shared single-flight, so it cannot race the lazy refresh', () => {
     // Two rotations of a single-use refresh token read as replay server-side, which revokes the
     // session — the exact opposite of what this feature is for.
     expect(GUARD).toContain('renewSession()');
-    expect(API_CLIENT).toContain('export const renewSession = (): Promise<RenewOutcome> => sharedRefresh();');
-    expect(API_CLIENT).toContain("const tryRefresh = async (): Promise<boolean> => (await sharedRefresh()) === 'renewed';");
+    expect(API_CLIENT).toContain('export const renewSession = (): Promise<RenewOutcome> => sharedRefresh(true);');
+    expect(API_CLIENT).toContain("const tryRefresh = async (): Promise<boolean> => (await sharedRefresh(false)) === 'renewed';");
   });
 
   it('signs out only on a refusal, and retries soon when the renewal got no answer', () => {
@@ -175,5 +176,52 @@ describe('the window is the SERVER’s number', () => {
     expect(GUARD.match(/renewSession\(\)/g)?.length, 'one renewal call, shared').toBe(1);
     expect(GUARD).toMatch(/noteActivity\(\);\s+renewNow\(getIdleMinutes\(\) \* 60_000\);/);
     expect(GUARD).toMatch(/shouldRenew\([^)]*\)\) \{\s+renewNow\(idleMs\);/);
+  });
+});
+
+describe('the settings page cannot set a window shorter than two renewal cadences', () => {
+  // The window is `auth.session.idleMinutes`, set on the settings page. A working browser renews
+  // every half window, but never less often than `RENEW_AT_MOST_EVERY_MS`, so with the floor at two
+  // of those every allowed window gets the same five-minute cadence, and the server's clock for a
+  // person at work is never more than one cadence old against a window of at least two. (Lowering
+  // the setting is made safe separately: a renewal is judged by the window its screen was told,
+  // ADR-039.) The floor lives in the api (`auth.settings.ts`); this reads it from there so neither
+  // side can move alone.
+  const SETTINGS = read('../../../../api/src/platform/auth/auth.settings.ts');
+  const declared = /SESSION_IDLE_MINUTES = \{ min: (\d+), max: ([\d *]+), default: (\d+) \}/.exec(
+    SETTINGS,
+  );
+
+  it('keeps the floor at two renewal cadences or more', () => {
+    expect(declared, 'SESSION_IDLE_MINUTES in auth.settings.ts').not.toBeNull();
+    const floorMinutes = Number(declared?.[1]);
+    expect(floorMinutes * 60_000).toBeGreaterThanOrEqual(2 * RENEW_AT_MOST_EVERY_MS);
+  });
+
+  it('declares the window with that floor and the 30-minute default', () => {
+    expect(SETTINGS).toContain('key: SettingKeys.SessionIdleMinutes,');
+    expect(SETTINGS).toContain(
+      'schema: z.number().int().min(SESSION_IDLE_MINUTES.min).max(SESSION_IDLE_MINUTES.max),',
+    );
+    expect(Number(declared?.[3])).toBe(30);
+  });
+
+  it('names the setting and its range in both languages', () => {
+    for (const locale of ['ar', 'en'] as const) {
+      for (const kind of ['keys', 'descriptions'] as const) {
+        const id = `systemAdmin.settings.${kind}.auth.session.idleMinutes`;
+        expect(translate(locale, id), `${locale} ${kind}`).not.toBe(id);
+      }
+      // The range the description states is the declared one, so moving either end without the
+      // words fails here.
+      const min = Number(declared?.[1]);
+      const max = (declared?.[2] ?? '').split('*').reduce((product, n) => product * Number(n), 1);
+      const text = translate(
+        locale,
+        'systemAdmin.settings.descriptions.auth.session.idleMinutes',
+      ).replace(/,/g, '');
+      expect(text).toContain(`${min} `);
+      expect(text).toContain(String(max));
+    }
   });
 });

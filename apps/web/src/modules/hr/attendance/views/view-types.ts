@@ -45,7 +45,27 @@ export interface SheetRow {
 }
 
 /** The six counters above the sheet; each one is also a filter. */
-export type SheetFilter = 'all' | 'present' | 'late' | 'notYetIn' | 'absent' | 'onLeave';
+/**
+ * The sheet's counters. The last three are what makes the band ADD UP TO THE TOTAL.
+ *
+ * It used to be the first five, which between them named eight of the statuses the server counts.
+ * Everyone in the other five — and on a deployment with no default working pattern that is most of
+ * the company — was counted by the server, shown in the table, and in NO counter at all: a band
+ * reading «5» above a total of «100». Silence about ninety-five people.
+ */
+export type SheetFilter =
+  | 'all'
+  | 'present'
+  | 'late'
+  | 'notYetIn'
+  | 'absent'
+  | 'onLeave'
+  // Nobody has said when these people work, so nothing can be said about their punctuality.
+  | 'noSchedule'
+  // ECMS has concluded nothing about their day — most often history that is not re-derived yet.
+  | 'noRecord'
+  // A rest day by the calendar or by a schedule: the weekend, a public holiday, a legacy rest row.
+  | 'offDay';
 
 export interface SheetSummary {
   employees: number;
@@ -54,6 +74,21 @@ export interface SheetSummary {
   notYetIn: number;
   absent: number;
   onLeave: number;
+  /** Nobody has said when these people work. */
+  noSchedule: number;
+  /** ECMS has concluded nothing about their day. */
+  noRecord: number;
+  /** The weekend, a public holiday, or a schedule's rest day. */
+  offDay: number;
+  /**
+   * The scans this sheet CANNOT show: machine ids that map to no employee, so they have no line to
+   * sit on and no bucket to be counted in. `null` where the reader may not see them.
+   *
+   * It is drawn beside the band rather than folded into it, because it is not a count OF the
+   * company — `identities` is a count of machine ids, and ECMS does not know who is behind them.
+   * Saying nothing is what let thirty-nine people at the door read as five on screen.
+   */
+  unlinked: { identities: number; rows: number } | null;
 }
 
 export interface EmployeeHeader {

@@ -87,14 +87,29 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
             ofLabel={t('of')}
             selected={p.activeFilter}
             onSelect={(k) => p.onFilter(k as SheetFilter)}
+            // EVERY COUNTER THE SERVER COUNTS, so the band adds up to the total beside it. The
+            // last three were missing, and on a company with no default working pattern that hid
+            // most of the workforce: «5 of 100» with ninety-five people in no counter at all.
             parts={[
               { key: 'present', label: t('present'), value: s.present, tone: 'ok' },
               { key: 'late', label: t('late'), value: s.late, tone: 'warn' },
               { key: 'notYetIn', label: t('notYetIn'), value: s.notYetIn, tone: 'muted' },
               { key: 'absent', label: t('absent'), value: s.absent, tone: 'bad' },
               { key: 'onLeave', label: t('onLeave'), value: s.onLeave, tone: 'info' },
+              { key: 'noSchedule', label: t('noSchedule'), value: s.noSchedule, tone: 'muted' },
+              { key: 'noRecord', label: t('noRecord'), value: s.noRecord, tone: 'muted' },
+              { key: 'offDay', label: t('offDay'), value: s.offDay, tone: 'muted' },
             ]}
           />
+          {s.unlinked !== null && s.unlinked.identities > 0 && (
+            <p className={cn('mt-4 rounded-lg px-3 py-2 text-[13px] leading-relaxed', INK2)}
+               style={{ background: 'var(--att-warn-bg, rgba(180,120,0,0.08))' }}>
+              {t('unlinkedScans', {
+                people: num(s.unlinked.identities),
+                rows: num(s.unlinked.rows),
+              })}
+            </p>
+          )}
         </Sheet>
         <Sheet>
           <SheetHead

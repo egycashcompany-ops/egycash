@@ -186,10 +186,16 @@ const outcomeOfFailure = (error: unknown): RenewOutcome =>
     ? 'signedOut'
     : 'unavailable';
 
-const refreshOnce = async (): Promise<RenewOutcome> => {
+/**
+ * One renewal. `presence` says whether a PERSON is behind it (`RefreshSessionSchema`): only those
+ * move the server's inactivity clock. A request that met an expired access token says `false`, so
+ * a badge polling an abandoned screen renews the token without keeping the session alive.
+ */
+const refreshOnce = async (presence: boolean): Promise<RenewOutcome> => {
   try {
     const data = await rawRequest<{ accessToken: string; idleMinutes?: number }>('/auth/refresh', {
       method: 'POST',
+      body: JSON.stringify({ presence }),
     });
     setAccessToken(data.accessToken);
     if (data.idleMinutes !== undefined) setIdleMinutes(data.idleMinutes);
@@ -212,12 +218,12 @@ const wait = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
-const refreshWithRetry = async (): Promise<RenewOutcome> => {
-  let outcome = await refreshOnce();
+const refreshWithRetry = async (presence: boolean): Promise<RenewOutcome> => {
+  let outcome = await refreshOnce(presence);
   for (const delay of REFRESH_RETRY_DELAYS_MS) {
     if (outcome !== 'unavailable') break;
     await wait(delay);
-    outcome = await refreshOnce();
+    outcome = await refreshOnce(presence);
   }
   return outcome;
 };
@@ -228,10 +234,24 @@ const refreshWithRetry = async (): Promise<RenewOutcome> => {
 // therefore share ONE in-flight refresh (its retries included); the slot is released the moment it
 // settles (no lock outlives the request), and a refused refresh reports auth loss exactly once —
 // from the shared promise, never from each waiter.
+//
+// A PERSON'S RENEWAL IS NEVER LOST IN A REQUEST'S. If a renewal a request started is in flight when
+// the guard asks for one because somebody is there, the guard waits for it and then renews again,
+// as a person. Joining it instead would leave the server's clock where it was, and the next
+// activity renewal could find the session one whole cadence older than it should be. The two run
+// one after the other, never side by side, so they cannot race a rotation either.
 let refreshPromise: Promise<RenewOutcome> | null = null;
+let inFlightIsPresence = false;
 
-const sharedRefresh = (): Promise<RenewOutcome> => {
-  refreshPromise ??= refreshWithRetry()
+const sharedRefresh = (presence: boolean): Promise<RenewOutcome> => {
+  if (refreshPromise !== null) {
+    if (!presence || inFlightIsPresence) return refreshPromise;
+    return refreshPromise.then((outcome) =>
+      outcome === 'renewed' ? sharedRefresh(true) : outcome,
+    );
+  }
+  inFlightIsPresence = presence;
+  refreshPromise = refreshWithRetry(presence)
     .then((outcome) => {
       if (outcome === 'signedOut') {
         try {
@@ -249,8 +269,11 @@ const sharedRefresh = (): Promise<RenewOutcome> => {
   return refreshPromise;
 };
 
-/** The lazy path: did the silent refresh produce a token to retry the request with? */
-const tryRefresh = async (): Promise<boolean> => (await sharedRefresh()) === 'renewed';
+/**
+ * The lazy path: did the silent refresh produce a token to retry the request with? A request, not a
+ * person, so it does not move the inactivity clock: the guard renews for the person.
+ */
+const tryRefresh = async (): Promise<boolean> => (await sharedRefresh(false)) === 'renewed';
 
 /**
  * Renew the session because somebody is USING it, not because a request failed.
@@ -259,17 +282,18 @@ const tryRefresh = async (): Promise<boolean> => (await sharedRefresh()) === 're
  * expired token at the same moment are one rotation, never two racing ones — which is the same
  * reason the lazy path shares it.
  */
-export const renewSession = (): Promise<RenewOutcome> => sharedRefresh();
+export const renewSession = (): Promise<RenewOutcome> => sharedRefresh(true);
 
 /**
  * The first renewal of a page load: whether a session can be resumed from the refresh cookie.
  *
  * The same request and the same retries as `renewSession`, so a blip or an instance swap during a
  * deploy is ridden out instead of showing the sign-in form to someone who is still signed in. It
+ * renews as a person: a page is loaded by somebody, and the guard counts the load as activity too. It
  * does not raise auth loss: on the way in there is nothing to sign out of yet — the caller simply
  * shows the sign-in form when this is not `renewed`.
  */
-export const refreshAtBootstrap = (): Promise<RenewOutcome> => refreshWithRetry();
+export const refreshAtBootstrap = (): Promise<RenewOutcome> => refreshWithRetry(true);
 
 /** Run a request with one silent-refresh retry on an expired/invalid access token. */
 const withSilentRefresh = async <R>(path: string, run: () => Promise<R>): Promise<R> => {

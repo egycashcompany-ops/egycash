@@ -1226,12 +1226,17 @@ const medicalInsurancePermissions = declarePermissions(
 );
 
 /**
- * The punch-device registry (design v1.3 §17.2, D12.5). API-only in AT-D1.
+ * The punch-device registry (design v1.3 §17.2, D12.5).
  *
- * DELIBERATELY UNASSIGNED TO A PAGE, and the reason is the same one the punch, import and
- * recompute keys beside them already carry: the screen these belong on is the device HEALTH
- * screen, and health is AT-D4. Assigning them to an unrelated page to make a counter look tidy
- * would make the permission matrix say something untrue about where the key is used.
+ * THESE WERE DELIBERATELY PAGE-LESS, and the note here said why: the screen they belong on is the
+ * device health screen, and assigning them to an unrelated page to make a counter look tidy would
+ * have made the permission matrix say something untrue about where the key is used.
+ *
+ * `hr.attendance-devices` is that screen, built because production needed it: 17 machine ids on
+ * the المهندسين wall answer to no employee and hold 353 scans, 306 enrolments point at people who
+ * have left, and nothing in the product showed HR either fact. It lists the unmatched ids with
+ * their row counts and first/last scan, offers «ربط» and «تجاهل» per id, and carries the backfill's
+ * progress — so the two keys now name the page they govern.
  */
 const attendanceDevicePermissions = declarePermissions(
   'hr',
@@ -1245,6 +1250,7 @@ const attendanceDevicePermissions = declarePermissions(
       name: { en: 'Register and edit punch devices', ar: 'تسجيل أجهزة البصمة وتعديلها' },
     },
   ],
+  'hr.attendance-devices',
 );
 
 const attendancePermissions = [
@@ -1558,6 +1564,13 @@ export const hrPages: PageDef[] = [
     name: { en: 'Attendance regularizations', ar: 'تسويات الحضور' },
     route: '/attendance/regularizations',
     sortOrder: 200,
+  },
+  {
+    id: 'hr.attendance-devices',
+    moduleId: 'hr',
+    name: { en: 'Punch devices', ar: 'أجهزة البصمة' },
+    route: '/attendance/devices',
+    sortOrder: 205,
   },
   {
     id: 'hr.pay-items',

@@ -1212,15 +1212,27 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     expect(figures.lastPunchAt).toBeNull();
   });
 
-  it('caps the period, like the export and the recompute', async () => {
+  it('caps the period at a year — long enough for the picker, still a cap', async () => {
+    // It was 92 days, sized for a month view. The period picker now offers a custom range reaching
+    // back to the employee's first scan, and «did he come on the 1st of January?» is a question
+    // about a period this endpoint has to admit — so a year is accepted and more is refused. The
+    // cost does not grow with the span: `loadDayInputs` batches every input once for the whole
+    // period, so a year costs the same handful of queries a month does.
     const emp = await inBranch();
     const to = cairoToday();
-    const res = await request(app)
+    const within = await request(app)
       .get(
         `/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${dateOnlyIso(addDays(to, -200))}&to=${dateOnlyIso(to)}`,
       )
       .set('Authorization', `Bearer ${adminToken}`);
-    expect(res.status).toBe(400);
+    expect(within.status).toBe(200);
+
+    const beyond = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/employee-summary?employeeId=${emp.id}&from=${dateOnlyIso(addDays(to, -400))}&to=${dateOnlyIso(to)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(beyond.status).toBe(400);
   });
 
   it('is governed by attendance.view, and answers /me for the caller alone', async () => {

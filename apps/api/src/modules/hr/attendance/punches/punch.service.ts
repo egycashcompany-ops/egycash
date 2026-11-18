@@ -22,7 +22,17 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { settingsService } from '../../../../platform/settings';
-import { cairoCalendarDate, dateOnlyIso } from '../../shared/business-date';
+import {
+  addDays,
+  cairoCalendarDate,
+  cairoToday,
+  dateOnlyIso,
+  toDateOnly,
+} from '../../shared/business-date';
+import { logger } from '../../../../infrastructure/logging/logger';
+// The direct file, NOT the `../day-records` barrel: the barrel re-exports the engine and the
+// models, and reaching it from here would close an import cycle through this module's own barrel.
+import { dayRecordService } from '../day-records/day-record.service';
 import { AttendanceDayModel } from '../day-records/day-record.model';
 import { employeeRepository } from '../../employee-management/employees';
 import { attendanceDeviceRepository } from '../devices/attendance-device.repository';
@@ -30,6 +40,15 @@ import { attendanceEnrollmentRepository } from '../enrollments/attendance-enroll
 import { AttendancePunchModel, type AttendancePunchDoc } from './punch.model';
 import { punchRepository } from './punch.repository';
 import { holdQuarantinedRows, type HeldRow } from '../quarantine/attendance-quarantine.store';
+
+/**
+ * How far back an import derives the days it touched, in days before today.
+ *
+ * Three days: today and the two either side of it. A supervisor reads today and yesterday, and a
+ * device that was offline overnight sends the day before. Everything older is history, and history
+ * is the backfill's — resumable, with progress, and not holding a branch server's request open.
+ */
+const RECOMPUTE_WINDOW_DAYS = 3;
 
 const ORG_SUBJECT = { userId: null, branchId: null };
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'attendancePunch', entityId: id });
@@ -359,6 +378,21 @@ class PunchService {
     // «12,000 imported» and nothing else would look complete while a season of it changed nothing.
     const onFrozenDays = await this.countOnFrozenDays(storedDays);
 
+    // RE-DERIVE WHAT THIS BATCH TOUCHED, before answering.
+    //
+    // The import used to store punches and stop, leaving the derivation to whoever called
+    // `days/recompute` next. The branch app does call it — but only for the employees in the
+    // batch it just sent, and a check-out arriving in a later batch than its check-in therefore
+    // depended on a second call that may not name the same person. That is the «حضر فقط» the owner
+    // is looking at: a day concluded from the check-in alone and never revisited.
+    //
+    // It is BOUNDED BY RECENCY, which is the whole design. A history send of 26,000 rows spans two
+    // years and would mean 26,000 derivations inside one request; the days a person is looking at
+    // today are the ones that must be right within the second, and the rest is exactly what the
+    // backfill exists for. So recent days are derived here and older ones are left to it — and the
+    // batch reports how many it left, so «imported 12,000» can never again read as «done».
+    const recomputed = await this.recomputeRecentDays(storedDays);
+
     await auditService.record({
       entityRef: { moduleId: 'hr', entityType: 'attendancePunchBatch', entityId: batchId },
       action: 'attendancePunchImport',
@@ -368,6 +402,8 @@ class PunchService {
         { field: 'duplicates', old: null, new: String(duplicates) },
         { field: 'quarantined', old: null, new: String(quarantined.length) },
         { field: 'onFrozenDays', old: null, new: String(onFrozenDays) },
+        { field: 'daysRecomputed', old: null, new: String(recomputed.recomputed) },
+        { field: 'daysLeftToBackfill', old: null, new: String(recomputed.leftToBackfill) },
         ...(input.fileId === undefined
           ? []
           : [{ field: 'fileId', old: null, new: input.fileId }]),
@@ -379,7 +415,61 @@ class PunchService {
       duplicates,
       quarantined: quarantined.length,
     });
-    return { batchId, imported, duplicates, quarantined, onFrozenDays };
+    return {
+      batchId,
+      imported,
+      duplicates,
+      quarantined,
+      onFrozenDays,
+      daysRecomputed: recomputed.recomputed,
+      daysLeftToBackfill: recomputed.leftToBackfill,
+    };
+  }
+
+  /**
+   * Derive the employee-days this batch touched that are RECENT ENOUGH to matter now, and count
+   * the rest for the backfill.
+   *
+   * `RECOMPUTE_WINDOW_DAYS` is the line, and it is drawn by what a screen is read for rather than
+   * by a performance guess: a supervisor looks at today and the days either side of it, and those
+   * have to be exact the moment a scan lands. Anything older is history, and history is the
+   * backfill's job — it is resumable, it reports progress, and it does not hold a branch server's
+   * request open while it walks two years.
+   *
+   * A failure on one day never fails the import. The punches are already stored, which is the part
+   * that must not be lost; a day that could not be derived is left for the backfill, and that is
+   * exactly the state the backfill is built to recover from.
+   */
+  private async recomputeRecentDays(
+    storedDays: readonly string[],
+  ): Promise<{ recomputed: number; leftToBackfill: number }> {
+    if (storedDays.length === 0) return { recomputed: 0, leftToBackfill: 0 };
+    const today = cairoToday();
+    const floor = addDays(today, -RECOMPUTE_WINDOW_DAYS);
+    const distinct = [...new Set(storedDays)];
+    let recomputed = 0;
+    let leftToBackfill = 0;
+    for (const key of distinct) {
+      const [employeeId, dateIso] = key.split('|') as [string, string];
+      const workDate = toDateOnly(new Date(`${dateIso}T00:00:00.000Z`));
+      if (workDate.getTime() < floor.getTime()) {
+        leftToBackfill += 1;
+        continue;
+      }
+      try {
+        // `computeDay` refuses a frozen day itself and answers 'frozen', so a closed month is
+        // skipped here without a second rule deciding it.
+        const outcome = await dayRecordService.computeDay(employeeId, workDate);
+        if (outcome !== null && outcome !== 'frozen') recomputed += 1;
+      } catch (error) {
+        logger.error(
+          { err: error, employeeId, workDate: dateIso },
+          'attendance: import-time recompute failed for a day; left for the backfill',
+        );
+        leftToBackfill += 1;
+      }
+    }
+    return { recomputed, leftToBackfill };
   }
 
   /**

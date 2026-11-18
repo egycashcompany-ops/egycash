@@ -16,6 +16,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   type AttendanceDayDto,
+  type AttendanceEmployeeDayDto,
   type AttendanceDecisionDto,
   type AttendanceEmployeeSummaryDto,
   type AttendanceRegularizationDto,
@@ -184,6 +185,7 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   expectedStartAt: `${TODAY}T07:00:00.000Z`,
   expectedEndAt: `${TODAY}T15:00:00.000Z`,
   day: day(),
+  provisionalDay: null,
   ...over,
 });
 
@@ -196,6 +198,8 @@ const summary = (
 ): AttendanceEmployeeSummaryDto => ({
   from: PERIOD.from,
   to: PERIOD.to,
+  employeeName: 'سارة أحمد',
+  employeeCode: 'EMP-0007',
   daysPresent: 1,
   daysExpected: 1,
   usualArrival: 9 * 60 + 20,
@@ -209,6 +213,9 @@ const summary = (
   dayStart: 9 * 60,
   graceMinutes: 15,
   lastPunchAt: `${TODAY}T15:00:00.000Z`,
+  noRecordDays: 0,
+  noScheduleDays: 0,
+  firstPunchAt: null,
   ...over,
 });
 
@@ -485,7 +492,7 @@ describe('My Attendance is self-service only', () => {
 
 describe('the employee period', () => {
   const month = (
-    rows: AttendanceDayDto[],
+    rows: AttendanceEmployeeDayDto[],
     options: { locale?: Locale; figures?: AttendanceEmployeeSummaryDto; permissions?: string[] } = {},
   ): string =>
     render(<EmployeeMonthPage />, {
@@ -493,15 +500,15 @@ describe('the employee period', () => {
       permissions: options.permissions ?? ['attendance.view'],
       path: `/attendance/employees/e-1?from=${PERIOD.from}&to=${PERIOD.to}`,
       seed: (qc) => {
+        // The resolved period, keyed as the page asks for it: no page or pageSize, because the
+        // answer is one entry per calendar DATE rather than a page of stored rows.
         qc.setQueryData(
-          listKey('hr', 'attendanceDays', {
+          listKey('hr', 'attendanceEmployeePeriod', {
             from: PERIOD.from,
             to: PERIOD.to,
             employeeId: 'e-1',
-            page: 1,
-            pageSize: DAYS_PAGE,
           }),
-          paged(rows),
+          rows,
         );
         qc.setQueryData(
           listKey('hr', 'attendanceEmployeeSummary', {
@@ -514,8 +521,29 @@ describe('the employee period', () => {
       },
     });
 
+  /**
+   * A DATE AS THE SERVER RESOLVES IT. The screen is handed one of these per calendar day now, not
+   * a page of stored rows — which is the fix: a date with no row used to be absent from the answer,
+   * so the month skipped exactly the days that had punches and no recompute.
+   */
+  const resolved = (over: Partial<AttendanceEmployeeDayDto> = {}): AttendanceEmployeeDayDto => ({
+    date: PERIOD.from,
+    status: 'present',
+    firstInAt: `${PERIOD.from}T06:40:00.000Z`,
+    lastOutAt: `${PERIOD.from}T14:10:00.000Z`,
+    workedMinutes: 450,
+    lateMinutes: 0,
+    earlyLeaveMinutes: 0,
+    expectedStartAt: null,
+    expectedEndAt: null,
+    provisional: false,
+    frozen: false,
+    punches: [],
+    ...over,
+  });
+
   it('leads with who it is about and the figures the server computed', () => {
-    const html = month([day()]);
+    const html = month([resolved()]);
     expect(html).toContain('سارة أحمد');
     expect(html).toContain('EMP-0007');
     // The six figures, in the words the design uses — and the day behind them.
@@ -550,23 +578,17 @@ describe('the employee period', () => {
       path: `/attendance/employees/e-1?from=${past.from}&to=${past.to}`,
       seed: (qc) => {
         qc.setQueryData(
-          listKey('hr', 'attendanceDays', {
-            ...past,
-            employeeId: 'e-1',
-            page: 1,
-            pageSize: DAYS_PAGE,
-          }),
-          paged([
-            day({
-              workDate: '2026-10-05',
+          listKey('hr', 'attendanceEmployeePeriod', { ...past, employeeId: 'e-1' }),
+          [
+            resolved({
+              date: '2026-10-05',
               status: 'checkedIn',
               firstInAt: '2026-10-05T07:20:00.000Z',
               lastOutAt: null,
               workedMinutes: 0,
               lateMinutes: 0,
-              flags: [],
             }),
-          ]),
+          ],
         );
         qc.setQueryData(
           listKey('hr', 'attendanceEmployeeSummary', { employeeId: 'e-1', ...past }),
@@ -587,31 +609,31 @@ describe('the employee period', () => {
   });
 
   it('offers the per-day decision only to a holder of attendance.decide', () => {
-    expect(month([day()], { permissions: ['attendance.view', 'attendance.decide'] })).toContain(
+    expect(month([resolved()], { permissions: ['attendance.view', 'attendance.decide'] })).toContain(
       'Decide',
     );
-    expect(month([day()])).not.toContain('Decide');
+    expect(month([resolved()])).not.toContain('Decide');
   });
 
   it('offers the export only to a holder of attendance.export', () => {
-    expect(month([day()], { permissions: ['attendance.view', 'attendance.export'] })).toContain(
+    expect(month([resolved()], { permissions: ['attendance.view', 'attendance.export'] })).toContain(
       'Export CSV',
     );
-    expect(month([day()])).not.toContain('Export CSV');
+    expect(month([resolved()])).not.toContain('Export CSV');
   });
 
   it('draws no lateness line for somebody nobody has rostered', () => {
-    const html = month([day()], { figures: summary({ dayStart: null, graceMinutes: 0 }) });
+    const html = month([resolved()], { figures: summary({ dayStart: null, graceMinutes: 0 }) });
     expect(html).toContain('No working hours are set for this employee');
     expect(html).not.toContain('Late after');
   });
 
   it('shows no money, anywhere', () => {
-    expect(month([day()])).not.toMatch(/ج\.م|EGP|جنيه/);
+    expect(month([resolved()])).not.toMatch(/ج\.م|EGP|جنيه/);
   });
 
   it('renders Arabic copy in Arabic', () => {
-    const html = month([day()], { locale: 'ar' });
+    const html = month([resolved()], { locale: 'ar' });
     expect(html).toContain('السجل اليومي');
     expect(html).toContain('أيام الحضور');
     expect(html).toContain('الشهر في لمحة');

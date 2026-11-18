@@ -4,7 +4,7 @@
 import { type Locale } from '@ecms/contracts';
 
 const en: Record<string, string> = {
-  // The inactivity window (`SESSION_IDLE_MINUTES`). Worded for somebody who stepped away, not
+  // The inactivity window (`auth.session.idleMinutes`). Worded for somebody who stepped away, not
   // for somebody who did something wrong.
   'auth.idle.warningTitle': 'Still there?',
   'auth.idle.warningBody': 'Your session closes in {{seconds}} seconds.',
@@ -2484,6 +2484,14 @@ const en: Record<string, string> = {
   'attendanceView.status.holiday': 'Holiday',
   'attendanceView.status.noSchedule': 'No schedule',
   'attendanceView.status.noRecord': 'No record',
+  'attendanceView.noSchedule': 'No schedule',
+  'attendanceView.noRecord': 'No record',
+  'attendanceView.offDay': 'Rest day',
+  'attendanceView.provisional': 'Not yet computed',
+  'attendanceView.prevMonth': 'Previous month',
+  'attendanceView.nextMonth': 'Next month',
+  'attendanceView.unlinkedScans':
+    '{{people}} machine IDs scanned on this date are not linked to any employee, holding {{rows}} scans. They are in no count below.',
   'attendance.days.employee': 'Employee',
   'attendance.days.arrived': 'Arrived',
   'attendance.days.left': 'Left',
@@ -2565,6 +2573,37 @@ const en: Record<string, string> = {
   'attendance.dayStatus.holiday': 'Holiday',
   'attendance.dayStatus.dayOff': 'Day off',
   'attendance.dayStatus.noSchedule': 'No schedule',
+  'attendance.dayStatus.noRecord': 'No record',
+  'attendance.devices.title': 'Punch devices',
+  'attendance.devices.subtitle':
+    'Machine IDs that scanned but are not linked to any employee. Their scans are kept and are not counted anywhere until an ID is linked or ignored.',
+  'attendance.devices.machineId': 'Machine ID',
+  'attendance.devices.device': 'Device',
+  'attendance.devices.heldRows': 'Scans held',
+  'attendance.devices.span': 'First and last scan',
+  'attendance.devices.suggestion': 'Possible code',
+  'attendance.devices.link': 'Link',
+  'attendance.devices.ignore': 'Ignore',
+  'attendance.devices.resume': 'Resume',
+  'attendance.devices.summary': '{{ids}} machine IDs, holding {{rows}} scans.',
+  'attendance.devices.empty': 'Every machine ID that has scanned is linked to an employee.',
+  'attendance.devices.linkTitle': 'Link a machine ID to an employee',
+  'attendance.devices.linkBody':
+    'Machine ID {{id}} is holding {{rows}} scans. Choose the employee they belong to; the scans are then imported onto that employee and their days are recomputed.',
+  'attendance.devices.linkSuggestion':
+    'A machine ID is not an employee code. Code {{code}} would match if the two were the same, which they often are not — check the person before confirming.',
+  'attendance.devices.employee': 'Employee',
+  'attendance.devices.employeePlaceholder': 'Choose an employee',
+  'attendance.devices.search': 'Search by code or name',
+  'attendance.devices.searchPlaceholder': 'e.g. 0102818',
+  'attendance.devices.confirmLink': 'Link and import the scans',
+  'attendance.devices.backfillTitle': 'History recompute',
+  'attendance.devices.backfillNone': 'No recompute has been started.',
+  'attendance.devices.backfillFailed': '{{n}} failed chunks',
+  'attendance.devices.backfillStatus.running': 'Running',
+  'attendance.devices.backfillStatus.completed': 'Completed',
+  'attendance.devices.backfillStatus.cancelled': 'Cancelled',
+
   'attendance.dayStatus.incomplete': 'Incomplete',
   'attendance.month.title': 'Employee month',
   'attendance.month.subtitle': 'One employee, one month — quantities only',
@@ -11287,6 +11326,7 @@ const en: Record<string, string> = {
   'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'Setup-link validity (hours)',
   'systemAdmin.settings.keys.auth.lockout.maxAttempts': 'Failed sign-ins before lockout',
   'systemAdmin.settings.keys.auth.lockout.minutes': 'Lockout duration (minutes)',
+  'systemAdmin.settings.keys.auth.session.idleMinutes': 'Sign out after inactivity (minutes)',
   'systemAdmin.settings.keys.auth.loginIdentifiers': 'Accepted sign-in identifiers',
   'systemAdmin.settings.keys.auth.passkeys.enabled':
     'Allow sign-in with fingerprint or face (passkeys)',
@@ -11390,6 +11430,8 @@ const en: Record<string, string> = {
     'After this many wrong passwords in a row, the account is locked for the lockout duration. A successful sign-in resets the count.',
   'systemAdmin.settings.descriptions.auth.lockout.minutes':
     'How long a locked account cannot sign in, from 1 to 1,440 minutes (24 hours). After that, the user can try again.',
+  'systemAdmin.settings.descriptions.auth.session.idleMinutes':
+    'A session (a screen open on a device) that nobody uses for this long is closed automatically, after a one-minute warning on screen. From 10 to 1,440 minutes (24 hours). Someone who is using the system is never signed out, however long they work. A change applies to each open screen from its next renewal, within about five minutes on a screen in use; until then a screen keeps the duration it is counting down.',
   'systemAdmin.settings.descriptions.auth.loginIdentifiers':
     'What staff may type on the sign-in page to identify themselves: username, email address or employee code. At least one must stay enabled.',
   'systemAdmin.settings.descriptions.auth.passkeys.enabled':
@@ -17867,7 +17909,15 @@ const ar: Record<string, string> = {
   'attendanceView.status.dayOff': 'يوم راحة',
   'attendanceView.status.holiday': 'عطلة رسمية',
   'attendanceView.status.noSchedule': 'لا يوجد جدول',
-  'attendanceView.status.noRecord': 'لا يوجد سجل',
+  'attendanceView.status.noRecord': 'لا يوجد تسجيل',
+  'attendanceView.noSchedule': 'لا يوجد جدول',
+  'attendanceView.noRecord': 'لا يوجد تسجيل',
+  'attendanceView.offDay': 'يوم راحة',
+  'attendanceView.provisional': 'لم يُحتسب بعد',
+  'attendanceView.prevMonth': 'الشهر السابق',
+  'attendanceView.nextMonth': 'الشهر التالي',
+  'attendanceView.unlinkedScans':
+    'سجّل {{people}} من أرقام البصمة في هذا التاريخ دون ارتباط بأي موظف، وتحتفظ بـ {{rows}} عملية تسجيل. وهي غير محتسبة في الأرقام أدناه.',
   'attendance.days.employee': 'الموظف',
   'attendance.days.arrived': 'الحضور',
   'attendance.days.left': 'الانصراف',
@@ -17948,6 +17998,37 @@ const ar: Record<string, string> = {
   'attendance.dayStatus.holiday': 'عطلة رسمية',
   'attendance.dayStatus.dayOff': 'يوم راحة',
   'attendance.dayStatus.noSchedule': 'لا يوجد جدول',
+  'attendance.dayStatus.noRecord': 'لا يوجد تسجيل',
+  'attendance.devices.title': 'أجهزة البصمة',
+  'attendance.devices.subtitle':
+    'أرقام البصمة التي سجّلت حضورًا دون ارتباط بأي موظف. تُحفظ عمليات التسجيل الخاصة بها ولا تُحتسب في أي رقم حتى يتم ربط الرقم أو تجاهله.',
+  'attendance.devices.machineId': 'رقم البصمة',
+  'attendance.devices.device': 'الجهاز',
+  'attendance.devices.heldRows': 'عمليات التسجيل المحتفظ بها',
+  'attendance.devices.span': 'أول وآخر تسجيل',
+  'attendance.devices.suggestion': 'الكود المحتمل',
+  'attendance.devices.link': 'ربط',
+  'attendance.devices.ignore': 'تجاهل',
+  'attendance.devices.resume': 'استئناف',
+  'attendance.devices.summary': '{{ids}} من أرقام البصمة، تحتفظ بـ {{rows}} عملية تسجيل.',
+  'attendance.devices.empty': 'كل رقم بصمة سجّل حضورًا مرتبط بموظف.',
+  'attendance.devices.linkTitle': 'ربط رقم بصمة بموظف',
+  'attendance.devices.linkBody':
+    'يحتفظ رقم البصمة {{id}} بـ {{rows}} عملية تسجيل. اختر الموظف الذي تخصّه، ثم تُستورد العمليات باسمه ويُعاد احتساب أيامه.',
+  'attendance.devices.linkSuggestion':
+    'رقم البصمة ليس كود الموظف. الكود {{code}} هو ما يطابقه لو كان الاثنان متماثلين، وهو ما لا يتحقق في كثير من الحالات، فيُرجى التحقق من الموظف قبل التأكيد.',
+  'attendance.devices.employee': 'الموظف',
+  'attendance.devices.employeePlaceholder': 'اختر موظفًا',
+  'attendance.devices.search': 'البحث بالكود أو بالاسم',
+  'attendance.devices.searchPlaceholder': 'مثال: 0102818',
+  'attendance.devices.confirmLink': 'الربط واستيراد عمليات التسجيل',
+  'attendance.devices.backfillTitle': 'إعادة احتساب السجل التاريخي',
+  'attendance.devices.backfillNone': 'لم تبدأ أي عملية إعادة احتساب.',
+  'attendance.devices.backfillFailed': '{{n}} من الدفعات أخفقت',
+  'attendance.devices.backfillStatus.running': 'جارية',
+  'attendance.devices.backfillStatus.completed': 'مكتملة',
+  'attendance.devices.backfillStatus.cancelled': 'ملغاة',
+
   'attendance.dayStatus.incomplete': 'غير مكتمل',
   'attendance.month.title': 'شهر الموظف',
   'attendance.month.subtitle': 'موظف واحد في شهر واحد — كميات فقط',
@@ -26460,6 +26541,7 @@ const ar: Record<string, string> = {
   'systemAdmin.settings.keys.auth.activationLink.ttlHours': 'صلاحية رابط التفعيل (بالساعات)',
   'systemAdmin.settings.keys.auth.lockout.maxAttempts': 'عدد محاولات الدخول الفاشلة قبل القفل',
   'systemAdmin.settings.keys.auth.lockout.minutes': 'مدة القفل (بالدقائق)',
+  'systemAdmin.settings.keys.auth.session.idleMinutes': 'تسجيل الخروج بعد عدم الاستخدام (بالدقائق)',
   'systemAdmin.settings.keys.auth.loginIdentifiers': 'معرّفات الدخول المقبولة',
   'systemAdmin.settings.keys.auth.passkeys.enabled':
     'السماح بالدخول بالبصمة أو الوجه (مفاتيح المرور)',
@@ -26566,6 +26648,8 @@ const ar: Record<string, string> = {
     'بعد هذا العدد من محاولات كلمة المرور الخاطئة المتتالية، يُقفل الحساب طوال مدة القفل. ويُصفَّر العدّ عند نجاح تسجيل الدخول.',
   'systemAdmin.settings.descriptions.auth.lockout.minutes':
     'المدة التي يُمنع فيها الحساب المقفل من تسجيل الدخول، من 1 إلى 1440 دقيقة (24 ساعة). بعدها يمكن للمستخدم المحاولة من جديد.',
+  'systemAdmin.settings.descriptions.auth.session.idleMinutes':
+    'إذا لم تُستخدم الجلسة (الشاشة المفتوحة على جهاز) طوال هذه المدة تُغلق تلقائيًا، بعد تنبيه يظهر على الشاشة قبلها بدقيقة. من 10 إلى 1440 دقيقة (24 ساعة). لا يُسجَّل خروج من يستخدم النظام مهما طالت مدة عمله. ويُطبَّق التغيير على كل شاشة مفتوحة من تجديدها التالي، أي خلال خمس دقائق تقريبًا للشاشة المستخدمة، وتحتفظ الشاشة حتى ذلك الحين بالمدة التي تعدّها تنازليًا.',
   'systemAdmin.settings.descriptions.auth.loginIdentifiers':
     'ما يمكن للموظف إدخاله في صفحة الدخول للتعريف بنفسه: اسم المستخدم أو البريد الإلكتروني أو الكود الوظيفي. يجب أن يبقى واحد منها على الأقل مفعّلًا.',
   'systemAdmin.settings.descriptions.auth.passkeys.enabled':

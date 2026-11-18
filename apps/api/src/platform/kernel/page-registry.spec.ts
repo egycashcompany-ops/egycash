@@ -60,8 +60,12 @@ describe('the assembled page registry', () => {
   // Stage 3's two day-decision keys then arrive WITH the screen that uses them — they route to
   // `hr.attendance-regularizations`, which gained a fourth tab for the queue — so both land in the
   // assigned count below and the unassigned one does not move.
-  it('declares 88 pages over 332 permissions', () => {
-    expect(pages).toHaveLength(88);
+  it('declares 89 pages over 332 permissions', () => {
+    // The 89th is `hr.attendance-devices` (AT-D4), and it adds NO key: it is the screen the two
+    // `attendanceDevice` keys were declared for in AT-D1 and left waiting on. A page arriving
+    // without a permission is the healthy direction — a screen built for keys that already
+    // existed, rather than a key invented to give a page something to guard.
+    expect(pages).toHaveLength(89);
     expect(permissions).toHaveLength(332);
   });
 
@@ -154,13 +158,17 @@ describe('the assembled page registry', () => {
    * receipt's national ID is its own sensitive-data grant there, as the device receipt's is on
    * `it.assets`), four on `it.consumables`. The unassigned count does not move.
    */
-  it('assigns 303 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 305 permissions to a page and leaves 27 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     // `hiringRequirement.manage` arrives WITH its page, so it lands here and the unassigned count
     // below does not move — the same shape as `insuranceJobTitle.manage` before it.
     // `employee.purge` routes to `hr.employees`, the screen its button sits on, so it lands here
     // and the unassigned count below does not move.
-    expect(assigned).toHaveLength(303);
+    // 305: AT-D4 routed `attendanceDevice.view` and `attendanceDevice.manage` to the health screen
+    // it built for them, so two keys moved from the unassigned list to this one and the total did
+    // not change. This is the `employeeLoan` movement again — keys find a home when a screen is
+    // built for them, never because a page was invented to collect them.
+    expect(assigned).toHaveLength(305);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -179,7 +187,7 @@ describe('the assembled page registry', () => {
     // this list exists to record — the screen they belong on is the device HEALTH screen, and
     // health is AT-D4. Routing them to an unrelated page to keep a number still would make this
     // registry describe a system nobody can open.
-    expect(permissions.length - assigned.length).toBe(29);
+    expect(permissions.length - assigned.length).toBe(27);
   });
 
   it('splits the pages across the four modules as declared', () => {
@@ -191,7 +199,9 @@ describe('the assembled page registry', () => {
     // for weeks inside «الأصول»'s grants and became rows of their own.
     // HR's 39th is «مستندات مطلوبة للتعيين» — a reserved settings tab whose screen is not built
     // yet, counted because the authority over it is administered from today.
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 39, fleet: 19, it: 12 });
+    // HR's 40th is «أجهزة البصمة» (`hr.attendance-devices`, AT-D4): the unmatched machine ids, the
+    // link and ignore actions, and the backfill's progress.
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 18, hr: 40, fleet: 19, it: 12 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer
@@ -208,9 +218,10 @@ describe('the assembled page registry', () => {
         // recompute repair tools, self-service filing, and the overtime release, each of which
         // acts from a surface the caller already stands on.
         'attendance',
-        // AT-D1. The registry is API-only until AT-D4 builds the health screen it belongs on —
-        // and it will leave this list in that change, the way `employeeLoan` did and never before.
-        'attendanceDevice',
+        // `attendanceDevice` LEFT this list in AT-D4, exactly as the note here predicted it would:
+        // «API-only until AT-D4 builds the health screen it belongs on — and it will leave this
+        // list in that change, the way `employeeLoan` did and never before». The screen is
+        // `/attendance/devices`, and both keys point at it.
         // `employeeLoan` LEFT this list in P-HR-06-B, in the change that routed its screen — the
         // same way `setting`, `notificationTemplate` and the log streams left it, and never before.
         // Phase A's entry here was true when it was written: the only surface was a tab on the

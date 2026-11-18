@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ATTENDANCE_DAY_STATUSES,
   type AttendanceDayDto,
+  type AttendanceEmployeeDayDto,
   type AttendanceSheetRowDto,
 } from '@ecms/contracts';
 import {
@@ -19,7 +20,14 @@ import {
   toSheetRow,
   toViewStatus,
 } from './view-model';
-import { addDays, MAX_PERIOD_DAYS, periodRange, rangeLabel } from './components/period';
+import {
+  addDays,
+  MAX_PERIOD_DAYS,
+  nextMonth,
+  periodRange,
+  previousMonth,
+  rangeLabel,
+} from './components/period';
 import { FILTER_STATUSES } from './pages/DailySheetPage';
 
 const label = (key: string): string => key;
@@ -58,6 +66,7 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   expectedStartAt: '2026-11-02T07:00:00.000Z',
   expectedEndAt: '2026-11-02T15:00:00.000Z',
   day: day(),
+  provisionalDay: null,
   ...over,
 });
 
@@ -149,15 +158,64 @@ describe('a line of the daily sheet', () => {
   });
 });
 
+/** A date as the SERVER resolves it — one entry per calendar day, not a stored row. */
+const resolvedDay = (
+  over: Partial<AttendanceEmployeeDayDto> = {},
+): AttendanceEmployeeDayDto => ({
+  date: '2026-11-02',
+  status: 'present',
+  firstInAt: '2026-11-02T06:40:00.000Z',
+  lastOutAt: '2026-11-02T14:10:00.000Z',
+  workedMinutes: 450,
+  lateMinutes: 0,
+  earlyLeaveMinutes: 0,
+  expectedStartAt: null,
+  expectedEndAt: null,
+  provisional: false,
+  frozen: false,
+  punches: [],
+  ...over,
+});
+
 describe('a day of an employee period', () => {
   it('leaves hours null when there is no check-out', () => {
     const mapped = toEmployeeDay(
       '2026-11-02',
-      day({ status: 'checkedIn', lastOutAt: null, workedMinutes: 0 }),
+      resolvedDay({ status: 'checkedIn', lastOutAt: null, workedMinutes: 0 }),
       { today: '2026-11-18', label },
     );
     expect(mapped.worked).toBeNull();
     expect(mapped.status).toBe('incomplete');
+  });
+
+  it('marks a day read from its punches, so a reading is not mistaken for a record', () => {
+    // `provisional` means no row has concluded this date — the status is a reading of the scans.
+    // It is the state a whole imported history sits in until a backfill reaches it, and the tag is
+    // what tells a reader which they are looking at.
+    const mapped = toEmployeeDay(
+      '2026-11-12',
+      resolvedDay({
+        date: '2026-11-12',
+        provisional: true,
+        punches: [{ at: '2026-11-12T07:57:00.000Z', direction: 'in', source: 'device' }],
+      }),
+      { today: '2026-11-18', label },
+    );
+    expect(mapped.tags).toEqual(['attendanceView.provisional']);
+    expect(mapped.status).toBe('present');
+  });
+
+  it('carries the expectation the server resolved for the date', () => {
+    // The old day list carried none, so the timeline had nothing to draw the expected span from.
+    const mapped = toEmployeeDay(
+      '2026-11-02',
+      resolvedDay({
+        expectedStartAt: '2026-11-02T06:00:00.000Z',
+        expectedEndAt: '2026-11-02T14:00:00.000Z',
+      }),
+      { today: '2026-11-18', label },
+    );
+    expect(mapped.expected).toEqual({ start: 8 * 60, end: 16 * 60 });
   });
 
   it('keeps a date with no row at all, and names it', () => {
@@ -199,10 +257,38 @@ describe('the period the screens ask for', () => {
     expect(addDays('2026-02-28', 1)).toBe('2026-03-01');
   });
 
-  it('caps a hand-typed period at what one request can carry', () => {
-    // 92 days is the server's own export and recompute cap, and a page holds at most 100 rows —
-    // a longer range would silently drop days off the table and out of every figure above it.
-    expect(MAX_PERIOD_DAYS).toBe(92);
+  it('caps a hand-typed period at a year, matching the server', () => {
+    // It was 92: the server's old cap, and also what one page of day rows could carry, so a longer
+    // range silently dropped days off the table and out of every figure above it. Neither limit
+    // applies now — `/days/employee-period` answers one entry per DATE and batches its inputs once
+    // for the whole span — and a year is what «did he come on the 1st of January?» needs.
+    expect(MAX_PERIOD_DAYS).toBe(366);
+  });
+
+  it('steps whole months, and refuses to step into the future', () => {
+    // The unit an attendance question is asked in is a month, and «last month» only reaches one of
+    // them. Stepping back from a `thisMonth` that ends today must give the WHOLE previous month.
+    expect(previousMonth('2026-11-01', '2026-11-18')).toEqual({
+      from: '2026-10-01',
+      to: '2026-10-31',
+    });
+    // Forward lands on a whole month too, clamped to today so no arrow walks into unlived days.
+    expect(nextMonth('2026-10-01', '2026-11-18')).toEqual({ from: '2026-11-01', to: '2026-11-18' });
+    // And there is no month after the one being lived: null is what disables the arrow.
+    expect(nextMonth('2026-11-01', '2026-11-18')).toBeNull();
+  });
+
+  it('reaches back to December 2024, which is where the machines start', () => {
+    // Walking back from November 2026 must arrive at the first month of history rather than stop at
+    // some cap — this is the «any month back to December 2024» the owner asked for.
+    let range = previousMonth('2026-11-01', '2026-11-18');
+    let steps = 1;
+    while (range.from > '2024-12-01' && steps < 48) {
+      range = previousMonth(range.from, '2026-11-18');
+      steps += 1;
+    }
+    expect(range.from).toBe('2024-12-01');
+    expect(range.to).toBe('2024-12-31');
   });
 
   it('labels a range end to end', () => {

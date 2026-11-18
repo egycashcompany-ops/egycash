@@ -38,6 +38,13 @@ describe('closed vocabularies', () => {
     // for a date in progress and is payroll-neutral by construction, and once the date is past the
     // read paths resolve it to `absent` — so it is a status that can be stored but can never be a
     // date's final answer.
+    //
+    // `noRecord` is the fourteenth: ECMS has nothing for this employee on this date. It is the one
+    // value here that the ENGINE NEVER PRODUCES — only the read-time resolution does, for an
+    // employed person whose past date was never concluded. It replaced answering `null` and having
+    // the caller drop the line, which is what made a sheet for any past date list four or five
+    // names out of a hundred. It is not an absence: an absence is a conclusion, and this is the
+    // absence of one, so it is payroll-neutral and never stored.
     expect([...ATTENDANCE_DAY_STATUSES]).toEqual([
       'present',
       'checkedIn',
@@ -52,6 +59,7 @@ describe('closed vocabularies', () => {
       'incomplete',
       'dayOff',
       'noSchedule',
+      'noRecord',
     ]);
   });
 

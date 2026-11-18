@@ -469,7 +469,9 @@ export const FixedTouchBoard = ({
       <NotesSheet
         row={notesFor}
         title={editTitle(t, notesCode)}
-        subtitle={t('fleet.attendance.fields.notes')}
+        // The board, not the field: the textarea under it is already «ملاحظات» (the daily sheet
+        // says «تعديل التعيين» here).
+        subtitle={t('fleet.nav.fixedRoster')}
         maxLength={NOTE_MAX}
         onClose={() => setNotesFor(null)}
         onSave={(notes) => {

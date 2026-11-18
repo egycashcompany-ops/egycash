@@ -732,10 +732,28 @@ describe('the drivers', () => {
       [E1, '150'],
       [E2, '150'],
       [E3, '152'],
-      [E5, null],
     ]);
     const forOwn = model().availableFor('', { vehicleId: V1, slot: 'driver2EmployeeId' });
-    expect(forOwn.seated.map((o) => o.employeeId)).toEqual([E3, E5]);
+    expect(forOwn.seated.map((o) => o.employeeId)).toEqual([E3]);
+  });
+
+  it('never offers a seat the driver held on a car off this board — the daily rule (review F1)', () => {
+    // No edit here can release him (his car is not a row this board can send), so a seat that
+    // took him could only be refused at «حفظ»: he is listed where no seat is being filled, and
+    // nowhere a pick is made — the touch picker, the landscape target, the pen dialog.
+    const m = model();
+    const target = { vehicleId: V4, slot: 'driver1EmployeeId' } as const;
+    const offered = m.availableFor('', target);
+    const ids = [...offered.free, ...offered.seated, ...offered.elsewhere].map((o) => o.employeeId);
+    expect(ids).not.toContain(E5);
+    expect(m.availableFor('11005', target).seated, 'not by a search either').toEqual([]);
+    expect(
+      m.availableFor('', null).seated.map((o) => o.employeeId),
+      'still listed',
+    ).toEqual([E5]);
+    for (const vehicleId of [V1, V2, V3, V4]) {
+      expect(m.dialogCandidates(vehicleId), vehicleId).not.toContain(E5);
+    }
   });
 
   it('searches by name or code', () => {
@@ -756,10 +774,10 @@ describe('the drivers', () => {
     ).toContainEqual([E5, '153']);
   });
 
-  it('the pen dialog offers everyone seated nowhere, then the car’s own crew', () => {
+  it('the pen dialog offers the free drivers, then the car’s own crew', () => {
     const m = model();
-    expect(m.dialogCandidates(V1)).toEqual([E4, E5, E6, E1, E2]);
-    expect(m.dialogCandidates(V4)).toEqual([E4, E5, E6]);
+    expect(m.dialogCandidates(V1)).toEqual([E4, E6, E1, E2]);
+    expect(m.dialogCandidates(V4)).toEqual([E4, E6]);
   });
 
   it('names every driver from the one people list, the id’s tail where it has none', () => {
@@ -885,12 +903,16 @@ describe('«حفظ»', () => {
     const m = model();
     await expect(m.actions.save()).resolves.toBe(false);
     expect(stored.get(FIXED_ROSTER_DRAFT_KEY), 'the draft stays').toBe(before);
+    // The title is the toast's one uncut line; the reason is its description, which wraps whole
+    // (review L1: the holding car's code was cut off the end of a one-line title).
     expect(toastError).toHaveBeenCalledWith(
+      t('fleet.fixedRoster.refusal.title'),
       t('fleet.fixedRoster.refusal.held', { name: 'كريم علي', code: '214' }),
     );
-    const said = toastError.mock.calls[0]?.[0] as string;
-    expect(said).not.toContain(E4);
-    expect(said).not.toContain('already belongs');
+    for (const said of toastError.mock.calls[0] as string[]) {
+      expect(said).not.toContain(E4);
+      expect(said).not.toContain('already belongs');
+    }
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 

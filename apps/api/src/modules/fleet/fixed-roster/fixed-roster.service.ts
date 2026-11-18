@@ -95,7 +95,9 @@ const assigns = (row: SaveFleetFixedCrewRow): boolean => rowDrivers(row).length 
  * for the logs and is never shown. What a reader needs is in `details`, as plain facts the client
  * can resolve: the employee id (the screen names the driver from the people list it already has),
  * the car's CODE, the mission type id. Never a name — an error body is not a way around the
- * permission that gates names — and never the id of a car the caller cannot read.
+ * permission that gates names — and never the id of a car the caller cannot read: not in the
+ * details, and not in the message either (a holder outside the scope is «a vehicle outside your
+ * scope» there).
  *
  * These are string literals on purpose, pinned on BOTH sides — here, by the fixed-crew specs of
  * tests/integration/fleet.spec.ts, and in the web's refusal line, by its own spec
@@ -321,11 +323,15 @@ class FleetFixedRosterService {
         for (const slot of [row.driver1EmployeeId, row.driver2EmployeeId]) {
           if (slot !== null && payloadDrivers.has(String(slot))) {
             // The holder is read IN THE CALLER'S SCOPE: a car another branch owns is not this
-            // caller's to name, so its code is added only when it reads — and its id never is.
+            // caller's to name, so its code is added only when it reads — and its id never is,
+            // in the details or in the message (the in-scope message is word for word as before).
             const holder = await fleetVehicleRepository
               .getById(String(row.vehicleId), scope)
               .catch(() => null);
-            const message = `driver ${String(slot)} already belongs to the fixed crew of vehicle ${holder?.code ?? String(row.vehicleId)}; include that vehicle's row to release them`;
+            const message =
+              holder === null
+                ? `driver ${String(slot)} already belongs to the fixed crew of a vehicle outside your scope; that vehicle's row must release them first`
+                : `driver ${String(slot)} already belongs to the fixed crew of vehicle ${holder.code}; include that vehicle's row to release them`;
             throw new AppError(ErrorCodes.DUPLICATE, 409, message, {
               details: [
                 { field: 'driverEmployeeId', code: FIXED_CREW_REFUSAL.held, message: String(slot) },

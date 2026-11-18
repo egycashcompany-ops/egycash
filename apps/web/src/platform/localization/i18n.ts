@@ -8501,34 +8501,35 @@ const en: Record<string, string> = {
   'fleet.roster.counter.total': 'Total',
   'fleet.roster.counter.workshop': 'Workshop',
   'fleet.roster.counter.assigned': 'Operating',
-  // The standing board counts crews, not missions — see `FixedRosterPage`.
+  // The standing board counts crews, not missions — see `fixedCounters` in `lib/fixed-roster-model.ts`.
   'fleet.fixedRoster.counter.crewed': 'Crewed',
   'fleet.fixedRoster.counter.uncrewed': 'No crew',
   // The fixed board: its car count in five forms, the empty pool line, and the save refusal in
   // words — the driver by name, the holding car by code; never an id, never the server's English.
+  // The refusal is a toast: «title» on its one line, the reason under it (it wraps, whole).
   'fleet.fixedRoster.poolEmpty': 'Every driver is on a fixed crew',
-  'fleet.fixedRoster.refusal.held':
-    'Not saved: driver {{name}} is on the fixed crew of vehicle {{code}}.',
+  'fleet.fixedRoster.refusal.title': 'Fixed crews not saved',
+  'fleet.fixedRoster.refusal.held': 'Driver {{name}} is on the fixed crew of vehicle {{code}}.',
   'fleet.fixedRoster.refusal.heldUnnamed':
-    'Not saved: one of the drivers is on the fixed crew of vehicle {{code}}.',
+    'One of the drivers is on the fixed crew of vehicle {{code}}.',
   'fleet.fixedRoster.refusal.heldElsewhere':
-    'Not saved: driver {{name}} is on the fixed crew of another vehicle that is not on this screen (another branch, or a vehicle out of service).',
+    'Driver {{name}} is on the fixed crew of another vehicle that is not on this screen (another branch, or a deleted vehicle).',
   'fleet.fixedRoster.refusal.heldElsewhereUnnamed':
-    'Not saved: one of the drivers is on the fixed crew of another vehicle that is not on this screen (another branch, or a vehicle out of service).',
+    'One of the drivers is on the fixed crew of another vehicle that is not on this screen (another branch, or a deleted vehicle).',
   'fleet.fixedRoster.refusal.profileInactive':
-    'Not saved: driver {{name}}’s fleet profile is switched off, so he cannot be on a fixed crew.',
+    'Driver {{name}}’s fleet profile is switched off, so he cannot be on a fixed crew.',
   'fleet.fixedRoster.refusal.profileInactiveUnnamed':
-    'Not saved: one driver’s fleet profile is switched off, so he cannot be on a fixed crew.',
-  'fleet.fixedRoster.refusal.notADriver': 'Not saved: {{name}} does not hold a driving seat.',
+    'One driver’s fleet profile is switched off, so he cannot be on a fixed crew.',
+  'fleet.fixedRoster.refusal.notADriver': '{{name}} does not hold a driving seat.',
   'fleet.fixedRoster.refusal.notADriverUnnamed':
-    'Not saved: one of the chosen people does not hold a driving seat.',
+    'One of the chosen people does not hold a driving seat.',
   'fleet.fixedRoster.refusal.vehicleNotActive':
-    'Not saved: vehicle {{code}} is no longer in service, so it cannot carry a crew.',
+    'Vehicle {{code}} is no longer in service, so it cannot carry a crew.',
   'fleet.fixedRoster.refusal.missionInactive':
-    'Not saved: the chosen mission type is no longer available — choose another.',
-  'fleet.fixedRoster.refusal.needsFirst': 'Not saved: assign driver 1 before driver 2.',
+    'The chosen mission type is no longer available — choose another.',
+  'fleet.fixedRoster.refusal.needsFirst': 'Assign driver 1 before driver 2.',
   'fleet.fixedRoster.refusal.generic':
-    'The fixed crews were not saved; your changes are kept — check the edited vehicles and try again.',
+    'Your changes are kept — check the edited vehicles and try again.',
   'fleet.fixedRoster.carCount.one': 'One vehicle',
   'fleet.fixedRoster.carCount.two': 'Two vehicles',
   'fleet.fixedRoster.carCount.few': '{{count}} vehicles',
@@ -23722,29 +23723,27 @@ const ar: Record<string, string> = {
   'fleet.roster.counter.assigned': 'تشغيل',
   'fleet.fixedRoster.counter.crewed': 'بطقم',
   'fleet.fixedRoster.counter.uncrewed': 'بلا طقم',
-  // الطقم الثابت: عدد السيارات بصيغ العدد الخمس، والقائمة الفارغة، وسطر رفض الحفظ بالعربية.
+  // الطقم الثابت: عدد السيارات بصيغ العدد الخمس، والقائمة الفارغة، وسطر رفض الحفظ بالعربية:
+  // العنوان في سطر الإشعار، والسبب تحته كاملًا.
   'fleet.fixedRoster.poolEmpty': 'لا يوجد سائقون بلا طقم ثابت',
-  'fleet.fixedRoster.refusal.held':
-    'تعذّر الحفظ: السائق {{name}} في الطقم الثابت للسيارة {{code}}.',
-  'fleet.fixedRoster.refusal.heldUnnamed':
-    'تعذّر الحفظ: أحد السائقين في الطقم الثابت للسيارة {{code}}.',
+  'fleet.fixedRoster.refusal.title': 'تعذّر حفظ الطقم الثابت',
+  'fleet.fixedRoster.refusal.held': 'السائق {{name}} في الطقم الثابت للسيارة {{code}}.',
+  'fleet.fixedRoster.refusal.heldUnnamed': 'أحد السائقين في الطقم الثابت للسيارة {{code}}.',
   'fleet.fixedRoster.refusal.heldElsewhere':
-    'تعذّر الحفظ: السائق {{name}} في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة خارج الخدمة).',
+    'السائق {{name}} في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة محذوفة).',
   'fleet.fixedRoster.refusal.heldElsewhereUnnamed':
-    'تعذّر الحفظ: أحد السائقين في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة خارج الخدمة).',
+    'أحد السائقين في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة محذوفة).',
   'fleet.fixedRoster.refusal.profileInactive':
-    'تعذّر الحفظ: ملف السائق {{name}} موقوف، فلا يمكن وضعه في طقم ثابت.',
+    'ملف السائق {{name}} موقوف، فلا يمكن وضعه في طقم ثابت.',
   'fleet.fixedRoster.refusal.profileInactiveUnnamed':
-    'تعذّر الحفظ: ملف أحد السائقين موقوف، فلا يمكن وضعه في طقم ثابت.',
-  'fleet.fixedRoster.refusal.notADriver': 'تعذّر الحفظ: {{name}} ليس على وظيفة سائق.',
-  'fleet.fixedRoster.refusal.notADriverUnnamed': 'تعذّر الحفظ: أحد المختارين ليس على وظيفة سائق.',
+    'ملف أحد السائقين موقوف، فلا يمكن وضعه في طقم ثابت.',
+  'fleet.fixedRoster.refusal.notADriver': '{{name}} ليس على وظيفة سائق.',
+  'fleet.fixedRoster.refusal.notADriverUnnamed': 'أحد المختارين ليس على وظيفة سائق.',
   'fleet.fixedRoster.refusal.vehicleNotActive':
-    'تعذّر الحفظ: السيارة {{code}} لم تعد في الخدمة، فلا يمكن حفظ طقم لها.',
-  'fleet.fixedRoster.refusal.missionInactive':
-    'تعذّر الحفظ: نوع المهمة المختار لم يعد متاحًا — اختر نوعًا آخر.',
-  'fleet.fixedRoster.refusal.needsFirst': 'تعذّر الحفظ: عيّن السائق الأول قبل الثاني.',
-  'fleet.fixedRoster.refusal.generic':
-    'تعذّر حفظ الطقم الثابت، وتعديلاتك باقية — راجع السيارات المعدَّلة ثم أعد المحاولة.',
+    'السيارة {{code}} لم تعد في الخدمة، فلا يمكن حفظ طقم لها.',
+  'fleet.fixedRoster.refusal.missionInactive': 'نوع المهمة المختار لم يعد متاحًا — اختر نوعًا آخر.',
+  'fleet.fixedRoster.refusal.needsFirst': 'عيّن السائق الأول قبل الثاني.',
+  'fleet.fixedRoster.refusal.generic': 'تعديلاتك باقية — راجع السيارات المعدَّلة ثم أعد المحاولة.',
   'fleet.fixedRoster.carCount.one': 'سيارة واحدة',
   'fleet.fixedRoster.carCount.two': 'سيارتان',
   'fleet.fixedRoster.carCount.few': '{{count}} سيارات',

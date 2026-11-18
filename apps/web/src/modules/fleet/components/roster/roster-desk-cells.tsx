@@ -120,6 +120,7 @@ const SeatPerson = ({
   onDragStart,
   onDragEnd,
   problem,
+  nameClassName,
 }: {
   employeeId: string;
   person: FleetPersonDto | undefined;
@@ -128,6 +129,8 @@ const SeatPerson = ({
   onDragStart: (event: DragEvent) => void;
   onDragEnd: () => void;
   problem: JSX.Element | null;
+  /** See `SeatCell`'s `nameClassName`. */
+  nameClassName?: string | undefined;
 }): JSX.Element => {
   // Not focusable: the seat's Tab stops are its bin and the row's buttons, as on the board before.
   const hover = useDriverHoverCard(person === undefined ? [] : [person], { focusable: false });
@@ -165,6 +168,7 @@ const SeatPerson = ({
               longName
                 ? 'line-clamp-2 whitespace-normal break-words [text-wrap:balance]'
                 : 'block whitespace-nowrap',
+              nameClassName,
             )}
           >
             {/* The id's tail when the name is out of reach (no `fleetDriver.view`, or not landed
@@ -202,6 +206,7 @@ export const SeatCell = ({
   onDrop,
   onClear,
   emptyLabel,
+  nameClassName,
 }: {
   row: FleetRosterRowDto;
   slot: DutySlot;
@@ -218,6 +223,11 @@ export const SeatCell = ({
   onClear: (row: FleetRosterRowDto, slot: DutySlot) => void;
   /** The picker's "nobody to offer" line — unset: the picker's own (the day's sentence). */
   emptyLabel?: string | undefined;
+  /**
+   * Classes added to the seat person's name — the standing crew's board lets a name take a second
+   * line on a 1280 screen (`FIXED_SEAT_NAME`). None by default: the daily seat's name is as before.
+   */
+  nameClassName?: string | undefined;
 }): JSX.Element => {
   const t = useT();
   const employeeId = row[slot];
@@ -370,6 +380,7 @@ export const SeatCell = ({
             }}
             onDragEnd={() => setDragging(null)}
             problem={badges}
+            nameClassName={nameClassName}
           />
           {/* One person off this seat — a bin, as every removal on the computer («خليهم علامه
               سله»). Clearing the first seat moves the second up. */}

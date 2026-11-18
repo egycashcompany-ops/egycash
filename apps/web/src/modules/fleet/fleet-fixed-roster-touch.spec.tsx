@@ -801,7 +801,9 @@ describe('the mission and note sheets', () => {
     expect(mission).toContain('m.actions.mission(missionFor.vehicleId, id)');
     const notes = TOUCH.slice(TOUCH.indexOf('<NotesSheet'), TOUCH.indexOf('<FiltersSheet'));
     expect(notes).toContain('title={editTitle(t, notesCode)}');
-    expect(notes).toContain("subtitle={t('fleet.attendance.fields.notes')}");
+    // «ملاحظات» once — the field's label; the subtitle names the board (review L3).
+    expect(notes).toContain("subtitle={t('fleet.nav.fixedRoster')}");
+    expect(notes).not.toContain("subtitle={t('fleet.attendance.fields.notes')}");
     expect(notes).toContain('maxLength={NOTE_MAX}');
     expect(notes).toContain('m.actions.notes(notesFor.vehicleId, notes)');
   });

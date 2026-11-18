@@ -11,7 +11,8 @@
 // after the pick. Under the same head, ALWAYS, the drivers the server holds on a car that is not
 // on this board (another branch's car, or a car that left the board after it was planned), badged
 // «سيارة أخرى»: listed, never pickable, never counted. (The standing-crew screen lists the same
-// fact as a seated row with no code — the blue «سيارة أخرى» — because a seat it fills may take him.)
+// fact, in its drivers lists only, as a seated row with no code — the blue «سيارة أخرى» — which
+// no tap and no drag takes onto a seat.)
 //
 // The markup hooks the specs and the dashboard links read are the employee ids: a free row
 // `data-driver-card`, a licence-block row `data-licence-expired-driver`, an unavailable row

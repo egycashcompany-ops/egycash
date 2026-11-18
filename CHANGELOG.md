@@ -2765,12 +2765,15 @@ its entry here in the same PR.
     bold white with the car card on hover and no colour of its own per car. The two seats are the
     daily seat, the code under the name. «ملاحظات» shows three lines at most, the whole note on
     hover. «إجراءات» is pinned. «بلا طقم» is yellow, as the daily «بلا سائق»; rose is the
-    workshop's alone. A workshop car's row is rose and its standing crew stays editable.
+    workshop's alone. A workshop car's row is rose and its standing crew stays editable. On a
+    1280 px screen a seat's name may take a second line, so the whole table fits with nothing under
+    «إجراءات» (measured with two 24-letter names in one row); from 1366 px it keeps one line.
   - The drivers panel beside the table: «السائقون (n)», n the drivers with no fixed crew, listed
     first (name, code under it, no «متاح»). Then «معيّنون على سيارات أخرى» with the blue «سيارة
     أخرى» for a driver held on a car that is not on the board (another branch's, or a car out of
-    service). He is no longer dragged from the list, nor counted. «لا يوجد سائقون بلا طقم ثابت»
-    replaces the old line that said «في هذا التاريخ».
+    service). As on the daily board he is listed only: not counted, not dragged, and not offered by
+    any seat's list or the pen dialog — no edit here can release him, so such a save could only be
+    refused. «لا يوجد سائقون بلا طقم ثابت» replaces the old line that said «في هذا التاريخ».
   - «إجراءات»: the pen on every row opens «تعديل · {code}» with the mission, the two seats drawn as
     the daily dialog's (name and code with ✕, «اختيار سائق» on an empty seat) and the note, under
     the same rules (seat 2 waits for seat 1, never the same person twice). A new swap button
@@ -2793,13 +2796,16 @@ its entry here in the same PR.
     holds him, never an internal id or the server's English — or «سيارة أخرى ليست في هذه الشاشة»
     when that car is outside the reader's branches. A car no longer in service, a switched-off
     driver profile, an employee not on a driving seat and a retired mission type each have their
-    own line.
+    own line. The toast's title is «تعذّر حفظ الطقم الثابت» and the reason is the line under it,
+    which wraps whole (a one-line title would cut the car's code off).
   - `POST /fleet/fixed-roster`'s refusals carry `details` for that line: `FIXED_CREW_DRIVER_HELD`
     (the driver's employee id) with `FIXED_CREW_HOLDER` (the holding car's code, only when the
     caller's scope reads that car), `FIXED_CREW_VEHICLE_NOT_ACTIVE` (the car's code),
     `FIXED_CREW_PROFILE_INACTIVE` and `FIXED_CREW_NOT_A_DRIVER` (the employee id, after the existing
-    detail), and `FIXED_CREW_MISSION_INACTIVE` (the mission type id). Same status, error code and
-    message; no names in the body.
+    detail), and `FIXED_CREW_MISSION_INACTIVE` (the mission type id). Same status and error code,
+    and the same message — except that a holding car outside the caller's scope is now «a vehicle
+    outside your scope» in it rather than its internal id; no names and no out-of-scope id in the
+    body.
   - Unchanged: the fixed crew's rules, endpoints and data (no new field, no migration); the
     permissions (`fleetRoster.plan` edits; the branch picker narrows the cars, the drivers are the
     whole company); the hover cards (today's car and drivers, from the daily roster); and «تعيين

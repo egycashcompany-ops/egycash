@@ -14,9 +14,13 @@
 // both sides pin them in their specs: no contract field carries them.
 //
 // Order: a recognised detail → its own sentence; else a refusal of the payload (400 / 409, the
-// stale-document 409 aside) → the generic «تعذّر حفظ الطقم الثابت، وتعديلاتك باقية…»; else the app's
-// friendly line for the failure (`errorMessage`: stale, forbidden, network …) — and when that line
-// is only the server's own message (a code the app has no words for), the generic one instead.
+// stale-document 409 aside) → the generic «تعديلاتك باقية — راجع السيارات المعدَّلة…»; else the
+// app's friendly line for the failure (`errorMessage`: stale, forbidden, network …) — and when that
+// line is only the server's own message (a code the app has no words for), the generic one instead.
+//
+// The line is the REASON: the model toasts it as the description under the title «تعذّر حفظ الطقم
+// الثابت» (`fleet.fixedRoster.refusal.title`). The toast draws its title on one line and cuts what
+// does not fit, while the description wraps — so the holding car's code is never cut off.
 import { type Locale } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';

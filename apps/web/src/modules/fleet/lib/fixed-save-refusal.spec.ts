@@ -8,12 +8,24 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it, vi } from 'vitest';
 import { type Locale } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
 import { translate } from '../../../platform/localization/i18n';
+import { Toaster } from '../../../shared/ui/toast/Toaster';
+import { type Toast } from '../../../shared/ui/toast/toast-store';
 import { FIXED_REFUSAL, fixedSaveRefusal, type RefusalWords } from './fixed-save-refusal';
+
+// The toasts on show, for the one case that draws the REAL shared Toaster (the store's own timer
+// needs a window, which this suite has not).
+const { shown } = vi.hoisted(() => ({ shown: [] as Toast[] }));
+vi.mock('../../../shared/ui/toast/toast-store', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  useToasts: () => shown,
+}));
 
 const E1 = '650000000000000000000011';
 const E2 = '650000000000000000000012';
@@ -276,6 +288,33 @@ describe('the real words (green once the HUB has merged the catalog)', () => {
     }
     expect(fixedSaveRefusal(held('214'), real('ar'))).toContain('أحمد محمد');
     expect(fixedSaveRefusal(held('214'), real('ar'))).toContain('214');
+  });
+
+  it('reads whole in the toast: a short title on its one line, the reason wrapping under it (review L1)', () => {
+    // The shared Toaster cuts its title to one line («truncate» in a max-w-sm box) and lets the
+    // description wrap. The model toasts `refusal.title` as the title and this line as the
+    // description, so the holding car's code — the end of the longest line — is never cut off.
+    const longName = 'محمود عبد الرحمن الشافعي';
+    const line = fixedSaveRefusal(held('176'), { ...real('ar'), nameOf: () => longName });
+    const title = translate('ar', `${K}.title`);
+    expect(title).toBe('تعذّر حفظ الطقم الثابت');
+    expect(line).toBe(`السائق ${longName} في الطقم الثابت للسيارة 176.`);
+    expect(line, 'the title is not said twice').not.toContain('تعذّر');
+    shown.splice(0, shown.length, { id: 't1', variant: 'error', title, description: line });
+    const html = renderToStaticMarkup(createElement(Toaster));
+    const paragraphs = [...html.matchAll(/<p class="([^"]*)">([^<]*)<\/p>/gu)].map((m) => ({
+      className: m[1] ?? '',
+      text: m[2] ?? '',
+    }));
+    expect(paragraphs.map((p) => p.text)).toEqual([title, line]);
+    expect(paragraphs[0]?.className, 'the title is the one-line one').toContain('truncate');
+    expect(paragraphs[1]?.className, 'the reason wraps, whole').not.toContain('truncate');
+    expect(paragraphs[1]?.className).not.toContain('line-clamp');
+    // Each language keeps the title short enough for its one line, and no reason repeats it.
+    for (const locale of ['ar', 'en'] as const) {
+      expect(translate(locale, `${K}.title`).length, locale).toBeLessThanOrEqual(30);
+    }
+    expect(fixedSaveRefusal(held('176'), real('en'))).not.toMatch(/^Not saved/u);
   });
 
   it('fills every placeholder in both languages', () => {

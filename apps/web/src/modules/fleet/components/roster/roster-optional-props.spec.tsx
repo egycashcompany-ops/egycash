@@ -212,6 +212,64 @@ describe('DriverSlotPicker and SeatCell — the "nobody to offer" line', () => {
   });
 });
 
+describe('SeatCell — a name under 1366px (review L2, told item 21)', () => {
+  const PERSON = {
+    employeeId: E1,
+    code: '10401',
+    fullNameAr: 'محمود عبد الرحمن الشافعي',
+    status: 'active' as const,
+    branchId: null,
+    address: null,
+    governorate: null,
+    phone: null,
+    hiredAt: null,
+  };
+  const facts: DeskSeatFacts = {
+    expired: new Set(),
+    unavailable: new Map(),
+    transferFrom: () => null,
+    person: (id) => (id === E1 ? PERSON : undefined),
+    reasonLabel: (reason) => reason,
+  };
+  const WRAP = 'max-[1365px]:whitespace-normal';
+  const seat = (nameClassName?: string): string =>
+    render(
+      <SeatCell
+        row={row({ driver1EmployeeId: E1 })}
+        slot="driver1EmployeeId"
+        mayPlan
+        over={null}
+        setOver={() => undefined}
+        dragging={null}
+        setDragging={() => undefined}
+        facts={facts}
+        pool={[]}
+        searchIndex={new Map()}
+        onDrop={() => undefined}
+        onClear={() => undefined}
+        nameClassName={nameClassName}
+      />,
+    );
+  const nameTag = (html: string): string => {
+    const at = html.indexOf('data-seat-name=');
+    return html.slice(html.lastIndexOf('<', at), html.indexOf('>', at));
+  };
+  it('keeps its one line at every width on the daily board (the default)', () => {
+    expect(nameTag(seat())).toContain('whitespace-nowrap');
+    expect(seat()).not.toContain('max-[1365px]:');
+  });
+  it('wears the classes it is given on the name — a 24-letter name included, never cut', () => {
+    const tag = nameTag(seat(WRAP));
+    expect(tag).toContain('data-seat-name="true"');
+    expect(tag).toContain('whitespace-nowrap');
+    expect(tag).toContain(WRAP);
+    expect(tag).not.toContain('truncate');
+    expect(seat(WRAP)).toContain('محمود عبد الرحمن الشافعي');
+    // Only the name: the seat around it is the daily seat, class for class.
+    expect(seat(WRAP).replace(` ${WRAP}`, '')).toBe(seat());
+  });
+});
+
 // ── the drivers list ────────────────────────────────────────────────────────────────────────────
 
 describe('AvailableList — «متاح» and the empty lines', () => {
@@ -323,14 +381,14 @@ describe('NotesSheet — its title, its subtitle and its cap', () => {
     expect(html).not.toContain('maxLength');
     expect(html).not.toContain('maxlength');
   });
-  it('takes what it is given — «تعديل · 150» · «ملاحظات», 500 letters', () => {
+  it('takes what it is given — «تعديل · 150» · «الطقم الثابت», 500 letters', () => {
     const html = sheet({
       title: `${t('common.edit')} · 150`,
-      subtitle: t('fleet.attendance.fields.notes'),
+      subtitle: t('fleet.nav.fixedRoster'),
       maxLength: 500,
     });
     expect(html).toContain(`data-title="${t('common.edit')} · 150"`);
-    expect(html).toContain(`data-subtitle="${t('fleet.attendance.fields.notes')}"`);
+    expect(html).toContain(`data-subtitle="${t('fleet.nav.fixedRoster')}"`);
     expect(html).toMatch(/maxlength="500"/iu);
   });
 });

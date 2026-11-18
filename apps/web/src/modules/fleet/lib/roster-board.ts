@@ -81,7 +81,7 @@ import { matchesVehicleCode } from './vehicle-code-match';
 
 // ── pure pieces (exported for the boards and the specs) ──────────────────────────────────────────
 
-/** The one thing a drag carries, exactly as the fixed board spells it. */
+/** The one thing a drag carries — one drag type for every roster board, daily and standing. */
 export const DRAG_TYPE = 'application/x-ecms-driver';
 
 /** A seat's name — «السائق الأول» / «السائق الثاني». */

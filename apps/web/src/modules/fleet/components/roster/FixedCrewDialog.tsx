@@ -5,8 +5,8 @@
 // THE RULES ARE TODAY'S, moved out of the page as they were:
 //   · the dialog holds its OWN copy of the four facts and hands them back only on «حفظ», so
 //     «إلغاء» means cancel: nothing outside it changes until then — not the draft, not the server;
-//   · it re-implements no driver rule: it offers the drivers the draft seats nowhere plus this
-//     car's own crew (`m.dialogCandidates`), and the board writes the values through `applyEdit`,
+//   · it re-implements no driver rule: it offers the free drivers plus this car's own crew
+//     (`m.dialogCandidates`), and the board writes the values through `applyEdit`,
 //     which routes each driver through `assignDriver` — one rule, reached from the seat, the drop
 //     and here;
 //   · the second driver waits for the first («عيّن السائق الأول أولاً»), and clearing the first
@@ -19,8 +19,9 @@
 // THE SEATS LOOK LIKE THE DAILY DIALOG'S (`RosterAssignDialog`'s DriverSlot) — «شباك تعديل ...
 // زي التعيين اليومي»: a chosen driver is a bordered row, name and code with ✕ beside; an empty seat
 // is «اختيار سائق», which opens the list in place. The move off another car is promised under the
-// seat («سيُنقل من السيارة 214 عند الحفظ»). A driver the server holds on a car that is not on this
-// board carries the blue «سيارة أخرى»; a free one carries nothing (answer 1 ب: no flag either).
+// seat («سيُنقل من السيارة 214 عند الحفظ»). A free driver carries no word beside him (answer 1 ب:
+// no flag either). A driver the server holds on a car that is not on this board is not offered —
+// the daily rule: no edit here can release him, so the save could only be refused.
 //
 // The name and the code keep a gap between them here: `EmployeeName`'s `ms-2` sits on a
 // left-to-right code, which in Arabic is the side away from the name — so this dialog draws its
@@ -30,7 +31,6 @@ import { type FleetFixedCrewRowDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { localized } from '../../../../shared/lib/format';
-import { Badge } from '../../../../shared/ui/Badge';
 import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Select, Textarea } from '../../../../shared/ui/form';
@@ -38,8 +38,8 @@ import { CloseIcon } from '../../../../shared/ui/icons';
 import { useFleetCatalog } from '../../api/fleet-queries';
 import { type FixedEditValues, type FixedRosterBoardModel } from '../../lib/fixed-roster-model';
 
-/** What a seat needs of the board: who a person is, who is held off the board, the move. */
-type SeatModel = Pick<FixedRosterBoardModel, 'person' | 'heldOff' | 'transferFrom'>;
+/** What a seat needs of the board: who a person is, and the move. */
+type SeatModel = Pick<FixedRosterBoardModel, 'person' | 'transferFrom'>;
 
 /** A driver's name and code with a real gap between them, whatever the direction. */
 const NameAndCode = ({
@@ -155,13 +155,12 @@ export const CrewCandidates = ({
   exclude,
   onPick,
 }: {
-  model: Pick<SeatModel, 'person' | 'heldOff'>;
+  model: Pick<SeatModel, 'person'>;
   candidates: readonly string[];
   exclude: string | null;
   onPick: (employeeId: string) => void;
 }): JSX.Element => {
   const t = useT();
-  const heldOff = new Set(model.heldOff.map((driver) => driver.employeeId));
   const offered = candidates.filter((id) => id !== exclude);
   return (
     <div
@@ -182,14 +181,8 @@ export const CrewCandidates = ({
                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none dark:hover:bg-slate-800/60 dark:focus-visible:bg-slate-800/60"
                 onClick={() => onPick(id)}
               >
+                {/* A free driver is simply a driver with no seat — no word beside him. */}
                 <NameAndCode employeeId={id} person={model.person} />
-                {/* Held on a car off this board: the daily list's blue «سيارة أخرى». A free
-                    driver is simply a driver with no seat — no word beside him. */}
-                {heldOff.has(id) && (
-                  <Badge tone="info" className="shrink-0">
-                    {t('fleet.roster.otherVehicle')}
-                  </Badge>
-                )}
               </button>
             </li>
           ))}
@@ -207,7 +200,7 @@ export const FixedCrewDialog = ({
 }: {
   /** The car as the DRAFT holds it — the dialog opens on its current values. */
   row: FleetFixedCrewRowDto;
-  m: Pick<FixedRosterBoardModel, 'person' | 'heldOff' | 'transferFrom' | 'dialogCandidates'>;
+  m: Pick<FixedRosterBoardModel, 'person' | 'transferFrom' | 'dialogCandidates'>;
   onClose: () => void;
   /** Hands the four facts back. Nothing is written here. */
   onSave: (edit: FixedEditValues) => void;
@@ -221,8 +214,8 @@ export const FixedCrewDialog = ({
   const [driver2, setDriver2] = useState<string | null>(row.driver2EmployeeId);
   const [notes, setNotes] = useState<string>(row.notes ?? '');
 
-  // Everyone the draft seats nowhere (free, and held off the board), PLUS this car's own crew —
-  // missing from the pool precisely because they sit here.
+  // The free drivers, PLUS this car's own crew — missing from the pool precisely because they sit
+  // here.
   const candidates = m.dialogCandidates(row.vehicleId);
 
   // The one rule a two-seat form can break that a drag cannot: the same person in both seats.

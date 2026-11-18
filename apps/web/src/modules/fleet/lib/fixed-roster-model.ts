@@ -20,6 +20,9 @@
 //
 // Owner's answer 1 (ب): no flag for a standing member who can no longer drive. The lists offer
 // every driver the server sends; the server's refusal at «حفظ» is what says why one cannot stay.
+// A driver the server holds on a car that is NOT on this board is the daily board's «سيارة أخرى»:
+// listed, never a pick, never dragged, never counted — no edit here can release him, so a seat
+// that took him could only be refused.
 //
 // No effect seeds anything: the draft is derived during render, which is what lets the specs
 // render the model with `renderToStaticMarkup`.
@@ -171,13 +174,16 @@ export interface FixedRosterBoardModel {
   transferFrom: (employeeId: string, vehicleId: string) => string | null;
   /**
    * The list for a pick, searched by name or code. free = `pool`; flagged = [] (answer 1 ب);
-   * seated = (target ? drivers the draft seats on ANOTHER car of this board, with that car's code : [])
-   *          + ALWAYS the held-off-board drivers the draft seats nowhere, as state 'seated' with
-   *          seatedCode null (→ the shared list paints the blue «سيارة أخرى»); elsewhere = [].
-   * licenceExpired is always false. The target car's own crew is left out (the swap is its own button).
+   * seated = target ? the drivers the draft seats on ANOTHER car of this board, with that car's
+   *          code (a pick MOVES him)
+   *        : the held-off-board drivers the draft seats nowhere, as state 'seated' with seatedCode
+   *          null (→ the shared list paints the blue «سيارة أخرى» and offers no tap and no drag);
+   * elsewhere = []. A seat being filled never lists a held-off driver: no save could stand with
+   * him (the daily rule — never a pick). licenceExpired is always false. The target car's own crew
+   * is left out (the swap is its own button).
    */
   availableFor: (term: string, target: FixedSeatTarget | null) => DriverOptions;
-  /** The pen dialog's candidates: every driver with no seat in the draft (free + held-off) PLUS this car's own crew. */
+  /** The pen dialog's candidates: the FREE drivers (`pool`) PLUS this car's own crew — never one held off the board. */
   dialogCandidates: (vehicleId: string) => string[];
   actions: FixedRosterActions;
 }
@@ -570,29 +576,34 @@ export const useFixedRosterBoard = (query: FixedRosterQuery): FixedRosterBoardMo
                 option(driver.employeeId, 'seated', codeByVehicle.get(seat.vehicleId) ?? null),
               ];
             });
-      // Held off the board, and seated by the draft nowhere: listed always, with no code.
-      const away = searched
-        .filter(
-          (driver) =>
-            heldOffIds.has(driver.employeeId) && findSeat(draft, driver.employeeId) === null,
-        )
-        .map((driver) => option(driver.employeeId, 'seated', null));
+      // Held off the board, and seated by the draft nowhere: listed where no seat is being filled
+      // (the panel, the drivers sheet), with no code — and never offered to a seat, where a pick
+      // could only end in a refused save.
+      const away =
+        target !== null
+          ? []
+          : searched
+              .filter(
+                (driver) =>
+                  heldOffIds.has(driver.employeeId) && findSeat(draft, driver.employeeId) === null,
+              )
+              .map((driver) => option(driver.employeeId, 'seated', null));
       return { free, flagged: [], seated: [...moves, ...away], elsewhere: [] };
     },
     [drivers, searchIndex, pool, draft, codeByVehicle, heldOffIds],
   );
 
-  /** Everyone the draft seats nowhere (free and held off), then this car's own crew. */
+  /** The free drivers, then this car's own crew — the held off the board are no candidates. */
   const dialogCandidates = useCallback(
     (vehicleId: string): string[] => {
-      const ids = availableDrivers(drivers, draft).map((driver) => driver.employeeId);
+      const ids = pool.map((driver) => driver.employeeId);
       const own = draft.find((row) => row.vehicleId === vehicleId);
       for (const id of [own?.driver1EmployeeId ?? null, own?.driver2EmployeeId ?? null]) {
         if (id !== null && !ids.includes(id)) ids.push(id);
       }
       return ids;
     },
-    [drivers, draft],
+    [pool, draft],
   );
 
   // ── the edits: each one a real board function on the draft ──────────────────────────────────
@@ -640,8 +651,11 @@ export const useFixedRosterBoard = (query: FixedRosterQuery): FixedRosterBoardMo
       return true;
     } catch (error) {
       // The hook's own `onError` opts the mutation out of the global toast — said here, in Arabic,
-      // and the draft and its steps stay: nothing the reader did is lost.
+      // and the draft and its steps stay: nothing the reader did is lost. The toast's title is one
+      // line that does not wrap (and is cut when long), so it only says «not saved»; the reason —
+      // the driver, the holding car — is the description under it, which wraps and stays whole.
       toast.error(
+        t('fleet.fixedRoster.refusal.title'),
         fixedSaveRefusal(error, {
           t,
           locale,

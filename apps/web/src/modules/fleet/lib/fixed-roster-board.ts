@@ -135,7 +135,10 @@ export const swapDrivers = (
 };
 
 /**
- * The pool: every active driver the server sent, MINUS everyone the DRAFT already seats.
+ * The pool: every driver the server sent (the drivers registry — every employee in a driving seat,
+ * less a fleet profile that exists and has been switched off), MINUS everyone the DRAFT already
+ * seats. The board model also takes out the drivers held on a car off this board
+ * (`lib/fixed-roster-model.ts`, `heldOffBoard`).
  *
  * Derived from the draft rather than from the server's own `assignedVehicleId`, because the pool
  * has to answer the board as it stands right now: a drag that has not been saved yet must still

@@ -661,6 +661,17 @@ describe('the table — the daily board’s seven columns, the standing crew’s
     expect(BOARD_FILE, 'and says the fixed empty line').toContain('emptyLabel={poolEmpty}');
   });
 
+  it('lets a seat’s name take a second line under 1366px — the whole table fits a 1280 screen (told 21)', () => {
+    // Measured in the browser at 1280×800 with two 24-letter names in one row: 899px of table in
+    // an 858px frame before, 858 in 858 with this (review L2). The daily seat is unchanged.
+    expect(BOARD_FILE).toContain('nameClassName={FIXED_SEAT_NAME}');
+    expect(CELLS).toContain(
+      "FIXED_SEAT_NAME =\n  'max-[1365px]:whitespace-normal max-[1365px]:break-words max-[1365px]:[text-wrap:balance]';",
+    );
+    expect(tbody(render()), 'drawn on the seat’s name').toContain('max-[1365px]:whitespace-normal');
+    expect(DAILY_DESK, 'the daily seat says nothing of it').not.toContain('max-[1365px]:');
+  });
+
   it('promises the move in place — «سيُنقل من السيارة 150 عند الحفظ»', () => {
     // E1 moved from 150 to 151 in a draft left by an earlier visit.
     const markup = renderRestored([
@@ -920,9 +931,8 @@ describe('a reader without fleetRoster.plan reads the board and changes nothing'
 describe('the pen dialog — «تعديل · 150», the four facts together', () => {
   const MODEL_STUB = {
     person: (id: string) => PERSONS.get(id),
-    heldOff: [{ employeeId: E4, assignedVehicleId: AWAY }],
     transferFrom: (_employeeId: string, _vehicleId: string): string | null => null,
-    dialogCandidates: (_vehicleId: string): string[] => [E6, E4, E1, E2],
+    dialogCandidates: (_vehicleId: string): string[] => [E6, E1, E2],
   };
   const renderDialog = (
     target: FleetFixedCrewRowDto,
@@ -1006,23 +1016,20 @@ describe('the pen dialog — «تعديل · 150», the four facts together', ()
     expect(markup).toContain(t('fleet.roster.transferHint', { code: '214' }));
   });
 
-  it('lists the candidates minus the other seat’s pick — the blue «سيارة أخرى» on a held-off driver, nothing on a free one', () => {
+  it('lists the candidates minus the other seat’s pick — a name and a code, no word beside them', () => {
     const markup = renderToStaticMarkup(
       <Provider store={store(ALL)}>
         <CrewCandidates
           model={MODEL_STUB}
-          candidates={[E6, E4, E1]}
+          candidates={[E6, E3, E1]}
           exclude={E1}
           onPick={() => undefined}
         />
       </Provider>,
     );
-    expect(all(markup, 'data-crew-candidate')).toEqual([E6, E4]);
-    const held = markup.slice(markup.indexOf(`data-crew-candidate="${E4}"`));
-    expect(held.slice(0, held.indexOf('</button>'))).toContain(t('fleet.roster.otherVehicle'));
-    expect(held.slice(0, held.indexOf('</button>'))).toContain('bg-sky-100');
-    const free = markup.slice(markup.indexOf(`data-crew-candidate="${E6}"`));
-    expect(free.slice(0, free.indexOf('</button>'))).not.toContain(t('fleet.roster.otherVehicle'));
+    expect(all(markup, 'data-crew-candidate')).toEqual([E6, E3]);
+    expect(markup).not.toContain(t('fleet.roster.otherVehicle'));
+    expect(markup, 'no badge at all').not.toContain('rounded-full');
     expect(markup).not.toContain(`>${t('fleet.roster.free')}<`);
     const empty = renderToStaticMarkup(
       <Provider store={store(ALL)}>

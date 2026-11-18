@@ -64,7 +64,12 @@ import {
 import { DASH, SeatCell } from './roster-desk-cells';
 import { DeskCounters, ExcelPill } from './roster-desk-parts';
 import { CodeList, EditsBar, num } from './roster-parts';
-import { FixedNotesCell, FixedStatusCell, fixedSeatFacts } from './fixed-desk-cells';
+import {
+  FIXED_SEAT_NAME,
+  FixedNotesCell,
+  FixedStatusCell,
+  fixedSeatFacts,
+} from './fixed-desk-cells';
 import { FixedDriversPanel } from './FixedDriversPanel';
 import { FixedCrewDialog } from './FixedCrewDialog';
 
@@ -157,6 +162,9 @@ export const FixedDeskBoard = ({
       onDrop={(target, which, employeeId) => dropDriver(target.vehicleId, which, employeeId)}
       onClear={(target, which) => m.actions.clear(target.vehicleId, which)}
       emptyLabel={poolEmpty}
+      // On a 1280 screen a seat's name may take a second line rather than push the table past
+      // its frame: the whole table fits, «ملاحظات» never slides under «إجراءات» (told item 21).
+      nameClassName={FIXED_SEAT_NAME}
     />
   );
   const columns: Column<FleetFixedCrewRowDto>[] = [

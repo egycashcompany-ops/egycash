@@ -9,9 +9,9 @@
 //   · first the drivers with no fixed crew, each draggable onto a seat (a planner), the name and
 //     the code under it, with NO «متاح» beside them: every row here is simply a driver with no seat;
 //   · then «معيّنون على سيارات أخرى (n)»: anyone the server holds on a car that is not on this board
-//     (another branch's car, or a car out of service), with the blue «سيارة أخرى». Not draggable —
-//     the daily rule for a seated row. A seat's list in the pen dialog still offers him, and the
-//     save then says why it cannot stand;
+//     (another branch's car, or a car out of service), with the blue «سيارة أخرى». Never dragged
+//     and never offered to a seat (nor in the pen dialog) — the daily rule: no edit here can
+//     release him, so a save that seated him could only be refused;
 //   · «لا يوجد سائقون بلا طقم ثابت» when everyone is crewed; a search that finds nobody says so.
 //
 // Owner's answer 1 (ب): no licence, profile or role flag on any row.

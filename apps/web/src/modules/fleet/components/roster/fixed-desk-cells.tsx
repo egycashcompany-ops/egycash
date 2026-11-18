@@ -6,6 +6,9 @@
 //                    standing crew's two words and none of the day's flags.
 //   FixedNotesCell   «ملاحظات»: at most three lines, the whole note on hover — a long note never
 //                    grows the row, so the table fits a laptop with «إجراءات» in sight.
+//   FIXED_SEAT_NAME  the seat's name under 1366px: a name the seat cannot hold on one line takes
+//                    a second (only when the table would otherwise pass its frame), so the whole
+//                    table fits a 1280 screen with nothing under «إجراءات» (told item 21).
 //   fixedSeatFacts   what the daily `SeatCell` is told about a seat's person. Owner's answer 1 (ب):
 //                    no flag for a standing member who can no longer drive — no expired licence,
 //                    no absence, no reason badge, no amber frame. Only the move is said
@@ -70,6 +73,14 @@ export const FixedNotesCell = ({ notes }: { notes: string | null }): JSX.Element
       {notes}
     </span>
   );
+
+/**
+ * Under 1366px a seat's name may wrap (whole words, balanced, never cut): measured at 1280×800 with
+ * two 24-letter names in one row, the table went from 899px in its 858px frame to 858 in 858. From
+ * 1366px up the seat keeps the daily one line.
+ */
+export const FIXED_SEAT_NAME =
+  'max-[1365px]:whitespace-normal max-[1365px]:break-words max-[1365px]:[text-wrap:balance]';
 
 /** Nobody is flagged here (answer 1 ب) — the same empty answers for every seat. */
 const NO_FLAGS: ReadonlySet<string> = new Set<string>();

@@ -6420,12 +6420,21 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     const said = JSON.stringify(scoped.details);
     expect(said, 'no vehicle id anywhere in the details').not.toContain(theirs.id);
     expect(said, 'and not the other branch’s code either').not.toContain(theirs.code);
+    // The message travels in the same HTTP body (`error.message`): it names neither (review F2).
+    expect(scoped.message).toBe(
+      `driver ${d} already belongs to the fixed crew of a vehicle outside your scope; that vehicle's row must release them first`,
+    );
+    expect(scoped.message, 'no vehicle id in the message').not.toContain(theirs.id);
+    expect(scoped.message, 'nor the other branch’s code').not.toContain(theirs.code);
 
     const company = await refusedBy(fleetFixedRosterService.save(input, adminUserId, orgScope()));
     expect(company.details, 'the same refusal, read company-wide, names the car').toEqual([
       { field: 'driverEmployeeId', code: 'FIXED_CREW_DRIVER_HELD', message: d },
       { field: 'vehicleCode', code: 'FIXED_CREW_HOLDER', message: theirs.code },
     ]);
+    expect(company.message, 'and its message is word for word as it was').toBe(
+      `driver ${d} already belongs to the fixed crew of vehicle ${theirs.code}; include that vehicle's row to release them`,
+    );
 
     // Nothing moved on either branch.
     const board = data<FixedBoardDto>(await getCrews());

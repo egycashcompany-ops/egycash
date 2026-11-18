@@ -6,6 +6,7 @@ import {
   type ExportAttendanceQuery,
   type ListAttendanceDaysQuery,
   type ListAttendanceSheetQuery,
+  type AttendanceEmployeeSummaryQuery,
   type AttendanceSheetSummaryQuery,
   type RecomputeAttendanceDays,
 } from '@ecms/contracts';
@@ -53,6 +54,26 @@ export const attendanceSheetSummary = async (req: Request, res: Response): Promi
   const ctx = authContext(req);
   const { query } = validated<never, AttendanceSheetSummaryQuery, never>(req);
   ok(res, await dayRecordService.sheetSummary(query, scopeSelector(ctx, 'attendance.view')));
+};
+
+/** One employee's period, added up — the figures above their attendance page. */
+export const attendanceEmployeeSummary = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, AttendanceEmployeeSummaryQuery, never>(req);
+  ok(res, await dayRecordService.employeeSummary(query, scopeSelector(ctx, 'attendance.view')));
+};
+
+/** The same figures about the caller. The employee comes from the login; the query cannot name one. */
+export const myAttendanceSummary = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, AttendanceEmployeeSummaryQuery, never>(req);
+  ok(
+    res,
+    await dayRecordService.employeeSummaryMine(String(ctx.userId), {
+      from: query.from,
+      to: query.to,
+    }),
+  );
 };
 
 export const listMyAttendanceDays = async (req: Request, res: Response): Promise<void> => {

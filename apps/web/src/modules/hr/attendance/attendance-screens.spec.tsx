@@ -17,12 +17,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   type AttendanceDayDto,
   type AttendanceDecisionDto,
+  type AttendanceEmployeeSummaryDto,
   type AttendanceRegularizationDto,
   type AttendanceSheetRowDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
-import { localeSlice } from '../../../store/localeSlice';
+import { localeSlice, setLocale } from '../../../store/localeSlice';
+import { store as appStore } from '../../../store';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
@@ -37,8 +39,9 @@ const PERIOD = periodRange('thisMonth');
 /** One page of days — the screens ask for the server's maximum (`MAX_PAGE_SIZE`). */
 const DAYS_PAGE = 100;
 
-// The sheet opens on Cairo's day (`cairoToday`), not UTC's: from 22:00 UTC Cairo is already on the
-// next date, and a UTC «today» put every stub row on a day the page never asked for.
+// The COMPANY's today (Africa/Cairo, R10), which is what the screens ask for. Read off UTC it is
+// the wrong day for the two hours every night between Cairo midnight and UTC midnight: the page
+// asks for one date, the seeded rows sit on another, and every assertion looks at an empty screen.
 const TODAY = cairoToday();
 
 const day = (over: Partial<AttendanceDayDto> = {}): AttendanceDayDto => ({
@@ -140,6 +143,11 @@ const render = (
       ui: { theme: 'light' as const, sidebarOpen: false },
     },
   });
+  // `views/view-format.ts` reads the locale off the app's SINGLE store rather than through React
+  // context, because its helpers are called from plain functions as well as from components. The
+  // app has exactly one store, so that is correct there; a test that builds its own has to keep
+  // the two in step, or every clock in the markup speaks the other language.
+  appStore.dispatch(setLocale(locale));
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
@@ -169,12 +177,38 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   employeeCode: 'EMP-0007',
   employeeName: 'سارة أحمد',
   employeePhotoFileId: null,
+  employeeDepartment: { ar: 'الخزينة', en: 'Treasury' },
   branchId: 'b-1',
   date: TODAY,
   status: 'late',
   expectedStartAt: `${TODAY}T07:00:00.000Z`,
   expectedEndAt: `${TODAY}T15:00:00.000Z`,
   day: day(),
+  ...over,
+});
+
+/**
+ * The period's figures as the SERVER computes them. The screens do no arithmetic over a month, so
+ * a test that invented its own totals here would be testing nothing the product does.
+ */
+const summary = (
+  over: Partial<AttendanceEmployeeSummaryDto> = {},
+): AttendanceEmployeeSummaryDto => ({
+  from: PERIOD.from,
+  to: PERIOD.to,
+  daysPresent: 1,
+  daysExpected: 1,
+  usualArrival: 9 * 60 + 20,
+  usualDeparture: 17 * 60,
+  avgWorkedMinutes: 460,
+  totalWorkedMinutes: 460,
+  lateDays: 1,
+  lateMinutesTotal: 20,
+  absentDays: 0,
+  incompleteDays: 0,
+  dayStart: 9 * 60,
+  graceMinutes: 15,
+  lastPunchAt: `${TODAY}T15:00:00.000Z`,
   ...over,
 });
 
@@ -261,19 +295,20 @@ describe('the daily sheet reads quantities and offers only what the caller may d
   });
 
   it('prints the expected hours, which no day row carries', () => {
-    const html = sheet({ permissions: ['attendance.view'] });
-    // 07:00–15:00 UTC is 09:00–17:00 in Cairo — the 24-hour business clock (R10), never the
-    // browser's zone — and the sheet is the only screen that shows it.
-    expect(html).toContain('Expected');
-    expect(html.replace(/<[^>]+>/g, '')).toContain('09:00 → 17:00');
+    // 07:00–15:00 UTC is 9 AM – 5 PM in Cairo — the business clock (R10), never the browser's
+    // zone — and the sheet is the only screen that shows what was expected of somebody.
+    const text = sheet({ permissions: ['attendance.view'] }).replace(/<[^>]+>/g, '');
+    expect(text).toContain('9:00 AM – 5:00 PM');
   });
 
-  it('isolates each time, so the pair does not reorder itself in Arabic', () => {
-    // Arabic-Indic digits are bidi class AN, and UAX#9 gives a neutral between two AN runs the
-    // RIGHT-to-left direction — so «٠٩:٠٠ → ١٧:٠٠» written as one string renders as
-    // «١٧:٠٠ → ٠٩:٠٠», departure first, with `dir="ltr"` on the parent powerless to stop it.
-    // Each time carries its own `dir`, which makes it an isolate. This is that, asserted.
-    expect(sheet({ permissions: ['attendance.view'] })).toContain('<span dir="ltr">09:00</span>');
+  it('writes the arrival before the departure, in the direction being read', () => {
+    // The pair is «in → out» in English and «in ← out» in Arabic: the arrow follows the reading
+    // direction, so the ARRIVAL is the one the eye reaches first in either language. Written with
+    // one fixed arrow it reads backwards in one of the two.
+    const en = sheet({ permissions: ['attendance.view'] }).replace(/<[^>]+>/g, '');
+    expect(en).toContain('9:20 AM → 5:00 PM');
+    const ar = sheet({ locale: 'ar', permissions: ['attendance.view'] }).replace(/<[^>]+>/g, '');
+    expect(ar).toContain('9:20 ص ← 5:00 م');
   });
 });
 
@@ -409,6 +444,10 @@ describe('My Attendance is self-service only', () => {
           paged([day()]),
         );
         qc.setQueryData(
+          listKey('hr', 'attendanceEmployeeSummary', { ...PERIOD, me: 1 }),
+          summary(),
+        );
+        qc.setQueryData(
           listKey('hr', 'attendanceMyRegularizations', { page: 1, pageSize: 25 }),
           paged([regularization()]),
         );
@@ -445,12 +484,15 @@ describe('My Attendance is self-service only', () => {
 });
 
 describe('the employee period', () => {
-  const month = (rows: AttendanceDayDto[], locale: Locale = 'en'): string =>
+  const month = (
+    rows: AttendanceDayDto[],
+    options: { locale?: Locale; figures?: AttendanceEmployeeSummaryDto; permissions?: string[] } = {},
+  ): string =>
     render(<EmployeeMonthPage />, {
-      locale,
-      permissions: ['attendance.view'],
+      locale: options.locale ?? 'en',
+      permissions: options.permissions ?? ['attendance.view'],
       path: `/attendance/employees/e-1?from=${PERIOD.from}&to=${PERIOD.to}`,
-      seed: (qc) =>
+      seed: (qc) => {
         qc.setQueryData(
           listKey('hr', 'attendanceDays', {
             from: PERIOD.from,
@@ -460,37 +502,108 @@ describe('the employee period', () => {
             pageSize: DAYS_PAGE,
           }),
           paged(rows),
-        ),
+        );
+        qc.setQueryData(
+          listKey('hr', 'attendanceEmployeeSummary', {
+            employeeId: 'e-1',
+            from: PERIOD.from,
+            to: PERIOD.to,
+          }),
+          options.figures ?? summary(),
+        );
+      },
     });
 
-  it('leads with who it is about and what the period came to', () => {
+  it('leads with who it is about and the figures the server computed', () => {
     const html = month([day()]);
     expect(html).toContain('سارة أحمد');
     expect(html).toContain('EMP-0007');
-    // The four figures, and the day behind them: in 09:20 Cairo, out 17:00, 7:40 worked.
+    // The six figures, in the words the design uses — and the day behind them.
     expect(html).toContain('Days present');
     expect(html).toContain('Usual arrival');
-    expect(html).toContain('09:20');
-    expect(html).toContain('17:00');
-    expect(html).toContain('7:40');
+    expect(html).toContain('On time');
+    const text = html.replace(/<[^>]+>/g, '');
+    expect(text).toContain('1/1');
+    expect(text).toContain('9:20 AM');
+    expect(text).toContain('7:40');
   });
 
-  it('says a day with no check-out is a check-in and not an absence', () => {
-    const html = month([
-      day({ status: 'checkedIn', lastOutAt: null, workedMinutes: 0, lateMinutes: 0, flags: [] }),
-    ]);
+  it('shows no figures at all until the server has sent them', () => {
+    // A screen of zeros reads as «لم يحضر ولا يومًا», which is a claim about the person rather
+    // than about a request still in flight.
+    const html = render(<EmployeeMonthPage />, {
+      permissions: ['attendance.view'],
+      path: `/attendance/employees/e-1?from=${PERIOD.from}&to=${PERIOD.to}`,
+      seed: () => undefined,
+    });
+    expect(html).toContain('Loading');
+    expect(html).not.toContain('Days present');
+  });
+
+  it('says a day with a check-in and no check-out is exactly that', () => {
+    // A FIXED PAST MONTH, so the assertion does not depend on what today happens to be: the same
+    // stored `checkedIn` reads «في العمل» on today's line and «دخول فقط» on a finished day, and
+    // this is the finished one.
+    const past = { from: '2026-10-01', to: '2026-10-31' };
+    const html = render(<EmployeeMonthPage />, {
+      permissions: ['attendance.view'],
+      path: `/attendance/employees/e-1?from=${past.from}&to=${past.to}`,
+      seed: (qc) => {
+        qc.setQueryData(
+          listKey('hr', 'attendanceDays', {
+            ...past,
+            employeeId: 'e-1',
+            page: 1,
+            pageSize: DAYS_PAGE,
+          }),
+          paged([
+            day({
+              workDate: '2026-10-05',
+              status: 'checkedIn',
+              firstInAt: '2026-10-05T07:20:00.000Z',
+              lastOutAt: null,
+              workedMinutes: 0,
+              lateMinutes: 0,
+              flags: [],
+            }),
+          ]),
+        );
+        qc.setQueryData(
+          listKey('hr', 'attendanceEmployeeSummary', { employeeId: 'e-1', ...past }),
+          summary({ ...past, incompleteDays: 1, avgWorkedMinutes: null, totalWorkedMinutes: 0 }),
+        );
+      },
+    });
     expect(html).toContain('Checked in only');
     // And no invented hours anywhere on it.
-    expect(html).toContain('No day in this period has both a check-in and a check-out');
+    expect(html).toContain('No complete days in this period.');
   });
 
-  it('counts the checked-in day as a day present, exactly as payroll does', () => {
-    const html = month([
-      day({ status: 'checkedIn', lastOutAt: null, workedMinutes: 0 }),
-      day({ id: 'd-2', status: 'weekend', firstInAt: null, lastOutAt: null, workedMinutes: 0 }),
-    ]);
-    // One present out of ONE working day — the weekend is not in the denominator.
-    expect(html).toContain('out of 1 working days');
+  it('keeps a date the engine concluded nothing about, and says so', () => {
+    // The calendar lays its weeks out by position, so a missing date would shift every cell after
+    // it onto the wrong weekday. The date stays and reads «لا يوجد سجل» rather than «يوم راحة».
+    const html = month([]);
+    expect(html).toContain('No record');
+  });
+
+  it('offers the per-day decision only to a holder of attendance.decide', () => {
+    expect(month([day()], { permissions: ['attendance.view', 'attendance.decide'] })).toContain(
+      'Decide',
+    );
+    expect(month([day()])).not.toContain('Decide');
+  });
+
+  it('offers the export only to a holder of attendance.export', () => {
+    expect(month([day()], { permissions: ['attendance.view', 'attendance.export'] })).toContain(
+      'Export CSV',
+    );
+    expect(month([day()])).not.toContain('Export CSV');
+  });
+
+  it('draws no lateness line for somebody nobody has rostered', () => {
+    const html = month([day()], { figures: summary({ dayStart: null, graceMinutes: 0 }) });
+    expect(html).toContain('No working hours are set for this employee');
+    expect(html).not.toContain('Late after');
   });
 
   it('shows no money, anywhere', () => {
@@ -498,8 +611,9 @@ describe('the employee period', () => {
   });
 
   it('renders Arabic copy in Arabic', () => {
-    const html = month([day()], 'ar');
+    const html = month([day()], { locale: 'ar' });
     expect(html).toContain('السجل اليومي');
     expect(html).toContain('أيام الحضور');
+    expect(html).toContain('الشهر في لمحة');
   });
 });

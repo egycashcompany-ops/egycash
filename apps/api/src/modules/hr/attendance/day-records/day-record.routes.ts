@@ -8,6 +8,7 @@ import {
   ExportAttendanceQuerySchema,
   ListAttendanceDaysQuerySchema,
   ListAttendanceSheetQuerySchema,
+  AttendanceEmployeeSummaryQuerySchema,
   AttendanceSheetSummaryQuerySchema,
   RecomputeAttendanceDaysSchema,
 } from '@ecms/contracts';
@@ -15,7 +16,9 @@ import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
 import {
+  attendanceEmployeeSummary,
   attendanceSheetSummary,
+  myAttendanceSummary,
   exportAttendance,
   listAttendanceDays,
   listAttendanceSheet,
@@ -26,11 +29,29 @@ import {
 export const buildAttendanceDaysRouter = (): Router => {
   const router = Router();
 
+  // Before `/me`, so the longer literal path is not swallowed by it. No permission, for the same
+  // reason `/me` carries none: the employee is resolved from the login and the query cannot name
+  // one, so it is own-scope by construction.
+  router.get(
+    '/me/summary',
+    authenticate,
+    validate({ query: AttendanceEmployeeSummaryQuerySchema }),
+    asyncHandler(myAttendanceSummary),
+  );
   router.get(
     '/me',
     authenticate,
     validate({ query: ListAttendanceDaysQuerySchema }),
     asyncHandler(listMyAttendanceDays),
+  );
+  // One employee's period, added up. The same key the rows behind it are governed by: a figure is
+  // a reading of those rows, not a second kind of access to them.
+  router.get(
+    '/employee-summary',
+    authenticate,
+    authorize('attendance.view'),
+    validate({ query: AttendanceEmployeeSummaryQuerySchema }),
+    asyncHandler(attendanceEmployeeSummary),
   );
   // Before `/` so the literal path is matched as one, and on this router because it answers the
   // same question `attendance.view` already governs — a sheet is a day list that starts from the

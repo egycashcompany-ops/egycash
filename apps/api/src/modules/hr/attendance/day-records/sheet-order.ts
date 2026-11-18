@@ -54,10 +54,8 @@ const statusRank = (status: AttendanceDayStatus): number => {
 /** The row's times, from the stored row when there is one and the read-time derivation otherwise. */
 const timesOf = (
   row: AttendanceSheetRowDto,
-): { firstInAt: string | null; lastOutAt: string | null; workedMinutes: number; lateMinutes: number } | null => {
-  if (row.day !== null) return row.day;
-  return row.provisionalDay;
-};
+): { firstInAt: string | null; lastOutAt: string | null } | null =>
+  row.day !== null ? row.day : row.provisionalDay;
 
 /**
  * THE INSTANT a check-in or check-out happened, in milliseconds, or null.
@@ -86,15 +84,18 @@ const valueOf = (row: AttendanceSheetRowDto, by: AttendanceSheetSort): number | 
       return instant(times?.firstInAt ?? null);
     case 'checkOut':
       return instant(times?.lastOutAt ?? null);
+    // The three minute counts come from `figures`, which has already applied the one rule about
+    // what was measured: a day with no check-out reports null for every one of them, so such a
+    // line has nothing to compare and goes to the end — exactly where «حضر فقط» belongs when
+    // somebody is reading the sheet by hours worked or by lateness.
     case 'worked':
-      // Zero worked minutes is NOT a measurement. Most of this workforce scans on arrival and
-      // never scans out, so a `checkedIn` day genuinely has unknown hours — ordering those among
-      // the people who worked a real zero-hour day would be a claim about them.
-      return times === null || times.workedMinutes === 0 ? null : times.workedMinutes;
+      return row.figures.workedMinutes;
     case 'late':
-      // Zero late minutes IS a measurement — it means on time — so it is kept and sorts as 0. A
-      // line with no times at all has no punctuality to report, and that is the null.
-      return times === null ? null : times.lateMinutes;
+      // A measured zero IS a value here — it means on time — so an on-time day sorts at 0 rather
+      // than falling to the end with the days that have no answer.
+      return row.figures.lateMinutes;
+    case 'shortfall':
+      return row.figures.shortfallMinutes;
     case 'name':
       return row.employeeName;
     case 'code':

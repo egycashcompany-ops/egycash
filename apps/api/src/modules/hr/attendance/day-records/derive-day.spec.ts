@@ -3,6 +3,7 @@
 // over absence, and a night shift's day is its start date (D3) — the choice that decides which
 // payroll month owns the day.
 import { describe, expect, it } from 'vitest';
+import { figuresOf } from '@ecms/contracts';
 import {
   cairoInstant,
   deriveDay,
@@ -65,6 +66,11 @@ const base = (over: Partial<DeriveDayInput> = {}): DeriveDayInput => ({
   minPunchGapMinutes: 10,
   employeeBranchId: BRANCH,
   decision: null,
+  // ON in the fixture, OFF in production. This file's subject is the engine's own arithmetic, and
+  // «an expected day with nothing on it is an absence» is the statement that arithmetic makes;
+  // whether the company wants that statement published is the owner's setting, which ships false
+  // and has its own block below. `attendance.settings.spec.ts` pins the shipped default.
+  countAbsence: true,
   now: AFTER_THE_FACT,
   ...over,
 });
@@ -105,8 +111,9 @@ describe('the resolution order — first match wins', () => {
       }),
     );
     expect(row?.status).toBe('onLeave');
-    // 4 hours minus the 30-minute break.
-    expect(row?.workedMinutes).toBe(210);
+    // Four hours flat. The break is NOT subtracted: worked time is last out − first in everywhere
+    // in this engine, by the owner's rule of 18 November, and a half day gets no second definition.
+    expect(row?.workedMinutes).toBe(240);
     expect(row?.lateMinutes).toBe(0);
   });
 
@@ -128,15 +135,28 @@ describe('the resolution order — first match wins', () => {
     expect(row?.overtimeMinutes).toBe(0);
   });
 
-  it('a check-in is still LATE when it is late — being expected at a time is what makes it so', () => {
-    const onTime = deriveDay(base({ punches: [punch(at(9, 10))] }));
-    expect(onTime?.status).toBe('checkedIn');
-    expect(onTime?.lateMinutes).toBe(0); // inside the 15-minute grace
+  it('a check-in with no check-out judges NOTHING — not even a ten-o-clock arrival', () => {
+    // THIS ASSERTION WAS REVERSED by the owner's flexible-hours rule, and the reversal is the
+    // point rather than a loosening. Lateness under that rule is conditional: an arrival after the
+    // expected start is late ONLY IF the required hours were not completed. With no check-out,
+    // whether they were completed is precisely what nobody knows — so calling the arrival late
+    // would be reaching the verdict by skipping the test the rule asks for.
+    //
+    // The arrival time is still recorded, in full, because that is the fact. What is withheld is
+    // the judgement. The screens show «حضر فقط» and a blank where every figure would go.
+    const early = deriveDay(base({ punches: [punch(at(9, 10))] }));
+    expect(early?.status).toBe('checkedIn');
+    expect(early?.lateMinutes).toBe(0);
 
-    const late = deriveDay(base({ punches: [punch(at(10))] }));
-    expect(late?.status).toBe('checkedIn');
-    expect(late?.lateMinutes).toBe(60); // raw minutes past the 09:00 start (D4)
-    expect(late?.workedMinutes).toBe(0);
+    const tenOClock = deriveDay(base({ punches: [punch(at(10))] }));
+    expect(tenOClock?.status).toBe('checkedIn');
+    expect(tenOClock?.firstInAt).toEqual(at(10));
+    expect(tenOClock?.lateMinutes).toBe(0);
+    expect(tenOClock?.shortfallMinutes).toBe(0);
+    expect(tenOClock?.workedMinutes).toBe(0);
+    // And what the day was OWED is still reported, because that much is known: 09:00–17:00 less
+    // GENERAL's half-hour break.
+    expect(tenOClock?.requiredMinutes).toBe(450);
   });
 });
 
@@ -278,20 +298,24 @@ describe("a manager's decision is an input, not an edit (stage 3)", () => {
     expect(out?.flags).toContain('overriddenByManager');
   });
 
-  it('applies the SAME lateness rule to a vouched-for arrival as to a scanned one', () => {
-    // GENERAL starts 09:00 with 15 minutes of grace. The manager supplies the evidence, never the
-    // verdict — so somebody vouched in at 10:00 is an hour late, exactly as the device would say.
+  it('applies the SAME rules to a vouched-for arrival as to a scanned one', () => {
+    // The manager supplies the evidence, never the verdict — so a `markPresent` carrying only an
+    // arrival is read exactly as a single scan is: «حضر فقط», and nothing judged, because the
+    // flexible rule cannot be applied to a day with no departure. Vouching for somebody does not
+    // buy them a verdict the same evidence from a device would not have earned.
     const out = deriveDay(base({ decision: decided('markPresent', at(10)) }));
     expect(out?.status).toBe('checkedIn');
-    expect(out?.lateMinutes).toBe(60);
+    expect(out?.firstInAt).toEqual(at(10));
+    expect(out?.lateMinutes).toBe(0);
   });
 
   it('editTimes replaces the span and earns overtime by the ordinary arithmetic', () => {
     const out = deriveDay(base({ punches: [punch(at(9))], decision: decided('editTimes', at(9), at(19)) }));
-    // 09:00→19:00 is 600 minutes less GENERAL's 30-minute break; the shift ends at 17:00, so the
-    // last two hours are overtime and nothing about that is special-cased for a decision.
-    expect(out?.workedMinutes).toBe(600 - GENERAL.breakMinutes);
-    expect(out?.overtimeMinutes).toBe(120);
+    // 09:00→19:00 is 600 minutes of presence, flat. GENERAL requires 450 (eight hours less its
+    // half-hour break), so 150 of them are overtime — by worked − required, not by «after 17:00»,
+    // and nothing about that arithmetic is special-cased for a decision.
+    expect(out?.workedMinutes).toBe(600);
+    expect(out?.overtimeMinutes).toBe(150);
     expect(out?.status).toBe('present');
     expect(out?.flags).toContain('overriddenByManager');
   });
@@ -383,21 +407,38 @@ describe('punchWindowFor — no punch belongs to two days', () => {
 });
 
 describe('the computed day', () => {
-  it('on time, full day: present, worked minus break', () => {
+  it('on time, full day: present, worked is out − in with nothing subtracted', () => {
     const row = deriveDay(base({ punches: [punch(at(9)), punch(at(17))] }));
     expect(row?.status).toBe('present');
-    expect(row?.workedMinutes).toBe(450); // 8h − 30min break
+    // Eight hours of presence, flat. GENERAL's half-hour break is NOT taken off the worked figure
+    // — it sets what the day REQUIRES (450) and nothing else, so this day is thirty minutes over.
+    expect(row?.workedMinutes).toBe(480);
+    expect(row?.requiredMinutes).toBe(450);
     expect(row?.lateMinutes).toBe(0);
+    expect(row?.shortfallMinutes).toBe(0);
     expect(row?.earlyLeaveMinutes).toBe(0);
-    expect(row?.overtimeMinutes).toBe(0);
+    expect(row?.overtimeMinutes).toBe(30);
   });
 
-  it('inside grace is not late; one minute past grace is late by the RAW minutes (D4)', () => {
-    expect(deriveDay(base({ punches: [punch(at(9, 14)), punch(at(17))] }))?.lateMinutes).toBe(0);
-    const row = deriveDay(base({ punches: [punch(at(9, 16)), punch(at(17))] }));
-    expect(row?.status).toBe('late');
-    // Raw minutes from shift START, not from the grace boundary: 09:16 − 09:00 = 16.
-    expect(row?.lateMinutes).toBe(16);
+  it('a late arrival is not late when the hours are finished anyway', () => {
+    // 09:16 is past both the start and the fifteen-minute grace, and this day is STILL «حاضر»:
+    // 09:16→17:00 is 464 minutes against GENERAL's required 450. The flexible rule asks whether
+    // the time was owed, not whether the arrival was punctual.
+    const madeUp = deriveDay(base({ punches: [punch(at(9, 16)), punch(at(17))] }));
+    expect(madeUp?.status).toBe('present');
+    expect(madeUp?.lateMinutes).toBe(0);
+    expect(madeUp?.shortfallMinutes).toBe(0);
+
+    // Leave at 16:30 instead and the same arrival IS late, because now the day is short: 09:16 →
+    // 16:30 is 434 minutes, sixteen short of the 450 required. THE THREE NUMBERS ARE THREE
+    // DIFFERENT FACTS and this day shows all of them — sixteen minutes late at the door, thirty
+    // minutes early at the end, and sixteen minutes actually missing from the day. The shortfall
+    // is the only one of the three that answers «how much time is owed».
+    const short = deriveDay(base({ punches: [punch(at(9, 16)), punch(at(16, 30))] }));
+    expect(short?.status).toBe('lateAndEarly');
+    expect(short?.lateMinutes).toBe(16);
+    expect(short?.earlyLeaveMinutes).toBe(30);
+    expect(short?.shortfallMinutes).toBe(16);
   });
 
   it('leaving early is measured against the end, minus graceOut', () => {
@@ -416,7 +457,9 @@ describe('the computed day', () => {
   it('overtime is derived after the end and is NOT auto-approved (D5)', () => {
     const row = deriveDay(base({ punches: [punch(at(9)), punch(at(19, 30))] }));
     expect(row?.status).toBe('present');
-    expect(row?.overtimeMinutes).toBe(150);
+    // 09:00→19:30 is 630 minutes of presence against 450 required: 180 over. Measured as
+    // worked − required, so the figure does not depend on which hours of the clock they fell in.
+    expect(row?.overtimeMinutes).toBe(180);
     // approvedOvertimeMinutes is not this function's to grant: the row starts at 0 and only the
     // AT-5 approval raises it — asserted here by the shape not carrying it at all.
     expect('approvedOvertimeMinutes' in (row ?? {})).toBe(false);
@@ -475,7 +518,7 @@ describe('D8 flags — signals, never arithmetic', () => {
     );
     expect(row?.flags).toEqual(['crossBranchPunch', 'manualPunch']);
     // Same minutes as the unflagged day — the flags changed nothing numeric.
-    expect(row?.workedMinutes).toBe(450);
+    expect(row?.workedMinutes).toBe(480);
   });
 });
 
@@ -571,5 +614,184 @@ describe('two scans a moment apart are one visit to the reader', () => {
     );
     expect(day?.status).toBe('checkedIn');
     expect(day?.flags).toContain('manualPunch');
+  });
+});
+
+/**
+ * THE OWNER'S OWN CASES, in his numbers, against the company default he set on 18 November:
+ * 09:00 to 17:00, eight hours, no break, no grace. Required = 480.
+ *
+ * They are kept together and spelled out one by one because this block is the rule as the person
+ * who owns it stated it — every `it` below is a sentence he wrote — and because the whole point of
+ * the rule is that several of these days look wrong by the clock and are right by the hours.
+ */
+const COMPANY: EngineShift = {
+  startTime: '09:00',
+  endTime: '17:00',
+  crossesMidnight: false,
+  breakMinutes: 0,
+  graceInMinutes: 0,
+  graceOutMinutes: 0,
+};
+
+describe('the flexible eight-hour rule (the owner, 18 November)', () => {
+  const day = (first: Date, last?: Date) =>
+    deriveDay(
+      base({
+        shift: COMPANY,
+        punches: last === undefined ? [punch(first)] : [punch(first), punch(last)],
+      }),
+    );
+
+  it('09:00 → 17:00 is a plain present day: eight hours, nothing owed, nothing over', () => {
+    const row = day(at(9), at(17));
+    expect(row?.status).toBe('present');
+    expect(row?.workedMinutes).toBe(480);
+    expect(row?.requiredMinutes).toBe(480);
+    expect(row?.lateMinutes).toBe(0);
+    expect(row?.shortfallMinutes).toBe(0);
+    expect(row?.earlyLeaveMinutes).toBe(0);
+    expect(row?.overtimeMinutes).toBe(0);
+  });
+
+  it('09:40 → 17:40 is NOT late: the eight hours were completed', () => {
+    // «If someone arrives after 09:00 but works 8 hours or more, they are NOT late and NOT early.»
+    // This is the clause the whole rule exists for, and the one an ordinary late-arrival check
+    // would get wrong.
+    const row = day(at(9, 40), at(17, 40));
+    expect(row?.status).toBe('present');
+    expect(row?.workedMinutes).toBe(480);
+    expect(row?.lateMinutes).toBe(0);
+    expect(row?.shortfallMinutes).toBe(0);
+  });
+
+  it('09:40 → 17:00 is late 0:40 with a shortfall of 0:40', () => {
+    const row = day(at(9, 40), at(17));
+    expect(row?.status).toBe('late');
+    expect(row?.lateMinutes).toBe(40);
+    expect(row?.shortfallMinutes).toBe(40);
+    expect(row?.workedMinutes).toBe(440);
+  });
+
+  it('07:00 → 15:00 is on time: an early start finishes the day early, and that is allowed', () => {
+    const row = day(at(7), at(15));
+    expect(row?.status).toBe('present');
+    expect(row?.workedMinutes).toBe(480);
+    expect(row?.earlyLeaveMinutes).toBe(0);
+    expect(row?.shortfallMinutes).toBe(0);
+    // «Coming early is never counted as anything» — eight hours is eight hours, not nine.
+    expect(row?.overtimeMinutes).toBe(0);
+  });
+
+  it('09:00 → 16:00 is a shortfall of 1:00 and no lateness at all', () => {
+    const row = day(at(9), at(16));
+    expect(row?.shortfallMinutes).toBe(60);
+    expect(row?.lateMinutes).toBe(0);
+    // The hour is missing from the END of the day, so that is where it is reported.
+    expect(row?.earlyLeaveMinutes).toBe(60);
+    expect(row?.status).toBe('earlyLeave');
+  });
+
+  it('09:00 → 19:00 earns 2:00 of overtime, derived and unapproved', () => {
+    const row = day(at(9), at(19));
+    expect(row?.status).toBe('present');
+    expect(row?.workedMinutes).toBe(600);
+    expect(row?.overtimeMinutes).toBe(120);
+  });
+
+  it('08:59, 09:00 and 09:01 — the boundary, to the minute', () => {
+    // «Check-in at 09:00 or earlier = on time. 09:01 or later = late.» Each of these leaves at
+    // 16:00, so all three days are short and the lateness clause is live for all three.
+    expect(day(at(8, 59), at(16))?.lateMinutes).toBe(0);
+    expect(day(at(9), at(16))?.lateMinutes).toBe(0);
+    expect(day(at(9, 1), at(16))?.lateMinutes).toBe(1);
+    expect(day(at(9, 1), at(16))?.status).toBe('lateAndEarly');
+  });
+
+  it('a missing check-out reports NOTHING, never zero', () => {
+    const row = day(at(9, 40));
+    expect(row?.status).toBe('checkedIn');
+    expect(row?.firstInAt).toEqual(at(9, 40));
+    expect(row?.lastOutAt).toBeNull();
+    // The engine stores zeros because the stored row is a quantity for payroll. What a READER
+    // sees is decided by `figuresOf`, which blanks all five — and `figures.spec.ts` holds it to
+    // that. The pair is the contract: no quantity invented, no zero displayed.
+    expect(row?.workedMinutes).toBe(0);
+    expect(row?.lateMinutes).toBe(0);
+    expect(row?.shortfallMinutes).toBe(0);
+    expect(row?.overtimeMinutes).toBe(0);
+    expect(
+      figuresOf({
+        firstInAt: row?.firstInAt ?? null,
+        lastOutAt: row?.lastOutAt ?? null,
+        workedMinutes: row?.workedMinutes ?? 0,
+        lateMinutes: row?.lateMinutes ?? 0,
+        shortfallMinutes: row?.shortfallMinutes ?? 0,
+        earlyLeaveMinutes: row?.earlyLeaveMinutes ?? 0,
+        overtimeMinutes: row?.overtimeMinutes ?? 0,
+        requiredMinutes: row?.requiredMinutes ?? null,
+      }),
+    ).toEqual({
+      workedMinutes: null,
+      lateMinutes: null,
+      shortfallMinutes: null,
+      earlyLeaveMinutes: null,
+      overtimeMinutes: null,
+      requiredMinutes: 480,
+    });
+  });
+
+  it('a night shift keeps its check-out after midnight on the same work day', () => {
+    // 22:00 to 06:00, keyed to the date it STARTED (D3). The exit falls on the next calendar date
+    // and is still this day's `lastOutAt`, and the eight hours are counted across the midnight
+    // boundary — which is why worked time is computed from instants and never from a wall clock.
+    const row = deriveDay(
+      base({
+        shift: NIGHT,
+        punches: [punch(at(22)), punch(new Date(at(22).getTime() + 8 * 60 * 60_000))],
+      }),
+    );
+    expect(row?.status).toBe('present');
+    expect(row?.workedMinutes).toBe(480);
+    expect(row?.requiredMinutes).toBe(480);
+    expect(row?.shortfallMinutes).toBe(0);
+    expect(row?.lastOutAt?.getTime()).toBeGreaterThan(row?.firstInAt?.getTime() ?? 0);
+  });
+});
+
+describe('«lateness only for now» — the word for a day with no scan', () => {
+  it('reads noRecord, not absent, while the owner has absence switched off', () => {
+    const row = deriveDay(base({ shift: COMPANY, punches: [], countAbsence: false }));
+    expect(row?.status).toBe('noRecord');
+    // It still says what the day was owed — that much nobody disputes.
+    expect(row?.requiredMinutes).toBe(480);
+  });
+
+  it('reads absent once the owner switches absence on', () => {
+    expect(deriveDay(base({ shift: COMPANY, punches: [], countAbsence: true }))?.status).toBe(
+      'absent',
+    );
+  });
+
+  it('is still pending while the day is being lived, either way', () => {
+    const duringTheDay = cairoInstant(DAY, '11:00');
+    for (const countAbsence of [false, true]) {
+      expect(
+        deriveDay(base({ shift: COMPANY, punches: [], countAbsence, now: duringTheDay }))?.status,
+      ).toBe('pending');
+    }
+  });
+
+  it('never softens a manager who looked and said absent', () => {
+    const row = deriveDay(
+      base({
+        shift: COMPANY,
+        punches: [],
+        countAbsence: false,
+        decision: { type: 'markAbsent', inAt: null, outAt: null },
+      }),
+    );
+    expect(row?.status).toBe('absent');
+    expect(row?.flags).toContain('overriddenByManager');
   });
 });

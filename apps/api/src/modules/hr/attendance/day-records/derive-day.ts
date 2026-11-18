@@ -138,6 +138,23 @@ export interface DeriveDayInput {
    */
   minPunchGapMinutes: number;
   /**
+   * WHETHER A WORKING DAY WITH NO SCAN IS AN ACCUSATION — the owner's ruling of 18 November,
+   * «lateness only for now», made an input rather than assumed.
+   *
+   * False, and an expected day whose hour has passed with nothing on it reads `noRecord`: «لا يوجد
+   * تسجيل», a statement about the evidence. True, and the same day reads `absent`, which is a
+   * statement about the person and a quantity payroll prices.
+   *
+   * The difference matters most on the two years of history being re-derived: the machines were
+   * holding the punches, so a day with none may mean somebody did not come — or may mean the
+   * reader was down, or that the scans are still in quarantine. Until the hours per department are
+   * in and the backfill has run clean, the honest word is the one about the evidence.
+   *
+   * A MANAGER'S `markAbsent` IS NOT AFFECTED. Somebody looked and said so; that is evidence of a
+   * different kind and it still writes `absent`.
+   */
+  countAbsence: boolean;
+  /**
    * The instant the derivation is being made at — INJECTED, never read from the clock, because
    * this file's contract is "same inputs, byte-identical output" and a function that reads the
    * clock has no such contract. It decides one thing only: whether an expected day with no
@@ -152,8 +169,12 @@ export interface DerivedDay {
   lastOutAt: Date | null;
   workedMinutes: number;
   lateMinutes: number;
+  /** Required − worked, when positive — the owner's «النقص». */
+  shortfallMinutes: number;
   earlyLeaveMinutes: number;
   overtimeMinutes: number;
+  /** The minutes the date was supposed to hold; null when nobody has said when they work. */
+  requiredMinutes: number | null;
   leaveId: string | null;
   flags: AttendanceDayFlag[];
 }
@@ -206,13 +227,25 @@ export const punchWindowFor = (
 const minutesBetween = (from: Date, to: Date): number =>
   Math.floor((to.getTime() - from.getTime()) / 60_000);
 
+/**
+ * THE MINUTES A DAY IS SUPPOSED TO HOLD: the shift's span less its unpaid break.
+ *
+ * Taken from the window rather than from `startTime`/`endTime` as strings, so a pattern that
+ * crosses midnight and one that does not are the same arithmetic, and a DST switch inside the day
+ * is counted as the clock actually ran rather than as the wall times suggest.
+ */
+const requiredMinutesOf = (start: Date, end: Date, breakMinutes: number): number =>
+  Math.max(0, minutesBetween(start, end) - breakMinutes);
+
 const empty = {
   firstInAt: null,
   lastOutAt: null,
   workedMinutes: 0,
   lateMinutes: 0,
+  shortfallMinutes: 0,
   earlyLeaveMinutes: 0,
   overtimeMinutes: 0,
+  requiredMinutes: null as number | null,
   leaveId: null,
   flags: [] as AttendanceDayFlag[],
 };
@@ -281,9 +314,11 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   if (input.leave !== null) {
     const first = evidence[0] ?? null;
     const last = evidence.length >= 2 ? (evidence[evidence.length - 1] ?? null) : null;
+    // Flat, like every other worked figure here: last out − first in. Rule 1 of 18 November is a
+    // company-wide definition of worked time, so a half day does not get a second one.
     const worked =
       input.leave.halfDay && first !== null && last !== null
-        ? Math.max(0, minutesBetween(first.at, last.at) - (input.shift?.breakMinutes ?? 0))
+        ? Math.max(0, minutesBetween(first.at, last.at))
         : 0;
     return {
       ...empty,
@@ -379,43 +414,84 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // The cut is the expected END, not the start: the day stops being winnable when the shift it
   // belonged to has finished, not when it began.
   if (punches.length === 0) {
-    const { end } = shiftWindow(input.workDate, input.shift);
-    return { ...empty, status: input.now < end ? 'pending' : 'absent', flags };
-  }
-
-  // 7 — checked in, never checked out: the ordinary working day here, not an anomaly. The hours
-  // are genuinely unknown, so `workedMinutes` stays 0 and nothing is early leave or overtime —
-  // guessing a departure into a day is still refused (D6). LATENESS IS DIFFERENT: they were
-  // expected at a time and the arrival is on record, so it is computed, with the same grace the
-  // full day below uses.
-  if (punches.length === 1) {
-    const firstIn = (punches[0] as EnginePunch).at;
-    const { start } = shiftWindow(input.workDate, input.shift);
-    const graceInEnd = new Date(start.getTime() + input.shift.graceInMinutes * 60_000);
+    const { start, end } = shiftWindow(input.workDate, input.shift);
+    const required = requiredMinutesOf(start, end, input.shift.breakMinutes);
+    // AND WHICH WORD FOR A DAY THAT IS OVER is the owner's ruling, carried in `countAbsence`:
+    // `absent` accuses, `noRecord` reports that ECMS has nothing. See that field.
+    const concluded: AttendanceDayStatus = input.countAbsence ? 'absent' : 'noRecord';
     return {
       ...empty,
-      status: 'checkedIn',
-      firstInAt: firstIn,
-      lateMinutes: firstIn > graceInEnd ? minutesBetween(start, firstIn) : 0,
+      status: input.now < end ? 'pending' : concluded,
+      requiredMinutes: required,
       flags,
     };
   }
 
-  // 8 — compute. First-in / last-out over the attributed window; directions recorded by devices
-  // are advisory (many log presence only), so the pairing is positional.
+  // 7 — checked in, never checked out: the ordinary working day here, not an anomaly. «حضر فقط»,
+  // and EVERY FIGURE ON IT IS ZERO — which the reader turns into a blank cell, never «0:00».
+  //
+  // LATENESS USED TO BE COMPUTED HERE and no longer is, and that is a consequence of the owner's
+  // flexible-hours rule rather than a simplification. Under that rule an arrival after nine is
+  // only late IF THE EIGHT HOURS WERE NOT COMPLETED — somebody in at 09:40 and out at 17:40 owes
+  // nothing. With no check-out, whether the hours were completed is exactly what is unknown, so
+  // declaring the arrival late would be a verdict reached by ignoring the test the rule asks for.
+  // The day keeps its arrival time, which is the fact, and makes no claim about it.
+  if (punches.length === 1) {
+    const { start, end } = shiftWindow(input.workDate, input.shift);
+    return {
+      ...empty,
+      status: 'checkedIn',
+      firstInAt: (punches[0] as EnginePunch).at,
+      requiredMinutes: requiredMinutesOf(start, end, input.shift.breakMinutes),
+      flags,
+    };
+  }
+
+  // 8 — COMPUTE, under the owner's flexible-hours rule of 18 November. The whole rule, in order:
+  //
+  //   worked    = last out − first in, flat. No break is subtracted and nothing is clamped to the
+  //               shift's own hours: the question is how long the person was here.
+  //   required  = the shift's span less its break — 480 minutes for the 09:00–17:00 default.
+  //   COMPLETED THE HOURS?  Then the day is «حاضر» and it is not late, not short and not early,
+  //               WHATEVER TIME THEY ARRIVED. In at 09:40, out at 17:40, eight hours: nothing owed,
+  //               nothing to answer for. This is the clause that makes the rule flexible, and it is
+  //               deliberately indifferent to the clock at both ends of the day.
+  //   SHORT?      Then two different numbers are reported, because they answer two different
+  //               questions and the owner asked for both:
+  //                 late      = first in − the expected start (past grace) — how late they were;
+  //                 shortfall = required − worked — how much time is actually missing.
+  //               They are usually different. In at 09:40, out at 17:00: late 0:40 and short 0:40,
+  //               the same by coincidence. In at 09:00, out at 16:00: late 0:00 and short 1:00.
+  //   early leave = the end less the last out, and ONLY on a short day. Leaving at 15:00 after
+  //               starting at 07:00 is a completed day, so it is not early by this rule — which is
+  //               the same clause as above, read from the other end.
+  //   overtime  = worked − required, when positive. NOT «after 17:00»: the person who worked
+  //               07:00–17:00 did ten hours and two of them are over, whatever hour they fell in.
+  //               Derived only — payroll pays it after a manager approves it (D5), as before.
+  //
+  // Directions recorded by devices are advisory (many log presence only), so the pairing is
+  // positional: first scan in, last scan out.
   const firstIn = (punches[0] as EnginePunch).at;
   const lastOut = (punches[punches.length - 1] as EnginePunch).at;
   const { start, end } = shiftWindow(input.workDate, input.shift);
+  const requiredMinutes = requiredMinutesOf(start, end, input.shift.breakMinutes);
 
-  const workedMinutes = Math.max(
-    0,
-    minutesBetween(firstIn, lastOut) - input.shift.breakMinutes,
-  );
+  // Flat presence. A check-out after midnight is simply a later instant than the check-in, so a
+  // night shift's span is correct here with no special case — the day's identity was already
+  // settled upstream by the attribution window (D3), not by which calendar date the exit fell in.
+  const workedMinutes = Math.max(0, minutesBetween(firstIn, lastOut));
+  const completed = workedMinutes >= requiredMinutes;
+  const shortfallMinutes = completed ? 0 : requiredMinutes - workedMinutes;
+
   const graceInEnd = new Date(start.getTime() + input.shift.graceInMinutes * 60_000);
-  const lateMinutes = firstIn > graceInEnd ? minutesBetween(start, firstIn) : 0;
   const graceOutStart = new Date(end.getTime() - input.shift.graceOutMinutes * 60_000);
-  const earlyLeaveMinutes = lastOut < graceOutStart ? minutesBetween(lastOut, end) : 0;
-  const overtimeMinutes = lastOut > end ? minutesBetween(end, lastOut) : 0;
+  // `minutesBetween` floors, which is what makes «09:00 or earlier is on time» exact to the
+  // owner's wording: an arrival at 09:00:40 is past the start instant but rounds to zero late
+  // minutes, and the status below turns only on the MINUTES, not on the instant.
+  const lateMinutes = !completed && firstIn > graceInEnd ? minutesBetween(start, firstIn) : 0;
+  const earlyLeaveMinutes =
+    !completed && lastOut < graceOutStart ? minutesBetween(lastOut, end) : 0;
+  const overtimeMinutes = Math.max(0, workedMinutes - requiredMinutes);
 
   const status: AttendanceDayStatus =
     lateMinutes > 0 && earlyLeaveMinutes > 0
@@ -424,6 +500,8 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
         ? 'late'
         : earlyLeaveMinutes > 0
           ? 'earlyLeave'
+          // «حاضر» — either the hours were completed, or what is missing is inside a grace somebody
+          // granted on purpose. The shortfall is still reported; the day is simply not an offence.
           : 'present';
 
   return {
@@ -432,8 +510,10 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
     lastOutAt: lastOut,
     workedMinutes,
     lateMinutes,
+    shortfallMinutes,
     earlyLeaveMinutes,
     overtimeMinutes,
+    requiredMinutes,
     leaveId: null,
     flags,
   };

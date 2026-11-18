@@ -46,18 +46,24 @@ export const registerHrAttendanceSettings = (): void => {
     allowedScopes: ['organization'],
   });
 
-  // The default working pattern (stage 1b). Six scalars rather than one object so HR can edit
-  // them in the settings screen that already exists — see the contract's own note on why. Every
-  // one of them takes a per-branch override; the organization value is the company default.
+  // The default working pattern. Six scalars rather than one object so HR can edit them in the
+  // settings screen that already exists — see the contract's own note on why. Every one of them
+  // takes a per-branch override; the organization value is the company default.
   //
-  // IT SHIPS INERT. `enabled` is false until somebody fills in the hours and turns it on, and
-  // while it is false `computeDay` does not even read the other five.
+  // IT SHIPPED INERT AND IS NOW ON, by the owner's ruling of 18 November: nine to five, eight
+  // hours, no grace, company-wide. He had asked for it left unset a day earlier, on the grounds
+  // that departments arrive anywhere between six and ten and one company-wide time would mark
+  // honest people late — and then answered that objection himself rather than withdrawing it, with
+  // the flexible rule in `deriveDay` step 8: an arrival after nine is only late if the eight hours
+  // were not completed. The early-starting departments are therefore not marked late by this, and
+  // the ones that genuinely owe time are. A branch whose hours differ still overrides every
+  // scalar, and an employee with a real shift assignment is unaffected by all of it.
   declareSetting({
     key: HrAttendanceSettingKeys.DefaultPatternEnabled,
     description:
-      'Apply the default working pattern to employees with no shift assignment — off until the hours are set (stage 1b)',
+      'Apply the default working pattern (09:00–17:00) to employees with no shift assignment',
     schema: z.boolean(),
-    defaultValue: false,
+    defaultValue: true,
     allowedScopes: ['organization', 'branch'],
   });
   declareSetting({
@@ -86,7 +92,11 @@ export const registerHrAttendanceSettings = (): void => {
     key: HrAttendanceSettingKeys.DefaultPatternGraceInMinutes,
     description: 'Default working pattern: minutes after the start that are not counted as late',
     schema: z.number().int().min(0).max(240),
-    defaultValue: 15,
+    // NO GRACE, by the owner's ruling: «Check-in at 09:00 or earlier = on time. 09:01 or later =
+    // late.» The fifteen minutes this replaces were a guess made before anybody had ruled. The
+    // flexibility the grace used to provide now comes from the eight-hour rule instead, which is
+    // both more generous and more exact — a late arrival that is made up costs nothing at all.
+    defaultValue: 0,
     allowedScopes: ['organization', 'branch'],
   });
   declareSetting({
@@ -139,6 +149,21 @@ export const registerHrAttendanceSettings = (): void => {
     // people genuinely sign in and out within the hour wants it lower.
     defaultValue: 10,
     allowedScopes: ['organization'],
+  });
+  // THE WORD FOR A WORKING DAY WITH NO SCAN, and it is the owner's to choose: «lateness only for
+  // now», so it ships OFF and such a day reads «لا يوجد تسجيل» rather than «غائب».
+  //
+  // Off, nothing new reaches payroll's absent-day count, and the two years of history about to be
+  // re-derived cannot mint absences for days whose scans may still be sitting in quarantine or
+  // behind a reader that was down. On, the engine writes `absent` as it always did. A manager's
+  // own `markAbsent` is unaffected either way: somebody looked, and that is evidence.
+  declareSetting({
+    key: HrAttendanceSettingKeys.CountAbsence,
+    description:
+      'Record a working day with no scan as an absence — off records it as «لا يوجد تسجيل» instead',
+    schema: z.boolean(),
+    defaultValue: false,
+    allowedScopes: ['organization', 'branch'],
   });
   declareSetting({
     key: HrAttendanceSettingKeys.DecisionApprovalAfterDays,

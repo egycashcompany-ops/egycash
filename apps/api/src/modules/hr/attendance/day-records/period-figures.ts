@@ -5,7 +5,7 @@
 // disagree about the same person, and neither can two readers on two screens.
 //
 // EVERY FIGURE IS A QUANTITY (§1): days, clock times and minutes. Nothing here prices anything.
-import { type AttendanceDayStatus } from '@ecms/contracts';
+import { type AttendanceDayFigures, type AttendanceDayStatus } from '@ecms/contracts';
 
 /**
  * The statuses that mean "came to work".
@@ -36,8 +36,12 @@ export interface FigureRow {
   status: AttendanceDayStatus;
   firstInAt: Date | null;
   lastOutAt: Date | null;
-  workedMinutes: number;
-  lateMinutes: number;
+  /**
+   * The REPORTED figures of the day, not the stored ones — so every counter here inherits the one
+   * blanking rule instead of restating it. A day with no check-out contributes to no total at all,
+   * which is the honest answer: nobody knows what it was.
+   */
+  figures: AttendanceDayFigures;
 }
 
 export interface PeriodFigures {
@@ -47,8 +51,16 @@ export interface PeriodFigures {
   usualDeparture: number | null;
   avgWorkedMinutes: number | null;
   totalWorkedMinutes: number;
+  /**
+   * Days that are late BY THE RULE. The engine reports no late minutes on a day whose eight hours
+   * were completed, so this counter needs no clause of its own to honour the owner's rule: an
+   * employee who arrives at 09:40 every day and leaves at 17:40 every day has a late-day count of
+   * zero, and that is correct rather than lenient.
+   */
   lateDays: number;
   lateMinutesTotal: number;
+  /** «إجمالي النقص» — the period's missing time, which is the figure a deduction would read. */
+  shortfallMinutesTotal: number;
   absentDays: number;
   incompleteDays: number;
 }
@@ -81,6 +93,7 @@ export const periodFigures = (rows: readonly FigureRow[]): PeriodFigures => {
   let daysExpected = 0;
   let lateDays = 0;
   let lateMinutesTotal = 0;
+  let shortfallMinutesTotal = 0;
   let absentDays = 0;
   let incompleteDays = 0;
   let workedDays = 0;
@@ -90,15 +103,18 @@ export const periodFigures = (rows: readonly FigureRow[]): PeriodFigures => {
     if (ATTENDED_STATUSES.includes(row.status)) daysPresent += 1;
     if (!NOT_EXPECTED.includes(row.status)) daysExpected += 1;
     if (row.status === 'absent') absentDays += 1;
-    if (row.lateMinutes > 0) {
+    const late = row.figures.lateMinutes ?? 0;
+    if (late > 0) {
       lateDays += 1;
-      lateMinutesTotal += row.lateMinutes;
+      lateMinutesTotal += late;
     }
+    shortfallMinutesTotal += row.figures.shortfallMinutes ?? 0;
     // A check-in with nothing after it, whatever the engine called the day.
     if (row.firstInAt !== null && row.lastOutAt === null) incompleteDays += 1;
-    if (row.workedMinutes > 0) {
+    const worked = row.figures.workedMinutes ?? 0;
+    if (worked > 0) {
       workedDays += 1;
-      totalWorkedMinutes += row.workedMinutes;
+      totalWorkedMinutes += worked;
     }
 
     if (row.firstInAt !== null) arrivals.push(cairoMinutesOfDay(row.firstInAt));
@@ -125,6 +141,7 @@ export const periodFigures = (rows: readonly FigureRow[]): PeriodFigures => {
     totalWorkedMinutes,
     lateDays,
     lateMinutesTotal,
+    shortfallMinutesTotal,
     absentDays,
     incompleteDays,
   };

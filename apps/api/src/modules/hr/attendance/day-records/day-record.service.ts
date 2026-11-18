@@ -7,6 +7,8 @@
 // ships with the engine because an engine without it is safe only by coincidence.
 import { Types } from 'mongoose';
 import {
+  NO_FIGURES,
+  figuresOf,
   HrAttendanceEvents,
   HrAttendanceSettingKeys,
   type AttendanceDayDto,
@@ -64,6 +66,7 @@ import {
   type DayExpectation,
 } from './expectations';
 import { periodFigures } from './period-figures';
+import { sortSheetRows } from './sheet-order';
 import { resolveDayStatus } from './resolve-display-status';
 import { loadDayInputs, employedOn, COVERING_LEAVE_STATUSES } from './day-inputs';
 import { unlinkedScansOn } from '../quarantine/attendance-quarantine.store';
@@ -178,6 +181,8 @@ export const toAttendanceDayDto = (doc: AttendanceDayDoc): AttendanceDayDto => (
   workedMinutes: doc.workedMinutes,
   lateMinutes: doc.lateMinutes,
   earlyLeaveMinutes: doc.earlyLeaveMinutes,
+  shortfallMinutes: doc.shortfallMinutes,
+  requiredMinutes: doc.requiredMinutes,
   overtimeMinutes: doc.overtimeMinutes,
   approvedOvertimeMinutes: doc.approvedOvertimeMinutes,
   leaveId: doc.leaveId === null ? null : String(doc.leaveId),
@@ -347,9 +352,22 @@ class DayRecordService {
         firstInAt:
           times === null || times.firstInAt === null ? null : times.firstInAt.toISOString(),
         lastOutAt: times === null || times.lastOutAt === null ? null : times.lastOutAt.toISOString(),
-        workedMinutes: times === null ? 0 : times.workedMinutes,
-        lateMinutes: times === null ? 0 : times.lateMinutes,
-        earlyLeaveMinutes: times === null ? 0 : times.earlyLeaveMinutes,
+        // ONE blanking rule, applied here as it is on the sheet: a day with no check-out reports
+        // nothing rather than a confident zero. `times` is the stored row or the derivation, and
+        // both now carry the shortfall and what the day required, so either answers in full.
+        figures:
+          times === null
+            ? NO_FIGURES
+            : figuresOf({
+                firstInAt: times.firstInAt,
+                lastOutAt: times.lastOutAt,
+                workedMinutes: times.workedMinutes,
+                lateMinutes: times.lateMinutes,
+                shortfallMinutes: times.shortfallMinutes,
+                earlyLeaveMinutes: times.earlyLeaveMinutes,
+                overtimeMinutes: times.overtimeMinutes,
+                requiredMinutes: times.requiredMinutes,
+              }),
         expectedStartAt:
           assembled.expectation === null ? null : assembled.expectation.start.toISOString(),
         expectedEndAt:
@@ -432,8 +450,7 @@ class DayRecordService {
         status: day.status,
         firstInAt: day.firstInAt === null ? null : new Date(day.firstInAt),
         lastOutAt: day.lastOutAt === null ? null : new Date(day.lastOutAt),
-        workedMinutes: day.workedMinutes,
-        lateMinutes: day.lateMinutes,
+        figures: day.figures,
       })),
     );
 
@@ -614,6 +631,8 @@ class DayRecordService {
             ? null
             : String(employee.personal.photoFileId),
         employeeDepartment: placements.for(employee).department?.name ?? null,
+        employeeBranch: placements.for(employee).branch?.name ?? null,
+        employeeJobTitle: placements.for(employee).jobTitle?.name ?? null,
         branchId: String(employee.employment.branchId),
         date: dateOnlyIso(workDate),
         status,
@@ -628,10 +647,39 @@ class DayRecordService {
             : {
                 firstInAt: derived.firstInAt === null ? null : derived.firstInAt.toISOString(),
                 lastOutAt: derived.lastOutAt === null ? null : derived.lastOutAt.toISOString(),
-                workedMinutes: derived.workedMinutes,
-                lateMinutes: derived.lateMinutes,
-                earlyLeaveMinutes: derived.earlyLeaveMinutes,
               },
+        // The five numbers to draw, from whichever source answered — the stored row when the
+        // recompute has concluded the day, the derivation when it has not. The figures used to be
+        // split across those two fields and a client had to pick; now the server picks once, by
+        // the one rule, and a day with no check-out reports blanks rather than «0:00».
+        figures:
+          day !== null
+            ? figuresOf({
+                firstInAt: day.firstInAt,
+                lastOutAt: day.lastOutAt,
+                workedMinutes: day.workedMinutes,
+                lateMinutes: day.lateMinutes,
+                shortfallMinutes: day.shortfallMinutes,
+                earlyLeaveMinutes: day.earlyLeaveMinutes,
+                overtimeMinutes: day.overtimeMinutes,
+                requiredMinutes: day.requiredMinutes,
+              })
+            : derived === null
+              ? NO_FIGURES
+              : figuresOf({
+                  firstInAt: derived.firstInAt,
+                  lastOutAt: derived.lastOutAt,
+                  workedMinutes: derived.workedMinutes,
+                  lateMinutes: derived.lateMinutes,
+                  shortfallMinutes: derived.shortfallMinutes,
+                  earlyLeaveMinutes: derived.earlyLeaveMinutes,
+                  overtimeMinutes: derived.overtimeMinutes,
+                  requiredMinutes: derived.requiredMinutes,
+                }),
+        // How many times the readers saw this finger today — the scans themselves, before the
+        // re-tap collapse, because «six scans» is a fact about the door and the collapse is an
+        // interpretation of it. HR asked for it on the export to tell a quiet day from a busy one.
+        punchCount: assembled.punches.length,
       });
     }
     return { rows, employeeIds: employees.map((employee) => employee._id), ...rosterOf(expectations) };
@@ -664,14 +712,20 @@ class DayRecordService {
     const filtered =
       wanted.length === 0 ? resolved : resolved.filter((row) => wanted.includes(row.status));
 
+    // ORDERED HERE, over the WHOLE day, and before a single row is cut away. Sorting the page
+    // instead would make every page its own little sorted island: page 2 of «by check-in» would
+    // start again from whoever happened to be 51st by code. See `sheet-order.ts` on why it cannot
+    // be a database sort.
+    const ordered = sortSheetRows(filtered, query.sortBy, query.sortDir);
+
     const from = (query.page - 1) * query.pageSize;
     return {
-      items: filtered.slice(from, from + query.pageSize),
+      items: ordered.slice(from, from + query.pageSize),
       meta: {
         page: query.page,
         pageSize: query.pageSize,
-        totalItems: filtered.length,
-        totalPages: Math.ceil(filtered.length / query.pageSize),
+        totalItems: ordered.length,
+        totalPages: Math.ceil(ordered.length / query.pageSize),
       },
     };
   }
@@ -845,6 +899,10 @@ class DayRecordService {
       decision,
       minPunchGapMinutes: await settingsService.resolve<number>(
         HrAttendanceSettingKeys.MinPunchGapMinutes,
+        ORG_SUBJECT,
+      ),
+      countAbsence: await settingsService.resolve<boolean>(
+        HrAttendanceSettingKeys.CountAbsence,
         ORG_SUBJECT,
       ),
       now,

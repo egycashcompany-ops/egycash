@@ -126,6 +126,21 @@ export const registerHrAttendanceSettings = (): void => {
     allowedScopes: ['organization'],
   });
   declareSetting({
+    key: HrAttendanceSettingKeys.MinPunchGapMinutes,
+    description:
+      'How close two scans must be to count as one visit to the reader, in minutes — 0 pairs every scan',
+    schema: z.number().int().min(0).max(240),
+    // TEN MINUTES, and the number is chosen from both ends. A re-tap — a finger that read poorly,
+    // presented again — is seconds to a minute or two apart, so ten covers even a stubborn one.
+    // And no worked day is ten minutes long, so nothing real is collapsed by it.
+    //
+    // It is a setting rather than a constant because the right value belongs to whoever watches
+    // the walls: a reader that double-logs every presentation wants it higher, and a site where
+    // people genuinely sign in and out within the hour wants it lower.
+    defaultValue: 10,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
     key: HrAttendanceSettingKeys.DecisionApprovalAfterDays,
     description:
       'Days back a manager may decide an attendance day alone; older days wait for HR approval',

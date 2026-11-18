@@ -843,6 +843,10 @@ class DayRecordService {
       punches,
       employeeBranchId: String(employee.employment.branchId),
       decision,
+      minPunchGapMinutes: await settingsService.resolve<number>(
+        HrAttendanceSettingKeys.MinPunchGapMinutes,
+        ORG_SUBJECT,
+      ),
       now,
     });
     if (derived === null) return null;

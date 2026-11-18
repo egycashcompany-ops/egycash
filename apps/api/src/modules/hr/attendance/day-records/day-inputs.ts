@@ -30,6 +30,8 @@ import {
   type EngineShift,
   type EnginePunch,
 } from './derive-day';
+import { HrAttendanceSettingKeys } from '@ecms/contracts';
+import { settingsService } from '../../../../platform/settings';
 import { defaultPatternForBranch } from './expectations';
 
 /**
@@ -170,6 +172,13 @@ export const loadDayInputs = async (
           .exec();
   const shiftById = new Map(shiftDocs.map((doc) => [String(doc._id), doc]));
 
+  // ONE READ FOR THE WHOLE BATCH. The re-tap threshold is organization-wide, so a sheet of 1,755
+  // employees resolves it once rather than per line.
+  const minPunchGapMinutes = await settingsService.resolve<number>(
+    HrAttendanceSettingKeys.MinPunchGapMinutes,
+    { userId: null, branchId: null },
+  );
+
   // One settings resolution per distinct branch, and only where it can actually be needed.
   const patterns = new Map<string, EngineShift | null>();
   for (const employee of employees) {
@@ -269,6 +278,7 @@ export const loadDayInputs = async (
           punches,
           employeeBranchId: String(employee.employment.branchId),
           decision: decisionByDay.get(leaveKey(String(employee._id), workDate)) ?? null,
+          minPunchGapMinutes,
           now,
         },
       };

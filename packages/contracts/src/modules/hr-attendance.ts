@@ -530,8 +530,39 @@ export type ListAttendanceDaysQuery = z.infer<typeof ListAttendanceDaysQuerySche
  * One date only, by construction — a sheet is a day. Several branches and several sections, ORed,
  * the same multi-filters the day list takes.
  */
+/**
+ * WHAT THE SHEET CAN BE ORDERED BY, and it is a closed list because the order is computed rather
+ * than read: `sortBy` on `PaginationQuerySchema` is a free string, which for this screen would mean
+ * a typo silently falling back to some default instead of being refused.
+ *
+ * The columns are the ones a supervisor actually asks the sheet about. `checkIn` leads because the
+ * first question of the morning is who arrived and in what order.
+ *
+ * `name` is the Arabic legal name and `code` the employee code — the two identity columns — and
+ * `status` is the RESOLVED status, not a stored field, which is the reason this ordering cannot be
+ * a database sort. See `sheet-order.ts`.
+ */
+export const ATTENDANCE_SHEET_SORTS = [
+  'checkIn',
+  'checkOut',
+  'worked',
+  'late',
+  'name',
+  'code',
+  'status',
+] as const;
+export const AttendanceSheetSortSchema = z.enum(ATTENDANCE_SHEET_SORTS);
+export type AttendanceSheetSort = z.infer<typeof AttendanceSheetSortSchema>;
+
 export const ListAttendanceSheetQuerySchema = PaginationQuerySchema.extend({
   date: z.coerce.date(),
+  /**
+   * The column, closed to the seven above, and ASCENDING BY DEFAULT — both deliberate departures
+   * from `PaginationQuerySchema`, whose `sortBy` is any string and whose `sortDir` defaults to
+   * `desc`. A sheet opens on the morning in the order it happened: the first arrival at the top.
+   */
+  sortBy: AttendanceSheetSortSchema.default('checkIn'),
+  sortDir: z.enum(['asc', 'desc']).default('asc'),
   branchId: listQuery(objectId()),
   sectionId: listQuery(objectId()),
   /**
@@ -1532,6 +1563,7 @@ export const HrAttendanceSettingKeys = {
    * in every case, and no history import needs one.
    */
   ImportMaxAgeDays: 'hr.attendance.importMaxAgeDays',
+  MinPunchGapMinutes: 'hr.attendance.minPunchGapMinutes',
 } as const;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────

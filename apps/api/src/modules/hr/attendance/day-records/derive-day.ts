@@ -122,6 +122,22 @@ export interface DeriveDayInput {
     outAt: Date | null;
   } | null;
   /**
+   * HOW CLOSE TWO SCANS HAVE TO BE TO COUNT AS ONE, in minutes.
+   *
+   * THE DEFECT THIS ANSWERS, in the owner's own figures: five people read «حاضر» with ZERO worked
+   * minutes on 18 November, and a sixth with five. Nobody works a zero-minute day. What the device
+   * recorded was a RE-TAP — a finger that read poorly, presented again seconds later — and the
+   * pairing below is positional (`punches[0]` in, last out) because the K40 Pro logs presence
+   * without a direction. So the second tap became a departure.
+   *
+   * On a shift-less day that produced «حاضر, 0 minutes». On a ROSTERED day it is worse: a re-tap at
+   * 08:00 would pair as a departure eight hours before the shift ends, and the engine would hand
+   * payroll eight hours of «انصراف مبكر» for somebody who worked the whole day.
+   *
+   * Zero switches it off and the engine pairs every punch as it did before.
+   */
+  minPunchGapMinutes: number;
+  /**
    * The instant the derivation is being made at — INJECTED, never read from the clock, because
    * this file's contract is "same inputs, byte-identical output" and a function that reads the
    * clock has no such contract. It decides one thing only: whether an expected day with no
@@ -218,14 +234,47 @@ const flagsOf = (punches: readonly EnginePunch[], employeeBranchId: string): Att
 const byTime = (punches: readonly EnginePunch[]): EnginePunch[] =>
   [...punches].sort((a, b) => a.at.getTime() - b.at.getTime());
 
+/**
+ * ONE EVENT PER VISIT TO THE READER: a punch within `minutes` of the one before it is the same
+ * presentation of the same finger, not a second event.
+ *
+ * It runs on the SORTED list and keeps the FIRST of each cluster, so the recorded instant is the
+ * one the person actually arrived at rather than the moment their third attempt succeeded.
+ *
+ * It is applied before anything branches on how many punches there are, which is what makes it fix
+ * both shapes at once: the shift-less day that read «حاضر, 0 minutes» and the rostered day that
+ * would have reported hours of early leave. A day left with ONE event after this is a check-in and
+ * says so — which is the honest reading of a single visit to the glass.
+ *
+ * What it must NOT do is collapse a real day. Two scans nine hours apart are not a cluster: the
+ * comparison is against the previous KEPT punch, so a long day keeps both ends however many
+ * re-taps surround them, and `minutes` is far below any worked day and far above any re-tap.
+ */
+const collapseRetaps = (punches: readonly EnginePunch[], minutes: number): EnginePunch[] => {
+  if (minutes <= 0 || punches.length < 2) return [...punches];
+  const gap = minutes * 60_000;
+  const kept: EnginePunch[] = [punches[0] as EnginePunch];
+  for (const punch of punches.slice(1)) {
+    const previous = kept[kept.length - 1] as EnginePunch;
+    if (punch.at.getTime() - previous.at.getTime() >= gap) kept.push(punch);
+  }
+  return kept;
+};
+
 export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // 1 — not employed on that date: no row at all.
   if (!input.employed) return null;
 
   // What the DEVICES saw. Kept under its own name because a decision may replace what the day is
   // derived FROM without changing what was observed — the flags below still describe the evidence.
-  const evidence = byTime(input.punches);
-  const flags = flagsOf(evidence, input.employeeBranchId);
+  const observed = byTime(input.punches);
+  // THE FLAGS DESCRIBE EVERYTHING THE DEVICES SAW, so they are taken before the re-tap collapse:
+  // a manual punch or a punch recorded at another branch must still be flagged even when it is the
+  // second tap of a cluster and so plays no part in the pairing below.
+  const flags = flagsOf(observed, input.employeeBranchId);
+  // ONE EVENT PER VISIT TO THE READER. Everything downstream pairs positionally, so this is the
+  // only place the difference between «two taps» and «an arrival and a departure» can be drawn.
+  const evidence = collapseRetaps(observed, input.minPunchGapMinutes);
 
   // 2 — leave wins over absence. A half-day keeps the worked half: presence minutes are computed
   // when they exist, but nothing is "late" against a day the employee was excused from.

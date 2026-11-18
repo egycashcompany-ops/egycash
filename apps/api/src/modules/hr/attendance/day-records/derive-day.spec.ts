@@ -60,6 +60,9 @@ const base = (over: Partial<DeriveDayInput> = {}): DeriveDayInput => ({
   weekend: false,
   shift: GENERAL,
   punches: [],
+  // The production default. Every existing expectation in this file uses punches hours apart, so
+  // nothing below is collapsed by it; the cases that exercise it say so.
+  minPunchGapMinutes: 10,
   employeeBranchId: BRANCH,
   decision: null,
   now: AFTER_THE_FACT,
@@ -473,5 +476,100 @@ describe('D8 flags — signals, never arithmetic', () => {
     expect(row?.flags).toEqual(['crossBranchPunch', 'manualPunch']);
     // Same minutes as the unflagged day — the flags changed nothing numeric.
     expect(row?.workedMinutes).toBe(450);
+  });
+});
+
+/**
+ * RE-TAPS — the defect behind «حاضر» with zero worked minutes.
+ *
+ * The owner's 18 November sheet: five people read «حاضر» and 0 minutes, one «حاضر» and 5. The
+ * pairing is positional because the K40 Pro logs presence without a direction, so a finger
+ * presented twice became an arrival and a departure. On a rostered day the same two taps would
+ * have handed payroll a full shift's worth of «انصراف مبكر».
+ */
+describe('two scans a moment apart are one visit to the reader', () => {
+  it('reads a re-tap as a check-in, not a zero-minute day', () => {
+    // 09:57:03 then 09:57:41 — one finger, read twice.
+    const day = deriveDay(
+      base({
+        shift: null,
+        punches: [punch(at(9, 57)), punch(new Date(at(9, 57).getTime() + 38_000))],
+      }),
+    );
+    expect(day?.status).toBe('checkedIn');
+    expect(day?.firstInAt).toEqual(at(9, 57));
+    // Not a departure, so no hours are claimed and none are denied.
+    expect(day?.lastOutAt).toBeNull();
+    expect(day?.workedMinutes).toBe(0);
+  });
+
+  it('keeps the FIRST tap of a cluster, which is when the person actually arrived', () => {
+    const day = deriveDay(
+      base({
+        shift: null,
+        punches: [punch(at(8)), punch(at(8, 2)), punch(at(8, 5)), punch(at(17))],
+      }),
+    );
+    // 08:00 → 17:00, not 08:05 → 17:00: the third attempt is not the arrival.
+    expect(day?.firstInAt).toEqual(at(8));
+    expect(day?.lastOutAt).toEqual(at(17));
+    expect(day?.workedMinutes).toBe(9 * 60);
+  });
+
+  it('never collapses a real working day, however many re-taps surround its ends', () => {
+    // Each comparison is against the previous KEPT punch, so a long day keeps both ends.
+    const day = deriveDay(
+      base({
+        shift: null,
+        punches: [
+          punch(at(8)), punch(new Date(at(8).getTime() + 20_000)),
+          punch(at(16, 30)), punch(at(16, 31)),
+        ],
+      }),
+    );
+    expect(day?.status).toBe('present');
+    expect(day?.workedMinutes).toBe(8 * 60 + 30);
+  });
+
+  it('REGRESSION: a re-tap on a rostered day invents no early leave', () => {
+    // This is the half that had not happened yet and would have cost somebody money: paired
+    // positionally, a second tap at 08:00 is a departure eight hours before the shift ends.
+    const day = deriveDay(
+      base({
+        punches: [punch(at(8)), punch(new Date(at(8).getTime() + 45_000))],
+      }),
+    );
+    expect(day?.status).toBe('checkedIn');
+    expect(day?.earlyLeaveMinutes).toBe(0);
+    expect(day?.workedMinutes).toBe(0);
+  });
+
+  it('pairs every scan when the threshold is switched off', () => {
+    // 0 is the escape hatch, and it restores exactly the old behaviour — including the defect,
+    // which is what makes it an honest switch rather than a pretend one.
+    const day = deriveDay(
+      base({
+        shift: null,
+        minPunchGapMinutes: 0,
+        punches: [punch(at(9, 57)), punch(new Date(at(9, 57).getTime() + 38_000))],
+      }),
+    );
+    expect(day?.status).toBe('present');
+    expect(day?.workedMinutes).toBe(0);
+  });
+
+  it('still flags a manual punch that the collapse removed from the pairing', () => {
+    // The flags describe EVERYTHING the devices saw, so they are taken before the collapse.
+    const day = deriveDay(
+      base({
+        shift: null,
+        punches: [
+          punch(at(9)),
+          punch(new Date(at(9).getTime() + 30_000), { source: 'manual' }),
+        ],
+      }),
+    );
+    expect(day?.status).toBe('checkedIn');
+    expect(day?.flags).toContain('manualPunch');
   });
 });

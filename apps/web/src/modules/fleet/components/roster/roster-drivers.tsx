@@ -8,11 +8,14 @@
 // — every flagged driver of the day, seated or not, with the two licence-check links). Where a
 // seat is being filled, the list adds the drivers the draft holds on OTHER cars, each with that
 // car's code; a move is promised («سيُنقل من السيارة … عند الحفظ») in one place only — on the seat,
-// after the pick.
+// after the pick. Under the same head, ALWAYS, the drivers the server holds on a car that is not
+// on this board (another branch's car, or a car that left the board after it was planned), badged
+// «سيارة أخرى» as the fixed roster badges them: listed, never pickable, never counted.
 //
 // The markup hooks the specs and the dashboard links read are the employee ids: a free row
 // `data-driver-card`, a licence-block row `data-licence-expired-driver`, an unavailable row
-// `data-unavailable-driver`, the block itself `data-licence-expired-panel`.
+// `data-unavailable-driver`, a row held off the board `data-held-elsewhere`, the block itself
+// `data-licence-expired-panel`.
 import { type DragEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { type FleetPersonDto } from '@ecms/contracts';
@@ -206,7 +209,7 @@ const SectionHead = ({
 );
 
 /** Which list a row sits in — it decides the row's markup hook. */
-type RowHome = 'free' | 'licence' | 'seated';
+type RowHome = 'free' | 'licence' | 'seated' | 'elsewhere';
 
 /**
  * The AVAILABLE half.
@@ -255,10 +258,17 @@ export const AvailableList = ({
   const look = onPick === null && onIdlePick === undefined && !draggable;
   const row = (option: DriverOption, home: RowHome): JSX.Element => {
     const seated = option.state === 'seated';
+    // Held on a car off this board: no edit here can release him (FR-7), so he is never a pick.
+    const away = option.state === 'elsewhere';
     const code = person(option.employeeId)?.code;
     const badge = option.licenceExpired ? (
       <Badge tone="danger" size="sm" className="shrink-0">
         {t('fleet.roster.licenceExpired')}
+      </Badge>
+    ) : away ? (
+      // The fixed roster's badge for the same fact: the car is not on this board, so no code.
+      <Badge tone="warning" size="sm" className="shrink-0">
+        {t('fleet.roster.otherVehicle')}
       </Badge>
     ) : seated ? (
       // The assign dialog's badge: the other car's CODE (its word only when the code is unknown).
@@ -276,18 +286,22 @@ export const AvailableList = ({
         {t('fleet.roster.free')}
       </Badge>
     );
-    // In the licence block a seated driver says where, as the board always did.
+    // In the licence block a seated driver says where, as the board always did — and one held
+    // off the board says that it is another car.
     const extra =
       home === 'licence' && seated && option.seatedCode !== null ? (
         <span className="text-slate-600 dark:text-slate-300">
           {t('fleet.roster.expiredLicence.seatedOn', { code: option.seatedCode })}
         </span>
+      ) : home === 'licence' && away ? (
+        <span className="text-slate-600 dark:text-slate-300">{t('fleet.roster.otherVehicle')}</span>
       ) : undefined;
     const pending = pendingId === option.employeeId;
     // A seated driver is pickable only as a MOVE onto a seat being filled — never "chosen first",
     // and never onto his own car.
-    const tap =
-      onPick !== null
+    const tap = away
+      ? null
+      : onPick !== null
         ? option.onTarget
           ? null
           : () => onPick(option.employeeId)
@@ -295,14 +309,17 @@ export const AvailableList = ({
           ? () => onIdlePick(option.employeeId)
           : null;
     // The markup hooks: a free row is the pool's card, a licence row is the block's, a seated row
-    // is neither (the pool never offers a driver the day already seats).
+    // is neither (the pool never offers a driver the day already seats), and a row held off the
+    // board is its own.
     const card = home === 'free' ? option.employeeId : undefined;
     const homeProps =
       home === 'licence'
         ? { 'data-licence-expired-driver': option.employeeId }
         : home === 'seated'
           ? { 'data-seated-driver': option.employeeId }
-          : {};
+          : home === 'elsewhere'
+            ? { 'data-held-elsewhere': option.employeeId }
+            : {};
     const face = (
       <DriverFace
         employeeId={option.employeeId}
@@ -311,15 +328,16 @@ export const AvailableList = ({
         hoverCard={hoverCard}
       />
     );
-    const dragSource = draggable && !seated;
+    const dragSource = draggable && !seated && !away;
     if (look || (tap === null && !dragSource)) {
       return (
         <li
           key={option.employeeId}
           {...homeProps}
-          data-pool-driver={code}
+          data-pool-driver={away ? undefined : code}
           data-driver-state={option.state}
           data-driver-card={card}
+          aria-disabled={away ? 'true' : undefined}
           className="flex min-h-14 items-center gap-3 px-4 py-2"
         >
           {face}
@@ -448,7 +466,15 @@ export const AvailableList = ({
       </div>
     );
   }
-  const nothing = options.free.length + options.flagged.length + options.seated.length === 0;
+  const nothing =
+    options.free.length +
+      options.flagged.length +
+      options.seated.length +
+      options.elsewhere.length ===
+    0;
+  // «معيّنون على سيارات أخرى»: the draft's moves for a seat being filled, then everyone the server
+  // holds off this board — outside «السائقون المتاحون (n)».
+  const onOther = options.seated.length + options.elsewhere.length;
   // The free list empty: the day has no free licensed driver left («لا يوجد سائقون متاحون في هذا
   // التاريخ»), or the term found nobody — said where the list would be (on touch only when the term
   // found nobody anywhere; on the computer's list, whose licence block is pinned apart, as the
@@ -477,16 +503,16 @@ export const AvailableList = ({
         </ul>
       )}
       {part === 'all' && licenceBlock}
-      {options.seated.length > 0 && (
-        <>
+      {onOther > 0 && (
+        <div data-on-other-vehicles="true">
           <SectionHead>
-            {t('fleet.roster.onOtherVehicles')}{' '}
-            <Count value={options.seated.length} className="font-normal" />
+            {t('fleet.roster.onOtherVehicles')} <Count value={onOther} className="font-normal" />
           </SectionHead>
           <ul className="divide-y divide-slate-100 dark:divide-slate-800/80">
             {options.seated.map((option) => row(option, 'seated'))}
+            {options.elsewhere.map((option) => row(option, 'elsewhere'))}
           </ul>
-        </>
+        </div>
       )}
       <div className="h-3" />
     </div>

@@ -133,10 +133,13 @@ const OpenHead = (): JSX.Element => {
   );
 };
 
-/** «عرض الباقي (N) ←» — only when the server left rows out. */
-const ShowRest = ({ more, link }: { more: number; link: DashLink }): JSX.Element | null => {
+/**
+ * «عرض الباقي (N) ←» — only when the server left rows out, and only with a list to open (`null`: a
+ * reader whose reach holds no branch, D21).
+ */
+const ShowRest = ({ more, link }: { more: number; link: DashLink | null }): JSX.Element | null => {
   const w = useLicenceWords();
-  if (more <= 0) return null;
+  if (more <= 0 || link === null) return null;
   return (
     <BlockFoot>
       <span data-lic-more={String(more)}>

@@ -17,6 +17,10 @@
 //           column. A stale row does NOT hold its day open: the column stays solid.
 //   empty   no chain row at all (`hasRows: false`): an empty slot, NEVER a zero bar.
 //
+// A column's FIGURE (`total`, the readout's linked «X كم» and the column's name) is what the
+// odometer register totals over the column's days — every valid row dated in them, a span counted
+// on its start day: `confirmedKm + spanKm` (audit D02; the solid part alone is NOT on any screen).
+//
 // Days by default; months above 31 days (`range.granularity`, the server's `periodGranularity`).
 // The average line (closed km ÷ closed calendar days) is a per-DAY figure, so it is drawn only on
 // the daily axis; the monthly one names it in the legend instead.
@@ -39,6 +43,12 @@ export interface KmColumn {
   to: string;
   /** No chain row: an empty slot. */
   empty: boolean;
+  /**
+   * The column's km as the odometer register totals them over `from`…`to` (its link): the
+   * single-day part and the spans that START in it — `confirmedKm + spanKm` (audit D02). 0 on an
+   * empty slot.
+   */
+  total: number;
   /** The column holds today (the day itself, or today's month). */
   current: boolean;
   /** A daily column whose day is a Friday (dimmed); always `false` on the monthly axis. */
@@ -165,7 +175,7 @@ export const kmChart = (
     const days = bucketDays(bucket.key, granularity, range);
     const current = holdsToday(bucket.key);
     const friday = granularity === 'day' && isFriday(bucket.key);
-    const base = { bucket, ...days, current, friday };
+    const base = { bucket, ...days, current, friday, total: bucket.confirmedKm + bucket.spanKm };
     if (!bucket.hasRows) {
       return { ...base, empty: true, solid: 0, span: 0, hatch: 0, marker: null };
     }

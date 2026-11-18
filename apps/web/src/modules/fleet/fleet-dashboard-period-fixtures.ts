@@ -252,6 +252,7 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     ],
     byType: null,
     unregistered: UNREGISTERED_KM,
+    bookOnRegistered: 0,
     // Each car's make (one with no make named: nothing under its chip).
     top5: [
       { vehicleId: 'v182', code: '182', km: 5140, typeName: SPRINTER },

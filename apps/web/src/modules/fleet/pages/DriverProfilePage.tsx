@@ -18,6 +18,9 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { licenceState } from '../lib/vehicle-card';
+import { useLicenceWarnDays } from '../lib/licence-warn-days';
+import { LICENCE_STATE_KEY } from '../components/VehicleStatusBadge';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
@@ -33,7 +36,7 @@ import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { formatAmount, formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { listKey } from '../../../shared/lib/query-keys';
 import { cn } from '../../../shared/lib/cn';
-import { useBranchOptions } from '../../organization/shared/references';
+import { useBranchNames } from '../../organization/shared/references';
 import * as fleetApi from '../api/fleet-api';
 import {
   useAccidents,
@@ -83,6 +86,15 @@ const useCatalogItem = (
 
 const dash = <span className="text-slate-400">—</span>;
 
+/** The licence tag's tone per state — the file's own red / green, and the list's amber between. */
+const LICENCE_TAG: Record<keyof typeof LICENCE_STATE_KEY, string> = {
+  expired:
+    'border border-red-500/30 bg-red-50 font-semibold text-red-600 dark:bg-red-950/60 dark:text-red-400',
+  soon: 'border border-amber-500/30 bg-amber-50 font-semibold text-amber-600 dark:bg-amber-950/60 dark:text-amber-300',
+  valid:
+    'border border-emerald-500/30 bg-emerald-50 font-semibold text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400',
+};
+
 /** The days one unavailability record covers, both ends counted. */
 const spanDays = (from: string, to: string): number =>
   Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1);
@@ -92,6 +104,9 @@ type Tab = 'unavailability' | 'attendance' | 'notes';
 export const DriverProfilePage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
+  // «ينتهي قريبًا» inside the drivers' warning days of «إعدادات الحركة» (audit D29) — the days the
+  // drivers list and the dashboard's «رخص تنتهي خلال N يومًا» count with.
+  const licenceWarnDays = useLicenceWarnDays().driver;
   const navigate = useNavigate();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { id = '' } = useParams();
@@ -101,7 +116,9 @@ export const DriverProfilePage = (): JSX.Element => {
   const { name } = useEmployeeName(employeeId);
   // The person's own facts — code, phone, governorate, branch, address — from Fleet's roster.
   const person = useEmployeeRecord(employeeId);
-  const { data: branches = [] } = useBranchOptions();
+  // EVERY branch's name, the closed ones too (audit D14): a driver keeps the branch HR placed him
+  // in after it closes, and the active list alone printed «—» for it.
+  const { data: branches = [] } = useBranchNames();
   const job = useCatalogItem('driverJob', profile?.jobId ?? null);
   const specialization = useCatalogItem('driverSpecialization', profile?.specializationId ?? null);
   const licenseType = useCatalogItem('driverLicenseType', profile?.licenseTypeId ?? null);
@@ -176,8 +193,17 @@ export const DriverProfilePage = (): JSX.Element => {
   // NO EXPIRY ON FILE IS NOT AN EXPIRED ONE. `new Date(null)` is the epoch, which would have
   // painted every driver whose paperwork has not arrived yet in the red reserved for a licence
   // that has actually lapsed — the loudest possible wrong answer.
-  const licenseExpired =
-    profile.licenseExpiresAt !== null && new Date(profile.licenseExpiresAt).getTime() < Date.now();
+  //
+  // EXPIRED ON ITS EXPIRY DAY, by the Cairo calendar (R-02, audit D08) — the rule the dashboard's
+  // «رخص سائقين منتهية» and the drivers list count with. Compared with the clock instead, a licence
+  // running out today read valid until its stored hour passed, so the driver the dashboard lists as
+  // «منتهٍ اليوم» opened onto a file with no «رخصة القيادة منتهية».
+  //
+  // ONE licence state, the list's (audit D50): «منتهٍ / ينتهي قريبًا / ساري» in the list's red,
+  // amber and green, «ينتهي قريبًا» inside the warning days — never the two-state «سارية».
+  const licence = licenceState(profile.licenseExpiresAt, licenceWarnDays);
+  const licenseExpired = licence === 'expired';
+  const licenceTone = licence === 'unknown' ? 'valid' : licence;
   const records = unavailability.data?.items ?? [];
 
   const confirmCancel = async (): Promise<void> => {
@@ -589,22 +615,23 @@ export const DriverProfilePage = (): JSX.Element => {
                   profile.licenseExpiresAt === null ? (
                     dash
                   ) : (
-                    <span className={cn('font-figures', licenseExpired && 'text-red-500')}>
+                    <span
+                      className={cn(
+                        'font-figures',
+                        licenceTone === 'expired' && 'text-red-500',
+                        licenceTone === 'soon' && 'text-amber-600 dark:text-amber-400',
+                      )}
+                    >
                       {dayAndTime(profile.licenseExpiresAt).day}
                     </span>
                   )
                 }
                 aside={
-                  profile.licenseExpiresAt === null
-                    ? undefined
-                    : tag(
-                        licenseExpired
-                          ? t('fleet.dashboard.licenseExpired')
-                          : t('fleet.vehicle.licenseValid'),
-                        licenseExpired
-                          ? 'border border-red-500/30 bg-red-50 font-semibold text-red-600 dark:bg-red-950/60 dark:text-red-400'
-                          : 'border border-emerald-500/30 bg-emerald-50 font-semibold text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400',
-                      )
+                  profile.licenseExpiresAt === null ? undefined : (
+                    <span data-driver-licence-state={licenceTone}>
+                      {tag(t(LICENCE_STATE_KEY[licenceTone]), LICENCE_TAG[licenceTone])}
+                    </span>
+                  )
                 }
               />
               <GlassTile

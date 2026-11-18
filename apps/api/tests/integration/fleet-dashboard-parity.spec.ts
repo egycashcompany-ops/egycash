@@ -866,9 +866,24 @@ describe('R1 parity — «الحركة اليوم» (the old «الحركة ال
     expect((r?.absent.attendance ?? 0) + (r?.absent.leave ?? 0)).toBe(absent.length);
   });
 
-  it('T2.4 = /fleet/maintenance?state=open, the oldest stay in Cairo days', async () => {
-    expect(now.workshop?.open).toBe(await total('/fleet/maintenance', { open: true }));
-    expect(now.workshop).toMatchObject({ open: 1, openActive: 1, openOutOfService: 0 });
+  it('T2.4 = /fleet/maintenance?state=open&to=<today>, the oldest stay in Cairo days', async () => {
+    // The link's own question (D07): open visits checked in by today.
+    expect(now.workshop?.open).toBe(await total('/fleet/maintenance', { open: true, to: TODAY }));
+    expect(now.workshop).toMatchObject({
+      open: 1,
+      openActive: 1,
+      openOutOfService: 0,
+      openDisposed: 0,
+      openNoCar: 0,
+    });
+    // D06: the four parts under the headline always make it up.
+    const w = now.workshop;
+    expect(
+      (w?.openActive ?? 0) +
+        (w?.openOutOfService ?? 0) +
+        (w?.openDisposed ?? 0) +
+        (w?.openNoCar ?? 0),
+    ).toBe(w?.open);
     expect(now.workshop?.oldest).toMatchObject({
       vehicleId: v4.id,
       code: v4.code,
@@ -1239,8 +1254,13 @@ describe('R1 parity — tabs 3 and 5', () => {
   it('T3.4/T3.6/T3.8 = /fleet/drivers, by `spec`', async () => {
     const drv = now.distributionDrivers;
     expect(drv?.total).toBe(await total('/fleet/drivers', {}));
-    expect((drv?.cash.drivers ?? 0) - (drv?.cash.legacy ?? 0)).toBe(
+    // D13: each card's drivers are the catalog's alone — the drivers screen's «التخصص» total; the
+    // old classification is a line apart, never added in nor taken out.
+    expect(drv?.cash.drivers).toBe(
       await total('/fleet/drivers', { specializationId: csv(drv?.cash.specializationIds ?? []) }),
+    );
+    expect(drv?.atm.drivers).toBe(
+      await total('/fleet/drivers', { specializationId: csv(drv?.atm.specializationIds ?? []) }),
     );
     expect(drv).toMatchObject({
       total: 6,
@@ -1421,7 +1441,7 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
     expect(b2.vehicles?.active).toBe(await total('/fleet/vehicles', { status: 'active' }, B2));
     expect(b2.vehicles?.active).toBe(2);
     expect(b2.workshop?.open).toBe(
-      await total('/fleet/maintenance', { open: true, branchIds: B2 }),
+      await total('/fleet/maintenance', { open: true, to: TODAY, branchIds: B2 }),
     );
     expect(b2.dealershipPending?.rows).toBe(
       await total('/fleet/dealership', { pending: true, branchIds: B2 }),
@@ -1573,7 +1593,7 @@ describe('R1 parity — with the switcher on a branch (X-Active-Branch)', () => 
     );
     // The branch's open visits, as /fleet/maintenance?state=open&branch lists them (none on B2).
     expect(b2.workshop?.longest.length).toBe(
-      await total('/fleet/maintenance', { open: true, branchIds: B2 }),
+      await total('/fleet/maintenance', { open: true, to: TODAY, branchIds: B2 }),
     );
     expect(b2.noReading?.stale.map((row) => row.code)).toEqual([v2.code]);
     expect(b2.noReading?.neverRead.map((row) => row.code)).toEqual([v6.code]);
@@ -2118,7 +2138,7 @@ describe('«كل فروعي» parity — every figure is its screen with `branch
 
   it('R1: the company sources are the screens’ with the list', async () => {
     expect(mine.workshop?.open).toBe(
-      await total('/fleet/maintenance', { open: true, branchIds: BOTH() }),
+      await total('/fleet/maintenance', { open: true, to: TODAY, branchIds: BOTH() }),
     );
     const open = ok<{ count: number; remaining: number }>(
       await get('/fleet/accidents/summary', { status: 'open', branchIds: BOTH() }),
@@ -2219,7 +2239,7 @@ describe('R1 parity — the alarm table on cars in alarm (red, yellow, one in th
     // The workshop's longest stays narrow the same way: the yellow car is B2's only open visit.
     expect(b2.workshop?.longest.map((row) => [row.code, row.days])).toEqual([[yellow.code, 1]]);
     expect(b2.workshop?.longest.length).toBe(
-      await total('/fleet/maintenance', { open: true, branchIds: B2 }),
+      await total('/fleet/maintenance', { open: true, to: TODAY, branchIds: B2 }),
     );
   });
 });
@@ -2398,8 +2418,9 @@ describe('«العهدة» and «التراخيص والتجديدات» parity 
       visa: strip.visaTotal,
       cash: strip.cashTotal,
     });
+    // D05: «عدد المذكرات» counts memos — a record holding a renewal and an extension is two.
     expect(company.licenceSpend).toEqual({
-      count: 2,
+      count: 3,
       cars: 4,
       visa: 270.5,
       cash: 80,

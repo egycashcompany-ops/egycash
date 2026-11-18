@@ -3,13 +3,16 @@
 //
 // What this file pins: every figure reads its field and opens the list that shows the same number
 // (or opens nothing when no list shows exactly it: «أخرى», «بلا فرع», «غير مسجّلة»); the branches keep
-// the server's order, a branch with no car keeps its card; a branch's operations come from the
+// the server's order, a branch the server sends with no car keeps its card, a deleted branch's column
+// the server names «—» keeps its own link (D11, D33); a branch's operations come from the
 // server's `kinds`; one branch in scope (the switcher's branch, or a one-branch reader) draws the
 // branch's view, «كل فروعي» the company's; the kilometres are the fixed «هذا الشهر» read, whatever the
 // page's filters say, and their links carry that read's echo alone; the supply contracts are this
 // year's, company-wide, drawn only for a reader of the contracts screen. It also carries the pins of
 // the old tab 3 that still hold (the matrix links, «بلا فرع» only when > 0, the plain ratio, the
-// drivers by specialisation and «منهم N بتصنيف قديم», no driver part without the drivers' section).
+// drivers by specialisation, no driver part without the drivers' section). The drivers are the
+// catalog's count, the drivers screen's «التخصص» (D13): the old classification is its own unlinked
+// line «و N سائقين بتصنيف قديم لم يُحدَّد تخصصهم», never «منهم», never in the ratio or the sentence.
 //
 // Rendered through the real page over seeded caches (`renderDashboard`), the fleet-dashboard way.
 import { describe, expect, it } from 'vitest';
@@ -91,7 +94,10 @@ const VEHICLES: Vehicles = {
   other: { vehicles: 5 },
 };
 
-/** The registry: 52 drivers, 31 cash (2 of them on the old specialisation only), 15 ATM (none). */
+/**
+ * The registry: 52 drivers; 31 cash and 15 ATM by the catalog's specialisation (the drivers screen's
+ * «التخصص» lists exactly them), and 2 more files on the old cash classification only — not in the 31.
+ */
 const DRIVERS: NonNullable<FleetDashboardNowDto['distributionDrivers']> = {
   total: 52,
   cash: { drivers: 31, legacy: 2, specializationIds: [SP_CASH] },
@@ -276,6 +282,8 @@ const text = (html: string): string =>
     .replace(/&#x27;/gu, "'")
     .replace(/&quot;/gu, '"')
     .replace(/\s+/gu, ' ');
+/** Words with no spaces at all: a figure in its own tag reads «و 2» where the sentence says «و2». */
+const squash = (s: string): string => s.replace(/\s+/gu, '');
 /** Every link the markup holds: its target and the figure it carries. */
 const links = (html: string): { href: string; metric: string }[] =>
   [...html.matchAll(/<a\b[^>]*>/gu)].map((m) => ({
@@ -377,8 +385,17 @@ describe('«توزيع السيارات» — the heading and the operation row'
     expect(text(html)).not.toContain('تصدير');
   });
 
-  it('says how many cash drivers hold only the old specialisation — and nothing when none do (R-08)', () => {
-    expect(text(card(html, 'cash'))).toContain('منهم 2 بتصنيف قديم');
+  it('says how many files hold only the old classification, on their own unlinked line — and nothing when none do (R-08, D13)', () => {
+    const legacy = part(card(html, 'cash'), 'data-dist-legacy="true"', /<\/p>/u);
+    expect(squash(text(legacy))).toContain(
+      squash(
+        ar('fleet.dash.distribution.legacy', {
+          count: '2',
+          noun: ar('fleet.dash.common.noun.driver.few'),
+        }),
+      ),
+    );
+    expect(links(legacy)).toEqual([]);
     expect(card(html, 'atm')).not.toContain('data-dist-legacy');
   });
 
@@ -397,7 +414,10 @@ describe('«توزيع السيارات» — the heading and the operation row'
     );
     expect(hrefOf(card(drivers, 'all'), 'distributionDrivers.total')).toHaveLength(1);
     expect(text(card(drivers, 'cash'))).toContain('31');
-    expect(text(card(drivers, 'cash'))).toContain('منهم 2 بتصنيف قديم');
+    expect(card(drivers, 'cash')).toContain('data-dist-legacy="true"');
+    expect(hrefOf(card(drivers, 'cash'), 'distributionDrivers.cash')).toEqual([
+      `/fleet/drivers?spec=${SP_CASH}`,
+    ]);
     expect(drivers).not.toContain('data-fleet-matrix');
     expect(drivers).not.toContain('data-dist-block="branches"');
   });
@@ -577,6 +597,28 @@ describe('«توزيع السيارات» — the kilometres by branch (the fixe
     expect(km.match(/data-dash-col-muted="true"/gu)).toHaveLength(2);
     // 3,000 of 4,896.
     expect(text(km)).toContain('61.3%');
+  });
+
+  it('D20: the old book’s km under a live car’s code is a column of its own, so the columns add up', () => {
+    // 3,000 + 1,500 + 296 (no branch) + 100 («غير مسجّلة») + 100 (the old book on registered cars).
+    const month: FleetDashboardPeriodDto = {
+      ...MONTH,
+      km: { ...need(MONTH.km), total: 4996, bookOnRegistered: 100 },
+    };
+    const folded = block(tab({ month }), 'km');
+    const name = text(part(folded, 'data-dash-col-name="bookOnRegistered"', /<\/span>/u)).trim();
+    expect(name).toBe(ar('fleet.dash.km.bookOnRegistered'));
+    expect(name).toBe('الدفتر القديم (سيارات مسجّلة)');
+    expect(folded).toContain(
+      'data-dash-col="bookOnRegistered" data-dash-col-n="100" data-dash-col-muted="true"',
+    );
+    // Muted and unlinked like «غير مسجّلة»; the branch columns keep their links.
+    expect(folded.match(/data-dash-col-muted="true"/gu)).toHaveLength(3);
+    expect(hrefOf(folded, 'km.byBranch')).toHaveLength(2);
+    const columns = [3000, 1500, 296, 100, 100].reduce((sum, km) => sum + km, 0);
+    expect(columns).toBe(4996);
+    // Nothing folded: no such column.
+    expect(km).not.toContain('data-dash-col="bookOnRegistered"');
   });
 
   it('says no day is closed yet on the month’s first day, and writes the average once one is', () => {
@@ -894,5 +936,167 @@ describe('«توزيع السيارات» — the bar', () => {
 
   it('draws no sample marker', () => {
     expect(tab({}, SUPPLY_KEYS)).not.toMatch(/data-zz-/u);
+  });
+});
+
+// ── The audit's fixes: each figure the screen it opens ───────────────────────────────────────
+
+describe('«توزيع السيارات» — the same figure as the screen it opens (D11, D13, D33)', () => {
+  const DELETED = '650000000000000000000999';
+  const legacyOf = (html: string, id: string): string =>
+    part(card(html, id), 'data-dist-legacy="true"', /<\/p>/u);
+
+  it('D13: the cash and ATM drivers are the catalog’s count — the figure, its list, the ratio and the sentence — the old classification apart', () => {
+    // 31 cash by the catalog (= `/fleet/drivers?spec=` total), 2 more on the old classification.
+    const html = tab();
+    const cash = card(html, 'cash');
+    expect(text(part(cash, 'data-dist-tile="cash.drivers"', /data-dist-tile=/u))).toContain('31');
+    expect(hrefOf(cash, 'distributionDrivers.cash')).toEqual([`/fleet/drivers?spec=${SP_CASH}`]);
+    // 31 ÷ 24 cars — never (31 − 2) ÷ 24 nor (31 + 2) ÷ 24.
+    expect(text(part(html, 'data-dist-ratio="cash"', /<\/span>/u))).toContain('1.29');
+    expect(text(part(cash, 'data-dist-sentence="cash"', /<\/p>/u))).toContain(
+      ar('fleet.dash.distribution.moreDrivers', { count: '7' }),
+    );
+    // Its own line, plain, after the sentence; never «منهم».
+    const legacy = legacyOf(html, 'cash');
+    expect(squash(text(legacy))).toContain(
+      squash(
+        ar('fleet.dash.distribution.legacy', {
+          count: '2',
+          noun: ar('fleet.dash.common.noun.driver.few'),
+        }),
+      ),
+    );
+    expect(links(legacy)).toEqual([]);
+    expect(text(legacy)).not.toContain('منهم');
+    expect(cash.indexOf('data-dist-sentence="cash"')).toBeLessThan(
+      cash.indexOf('data-dist-legacy="true"'),
+    );
+  });
+
+  it('D13: the old classification counts its noun — one file, a few, many', () => {
+    const withLegacy = (legacy: number): string =>
+      legacyOf(
+        tab({
+          now: { ...NOW, distributionDrivers: { ...DRIVERS, atm: { ...DRIVERS.atm, legacy } } },
+        }),
+        'atm',
+      );
+    expect(squash(text(withLegacy(1)))).toContain(
+      squash(
+        ar('fleet.dash.distribution.legacyOne', {
+          count: '1',
+          noun: ar('fleet.dash.common.noun.driver.one'),
+        }),
+      ),
+    );
+    expect(squash(text(withLegacy(11)))).toContain(
+      squash(
+        ar('fleet.dash.distribution.legacy', {
+          count: '11',
+          noun: ar('fleet.dash.common.noun.driver.other'),
+        }),
+      ),
+    );
+    // The ATM figure stays the catalog's 15 whatever the old classification holds.
+    const atm = card(
+      tab({
+        now: { ...NOW, distributionDrivers: { ...DRIVERS, atm: { ...DRIVERS.atm, legacy: 4 } } },
+      }),
+      'atm',
+    );
+    expect(text(part(atm, 'data-dist-tile="atm.drivers"', /data-dist-tile=/u))).toContain('15');
+    expect(text(part(atm, 'data-dist-ratio="atm"', /<\/span>/u))).toContain('1.36');
+  });
+
+  it('D11: a deleted branch the server names «—» is a card like any other, opening its cars', () => {
+    const gone = { id: DELETED, name: { ar: '—', en: '—' } };
+    const html = tab({
+      now: {
+        ...NOW,
+        distributionVehicles: {
+          ...VEHICLES,
+          branches: [...VEHICLES.branches, gone],
+          totals: {
+            ...VEHICLES.totals,
+            counts: { ...VEHICLES.totals.counts, [DELETED]: 2 },
+            total: VEHICLES.totals.total + 2,
+          },
+          kinds: { ...VEHICLES.kinds, [DELETED]: { cash: 2, atm: 0, other: 0 } },
+        },
+      },
+    });
+    const deleted = branchCard(html, DELETED);
+    expect(text(deleted)).toMatch(/— 2 نشطة/u);
+    expect(hrefOf(deleted, 'distributionVehicles.branch')).toEqual([
+      `/fleet/vehicles?status=active&branch=${DELETED}`,
+    ]);
+    expect(text(deleted)).not.toContain(ar('fleet.dash.distribution.noBranch'));
+  });
+
+  it('D33: a deleted branch’s km column is the server’s «—», linked by its id; «بلا فرع» is only the cars with no branch', () => {
+    const month: FleetDashboardPeriodDto = {
+      ...MONTH,
+      km: {
+        ...need(MONTH.km),
+        total: 1040,
+        byBranch: [
+          { branchId: B1, name: CAIRO.name, km: 1000 },
+          { branchId: null, name: null, km: 30 },
+          { branchId: DELETED, name: { ar: '—', en: '—' }, km: 10 },
+        ],
+        unregistered: 0,
+      },
+    };
+    const km = block(tab({ month }), 'km');
+    const name = (key: string): string =>
+      text(part(km, `data-dash-col-name="${key}"`, /<\/span>/u)).trim();
+    expect(name('none')).toBe(ar('fleet.dash.km.noBranch'));
+    expect(name(DELETED)).toBe('—');
+    // One «بلا فرع», muted and unlinked; the deleted branch keeps its link and its colour.
+    expect(text(km).split(ar('fleet.dash.km.noBranch')).length - 1).toBe(1);
+    expect(hrefOf(km, 'km.byBranch')).toEqual([
+      `/fleet/odometer?from=${TODAY}&to=${TODAY}&branch=${B1}`,
+      `/fleet/odometer?from=${TODAY}&to=${TODAY}&branch=${DELETED}`,
+    ]);
+    expect(km).toContain(`data-dash-col="none" data-dash-col-n="30" data-dash-col-muted="true"`);
+    expect(km).not.toMatch(new RegExp(`data-dash-col="${DELETED}"[^>]*data-dash-col-muted`, 'u'));
+    // An older answer with no name for a branch id still never says «بلا فرع» for it.
+    const unnamed = block(
+      tab({
+        month: {
+          ...month,
+          km: {
+            ...need(month.km),
+            byBranch: [{ branchId: DELETED, name: null, km: 10 }],
+          },
+        },
+      }),
+      'km',
+    );
+    expect(text(part(unnamed, `data-dash-col-name="${DELETED}"`, /<\/span>/u)).trim()).toBe('—');
+    expect(text(unnamed)).not.toContain(ar('fleet.dash.km.noBranch'));
+  });
+});
+
+// ── The words the owner was told (i18n/W3.json; green once the HUB merges it) ────────────────
+
+describe('«توزيع السيارات» — the words the owner was told', () => {
+  it('D13: «و2 سائقين بتصنيف قديم لم يُحدَّد تخصصهم» — one file «تخصصه», eleven «سائقًا»', () => {
+    expect(squash(text(part(card(tab(), 'cash'), 'data-dist-legacy="true"', /<\/p>/u)))).toContain(
+      squash('و2 سائقين بتصنيف قديم لم يُحدَّد تخصصهم'),
+    );
+    expect(
+      ar('fleet.dash.distribution.legacyOne', {
+        count: '1',
+        noun: ar('fleet.dash.common.noun.driver.one'),
+      }),
+    ).toBe('و1 سائق بتصنيف قديم لم يُحدَّد تخصصه');
+    expect(
+      ar('fleet.dash.distribution.legacy', {
+        count: '11',
+        noun: ar('fleet.dash.common.noun.driver.other'),
+      }),
+    ).toBe('و11 سائقًا بتصنيف قديم لم يُحدَّد تخصصهم');
   });
 });

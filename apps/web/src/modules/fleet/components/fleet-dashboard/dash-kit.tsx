@@ -525,7 +525,11 @@ export const BTN = {
   ),
 } as const;
 
-/** A button that opens an existing screen (a real link), its icon after the words (the arrow by default). */
+/**
+ * A button that opens an existing screen (a real link), its icon after the words (the arrow by default).
+ * No link (`null`: a reader whose reach holds no branch, D21) → no button: the figure stands plain,
+ * never a «فتح» onto the whole company.
+ */
 export const Btn = ({
   link,
   kind = 'soft',
@@ -534,20 +538,21 @@ export const Btn = ({
   children,
   className,
 }: {
-  link: DashLink;
+  link: DashLink | null;
   kind?: keyof typeof BTN;
   icon?: IconPath | null;
   /** An icon before the words. */
   lead?: IconPath;
   children: ReactNode;
   className?: string;
-}): JSX.Element => (
-  <Link to={link.to} data-metric={link.metric} className={cn(BTN[kind], className)}>
-    {lead !== undefined && <Icon d={lead} className="h-4 w-4" />}
-    {children}
-    {icon !== null && <Icon d={icon} className="h-3.5 w-3.5" />}
-  </Link>
-);
+}): JSX.Element | null =>
+  link === null ? null : (
+    <Link to={link.to} data-metric={link.metric} className={cn(BTN[kind], className)}>
+      {lead !== undefined && <Icon d={lead} className="h-4 w-4" />}
+      {children}
+      {icon !== null && <Icon d={icon} className="h-3.5 w-3.5" />}
+    </Link>
+  );
 
 /** A small round tag («صيانة السيارات», «منتهٍ»); tones from TONE. */
 export const Tag = ({
@@ -656,26 +661,30 @@ export const Meter = ({
   </div>
 );
 
-/** A footer link of a card («عرض السيارات ←») — the dashboard's emerald link. */
+/**
+ * A footer link of a card («عرض السيارات ←») — the dashboard's emerald link. No link (`null`, D21)
+ * → no foot link at all.
+ */
 export const FootLink = ({
   link,
   children,
 }: {
-  link: DashLink;
+  link: DashLink | null;
   children: ReactNode;
-}): JSX.Element => (
-  <Link
-    to={link.to}
-    data-metric={link.metric}
-    className={cn(
-      'inline-flex items-center gap-1 whitespace-nowrap text-[13px] font-bold text-emerald-700 transition hover:underline dark:font-medium dark:text-emerald-400 dark:hover:text-emerald-300',
-      FOCUS,
-    )}
-  >
-    {children}
-    <Icon d={I.arrow} className="h-3.5 w-3.5" />
-  </Link>
-);
+}): JSX.Element | null =>
+  link === null ? null : (
+    <Link
+      to={link.to}
+      data-metric={link.metric}
+      className={cn(
+        'inline-flex items-center gap-1 whitespace-nowrap text-[13px] font-bold text-emerald-700 transition hover:underline dark:font-medium dark:text-emerald-400 dark:hover:text-emerald-300',
+        FOCUS,
+      )}
+    >
+      {children}
+      <Icon d={I.arrow} className="h-3.5 w-3.5" />
+    </Link>
+  );
 
 /** A segmented switch / filter chips: the custody tabs' tray, the pressed one in the site's indigo. */
 export const SEG = {

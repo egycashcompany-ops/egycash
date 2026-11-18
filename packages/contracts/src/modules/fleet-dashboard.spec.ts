@@ -1166,8 +1166,9 @@ describe('tabs and their sections', () => {
   it('caps the lists of «العهدة» and «التراخيص والتجديدات» with their own constants', () => {
     // «آخر عمليات العهدة».
     expect(FLEET_DASHBOARD_CUSTODY_RECENT_ROWS).toBe(6);
-    // «في مذكرات لم تُستعَض بعد» and «تنتظر التسوية» before «و N أخرى»: the same number, a separate rule.
-    expect(FLEET_DASHBOARD_CUSTODY_WAIT_ROWS).toBe(6);
+    // «في مذكرات لم تُستعَض بعد» before «و N أخرى»: the 5 «لوحة تحكم العهدة» shows (D45).
+    // «تنتظر التسوية» is not cut by it: the tab lists every part, as the screen does.
+    expect(FLEET_DASHBOARD_CUSTODY_WAIT_ROWS).toBe(5);
     // «أقرب تراخيص السيارات» and «أقرب رخص السائقين» before «عرض الباقي (N)».
     expect(FLEET_DASHBOARD_LICENCE_ROWS).toBe(6);
     // «التراخيص المستحقة للتجديد — 12 شهرًا».
@@ -1288,8 +1289,11 @@ describe('the shapes of «توزيع السيارات» and «الصيانة و�
     expect(alarm.rows.map((row) => row.level)).toEqual(['red', 'yellow']);
     const workshop: FleetDashboardNowWorkshopDto = {
       open: 2,
-      openActive: 2,
+      openActive: 1,
       openOutOfService: 0,
+      openDisposed: 0,
+      // The old-book row below has no registry car: its own part, so the parts add up to `open`.
+      openNoCar: 1,
       oldest: { vehicleId: ID_A, code: '150', inDate: '2026-11-03', days: 12, deleted: false },
       longest: [
         {
@@ -1321,6 +1325,31 @@ describe('the shapes of «توزيع السيارات» and «الصيانة و�
       Math.min(workshop.open, FLEET_DASHBOARD_WORKSHOP_ROWS),
     );
     expect(workshop.longest[0]).toMatchObject(workshop.oldest ?? {});
+    expect(
+      workshop.openActive + workshop.openOutOfService + workshop.openDisposed + workshop.openNoCar,
+    ).toBe(workshop.open);
+  });
+
+  it('«في الورشة الآن»: every open visit sits in exactly one of the four parts (D06)', () => {
+    // A disposed car («مكهنة»), a car deleted since its check-in and an old-book visit
+    // («بلا سيارة في السجل») each have their own part beside active and out of service, so the
+    // parts under the headline always add up to it.
+    const workshop: FleetDashboardNowWorkshopDto = {
+      open: 6,
+      openActive: 2,
+      openOutOfService: 1,
+      openDisposed: 1,
+      openNoCar: 2,
+      oldest: null,
+      longest: [],
+    };
+    const parts: (keyof FleetDashboardNowWorkshopDto)[] = [
+      'openActive',
+      'openOutOfService',
+      'openDisposed',
+      'openNoCar',
+    ];
+    expect(parts.reduce((sum, part) => sum + Number(workshop[part]), 0)).toBe(workshop.open);
   });
 
   it('maintenance period: exits by EXIT day carry the breakdown; visits (check-in) only their state', () => {
@@ -1483,6 +1512,7 @@ describe('the shapes of «العدادات والكيلومترات» and «ال
       byBranch: [],
       byType: null,
       unregistered: 0,
+      bookOnRegistered: 0,
       top5: [{ vehicleId: ID_A, code: '150', km: 2100, typeName: name }],
       bottom5: [
         { vehicleId: ID_B, code: '151', km: 300, inWorkshopSince: '2026-11-10', typeName: null },
@@ -1864,7 +1894,7 @@ describe('the shapes of «المخالفات المرورية والتسويات
     // The exit day, never `outDate` (the dashboard never names that field), never a time.
     expect(Object.keys(row)).not.toContain('outDate');
     for (const r of list.rows) expect(r.date, r.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    // «بانتظار تسجيل القيمة» is a row with no value yet.
+    // «بانتظار الفاتورة» is a row with no value yet.
     expect(list.rows.filter((r) => r.invoiceAmount === null).length).toBeLessThanOrEqual(
       dealership.pending,
     );

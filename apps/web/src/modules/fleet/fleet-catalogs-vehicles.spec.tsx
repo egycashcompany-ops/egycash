@@ -143,20 +143,21 @@ const seededClient = (): QueryClient => {
   }
   // Branch names come from `/platform/branches/options` — a bare ARRAY, no page wrapper and no
   // `select`, and no `branch.view` behind it. The specs below prove exactly that: the column fills
-  // for a reader who holds no organization grant at all.
-  qc.setQueryData(
-    ['organization', 'branches', 'options'],
-    [
-      {
-        id: 'b1',
-        code: '01',
-        name: { ar: 'المهندسين', en: 'Mohandessin' },
-        parentId: null,
-        catalogId: null,
-      },
-      { id: 'b2', code: '02', name: { ar: 'الجيزة', en: 'Giza' }, parentId: null, catalogId: null },
-    ],
-  );
+  // for a reader who holds no organization grant at all. The column names from the list WITH the
+  // closed branches (`?includeInactive=true`, `useBranchNames`); the branch filter offers the
+  // active ones (`useBranchOptions`). Both seeded with the same two open branches.
+  const BRANCHES = [
+    {
+      id: 'b1',
+      code: '01',
+      name: { ar: 'المهندسين', en: 'Mohandessin' },
+      parentId: null,
+      catalogId: null,
+    },
+    { id: 'b2', code: '02', name: { ar: 'الجيزة', en: 'Giza' }, parentId: null, catalogId: null },
+  ];
+  qc.setQueryData(['organization', 'branches', 'options'], BRANCHES);
+  qc.setQueryData(['organization', 'branches', 'options', 'withInactive'], BRANCHES);
   qc.setQueryData(listKey(M, 'vehicles', { defaultBranch: true }), {
     branchId: 'b1',
     name: { ar: 'المهندسين', en: 'Mohandessin' },
@@ -583,7 +584,8 @@ describe('the registry table renders the frozen column order', () => {
   // — and who has no business browsing HR's directory — therefore saw every branch's vehicles
   // with a dash where the branch should be, and no branch filter at all to narrow them by.
   //
-  // The names come from `/platform/branches/options` now: authenticated, ungated, {id, code, name}.
+  // The names come from `/platform/branches/options` now (with the closed branches,
+  // `?includeInactive=true`): authenticated, ungated, {id, code, name}.
   it('names the branch, and offers the branch filter, WITHOUT `branch.view`', () => {
     const html = withRows([vehicle()], ['fleetVehicle.view']);
     expect(tbodyOf(html), 'the branch cell fell back to a dash').toContain('المهندسين');

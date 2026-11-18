@@ -21,6 +21,7 @@ import { RosterScreen } from './pages/RosterPage';
 import { type TouchLayout } from './lib/roster-layout';
 import { matchesVehicleCode } from './lib/vehicle-code-match';
 import { touchCars } from './lib/roster-board';
+import { visibleRows } from './lib/roster-view';
 import { rosterSource } from './roster-spec-sources';
 
 const V1 = '650000000000000000000001';
@@ -321,6 +322,31 @@ describe('the term is matched as the funnel’s codes are, and kept on the board
   ])('«%s» finds %j', (term, found) => {
     const codes = ['120', '133', '410', '489', 'MG 2'];
     expect(codes.filter((code) => matchesVehicleCode(code, term))).toEqual(found);
+  });
+
+  it('stays a SEARCH, while a PICKED code is one car (D16)', () => {
+    // The picked codes (`?q=`) are matched whole — «كورولا 1» is that car alone, as on every other
+    // screen. The typed term on the cards is still a search: «كورولا 1» finds the 10 and the 11
+    // too, «41» finds 410.
+    const MODELS = [
+      row('vk1', 'كورولا 1'),
+      row('vk10', 'كورولا 10'),
+      row('vk11', 'كورولا 11'),
+      row('v410', '410'),
+    ];
+    const codes = (rows: readonly { code: string }[]): string[] => rows.map((r) => r.code);
+    expect(codes(touchCars(MODELS, MODELS, 'كورولا 1').onRoad)).toEqual([
+      'كورولا 1',
+      'كورولا 10',
+      'كورولا 11',
+    ]);
+    expect(codes(touchCars(MODELS, MODELS, '41').onRoad)).toEqual(['410']);
+    const picked = visibleRows(MODELS, { term: 'كورولا 1' });
+    expect(codes(touchCars(picked, MODELS, '').onRoad)).toEqual(['كورولا 1']);
+    expect(
+      codes(touchCars(picked, MODELS, 'كورولا').onRoad),
+      'a typed term narrows the picks, never widens them',
+    ).toEqual(['كورولا 1']);
   });
 
   it('is never written to the URL nor remembered (a half-typed «1» must not come back)', () => {

@@ -307,7 +307,9 @@ describe('«ضيف كل حاجه كنا عملنها» — the list wears what t
     const html = renderList();
     expect(html).toContain('data-license-expenses-toolbar="true"');
     expect(html).toMatch(/role="status" data-filtered-count="true"/u);
-    expect(html).toContain(`title="${ar('fleet.filters.matchedRows')}"`);
+    // The MEMOS the filters matched — the strip's «عدد المذكرات», a record of two memos counting
+    // two (D05) — never the rows' count.
+    expect(html).toContain(`title="${ar('fleet.licenseExpenses.stats.memos')}"`);
     expect(html).toContain('data-export="license-expenses"');
     expect(html).toContain('data-print="license-expenses"');
     expect(html).toContain('data-license-expense-stats-toggle="true"');
@@ -403,7 +405,8 @@ describe('«ضيف كل حاجه كنا عملنها» — the list wears what t
     const source = code('LicenseExpensesPage.tsx');
     const column = source.slice(source.indexOf("key: 'cars',"), source.indexOf("key: 'visa',"));
     expect(column).toContain("sortKey: 'carsCount'");
-    expect(column).toContain('carCodesOf(row)');
+    // …of the memos «النوع» / «التسوية» asked about (D05) — every memo when neither is set.
+    expect(column).toContain('carCodesOf(row, halves)');
     expect(column, 'no plate on the screen').not.toMatch(/plate|carName/u);
   });
 
@@ -452,7 +455,9 @@ describe('«ضيف كل حاجه كنا عملنها» — the list wears what t
     expect(moneyOf(unwritten, 'cash')).toBe(0);
     // Both files read their money cells through it, a blank in the sheet and the dash in the PDF.
     const source = code('LicenseExpensesPage.tsx');
-    expect(source).toContain("...MONEY_COLUMNS.map((column) => moneyOf(row, column) ?? ''),");
+    expect(source).toContain(
+      "...MONEY_COLUMNS.map((column) => moneyOf(row, column, halves) ?? ''),",
+    );
     expect(source).toContain("return value === null ? '—' : reportMoney(value);");
     expect(source, 'no money cell bypasses it').not.toMatch(
       /reportMoney\(sumOf|reportMoney\(paid/u,

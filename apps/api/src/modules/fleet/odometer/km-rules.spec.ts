@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { type LocalizedString } from '@ecms/contracts';
 import {
+  bookCarsOf,
   classifyRows,
   closedAverage,
   confirmedThrough,
@@ -10,6 +11,7 @@ import {
   kmBuckets,
   kmDays,
   kmRowKind,
+  foldBookRows,
   missingReadingCutoff,
   noDistanceIdsOf,
   noReadingReason,
@@ -381,6 +383,20 @@ describe('R-16, R-17 · rankings, coverage and the cars without valid readings',
     expect(out.perVehicleAvg).toBe(304); // 1520 ÷ 5
   });
 
+  it('a check-in dated after today is not «في الورشة منذ» on «أقل 5» (D07, the Cairo-day rule)', () => {
+    const out = breakdown({
+      rows: [...daily('150', 0, 100), ...daily('190', 0, 10)],
+      vehicles: fleet(
+        car('150', { visit: { inDate: '2026-11-01', outDate: null } }), // today: in
+        car('190', { visit: { inDate: '2026-11-02', outDate: null } }), // tomorrow: not yet
+      ),
+    });
+    expect(out.bottom5.map((r) => [r.code, r.inWorkshopSince])).toEqual([
+      ['190', null],
+      ['150', '2026-11-01'],
+    ]);
+  });
+
   it('gives each car without a valid reading exactly one reason, (a)–(f), and never ranks it', () => {
     const vehicles = fleet(
       car('201'), // (a) no row
@@ -725,5 +741,195 @@ describe('the km by branch and type; the rows without a car', () => {
     expect(out.confirmedThrough).toBe('2026-10-03');
     expect(out.closedDays).toBe(3);
     expect(out.average).toBe(86.7); // 260 ÷ 3
+  });
+});
+
+describe('D20 · the old book’s rows under a code a live car now carries', () => {
+  // «790» was registered after the old book wrote rows under its code (vehicleId null): 100 km on
+  // the 12th–13th in the book, 100 km on the 20th–21st in the registry. The register's code filter
+  // (`/fleet/odometer/summary?vehicleCodes=790`) adds both: 200.
+  const book = (date: string, outReading: number, km: number | null, code = '790'): KmRow =>
+    row(null, date, outReading, km, { vehicleCode: code });
+  const rows = [
+    book('2026-10-12', 500, 60),
+    book('2026-10-13', 560, 40),
+    ...chain('Z', [
+      ['2026-10-20', 700],
+      ['2026-10-21', 760],
+      ['2026-10-22', 800],
+    ]),
+    ...chain('A', [
+      ['2026-10-10', 0],
+      ['2026-10-11', 300],
+    ]),
+    // A code no live car carries stays a car of its own, «غير مسجّلة».
+    book('2026-10-10', 100, 40, 'كوستر'),
+    book('2026-10-11', 140, null, 'كوستر'),
+  ];
+  const vehicles = fleet(
+    car('Z', { code: '790', branchId: 'B1' }),
+    car('A', { code: '701', branchId: 'B2' }),
+  );
+  const bookCars = new Map([['790', 'Z']]);
+
+  it('folded (nothing narrows): the car carries 200 = the register by its code; «غير مسجّلة» keeps only the unknown code', () => {
+    const out = breakdown({ rows, vehicles, bookCars });
+    expect(out.total).toBe(540);
+    expect(out.top5.map((r) => [r.code, r.km])).toEqual([
+      ['701', 300],
+      ['790', 200],
+    ]);
+    expect(out.bottom5.map((r) => [r.code, r.km])).toEqual([
+      ['790', 200],
+      ['701', 300],
+    ]);
+    // The folded code is its car: 540 ÷ 3 cars (790, 701, «كوستر»), not ÷ 4.
+    expect(out.perVehicleAvg).toBe(180);
+    expect(out.unregistered).toBe(40);
+    // Each branch column is what the register shows for that branch — the set filters never read
+    // the old book — so the folded 100 km sit in no branch column but in `bookOnRegistered`, a
+    // column of its own: Σ columns + «غير مسجّلة» + bookOnRegistered = total.
+    expect(out.byBranch).toEqual([
+      { branchId: 'B2', name: { ar: 'الجيزة', en: 'Giza' }, km: 300 },
+      { branchId: 'B1', name: { ar: 'القاهرة', en: 'Cairo' }, km: 100 },
+    ]);
+    expect(out.bookOnRegistered).toBe(100);
+    const columns = out.byBranch.reduce((sum, b) => sum + b.km, 0);
+    expect(columns + (out.unregistered ?? 0) + out.bookOnRegistered).toBe(out.total);
+    // The drawing is unchanged: every km on its day.
+    expect(out.buckets.reduce((sum, b) => sum + b.confirmedKm + b.spanKm, 0)).toBe(out.total);
+  });
+
+  it('folded rows join the car’s chain: the book’s last row is a span up to the car’s next reading', () => {
+    const out = breakdown({ rows, vehicles, bookCars });
+    const the13th = out.buckets.find((b) => b.key === '2026-10-13');
+    expect(the13th).toMatchObject({ spanKm: 40, spanTo: '2026-10-20', spanVehicles: 1 });
+    // Not folded, the book's chain ends there: the span's end is not known.
+    const apart = breakdown({ rows, vehicles });
+    expect(apart.buckets.find((b) => b.key === '2026-10-13')).toMatchObject({
+      spanKm: 40,
+      spanTo: null,
+    });
+  });
+
+  it('not folded (a narrowed view, or no live car of that code): the rows stay apart as before', () => {
+    const out = breakdown({ rows, vehicles });
+    expect(out.top5.map((r) => [r.code, r.km])).toEqual([
+      ['701', 300],
+      ['790', 100],
+    ]);
+    expect(out.perVehicleAvg).toBe(135); // 540 ÷ 4 — «790» counted twice
+    expect(out.unregistered).toBe(140);
+    expect(out.bookOnRegistered).toBe(0);
+    const columns = out.byBranch.reduce((sum, b) => sum + b.km, 0);
+    expect(columns + (out.unregistered ?? 0)).toBe(out.total);
+  });
+
+  it('a live car whose only rows are the book’s is ranked by them and has a distance', () => {
+    const only = [book('2026-10-12', 500, 60), book('2026-10-13', 560, null)];
+    const cars = fleet(car('Z', { code: '790' }), car('N', { code: '706' }));
+    const range = { from: '2026-10-01', to: '2026-10-31' };
+    const input = { rows: only, vehicles: cars, setIds: undefined, range, bookCars };
+    expect(noDistanceIdsOf(input)).toEqual(['N']);
+    const out = breakdown({ ...input });
+    expect(out.top5.map((r) => [r.code, r.km])).toEqual([['790', 60]]);
+    expect(out.coverage.withReadings).toBe(1);
+    expect(out.noDistance.codes).toEqual(['706']);
+    expect(out.unregistered).toBe(0);
+    expect(out.withoutReadings.map((r) => r.code)).toEqual(['706']);
+    // Not folded, the same car has no distance in the period.
+    expect(noDistanceIdsOf({ rows: only, vehicles: cars, setIds: undefined, range })).toEqual([
+      'Z',
+      'N',
+    ]);
+  });
+
+  it('a folded row to review is the car’s: its id, its code, its make', () => {
+    const out = breakdown({
+      rows: [book('2026-10-14', 900, -30)],
+      vehicles: fleet(car('Z', { code: '790' })),
+      bookCars,
+    });
+    expect(out.invalidList).toEqual([
+      {
+        vehicleId: 'Z',
+        code: '790',
+        deleted: false,
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        date: '2026-10-14',
+        from: 900,
+        to: 870,
+        km: -30,
+      },
+    ]);
+  });
+
+  it('a narrowed view (no map, and no book row: the set filters never read the old book) is unchanged', () => {
+    const narrowed = breakdown({
+      rows: rows.filter((r) => r.vehicleId === 'Z'),
+      vehicles,
+      setIds: ['Z'],
+      setNarrows: true,
+    });
+    expect(narrowed.top5.map((r) => [r.code, r.km])).toEqual([['790', 100]]);
+    expect(narrowed.unregistered).toBeNull();
+  });
+
+  it('bookCarsOf pairs a code by the register’s comparison; a deleted car takes none; two spellings → the lowest id', () => {
+    const cars = fleet(
+      car('a2', { code: 'MG 2' }),
+      car('a1', { code: 'mg  2' }),
+      car('d', { code: '799', isDeleted: true }),
+      car('k', { code: 'كورولا 1' }),
+    );
+    const map = bookCarsOf(['mg 2', '799', 'كورولا 1 ', 'كورولا 10'], ['a2', 'a1', 'd', 'k'], cars);
+    expect([...map.entries()]).toEqual([
+      ['mg 2', 'a1'],
+      ['كورولا 1 ', 'k'],
+    ]);
+  });
+
+  it('foldBookRows leaves the registry’s rows and the unknown codes alone', () => {
+    const folded = foldBookRows(rows, bookCars);
+    expect(folded.filter((r) => r.fromBook === true).map((r) => [r.vehicleId, r.date])).toEqual([
+      ['Z', '2026-10-12'],
+      ['Z', '2026-10-13'],
+    ]);
+    expect(folded.filter((r) => r.vehicleId === null).map((r) => r.vehicleCode)).toEqual([
+      'كوستر',
+      'كوستر',
+    ]);
+    expect(foldBookRows(rows, undefined)).toBe(rows);
+  });
+});
+
+describe('D33 · the km column of a branch the live list no longer holds', () => {
+  it('keeps its id and is named «—»; «بلا فرع» (name null) is a car with no branch only', () => {
+    const out = breakdown({
+      rows: [
+        ...chain('A', [
+          ['2026-10-10', 0],
+          ['2026-10-11', 300],
+        ]),
+        ...chain('G', [
+          ['2026-10-10', 0],
+          ['2026-10-11', 200],
+        ]),
+        ...chain('N', [
+          ['2026-10-10', 0],
+          ['2026-10-11', 100],
+        ]),
+      ],
+      vehicles: fleet(
+        car('A', { branchId: 'B1' }),
+        car('G', { branchId: 'GONE' }),
+        car('N', { branchId: null }),
+      ),
+    });
+    expect(out.byBranch).toEqual([
+      { branchId: 'B1', name: { ar: 'القاهرة', en: 'Cairo' }, km: 300 },
+      { branchId: 'GONE', name: { ar: '—', en: '—' }, km: 200 },
+      { branchId: null, name: null, km: 100 },
+    ]);
   });
 });

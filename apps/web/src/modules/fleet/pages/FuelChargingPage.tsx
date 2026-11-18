@@ -13,7 +13,7 @@ import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatDate } from '../../../shared/lib/format';
+import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
 import { HistoryIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
@@ -383,8 +383,9 @@ export const FuelChargingPage = (): JSX.Element => {
     }
   };
 
-  const latin = (value: number): string =>
-    Math.round(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  // The tiles' money to the piastre, as the rows below write a balance and as the dashboard writes
+  // these same four figures («250.75», never «251»): Latin digits, grouped, two decimals.
+  const latin = (value: number): string => formatMoneyParts(value, 'EGP', locale).figure;
 
   return (
     <PageContainer>

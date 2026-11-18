@@ -1199,8 +1199,9 @@ describe('«العهدة» and «التراخيص والتجديدات» — the
     expect((await call('/fleet/dashboard/now', spend.token)).status).toBe(403);
     const period = await periodOf(spend.token);
     expect(present(period, PERIOD_SECTIONS)).toEqual(['licenceSpend']);
+    // D05: the one record holds a renewal memo and an extension memo — two memos.
     expect(period.licenceSpend).toEqual({
-      count: 1,
+      count: 2,
       cars: 3,
       visa: 100,
       cash: 130,

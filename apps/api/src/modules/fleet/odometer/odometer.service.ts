@@ -53,7 +53,13 @@ import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 import { type FleetOdometerLogDoc } from './odometer.model';
 import { planCorrection } from './correction-rules';
 import { loadServiceGaps } from './service-gap';
-import { kmBreakdownOf, missingReadingCutoff, noDistanceIdsOf, type KmVehicle } from './km-rules';
+import {
+  bookCarsOf,
+  kmBreakdownOf,
+  missingReadingCutoff,
+  noDistanceIdsOf,
+  type KmVehicle,
+} from './km-rules';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'odometerLog', entityId: id });
 
@@ -441,6 +447,13 @@ class FleetOdometerService {
    * set out of service after an accident still has its log. The reading is the alarm's own read
    * (`latestReadings`), so an active car's figure here IS its alarm row's. A car with no reading on
    * file has no row.
+   *
+   * Two figures, as the alarm row carries them (D25): `latestReading` — the HIGHEST reading, the
+   * alarm's figure («أعلى قراءة») — and `newest`, the newest row on the chain as the register lists
+   * it first (the latest day, the last entered on a tie, by its effective reading) and as the
+   * dashboard's «آخر قراءة» dates it: «آخر قراءة عداد». The same on a healthy chain; apart only
+   * where the readings went backwards. One read, the same `$group` (`newest` = the alarm's
+   * `newestReading`).
    */
   async latestReadingsOfFleet(): Promise<FleetVehicleLatestReadingDto[]> {
     const ids = (await fleetVehicleRepository.idsMatching({})).map(String);
@@ -449,6 +462,7 @@ class FleetOdometerService {
       vehicleId: row.vehicleId,
       latestReading: row.reading,
       latestReadingAt: row.date.toISOString(),
+      newest: { reading: row.newest.reading, date: row.newest.date.toISOString() },
     }));
   }
 
@@ -620,6 +634,11 @@ class FleetOdometerService {
    * Reads: the rows dated in [from, to + 1] (never a car's whole history), the cars of the set and of
    * those rows, the cars a visit held throughout the period (R-16 (d) — any visit, not the newest),
    * each car's newest workshop visit («في الورشة منذ»), and the branch / type names.
+   *
+   * D20 — the old book's rows under a code a live car now carries count for that car
+   * (`foldBookRows`), as the register's code filter (`vehicleCodes=<code>`) counts them: one more
+   * read of the registry's code index, only when the window holds book rows and no type, operation
+   * or branch narrows the view (those filters never read the old book, so such a view has none).
    */
   async kmBreakdown(
     query: OdometerKmQuery,
@@ -638,8 +657,24 @@ class FleetOdometerService {
         ? fleetVehicleRepository.idsMatching({}).then((ids) => ids.map(String))
         : Promise.resolve([]),
     ]);
+    const narrowed =
+      query.typeIds !== undefined ||
+      query.operationIds !== undefined ||
+      query.branchIds !== undefined;
+    const bookCodes = narrowed
+      ? []
+      : [
+          ...new Set(
+            rows.flatMap((row) =>
+              row.vehicleId === null && row.vehicleCode !== null ? [row.vehicleCode] : [],
+            ),
+          ),
+        ];
+    // The live cars answering the book's codes — the register's own code match, deleted cars out.
+    const bookCarIds =
+      bookCodes.length === 0 ? [] : await fleetVehicleRepository.liveIdsByCodes(bookCodes);
     const rowCars = rows.flatMap((row) => (row.vehicleId === null ? [] : [row.vehicleId]));
-    const ids = [...new Set([...(setIds ?? everyLiveCar), ...rowCars])];
+    const ids = [...new Set([...(setIds ?? everyLiveCar), ...rowCars, ...bookCarIds])];
     const range = { from: query.from, to: query.to };
     const [docs, throughout, visits, branches] = await Promise.all([
       fleetVehicleRepository.findByIdsSystem(ids),
@@ -682,7 +717,8 @@ class FleetOdometerService {
         [...vehicles.values()].flatMap((car) => (car.typeId === null ? [] : [car.typeId])),
       ),
     ];
-    const noDistance = noDistanceIdsOf({ rows, vehicles, setIds, range });
+    const bookCars = bookCarsOf(bookCodes, bookCarIds, vehicles);
+    const noDistance = noDistanceIdsOf({ rows, vehicles, setIds, range, bookCars });
     const [types, everRead] = await Promise.all([
       typeIds.length === 0 ? [] : fleetVehicleTypeRepository.findByIdsSystem(typeIds),
       noDistance.length === 0
@@ -701,6 +737,7 @@ class FleetOdometerService {
       branchNames: new Map(branches.map((b) => [String(b._id), b.name as LocalizedString])),
       typeNames: new Map(types.map((type) => [String(type._id), type.name as LocalizedString])),
       neverReadIds: new Set(noDistance.filter((id) => !everRead.has(id))),
+      bookCars,
     });
   }
 
@@ -723,7 +760,12 @@ class FleetOdometerService {
       input.vehicleIds === undefined
         ? active
         : (intersectVehicleIds(active, input.vehicleIds) ?? []);
-    const inWorkshop = await fleetMaintenanceRepository.openVisitVehicleIds(candidates);
+    // «في الورشة» on the Cairo day (D07): a check-in dated after today is not in the workshop yet —
+    // the same covering-day rule as «في الورشة الآن», the vehicles screen and the roster.
+    const inWorkshop = await fleetMaintenanceRepository.openVisitVehicleIds(
+      candidates,
+      ymdToUtcDate(input.today),
+    );
     const outside = candidates.filter((id) => !inWorkshop.has(id));
     const readSince = await fleetOdometerRepository.vehiclesReadSince(
       outside,

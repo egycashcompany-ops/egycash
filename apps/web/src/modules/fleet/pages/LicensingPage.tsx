@@ -12,6 +12,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  cairoYmd,
   compareFleetVehicleCodes,
   paperStage as licensingPaperStage,
   type FleetLicensingMark,
@@ -33,6 +34,8 @@ import { BoardIcon, PATH, expiryState } from '../components/FuelCardBoard';
 import { saveSheet } from '../lib/fleet-sheet';
 import { boardVehicleOptions } from '../lib/board-vehicle-options';
 import { licenceMonthOptions } from '../lib/licence-months';
+import { useLicenceWarnDays } from '../lib/licence-warn-days';
+import { LICENCE_STATE_KEY } from '../components/VehicleStatusBadge';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Skeleton } from '../../../shared/ui/Skeleton';
@@ -165,7 +168,7 @@ const STAGE_TINT: Record<'none' | 'open' | 'done', string> = {
 const day = (iso: string): string => iso.slice(0, 10).replace(/-/gu, '/');
 const BRAND_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
-/** The licence's state as the vehicles board words it — ساري / ينتهي قريبًا / منتهي. */
+/** The licence's state as the vehicles board words it — ساري / ينتهي قريبًا / منتهٍ. */
 const EXPIRY_TAG: Record<'valid' | 'soon' | 'expired', string> = {
   valid: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
   soon: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -175,6 +178,27 @@ const EXPIRY_TEXT: Record<'valid' | 'soon' | 'expired', string> = {
   valid: 'text-slate-900 dark:text-slate-100',
   soon: 'text-amber-600 dark:text-amber-400',
   expired: 'text-red-600 dark:text-red-400',
+};
+
+/**
+ * «الإحصائيات» over the rows the filters left. «تنتهي هذا الشهر» is the CAIRO month, as the
+ * dashboard's «هذا الشهر» column: the browser's UTC month is still last month for the first hours
+ * of the 1st in Cairo. «منتهية» by the Cairo day — expired ON its expiry day.
+ */
+export const licensingFiguresOf = (
+  rows: readonly FleetLicensingRowDto[],
+  warnDays: number,
+  now = Date.now(),
+): { cars: number; thisMonth: number; expired: number; insuranceOut: number; taxOut: number } => {
+  const thisMonth = cairoYmd(new Date(now)).slice(0, 7);
+  return {
+    cars: rows.length,
+    thisMonth: rows.filter((row) => inMonth(row.licenseExpiresAt, thisMonth)).length,
+    expired: rows.filter((row) => expiryState(row.licenseExpiresAt, warnDays, now) === 'expired')
+      .length,
+    insuranceOut: rows.filter((row) => paperStage(row, PAPERS[0]) === 'open').length,
+    taxOut: rows.filter((row) => paperStage(row, PAPERS[1]) === 'open').length,
+  };
 };
 
 export const LicensingPage = (): JSX.Element => {
@@ -305,17 +329,11 @@ export const LicensingPage = (): JSX.Element => {
     [rows, expiryDir],
   );
 
-  // «الإحصائيات» — over what the filters left, as every board counts.
-  const figures = useMemo(() => {
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    return {
-      cars: rows.length,
-      thisMonth: rows.filter((row) => inMonth(row.licenseExpiresAt, thisMonth)).length,
-      expired: rows.filter((row) => expiryState(row.licenseExpiresAt, 30) === 'expired').length,
-      insuranceOut: rows.filter((row) => paperStage(row, PAPERS[0]) === 'open').length,
-      taxOut: rows.filter((row) => paperStage(row, PAPERS[1]) === 'open').length,
-    };
-  }, [rows]);
+  // «الإحصائيات» — over what the filters left, as every board counts. The licence colour is drawn
+  // inside the warning days the admin set in «إعدادات الحركة», as the dashboard counts «تنتهي
+  // خلال N يومًا».
+  const warnDays = useLicenceWarnDays().vehicle;
+  const figures = useMemo(() => licensingFiguresOf(rows, warnDays), [rows, warnDays]);
 
   const stepOptions = [
     { value: 'handover', label: t('fleet.licensing.columns.handover') },
@@ -409,7 +427,7 @@ export const LicensingPage = (): JSX.Element => {
 
   /** The expiry as the vehicles board writes it: the date in its state's colour, and the word. */
   const expiryCell = (iso: string): JSX.Element => {
-    const state = expiryState(iso, 30);
+    const state = expiryState(iso, warnDays);
     const known = state === 'unknown' ? 'valid' : state;
     return (
       <span className="inline-flex items-center gap-1.5" data-licensing-expiry={known}>
@@ -422,7 +440,7 @@ export const LicensingPage = (): JSX.Element => {
             EXPIRY_TAG[known],
           )}
         >
-          {t(`fleet.fuelCards.expiry.${known}`)}
+          {t(LICENCE_STATE_KEY[known])}
         </span>
       </span>
     );

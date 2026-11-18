@@ -128,10 +128,11 @@ export const FLEET_DASHBOARD_LICENCE_MONTHS = 12;
 /** «آخر عمليات العهدة»: the custody register's newest rows on «العهدة». */
 export const FLEET_DASHBOARD_CUSTODY_RECENT_ROWS = 6;
 /**
- * «العهدة»: rows of «في مذكرات لم تُستعَض بعد» (pending memos) and of «تنتظر التسوية» (licensing parts)
- * before «و N أخرى». Same number as the recent rows, but a separate rule.
+ * «العهدة»: rows of «في مذكرات لم تُستعَض بعد» (pending memos) before «و N أخرى» — the same 5 as
+ * «لوحة تحكم العهدة» shows (CustodyDashboardFund `SHOWN_MEMOS`). «تنتظر التسوية» (licensing
+ * parts) is not cut: it lists every part, as the screen does.
  */
-export const FLEET_DASHBOARD_CUSTODY_WAIT_ROWS = 6;
+export const FLEET_DASHBOARD_CUSTODY_WAIT_ROWS = 5;
 /** «حوادث الفترة» (`accidentList.rows`): accident rows listed before «عرض الباقي (N) في السجل». */
 export const FLEET_DASHBOARD_ACCIDENT_ROWS = 6;
 /**
@@ -587,6 +588,23 @@ export const FLEET_DASHBOARD_PERIOD_KEYS: readonly string[] = keysOfRead('period
 export const FLEET_DASHBOARD_PAGE_KEYS: readonly string[] = keysOfRead(null);
 
 /**
+ * The keys of the two reads that decide WHAT THE FIGURES COVER — the widest grant among them names
+ * the reader's branches (`dashboardBranches` on the server). Two keys of the R2 union never decide
+ * it: the custody fund's (its «الآن» is the browser's own read, company-wide; its R2 part follows
+ * the receipt's car under the receipts' key) and the licence expenses' (a memo has no branch). A
+ * screen that counts "what the dashboard counts" (the drivers' «الإحصائيات», audit D31) folds the
+ * same keys.
+ */
+export const FLEET_DASHBOARD_UNSCOPED_KEYS: readonly string[] = [
+  'fleetCustody.view',
+  'fleetLicenseExpense.view',
+];
+export const FLEET_DASHBOARD_SCOPE_KEYS: readonly string[] = distinct([
+  ...FLEET_DASHBOARD_NOW_KEYS,
+  ...FLEET_DASHBOARD_PERIOD_KEYS,
+]).filter((key) => !FLEET_DASHBOARD_UNSCOPED_KEYS.includes(key));
+
+/**
  * Which sections make a tab visible (hidden when every one is null / not permitted). A PART or a
  * PAGELESS section is in none of them (FLEET_DASHBOARD_TAB_PARTS).
  */
@@ -922,11 +940,27 @@ export interface FleetDashboardAbsentDriverDto {
   crewVehicle: { vehicleId: string; code: string } | null;
 }
 
-/** T2.4, R-09 — open visits of ANY status. */
+/**
+ * T2.4, R-09 — open visits of ANY status, checked in on or before Cairo today.
+ *
+ * The four parts add up to the headline, always: `open = openActive + openOutOfService +
+ * openDisposed + openNoCar`. A visit is in exactly one part, by its car NOW (no write is refused
+ * for it: a car may be disposed of, or deleted, while its visit is still open).
+ */
 export interface FleetDashboardNowWorkshopDto {
+  /** Every open visit the list's own filter finds (`/fleet/maintenance?state=open&to=<today>`). */
   open: number;
+  /** Open visits of a live registry car whose status is `active`. */
   openActive: number;
+  /** Open visits of a live registry car whose status is `outOfService`. */
   openOutOfService: number;
+  /** «مكهنة»: open visits of a live registry car whose status is `disposed`. */
+  openDisposed: number;
+  /**
+   * «بلا سيارة في السجل»: open visits with no live registry car — the car was soft-deleted since it
+   * checked in, or the visit came from the old book with no registry car (`vehicleId` null).
+   */
+  openNoCar: number;
   /** `longest[0]`, its `deleted` flag included. */
   oldest: {
     vehicleId: string | null;
@@ -1112,6 +1146,11 @@ export interface FleetDashboardNowDistributionVehiclesDto {
 }
 
 /** T3.4, T3.6, T3.8 — the registry (R-08). */
+/**
+ * Per card: `drivers` = the catalog's specialisation alone (= `/fleet/drivers?specializationId`
+ * total; a `both` profile is on neither card); `legacy` = the files on the old classification only,
+ * a line apart — never part of `drivers` (D13).
+ */
 export interface FleetDashboardNowDistributionDriversDto {
   total: number;
   cash: { drivers: number; legacy: number; specializationIds: string[] };
@@ -1516,7 +1555,10 @@ export interface FleetDashboardPeriodCustodyStatesDto {
  * totals over the range: renewal + extension = visa + cash = total, to the piastre.
  */
 export interface FleetDashboardPeriodLicenceSpendDto {
-  /** «عدد المذكرات» — the records (one record may hold a renewal memo and an extension memo). */
+  /**
+   * «عدد المذكرات» — the memos, as the register counts them: a record holding a renewal memo and an
+   * extension memo is two (D05).
+   */
   count: number;
   /**
    * «السيارات» — the car entries written on the memos, as the register counts them (hand-typed
@@ -1603,7 +1645,10 @@ export interface FleetDashboardPeriodKmDto {
   average: number | null;
   buckets: FleetDashboardKmBucketDto[];
   spans: { km: number; count: number };
-  /** Current branch (K-12). */
+  /**
+   * Current branch (K-12): the register's km by branch. `name: null` only for `branchId: null`
+   * («بلا فرع»); a branch the live list no longer holds is named «—» and keeps its id (D33).
+   */
   byBranch: { branchId: string | null; name: LocalizedString | null; km: number }[];
   /**
    * «الكيلومترات حسب النوع» — only when exactly one branch is in scope (a chosen branch, or a reader's
@@ -1611,8 +1656,19 @@ export interface FleetDashboardPeriodKmDto {
    * «كل فروعي».
    */
   byType: { typeId: string; name: LocalizedString; km: number }[] | null;
-  /** km of vehicleId-null rows; null when a set exists. */
+  /**
+   * km of the old book's rows (vehicleId null) that no live car's code takes in — a row under a live
+   * car's code counts as that car's (D20); null when a set exists.
+   */
   unregistered: number | null;
+  /**
+   * km of the old book's rows a live car's code took in (D20): counted for that car in `total`, the
+   * rankings and the average, but in no `byBranch` / `byType` column — each column is what the
+   * register shows for its branch, and the register's branch filter never reads the old book. So
+   * Σ byBranch + (unregistered ?? 0) + bookOnRegistered = total. 0 when a type, operation or branch
+   * narrows the view (nothing is folded then).
+   */
+  bookOnRegistered: number;
   /** «أعلى 5»: ≤ FLEET_DASHBOARD_RANK_ROWS; `typeName` = the make. */
   top5: { vehicleId: string; code: string; km: number; typeName: LocalizedString | null }[];
   /** «أقل 5»: ≤ FLEET_DASHBOARD_RANK_ROWS, active cars only; `typeName` = the make. */
@@ -1694,12 +1750,16 @@ export interface FleetDashboardPeriodExitsDto {
   byWorkshop: FleetDashboardPeriodExitBarDto[];
   /**
    * ≤ FLEET_DASHBOARD_RANK_ROWS: exits desc, latest check-in desc, then code. A car deleted from the
-   * registry is not ranked (its code opens an empty list), and — a choice, not a dead link — neither
-   * is an old-book visit with no registry car: every row names a registry car. Both stay in `count`
-   * and the bars (the old-book ones also in `unregistered`).
+   * registry is not ranked (its code opens an empty list). When no type, operation or branch narrows
+   * the view, an old-book visit filed under the code a live car carries counts as that car's (its
+   * link lists it too, audit D20); an old-book visit no live car's code takes in is not ranked.
+   * Every visit stays in `count` and the bars.
    */
   topVehicles: FleetDashboardPeriodTopVehicleDto[];
-  /** Exits of old-book visits with no registry car; `null` when a vehicle clause applies. */
+  /**
+   * Exits of old-book visits that no live car's code takes in (D20); `null` when a vehicle clause
+   * applies.
+   */
   unregistered: number | null;
 }
 
@@ -1824,6 +1884,6 @@ export interface FleetDashboardPeriodDealershipRowDto {
   /** «صيانة», «إصلاح» or «إصلاح (كهرباء)» — the dealership screen's work-type column. */
   workTypeLabel: string;
   invoiceNumber: string | null;
-  /** `null` = «بانتظار تسجيل القيمة» (counted in `dealership.pending`). */
+  /** `null` = «بانتظار الفاتورة» (counted in `dealership.pending`). */
   invoiceAmount: number | null;
 }

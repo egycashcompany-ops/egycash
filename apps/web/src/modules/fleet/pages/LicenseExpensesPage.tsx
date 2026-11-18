@@ -14,6 +14,8 @@ import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   type FleetLicenseExpenseDto,
+  type FleetLicenseExpenseKind,
+  type FleetLicenseExpenseSettleStatus,
   type FleetLicenseExpenseSettlementDto,
   type Locale,
 } from '@ecms/contracts';
@@ -34,7 +36,7 @@ import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
-import { formatDate, formatMoneyParts, formatNumber } from '../../../shared/lib/format';
+import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import * as fleetApi from '../api/fleet-api';
 import {
@@ -119,10 +121,33 @@ const LICENSE_TABLE = cn(
 const KIND_PILL =
   'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[15px] leading-5';
 
-// A record is a renewal, an extension, or both: its figures are both halves together.
+// A record is a renewal, an extension, or both: unfiltered, its figures are both halves together.
 type MemoRow = Pick<FleetLicenseExpenseDto, 'date' | 'renewal' | 'extension' | 'signatures'>;
-const carsOf = (row: MemoRow): { code: string | null; plate: string }[] =>
-  memosOf(row).flatMap((memo) => memo.vehicles.map((v) => ({ code: v.code, plate: v.plate })));
+
+/**
+ * The memos a «النوع» / «التسوية» filter ASKED about (D05) — the server's rule for the strip and
+ * for the money and cars arrows: `kind` → that memo; `waiting` → a memo with no settlement (a
+ * missing field reads as waiting); `settled` → a settled one; both → the two at once; neither →
+ * every memo the record holds. The filter picks the RECORDS (a record matches when one of its
+ * memos does); a row's money and cars are then its matched memos only, so a renewal row under
+ * «مد مدة» or a settled memo under «لم تُسوَّ» is never added in.
+ */
+export interface MemoHalves {
+  kind?: FleetLicenseExpenseKind;
+  status?: FleetLicenseExpenseSettleStatus;
+}
+export const matchedMemosOf = (row: MemoRow, halves: MemoHalves = {}) =>
+  memosOf(row).filter(
+    (memo) =>
+      (halves.kind === undefined || halves.kind === memo.kind) &&
+      (halves.status === undefined ||
+        (halves.status === 'settled') === ((row[memo.kind]?.settlement ?? null) !== null)),
+  );
+
+const carsOf = (row: MemoRow, halves?: MemoHalves): { code: string | null; plate: string }[] =>
+  matchedMemosOf(row, halves).flatMap((memo) =>
+    memo.vehicles.map((v) => ({ code: v.code, plate: v.plate })),
+  );
 const carName = (car: { code: string | null; plate: string }): string => car.code ?? car.plate;
 
 /**
@@ -130,8 +155,11 @@ const carName = (car: { code: string | null; plate: string }): string => car.cod
  * in the memo's order, and only HOW MANY were typed by hand with no code, never their plates. The
  * two add up to every car the memo names, so none silently drops out of the cell.
  */
-export const carCodesOf = (row: MemoRow): { codes: string[]; unregistered: number } => {
-  const cars = carsOf(row);
+export const carCodesOf = (
+  row: MemoRow,
+  halves?: MemoHalves,
+): { codes: string[]; unregistered: number } => {
+  const cars = carsOf(row, halves);
   const codes = cars.flatMap((car) =>
     car.code === null || car.code.trim() === '' ? [] : [car.code.trim()],
   );
@@ -143,8 +171,8 @@ const CODE_CHIP =
   'rounded-md border border-slate-300 bg-slate-50 px-1.5 py-px text-[15px] leading-5 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white';
 
 /** The registry car behind each of `carCodesOf`'s codes, in the same order — the car card's car. */
-const carIdsOf = (row: MemoRow): (string | null)[] =>
-  memosOf(row).flatMap((memo) =>
+const carIdsOf = (row: MemoRow, halves?: MemoHalves): (string | null)[] =>
+  matchedMemosOf(row, halves).flatMap((memo) =>
     memo.vehicles.flatMap((v) => (v.code === null || v.code.trim() === '' ? [] : [v.vehicleId])),
   );
 
@@ -183,8 +211,9 @@ const COUNT_BADGE =
 export const moneyOf = (
   row: Pick<FleetLicenseExpenseDto, 'date' | 'renewal' | 'extension' | 'signatures'>,
   column: 'visa' | 'cash' | 'total',
+  halves?: MemoHalves,
 ): number | null => {
-  const lines = memosOf(row)
+  const lines = matchedMemosOf(row, halves)
     .flatMap((memo) => memo.items)
     .filter((item) => column === 'total' || item.paidBy === column);
   return lines.length === 0 ? null : sumOf(lines);
@@ -240,6 +269,15 @@ export const LicenseExpensesPage = (): JSX.Element => {
   };
   const hasActiveFilters =
     from !== '' || to !== '' || vehicleCodes.length > 0 || kind !== '' || status !== '';
+  // The memos «النوع» and «التسوية» ask about: each row's money and cars are theirs alone, as the
+  // strip's are (D05) — `matchedMemosOf`.
+  const halves = useMemo<MemoHalves>(
+    () => ({
+      ...(kind === 'renewal' || kind === 'extension' ? { kind } : {}),
+      ...(status === '' ? {} : { status }),
+    }),
+    [kind, status],
+  );
 
   // The filters alone — the table's, the figures' and the files' question is one question.
   const filters = useMemo(
@@ -380,8 +418,8 @@ export const LicenseExpensesPage = (): JSX.Element => {
       // all. A car typed by hand with no code is only counted, muted, after the chips. The cell's
       // title says the same in words, for a reader who hovers.
       render: (row) => {
-        const { codes, unregistered } = carCodesOf(row);
-        const ids = carIdsOf(row);
+        const { codes, unregistered } = carCodesOf(row, halves);
+        const ids = carIdsOf(row, halves);
         const count = codes.length + unregistered;
         if (count === 0) return DASH;
         const typedCount = t('fleet.licenseExpenses.unregisteredCount', {
@@ -429,7 +467,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
       header: t('fleet.licenseExpenses.totals.visa'),
       sortable: true,
       sortKey: 'visaTotal',
-      render: (row) => moneyCell(moneyOf(row, 'visa')),
+      render: (row) => moneyCell(moneyOf(row, 'visa', halves)),
     },
     {
       key: 'cash',
@@ -437,7 +475,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
       header: t('fleet.licenseExpenses.totals.cash'),
       sortable: true,
       sortKey: 'cashTotal',
-      render: (row) => moneyCell(moneyOf(row, 'cash')),
+      render: (row) => moneyCell(moneyOf(row, 'cash', halves)),
     },
     {
       key: 'total',
@@ -446,7 +484,9 @@ export const LicenseExpensesPage = (): JSX.Element => {
       sortable: true,
       // The table is bold throughout; the grand total stands out by its colour alone.
       render: (row) => (
-        <span className="text-slate-900 dark:text-white">{moneyCell(moneyOf(row, 'total'))}</span>
+        <span className="text-slate-900 dark:text-white">
+          {moneyCell(moneyOf(row, 'total', halves))}
+        </span>
       ),
     },
     {
@@ -580,10 +620,11 @@ export const LicenseExpensesPage = (): JSX.Element => {
       rows: all.map((row) => [
         formatDate(row.date, locale),
         kindsText(row),
-        carsOf(row).length,
-        carsOf(row).map(carName).join('، '),
+        // The table's cells: the matched memos' cars and money under «النوع» / «التسوية».
+        carsOf(row, halves).length,
+        carsOf(row, halves).map(carName).join('، '),
         // A blank where the table draws its dash (`moneyOf`), as the dealership sheet leaves one.
-        ...MONEY_COLUMNS.map((column) => moneyOf(row, column) ?? ''),
+        ...MONEY_COLUMNS.map((column) => moneyOf(row, column, halves) ?? ''),
         licenceStatusText(row, t),
       ]),
       moneyColumns: [4, 5, 6],
@@ -613,11 +654,11 @@ export const LicenseExpensesPage = (): JSX.Element => {
         rows: all.map((row) => [
           formatDate(row.date, locale),
           kindsText(row),
-          String(carsOf(row).length),
-          carsOf(row).map(carName).join('، ') || '—',
+          String(carsOf(row, halves).length),
+          carsOf(row, halves).map(carName).join('، ') || '—',
           // The table's dash where nothing was paid that way — never a «0.00».
           ...MONEY_COLUMNS.map((column) => {
-            const value = moneyOf(row, column);
+            const value = moneyOf(row, column, halves);
             return value === null ? '—' : reportMoney(value);
           }),
           licenceStatusText(row, t),
@@ -702,19 +743,20 @@ export const LicenseExpensesPage = (): JSX.Element => {
           className="flex items-center justify-between gap-2"
           data-license-expenses-toolbar="true"
         >
-          {/* How many memos the filters matched, over the whole set — nothing while the answer is
-              on its way. */}
+          {/* How many MEMOS the filters matched, over the whole set — the strip's «عدد المذكرات»
+              (D05): a record holding a renewal and an extension is two memos, and under «النوع» /
+              «التسوية» only the memos asked about count. Not the rows' count — a row is a record.
+              Latin digits, as the strip's «عدد المذكرات» and the pager under the table write them.
+              Nothing while the answer is on its way. */}
           <span
             role="status"
             data-filtered-count
-            title={t('fleet.filters.matchedRows')}
+            title={t('fleet.licenseExpenses.stats.memos')}
             className="shrink-0 whitespace-nowrap text-sm font-bold text-slate-600 dark:text-slate-300"
           >
-            {data === undefined
+            {summary.data === undefined
               ? ''
-              : t('fleet.licenseExpenses.count', {
-                  count: formatNumber(data.meta.totalItems, locale),
-                })}
+              : t('fleet.licenseExpenses.count', { count: LATIN.format(summary.data.count) })}
           </span>
           {/* Wraps: five buttons are wider than a phone. */}
           <span className="flex flex-wrap items-center justify-end gap-1 sm:gap-2">

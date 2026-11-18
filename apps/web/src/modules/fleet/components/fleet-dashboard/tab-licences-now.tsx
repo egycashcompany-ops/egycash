@@ -144,7 +144,8 @@ const Figure = ({
 }: {
   n: number;
   noun: 'car' | 'driver';
-  link: DashLink;
+  /** `null`: a reader whose reach holds no branch (D21) — the figure stands plain. */
+  link: DashLink | null;
 }): JSX.Element => {
   const say = useNoun();
   return (

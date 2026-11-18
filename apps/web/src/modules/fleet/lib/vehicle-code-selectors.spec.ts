@@ -87,15 +87,19 @@ const CODE_SELECTORS = [
 
 /**
  * Filters over vehicle rows the screen ALREADY holds — no request to narrow, same question to
- * answer. They must go through `matchesVehicleCode` rather than spell a comparison of their own.
+ * answer. They must go through the shared matchers rather than spell a comparison of their own:
+ * `isAnyVehicleCode` for PICKED codes (the server's `anyVehicleCode`: each code whole, as
+ * `?vehicleCodes=` is), `matchesVehicleCode` for a TYPED search (part of a code).
  */
 const CLIENT_SIDE_FILTERS = [
   {
     file: 'modules/fleet/lib/roster-view.ts',
     // Both boards: `visibleRows` for the day, `visibleFixedRows` for the standing crews. The
     // fixed roster used to filter inline on its page; since it took the daily board's bar it
-    // reads through this module too, so one entry covers the pair.
-    what: 'the daily and standing boards’ `?q=` codes — written by the same picker the accidents board uses',
+    // reads through this module too, so one entry covers the pair. The codes are PICKED, so they
+    // match whole: «كورولا 1» is never «كورولا 10» (D16).
+    what: 'the daily and standing boards’ `?q=` codes — picked by the same picker the accidents board uses, matched whole as `?vehicleCodes=` is',
+    matcher: 'isAnyVehicleCode',
   },
 ] as const;
 
@@ -515,9 +519,9 @@ describe('a file that reads the registry for another reason picks no car with it
 
 describe('every client-side vehicle filter matches the CODE', () => {
   it.each(CLIENT_SIDE_FILTERS.map((f) => ({ ...f })))(
-    'goes through matchesVehicleCode — $what',
-    ({ file }) => {
-      expect(code(file)).toContain('matchesVehicleCode(');
+    'goes through the shared code matcher ($matcher) — $what',
+    ({ file, matcher }) => {
+      expect(code(file)).toContain(`${matcher}(`);
     },
   );
 

@@ -11,8 +11,11 @@
 //   · three cards on the amber «waits» edge, their tiles in the register colours (critic C2):
 //     «تنتظر الاستعاضة» (its three parts — the held letters' memos, the memos waiting, the receipts in
 //     no memo yet — with held money INSIDE it), «استعاضة معلّقة» (each letter waiting for its
-//     transfer and its memos), «تنتظر التسوية» (the licensing memos waiting); at most
-//     FLEET_DASHBOARD_CUSTODY_WAIT_ROWS rows in a list, then «و N أخرى»;
+//     transfer and its memos), «تنتظر التسوية» (the licensing memos waiting). The memos waiting are
+//     cut at FLEET_DASHBOARD_CUSTODY_WAIT_ROWS (5, «لوحة تحكم العهدة»'s own cut), then «و N أخرى»;
+//     «تنتظر التسوية» lists EVERY part, as that screen does (audit D45). A kind with no receipt in
+//     no memo reads «لا توجد إيصالات», dimmed, as the screen writes it (D46), and a kind's amount
+//     opens «لوحة تحكم العهدة», where the same line stands — not that kind's memos (D27);
 //   · «تنبيهات العهدة»: the fund's banner lines that fire (a–e) in the banner's order and words,
 //     amber with a clock, red only for (a) and (e) (critic A3);
 //   · then the history (tab-custody-history.tsx).
@@ -97,7 +100,8 @@ import {
 const UNDER = cn('whitespace-nowrap text-[12.5px] font-semibold', MUTED);
 const PART_NAME = cn('whitespace-nowrap text-[14px] font-bold', STRONG);
 
-/** «و N أخرى ←» under a list cut at FLEET_DASHBOARD_CUSTODY_WAIT_ROWS — N a lib count less the cut. */
+/** «و N أخرى ←» under the memos waiting, cut at FLEET_DASHBOARD_CUSTODY_WAIT_ROWS — N a lib count
+ *  less the cut. */
 const More = ({
   rest,
   link,
@@ -357,20 +361,27 @@ const PartHead = ({
   );
 };
 
-/** One kind of the receipts in no memo yet: its amount (its memos' list), receipts, oldest. */
+/**
+ * One kind of the receipts in no memo yet: its amount, receipts, oldest. The amount opens «لوحة
+ * تحكم العهدة», whose card shows this very line (D27) — the kind's memos are another set. A kind
+ * with none reads «لا توجد إيصالات», dimmed, as that screen writes it (D46).
+ */
 const OutsideKind = ({ line }: { line: FleetCustodyOutsideKindDto }): JSX.Element => {
   const t = useT();
   const late = line.stale.count > 0;
+  const none = line.count === 0;
   return (
     <div
       data-cust-outside={line.kind}
       data-cust-amount={String(line.total)}
       {...(late ? { 'data-cust-late': 'true' } : {})}
+      {...(none ? { 'data-cust-none': 'true' } : {})}
       className={cn(
         'flex flex-col gap-1.5 rounded-xl border px-3 py-2.5',
         late
           ? 'border-amber-300 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/[0.06]'
           : 'border-slate-200 bg-white dark:border-[#1e2a3f] dark:bg-[#0a101b]/70',
+        none && 'opacity-50',
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -379,15 +390,19 @@ const OutsideKind = ({ line }: { line: FleetCustodyOutsideKindDto }): JSX.Elemen
         </span>
         <Money
           value={line.total}
-          link={custodyLinks.memos({ kind: line.kind }, `custodyFund.outside.${line.kind}`)}
+          link={custodyDashboardLink(`custodyFund.outside.${line.kind}`)}
           className="text-[13.5px]"
         />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[12px]">
         <span className={cn('whitespace-nowrap font-semibold', MUTED)}>
-          <Counted n={line.count} noun="receipt" />
+          {none ? (
+            t('fleet.custody.dashboard.waiting.noOutside')
+          ) : (
+            <Counted n={line.count} noun="receipt" />
+          )}
         </span>
-        {line.oldest !== null && <AgeChip day={line.oldest} lead />}
+        {!none && line.oldest !== null && <AgeChip day={line.oldest} lead />}
       </div>
     </div>
   );
@@ -775,19 +790,13 @@ const SettleCard = ({
             {t('fleet.custody.fundForm.settle.empty')}
           </p>
         ) : (
-          <>
-            <ul className={cn('mt-4 border-t', RULE, DIVIDE)}>
-              {/* The candidates' own order (day ascending, renewal first), cut at the tab's rows. */}
-              {parts.slice(0, FLEET_DASHBOARD_CUSTODY_WAIT_ROWS).map((part) => (
-                <SettleRow key={`${part.expenseId}:${part.part}`} part={part} licences={licences} />
-              ))}
-            </ul>
-            <More
-              rest={n - FLEET_DASHBOARD_CUSTODY_WAIT_ROWS}
-              link={licences ? custodyLinks.licenceWaiting(null, 'custodyFund.settleMore') : null}
-              marker="settle"
-            />
-          </>
+          <ul className={cn('mt-4 border-t', RULE, DIVIDE)}>
+            {/* The candidates' own order (day ascending, renewal first), EVERY part — as «لوحة
+                تحكم العهدة» lists them (D45): no cut, no «و N أخرى». */}
+            {parts.map((part) => (
+              <SettleRow key={`${part.expenseId}:${part.part}`} part={part} licences={licences} />
+            ))}
+          </ul>
         )}
       </div>
       <div data-cust-foot="settle" className={FOOT}>
@@ -866,7 +875,8 @@ const useAlertLine = (
               }}
             />
           ),
-          link: custodyLinks.memos({ kind: line.kind }, 'custodyFund.alertStale'),
+          // The banner of «لوحة تحكم العهدة» says this very line, beside the kind's receipts (D27).
+          link: custodyDashboardLink('custodyFund.alertStale'),
         };
       case 'memo':
         return {

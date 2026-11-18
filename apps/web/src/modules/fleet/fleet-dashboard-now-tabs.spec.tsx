@@ -61,6 +61,64 @@ const part = (html: string, marker: string, next: RegExp): string => {
   return marker + (end < 0 ? rest : rest.slice(0, end));
 };
 
+// ── The ten-tab audit's own words (2026-11-17) ────────────────────────────────────────────────
+
+describe('the words the audit changed on the dashboard (D26, D34, D38, D39, D49)', () => {
+  it('«فروع التشغيل» is «فروع بها سيارات نشطة» — it counts the branches with an active car (D34)', () => {
+    expect(ar('fleet.dash.overview.hub.distribution.branches')).toBe('فروع بها سيارات نشطة');
+    expect(text(tab('overview'))).toContain('فروع بها سيارات نشطة');
+  });
+
+  it('the maintenance tags say «منها N متأخرة», the alarms board’s word (D38)', () => {
+    for (const key of [
+      'fleet.dash.maintenance.red.tag',
+      'fleet.dash.overview.actions.line.maintenanceRed.sub',
+    ]) {
+      expect(ar(key, { count: 2 }), key).toBe('منها 2 متأخرة');
+    }
+    const words = text(tab('maintenance', {}, EVERY_KEY)) + text(tab('overview'));
+    expect(words).not.toContain('تجاوزته');
+    expect(words).not.toContain('تجاوز الحد بـ');
+  });
+
+  it('a dealership row with no amount is «بانتظار الفاتورة» on every tab (D39)', () => {
+    expect(ar('fleet.dash.maintenance.dealer.tag')).toBe(ar('fleet.dealership.pending'));
+    expect(ar('fleet.dash.fuel.dealerTable.pendingTag')).toBe(ar('fleet.dealership.pending'));
+    expect(ar('fleet.dash.overview.actions.line.dealershipPending.title')).toBe(
+      'صفوف توكيل بانتظار الفاتورة',
+    );
+    expect(ar('fleet.dash.fuel.dealer.pending', { rows: 3 })).toBe(
+      'منها 3 بانتظار الفاتورة (حتى الآن)',
+    );
+    for (const key of FLEET_DASHBOARD_TABS) {
+      expect(text(tab(key, {}, EVERY_KEY)), key).not.toContain('بانتظار تسجيل القيمة');
+    }
+  });
+
+  it('the km tab’s «all read» lines say «خارج الورشة»: a car in the workshop is not asked (D26)', () => {
+    expect(ar('fleet.dash.km.stale.allRead')).toBe(
+      'لا توجد سيارات نشطة خارج الورشة بلا قراءة حديثة.',
+    );
+    expect(ar('fleet.dash.km.exceptions.none.never')).toBe(
+      'لا توجد سيارات نشطة خارج الورشة بلا أي قراءة.',
+    );
+    expect(ar('fleet.dash.km.exceptions.never.note')).toBe(
+      'سيارات نشطة خارج الورشة لم يُسجَّل لها أي عداد.',
+    );
+    for (const key of [
+      'fleet.dash.km.exceptions.end.never',
+      'fleet.dash.km.exceptions.end.neverBranch',
+    ]) {
+      expect(ar(key), key).toContain('خارج الورشة');
+    }
+    expect(text(tab('km', {}, EVERY_KEY))).not.toContain('كل السيارات النشطة قُرئت حديثًا');
+  });
+
+  it('the vehicles screen’s «أنواع التشغيل» says it counts every status (D49)', () => {
+    expect(ar('fleet.vehicles.board.operations')).toBe('أنواع التشغيل (كل الحالات)');
+  });
+});
+
 // ── Tab 5 «ملخصات» ─────────────────────────────────────────────────────────────────────────────
 
 describe('tab 5 — the summaries', () => {

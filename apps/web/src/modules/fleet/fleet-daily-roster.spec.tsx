@@ -50,6 +50,7 @@ const V2 = '650000000000000000000002';
 const E1 = '650000000000000000000011';
 const E2 = '650000000000000000000012';
 const E3 = '650000000000000000000013';
+const E4 = '650000000000000000000014';
 const MT = '650000000000000000000021';
 
 const day = (delta: number): string => {
@@ -111,6 +112,7 @@ const client = (board: FleetRosterDayDto = BOARD, date = day(1)): QueryClient =>
         [E1, 'أحمد محمد'],
         [E2, 'محمد محمود'],
         [E3, 'سعيد سعد'],
+        [E4, 'هاني سمير'],
       ] as const
     ).map(([employeeId, fullNameAr]) => ({
       employeeId,
@@ -1229,10 +1231,11 @@ describe('the vehicle cell', () => {
     // row whose only visible identifier was not what had been typed and nothing said why.
     //
     // The rule now lives in `lib/vehicle-code-match.ts`, built on the canonical parser, so this
-    // board answers `150 - 151` exactly as the filter bars do. Behaviour is pinned there and in
+    // board answers `150 - 151` exactly as the filter bars do — each picked code WHOLE, as the
+    // server's `anyVehicleCode` reads `?vehicleCodes=` (D16). Behaviour is pinned there and in
     // `vehicle-code-search.spec.ts`; what is checked here is that the board reaches for it.
     expect(VIEW_SOURCE, 'the shared matcher, not a comparison of its own').toContain(
-      'matchesVehicleCode(row.code, term)',
+      'isAnyVehicleCode(row.code, term)',
     );
     expect(VIEW_SOURCE, 'and no plate is consulted anywhere in it').not.toContain('plateNumber');
   });
@@ -2184,5 +2187,77 @@ describe('the computer’s board — «اعتمد» on D1', () => {
     expect(DESK, 'the rows on screen, in their order').toContain(
       'onExport={() => m.actions.exportSheet(rows)}',
     );
+  });
+});
+
+// ── 12. the pool counts what the dashboard counts (D01) ─────────────────────
+
+describe('a driver the server holds on a car OFF this board', () => {
+  // The server's `assignedVehicleId` covers the whole day's plan and every active car's standing
+  // crew, across all branches. E4 is planned today on a car this board has no row for (another
+  // branch's, or one put out of service after it was planned). Seating him here is refused (FR-7,
+  // 409), and the dashboard's «بلا سيارة اليوم» never counted him; the roster's «السائقون
+  // المتاحون (n)» did — company 3 against 2, B1 4 against 2 in the audit.
+  const OFF_BOARD = '650000000000000000000099';
+  const HELD: FleetRosterDayDto = {
+    ...FILTERS_BOARD,
+    availableDrivers: [...BOARD.availableDrivers, { employeeId: E4, assignedVehicleId: OFF_BOARD }],
+  };
+  const tab = (markup: string, key: string): string => {
+    const idx = markup.indexOf(`data-driver-tab="${key}"`);
+    return markup.slice(markup.lastIndexOf('<button', idx), markup.indexOf('</button>', idx));
+  };
+
+  it('counts «السائقون المتاحون (n)» as the dashboard’s «بلا سيارة اليوم» — held on no car', () => {
+    const markup = at('', HELD);
+    const withoutVehicle = HELD.availableDrivers.filter((d) => d.assignedVehicleId === null);
+    expect(withoutVehicle.map((d) => d.employeeId)).toEqual([E3]);
+    expect(tab(markup, 'available'), 'E3 alone').toContain(`>${withoutVehicle.length}<`);
+  });
+
+  it('lists him apart under «معيّنون على سيارات أخرى» — no card, no drag', () => {
+    const markup = at('', HELD);
+    const panel = markup.slice(markup.indexOf('data-drivers-panel'));
+    const at_ = panel.indexOf(`data-held-elsewhere="${E4}"`);
+    expect(at_, 'listed').toBeGreaterThan(-1);
+    const li = panel.slice(panel.lastIndexOf('<li', at_), panel.indexOf('</li>', at_));
+    expect(li, 'named').toContain('هاني سمير');
+    expect(li, 'with the fixed roster’s badge').toContain(t('fleet.roster.otherVehicle'));
+    expect(li, 'never picked up').not.toContain('draggable');
+    expect(panel.lastIndexOf(t('fleet.roster.onOtherVehicles'), at_)).toBeGreaterThan(-1);
+    expect(markup, 'not the pool’s card').not.toContain(`data-driver-card="${E4}"`);
+    expect(markup, 'the free driver still is').toContain(`data-driver-card="${E3}"`);
+  });
+});
+
+// ── 13. a picked code is ONE car (D16) ──────────────────────────────────────
+
+describe('the picked code opens exactly its car', () => {
+  // `?q=` is what the code filter writes and what «فتح» beside a car on the fleet dashboard sends
+  // (`/fleet/roster?date=…&q=<code>`). Read as a part of the code, «كورولا 1» opened «كورولا 10»
+  // and «كورولا 11» as well.
+  const MODELS: FleetRosterDayDto = {
+    ...BOARD,
+    rows: [
+      row(V1, 'كورولا 1'),
+      row(V2, 'كورولا 10'),
+      row(V3, 'كورولا 11'),
+      row(V4, '150', { missionTypeId: MT, driver1EmployeeId: E1 }),
+    ],
+  };
+  const rows = (markup: string): string[] =>
+    [...tbody(markup).matchAll(/data-car="([^"]+)"/gu)].flatMap((m) => (m[1] ? [m[1]] : []));
+
+  it('«كورولا 1» is car «كورولا 1» alone', () => {
+    expect(rows(at(`&q=${encodeURIComponent('كورولا 1')}`, MODELS))).toEqual(['كورولا 1']);
+  });
+
+  it('a list of picks shows each picked car, and only those', () => {
+    const picked = encodeURIComponent('كورولا 1,كورولا 11');
+    expect(rows(at(`&q=${picked}`, MODELS))).toEqual(['كورولا 1', 'كورولا 11']);
+  });
+
+  it('no pick shows the whole day', () => {
+    expect(rows(at('', MODELS))).toHaveLength(4);
   });
 });

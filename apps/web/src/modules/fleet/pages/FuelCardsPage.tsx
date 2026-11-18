@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FleetSettingKeys,
+  cairoYmd,
+  periodOf,
   type FleetFuelCardCompany,
   type FleetFuelCardDto,
   type Locale,
@@ -20,9 +22,10 @@ import { Input } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
-import { formatDate } from '../../../shared/lib/format';
+import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { readList, writeList } from '../../../shared/lib/list-param';
+import { getActiveBranch } from '../../../shared/lib/api-client';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import {
   useAllFuelCards,
@@ -57,6 +60,7 @@ import { saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { expiryWindowQuery } from '../lib/vehicle-set-params';
+import { registryBranchesOf } from '../lib/reader-branches';
 
 const REMEMBERED_FILTERS = [
   'vehicleCodes',
@@ -181,14 +185,42 @@ export const FuelCardsPage = (): JSX.Element => {
   const cardsOnCars = cards.length - noCarCards.length;
   const cardRate =
     carsWithCards === 0 ? '0' : String(Math.round((cardsOnCars / carsWithCards) * 10) / 10);
-  // «استهلاك الوقود الحالي (الشهر)»: the fuel receipts written this month, for a reader who may
-  // see receipts; anyone else sees the cards' balances in its place.
-  const monthStart = useMemo(() => {
-    const now = new Date();
-    return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().slice(0, 10);
-  }, []);
+  // «استهلاك الوقود الحالي (الشهر)»: the fuel receipts of THIS Cairo month up to Cairo today, for
+  // a reader who may see receipts; anyone else sees the cards' balances in its place. It asks what
+  // the dashboard's «الوقود كله» asks for «هذا الشهر» (R2 `opex.fuel`, the receipts screen's
+  // `kind=fuel` total): the 1st of the Cairo month to Cairo today — never a later paper day, never
+  // the browser's month — and, when the screen is narrowed, the same branch (the receipt's car's)
+  // and the same cars.
+  //
+  // With no «الفرع» in the address the tile still answers for the branches the tiles beside it do:
+  // the cards and the cars are scoped by the server under the command bar's branch (X-Active-Branch)
+  // and the reader's grant, while the receipts' summary takes no scope of its own — so the same
+  // fold is sent as `branchIds` (the switcher's branch, the reader's reach, or nothing for the whole
+  // company), never the company's month beside one branch's cards.
+  const month = periodOf('thisMonth', cairoYmd(new Date()));
   const mayReceipts = can('fleetReceipt.view');
-  const receipts = useReceiptSummary({ kind: 'fuel', from: monthStart }, mayReceipts);
+  const me = useAppSelector((state) => state.auth.me);
+  const receiptBranches =
+    branchIds.length > 0
+      ? branchIds
+      : registryBranchesOf({
+          scope: me?.permissions['fleetFuelCard.view'],
+          active: getActiveBranch(),
+          home: me?.branchId ?? null,
+          reach: me?.branchIds ?? [],
+        });
+  // A reach of no branch has no month to answer (an empty `branchIds` would be no filter at all).
+  const noReach = receiptBranches !== null && receiptBranches.length === 0;
+  const receipts = useReceiptSummary(
+    {
+      kind: 'fuel',
+      from: month.from,
+      to: month.to,
+      ...(receiptBranches === null || noReach ? {} : { branchIds: [...receiptBranches] }),
+      ...(vehicleCodes.length > 0 ? { vehicleCodes } : {}),
+    },
+    mayReceipts && !noReach,
+  );
   const consumption = mayReceipts && receipts.data !== undefined ? receipts.data : null;
 
   // «تصفية بالتاريخ»: a ready window from today, or a date of the reader's own.
@@ -371,7 +403,7 @@ export const FuelCardsPage = (): JSX.Element => {
               tone="cyan"
               icon={PATH.trend}
               label={t('fleet.fuelCards.board.kpi.consumption')}
-              value={latinMoney(consumption.fuelTotal)}
+              value={latinMoney(consumption.fuelTotal, locale)}
               unit={t('fleet.fuelCards.board.kpi.currency')}
               unitClass="font-bold text-cyan-600 dark:text-cyan-400"
               note={
@@ -388,14 +420,14 @@ export const FuelCardsPage = (): JSX.Element => {
               tone="cyan"
               icon={PATH.trend}
               label={t('fleet.fuelCards.board.kpi.balance')}
-              value={latinMoney(balanceOf(cards))}
+              value={latinMoney(balanceOf(cards), locale)}
               unit={t('fleet.fuelCards.board.kpi.currency')}
               unitClass="font-bold text-cyan-600 dark:text-cyan-400"
               note={
                 <span className="text-slate-500 dark:text-slate-400">
                   {t('fleet.fuelCards.board.kpi.balanceNote', {
-                    wataniya: latinMoney(balanceOf(cards, 'wataniya')),
-                    chillout: latinMoney(balanceOf(cards, 'chillout')),
+                    wataniya: latinMoney(balanceOf(cards, 'wataniya'), locale),
+                    chillout: latinMoney(balanceOf(cards, 'chillout'), locale),
                   })}
                 </span>
               }
@@ -759,9 +791,12 @@ export const FuelCardsPage = (): JSX.Element => {
   );
 };
 
-/** «245,890» — the design writes money in Latin digits with thousands commas. */
-const latinMoney = (value: number): string =>
-  Math.round(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
+/**
+ * «245,890.50» — money in Latin digits with thousands commas and its piastres, as this screen's own
+ * rows and the dashboard write it (`formatMoneyParts`, two decimals); the unit stands beside it.
+ */
+const latinMoney = (value: number, locale: Locale): string =>
+  formatMoneyParts(value, 'EGP', locale).figure;
 
 const balanceOf = (cards: readonly FleetFuelCardDto[], company?: FleetFuelCardCompany): number =>
   cards

@@ -13,8 +13,10 @@
 //     (the fuel tab's critic B4) — and a link to that tab when the reader sees it.
 //
 // A figure opens «مصروفات العهدة» while nothing but the codes narrows the read, else the receipts
-// with `source=custody` under the whole set (D20, `periodLinks.custodySpend`). NOTHING IS COUNTED
-// HERE: every figure is a field R2 sent; the browser draws a bar's length and a share.
+// with `source=custody` under the whole set (D20, `periodLinks.custodySpend`) — and the card's foot
+// names the screen it opens: «عرض مصروفات العهدة», or «عرض إيصالات العهدة» when it opens the
+// receipts (audit D46). NOTHING IS COUNTED HERE: every figure is a field R2 sent; the browser draws
+// a bar's length and a share.
 import { type FleetCustodySource, type FleetDashboardPeriodDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { Skeleton } from '../../../../shared/ui/Skeleton';
@@ -84,6 +86,11 @@ const SpendKpi = ({
 }): JSX.Element => {
   const t = useT();
   const w = useCustodyWords();
+  // The foot names the screen it opens (D46): the custody receipts on «خصم الإيصالات» when a
+  // branch, a type or an operation narrows the view, «مصروفات العهدة» otherwise; none at all for a
+  // reader whose reach holds no branch (D21).
+  const screen = links.custodySpend('opex.custodyScreen');
+  const receipts = screen !== null && screen.to.startsWith('/fleet/receipts?');
   return (
     <Card accent="sky" data-cust-period="spend" data-cust-amount={String(o.custody)}>
       <div className="flex flex-1 flex-col px-5 pb-4 pt-5">
@@ -134,10 +141,18 @@ const SpendKpi = ({
         )}
         <DataFrom from={from} dataFrom={o.dataFrom} />
       </div>
-      <div data-cust-foot="spend" className={FOOT}>
-        <FootLink link={links.custodySpend('opex.custodyScreen')}>
-          {t('fleet.custody.dashboard.waiting.showExpenses')}
-        </FootLink>
+      <div
+        data-cust-foot="spend"
+        data-cust-foot-screen={receipts ? 'receipts' : 'custodyExpenses'}
+        className={FOOT}
+      >
+        {screen !== null && (
+          <FootLink link={screen}>
+            {receipts
+              ? w('period.showReceipts')
+              : t('fleet.custody.dashboard.waiting.showExpenses')}
+          </FootLink>
+        )}
       </div>
     </Card>
   );

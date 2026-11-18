@@ -13,7 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -33,6 +33,7 @@ import {
   type FleetMaintenanceVisitDto,
   type FleetNoticeDto,
   type FleetReceiptDto,
+  type FleetReceiptTotalsDto,
   type FleetVehicleDto,
   type FleetViolationDto,
   type FleetViolationRollupDto,
@@ -44,6 +45,7 @@ import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
+import { setActiveBranch } from '../../shared/lib/api-client';
 import { VehiclesListPage } from './pages/VehiclesListPage';
 import { DriversListPage } from './pages/DriversListPage';
 import { FuelCardsPage } from './pages/FuelCardsPage';
@@ -263,6 +265,13 @@ const driversAt = (route: string, key: Record<string, unknown>): string => {
   return mount(qc, ['fleetDriver.view'], route, '/fleet/drivers', <DriversListPage />);
 };
 
+/** The drivers page mounted on `qc` as it stands (for the queries it registers). */
+const driversAtWith = (qc: QueryClient, route: string): string => {
+  qc.setQueryData(['fleet', 'people'], []);
+  qc.setQueryData(['organization', 'branches', 'options'], []);
+  return mount(qc, ['fleetDriver.view'], route, '/fleet/drivers', <DriversListPage />);
+};
+
 describe('/fleet/drivers reads the licence window and «بلا تاريخ»', () => {
   it('asks for the licences expired today, up to the day’s last instant', () => {
     const html = driversAt(`/fleet/drivers?licExpBefore=${TODAY}`, {
@@ -286,7 +295,10 @@ describe('/fleet/drivers reads the licence window and «بلا تاريخ»', ()
   it('asks for the profiles with no expiry recorded (licExp=none → licenseNotRecorded)', () => {
     const html = driversAt('/fleet/drivers?licExp=none', { licenseNotRecorded: true });
     expect(tbody(html)).toContain('2026/10/20');
-    expect(html, 'and says so on the bar').toContain(ar('fleet.drivers.notRecorded'));
+    // D30: the bar says «رخصة غير مسجّلة»; the table's cells keep «غير مسجَّل» for what they mean.
+    const bar = html.slice(0, html.indexOf('<table'));
+    expect(bar, 'and says so on the bar').toContain(ar('fleet.drivers.licenceNotRecorded'));
+    expect(bar).not.toContain(ar('fleet.drivers.notRecorded'));
   });
 
   it('does not answer a windowed address from the un-windowed list', () => {
@@ -1311,5 +1323,198 @@ describe('/fleet/licensing reads its papers with the contracts’ rule', () => {
     expect(page).toContain('data-licensing-paper={openPaper.key}');
     expect(page).toContain('onClick={() => patch({ paper: null })}');
     expect(page).toContain('openPaper !== null;');
+  });
+});
+
+// ── The ten-tab audit's links (2026-11-17): what each target asks for ────────────────────────
+
+describe('the audit’s links ask the target the figure’s own question (D04, D07, D10, D31, D37)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    setActiveBranch(null);
+  });
+
+  it('D07: «في الورشة الآن» opens the open visits checked in by today (to), the key the page asks', () => {
+    const open = { open: true, to: TODAY };
+    expect(tbody(maintenanceAt(`/fleet/maintenance?state=open&to=${TODAY}`, open))).toContain(
+      '98,765',
+    );
+    expect(
+      tbody(
+        maintenanceAt(`/fleet/maintenance?state=open&to=${TODAY}&vehicleCodes=247&branch=b1`, {
+          ...open,
+          vehicleCodes: ['247'],
+          branchIds: ['b1'],
+        }),
+      ),
+    ).toContain('98,765');
+    // Without the bound it is another question: the unbounded open list does not answer.
+    expect(
+      tbody(maintenanceAt(`/fleet/maintenance?state=open&to=${TODAY}`, { open: true })),
+    ).not.toContain('98,765');
+    expect(remembered('MaintenancePage.tsx')).toContain('to');
+    expect(readsInSource('MaintenancePage.tsx', 'to')).toBe(true);
+  });
+
+  it('D37: «كل السيارات في الورشة» opens oldest first; the exits by exit day, newest first', () => {
+    const qc = client();
+    qc.setQueryData(
+      listKey('fleet', 'maintenance', {
+        open: true,
+        to: TODAY,
+        page: 1,
+        pageSize: 25,
+        sortBy: 'inDate',
+        sortDir: 'asc',
+        sort: 'inDate:asc',
+      }),
+      paged([visit()]),
+    );
+    const oldest = mount(
+      qc,
+      ['fleetMaintenance.view'],
+      `/fleet/maintenance?state=open&to=${TODAY}&sort=inDate:asc`,
+      '/fleet/maintenance',
+      <MaintenancePage />,
+    );
+    expect(tbody(oldest)).toContain('98,765');
+    const exits = client();
+    exits.setQueryData(
+      listKey('fleet', 'maintenance', {
+        outFrom: '2026-10-03',
+        outTo: TODAY,
+        page: 1,
+        pageSize: 25,
+        sortBy: 'outDate',
+        sortDir: 'desc',
+        sort: 'outDate:desc',
+      }),
+      paged([visit()]),
+    );
+    const byExit = mount(
+      exits,
+      ['fleetMaintenance.view'],
+      `/fleet/maintenance?outFrom=2026-10-03&outTo=${TODAY}&sort=outDate:desc`,
+      '/fleet/maintenance',
+      <MaintenancePage />,
+    );
+    expect(tbody(byExit)).toContain('98,765');
+  });
+
+  it('D37: «عرض الباقي» of the licences opens the vehicles and drivers nearest-expiring first', () => {
+    const within60 = '2026-12-31';
+    const sorted = {
+      sortBy: 'licenseExpiresAt',
+      sortDir: 'asc',
+      sort: 'licenseExpiresAt:asc',
+    };
+    expect(
+      tbody(
+        vehiclesAt(
+          `/fleet/vehicles?status=active&licExpBefore=${within60}&sort=licenseExpiresAt:asc`,
+          { status: ['active'], licenseExpiresBefore: lastInstant(within60), ...sorted },
+        ),
+      ),
+    ).toContain('150');
+    expect(
+      tbody(
+        driversAt(`/fleet/drivers?licExpBefore=${within60}&sort=licenseExpiresAt:asc&branch=b1`, {
+          licenseExpiresBefore: lastInstant(within60),
+          branchId: ['b1'],
+          ...sorted,
+        }),
+      ),
+    ).toContain('2026/10/20');
+  });
+
+  it('D10: «إخطارات مفتوحة ينقصها مرفق» opens «ينقصها مرفق» — the list and its figures both ask it', () => {
+    expect(
+      noticeRowShown(
+        noticesAt('/fleet/notices?status=open&missing=any&branch=b1', {
+          status: 'open',
+          missing: 'any',
+          branchIds: ['b1'],
+        }),
+      ),
+    ).toBe(true);
+    // The open list without the filter does not answer it.
+    expect(
+      noticeRowShown(noticesAt('/fleet/notices?status=open&missing=any', { status: 'open' })),
+    ).toBe(false);
+    const flat = source('NoticesPage.tsx').replace(/\s+/gu, ' ');
+    expect(flat).toContain('const summary = useNoticesSummary(filters);');
+    expect(remembered('NoticesPage.tsx')).toContain('missing');
+    expect(readsInSource('NoticesPage.tsx', 'missing')).toBe(true);
+  });
+
+  it('D04: «استهلاك الوقود الحالي (الشهر)» asks the Cairo month to today, with the page’s branches', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-31T23:30:00.000Z')); // Cairo 2026-11-01 01:30
+    const totals: FleetReceiptTotalsDto = {
+      count: 2,
+      custodyTotal: 0,
+      cardTotal: 0,
+      fuelTotal: 420.55,
+      fuelLitres: 0,
+      tyresTotal: 0,
+      washTotal: 0,
+      maintenanceTotal: 0,
+      fuelCustodyTotal: 0,
+      fuelUnpriced: 0,
+      custodyCount: 0,
+    };
+    const at = (seed: Record<string, unknown>): string => {
+      const qc = client();
+      qc.setQueryData(
+        listKey('fleet', 'fuelCards', {
+          whole: true,
+          expiresBefore: lastInstant(TODAY),
+          branchIds: ['b1', 'b2'],
+        }),
+        paged([card()], 100),
+      );
+      qc.setQueryData(
+        listKey('fleet', 'receipts', { summary: true, kind: 'fuel', ...seed }),
+        totals,
+      );
+      qc.setQueryData(
+        ['settings', 'me'],
+        [{ key: FleetSettingKeys.FuelCardExpiryWarnDays, value: 30, resolvedFrom: 'default' }],
+      );
+      return mount(
+        qc,
+        ['fleetFuelCard.view', 'fleetReceipt.view'],
+        `/fleet/fuel-cards?expiresBefore=${TODAY}&branch=b1,b2`,
+        '/fleet/fuel-cards',
+        <FuelCardsPage />,
+      );
+    };
+    const tile = (html: string): string => {
+      const i = html.indexOf('data-fuel-kpi="consumption"');
+      return i < 0 ? '' : html.slice(i, i + 2000);
+    };
+    expect(tile(at({ from: TODAY, to: TODAY, branchIds: ['b1', 'b2'] }))).toContain('420.55');
+    // The old question — the month's first day onward, every branch — is not what it asks.
+    expect(tile(at({ from: TODAY }))).not.toContain('420.55');
+  });
+
+  it('D31: the drivers «الإحصائيات» ask for the top bar’s branch, as the vehicles header does', () => {
+    const registry = (qc: QueryClient) =>
+      qc
+        .getQueryCache()
+        .findAll({ queryKey: ['fleet', 'drivers', 'list'] })
+        .filter((q) => (q.queryKey[3] as { whole?: boolean } | undefined)?.whole === true)
+        .map((q) => q.queryKey);
+    const company = client();
+    driversAtWith(company, '/fleet/drivers');
+    expect(registry(company)).toEqual([
+      listKey('fleet', 'drivers', { whole: true, branchId: null }),
+    ]);
+    setActiveBranch('b2');
+    const narrowed = client();
+    driversAtWith(narrowed, '/fleet/drivers');
+    expect(registry(narrowed)).toEqual([
+      listKey('fleet', 'drivers', { whole: true, branchId: ['b2'] }),
+    ]);
   });
 });

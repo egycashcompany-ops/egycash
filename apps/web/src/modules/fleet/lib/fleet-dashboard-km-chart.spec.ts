@@ -162,6 +162,54 @@ describe('the R-15 columns', () => {
   });
 });
 
+describe('a column’s figure — what the odometer register totals over its days (audit D02)', () => {
+  it('is the single-day km AND the spans that start on it, as the register counts its rows', () => {
+    // A Thursday whose cars rest on Friday: 120 km closed on it, 4,300 km over the unread days
+    // after it — the register for that day totals 4,420, never 120.
+    const thursday = kmChart(
+      {
+        buckets: [
+          bucket('2026-10-29', {
+            confirmedKm: 120,
+            spanKm: 4300,
+            spanTo: '2026-10-31',
+            spanVehicles: 6,
+          }),
+        ],
+        average: null,
+      },
+      { from: '2026-10-29', to: '2026-10-29', granularity: 'day' },
+      TODAY,
+    ).columns[0];
+    expect(thursday?.total).toBe(4420);
+    expect([thursday?.from, thursday?.to]).toEqual(['2026-10-29', '2026-10-29']);
+    // Every column of the week: its parts summed, an empty slot 0.
+    expect(chart.columns.map((c) => [c.bucket.key, c.total])).toEqual([
+      ['2026-10-27', 4000],
+      ['2026-10-28', 4800],
+      ['2026-10-29', 0],
+      ['2026-10-30', 4000],
+      ['2026-10-31', 2500],
+      [TODAY, 300],
+    ]);
+  });
+
+  it('is the month’s single-day km and its spans on the monthly axis too', () => {
+    const year = kmChart(
+      {
+        buckets: [
+          bucket('2026-09', { confirmedKm: 130_000, spanKm: 6000 }),
+          bucket('2026-10', { confirmedKm: 125_500, spanKm: 4500 }),
+        ],
+        average: 4000,
+      },
+      { from: '2026-09-01', to: '2026-10-31', granularity: 'month' },
+      TODAY,
+    );
+    expect(year.columns.map((c) => c.total)).toEqual([136_000, 130_000]);
+  });
+});
+
 describe('the Friday of each day (the week\u2019s rest day, dimmed)', () => {
   it('reads the weekday of the server\u2019s own day key, in UTC', () => {
     expect(isFriday('2026-11-06')).toBe(true);

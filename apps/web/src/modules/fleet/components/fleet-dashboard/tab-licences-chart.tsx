@@ -73,7 +73,11 @@ const Swatch = ({ series, label }: { series: Series; label: ReactNode }): JSX.El
   </span>
 );
 
-/** One column: the link to its month's list, its bar, its value on top. */
+/**
+ * One column: the link to its month's list, its bar, its value on top. No link (`null`: the drivers'
+ * month for a reader whose reach holds no branch, D21) → the same column drawn plain, never a link
+ * onto the whole company.
+ */
 const Column = ({
   series,
   slot,
@@ -87,38 +91,58 @@ const Column = ({
   slot: string;
   value: number;
   at: (n: number) => number;
-  link: DashLink;
+  link: DashLink | null;
   label: string;
   onPick: () => void;
-}): JSX.Element => (
-  <Link
-    to={link.to}
-    data-metric={link.metric}
-    data-lic-month={slot}
-    data-lic-series={series}
-    data-lic-n={String(value)}
-    aria-label={label}
-    onMouseEnter={onPick}
-    onFocus={onPick}
-    className={cn('relative h-full w-full max-w-[40px] outline-none', FOCUS)}
-  >
-    <span
-      data-lic-bar={series}
-      className={cn('absolute inset-x-0 bottom-0 rounded-t-[4px]', SERIES_COL[series])}
-      style={{ height: `${at(value)}%` }}
-    />
-    <span
-      data-lic-value={`${series}:${slot}`}
-      className={cn(
-        'absolute inset-x-0 text-center text-[11px] font-bold leading-none',
-        value === 0 ? 'text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200',
-      )}
-      style={{ bottom: `calc(${at(value)}% + 5px)` }}
+}): JSX.Element => {
+  const body = (
+    <>
+      <span
+        data-lic-bar={series}
+        className={cn('absolute inset-x-0 bottom-0 rounded-t-[4px]', SERIES_COL[series])}
+        style={{ height: `${at(value)}%` }}
+      />
+      <span
+        data-lic-value={`${series}:${slot}`}
+        className={cn(
+          'absolute inset-x-0 text-center text-[11px] font-bold leading-none',
+          value === 0 ? 'text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200',
+        )}
+        style={{ bottom: `calc(${at(value)}% + 5px)` }}
+      >
+        <N>{count(value)}</N>
+      </span>
+    </>
+  );
+  const box = 'relative h-full w-full max-w-[40px]';
+  return link === null ? (
+    <div
+      role="img"
+      data-lic-month={slot}
+      data-lic-series={series}
+      data-lic-n={String(value)}
+      aria-label={label}
+      onMouseEnter={onPick}
+      className={box}
     >
-      <N>{count(value)}</N>
-    </span>
-  </Link>
-);
+      {body}
+    </div>
+  ) : (
+    <Link
+      to={link.to}
+      data-metric={link.metric}
+      data-lic-month={slot}
+      data-lic-series={series}
+      data-lic-n={String(value)}
+      aria-label={label}
+      onMouseEnter={onPick}
+      onFocus={onPick}
+      className={cn(box, 'outline-none', FOCUS)}
+    >
+      {body}
+    </Link>
+  );
+};
 
 export const LicenceMonthChart = ({
   today,
@@ -177,7 +201,7 @@ export const LicenceMonthChart = ({
     };
   }, []);
 
-  const linkOf = (s: Series, key: string): DashLink =>
+  const linkOf = (s: Series, key: string): DashLink | null =>
     s === 'cars' ? links.vehicleLicenceMonth(key) : links.driverLicenceMonth(key);
 
   return (

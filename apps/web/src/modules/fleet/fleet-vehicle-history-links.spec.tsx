@@ -267,6 +267,35 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
     expect(queryOf(odometerHref()).getAll('vehicleCodes')).toEqual(['200']);
   });
 
+  it('«الصيانة» counts with the code its link sends too — the old book’s visits included', () => {
+    // The audit's car 194: two visits on the registry car and one from the old book under its
+    // code with no car attached. The maintenance screen opened by `vehicleCodes=194` lists 3; the
+    // row counted by id promised 2.
+    const total = (totalItems: number) => ({
+      items: [],
+      meta: { page: 1, pageSize: 1, totalItems, totalPages: totalItems },
+    });
+    const markup = drawProfile(vehicleWith('194'), (qc) => {
+      qc.setQueryData(
+        listKey('fleet', 'maintenance', { vehicleCodes: ['194'], page: 1, pageSize: 1 }),
+        total(3),
+      );
+      qc.setQueryData(
+        listKey('fleet', 'maintenance', { vehicleId: VEHICLE_ID, page: 1, pageSize: 1 }),
+        total(2),
+      );
+    });
+    expect(markup).toContain(translate('ar', 'fleet.vehicle.count.maintenance', { count: '3' }));
+    expect(markup).not.toContain(
+      translate('ar', 'fleet.vehicle.count.maintenance', { count: '2' }),
+    );
+    expect(
+      queryOf(historyHrefs(drawProfile(vehicleWith('194'))).get('maintenance') ?? '').getAll(
+        'vehicleCodes',
+      ),
+    ).toEqual(['194']);
+  });
+
   it('the other four rows stay as they were — no `period`, no date', () => {
     for (const [screen, href] of historyHrefs(drawProfile(vehicleWith('200')))) {
       if (screen === 'odometer') continue;

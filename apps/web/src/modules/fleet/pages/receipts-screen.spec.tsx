@@ -333,7 +333,7 @@ describe('the receipts table', () => {
     expect(row).not.toContain('data-fuel-company=');
   });
 
-  it('puts the totals BETWEEN the filters and the table, behind «الإحصائيات» — the fund, the cards, fuel with its litres', () => {
+  it('puts the totals BETWEEN the filters and the table, behind «الإحصائيات» — the total, the fund, the cards, fuel with its litres', () => {
     const html = renderReceipts();
     // The figures open from the toolbar's toggle, as on the vehicles and drivers boards.
     expect(html).toContain('data-receipt-stats-toggle="true"');
@@ -346,8 +346,9 @@ describe('the receipts table', () => {
     expect(strip, 'after the filters').toBeGreaterThan(filters);
     expect(table, 'before the table').toBeGreaterThan(strip);
     expect(PAGE).toContain('useReceiptSummary(filters)');
-    // Opened, they are the server's sums: the fund, the cards, fuel with its litres, and tyres,
-    // washing and maintenance together — the three the fund alone pays for.
+    // Opened, they are the server's sums: «الإجمالي» of them all (card + fund — the dashboard's
+    // «مصروف التشغيل», audit-10 D35), the fund, the cards, fuel with its litres, and tyres, washing
+    // and maintenance together — the three the fund alone pays for.
     const figures = mount(
       client(),
       ['fleetReceipt.view'],
@@ -355,6 +356,11 @@ describe('the receipts table', () => {
       <ReceiptFigures totals={receiptTotals} />,
     );
     expect(figures).toContain('data-receipt-figures="true"');
+    expect(figures).toContain(ar('fleet.receipts.totals.all'));
+    expect(figures).toContain('>3,760.00<');
+    expect(figures.indexOf('data-receipt-figure="all"')).toBeLessThan(
+      figures.indexOf(ar('fleet.receipts.totals.custody')),
+    );
     expect(figures).toContain(ar('fleet.receipts.totals.custody'));
     expect(figures).toContain('2,320.00');
     expect(figures).toContain(ar('fleet.receipts.totals.card'));

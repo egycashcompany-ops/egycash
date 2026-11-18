@@ -454,7 +454,7 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
     stop();
   });
 
-  it('a fine’s or a custody memo’s / operation’s signal re-reads «الشهر الماضي» on screen (their states are as of now); an accident’s or a licence memo’s does not', async () => {
+  it('a fine’s, an accident’s or a custody memo’s / operation’s signal re-reads «الشهر الماضي» on screen (their states are as of now); a reading’s or a licence memo’s does not', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     let reads = 0;
     const observer = new QueryObserver(qc, {
@@ -476,26 +476,33 @@ describe('«تحديث» and midnight never start a read twice, nor a read the r
       isStaleOnly: isStaleOnlyKey,
       throttleMs: 20,
     });
-    // An accident (or an odometer reading) of a closed range is history: nothing moves.
-    invalidator.invalidate(keysForTopic('fleet.accident'));
+    // An odometer reading (or a workshop visit) of a closed range is history: nothing moves.
+    invalidator.invalidate(keysForTopic('fleet.odometerLog'));
+    invalidator.invalidate(keysForTopic('fleet.maintenanceVisit'));
     await settle();
     expect(reads).toBe(1);
     // A tick on a fine of last month: the period read is re-read at once (through the throttle).
     invalidator.invalidate(keysForTopic('fleet.violation'));
     await settle();
     expect(reads).toBe(2);
-    // A licence memo of a closed range is history too (as a receipt: «تحديث» or a reload).
+    // An accident of last month closed, its money edited or a transfer made (D22): «حوادث الفترة»
+    // shows its status, «منها N مفتوحة حتى الآن», the money totals and «المتبقي (حتى الآن)» as of
+    // now — the period read is re-read, as a fine's tick does.
     await settle(30);
+    invalidator.invalidate(keysForTopic('fleet.accident'));
+    await settle(30);
+    expect(reads).toBe(3);
+    // A licence memo of a closed range is history (as a receipt: «تحديث» or a reload).
     invalidator.invalidate(keysForTopic('fleet.licenseExpense'));
     await settle(30);
-    expect(reads).toBe(2);
+    expect(reads).toBe(3);
     // A replenishment (custody memo or operation) moves «منها حتى الآن» of any month: re-read.
     invalidator.invalidate(keysForTopic('fleet.custodyMemo'));
     await settle(30);
-    expect(reads).toBe(3);
+    expect(reads).toBe(4);
     invalidator.invalidate(keysForTopic('fleet.custodyOperation'));
     await settle(30);
-    expect(reads).toBe(4);
+    expect(reads).toBe(5);
     invalidator.cancel();
     stop();
   });

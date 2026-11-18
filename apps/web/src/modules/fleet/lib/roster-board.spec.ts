@@ -54,6 +54,12 @@ const E3 = '650000000000000000000013';
 const E4 = '650000000000000000000014';
 const E5 = '650000000000000000000015';
 const E6 = '650000000000000000000016';
+const E7 = '650000000000000000000017';
+const E8 = '650000000000000000000018';
+const E9 = '650000000000000000000019';
+/** Cars NOT on this board: another branch's car, and a car planned today that left the board. */
+const V_OTHER_BRANCH = '650000000000000000000031';
+const V_LEFT_BOARD = '650000000000000000000032';
 const MT = '650000000000000000000021';
 
 /** A day `delta` days from today, on the UTC calendar the plannable floor uses. */
@@ -130,6 +136,9 @@ const PEOPLE: readonly (readonly [string, string, string])[] = [
   [E4, 'كريم علي', '11004'],
   [E5, 'عمرو حسن', '11005'],
   [E6, 'ياسر فتحي', '11006'],
+  [E7, 'هاني سمير', '11007'],
+  [E8, 'وليد شريف', '11008'],
+  [E9, 'طارق نبيل', '11009'],
 ];
 
 const client = (board: FleetRosterDayDto, cachedFor: string): QueryClient => {
@@ -771,5 +780,101 @@ describe('useRosterBoard — the drivers', () => {
     expect(m.transferFrom(E1, V3)).toBe('150');
     expect(m.transferFrom(E1, V1)).toBeNull();
     expect(m.transferFrom(E3, V3)).toBeNull();
+  });
+});
+
+describe('useRosterBoard — a driver the server holds on a car OFF this board (D01)', () => {
+  // The audit's case: the server's `assignedVehicleId` covers the whole day's plan and every
+  // active car's standing crew, across all branches. E7 is planned on another branch's car, E8 on
+  // a car that left the board after it was planned (out of service), E9 likewise elsewhere with
+  // his licence flagged. Seating any of them here is refused (FR-7, 409): no row of this board
+  // can release them. The roster's «السائقون المتاحون (n)» counted them as free.
+  const HELD: FleetRosterDayDto = {
+    ...BOARD,
+    availableDrivers: [
+      ...BOARD.availableDrivers,
+      { employeeId: E7, assignedVehicleId: V_OTHER_BRANCH, licence: 'valid' },
+      { employeeId: E8, assignedVehicleId: V_LEFT_BOARD, licence: 'valid' },
+      { employeeId: E9, assignedVehicleId: V_OTHER_BRANCH, licence: 'expired' },
+    ],
+  };
+  /** The dashboard's «بلا سيارة اليوم» (`availableWithoutVehicle`): licensed, held on no car. */
+  const withoutVehicle = (board: FleetRosterDayDto): string[] =>
+    board.availableDrivers
+      .filter((driver) => driver.licence !== 'expired' && driver.assignedVehicleId === null)
+      .map((driver) => driver.employeeId);
+
+  it('keeps them out of the pool, so «السائقون المتاحون (n)» is the dashboard’s «بلا سيارة اليوم»', () => {
+    const m = model({}, { board: HELD });
+    expect(m.heldOff.map((d) => d.employeeId)).toEqual([E7, E8, E9]);
+    expect(m.pool.map((d) => d.employeeId)).toEqual([E3, E4]);
+    expect(m.poolLicensed.map((d) => d.employeeId)).toEqual([E3]);
+    expect(m.poolLicensed.map((d) => d.employeeId)).toEqual(withoutVehicle(HELD));
+    // The same count on the plain board — nobody held off it, nothing moves.
+    const plain = model();
+    expect(plain.heldOff).toEqual([]);
+    expect(plain.poolLicensed.map((d) => d.employeeId)).toEqual(withoutVehicle(BOARD));
+  });
+
+  it('lists them apart, every time — never free, never a move, never pickable', () => {
+    const m = model({}, { board: HELD });
+    for (const target of [null, { vehicleId: V3, slot: 'driver1EmployeeId' as const }]) {
+      const options = m.availableFor('', target);
+      expect(options.free.map((o) => o.employeeId)).toEqual([E3]);
+      expect(options.elsewhere.map((o) => [o.employeeId, o.state, o.seatedCode])).toEqual([
+        [E7, 'elsewhere', null],
+        [E8, 'elsewhere', null],
+      ]);
+      expect(
+        options.seated.map((o) => o.employeeId),
+        'a move is only what the draft seats',
+      ).toEqual(target === null ? [] : [E1]);
+      // A flagged driver held off the board stays in the licence block (every flagged driver of
+      // the day), as `elsewhere` — the list never offers him as a pick.
+      const flagged = options.flagged.find((o) => o.employeeId === E9);
+      expect(flagged?.state).toBe('elsewhere');
+    }
+    expect(
+      m.flagged.map((d) => d.employeeId),
+      'the licence count is the day’s',
+    ).toEqual([E4, E5, E9]);
+    expect(
+      m.availableFor('هاني', null).elsewhere.map((o) => o.employeeId),
+      'searched',
+    ).toEqual([E7]);
+    expect(m.person(E8)?.fullNameAr, 'and named').toBe('وليد شريف');
+  });
+
+  it('leaves a driver held on a car OF this board to the draft — off a seat, he is free again', () => {
+    // E1 is planned on 150, a row of this board: the draft can release him, so he is the draft's.
+    withDraft(
+      DAY,
+      HELD.rows.map((r) => (r.vehicleId === V1 ? { ...r, driver1EmployeeId: null } : r)),
+    );
+    const m = model({}, { board: HELD });
+    expect(m.pool.map((d) => d.employeeId)).toEqual([E1, E3, E4]);
+    expect(m.availableFor('', null).elsewhere.map((o) => o.employeeId)).toEqual([E7, E8]);
+  });
+
+  it('lists him once — where a stored draft seats him — and never as held elsewhere too', () => {
+    withDraft(
+      DAY,
+      HELD.rows.map((r) => (r.vehicleId === V4 ? { ...r, driver1EmployeeId: E7 } : r)),
+    );
+    const m = model({}, { board: HELD });
+    const options = m.availableFor('', { vehicleId: V3, slot: 'driver1EmployeeId' });
+    expect(options.elsewhere.map((o) => o.employeeId)).toEqual([E8]);
+    expect(options.seated.map((o) => [o.employeeId, o.state, o.seatedCode])).toContainEqual([
+      E7,
+      'seated',
+      '153',
+    ]);
+    expect(m.pool.map((d) => d.employeeId)).not.toContain(E7);
+  });
+
+  it('reads the board’s cars from the SERVER’s rows, beside the unchanged `availableDrivers`', () => {
+    const source = rosterSource(['model'], { raw: true });
+    expect(source).toContain('heldOffBoard(board?.availableDrivers ?? [], saved)');
+    expect(source).toContain('availableDrivers(board?.availableDrivers ?? [], shown).filter(');
   });
 });

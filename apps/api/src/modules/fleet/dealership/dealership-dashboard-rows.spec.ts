@@ -8,7 +8,7 @@
 //   · every car named as it is now: its code and make, a deleted car's too (no record link then),
 //     an old-book row by its own code with no car;
 //   · at most `limit` rows; `more` = the rows left out, so `more` + rows = `summaryOver`'s count;
-//   · «بانتظار تسجيل القيمة» is `invoiceAmount: null`.
+//   · «بانتظار الفاتورة» is `invoiceAmount: null`.
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose, { Types } from 'mongoose';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';

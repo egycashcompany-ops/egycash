@@ -187,18 +187,34 @@ describe('registryDigest — the whole company', () => {
     expect(out.licence.expired + out.licence.expiring + out.licence.soon).toBe(dated);
   });
 
-  it('cash and ATM: the catalog ids `?spec=` lists, plus the legacy enum shown apart', async () => {
+  it('cash and ATM: `drivers` is the catalog alone — the list `?spec=` opens (D13)', async () => {
     const out = await digest(null);
-    // cash: e3, e10 by the catalog; e6 (cashTransport) and e7 (both) by the legacy enum only.
-    expect(out.cash).toEqual({ drivers: 4, legacy: 2 });
-    // atm: e4 by the catalog; e7 (both) and e8 (atm) by the legacy enum only.
-    expect(out.atm).toEqual({ drivers: 3, legacy: 2 });
-    expect(out.cash.drivers - out.cash.legacy).toBe(
-      await listTotal({ specializationId: [String(CASH_SPEC)] }),
-    );
-    expect(out.atm.drivers - out.atm.legacy).toBe(
-      await listTotal({ specializationId: [String(ATM_SPEC)] }),
-    );
+    // cash: e3, e10 by the catalog — the figure; e6 (cashTransport) and e7 (both) are `legacy`.
+    expect(out.cash).toEqual({ drivers: 2, legacy: 2 });
+    // atm: e4 by the catalog — the figure; e7 (both) and e8 (atm) are `legacy`.
+    expect(out.atm).toEqual({ drivers: 1, legacy: 2 });
+    expect(out.cash.drivers).toBe(await listTotal({ specializationId: [String(CASH_SPEC)] }));
+    expect(out.atm.drivers).toBe(await listTotal({ specializationId: [String(ATM_SPEC)] }));
+  });
+
+  it('the old enum is a figure APART: never added in, and a `both` profile on neither card (D13)', async () => {
+    const out = await digest(null);
+    const both = roster.employees[7]!.employeeId;
+    // e7 is the legacy «both»: the list by either catalog id never names him…
+    const listed = async (spec: Types.ObjectId) =>
+      (
+        await fleetDriverProfileService.listRoster({
+          page: 1,
+          pageSize: 100,
+          specializationId: [String(spec)],
+        } as ListFleetDriversQuery)
+      ).items.map((row) => row.employeeId);
+    expect(await listed(CASH_SPEC)).not.toContain(both);
+    expect(await listed(ATM_SPEC)).not.toContain(both);
+    // …and the two cards' figures together are the catalog's drivers only — he is in neither.
+    expect(out.cash.drivers + out.atm.drivers).toBe(3);
+    // A catalog specialization wins over a stale legacy value: e9 is no legacy driver.
+    expect(out.cash.legacy).toBe(2);
   });
 });
 
@@ -216,6 +232,9 @@ describe('registryDigest — the reader’s branches are HR branches, as `?branc
     });
     expect(out.licence.expired).toBe(await listTotal({ ...expiredQuery, branchId: [GIZA] }));
     expect(out.cash).toEqual({ drivers: 1, legacy: 0 });
+    expect(out.cash.drivers).toBe(
+      await listTotal({ specializationId: [String(CASH_SPEC)], branchId: [GIZA] }),
+    );
   });
 
   it('a driver the directory could not place is in no branch', async () => {

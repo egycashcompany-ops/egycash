@@ -73,7 +73,10 @@ export interface FleetDriverRegistryDigest {
      */
     nearest: { rows: FleetDriverLicenceRow[]; total: number };
   };
-  /** `drivers` includes `legacy`: the profiles matched only through the legacy «التخصص» enum. */
+  /**
+   * `drivers` = the catalog alone (`?specializationId=`'s total, the screen's «التخصص»); `legacy` =
+   * the profiles only the old «التخصص» enum classifies — a figure APART, never inside `drivers`.
+   */
   cash: { drivers: number; legacy: number };
   atm: { drivers: number; legacy: number };
 }
@@ -311,10 +314,11 @@ class FleetDriverProfileService {
    * The licence windows are `licenceWindows` (contracts), turned into instants by
    * `calendarDayBounds` — the first and last instant of the named days, the bounds the page sends.
    *
-   * «نقل أموال» / «ATM» (T3.6/T3.8): the catalog ids the caller resolved (`cashSpecIds`,
-   * `atmSpecIds`) — what `?spec=` matches — plus the profiles still classified only by the legacy
-   * enum, which `?spec=` cannot list and the screen therefore shows as «منها N بتصنيف قديم». A
-   * profile with a catalog specialization is read by it alone; the enum is only a second chance.
+   * «نقل أموال» / «ATM» (T3.6/T3.8): `drivers` = the catalog ids the caller resolved (`cashSpecIds`,
+   * `atmSpecIds`) — what `?spec=` matches, so the figure is the list's total and the screen's
+   * «التخصص» (D13). The profiles still classified only by the legacy enum, which `?spec=` cannot
+   * list, are `legacy` — counted apart, never added in («و N سائقين بتصنيف قديم لم يُحدَّد تخصصهم»).
+   * A profile with a catalog specialization is read by it alone.
    */
   async registryDigest(input: {
     today: string;
@@ -350,13 +354,14 @@ class FleetDriverProfileService {
       return count({ licenseExpiresFrom: bounds.from, licenseExpiresBefore: bounds.before });
     };
 
-    const kind = (specIds: readonly string[], legacy: 'cash' | 'atm') => {
-      const viaCatalog = specIds.length === 0 ? 0 : count({ specializationId: [...specIds] });
-      const viaLegacy = rows.filter(
-        (profile) => profile !== null && legacyKinds(profile)[legacy],
-      ).length;
-      return { drivers: viaCatalog + viaLegacy, legacy: viaLegacy };
-    };
+    // `drivers` is the catalog alone — the very rows `?specializationId=` lists and the drivers
+    // screen's «التخصص» tallies (D13). `legacy` is a figure APART, never added in: the profiles the
+    // old enum alone classifies, which neither the list nor the screen can name (a `both` one is in
+    // each card's `legacy`, and in neither card's `drivers`).
+    const kind = (specIds: readonly string[], legacy: 'cash' | 'atm') => ({
+      drivers: specIds.length === 0 ? 0 : count({ specializationId: [...specIds] }),
+      legacy: rows.filter((profile) => profile !== null && legacyKinds(profile)[legacy]).length,
+    });
 
     // «أقرب رخص السائقين»: the very files `?licExpBefore=<today + 60>` keeps, nearest first.
     const horizon = addDaysYmd(input.today, FLEET_LICENCE_GREY_DAYS);

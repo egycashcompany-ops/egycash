@@ -375,7 +375,9 @@ const OpexCard = ({ data, links, can }: PeriodBodyProps): JSX.Element | null => 
   // guard; without that grant the part is shown as it is.
   const custody = links.opexCustody();
   const custodyLink =
-    custody.to.startsWith('/fleet/custody-expenses') && !can('fleetCustody.view')
+    custody !== null &&
+    custody.to.startsWith('/fleet/custody-expenses') &&
+    !can('fleetCustody.view')
       ? links.opex('opex.custody', 'custody')
       : custody;
   return (

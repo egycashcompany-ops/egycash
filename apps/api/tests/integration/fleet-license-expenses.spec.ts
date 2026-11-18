@@ -822,12 +822,15 @@ describe('the licensing-expenses board — its arrows and «الإحصائيات
     const totals = await fleetLicenseExpenseService.summary(
       FleetLicenseExpenseSummaryQuerySchema.parse(MONTH),
     );
-    // Cards: 100 + 110 + 0.1 + 0.2; cash: 10 + 400. Six cars on four memos.
-    expect(totals).toEqual({ count: 4, cars: 6, visaTotal: 210.3, cashTotal: 410 });
+    // Cards: 100 + 110 + 0.1 + 0.2; cash: 10 + 400. Six cars on FIVE memos — the record holding
+    // both is two (D05).
+    expect(totals).toEqual({ count: 5, cars: 6, visaTotal: 210.3, cashTotal: 410 });
+    // «النوع» reads that memo only (D05): the two extensions, their 3 + 1 cars and their money —
+    // never the renewal the second record also holds.
     const withExtension = await fleetLicenseExpenseService.summary(
       FleetLicenseExpenseSummaryQuerySchema.parse({ ...MONTH, kind: 'extension' }),
     );
-    expect(withExtension).toMatchObject({ count: 2, cars: 5 });
+    expect(withExtension).toEqual({ count: 2, cars: 4, visaTotal: 0.2, cashTotal: 400 });
   });
 
   it('«مصروفات التراخيص في الفترة» (the dashboard’s licenceSpend) is GET /summary over the same days, split twice', async () => {
@@ -880,7 +883,7 @@ describe('the licensing-expenses board — its arrows and «الإحصائيات
     const totals = await fleetLicenseExpenseService.summary(
       FleetLicenseExpenseSummaryQuerySchema.parse(MONTH),
     );
-    expect(totals).toEqual({ count: 3, cars: 6, visaTotal: 100.3, cashTotal: 410 });
+    expect(totals).toEqual({ count: 4, cars: 6, visaTotal: 100.3, cashTotal: 410 });
   });
 });
 
@@ -987,11 +990,16 @@ describe('«التسوية» — a licensing memo the custody fund settled', () 
     expect(await ids({ status: 'waiting', kind: 'extension' })).toEqual([both.id]);
     expect(await ids({ status: 'settled', kind: 'extension' })).toEqual([]);
     expect(ListFleetLicenseExpensesQuerySchema.safeParse({ status: 'paid' }).success).toBe(false);
-    // The figures read the same rows.
+    // The figures read the same rows — and of them, the memos that matched (D05): the settled
+    // renewal's 200, never its sibling extension's 300 still waiting.
     const totals = await fleetLicenseExpenseService.summary(
       FleetLicenseExpenseSummaryQuerySchema.parse({ ...JULY, status: 'settled' }),
     );
-    expect(totals).toEqual({ count: 1, cars: 2, visaTotal: 500, cashTotal: 0 });
+    expect(totals).toEqual({ count: 1, cars: 1, visaTotal: 200, cashTotal: 0 });
+    const waiting = await fleetLicenseExpenseService.summary(
+      FleetLicenseExpenseSummaryQuerySchema.parse({ ...JULY, status: 'waiting' }),
+    );
+    expect(waiting).toEqual({ count: 2, cars: 2, visaTotal: 400, cashTotal: 0 });
   });
 
   it('locks the whole settled record — its unsettled memo too — and leaves the rest writable', async () => {

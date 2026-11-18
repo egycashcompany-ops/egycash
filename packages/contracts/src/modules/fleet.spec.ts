@@ -76,6 +76,11 @@ import {
   UpdateFleetMaintenanceSchema,
   CheckOutFleetMaintenanceSchema,
   foldSheetHeader,
+  FleetNoticesSummaryQuerySchema,
+  ListFleetNoticesQuerySchema,
+  type FleetAlarmChainPointDto,
+  type FleetVehicleLatestReadingDto,
+  type FleetViolationsListMeta,
 } from './fleet.js';
 import { EVENT_LIFECYCLE, eventCatalogEntry } from '../events/catalog.js';
 
@@ -1690,5 +1695,82 @@ describe('the workshop edit corrects «سائق الخروج» — «عاوز ا
       CheckOutFleetMaintenanceSchema.safeParse({ ...checkOut, driverOutEmployeeId: oid('e1') })
         .success,
     ).toBe(true);
+  });
+});
+
+describe('the dashboard and the screens name one figure — «المعلومات اللى فيها هى هى»', () => {
+  it('«ينقصها مرفق»: the notices list and its figures both take missing=any (D10)', () => {
+    // The dashboard's «إخطارات مفتوحة ينقصها مرفق» opens `status=open&missing=any`; the list and
+    // «الإحصائيات» read the same filter, so the screen lists the notices the line counts.
+    expect(ListFleetNoticesQuerySchema.parse({ status: 'open', missing: 'any' })).toMatchObject({
+      status: 'open',
+      missing: 'any',
+    });
+    expect(FleetNoticesSummaryQuerySchema.parse({ status: 'open', missing: 'any' })).toEqual({
+      status: 'open',
+      missing: 'any',
+    });
+    // Absent stays absent: no such filter.
+    expect(ListFleetNoticesQuerySchema.parse({})).not.toHaveProperty('missing');
+    expect(FleetNoticesSummaryQuerySchema.parse({})).not.toHaveProperty('missing');
+  });
+
+  it('«ينقصها مرفق»: any other value is refused by both, not read as no filter (D10)', () => {
+    for (const value of ['', 'none', 'check', 'ANY', ['any', 'any']]) {
+      expect(
+        ListFleetNoticesQuerySchema.safeParse({ missing: value }).success,
+        JSON.stringify(value),
+      ).toBe(false);
+      expect(
+        FleetNoticesSummaryQuerySchema.safeParse({ missing: value }).success,
+        JSON.stringify(value),
+      ).toBe(false);
+    }
+    // The figures' query stays strict: an unknown key is still refused there.
+    expect(FleetNoticesSummaryQuerySchema.safeParse({ missingAny: 'true' }).success).toBe(false);
+  });
+
+  it('the violations list meta carries the owed amount over the whole filter (D03)', () => {
+    // 130 owed driver fines load 100 to a page; the footer prints the server's figure, not the
+    // page's sum (1,588 over the filter, not 1,288 over the loaded rows).
+    const meta: FleetViolationsListMeta = {
+      page: 1,
+      pageSize: 100,
+      totalItems: 130,
+      totalPages: 2,
+      outstandingAmount: 1588,
+    };
+    expect(meta).toEqual({
+      page: 1,
+      pageSize: 100,
+      totalItems: 130,
+      totalPages: 2,
+      outstandingAmount: 1588,
+    });
+  });
+
+  it('the latest reading carries the newest chain row beside the highest (D25)', () => {
+    // A chain that went backwards: the highest (the alarm's figure) is 5,000 on 15/10, the newest
+    // row is 16/10. The card shows the newest as «آخر قراءة عداد» and names the highest apart.
+    const newest: FleetAlarmChainPointDto = { reading: 4980, date: '2026-10-16T00:00:00.000Z' };
+    const row: FleetVehicleLatestReadingDto = {
+      vehicleId: oid('704'),
+      latestReading: 5000,
+      latestReadingAt: '2026-10-15T00:00:00.000Z',
+      newest,
+    };
+    expect(row.newest).toEqual({ reading: 4980, date: '2026-10-16T00:00:00.000Z' });
+    expect(row.newest.reading).not.toBe(row.latestReading);
+    // A healthy chain: one row is both.
+    const healthy: FleetVehicleLatestReadingDto = {
+      vehicleId: oid('150'),
+      latestReading: 120500,
+      latestReadingAt: '2026-10-31T00:00:00.000Z',
+      newest: { reading: 120500, date: '2026-10-31T00:00:00.000Z' },
+    };
+    expect([healthy.newest.reading, healthy.newest.date]).toEqual([
+      healthy.latestReading,
+      healthy.latestReadingAt,
+    ]);
   });
 });

@@ -251,10 +251,20 @@ const seededClient = (
   if (hr) qc.setQueryData(['fleet', 'people'], [fleetPerson()]);
   // Branch names come from `/platform/branches/options` — a bare ARRAY, ungated. `useJobTitles`
   // still selects `page.items`, so the driving-seats key below keeps its PAGE.
-  qc.setQueryData(
-    ['organization', 'branches', 'options'],
-    [{ id: 'b1', code: '01', name: { ar: HR.branch, en: 'Mohandessin' }, parentId: null, catalogId: null }],
-  );
+  //
+  // TWO keys (audit D14): the picker offers the ACTIVE branches; the column, the sheet and a chosen
+  // branch's chip name from EVERY branch, the closed ones too (`useBranchNames`).
+  const branchOptions = [
+    {
+      id: 'b1',
+      code: '01',
+      name: { ar: HR.branch, en: 'Mohandessin' },
+      parentId: null,
+      catalogId: null,
+    },
+  ];
+  qc.setQueryData(['organization', 'branches', 'options'], branchOptions);
+  qc.setQueryData(['organization', 'branches', 'options', 'withInactive'], branchOptions);
   // `requiresDrivingTest` is what makes this a DRIVING seat — the flag the registry's membership
   // is derived from, and the one the HR filter step narrows itself to.
   // Under the DRIVING-SEATS key: the page asks the server for the titles carrying the flag rather
@@ -1875,6 +1885,8 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     // directory — looking at every branch's drivers with no way to narrow them, and a «الفرع»
     // column full of dashes beside it. The options come from `/platform/branches/options` now,
     // which is authenticated and ungated, so the control is drawn and filled for both readers.
+    // The column names from the same endpoint WITH the closed branches (audit D14), so a driver
+    // whose branch has closed is named too — `pages/drivers-licence-state.spec.tsx`.
     const noBranchView = render(<DriversListPage />, {
       permissions: ['fleetDriver.view', 'employee.view'],
     });

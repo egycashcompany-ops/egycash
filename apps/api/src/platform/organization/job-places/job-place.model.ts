@@ -16,6 +16,13 @@ export interface JobPlaceDoc extends BaseDocFields {
   departmentCatalogId: Types.ObjectId;
   /** null: directly under the department. */
   sectionCatalogId: Types.ObjectId | null;
+  /**
+   * Where the job stands in its column (the department's direct jobs, or one section's), from 0.
+   * Written only by the chart's reorder (`PUT /org-chart/order`, design §5.7); null until then, and
+   * on a place added later, which then follows the ordered ones. The job's own update never changes
+   * it: a place it keeps keeps its position.
+   */
+  position?: number | null;
 }
 
 const jobPlaceSchema = new Schema<JobPlaceDoc>(
@@ -23,6 +30,7 @@ const jobPlaceSchema = new Schema<JobPlaceDoc>(
     jobTitleId: { type: Schema.Types.ObjectId, required: true },
     departmentCatalogId: { type: Schema.Types.ObjectId, required: true },
     sectionCatalogId: { type: Schema.Types.ObjectId, default: null },
+    position: { type: Number, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

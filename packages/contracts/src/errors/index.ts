@@ -146,10 +146,13 @@ export const ErrorCodes = {
    */
   OPERATIONS_UNKNOWN_SHIFT_TYPE: 'OPERATIONS_UNKNOWN_SHIFT_TYPE',
   /**
-   * 422 — Round 20: a crew-board save gave a row a NEW or CHANGED «الاتجاه» that is not the name of
-   * an active operations area («لازم اختار من الاتجاهات اللى موجوده»). A direction the row already
-   * holds stays while it is sent unchanged. Details: one per part refused (`field` 'direction',
-   * `message` the part as typed), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index).
+   * @deprecated UNUSED since Round 28 — no server sends it. Round 20 refused a crew-board save that
+   * gave a row a NEW or CHANGED «الاتجاه» that was not the name of an active operations area («لازم
+   * اختار من الاتجاهات اللى موجوده»); Round 28 reverses that («عاوز الاتجاه اقدر اكتبه بايدى لو مش
+   * موجود فى الليست»): a hand-typed direction is stored as typed. Kept so a client built before the
+   * change still reads the code, and so no other refusal reuses its name. Its details were: one per
+   * part refused (`field` 'direction', `message` the part as typed), then `field` 'rows' (`code`
+   * 'ROW_INDEX', `message` the row's index).
    */
   OPERATIONS_DIRECTION_NOT_AN_AREA: 'OPERATIONS_DIRECTION_NOT_AN_AREA',
   /**

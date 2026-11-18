@@ -12,10 +12,21 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
-import { type Locale, type OperationsShiftTypeDto } from '@ecms/contracts';
+import {
+  OPERATIONS_DIRECTION_MAX_LENGTH,
+  type Locale,
+  type OperationsShiftTypeDto,
+} from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
-import { CELL_BOX, DirectionPicker, ShiftTypePicker, TimePicker } from './CrewPlanControls';
+import { directionItems } from '../lib/direction-pick';
+import {
+  CELL_BOX,
+  DirectionOptions,
+  DirectionPicker,
+  ShiftTypePicker,
+  TimePicker,
+} from './CrewPlanControls';
 
 const ar = (key: string): string => translate('ar', key);
 
@@ -168,23 +179,156 @@ describe('the type box names what the catalog says', () => {
 });
 
 describe('the direction box agrees with the server about what is an area', () => {
-  const box = (value: string): string[] =>
-    classOf(
-      render(
-        <DirectionPicker
-          rowKey="r"
-          value={value}
-          options={['المعادي', 'حلوان']}
-          disabled={false}
-          onChange={() => undefined}
-        />,
-      ),
-      'role="combobox"',
+  const html = (value: string): string =>
+    render(
+      <DirectionPicker
+        rowKey="r"
+        value={value}
+        options={['المعادي', 'حلوان']}
+        disabled={false}
+        onChange={() => undefined}
+      />,
     );
+  const box = (value: string): string[] => classOf(html(value), 'role="combobox"');
 
-  it('two areas, as the distribution reads them, are known; legacy free text is kept and marked', () => {
-    expect(box('المعادي - حلوان')).not.toContain('[&&]:border-amber-400');
-    expect(box('المعادى')).not.toContain('[&&]:border-amber-400');
-    expect(box('طريق السويس')).toContain('[&&]:border-amber-400');
+  // REWRITTEN in Round 28 — was «two areas, as the distribution reads them, are known; legacy free
+  // text is kept and marked». «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»: a direction typed
+  // by hand is a direction, so it no longer wears the amber «kept» look.
+  it('Round 28 — a hand-typed direction is shown plainly: no warning look, a quiet title saying what it is', () => {
+    for (const value of ['المعادي - حلوان', 'المعادى', 'طريق السويس']) {
+      expect(box(value)).not.toContain('[&&]:border-amber-400');
+      expect(box(value)).not.toContain('[&&]:text-amber-800');
+      expect(box(value)).toEqual(expect.arrayContaining(CELL));
+    }
+    const typed = html('طريق السويس');
+    expect(typed).toContain('data-direction-hand-typed="true"');
+    expect(typed).toContain(
+      `title="${ar('operations.crewPlan.direction.handTyped').replace('{{direction}}', 'طريق السويس')}"`,
+    );
+    // The title says what it means for «توزيع المحصنات» — in words, never «unknown».
+    expect(ar('operations.crewPlan.direction.handTyped')).toContain('توزيع المحصنات');
+    expect(typed).not.toContain('aria-invalid');
+  });
+
+  it('two areas, as the distribution reads them, and an area in another spelling are areas — titled by their name', () => {
+    for (const value of ['المعادي - حلوان', 'المعادى']) {
+      expect(html(value)).not.toContain('data-direction-hand-typed');
+      expect(html(value)).toContain(`title="${value}"`);
+    }
+  });
+
+  // REWRITTEN by the Round 28 critic — was «caps the typing at the save’s ceiling» (`maxLength`).
+  // The cap cut a pasted note at 80 without a word, and stopped a direction of many areas — which
+  // the save respells however long — from being typed at all. The ceiling is now SAID in the list
+  // (`directionTooLong`, pinned below and in `direction-pick.spec.ts`) and held by the save.
+  it('cuts nothing typed or pasted: the box has no maxLength — the list says when it is too long', () => {
+    expect(html('المعادي')).not.toContain('maxLength');
+    expect(html('طريق السويس')).not.toContain('maxLength');
+  });
+
+  // Round 28 critic — the cue was the title alone, which never shows on a phone: a hand-typed
+  // direction looked exactly like an area, and «توزيع المحصنات» proposed nothing to it without a sign.
+  it('marks a hand-typed direction with a pen at its start, and says what it means to a screen reader', () => {
+    const typed = html('طريق السويس');
+    expect(typed).toContain('data-direction-hand-typed-mark="true"');
+    expect(box('طريق السويس')).toContain('ps-7');
+    const note = /aria-describedby="([^"]+)"/.exec(typed)?.[1] as string;
+    expect(note).toBeTruthy();
+    expect(typed).toContain(
+      `id="${note}" class="sr-only">${ar('operations.crewPlan.direction.handTyped').replace('{{direction}}', 'طريق السويس')}<`,
+    );
+    for (const value of ['المعادي', 'المعادي - حلوان', 'المعادى']) {
+      expect(html(value)).not.toContain('data-direction-hand-typed-mark');
+      expect(html(value)).not.toContain('aria-describedby');
+      expect(box(value)).not.toContain('ps-7');
+    }
+  });
+});
+
+describe('the direction list — «استخدام «…» اتجاهًا» (Round 28)', () => {
+  const list = (
+    query: string,
+    value: string | null = null,
+    active = 0,
+    tooLong: number | null = null,
+  ): string =>
+    render(
+      <ul>
+        <DirectionOptions
+          listId="l"
+          items={directionItems(query, ['المعادي', 'المعادي الجديدة', 'حلوان'])}
+          active={active}
+          value={value}
+          tooLong={tooLong}
+          onHover={() => undefined}
+          onPick={() => undefined}
+        />
+      </ul>,
+    );
+  const kinds = (html: string): string[] =>
+    [...html.matchAll(/data-direction-option="(\w+)"/g)].map((match) => match[1] as string);
+
+  it('a name no area holds: the typed text FIRST and alone, in formal Arabic — the dead end is gone', () => {
+    const html = list('طريق السويس');
+    expect(kinds(html)).toEqual(['typed']);
+    expect(html).toContain(
+      `>${ar('operations.crewPlan.direction.useTyped').replace('{{text}}', 'طريق السويس')}<`,
+    );
+    expect(ar('operations.crewPlan.direction.useTyped')).toBe('استخدام «{{text}}» اتجاهًا');
+    expect(translate('en', 'operations.crewPlan.direction.useTyped')).toBe(
+      'Use “{{text}}” as the direction',
+    );
+    expect(html).not.toContain('لا يوجد اتجاه بهذا الاسم');
+    // It is the highlighted row, so Enter takes it.
+    expect(classOf(html, 'data-direction-option="typed"')).toContain('bg-brand-500/10');
+  });
+
+  it('a part of some areas’ names: the areas first (the first highlighted), the typed text LAST, set apart', () => {
+    const html = list('المعا');
+    expect(kinds(html)).toEqual(['area', 'area', 'typed']);
+    expect(classOf(html, 'data-active="true"')).toContain('bg-brand-500/10');
+    expect(html.indexOf('data-active="true"')).toBeLessThan(html.indexOf('>المعادي<'));
+    expect(classOf(html, 'data-direction-option="typed"')).toEqual(
+      expect.arrayContaining(['mt-1', 'border-t']),
+    );
+  });
+
+  it('an area typed in full: that area, and no typed row', () => {
+    expect(kinds(list('المعادى'))).toEqual(['area', 'area']);
+    expect(list('المعادى')).not.toContain(ar('operations.crewPlan.direction.useTyped').slice(0, 7));
+  });
+
+  it('«مسح الاتجاه» stays last while the row has a direction', () => {
+    const html = list('', 'طريق السويس');
+    expect(html.lastIndexOf(ar('operations.crewPlan.direction.clear'))).toBeGreaterThan(
+      html.lastIndexOf('>حلوان<'),
+    );
+  });
+
+  // Round 28 critic — no row had an id, so the box could name none as active: a screen reader was
+  // never told which row Enter takes (often now «استخدام «…» اتجاهًا»), and «مسح الاتجاه» was out of
+  // the arrows' reach.
+  it('gives every row an id for the box to name; «مسح الاتجاه» is the row after the last item', () => {
+    const html = list('طريق', 'طريق', 1);
+    expect(html).toContain('id="l-option-0"');
+    expect(html).toContain('id="l-option-1"');
+    expect(classOf(html, 'data-direction-option="clear"')).toContain('bg-brand-500/10');
+    expect(html).toMatch(
+      /id="l-option-1"[^>]*data-direction-option="clear"[^>]*data-active="true"/,
+    );
+    // The typed row equal to the value is the selected one.
+    expect(html).toMatch(/id="l-option-0" role="option" aria-selected="true"/);
+  });
+
+  it('says a hand-typed direction past the ceiling, in formal Arabic, instead of cutting it', () => {
+    const html = list('ط'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH + 5), null, 0, 85);
+    expect(html).toContain('data-direction-too-long="true"');
+    expect(html).toContain(
+      ar('operations.crewPlan.direction.tooLong')
+        .replace('{{max}}', '٨٠')
+        .replace('{{count}}', '٨٥'),
+    );
+    expect(html).not.toContain(ar('operations.crewPlan.direction.empty'));
+    expect(kinds(html)).toEqual([]);
   });
 });

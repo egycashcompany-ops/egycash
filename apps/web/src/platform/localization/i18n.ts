@@ -12427,10 +12427,12 @@ const en: Record<string, string> = {
     'No shift type is active — add them under «Shift types» on the reference screen.',
   'operations.crewPlan.refused.type':
     'This type is no longer active on the reference screen — choose another one.',
-  'operations.crewPlan.refused.direction':
-    'Not an area on the reference screen: {{parts}} — choose the direction from the list.',
-  'operations.crewPlan.direction.empty': 'No direction by that name',
-  'operations.crewPlan.direction.unknown': 'Not on the directions list — choose one from it',
+  'operations.crewPlan.direction.empty': 'Type the direction',
+  'operations.crewPlan.direction.useTyped': 'Use “{{text}}” as the direction',
+  'operations.crewPlan.direction.handTyped':
+    '“{{direction}}” is typed by hand, not an area from the list: «Secured distribution» proposes shipments by direction only for an area it names.',
+  'operations.crewPlan.direction.tooLong':
+    'A direction typed by hand is at most {{max}} characters — this one is {{count}}. Shorten it to keep it.',
   'operations.crewPlan.direction.clear': 'Clear the direction',
   'operations.crewPlan.time.open': 'Choose the time',
   'operations.crewPlan.time.hours': 'Hour',
@@ -27529,10 +27531,12 @@ const ar: Record<string, string> = {
   'operations.crewPlan.type.empty':
     'لا توجد أنواع مفعّلة — أضِفها من «أنواع التشغيل» في البيانات المرجعية.',
   'operations.crewPlan.refused.type': 'لم يعد هذا النوع مفعّلًا في البيانات المرجعية — اختر نوعًا آخر.',
-  'operations.crewPlan.refused.direction':
-    'ليست من المناطق المسجلة في البيانات المرجعية: {{parts}} — اختر الاتجاه من القائمة.',
-  'operations.crewPlan.direction.empty': 'لا يوجد اتجاه بهذا الاسم',
-  'operations.crewPlan.direction.unknown': 'ليس في قائمة الاتجاهات — اختر واحدًا منها',
+  'operations.crewPlan.direction.empty': 'اكتب الاتجاه',
+  'operations.crewPlan.direction.useTyped': 'استخدام «{{text}}» اتجاهًا',
+  'operations.crewPlan.direction.handTyped':
+    '«{{direction}}» مكتوب يدويًا وليس منطقة من القائمة: لا يقترح «توزيع المحصنات» محصنات حسب الاتجاه إلا لمنطقة يذكرها.',
+  'operations.crewPlan.direction.tooLong':
+    'طول الاتجاه المكتوب يدويًا {{count}}، والحد الأقصى {{max}} حرفًا — اختصره ليُحفَظ.',
   'operations.crewPlan.direction.clear': 'مسح الاتجاه',
   'operations.crewPlan.time.open': 'اختيار التوقيت',
   'operations.crewPlan.time.hours': 'الساعة',

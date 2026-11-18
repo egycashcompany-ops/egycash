@@ -1,7 +1,8 @@
 // Round 20 — «لوحة التشغيلة» as the owner approved it: the contract's own rules, pinned without a
 // server. The shift-type catalog («انا عاوز النوع يكون بيضاف من البيانات المرجعيه»), the row's type
-// and colour, rows WITHOUT A VAN («وعاوز اقدر اضيف صف ميكونش ليه عربيه»), and the direction picked
-// from the areas («لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»).
+// and colour, rows WITHOUT A VAN («وعاوز اقدر اضيف صف ميكونش ليه عربيه»), and the direction read
+// against the areas — Round 20's «لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك», reversed in Round
+// 28 («عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»): a hand-typed direction is taken.
 import { describe, expect, it } from 'vitest';
 import {
   CREW_SLOT_CAPACITY,
@@ -10,16 +11,20 @@ import {
   OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
   OPERATIONS_CREW_ROW_COLOURS,
   OPERATIONS_CREW_SLOTS,
+  OPERATIONS_DIRECTION_MAX_LENGTH,
   OPERATIONS_LEGACY_CREW_ROW_COLOURS,
   OPERATIONS_SHIFT_TYPE_COLOURS,
   OperationsCrewAssignmentChangedPayloadV1,
   OrderOperationsShiftTypesSchema,
   PlanOperationsCrewSchema,
+  SetOperationsStandingCrewSchema,
   UpdateOperationsShiftTypeSchema,
   canonicalCrewRowColour,
   canonicalOperationsDirection,
   crewRoleOf,
   fitsCrewSlot,
+  normalizeOperationsDirection,
+  operationsDirectionNamesSomething,
   type OperationsCrewMemberDto,
   type OperationsCrewRole,
 } from './operations.js';
@@ -219,7 +224,7 @@ describe('the crew-board save — type, colour, and rows without a van', () => {
   });
 });
 
-describe('the direction is picked from the areas (canonicalOperationsDirection)', () => {
+describe('the direction read against the areas (canonicalOperationsDirection)', () => {
   const AREAS = ['المعادي', 'حلوان', 'مدينة نصر', 'شبرا/الخيمة'];
 
   it('stores the area’s own spelling of a folded match', () => {
@@ -240,7 +245,18 @@ describe('the direction is picked from the areas (canonicalOperationsDirection)'
     });
   });
 
-  it('names every part no area answers — equality, never "contains"', () => {
+  // Round 28 critic — the separator was DROPPED by the fold («شبراالخيمه»), so the natural spelling
+  // with a space never reached the area: typed «شبرا الخيمة» was stored as hand-typed text, and the
+  // distribution never proposed that van for the area's محصنات.
+  it('reads an area whose name holds a separator as a desk types it — with a space, or spaced', () => {
+    for (const typed of ['شبرا الخيمة', 'شبرا / الخيمه', 'شبرا - الخيمة', 'شبرا،الخيمة']) {
+      expect(canonicalOperationsDirection(typed, AREAS), typed).toEqual({
+        direction: 'شبرا/الخيمة',
+      });
+    }
+  });
+
+  it('names every part no area answers — equality, never "contains" (Round 28: kept as typed)', () => {
     expect(canonicalOperationsDirection('طريق السويس', AREAS)).toEqual({
       unknown: ['طريق السويس'],
     });
@@ -248,6 +264,84 @@ describe('the direction is picked from the areas (canonicalOperationsDirection)'
     expect(canonicalOperationsDirection('مدينة', AREAS)).toEqual({ unknown: ['مدينة'] });
     expect(canonicalOperationsDirection(' - ', AREAS)).toEqual({ unknown: [' - '] });
     expect(canonicalOperationsDirection('المعادي', [])).toEqual({ unknown: ['المعادي'] });
+  });
+});
+
+describe('Round 28 — «الاتجاه» typed by hand («عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»)', () => {
+  const directionOf = (direction: unknown) => {
+    const parsed = plan({ rows: [{ vehicleId: oid(1), direction }] });
+    return parsed.success ? parsed.data.rows[0]?.direction : 'refused';
+  };
+  const standingDirectionOf = (direction: unknown) => {
+    const parsed = SetOperationsStandingCrewSchema.safeParse({
+      rows: [{ vehicleId: oid(1), direction }],
+    });
+    return parsed.success ? parsed.data.rows[0]?.direction : 'refused';
+  };
+
+  it('tidies a direction: trimmed, every run of spaces one space, the letters untouched', () => {
+    expect(normalizeOperationsDirection('  طريق   السويس\t ')).toBe('طريق السويس');
+    expect(normalizeOperationsDirection('المعادى\u00a0-\n حلوان')).toBe('المعادى - حلوان');
+    expect(normalizeOperationsDirection('   ')).toBe('');
+  });
+
+  // Round 28 critic — a pasted bidi mark or a zero-width space stayed, so «‏طريق» never compared
+  // equal to «طريق», and «\u200b» alone was stored as a direction that looks empty.
+  it('drops the invisible format marks a paste brings, and says what names nothing', () => {
+    expect(normalizeOperationsDirection('\u200fطريق\u200b السويس\u200e')).toBe('طريق السويس');
+    expect(normalizeOperationsDirection('\u200b')).toBe('');
+    expect(normalizeOperationsDirection('\u2066حلوان\u2069')).toBe('حلوان');
+    for (const nothing of ['', '-', '!!!', ' / ', '—', '\u200b']) {
+      expect(
+        operationsDirectionNamesSomething(normalizeOperationsDirection(nothing)),
+        nothing,
+      ).toBe(false);
+    }
+    for (const something of ['طريق', '7', 'A1', 'ط-']) {
+      expect(operationsDirectionNamesSomething(something), something).toBe(true);
+    }
+  });
+
+  it('takes any text on both saves — what no area names included — tidied as it arrives', () => {
+    for (const read of [directionOf, standingDirectionOf]) {
+      expect(read('  طريق   السويس ')).toBe('طريق السويس');
+      expect(read('المعادي - طريق السويس')).toBe('المعادي - طريق السويس');
+      expect(read(null)).toBeNull();
+      expect(read(undefined)).toBeUndefined();
+    }
+  });
+
+  // REWRITTEN in the Round 28 verify — was «is never empty once tidied, and at most
+  // OPERATIONS_DIRECTION_MAX_LENGTH characters», the ceiling held by the SHAPE on every direction.
+  // That refused a direction of areas the save itself respells past 80 («معادي/حلوان/…» typed in
+  // 78 characters is 120 stored) and a row's own long direction sent back unchanged — the row could
+  // never be saved again. The ceiling is the hand-typed text's, held by the save (the API's
+  // `crew-direction.ts`, pinned in `operations-crew-plan.spec.ts` / `operations.spec.ts`).
+  // REWRITTEN again by the Round 28 critic — it also said «is never empty once tidied» («  \t »
+  // refused by the shape). That refused a row's own BLANK direction sent back unchanged — one the
+  // standing crew's plain box (before #741) or the board before Round 20 stored — so that row could
+  // never be saved again either. The shape refuses the EMPTY string, as before Round 28; a blank
+  // or a «-» NEW or CHANGED is the save's refusal (pinned in the same two API files).
+  it('refuses only the empty string, and leaves the rest to the save — blank, «-» and length included', () => {
+    expect(OPERATIONS_DIRECTION_MAX_LENGTH).toBe(80);
+    for (const read of [directionOf, standingDirectionOf]) {
+      expect(read('')).toBe('refused');
+      // Tidied to nothing, and carried so: the save keeps it on the row that holds it, and refuses
+      // it as a new direction.
+      expect(read('  \t ')).toBe('');
+      expect(read('\u200b')).toBe('');
+      expect(read(' - ')).toBe('-');
+      const longest = 'ا'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH);
+      expect(read(longest)).toBe(longest);
+      // Counted once tidied: spaces around the longest text do not push it over.
+      expect(read(`   ${longest}   `)).toBe(longest);
+      // Past it, the shape takes it: only the save knows whether it names areas, is the row's own,
+      // or is typed by hand.
+      const areas =
+        'التجمع الخامس - القاهرة الجديدة - مصر الجديدة - المقطم - القطامية - الشيخ زايد - المهندسين';
+      expect(areas.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
+      expect(read(areas)).toBe(areas);
+    }
   });
 });
 
@@ -269,8 +363,9 @@ describe('the event and the refusals', () => {
     ).toBe(true);
   });
 
-  it('names the two new refusals', () => {
+  it('names the two Round-20 refusals — the direction’s kept as a name, sent no more since Round 28', () => {
     expect(ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE).toBe('OPERATIONS_UNKNOWN_SHIFT_TYPE');
+    // Deprecated, not removed: a client built before Round 28 still reads it.
     expect(ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA).toBe('OPERATIONS_DIRECTION_NOT_AN_AREA');
   });
 });

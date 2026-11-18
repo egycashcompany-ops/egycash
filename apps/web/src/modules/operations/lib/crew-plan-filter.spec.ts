@@ -108,6 +108,34 @@ describe('the direction — each area a direction names, and «بدون اتجا
     expect(shown({ directions: [helwan] })).toEqual(['van:v-150']);
     expect(shown({ directions: [NO_DIRECTION] })).toEqual(['van:v-24']);
   });
+
+  it('Round 28 — a direction typed by hand is offered and found by its own words, no crash', () => {
+    // «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»: the save keeps such a text as typed.
+    const rows = [
+      ...ROWS,
+      van('31', { direction: 'طريق السويس' }),
+      van('32', { direction: 'المعادي - طريق السويس' }),
+    ];
+    const labels = directionFilterOptions(rows, AREAS).map((option) => option.label);
+    expect(labels).toEqual(expect.arrayContaining(['طريق السويس', 'المعادي']));
+    // Each area once: the free text and the area beside it are two entries, never doubled.
+    expect(labels.filter((label) => label === 'طريق السويس')).toHaveLength(1);
+    const suez = directionParts('طريق السويس', AREAS)[0]?.value as string;
+    const maadi = directionParts('المعادي', AREAS)[0]?.value as string;
+    const found = (directions: string[]) =>
+      rows
+        .filter((one) =>
+          matchesRowFilter(
+            one,
+            { ...EMPTY_ROW_FILTER, directions },
+            { memberOf, areaNames: AREAS },
+          ),
+        )
+        .map((one) => one.key);
+    expect(found([suez])).toEqual(['van:v-31', 'van:v-32']);
+    // The area it names beside its own words still finds it.
+    expect(found([maadi])).toEqual(['van:v-150', 'van:v-32']);
+  });
 });
 
 describe('AND-ed, view only', () => {

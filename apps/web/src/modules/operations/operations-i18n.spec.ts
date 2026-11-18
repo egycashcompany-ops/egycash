@@ -794,7 +794,8 @@ const CREW_PLAN_KEYS = [
   ...['choose', 'clear', 'untyped', 'archived', 'archivedHint', 'empty'].map(
     (key) => `operations.crewPlan.type.${key}`,
   ),
-  ...['type', 'direction'].map((key) => `operations.crewPlan.refused.${key}`),
+  // Round 28 — a direction is no longer refused («عاوز الاتجاه اقدر اكتبه بايدى»): its words are gone.
+  'operations.crewPlan.refused.type',
   // Round 24b — the row's colour is the types' palette (named by `SHIFT_TYPE_KEYS`'s colours) over
   // its type's own: «لون النوع», each swatch naming the types that wear it, and the card «ألوان الأنواع».
   ...[
@@ -832,7 +833,11 @@ const CREW_PLAN_KEYS = [
     ...['addRow', 'removeRow', 'clearRow', 'giveVan', 'dropVan', 'standingLoad', 'standingClear'],
     'restoreRow',
   ].map((key) => `operations.crewPlan.undo.kind.${key}`),
-  ...['empty', 'unknown', 'clear'].map((key) => `operations.crewPlan.direction.${key}`),
+  // Round 28 — «عاوز الاتجاه اقدر اكتبه بايدى»: the typed text offered, and its title once saved.
+  // Round 28 critic — a hand-typed direction past the ceiling is said, never cut without a word.
+  ...['empty', 'useTyped', 'handTyped', 'tooLong', 'clear'].map(
+    (key) => `operations.crewPlan.direction.${key}`,
+  ),
   ...['open', 'hours', 'minutes', 'clear'].map((key) => `operations.crewPlan.time.${key}`),
   ...['clear', 'remove'].map((key) => `operations.crewPlan.row.${key}`),
   ...['captain', 'specialists1', 'specialists2'].map((key) => `operations.crewPlan.short.${key}`),

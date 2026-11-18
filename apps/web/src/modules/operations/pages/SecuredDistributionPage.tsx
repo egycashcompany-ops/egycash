@@ -195,6 +195,7 @@ import {
   matchesUnplacedFilter,
   matchesVanFilter,
   shipmentAreaOptions,
+  shipmentAreaNames,
   vanAreaOptions,
   vanCaptainMatch,
   type UnplacedFilter,
@@ -330,6 +331,10 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const packagesRead = packagingRead(canReadVault, packaging);
 
   const columns = distributionColumns(rows, vans, draft);
+  // Round 28 critic — the areas the day's محصنات name, so a van's direction that IS one of them is
+  // read whole (`directionParts`): «شبرا/الخيمة» was split at «/» into two areas no محصنة has, and
+  // the right area box offered «شبرا» and «الخيمة».
+  const areaNamesOfDay = shipmentAreaNames(rows);
   // Round 26 — the day's packages (every محصنة listed, as the vault counted them), for the page's
   // figures; null to a reader who cannot read the vault.
   const dayPackages = vanPackages(packagesRead, rows, packagingOf);
@@ -870,6 +875,7 @@ export const SecuredDistributionPage = (): JSX.Element => {
     matchesVanFilter(van, load, vanFilter, {
       name: vanCodeText(t, van, looseNumberOf(van.crewAssignmentId)),
       bankWordsOf,
+      areaNames: areaNamesOfDay,
     }),
   );
   // R26b critic — the captain box found a van by a captain its card does not show: name him on it.
@@ -882,8 +888,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const unplacedAreaOptions = shipmentAreaOptions(columns.unplaced, unplacedFilter.area).map(
     (option) => areaLabel(option, t('operations.distribution.filter.noArea')),
   );
-  const vanAreaChoices = vanAreaOptions(columns.vans, [], vanFilter.area).map((option) =>
-    areaLabel(option, t('operations.distribution.filter.noDirection')),
+  const vanAreaChoices = vanAreaOptions(columns.vans, areaNamesOfDay, vanFilter.area).map(
+    (option) => areaLabel(option, t('operations.distribution.filter.noDirection')),
   );
 
   // ── The page ───────────────────────────────────────────────────────────────────────────────────

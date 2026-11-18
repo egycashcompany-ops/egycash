@@ -1,11 +1,12 @@
 // The controls in a «لوحة التشغيلة» row, each with a list of its own:
 //
-//   · الاتجاه — «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»: a
-//     box you TYPE in to narrow the list, whose value is always one of the list (the areas catalog —
-//     the names the bank branches' areas use). Leaving it on a name typed out in full takes that name
-//     in the AREA'S OWN spelling — the server's own rule (`canonicalOperationsDirection`), so «المعادى»
-//     typed is saved as «المعادي», and the box and the save cannot disagree about what is an area;
-//     on anything else it goes back to what it was — never a free text the catalog does not have;
+//   · الاتجاه — a box you TYPE in to narrow the list of areas (the areas catalog — the names the bank
+//     branches' areas use). Round 20 held its value to that list («لازم اختار من الاتجاهات اللى
+//     موجوده بتاعت البنوك»); Round 28 reverses it — «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى
+//     الليست»: text that is not exactly an area is offered as «استخدام «…» اتجاهًا» and taken as
+//     typed. An area's name typed out in full is still taken in the AREA'S OWN spelling — the
+//     server's own rule (`canonicalOperationsDirection`), so «المعادى» typed is saved as «المعادي».
+//     The list and the leaving rule are `lib/direction-pick.ts`;
 //   · التوقيت — «التوقيت اعملى حاجه اختار منها زى التاريخ»: the date box's look (the cyan icon at its
 //     start), and a picker of hours and minutes behind the icon; a time can still be typed;
 //   · النوع — «انا عاوز النوع يكون بيضاف من البيانات المرجعيه»: the ACTIVE types of «أنواع التشغيل»,
@@ -38,19 +39,28 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  canonicalOperationsDirection,
+  OPERATIONS_DIRECTION_MAX_LENGTH,
   type Locale,
   type OperationsShiftTypeDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { cn } from '../../../shared/lib/cn';
-import { fold } from '../../../shared/lib/fold';
 import { formatNumber } from '../../../shared/lib/format';
 import { useAppSelector } from '../../../store';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { floatingSpot, type FloatingSpot } from '../../../shared/ui/MultiSelect';
 import { BoardIcon, NUM } from '../../fleet/components/FuelCardBoard';
 import { parseClock, shiftTypeChoices, type CrewRowColour } from '../lib/crew-plan';
+import {
+  directionItems,
+  directionItemsAtOpen,
+  directionOnLeave,
+  directionTooLong,
+  highlightedDirectionRow,
+  isHandTypedDirection,
+  opensOnText,
+  type DirectionItem,
+} from '../lib/direction-pick';
 import { gridStep, type CatalogState, type RowColourChoice } from '../lib/type-colours';
 import { PLAN_ICON } from './crew-plan-icons';
 import { SHIFT_TYPE_TONE, ShiftTypeDot, ShiftTypeTag, shiftTypeName } from './shift-type-look';
@@ -68,7 +78,7 @@ export const CELL_BOX =
 export const REFUSED_BOX =
   '[&&]:border-rose-500 [&&]:ring-2 [&&]:ring-rose-500/30 dark:[&&]:border-rose-400';
 
-/** A value the box keeps but the catalog no longer offers (legacy text, an archived type). */
+/** A value the box keeps but the catalog no longer offers (an archived type). */
 const KEPT_BOX =
   '[&&]:border-amber-400 [&&]:text-amber-800 dark:[&&]:border-amber-500/70 dark:[&&]:text-amber-200';
 
@@ -206,76 +216,216 @@ const useFocusOnOpen = (open: boolean, selector: string): void => {
 
 // ── الاتجاه ──────────────────────────────────────────────────────────────────────────────────────
 
+/** The id of the direction list's row `index` — the clear row is `items.length`. */
+const directionOptionId = (listId: string, index: number): string => `${listId}-option-${index}`;
+
+/**
+ * The rows of the direction box's list (`directionItems`): the areas, «استخدام «…» اتجاهًا» — the
+ * text as typed, with a pen where an area has its pin, set apart by a line when areas precede it —
+ * and «مسح الاتجاه» when the row has one. Its own component so the rows are rendered, and pinned,
+ * without opening the list.
+ *
+ * Round 28 critic — a combobox's rows, said to a screen reader: each has an id the box names as its
+ * active row (`aria-activedescendant`), «مسح الاتجاه» is reached by the arrows too (it is the row
+ * after the last item), and a typed row equal to the value is the selected one. Text typed past the
+ * ceiling (`tooLong`) is said, not cut without a word.
+ */
+export const DirectionOptions = ({
+  listId,
+  items,
+  active,
+  value,
+  tooLong = null,
+  onHover,
+  onPick,
+}: {
+  /** The list's id — each row's is made from it (`directionOptionId`). */
+  listId: string;
+  items: readonly DirectionItem[];
+  /** The highlighted row — what Enter takes; `items.length` is «مسح الاتجاه». */
+  active: number;
+  value: string | null;
+  /** The length of text typed past `OPERATIONS_DIRECTION_MAX_LENGTH` (`directionTooLong`). */
+  tooLong?: number | null;
+  onHover: (index: number) => void;
+  onPick: (direction: string | null) => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
+  return (
+    <>
+      {tooLong !== null && (
+        <li
+          role="presentation"
+          data-direction-too-long="true"
+          className="px-2.5 py-2 text-[12.5px] font-bold leading-snug text-amber-800 dark:text-amber-200"
+        >
+          {t('operations.crewPlan.direction.tooLong', {
+            max: formatNumber(OPERATIONS_DIRECTION_MAX_LENGTH, locale),
+            count: formatNumber(tooLong, locale),
+          })}
+        </li>
+      )}
+      {items.length === 0 && tooLong === null && (
+        <li
+          role="presentation"
+          className="px-2.5 py-2 text-[12.5px] font-semibold text-slate-500 dark:text-slate-400"
+        >
+          {t('operations.crewPlan.direction.empty')}
+        </li>
+      )}
+      {items.map((item, index) => (
+        <li
+          key={`${item.kind}:${item.direction}`}
+          id={directionOptionId(listId, index)}
+          role="option"
+          aria-selected={item.direction === value}
+          data-direction-option={item.kind}
+          data-active={index === active ? 'true' : undefined}
+          onMouseEnter={() => onHover(index)}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onPick(item.direction)}
+          className={cn(
+            OPTION,
+            'cursor-pointer',
+            index === active && 'bg-brand-500/10 dark:bg-brand-500/15',
+            item.direction === value && 'text-brand-700 dark:text-brand-200',
+            // The typed text stands apart from the areas: a line above it when areas precede.
+            item.kind === 'typed' &&
+              index > 0 &&
+              items[index - 1]?.kind === 'area' &&
+              'mt-1 border-t border-slate-100 pt-2 dark:border-slate-800',
+          )}
+        >
+          <BoardIcon
+            d={item.kind === 'area' ? PLAN_ICON.pin : PLAN_ICON.pen}
+            className={cn(
+              'h-3.5 w-3.5 shrink-0',
+              item.kind === 'area' ? 'text-slate-400' : 'text-brand-600 dark:text-brand-300',
+            )}
+          />
+          {item.kind === 'area' ? (
+            <span className="min-w-0 break-words">{item.direction}</span>
+          ) : (
+            <span className="min-w-0 break-words">
+              {t('operations.crewPlan.direction.useTyped', { text: item.direction })}
+            </span>
+          )}
+        </li>
+      ))}
+      {value !== null && (
+        <li
+          id={directionOptionId(listId, items.length)}
+          role="option"
+          aria-selected={false}
+          data-direction-option="clear"
+          data-active={active === items.length ? 'true' : undefined}
+          onMouseEnter={() => onHover(items.length)}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onPick(null)}
+          className={cn(
+            OPTION,
+            'mt-1 cursor-pointer border-t border-slate-100 text-slate-500 dark:border-slate-800 dark:text-slate-400',
+            active === items.length && 'bg-brand-500/10 dark:bg-brand-500/15',
+          )}
+        >
+          {t('operations.crewPlan.direction.clear')}
+        </li>
+      )}
+    </>
+  );
+};
+
 export const DirectionPicker = ({
   rowKey,
   value,
   options,
   disabled,
-  refused,
   onChange,
 }: {
   rowKey: string;
   value: string | null;
-  /** The areas' names — what the value must be one of. */
+  /** The areas' names — what the list offers; a direction typed by hand is taken too (Round 28). */
   options: readonly string[];
   disabled: boolean;
-  /** The last save refused this row's direction: the parts no area answers, said on the box. */
-  refused?: string | null;
   onChange: (next: string | null) => void;
 }): JSX.Element => {
   const t = useT();
   const id = useId();
+  const noteId = `${id}-note`;
   const box = useRef<HTMLDivElement>(null);
-  const list = useRef<HTMLUListElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  // Has the desk typed since the box opened? Until then the list is the box's opening list
+  // (`directionItemsAtOpen`) and leaving it changes nothing.
+  const [edited, setEdited] = useState(false);
   const [active, setActive] = useState(0);
+  // Have the arrows moved the highlight since the last keystroke? (`highlightedDirectionRow`)
+  const [arrowed, setArrowed] = useState(false);
+  // The mouse-up of the click that focused the box would undo its select-all (Round 28 critic).
+  const keepSelection = useRef(false);
   const current = value ?? '';
-  // A value written before the list existed (legacy free text) is kept and said, not blanked. Read
-  // by the server's rule: «المعادي - حلوان», two areas the distribution reads both of, is known.
-  // While the areas have not arrived nothing is called unknown — an empty list is «not read yet».
-  const unknown =
-    current !== '' &&
-    options.length > 0 &&
-    !('direction' in canonicalOperationsDirection(current, options));
+  // A direction typed by hand (Round 28), or written before the list existed: shown plainly, with a
+  // pen at its start (Round 28 critic — a title alone never shows on a phone), and said: it is no
+  // area, and what that means for «توزيع المحصنات».
+  const handTyped = isHandTypedDirection(value, options);
+  // Round 28 critic — a value that is not one area opens as its own text, whole and editable.
+  const seeded = opensOnText(value, options);
 
-  const matches = useMemo(() => {
-    const q = fold(query);
-    return q === '' ? options : options.filter((option) => fold(option).includes(q));
-  }, [options, query]);
+  const items = useMemo(
+    () => (edited ? directionItems(query, options) : directionItemsAtOpen(value, options)),
+    [edited, options, query, value],
+  );
+  const tooLong = edited ? directionTooLong(query, options) : null;
+  /** Rows the arrows walk: the items, then «مسح الاتجاه» when the row has a direction. */
+  const count = items.length + (value !== null ? 1 : 0);
+  /** The highlighted row — what Enter takes; -1 for none. */
+  const lit = highlightedDirectionRow(items.length, active, value !== null, arrowed);
 
   useEffect(() => {
-    if (open) list.current?.children[active]?.scrollIntoView({ block: 'nearest' });
-  }, [active, open]);
+    if (open)
+      document.getElementById(directionOptionId(id, lit))?.scrollIntoView({ block: 'nearest' });
+  }, [lit, id, open]);
 
-  const commit = (option: string | null): void => {
+  /** Open the list on the box's own value — its text kept when it is not one area. */
+  const openList = (): void => {
+    if (open) return;
+    setOpen(true);
+    setEdited(false);
+    setQuery(seeded ? current : '');
+    const at = directionItemsAtOpen(value, options).findIndex((item) => item.direction === value);
+    setActive(at === -1 ? 0 : at);
+    setArrowed(false);
+  };
+  const close = (): void => {
     setOpen(false);
+    setEdited(false);
     setQuery('');
+  };
+  const commit = (option: string | null): void => {
+    close();
     if (option !== value) onChange(option);
   };
   /**
-   * Leaving the box: a whole name typed is taken, in the area's own spelling; anything else falls
-   * back to the value. Nothing typed is nothing to take.
+   * Leaving the box (`directionOnLeave`): an area's name typed in full is taken in the area's
+   * spelling, a half-typed word of an area goes back to the value (the desk was searching), and
+   * anything else is taken as typed. Nothing typed since it opened is nothing to take.
    */
   const leave = (): void => {
-    const typed = query.trim();
-    const canonical = typed === '' ? null : canonicalOperationsDirection(typed, options);
-    setOpen(false);
-    setQuery('');
-    if (canonical !== null && 'direction' in canonical && canonical.direction !== value) {
-      onChange(canonical.direction);
-    }
+    const taken = edited ? directionOnLeave(query, options) : null;
+    close();
+    if (taken !== null && taken !== value) onChange(taken);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       if (!open) {
-        setOpen(true);
-        setActive(0);
+        openList();
         return;
       }
-      const count = matches.length;
+      setArrowed(true);
       setActive((at) =>
         count === 0 ? 0 : (at + (event.key === 'ArrowDown' ? 1 : -1) + count) % count,
       );
@@ -283,15 +433,20 @@ export const DirectionPicker = ({
     }
     if (event.key === 'Enter' && open) {
       event.preventDefault();
-      const picked = matches[active];
-      if (picked !== undefined) commit(picked);
+      // The highlighted row — an area, «استخدام «…» اتجاهًا», or «مسح الاتجاه».
+      if (lit === -1) return;
+      if (lit === items.length && value !== null) {
+        commit(null);
+        return;
+      }
+      const picked = items[lit];
+      if (picked !== undefined) commit(picked.direction);
       return;
     }
     if (event.key === 'Escape' && open) {
       event.preventDefault();
       event.stopPropagation();
-      setOpen(false);
-      setQuery('');
+      close();
       return;
     }
     if (event.key === 'Tab' && open) leave();
@@ -299,32 +454,56 @@ export const DirectionPicker = ({
 
   return (
     <div ref={box} className="relative" data-direction-picker={rowKey}>
+      {handTyped && (
+        <span
+          aria-hidden
+          data-direction-hand-typed-mark="true"
+          className="pointer-events-none absolute start-2 top-2 text-slate-400 dark:text-slate-500"
+        >
+          <BoardIcon d={PLAN_ICON.pen} className="h-4 w-4" />
+        </span>
+      )}
       <input
+        ref={input}
         type="text"
         role="combobox"
         aria-label={t('operations.crewPlan.columns.direction')}
         aria-expanded={open}
         aria-controls={id}
         aria-autocomplete="list"
+        aria-activedescendant={open && lit !== -1 ? directionOptionId(id, lit) : undefined}
+        aria-describedby={handTyped ? noteId : undefined}
         autoComplete="off"
         disabled={disabled}
         placeholder={t('operations.crewPlan.columns.direction')}
-        aria-invalid={refused != null ? true : undefined}
         title={
-          refused != null ? refused : unknown ? t('operations.crewPlan.direction.unknown') : current
+          handTyped ? t('operations.crewPlan.direction.handTyped', { direction: current }) : current
         }
+        data-direction-hand-typed={handTyped ? 'true' : undefined}
         value={open ? query : current}
-        onFocus={() => {
-          setOpen(true);
-          setActive(0);
+        onFocus={(event) => {
+          openList();
+          // Its own text, all of it chosen: typed over at once, or a word of it fixed in place.
+          if (seeded) {
+            event.currentTarget.select();
+            keepSelection.current = true;
+          }
         }}
-        onClick={() => setOpen(true)}
+        onMouseUp={(event) => {
+          if (!keepSelection.current) return;
+          keepSelection.current = false;
+          event.preventDefault();
+        }}
+        onClick={openList}
         onChange={(event) => {
+          if (!open) setOpen(true);
           setQuery(event.target.value);
+          setEdited(true);
           setActive(0);
-          setOpen(true);
+          setArrowed(false);
         }}
         onBlur={(event) => {
+          keepSelection.current = false;
           // A click on the list keeps the focus on the box (its rows prevent the blur); anything
           // else that takes it away is leaving.
           if (!box.current?.contains(event.relatedTarget as Node | null)) {
@@ -332,8 +511,13 @@ export const DirectionPicker = ({
           }
         }}
         onKeyDown={onKeyDown}
-        className={cn(CELL_BOX, 'pe-6', unknown && KEPT_BOX, refused != null && REFUSED_BOX)}
+        className={cn(CELL_BOX, 'pe-6', handTyped && 'ps-7')}
       />
+      {handTyped && (
+        <span id={noteId} className="sr-only">
+          {t('operations.crewPlan.direction.handTyped', { direction: current })}
+        </span>
+      )}
       <svg
         viewBox="0 0 24 24"
         aria-hidden
@@ -344,7 +528,7 @@ export const DirectionPicker = ({
       >
         <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
-      {/* A click outside is LEAVING the box — a whole name typed there is taken, as on Tab. */}
+      {/* A click outside is LEAVING the box — the same rule as Tab (`directionOnLeave`). */}
       <FloatingPanel
         anchor={box}
         open={open}
@@ -352,50 +536,19 @@ export const DirectionPicker = ({
         width={240}
         data-direction-list={rowKey}
       >
-        <ul
-          ref={list}
-          id={id}
-          role="listbox"
-          aria-label={t('operations.crewPlan.columns.direction')}
-        >
-          {matches.length === 0 && (
-            <li className="px-2.5 py-2 text-[12.5px] font-semibold text-slate-500 dark:text-slate-400">
-              {t('operations.crewPlan.direction.empty')}
-            </li>
-          )}
-          {matches.map((option, index) => (
-            <li
-              key={option}
-              role="option"
-              aria-selected={option === value}
-              onMouseEnter={() => setActive(index)}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => commit(option)}
-              className={cn(
-                OPTION,
-                'cursor-pointer',
-                index === active && 'bg-brand-500/10 dark:bg-brand-500/15',
-                option === value && 'text-brand-700 dark:text-brand-200',
-              )}
-            >
-              <BoardIcon d={PLAN_ICON.pin} className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-              {option}
-            </li>
-          ))}
-          {value !== null && (
-            <li
-              role="option"
-              aria-selected={false}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => commit(null)}
-              className={cn(
-                OPTION,
-                'mt-1 cursor-pointer border-t border-slate-100 text-slate-500 dark:border-slate-800 dark:text-slate-400',
-              )}
-            >
-              {t('operations.crewPlan.direction.clear')}
-            </li>
-          )}
+        <ul id={id} role="listbox" aria-label={t('operations.crewPlan.columns.direction')}>
+          <DirectionOptions
+            listId={id}
+            items={items}
+            active={lit}
+            value={value}
+            tooLong={tooLong}
+            onHover={(index) => {
+              setActive(index);
+              setArrowed(true);
+            }}
+            onPick={commit}
+          />
         </ul>
       </FloatingPanel>
     </div>

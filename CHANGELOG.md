@@ -1666,6 +1666,84 @@ its entry here in the same PR.
       values retuned in `distribution-round26.spec.tsx` and `secured-distribution.spec.tsx`: a
       waiting chip's edge rose-300 (was rose-500), a proposal's amber-400 on amber-50/70 (was
       amber-500 on amber-50), the page's figure squares /10 (was /15).
+  - Round 28 — «الاتجاه» يُكتب باليد. The owner, on «لوحة التشغيلة» with a row «بدون سيارة» and the
+    direction's list saying «لا يوجد اتجاه بهذا الاسم»: «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى
+    الليست فاهم ؟». This REVERSES the earlier rule «اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى
+    موجوده بتاعت البنوك» (Round 20): a direction no area answers is taken, on the daily board and on
+    «الطاقم الثابت».
+    - The save (`POST /operations/crew-board`, `PUT /operations/standing-crew`): a new or changed
+      direction that names active areas is still stored in the areas' own spelling («المعادى» →
+      «المعادي», «المعادى و حلوان» → «المعادي - حلوان»); anything else is stored as typed — trimmed,
+      each run of spaces one space (`normalizeOperationsDirection`), never blank, and that
+      hand-typed text at most `OPERATIONS_DIRECTION_MAX_LENGTH` (80) characters, else 400 on the
+      row's `direction`. A direction of areas is not held to it (ten areas typed in 78 characters
+      are 120 stored), nor one a row already holds, which stays exactly as written while it is sent
+      unchanged. `OPERATIONS_DIRECTION_NOT_AN_AREA` is no longer sent (the code stays in the
+      contracts, marked deprecated). The standing crew's save now reads the areas too, so the two
+      saves store a direction alike (`crew/crew-direction.ts`).
+    - The box (both screens): while typing a name that is not exactly an area, the list offers
+      «استخدام «…» اتجاهًا» («Use “…” as the direction») — first, and alone, when no area holds the
+      text, in place of the dead end; last when some areas do, so Enter still takes the highlighted
+      area. Enter takes the highlighted row. Leaving the box (Tab, a click outside): an area's exact
+      name → that area, in its spelling, as before; text no area holds → taken as typed; part of an
+      area's name → nothing taken (the desk was searching). The rule is `lib/direction-pick.ts`.
+    - A saved hand-typed direction is shown plainly — no amber «not on the list» look; its title says
+      it is typed by hand, not an area, and that «توزيع المحصنات» proposes by direction only for an
+      area it names. The board's direction filter and the distribution's area box list it by its
+      own words.
+    - Tests rewritten to the new rule: (api) «refuses a new direction that is not an active area» →
+      «Round 28 — takes a new direction no active area answers, stored as typed and tidied», «keeps a
+      direction saved before the rule while it is sent unchanged, and refuses changing it to another»
+      → «… and takes changing it to another»; (web) «places a direction that is not an area on its
+      row» → «places no row for a direction», «legacy free text is kept and marked» → «a hand-typed
+      direction is shown plainly»; (contracts) «is never empty once tidied, and at most
+      OPERATIONS_DIRECTION_MAX_LENGTH characters» → «… and leaves the length to the save» (the
+      ceiling held by the shape refused a direction of areas the save respells past 80, and a row's
+      own long one sent back unchanged). New: the blank and too-long refusals, the hand-typed-only
+      ceiling, the standing crew's save, the list and the leaving rule, the filters with a
+      hand-typed direction.
+    - Round 28 critic, fixed with tests that fail before and pass after:
+      - The save keeps a row's OWN direction sent back unchanged whatever it is — blank (spaces
+        only, which the standing crew's plain box before #741 and the board before Round 20 stored),
+        «-», or long. The shape refused the blank, so nothing on that row could be saved again. The
+        shape now refuses only the empty string, as before Round 28. A NEW or CHANGED direction that
+        names nothing (blank, «-», a zero-width space) is refused by the save with 400 on the row's
+        `direction` (`TOO_SMALL`). It was stored before, and the filters counted it «بدون اتجاه».
+        `normalizeOperationsDirection` also drops invisible format marks (`\p{Cf}`: bidi marks, a
+        zero-width space), and `operationsDirectionNamesSomething` is the shared «names something»
+        rule.
+      - An area whose name holds a separator: the area fold (`foldOperationsAreaName`) now reads a
+        punctuation mark or a symbol as a space, not as nothing. So «شبرا الخيمة» as typed is the
+        area «شبرا/الخيمة», stored in its spelling. `operationsDirectionMatchesArea` tries the whole
+        direction first, so a van picked as «شبرا/الخيمة» is proposed for its own area's محصنات
+        again (a bug older than this round). «توزيع المحصنات» reads the vans' directions against its
+        محصنات' areas (`shipmentAreaNames`), so the right area box no longer splits it into «شبرا»
+        and «الخيمة».
+      - The list: a near miss of an area comes before «استخدام «…» اتجاهًا». This covers the words
+        in another order («نصر مدينة»), one letter away from four letters on («حلوات» → «حلوان»),
+        and a separator typed as a space. A direction of several parts is completed on its last part
+        («المعادي - حلو» → «المعادي - حلوان»).
+      - Leaving the box: text that ends part-way through an area's word («حلو», «المعادي - حلو»)
+        goes back, as before. A WHOLE word is taken as typed, even one an area holds («مصر» beside
+        «مصر الجديدة»). It used to be thrown away without a word.
+      - The box: a hand-typed direction wears a small pen at its start. The title alone never showed
+        on a phone. Opened on a value that is not one area, the box keeps its text whole and
+        selected, so it can be read in full and corrected in place; it used to blank it. That value
+        is the list's first row, so Enter keeps it. The 80-character `maxLength`, which cut a paste
+        without a word, is gone. The list says when hand-typed text is too long («طول الاتجاه
+        المكتوب يدويًا …»). Each row has an id the box names as active (`aria-activedescendant`),
+        «مسح الاتجاه» is reached by the arrows, and the hand-typed note is the box's
+        `aria-describedby`.
+      - Comments corrected: the standing crew's direction is NOT carried to the day. «تحميل الطاقم
+        الثابت» copies the people only. The two saves share the rule only so the two boxes behave
+        alike.
+      - Tests rewritten to the critic's rule (the build's, never the owner's): (web) «text some area
+        holds → nothing taken» → «text that ends part-way through an area's word → nothing taken»
+        («نصر» is now taken), «caps the typing at the save's ceiling» → «cuts nothing typed or
+        pasted: the box has no maxLength — the list says when it is too long»; (contracts) «is never
+        empty once tidied, and leaves the length to the save» → «refuses only the empty string, and
+        leaves the rest to the save — blank, «-» and length included». The blank and «-» refusals
+        are pinned by the API's integration tests.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

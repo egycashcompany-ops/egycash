@@ -924,7 +924,10 @@ describe('toPlan — a body `PlanOperationsCrewSchema` itself takes', () => {
 describe('planRefusal — the refused save, on the row it names', () => {
   const sent = [van('1'), { ...vehiclelessRow(3), direction: 'مكان ما' }];
 
-  it('places a direction that is not an area on its row, with the parts refused', () => {
+  // REWRITTEN in Round 28 — was «places a direction that is not an area on its row, with the parts
+  // refused». The owner reversed the rule («عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»): the
+  // save takes a direction typed by hand, so no row is ever marked for its direction.
+  it('Round 28 — places no row for a direction: the retired refusal, from an older server, is only said', () => {
     expect(
       planRefusal(
         {
@@ -936,7 +939,7 @@ describe('planRefusal — the refused save, on the row it names', () => {
         },
         sent,
       ),
-    ).toEqual({ key: 'new:3', field: 'direction', parts: ['مكان ما'] });
+    ).toBeNull();
   });
 
   it('places an archived type on its row', () => {
@@ -951,7 +954,7 @@ describe('planRefusal — the refused save, on the row it names', () => {
         },
         sent,
       ),
-    ).toEqual({ key: 'van:v-1', field: 'type', parts: [] });
+    ).toEqual({ key: 'van:v-1', field: 'type' });
   });
 
   // Round 22 F — `OPERATIONS_CREW_MEMBER_ABSENT`: the server names the person and the row.
@@ -971,7 +974,6 @@ describe('planRefusal — the refused save, on the row it names', () => {
     expect(refused('ABSENT', 'e-7', '1')).toEqual({
       key: 'van:v-2',
       field: 'crew',
-      parts: [],
       person: { employeeId: 'e-7', reason: 'absent' },
     });
     expect(refused('ON_LEAVE', 'e-9', '1')?.person).toEqual({
@@ -979,8 +981,8 @@ describe('planRefusal — the refused save, on the row it names', () => {
       reason: 'onLeave',
     });
     // A person the row does not hold, or a reason this screen does not know: the row, unnamed.
-    expect(refused('ABSENT', 'e-1', '1')).toEqual({ key: 'van:v-2', field: 'crew', parts: [] });
-    expect(refused('SICK', 'e-7', '1')).toEqual({ key: 'van:v-2', field: 'crew', parts: [] });
+    expect(refused('ABSENT', 'e-1', '1')).toEqual({ key: 'van:v-2', field: 'crew' });
+    expect(refused('SICK', 'e-7', '1')).toEqual({ key: 'van:v-2', field: 'crew' });
     expect(refused('ABSENT', 'e-7', '5')).toBeNull();
   });
 
@@ -1001,7 +1003,6 @@ describe('planRefusal — the refused save, on the row it names', () => {
     expect(refused('NOT_A_CAPTAIN', 'e-9', '1')).toEqual({
       key: 'van:v-2',
       field: 'slot',
-      parts: [],
       person: { employeeId: 'e-9', reason: 'notCaptain' },
     });
     expect(refused('NOT_A_SPECIALIST', 'e-7', '1')?.person).toEqual({
@@ -1009,11 +1010,10 @@ describe('planRefusal — the refused save, on the row it names', () => {
       reason: 'notSpecialist',
     });
     // The away codes are not this refusal's, nor somebody the row does not hold: the row, unnamed.
-    expect(refused('ABSENT', 'e-7', '1')).toEqual({ key: 'van:v-2', field: 'slot', parts: [] });
+    expect(refused('ABSENT', 'e-7', '1')).toEqual({ key: 'van:v-2', field: 'slot' });
     expect(refused('NOT_A_CAPTAIN', 'e-1', '1')).toEqual({
       key: 'van:v-2',
       field: 'slot',
-      parts: [],
     });
     expect(refused('NOT_A_CAPTAIN', 'e-9', '4')).toBeNull();
     // Said by name, in both languages; the server's code has words of its own.
@@ -1064,9 +1064,10 @@ describe('isCrewClash — which refusal the plan’s own sentence is true of', (
   });
 });
 
-// «لازم اختار من الاتجاهات اللى موجوده» — the save holds a new direction to EVERY active area, so the
-// picker must know every one: a list cut at the server's page cap left an area past the hundredth
-// impossible to pick, and marked a direction naming it «not an area».
+// «لازم اختار من الاتجاهات اللى موجوده» (Round 20; since Round 28 a direction may be typed by hand) —
+// the save respells a new direction by EVERY active area, so the picker must know every one: a list
+// cut at the server's page cap left an area past the hundredth off the list, and called a direction
+// naming it hand-typed.
 describe('activeAreaNames — the direction list is the whole catalog, not one page', () => {
   it('reads every page of the active areas, by name', async () => {
     const areas = Array.from({ length: 230 }, (_, at) => ({

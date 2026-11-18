@@ -117,7 +117,8 @@ describe('errorMessage', () => {
   });
 
   // «لوحة التشغيلة» (Round 20) — a save refused for a type archived since it was picked, or a
-  // direction no area answers. The board marks the row; these are the words said beside it.
+  // direction no area answers. The board marks the row; these are the words said beside it. Round 28
+  // retired the direction's refusal: its words stay, harmless, for an older server only.
   it('words the crew board’s two row refusals, each its own, never the server’s English', () => {
     const words: string[] = [];
     for (const code of [

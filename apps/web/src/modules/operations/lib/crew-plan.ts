@@ -947,13 +947,17 @@ export const isCrewClash = (failure: unknown): boolean =>
   failure instanceof ApiError && failure.status === 409 && failure.code === 'DUPLICATE';
 
 /**
- * The refusals a save can name a row in, and what on it each one is about: its type box, its
- * direction box, or one PERSON on it — `crew` (Round 22, somebody away that day newly put on it) or
- * `slot` (Round 23, somebody newly put in a slot his role does not fit) — or (Round 24) its VAN
- * (`vehicle`: not in service, in the workshop, or another row's) or its REMOVAL (`remove`: a deleted
- * row that holds محصنات — the page puts it back, marked).
+ * The refusals a save can name a row in, and what on it each one is about: its type box, or one
+ * PERSON on it — `crew` (Round 22, somebody away that day newly put on it) or `slot` (Round 23,
+ * somebody newly put in a slot his role does not fit) — or (Round 24) its VAN (`vehicle`: not in
+ * service, in the workshop, or another row's) or its REMOVAL (`remove`: a deleted row that holds
+ * محصنات — the page puts it back, marked).
+ *
+ * Round 28 — no longer its DIRECTION: «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست», and the
+ * save takes a direction typed by hand, so `OPERATIONS_DIRECTION_NOT_AN_AREA` is sent no more. Were
+ * an older server to send it, it is said in its own words (`errors.ts`), placed on no row.
  */
-export type PlanRefusalField = 'type' | 'direction' | 'crew' | 'slot' | 'vehicle' | 'remove';
+export type PlanRefusalField = 'type' | 'crew' | 'slot' | 'vehicle' | 'remove';
 
 /** Why the save refused the van a row was given (Round 24). */
 export type VehicleRefusal = 'notActive' | 'inWorkshop' | 'taken';
@@ -965,8 +969,6 @@ export interface PlanRefusal {
   /** The row's key on screen. */
   key: string;
   field: PlanRefusalField;
-  /** The direction's parts no area answers, as they were typed — [] for anything else. */
-  parts: string[];
   /** `crew` / `slot`: who, and why he may not go there. */
   person?: { employeeId: string; reason: PersonRefusal };
   /** `vehicle`: which van, and why the row may not take it. */
@@ -988,7 +990,6 @@ const VEHICLE_CODE: Record<string, VehicleRefusal> = {
  */
 const PERSON_CODE: Record<PlanRefusalField, Record<string, PersonRefusal>> = {
   type: {},
-  direction: {},
   crew: { ABSENT: 'absent', ON_LEAVE: 'onLeave' },
   slot: { NOT_A_CAPTAIN: 'notCaptain', NOT_A_SPECIALIST: 'notSpecialist' },
   vehicle: {},
@@ -1031,7 +1032,6 @@ export const planRefusal = (
     return {
       key: '',
       field: 'remove',
-      parts: [],
       removed: { crewId, shipments: Number.isFinite(count) ? count : 0 },
     };
   }
@@ -1041,13 +1041,11 @@ export const planRefusal = (
       ? 'vehicle'
       : failure?.code === 'OPERATIONS_UNKNOWN_SHIFT_TYPE'
         ? 'type'
-        : failure?.code === 'OPERATIONS_DIRECTION_NOT_AN_AREA'
-          ? 'direction'
-          : failure?.code === 'OPERATIONS_CREW_MEMBER_ABSENT'
-            ? 'crew'
-            : failure?.code === 'OPERATIONS_CREW_MEMBER_WRONG_SLOT'
-              ? 'slot'
-              : null;
+        : failure?.code === 'OPERATIONS_CREW_MEMBER_ABSENT'
+          ? 'crew'
+          : failure?.code === 'OPERATIONS_CREW_MEMBER_WRONG_SLOT'
+            ? 'slot'
+            : null;
   if (field === null) return null;
   const index = details.find((detail) => detail.code === 'ROW_INDEX')?.message;
   const row = index === undefined ? undefined : sent[Number(index)];
@@ -1057,7 +1055,6 @@ export const planRefusal = (
     return {
       key: row.key,
       field,
-      parts: [],
       vehicle: { vehicleId: named ?? row.vehicleId ?? '', reason: vehicleReason },
     };
   }
@@ -1066,18 +1063,11 @@ export const planRefusal = (
     const reason = named === undefined ? undefined : PERSON_CODE[field][named.code];
     // Somebody the server names who is not on the row it names: placed on the row, said, unringed.
     if (named === undefined || reason === undefined || !rowPeople(row).includes(named.message)) {
-      return { key: row.key, field, parts: [] };
+      return { key: row.key, field };
     }
-    return { key: row.key, field, parts: [], person: { employeeId: named.message, reason } };
+    return { key: row.key, field, person: { employeeId: named.message, reason } };
   }
-  return {
-    key: row.key,
-    field,
-    parts:
-      field === 'direction'
-        ? details.filter((detail) => detail.code === 'NOT_AN_AREA').map((detail) => detail.message)
-        : [],
-  };
+  return { key: row.key, field };
 };
 
 /**

@@ -54,7 +54,8 @@
 //
 // THE SAVE is one `PlanOperationsCrew` (`toPlan`): the changed rows, a saved row without a van by
 // its id, and the saved ones deleted. A refusal that names a row (a type archived on another desk
-// since it was picked, a direction that is not an area) is said AND marked on that row's box.
+// since it was picked) is said AND marked on that row's box. A direction is never refused since
+// Round 28 («عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»): one typed by hand is saved.
 //
 // ROUND 24 — after the owner's next look:
 //   · «تراجع» IS ONE STEP BACK — «وعاوز تراجع دا يتراجع عن اخر عمليه مش كل العمليات فاهم». It threw away
@@ -297,7 +298,7 @@ export const CrewBoardPage = (): JSX.Element => {
   // then refused. So the default board's pool waits for the board to name its day.
   const directory = useOperationsCrewDirectory(day === '' ? null : day, day !== '');
   const standing = useOperationsStandingCrew();
-  // EVERY active area, not one page: the save holds a new direction to all of them.
+  // EVERY active area, not one page: the save respells a new direction naming any of them.
   const areaNames = useActiveOperationsAreaNames();
   const shiftTypeList = useOperationsShiftTypes(SHIFT_TYPE_LIST);
   const plan = usePlanOperationsCrew();
@@ -991,8 +992,8 @@ export const CrewBoardPage = (): JSX.Element => {
       toast.success(t('operations.crewPlan.saved', { count: formatNumber(pending, locale) }));
     } catch (failure) {
       // A refusal that names a row is said in its own words AND marked on that row's box, brought
-      // into view — on a board of fifty vans «a direction is not an area» alone leaves the planner
-      // hunting for it. Anything else (a Q11 clash, a row deleted on another desk) is said only.
+      // into view — on a board of fifty vans «this type is no longer active» alone leaves the
+      // planner hunting for it. Anything else (a Q11 clash, a row deleted on another desk) is said only.
       const named = failure instanceof ApiError ? planRefusal(failure, sent) : null;
       // Round 24 — a deleted row that holds محصنات: put back where it was, and marked — its own
       // operation, so «تراجع» deletes it again if that is what the planner wants.
@@ -1033,23 +1034,21 @@ export const CrewBoardPage = (): JSX.Element => {
         board.data?.freeVehicles.find((van) => van.vehicleId === vehicleId)?.vehicleCode ??
         '—';
       const message =
-        placed.field === 'direction'
-          ? t('operations.crewPlan.refused.direction', { parts: placed.parts.join('، ') })
-          : placed.field === 'vehicle' && placed.vehicle !== undefined
-            ? t(`operations.crewPlan.refused.vehicle.${placed.vehicle.reason}`, {
-                code: vehicleCode(placed.vehicle.vehicleId),
+        placed.field === 'vehicle' && placed.vehicle !== undefined
+          ? t(`operations.crewPlan.refused.vehicle.${placed.vehicle.reason}`, {
+              code: vehicleCode(placed.vehicle.vehicleId),
+            })
+          : placed.field === 'remove'
+            ? t('operations.crewPlan.refused.remove', {
+                count: formatNumber(placed.removed?.shipments ?? 0, locale),
               })
-            : placed.field === 'remove'
-              ? t('operations.crewPlan.refused.remove', {
-                  count: formatNumber(placed.removed?.shipments ?? 0, locale),
-                })
-              : aboutPerson
-                ? placed.person === undefined
-                  ? t(`operations.crewPlan.refused.${placed.field}`)
-                  : t(`operations.crewPlan.refused.${placed.person.reason}`, {
-                      name: shownMember(placed.person.employeeId).fullNameAr,
-                    })
-                : t('operations.crewPlan.refused.type');
+            : aboutPerson
+              ? placed.person === undefined
+                ? t(`operations.crewPlan.refused.${placed.field}`)
+                : t(`operations.crewPlan.refused.${placed.person.reason}`, {
+                    name: shownMember(placed.person.employeeId).fullNameAr,
+                  })
+              : t('operations.crewPlan.refused.type');
       setRefusal({ ...placed, message });
       toast.error(
         errorMessage(failure, locale),
@@ -1381,7 +1380,6 @@ export const CrewBoardPage = (): JSX.Element => {
             value={row.direction}
             options={directions}
             disabled={!canPlan}
-            refused={refusedOn(row, 'direction')}
             onChange={(direction) => patch(row.key, { direction })}
           />
         </div>

@@ -5,7 +5,8 @@
 //   · The row's type and colour: «وعاوز زرا يبقى فى كذا لون اقدر الون به الصف».
 //   · Rows without a van: «وعاوز اقدر اضيف صف ميكونش ليه عربيه واضيف كل البيانات برضو» — created,
 //     edited, deleted and given a van, Q11 counting them, `ux_day_vehicle` partial on a present van.
-//   · «الاتجاه» from the areas: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى موجوده».
+//   · «الاتجاه» from the areas: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى موجوده» —
+//     reversed in Round 28, «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»: typed by hand.
 //   · The slots: «كل عربيه هيبقى عليه من 1 ل 2 قادة و من 2 ل 4 اخصائيين» — two at most, no minimum.
 //   · The read: the van's drivers by name («ولما اعمل هوفر على العربيه يظهر السواقيين اللى عليها»)
 //     and the day's vans in the workshop («صيانة»).
@@ -21,6 +22,7 @@ import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
+  OPERATIONS_DIRECTION_MAX_LENGTH,
   OPERATIONS_LEGACY_CREW_ROW_COLOURS,
   OperationsEvents,
   OperationsSettingKeys,
@@ -848,7 +850,7 @@ describe('the crew row’s type and colour', () => {
   });
 });
 
-describe('«الاتجاه» — picked from the areas, a legacy one kept', () => {
+describe('«الاتجاه» — an area respelled, anything else typed by hand (Round 28), a legacy one kept', () => {
   it('stores the area’s own spelling, and several areas joined', async () => {
     const one = await saved({ rows: [{ vehicleId: van3, direction: 'المعادى' }] });
     expect(vanRow(one, van3)?.crew?.direction).toBe('المعادي');
@@ -856,33 +858,164 @@ describe('«الاتجاه» — picked from the areas, a legacy one kept', () =
     expect(vanRow(two, van3)?.crew?.direction).toBe('المعادي - حلوان');
   });
 
-  it('refuses a new direction that is not an active area — OPERATIONS_DIRECTION_NOT_AN_AREA', async () => {
-    const res = await save({ rows: [{ vehicleId: van3, direction: 'المعادي - طريق السويس' }] });
-    expect(res.status).toBe(422);
-    expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA);
-    expect(errorOf(res).details).toEqual([
-      { field: 'direction', code: 'NOT_AN_AREA', message: 'طريق السويس' },
-      { field: 'rows', code: 'ROW_INDEX', message: '0' },
-    ]);
-    // An archived area is no area to pick.
-    const archived = await save({ rows: [{ vehicleId: van3, direction: 'الدقي' }] });
-    expect(archived.status).toBe(422);
-    expect(vanRow(await board(), van3)?.crew?.direction).toBe('المعادي - حلوان');
+  // REWRITTEN in Round 28 — was «refuses a new direction that is not an active area —
+  // OPERATIONS_DIRECTION_NOT_AN_AREA». The owner reversed that rule: «عاوز الاتجاه اقدر اكتبه بايدى
+  // لو مش موجود فى الليست».
+  it('Round 28 — takes a new direction no active area answers, stored as typed and tidied; the code is no longer sent', async () => {
+    const mixed = await save({ rows: [{ vehicleId: van3, direction: 'المعادي - طريق السويس' }] });
+    expect(mixed.status, JSON.stringify(mixed.body)).toBe(200);
+    expect(vanRow(data<OperationsCrewBoardDto>(mixed), van3)?.crew?.direction).toBe(
+      'المعادي - طريق السويس',
+    );
+    // Trimmed, and every run of spaces inside it one space — the letters as typed.
+    const spaced = await saved({
+      rows: [{ vehicleId: van3, direction: '  طريق   مصر\tالإسماعيلية ' }],
+    });
+    expect(vanRow(spaced, van3)?.crew?.direction).toBe('طريق مصر الإسماعيلية');
+    // An ARCHIVED area is no area to respell by: «الدقى» is kept as typed, not made «الدقي».
+    const archived = await saved({ rows: [{ vehicleId: van3, direction: 'الدقى' }] });
+    expect(vanRow(archived, van3)?.crew?.direction).toBe('الدقى');
   });
 
-  it('keeps a direction saved before the rule while it is sent unchanged, and refuses changing it to another', async () => {
+  it('Round 28 — never stores a blank direction, nor one past OPERATIONS_DIRECTION_MAX_LENGTH, and writes nothing then', async () => {
+    const before = vanRow(await board(), van3)?.crew?.direction;
+    const blank = await save({ rows: [{ vehicleId: van3, direction: '  \t ' }] });
+    expect(blank.status).toBe(400);
+    expect(errorOf(blank).code).toBe(ErrorCodes.VALIDATION_FAILED);
+    // Round 28 critic — refused by the save, on the row that sent it (the shape refused it before,
+    // and with it a row's own blank one sent back unchanged — see the next test); and «-» or a
+    // zero-width space, which name nothing either (the filters count such a row «بدون اتجاه»).
+    for (const nothing of ['  \t ', '-', ' ! ', '\u200b']) {
+      const refused = await save({
+        rows: [
+          { vehicleId: van3, direction: before ?? null },
+          { vehicleId: null, direction: nothing, notes: 'لن يُحفظ' },
+        ],
+      });
+      expect(refused.status, nothing).toBe(400);
+      expect(errorOf(refused).details, nothing).toEqual([
+        expect.objectContaining({ field: 'body.rows.1.direction', code: 'TOO_SMALL' }),
+      ]);
+    }
+    expect((await board()).vehiclelessRows.some((row) => row.notes === 'لن يُحفظ')).toBe(false);
+    const longest = 'ط'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH);
+    const tooLong = await save({ rows: [{ vehicleId: van3, direction: `${longest}ب` }] });
+    expect(tooLong.status).toBe(400);
+    expect(vanRow(await board(), van3)?.crew?.direction).toBe(before);
+    // The ceiling itself is taken, counted once tidied.
+    const atCeiling = await saved({ rows: [{ vehicleId: van3, direction: `  ${longest}  ` }] });
+    expect(vanRow(atCeiling, van3)?.crew?.direction).toBe(longest);
+  });
+
+  // Round 28 verify — the ceiling was the SHAPE's, on every direction: «معادي/حلوان/…» typed in 78
+  // characters is ten areas, stored in their spelling in 120 — refused (400) at once, the board's
+  // own respelling of it included — and a row's own direction of many areas saved since Round 20
+  // past 80 made the row unsavable. It is the hand-typed text's now.
+  it('holds only HAND-TYPED text to OPERATIONS_DIRECTION_MAX_LENGTH: a direction of areas is stored respelled past it, and a row’s own past it stays savable', async () => {
+    const more = [
+      'التجمع الخامس',
+      'القاهرة الجديدة',
+      'مصر الجديدة',
+      'المقطم',
+      'القطامية',
+      'الشيخ زايد',
+      'المهندسين',
+      'العجوزة',
+      'الزمالك',
+    ];
+    for (const name of more) await area(name);
+    const typed = 'تجمع خامس/قاهرة جديدة/مصر جديدة/مقطم/قطامية/شيخ زايد/مهندسين/عجوزة/زمالك/معادي';
+    expect(typed.length).toBeLessThanOrEqual(OPERATIONS_DIRECTION_MAX_LENGTH);
+    const respelled = [...more, 'المعادي'].join(' - ');
+    expect(respelled.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
+
+    const ten = await saved({ rows: [{ vehicleId: van3, direction: typed }] });
+    expect(vanRow(ten, van3)?.crew?.direction).toBe(respelled);
+    // The board sends the respelling itself (its box respells as the save does): taken too.
+    const sentRespelled = await saved({
+      rows: [{ vehicleId: van3, direction: respelled, notes: 'عشر مناطق' }],
+    });
+    expect(vanRow(sentRespelled, van3)?.crew).toMatchObject({
+      direction: respelled,
+      notes: 'عشر مناطق',
+    });
+
+    // A row's own direction past the ceiling — hand text written before — sent back unchanged with
+    // another change: kept, the row saved.
     const crewId = vanRow(await board(), van3)?.crew?.id as string;
-    // A direction written before Round 20 — free text no area answers.
+    const legacy = 'طريق '.repeat(20).trim();
+    expect(legacy.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
     await OperationsCrewAssignmentModel.updateOne(
       { _id: crewId },
-      { $set: { direction: 'طريق السويس' } },
+      { $set: { direction: legacy } },
+    ).exec();
+    const kept = await saved({ rows: [{ vehicleId: van3, direction: legacy, notes: 'كما هو' }] });
+    expect(vanRow(kept, van3)?.crew).toMatchObject({ direction: legacy, notes: 'كما هو' });
+
+    // CHANGED to hand-typed text past it: refused on the row that sent it, nothing written.
+    const tooLong = await save({
+      rows: [
+        { vehicleId: van3, direction: legacy, notes: 'لن يُحفظ' },
+        { vehicleId: null, direction: `${'ط'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH)}ب` },
+      ],
+    });
+    expect(tooLong.status).toBe(400);
+    expect(errorOf(tooLong).code).toBe(ErrorCodes.VALIDATION_FAILED);
+    expect(errorOf(tooLong).details).toEqual([
+      expect.objectContaining({ field: 'body.rows.1.direction', code: 'TOO_BIG' }),
+    ]);
+    const after = await board();
+    expect(vanRow(after, van3)?.crew).toMatchObject({ direction: legacy, notes: 'كما هو' });
+    const strayRow = after.vehiclelessRows.find((row) => row.direction?.startsWith('ططط') === true);
+    expect(strayRow).toBeUndefined();
+  });
+
+  // Round 28 critic — a row's OWN direction that names nothing (the board before Round 20 stored any
+  // text: «  », «-»), sent back unchanged beside another change: kept exactly, the row saved. The
+  // shape refused «  » once tidied, so nothing on that row could be saved until somebody cleared
+  // its direction — and the board marked no row.
+  it('keeps a row’s own blank or «-» direction sent back unchanged — the row stays savable', async () => {
+    const crewId = vanRow(await board(), van3)?.crew?.id as string;
+    for (const held of ['  ', '-', '\u200b']) {
+      await OperationsCrewAssignmentModel.updateOne(
+        { _id: crewId },
+        { $set: { direction: held } },
+      ).exec();
+      const kept = await save({
+        rows: [{ vehicleId: van3, direction: held, notes: `كما هو ${held.length}` }],
+      });
+      expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+      expect(vanRow(data<OperationsCrewBoardDto>(kept), van3)?.crew).toMatchObject({
+        direction: held,
+        notes: `كما هو ${held.length}`,
+      });
+    }
+    // Changed from it to text that names something: taken, tidied and with no invisible mark.
+    const changed = await saved({
+      rows: [{ vehicleId: van3, direction: '\u200fطريق   السويس\u200b' }],
+    });
+    expect(vanRow(changed, van3)?.crew?.direction).toBe('طريق السويس');
+  });
+
+  // REWRITTEN in Round 28 — was «keeps a direction saved before the rule while it is sent unchanged,
+  // and refuses changing it to another». Changing it to a hand-typed one is now taken.
+  it('keeps a direction saved before exactly while it is sent unchanged (spaces aside), and takes changing it to another', async () => {
+    const crewId = vanRow(await board(), van3)?.crew?.id as string;
+    // A direction written before Round 20 — free text no area answers, with spaces of its own.
+    await OperationsCrewAssignmentModel.updateOne(
+      { _id: crewId },
+      { $set: { direction: 'طريق  السويس ' } },
     ).exec();
     const kept = await saved({
       rows: [{ vehicleId: van3, direction: 'طريق السويس', notes: 'كما هو' }],
     });
-    expect(vanRow(kept, van3)?.crew).toMatchObject({ direction: 'طريق السويس', notes: 'كما هو' });
-    const changed = await save({ rows: [{ vehicleId: van3, direction: 'طريق الإسماعيلية' }] });
-    expect(changed.status).toBe(422);
+    expect(vanRow(kept, van3)?.crew).toMatchObject({ direction: 'طريق  السويس ', notes: 'كما هو' });
+    // Changed to another text no area answers: taken as typed (Round 20 refused it).
+    const changed = await saved({ rows: [{ vehicleId: van3, direction: 'طريق الإسماعيلية' }] });
+    expect(vanRow(changed, van3)?.crew?.direction).toBe('طريق الإسماعيلية');
+    // Changed to an area: the area's spelling, as ever.
+    const area = await saved({ rows: [{ vehicleId: van3, direction: 'حلوان' }] });
+    expect(vanRow(area, van3)?.crew?.direction).toBe('حلوان');
     // Clearing it is always allowed.
     const cleared = await saved({ rows: [{ vehicleId: van3, direction: null }] });
     expect(vanRow(cleared, van3)?.crew?.direction).toBeNull();

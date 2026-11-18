@@ -52,6 +52,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  operationsDirectionNamesSomething,
   type Locale,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
@@ -1316,8 +1317,12 @@ const DirectionPill = ({
   wrap?: boolean;
 }): JSX.Element => {
   const t = useT();
+  // Round 28 critic — a direction that names nothing («-», a zero-width space) is «بلا اتجاه», as
+  // the filters count it, never an empty-looking pill.
   const direction =
-    van.direction === null || van.direction.trim() === '' ? null : van.direction.trim();
+    van.direction === null || !operationsDirectionNamesSomething(van.direction)
+      ? null
+      : van.direction.trim();
   const directionText = direction ?? t('operations.distribution.noDirection');
   return (
     <span

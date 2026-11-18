@@ -2010,8 +2010,11 @@ export interface OperationsCrewBoardCrewDto {
   specialist1EmployeeIds: string[];
   specialist2EmployeeIds: string[];
   /**
-   * «الاتجاه». Saved since Round 20 as the names of ACTIVE operations areas (see
-   * `canonicalOperationsDirection`); a value saved before that may be any text, and is kept.
+   * «الاتجاه». A direction that names ACTIVE operations areas is saved in their own spelling (see
+   * `canonicalOperationsDirection`); since Round 28 anything else is saved as the desk typed it
+   * (`normalizeOperationsDirection`) — and a value saved before Round 20 may be any text, kept.
+   * The distribution's proposals read the areas a direction names (`operationsDirectionAreas`),
+   * so a hand-typed one proposes nothing unless it names an area.
    */
   direction: string | null;
   plannedTime: string | null;
@@ -2162,6 +2165,46 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
 /**
+ * Round 28 — the longest «الاتجاه» a desk may type BY HAND, counted once its spaces are tidied. The
+ * save holds the text it stores as typed to it (400 `VALIDATION_FAILED` on the row's `direction`);
+ * a direction of areas, stored in their spelling, and one a row already holds are not held to it —
+ * ten areas typed in 78 characters are 120 stored, and a direction of many areas saved since Round
+ * 20 must stay savable. The board's box takes no more than this as it is typed.
+ */
+export const OPERATIONS_DIRECTION_MAX_LENGTH = 80;
+
+/**
+ * Round 28 — a direction as typed, tidied: the invisible format marks dropped (a zero-width space,
+ * the bidi marks a paste brings — `\p{Cf}`), then trimmed, and every run of spaces inside it (a tab,
+ * a line break, a non-breaking space) made one space. Nothing else is touched — the letters stay as
+ * typed. The save stores a hand-typed direction in this form, and the board's box sends it so.
+ */
+export const normalizeOperationsDirection = (value: string): string =>
+  value
+    .replace(/\p{Cf}/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+/**
+ * Round 28 critic — does a direction name anything: a letter or a digit? «-», «!!!» or a zero-width
+ * space name nothing — the board's filters already count such a row «بدون اتجاه». The save stores
+ * no NEW such direction (400 on the row's `direction`), and the board's box never offers one.
+ */
+export const operationsDirectionNamesSomething = (value: string): boolean =>
+  /[\p{L}\p{N}]/u.test(value);
+
+/**
+ * «الاتجاه» as a save carries it (the day's row and the standing crew's alike): any text but the
+ * empty string, tidied (`normalizeOperationsDirection`); `null` clears it. What the tidied text may
+ * be is NOT the shape's to judge, only the save's — it alone knows whether the text is the row's own
+ * (kept exactly, Round 28 critic: a blank or long one saved before the box existed included, or the
+ * row could never be saved again), names areas (respelled, however long), or is typed by hand
+ * (named something, at most `OPERATIONS_DIRECTION_MAX_LENGTH` characters).
+ */
+const crewDirection = () =>
+  z.string().min(1).transform(normalizeOperationsDirection).nullable().optional();
+
+/**
  * One row of the save. Four shapes, by its two addresses:
  *
  *   `vehicleId` | `crewAssignmentId` | what the row is
@@ -2204,10 +2247,16 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  * WHAT THE SERVER CHECKS BEYOND THE SHAPE (each refused with nothing written):
  *   · `shiftTypeId`, when NEWLY chosen for the row, must be an ACTIVE type → else 422
  *     `OPERATIONS_UNKNOWN_SHIFT_TYPE`. A type the row already holds stays, archived or not.
- *   · `direction`, when NEW or CHANGED, must name ACTIVE operations areas
- *     (`canonicalOperationsDirection`) and is STORED as their own names → else 422
- *     `OPERATIONS_DIRECTION_NOT_AN_AREA`. A direction the row already holds — legacy free text
- *     included — stays as written while it is sent unchanged.
+ *   · `direction` is NOT REFUSED for what it names (Round 28 — «عاوز الاتجاه اقدر اكتبه بايدى لو مش
+ *     موجود فى الليست», reversing Round 20's «لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»). When
+ *     NEW or CHANGED, a direction that names ACTIVE operations areas (`canonicalOperationsDirection`)
+ *     is STORED as their own names, however long; anything else is stored AS TYPED, tidied
+ *     (`normalizeOperationsDirection`): it must name something (`operationsDirectionNamesSomething`
+ *     — not blank, not «-») and be at most `OPERATIONS_DIRECTION_MAX_LENGTH` characters → else 400
+ *     `VALIDATION_FAILED` on `body.rows.<index>.direction` (`TOO_SMALL` / `TOO_BIG`). A direction
+ *     the row already holds — hand-typed or legacy, blank or however long — stays exactly as
+ *     written while it is sent unchanged (spaces and invisible marks aside).
+ *     `OPERATIONS_DIRECTION_NOT_AN_AREA` is no longer sent.
  *   · A person NEWLY put on the row must not be away that day (the pool's `availability`: HR has
  *     them absent, or on leave) → else 422 `OPERATIONS_CREW_MEMBER_ABSENT`. Somebody already on the
  *     row stays, so a planner can still save the row's other changes.
@@ -2225,7 +2274,7 @@ export const PlanOperationsCrewRowSchema = z
     captainEmployeeIds: crewSlot(),
     specialist1EmployeeIds: crewSlot(),
     specialist2EmployeeIds: crewSlot(),
-    direction: z.string().min(1).nullable().optional(),
+    direction: crewDirection(),
     plannedTime: z.string().min(1).nullable().optional(),
     notes: z.string().nullable().optional(),
     shiftTypeId: objectId().nullable().optional(),
@@ -2487,6 +2536,12 @@ const standingCrewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  * (Round 23): a person NEWLY put in a slot must fit it (`fitsCrewSlot`) → else 422
  * `OPERATIONS_CREW_MEMBER_WRONG_SLOT`; somebody already in that slot of that vehicle's row stays.
  * The day is seeded from this row, so a seat the day would refuse must not be written here either.
+ *
+ * «الاتجاه» follows the day's rule (Round 28, see `PlanOperationsCrewRowSchema`): a NEW or CHANGED
+ * direction that names active areas is stored in their spelling, anything else as typed (tidied);
+ * one the row already holds stays as written while it is sent unchanged. One rule so the two boxes
+ * behave alike — NOT because the day reads it: «تحميل الطاقم الثابت» copies the people only, never
+ * the direction or the time (`standing-load.ts` on the board).
  */
 export const SetOperationsStandingCrewRowSchema = z
   .object({
@@ -2494,7 +2549,7 @@ export const SetOperationsStandingCrewRowSchema = z
     captainEmployeeIds: standingCrewSlot(),
     specialist1EmployeeIds: standingCrewSlot(),
     specialist2EmployeeIds: standingCrewSlot(),
-    direction: z.string().min(1).nullable().optional(),
+    direction: crewDirection(),
     plannedTime: z.string().min(1).nullable().optional(),
   })
   .strict()
@@ -3554,14 +3609,18 @@ export interface OperationsSecuredDistributionSaveDto {
 //      that word («وسط البلد» stays whole).
 //   2. Each area, and the shipment's area, is FOLDED: Arabic-Indic digits to Latin; lower case;
 //      tashkeel, tatweel and invisible marks dropped; «أ إ آ ٱ» → «ا», «ى» → «ي», «ة» → «ه»; every
-//      other character that is not a letter, a digit or a space dropped; a leading «ال» taken off
-//      each word longer than three letters («المعادي» = «معادي», «ال» alone stays); spaces made one.
-//   3. The shipment matches the van when its folded area EQUALS one folded area of the direction —
-//      equal, never "contains": «مصر» does not match «مصر الجديدة».
+//      punctuation mark or symbol made a SPACE (Round 28 critic — «شبرا/الخيمة» is «شبرا الخيمة», as
+//      a desk types it; dropped, it was «شبراالخيمه», which no typing reached), any other character
+//      that is not a letter, a digit or a space dropped; a leading «ال» taken off each word longer
+//      than three letters («المعادي» = «معادي», «ال» alone stays); spaces made one.
+//   3. The shipment matches the van when its folded area EQUALS the WHOLE folded direction (an area
+//      whose own name holds a separator, «شبرا/الخيمة», is never split — Round 28 critic), or one
+//      folded area of the direction — equal, never "contains": «مصر» does not match «مصر الجديدة».
 //   4. No area, or no direction, or either folding to nothing → no match.
 
-/** Where a direction is split into its areas (rule 1). */
-const DIRECTION_SEPARATOR = /\s*[-–—/\\|،,؛;+&]\s*|\s+و\s+/u;
+/** Where a direction is split into its areas (rule 1) — shared with the board's direction box. */
+export const OPERATIONS_DIRECTION_SEPARATOR = /\s*[-–—/\\|،,؛;+&]\s*|\s+و\s+/u;
+const DIRECTION_SEPARATOR = OPERATIONS_DIRECTION_SEPARATOR;
 
 /** One area name, folded (rule 2) — exported so a screen can show what was compared. */
 export const foldOperationsAreaName = (value: string): string =>
@@ -3572,6 +3631,7 @@ export const foldOperationsAreaName = (value: string): string =>
     .replace(/[أإآٱ]/gu, 'ا')
     .replace(/ى/gu, 'ي')
     .replace(/ة/gu, 'ه')
+    .replace(/[\p{P}\p{S}]/gu, ' ')
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .trim()
     .split(/\s+/u)
@@ -3592,16 +3652,19 @@ export const operationsDirectionAreas = (direction: string | null | undefined): 
 };
 
 /**
- * Round 20 — a direction as the crew board SAVES it: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من
- * الاتجاهات اللى موجوده بتاعت البنوك». Every area it names must be one of `areaNames` (the ACTIVE
- * operations areas — the names the branches' «المنطقة» uses), compared FOLDED (rule 2), and the
- * direction is returned in the areas' OWN spelling: one area → its name; several (rule 1's
- * separators — a direction may still name «المعادي - حلوان», the distribution reads both) → their
- * names joined by « - », each once. The WHOLE text is tried as one area first, so an area whose
- * name holds a separator («شبرا/الخيمة») is never split.
+ * A direction read against the areas: does it name ACTIVE operations areas only? Every area it
+ * names is looked up in `areaNames` (the ACTIVE operations areas — the names the branches'
+ * «المنطقة» uses), compared FOLDED (rule 2), and the direction is returned in the areas' OWN
+ * spelling: one area → its name; several (rule 1's separators — a direction may still name
+ * «المعادي - حلوان», the distribution reads both) → their names joined by « - », each once. The
+ * WHOLE text is tried as one area first, so an area whose name holds a separator («شبرا/الخيمة»)
+ * is never split.
  *
- * `{ unknown }` lists the parts no area answers, as typed — the save refuses those. Shared by the
- * server's save and the board's picker, so the two cannot disagree about what is an area.
+ * `{ unknown }` lists the parts no area answers, as typed. Round 20 refused those («لازم اختار من
+ * الاتجاهات اللى موجوده بتاعت البنوك»); Round 28 reverses it («عاوز الاتجاه اقدر اكتبه بايدى لو مش
+ * موجود فى الليست»): the save then stores the text as typed (`normalizeOperationsDirection`), and
+ * only a direction this function answers is respelled. Shared by the server's save and the board's
+ * picker, so the two cannot disagree about what is an area.
  */
 export const canonicalOperationsDirection = (
   direction: string,
@@ -3630,9 +3693,14 @@ export const operationsDirectionMatchesArea = (
   direction: string | null | undefined,
   areaName: string | null | undefined,
 ): boolean => {
-  if (areaName == null) return false;
+  if (areaName == null || direction == null) return false;
   const area = foldOperationsAreaName(areaName);
-  return area !== '' && operationsDirectionAreas(direction).includes(area);
+  if (area === '') return false;
+  // The WHOLE direction first, as `canonicalOperationsDirection` reads it: split at «/», the van
+  // picked as «شبرا/الخيمة» was never proposed for its own area's محصنات.
+  return (
+    foldOperationsAreaName(direction) === area || operationsDirectionAreas(direction).includes(area)
+  );
 };
 
 /**

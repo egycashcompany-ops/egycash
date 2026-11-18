@@ -11,6 +11,7 @@ import {
   isVanFiltering,
   matchesUnplacedFilter,
   matchesVanFilter,
+  shipmentAreaNames,
   shipmentAreaOptions,
   shipmentMatchesArea,
   shipmentMatchesSearch,
@@ -170,6 +171,60 @@ describe('the right bar — the vans', () => {
     ]);
     expect(options.map((option) => option.label)).toEqual(['المعادي', 'الهرم', 'حلوان', '']);
     expect(options.at(-1)?.value).toBe(NO_AREA);
+  });
+
+  it('Round 28 — a van whose direction was typed by hand: offered and found by its words, no crash', () => {
+    // «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست» — «طريق السويس» names no area.
+    const SUEZ = { vehicleCode: '210', direction: 'طريق السويس' };
+    const suez = foldOperationsAreaName('طريق السويس');
+    expect(vanMatchesArea(SUEZ, [], suez)).toBe(true);
+    expect(vanMatchesArea(SUEZ, [], foldOperationsAreaName('المعادي'))).toBe(false);
+    expect(vanMatchesArea(SUEZ, [], NO_AREA)).toBe(false);
+    // A محصنة of an area on it still makes it that area's van.
+    expect(vanMatchesArea(SUEZ, [MAADI], foldOperationsAreaName('المعادي'))).toBe(true);
+    expect(vanAreaOptions([{ van: SUEZ, rows: [] }]).map((option) => option.label)).toEqual([
+      'طريق السويس',
+    ]);
+  });
+});
+
+// Round 28 critic — the screen read the vans' directions against NO area: a van picked from the list
+// as «شبرا/الخيمة» was split at «/», so the right area box offered «شبرا» and «الخيمة», and choosing
+// the محصنات's own «شبرا/الخيمة» hid that van.
+describe('a van whose direction is an area named with a separator', () => {
+  const SHUBRA = row({ areaName: 'شبرا/الخيمة' });
+  const V301 = { vehicleCode: '301', direction: 'شبرا/الخيمة' };
+  const shubra = foldOperationsAreaName('شبرا/الخيمة');
+
+  it('the screen’s areas are those its محصنات name, each once', () => {
+    expect(
+      shipmentAreaNames([
+        MAADI,
+        SHUBRA,
+        row({ areaName: ' شبرا/الخيمة ' }),
+        row({ areaName: null }),
+      ]),
+    ).toEqual(['المعادي', 'شبرا/الخيمة']);
+  });
+
+  it('read against them, it is one area: offered whole, and the van answers it', () => {
+    const areas = shipmentAreaNames([SHUBRA]);
+    expect(vanAreaOptions([{ van: V301, rows: [] }], areas).map((option) => option.label)).toEqual([
+      'شبرا/الخيمة',
+    ]);
+    expect(vanMatchesArea(V301, [], shubra, areas)).toBe(true);
+    expect(
+      matchesVanFilter(
+        V301,
+        [],
+        { ...EMPTY_VAN_FILTER, area: shubra },
+        {
+          name: '301',
+          bankWordsOf,
+          areaNames: areas,
+        },
+      ),
+    ).toBe(true);
   });
 });
 

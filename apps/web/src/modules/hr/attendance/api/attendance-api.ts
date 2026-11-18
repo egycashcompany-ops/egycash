@@ -8,6 +8,7 @@ import {
   type AttendanceRegularizationDto,
   type AttendanceSheetRowDto,
   type AttendanceEmployeeSummaryDto,
+  type AttendanceEmployeeDayDto,
   type AttendanceSheetSummaryDto,
   type CreateAttendanceRegularization,
   type CreateShift,
@@ -91,6 +92,25 @@ export const myAttendanceSummary = (
   params: QueryParams,
 ): Promise<AttendanceEmployeeSummaryDto> =>
   get<AttendanceEmployeeSummaryDto>(`/hr/attendance/days/me/summary${buildQuery(params)}`);
+
+/**
+ * EVERY CALENDAR DATE of one employee's period, resolved by the server.
+ *
+ * It replaces reading `/hr/attendance/days` for this screen, and the difference is the whole point:
+ * that endpoint filters day DOCUMENTS, so a date with no row was simply absent from the answer and
+ * the month skipped it — punches imported for the 12th and the 15th and the page showing neither,
+ * while dates whose legacy row said `dayOff` read «يوم راحة» on top of real scans. This answers one
+ * entry per date, resolved by the same function the daily sheet resolves its lines with, so the two
+ * screens cannot disagree about the same employee on the same day.
+ */
+export const attendanceEmployeePeriod = (
+  params: QueryParams,
+): Promise<AttendanceEmployeeDayDto[]> =>
+  get<AttendanceEmployeeDayDto[]>(`/hr/attendance/days/employee-period${buildQuery(params)}`);
+
+/** The same, about me — own by construction on the server; no employee filter is accepted. */
+export const myAttendancePeriod = (params: QueryParams): Promise<AttendanceEmployeeDayDto[]> =>
+  get<AttendanceEmployeeDayDto[]>(`/hr/attendance/days/me/period${buildQuery(params)}`);
 
 /** My own days — own by construction on the server; no employee filter is accepted. */
 export const listMyAttendanceDays = (params: QueryParams): Promise<Paginated<AttendanceDayDto>> =>

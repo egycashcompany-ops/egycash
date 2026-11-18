@@ -11,7 +11,7 @@ import { drainingWriter } from '../../../../shared/utils/draining-writer';
 import { isHeadRequest, streamRows, type StreamedRows } from '../../../../shared/utils/stream-rows';
 import { auditService } from '../../../../platform/audit';
 import { csvEscape } from '../../../../platform/audit/audit.export';
-import { dateOnlyIso } from '../../shared/business-date';
+import { dateOnlyIso, toDateOnly } from '../../shared/business-date';
 import { employeeRepository } from '../../employee-management/employees';
 import { employeeLabelMap, type EmployeeLabel } from '../../shared/employee-labels';
 import { AttendanceDayModel, type AttendanceDayDoc } from './day-record.model';
@@ -44,7 +44,9 @@ const buildFilter = async (
   scope: ScopeSelector,
 ): Promise<FilterQuery<AttendanceDayDoc>> => {
   const filter: FilterQuery<AttendanceDayDoc> = {
-    workDate: { $gte: query.from, $lte: query.to },
+    // Date-only at both ends, for the same reason the day list normalises them: `workDate` is a
+    // UTC-midnight date-only field and a time component on `from` would drop its own day.
+    workDate: { $gte: toDateOnly(query.from), $lte: toDateOnly(query.to) },
     isDeleted: false,
   };
   if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);

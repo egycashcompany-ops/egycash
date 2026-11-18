@@ -9,6 +9,7 @@
 // nothing about says so, and no figure is computed that the server did not send.
 import {
   type AttendanceDayDto,
+  type AttendanceEmployeeDayDto,
   type AttendanceDayStatus,
   type AttendanceSheetRowDto,
   type Locale,
@@ -146,16 +147,18 @@ export const toSheetRow = (
 };
 
 /**
- * One day of an employee's period.
+ * One day of an employee's period, from the SERVER'S RESOLUTION of that date.
  *
- * `day` is null for a date the engine has concluded nothing about — before the hire, after the
- * exit, or a day the nightly pass has not reached. The calendar needs a cell for every date in the
- * period or its weeks stop lining up, so the date is kept and says «لا يوجد سجل» rather than
- * borrowing the look of a rest day.
+ * It used to be handed a day ROW or null, and null meant "the client found no row for this date" —
+ * which the client then had to interpret. That is where the two screens came apart: the sheet asked
+ * the server what a date WAS and the employee page guessed from what it had been sent. Now the
+ * server answers one entry per date, with the status it would store, and this only renders it.
+ *
+ * `day` is still nullable for the one case the server omits: a date outside the employment.
  */
 export const toEmployeeDay = (
   date: string,
-  day: AttendanceDayDto | null,
+  day: AttendanceEmployeeDayDto | null,
   options: { today: string; label: (key: string) => string; action?: React.ReactNode },
 ): EmployeeDay => {
   const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
@@ -164,13 +167,19 @@ export const toEmployeeDay = (
     status: day === null ? 'noRecord' : toViewStatus(day.status, date === options.today),
     inAt,
     outAt: day?.lastOutAt == null ? null : after(inAt, cairoMinutes(day.lastOutAt)),
-    // The sheet carries the expectation; the day list does not, and inventing one here would be a
-    // second derivation of the hours the server already resolves.
-    expected: null,
+    // THE EXPECTATION NOW ARRIVES, resolved per date by the server. The old comment here said the
+    // day list did not carry one and that inventing it would be a second derivation — true then,
+    // and the reason the period endpoint carries it.
+    expected: day === null ? null : expectedSpan(day.expectedStartAt, day.expectedEndAt),
     // Hours that were measured, or null — never a confident zero against a day with no check-out.
     worked: day === null || day.workedMinutes === 0 ? null : day.workedMinutes,
     lateMinutes: day?.lateMinutes ?? 0,
-    tags: marksOf(day, options.label),
+    // A provisional day is one the engine has not concluded: the punches are real and the status is
+    // a reading of them. Marked so a reader knows which, and so «لا يوجد تسجيل» is not the only
+    // clue that the backfill still has work to do.
+    tags: day !== null && day.provisional && day.punches.length > 0
+      ? [options.label('attendanceView.provisional')]
+      : [],
     ...(options.action === undefined ? {} : { action: options.action }),
   };
 };

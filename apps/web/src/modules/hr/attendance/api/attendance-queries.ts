@@ -26,6 +26,7 @@ const SHEET_SUMMARY = 'attendanceSheetSummary';
 const DECISIONS = 'attendanceDecisions';
 const DECISION_SIGNALS = 'attendanceDecisionSignals';
 const EMPLOYEE_SUMMARY = 'attendanceEmployeeSummary';
+const EMPLOYEE_PERIOD = 'attendanceEmployeePeriod';
 const MY_DAYS = 'attendanceMyDays';
 const REGULARIZATIONS = 'attendanceRegularizations';
 const MY_REGULARIZATIONS = 'attendanceMyRegularizations';
@@ -189,6 +190,27 @@ export const useMyAttendanceSummary = (params: Params) =>
   useQuery({
     queryKey: listKey(MODULE, EMPLOYEE_SUMMARY, { ...params, me: 1 }),
     queryFn: () => api.myAttendanceSummary(params),
+    placeholderData: (prev) => prev,
+  });
+
+/**
+ * One employee's resolved period. Keyed apart from the summary because the two are read at
+ * different rates — the figures are one small object the header draws, this is up to a year of
+ * days the table and the calendar page through — and both come from the same resolution, so they
+ * cannot disagree.
+ */
+export const useAttendanceEmployeePeriod = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, EMPLOYEE_PERIOD, params),
+    queryFn: () => api.attendanceEmployeePeriod(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useMyAttendancePeriod = (params: Params) =>
+  useQuery({
+    queryKey: listKey(MODULE, EMPLOYEE_PERIOD, { ...params, me: 1 }),
+    queryFn: () => api.myAttendancePeriod(params),
     placeholderData: (prev) => prev,
   });
 

@@ -14,7 +14,7 @@
 // believe.
 import { useState } from 'react';
 import {
-  type AttendanceDayDto,
+  type AttendanceEmployeeDayDto,
   type AttendanceEmployeeSummaryDto,
   type AttendanceSheetRowDto,
   type Locale,
@@ -59,8 +59,15 @@ export const EmployeePeriodView = ({
 }: {
   employeeId: string;
   header: Omit<EmployeeHeader, 'lastPunch'>;
-  /** The period's day rows, in any order — the view is handed one entry per DATE. */
-  rows: AttendanceDayDto[];
+  /**
+   * THE PERIOD'S RESOLVED DAYS — one entry per calendar date, from the server.
+   *
+   * It was `AttendanceDayDto[]`, the stored rows, and the view filled the gaps itself. That is
+   * where this screen and the daily sheet came apart: the sheet asked the server what a date WAS
+   * and this page inferred it from which rows it happened to be sent, so a date with punches and no
+   * row showed nothing and a legacy `dayOff` row showed «يوم راحة» over real scans.
+   */
+  rows: AttendanceEmployeeDayDto[];
   summary: AttendanceEmployeeSummaryDto | undefined;
   loading: boolean;
   error?: unknown;
@@ -73,8 +80,15 @@ export const EmployeePeriodView = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [deciding, setDeciding] = useState<AttendanceDayDto | 'noRow' | null>(null);
+  const [deciding, setDeciding] = useState<AttendanceEmployeeDayDto | 'noRow' | null>(null);
   const [decidingDate, setDecidingDate] = useState<string>('');
+  /**
+   * The date the reader picked on the month calendar, so the daily record can highlight it.
+   *
+   * Clicking a cell on a two-year calendar and then hunting the same date in a list of 366 lines is
+   * the kind of thing a screen should just do.
+   */
+  const [picked, setPicked] = useState<string | null>(null);
 
   const spanDays = (from: string, to: string): number =>
     (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000 + 1;
@@ -154,12 +168,15 @@ export const EmployeePeriodView = ({
   }
 
   const today = cairoToday();
-  const byDate = new Map(rows.map((row) => [row.workDate.slice(0, 10), row]));
+  const byDate = new Map(rows.map((row) => [row.date.slice(0, 10), row]));
 
   /** The decide button for one day, offered only where the key is held and the day is not frozen. */
-  const actionFor = (date: string, day: AttendanceDayDto | null): JSX.Element | undefined => {
+  const actionFor = (
+    date: string,
+    day: AttendanceEmployeeDayDto | null,
+  ): JSX.Element | undefined => {
     if (!canDecide) return undefined;
-    if (day !== null && day.frozenAt !== null) return undefined;
+    if (day !== null && day.frozen) return undefined;
     return (
       <Button
         size="sm"
@@ -202,8 +219,11 @@ export const EmployeePeriodView = ({
           status: 'pending',
           expectedStartAt: null,
           expectedEndAt: null,
-          day: deciding === 'noRow' ? null : deciding,
-          // The dialog decides a DAY, not a reading of one: it needs the stored row or nothing.
+          // The dialog decides a DATE, and it is handed no row at all: a decision is an INPUT to
+          // the derivation, not an edit of a row, so the row it would have edited is irrelevant to
+          // it. It was passed the stored row before, which made a provisional day undecidable —
+          // exactly the days somebody most wants to decide.
+          day: null,
           provisionalDay: null,
         };
 
@@ -235,6 +255,8 @@ export const EmployeePeriodView = ({
         dayStart={summary.dayStart}
         grace={summary.graceMinutes}
         today={today}
+        picked={picked}
+        onPickDay={setPicked}
         {...(onExport === undefined ? {} : { onExport })}
       />
       {loading && <span className="sr-only">{t('common.loading')}</span>}

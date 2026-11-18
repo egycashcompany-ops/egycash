@@ -540,8 +540,13 @@ class DayRecordService {
           !sectionFilter.includes(String(own.employment.sectionId ?? '')));
       employees = excluded ? [] : [own];
     } else {
-      const page = await employeeRepository.listEmployees({
-        filter: {
+      // UNPAGED, and that is a fix rather than a flourish. This asked `listEmployees` for
+      // `pageSize: SHEET_CAP` to mean "all of them", and `BaseRepository.list` clamps pageSize to
+      // `MAX_PAGE_SIZE` — 100. So the sheet resolved the first HUNDRED employees by code on every
+      // date, and every count beneath it counted those hundred: a company of 1,755 reading «100»,
+      // with four of the thirty-nine who had scanned visible because they sorted early.
+      employees = await employeeRepository.listAllForSheet(
+        {
           employed: true,
           ...(branchFilter.length === 0 ? {} : { branchId: branchFilter }),
           ...(sectionFilter.length === 0 ? {} : { sectionId: sectionFilter }),
@@ -549,13 +554,9 @@ class DayRecordService {
           // typed without diacritics still finds the person.
           ...(query.search === undefined ? {} : { search: query.search }),
         },
-        page: 1,
-        pageSize: SHEET_CAP,
-        sortBy: 'code',
-        sortDir: 'asc',
-        ...(scope === undefined ? {} : { scope }),
-      });
-      employees = page.items;
+        SHEET_CAP,
+        scope,
+      );
     }
     if (employees.length === 0) {
       return { rows: [], employeeIds: [], dayStart: null, graceMinutes: 0 };

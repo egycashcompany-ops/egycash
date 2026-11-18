@@ -947,3 +947,250 @@ describe('Task 2 — the backfill recompute', () => {
     expect(deniedRead.status).toBe(403);
   });
 });
+
+/**
+ * THE READ PATHS, against the two defects production showed.
+ *
+ * The data was never the problem. 65,579 punches had been imported, the backfill had run to
+ * completion (2,062/2,062 chunks, 52,237 days computed, 0 failed) and the enrolment audit found no
+ * mismatched machine id at all — and the daily sheet still showed four people out of a hundred on a
+ * day thirty-nine had scanned, while `GET /punches?from=D&to=D` answered zero for a day that had
+ * seventy-four. Both were reads, and both were silent.
+ */
+describe('the read paths — what the owner was actually looking at', () => {
+  /**
+   * REGRESSION: the sheet resolved the FIRST HUNDRED EMPLOYEES BY CODE, on every date.
+   *
+   * It asked `listEmployees` for `pageSize: SHEET_CAP` to mean "all of them", and
+   * `BaseRepository.list` clamps pageSize to `MAX_PAGE_SIZE` — 100. Nothing failed: the sheet
+   * answered a hundred lines, the summary said «total 100» on every date of the year, and the
+   * company's other 1,655 people were absent from the screen and from every count beneath it. The
+   * four who showed as present were whichever of the thirty-nine scanners sorted into the first
+   * page.
+   *
+   * So this registers enough people to cross that boundary and punches for one whose code sorts
+   * PAST it — the person the old read could not have shown however hard it looked.
+   */
+  it('resolves every employee in scope, not the first hundred', async () => {
+    const device = await registerDevice('SHEET-CAP');
+    const day = recentWorkday();
+
+    // Enough to cross 100 in this suite's branch, whatever earlier tests registered.
+    const before = await request(app)
+      .get(`/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(day)}&branchId=${BRANCH_ID}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(before.status).toBe(200);
+    const already = (before.body.data as { total: number }).total;
+    const needed = Math.max(0, 104 - already);
+    const made: EmployeeDto[] = [];
+    for (let i = 0; i < needed; i += 1) made.push(await regEmployee());
+
+    // The LAST employee by code is the one the clamp hid. Give them a scan on the day.
+    const sheetAll = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(day)}&branchId=${BRANCH_ID}&page=1&pageSize=100&sortDir=asc`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(sheetAll.status).toBe(200);
+
+    const lastByCode = [...made].sort((a, b) => b.code.localeCompare(a.code))[0] as EmployeeDto;
+    await request(app)
+      .post('/api/v1/hr/attendance/enrollments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ deviceId: device, enrollmentNo: 'CAP-1', employeeId: lastByCode.id })
+      .expect(201);
+    await importRows([
+      { deviceId: 'SHEET-CAP', enrollmentNo: 'CAP-1', at: cairoInstant(day, '08:12').toISOString() },
+      { deviceId: 'SHEET-CAP', enrollmentNo: 'CAP-1', at: cairoInstant(day, '17:04').toISOString() },
+    ]);
+
+    const summary = await request(app)
+      .get(`/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(day)}&branchId=${BRANCH_ID}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(summary.status).toBe(200);
+    const counts = summary.body.data as {
+      total: number;
+      byStatus: Record<string, number>;
+    };
+    // The whole point: past the hundred the clamp stopped at.
+    expect(counts.total).toBeGreaterThan(100);
+
+    // And the person past it is ON the sheet, with their times — found by paging to them rather
+    // than by trusting the first page, which is exactly what the old read could not do.
+    interface SheetLine {
+      employeeId: string;
+      status: string;
+    }
+    let found: SheetLine | undefined;
+    for (let page = 1; page <= Math.ceil(counts.total / 100) && found === undefined; page += 1) {
+      const res = await request(app)
+        .get(
+          `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(day)}&branchId=${BRANCH_ID}&page=${String(page)}&pageSize=100`,
+        )
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      found = (res.body.data as SheetLine[]).find((r) => r.employeeId === lastByCode.id);
+    }
+    expect(found, 'the employee whose code sorts past the first page').toBeDefined();
+    expect(['present', 'checkedIn', 'late', 'lateAndEarly', 'earlyLeave']).toContain(found?.status);
+  });
+
+  /**
+   * REGRESSION: `GET /punches?from=D&to=D` answered ZERO for a day with seventy-four scans.
+   *
+   * `z.coerce.date()` turns `2026-11-18` into `2026-11-18T00:00:00Z`, and the filter compared it
+   * against the punch INSTANT with `$gte from, $lte to` — so one day asked for a zero-width window,
+   * and every other window was shifted two hours into the previous Cairo day.
+   */
+  it('answers a single Cairo day for from = to on the punch list', async () => {
+    const device = await registerDevice('DAY-WINDOW');
+    const employee = await regEmployee();
+    const day = recentWorkday();
+    await request(app)
+      .post('/api/v1/hr/attendance/enrollments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ deviceId: device, enrollmentNo: 'WIN-1', employeeId: employee.id })
+      .expect(201);
+
+    // One scan just after Cairo midnight and one just before the next — the two the old window
+    // dropped: `00:30` Cairo is `22:30Z` the day BEFORE, and `23:30` Cairo is past `00:00Z`.
+    await importRows([
+      { deviceId: 'DAY-WINDOW', enrollmentNo: 'WIN-1', at: cairoInstant(day, '00:30').toISOString() },
+      { deviceId: 'DAY-WINDOW', enrollmentNo: 'WIN-1', at: cairoInstant(day, '12:00').toISOString() },
+      { deviceId: 'DAY-WINDOW', enrollmentNo: 'WIN-1', at: cairoInstant(day, '23:30').toISOString() },
+    ]);
+
+    const sameDay = await request(app)
+      .get(
+        `/api/v1/hr/attendance/punches?employeeId=${employee.id}&from=${dateOnlyIso(day)}&to=${dateOnlyIso(day)}&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(sameDay.status).toBe(200);
+    expect((sameDay.body.data as unknown[]).length).toBe(3);
+
+    // The day BEFORE must not borrow them, which is the other half of the same bug.
+    const dayBefore = await request(app)
+      .get(
+        `/api/v1/hr/attendance/punches?employeeId=${employee.id}&from=${dateOnlyIso(addDays(day, -1))}&to=${dateOnlyIso(addDays(day, -1))}&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(dayBefore.status).toBe(200);
+    expect((dayBefore.body.data as unknown[]).length).toBe(0);
+  });
+
+  /**
+   * REGRESSION: «12 and 15 November read يوم راحة although I scanned on both».
+   *
+   * Nothing has derived `dayOff` since `noSchedule` arrived, so every stored one is a legacy row —
+   * and production has tens of thousands of them, written by the nightly pass for employees with no
+   * shift. Taking one at face value holds «يوم راحة» on screen over real punches for as long as the
+   * row sits there, which is why a stored `dayOff` is re-resolved rather than believed.
+   */
+  it('never reads a day with punches as a rest day, however the stored row is labelled', async () => {
+    const device = await registerDevice('STALE-ROW');
+    const employee = await regEmployee();
+    const day = recentWorkday();
+    await request(app)
+      .post('/api/v1/hr/attendance/enrollments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ deviceId: device, enrollmentNo: 'STALE-1', employeeId: employee.id })
+      .expect(201);
+    await importRows([
+      { deviceId: 'STALE-ROW', enrollmentNo: 'STALE-1', at: cairoInstant(day, '09:57').toISOString() },
+      { deviceId: 'STALE-ROW', enrollmentNo: 'STALE-1', at: cairoInstant(day, '17:07').toISOString() },
+    ]);
+
+    // Put the legacy label back on the row, exactly as the old engine left it.
+    await AttendanceDayModel.updateOne(
+      { employeeId: new Types.ObjectId(employee.id), workDate: day },
+      { $set: { status: 'dayOff', firstInAt: null, lastOutAt: null, workedMinutes: 0 } },
+    ).exec();
+
+    const period = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/employee-period?employeeId=${employee.id}&from=${dateOnlyIso(day)}&to=${dateOnlyIso(day)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(period.status).toBe(200);
+    const [resolved] = period.body.data as { status: string; firstInAt: string | null }[];
+    expect(resolved?.status).not.toBe('dayOff');
+    expect(resolved?.status).not.toBe('weekend');
+    expect(resolved?.status).not.toBe('holiday');
+    expect(['present', 'late', 'earlyLeave', 'lateAndEarly', 'checkedIn']).toContain(resolved?.status);
+    expect(resolved?.firstInAt).not.toBeNull();
+  });
+
+  /**
+   * The property the whole change is for: the sheet and the employee page cannot disagree about the
+   * same employee on the same day. They had two different sources — the sheet resolved its own
+   * answer, the page read a status off whichever rows it was sent — so they did.
+   */
+  it('agrees between the daily sheet and the employee page, day for day', async () => {
+    const device = await registerDevice('AGREE');
+    const employee = await regEmployee();
+    const day = recentWorkday();
+    await request(app)
+      .post('/api/v1/hr/attendance/enrollments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ deviceId: device, enrollmentNo: 'AGREE-1', employeeId: employee.id })
+      .expect(201);
+    await importRows([
+      { deviceId: 'AGREE', enrollmentNo: 'AGREE-1', at: cairoInstant(day, '08:40').toISOString() },
+    ]);
+
+    const sheet = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(day)}&search=${employee.code}&page=1&pageSize=100`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(sheet.status).toBe(200);
+    const line = (sheet.body.data as { employeeId: string; status: string }[]).find(
+      (r) => r.employeeId === employee.id,
+    );
+    expect(line, 'the employee on the sheet').toBeDefined();
+
+    const period = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/employee-period?employeeId=${employee.id}&from=${dateOnlyIso(day)}&to=${dateOnlyIso(day)}`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(period.status).toBe(200);
+    const [resolved] = period.body.data as { status: string }[];
+    expect(resolved?.status).toBe(line?.status);
+  });
+
+  /** One entry per calendar date, so a month cannot skip the days it has punches for. */
+  it('answers one entry per date of the period, including a day in January 2025', async () => {
+    const employee = await regEmployee();
+    const res = await request(app)
+      .get(
+        `/api/v1/hr/attendance/days/employee-period?employeeId=${employee.id}&from=2025-01-01&to=2025-01-31`,
+      )
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const days = res.body.data as { date: string; status: string }[];
+    // Employed from 2024-01-01, so every one of January's 31 days is theirs.
+    expect(days).toHaveLength(31);
+    expect(days[0]?.date).toBe('2025-01-01');
+    expect(days[30]?.date).toBe('2025-01-31');
+    // Nothing concluded and nothing scanned: the honest answer, not an absence and not a rest day.
+    const workingDay = days.find((d) => d.status === 'noRecord' || d.status === 'noSchedule');
+    expect(workingDay, 'a January day with an honest status').toBeDefined();
+    expect(days.every((d) => d.status !== 'dayOff')).toBe(true);
+  });
+
+  /** Every employee the sheet resolves falls in exactly one of the counters the screen draws. */
+  it('counts every line once, so the band adds up to the total', async () => {
+    const day = recentWorkday();
+    const res = await request(app)
+      .get(`/api/v1/hr/attendance/days/sheet/summary?date=${dateOnlyIso(day)}&branchId=${BRANCH_ID}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const { total, byStatus } = res.body.data as {
+      total: number;
+      byStatus: Record<string, number>;
+    };
+    const summed = Object.values(byStatus).reduce((a, b) => a + b, 0);
+    expect(summed).toBe(total);
+  });
+});

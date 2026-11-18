@@ -104,6 +104,9 @@ describe('closed vocabularies', () => {
       // Stage 4: the volume above which the review screen flags a manager for a LOOK. It blocks
       // nothing — a broken reader produces many legitimate changes — so it is a prompt, not a cap.
       'hr.attendance.decisionWeeklyReviewThreshold',
+      // Task 2: how old a scan may be and still be imported, 0 meaning no limit. It replaces the
+      // 90-day constant that was keeping two years of the branch machines' history out of ECMS.
+      'hr.attendance.importMaxAgeDays',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

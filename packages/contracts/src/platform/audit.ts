@@ -132,6 +132,10 @@ export const AUDIT_ACTIONS = [
   // own verb rather than hiding under `update`. Individual punches audit as plain `create`.
   'attendancePunchImport',
   'attendanceRecompute',
+  // Task 2: the history backfill. ONE verb for the whole run — started, cancelled, resumed,
+  // finished — because what a reviewer asks about is the run, and the `act` field on the row
+  // says which moment it was. Four verbs for one object would make that question four filters.
+  'attendanceBackfill',
   // AT-4: freezing a period makes a month's rows immutable — the single most consequential
   // mutation of derived attendance data, so it audits under its own verb.
   'attendanceFreeze',

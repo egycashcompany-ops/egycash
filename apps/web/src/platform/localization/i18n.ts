@@ -10574,6 +10574,7 @@ const en: Record<string, string> = {
   'systemAdmin.users.audit.export': 'Exported',
   'systemAdmin.users.audit.attendancePunchImport': 'Attendance punches imported',
   'systemAdmin.users.audit.attendanceRecompute': 'Attendance days recomputed',
+  'systemAdmin.users.audit.attendanceBackfill': 'Attendance history backfill',
   'systemAdmin.users.audit.attendanceFreeze': 'Attendance period frozen',
   'systemAdmin.users.audit.attendanceRegularization': 'Attendance regularization requested',
   'systemAdmin.users.audit.attendanceRegularizationDecision': 'Attendance regularization decided',
@@ -11242,6 +11243,8 @@ const en: Record<string, string> = {
     'Early-leave grace (minutes)',
   'systemAdmin.settings.keys.hr.attendance.decisionApprovalAfterDays':
     'Days a manager may decide an attendance day alone',
+  'systemAdmin.settings.keys.hr.attendance.importMaxAgeDays':
+    'How old a scan may be and still be imported',
   'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
     'Weekly changes by one manager before review flags them',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
@@ -11367,6 +11370,8 @@ const en: Record<string, string> = {
     'Minutes before the end time that are not counted as leaving early. Zero means any departure before the end time is recorded as early leave.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionApprovalAfterDays':
     'How far back a supervisor may decide a day on their own authority. An older day is recorded and takes effect only after HR approves it.',
+  'systemAdmin.settings.descriptions.hr.attendance.importMaxAgeDays':
+    'In days. 0 means no limit, which is the default, so a branch can send its whole history. A scan dated in the future is always refused, whatever this says — that is a device clock, not history.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
     'The number of attendance days one supervisor may change in a week before the change log highlights them for a look. Nothing is blocked or refused by it — a broken reader produces many legitimate changes.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
@@ -25668,6 +25673,7 @@ const ar: Record<string, string> = {
   'systemAdmin.users.audit.export': 'تصدير',
   'systemAdmin.users.audit.attendancePunchImport': 'استيراد بصمات الحضور',
   'systemAdmin.users.audit.attendanceRecompute': 'إعادة احتساب أيام الحضور',
+  'systemAdmin.users.audit.attendanceBackfill': 'إعادة احتساب سجل الحضور التاريخي',
   'systemAdmin.users.audit.attendanceFreeze': 'تجميد فترة حضور',
   'systemAdmin.users.audit.attendanceRegularization': 'طلب تسوية حضور',
   'systemAdmin.users.audit.attendanceRegularizationDecision': 'البت في تسوية حضور',
@@ -26330,6 +26336,8 @@ const ar: Record<string, string> = {
     'سماح الانصراف المبكر بالدقائق',
   'systemAdmin.settings.keys.hr.attendance.decisionApprovalAfterDays':
     'عدد الأيام التي يبتّ فيها المسؤول منفردًا',
+  'systemAdmin.settings.keys.hr.attendance.importMaxAgeDays':
+    'أقصى عمر للبصمة المقبولة عند الاستيراد',
   'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
     'عدد التعديلات الأسبوعية قبل تمييزها للمراجعة',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
@@ -26455,6 +26463,8 @@ const ar: Record<string, string> = {
     'عدد الدقائق قبل موعد النهاية التي لا تُحتسب انصرافًا مبكرًا. والقيمة صفر تعني أن أي انصراف قبل موعد النهاية يُسجّل انصرافًا مبكرًا.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionApprovalAfterDays':
     'المدة التي يجوز خلالها للمسؤول أن يبتّ في يوم حضور بسلطته وحده. وما كان أقدم من ذلك يُسجَّل القرار بشأنه ولا يسري إلا بعد اعتماد الموارد البشرية.',
+  'systemAdmin.settings.descriptions.hr.attendance.importMaxAgeDays':
+    'بالأيام. والقيمة صفر تعني بلا حد، وهي الأصل، حتى يتمكن الفرع من إرسال تاريخه كاملًا. أما البصمة المؤرخة في المستقبل فمرفوضة دائمًا مهما كانت هذه القيمة، لأنها خلل في ساعة الجهاز لا تاريخ.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
     'عدد أيام الحضور التي يجوز لمسؤول واحد تعديلها في الأسبوع قبل أن يُميّزها سجل التغييرات للاطّلاع عليها. ولا يترتب على تجاوز هذا العدد منع ولا رفض؛ فالجهاز المعطّل ينتج تعديلات كثيرة ومشروعة.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':

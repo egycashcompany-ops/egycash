@@ -41,8 +41,15 @@ import { cairoNowMinutes, cairoToday, toSheetRow } from '../view-model';
 import { DailySheetView, type SheetFilter, type SheetSortKey } from '../views';
 import { exportFileName, soleBranchName } from '../export-name';
 
-/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['branch', 'section', 'status', 'q'] as const;
+/**
+ * Remembered across visits: this screen's filters AND its order. `page` is derived, never kept.
+ *
+ * The order belongs here with the filters rather than being reset on every visit, for the same
+ * reason the status bucket does: it is how a particular person reads this screen. A supervisor who
+ * opens the sheet to find the shortfalls wants them first tomorrow too. The default — check-in
+ * ascending — is never written to the URL, so a reader who has chosen nothing still opens on it.
+ */
+const REMEMBERED_FILTERS = ['branch', 'section', 'status', 'q', 'sort', 'dir'] as const;
 
 /**
  * Which day statuses each counter stands for.

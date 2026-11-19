@@ -80,12 +80,31 @@ export class UnreadablePhotoError extends Error {
   }
 }
 
+/** The picture opened, but the face search failed on it: nothing is sent; sending again retries. */
+export class FaceSearchError extends Error {
+  constructor() {
+    super('the face search failed');
+    this.name = 'FaceSearchError';
+  }
+}
+
+/** Can this browser open the picture at all? Asked only after the face search failed on it. */
+const opens = async (file: File): Promise<boolean> => {
+  try {
+    (await createImageBitmap(file)).close();
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const prepareBatchPhoto = async (file: File, name: string): Promise<PreparedPhoto> => {
   let located: Awaited<ReturnType<typeof locateFace>>;
   try {
     located = await locateFace(file);
   } catch {
-    throw new UnreadablePhotoError();
+    // Which failed — the picture, or the search? Only a picture that cannot be opened is «damaged».
+    throw (await opens(file)) ? new FaceSearchError() : new UnreadablePhotoError();
   }
   const { sheet, crop } = located;
   if (crop !== null) {

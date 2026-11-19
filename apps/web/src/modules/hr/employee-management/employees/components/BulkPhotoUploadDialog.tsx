@@ -35,7 +35,12 @@ import {
   type PhotoFileInput,
   type PhotoRow,
 } from '../lib/photo-batch';
-import { prepareBatchPhoto, readyFaceSearch, UnreadablePhotoError } from '../lib/photo-prepare';
+import {
+  FaceSearchError,
+  prepareBatchPhoto,
+  readyFaceSearch,
+  UnreadablePhotoError,
+} from '../lib/photo-prepare';
 import { runQueue } from '../lib/photo-batch-run';
 
 interface PickedFile extends PhotoFileInput {
@@ -133,7 +138,9 @@ const PhotoRowView = memo(function PhotoRowView({
             text: t(run.shrunk ? 'employees.photoBatch.doneShrunk' : 'employees.photoBatch.doneNoFace'),
             tone: 'warn',
           };
-    if (run?.state === 'failed') return { text: run.message, tone: 'bad' };
+    // A failure is shown while the row is still to be sent; once it is left out or one of two, the
+    // row says that instead — what the person has to act on now.
+    if (run?.state === 'failed' && row.status === 'ready') return { text: run.message, tone: 'bad' };
     if (run?.state === 'preparing') return { text: t('employees.photoBatch.preparing'), tone: 'muted' };
     if (run?.state === 'uploading') return { text: t('employees.photoBatch.uploading'), tone: 'muted' };
     if (run?.state === 'waiting') return { text: t('employees.photoBatch.waiting'), tone: 'muted' };
@@ -247,7 +254,8 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   const pending = rows.filter((row) => row.status === 'ready' && !settled.has(row.key));
   const failedCount = pending.filter((row) => progress.get(row.key)?.state === 'failed').length;
   const differing = rows.filter((row) => row.status === 'ready' && row.nameDiffers).length;
-  const replacing = rows.filter((row) => row.status === 'ready' && row.employee?.photoFileId !== null).length;
+  // The summary counts what is still to send: after a run, photos already up are no longer «ready».
+  const replacing = pending.filter((row) => row.employee?.photoFileId !== null).length;
 
   /**
    * Take a pick (or a drop): photos only, each once. The new files join the table only once the
@@ -257,11 +265,15 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
    */
   const take = async (files: readonly File[]): Promise<void> => {
     const seen = new Set(picked.map((p) => p.key));
-    const fresh = files
-      .filter((file) => !isHidden(file))
-      .filter((file) => file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/iu.test(file.name))
-      .map((file) => ({ key: keyOf(file), name: file.name, type: file.type, file }))
-      .filter((p) => !seen.has(p.key));
+    // One entry per key within the pick too: two copies of one photo in two subfolders are one file.
+    const fresh = [
+      ...new Map(
+        files
+          .filter((file) => !isHidden(file))
+          .filter((file) => file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/iu.test(file.name))
+          .map((file) => [keyOf(file), { key: keyOf(file), name: file.name, type: file.type, file }] as const),
+      ).values(),
+    ].filter((p) => !seen.has(p.key));
     if (fresh.length === 0) return;
     lookups.current += 1;
     setLooking(true);
@@ -321,6 +333,7 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
     } catch {
       setNotice(t('employees.photoBatch.faceSearchUnavailable'));
       setRunning(false);
+      setConfirmClose(false);
       return;
     }
     for (const row of list) mark(row.key, { state: 'waiting' });
@@ -351,7 +364,9 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
               message:
                 error instanceof UnreadablePhotoError
                   ? t('employees.photoBatch.unreadable')
-                  : errorMessage(error, locale),
+                  : error instanceof FaceSearchError
+                    ? t('employees.photoBatch.faceSearchFailed')
+                    : errorMessage(error, locale),
             });
           }
         },
@@ -447,12 +462,23 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
               if (running) return;
               // Read now: the drop's lists are emptied once this handler returns.
               const plain = [...e.dataTransfer.files];
+              // Reading a dropped folder is part of finding the photos: «Upload» waits for it.
+              lookups.current += 1;
+              setLooking(true);
               void filesOfDrop(e.dataTransfer.items)
                 .then(async ({ files, skipped }) => {
                   await take(files.length > 0 ? files : plain);
-                  if (skipped > 0) setNotice(t('employees.photoBatch.dropSkipped', { n: skipped }));
+                  // Added to what the lookup said, never in its place.
+                  if (skipped > 0) {
+                    const note = t('employees.photoBatch.dropSkipped', { n: skipped });
+                    setNotice((now) => (now === null ? note : `${now} ${note}`));
+                  }
                 })
-                .catch((error: unknown) => setNotice(errorMessage(error, locale)));
+                .catch((error: unknown) => setNotice(errorMessage(error, locale)))
+                .finally(() => {
+                  lookups.current -= 1;
+                  if (lookups.current === 0) setLooking(false);
+                });
             }}
           >
             <p className="text-slate-600 dark:text-slate-300">{t('employees.photoBatch.drop')}</p>
@@ -503,7 +529,7 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
             <>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  {t('employees.photoBatch.countReady', { n: counts.ready })}
+                  {t('employees.photoBatch.countReady', { n: pending.length })}
                 </span>
                 {replacing > 0 && (
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-300">

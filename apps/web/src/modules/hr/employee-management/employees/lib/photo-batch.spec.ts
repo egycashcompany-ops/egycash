@@ -58,9 +58,22 @@ describe('reading a code out of a file name', () => {
 
   it('tries an external code before the digits inside it, and keeps it out of the name', () => {
     const parsed = parsePhotoName('EX-2900 احمد محمد.jpg');
-    expect(parsed.candidates[0]).toBe('EX-2900');
+    expect(parsed.candidates.slice(0, 2)).toEqual(['EX-2900', '2900']);
     expect(parsed.nameInFile).toBe('احمد محمد');
   });
+
+  it.each(['EX-2900_Ahmed.jpg', 'EX-2900-Ahmed.jpg', 'EX-2900.Ahmed.jpg', 'EX-2900احمد.jpg'])(
+    'finds the external code in %s, however it is joined to the name',
+    (name) => {
+      expect(parsePhotoName(name).candidates).toContain('EX-2900');
+    },
+  );
+
+  it('never lets a stray word of letters and digits beat the long number', () => {
+    expect(parsePhotoName('0101469 Ahmed C2.jpg').candidates[0]).toBe('0101469');
+    expect(parsePhotoName('IMG-1 0101469 Ahmed.jpg').candidates[0]).toBe('0101469');
+  });
+
 
   it('asks about no run of digits longer than any code can be', () => {
     const stamp = '2023110514302212345678901234567';
@@ -142,6 +155,25 @@ describe('the batch plan', () => {
   it('hands back the rows it does not mark as they were', () => {
     const rows = planPhotoBatch([file('0102000 أحمد.jpg')], matches, new Set());
     expect(markDuplicates(rows)[0]).toBe(rows[0]);
+  });
+
+  it('keeps a Latin name joined to the matched code by dashes', () => {
+    const rows = planPhotoBatch(
+      [file('0101469-Ahmed-Ali.jpg'), file('Mohamed-Hassan-0102000.jpg')],
+      matches,
+      new Set(),
+    );
+    expect(rows.map((r) => [r.code, r.nameInFile])).toEqual([
+      ['0101469', 'Ahmed Ali'],
+      ['0102000', 'Mohamed Hassan'],
+    ]);
+  });
+
+  it('reads the name beside the code that matched, an external one included', () => {
+    const outside = new Map([['EX-2900', employee('EX-2900', 'احمد محمد علي')]]);
+    const [row] = planPhotoBatch([file('EX-2900-Ahmed احمد.jpg')], outside, new Set());
+    expect(row?.code).toBe('EX-2900');
+    expect(row?.nameInFile).toBe('Ahmed احمد');
   });
 
   it('matches a code whose leading zero was dropped, and says so', () => {

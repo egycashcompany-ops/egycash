@@ -27,37 +27,69 @@ export const PADDED_FROM_DIGITS = EMPLOYEE_CODE_MIN_DIGITS - 2;
 export const LONGEST_CODE = 20;
 
 export interface ParsedPhotoName {
+  /** The name without its extension, Arabic digits read as ASCII. */
+  stem: string;
   /** The codes the name could mean, most likely first. */
   candidates: string[];
   /** The candidates made by putting back zeros a spreadsheet dropped (`101469` → `0101469`). */
   padded: string[];
-  /** What is left of the name once the code is taken out: the employee's name, as typed. */
+  /** What is left once the likeliest code is taken out: the employee's name, as typed. */
   nameInFile: string;
 }
 
 /**
+ * The words that could be an external person's code (`EX-2900`): each run of ASCII letters and
+ * digits joined by dashes (`EX-2900-Ahmed`), and every part of it between dashes (`EX-2900`), that
+ * holds a letter and a digit and is no longer than a code. Longest first.
+ */
+const codeWords = (stem: string): string[] => {
+  const out: string[] = [];
+  for (const match of stem.matchAll(/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/gu)) {
+    const parts = match[0].split('-');
+    for (let from = 0; from < parts.length; from += 1) {
+      for (let to = parts.length; to > from; to -= 1) {
+        const word = parts.slice(from, to).join('-');
+        const fits = word.length >= 2 && word.length <= LONGEST_CODE;
+        if (fits && /[A-Za-z]/u.test(word) && /\d/u.test(word) && !out.includes(word)) out.push(word);
+      }
+    }
+  }
+  return out.sort((a, b) => b.length - a.length);
+};
+
+/**
+ * The name beside the code: the file's name without `code` (as it is written there), without any
+ * other digits, and with separators as spaces.
+ */
+export const nameBeside = (stem: string, code: string | null): string =>
+  (code === null ? stem : stem.replace(code, ' '))
+    .replace(/\d+/gu, ' ')
+    .replace(/[_\-.+()[\]{}#،,]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+/**
  * Read a file's name: the codes it could carry and the name beside them.
  *
- * Every run of digits is a candidate, longest first. A run one or two digits SHORTER than a code is
- * also tried with the zeros a spreadsheet drops in front of it (`101469` → `0101469`), because no
- * code is that short, so the padded one is the only thing it can mean. A shorter run — the `2` of a
- * copy's «(2)» — is no code that lost its zeros, so it is not padded. A whole word of letters, digits and
- * dashes that holds a letter is tried FIRST: an external person's code (`EX-2900`), more exact than
- * the digits inside it.
+ * Every run of digits is a candidate, longest first — the employee's code is the long number in the
+ * name. A run one or two digits SHORTER than a code is also tried with the zeros a spreadsheet drops
+ * in front of it (`101469` → `0101469`), because no code is that short, so the padded one is the
+ * only thing it can mean; a shorter run (a copy's «(2)») is not padded, and a run longer than any
+ * code (a time stamp) is not tried. A word of letters and digits (an external person's `EX-2900`) is
+ * tried just BEFORE the digits inside it — more exact than they are, and never ahead of a longer
+ * number elsewhere in the name, so a stray `C2` cannot beat the employee's code.
  */
 export const parsePhotoName = (fileName: string): ParsedPhotoName => {
   const stem = asciiDigits(fileName.replace(/\.[^./\\]+$/u, '')).trim();
   const runs = [...stem.matchAll(/\d+/gu)].map((m) => m[0]).filter((run) => run.length <= LONGEST_CODE);
+  const words = codeWords(stem);
   const candidates: string[] = [];
   const padded: string[] = [];
   const add = (code: string): void => {
     if (code !== '' && !candidates.includes(code)) candidates.push(code);
   };
-  const words = stem
-    .split(/[\s_+]+/u)
-    .filter((word) => /^[A-Za-z0-9-]{2,20}$/u.test(word) && /\d/u.test(word));
-  for (const word of words) if (/[A-Za-z]/u.test(word)) add(word);
   for (const run of [...runs].sort((a, b) => b.length - a.length)) {
+    for (const word of words) if (word.includes(run)) add(word);
     add(run);
     if (run.length >= PADDED_FROM_DIGITS && run.length < EMPLOYEE_CODE_MIN_DIGITS) {
       const full = run.padStart(EMPLOYEE_CODE_MIN_DIGITS, '0');
@@ -65,14 +97,7 @@ export const parsePhotoName = (fileName: string): ParsedPhotoName => {
       add(full);
     }
   }
-  for (const word of words) add(word);
-  const nameInFile = stem
-    // A code with its letters (`EX-2900`), or bare digits: neither is part of the name.
-    .replace(/[A-Za-z][A-Za-z-]*\d[A-Za-z0-9-]*|\d[A-Za-z0-9-]*/gu, ' ')
-    .replace(/[_\-.+()[\]{}#،,]+/gu, ' ')
-    .replace(/\s+/gu, ' ')
-    .trim();
-  return { candidates, padded, nameInFile };
+  return { stem, candidates, padded, nameInFile: nameBeside(stem, candidates[0] ?? null) };
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -174,6 +199,8 @@ export const planFiles = (
     const parsed = parsePhotoName(file.name);
     const hit = parsed.candidates.find((code) => matches.has(code)) ?? null;
     const employee = hit === null ? null : (matches.get(hit) ?? null);
+    // The name beside the code that MATCHED, not beside the likeliest one.
+    const nameInFile = hit === null ? parsed.nameInFile : nameBeside(parsed.stem, hit);
     const status: PhotoRowStatus = excluded.has(file.key)
       ? 'excluded'
       : !PHOTO_TYPES.includes(file.type)
@@ -189,7 +216,7 @@ export const planFiles = (
       status,
       code: hit ?? parsed.candidates[0] ?? null,
       padded: hit !== null && parsed.padded.includes(hit),
-      nameInFile: parsed.nameInFile,
+      nameInFile,
       employee,
       // Against each name the employee HAS: a missing English name is no name, not a match.
       nameDiffers:
@@ -197,7 +224,7 @@ export const planFiles = (
         Math.max(
           ...[employee.fullNameAr, employee.fullNameEn ?? '']
             .filter((name) => name.trim() !== '')
-            .map((name) => nameLikeness(parsed.nameInFile, name)),
+            .map((name) => nameLikeness(nameInFile, name)),
           0,
         ) < NAME_LIKENESS_FLOOR,
     };

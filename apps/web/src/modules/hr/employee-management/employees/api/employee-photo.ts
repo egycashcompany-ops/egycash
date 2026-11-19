@@ -8,11 +8,13 @@
 // person's own welcome page and top bar refresh too, when the face changed is the signed-in one's.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  EMPLOYEE_CODE_LOOKUP_MAX,
   EMPLOYEE_PHOTO_MAX_MB,
   EMPLOYEE_PHOTO_MIME_TYPES,
+  type EmployeeCodeMatchDto,
   type EmployeeDto,
 } from '@ecms/contracts';
-import { api, upload } from '../../../../../shared/lib/api-client';
+import { api, post, upload } from '../../../../../shared/lib/api-client';
 import { useAuthedImage } from '../../../../../shared/lib/authed-image';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { MY_SUMMARY_KEY } from '../../../../../platform/home/home-api';
@@ -75,4 +77,24 @@ export const useRemoveEmployeePhoto = (id: string) => {
     onSuccess: after,
     onError: () => undefined,
   });
+};
+
+// ---------------------------------------------------------------------------------------------
+// The bulk upload (`components/BulkPhotoUploadDialog.tsx`)
+
+/** The employees holding these codes, within the caller's reach — asked in chunks the server takes. */
+export const lookupEmployeeCodes = async (codes: readonly string[]): Promise<EmployeeCodeMatchDto[]> => {
+  const out: EmployeeCodeMatchDto[] = [];
+  for (let i = 0; i < codes.length; i += EMPLOYEE_CODE_LOOKUP_MAX) {
+    const chunk = codes.slice(i, i + EMPLOYEE_CODE_LOOKUP_MAX);
+    out.push(...(await post<EmployeeCodeMatchDto[]>('/hr/employees/codes/lookup', { codes: chunk })));
+  }
+  return out;
+};
+
+/** One employee's photo, sent exactly as the profile sends it. */
+export const uploadEmployeePhotoFile = (id: string, file: File): Promise<EmployeeDto> => {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  return upload<EmployeeDto>(`/hr/employees/${id}/photo`, form);
 };

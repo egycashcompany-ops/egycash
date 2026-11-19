@@ -166,6 +166,25 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return res.modifiedCount;
   }
 
+  /**
+   * The employees holding any of these codes, within the caller's scope — the bulk photo upload's
+   * match (`EmployeeCodeMatchDto`). One query on `ux_code`; only what the match shows is read.
+   */
+  async findByCodesInScope(codes: readonly string[], scope: ScopeSelector): Promise<EmployeeDoc[]> {
+    if (codes.length === 0) return [];
+    return this.model
+      .find(this.baseFilter(scope, { code: { $in: [...codes] } }))
+      .select({
+        code: 1,
+        status: 1,
+        'personal.fullNameAr': 1,
+        'personal.fullNameEn': 1,
+        'personal.photoFileId': 1,
+      })
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
   /** Employee by CODE (auth design 4.3 — the employee-code login identifier). */
   async findByCodeSystem(code: string): Promise<EmployeeDoc | null> {
     return this.model.findOne({ code, isDeleted: false }).lean<EmployeeDoc>().exec();

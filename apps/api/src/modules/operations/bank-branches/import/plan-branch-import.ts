@@ -6,15 +6,21 @@
 // Its name is matched on `operationsBranchNameKey` (tidied, Latin without case): a second row of the
 // same name is a problem (`duplicateName`); a name two held branches share is a problem
 // (`ambiguousName`); one held branch is that branch (update or unchanged); none is a new branch,
-// which needs a code (`noCode`).
+// which needs a code (`noCode`) — and is marked `similarTo` the held branch its name is in another
+// spelling (`operationsBranchNameLookalikeKey`), still new (Round 29 critic).
 //
 // AREAS. The sheet's Arabic and English area (an only area in Latin letters stands for both; an
-// English cell in Arabic letters is the Arabic name, never an English one). It is
-// the area «المناطق» holds whose Arabic name folds (`foldOperationsAreaName`) to the sheet's, else
-// whose English name equals the sheet's without case — written in that area's own spelling, its
-// empty English name filled from the sheet. Else it is a new area, created once, and later rows
-// naming it find it as they would a held one. It goes into both «منطقة العمليات» and «منطقة
-// الحسابات»; a row with no area leaves a held branch's areas as they are.
+// English cell with an Arabic letter is the Arabic name, never an English one — beside an Arabic
+// one it is dropped, beside a Latin one the two are swapped). A Latin-only area another written row
+// gives in Arabic, beside the same English name, takes that Arabic — whichever row comes first
+// (Round 29 critic: the first row's Latin was written as the Arabic name, and the later Arabic
+// lost). It is the area «المناطق» holds whose Arabic name folds (`foldOperationsAreaName`) to the
+// sheet's, else whose English name equals the sheet's without case — written in that area's own
+// spelling, its empty English name filled from the sheet unless that English is ANOTHER area's
+// (`englishElsewhere`); found by its English alone, the row's own Arabic is not written
+// (`byEnglish`). Else it is a new area, created once, and later rows naming it find it as they
+// would a held one. It goes into both «منطقة العمليات» and «منطقة الحسابات»; a row with no area
+// leaves a held branch's areas as they are.
 //
 // CODES — «ضيف رقم بعد الكود». The codes of the bank's branches the sheet does not name are taken.
 // Pass 1: a held branch that already has the sheet's code (or the sheet gives it none) keeps it;
@@ -28,9 +34,12 @@
 import {
   OPERATIONS_BRANCH_IMPORT_FIELDS,
   foldOperationsAreaName,
+  isOperationsBranchImportSuffixedWrite,
   operationsBranchNameKey,
+  operationsBranchNameLookalikeKey,
   suffixedOperationsBranchCode,
   tidyOperationsBranchName,
+  type OperationsBranchImportAreaNote,
   type OperationsBranchImportCountsDto,
   type OperationsBranchImportFilledAreaDto,
   type OperationsBranchImportNewAreaDto,
@@ -111,25 +120,36 @@ const englishKey = (text: string): string => tidyOperationsBranchName(text).toLo
 const ARABIC_LETTER = /\p{Script=Arabic}/u;
 const LATIN_LETTER = /[A-Za-z]/u;
 
+/** Latin letters, and no Arabic one. */
+const isLatin = (text: string): boolean => LATIN_LETTER.test(text) && !ARABIC_LETTER.test(text);
+
+/** A row's area as the import reads it, before it is matched. */
+interface SheetArea {
+  ar: string;
+  en: string | null;
+  /** `ar` is in Latin letters only. */
+  latinOnly: boolean;
+  /** `ar` is the row's own Arabic name — not Latin, not taken from another row. */
+  own: boolean;
+}
+
 /** The row's area as the import writes it, before it is matched. */
-const sheetAreaOf = (
-  row: BranchSheetRow,
-): { ar: string; en: string | null; latinOnly: boolean } | null => {
+const sheetAreaOf = (row: BranchSheetRow): SheetArea | null => {
   let { areaAr, areaEn } = row;
-  // An English cell in Arabic letters is no English name («فى خانة الانجليزى اكتبها انجليزى»): it
-  // is the Arabic one where the sheet gives none, and is dropped beside one it gives.
-  if (areaEn !== null && ARABIC_LETTER.test(areaEn) && !LATIN_LETTER.test(areaEn)) {
-    areaAr ??= areaEn;
-    areaEn = null;
+  // An English cell with an Arabic letter in it is no English name («فى خانة الانجليزى اكتبها
+  // انجليزى»): it is the Arabic one where the sheet gives none — or gives it in Latin letters, the
+  // two columns swapped, that one being the English — and is dropped beside an Arabic one.
+  if (areaEn !== null && ARABIC_LETTER.test(areaEn)) {
+    const latinAr = areaAr !== null && isLatin(areaAr) ? areaAr : null;
+    if (areaAr === null || latinAr !== null) [areaAr, areaEn] = [areaEn, latinAr];
+    else areaEn = null;
   }
   if (areaAr === null && areaEn === null) return null;
-  // Only the English: it stands for the Arabic too.
-  if (areaAr === null) return { ar: areaEn as string, en: areaEn, latinOnly: true };
-  // An «المنطقة» in Latin letters, with no English beside it: it is the English name.
-  if (areaEn === null && !ARABIC_LETTER.test(areaAr) && LATIN_LETTER.test(areaAr)) {
-    return { ar: areaAr, en: areaAr, latinOnly: true };
-  }
-  return { ar: areaAr, en: areaEn, latinOnly: false };
+  // Only the English: it stands for the Arabic too. An «المنطقة» in Latin letters with no English
+  // beside it is the English name.
+  const ar = areaAr ?? (areaEn as string);
+  const latinOnly = isLatin(ar);
+  return { ar, en: areaEn ?? (latinOnly ? ar : null), latinOnly, own: !latinOnly };
 };
 
 interface AreaEntry {
@@ -164,22 +184,33 @@ const areaBook = (held: readonly HeldArea[]) => {
   const filled = new Map<string, OperationsBranchImportFilledAreaDto>();
   const created: AreaEntry[] = [];
 
-  /** The area a row writes: found, filled or created. */
-  const resolve = (area: { ar: string; en: string | null; latinOnly: boolean }) => {
+  /** The area a row writes: found, filled or created — and why it is not the row's own pair. */
+  const resolve = (
+    area: SheetArea,
+  ): { entry: AreaEntry; note: OperationsBranchImportAreaNote | null } => {
     const folded = foldOperationsAreaName(area.ar);
-    const found =
-      (folded === '' ? undefined : byFold.get(folded)) ??
-      (area.en === null ? undefined : byEnglish.get(englishKey(area.en)));
+    const byArabic = folded === '' ? undefined : byFold.get(folded);
+    const byEnglishName = area.en === null ? undefined : byEnglish.get(englishKey(area.en));
+    const found = byArabic ?? byEnglishName;
     if (found !== undefined) {
       found.rows += 1;
-      if (found.nameEn === null && area.en !== null) {
+      // The sheet's English name is another area's: it is not this one's too.
+      const englishIsOthers = byEnglishName !== undefined && byEnglishName !== found;
+      if (found.nameEn === null && area.en !== null && !englishIsOthers) {
         found.nameEn = area.en;
         index(found);
         if (found.id !== null) {
           filled.set(found.id, { id: found.id, name: found.name, nameEn: area.en });
         }
       }
-      return { name: found.name, isNew: found.id === null };
+      const note: OperationsBranchImportAreaNote | null = !area.own
+        ? null
+        : byArabic === undefined
+          ? 'byEnglish'
+          : englishIsOthers
+            ? 'englishElsewhere'
+            : null;
+      return { entry: found, note };
     }
     const entry: AreaEntry = {
       id: null,
@@ -191,7 +222,7 @@ const areaBook = (held: readonly HeldArea[]) => {
     entries.push(entry);
     created.push(entry);
     index(entry);
-    return { name: entry.name, isNew: true };
+    return { entry, note: null };
   };
   return { resolve, filled, created };
 };
@@ -201,6 +232,7 @@ interface Target {
   at: number;
   sheet: BranchSheetRow;
   held: HeldBranch | null;
+  area: SheetArea | null;
   areaName: string | null;
   /** The base the code is taken from: the sheet's, or the held branch's when the sheet has none. */
   base: string;
@@ -231,13 +263,17 @@ export const planBranchImport = (
     const key = operationsBranchNameKey(branch.name);
     heldByName.set(key, [...(heldByName.get(key) ?? []), branch]);
   }
+  const heldByLookalike = new Map<string, HeldBranch>();
+  for (const branch of branches) {
+    const key = operationsBranchNameLookalikeKey(branch.name);
+    if (key !== '' && !heldByLookalike.has(key)) heldByLookalike.set(key, branch);
+  }
   const book = areaBook(areas);
 
   const rows: OperationsBranchImportRowDto[] = [];
   const targets: Target[] = [];
   const seenNames = new Set<string>();
   for (const sheet of sheetRows) {
-    const area = sheetAreaOf(sheet);
     const dto: OperationsBranchImportRowDto = {
       row: sheet.row,
       name: sheet.name,
@@ -252,8 +288,10 @@ export const planBranchImport = (
       after: null,
       changes: [],
       codeSuffixed: false,
-      areaLatinOnly: area?.latinOnly ?? false,
+      areaLatinOnly: false,
       areaIsNew: false,
+      areaNote: null,
+      similarTo: null,
     };
     rows.push(dto);
     const refuse = (problem: OperationsBranchImportProblem): void => {
@@ -283,16 +321,40 @@ export const planBranchImport = (
       refuse('noCode');
       continue;
     }
-    const resolved = area === null ? null : book.resolve(area);
-    dto.areaIsNew = resolved?.isNew ?? false;
     targets.push({
       at: rows.length - 1,
       sheet,
       held: branch,
-      areaName: resolved?.name ?? null,
+      area: sheetAreaOf(sheet),
+      areaName: null,
       base: sheet.code ?? (branch as HeldBranch).code,
       code: null,
     });
+  }
+
+  // ── Areas ────────────────────────────────────────────────────────────────────────────────────
+  // A Latin-only area whose English another written row gives beside an Arabic name: that Arabic,
+  // the first row's of an English name — whichever row comes first in the sheet.
+  const arabicOfEnglish = new Map<string, string>();
+  for (const { area } of targets) {
+    if (area === null || area.latinOnly || area.en === null) continue;
+    const key = englishKey(area.en);
+    if (!arabicOfEnglish.has(key)) arabicOfEnglish.set(key, area.ar);
+  }
+  for (const target of targets) {
+    const area = target.area;
+    if (area === null || !area.latinOnly || area.en === null) continue;
+    const ar = arabicOfEnglish.get(englishKey(area.en));
+    if (ar !== undefined) target.area = { ar, en: area.en, latinOnly: false, own: false };
+  }
+  for (const target of targets) {
+    if (target.area === null) continue;
+    const { entry, note } = book.resolve(target.area);
+    const dto = rows[target.at] as OperationsBranchImportRowDto;
+    target.areaName = entry.name;
+    dto.areaIsNew = entry.id === null;
+    dto.areaLatinOnly = entry.id === null && entry.latinOnly;
+    dto.areaNote = note;
   }
 
   // ── Codes ────────────────────────────────────────────────────────────────────────────────────
@@ -339,6 +401,11 @@ export const planBranchImport = (
     dto.codeSuffixed = target.sheet.code !== null && code !== target.sheet.code;
     if (target.held === null) {
       dto.outcome = 'new';
+      const twin = heldByLookalike.get(
+        operationsBranchNameLookalikeKey(target.sheet.name as string),
+      );
+      dto.similarTo =
+        twin === undefined ? null : { branchId: twin.id, name: twin.name, code: twin.code };
       dto.after = {
         code,
         opsAreaName: target.areaName,
@@ -413,9 +480,11 @@ export const planBranchImport = (
       update: count('update'),
       unchanged: count('unchanged'),
       problem: count('problem'),
-      suffixed: rows.filter((row) => row.codeSuffixed).length,
+      suffixed: rows.filter(isOperationsBranchImportSuffixedWrite).length,
       areasNew: newAreas.length,
       areasFilled: filledAreas.length,
+      similar: rows.filter((row) => row.similarTo !== null).length,
+      areaNotes: rows.filter((row) => row.areaNote !== null).length,
     },
     areaCreates: newAreas.map(({ name, nameEn }) => ({ name, nameEn })),
     branchCreates,

@@ -1,29 +1,43 @@
 // «استيراد فروع من شيت» (Round 29) — what the comparison screen decides, pure, for its spec: which
 // rows a filter and a search show, the filters' counts, whether «تأكيد الاستيراد» has anything to
-// write, and the words of a refusal.
+// write, the words of a refusal and of the import done.
 import {
   ErrorCodes,
+  isOperationsBranchImportSuffixedWrite,
+  type OperationsBranchImportAppliedDto,
   type OperationsBranchImportCompareDto,
   type OperationsBranchImportRowDto,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 
-/** The table's filters — the outcomes, and «كود معدَّل» across them. */
+/**
+ * The table's filters — the outcomes, «كود معدَّل» across them (the suffixed codes the import
+ * WRITES), and «للمراجعة» (Round 29 critic): a new row the bank may hold spelt another way, or an
+ * area not written as the sheet gives it.
+ */
 export const BRANCH_IMPORT_FILTERS = [
   'all',
   'new',
   'update',
   'unchanged',
   'suffixed',
+  'review',
   'problem',
 ] as const;
 export type BranchImportFilter = (typeof BRANCH_IMPORT_FILTERS)[number];
 
+/** «للمراجعة» — the rows to look at before confirming. */
+export const needsReview = (row: OperationsBranchImportRowDto): boolean =>
+  row.similarTo !== null || row.areaNote !== null;
+
 const inFilter = (row: OperationsBranchImportRowDto, filter: BranchImportFilter): boolean => {
   if (filter === 'all') return true;
-  if (filter === 'suffixed') return row.codeSuffixed;
+  if (filter === 'suffixed') return isOperationsBranchImportSuffixedWrite(row);
+  if (filter === 'review') return needsReview(row);
   return row.outcome === filter;
 };
+
+const W = 'operations.catalogs.branchImport.';
 
 /** Search text as compared: Latin without case, Arabic «أ إ آ» as «ا», «ة» as «ه», «ى» as «ي». */
 const fold = (text: string): string =>
@@ -72,21 +86,38 @@ export const filterCounts = (
   new: dto.counts.new,
   update: dto.counts.update,
   unchanged: dto.counts.unchanged,
-  suffixed: dto.counts.suffixed,
+  suffixed: suffixedWrites(dto),
+  review: dto.rows.filter(needsReview).length,
   problem: dto.counts.problem,
 });
 
 /**
- * «أكواد معدَّلة (ضمنها)» in the confirmation — the suffixed codes this import WRITES: a new
- * branch's, and a held branch's whose code changes to one. `counts.suffixed` (the «كود معدَّل»
- * tile) also counts the held rows that already carry their suffix and are written nothing.
+ * «كود معدَّل» — the tile, the filter and «أكواد معدَّلة (ضمنها)» in the confirmation alike: the
+ * suffixed codes this import WRITES (a new branch's, a held branch's whose code changes to one),
+ * never a held row that already carries its suffix and is written nothing (Round 29 critic).
  */
-export const suffixedWrites = (dto: OperationsBranchImportCompareDto): number =>
-  dto.rows.filter(
-    (row) =>
-      row.codeSuffixed &&
-      (row.outcome === 'new' || (row.outcome === 'update' && row.changes.includes('code'))),
-  ).length;
+export function suffixedWrites(dto: OperationsBranchImportCompareDto): number {
+  return dto.rows.filter(isOperationsBranchImportSuffixedWrite).length;
+}
+
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+/**
+ * The toast of an import done: a short title, and every count in its description — a toast cuts
+ * its title to one line, and the counts in it were cut off (Round 29 critic).
+ */
+export const importedToast = (
+  t: Translate,
+  applied: OperationsBranchImportAppliedDto,
+): { title: string; description: string } => ({
+  title: t(`${W}done`),
+  description: t(`${W}doneDetail`, {
+    created: applied.branchesCreated,
+    updated: applied.branchesUpdated,
+    areas: applied.areasCreated,
+    filled: applied.areasFilled,
+  }),
+});
 
 /** Whether «تأكيد الاستيراد» would write anything at all. */
 export const writesAnything = (dto: OperationsBranchImportCompareDto): boolean =>
@@ -99,7 +130,7 @@ export const isOutOfDate = (error: unknown): boolean =>
     error.code === ErrorCodes.STALE_DOCUMENT ||
     error.code === ErrorCodes.DUPLICATE);
 
-const P = 'operations.catalogs.branchImport.refusal.';
+const P = `${W}refusal.`;
 
 /**
  * The catalog key that words a refusal of either call, or null for one the screen has no words of

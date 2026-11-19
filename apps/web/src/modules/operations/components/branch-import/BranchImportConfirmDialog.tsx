@@ -1,7 +1,9 @@
 // «تأكيد الاستيراد» (Round 29) — what the import writes, in one go, before it does: the new
 // branches, the branches updated (and how many of the codes they write take a suffix), the new
-// areas, the English names filled, and the rows left out. The fuel-card comparison's confirmation
-// (ReconcileConfirmDialog.tsx): nothing is written until it is confirmed here.
+// areas, the English names filled, and the rows left out — and, when there are some, the new
+// branches the bank may hold spelt another way and the rows whose area is not the sheet's own.
+// The fuel-card comparison's confirmation (ReconcileConfirmDialog.tsx): nothing is written until it
+// is confirmed here.
 import { type OperationsBranchImportCompareDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { Dialog } from '../../../../shared/ui/Dialog';
@@ -85,6 +87,21 @@ export const BranchImportConfirmDialog = ({
           value={counts.problem}
           tone="text-rose-600 dark:text-rose-400"
         />
+        {/* What to have looked at — said only when there is some (Round 29 critic). */}
+        {counts.similar > 0 && (
+          <Line
+            label={t(`${W}dialog.similar`)}
+            value={counts.similar}
+            tone="text-orange-600 dark:text-orange-400"
+          />
+        )}
+        {counts.areaNotes > 0 && (
+          <Line
+            label={t(`${W}dialog.areaNotes`)}
+            value={counts.areaNotes}
+            tone="text-orange-600 dark:text-orange-400"
+          />
+        )}
       </ul>
       {counts.problem > 0 && (
         <p className="mt-3 text-xs leading-relaxed text-slate-600 dark:text-slate-400">

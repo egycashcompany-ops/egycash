@@ -3043,6 +3043,9 @@ export interface OperationsShipmentAssignmentDto {
  * Round 25: and both keep the «محصنة» rule — a row not of that type takes no محصنة unless its
  * delivery leg is already on that row: 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`, checked after
  * the day and before the captain, naming the shipment and the row.
+ * R30 critic: and never a day that has PASSED (Cairo's calendar) — its vans are «توزيع المحصنات»'s
+ * record, read only: 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, the save's own refusal and detail,
+ * checked right after the day. An overdue one reaches today's vans through the distribution save.
  */
 export const AssignSecuredDeliveryLegSchema = z
   .object({

@@ -185,9 +185,9 @@ describe('readBranchSheet — cells', () => {
       await buildBranchSheet({
         rows: [
           BRANCH_SHEET_HEADER,
-          [new Date(Date.UTC(2020, 4, 15)), '1'],
-          ['2019-07-26 00:00:00', '2'],
-          ['فرع ١٥ مايو', '3'],
+          [new Date(Date.UTC(2003, 3, 5)), '1'],
+          ['2001-02-03 00:00:00', '2'],
+          ['فرع ٣ فبراير', '3'],
         ],
       }),
     );

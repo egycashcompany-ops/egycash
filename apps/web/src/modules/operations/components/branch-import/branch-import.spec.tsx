@@ -12,6 +12,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   ErrorCodes,
+  OPERATIONS_BRANCH_IMPORT_AREA_NOTES,
   OPERATIONS_BRANCH_IMPORT_PROBLEMS,
   OPERATIONS_BRANCH_IMPORT_ROLES,
   type Locale,
@@ -31,6 +32,7 @@ import { branchImportStales } from '../../api/branch-import';
 import {
   BRANCH_IMPORT_FILTERS,
   filterCounts,
+  importedToast,
   isOutOfDate,
   refusalKeyOf,
   suffixedWrites,
@@ -129,6 +131,8 @@ const row = (over: Partial<OperationsBranchImportRowDto>): OperationsBranchImpor
   codeSuffixed: false,
   areaLatinOnly: false,
   areaIsNew: true,
+  areaNote: null,
+  similarTo: null,
   ...over,
 });
 
@@ -191,6 +195,8 @@ const DTO: OperationsBranchImportCompareDto = {
     suffixed: 1,
     areasNew: 1,
     areasFilled: 1,
+    similar: 0,
+    areaNotes: 0,
   },
   rows: ROWS,
   newAreas: [{ name: 'منطقة الأفق', nameEn: 'Horizon', rows: 3, latinOnly: false }],
@@ -231,6 +237,7 @@ describe('the rules of the comparison screen', () => {
       update: 1,
       unchanged: 1,
       suffixed: 1,
+      review: 0,
       problem: 1,
     });
     expect([...BRANCH_IMPORT_FILTERS]).toEqual(Object.keys(filterCounts(DTO)));
@@ -275,6 +282,30 @@ describe('the rules of the comparison screen', () => {
       counts: { ...DTO.counts, new: 1, update: 2, unchanged: 2, suffixed: 4 },
     };
     expect(suffixedWrites(again)).toBe(2);
+    // Round 29 critic: the «كود معدَّل» tile and filter say the same — the two codes written.
+    expect(filterCounts(again).suffixed).toBe(2);
+    expect(visibleRows(again.rows, 'suffixed', '').map((r) => r.row)).toEqual([5, 6]);
+    const drawn = render(
+      <BranchImportResult
+        result={again}
+        outOfDate={false}
+        refusal={null}
+        busy={false}
+        onAnother={() => undefined}
+        onCompareAgain={() => undefined}
+        onConfirm={() => undefined}
+      />,
+    );
+    const rowOf = (n: number): string => {
+      const at = drawn.indexOf(`data-branch-import-row="${String(n)}"`);
+      const next = drawn.indexOf('data-branch-import-row=', at + 1);
+      return drawn.slice(at, next === -1 ? undefined : next);
+    };
+    // The held «116-2», written nothing: its code and the sheet's, no «كود معدَّل» chip, no arrow.
+    expect(rowOf(3)).toContain('data-branch-import-held-suffix="true"');
+    expect(rowOf(3)).not.toContain('data-branch-import-suffixed');
+    expect(rowOf(3)).not.toContain('data-branch-import-change');
+    expect(rowOf(5)).toContain('data-branch-import-suffixed="true"');
     const html = renderToStaticMarkup(
       <Provider
         store={configureStore({
@@ -464,6 +495,132 @@ describe('the comparison, drawn', () => {
   });
 });
 
+describe('the rows to review before confirming (Round 29 critic)', () => {
+  const REVIEW: OperationsBranchImportCompareDto = {
+    ...DTO,
+    rows: [
+      ...ROWS,
+      row({
+        row: 7,
+        name: 'فرع النرجسي',
+        sheetCode: '2',
+        after: values('2-2', null),
+        codeSuffixed: true,
+        areaIsNew: false,
+        similarTo: { branchId: 'b9', name: 'فرع النرجسى', code: '2' },
+      }),
+      row({
+        row: 8,
+        name: 'فرع الكروم',
+        sheetCode: '10',
+        sheetArea: { ar: 'منطقة الكروم', en: 'Orchard' },
+        after: values('10', 'منطقة البستان'),
+        areaIsNew: false,
+        areaNote: 'byEnglish',
+      }),
+    ],
+    counts: { ...DTO.counts, rows: 7, new: 4, suffixed: 2, similar: 1, areaNotes: 1 },
+  };
+  const result = (dto: OperationsBranchImportCompareDto) =>
+    render(
+      <BranchImportResult
+        result={dto}
+        outOfDate={false}
+        refusal={null}
+        busy={false}
+        onAnother={() => undefined}
+        onCompareAgain={() => undefined}
+        onConfirm={() => undefined}
+      />,
+    );
+
+  it('filters them, says so above the counts, and marks each row with its reason', () => {
+    expect(filterCounts(REVIEW).review).toBe(2);
+    expect(visibleRows(REVIEW.rows, 'review', '').map((r) => r.row)).toEqual([7, 8]);
+    const html = result(REVIEW);
+    expect(html).toContain('data-branch-import-review="true"');
+    expect(html).toContain(translate('ar', `${W}reviewShow`, { count: 2 }));
+    expect(html).toContain('data-branch-import-filter="review"');
+    expect(html).toContain('data-branch-import-similar="true"');
+    expect(html).toContain(translate('ar', `${W}similarTo`, { name: 'فرع النرجسى', code: '2' }));
+    expect(html).toContain('data-branch-import-area-note="byEnglish"');
+    expect(html).toContain(
+      translate('ar', `${W}areaNote.byEnglish`, { area: 'منطقة الكروم | Orchard', en: 'Orchard' }),
+    );
+    expect(html).not.toContain(W);
+  });
+
+  it('shows no «للمراجعة» when no row needs it', () => {
+    const html = result(DTO);
+    expect(html).not.toContain('data-branch-import-review=');
+    expect(html).not.toContain('data-branch-import-filter="review"');
+  });
+
+  it('counts them in the confirmation, and only when there are some', () => {
+    const dialog = (dto: OperationsBranchImportCompareDto) =>
+      render(
+        <BranchImportConfirmDialog
+          result={dto}
+          open
+          busy={false}
+          onClose={() => undefined}
+          onConfirm={() => undefined}
+        />,
+      );
+    const html = dialog(REVIEW);
+    expect(html).toContain(translate('ar', `${W}dialog.similar`));
+    expect(html).toContain(translate('ar', `${W}dialog.areaNotes`));
+    const none = dialog(DTO);
+    expect(none).not.toContain(translate('ar', `${W}dialog.similar`));
+    expect(none).not.toContain(translate('ar', `${W}dialog.areaNotes`));
+  });
+});
+
+describe('what a screen reader and a toast are given (Round 29 critic)', () => {
+  const html = render(
+    <BranchImportResult
+      result={DTO}
+      outOfDate={false}
+      refusal={null}
+      busy={false}
+      onAnother={() => undefined}
+      onCompareAgain={() => undefined}
+      onConfirm={() => undefined}
+    />,
+  );
+
+  it('makes the filters toggle buttons — one Tab stop each, the one on pressed', () => {
+    expect(html).not.toContain('role="radio"');
+    expect(html).not.toContain('role="radiogroup"');
+    expect(tagOf(html, 'data-branch-import-filter="all"')).toContain('aria-pressed="true"');
+    expect(tagOf(html, 'data-branch-import-filter="new"')).toContain('aria-pressed="false"');
+  });
+
+  it('says «كان» and «أصبح» on an old → new value, not only by a strike-through', () => {
+    const at = html.indexOf('data-branch-import-row="4"');
+    const update = html.slice(at, html.indexOf('data-branch-import-row="5"'));
+    expect(update).toContain(`<span class="sr-only">${translate('ar', `${W}change.was`)} </span>`);
+    expect(update).toContain(`<span class="sr-only">${translate('ar', `${W}change.now`)} </span>`);
+  });
+
+  it('keeps the toast’s title short and gives every count in its description', () => {
+    const t = (key: string, params?: Record<string, string | number>) =>
+      translate('ar', key, params);
+    const words = importedToast(t, {
+      bankId: 'bank-1',
+      branchesCreated: 200,
+      branchesUpdated: 1,
+      unchanged: 0,
+      problems: 0,
+      areasCreated: 37,
+      areasFilled: 4,
+    });
+    expect(words.title).toBe(translate('ar', `${W}done`));
+    expect(words.title).not.toMatch(/\d/u);
+    for (const n of ['200', '1', '37', '4']) expect(words.description).toContain(n);
+  });
+});
+
 describe('the words', () => {
   const KEYS = [
     'open',
@@ -518,6 +675,17 @@ describe('the words', () => {
     'dialog.note',
     'dialog.cancel',
     'done',
+    'doneDetail',
+    'reviewNote',
+    'reviewShow',
+    'badge.similar',
+    'similarTo',
+    'sheetCode',
+    'change.was',
+    'change.now',
+    'dialog.similar',
+    'dialog.areaNotes',
+    ...OPERATIONS_BRANCH_IMPORT_AREA_NOTES.map((note) => `areaNote.${note}`),
     ...OPERATIONS_BRANCH_IMPORT_ROLES.map((role) => `col.${role}`),
     ...BRANCH_IMPORT_FILTERS.map((filter) => `filter.${filter}`),
     ...(['new', 'update', 'unchanged', 'problem'] as const).map((o) => `outcome.${o}`),

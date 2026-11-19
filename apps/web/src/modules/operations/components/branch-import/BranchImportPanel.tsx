@@ -18,12 +18,11 @@ import { toast } from '../../../../shared/ui/toast/toast-store';
 import { cn } from '../../../../shared/lib/cn';
 import { BOARD_FONT } from '../../../fleet/components/FuelCardBoard';
 import { useApplyBranchImport, useCompareBranchImport } from '../../api/branch-import';
-import { isOutOfDate, refusalKeyOf } from '../../lib/branch-import';
+import { importedToast, isOutOfDate, refusalKeyOf } from '../../lib/branch-import';
 import { BranchImportConfirmDialog } from './BranchImportConfirmDialog';
 import { BranchImportResult } from './BranchImportResult';
 import { BranchImportUpload } from './BranchImportUpload';
 
-const W = 'operations.catalogs.branchImport.';
 
 export const BranchImportPanel = ({
   banks,
@@ -73,13 +72,8 @@ export const BranchImportPanel = ({
       {
         onSuccess: (applied) => {
           setConfirming(false);
-          toast.success(
-            t(`${W}done`, {
-              created: applied.branchesCreated,
-              updated: applied.branchesUpdated,
-              areas: applied.areasCreated,
-            }),
-          );
+          const words = importedToast(t, applied);
+          toast.success(words.title, words.description);
           onClose();
         },
         onError: (error) => {

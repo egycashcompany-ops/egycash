@@ -1938,6 +1938,18 @@ its entry here in the same PR.
       `add` = Round 28's box; `direction-area.spec.ts` — the archived names' request, the create on a
       real QueryClient (the areas read again before the answer, the global notifier quiet), one
       request a row and one a name, the refusals' reasons, and both pages' wiring.
+    - (Verifier, on the real stack) Two gaps against «لو مش موجود», fixed in `lib/direction-pick.ts`:
+      (1) «part of a name» blocked a whole name a LONGER area only contains — «القاهرة» beside
+      «القاهرة الجديدة», «مصر» beside «مصر الجديدة», «المعادي» beside «المعادي الجديدة» got no add
+      (the server takes them: they fold to other names), and «طريق» was said to be an archived «طريق
+      المطار». Now an area blocks the add only when it IS the name (`isAreaNamed`: folded alike, its
+      words reordered, one letter away, or the text a PIECE of its word — «المعا», «قاهر», still being
+      typed); a whole-word name gets the area first, «استخدام», then «إضافة». (2) The box opened on
+      its row's own hand-typed direction listed «استخدام «…» اتجاهًا» but no add, so a direction used
+      on the row once could never be added from the board; it is offered there too
+      (`directionAddOfferInBox`). New (web, `direction-pick.spec.ts`): «a whole name a longer area
+      only contains is another name …», «the box opened on its row’s own hand-typed direction offers
+      the add too …».
   - Round 29 — «استيراد فروع من شيت» on «البيانات المرجعية» → «الفروع». The owner, with four banks'
     branch lists: «عاوز اضيف دول فى البيانات المرجعية تبع (الفروع والبنوك والمناطق) ملحوظه هتلاقى area
     دى ضيفها ل منطقة العمليات و منطقة الحسابات تمام ؟» and «وعاوز جمب اضافة فرع فوق يقدر يضيف شيت ويقارن
@@ -1987,6 +1999,21 @@ its entry here in the same PR.
       `operations-branch-import.spec.ts` integration suite (the grant, nothing written by a compare,
       another file and a moved plan refused, one transaction, audits, a re-import, a swap); (web) the
       button's grant, the steps, the comparison drawn, the filters, the refusals, the keys.
+    - Round 29 critic (the build's, never the owner's): a NEW row whose name the bank holds spelt
+      another way («ى/ي», «ة/ه», «أ/ا», Arabic-Indic digits — `operationsBranchNameLookalikeKey`) stays new,
+      as the owner's rule matches on the tidied name, and is marked «قد يكون مكرَّرًا» with the held
+      branch's name and code; a Latin-only area takes the Arabic name another row gives beside the
+      same English one, whichever row comes first (the first row's Latin had become the Arabic name);
+      an area found by its English name alone says the row's Arabic is not written (`byEnglish`), and
+      an English name that is another area's is never written on this one (`englishElsewhere`); an
+      «Area» cell with any Arabic letter is the Arabic name, and Latin under «المنطقة» beside Arabic
+      under «Area» is read swapped back. All of these are «للمراجعة» — a filter, a line above the
+      counts with «اعرضها», and a line in the confirmation. «كود معدَّل» (tile, filter, row chip,
+      `counts.suffixed`) counts only the suffixed codes the import writes — a held «116-2» read again
+      shows its code and the sheet's, written nothing. The filters are toggle buttons
+      (`aria-pressed`), old → new values say «كان» / «أصبح» to a screen reader, the toast is a short
+      title with every count (the English names filled too) in its description. The specs' dates are
+      made up (two had come from the owner's sheet), and `shared/xlsx/stream-text.ts` has its own spec.
   - Round 30 — «توزيع المحصنات» على يوم مضى: سجل للعرض فقط. On the screen's top row («يوم التسليم»,
     the figures, «توزيع تلقائي», «تراجع», «حفظ (0)»), the owner: «عاوز هنا يقدر يجيب اليوم اللى قبله
     ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى».
@@ -2018,6 +2045,20 @@ its entry here in the same PR.
       proposal, no unsaved draft. In the hint's place a calm notice, «سجل يوم … — للعرض فقط، لا يمكن
       التعديل», and what it shows; where the acts stood, «سجل · للعرض فقط» and «العودة إلى اليوم». The
       filters and the hover cards still work. No new permission.
+    - (Critic) `POST /operations/secured/:id/assign-delivery` writes the same delivery leg and took a
+      past day's van with a 200 (a hand-made request — no screen mounts its dialog now); it refuses
+      one as the save does (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, same detail). The record's read
+      asks only for the day's secured delivery legs, ids joined on the server, instead of loading every
+      leg of the day. On the screen, once the read is in the SERVER's `past` decides, plus midnight
+      passing as the screen's own clock saw it (`isRecordScreen`): a PC clock running ahead no longer
+      turns today into a record. Picking today on a screen midnight turned into yesterday's record
+      reads it again; work left unsaved when the day ended is said (a toast and a line on the notice),
+      not dropped in silence; the record is drawn calmly (no rose «بلا قائد» frame, no «لا تأخذ
+      محصنات», no amber kept row, no rose «بلا سيارة»), its words kept. Ctrl+Z goes through one handler
+      (`distributionUndoKey`) tested with key presses, and the draft's one writer is shut on a record.
+      The suite's record now holds a DELIVERED one too. Rewritten (web): «is a record … on
+      yesterday’s read left open past midnight» (the stale read now arrived yesterday), «shuts every
+      act through ONE gate», «takes nothing back while the save is in flight».
     - Tests rewritten to the new rule: (api) «opens on TODAY in Cairo, and refuses a day that has
       passed» → «opens on TODAY in Cairo — and a day that has passed as its record, not a refusal»;
       (web) «opens on the day with no day before today, and the drag hint» → «opens on the day — with

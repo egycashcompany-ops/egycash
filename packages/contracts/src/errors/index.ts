@@ -303,7 +303,9 @@ export const ErrorCodes = {
    * 422 — the distribution save (`POST /operations/secured/distribution`) named a day before today
    * on the Cairo calendar: a past day's vans have left. One detail: `field` 'date', `code`
    * 'MIN_DATE', `message` = today ('YYYY-MM-DD'). Round 30: the read (`GET`) answers such a day as
-   * its record, read only — this is what keeps it so.
+   * its record, read only — this is what keeps it so. R30 critic: `POST
+   * /operations/secured/:id/assign-delivery` onto a crew row of such a day answers it too (the same
+   * delivery leg), with the same detail.
    */
   OPERATIONS_DISTRIBUTION_DAY_IN_PAST: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
   /**

@@ -422,6 +422,8 @@ describe('POST /operations/bank-branches/import/apply', () => {
       update: 0,
       unchanged: 7,
       problem: 1,
+      // Round 29 critic: the held «116-2», «116-3», «0-2», «0-3» are written nothing.
+      suffixed: 0,
       areasNew: 0,
       areasFilled: 0,
     });
@@ -453,5 +455,71 @@ describe('POST /operations/bank-branches/import/apply', () => {
       '116-2',
       '116',
     ]);
+  });
+
+  it('marks a name the bank spells another way, and an area pair the catalog splits (Round 29 critic)', async () => {
+    // Another bank, so the sheet above stays as it is.
+    await mkBranch({ bankId: otherBankId, name: 'فرع النرجسى', code: '2' });
+    const book = await buildBranchSheet({
+      rows: [
+        BRANCH_SHEET_HEADER,
+        ['فرع النرجسي', '2', null, null, null],
+        // «Horizon» is «منطقة الأفق»'s English name, «منطقة الكروم» no area's.
+        ['فرع الكروم', '10', 'منطقة الكروم', 'horizon', null],
+        // «Star» is «منطقة النجمة»'s: never «منطقة الجبل»'s too.
+        ['فرع الجبل', '11', 'منطقة الجبل', 'Star', null],
+        // Latin only, and given in Arabic by the next row.
+        ['فرع أول', '12', null, 'Coral', null],
+        ['فرع ثان', '13', 'منطقة المرجان', 'Coral', null],
+      ],
+    });
+    const res = await compare(book, { bank: otherBankId });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const dto = data<OperationsBranchImportCompareDto>(res);
+    expect(dto.counts).toMatchObject({
+      rows: 5,
+      new: 5,
+      suffixed: 1,
+      similar: 1,
+      areaNotes: 2,
+      areasNew: 1,
+      areasFilled: 0,
+    });
+    expect(
+      dto.rows.map((r) => [
+        r.after?.code,
+        r.after?.opsAreaName ?? null,
+        r.areaNote,
+        r.similarTo?.name ?? null,
+      ]),
+    ).toEqual([
+      ['2-2', null, null, 'فرع النرجسى'],
+      ['10', 'منطقة الأفق', 'byEnglish', null],
+      ['11', 'منطقة الجبل', 'englishElsewhere', null],
+      ['12', 'منطقة المرجان', null, null],
+      ['13', 'منطقة المرجان', null, null],
+    ]);
+    expect(dto.newAreas).toEqual([
+      { name: 'منطقة المرجان', nameEn: 'Coral', rows: 2, latinOnly: false },
+    ]);
+
+    const applied = await apply(
+      book,
+      { fileSha256: dto.fileSha256, planDigest: dto.planDigest },
+      { bank: otherBankId },
+    );
+    expect(applied.status, JSON.stringify(applied.body)).toBe(200);
+    expect(data<OperationsBranchImportAppliedDto>(applied)).toMatchObject({
+      branchesCreated: 5,
+      areasCreated: 1,
+      areasFilled: 0,
+    });
+    const catalog = await areas();
+    expect(catalog.get('منطقة المرجان')?.nameEn).toBe('Coral');
+    expect(catalog.get('منطقة الجبل')?.nameEn).toBeNull();
+    expect(catalog.has('Coral')).toBe(false);
+    expect(catalog.has('منطقة الكروم')).toBe(false);
+    const held = await branchesOf(otherBankId);
+    expect([held.get('فرع النرجسى')?.code, held.get('فرع النرجسي')?.code]).toEqual(['2', '2-2']);
   });
 });

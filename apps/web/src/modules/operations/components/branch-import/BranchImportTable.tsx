@@ -1,9 +1,14 @@
 // «استيراد فروع من شيت» (Round 29) — every row of the sheet and what it comes to: «جديد», «تحديث»
 // (the held code and area → the sheet's), «بدون تغيير», «كود معدَّل» (the sheet's code → the code
-// stored) and «مشكلة» (not written, and why). Filters by outcome over the table, and a search by
-// name, code or area. The fuel-card comparison's table look (ReconcileTable.tsx).
+// stored) and «مشكلة» (not written, and why) — and «للمراجعة» (Round 29 critic): «قد يكون مكرَّرًا»
+// on a new row whose name the bank holds spelt another way, and why an area is not the sheet's own.
+// Filters by outcome over the table (toggle buttons, one Tab stop each, `aria-pressed`), and a search
+// by name, code or area. The fuel-card comparison's table look (ReconcileTable.tsx).
 import { type ReactNode } from 'react';
-import { type OperationsBranchImportRowDto } from '@ecms/contracts';
+import {
+  isOperationsBranchImportSuffixedWrite,
+  type OperationsBranchImportRowDto,
+} from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { SearchInput } from '../../../../shared/ui/SearchInput';
 import { cn } from '../../../../shared/lib/cn';
@@ -22,6 +27,8 @@ export const OUTCOME_TONE: Record<BranchImportFilter, string> = {
     'border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300',
   suffixed:
     'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300',
+  review:
+    'border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-500/40 dark:bg-orange-500/10 dark:text-orange-300',
   problem:
     'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300',
 };
@@ -32,19 +39,29 @@ const TH = 'px-3 py-2.5 text-xs font-bold whitespace-nowrap';
 const TD = 'px-3 py-2 align-top text-sm';
 const MUTED = 'text-slate-400 dark:text-slate-500';
 
-/** «old → new», the arrow pointing the way the line reads. */
-const Change = ({ from, to, tone }: { from: ReactNode; to: ReactNode; tone?: string }) => (
-  <span className="inline-flex flex-wrap items-center gap-1.5">
-    <span className="text-slate-400 line-through decoration-slate-400/60 dark:text-slate-500">
-      {from}
+/**
+ * «old → new», the arrow pointing the way the line reads. A screen reader hears «كان … أصبح …»: the
+ * strike-through and the arrow are drawn only (Round 29 critic).
+ */
+const Change = ({ from, to, tone }: { from: ReactNode; to: ReactNode; tone?: string }) => {
+  const t = useT();
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5" data-branch-import-change="true">
+      <span className="text-slate-400 line-through decoration-slate-400/60 dark:text-slate-500">
+        <span className="sr-only">{t(`${W}change.was`)} </span>
+        {from}
+      </span>
+      <BoardIcon
+        d={['M5 12h14m-5-5l5 5-5 5']}
+        className="h-3.5 w-3.5 shrink-0 text-slate-400 rtl:rotate-180"
+      />
+      <span className={cn('font-bold', tone)}>
+        <span className="sr-only">{t(`${W}change.now`)} </span>
+        {to}
+      </span>
     </span>
-    <BoardIcon
-      d={['M5 12h14m-5-5l5 5-5 5']}
-      className="h-3.5 w-3.5 shrink-0 text-slate-400 rtl:rotate-180"
-    />
-    <span className={cn('font-bold', tone)}>{to}</span>
-  </span>
-);
+  );
+};
 
 const Code = ({ code }: { code: string | null }) =>
   code === null ? (
@@ -69,7 +86,7 @@ const CodeCell = ({ row }: { row: OperationsBranchImportRowDto }) => {
       />
     );
   }
-  if (row.codeSuffixed) {
+  if (row.codeSuffixed && isOperationsBranchImportSuffixedWrite(row)) {
     return (
       <Change
         from={<Code code={row.sheetCode} />}
@@ -78,7 +95,24 @@ const CodeCell = ({ row }: { row: OperationsBranchImportRowDto }) => {
       />
     );
   }
+  // Held with its suffix already, and written nothing: the code it keeps, and the sheet's.
+  if (row.codeSuffixed) return <HeldSuffix row={row} code={after} />;
   return <Code code={after} />;
+};
+
+const HeldSuffix = ({ row, code }: { row: OperationsBranchImportRowDto; code: string | null }) => {
+  const t = useT();
+  return (
+    <span className="flex flex-col items-start gap-0.5" data-branch-import-held-suffix="true">
+      <Code code={code} />
+      <span className="text-[11px] text-slate-500 dark:text-slate-400">
+        {t(`${W}sheetCode`)}{' '}
+        <span dir="ltr" className={NUM}>
+          {row.sheetCode}
+        </span>
+      </span>
+    </span>
+  );
 };
 
 const Area = ({ name }: { name: string | null }) =>
@@ -119,6 +153,17 @@ const AreaCell = ({ row }: { row: OperationsBranchImportRowDto }) => {
           <span className={cn(CHIP, OUTCOME_TONE.unchanged)}>{t(`${W}badge.latin`)}</span>
         )}
       </span>
+      {row.areaNote !== null && (
+        <span
+          data-branch-import-area-note={row.areaNote}
+          className="max-w-[18rem] text-[11px] leading-relaxed text-orange-700 dark:text-orange-300"
+        >
+          {t(`${W}areaNote.${row.areaNote}`, {
+            area: [row.sheetArea.ar, row.sheetArea.en].filter((part) => part !== null).join(' | '),
+            en: row.sheetArea.en ?? row.sheetArea.ar ?? '—',
+          })}
+        </span>
+      )}
     </span>
   );
 };
@@ -134,9 +179,14 @@ const OutcomeCell = ({ row }: { row: OperationsBranchImportRowDto }) => {
         >
           {t(`${W}outcome.${row.outcome}`)}
         </span>
-        {row.codeSuffixed && (
+        {isOperationsBranchImportSuffixedWrite(row) && (
           <span className={cn(CHIP, OUTCOME_TONE.suffixed)} data-branch-import-suffixed="true">
             {t(`${W}filter.suffixed`)}
+          </span>
+        )}
+        {row.similarTo !== null && (
+          <span className={cn(CHIP, OUTCOME_TONE.review)} data-branch-import-similar="true">
+            {t(`${W}badge.similar`)}
           </span>
         )}
         {row.inactive && (
@@ -146,6 +196,11 @@ const OutcomeCell = ({ row }: { row: OperationsBranchImportRowDto }) => {
       {row.problem !== null && (
         <span className="max-w-[18rem] text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
           {t(`${W}problem.${row.problem}`)}
+        </span>
+      )}
+      {row.similarTo !== null && (
+        <span className="max-w-[18rem] text-[11px] leading-relaxed text-orange-700 dark:text-orange-300">
+          {t(`${W}similarTo`, { name: row.similarTo.name, code: row.similarTo.code })}
         </span>
       )}
     </span>
@@ -175,13 +230,15 @@ export const BranchImportTable = ({
       className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#111827]"
     >
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-        <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t(`${W}filterLabel`)}>
-          {BRANCH_IMPORT_FILTERS.map((option) => (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t(`${W}filterLabel`)}>
+          {/* «للمراجعة» only when a row needs it — the one filter that is not always there. */}
+          {BRANCH_IMPORT_FILTERS.filter(
+            (option) => option !== 'review' || counts.review > 0 || filter === 'review',
+          ).map((option) => (
             <button
               key={option}
               type="button"
-              role="radio"
-              aria-checked={filter === option}
+              aria-pressed={filter === option}
               data-branch-import-filter={option}
               onClick={() => onFilter(option)}
               className={cn(

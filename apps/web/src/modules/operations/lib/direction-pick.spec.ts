@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { OPERATIONS_DIRECTION_MAX_LENGTH } from '@ecms/contracts';
 import {
   directionAddOffer,
+  directionAddOfferInBox,
   directionAddRefusal,
   directionItems,
   directionItemsAtOpen,
@@ -343,7 +344,7 @@ describe('Round 28c — «إضافة «…» إلى القائمة» (`direction
   });
 
   it('is never offered when an active area answers the text — the list offers that area instead', () => {
-    // Exactly (folded), part of a name, its words in another order, one letter away.
+    // Exactly (folded), a piece of a name's word, its words in another order, one letter away.
     for (const answered of ['المعادى', 'معادي', 'شبرا الخيمه', 'المعا', 'نصر مدينة', 'حلوات']) {
       expect(directionAddOffer(answered, AREAS, ARCHIVED), answered).toBeNull();
       expect(
@@ -351,6 +352,58 @@ describe('Round 28c — «إضافة «…» إلى القائمة» (`direction
         answered,
       ).toBe(false);
     }
+  });
+
+  // Round 28c verifier — «لو مش موجود»: a whole name a LONGER area only contains is not on the list.
+  // The box gave no add for «القاهرة» beside «القاهرة الجديدة», nor «مصر» beside «مصر الجديدة» (the
+  // server takes both: they fold to other names), and said an unrelated archived area instead.
+  it('a whole name a longer area only contains is another name: the area first, «استخدام», then «إضافة»', () => {
+    const LONGER = ['القاهرة الجديدة', 'مصر الجديدة', 'المعادي الجديدة'];
+    for (const name of ['القاهرة', 'مصر', 'المعادي', 'معادي', 'الجديدة']) {
+      expect(directionAddOffer(name, LONGER, []), name).toEqual({ kind: 'add', name });
+    }
+    expect(listed('مدينة')).toEqual([area('مدينة نصر'), typed('مدينة'), add('مدينة')]);
+    expect(listed('نصر')).toEqual([area('مدينة نصر'), typed('نصر'), add('نصر')]);
+    // A PIECE of a word is still the area being typed, or a piece of it: no add.
+    for (const piece of ['القاه', 'قاهر', 'المعادي الجديد', 'عادي', 'الجدي']) {
+      expect(directionAddOffer(piece, LONGER, []), piece).toBeNull();
+    }
+    // Against the archived alike: «طريق» is a name of its own, «طريق الم» a piece of «طريق المطار».
+    expect(directionAddOffer('طريق', AREAS, ARCHIVED)).toEqual({ kind: 'add', name: 'طريق' });
+    expect(directionAddOffer('طريق الم', AREAS, ARCHIVED)).toEqual({
+      kind: 'archived',
+      area: 'طريق المطار',
+    });
+  });
+
+  // Round 28c verifier — a direction used «on this row only» once could never be added after: the
+  // box opened on it lists «استخدام «…» اتجاهًا» first (`directionItemsAtOpen`) but offered no add
+  // until a letter was typed and taken back.
+  it('the box opened on its row’s own hand-typed direction offers the add too, right after it', () => {
+    const atOpen = (value: string | null, archived: readonly string[] | null = ARCHIVED) =>
+      withDirectionAdd(
+        directionItemsAtOpen(value, AREAS),
+        directionAddOfferInBox({ edited: false, query: '', value }, AREAS, archived),
+      );
+    expect(atOpen('طريق السويس')).toEqual([
+      typed('طريق السويس'),
+      add('طريق السويس'),
+      ...AREAS.map(area),
+    ]);
+    // An area, several areas, nothing, an archived name, or no grant: the opening list as before.
+    expect(atOpen('حلوان')).toEqual(AREAS.map(area));
+    expect(atOpen('المعادي - حلوان')).toEqual(directionItemsAtOpen('المعادي - حلوان', AREAS));
+    expect(atOpen(null)).toEqual(AREAS.map(area));
+    expect(atOpen('الدقي')).toEqual(directionItemsAtOpen('الدقي', AREAS));
+    expect(atOpen('طريق السويس', null)).toEqual(directionItemsAtOpen('طريق السويس', AREAS));
+    // Typed, the offer follows the text, as ever.
+    expect(
+      directionAddOfferInBox(
+        { edited: true, query: 'طريق الواحات', value: 'طريق السويس' },
+        AREAS,
+        ARCHIVED,
+      ),
+    ).toEqual({ kind: 'add', name: 'طريق الواحات' });
   });
 
   it('an ARCHIVED area that answers the text is said, and no add is offered — «المناطق» holds it', () => {

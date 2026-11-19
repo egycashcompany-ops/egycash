@@ -2,7 +2,9 @@
 // rows) with «رفع شيت آخر»; how it was read (its tab, its header row, the column of each label);
 // the five counts; the areas «المناطق» will gain (Arabic and English) and the English names it will
 // fill; the table. «تأكيد الاستيراد» sits in the sheet's strip at the top. A refusal of the apply because the comparison went out of
-// date says so and offers «مقارنة من جديد». Nothing here writes — the confirmation does.
+// date says so and offers «مقارنة من جديد». Rows to look at before confirming (a new branch the bank
+// may hold spelt another way, an area not written as the sheet gives it — Round 29 critic) are
+// said above the counts, with «اعرضها». Nothing here writes — the confirmation does.
 import { useState } from 'react';
 import { type OperationsBranchImportCompareDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
@@ -181,6 +183,22 @@ export const BranchImportResult = ({
           </span>
         ))}
       </p>
+      {counts.review > 0 && (
+        <p
+          data-branch-import-review="true"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl border border-orange-300/70 bg-orange-50 px-4 py-2.5 text-xs font-medium text-orange-900 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-200"
+        >
+          <span>{t(`${W}reviewNote`)}</span>
+          <button
+            type="button"
+            data-branch-import-review-show="true"
+            onClick={() => setFilter('review')}
+            className="rounded-lg border border-orange-300 bg-white px-2.5 py-1 text-[11px] font-bold text-orange-800 hover:bg-orange-100 dark:border-orange-500/40 dark:bg-orange-500/10 dark:text-orange-100"
+          >
+            {t(`${W}reviewShow`, { count: counts.review })}
+          </button>
+        </p>
+      )}
       {latin && (
         <p
           data-branch-import-latin="true"

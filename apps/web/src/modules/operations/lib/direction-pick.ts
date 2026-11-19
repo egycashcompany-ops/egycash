@@ -37,8 +37,12 @@
 // the typed row, so Enter still takes the row-only choice and the add is one arrow away. Offered
 // only for a desk who may write the catalog, and only for ONE new name: text that names something,
 // within the hand-typed ceiling, of one part (none of the save's separators — «المعادي - طريق» is
-// a direction of several), and that no area answers — an active one (the list offers it instead)
-// or an archived one (the list says so, `{ kind: 'archived' }`: restored, not added twice).
+// a direction of several), and that no area already IS (`isAreaNamed` — folded alike, its words
+// reordered, a typo, or a piece of its word) — an active one (the list offers it instead) or an
+// archived one (the list says so, `{ kind: 'archived' }`: restored, not added twice). A whole name
+// a longer area only contains («القاهرة» beside «القاهرة الجديدة») is not on the list: offered.
+// And the box opened on its row's own hand-typed direction offers it too — «استخدام» yesterday,
+// «إضافة» today.
 import {
   OPERATIONS_DIRECTION_MAX_LENGTH,
   OPERATIONS_DIRECTION_SEPARATOR,
@@ -326,6 +330,35 @@ export interface DirectionAddRefused {
 export type DirectionAddOffer = { kind: 'add'; name: string } | { kind: 'archived'; area: string };
 
 /**
+ * Round 28c verifier — is `area` the very name `name` is, so that adding `name` would list it
+ * twice? Folded alike (the server's own duplicate rule — «المعادى», «معادي»), its words in another
+ * order («نصر مدينة»), one letter away (a typo, four letters or more — «حلوات»), or `name` a PIECE
+ * of it, inside one of its words («المعا», «عادي», «المعادي الجديد» — still being typed). A whole
+ * name that a longer area's name only CONTAINS word for word is another name — «القاهرة» beside
+ * «القاهرة الجديدة», «مصر» beside «مصر الجديدة», «معادي» beside «المعادي الجديدة» — not on the list
+ * («لو مش موجود»): the list offers that area first, as ever, and the add as well.
+ */
+const isAreaNamed = (area: string, name: string): boolean => {
+  if (foldOperationsAreaName(area) === foldOperationsAreaName(name)) return true;
+  const q = searchFold(name);
+  const n = searchFold(area);
+  const words = (text: string): string => text.split(' ').map(wordFold).sort().join(' ');
+  if (words(q) === words(n)) return true;
+  if (
+    q.replace(/ /gu, '').length >= NEAR_MISS_LETTERS &&
+    (oneLetterAway(q, n) || oneLetterAway(wordFold(name), wordFold(area)))
+  ) {
+    return true;
+  }
+  // Held whole words, the article kept or taken off alike, is a shorter name; else a piece.
+  return (
+    n.includes(q) &&
+    !` ${n} `.includes(` ${q} `) &&
+    !` ${wordFold(area)} `.includes(` ${wordFold(name)} `)
+  );
+};
+
+/**
  * Round 28c — may «إضافة «…» إلى القائمة» be offered for `query`? (See the head of this file.)
  * `archived` is null while the archived areas are read — or for a desk who may not write the
  * catalog: nothing is offered then. An add refused for this very name (`refused`) is not offered
@@ -341,12 +374,29 @@ export const directionAddOffer = (
   const name = typedDirection(query);
   // Nothing named, past the hand-typed ceiling, or several parts: no one name to add.
   if (name === null || OPERATIONS_DIRECTION_SEPARATOR.test(name)) return null;
-  // An active area answers it: the list offers that area.
-  if (exactAreas(name, options) !== null || areasAnswering(name, options).length > 0) return null;
-  const asleep = exactAreas(name, archived) ?? areasAnswering(name, archived)[0];
+  // An active area IS this name: the list offers that area.
+  if (options.some((option) => isAreaNamed(option, name))) return null;
+  const asleep = archived.find((option) => isAreaNamed(option, name));
   if (asleep !== undefined) return { kind: 'archived', area: asleep };
   if (refused !== null && refused.name === name && refused.reason !== 'failed') return null;
   return { kind: 'add', name };
+};
+
+/**
+ * Round 28c verifier — the offer the box makes: for what is typed, or — opened, nothing typed yet —
+ * for the row's own hand-typed direction, which its opening list already offers as «استخدام «…»
+ * اتجاهًا» (`directionItemsAtOpen`): used on this row only once, it may still be added later.
+ */
+export const directionAddOfferInBox = (
+  box: { edited: boolean; query: string; value: string | null },
+  options: readonly string[],
+  archived: readonly string[] | null,
+  refused: DirectionAddRefused | null = null,
+): DirectionAddOffer | null => {
+  if (box.edited) return directionAddOffer(box.query, options, archived, refused);
+  return box.value !== null && isHandTypedDirection(box.value, options)
+    ? directionAddOffer(box.value, options, archived, refused)
+    : null;
 };
 
 /** The list with «إضافة «…» إلى القائمة» right after the typed row it adds — Enter keeps the row's. */

@@ -55,7 +55,7 @@ import { floatingSpot, type FloatingSpot } from '../../../shared/ui/MultiSelect'
 import { BoardIcon, NUM } from '../../fleet/components/FuelCardBoard';
 import { parseClock, shiftTypeChoices, type CrewRowColour } from '../lib/crew-plan';
 import {
-  directionAddOffer,
+  directionAddOfferInBox,
   directionItems,
   directionItemsAtOpen,
   directionOnLeave,
@@ -328,7 +328,9 @@ export const DirectionOptions = ({
               index > 0 &&
               items[index - 1]?.kind === 'area' &&
               'mt-1 border-t border-slate-100 pt-2 dark:border-slate-800',
-            item.kind === 'add' && 'items-start',
+            // Its plus on its first line, beside the words, not between them and the hint
+            // (doubled, to outrank the row's own `items-center` whatever their CSS order).
+            item.kind === 'add' && '[&&]:items-start',
           )}
         >
           <BoardIcon
@@ -447,9 +449,13 @@ export const DirectionPicker = ({
   const archived = add?.archived ?? null;
   const pending = add?.pending ?? null;
   const refused = add?.refused ?? null;
+  // Round 28c verifier — and on opening, for the row's own hand-typed direction too.
   const offer = useMemo(
-    () => (offering && edited ? directionAddOffer(query, options, archived, refused) : null),
-    [archived, edited, offering, options, query, refused],
+    () =>
+      offering
+        ? directionAddOfferInBox({ edited, query, value }, options, archived, refused)
+        : null,
+    [archived, edited, offering, options, query, refused, value],
   );
 
   const items = useMemo(

@@ -14,12 +14,15 @@
 //      reused in ITS spelling, and its empty `nameEn` is filled from the sheet.
 //   3. A branch the bank holds by NAME (tidied — `tidyOperationsBranchName`) takes the sheet's code
 //      and area («حدّث الكود والمنطقة»); a cell the sheet leaves empty never wipes what is held. The
-//      address is set on a new branch, and on a held one only when it has none.
+//      address is set on a new branch, and on a held one only when it has none. A NEW row whose name
+//      is a held branch's in another spelling («ى/ي», «ة/ه», «أ/ا») stays new, and is marked
+//      (`similarTo`) for the operator to see before confirming (Round 29 critic).
 //   4. A code repeated in the bank («ضيف رقم بعد الكود»): the first branch keeps it, each further one
 //      takes «-2», «-3», … — skipping a suffix any branch of the bank already uses (a held branch keeps
 //      its code; the sheet's row takes the next free one). A placeholder such as «0» likewise.
 //   5. Names are stored tidied; an area cell without a letter («ــــــ») is no area; a code is the
-//      TEXT the cell shows («084» stays «084»).
+//      TEXT the cell shows («084» stays «084»). An «Area» cell in Arabic letters is never an English
+//      name: it is the Arabic one.
 //
 // `POST /operations/bank-branches/import/compare` and `…/import/apply` (multipart: the `.xlsx` under
 // `file`, beside these fields) — `operationsCatalog.manage`, the grant every write of the
@@ -30,6 +33,7 @@
 // as the catalog's own add and edit are.
 import { z } from 'zod';
 import { objectId } from '../common/index.js';
+import { foldOperationsAreaName } from './operations.js';
 
 /** The largest sheet accepted, in MB — the fuel-card sheet's cap. */
 export const OPERATIONS_BRANCH_IMPORT_MAX_MB = 10;
@@ -74,6 +78,14 @@ export const tidyOperationsBranchName = (text: string): string =>
 export const operationsBranchNameKey = (text: string): string =>
   tidyOperationsBranchName(text).toLocaleLowerCase('en');
 
+/**
+ * Two branch names that may be one branch spelt two ways — folded as the crew board folds an area
+ * (`foldOperationsAreaName`: «أ إ آ» → «ا», «ى» → «ي», «ة» → «ه», tashkeel, Arabic-Indic digits, a
+ * leading «ال»). Never a match (rule 3 matches on `operationsBranchNameKey`): only a mark.
+ */
+export const operationsBranchNameLookalikeKey = (text: string): string =>
+  foldOperationsAreaName(tidyOperationsBranchName(text));
+
 /** The code a repeated code takes — «116» → «116-2», «116-3». */
 export const suffixedOperationsBranchCode = (code: string, n: number): string => `${code}-${n}`;
 
@@ -84,7 +96,7 @@ export type OperationsBranchImportOutcome = (typeof OPERATIONS_BRANCH_IMPORT_OUT
 /**
  * Why a row is not written:
  *   · `noName` — the row has a code, an area or an address, and no branch name;
- *   · `nameIsDate` — the name cell holds a DATE (Excel turned a name such as «15 مايو» into one), so
+ *   · `nameIsDate` — the name cell holds a DATE (Excel turned a name such as «3 فبراير» into one), so
  *     the name as typed is lost — retype it as text;
  *   · `duplicateName` — an earlier row of the sheet names the same branch;
  *   · `ambiguousName` — the bank holds two branches whose names tidy to this one;
@@ -98,6 +110,23 @@ export const OPERATIONS_BRANCH_IMPORT_PROBLEMS = [
   'noCode',
 ] as const;
 export type OperationsBranchImportProblem = (typeof OPERATIONS_BRANCH_IMPORT_PROBLEMS)[number];
+
+/**
+ * Why the area a row writes is not the sheet's pair as it stands (Round 29 critic):
+ *   · `byEnglish` — the row's Arabic area is no area «المناطق» holds or this import creates, but its
+ *     English name is one's: that area is written, in its own spelling — not the row's Arabic;
+ *   · `englishElsewhere` — the row's Arabic area is one area and its English name ANOTHER's: the
+ *     Arabic one is written, and its empty English name is not filled with the other's.
+ */
+export const OPERATIONS_BRANCH_IMPORT_AREA_NOTES = ['byEnglish', 'englishElsewhere'] as const;
+export type OperationsBranchImportAreaNote = (typeof OPERATIONS_BRANCH_IMPORT_AREA_NOTES)[number];
+
+/** A held branch a «جديد» row may be, spelt another way (`operationsBranchNameLookalikeKey`). */
+export interface OperationsBranchImportSimilarDto {
+  branchId: string;
+  name: string;
+  code: string;
+}
 
 /** The fields an update changes on a held branch. */
 export const OPERATIONS_BRANCH_IMPORT_FIELDS = [
@@ -139,13 +168,34 @@ export interface OperationsBranchImportRowDto {
   after: OperationsBranchImportValuesDto | null;
   /** What an update changes, in `OPERATIONS_BRANCH_IMPORT_FIELDS` order; [] otherwise. */
   changes: OperationsBranchImportField[];
-  /** «كود معدَّل» — the code stored is the sheet's with a suffix («116» → «116-2»). */
+  /**
+   * The branch's code is the sheet's with a suffix («116» → «116-2») — written now (a new row, an
+   * update of the code: `isOperationsBranchImportSuffixedWrite`), or already held so (unchanged).
+   */
   codeSuffixed: boolean;
-  /** The sheet's area is Latin only, and its English name stands for the Arabic one too. */
+  /**
+   * The area written is one this import creates from Latin letters only: its English name stands
+   * for the Arabic one too. A Latin-only cell whose English another row gives in Arabic takes that
+   * Arabic, whichever row comes first — it is not Latin-only then.
+   */
   areaLatinOnly: boolean;
   /** The row's area is one the import creates. */
   areaIsNew: boolean;
+  /** Why the area written is not the sheet's own pair; null when it is. */
+  areaNote: OperationsBranchImportAreaNote | null;
+  /** A «جديد» row only: the held branch it may be, spelt another way; null otherwise. */
+  similarTo: OperationsBranchImportSimilarDto | null;
 }
+
+/**
+ * «كود معدَّل» as the import WRITES it: a new branch's suffixed code, or a held branch's code changed
+ * to a suffixed one — never a held branch that already carries its suffix and is written nothing.
+ */
+export const isOperationsBranchImportSuffixedWrite = (
+  row: Pick<OperationsBranchImportRowDto, 'codeSuffixed' | 'outcome' | 'changes'>,
+): boolean =>
+  row.codeSuffixed &&
+  (row.outcome === 'new' || (row.outcome === 'update' && row.changes.includes('code')));
 
 /** An area «المناطق» will hold after the import. */
 export interface OperationsBranchImportNewAreaDto {
@@ -179,10 +229,14 @@ export interface OperationsBranchImportCountsDto {
   update: number;
   unchanged: number;
   problem: number;
-  /** «كود معدَّل» — rows of the three written outcomes whose code takes a suffix. */
+  /** «كود معدَّل» — the rows whose suffixed code this import writes (`isOperationsBranchImportSuffixedWrite`). */
   suffixed: number;
   areasNew: number;
   areasFilled: number;
+  /** «جديد» rows marked `similarTo`. */
+  similar: number;
+  /** Rows with an `areaNote`. */
+  areaNotes: number;
 }
 
 export interface OperationsBranchImportCompareDto {

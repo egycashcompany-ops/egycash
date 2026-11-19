@@ -7,7 +7,9 @@ import {
   OPERATIONS_BRANCH_IMPORT_ROLES,
   OPERATIONS_BRANCH_IMPORT_SYNONYMS,
   foldSheetHeader,
+  isOperationsBranchImportSuffixedWrite,
   operationsBranchNameKey,
+  operationsBranchNameLookalikeKey,
   suffixedOperationsBranchCode,
   tidyOperationsBranchName,
   type OperationsBranchImportRole,
@@ -67,6 +69,61 @@ describe('tidyOperationsBranchName', () => {
       operationsBranchNameKey('MAADI branch'),
     );
     expect(operationsBranchNameKey('فـرع  طنطا')).toBe('فرع طنطا');
+  });
+});
+
+describe('operationsBranchNameLookalikeKey (Round 29 critic)', () => {
+  it('is one key for one name spelt the ways Arabic is typed', () => {
+    // A mark, never a match: the planner matches on `operationsBranchNameKey` alone.
+    expect(operationsBranchNameLookalikeKey('فرع الأقحوان')).toBe(
+      operationsBranchNameLookalikeKey('فرع الاقحوان'),
+    );
+    expect(operationsBranchNameLookalikeKey('فرع السوسنة')).toBe(
+      operationsBranchNameLookalikeKey('فرع السوسنه'),
+    );
+    expect(operationsBranchNameLookalikeKey('فرع النرجسى')).toBe(
+      operationsBranchNameLookalikeKey('فرع النرجسي'),
+    );
+    expect(operationsBranchNameLookalikeKey('فرع ٣٤ الزيزفون')).toBe(
+      operationsBranchNameLookalikeKey('فرع 34 الزيزفون'),
+    );
+    expect(operationsBranchNameKey('فرع النرجسى')).not.toBe(operationsBranchNameKey('فرع النرجسي'));
+    expect(operationsBranchNameLookalikeKey('فرع النخلة')).not.toBe(
+      operationsBranchNameLookalikeKey('فرع السنديان'),
+    );
+  });
+});
+
+describe('isOperationsBranchImportSuffixedWrite (Round 29 critic)', () => {
+  it('is a suffixed code the import writes — never one a held branch already carries', () => {
+    expect(
+      isOperationsBranchImportSuffixedWrite({ codeSuffixed: true, outcome: 'new', changes: [] }),
+    ).toBe(true);
+    expect(
+      isOperationsBranchImportSuffixedWrite({
+        codeSuffixed: true,
+        outcome: 'update',
+        changes: ['code'],
+      }),
+    ).toBe(true);
+    // Held «116-2» for the sheet's «116»: its area changes, its code is not written.
+    expect(
+      isOperationsBranchImportSuffixedWrite({
+        codeSuffixed: true,
+        outcome: 'update',
+        changes: ['opsAreaName', 'financeAreaName'],
+      }),
+    ).toBe(false);
+    expect(
+      isOperationsBranchImportSuffixedWrite({
+        codeSuffixed: true,
+        outcome: 'unchanged',
+        changes: [],
+      }),
+    ).toBe(false);
+    expect(
+      isOperationsBranchImportSuffixedWrite({ codeSuffixed: false, outcome: 'new', changes: [] }),
+    ).toBe(false);
   });
 });
 

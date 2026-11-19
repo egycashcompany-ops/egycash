@@ -81,10 +81,10 @@ export const readDistributionDay = (raw: string | null): string | null =>
 /**
  * Round 30 — is the screen's day a RECORD: before today? Then it is read only — no drag, no «نقل
  * إلى…», no «توزيع تلقائي», no «تراجع», no «حفظ», no proposal — and the server refuses its save (422
- * `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`) whatever is sent. Judged against EVERY today given — the
- * read's (`today` on the answer) and the live Cairo day — so a screen left open past midnight on
- * yesterday's read turns into its record too, and one whose read is not in yet already is one.
- * Days are 'YYYY-MM-DD' (they order as text); an empty today is no day and judges nothing.
+ * `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`) whatever is sent. Judged against EVERY today given.
+ * Days are 'YYYY-MM-DD' (they order as text); an empty today is no day and judges nothing. R30
+ * critic: the screen asks `isRecordScreen`, which asks this one only before its read is in — once
+ * the read is in, the server's `past` decides, never the PC's clock against the read's `today`.
  */
 export const isRecordDay = (day: string, ...todays: readonly string[]): boolean =>
   todays.some((today) => today !== '' && day < today);

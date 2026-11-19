@@ -22,7 +22,7 @@
 //   · a CODE is the text the cell shows: a text cell as typed («084»), a number with a zero-padded
 //     format («000») padded, any other number by its digits — never «84.0»;
 //   · names, areas and addresses are tidied (`tidyOperationsBranchName`); an AREA with no letter in
-//     it («ــــــ», «-») is no area; a NAME cell holding a date (Excel's own turn of «15 مايو») is
+//     it («ــــــ», «-») is no area; a NAME cell holding a date (Excel's own turn of «3 فبراير») is
 //     flagged, never taken for a name.
 import { Readable } from 'node:stream';
 import {
@@ -204,7 +204,7 @@ const areaText = (value: unknown): string | null => {
   return text !== null && /\p{L}/u.test(text) ? text : null;
 };
 
-/** «2020-05-15 00:00:00», «2020-05-15T00:00:00.000Z» — a date written out where a name belongs. */
+/** «2001-02-03 00:00:00», «2001-02-03T00:00:00.000Z» — a date written out where a name belongs. */
 const DATE_TEXT = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z?)?$/u;
 
 const isDateValue = (value: unknown): boolean => {

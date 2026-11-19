@@ -158,7 +158,7 @@ describe('planBranchImport — rows', () => {
     const plan = planBranchImport(
       [
         row(null, '5', { ar: 'منطقة الأفق' }),
-        row('2020-05-15', '6', {}, { nameIsDate: true }),
+        row('2003-04-05', '6', {}, { nameIsDate: true }),
         row('فرع أ', '7'),
         row('فرع أ', '8'),
         row('فرع التوأم', '9'),
@@ -180,6 +180,37 @@ describe('planBranchImport — rows', () => {
     // A problem row's area is never created.
     expect(plan.newAreas).toEqual([]);
     expect(plan.branchCreates.map((b) => b.code)).toEqual(['7']);
+  });
+});
+
+describe('planBranchImport — a name spelt another way (Round 29 critic)', () => {
+  it('marks a new row whose name a held branch spells another way — still a new branch', () => {
+    // Rule 3 matches on the tidied name alone: «ى/ي», «ة/ه», «أ/إ/ا» are not one name to it. The
+    // row stays «جديد» (the owner's rule) and says which held branch it may be.
+    const alex = held('فرع الأقحوان', '1');
+    const roxy = held('فرع النرجسى', '2');
+    const plan = planBranchImport(
+      [row('فرع الاقحوان', '1'), row('فرع النرجسي', '2'), row('فرع جديد', '3')],
+      [alex, roxy],
+      [],
+    );
+    expect(plan.rows.map((r) => [r.outcome, r.after?.code])).toEqual([
+      ['new', '1-2'],
+      ['new', '2-2'],
+      ['new', '3'],
+    ]);
+    expect(plan.rows.map((r) => r.similarTo)).toEqual([
+      { branchId: alex.id, name: 'فرع الأقحوان', code: '1' },
+      { branchId: roxy.id, name: 'فرع النرجسى', code: '2' },
+      null,
+    ]);
+    expect(plan.counts.similar).toBe(2);
+  });
+
+  it('marks no row the bank holds by its tidied name', () => {
+    const plan = planBranchImport([row('فرع النرجسى', '2')], [held('فرع النرجسى', '2')], []);
+    expect(plan.rows[0]).toMatchObject({ outcome: 'unchanged', similarTo: null });
+    expect(plan.counts.similar).toBe(0);
   });
 });
 
@@ -277,6 +308,21 @@ describe('planBranchImport — «ضيف رقم بعد الكود»', () => {
     ]);
   });
 
+  it('counts as «كود معدَّل» only the suffixed codes it writes (Round 29 critic)', () => {
+    // Held «116» and «116-2», read again with a third «116»: only the new row's code is written.
+    const plan = planBranchImport(
+      [row('فرع أ', '116'), row('فرع ب', '116'), row('فرع ج', '116')],
+      [held('فرع أ', '116'), held('فرع ب', '116-2')],
+      [],
+    );
+    expect(plan.rows.map((r) => [r.outcome, r.after?.code, r.codeSuffixed])).toEqual([
+      ['unchanged', '116', false],
+      ['unchanged', '116-2', true],
+      ['new', '116-3', true],
+    ]);
+    expect(plan.counts.suffixed).toBe(1);
+  });
+
   it('compares codes as text — «084» is not «84»', () => {
     const plan = planBranchImport([row('فرع أ', '084'), row('فرع ب', '84')], [], []);
     expect(codes(plan)).toEqual(['084', '84']);
@@ -362,6 +408,93 @@ describe('planBranchImport — areas', () => {
     expect(plan.rows.map((r) => [r.after?.opsAreaName, r.areaLatinOnly])).toEqual([
       ['منطقة الوادي', false],
       ['منطقة السهل', false],
+    ]);
+  });
+
+  it('reads an «Area» cell with any Arabic letter as the Arabic name — two swapped columns too', () => {
+    // Round 29 critic: Arabic beside Latin in the English column was written as `nameEn`; and the
+    // columns swapped (Latin under «المنطقة», Arabic under «Area») lost the Arabic.
+    const plan = planBranchImport(
+      [
+        row('فرع أ', '1', { en: 'منطقة الصنوبر Pine' }),
+        row('فرع ب', '2', { ar: 'Hilltop', en: 'التلة' }),
+      ],
+      [],
+      [],
+    );
+    expect(plan.newAreas).toEqual([
+      { name: 'منطقة الصنوبر Pine', nameEn: null, rows: 1, latinOnly: false },
+      { name: 'التلة', nameEn: 'Hilltop', rows: 1, latinOnly: false },
+    ]);
+    expect(plan.rows.map((r) => r.areaLatinOnly)).toEqual([false, false]);
+  });
+
+  it('gives a Latin-only area the Arabic name another row gives beside its English one', () => {
+    // Round 29 critic: the first row's «Coral» became the area's Arabic name, and the later row's
+    // «منطقة المرجان» was dropped — whichever row comes first, the Arabic is the name.
+    const sheet = [
+      row('فرع أ', '1', { en: 'Coral' }),
+      row('فرع ب', '2', { ar: 'منطقة المرجان', en: 'Coral' }),
+      row('فرع ج', '3', { ar: 'Coral' }),
+    ];
+    const plan = planBranchImport(sheet, [], []);
+    expect(plan.newAreas).toEqual([
+      { name: 'منطقة المرجان', nameEn: 'Coral', rows: 3, latinOnly: false },
+    ]);
+    expect(plan.rows.map((r) => [r.after?.opsAreaName, r.areaLatinOnly, r.areaNote])).toEqual([
+      ['منطقة المرجان', false, null],
+      ['منطقة المرجان', false, null],
+      ['منطقة المرجان', false, null],
+    ]);
+    // A held «منطقة المرجان» with no English name: it is that area, its English name filled.
+    const withHeld = planBranchImport(sheet, [], [area('a1', 'منطقة المرجان')]);
+    expect(withHeld.newAreas).toEqual([]);
+    expect(withHeld.filledAreas).toEqual([{ id: 'a1', name: 'منطقة المرجان', nameEn: 'Coral' }]);
+  });
+
+  it('says so when the row’s Arabic area gives way to an area found by its English name', () => {
+    // Rule 2 reuses an area by its English name; the row's own Arabic is then not written — the
+    // compare says it (Round 29 critic), for a held area and for one this import creates.
+    const plan = planBranchImport(
+      [
+        row('فرع أ', '1', { ar: 'منطقة البستان', en: 'Orchard' }),
+        row('فرع ب', '2', { ar: 'منطقة الكروم', en: 'orchard' }),
+        row('فرع ج', '3', { ar: 'المرفأ', en: 'Harbour' }),
+      ],
+      [],
+      [area('a1', 'منطقة المرفأ القديم', 'Harbour')],
+    );
+    expect(plan.rows.map((r) => [r.after?.opsAreaName, r.areaNote])).toEqual([
+      ['منطقة البستان', null],
+      ['منطقة البستان', 'byEnglish'],
+      ['منطقة المرفأ القديم', 'byEnglish'],
+    ]);
+    expect(plan.newAreas.map((a) => a.name)).toEqual(['منطقة البستان']);
+    expect(plan.counts.areaNotes).toBe(2);
+  });
+
+  it('never fills an area’s English name with another area’s', () => {
+    // Round 29 critic: «منطقة الصنوبر» | «Cedar» filled «منطقة الصنوبر» with «منطقة الأرز»'s English name.
+    const plan = planBranchImport(
+      [
+        row('فرع أ', '1', { ar: 'منطقة الصنوبر', en: 'Cedar' }),
+        row('فرع ب', '2', { ar: 'منطقة الغدير', en: 'Brook' }),
+        row('فرع ج', '3', { ar: 'منطقة السهل' }),
+        row('فرع د', '4', { ar: 'منطقة السهل', en: 'brook' }),
+      ],
+      [],
+      [area('a1', 'منطقة الصنوبر'), area('a2', 'منطقة الأرز', 'Cedar')],
+    );
+    expect(plan.filledAreas).toEqual([]);
+    expect(plan.newAreas).toEqual([
+      { name: 'منطقة الغدير', nameEn: 'Brook', rows: 1, latinOnly: false },
+      { name: 'منطقة السهل', nameEn: null, rows: 2, latinOnly: false },
+    ]);
+    expect(plan.rows.map((r) => [r.after?.opsAreaName, r.areaNote])).toEqual([
+      ['منطقة الصنوبر', 'englishElsewhere'],
+      ['منطقة الغدير', null],
+      ['منطقة السهل', null],
+      ['منطقة السهل', 'englishElsewhere'],
     ]);
   });
 

@@ -11773,6 +11773,25 @@ const en: Record<string, string> = {
   'operations.catalogs.branchImport.badge.latin': 'Latin letters only',
   'operations.catalogs.branchImport.badge.inactive': 'Stopped branch',
   'operations.catalogs.branchImport.financeWas': 'Finance area was: {{area}}',
+  // Round 29 critic — rows to look at before confirming, and the words a screen reader hears.
+  'operations.catalogs.branchImport.filter.review': 'To review',
+  'operations.catalogs.branchImport.reviewNote':
+    'Some rows need a look before you confirm: a new branch the bank may already hold spelt another way, or an area not written as the sheet gives it.',
+  'operations.catalogs.branchImport.reviewShow': 'Show them ({{count}})',
+  'operations.catalogs.branchImport.badge.similar': 'May be a duplicate',
+  'operations.catalogs.branchImport.similarTo':
+    'The bank holds «{{name}}» (code {{code}}) — this row is added as a new branch.',
+  'operations.catalogs.branchImport.areaNote.byEnglish':
+    'The sheet’s area «{{area}}» is not in «Areas»: the area with the same English name is written.',
+  'operations.catalogs.branchImport.areaNote.englishElsewhere':
+    'The English name «{{en}}» is another area’s: it is not written on this one.',
+  'operations.catalogs.branchImport.sheetCode': 'On the sheet:',
+  'operations.catalogs.branchImport.change.was': 'was',
+  'operations.catalogs.branchImport.change.now': 'now',
+  'operations.catalogs.branchImport.dialog.similar': 'New branches like a held one',
+  'operations.catalogs.branchImport.dialog.areaNotes': 'Rows whose area is not the sheet’s as given',
+  'operations.catalogs.branchImport.doneDetail':
+    'New branches: {{created}} · branches updated: {{updated}} · new areas: {{areas}} · English area names written: {{filled}}',
   'operations.catalogs.branchImport.problem.noName': 'The row has no branch name.',
   'operations.catalogs.branchImport.problem.nameIsDate':
     'The name reads as a date — Excel turned it into one. Type the name again as text.',
@@ -11800,8 +11819,7 @@ const en: Record<string, string> = {
   'operations.catalogs.branchImport.dialog.note':
     'The rows marked «Problem» are left out. Correct them in the sheet and import it again — the rows already in will read «Unchanged».',
   'operations.catalogs.branchImport.dialog.cancel': 'Cancel',
-  'operations.catalogs.branchImport.done':
-    'Imported — new branches: {{created}}, branches updated: {{updated}}, new areas: {{areas}}.',
+  'operations.catalogs.branchImport.done': 'Branches imported',
   'operations.catalogs.branchImport.refusal.noHeader':
     'None of the sheet’s first ten rows is a header naming the column «اسم الفرع».',
   'operations.catalogs.branchImport.refusal.tooLarge':
@@ -27148,6 +27166,25 @@ const ar: Record<string, string> = {
   'operations.catalogs.branchImport.badge.latin': 'بحروف لاتينية فقط',
   'operations.catalogs.branchImport.badge.inactive': 'فرع موقوف',
   'operations.catalogs.branchImport.financeWas': 'منطقة الحسابات كانت: {{area}}',
+  // Round 29 critic — صفوف للمراجعة قبل التأكيد، وما يسمعه قارئ الشاشة.
+  'operations.catalogs.branchImport.filter.review': 'للمراجعة',
+  'operations.catalogs.branchImport.reviewNote':
+    'صفوف تحتاج إلى مراجعة قبل التأكيد: فرع جديد قد يكون لدى البنك باسم مكتوب بطريقة أخرى، أو منطقة لا تُكتب كما وردت في الشيت.',
+  'operations.catalogs.branchImport.reviewShow': 'اعرضها ({{count}})',
+  'operations.catalogs.branchImport.badge.similar': 'قد يكون مكرَّرًا',
+  'operations.catalogs.branchImport.similarTo':
+    'لدى البنك «{{name}}» (الكود {{code}})، ويُضاف هذا الصف فرعًا جديدًا.',
+  'operations.catalogs.branchImport.areaNote.byEnglish':
+    'منطقة الشيت «{{area}}» ليست في «المناطق»، فتُكتب المنطقة صاحبة الاسم الإنجليزي نفسه.',
+  'operations.catalogs.branchImport.areaNote.englishElsewhere':
+    'الاسم الإنجليزي «{{en}}» لمنطقة أخرى، فلا يُكتب لهذه المنطقة.',
+  'operations.catalogs.branchImport.sheetCode': 'في الشيت:',
+  'operations.catalogs.branchImport.change.was': 'كان',
+  'operations.catalogs.branchImport.change.now': 'أصبح',
+  'operations.catalogs.branchImport.dialog.similar': 'فروع جديدة تشبه فرعًا لدى البنك',
+  'operations.catalogs.branchImport.dialog.areaNotes': 'صفوف منطقتها ليست كما وردت في الشيت',
+  'operations.catalogs.branchImport.doneDetail':
+    'فروع جديدة: {{created}}، فروع محدَّثة: {{updated}}، مناطق جديدة: {{areas}}، أسماء إنجليزية للمناطق: {{filled}}',
   'operations.catalogs.branchImport.problem.noName': 'الصف ليس فيه اسم فرع.',
   'operations.catalogs.branchImport.problem.nameIsDate':
     'الاسم مقروء تاريخًا — حوّله Excel إلى تاريخ. اكتب الاسم نصًا من جديد.',
@@ -27173,8 +27210,7 @@ const ar: Record<string, string> = {
   'operations.catalogs.branchImport.dialog.note':
     'الصفوف التي عليها «مشكلة» لا تُكتب؛ صحّحها في الشيت واستورده مرة أخرى، وستظهر الصفوف المستوردة «بدون تغيير».',
   'operations.catalogs.branchImport.dialog.cancel': 'إلغاء',
-  'operations.catalogs.branchImport.done':
-    'تم الاستيراد — فروع جديدة: {{created}}، فروع محدَّثة: {{updated}}، مناطق جديدة: {{areas}}.',
+  'operations.catalogs.branchImport.done': 'تم استيراد الفروع',
   'operations.catalogs.branchImport.refusal.noHeader':
     'لا يوجد في الصفوف العشرة الأولى من الشيت صف عناوين فيه العمود «اسم الفرع».',
   'operations.catalogs.branchImport.refusal.tooLarge':

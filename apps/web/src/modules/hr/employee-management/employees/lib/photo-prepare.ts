@@ -9,7 +9,9 @@
 // than the server accepts (5 MB) it is shrunk first, in its own proportions, so a camera's photo
 // never needs editing before it is picked.
 import { EMPLOYEE_PHOTO_MAX_MB, EMPLOYEE_PHOTO_MIME_TYPES } from '@ecms/contracts';
-import { cropToFile, locateFace } from '../face-crop/a4-face';
+import { cropToFile, locateFace, readyFaceSearch } from '../face-crop/a4-face';
+
+export { readyFaceSearch };
 
 export const PHOTO_MAX_BYTES = EMPLOYEE_PHOTO_MAX_MB * 1024 * 1024;
 /** The longest side a shrunk photo keeps: plenty for a card and a profile. */
@@ -76,6 +78,8 @@ export const prepareBatchPhoto = async (file: File, name: string): Promise<Prepa
     }
   } catch {
     // A picture the face search could not read still goes, uncropped, under the ordinary rules.
+    // (The search itself is loaded before the run — `readyFaceSearch` — so its failing to load
+    // stops the run instead of sending every photo uncropped.)
   }
   if (fitsAsIs(file)) return { file, cropped: false, noFace: true, shrunk: false };
   return { file: await shrink(file, name), cropped: false, noFace: true, shrunk: true };

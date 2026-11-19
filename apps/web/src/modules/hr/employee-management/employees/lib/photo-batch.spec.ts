@@ -41,6 +41,12 @@ describe('reading a code out of a file name', () => {
     const parsed = parsePhotoName('101469 محمد.jpg');
     expect(parsed.candidates).toEqual(['101469', '0101469']);
     expect(parsed.padded).toEqual(['0101469']);
+    expect(parsePhotoName('01469 محمد.jpg').padded).toEqual(['0001469']);
+  });
+
+  it('pads no short number that cannot be a code, such as a copy\'s «(2)»', () => {
+    expect(parsePhotoName('0101469 محمد (2).jpg').candidates).toEqual(['0101469', '2']);
+    expect(parsePhotoName('1469 محمد.jpg').padded).toEqual([]);
   });
 
   it('tries every run of digits, longest first, and an external code word', () => {

@@ -34,7 +34,7 @@ import {
   type PhotoFileInput,
   type PhotoRow,
 } from '../lib/photo-batch';
-import { prepareBatchPhoto } from '../lib/photo-prepare';
+import { prepareBatchPhoto, readyFaceSearch } from '../lib/photo-prepare';
 import { runQueue } from '../lib/photo-batch-run';
 
 interface PickedFile extends PhotoFileInput {
@@ -45,7 +45,7 @@ type Progress =
   | { state: 'waiting' }
   | { state: 'preparing' }
   | { state: 'uploading' }
-  | { state: 'done'; cropped: boolean }
+  | { state: 'done'; cropped: boolean; shrunk: boolean }
   | { state: 'failed'; message: string };
 
 const keyOf = (file: File): string =>
@@ -107,7 +107,10 @@ const PhotoRowView = memo(function PhotoRowView({
     if (run?.state === 'done')
       return run.cropped
         ? { text: t('employees.photoBatch.doneCropped'), tone: 'ok' }
-        : { text: t('employees.photoBatch.doneNoFace'), tone: 'warn' };
+        : {
+            text: t(run.shrunk ? 'employees.photoBatch.doneShrunk' : 'employees.photoBatch.doneNoFace'),
+            tone: 'warn',
+          };
     if (run?.state === 'failed') return { text: run.message, tone: 'bad' };
     if (run?.state === 'preparing') return { text: t('employees.photoBatch.preparing'), tone: 'muted' };
     if (run?.state === 'uploading') return { text: t('employees.photoBatch.uploading'), tone: 'muted' };
@@ -136,14 +139,17 @@ const PhotoRowView = memo(function PhotoRowView({
   return (
     <tr data-photo-row={row.status}>
       <td className="px-2 py-1.5">
-        <input
-          type="checkbox"
-          aria-label={t('employees.photoBatch.include', { name: row.name })}
-          checked={row.status !== 'excluded'}
-          disabled={running || run?.state === 'done'}
-          onChange={() => onToggle(row.key)}
-          className="h-4 w-4 rounded border-slate-300 text-brand-600"
-        />
+        {/* Only a photo that names an employee can be left out or put back; the rest never go. */}
+        {row.employee !== null && row.status !== 'unsupported' && (
+          <input
+            type="checkbox"
+            aria-label={t('employees.photoBatch.include', { name: row.name })}
+            checked={row.status !== 'excluded'}
+            disabled={running || run?.state === 'done'}
+            onChange={() => onToggle(row.key)}
+            className="h-4 w-4 rounded border-slate-300 text-brand-600"
+          />
+        )}
       </td>
       <td
         className="max-w-[16rem] truncate px-2 py-1.5 text-slate-700 dark:text-slate-200"
@@ -190,7 +196,7 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   const [picked, setPicked] = useState<PickedFile[]>([]);
   const [matches, setMatches] = useState<Map<string, EmployeeCodeMatchDto>>(new Map());
   const [looking, setLooking] = useState(false);
-  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [onlyAttention, setOnlyAttention] = useState(false);
   const [progress, setProgress] = useState<Map<string, Progress>>(new Map());
@@ -199,6 +205,8 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   const [dragging, setDragging] = useState(false);
   const stop = useRef(false);
   const uploadedAny = useRef(false);
+  /** Lookups still under way: a second pick may be asked about before the first is answered. */
+  const lookups = useRef(0);
   const filesInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
@@ -213,7 +221,10 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   const differing = rows.filter((row) => row.status === 'ready' && row.nameDiffers).length;
   const replacing = rows.filter((row) => row.status === 'ready' && row.employee?.photoFileId !== null).length;
 
-  /** Take a pick (or a drop): photos only, each once, then ask who holds their codes. */
+  /**
+   * Take a pick (or a drop): photos only, each once, then ask who holds the new files' codes. The
+   * answer is ADDED to what is known, so an earlier pick answered late never undoes a later one.
+   */
   const take = async (files: readonly File[]): Promise<void> => {
     const seen = new Set(picked.map((p) => p.key));
     const fresh = files
@@ -221,17 +232,21 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
       .map((file) => ({ key: keyOf(file), name: file.name, type: file.type, file }))
       .filter((p) => !seen.has(p.key));
     if (fresh.length === 0) return;
-    const all = [...picked, ...fresh];
-    setPicked(all);
+    setPicked((now) => {
+      const have = new Set(now.map((p) => p.key));
+      return [...now, ...fresh.filter((p) => !have.has(p.key))];
+    });
+    lookups.current += 1;
     setLooking(true);
-    setLookupError(null);
+    setNotice(null);
     try {
-      const found = await lookupEmployeeCodes(codesToLookUp(all));
-      setMatches(new Map(found.map((m) => [m.code, m])));
+      const found = await lookupEmployeeCodes(codesToLookUp(fresh));
+      setMatches((now) => new Map([...now, ...found.map((m) => [m.code, m] as const)]));
     } catch (error) {
-      setLookupError(errorMessage(error, locale));
+      setNotice(errorMessage(error, locale));
     } finally {
-      setLooking(false);
+      lookups.current -= 1;
+      if (lookups.current === 0) setLooking(false);
     }
   };
 
@@ -253,6 +268,16 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   const send = async (list: readonly PhotoRow[]): Promise<void> => {
     stop.current = false;
     setRunning(true);
+    setNotice(null);
+    // The face search first: without it every photo would go uncropped, and replace a photo that
+    // was cut well. A run that cannot cut starts nothing.
+    try {
+      await readyFaceSearch();
+    } catch {
+      setNotice(t('employees.photoBatch.faceSearchUnavailable'));
+      setRunning(false);
+      return;
+    }
     for (const row of list) mark(row.key, { state: 'waiting' });
     const leave = (e: BeforeUnloadEvent): void => e.preventDefault();
     window.addEventListener('beforeunload', leave);
@@ -268,7 +293,7 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
             mark(row.key, { state: 'uploading' });
             await uploadEmployeePhotoFile(row.employee.id, photo.file);
             uploadedAny.current = true;
-            mark(row.key, { state: 'done', cropped: photo.cropped });
+            mark(row.key, { state: 'done', cropped: photo.cropped, shrunk: photo.shrunk });
             // The run is the person's own long task: while it works, their session is not idle.
             markActivity();
           } catch (error) {
@@ -402,9 +427,9 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
             />
           </div>
 
-          {lookupError !== null && (
+          {notice !== null && (
             <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-              {lookupError}
+              {notice}
             </p>
           )}
 

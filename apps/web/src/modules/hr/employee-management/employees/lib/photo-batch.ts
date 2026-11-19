@@ -17,6 +17,8 @@ export const asciiDigits = (value: string): string =>
 
 /** The shortest employee code (`EMPLOYEE_CODE_PATTERN`: a 3-digit branch prefix and 4+ digits). */
 export const EMPLOYEE_CODE_MIN_DIGITS = 7;
+/** The shortest run of digits given back its dropped zeros: a code that lost one or two of them. */
+export const PADDED_FROM_DIGITS = EMPLOYEE_CODE_MIN_DIGITS - 2;
 
 export interface ParsedPhotoName {
   /** The codes the name could mean, most likely first. */
@@ -30,9 +32,10 @@ export interface ParsedPhotoName {
 /**
  * Read a file's name: the codes it could carry and the name beside them.
  *
- * Every run of digits is a candidate, longest first. A run SHORTER than a code is also tried with
- * the zeros a spreadsheet drops in front of it (`101469` → `0101469`), because no code is that
- * short, so the padded one is the only thing it can mean. A whole word of letters, digits and
+ * Every run of digits is a candidate, longest first. A run one or two digits SHORTER than a code is
+ * also tried with the zeros a spreadsheet drops in front of it (`101469` → `0101469`), because no
+ * code is that short, so the padded one is the only thing it can mean. A shorter run — the `2` of a
+ * copy's «(2)» — is no code that lost its zeros, so it is not padded. A whole word of letters, digits and
  * dashes is a candidate too, for the external people's codes.
  */
 export const parsePhotoName = (fileName: string): ParsedPhotoName => {
@@ -45,7 +48,7 @@ export const parsePhotoName = (fileName: string): ParsedPhotoName => {
   };
   for (const run of [...runs].sort((a, b) => b.length - a.length)) {
     add(run);
-    if (run.length < EMPLOYEE_CODE_MIN_DIGITS) {
+    if (run.length >= PADDED_FROM_DIGITS && run.length < EMPLOYEE_CODE_MIN_DIGITS) {
       const full = run.padStart(EMPLOYEE_CODE_MIN_DIGITS, '0');
       if (!candidates.includes(full)) padded.push(full);
       add(full);

@@ -3194,6 +3194,9 @@ const en: Record<string, string> = {
   'employees.photoBatch.uploading': 'Uploading…',
   'employees.photoBatch.doneCropped': 'Uploaded, cut around the face',
   'employees.photoBatch.doneNoFace': 'Uploaded uncropped — no face found; check it on the profile',
+  'employees.photoBatch.doneShrunk': 'Uploaded uncropped and made smaller — no face found; check it on the profile',
+  'employees.photoBatch.faceSearchUnavailable':
+    'The face search could not load, so nothing was uploaded (each photo would have gone uncropped). Reload the page and try again.',
   'employees.photoBatch.upload': 'Upload {{n}} photos',
   'employees.photoBatch.stop': 'Stop',
   'employees.photoBatch.retry': 'Retry the failed ({{n}})',
@@ -18681,6 +18684,9 @@ const ar: Record<string, string> = {
   'employees.photoBatch.uploading': 'جارٍ الرفع…',
   'employees.photoBatch.doneCropped': 'تم الرفع بعد القص حول الوجه',
   'employees.photoBatch.doneNoFace': 'تم الرفع بدون قص لعدم العثور على وجه؛ راجعها من الملف الشخصي',
+  'employees.photoBatch.doneShrunk': 'تم الرفع بعد تصغيرها وبدون قص لعدم العثور على وجه؛ راجعها من الملف الشخصي',
+  'employees.photoBatch.faceSearchUnavailable':
+    'تعذّر تحميل البحث عن الوجه، فلم تُرفع أي صورة (كانت كل صورة ستُرفع بدون قص). أعد تحميل الصفحة وحاول مرة أخرى.',
   'employees.photoBatch.upload': 'رفع {{n}} صورة',
   'employees.photoBatch.stop': 'إيقاف',
   'employees.photoBatch.retry': 'إعادة محاولة الفاشلة ({{n}})',

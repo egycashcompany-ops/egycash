@@ -13,6 +13,20 @@
 // (`installedOnBefore`), for the one rule that must still see it: an asset a unit was once recorded
 // in is not «registered in error» (FR-5) — the signed copy on file and the trail still name it.
 //
+// On a COUNTED issue — a toner of a type that `requiresCounterReading` («حبارات», 2026-11-19: «عايز
+// يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة») — that one fact is the device
+// AND the printer's counter reading taken on it (`counterReading`, `counterReset`): the reading
+// moves with the device, is checked again on the printer it lands on, and leaves with it
+// («بدون جهاز»). «One memo, one printer, one reading»: the counted rows of one memo on one printer
+// are one display read once, so they carry ONE reading and reset, and a write of it on one of them
+// — a correction there, or a move onto a printer where rows of its memo sit — writes it on all of
+// them (the repository's `setMemoCounterOnPrinter`, beside `setInstalledOn`, in one transaction);
+// a move off a printer leaves the others there as they are. Both keys are present only on a
+// counted issue (`counterReset` only when true), so an old row and an uncounted one read alike. The
+// pages a cartridge printed are never stored: they are the next reading of the same item on that
+// printer less this one, computed when read (`consumable-counter.ts`), so no row ever holds a
+// figure another row's correction would have to rewrite.
+//
 // `qty` is always POSITIVE and the kind says which way it moved: a ledger read by people, where
 // «−3» beside «صرف» would say the same thing twice and invite the sign to disagree with the word.
 // What each kind does to the item's counters is `consumable-stock.ts`.
@@ -44,6 +58,14 @@ export interface ItConsumableMovementDoc extends BaseDocFields {
    * from, and read by nothing but FR-5's delete guard. Absent on a row never corrected.
    */
   installedOnBefore?: Types.ObjectId[];
+  /**
+   * `issued`, of a type that takes the printer's counter: the counter of the printer (`assetId`) as
+   * the toner went in — as typed, or as «تعديل الجهاز» last corrected it (on this row, or on another
+   * row of its memo on that printer: one memo, one printer, one reading). Absent on every other row.
+   */
+  counterReading?: number;
+  /** «تم تصفير عداد الطابعة» — that reading started the printer's counter again. Absent = false. */
+  counterReset?: boolean;
   /** `issued`: `new` | `replacement`; `scrapped`: why, as written. Null otherwise. */
   reason: string | null;
   /** `issued`: the memo the employee signed for it. */
@@ -73,6 +95,9 @@ const movementSchema = new Schema<ItConsumableMovementDoc>(
     assetId: { type: Schema.Types.ObjectId, default: null },
     // No empty array on every row: only a corrected issue carries it.
     installedOnBefore: { type: [Schema.Types.ObjectId], default: undefined },
+    // No default: only a counted issue carries them (the header).
+    counterReading: { type: Number, min: 0 },
+    counterReset: { type: Boolean },
     reason: { type: String, default: null },
     memoId: { type: Schema.Types.ObjectId, default: null },
     notes: { type: String, default: null },
@@ -90,7 +115,8 @@ movementSchema.index({ consumableId: 1, at: -1 }, { name: 'ix_consumable_at' });
 movementSchema.index({ branchId: 1, at: -1 }, { name: 'ix_branch_at' });
 // «وأتبدل لمين» — what a person was issued: the IT history page of an employee.
 movementSchema.index({ employeeId: 1, at: -1 }, { name: 'ix_employee_at' });
-// «المستهلكات المركّبة عليه» — what was installed on an asset: its detail page.
+// «المستهلكات المركّبة عليه» — what was installed on an asset: its detail page. A printer's counter
+// timeline (its counted issues, in order) reads it too: a bounded scan of one asset's rows.
 movementSchema.index({ assetId: 1, at: -1 }, { name: 'ix_asset_at' });
 // FR-5's guard: an asset a corrected issue named before. Sparse — few rows are ever corrected.
 movementSchema.index({ installedOnBefore: 1 }, { name: 'ix_installed_on_before', sparse: true });

@@ -24,6 +24,15 @@ export const IT_CONSUMABLE_TYPE_CODES = [
 ] as const;
 export type ItConsumableTypeCode = (typeof IT_CONSUMABLE_TYPE_CODES)[number];
 
+/**
+ * The types whose items go into a printer, so each is issued with that printer's counter reading
+ * («يتطلب عداد الطباعة») — the owner, 19 November 2026: «عند صرف الصنف : حبارة أو النوع : حبارات ..
+ * عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة». Ticked on a fresh
+ * catalog's seeded row (`consumable-types.ts`), and once on the live one
+ * (`consumable-counter-types.ts`); the IT team ticks or unticks any type on the catalogs page after.
+ */
+export const IT_COUNTER_READING_TYPE_CODES: readonly ItConsumableTypeCode[] = ['ink'];
+
 /** Each type's names — the plan the owner approved («موافق على اقتراحاتك كلها في المستهلكات»). */
 export const IT_CONSUMABLE_TYPE_NAMES: Readonly<
   Record<ItConsumableTypeCode, { ar: string; en: string }>

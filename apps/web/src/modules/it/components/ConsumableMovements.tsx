@@ -28,6 +28,10 @@
 // to another device, so the card no longer lists it), and a dialog mounted in that row would vanish
 // with it, its refusal unsaid. `useConsumableMovementLedger` returns the columns and that dialog;
 // each place renders both.
+//
+// «قراءة العداد» (2026-11-19): an issue of a toner names the printer's counter as it went in — as
+// typed, or as «تعديل الجهاز» last corrected it — with «تصفير» when it started the counter again.
+// Its own column after the device, in every place; one item's movements draw it only for a toner.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -113,15 +117,45 @@ export interface MovementColumnOptions {
   item?: boolean;
   employee?: boolean;
   asset?: boolean;
+  /** «قراءة العداد» — the printer's counter a toner went in at (2026-11-19). */
+  counter?: boolean;
   by?: boolean;
 }
 
 /**
- * The ledger's columns, in the screens' order: date, kind, item, qty, employee, asset, reason, memo,
- * by — and «تعديل الجهاز» last, for a reader who may correct a device.
+ * «١٢٬٣٤٥» — the printer's counter as the toner went in, «تصفير» beside it when that reading started
+ * the counter again; a dash on every row that carries none.
+ */
+export const CounterReadingCell = ({
+  reading,
+  reset,
+}: {
+  reading: number | null;
+  reset: boolean;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  if (reading === null) return <span>—</span>;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1" data-counter-reading={reading}>
+      <span className="font-mono text-sm tabular-nums" dir="ltr">
+        {formatNumber(reading, locale)}
+      </span>
+      {reset && (
+        <Badge tone="warning" size="sm">
+          {t('it.consumables.counter.resetBadge')}
+        </Badge>
+      )}
+    </span>
+  );
+};
+
+/**
+ * The ledger's columns, in the screens' order: date, kind, item, qty, employee, asset, the counter
+ * reading, reason, memo, by — and «تعديل الجهاز» last, for a reader who may correct a device.
  */
 const useConsumableMovementColumns = (
-  { item = true, employee = true, asset = true, by = true }: MovementColumnOptions,
+  { item = true, employee = true, asset = true, counter = true, by = true }: MovementColumnOptions,
   onEditDevice: (movement: ItConsumableMovementDto) => void,
 ): Column<ItConsumableMovementDto>[] => {
   const t = useT();
@@ -221,6 +255,11 @@ const useConsumableMovementColumns = (
           </Link>
         );
       },
+    },
+    counter && {
+      key: 'counterReading',
+      header: t('it.consumables.movements.columns.counter'),
+      render: (m) => <CounterReadingCell reading={m.counterReading} reset={m.counterReset} />,
     },
     {
       key: 'reason',

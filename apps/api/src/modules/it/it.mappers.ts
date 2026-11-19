@@ -72,6 +72,8 @@ export const toItCatalogItemDto = (doc: ItCatalogItemDoc): ItCatalogItemDto => (
   description: doc.description,
   sortOrder: doc.sortOrder,
   isActive: doc.isActive,
+  // Rows written before the flag (2026-11-19) carry no key, and a lean read applies no default.
+  requiresCounterReading: doc.requiresCounterReading ?? false,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
@@ -602,6 +604,10 @@ export const toItConsumableMovementDto = (
     assetId,
     assetCode: asset?.assetCode ?? null,
     assetName: asset?.name ?? null,
+    // Only a counted issue carries the keys (the movement model's header); every other row, and an
+    // issue written before the counter was asked, reads «no reading».
+    counterReading: doc.counterReading ?? null,
+    counterReset: doc.counterReset === true,
     reason: doc.reason ?? null,
     memoId,
     memoNumber: memo?.memoNumber ?? null,

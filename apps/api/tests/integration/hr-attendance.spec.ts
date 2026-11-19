@@ -143,6 +143,19 @@ const recentWorkday = (): Date => {
   return day;
 };
 
+/**
+ * An OLD workday — past the seven-day threshold an old-day decision waits behind, and never a weekend
+ * or a seeded holiday (a fixed «20 days ago» lands on a Friday or a Saturday two days a week, and
+ * that day is then recomputed as `weekend`, whatever a decision says).
+ */
+const oldWorkday = (): Date => {
+  let day = addDays(cairoToday(), -20);
+  while ([5, 6].includes(isoWeekday(day)) || HOLIDAY_ISO.has(dateOnlyIso(day))) {
+    day = addDays(day, -1);
+  }
+  return day;
+};
+
 /** A recent WEEKEND day per the seeded calendar (Fri=5). */
 const recentWeekendDay = (): Date => {
   let day = addDays(cairoToday(), -10);
@@ -1496,7 +1509,7 @@ describe('manager day decisions (stage 3)', () => {
     const emp = await regEmployee();
     await assign(emp.id, GENERAL.id);
     // Past the default seven-day threshold.
-    const old = addDays(cairoToday(), -20);
+    const old = oldWorkday();
     await recompute(emp.id, old);
     const before = (await dayRow(emp.id, old)).status;
 
@@ -1526,7 +1539,7 @@ describe('manager day decisions (stage 3)', () => {
     const author = await decidingEmployee();
     const emp = await regEmployee();
     await assign(emp.id, GENERAL.id);
-    const old = addDays(cairoToday(), -20);
+    const old = oldWorkday();
     await recompute(emp.id, old);
 
     const res = await decide(

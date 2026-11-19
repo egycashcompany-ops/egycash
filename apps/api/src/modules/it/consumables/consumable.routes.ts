@@ -22,6 +22,7 @@ import { asyncHandler, validate } from '../../../platform/web';
 import {
   createItConsumable,
   getItConsumable,
+  getItConsumableCartridges,
   issueItConsumables,
   listItConsumableMovementsOf,
   listItConsumableTransferTargets,
@@ -96,6 +97,15 @@ export const buildItConsumablesRouter = (): Router => {
     authorize('itConsumable.view'),
     validate({ query: ListItConsumableMovementsQuerySchema, params: ItConsumableIdParamSchema }),
     asyncHandler(listItConsumableMovementsOf),
+  );
+  // «عداد الطابعة» (2026-11-19) — a toner item's cartridges: the printer each went into, the
+  // reading then, and what it printed; and the average per cartridge. One object, not a page.
+  router.get(
+    '/:id/cartridges',
+    authenticate,
+    authorize('itConsumable.view'),
+    validate({ params: ItConsumableIdParamSchema }),
+    asyncHandler(getItConsumableCartridges),
   );
 
   // ── Stock — named movements, never a PATCH of a quantity (ADR-024) ──────

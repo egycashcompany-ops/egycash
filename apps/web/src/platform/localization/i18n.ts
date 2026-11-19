@@ -9456,6 +9456,10 @@ const en: Record<string, string> = {
   'it.catalogs.fields.code': 'Code',
   'it.catalogs.fields.sortOrder': 'Order',
   'it.catalogs.fields.description': 'Description',
+  'it.catalogs.fields.requiresCounterReading': 'Requires the printer counter',
+  'it.catalogs.fields.requiresCounterReadingHint':
+    'An item of this type is issued onto a printer, one cartridge a line, with that printer’s counter reading.',
+  'it.catalogs.counterBadge': 'Printer counter',
 
   'it.vendors.subtitle': 'Suppliers and warranty providers for IT assets',
   'it.vendors.searchPlaceholder': 'Vendor name or code',
@@ -10610,6 +10614,64 @@ const en: Record<string, string> = {
     'Somebody changed this issue first, and it is no longer shown in this list. Open the consumables movements to see the device it is installed on now.',
   'it.consumables.installedOn.left':
     'This issue is no longer shown in this list since it was read again, so what is shown above is as it was when this window opened.',
+  'it.consumables.installedOn.counterHint':
+    'Required when a device is chosen: that printer’s counter with the toner in it. With no device chosen, a reading corrects the one taken on the current printer.',
+  'it.consumables.installedOn.counterDropped':
+    'With no device, its counter reading leaves the printer’s record too.',
+  // «عداد الطابعة» (2026-11-19): the printer's counter, typed as a toner goes in.
+  'it.consumables.movements.columns.counter': 'Counter reading',
+  'it.consumables.counter.reading': 'Printer counter reading',
+  'it.consumables.counter.reset': 'The printer’s counter was reset',
+  'it.consumables.counter.resetHint':
+    'The reading may then be at or below the last one; the pages printed before the reset are unknown.',
+  'it.consumables.counter.resetBadge': 'Reset',
+  'it.consumables.counter.lastReading':
+    'Last reading recorded for this printer: {{reading}} — {{date}}',
+  'it.consumables.counter.lastReadingToner': 'Taken when {{toner}} was installed.',
+  'it.consumables.counter.lastReadingReset': 'The counter was reset at that reading.',
+  'it.consumables.counter.noReading': 'No reading has been recorded for this printer yet.',
+  'it.consumables.counter.loadingReading': 'Loading the printer’s last reading…',
+  'it.consumables.counter.readingUnavailable':
+    'The printer’s last reading could not be loaded; the reading is checked when the issue is saved.',
+  'it.consumables.counter.backdated':
+    'This issue is dated before that reading, so the reading is checked against the readings around its date when it is saved.',
+  'it.consumables.counter.printerRequired':
+    'Required for this item: the printer it will be installed on.',
+  'it.consumables.counter.needsAssets':
+    'This item is issued onto a printer from the assets register, which needs the assets view permission.',
+  'it.consumables.counter.oneCartridge': 'One cartridge a line, on the printer it goes into.',
+  'it.consumables.counter.readingRequired': 'Enter the printer’s counter reading.',
+  'it.consumables.counter.readingInvalid': 'Enter a whole number no greater than {{max}}.',
+  'it.consumables.counter.belowPrevious':
+    'The reading must be higher than the last reading recorded for this printer ({{reading}} on {{date}}). If its counter was reset, tick «The printer’s counter was reset».',
+  'it.consumables.counter.belowPreviousBare':
+    'The reading must be higher than the last reading recorded for this printer. If its counter was reset, tick «The printer’s counter was reset».',
+  'it.consumables.counter.aboveNext':
+    'This issue is dated before a later reading of this printer ({{reading}} on {{date}}), so its reading must be lower than that one.',
+  'it.consumables.counter.aboveNextBare':
+    'This issue is dated before a later reading of this printer, so its reading must be lower than that one.',
+  'it.consumables.counter.sameReading':
+    'Item {{n}} is on the same printer with another reading: the lines on one printer carry one reading.',
+  'it.consumables.counter.cardTitle': 'Printer counter',
+  'it.consumables.counter.cardHint':
+    'The counter readings recorded as each toner was installed on this printer, newest first, and the pages the cartridge it replaced printed.',
+  'it.consumables.counter.columns.reading': 'Counter reading',
+  'it.consumables.counter.columns.toner': 'Toner',
+  'it.consumables.counter.columns.replaced': 'Cartridge replaced',
+  'it.consumables.counter.columns.pages': 'Pages printed',
+  'it.consumables.counter.columns.printer': 'Printer',
+  'it.consumables.counter.columns.installReading': 'Reading at install',
+  'it.consumables.counter.columns.removedAt': 'Replaced on',
+  'it.consumables.counter.unknown': 'Unknown',
+  'it.consumables.counter.firstOfItem': 'The first of this item on the printer',
+  'it.consumables.counter.replacedAt': 'Installed {{date}} at {{reading}}',
+  'it.consumables.counter.latestOfItem': 'The latest of this item on the printer',
+  'it.consumables.counter.showAll': 'Show all ({{n}})',
+  'it.consumables.counter.showFewer': 'Show fewer',
+  'it.consumables.counter.cartridgesTitle': 'Cartridge life',
+  'it.consumables.counter.average': 'Average pages per cartridge: {{pages}} (over {{n}})',
+  'it.consumables.counter.noAverage':
+    'No cartridge of this item has been replaced on its printer yet, so no average is known.',
 
   // ── System Administration → Users (SA-1) ──────────────────────────────────
   // P10 — the notification-template catalog. The service has been complete since Sprint 3.3; this
@@ -24737,6 +24799,10 @@ const ar: Record<string, string> = {
   'it.catalogs.fields.code': 'الكود',
   'it.catalogs.fields.sortOrder': 'الترتيب',
   'it.catalogs.fields.description': 'الوصف',
+  'it.catalogs.fields.requiresCounterReading': 'يتطلب عداد الطباعة',
+  'it.catalogs.fields.requiresCounterReadingHint':
+    'يُصرف صنف هذا النوع على طابعة، حبارة واحدة في كل سطر، مع قراءة عداد تلك الطابعة.',
+  'it.catalogs.counterBadge': 'عداد الطباعة',
 
   'it.vendors.subtitle': 'موردو أصول تقنية المعلومات ومقدِّمو الضمان',
   'it.vendors.searchPlaceholder': 'اسم المورد أو كوده',
@@ -25868,6 +25934,61 @@ const ar: Record<string, string> = {
     'عدّل مستخدم آخر هذا الصرف قبلك، فلم يعد ظاهرًا في هذه القائمة؛ افتح سجل حركات المستهلكات لترى الجهاز المركّب عليه الآن.',
   'it.consumables.installedOn.left':
     'لم يعد هذا الصرف ظاهرًا في هذه القائمة بعد تحديثها، فالمعروض أعلاه كما كان عند فتح النافذة.',
+  'it.consumables.installedOn.counterHint':
+    'إلزامية عند اختيار جهاز: عداد تلك الطابعة والحبارة مركّبة عليها. وإن لم يُختر جهاز فالقراءة تصحّح القراءة المسجّلة على الطابعة الحالية.',
+  'it.consumables.installedOn.counterDropped': 'بدون جهاز تُحذف قراءة العداد أيضًا من سجل الطابعة.',
+  // «عداد الطابعة» (2026-11-19): عداد الطابعة عند تركيب الحبارة.
+  'it.consumables.movements.columns.counter': 'قراءة العداد',
+  'it.consumables.counter.reading': 'قراءة عداد الطابعة',
+  'it.consumables.counter.reset': 'تم تصفير عداد الطابعة',
+  'it.consumables.counter.resetHint':
+    'عندها يجوز أن تكون القراءة مساوية لآخر قراءة أو أقل منها، وتكون الصفحات المطبوعة قبل التصفير غير معروفة.',
+  'it.consumables.counter.resetBadge': 'تصفير',
+  'it.consumables.counter.lastReading': 'آخر قراءة مسجّلة لهذه الطابعة: {{reading}} — {{date}}',
+  'it.consumables.counter.lastReadingToner': 'سُجِّلت عند تركيب {{toner}}.',
+  'it.consumables.counter.lastReadingReset': 'صُفِّر العداد عند هذه القراءة.',
+  'it.consumables.counter.noReading': 'لا توجد قراءة سابقة لهذه الطابعة',
+  'it.consumables.counter.loadingReading': 'جارٍ تحميل آخر قراءة للطابعة…',
+  'it.consumables.counter.readingUnavailable':
+    'تعذّر تحميل آخر قراءة لهذه الطابعة، وسيُتحقَّق من القراءة عند الصرف.',
+  'it.consumables.counter.backdated':
+    'تاريخ هذا الصرف سابق لتلك القراءة، فيُتحقَّق من القراءة عند الصرف مقابل القراءات المحيطة بتاريخه.',
+  'it.consumables.counter.printerRequired': 'إلزامي لهذا الصنف: الطابعة التي ستُركَّب عليها',
+  'it.consumables.counter.needsAssets':
+    'يُصرف هذا الصنف على طابعة من سجل الأصول، ويتطلب ذلك صلاحية عرض الأصول.',
+  'it.consumables.counter.oneCartridge': 'حبارة واحدة في كل سطر، على الطابعة التي تُركَّب عليها.',
+  'it.consumables.counter.readingRequired': 'أدخل قراءة عداد الطابعة.',
+  'it.consumables.counter.readingInvalid': 'أدخل عددًا صحيحًا لا يزيد على {{max}}.',
+  'it.consumables.counter.belowPrevious':
+    'القراءة يجب أن تكون أكبر من آخر قراءة مسجّلة لهذه الطابعة ({{reading}} بتاريخ {{date}}). وإذا صُفِّر عداد الطابعة فحدِّد «تم تصفير عداد الطابعة».',
+  'it.consumables.counter.belowPreviousBare':
+    'القراءة يجب أن تكون أكبر من آخر قراءة مسجّلة لهذه الطابعة. وإذا صُفِّر عداد الطابعة فحدِّد «تم تصفير عداد الطابعة».',
+  'it.consumables.counter.aboveNext':
+    'تاريخ هذا الصرف سابق لقراءة لاحقة مسجّلة لهذه الطابعة ({{reading}} بتاريخ {{date}})، فيجب أن تكون القراءة أقل منها.',
+  'it.consumables.counter.aboveNextBare':
+    'تاريخ هذا الصرف سابق لقراءة لاحقة مسجّلة لهذه الطابعة، فيجب أن تكون القراءة أقل منها.',
+  'it.consumables.counter.sameReading':
+    'الصنف {{n}} على الطابعة نفسها بقراءة مختلفة، وأسطر الطابعة الواحدة تحمل قراءة واحدة.',
+  'it.consumables.counter.cardTitle': 'عداد الطابعة',
+  'it.consumables.counter.cardHint':
+    'قراءات العداد المسجّلة عند تركيب كل حبارة على هذه الطابعة، الأحدث أولًا، وعدد الصفحات التي طبعتها الحبارة المستبدلة.',
+  'it.consumables.counter.columns.reading': 'قراءة العداد',
+  'it.consumables.counter.columns.toner': 'الحبارة',
+  'it.consumables.counter.columns.replaced': 'الحبارة المستبدلة',
+  'it.consumables.counter.columns.pages': 'الصفحات المطبوعة',
+  'it.consumables.counter.columns.printer': 'الطابعة',
+  'it.consumables.counter.columns.installReading': 'القراءة عند التركيب',
+  'it.consumables.counter.columns.removedAt': 'تاريخ الاستبدال',
+  'it.consumables.counter.unknown': 'غير معروف',
+  'it.consumables.counter.firstOfItem': 'أول حبارة من هذا الصنف على الطابعة',
+  'it.consumables.counter.replacedAt': 'رُكِّبت {{date}} عند {{reading}}',
+  'it.consumables.counter.latestOfItem': 'آخر حبارة من هذا الصنف على الطابعة',
+  'it.consumables.counter.showAll': 'عرض الكل ({{n}})',
+  'it.consumables.counter.showFewer': 'عرض أقل',
+  'it.consumables.counter.cartridgesTitle': 'عمر الحبارات',
+  'it.consumables.counter.average': 'متوسط الصفحات لكل حبارة: {{pages}} (من {{n}})',
+  'it.consumables.counter.noAverage':
+    'لم تُستبدل أي حبارة من هذا الصنف على طابعتها بعد، فلا يوجد متوسط معروف.',
 
   // ── إدارة النظام ← المستخدمون (SA-1) ──────────────────────────────────────
   // P10 — قوالب الإشعارات.

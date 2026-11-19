@@ -19,6 +19,12 @@
 // movements screen instead of at a device it can no longer show.
 //
 // Every decision is `lib/consumable-installed-on.ts`; this file wires it.
+//
+// A toner issued with the printer's counter (2026-11-19) shows its reading above, and asks for one
+// below: required when another device is picked (it moves with the reading taken there), optional
+// with none picked (typed, it corrects the reading on the current printer), and gone with «بدون
+// جهاز», which takes it off the printer's record. The target printer's last reading is shown under
+// the box, as «صرف» shows it; the server judges the reading against the printer's timeline.
 import { useEffect, useReducer, useRef } from 'react';
 import {
   formatConsumableMemoNumber,
@@ -29,12 +35,19 @@ import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
-import { Checkbox, Field } from '../../../shared/ui/form';
+import { Checkbox, Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatNumber } from '../../../shared/lib/format';
-import { useSetItConsumableInstalledOn } from '../api/it-queries';
+import { useItPrinterCounter, useSetItConsumableInstalledOn } from '../api/it-queries';
 import {
+  backdatedAgainst,
+  counterProblemWords,
+  type LatestReading,
+} from '../lib/consumable-counter';
+import {
+  installedOnCounted,
   installedOnFailure,
+  installedOnReadingProblem,
   installedOnReducer,
   installedOnRequest,
   installedOnStale,
@@ -46,6 +59,8 @@ import {
 import { holderName } from '../lib/consumable-issue-holder';
 import { movementAsset, movementEmployee } from '../lib/consumable-movement-register-export';
 import { AssetPicker } from './AssetPicker';
+import { CounterReadingCell } from './ConsumableMovements';
+import { LastReadingNote } from './PrinterCounterCard';
 
 /** One fact of what was issued, read-only above the choice. */
 const Fact = ({
@@ -97,8 +112,25 @@ export const ConsumableInstalledOnDialog = ({
   const recipient = movementEmployee(movement);
   const current = movement.assetId === null ? null : (movementAsset(movement) ?? '—');
   const body = installedOnRequest(movement, state);
-  const unchanged = installedOnTarget(state) !== undefined && installedOnUnchanged(movement, state);
+  const target = installedOnTarget(state, movement);
+  const unchanged = target !== undefined && installedOnUnchanged(movement, state);
   const otherHolder = pickedHeldByOther(movement, state);
+  // «عداد الطابعة» — a toner issued with the printer's counter moves with a reading.
+  const counted = installedOnCounted(movement);
+  const printer = counted && typeof target === 'string' ? target : '';
+  const printerCounter = useItPrinterCounter(printer, printer !== '');
+  // The printer's newest reading other than this row's own — what a correction or a move is
+  // typed against.
+  const others = printerCounter.data?.readings.filter((r) => r.movementId !== movement.id);
+  const latest: LatestReading | undefined =
+    others === undefined
+      ? undefined
+      : others[0] === undefined
+        ? null
+        : (({ replaced: _replaced, ...reading }) => reading)(others[0]);
+  const readingProblem =
+    installedOnReadingProblem(movement, state) ??
+    (state.failure?.kind === 'counter' ? state.failure.problem : null);
   // The row as shown is at a version a 409 already refused (the re-read could not show it: it left
   // the list) — whatever is chosen now, another save is certain to be refused, so none is offered,
   // and the refusal stays said.
@@ -119,7 +151,9 @@ export const ConsumableInstalledOnDialog = ({
         toast.error(
           failure.kind === 'conflict'
             ? t('it.consumables.installedOn.conflictLeft')
-            : failure.message,
+            : failure.kind === 'counter'
+              ? counterProblemWords(t, failure.problem, locale)
+              : failure.message,
         );
       }
     }
@@ -153,7 +187,8 @@ export const ConsumableInstalledOnDialog = ({
       }
     >
       <div className="space-y-4">
-        {(conflict || state.failure !== null) && (
+        {/* A counter refusal is said on the reading's box instead. */}
+        {(conflict || state.failure?.kind === 'refused') && (
           <p
             role="alert"
             data-installed-on-failure={conflict ? 'conflict' : state.failure?.kind}
@@ -204,6 +239,11 @@ export const ConsumableInstalledOnDialog = ({
               {current ?? t('it.consumables.installedOn.none')}
             </span>
           </Fact>
+          {counted && (
+            <Fact label={t('it.consumables.movements.columns.counter')} name="counter">
+              <CounterReadingCell reading={movement.counterReading} reset={movement.counterReset} />
+            </Fact>
+          )}
           {movement.memoNumber !== null && (
             <Fact label={t('it.consumables.movements.columns.memo')} name="memo">
               <span dir="ltr" className="font-mono text-xs">
@@ -261,6 +301,70 @@ export const ConsumableInstalledOnDialog = ({
             />
           )}
         </Field>
+
+        {/* «عداد الطابعة» — the reading on the device named, on a toner issued with one. */}
+        {counted && state.none && (
+          <p
+            role="note"
+            data-installed-on-counter-dropped=""
+            className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+          >
+            {t('it.consumables.installedOn.counterDropped')}
+          </p>
+        )}
+        {counted && !state.none && (
+          <div data-installed-on-counter="" className="space-y-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label={t('it.consumables.counter.reading')}
+                required={state.assetId !== '' && state.assetId !== movement.assetId}
+                hint={t('it.consumables.installedOn.counterHint')}
+                {...(readingProblem === null
+                  ? {}
+                  : { error: counterProblemWords(t, readingProblem, locale) })}
+              >
+                <Input
+                  type="number"
+                  min="0"
+                  step="1"
+                  dir="ltr"
+                  inputMode="numeric"
+                  data-installed-on-reading=""
+                  value={state.counterReading}
+                  onChange={(e) =>
+                    dispatch({
+                      type: 'counter',
+                      counterReading: e.target.value,
+                      counterReset: state.counterReset,
+                    })
+                  }
+                  error={readingProblem !== null}
+                />
+              </Field>
+              <div className="sm:pt-7">
+                <Checkbox
+                  data-installed-on-reset=""
+                  label={t('it.consumables.counter.reset')}
+                  checked={state.counterReset}
+                  onChange={(e) =>
+                    dispatch({
+                      type: 'counter',
+                      counterReading: state.counterReading,
+                      counterReset: e.target.checked,
+                    })
+                  }
+                />
+              </div>
+            </div>
+            {printer !== '' && (
+              <LastReadingNote
+                latest={latest}
+                unavailable={printerCounter.isError}
+                backdated={backdatedAgainst(latest, new Date(movement.at))}
+              />
+            )}
+          </div>
+        )}
 
         {/* «تتحدّث بالجهاز الجديد» — what the paper does, said before the save. */}
         <p

@@ -15,7 +15,10 @@ import {
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { scopeSelector } from '../../../shared/types';
+import { NotFoundError } from '../../../shared/errors';
 import { toItAssetDto } from '../it.mappers';
+import { itConsumableCounterService } from '../consumables/consumable-counter.service';
+import { itAssetRepository } from './asset.repository';
 import { itAssetService } from './asset.service';
 import { type ItAssetDoc } from './asset.model';
 
@@ -56,6 +59,20 @@ export const getItAssetByCode = async (req: Request, res: Response): Promise<voi
   const { params } = validated<never, never, CodeParam>(req);
   const scope = scopeSelector(authContext(req), 'itAsset.view');
   ok(res, await itAssetDto(await itAssetService.getByCode(params.code, scope)));
+};
+
+/**
+ * «عداد الطابعة» — the printer's counter readings, newest first, and the latest alone: the asset read
+ * under the caller's `itAsset.view` (404 outside it), its readings across every store.
+ */
+export const getItAssetCounterReadings = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const asset = await itAssetRepository.findById(
+    params.id,
+    scopeSelector(authContext(req), 'itAsset.view'),
+  );
+  if (asset === null) throw new NotFoundError('asset not found');
+  ok(res, await itConsumableCounterService.printer(asset));
 };
 
 export const createItAsset = async (req: Request, res: Response): Promise<void> => {

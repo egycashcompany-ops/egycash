@@ -59,6 +59,33 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT consumables: the printer's counter, required when a toner goes in.** «عند صرف الصنف : حبارة
+  أو النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة —
+  يعني إجبارى أدخل عدد الورق المطبوع عند تركيب الحبارة», and «وأكيد مش هيدخل عدد ورق أقل أو مساوي
+  للى موجود».
+  - A consumable type may be ticked «يتطلب عداد الطباعة» (`requiresCounterReading`); «حبارات» is
+    ticked from the start, by a one-time go-live step on the live catalog.
+  - An item of such a type is issued one cartridge a line, onto the printer it goes into, with that
+    printer's counter reading — refused otherwise (`IT_CONSUMABLE_COUNTER_REQUIRED`, a detail per
+    gap). The reading must be strictly above the printer's last one, and strictly below a later one
+    when the issue is backdated, unless «تم تصفير عداد الطابعة» is ticked
+    (`IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS` / `…_ABOVE_NEXT`, the figure in the details). It is
+    judged inside the write's transaction under a per-printer lock, so two clerks on one printer
+    cannot both land.
+  - What a cartridge printed is the next reading of the same item (by name, across stores) on that
+    printer less its own — computed when read, never stored. `GET /it/assets/:id/counter-readings`
+    (under `itAsset.view`) gives a printer's readings and the last one;
+    `GET /it/consumables/:id/cartridges` (under `itConsumable.view`) gives a toner item's cartridges
+    and the average per cartridge; every ledger row carries `counterReading` and `counterReset`.
+  - «تعديل الجهاز» on a counted toner moves the reading with the device: a new printer needs its
+    reading, the same printer with a new reading corrects it, and «بدون جهاز» takes it off. A reset
+    the later readings rest on cannot leave its printer. An issue recorded before the counter takes
+    none afterwards. One memo, one printer, one reading: a reading written on a printer (a
+    correction, or a move onto a printer where toners of the same memo sit) is written to every
+    other toner of that memo on it whose reading differs, each audited on its own item; a move off
+    a printer leaves them.
+  - Docs: IT module design §2.4, §2.11, §5, §7, §10, §12, §17 (2026-11-19).
+
 - **IT: hand a device, a line or consumables to an employee of another branch.** «لما حد فى فرع
   بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح إنه يعرف يسلم
   لحد فى فرع تاني».

@@ -5,11 +5,13 @@
 import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
 import {
+  toItCatalogItemDto,
   toItConsumableDto,
   toItConsumableMemoDto,
   toItConsumableMovementDto,
   type ItConsumableMovementLabels,
 } from '../it.mappers';
+import { type ItCatalogItemDoc } from '../catalog-items/catalog-item.model';
 import { type ItConsumableDoc } from './consumable.model';
 import { type ItConsumableMovementDoc } from './consumable-movement.model';
 import { type ItConsumableMemoDoc } from './consumable-memo.model';
@@ -105,6 +107,27 @@ describe('a movement on the ledger', () => {
     });
   });
 
+  // «عداد الطابعة» (2026-11-19): only a counted issue carries the keys.
+  it('carries no reading when the row has none — an old toner, or any other row', () => {
+    expect(toItConsumableMovementDto(issued(null), labels())).toMatchObject({
+      counterReading: null,
+      counterReset: false,
+    });
+  });
+
+  it('carries the printer’s reading of a counted issue, and whether it was a reset', () => {
+    const counted = { ...issued(null), counterReading: 15000 } as ItConsumableMovementDoc;
+    expect(toItConsumableMovementDto(counted, labels())).toMatchObject({
+      counterReading: 15000,
+      counterReset: false,
+    });
+    const reset = { ...counted, counterReading: 0, counterReset: true } as ItConsumableMovementDoc;
+    expect(toItConsumableMovementDto(reset, labels())).toMatchObject({
+      counterReading: 0,
+      counterReset: true,
+    });
+  });
+
   it('carries its version — what «تعديل الجهاز» sends back, so a change made first is a conflict', () => {
     const corrected = { ...issued(null), __v: 2 } as unknown as ItConsumableMovementDoc;
     expect(toItConsumableMovementDto(issued(null), labels()).version).toBe(0);
@@ -173,6 +196,34 @@ describe('a movement on the ledger', () => {
       counterpartConsumableId: String(otherItem),
       counterpartConsumableCode: null,
     });
+  });
+});
+
+// «يتطلب عداد الطباعة» (2026-11-19) — a consumable type read back as the issue and the screens read it.
+describe('a consumable type', () => {
+  const type = (over: Record<string, unknown> = {}): ItCatalogItemDoc =>
+    ({
+      _id: TYPE,
+      kind: 'consumableType',
+      code: 'ink',
+      name: { ar: 'حبارات', en: 'Ink & toner' },
+      description: null,
+      sortOrder: 0,
+      isActive: true,
+      __v: 0,
+      createdAt: at,
+      updatedAt: at,
+      ...over,
+    }) as unknown as ItCatalogItemDoc;
+
+  it('carries its flag', () => {
+    expect(toItCatalogItemDto(type({ requiresCounterReading: true })).requiresCounterReading).toBe(
+      true,
+    );
+  });
+
+  it('reads a row written before the flag as false — a lean read applies no default', () => {
+    expect(toItCatalogItemDto(type()).requiresCounterReading).toBe(false);
   });
 });
 

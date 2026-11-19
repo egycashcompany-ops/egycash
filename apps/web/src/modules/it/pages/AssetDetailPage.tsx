@@ -51,6 +51,7 @@ import { AssetBranchMoveDialog } from '../components/AssetBranchMoveDialog';
 import { AssetHistoryList } from '../components/AssetHistoryList';
 import { CustodyReceiptActions } from '../components/CustodyReceipt';
 import { AssetConsumablesCard } from '../components/ConsumableMovements';
+import { PrinterCounterCard } from '../components/PrinterCounterCard';
 import {
   AssignAssetDialog,
   DisposeAssetDialog,
@@ -474,6 +475,11 @@ export const AssetDetailPage = (): JSX.Element => {
             It is the store's ledger, so it rides the store's own read grant: without it the card
             is not drawn and its read is not asked. */}
         {can('itConsumable.view') && <AssetConsumablesCard assetId={asset.id} />}
+
+        {/* «عداد الطابعة» (2026-11-19) — the readings typed as each toner went into this printer,
+            and the pages each cartridge printed. A fact of the printer, read under the page's own
+            `itAsset.view`; an asset with no reading (anything but a printer) shows no card. */}
+        <PrinterCounterCard assetId={asset.id} />
 
         <Card>
           <CardHeader title={t('it.assets.sections.record')} />

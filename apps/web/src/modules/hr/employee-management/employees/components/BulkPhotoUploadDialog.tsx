@@ -23,7 +23,7 @@ import { markActivity } from '../../../../../platform/auth/idle-session';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Checkbox } from '../../../../../shared/ui/form';
-import { UploadIcon } from '../../../../../shared/ui/icons';
+import { CloseIcon, UploadIcon } from '../../../../../shared/ui/icons';
 import { cn } from '../../../../../shared/lib/cn';
 import { errorMessage } from '../../../../../shared/lib/errors';
 import { EMPLOYEE_PHOTO_ACCEPT, lookupEmployeeCodes, uploadEmployeePhotoFile } from '../api/employee-photo';
@@ -34,6 +34,7 @@ import {
   planFiles,
   type PhotoFileInput,
   type PhotoRow,
+  type PhotoRowStatus,
 } from '../lib/photo-batch';
 import {
   FaceSearchError,
@@ -105,6 +106,18 @@ const filesOfDrop = async (items: DataTransferItemList): Promise<{ files: File[]
   return { files: out, skipped };
 };
 
+/** The states in which a file is never sent: it can only be renamed and picked again, or removed. */
+const NEVER_SENT: ReadonlySet<PhotoRowStatus> = new Set([
+  'noCode',
+  'unknownCode',
+  'unsupported',
+  'ambiguous',
+  'unconfirmed',
+]);
+
+/** A file's own identity apart from its name: a renamed file keeps its size and modified time. */
+const contentOf = (file: File): string => `${String(file.size)}:${String(file.lastModified)}`;
+
 const TONE = {
   ok: 'text-emerald-700 dark:text-emerald-400',
   warn: 'text-amber-700 dark:text-amber-400',
@@ -122,12 +135,14 @@ const PhotoRowView = memo(function PhotoRowView({
   running,
   locale,
   onToggle,
+  onRemove,
 }: {
   row: PhotoRow;
   run: Progress | undefined;
   running: boolean;
   locale: Locale;
   onToggle: (key: string) => void;
+  onRemove: (key: string) => void;
 }): JSX.Element {
   const t = useT();
   const status = ((): { text: string; tone: keyof typeof TONE } => {
@@ -176,6 +191,17 @@ const PhotoRowView = memo(function PhotoRowView({
     <tr data-photo-row={row.status}>
       <td className="px-2 py-1.5">
         {/* Only a photo that names an employee can be left out or put back; the rest never go. */}
+        {NEVER_SENT.has(row.status) && !running && (
+          <button
+            type="button"
+            aria-label={t('employees.photoBatch.remove', { name: row.name })}
+            title={t('employees.photoBatch.remove', { name: row.name })}
+            onClick={() => onRemove(row.key)}
+            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <CloseIcon className="h-3.5 w-3.5" />
+          </button>
+        )}
         {(row.status === 'ready' || row.status === 'duplicate' || row.status === 'excluded') && (
           <input
             type="checkbox"
@@ -282,6 +308,10 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
       ).values(),
     ].filter((p) => !seen.has(p.key));
     if (fresh.length === 0) return;
+    // A held row whose file comes back under a new name was renamed as its row asked: the new row
+    // takes its place. Only a row that is never sent is dropped this way, so nothing goes astray.
+    const held = new Set(rows.filter((row) => NEVER_SENT.has(row.status)).map((row) => row.key));
+    const renamed = new Set(fresh.map((p) => contentOf(p.file)));
     lookups.current += 1;
     setLooking(true);
     setNotice(null);
@@ -289,8 +319,9 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
       const found = await lookupEmployeeCodes(codesToLookUp(fresh));
       setMatches((now) => new Map([...now, ...found.map((m) => [m.code, m] as const)]));
       setPicked((now) => {
-        const have = new Set(now.map((p) => p.key));
-        return [...now, ...fresh.filter((p) => !have.has(p.key))];
+        const kept = now.filter((p) => !(held.has(p.key) && renamed.has(contentOf(p.file))));
+        const have = new Set(kept.map((p) => p.key));
+        return [...kept, ...fresh.filter((p) => !have.has(p.key))];
       });
     } catch (error) {
       setNotice(errorMessage(error, locale));
@@ -322,6 +353,12 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
         else next.add(key);
         return next;
       }),
+    [],
+  );
+
+  /** Take a file that will never be sent out of the table. */
+  const remove = useCallback(
+    (key: string): void => setPicked((now) => now.filter((p) => p.key !== key)),
     [],
   );
 
@@ -413,8 +450,7 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
     return (
       run === 'failed' ||
       (row.status !== 'ready' && row.status !== 'excluded') ||
-      row.nameDiffers ||
-      row.padded
+      row.nameDiffers
     );
   };
   const shown = onlyAttention ? rows.filter(needsAttention) : rows;
@@ -618,6 +654,7 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
                         running={running}
                         locale={locale}
                         onToggle={toggle}
+                        onRemove={remove}
                       />
                     ))}
                   </tbody>

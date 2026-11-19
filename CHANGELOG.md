@@ -65,14 +65,16 @@ its entry here in the same PR.
   ([employee module design](docs/12-planning/employee-module-design.md) §8)
   - «رفع صور الموظفين» on the employees list, for holders of `employee.editPersonal`: pick the photos
     or a whole folder, or drop them. The code in each name decides who the photo is for. Arabic digits
-    count, and a code missing its leading zero is completed. The name in the file only flags a file
-    whose name does not look like the matched employee.
+    count, a code missing one or two leading zeros is completed, and an external person's code
+    (`EX-2900`) is read whole. The name in the file only flags a file whose name does not look like
+    the matched employee.
   - A table shows, before anything is sent, what each file will do: ready (replacing the current
     photo), no code, no employee with that code, two files for one employee, or not an image the
     profile takes.
   - Each photo is cut around the face, as the profile's own photo is, and sent two at a time with
-    progress. A photo with no face found goes uncropped, and a large one is shrunk under 5 MB. Failures
-    can be retried, and «إيقاف» stops the run.
+    progress. A photo with no face found goes uncropped, and a large one is shrunk under 5 MB. A
+    picture the browser cannot open is not sent. A failed photo is sent again with the next «رفع»,
+    and «إيقاف» (or leaving the page) stops the run after the photos under way.
   - `POST /hr/employees/codes/lookup` answers which employees hold the codes, within the caller's
     `employee.editPersonal` scope. The photos themselves go through the existing photo upload.
 

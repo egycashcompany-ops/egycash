@@ -377,13 +377,36 @@ appears twice in the product but once in the code.
 ### 2.4 `it_catalog_items` — simple catalogs (kind-discriminated, the Fleet pattern)
 
 One collection for every plain name-list the module needs — exactly `fleet_catalog_items`:
-`{ kind: assetCategory | ticketCategory, code?, name (ar/en), description?, active, sortOrder }`.
+`{ kind: assetCategory | ticketCategory | consumableType, code?, name (ar/en), description?,
+active, sortOrder, requiresCounterReading }`.
 Asset categories and ticket categories are the two MVP kinds; a future simple list joins as a
 kind, not as a collection — as the consumables' types did (`consumableType`, §2.11: «حبارات»،
 «كابلات»، «محولات»، «ماوس»، «كيبورد»، «رامات»، «هاردات»، «فلاشات»، «أخرى», seeded once and edited
 on `/it/catalogs` under the same `itCatalog.manage`). Archive, never delete, once referenced (Fleet catalog rule). No
 category tree in MVP (§13-Q2). Catalogs that carry *behaviour* (priorities with their SLA
-targets, §2.6) stay their own collections — the `fleet_vehicle_types` precedent.
+targets, §2.6) stay their own collections — the `fleet_vehicle_types` precedent. A single boolean
+on one kind is a field, not a collection — Fleet's `countsForAlarm` on its catalog items is the
+precedent:
+
+- **`requiresCounterReading`** («يتطلب عداد الطباعة», §17 2026-11-19) — `consumableType` only: an
+  item of the type is issued onto a printer, one cartridge a line, with that printer's counter
+  reading (§2.11 «عداد الطابعة»). `{ Boolean, required, default false }` on the model; the mapper
+  reads a row written before it as false (a lean read applies no default). The create body takes
+  it (default false) and refuses it on any other kind (400); the update body takes it too, and
+  ticking it on a row that is not a `consumableType` is the server's **422** («only a consumableType
+  takes the printer counter» — not Fleet's 409, whose IT `ConflictError` carries `DUPLICATE`).
+  Unticking is always allowed; the audit diff names it. Ticked on «حبارات» (`ink`) from the start:
+  a fresh catalog's seeded row is born ticked (`IT_COUNTER_READING_TYPE_CODES = ['ink']` in
+  `go-live/consumable-type-defaults.ts`), and the live one is ticked ONCE by the go-live step
+  `go-live:it-consumable-counter-types:v1` (`go-live/consumable-counter-types.ts`, started in both
+  processes right after the types' step): it waits for the types' seed and refuses with no run row
+  until that seed has run (`typesNotSeeded`); in one transaction it finds the live «حبارات» by code,
+  then by its Arabic name, ticks it — a RETIRED one too, reported `active: false` — with `$inc __v`
+  (a catalog form opened before it answers 409), reports one already ticked as `alreadyFlagged` and
+  one deleted as `missing` (nothing made), and records its run row; after the commit an `update`
+  audit row per ticked row (`requiresCounterReading` false → true, `source` the run key), which is
+  also the catalogs page's realtime refresh. After the run row, a type the IT team unticks stays
+  unticked.
 
 ### 2.5 `it_asset_assignments` — Assignment (custody record)
 
@@ -613,8 +636,11 @@ on the answer, never stored.
 - **`it_consumable_movements`** — the append-only ledger: `{ consumableId, kind: received | issued |
   scrapped | returned | transferredOut | transferredIn, qty (always positive — the kind says which
   way), at, branchId, byUserId, employeeId?, assetId?, reason?, memoId?, notes?, transferId?,
-  counterpartBranchId?, counterpartConsumableId? }` — the last three null except on a transfer's
-  pair (index `ix_transfer` on `transferId`). `issued` names the employee and, when it was
+  counterpartBranchId?, counterpartConsumableId?, counterReading?, counterReset? }` — the
+  transfer's three null except on a transfer's pair (index `ix_transfer` on `transferId`); the
+  counter's two present only on a counted issue (below, «عداد الطابعة»), `counterReset` only when
+  true — so an old row and an uncounted one read alike, and the ledger's answer says `null` /
+  `false`. `issued` names the employee and, when it was
   installed on one, the asset; `reason` is `new` or `replacement` («بدل تالف») on an issue and the
   written cause on a scrap. A replacement counts the damaged unit it replaces as scrap too, but takes
   only the new unit off the shelf — the broken one came back from the person and was never on hand.
@@ -626,7 +652,7 @@ on the answer, never stored.
   went and moves no counter — an opposing movement could not say it. Every other field of every
   row is still never edited; the repository's one write for it (`setInstalledOn`) matches by id,
   the caller's scope, the version they read, the device they read and kind `issued`, sets
-  `assetId` alone and moves the row's `__v` on (the ledger's answer carries it as `version`). The
+  `assetId` alone — on a counted issue with the reading taken on it (below) — and moves the row's `__v` on (the ledger's answer carries it as `version`). The
   device it named before is kept on the row (`installedOnBefore`, sparse index
   `ix_installed_on_before`), read by nothing but FR-5's delete guard: the signed copy on file and the
   trail still name it, so it is not «registered in error». The rules are the issue's own:
@@ -638,6 +664,80 @@ on the answer, never stored.
   (below); after the commit, an `update` audit row on the item (`installedOn` old → new asset id,
   with the `movementId`) and one on the memo (the line's device as printed, before → after), and
   the refresh signals of both topics with the store.
+  On a COUNTED issue (§17 2026-11-19) the one correctable fact is the device AND the printer's
+  reading taken on it, and the rule follows the ROW — its own `counterReading` — never the type's
+  flag as it stands now: a row recorded without a reading takes none afterwards (**422**), and a
+  counted row keeps its meaning if its item's type is unticked or changed later. On a counted row
+  the body carries `counterReading` (and `counterReset`) whenever it names a device — none is
+  **422** `IT_CONSUMABLE_COUNTER_REQUIRED` (field `counterReading`). The same device with a new
+  reading or reset CORRECTS it: placed again on the printer's own timeline without this row; the
+  same device with the same reading and reset is the «nothing written» **200**. Another device:
+  the old printer is checked for a reset the readings after it rest on (one without which the next
+  reading would not be above the one before — **422** «this reading starts … counter again»), then
+  the reading is placed on the new printer's timeline (**422** `…_BELOW_PREVIOUS` /
+  `…_ABOVE_NEXT`, field `counterReading`). «بدون جهاز» means «it never went in»: the reading and the
+  reset leave with the device (`$unset`), after the same removal check — the only repair for a toner
+  issued and returned unused, or put on the wrong printer. Both printers are locked inside the
+  transaction (below). A correction of the reading alone leaves the memo and its trail as they
+  are (the paper carries no reading); a device disposed since may still have its reading corrected
+  — only a NEW device is refused when disposed. The item's audit row names what changed:
+  `installedOn`, `counterReading` old → new, `counterReset` old → new, and the `movementId`.
+  **One memo, one printer, one reading**: the counted rows of one memo on one printer are one
+  display read once, so they carry ONE reading and ONE reset. Any write of a counted row's reading
+  on a printer — a correction on the same one, or a move onto a printer where rows of its memo
+  already sit — writes that reading and reset to every OTHER counted row of the memo on that
+  printer whose reading or reset differs (a row already at that value is left untouched), in the
+  same transaction under the lock already held (`setMemoCounterOnPrinter`: those ids, of that
+  memo, on that printer, counted issues — their `counterReading` / `counterReset` and nothing
+  else, each written row's `__v` moved on, so a dialog opened on one of them before is a **409**). The
+  placement is judged once, for the group (its rows are not each other's neighbours), and each
+  other row whose value changed gets its own item's `update` audit row (`counterReading` /
+  `counterReset` old → new, with its `movementId`) and refresh signal. A move OFF a printer leaves
+  the memo's rows there as they are — they keep their reading — and the removal check above still
+  applies.
+- **«عداد الطابعة»** — the printer's counter (§17 2026-11-19: «عند صرف الصنف : حبارة أو النوع :
+  حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة»). An item whose
+  type `requiresCounterReading` (§2.4) is issued on ONE printer, ONE cartridge a line, with the
+  printer's counter as its display shows it (`counterReading`, a whole number 0 … 999 999 999,
+  `IT_PRINTER_COUNTER_MAX`), and «تم تصفير عداد الطابعة» (`counterReset`) when the counter was
+  reset. The issue refuses, before anything is written, a counted line without its printer, without
+  its reading, or with a quantity other than one — ONE **422** `IT_CONSUMABLE_COUNTER_REQUIRED` with
+  a detail per gap (`lines.<i>.assetId` / `.counterReading` `REQUIRED`, `lines.<i>.qty`
+  `ONE_CARTRIDGE`) — and a reading on any other item (**422**). The flag is read live, as the type
+  stands, retired or not. The contract holds the cross-field rules: a reset names its reading, a
+  reading names its printer, and the lines of one memo on one printer carry ONE reading (one
+  display, one moment). A printer's TIMELINE is its counted issues, from every store, ordered by
+  `at` then id. **Placement**: a reading must be STRICTLY above the reading before it — «وأكيد مش
+  هيدخل عدد ورق أقل أو مساوي للى موجود», equal refused — unless it is a reset, and a backdated one
+  strictly below the reading after it, unless that one is a reset: **422**
+  `IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS` (details `PREVIOUS_READING`, `PREVIOUS_AT` on the
+  reading's field — `lines.<i>.counterReading` of the printer's first line) or
+  `IT_CONSUMABLE_COUNTER_ABOVE_NEXT` (`NEXT_READING`, `NEXT_AT`). The only equal readings are the
+  lines of one memo on one printer: one placement, never each other's neighbours, and kept equal
+  by «تعديل الجهاز» (one memo, one printer, one reading — above); a later issue must read above
+  them. The reading is judged INSIDE the write's transaction under the printer's
+  lock — a row `printerCounter:<assetId>` in `it_sequences`, beside the counters, that the issue
+  (for each counted printer) and «تعديل الجهاز» (old and new printer) write before they read the
+  timeline — so two writes on one printer conflict and the one retried reads the other's committed
+  row (the issues alone were serialized by the memo number already; the device change writes no
+  shared row of its own). **What a cartridge printed** is never stored: it is the next reading of
+  the SAME item on that printer less its own, computed whenever it is read
+  (`consumables/consumable-counter.ts`), because a device change, a corrected reading or a rename
+  must be reflected and a stored figure would have to be rewritten on other rows. «The same item»
+  is its current NAME, compared exactly (`ux_branch_name`'s and the transfer's rule), so a printer
+  fed from two stores, or from a transferred twin, still pairs; an unreadable item pairs by its id.
+  A reset MOMENT starts a new epoch — the reset rows of one memo on one printer are one reset of its
+  display, so four colours fitted on a counter set back to 0 start one epoch, not four, and the
+  next memo's four each pair with their own — and a pair across one is of unknown pages; an item's
+  first cartridge on a printer (a new model or colour) replaced nothing; a printer that goes back
+  to an older model (A, B, A) credits A's second cartridge with everything since A's first — the
+  system does not know how many slots a printer has. The readings are shown on the printer's page
+  (`GET /it/assets/:id/counter-readings`, under `itAsset.view`: newest first, each with its toner
+  and the cartridge it replaced, and the latest alone — what «صرف» shows under the reading field),
+  per cartridge with the average on the toner item (`GET /it/consumables/:id/cartridges`, under
+  `itConsumable.view`), and as a ledger column. A return names no issue, so a counted issue stays on
+  its printer's timeline after one — the reading is still a true reading of that display at that
+  time; «بدون جهاز» is the repair. The memo does not print the reading.
 - **Transfer to another branch** («تحويل إلى فرع», §17 2026-11-11) — one or more items of ONE store,
   each with its quantity (at most `IT_CONSUMABLE_TRANSFER_MAX_LINES`, 50), to ONE other active
   branch, at once and with no paper: no memo, no «in transit», nothing to confirm at the other end
@@ -916,7 +1016,11 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   or replaces a damaged one, may name the register's asset it was installed on (not a disposed
   one — which then counts as used, so FR-5 no longer deletes it), and writes one numbered memo the
   employee signs; the screen prints it at once, and it can be printed again and its signed copy
-  filed. The register shows each item's balance, what was issued
+  filed. A toner — an item of a type ticked «يتطلب عداد الطباعة», «حبارات» from the start — is
+  issued one cartridge a line onto the printer it goes into, with that printer's counter reading,
+  strictly above its last one unless «تم تصفير عداد الطابعة» is ticked; what the cartridge it
+  replaced printed is shown on the printer's page, on the toner item (with the average), and in the
+  ledger (§2.11 «عداد الطابعة», §17 2026-11-19). The register shows each item's balance, what was issued
   and what was scrapped, and flags an item at its minimum; the movements log answers who was given
   what, and goes to Excel and PDF as the register does. An asset's page lists the consumables
   installed on it; an employee's IT page lists what they were issued (§17, 2026-10-28).
@@ -952,9 +1056,10 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it` (home/dashboards) | any `it*` view permission | — |
 | `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only), `.assign` («نقل إلى فرع», several at once — the custody grant, as the move of a held asset IS a transfer; no key was added, §17 2026-11-11 — and only to a branch that grant reaches: the picker lists no other — the server names them, `GET /it/assets/move-targets`, under the same grant — and the move answers 403 to one) |
 | `/it/assets/import` («رفع جماعي», the register's toolbar) | `itAsset.create` | `itAsset.create` (preview the sheet; register its new lines, in a branch that is active and that grant reaches — 403 otherwise; the branch picker lists no other — the server names them, `GET /it/assets/import/branches`, under the same grant) · `.edit` within its scope (fill what a device the register holds lacks) · `.assign` within its scope AND reaching the chosen branch (move a device in stock in another branch to it — the move's own test, §2.2) — a line whose device the caller may see but not write as it needs is `outOfScope`, the device named and the right missing said; only a device `itAsset.view` does not reach is hidden (`outOfScope` with nothing of it shown). No key was added (§17, 2026-11-16) |
+| `/it/assets/:id` «عداد الطابعة» (the printer's counter card) | `itAsset.view` — the reading is a fact of the printer, and naming a printer at «صرف» needs this grant already; the asset found within its scope (404 otherwise), its readings read across every store's toners, so the card shows toner names and codes to an `itAsset.view` reader who may not read the store (§17 2026-11-19) | read-only |
 | `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer + the move to another branch — one custody grant, the roster-precedent: one operational surface; a transfer to ANOTHER branch only to an active one that grant reaches whole, as «نقل إلى فرع» — 403 / 400 otherwise, §2.5, §17 2026-11-18; the recipient of a hand-over may work in any branch, and what is handed over stays in the asset's branch), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
 | `/it/mobile-lines` | `itMobileLine.view` (the register, a line, its history, its intervals, its acknowledgments read back and reprinted, the lines section of an employee's IT history, the home's lines panel) | `itMobileLine.create` (register a line), `.edit` (edit — its branch included, to one that grant reaches — suspend, reactivate), `.assign` (hand over + return + the line's acknowledgment: print it first, file and withdraw its signed copy), `.viewNationalId` (the holder's national ID on the line acknowledgment — Security Architecture §3's sensitive-data grant, the line's own; the device receipt keeps `itAsset.viewNationalId`). Page `it.mobile-lines` («خطوط المحمول»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-20 until then, and open nothing here now |
-| `/it/consumables` (+ `/movements`) | `itConsumable.view` (each store, an item, its movements, the ledger, the memos read back and reprinted, the consumables section of an employee's IT history, the home's consumables panel, an asset page's «installed» card — the asset labels a ledger row shows are part of the item's record and read under this grant) | `itConsumable.create` (add an item to a store that grant reaches), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee with its memo, take back from one, file and withdraw the memo's signed copy, transfer stock to another branch's store that grant reaches — the picker lists no other: the server names them, `GET /it/consumables/transfer-targets`, under the same grant; «تعديل الجهاز» on an issued row of the ledger — set, change or clear the device it sits in, the row found within `itConsumable.view`, §2.11, §17 2026-11-17). An issue's «installed on», and a device «تعديل الجهاز» names, is an asset within the caller's OWN `itAsset.view` — without that grant every asset is «not found», and only clearing it is left; the screen offers the action only with `itConsumable.assign` AND `itAsset.view`. Page `it.consumables` («المستهلكات»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-28 until then, and open nothing here now |
+| `/it/consumables` (+ `/movements`) | `itConsumable.view` (each store, an item, its movements, the ledger, the memos read back and reprinted, the consumables section of an employee's IT history, the home's consumables panel, an asset page's «installed» card — the asset labels a ledger row shows are part of the item's record and read under this grant) | `itConsumable.create` (add an item to a store that grant reaches), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee with its memo, take back from one, file and withdraw the memo's signed copy, transfer stock to another branch's store that grant reaches — the picker lists no other: the server names them, `GET /it/consumables/transfer-targets`, under the same grant; «تعديل الجهاز» on an issued row of the ledger — set, change or clear the device it sits in, the row found within `itConsumable.view`, §2.11, §17 2026-11-17). An issue's «installed on», and a device «تعديل الجهاز» names, is an asset within the caller's OWN `itAsset.view` — without that grant every asset is «not found», and only clearing it is left; the screen offers the action only with `itConsumable.assign` AND `itAsset.view`. A toner's issue names its printer, so in practice issuing a toner needs `itAsset.view` as well (every issuer got it with the store's keys on 2026-11-17; only a role edited since lacks it — §17 2026-11-19). A toner item's cartridges and their average (`GET /it/consumables/:id/cartridges`) read under `itConsumable.view`, the item within its scope and the printers named under it. Page `it.consumables` («المستهلكات»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-28 until then, and open nothing here now |
 | `/it/people` (the filter boxes, the employees register, a person's head) | ANY of `itAsset.view`, `itMobileLine.view`, `itConsumable.view` | read-only; a person is found when ANY of those three the caller holds reaches them — one selector per held grant, OR-ed by the directory (`anyOfScopes`) — never one key's units standing for the others' (two grants can reach different branches, or one be `own`), and each person's `openCustodyCount` — the assets they hold — is counted within the caller's `itAsset.view` only: 0 for everyone to a caller without it (§17, 2026-11-17). A person's head (`GET /it/people/:employeeId`) is ALSO found when the caller's own registers NAME the person — an asset custody interval (open or closed) within `itAsset.view`, a line custody interval within `itMobileLine.view`, or a consumables movement (an issue or a return) naming them within `itConsumable.view`, each asked only for a grant the caller holds and scoped exactly as that register's own list (the row's own `branchId`) — and is then read from the directory unscoped: the sender of a hand-over to another branch opens the recipient's page, and every section of it is still the sender's own registers («المُسلِّم يرى ما سلّمه», §17 2026-11-18). The list itself is unchanged |
 | `/it/people/recipients` (a hand-over's box: «المستلم» on the asset hand-over, the new holder on a transfer, the consumables issue and return, the line hand-over) | ANY of `itAsset.assign`, `itMobileLine.assign`, `itConsumable.assign` — the act's own grant, no key added | read-only; anybody who works here today (`employed` — FR-15/16) in EVERY branch, for a required search, a few at a time (`pageSize` ≤ 20, default 8), by name — neither a grant's reach nor the command bar's branch is applied (the `/it/technicians` precedent: the population is bounded by the act, the search and the page). Each row is `{ employeeId, code, fullNameAr, branchId }` and nothing else — no dates, no login, no custody counts (§17 2026-11-18) |
 | `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories and the consumables' types — one grant, the `fleetCatalog.manage` precedent) |
@@ -1070,6 +1175,16 @@ transfer made, and a `transfer` row on the item it reached (the counters before�
 `transferId`, and the other store's branch and item) — each `transfer` row then refreshing its
 own store's screens, so BOTH stores read again.
 
+«عداد الطابعة» (§2.11, §17 2026-11-19): a counted issue's `assign` row on its item adds
+`counterReading` null → the reading and, on a reset, `counterReset` null → true. «تعديل الجهاز» on a
+counted row names what changed on the item's `update` row — `installedOn` when the device changed,
+`counterReading` old → new and `counterReset` old → new when they did — with the `movementId`, and
+the same `update` row on the item of each other counted row of the memo on that printer whose
+reading it rewrote (one memo, one printer, one reading — §2.11), with that row's `movementId`; the
+memo's row is written only when the device changed (the paper carries no reading). The catalog's
+`requiresCounterReading` is in its `create` / `update` diff (§2.4), and the go-live step's tick
+writes an `update` row per ticked type naming its run key as `source`.
+
 The bulk upload (§2.2, §17 2026-11-16) writes, after its commit and with the caller as the actor,
 through the go-live's own write path: a `create` row per new asset (its code, serial number and
 status), an `update` row per filled device (each field filled, old→new), and a `transfer` row per
@@ -1104,9 +1219,9 @@ cars ([design §11](it-vehicle-checks-design.md)).
 
 | Prefix | Named actions beyond CRUD |
 |---|---|
-| `/it/assets` | list filter `warrantyEndsWithinDays` (the dashboard's warranty row) · `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `POST /move-branch` (`MoveItAssetsToBranchSchema`: up to 100 assets to one branch, all or none, a held one with its custody; 200 → `ItAssetsBranchMoveResultDto`; 403 target out of reach · 400 no such active branch · 404 an asset out of scope · 422/409 every asset that holds it back, named — §2.2) · `GET /move-targets` (under `itAsset.assign`; → `ItMoveTargetsDto { branchIds }`: every active branch for which `keyReachesBranch(ctx, 'itAsset.assign', id)` holds — the test the move applies — in the branch options' order; what the move's picker offers, §2.2 — the consumables' transfer asked it too until §17 2026-11-17 and now has its own, `GET /it/consumables/transfer-targets`; registered before `/:id`) · `GET /import/branches` (under `itAsset.create`; → `ItMoveTargetsDto { branchIds }`, the move-targets' contract: every active branch `itAsset.create` reaches, by the same function asked of that grant (`moveTargetBranchIds(ctx, permissionKey, branches)`, the move passing `itAsset.assign`) — where the bulk upload may register, so its branch picker offers nothing the upload answers 403; in the branch options' order; registered before `/:id`, §2.2) · `POST /import` («رفع جماعي», under `itAsset.create`; registered before `/:id`; multipart, held in memory: `file` — one `.xlsx`, ≤ `IT_ASSET_IMPORT_MAX_MB` (5 MB), ≤ `IT_ASSET_IMPORT_MAX_ROWS` (500) lines, its workbook never inflated whole (one sheet, each part under its inflated cap — a sheet past it refused before any of it is read — then parsed as it streams, handed to the reader in 64 KB slices cut on character boundaries (the parser decodes each piece on its own: a cut inside an Arabic letter read as «�»), and stopped one line past the 500th — §2.2) — and the text fields of `ItAssetImportFieldsSchema`: `branchId?` (omitted on a first preview: the sheet's name suggests it), `kindCategories?` (JSON `{ "<النوع>": "<categoryId>" }`), `apply`, and with it `fileSha256`, `planHash` and `rows` (JSON, the sheet rows kept); without `apply` 200 → `ItAssetImportPreviewDto` (`fileSha256`, `planHash`, `sheetName`, `branchId`, `suggestedBranchId`, `kinds`, `rows` of `ItAssetImportRowDto` — decision, warnings, the device, fills, kept values, `selectable`/`selected` — and `counts` per decision), nothing written; with it 201 → `ItAssetImportResultDto` (created / filled / moved / unchanged, and each asset written: row, id, code, action); 400 a malformed field · 403 a branch inactive or out of `itAsset.create`'s reach · 409 the file or the plan is not the preview's («preview again») · 422 not an `.xlsx`, over the caps (the file past 5 MB — multer's `TOO_LARGE`; more than 500 lines; more than 500 zip entries or a ZIP64 marker, a part past its inflated cap, or the read past its 20 seconds — `SHEET_TOO_LARGE`, its `message` the part, `entries` or `time`, the sentence «the workbook is larger than one branch's sheet — upload the custody sheet on its own (at most 500 lines)»), a header missing or out of place, no branch chosen or suggested, a category that is not an active asset category, a row not in the file or not selectable — §2.2; nothing is written on any refusal) · `GET /:id/history` · `GET /:id/assignments` · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` and says `hasActiveMaintenance` (an order open or in progress, read for the whole page in one query — §2.2) |
+| `/it/assets` | list filter `warrantyEndsWithinDays` (the dashboard's warranty row) · `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `POST /move-branch` (`MoveItAssetsToBranchSchema`: up to 100 assets to one branch, all or none, a held one with its custody; 200 → `ItAssetsBranchMoveResultDto`; 403 target out of reach · 400 no such active branch · 404 an asset out of scope · 422/409 every asset that holds it back, named — §2.2) · `GET /move-targets` (under `itAsset.assign`; → `ItMoveTargetsDto { branchIds }`: every active branch for which `keyReachesBranch(ctx, 'itAsset.assign', id)` holds — the test the move applies — in the branch options' order; what the move's picker offers, §2.2 — the consumables' transfer asked it too until §17 2026-11-17 and now has its own, `GET /it/consumables/transfer-targets`; registered before `/:id`) · `GET /import/branches` (under `itAsset.create`; → `ItMoveTargetsDto { branchIds }`, the move-targets' contract: every active branch `itAsset.create` reaches, by the same function asked of that grant (`moveTargetBranchIds(ctx, permissionKey, branches)`, the move passing `itAsset.assign`) — where the bulk upload may register, so its branch picker offers nothing the upload answers 403; in the branch options' order; registered before `/:id`, §2.2) · `POST /import` («رفع جماعي», under `itAsset.create`; registered before `/:id`; multipart, held in memory: `file` — one `.xlsx`, ≤ `IT_ASSET_IMPORT_MAX_MB` (5 MB), ≤ `IT_ASSET_IMPORT_MAX_ROWS` (500) lines, its workbook never inflated whole (one sheet, each part under its inflated cap — a sheet past it refused before any of it is read — then parsed as it streams, handed to the reader in 64 KB slices cut on character boundaries (the parser decodes each piece on its own: a cut inside an Arabic letter read as «�»), and stopped one line past the 500th — §2.2) — and the text fields of `ItAssetImportFieldsSchema`: `branchId?` (omitted on a first preview: the sheet's name suggests it), `kindCategories?` (JSON `{ "<النوع>": "<categoryId>" }`), `apply`, and with it `fileSha256`, `planHash` and `rows` (JSON, the sheet rows kept); without `apply` 200 → `ItAssetImportPreviewDto` (`fileSha256`, `planHash`, `sheetName`, `branchId`, `suggestedBranchId`, `kinds`, `rows` of `ItAssetImportRowDto` — decision, warnings, the device, fills, kept values, `selectable`/`selected` — and `counts` per decision), nothing written; with it 201 → `ItAssetImportResultDto` (created / filled / moved / unchanged, and each asset written: row, id, code, action); 400 a malformed field · 403 a branch inactive or out of `itAsset.create`'s reach · 409 the file or the plan is not the preview's («preview again») · 422 not an `.xlsx`, over the caps (the file past 5 MB — multer's `TOO_LARGE`; more than 500 lines; more than 500 zip entries or a ZIP64 marker, a part past its inflated cap, or the read past its 20 seconds — `SHEET_TOO_LARGE`, its `message` the part, `entries` or `time`, the sentence «the workbook is larger than one branch's sheet — upload the custody sheet on its own (at most 500 lines)»), a header missing or out of place, no branch chosen or suggested, a category that is not an active asset category, a row not in the file or not selectable — §2.2; nothing is written on any refusal) · `GET /:id/history` · `GET /:id/assignments` · `GET /:id/counter-readings` («عداد الطابعة», under `itAsset.view`; the asset within its scope, else 404; → `ItPrinterCounterDto { assetId, latest, readings }`: every reading of the printer, from every store, newest first, each an `ItPrinterCounterReadingDto` — the movement, `at`, `reading`, `reset`, the toner's id, code and name, and `replaced` (the same item's previous cartridge on the printer and its `pages`, null across a reset; the whole field null for an item's first) — and `latest`, the newest without its pairing; ONE object over the whole timeline, not a page — a deviation from API Standards §4 recorded here, as the vehicle checks' `/vehicles` is: the pairing needs every row, and a printer has dozens a year — §2.11, §17 2026-11-19) · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` and says `hasActiveMaintenance` (an order open or in progress, read for the whole page in one query — §2.2) |
 | `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `holderExited` (the holder HR shows as having left — the dashboard's FR-13 row), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
-| `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory, consumableType) |
+| `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory, consumableType) · `requiresCounterReading` on the create (default false; 400 on another kind) and the update body (422 ticking it on another kind) and on every answer — §2.4, §17 2026-11-19 |
 | `/it/tickets` | `POST /:id/assign` · `/:id/status` · `/:id/resolve` · `/:id/close` · `/:id/reopen` · `/:id/cancel` · `GET+POST /:id/comments` · attachments via platform files |
 | `/it/ticket-priorities` | carry the SLA targets (§2.6) |
 | `/it/maintenance-plans` | activate/deactivate |
@@ -1121,14 +1236,19 @@ cars ([design §11](it-vehicle-checks-design.md)).
 | `/it/mobile-lines` | `GET /summary` (each network's figures under the filters) · `POST /:id/assign` (employee or car) · `/:id/return` · `/:id/suspend` · `/:id/reactivate` · `GET /:id/history` — FR-19 |
 | `/it/mobile-line-assignments` | read-only: `GET /` (open, line, employee, branch) — FR-19 |
 | `/it/mobile-line-receipts` | `POST /preview` · `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-19 |
-| `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo) · `POST /transfer` (`TransferItConsumablesSchema`: up to 50 items of one store, each with a quantity, to another branch's store; one `transferId`; 201 → `ItConsumableTransferResultDto`; 403 target out of reach · 404 an item out of scope · 422 two stores, the same store, more than on hand, another unit or a retired item there · 400 no such active branch — §2.11) · `GET /transfer-targets` (→ `ItMoveTargetsDto`: the transfer picker's branches — the active branches `itConsumable.assign` reaches whole, by the transfer's own test; before `/:id` — §17 2026-11-17) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
-| `/it/consumable-movements` | `GET /` (kind — `transferredOut` and `transferredIn` among them — item, type, employee, asset, branch, from/to, search; each row carries its `version`) · `PATCH /:id/installed-on` («تعديل الجهاز», under `itConsumable.assign`; `SetItConsumableInstalledOnSchema { assetId: objectId \| null, version }`; 200 → the `ItConsumableMovementDto` as it now stands, the same device included with nothing written; 404 a movement out of `itConsumable.view`'s scope or deleted, or a device out of the caller's own `itAsset.view` — any device without it · 422 not an `issued` movement, or a disposed device · 409 a stale version; the memo line follows it — §2.11, §17 2026-11-17) — FR-20 |
+| `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo; a line takes `counterReading` and `counterReset` — required with `assetId` and `qty` 1 on an item whose type `requiresCounterReading`, refused on any other: 422 `IT_CONSUMABLE_COUNTER_REQUIRED` (a detail per gap) · `…_BELOW_PREVIOUS` / `…_ABOVE_NEXT` (the figures in the details) · 422 a reading on an item that takes none · 400 a reset without a reading, a reading without a printer, two readings on one printer — §2.11 «عداد الطابعة», §17 2026-11-19) · `GET /:id/cartridges` (under `itConsumable.view`; the item within its scope, else 404; → `ItConsumableCartridgesDto { consumableId, averagePages, counted, cartridges }`: each cartridge of the item, newest first — printer, install reading, the next cartridge of the same name there from any store (`removedAt`, `removedReading`) and its `pages`, null while not replaced or across a reset — and the rounded mean of the known pages over `counted` of them; ONE object, not a page, as `/it/assets/:id/counter-readings`) · `POST /transfer` (`TransferItConsumablesSchema`: up to 50 items of one store, each with a quantity, to another branch's store; one `transferId`; 201 → `ItConsumableTransferResultDto`; 403 target out of reach · 404 an item out of scope · 422 two stores, the same store, more than on hand, another unit or a retired item there · 400 no such active branch — §2.11) · `GET /transfer-targets` (→ `ItMoveTargetsDto`: the transfer picker's branches — the active branches `itConsumable.assign` reaches whole, by the transfer's own test; before `/:id` — §17 2026-11-17) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
+| `/it/consumable-movements` | `GET /` (kind — `transferredOut` and `transferredIn` among them — item, type, employee, asset, branch, from/to, search; each row carries its `version`) · `PATCH /:id/installed-on` («تعديل الجهاز», under `itConsumable.assign`; `SetItConsumableInstalledOnSchema { assetId: objectId \| null, counterReading?, counterReset?, version }`; 200 → the `ItConsumableMovementDto` as it now stands, the same device included with nothing written; 404 a movement out of `itConsumable.view`'s scope or deleted, or a device out of the caller's own `itAsset.view` — any device without it · 422 not an `issued` movement, or a disposed device · 409 a stale version; the memo line follows it — §2.11, §17 2026-11-17. On a counted row, §17 2026-11-19: a device named needs its reading — 422 `IT_CONSUMABLE_COUNTER_REQUIRED` · 422 `…_BELOW_PREVIOUS` / `…_ABOVE_NEXT` on the field `counterReading` · 422 a reset the old printer's later readings rest on · 422 a reading for a row recorded without one · 400 a reading or reset with `assetId: null`, a reset without a reading; one memo, one printer, one reading: a reading written on a printer — a correction there, or a move onto one where rows of its memo sit — is written to every other counted row of the memo on it whose reading or reset differs, in the same transaction, each row written having its version moved on and audited on its own item; a move off leaves them as they are) — every row carries `counterReading` and `counterReset` — FR-20 |
 | `/it/consumable-memos` | `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-20 |
 | `/it/vehicle-checks` | `GET /vehicles` (the active cars `{ id, code }` in Fleet's code order, paginated; the form walks the pages — the owner's «تظهر كلها», an ADR-019 deviation the design records) · `POST /` (file; a known `clientRequestId` returns the existing report) · `POST /:id/photos` (one photo, the reporter only, within 24 hours, ≤ 5) — under `itVehicleCheck.create` · `GET /dashboard` (the figures, the latest per car, the overdue cars) · `GET /` (the reports: window, branch, car, a code, faults, a device) · `GET /:id` · `GET /:id/photos/:fileId` (the bytes) — under `itVehicleCheck.view`, scoped · `DELETE /:id` (soft) — under `itVehicleCheck.delete` — FR-21 |
 | `/it/dashboard` | `GET /assets` (status counts: totals, by category, by branch, and «يحتاج متابعة»; `categoryId` one or more, `branchId`) · `GET /activity` (the latest movements, same filters) — built; `/tickets` · `/maintenance` · `GET /reports/warranty` still planned |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
-vendors, products, parts ship with `search` from day one, per ADR-019 rule 5).
+vendors, products, parts ship with `search` from day one, per ADR-019 rule 5). Recorded
+deviations: the vehicle checks' `/vehicles` (above), and the printer counter's two reads —
+`GET /it/assets/:id/counter-readings` and `GET /it/consumables/:id/cartridges` answer ONE object
+over a whole timeline, not a page (§17 2026-11-19): what a cartridge printed is paired from the
+next reading of its item, which may sit on any page, and one printer's timeline is dozens of rows
+a year.
 
 ## 13. Open questions — **decided at approval (2026-08-03): every default below is adopted as-is**
 
@@ -1974,3 +2094,78 @@ starts only on an explicit owner GO.
     on the receipt (still under `itAsset.viewNationalId` / `itMobileLine.viewNationalId`, whichever
     branch the recipient works in), and who else sees the item.
   - §2.5, §7, §9.1 and §12 amended. Contracts: `ListItRecipientsQuerySchema`, `ItRecipientDto`.
+- **The printer's counter, required when a toner goes in** (2026-11-19) — owner request: «عند صرف
+  الصنف : حبارة أو النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب
+  عليها الحبارة — يعني إجبارى أدخل عدد الورق المطبوع عند تركيب الحبارة — وطبعا دا يتسجل للحبارة اللى
+  كانت قبلها وفى نفس الوقت للطابعة اللى ركب عليها الحبارة», and then «كمان عايزك تكتب اخر قراءة لما
+  أجى أصرف حبارة جديدة .. وأكيد مش هيدخل عدد ورق أقل أو مساوي للى موجود !!». Asked five questions,
+  he chose each recommended answer:
+  1. **The user types the PRINTER'S COUNTER READING** as its display shows it; the previous toner's
+     pages are this reading less its own.
+  2. **A flag on the consumable TYPE, «يتطلب عداد الطباعة»**, ticked on «حبارات» (`ink`) from the
+     start (§2.4).
+  3. **A reading is held above the printer's last one** unless «تم تصفير عداد الطابعة» is ticked — a
+     new baseline, the pages across it unknown. His second message settled «equal»: a reading must
+     be STRICTLY above the last one (and strictly below a later one for a backdated issue), unless
+     the entry — or, for the later one, that one — is a reset. The only equal readings are the lines
+     of ONE memo on one printer (one display, one moment), and a later issue must read above them.
+     The same strictness holds for «تعديل الجهاز».
+  4. **Shown on the printer's asset page, on the toner item** (per cartridge, with the average), **and
+     as a ledger column**; and the last reading is shown under the reading field when issuing, with
+     the toner it was taken with («آخر قراءة مسجّلة لهذه الطابعة: … — …», or «لا توجد قراءة سابقة لهذه
+     الطابعة»). A refusal the user sees says the figure (the error's details carry it).
+  5. **«الحبارة اللي كانت قبلها» is the previous toner of the SAME ITEM on that printer.**
+
+  Defaults chosen in the design and told to the owner:
+  1. **One toner per line** on a flagged type (`qty` 1): one row is one cartridge, so the average per
+     cartridge means something.
+  2. **Issuing a toner needs «عرض الأصول»** (`itAsset.view`) in practice — the printer is picked from
+     the register. Every issuer got it with the store's keys on 2026-11-17; only a role edited since
+     lacks it.
+  3. **A toner returned unused keeps its reading on the printer** unless «تعديل الجهاز» → «بدون جهاز»
+     clears its device, which takes the reading too. A counted toner moves to another printer only
+     with a new reading, and the same dialog corrects a mistyped one.
+  4. **«The same item» is the item's name, across stores.** On a single-cartridge printer that goes
+     back to an older model (A, B, A), A's second cartridge is credited with B's pages.
+  5. **Not on the paper**: the memo does not print the reading.
+  6. **Who sees the printer's counter card**: anyone who may view the asset — and it names the
+     toners.
+
+  What was built:
+  - **The flag** (§2.4): `requiresCounterReading` on `it_catalog_items`, its create/update rules, and
+    the go-live step `go-live:it-consumable-counter-types:v1` that ticks the live «حبارات» once (a
+    fresh catalog's is seeded ticked).
+  - **The ledger** (§2.11): `counterReading?` and `counterReset?` on `it_consumable_movements`,
+    written beside the row builder's one shape and only on a counted issue (the `installedOnBefore`
+    precedent), so an old row needs no migration; the answer reads them as `null` / `false`. No new
+    index: a printer's timeline rides `ix_asset_at`, an item's counted rows `ix_consumable_at`.
+  - **The issue**: the counted line's three requirements, refused before anything is written with
+    one coded error and a detail per gap; inside the transaction, under each counted printer's lock
+    (`printerCounter:<assetId>` in `it_sequences`), the placement on the printer's timeline read in
+    that transaction; each line's movement id allocated up front, so a counted line's place on the
+    timeline is the row it becomes. The audit row adds the reading.
+  - **«تعديل الجهاز»**: the rules follow the row, both printers locked; see §2.11. **One memo, one
+    printer, one reading**: the lines of one memo on one printer are one display read once, so a
+    reading written on a printer — a correction there, or a move onto a printer where lines of its
+    memo sit — is written to every counted line of that memo on it, in the same transaction, each
+    audited on its own item; a move off a printer leaves them there with their reading. Correcting
+    one colour's mistyped reading therefore corrects the memo's other colours on that printer.
+  - **What a cartridge printed is computed when read** (`consumables/consumable-counter.ts`, pure),
+    never stored — a device change, a correction and a rename are always reflected, and no stored
+    page count is ever rewritten for another row's sake (the one write that reaches other rows is
+    the memo's shared reading, above). A reset MOMENT starts a new epoch: a four-colour memo on a
+    counter set back to 0 is one reset, not four.
+  - **Two reads**, each one object, not a page (a recorded deviation, §12):
+    `GET /it/assets/:id/counter-readings` on the assets router under `itAsset.view` (no consumables
+    route authorizes on `itAsset`), and `GET /it/consumables/:id/cartridges` under
+    `itConsumable.view`.
+  - **Three error codes** with their details: `IT_CONSUMABLE_COUNTER_REQUIRED`,
+    `IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS` (`PREVIOUS_READING`, `PREVIOUS_AT`),
+    `IT_CONSUMABLE_COUNTER_ABOVE_NEXT` (`NEXT_READING`, `NEXT_AT`) — a server message reaches the
+    user verbatim unless its code has a friendly one, and this refusal is met in normal use.
+  - Not changed: the return (it names no issue), the memo and its print, the ledger's filters.
+  - §2.4, §2.11, §5 FR-20, §7, §10 and §12 amended. Contracts: `IT_PRINTER_COUNTER_MAX`,
+    `ItPrinterCounterDto`, `ItPrinterCounterReadingDto`, `ItConsumableCartridgesDto`,
+    `ItConsumableCartridgeDto`, the issue line's and the device change's `counterReading` /
+    `counterReset`, the movement's `counterReading` / `counterReset`, the catalog's
+    `requiresCounterReading`.

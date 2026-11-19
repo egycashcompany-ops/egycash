@@ -18,7 +18,7 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { Button } from '../../../shared/ui/Button';
-import { StatusBadge } from '../../../shared/ui/Badge';
+import { Badge, StatusBadge } from '../../../shared/ui/Badge';
 import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { useItCatalogItems } from '../api/it-queries';
@@ -112,6 +112,22 @@ export const ItCatalogsPage = (): JSX.Element => {
           </span>
         ),
     },
+    // «يتطلب عداد الطباعة» (2026-11-19) — a consumable type's one behaviour: its items are issued
+    // onto a printer with the printer's counter reading. Fleet's «يُحتسب في الإنذار» column's shape.
+    ...(kind === 'consumableType'
+      ? [
+          {
+            key: 'requiresCounterReading',
+            header: t('it.catalogs.fields.requiresCounterReading'),
+            render: (r: ItCatalogItemDto) =>
+              r.requiresCounterReading ? (
+                <Badge tone="info">{t('it.catalogs.counterBadge')}</Badge>
+              ) : (
+                '—'
+              ),
+          } satisfies Column<ItCatalogItemDto>,
+        ]
+      : []),
     {
       key: 'status',
       header: t('it.assets.columns.status'),

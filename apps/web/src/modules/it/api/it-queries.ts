@@ -5,7 +5,7 @@
 // detail cache, because the server derives `status` and allocates `assetCode` — a client that
 // kept its own copy would show a stale truth the moment either changed.
 import { useCallback } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignItAsset,
   type AssignItTicket,
@@ -673,6 +673,45 @@ export const useItConsumableMovements = (params: ItListParams, enabled = true) =
     enabled,
   });
 
+/**
+ * «عداد الطابعة» — one printer's readings. Under the consumables subtree on purpose, though it is
+ * read under `itAsset.view`: an issue and «تعديل الجهاز» move it, and both invalidate that subtree,
+ * as the realtime `it.consumable` signal does — so the card and the last reading «صرف» shows are
+ * never staler than the ledger. (A reader of the assets alone gets no such signal: theirs refetches
+ * on mount.)
+ */
+const printerCounterKey = (assetId: string) =>
+  listKey(MODULE, 'consumables', { counter: 'printer', assetId });
+
+export const useItPrinterCounter = (assetId: string, enabled = true) =>
+  useQuery({
+    queryKey: printerCounterKey(assetId),
+    queryFn: () => api.getPrinterCounter(assetId),
+    enabled: enabled && assetId !== '',
+  });
+
+/**
+ * The same read for several printers at once — the issue dialog's counted lines, each on its own
+ * printer, whose last readings decide whether the memo may be sent. One cache entry per printer,
+ * shared with `useItPrinterCounter`. Answered in the order asked.
+ */
+export const useItPrinterCounters = (assetIds: readonly string[]) =>
+  useQueries({
+    queries: assetIds.map((assetId) => ({
+      queryKey: printerCounterKey(assetId),
+      queryFn: () => api.getPrinterCounter(assetId),
+      enabled: assetId !== '',
+    })),
+  });
+
+/** One toner item's cartridges and their average — one item's movements dialog. */
+export const useItConsumableCartridges = (consumableId: string, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'consumables', { counter: 'item', consumableId }),
+    queryFn: () => api.getConsumableCartridges(consumableId),
+    enabled: enabled && consumableId !== '',
+  });
+
 /** A stored memo — what its signed copy hangs off. */
 export const useItConsumableMemo = (id: string | null) =>
   useQuery({
@@ -687,6 +726,11 @@ export const useItConsumableMemo = (id: string | null) =>
  */
 const useConsumableMutation = <TInput, TResult>(
   mutationFn: (input: TInput) => Promise<TResult>,
+  /**
+   * The dialog says every refusal itself (its alert, and the printer's toast), so the app's global
+   * error toast would say it a second time — without the figures a counter refusal carries.
+   */
+  { saysItsOwnErrors = false }: { saysItsOwnErrors?: boolean } = {},
 ) => {
   const qc = useQueryClient();
   return useMutation({
@@ -694,6 +738,7 @@ const useConsumableMutation = <TInput, TResult>(
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: itKeys.consumables });
     },
+    ...(saysItsOwnErrors ? { onError: () => undefined } : {}),
   });
 };
 
@@ -716,7 +761,9 @@ export const useReturnItConsumable = () =>
     api.returnConsumable(id, body),
   );
 export const useIssueItConsumables = () =>
-  useConsumableMutation((body: IssueItConsumables) => api.issueConsumables(body));
+  useConsumableMutation((body: IssueItConsumables) => api.issueConsumables(body), {
+    saysItsOwnErrors: true,
+  });
 /** «تحويل إلى فرع» — both stores' figures and the two movements of every line, in the one subtree. */
 export const useTransferItConsumables = () =>
   useConsumableMutation((body: TransferItConsumables) => api.transferConsumables(body));

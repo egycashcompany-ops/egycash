@@ -121,6 +121,8 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   assetId: 'a-12',
   assetCode: 'AST-00012',
   assetName: 'لاب توب Lenovo',
+  counterReading: null,
+  counterReset: false,
   reason: 'replacement',
   memoId: 'memo-1',
   memoNumber: 7,

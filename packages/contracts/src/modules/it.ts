@@ -37,6 +37,12 @@ export interface ItCatalogItemDto {
   description: string | null;
   sortOrder: number;
   isActive: boolean;
+  /**
+   * `consumableType` only — «يتطلب عداد الطباعة»: an item of this type is issued onto a printer, one
+   * cartridge a line, with that printer's counter reading (design §2.11 «عداد الطابعة»). Ticked on
+   * «حبارات» (`ink`). False on every other row, and on a row written before the flag existed.
+   */
+  requiresCounterReading: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -49,10 +55,24 @@ export const CreateItCatalogItemSchema = z
     name: LocalizedStringSchema,
     description: z.string().trim().max(500).optional(),
     sortOrder: z.number().int().min(0).default(0),
+    requiresCounterReading: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.requiresCounterReading && value.kind !== 'consumableType') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['requiresCounterReading'],
+        message: 'only a consumableType takes the printer counter',
+      });
+    }
+  });
 export type CreateItCatalogItem = z.infer<typeof CreateItCatalogItemSchema>;
 
+/**
+ * The kind is not sent on an update, so ticking `requiresCounterReading` on a row that is not a
+ * `consumableType` is the SERVER's refusal (422), not the schema's. Unticking is always allowed.
+ */
 export const UpdateItCatalogItemSchema = z
   .object({
     code: z.string().trim().min(1).max(30).nullable().optional(),
@@ -60,6 +80,7 @@ export const UpdateItCatalogItemSchema = z
     description: z.string().trim().max(500).nullable().optional(),
     sortOrder: z.number().int().min(0).optional(),
     isActive: z.boolean().optional(),
+    requiresCounterReading: z.boolean().optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -2700,6 +2721,13 @@ export const ReturnItConsumableSchema = z
   .strict();
 export type ReturnItConsumable = z.infer<typeof ReturnItConsumableSchema>;
 
+/**
+ * «قراءة عداد الطابعة» — a printer's counter as its display shows it: whole pages, cumulative
+ * (2026-11-19, «عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة»).
+ */
+export const IT_PRINTER_COUNTER_MAX = 999_999_999;
+const printerCounterReading = z.number().int().min(0).max(IT_PRINTER_COUNTER_MAX);
+
 /** One item of an issue — one row of the memo. */
 export const ItConsumableIssueLineSchema = z
   .object({
@@ -2708,6 +2736,19 @@ export const ItConsumableIssueLineSchema = z
     reason: ItConsumableIssueReasonSchema.default('new'),
     /** «الجهاز اللى أتركب عليه» — the register's asset it was installed on, if any. */
     assetId: objectId().optional(),
+    /**
+     * The counter of the printer named in `assetId` as this toner goes in. Required by the SERVER
+     * when the item's type `requiresCounterReading` (with `assetId`, and `qty` 1 — one cartridge a
+     * line), and refused on any other item: the contract cannot see the type. The server also holds
+     * it STRICTLY above the printer's last reading, and strictly below a later one when the issue is
+     * backdated (`IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS` / `…_ABOVE_NEXT`).
+     */
+    counterReading: printerCounterReading.optional(),
+    /**
+     * «تم تصفير عداد الطابعة» — the printer's counter was reset: this reading may be at or below the
+     * printer's last one, and starts its count again (the pages across it are unknown). Absent = false.
+     */
+    counterReset: z.boolean().optional(),
   })
   .strict();
 export type ItConsumableIssueLine = z.infer<typeof ItConsumableIssueLineSchema>;
@@ -2718,6 +2759,10 @@ export const IT_CONSUMABLE_ISSUE_MAX_LINES = 20;
 /**
  * «صرف لموظف»: one employee, one or more items from ONE branch's store, ONE memo — in one
  * transaction, so the paper never lists what the store did not give, nor the reverse.
+ *
+ * The printer counter's own cross-field rules: a reset names the reading it starts from; a reading
+ * belongs to the printer the line names; and two lines on ONE printer carry ONE reading — one memo
+ * has one `at`, and a printer has one display, so its lines are one placement on its counter.
  */
 export const IssueItConsumablesSchema = z
   .object({
@@ -2729,6 +2774,8 @@ export const IssueItConsumablesSchema = z
   .strict()
   .superRefine((value, ctx) => {
     const seen = new Set<string>();
+    /** The first reading line of each printer — what every later line on it must repeat. */
+    const readingOf = new Map<string, { reading: number; reset: boolean }>();
     value.lines.forEach((line, index) => {
       if (seen.has(line.consumableId)) {
         ctx.addIssue({
@@ -2738,6 +2785,34 @@ export const IssueItConsumablesSchema = z
         });
       }
       seen.add(line.consumableId);
+
+      if (line.counterReset === true && line.counterReading === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'counterReset'],
+          message: 'a reset names the reading it starts from',
+        });
+      }
+      if (line.counterReading === undefined) return;
+      if (line.assetId === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'assetId'],
+          message: 'a counter reading belongs to the printer the item is installed on',
+        });
+        return;
+      }
+      const reading = { reading: line.counterReading, reset: line.counterReset === true };
+      const first = readingOf.get(line.assetId);
+      if (first === undefined) {
+        readingOf.set(line.assetId, reading);
+      } else if (first.reading !== reading.reading || first.reset !== reading.reset) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'counterReading'],
+          message: 'two lines on one printer carry one counter reading',
+        });
+      }
     });
   });
 export type IssueItConsumables = z.infer<typeof IssueItConsumablesSchema>;
@@ -2824,6 +2899,14 @@ export interface ItConsumableMovementDto {
   assetId: string | null;
   assetCode: string | null;
   assetName: string | null;
+  /**
+   * `issued`, of a type that takes the printer's counter: the reading of the printer (`assetId`)
+   * when it went in — as typed, or as «تعديل الجهاز» last corrected it. Null on every other row, and
+   * on a toner issued before the counter was asked (2026-11-19).
+   */
+  counterReading: number | null;
+  /** «تم تصفير عداد الطابعة» — that reading started the printer's counter again. False otherwise. */
+  counterReset: boolean;
   /** Issued: `new` | `replacement`; scrapped: why. Null otherwise. */
   reason: string | null;
   memoId: string | null;
@@ -2852,10 +2935,46 @@ export interface ItConsumableMovementDto {
  * ISSUED unit sits in, corrected after the issue — the ledger's one correctable fact, because it
  * describes the unit and moves no quantity. `null` is «بدون جهاز». The memo's line follows it, so a
  * reprint prints the new device; the signed copy already filed stays as it is.
+ *
+ * On a COUNTED issue (its row carries a `counterReading`) the reading taken on the device is part of
+ * that one fact (2026-11-19): it moves with the device and is checked again on the printer it lands
+ * on; the same device with a new reading corrects it; «بدون جهاز» takes it off with the device. The
+ * rule follows the ROW, never the type's flag as it stands now — an issue recorded without a reading
+ * takes none afterwards.
  */
 export const SetItConsumableInstalledOnSchema = z
-  .object({ assetId: objectId().nullable(), version: z.number().int().min(0) })
-  .strict();
+  .object({
+    assetId: objectId().nullable(),
+    /**
+     * A counted issue only: the reading on the device named — required by the server whenever the
+     * row carries a reading and `assetId` names a device (the same device included: that corrects
+     * it), and refused on a row recorded without one.
+     */
+    counterReading: printerCounterReading.optional(),
+    /** «تم تصفير عداد الطابعة» on that reading. Absent = false. */
+    counterReset: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      value.assetId === null &&
+      (value.counterReading !== undefined || value.counterReset === true)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['counterReading'],
+        message: 'a counter reading belongs to a device; «بدون جهاز» takes none',
+      });
+    }
+    if (value.counterReset === true && value.counterReading === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['counterReset'],
+        message: 'a reset names the reading it starts from',
+      });
+    }
+  });
 export type SetItConsumableInstalledOn = z.infer<typeof SetItConsumableInstalledOnSchema>;
 
 export const ListItConsumableMovementsQuerySchema = PaginationQuerySchema.extend({
@@ -2871,6 +2990,76 @@ export const ListItConsumableMovementsQuerySchema = PaginationQuerySchema.extend
   search: z.string().trim().max(200).optional(),
 }).strict();
 export type ListItConsumableMovementsQuery = z.infer<typeof ListItConsumableMovementsQuerySchema>;
+
+// ── Consumables: the printer counter («عداد الطابعة», 2026-11-19) ─────────────
+//
+// A printer's readings are the `counterReading`s of the counted issues onto it, ordered by `at`
+// then id, across every store. The pages a cartridge printed are never stored: they are the next
+// reading of the SAME item (by name) on that printer, less its own, computed when read — so a
+// device change, a correction or a rename is always reflected. A reset starts the count again, and
+// every pair across it is of unknown pages. Each answer is one object over the whole timeline, not
+// a page: the pairing needs every row, and a printer has dozens a year.
+
+/** One reading of a printer's counter — `GET /it/assets/:id/counter-readings`. */
+export interface ItPrinterCounterReadingDto {
+  movementId: string;
+  at: string;
+  reading: number;
+  /** The counter started again here: every cartridge it replaced is of unknown pages. */
+  reset: boolean;
+  /** The toner the reading was taken with. */
+  consumableId: string;
+  consumableCode: string | null;
+  consumableName: string | null;
+  /**
+   * The previous cartridge of the SAME item on this printer, and what it printed (this reading less
+   * its own). `pages` is null when a reset lies between them. The whole field is null when this is
+   * that item's first on the printer (a new model or colour).
+   */
+  replaced: { movementId: string; at: string; reading: number; pages: number | null } | null;
+}
+
+export interface ItPrinterCounterDto {
+  assetId: string;
+  /**
+   * The newest reading — `readings[0]` without its pairing, with the toner it was taken with: what
+   * «صرف» shows under the reading field («آخر قراءة مسجّلة لهذه الطابعة»). An issue dated at or after
+   * it must read strictly above it unless it ticks «تم تصفير عداد الطابعة» (a backdated one is judged
+   * by the server against the readings around its date). Null: no reading yet.
+   */
+  latest: Omit<ItPrinterCounterReadingDto, 'replaced'> | null;
+  /** Newest first. */
+  readings: ItPrinterCounterReadingDto[];
+}
+
+/** One cartridge of a toner item, on the printer it went into. */
+export interface ItConsumableCartridgeDto {
+  movementId: string;
+  at: string;
+  assetId: string;
+  assetCode: string | null;
+  assetName: string | null;
+  installReading: number;
+  /**
+   * The next cartridge of the same item (by name, from any store) on that printer. Null: none yet —
+   * this is still the latest of its item there.
+   */
+  removedAt: string | null;
+  removedReading: number | null;
+  /** removedReading − installReading. Null while not replaced, or when a reset lies between. */
+  pages: number | null;
+}
+
+/** A toner item's cartridge life — `GET /it/consumables/:id/cartridges`. */
+export interface ItConsumableCartridgesDto {
+  consumableId: string;
+  /** The mean of the known `pages`, rounded. Null when none is known. */
+  averagePages: number | null;
+  /** How many cartridges that mean is over. */
+  counted: number;
+  /** Newest first. */
+  cartridges: ItConsumableCartridgeDto[];
+}
 
 // ── Consumables: the memo (مذكرة صرف مستهلكات) ─────────────────────────────
 

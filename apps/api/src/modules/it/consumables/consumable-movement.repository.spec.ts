@@ -1,6 +1,8 @@
-// The ledger's ONE write, pinned where it is enforced: in the FILTER of a single atomic update.
-// «تعديل الجهاز» reaches the device of an ISSUED row at the version the caller read, within their
-// scope — and nothing else of any row: no quantity, no kind, no person, no memo. What is asserted
+// The ledger's ONE correctable fact, pinned where it is enforced: in the FILTER of a single atomic
+// update. «تعديل الجهاز» reaches the device of an ISSUED row at the version the caller read, within
+// their scope — on a counted one with the reading taken on it, which reaches the other counted rows
+// of its memo on that printer too (one memo, one printer, one reading) — and nothing else of any
+// row: no quantity, no kind, no person, no memo. What is asserted
 // is the shape of the write itself; whether MongoDB honours an atomic filter is not this
 // codebase's claim to make, that this code hands it one is.
 import { Types } from 'mongoose';
@@ -104,6 +106,71 @@ describe('the device an issued unit sits in', () => {
     expect(change).not.toHaveProperty('$addToSet');
   });
 
+  // «عداد الطابعة» (2026-11-19) — on a counted issue the reading goes with the device, in the same
+  // one write.
+  it('sets the reading taken on the device it now names, and takes a reset off when it is none', async () => {
+    const update = writes({ _id: ID, kind: 'issued', assetId: DEVICE, __v: 4 });
+    await itConsumableMovementRepository.setInstalledOn(String(ID), DEVICE, {
+      version: 3,
+      previous: BEFORE,
+      scope,
+      by: USER,
+      session: SESSION,
+      counter: { reading: 31000, reset: false },
+    });
+    expect(update.mock.calls[0]?.[1]).toEqual({
+      $set: { assetId: DEVICE, updatedBy: new Types.ObjectId(USER), counterReading: 31000 },
+      $unset: { counterReset: '' },
+      $inc: { __v: 1 },
+      $addToSet: { installedOnBefore: BEFORE },
+    });
+  });
+
+  it('sets a reset as true — present only when it is one', async () => {
+    const update = writes({ _id: ID, kind: 'issued', assetId: DEVICE, __v: 4 });
+    await itConsumableMovementRepository.setInstalledOn(String(ID), DEVICE, {
+      version: 3,
+      previous: BEFORE,
+      scope,
+      by: USER,
+      session: SESSION,
+      counter: { reading: 40, reset: true },
+    });
+    expect(update.mock.calls[0]?.[1]).toMatchObject({
+      $set: { counterReading: 40, counterReset: true },
+    });
+    expect(update.mock.calls[0]?.[1]).not.toHaveProperty('$unset');
+  });
+
+  it('takes the reading off with the device («بدون جهاز»)', async () => {
+    const update = writes({ _id: ID, kind: 'issued', assetId: null, __v: 1 });
+    await itConsumableMovementRepository.setInstalledOn(String(ID), null, {
+      version: 0,
+      previous: DEVICE,
+      scope,
+      by: USER,
+      session: SESSION,
+      counter: { reading: null, reset: false },
+    });
+    expect(update.mock.calls[0]?.[1]).toMatchObject({
+      $set: { assetId: null },
+      $unset: { counterReading: '', counterReset: '' },
+    });
+  });
+
+  it('a reading corrected on the device it already names keeps no «before»', async () => {
+    const update = writes({ _id: ID, kind: 'issued', assetId: DEVICE, __v: 1 });
+    await itConsumableMovementRepository.setInstalledOn(String(ID), DEVICE, {
+      version: 0,
+      previous: DEVICE,
+      scope,
+      by: USER,
+      session: SESSION,
+      counter: { reading: 15500, reset: false },
+    });
+    expect(update.mock.calls[0]?.[1]).not.toHaveProperty('$addToSet');
+  });
+
   it('a miss read back in the same transaction: gone or out of scope is not found', async () => {
     writes(null);
     const { joined } = readsBack(null);
@@ -137,5 +204,132 @@ describe('the device an issued unit sits in', () => {
       }),
     ).rejects.toThrow(NotFoundError);
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+// «One memo, one printer, one reading» — the reading written on one counted row of a memo, written
+// to the memo's other counted rows on that printer, and nothing else of them.
+describe('the reading of a memo’s other rows on one printer', () => {
+  const MEMO = new Types.ObjectId();
+  const SIBLINGS = [new Types.ObjectId(), new Types.ObjectId()];
+
+  /** `updateMany(...).exec()` answering `matchedCount`. */
+  const writesMany = (matchedCount: number) =>
+    vi
+      .spyOn(ItConsumableMovementModel, 'updateMany')
+      .mockReturnValue({ exec: async () => ({ matchedCount }) } as never);
+
+  const write = (reset = false) =>
+    itConsumableMovementRepository.setMemoCounterOnPrinter(
+      SIBLINGS,
+      { memoId: MEMO, assetId: DEVICE },
+      { reading: 15500, reset },
+      { by: USER, session: SESSION },
+    );
+
+  it('asks for these ids, of this memo, on this printer, counted issues, live — in the same filter as the $set', async () => {
+    const update = writesMany(2);
+    await write();
+    const [filter, change, options] = update.mock.calls[0] ?? [];
+    expect(filter).toEqual({
+      kind: 'issued',
+      counterReading: { $type: 'number' },
+      isDeleted: false,
+      _id: { $in: SIBLINGS },
+      memoId: MEMO,
+      assetId: DEVICE,
+    });
+    // The reading and who wrote it — nothing else of the rows — and each version moves on.
+    expect(change).toEqual({
+      $set: { counterReading: 15500, updatedBy: new Types.ObjectId(USER) },
+      $unset: { counterReset: '' },
+      $inc: { __v: 1 },
+    });
+    expect(options).toEqual({ session: SESSION });
+  });
+
+  it('sets a reset as true — present only when it is one', async () => {
+    const update = writesMany(2);
+    await write(true);
+    expect(update.mock.calls[0]?.[1]).toEqual({
+      $set: { counterReading: 15500, updatedBy: new Types.ObjectId(USER), counterReset: true },
+      $inc: { __v: 1 },
+    });
+  });
+
+  it('a row the filter no longer finds is somebody’s change first — 409', async () => {
+    writesMany(1);
+    await expect(write()).rejects.toThrow(StaleDocumentError);
+  });
+
+  it('no other row asks nothing', async () => {
+    const update = writesMany(0);
+    await itConsumableMovementRepository.setMemoCounterOnPrinter(
+      [],
+      { memoId: MEMO, assetId: DEVICE },
+      { reading: 1, reset: false },
+      { by: USER, session: SESSION },
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe('a printer’s counter timeline', () => {
+  /** `find(...).select().sort().session().lean().exec()`, remembering each step. */
+  const finds = () => {
+    const seen: { filter?: unknown; select?: unknown; sort?: unknown; session?: unknown } = {};
+    const chain = {
+      select: (value: unknown) => {
+        seen.select = value;
+        return chain;
+      },
+      sort: (value: unknown) => {
+        seen.sort = value;
+        return chain;
+      },
+      session: (value: unknown) => {
+        seen.session = value;
+        return chain;
+      },
+      lean: () => ({ exec: async () => [] }),
+    };
+    vi.spyOn(ItConsumableMovementModel, 'find').mockImplementation(((filter: unknown) => {
+      seen.filter = filter;
+      return chain;
+    }) as never);
+    return seen;
+  };
+
+  it('reads every counted issue onto the printers — across every store, in order, in the transaction', async () => {
+    const seen = finds();
+    await itConsumableMovementRepository.counterTimelineSystem([DEVICE], SESSION);
+    // Unscoped on purpose: no branch clause — a reading is the printer's, whichever store fed it.
+    expect(seen.filter).toEqual({
+      kind: 'issued',
+      counterReading: { $type: 'number' },
+      isDeleted: false,
+      assetId: { $in: [DEVICE] },
+    });
+    expect(seen.sort).toEqual({ at: 1, _id: 1 });
+    expect(seen.session).toBe(SESSION);
+    expect(seen.select).toMatchObject({ counterReading: 1, counterReset: 1, memoId: 1, at: 1 });
+  });
+
+  it('asks nothing for no printer', async () => {
+    const spy = vi.spyOn(ItConsumableMovementModel, 'find');
+    expect(await itConsumableMovementRepository.counterTimelineSystem([])).toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('an item’s counted issues, in order', async () => {
+    const seen = finds();
+    await itConsumableMovementRepository.counterRowsOfItem(ID);
+    expect(seen.filter).toEqual({
+      kind: 'issued',
+      counterReading: { $type: 'number' },
+      isDeleted: false,
+      consumableId: ID,
+    });
+    expect(seen.sort).toEqual({ at: 1, _id: 1 });
   });
 });

@@ -30,9 +30,14 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 import { ApiError } from '../../../shared/lib/api-client';
+import { formatDateTime } from '../../../shared/lib/format';
 import { translate } from '../../../platform/localization/i18n';
 import * as api from '../api/it-api';
-import { useSetItConsumableInstalledOn } from '../api/it-queries';
+import {
+  useIssueItConsumables,
+  useReturnItConsumable,
+  useSetItConsumableInstalledOn,
+} from '../api/it-queries';
 import type * as InstalledOnRules from '../lib/consumable-installed-on';
 import { type InstalledOnState } from '../lib/consumable-installed-on';
 import { ConsumableInstalledOnDialog } from './ConsumableInstalledOnDialog';
@@ -172,6 +177,8 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   assetId: LAPTOP.id,
   assetCode: LAPTOP.assetCode,
   assetName: LAPTOP.name,
+  counterReading: null,
+  counterReset: false,
   reason: 'new',
   memoId: 'memo-1',
   memoNumber: 7,
@@ -572,6 +579,130 @@ describe('the dialog — what was issued above, the recipient’s devices below'
   });
 });
 
+// ── A toner issued with the printer's counter («عداد الطابعة», 2026-11-19) ───────────────────────
+
+describe('a toner issued with the printer’s counter moves with a reading', () => {
+  /** The toner, issued onto Hany's printer at 12,400. */
+  const TONER = movement({
+    qty: 1,
+    assetId: PRINTER.id,
+    assetCode: PRINTER.assetCode,
+    assetName: PRINTER.name,
+    counterReading: 12_400,
+  });
+  const LAST_AT = '2026-11-12T09:00:00.000Z';
+  /** The other printer's counter: its last reading is another toner's. */
+  const counterOf = (assetId: string, rows: { id: string; reading: number }[]) =>
+    ({
+      assetId,
+      latest: null,
+      readings: rows.map(({ id, reading }) => ({
+        movementId: id,
+        at: LAST_AT,
+        reading,
+        reset: false,
+        consumableId: 'c-9',
+        consumableCode: 'CON-00009',
+        consumableName: 'حبر HP 26A',
+        replaced: null,
+      })),
+    }) as const;
+  const picked = (over: Partial<InstalledOnState> = {}): InstalledOnState => ({
+    assetId: SCREEN.id,
+    asset: SCREEN,
+    none: false,
+    counterReading: '',
+    counterReset: false,
+    failure: null,
+    refusedVersion: null,
+    ...over,
+  });
+  const seeded = (): QueryClient => {
+    const qc = client();
+    qc.setQueryData(detailKey('it', 'assets', SCREEN.id), SCREEN);
+    qc.setQueryData(
+      listKey('it', 'consumables', { counter: 'printer', assetId: SCREEN.id }),
+      counterOf(SCREEN.id, [{ id: 'm-7', reading: 31_000 }]),
+    );
+    return qc;
+  };
+
+  it('shows the reading it went in at, and asks one for the device it moves to', () => {
+    listAssets.mockResolvedValue(page([]));
+    opening.state = picked();
+    const html = dialog(seeded(), TONER);
+    expect(html).toContain('data-installed-on-fact="counter"');
+    expect(dataAttr(html, 'data-counter-reading')).toEqual(['12400']);
+    expect(html).toContain('data-installed-on-reading');
+    expect(html).toContain(ar('it.consumables.installedOn.counterHint'));
+    // That printer's last reading, as «صرف» shows it.
+    expect(dataAttr(html, 'data-counter-latest')).toEqual(['31000']);
+    // No reading yet: nothing to save.
+    expect(saveButton(html)).toContain('disabled=""');
+    opening.state = picked({ counterReading: '31500' });
+    expect(saveButton(dialog(seeded(), TONER))).not.toContain('disabled=""');
+  });
+
+  it('a correction on its own printer is typed against the reading BEFORE this one', () => {
+    opening.state = picked({ assetId: '', asset: null, counterReading: '12450' });
+    const qc = client();
+    qc.setQueryData(
+      listKey('it', 'consumables', { counter: 'printer', assetId: PRINTER.id }),
+      counterOf(PRINTER.id, [
+        { id: TONER.id, reading: 12_400 },
+        { id: 'm-0', reading: 9_000 },
+      ]),
+    );
+    const html = dialog(qc, TONER);
+    // This row's own reading is not its floor.
+    expect(dataAttr(html, 'data-counter-latest')).toEqual(['9000']);
+    expect(saveButton(html)).not.toContain('disabled=""');
+  });
+
+  it('«بدون جهاز» takes the reading off with the device — said, and no box for one', () => {
+    opening.state = picked({ assetId: '', asset: null, none: true });
+    const html = dialog(client(), TONER);
+    expect(html).toContain('data-installed-on-counter-dropped');
+    expect(html).toContain(ar('it.consumables.installedOn.counterDropped'));
+    expect(html).not.toContain('data-installed-on-reading');
+    expect(saveButton(html)).not.toContain('disabled=""');
+  });
+
+  it('the printer’s refusal is said on the reading’s box, with its figures — not above it', () => {
+    listAssets.mockResolvedValue(page([]));
+    const problem = { kind: 'belowPrevious', reading: 31_000, at: LAST_AT } as const;
+    opening.state = picked({ counterReading: '30000', failure: { kind: 'counter', problem } });
+    const html = dialog(seeded(), TONER);
+    expect(html).toContain(
+      ar('it.consumables.counter.belowPrevious', {
+        reading: '٣١٬٠٠٠',
+        date: formatDateTime(LAST_AT, 'ar'),
+      }),
+    );
+    expect(html).not.toContain('data-installed-on-failure');
+  });
+
+  it('an issue recorded without a reading takes none afterwards: no box, as before', () => {
+    listAssets.mockResolvedValue(page([]));
+    opening.state = picked();
+    const html = dialog(seeded());
+    expect(html).not.toContain('data-installed-on-reading');
+    expect(html).not.toContain('data-installed-on-fact="counter"');
+    expect(saveButton(html)).not.toContain('disabled=""');
+  });
+
+  it('the box and its reset reach the state', () => {
+    const source = flat('ConsumableInstalledOnDialog.tsx');
+    expect(source).toContain(
+      "dispatch({ type: 'counter', counterReading: e.target.value, counterReset: state.counterReset, })",
+    );
+    expect(source).toContain(
+      "dispatch({ type: 'counter', counterReading: state.counterReading, counterReset: e.target.checked, })",
+    );
+    expect(source).toContain('const target = installedOnTarget(state, movement);');
+  });
+});
+
 // ── The request, and the re-read ─────────────────────────────────────────────────────────────────
 
 describe('the save — the PATCH, and the ledger read again whatever the answer', () => {
@@ -743,11 +874,66 @@ describe('the open dialog outlives its row', () => {
     expect(ledger).toContain('{editor} </CardBody>');
     const item = flat('ConsumableDialogs.tsx');
     expect(item).toContain(
-      'const { columns, editor } = useConsumableMovementLedger(rows, { item: false });',
+      'const { columns, editor } = useConsumableMovementLedger(rows, { item: false, counter });',
     );
     expect(item).toMatch(/onPageChange=\{setPage\} \/> \)\} \{editor\} <\/div>/u);
     const screen = flat('../pages/ConsumableMovementsPage.tsx');
     expect(screen).toContain('const { columns, editor } = useConsumableMovementLedger(rows);');
     expect(screen).toMatch(/\{editor\} <\/div> <\/PageContainer>/u);
+  });
+});
+
+// ── The issue says its own refusals ──────────────────────────────────────────────────────────────
+
+describe('«صرف»: a refusal is the dialog’s to say, with its figures', () => {
+  /** The mutation a hook returns, mounted once in a static render. */
+  const mounted = <T,>(qc: QueryClient, use: () => T): T => {
+    let held: T | null = null;
+    const Probe = (): null => {
+      held = use();
+      return null;
+    };
+    renderToStaticMarkup(
+      <QueryClientProvider client={qc}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    expect(held).not.toBeNull();
+    return held as unknown as T;
+  };
+
+  const withGlobalToast = (globalToast: (error: unknown) => void): QueryClient =>
+    new QueryClient({
+      mutationCache: new MutationCache({
+        onError: (error, _variables, _context, mutation) => {
+          if (mutation.options.onError === undefined) globalToast(error);
+        },
+      }),
+    });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('an issue refused on its counter raises no global toast over the dialog’s own words', async () => {
+    vi.spyOn(api, 'issueConsumables').mockRejectedValue(
+      new ApiError('IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS', 'not above', 422),
+    );
+    const globalToast = vi.fn();
+    const issue = mounted(withGlobalToast(globalToast), useIssueItConsumables);
+    await expect(
+      issue.mutateAsync({ employeeId: 'e-1', lines: [] } as never),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(globalToast).not.toHaveBeenCalled();
+  });
+
+  it('every other consumables write still has the global toast — the harness sees it', async () => {
+    vi.spyOn(api, 'returnConsumable').mockRejectedValue(new ApiError('NOT_FOUND', 'gone', 404));
+    const globalToast = vi.fn();
+    const giveBack = mounted(withGlobalToast(globalToast), useReturnItConsumable);
+    await expect(
+      giveBack.mutateAsync({ id: 'c-1', body: { qty: 1 } } as never),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(globalToast).toHaveBeenCalledTimes(1);
   });
 });

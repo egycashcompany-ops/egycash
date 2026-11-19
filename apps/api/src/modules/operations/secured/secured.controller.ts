@@ -233,6 +233,17 @@ export const getSecuredDistribution = async (req: Request, res: Response): Promi
   ok<OperationsSecuredDistributionDto>(res, {
     date: utcDayIso(view.day),
     today: utcDayIso(view.today),
+    // Round 30 — a past day is its record, read only (the save refuses it).
+    past: view.past,
+    // …and its packages as the vault counted them, held or handed over — the vault's own figures,
+    // so only to a reader of the vault (the grant the screen's own packaging read rides).
+    recordPackages:
+      view.past && hasPermission(authContext(req), 'operationsVault.view')
+        ? board.shipments.flatMap((row) => {
+            const counted = view.packages.get(row.id);
+            return counted === undefined ? [] : [{ shipmentId: row.id, ...counted }];
+          })
+        : null,
     crewPlanVisible,
     crews: crewPlanVisible
       ? view.vans

@@ -170,6 +170,15 @@ describe('the van card’s head — one line', () => {
     expect(head).not.toContain('data-van-time');
   });
 
+  // Round 28 critic — `trim()` kept a zero-width space: the pill was drawn empty-looking instead of
+  // «بلا اتجاه», while the filters already counted the van «بدون اتجاه».
+  it('a direction that names nothing («-», a zero-width space) is «بلا اتجاه» too', () => {
+    for (const direction of ['\u200b', ' - ', '!!!']) {
+      const head = headOf(card({ ...VAN, direction }));
+      expect(head, direction).toContain(`>${tr('ar', 'operations.distribution.noDirection')}<`);
+    }
+  });
+
   it('the whole card is the van’s drop mark — head, captain’s line, packages and load alike', () => {
     const html = card(VAN);
     expect(html).toMatch(/^<article data-distribution-van="cr-249" data-drop-van="cr-249"/);

@@ -2010,8 +2010,11 @@ export interface OperationsCrewBoardCrewDto {
   specialist1EmployeeIds: string[];
   specialist2EmployeeIds: string[];
   /**
-   * «الاتجاه». Saved since Round 20 as the names of ACTIVE operations areas (see
-   * `canonicalOperationsDirection`); a value saved before that may be any text, and is kept.
+   * «الاتجاه». A direction that names ACTIVE operations areas is saved in their own spelling (see
+   * `canonicalOperationsDirection`); since Round 28 anything else is saved as the desk typed it
+   * (`normalizeOperationsDirection`) — and a value saved before Round 20 may be any text, kept.
+   * The distribution's proposals read the areas a direction names (`operationsDirectionAreas`),
+   * so a hand-typed one proposes nothing unless it names an area.
    */
   direction: string | null;
   plannedTime: string | null;
@@ -2162,6 +2165,46 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
   z.array(objectId()).max(CREW_SLOT_CAPACITY).optional();
 
 /**
+ * Round 28 — the longest «الاتجاه» a desk may type BY HAND, counted once its spaces are tidied. The
+ * save holds the text it stores as typed to it (400 `VALIDATION_FAILED` on the row's `direction`);
+ * a direction of areas, stored in their spelling, and one a row already holds are not held to it —
+ * ten areas typed in 78 characters are 120 stored, and a direction of many areas saved since Round
+ * 20 must stay savable. The board's box takes no more than this as it is typed.
+ */
+export const OPERATIONS_DIRECTION_MAX_LENGTH = 80;
+
+/**
+ * Round 28 — a direction as typed, tidied: the invisible format marks dropped (a zero-width space,
+ * the bidi marks a paste brings — `\p{Cf}`), then trimmed, and every run of spaces inside it (a tab,
+ * a line break, a non-breaking space) made one space. Nothing else is touched — the letters stay as
+ * typed. The save stores a hand-typed direction in this form, and the board's box sends it so.
+ */
+export const normalizeOperationsDirection = (value: string): string =>
+  value
+    .replace(/\p{Cf}/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
+/**
+ * Round 28 critic — does a direction name anything: a letter or a digit? «-», «!!!» or a zero-width
+ * space name nothing — the board's filters already count such a row «بدون اتجاه». The save stores
+ * no NEW such direction (400 on the row's `direction`), and the board's box never offers one.
+ */
+export const operationsDirectionNamesSomething = (value: string): boolean =>
+  /[\p{L}\p{N}]/u.test(value);
+
+/**
+ * «الاتجاه» as a save carries it (the day's row and the standing crew's alike): any text but the
+ * empty string, tidied (`normalizeOperationsDirection`); `null` clears it. What the tidied text may
+ * be is NOT the shape's to judge, only the save's — it alone knows whether the text is the row's own
+ * (kept exactly, Round 28 critic: a blank or long one saved before the box existed included, or the
+ * row could never be saved again), names areas (respelled, however long), or is typed by hand
+ * (named something, at most `OPERATIONS_DIRECTION_MAX_LENGTH` characters).
+ */
+const crewDirection = () =>
+  z.string().min(1).transform(normalizeOperationsDirection).nullable().optional();
+
+/**
  * One row of the save. Four shapes, by its two addresses:
  *
  *   `vehicleId` | `crewAssignmentId` | what the row is
@@ -2204,10 +2247,16 @@ const crewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  * WHAT THE SERVER CHECKS BEYOND THE SHAPE (each refused with nothing written):
  *   · `shiftTypeId`, when NEWLY chosen for the row, must be an ACTIVE type → else 422
  *     `OPERATIONS_UNKNOWN_SHIFT_TYPE`. A type the row already holds stays, archived or not.
- *   · `direction`, when NEW or CHANGED, must name ACTIVE operations areas
- *     (`canonicalOperationsDirection`) and is STORED as their own names → else 422
- *     `OPERATIONS_DIRECTION_NOT_AN_AREA`. A direction the row already holds — legacy free text
- *     included — stays as written while it is sent unchanged.
+ *   · `direction` is NOT REFUSED for what it names (Round 28 — «عاوز الاتجاه اقدر اكتبه بايدى لو مش
+ *     موجود فى الليست», reversing Round 20's «لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»). When
+ *     NEW or CHANGED, a direction that names ACTIVE operations areas (`canonicalOperationsDirection`)
+ *     is STORED as their own names, however long; anything else is stored AS TYPED, tidied
+ *     (`normalizeOperationsDirection`): it must name something (`operationsDirectionNamesSomething`
+ *     — not blank, not «-») and be at most `OPERATIONS_DIRECTION_MAX_LENGTH` characters → else 400
+ *     `VALIDATION_FAILED` on `body.rows.<index>.direction` (`TOO_SMALL` / `TOO_BIG`). A direction
+ *     the row already holds — hand-typed or legacy, blank or however long — stays exactly as
+ *     written while it is sent unchanged (spaces and invisible marks aside).
+ *     `OPERATIONS_DIRECTION_NOT_AN_AREA` is no longer sent.
  *   · A person NEWLY put on the row must not be away that day (the pool's `availability`: HR has
  *     them absent, or on leave) → else 422 `OPERATIONS_CREW_MEMBER_ABSENT`. Somebody already on the
  *     row stays, so a planner can still save the row's other changes.
@@ -2225,7 +2274,7 @@ export const PlanOperationsCrewRowSchema = z
     captainEmployeeIds: crewSlot(),
     specialist1EmployeeIds: crewSlot(),
     specialist2EmployeeIds: crewSlot(),
-    direction: z.string().min(1).nullable().optional(),
+    direction: crewDirection(),
     plannedTime: z.string().min(1).nullable().optional(),
     notes: z.string().nullable().optional(),
     shiftTypeId: objectId().nullable().optional(),
@@ -2487,6 +2536,14 @@ const standingCrewSlot = (): z.ZodOptional<z.ZodArray<z.ZodString>> =>
  * (Round 23): a person NEWLY put in a slot must fit it (`fitsCrewSlot`) → else 422
  * `OPERATIONS_CREW_MEMBER_WRONG_SLOT`; somebody already in that slot of that vehicle's row stays.
  * The day is seeded from this row, so a seat the day would refuse must not be written here either.
+ *
+ * «الاتجاه» follows the day's rule (Round 28, see `PlanOperationsCrewRowSchema`): a NEW or CHANGED
+ * direction that names active areas is stored in their spelling, anything else as typed (tidied);
+ * one the row already holds stays as written while it is sent unchanged. One rule so the two boxes
+ * behave alike — and, since Round 28b, because the day reads it: «تحميل الطاقم الثابت» copies the
+ * people AND the direction, never the time (`standing-load.ts` on the board) — the direction onto a
+ * van it fills whose day row has none, and never one the day's save would refuse (blank, «-», or
+ * typed by hand past `OPERATIONS_DIRECTION_MAX_LENGTH`, as a row's own legacy one may be).
  */
 export const SetOperationsStandingCrewRowSchema = z
   .object({
@@ -2494,7 +2551,7 @@ export const SetOperationsStandingCrewRowSchema = z
     captainEmployeeIds: standingCrewSlot(),
     specialist1EmployeeIds: standingCrewSlot(),
     specialist2EmployeeIds: standingCrewSlot(),
-    direction: z.string().min(1).nullable().optional(),
+    direction: crewDirection(),
     plannedTime: z.string().min(1).nullable().optional(),
   })
   .strict()
@@ -2986,6 +3043,9 @@ export interface OperationsShipmentAssignmentDto {
  * Round 25: and both keep the «محصنة» rule — a row not of that type takes no محصنة unless its
  * delivery leg is already on that row: 422 `OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED`, checked after
  * the day and before the captain, naming the shipment and the row.
+ * R30 critic: and never a day that has PASSED (Cairo's calendar) — its vans are «توزيع المحصنات»'s
+ * record, read only: 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, the save's own refusal and detail,
+ * checked right after the day. An overdue one reaches today's vans through the distribution save.
  */
 export const AssignSecuredDeliveryLegSchema = z
   .object({
@@ -3275,10 +3335,11 @@ export const OPERATIONS_DISTRIBUTION_MAX_CHANGES = 500;
  * `GET /operations/secured/distribution?date=` — `operationsShipment.view` OR `operationsVault.view`
  * (Operations distributes, the vault hands over: one read for both screens).
  *
- *   · `date` — OPTIONAL, a whole day; left out → TODAY on the Cairo calendar. A day before today is
- *     refused with 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` (detail: `field` 'date', `code`
- *     'MIN_DATE', `message` = today as 'YYYY-MM-DD') — the boards' «no past day» rule: a past day's
- *     vans have left. An empty `date=` is a 400 (omit the key).
+ *   · `date` — OPTIONAL, a whole day; left out → TODAY on the Cairo calendar. An empty `date=` is a
+ *     400 (omit the key). Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه
+ *     او يعمل حاجه ك سجل يعنى»: a day BEFORE today is no longer refused — it answers as that day's
+ *     RECORD (`past` true, see `OperationsSecuredDistributionDto`), read only: the save refuses it
+ *     (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`).
  */
 export const OperationsSecuredDistributionQuerySchema = z
   .object({ date: z.coerce.date().optional() })
@@ -3368,11 +3429,51 @@ export interface OperationsSecuredDistributionCrewDto extends OperationsDayBoard
   looseNumber: number | null;
 }
 
+/** Round 30 — one shipment's packages as the vault counted them at its receipt (`recordPackages`). */
+export interface OperationsSecuredDistributionPackagesDto {
+  shipmentId: string;
+  bags: number;
+  cartons: number;
+  boxes: number;
+}
+
 export interface OperationsSecuredDistributionDto {
   /** The day distributed (its UTC midnight, ISO) — today in Cairo when none was asked for. */
   date: string;
-  /** TODAY on the Cairo calendar (UTC midnight, ISO) — the earliest day the screen may pick. */
+  /**
+   * TODAY on the Cairo calendar (UTC midnight, ISO) — the earliest day that can be distributed
+   * (Round 30: an earlier one is read as its record, `past`).
+   */
   today: string;
+  /**
+   * Round 30 — `date` is BEFORE `today`: the answer is that day's RECORD, READ ONLY. Nothing of it
+   * can be written — the save refuses the day (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, before any
+   * shipment), and the screen offers no drag, «نقل إلى…», «توزيع تلقائي», «تراجع» or «حفظ».
+   *
+   * WHAT A RECORD SHOWS — what is STORED NOW about the day, not a photograph taken on it:
+   *   · `crews`: the day's saved crew rows, by the same rule as a day to come (the «محصنة» rows, and
+   *     a row of another type that carries one of `shipments`), as they were last saved;
+   *   · `shipments`: every secured shipment (not deleted) DUE on the day, WHATEVER its status now —
+   *     handed over, delivered, still in the vault (then `overdue`), never received — and every one
+   *     whose LIVE delivery leg rides one of the day's crew rows; each at its CURRENT stage, on the
+   *     van its live leg rides (`placedCrewAssignmentId`), or on none;
+   *   · every `directionCrewAssignmentIds` is EMPTY: a record proposes nothing.
+   * WHAT IT CANNOT SHOW: a shipment taken off its van since (its leg retired — the story is in its
+   * «السجل»), or moved to another day since (its delivery date, or its leg, now another day's — it is
+   * on that day's screen); and the OVERDUE ones that waited in the vault that day without being placed
+   * on one of its vans (which shipments were overdue on a past day is not kept).
+   * False on today and on every day after it.
+   */
+  past: boolean;
+  /**
+   * Round 30 — on a RECORD (`past`), for a reader of the vault (`operationsVault.view`, the grant
+   * the screen's packaging read already rides): each listed shipment's packages as the vault counted
+   * them at its receipt — held now OR SINCE HANDED OVER (the vault's holdings no longer carry what
+   * left on the day's vans). A shipment the vault never took in (or whose receipt was cancelled) is
+   * absent. NULL on today and every later day (the screen reads the vault's holdings, as before) and
+   * for a reader without the vault's grant.
+   */
+  recordPackages: OperationsSecuredDistributionPackagesDto[] | null;
   /**
    * Whether the reader holds `operationsCrew.view` — the crew plan's grant. Without it every van is
    * still listed (the vans ARE this screen: number, captains, direction, time — what every board
@@ -3462,6 +3563,9 @@ export type SecuredDistributionChange = z.infer<typeof SecuredDistributionChange
  *     this day's;
  *   · the version: 409 `STALE_DOCUMENT` unless `version` is its delivery leg's current version
  *     (null ⇔ no leg);
+ *   · a take-off (`crewAssignmentId` null): 422 `OPERATIONS_CREW_DAY_MISMATCH` when its leg rides a
+ *     crew row of ANOTHER day — an overdue one's leg left on a past day's van is that day's record
+ *     (Round 30), which no save changes;
  *   · the leg: 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED` when the captain has started it in the app
  *     (its `executionStatus` is not `pending`) and the change would move or clear it;
  *   · the van: 404 when the crew row does not exist (or was removed); 422
@@ -3554,14 +3658,18 @@ export interface OperationsSecuredDistributionSaveDto {
 //      that word («وسط البلد» stays whole).
 //   2. Each area, and the shipment's area, is FOLDED: Arabic-Indic digits to Latin; lower case;
 //      tashkeel, tatweel and invisible marks dropped; «أ إ آ ٱ» → «ا», «ى» → «ي», «ة» → «ه»; every
-//      other character that is not a letter, a digit or a space dropped; a leading «ال» taken off
-//      each word longer than three letters («المعادي» = «معادي», «ال» alone stays); spaces made one.
-//   3. The shipment matches the van when its folded area EQUALS one folded area of the direction —
-//      equal, never "contains": «مصر» does not match «مصر الجديدة».
+//      punctuation mark or symbol made a SPACE (Round 28 critic — «شبرا/الخيمة» is «شبرا الخيمة», as
+//      a desk types it; dropped, it was «شبراالخيمه», which no typing reached), any other character
+//      that is not a letter, a digit or a space dropped; a leading «ال» taken off each word longer
+//      than three letters («المعادي» = «معادي», «ال» alone stays); spaces made one.
+//   3. The shipment matches the van when its folded area EQUALS the WHOLE folded direction (an area
+//      whose own name holds a separator, «شبرا/الخيمة», is never split — Round 28 critic), or one
+//      folded area of the direction — equal, never "contains": «مصر» does not match «مصر الجديدة».
 //   4. No area, or no direction, or either folding to nothing → no match.
 
-/** Where a direction is split into its areas (rule 1). */
-const DIRECTION_SEPARATOR = /\s*[-–—/\\|،,؛;+&]\s*|\s+و\s+/u;
+/** Where a direction is split into its areas (rule 1) — shared with the board's direction box. */
+export const OPERATIONS_DIRECTION_SEPARATOR = /\s*[-–—/\\|،,؛;+&]\s*|\s+و\s+/u;
+const DIRECTION_SEPARATOR = OPERATIONS_DIRECTION_SEPARATOR;
 
 /** One area name, folded (rule 2) — exported so a screen can show what was compared. */
 export const foldOperationsAreaName = (value: string): string =>
@@ -3572,6 +3680,7 @@ export const foldOperationsAreaName = (value: string): string =>
     .replace(/[أإآٱ]/gu, 'ا')
     .replace(/ى/gu, 'ي')
     .replace(/ة/gu, 'ه')
+    .replace(/[\p{P}\p{S}]/gu, ' ')
     .replace(/[^\p{L}\p{N}\s]/gu, '')
     .trim()
     .split(/\s+/u)
@@ -3592,16 +3701,28 @@ export const operationsDirectionAreas = (direction: string | null | undefined): 
 };
 
 /**
- * Round 20 — a direction as the crew board SAVES it: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من
- * الاتجاهات اللى موجوده بتاعت البنوك». Every area it names must be one of `areaNames` (the ACTIVE
- * operations areas — the names the branches' «المنطقة» uses), compared FOLDED (rule 2), and the
- * direction is returned in the areas' OWN spelling: one area → its name; several (rule 1's
- * separators — a direction may still name «المعادي - حلوان», the distribution reads both) → their
- * names joined by « - », each once. The WHOLE text is tried as one area first, so an area whose
- * name holds a separator («شبرا/الخيمة») is never split.
+ * A direction read against the areas: does it name ACTIVE operations areas only? Every area it
+ * names is looked up in `areaNames` (the ACTIVE operations areas — the names the branches'
+ * «المنطقة» uses), compared FOLDED (rule 2), and the direction is returned in the areas' OWN
+ * spelling: one area → its name; several (rule 1's separators — a direction may still name
+ * «المعادي - حلوان», the distribution reads both) → their names joined by « - », each once. The
+ * WHOLE text is tried as one area first, so an area whose name holds a separator («شبرا/الخيمة»)
+ * is never split.
  *
- * `{ unknown }` lists the parts no area answers, as typed — the save refuses those. Shared by the
- * server's save and the board's picker, so the two cannot disagree about what is an area.
+ * Round 28b critic — and so is a RUN of parts inside a longer direction: «شبرا/الخيمة - المعادي»,
+ * split at «/» too, was «شبرا» and «الخيمة» — no areas — so the answer read again was no answer.
+ * The save judged this function's own respelling hand-typed text, held it to
+ * `OPERATIONS_DIRECTION_MAX_LENGTH`, and refused «تحميل الطاقم الثابت»'s copy of a standing
+ * direction of eight areas (400 `TOO_BIG`), as it refused the picker's. Consecutive parts are now
+ * read as ONE area wherever the text between them folds to its name, the longest run first (as the
+ * whole text is), so this function's answer, read again, is an answer too — and stays savable
+ * however long.
+ *
+ * `{ unknown }` lists the parts no area answers, as typed. Round 20 refused those («لازم اختار من
+ * الاتجاهات اللى موجوده بتاعت البنوك»); Round 28 reverses it («عاوز الاتجاه اقدر اكتبه بايدى لو مش
+ * موجود فى الليست»): the save then stores the text as typed (`normalizeOperationsDirection`), and
+ * only a direction this function answers is respelled. Shared by the server's save and the board's
+ * picker, so the two cannot disagree about what is an area.
  */
 export const canonicalOperationsDirection = (
   direction: string,
@@ -3614,15 +3735,80 @@ export const canonicalOperationsDirection = (
   }
   const whole = byFold.get(foldOperationsAreaName(direction));
   if (whole !== undefined) return { direction: whole };
-  const parts = direction
-    .split(DIRECTION_SEPARATOR)
-    .map((part) => part.trim())
-    .filter((part) => foldOperationsAreaName(part) !== '');
-  const unknown = parts.filter((part) => !byFold.has(foldOperationsAreaName(part)));
-  if (parts.length === 0) return { unknown: [direction] };
+  const parts = directionPartSpans(direction);
+  const count = parts.length;
+  if (count === 0) return { unknown: [direction] };
+  // Each part folds to a word at least, so no run of more parts than the widest name has words is
+  // an area: the runs tried stay a few per part, however long the text.
+  let widest = 0;
+  for (const folded of byFold.keys()) widest = Math.max(widest, folded.split(' ').length);
+  const areaOf = (from: number, to: number): string | undefined =>
+    byFold.get(
+      foldOperationsAreaName(
+        direction.slice((parts[from] as PartSpan).start, (parts[to - 1] as PartSpan).end),
+      ),
+    );
+  // From the last part back: how the parts from `from` on read as areas, the longest run first.
+  const read: ({ to: number; name: string } | null)[] = new Array(count + 1).fill(null);
+  const reads: boolean[] = new Array(count + 1).fill(false);
+  reads[count] = true;
+  for (let from = count - 1; from >= 0; from -= 1) {
+    for (let to = Math.min(count, from + widest); to > from; to -= 1) {
+      if (!reads[to]) continue;
+      const name = areaOf(from, to);
+      if (name === undefined) continue;
+      read[from] = { to, name };
+      reads[from] = true;
+      break;
+    }
+  }
+  if (reads[0]) {
+    const names: string[] = [];
+    for (let at = read[0] ?? null; at !== null; at = read[at.to] ?? null) names.push(at.name);
+    return { direction: [...new Set(names)].join(' - ') };
+  }
+  // The parts no run answers, as typed.
+  const answered = new Set<number>();
+  for (let from = 0; from < count; from += 1) {
+    for (let to = from + 1; to <= Math.min(count, from + widest); to += 1) {
+      if (areaOf(from, to) === undefined) continue;
+      for (let at = from; at < to; at += 1) answered.add(at);
+    }
+  }
+  const text = (span: PartSpan): string => direction.slice(span.start, span.end);
+  const unknown = parts.filter((_, at) => !answered.has(at)).map(text);
   if (unknown.length > 0) return { unknown };
-  const names = [...new Set(parts.map((part) => byFold.get(foldOperationsAreaName(part)) as string))];
-  return { direction: names.join(' - ') };
+  // Every part is in some area's run, but no runs read the whole text: those not areas alone.
+  const alone = parts.filter((_, at) => areaOf(at, at + 1) === undefined).map(text);
+  return { unknown: alone.length > 0 ? alone : [direction] };
+};
+
+interface PartSpan {
+  start: number;
+  end: number;
+}
+
+const DIRECTION_SEPARATORS = new RegExp(DIRECTION_SEPARATOR.source, 'gu');
+
+/**
+ * The parts of a direction between its separators (rule 1), where each sits in the text — trimmed,
+ * and a part that folds to nothing («- -») left out.
+ */
+const directionPartSpans = (direction: string): PartSpan[] => {
+  const spans: PartSpan[] = [];
+  const cut = (start: number, end: number): void => {
+    const raw = direction.slice(start, end);
+    const from = start + (raw.length - raw.trimStart().length);
+    const trimmed = raw.trim();
+    if (foldOperationsAreaName(trimmed) !== '') spans.push({ start: from, end: from + trimmed.length });
+  };
+  let from = 0;
+  for (const match of direction.matchAll(DIRECTION_SEPARATORS)) {
+    cut(from, match.index);
+    from = match.index + match[0].length;
+  }
+  cut(from, direction.length);
+  return spans;
 };
 
 /** Does this van's direction name this shipment's area (rules 3-4)? */
@@ -3630,9 +3816,14 @@ export const operationsDirectionMatchesArea = (
   direction: string | null | undefined,
   areaName: string | null | undefined,
 ): boolean => {
-  if (areaName == null) return false;
+  if (areaName == null || direction == null) return false;
   const area = foldOperationsAreaName(areaName);
-  return area !== '' && operationsDirectionAreas(direction).includes(area);
+  if (area === '') return false;
+  // The WHOLE direction first, as `canonicalOperationsDirection` reads it: split at «/», the van
+  // picked as «شبرا/الخيمة» was never proposed for its own area's محصنات.
+  return (
+    foldOperationsAreaName(direction) === area || operationsDirectionAreas(direction).includes(area)
+  );
 };
 
 /**

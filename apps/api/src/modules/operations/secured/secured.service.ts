@@ -82,7 +82,7 @@ import {
   operationsShipmentService,
   type DayBoardView,
 } from '../shipments/shipment.service';
-import { isSecuredRow, rowNotSecured } from './distribution.service';
+import { dayInPast, isSecuredRow, rowNotSecured } from './distribution.service';
 
 const shipmentRef = (id: string) => ({
   moduleId: 'operations',
@@ -830,11 +830,17 @@ class OperationsSecuredService {
    * The captain and vehicle are not free-typed: they must match a crew assignment on the
    * shipment's delivery day, which is what makes `day + vehicle + leg → crew` resolvable without
    * duplicating the specialists onto the shipment.
+   *
+   * Round 30 critic — and that day must not have PASSED (Cairo's calendar): a past day is its
+   * record on «توزيع المحصنات», read only, and this writes the very leg the record shows (422
+   * `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, the distribution save's own refusal). An overdue one
+   * reaches today's vans through the distribution save, which moves its date with it.
    */
   async assignDeliveryLeg(
     shipmentId: string,
     input: AssignSecuredDeliveryLeg,
     by: string,
+    now: Date = new Date(),
   ): Promise<OperationsShipmentAssignmentDoc> {
     const shipment = await operationsShipmentRepository.getById(shipmentId);
     assertSecured(shipment);
@@ -865,6 +871,9 @@ class OperationsSecuredService {
         'OPERATIONS_CREW_DAY_MISMATCH',
       );
     }
+    // Round 30 critic — «ميقدرش يعدل عليه او يعمل حاجه»: a past day's van is its record's.
+    const today = cairoYmd(now);
+    if (ymdOf(day.date) < today) throw dayInPast(ymdOf(day.date), today);
     const existing = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
       shipmentId,
       'delivery',

@@ -79,7 +79,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // (the screen marks its card). These reach a desk whose screen was read before a colleague, the
     // vault or the captain acted — or that was left open past midnight.
     OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
-      'That day has passed — its vans have left. Distribute today or a later day.',
+      'That day has passed — its vans have left, and its record is view only. Distribute today or a later day.',
     OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
       'A secured shipment on this screen has already left the vault — it can no longer be placed on a van.',
     OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
@@ -96,11 +96,13 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A van is handed over only on the day it goes out — this van is not one of today’s.',
     // «لوحة التشغيلة» (Round 20): a save gave a row a type archived on the reference screen since it
     // was picked, or a direction no area answers («لازم اختار من الاتجاهات اللى موجوده»). The board
-    // marks the row the refusal names (`planRefusal`); these are the words said with it.
+    // marks the row the refusal names (`planRefusal`); these are the words said with it. Round 28
+    // retired the direction's refusal («عاوز الاتجاه اقدر اكتبه بايدى»): no server sends it now, and
+    // its words stay only for an older server, said without marking a row.
     OPERATIONS_UNKNOWN_SHIFT_TYPE:
       'A row was given a shift type that is no longer active on the reference screen — choose another type on the marked row.',
     OPERATIONS_DIRECTION_NOT_AN_AREA:
-      'A direction is not one of the areas on the reference screen — choose it from the list on the marked row.',
+      'A direction is not one of the areas on the reference screen — this server still refuses a direction typed by hand.',
     // Round 22 — «لو القائد غايب … مقدرش احطه على العربيه»: somebody attendance has absent or on
     // leave that day was put on a row. The board names him on the marked row (`planRefusal`).
     OPERATIONS_CREW_MEMBER_ABSENT: 'Somebody on a row is absent or on leave on this day.',
@@ -184,7 +186,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_CREW_CAPTAIN_MISMATCH: 'لم يعد هذا القائد ضمن طاقم المركبة المختارة.',
     OPERATIONS_DELIVERY_LEG_REQUIRED: 'إحدى الشحنات بلا طاقم تسليم بعد — عيّن طاقمها قبل صرفها.',
     OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
-      'هذا اليوم قد مضى وغادرت سياراته — وزّع على اليوم أو على يوم بعده.',
+      'هذا اليوم قد مضى وغادرت سياراته، وسجله للعرض فقط — وزّع على اليوم أو على يوم بعده.',
     OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
       'إحدى المحصنات في هذه الشاشة غادرت الخزينة بالفعل، فلم يعد وضعها على سيارة ممكنًا.',
     OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
@@ -198,7 +200,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_UNKNOWN_SHIFT_TYPE:
       'أُعطي أحد الصفوف نوعًا لم يعد مفعّلًا في البيانات المرجعية — اختر نوعًا آخر في الصف المُعلَّم.',
     OPERATIONS_DIRECTION_NOT_AN_AREA:
-      'أحد الاتجاهات ليس من المناطق المسجلة في البيانات المرجعية — اختره من القائمة في الصف المُعلَّم.',
+      'أحد الاتجاهات ليس من المناطق المسجلة في البيانات المرجعية — ما زال الخادم يرفض الاتجاه المكتوب يدويًا.',
     OPERATIONS_CREW_MEMBER_ABSENT: 'على أحد الصفوف غائب أو من في إجازة في هذا اليوم.',
     OPERATIONS_CREW_MEMBER_WRONG_SLOT:
       'عُيِّن أحدهم في خانة لا تناسبه — قائد في خانة أخصائي، أو أخصائي في خانة القائد.',

@@ -11779,6 +11779,133 @@ const en: Record<string, string> = {
   'operations.catalogs.branch.maps.outOfRange': 'Those coordinates are not a place on Earth.',
   'operations.catalogs.branch.location': 'Location',
   'operations.catalogs.branch.empty': 'No branches yet',
+  // Round 29 — a bank's branch sheet, compared, then imported.
+  'operations.catalogs.branchImport.open': 'Import from a sheet',
+  'operations.catalogs.branchImport.title': 'Import branches from a sheet',
+  'operations.catalogs.branchImport.nothingWritten': 'Nothing is written until you confirm.',
+  'operations.catalogs.branchImport.back': 'Back to branches',
+  'operations.catalogs.branchImport.stepBank': 'Choose the bank',
+  'operations.catalogs.branchImport.bankPlaceholder': 'Choose a bank…',
+  'operations.catalogs.branchImport.bankHint':
+    'The sheet does not name its bank: every branch in it is added to, or matched in, the bank chosen here.',
+  'operations.catalogs.branchImport.stepSheet': 'Upload the branches sheet',
+  'operations.catalogs.branchImport.columnsNote': 'Read by their headers:',
+  'operations.catalogs.branchImport.col.name': 'Branch name',
+  'operations.catalogs.branchImport.col.code': 'Branch code',
+  'operations.catalogs.branchImport.col.areaAr': 'Area (Arabic)',
+  'operations.catalogs.branchImport.col.areaEn': 'Area (English)',
+  'operations.catalogs.branchImport.col.address': 'Address',
+  'operations.catalogs.branchImport.othersIgnored': 'Other columns are not read.',
+  'operations.catalogs.branchImport.areaNote':
+    'The sheet’s area goes into both the operations area and the finance area. An area not yet in «Areas» is added there.',
+  'operations.catalogs.branchImport.removeFile': 'Remove the file',
+  'operations.catalogs.branchImport.compare': 'Compare with the branches',
+  'operations.catalogs.branchImport.comparing': 'Reading the sheet…',
+  'operations.catalogs.branchImport.needsBank': 'Choose the bank first.',
+  'operations.catalogs.branchImport.needsFile': 'Upload the sheet to compare.',
+  'operations.catalogs.branchImport.resultTitle': 'Branches of {{bank}} — compared with the sheet',
+  'operations.catalogs.branchImport.another': 'Upload another sheet',
+  'operations.catalogs.branchImport.rowsCount.one': '1 row',
+  'operations.catalogs.branchImport.rowsCount.two': '{{count}} rows',
+  'operations.catalogs.branchImport.rowsCount.few': '{{count}} rows',
+  'operations.catalogs.branchImport.rowsCount.many': '{{count}} rows',
+  'operations.catalogs.branchImport.rowsCount.other': '{{count}} rows',
+  'operations.catalogs.branchImport.layout': 'Read from the sheet «{{sheet}}», its header on row {{row}}:',
+  'operations.catalogs.branchImport.latinNote':
+    'An area written in Latin letters only is taken as its English name, and used as its Arabic name too.',
+  'operations.catalogs.branchImport.kpi.new': 'New',
+  'operations.catalogs.branchImport.kpi.newNote': 'Branches added to the bank',
+  'operations.catalogs.branchImport.kpi.update': 'Update',
+  'operations.catalogs.branchImport.kpi.updateNote': 'Held branches whose code or area changes',
+  'operations.catalogs.branchImport.kpi.unchanged': 'Unchanged',
+  'operations.catalogs.branchImport.kpi.unchangedNote': 'Already as the sheet has them',
+  'operations.catalogs.branchImport.kpi.suffixed': 'Code adjusted',
+  'operations.catalogs.branchImport.kpi.suffixedNote': 'A repeated code takes a number after it',
+  'operations.catalogs.branchImport.kpi.problem': 'Problem',
+  'operations.catalogs.branchImport.kpi.problemNote': 'Not written — the table says why',
+  'operations.catalogs.branchImport.areas.title': 'New areas added to «Areas» ({{count}})',
+  'operations.catalogs.branchImport.areas.noEnglish': 'no English name',
+  'operations.catalogs.branchImport.areas.filled': 'English names written on held areas:',
+  'operations.catalogs.branchImport.filterLabel': 'Show rows',
+  'operations.catalogs.branchImport.filter.all': 'All',
+  'operations.catalogs.branchImport.filter.new': 'New',
+  'operations.catalogs.branchImport.filter.update': 'Update',
+  'operations.catalogs.branchImport.filter.unchanged': 'Unchanged',
+  'operations.catalogs.branchImport.filter.suffixed': 'Code adjusted',
+  'operations.catalogs.branchImport.filter.problem': 'Problem',
+  'operations.catalogs.branchImport.search': 'Search a name, a code or an area',
+  'operations.catalogs.branchImport.col.row': 'Row',
+  'operations.catalogs.branchImport.col.branch': 'Branch',
+  'operations.catalogs.branchImport.col.codeHead': 'Code',
+  'operations.catalogs.branchImport.col.areaHead': 'Operations and finance area',
+  'operations.catalogs.branchImport.col.addressHead': 'Address',
+  'operations.catalogs.branchImport.col.outcome': 'Outcome',
+  'operations.catalogs.branchImport.outcome.new': 'New',
+  'operations.catalogs.branchImport.outcome.update': 'Update',
+  'operations.catalogs.branchImport.outcome.unchanged': 'Unchanged',
+  'operations.catalogs.branchImport.outcome.problem': 'Problem',
+  'operations.catalogs.branchImport.badge.newArea': 'New area',
+  'operations.catalogs.branchImport.badge.latin': 'Latin letters only',
+  'operations.catalogs.branchImport.badge.inactive': 'Stopped branch',
+  'operations.catalogs.branchImport.financeWas': 'Finance area was: {{area}}',
+  // Round 29 critic — rows to look at before confirming, and the words a screen reader hears.
+  'operations.catalogs.branchImport.filter.review': 'To review',
+  'operations.catalogs.branchImport.reviewNote':
+    'Some rows need a look before you confirm: a new branch the bank may already hold spelt another way, or an area not written as the sheet gives it.',
+  'operations.catalogs.branchImport.reviewShow': 'Show them ({{count}})',
+  'operations.catalogs.branchImport.badge.similar': 'May be a duplicate',
+  'operations.catalogs.branchImport.similarTo':
+    'The bank holds «{{name}}» (code {{code}}) — this row is added as a new branch.',
+  'operations.catalogs.branchImport.areaNote.byEnglish':
+    'The sheet’s area «{{area}}» is not in «Areas»: the area with the same English name is written.',
+  'operations.catalogs.branchImport.areaNote.englishElsewhere':
+    'The English name «{{en}}» is another area’s: it is not written on this one.',
+  'operations.catalogs.branchImport.sheetCode': 'On the sheet:',
+  'operations.catalogs.branchImport.change.was': 'was',
+  'operations.catalogs.branchImport.change.now': 'now',
+  'operations.catalogs.branchImport.dialog.similar': 'New branches like a held one',
+  'operations.catalogs.branchImport.dialog.areaNotes': 'Rows whose area is not the sheet’s as given',
+  'operations.catalogs.branchImport.doneDetail':
+    'New branches: {{created}} · branches updated: {{updated}} · new areas: {{areas}} · English area names written: {{filled}}',
+  'operations.catalogs.branchImport.problem.noName': 'The row has no branch name.',
+  'operations.catalogs.branchImport.problem.nameIsDate':
+    'The name reads as a date — Excel turned it into one. Type the name again as text.',
+  'operations.catalogs.branchImport.problem.duplicateName':
+    'An earlier row of the sheet names the same branch.',
+  'operations.catalogs.branchImport.problem.ambiguousName':
+    'The bank holds two branches by this name — fix them first.',
+  'operations.catalogs.branchImport.problem.noCode': 'A new branch needs a code.',
+  'operations.catalogs.branchImport.empty': 'No rows match.',
+  'operations.catalogs.branchImport.confirm': 'Confirm the import',
+  'operations.catalogs.branchImport.confirmHint':
+    'The new areas are written first, then the branches — all in one go.',
+  'operations.catalogs.branchImport.confirmNothing':
+    'Nothing to write — the bank already holds the sheet as it is.',
+  'operations.catalogs.branchImport.applying': 'Writing…',
+  'operations.catalogs.branchImport.compareAgain': 'Compare again',
+  'operations.catalogs.branchImport.dialog.title': 'Import the branches of {{bank}}',
+  'operations.catalogs.branchImport.dialog.lead': 'This is written in one go:',
+  'operations.catalogs.branchImport.dialog.new': 'New branches',
+  'operations.catalogs.branchImport.dialog.update': 'Branches updated',
+  'operations.catalogs.branchImport.dialog.suffixed': 'Codes adjusted (among them)',
+  'operations.catalogs.branchImport.dialog.areas': 'New areas',
+  'operations.catalogs.branchImport.dialog.filled': 'English area names written',
+  'operations.catalogs.branchImport.dialog.problems': 'Rows not written',
+  'operations.catalogs.branchImport.dialog.note':
+    'The rows marked «Problem» are left out. Correct them in the sheet and import it again — the rows already in will read «Unchanged».',
+  'operations.catalogs.branchImport.dialog.cancel': 'Cancel',
+  'operations.catalogs.branchImport.done': 'Branches imported',
+  'operations.catalogs.branchImport.refusal.noHeader':
+    'None of the sheet’s first ten rows is a header naming the column «اسم الفرع».',
+  'operations.catalogs.branchImport.refusal.tooLarge':
+    'The sheet is larger than a bank’s branch list (at most 5,000 branches).',
+  'operations.catalogs.branchImport.refusal.noSheet': 'The workbook has no visible sheet.',
+  'operations.catalogs.branchImport.refusal.fileTooLarge': 'The file is larger than 10 MB.',
+  'operations.catalogs.branchImport.refusal.unreadable': 'The file is not an Excel workbook (.xlsx).',
+  'operations.catalogs.branchImport.refusal.unknownBank':
+    'This bank is not active any more — choose another.',
+  'operations.catalogs.branchImport.refusal.changed':
+    'The bank’s branches, the areas or the file changed since the comparison — nothing was written. Compare again.',
   'operations.catalogs.currency.add': 'Add currency',
   'operations.catalogs.currency.edit': 'Edit currency',
   'operations.catalogs.currency.code': 'Code',
@@ -12082,6 +12209,16 @@ const en: Record<string, string> = {
     'Drag a shipment onto a van, or use «Move to…» on its card. Nothing is saved until Save.',
   'operations.distribution.viewOnly':
     'View only — distributing needs the permission to edit shipments.',
+  // Round 30 — a past day opens as its record, view only.
+  'operations.distribution.record.title': 'Record of {{day}} — view only, it cannot be changed',
+  'operations.distribution.record.body':
+    'What rode that day’s vans, as it is saved now — each shipment at its current stage. Nothing can be dragged, moved or saved.',
+  'operations.distribution.record.mark': 'Record · view only',
+  'operations.distribution.record.today': 'Back to today',
+  'operations.distribution.record.todayHint': 'Open today’s distribution ({{day}})',
+  'operations.distribution.record.unsavedTitle': 'The day ended before Save',
+  'operations.distribution.record.unsaved':
+    'Unsaved changes: {{count}} — the day ended before Save, so they can no longer be saved.',
   'operations.distribution.proposedCount': '{{count}} proposed, not saved',
   'operations.distribution.tooLarge':
     'This day holds more than {{max}} secured shipments — more than one screen can show.',
@@ -12292,10 +12429,13 @@ const en: Record<string, string> = {
   'operations.crew.unsaved': '{{count}} unsaved change(s)',
   // The toggle — تحميل الطاقم الثابت على التشغيلة
   'operations.crew.standing.toggle': 'Load the standing crew',
-  'operations.crew.standing.hint': 'Fills empty vehicles only. Review, then save.',
+  'operations.crew.standing.hint':
+    'Fills empty vehicles only: the crew, and the direction where the row has none. Review, then save.',
   'operations.crew.standing.none': 'No standing crew has been set up yet',
   'operations.crew.standing.unavailable':
     '{{count}} standing crew(s) stayed in the pool — their vehicle is not on today\u2019s fleet roster',
+  'operations.crew.standing.areasLoading':
+    'Loading the areas list — each direction is read against it before the crew is loaded…',
   // ── The standing crew (الطاقم الثابت) — no legacy screen, no day ────────────────────────────
   'operations.standingCrew.title': 'Standing crew',
   'operations.standingCrew.subtitle':
@@ -12542,6 +12682,9 @@ const en: Record<string, string> = {
   'operations.crewPlan.refused.slot': 'Somebody on this row is in a slot that is not their role’s.',
   'operations.crewPlan.standingWrongSlot':
     'Left off the standing crew — in a slot that is not their role’s',
+  'operations.crewPlan.standingDirectionLeft': 'Standing direction not copied',
+  'operations.crewPlan.standingDirectionLeftWho':
+    '{{names}} — longer than {{max}} characters and not the names of areas. Type it on the vehicle.',
   'operations.crewPlan.vanWrongSlot':
     'No vehicle for a row with somebody in a slot that is not their role’s',
   'operations.crewPlan.vanWrongSlotWho':
@@ -12587,11 +12730,36 @@ const en: Record<string, string> = {
     'No shift type is active — add them under «Shift types» on the reference screen.',
   'operations.crewPlan.refused.type':
     'This type is no longer active on the reference screen — choose another one.',
-  'operations.crewPlan.refused.direction':
-    'Not an area on the reference screen: {{parts}} — choose the direction from the list.',
-  'operations.crewPlan.direction.empty': 'No direction by that name',
-  'operations.crewPlan.direction.unknown': 'Not on the directions list — choose one from it',
+  'operations.crewPlan.direction.empty': 'Type the direction',
+  'operations.crewPlan.direction.useTyped': 'Use “{{text}}” as the direction',
+  'operations.crewPlan.direction.handTyped':
+    '“{{direction}}” is typed by hand, not an area from the list: «Secured distribution» proposes shipments by direction only for an area it names.',
+  'operations.crewPlan.direction.tooLong':
+    'A direction typed by hand is at most {{max}} characters — this one is {{count}}. Shorten it to keep it.',
   'operations.crewPlan.direction.clear': 'Clear the direction',
+  'operations.crewPlan.direction.addToList': 'Add “{{text}}” to the list',
+  'operations.crewPlan.direction.addHint':
+    'Added to «Areas» in the reference data at once, not at «Save» — «Undo» does not take it off.',
+  'operations.crewPlan.direction.adding': 'Adding “{{text}}” to «Areas»…',
+  'operations.crewPlan.direction.added': '“{{area}}” added to «Areas»',
+  'operations.crewPlan.direction.addedBody':
+    'It is now this row’s direction. «Undo» takes back the row’s direction only — the area stays on the list. Its English name can be filled in later in the reference data.',
+  'operations.crewPlan.direction.addedNotPlaced':
+    'The row’s direction was not changed: the row or the day changed while the area was being added. Pick “{{area}}” from the list if it is meant for this row.',
+  'operations.crewPlan.direction.archived':
+    '“{{area}}” is in «Areas» but archived — restore it in the reference data to list it here.',
+  'operations.crewPlan.direction.addRefused.duplicate':
+    '“{{text}}” was not added: «Areas» already has an area of that name. Pick it from the list, or use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.heldActive':
+    '“{{text}}” was not added: «Areas» already has “{{area}}” under that name. Pick it from the list, or use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.heldArchived':
+    '“{{text}}” was not added: «Areas» has “{{area}}” under that name, but archived — restore it in the reference data, or use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.forbidden':
+    '“{{text}}” was not added: you may not add to «Areas». You can use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.invalid':
+    '“{{text}}” was not added: «Areas» does not take this name. You can use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.failed':
+    '“{{text}}” could not be added just now. Try again, or use the text on this row only.',
   'operations.crewPlan.time.open': 'Choose the time',
   'operations.crewPlan.time.hours': 'Hour',
   'operations.crewPlan.time.minutes': 'Minute',
@@ -27082,6 +27250,130 @@ const ar: Record<string, string> = {
   'operations.catalogs.branch.maps.outOfRange': 'هذه الإحداثيات ليست موقعًا على الأرض.',
   'operations.catalogs.branch.location': 'الموقع',
   'operations.catalogs.branch.empty': 'لا توجد فروع بعد',
+  // Round 29 — شيت فروع البنك: مقارنة ثم استيراد.
+  'operations.catalogs.branchImport.open': 'استيراد من شيت',
+  'operations.catalogs.branchImport.title': 'استيراد فروع من شيت',
+  'operations.catalogs.branchImport.nothingWritten': 'لا يُكتب شيء قبل التأكيد.',
+  'operations.catalogs.branchImport.back': 'رجوع إلى الفروع',
+  'operations.catalogs.branchImport.stepBank': 'اختر البنك',
+  'operations.catalogs.branchImport.bankPlaceholder': 'اختر بنكًا…',
+  'operations.catalogs.branchImport.bankHint':
+    'الشيت لا يذكر اسم البنك: كل فرع فيه يُضاف إلى البنك المختار هنا أو يُطابق بفروعه.',
+  'operations.catalogs.branchImport.stepSheet': 'ارفع شيت الفروع',
+  'operations.catalogs.branchImport.columnsNote': 'تُقرأ الأعمدة بعناوينها:',
+  'operations.catalogs.branchImport.col.name': 'اسم الفرع',
+  'operations.catalogs.branchImport.col.code': 'رقم الفرع',
+  'operations.catalogs.branchImport.col.areaAr': 'المنطقة',
+  'operations.catalogs.branchImport.col.areaEn': 'المنطقة (إنجليزي)',
+  'operations.catalogs.branchImport.col.address': 'عنوان الفرع',
+  'operations.catalogs.branchImport.othersIgnored': 'الأعمدة الأخرى لا تُقرأ.',
+  'operations.catalogs.branchImport.areaNote':
+    'منطقة الشيت تُكتب في منطقة العمليات ومنطقة الحسابات معًا، والمنطقة غير الموجودة في «المناطق» تُضاف إليها.',
+  'operations.catalogs.branchImport.removeFile': 'إزالة الملف',
+  'operations.catalogs.branchImport.compare': 'مقارنة بالفروع',
+  'operations.catalogs.branchImport.comparing': 'جارٍ قراءة الشيت…',
+  'operations.catalogs.branchImport.needsBank': 'اختر البنك أولًا.',
+  'operations.catalogs.branchImport.needsFile': 'ارفع الشيت للمقارنة.',
+  'operations.catalogs.branchImport.resultTitle': 'فروع {{bank}} — مقارنة بالشيت',
+  'operations.catalogs.branchImport.another': 'رفع شيت آخر',
+  'operations.catalogs.branchImport.rowsCount.one': 'صف واحد',
+  'operations.catalogs.branchImport.rowsCount.two': 'صفان',
+  'operations.catalogs.branchImport.rowsCount.few': '{{count}} صفوف',
+  'operations.catalogs.branchImport.rowsCount.many': '{{count}} صفًا',
+  'operations.catalogs.branchImport.rowsCount.other': '{{count}} صف',
+  'operations.catalogs.branchImport.layout': 'قُرئ من الشيت «{{sheet}}»، وعناوينه في الصف {{row}}:',
+  'operations.catalogs.branchImport.latinNote':
+    'المنطقة المكتوبة بحروف لاتينية فقط تُعدّ اسمها الإنجليزي، وتُستخدم اسمًا عربيًا لها أيضًا.',
+  'operations.catalogs.branchImport.kpi.new': 'جديد',
+  'operations.catalogs.branchImport.kpi.newNote': 'فروع تُضاف إلى البنك',
+  'operations.catalogs.branchImport.kpi.update': 'تحديث',
+  'operations.catalogs.branchImport.kpi.updateNote': 'فروع موجودة يتغير كودها أو منطقتها',
+  'operations.catalogs.branchImport.kpi.unchanged': 'بدون تغيير',
+  'operations.catalogs.branchImport.kpi.unchangedNote': 'مطابقة للشيت بالفعل',
+  'operations.catalogs.branchImport.kpi.suffixed': 'كود معدَّل',
+  'operations.catalogs.branchImport.kpi.suffixedNote': 'الكود المكرر يُضاف بعده رقم',
+  'operations.catalogs.branchImport.kpi.problem': 'مشكلة',
+  'operations.catalogs.branchImport.kpi.problemNote': 'لن تُكتب — السبب في الجدول',
+  'operations.catalogs.branchImport.areas.title': 'مناطق جديدة تُضاف إلى «المناطق» ({{count}})',
+  'operations.catalogs.branchImport.areas.noEnglish': 'بدون اسم إنجليزي',
+  'operations.catalogs.branchImport.areas.filled': 'أسماء إنجليزية تُكتب لمناطق موجودة:',
+  'operations.catalogs.branchImport.filterLabel': 'عرض الصفوف',
+  'operations.catalogs.branchImport.filter.all': 'الكل',
+  'operations.catalogs.branchImport.filter.new': 'جديد',
+  'operations.catalogs.branchImport.filter.update': 'تحديث',
+  'operations.catalogs.branchImport.filter.unchanged': 'بدون تغيير',
+  'operations.catalogs.branchImport.filter.suffixed': 'كود معدَّل',
+  'operations.catalogs.branchImport.filter.problem': 'مشكلة',
+  'operations.catalogs.branchImport.search': 'ابحث باسم أو كود أو منطقة',
+  'operations.catalogs.branchImport.col.row': 'الصف',
+  'operations.catalogs.branchImport.col.branch': 'الفرع',
+  'operations.catalogs.branchImport.col.codeHead': 'الكود',
+  'operations.catalogs.branchImport.col.areaHead': 'منطقة العمليات والحسابات',
+  'operations.catalogs.branchImport.col.addressHead': 'العنوان',
+  'operations.catalogs.branchImport.col.outcome': 'النتيجة',
+  'operations.catalogs.branchImport.outcome.new': 'جديد',
+  'operations.catalogs.branchImport.outcome.update': 'تحديث',
+  'operations.catalogs.branchImport.outcome.unchanged': 'بدون تغيير',
+  'operations.catalogs.branchImport.outcome.problem': 'مشكلة',
+  'operations.catalogs.branchImport.badge.newArea': 'منطقة جديدة',
+  'operations.catalogs.branchImport.badge.latin': 'بحروف لاتينية فقط',
+  'operations.catalogs.branchImport.badge.inactive': 'فرع موقوف',
+  'operations.catalogs.branchImport.financeWas': 'منطقة الحسابات كانت: {{area}}',
+  // Round 29 critic — صفوف للمراجعة قبل التأكيد، وما يسمعه قارئ الشاشة.
+  'operations.catalogs.branchImport.filter.review': 'للمراجعة',
+  'operations.catalogs.branchImport.reviewNote':
+    'صفوف تحتاج إلى مراجعة قبل التأكيد: فرع جديد قد يكون لدى البنك باسم مكتوب بطريقة أخرى، أو منطقة لا تُكتب كما وردت في الشيت.',
+  'operations.catalogs.branchImport.reviewShow': 'اعرضها ({{count}})',
+  'operations.catalogs.branchImport.badge.similar': 'قد يكون مكرَّرًا',
+  'operations.catalogs.branchImport.similarTo':
+    'لدى البنك «{{name}}» (الكود {{code}})، ويُضاف هذا الصف فرعًا جديدًا.',
+  'operations.catalogs.branchImport.areaNote.byEnglish':
+    'منطقة الشيت «{{area}}» ليست في «المناطق»، فتُكتب المنطقة صاحبة الاسم الإنجليزي نفسه.',
+  'operations.catalogs.branchImport.areaNote.englishElsewhere':
+    'الاسم الإنجليزي «{{en}}» لمنطقة أخرى، فلا يُكتب لهذه المنطقة.',
+  'operations.catalogs.branchImport.sheetCode': 'في الشيت:',
+  'operations.catalogs.branchImport.change.was': 'كان',
+  'operations.catalogs.branchImport.change.now': 'أصبح',
+  'operations.catalogs.branchImport.dialog.similar': 'فروع جديدة تشبه فرعًا لدى البنك',
+  'operations.catalogs.branchImport.dialog.areaNotes': 'صفوف منطقتها ليست كما وردت في الشيت',
+  'operations.catalogs.branchImport.doneDetail':
+    'فروع جديدة: {{created}}، فروع محدَّثة: {{updated}}، مناطق جديدة: {{areas}}، أسماء إنجليزية للمناطق: {{filled}}',
+  'operations.catalogs.branchImport.problem.noName': 'الصف ليس فيه اسم فرع.',
+  'operations.catalogs.branchImport.problem.nameIsDate':
+    'الاسم مقروء تاريخًا — حوّله Excel إلى تاريخ. اكتب الاسم نصًا من جديد.',
+  'operations.catalogs.branchImport.problem.duplicateName': 'صف سابق في الشيت يحمل الفرع نفسه.',
+  'operations.catalogs.branchImport.problem.ambiguousName':
+    'لدى البنك فرعان بهذا الاسم — صحّحهما أولًا.',
+  'operations.catalogs.branchImport.problem.noCode': 'الفرع الجديد يحتاج إلى كود.',
+  'operations.catalogs.branchImport.empty': 'لا توجد صفوف مطابقة.',
+  'operations.catalogs.branchImport.confirm': 'تأكيد الاستيراد',
+  'operations.catalogs.branchImport.confirmHint':
+    'تُكتب المناطق الجديدة أولًا ثم الفروع — كلها دفعة واحدة.',
+  'operations.catalogs.branchImport.confirmNothing': 'لا شيء يُكتب — لدى البنك الشيت كما هو.',
+  'operations.catalogs.branchImport.applying': 'جارٍ الكتابة…',
+  'operations.catalogs.branchImport.compareAgain': 'مقارنة من جديد',
+  'operations.catalogs.branchImport.dialog.title': 'استيراد فروع {{bank}}',
+  'operations.catalogs.branchImport.dialog.lead': 'سيُكتب ما يلي دفعة واحدة:',
+  'operations.catalogs.branchImport.dialog.new': 'فروع جديدة',
+  'operations.catalogs.branchImport.dialog.update': 'فروع تُحدَّث',
+  'operations.catalogs.branchImport.dialog.suffixed': 'أكواد معدَّلة (ضمنها)',
+  'operations.catalogs.branchImport.dialog.areas': 'مناطق جديدة',
+  'operations.catalogs.branchImport.dialog.filled': 'أسماء إنجليزية تُكتب للمناطق',
+  'operations.catalogs.branchImport.dialog.problems': 'صفوف لن تُكتب',
+  'operations.catalogs.branchImport.dialog.note':
+    'الصفوف التي عليها «مشكلة» لا تُكتب؛ صحّحها في الشيت واستورده مرة أخرى، وستظهر الصفوف المستوردة «بدون تغيير».',
+  'operations.catalogs.branchImport.dialog.cancel': 'إلغاء',
+  'operations.catalogs.branchImport.done': 'تم استيراد الفروع',
+  'operations.catalogs.branchImport.refusal.noHeader':
+    'لا يوجد في الصفوف العشرة الأولى من الشيت صف عناوين فيه العمود «اسم الفرع».',
+  'operations.catalogs.branchImport.refusal.tooLarge':
+    'الشيت أكبر من قائمة فروع بنك (5000 فرع على الأكثر).',
+  'operations.catalogs.branchImport.refusal.noSheet': 'لا يحتوي الملف على شيت ظاهر.',
+  'operations.catalogs.branchImport.refusal.fileTooLarge': 'حجم الملف أكبر من 10 ميجابايت.',
+  'operations.catalogs.branchImport.refusal.unreadable': 'الملف ليس ملف Excel بصيغة ‎.xlsx.',
+  'operations.catalogs.branchImport.refusal.unknownBank': 'هذا البنك لم يعد نشطًا — اختر بنكًا آخر.',
+  'operations.catalogs.branchImport.refusal.changed':
+    'تغيّرت فروع البنك أو المناطق أو الملف منذ المقارنة، ولم يُكتب شيء. أعد المقارنة.',
   'operations.catalogs.currency.add': 'إضافة عملة',
   'operations.catalogs.currency.edit': 'تعديل عملة',
   'operations.catalogs.currency.code': 'الكود',
@@ -27363,6 +27655,16 @@ const ar: Record<string, string> = {
   'operations.distribution.dragHint':
     'اسحب المحصنة إلى سيارة، أو اختر «نقل إلى…» من بطاقتها. لا يُحفظ شيء قبل «حفظ».',
   'operations.distribution.viewOnly': 'للعرض فقط — يتطلب التوزيع صلاحية تعديل الشحنات.',
+  // Round 30 — «ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى».
+  'operations.distribution.record.title': 'سجل يوم {{day}} — للعرض فقط، لا يمكن التعديل',
+  'operations.distribution.record.body':
+    'ما حملته سيارات ذلك اليوم كما هو محفوظ الآن، وكل محصنة بمرحلتها الحالية. لا يمكن السحب ولا النقل ولا الحفظ.',
+  'operations.distribution.record.mark': 'سجل · للعرض فقط',
+  'operations.distribution.record.today': 'العودة إلى اليوم',
+  'operations.distribution.record.todayHint': 'فتح توزيع اليوم ({{day}})',
+  'operations.distribution.record.unsavedTitle': 'انتهى اليوم قبل «حفظ»',
+  'operations.distribution.record.unsaved':
+    'التغييرات غير المحفوظة: {{count}} — انتهى اليوم قبل «حفظ»، فلا يمكن حفظها الآن.',
   'operations.distribution.proposedCount': '{{count}} مقترحة لم تُحفظ',
   'operations.distribution.tooLarge':
     'محصنات هذا اليوم أكثر من {{max}} — أكثر مما يمكن عرضه مرة واحدة.',
@@ -27563,10 +27865,13 @@ const ar: Record<string, string> = {
   'operations.crew.unsaved': '{{count}} تغيير غير محفوظ',
   // تحميل الطاقم الثابت على التشغيلة
   'operations.crew.standing.toggle': 'تحميل الطاقم الثابت',
-  'operations.crew.standing.hint': 'يملأ المركبات الفارغة فقط. راجِع ثم احفظ.',
+  'operations.crew.standing.hint':
+    'يملأ المركبات الفارغة فقط: الطاقم، والاتجاه إن لم يكن للصف اتجاه. راجِع ثم احفظ.',
   'operations.crew.standing.none': 'لم يتم إعداد طاقم ثابت بعد',
   'operations.crew.standing.unavailable':
     '{{count}} طاقم ثابت ظلّ في القائمة — مركبته ليست في تشغيلة الأسطول اليوم',
+  'operations.crew.standing.areasLoading':
+    'جارٍ تحميل قائمة المناطق — يُقرأ بها كل اتجاه قبل تحميل الطاقم…',
   // ── الطاقم الثابت — لا نظير في النظام القديم، ولا تاريخ ──────────────────────────────────────
   'operations.standingCrew.title': 'الطاقم الثابت',
   'operations.standingCrew.subtitle':
@@ -27801,6 +28106,9 @@ const ar: Record<string, string> = {
     '{{name}} قائد فقط — أخرِجه من خانة الأخصائي في هذا الصف.',
   'operations.crewPlan.refused.slot': 'على هذا الصف من يجلس في خانة لا تناسبه.',
   'operations.crewPlan.standingWrongSlot': 'لم يُوضع من الطاقم الثابت من كانت خانته لا تناسبه',
+  'operations.crewPlan.standingDirectionLeft': 'لم يُنقل الاتجاه الثابت',
+  'operations.crewPlan.standingDirectionLeftWho':
+    '{{names}} — أطول من {{max}} حرفًا وليس أسماء مناطق. اكتبه على المركبة.',
   'operations.crewPlan.vanWrongSlot': 'لا تُعطى سيارة لصف عليه من يجلس في خانة لا تناسبه',
   'operations.crewPlan.vanWrongSlotWho': '{{names}} — أخرِجه أو انقله إلى خانة تناسبه أولًا.',
   'operations.crewPlan.card.attendance': 'الحضور',
@@ -27842,11 +28150,36 @@ const ar: Record<string, string> = {
   'operations.crewPlan.type.empty':
     'لا توجد أنواع مفعّلة — أضِفها من «أنواع التشغيل» في البيانات المرجعية.',
   'operations.crewPlan.refused.type': 'لم يعد هذا النوع مفعّلًا في البيانات المرجعية — اختر نوعًا آخر.',
-  'operations.crewPlan.refused.direction':
-    'ليست من المناطق المسجلة في البيانات المرجعية: {{parts}} — اختر الاتجاه من القائمة.',
-  'operations.crewPlan.direction.empty': 'لا يوجد اتجاه بهذا الاسم',
-  'operations.crewPlan.direction.unknown': 'ليس في قائمة الاتجاهات — اختر واحدًا منها',
+  'operations.crewPlan.direction.empty': 'اكتب الاتجاه',
+  'operations.crewPlan.direction.useTyped': 'استخدام «{{text}}» اتجاهًا',
+  'operations.crewPlan.direction.handTyped':
+    '«{{direction}}» مكتوب يدويًا وليس منطقة من القائمة: لا يقترح «توزيع المحصنات» محصنات حسب الاتجاه إلا لمنطقة يذكرها.',
+  'operations.crewPlan.direction.tooLong':
+    'طول الاتجاه المكتوب يدويًا {{count}}، والحد الأقصى {{max}} حرفًا — اختصره ليُحفَظ.',
   'operations.crewPlan.direction.clear': 'مسح الاتجاه',
+  'operations.crewPlan.direction.addToList': 'إضافة «{{text}}» إلى القائمة',
+  'operations.crewPlan.direction.addHint':
+    'تُضاف إلى «المناطق» في البيانات المرجعية فورًا، لا عند «حفظ»، ولا يحذفها «تراجع».',
+  'operations.crewPlan.direction.adding': 'جارٍ إضافة «{{text}}» إلى «المناطق»…',
+  'operations.crewPlan.direction.added': 'أُضيفت «{{area}}» إلى «المناطق»',
+  'operations.crewPlan.direction.addedBody':
+    'وُضعت اتجاهًا لهذا الصف. يعيد «تراجع» اتجاه الصف وحده، وتبقى المنطقة في القائمة. ويُكتب اسمها الإنجليزي لاحقًا في البيانات المرجعية.',
+  'operations.crewPlan.direction.addedNotPlaced':
+    'لم يتغيّر اتجاه الصف: تغيّر الصف أو اليوم أثناء الإضافة. اختر «{{area}}» من القائمة إن كانت لهذا الصف.',
+  'operations.crewPlan.direction.archived':
+    '«{{area}}» موجودة في «المناطق» لكنها موقوفة — فعّلها من البيانات المرجعية لتظهر هنا.',
+  'operations.crewPlan.direction.addRefused.duplicate':
+    'لم تُضَف «{{text}}»: في «المناطق» منطقة بهذا الاسم. اخترها من القائمة، أو استخدم النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.heldActive':
+    'لم تُضَف «{{text}}»: في «المناطق» منطقة «{{area}}» بهذا الاسم. اخترها من القائمة، أو استخدم النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.heldArchived':
+    'لم تُضَف «{{text}}»: في «المناطق» منطقة «{{area}}» بهذا الاسم لكنها موقوفة — فعّلها من البيانات المرجعية، أو استخدم النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.forbidden':
+    'لم تُضَف «{{text}}»: لا تملك صلاحية الإضافة إلى «المناطق». يمكنك استخدام النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.invalid':
+    'لم تُضَف «{{text}}»: لا تقبل «المناطق» هذا الاسم. يمكنك استخدام النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.failed':
+    'تعذّرت إضافة «{{text}}» الآن. أعِد المحاولة، أو استخدم النص لهذا الصف وحده.',
   'operations.crewPlan.time.open': 'اختيار التوقيت',
   'operations.crewPlan.time.hours': 'الساعة',
   'operations.crewPlan.time.minutes': 'الدقيقة',

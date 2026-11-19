@@ -97,6 +97,8 @@ export const PLAN_ICON = {
     'M7 7h.01',
     'M3 3h7.6a2 2 0 0 1 1.4.6l8.4 8.4a2 2 0 0 1 0 2.8l-5.6 5.6a2 2 0 0 1-2.8 0L3.6 12A2 2 0 0 1 3 10.6z',
   ],
+  // «استخدام «…» اتجاهًا» (Round 28) — a pen: the direction as the desk typed it.
+  pen: ['M4 20h4L19 9l-4-4L4 16z', 'M13.5 6.5l4 4'],
 } as const;
 
 /**

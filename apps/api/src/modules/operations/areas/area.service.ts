@@ -19,13 +19,16 @@ import { operationsAreaRepository } from './area.repository';
 import { type OperationsAreaDoc } from './area.model';
 import { containsText } from '../catalog-search';
 
-const entityRef = (id: string) => ({
+/** The audit trail's reference — exported for the branch sheet import (Round 29). */
+export const areaEntityRef = (id: string) => ({
   moduleId: 'operations',
   entityType: 'area',
   entityId: id,
 });
+const entityRef = areaEntityRef;
 
-const snapshot = (doc: OperationsAreaDoc) => ({
+/** What the audit diff compares — exported for the branch sheet import, as above. */
+export const areaSnapshot = (doc: OperationsAreaDoc) => ({
   name: doc.name,
   nameEn: doc.nameEn,
   governorate: doc.governorate,
@@ -38,7 +41,7 @@ class OperationsAreaService {
     await auditService.record({
       entityRef: entityRef(String(doc._id)),
       action: 'create',
-      changes: diffChanges({}, snapshot(doc)),
+      changes: diffChanges({}, areaSnapshot(doc)),
     });
     return doc;
   }
@@ -70,7 +73,7 @@ class OperationsAreaService {
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
-      changes: diffChanges(snapshot(before), snapshot(updated)),
+      changes: diffChanges(areaSnapshot(before), areaSnapshot(updated)),
     });
     return updated;
   }

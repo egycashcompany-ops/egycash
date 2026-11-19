@@ -20,6 +20,7 @@ import {
   handoverRequest,
   handoverShipments,
   isProposed,
+  isRecordDay,
   isStartedLeg,
   landingCaptain,
   loadFigures,
@@ -35,6 +36,8 @@ import {
   placementOf,
   proposeByDirection,
   readDistributionDate,
+  readDistributionDay,
+  recordPackaging,
   refusedShipmentId,
   reschedulesOnSave,
   sameDistributionDraft,
@@ -106,7 +109,7 @@ const placed = (
     ...over,
   });
 
-describe('the day the screen opens on', () => {
+describe('the day «تسليم المحصنات» opens on', () => {
   it('reads a real day from today on, else today (the server’s default)', () => {
     expect(readDistributionDate(null, TODAY)).toBeNull();
     expect(readDistributionDate('', TODAY)).toBeNull();
@@ -114,7 +117,10 @@ describe('the day the screen opens on', () => {
     expect(readDistributionDate('2026-11-20', TODAY)).toBe('2026-11-20');
   });
 
-  it('never a past day — the server refuses one (a past day’s vans have left)', () => {
+  // REWRITTEN in Round 30 — it was «never a past day — the server refuses one». The server reads a
+  // past day now (as its record, for «توزيع المحصنات»); the vault's screen still opens none: it hands
+  // over today's vans only, and a past day's have left.
+  it('never a past day on the vault’s screen — a past day’s vans have left', () => {
     expect(readDistributionDate('2026-11-11', TODAY)).toBeNull();
     expect(readDistributionDate('2025-12-31', TODAY)).toBeNull();
   });
@@ -123,6 +129,67 @@ describe('the day the screen opens on', () => {
     expect(readDistributionDate('2026-13-01', TODAY)).toBeNull();
     expect(readDistributionDate('2026-02-30', TODAY)).toBeNull();
     expect(readDistributionDate('tomorrow', TODAY)).toBeNull();
+  });
+});
+
+// Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى».
+describe('the day «توزيع المحصنات» opens on — a past one as its record (Round 30)', () => {
+  it('reads ANY real day — a past one too — else today (the server’s default)', () => {
+    expect(readDistributionDay(null)).toBeNull();
+    expect(readDistributionDay('')).toBeNull();
+    expect(readDistributionDay('2026-11-12')).toBe('2026-11-12');
+    expect(readDistributionDay('2026-11-20')).toBe('2026-11-20');
+    expect(readDistributionDay('2026-11-11')).toBe('2026-11-11');
+    expect(readDistributionDay('2025-12-31')).toBe('2025-12-31');
+  });
+
+  it('never a malformed one — an empty or broken `date=` is a 400', () => {
+    expect(readDistributionDay('2026-13-01')).toBeNull();
+    expect(readDistributionDay('2026-02-30')).toBeNull();
+    expect(readDistributionDay('yesterday')).toBeNull();
+  });
+
+  it('is a record exactly when the day is before today — today and every day after it are not', () => {
+    expect(isRecordDay('2026-11-11', TODAY)).toBe(true);
+    expect(isRecordDay('2025-12-31', TODAY)).toBe(true);
+    expect(isRecordDay(TODAY, TODAY)).toBe(false);
+    expect(isRecordDay('2026-11-13', TODAY)).toBe(false);
+  });
+
+  it('judges by EVERY today given — the read’s and the live one: midnight turns yesterday’s read into a record', () => {
+    // Read on the 11th as today; the live Cairo day is the 12th now.
+    expect(isRecordDay('2026-11-11', '2026-11-12', '2026-11-11')).toBe(true);
+    // A clock behind the server's: the server's today still makes it one.
+    expect(isRecordDay('2026-11-11', '2026-11-11', '2026-11-12')).toBe(true);
+    expect(isRecordDay('2026-11-12', '2026-11-12', '2026-11-12')).toBe(false);
+    // No day to judge by judges nothing.
+    expect(isRecordDay('2026-11-11')).toBe(false);
+    expect(isRecordDay('2026-11-11', '')).toBe(false);
+  });
+
+  it('reads a record’s packages from the read itself — none carried, the vault’s holdings as before', () => {
+    expect(recordPackaging(null)).toBeNull();
+    expect(recordPackaging(undefined)).toBeNull();
+    const counted = recordPackaging([
+      { shipmentId: 'a', bags: 2, cartons: 0, boxes: 1 },
+      { shipmentId: 'b', bags: 0, cartons: 3, boxes: 0 },
+    ]);
+    expect(counted?.get('a')).toEqual({ bags: 2, cartons: 0, boxes: 1 });
+    expect(counted?.get('c')).toBeUndefined();
+    expect(loadPackages([row('a'), row('b'), row('c')], (id) => counted?.get(id))).toEqual({
+      bags: 2,
+      cartons: 3,
+      boxes: 1,
+    });
+    expect(recordPackaging([])?.size).toBe(0);
+  });
+
+  it('opens no proposal for a reader who may not save — the record’s case (`canEdit` off)', () => {
+    const rows = [row('a', { directionCrewAssignmentIds: [V1.crewAssignmentId] })];
+    expect(openingDistributionHistory(rows, [V1], true).now.size).toBe(1);
+    const none = openingDistributionHistory(rows, [V1], false);
+    expect(none.now.size).toBe(0);
+    expect(none.past).toEqual([]);
   });
 });
 

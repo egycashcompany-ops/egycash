@@ -1882,6 +1882,97 @@ its entry here in the same PR.
         (`operations-crew-plan.spec.ts`); (web) the load writes what the save takes, judges the text
         it writes, names the directions it left behind, `hidesAnyOf`, the page's wiring, and the
         three new strings in both catalogs.
+  - Round 29 — «استيراد فروع من شيت» on «البيانات المرجعية» → «الفروع». The owner, with four banks'
+    branch lists: «عاوز اضيف دول فى البيانات المرجعية تبع (الفروع والبنوك والمناطق) ملحوظه هتلاقى area
+    دى ضيفها ل منطقة العمليات و منطقة الحسابات تمام ؟» and «وعاوز جمب اضافة فرع فوق يقدر يضيف شيت ويقارن
+    زى بتاع كروت الشحن كدا».
+    - Beside «إضافة فرع» (for `operationsCatalog.manage` only — no new permission): «استيراد من شيت».
+      «اختر البنك» (the sheet does not name it), «ارفع شيت الفروع» (.xlsx, ≤ 10 MB, ≤ 5 000 rows),
+      «مقارنة بالفروع» — the fuel-card sheet's flow and look. Nothing is written until «تأكيد
+      الاستيراد».
+    - The reader (`bank-branches/import/read-branch-sheet.ts`): the first VISIBLE tab, never inflated
+      whole (the fuel sheet's `one-sheet-zip`, streamed in slices); the header is the first of ten
+      rows naming «اسم الفرع» / «الفرع» / «Branches» / «Branch», and each column is bound by its label —
+      «رقم الفرع» / «الكود» / «كود الفرع» / «Code», «المنطقة» / «المنطقة (عربي)», «Area» / «Area
+      (English)» / «المنطقة (إنجليزي)», «عنوان الفرع» / «العنوان» / «Address»; any other column («م»,
+      «التكلفة») is never read. A merged area is every covered row's; blank rows and rows of a serial
+      alone are skipped; a code is the text the cell shows («084» stays «084»); names are stored
+      tidied (spaces, tatweel «ـ»); an area without a letter («ــــ») is none; a name cell that holds a
+      date is flagged.
+    - The owner's decisions (`plan-branch-import.ts`): the sheet's area goes into both «منطقة
+      العمليات» and «منطقة الحسابات»; an area «المناطق» lacks is created (Arabic in the name, English
+      in `nameEn` — «فى خانة العربى اكتبها عربي وفى خانة الانجليزى اكتبها انجليزى»), one it holds (its
+      Arabic name folded, or its English name without case) reused in its own spelling and its empty
+      English name filled; an area in Latin letters only stands for both names. A branch the bank
+      holds by name takes the sheet's code and area («حدّث الكود والمنطقة»); an empty cell never wipes;
+      an address only where the branch has none. «ضيف رقم بعد الكود»: the first branch of a code keeps
+      it, each further one «-2», «-3», … past every suffix the bank uses (a held branch keeps its own;
+      «0» likewise). Problems — no name, a date for a name, a name twice, a name two held branches
+      share, a new branch with no code — are listed and never written.
+    - The comparison: the five counts («جديد», «تحديث», «بدون تغيير», «كود معدَّل», «مشكلة»), the new
+      areas (Arabic | English) and the English names filled, every row (old → new code and area, the
+      sheet's code → the code stored, why a problem), filters and a search. «تأكيد الاستيراد» posts the
+      SAME file with the comparison's `fileSha256` and `planDigest`: the server plans again and refuses
+      (409 `OPERATIONS_BRANCH_IMPORT_CHANGED`, nothing written, «مقارنة من جديد») unless it is the plan
+      shown; then ONE transaction — the areas, the edits (a code two held branches swap passes
+      through a code of its own), the new branches — each audited as the catalog's add and edit. The
+      branches and areas lists are read again. The same sheet compared again is all «بدون تغيير».
+    - Checked on the real stack with the owner's four ready sheets (kept local), a few held branches
+      and areas seeded to overlap them: بنك مصر 672 rows (669 new, the seeded one updated, 74 codes
+      suffixed — the 18 «0» as 0 … 0-18 — 30 areas created, 1 English name filled, 2 rows whose name
+      is a date), CIB 201 (every new area with both names), البنك الأهلي 629 (no area, 1 suffix), بنك
+      القاهرة 230 (211 addresses, 8 suffixes); each compared again: nothing to write.
+    - Tests: (contracts) the labels, tidying, suffixes, the apply's hashes; (api) the reader (labels in
+      any order, a title row, merged areas, Latin areas, placeholder areas, leading zeros, tatweel,
+      dates, blank and serial rows, the visible tab, the caps), the planner (new / update /
+      unchanged, suffixes against the sheet and the bank, freed and swapped codes, areas reused /
+      created / filled, the problems, a second import plans nothing) and the
+      `operations-branch-import.spec.ts` integration suite (the grant, nothing written by a compare,
+      another file and a moved plan refused, one transaction, audits, a re-import, a swap); (web) the
+      button's grant, the steps, the comparison drawn, the filters, the refusals, the keys.
+  - Round 30 — «توزيع المحصنات» على يوم مضى: سجل للعرض فقط. On the screen's top row («يوم التسليم»,
+    the figures, «توزيع تلقائي», «تراجع», «حفظ (0)»), the owner: «عاوز هنا يقدر يجيب اليوم اللى قبله
+    ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى».
+    - «يوم التسليم» takes a past day (it had a floor at today). Today stays the default and every
+      later day is the plan, as before. «تسليم المحصنات» keeps its floor and its today-only «تسليم».
+    - The read (`GET /operations/secured/distribution?date=`) answered a past day with 422
+      `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`; it now answers it as that day's RECORD (`past: true`):
+      the day's saved «محصنة» crew rows (vans, captains, crew, direction, counts — the rule of a day to
+      come), every secured shipment due on the day WHATEVER its status now (handed over, delivered,
+      still in the vault — then «متأخرة» — or never received), and every one whose live delivery leg
+      rides one of the day's crew rows; each at its current stage, on the van its live leg rides or on
+      none. A record proposes nothing. Its cartons, bags and boxes are the vault's counts at receipt,
+      held or handed over since (`recordPackages`, to a reader of the vault only, its packaging read's
+      grant) — read from the vault's holdings, a van that went out would count 0. What it cannot
+      show is in the contract (`past`): a shipment taken off its van, or moved to another day, since;
+      and the overdue ones that waited in the vault that day without a van (which shipments were
+      overdue on a past day is not kept). The reads of today and of later days are unchanged.
+    - The save still refuses a past day (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, `MIN_DATE` =
+      today, before any shipment is looked at): the record is read only on the server whatever a
+      client sends. «تسليم» on a past day's van stays refused (`OPERATIONS_DISPATCH_NOT_TODAY`).
+      (Verifier) A save of TODAY could still take an overdue محصنة off the PAST day's van its leg
+      was left on — a hand-made request, the screen never sends it — and so change that day's
+      record; a take-off now reaches only a van of the day saved (422
+      `OPERATIONS_CREW_DAY_MISMATCH`, naming the shipment). Placing such a محصنة on one of today's
+      vans still moves it, re-dated: the overdue flow.
+    - On the screen a past day — by the URL's day before the read is in, by the server's `past`, or by
+      midnight passing over yesterday's read (`isRecordDay`) — is drawn as for a reader without the
+      edit grant: no drag, no «نقل إلى…», no «توزيع تلقائي», no «تراجع» (nor Ctrl+Z), no «حفظ», no
+      proposal, no unsaved draft. In the hint's place a calm notice, «سجل يوم … — للعرض فقط، لا يمكن
+      التعديل», and what it shows; where the acts stood, «سجل · للعرض فقط» and «العودة إلى اليوم». The
+      filters and the hover cards still work. No new permission.
+    - Tests rewritten to the new rule: (api) «opens on TODAY in Cairo, and refuses a day that has
+      passed» → «opens on TODAY in Cairo — and a day that has passed as its record, not a refusal»;
+      (web) «opens on the day with no day before today, and the drag hint» → «opens on the day — with
+      no floor: a past day can be picked, as its record — and the drag hint»; «never a past day — the
+      server refuses one» → «never a past day on the vault’s screen — a past day’s vans have left».
+      New: the Round 30 integration suite (the record's vans and shipments at every status, a leg left
+      on its van under a moved date, no proposal, its packages — the handed-over one's too — to the
+      vault's readers only, every reader, every save of the day refused with nothing written,
+      «تسليم» refused, the live day untouched, an unplanned past day); the page's record (the notice,
+      no write control, no drag, menu or proposal, the loads, marks and packages, before the read and
+      past midnight, a reader without the grant, the one gate); `readDistributionDay`, `isRecordDay`,
+      `recordPackaging`; the wire.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

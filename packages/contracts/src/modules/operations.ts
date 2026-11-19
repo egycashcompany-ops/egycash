@@ -3332,10 +3332,11 @@ export const OPERATIONS_DISTRIBUTION_MAX_CHANGES = 500;
  * `GET /operations/secured/distribution?date=` — `operationsShipment.view` OR `operationsVault.view`
  * (Operations distributes, the vault hands over: one read for both screens).
  *
- *   · `date` — OPTIONAL, a whole day; left out → TODAY on the Cairo calendar. A day before today is
- *     refused with 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` (detail: `field` 'date', `code`
- *     'MIN_DATE', `message` = today as 'YYYY-MM-DD') — the boards' «no past day» rule: a past day's
- *     vans have left. An empty `date=` is a 400 (omit the key).
+ *   · `date` — OPTIONAL, a whole day; left out → TODAY on the Cairo calendar. An empty `date=` is a
+ *     400 (omit the key). Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه
+ *     او يعمل حاجه ك سجل يعنى»: a day BEFORE today is no longer refused — it answers as that day's
+ *     RECORD (`past` true, see `OperationsSecuredDistributionDto`), read only: the save refuses it
+ *     (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`).
  */
 export const OperationsSecuredDistributionQuerySchema = z
   .object({ date: z.coerce.date().optional() })
@@ -3425,11 +3426,51 @@ export interface OperationsSecuredDistributionCrewDto extends OperationsDayBoard
   looseNumber: number | null;
 }
 
+/** Round 30 — one shipment's packages as the vault counted them at its receipt (`recordPackages`). */
+export interface OperationsSecuredDistributionPackagesDto {
+  shipmentId: string;
+  bags: number;
+  cartons: number;
+  boxes: number;
+}
+
 export interface OperationsSecuredDistributionDto {
   /** The day distributed (its UTC midnight, ISO) — today in Cairo when none was asked for. */
   date: string;
-  /** TODAY on the Cairo calendar (UTC midnight, ISO) — the earliest day the screen may pick. */
+  /**
+   * TODAY on the Cairo calendar (UTC midnight, ISO) — the earliest day that can be distributed
+   * (Round 30: an earlier one is read as its record, `past`).
+   */
   today: string;
+  /**
+   * Round 30 — `date` is BEFORE `today`: the answer is that day's RECORD, READ ONLY. Nothing of it
+   * can be written — the save refuses the day (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, before any
+   * shipment), and the screen offers no drag, «نقل إلى…», «توزيع تلقائي», «تراجع» or «حفظ».
+   *
+   * WHAT A RECORD SHOWS — what is STORED NOW about the day, not a photograph taken on it:
+   *   · `crews`: the day's saved crew rows, by the same rule as a day to come (the «محصنة» rows, and
+   *     a row of another type that carries one of `shipments`), as they were last saved;
+   *   · `shipments`: every secured shipment (not deleted) DUE on the day, WHATEVER its status now —
+   *     handed over, delivered, still in the vault (then `overdue`), never received — and every one
+   *     whose LIVE delivery leg rides one of the day's crew rows; each at its CURRENT stage, on the
+   *     van its live leg rides (`placedCrewAssignmentId`), or on none;
+   *   · every `directionCrewAssignmentIds` is EMPTY: a record proposes nothing.
+   * WHAT IT CANNOT SHOW: a shipment taken off its van since (its leg retired — the story is in its
+   * «السجل»), or moved to another day since (its delivery date, or its leg, now another day's — it is
+   * on that day's screen); and the OVERDUE ones that waited in the vault that day without being placed
+   * on one of its vans (which shipments were overdue on a past day is not kept).
+   * False on today and on every day after it.
+   */
+  past: boolean;
+  /**
+   * Round 30 — on a RECORD (`past`), for a reader of the vault (`operationsVault.view`, the grant
+   * the screen's packaging read already rides): each listed shipment's packages as the vault counted
+   * them at its receipt — held now OR SINCE HANDED OVER (the vault's holdings no longer carry what
+   * left on the day's vans). A shipment the vault never took in (or whose receipt was cancelled) is
+   * absent. NULL on today and every later day (the screen reads the vault's holdings, as before) and
+   * for a reader without the vault's grant.
+   */
+  recordPackages: OperationsSecuredDistributionPackagesDto[] | null;
   /**
    * Whether the reader holds `operationsCrew.view` — the crew plan's grant. Without it every van is
    * still listed (the vans ARE this screen: number, captains, direction, time — what every board
@@ -3519,6 +3560,9 @@ export type SecuredDistributionChange = z.infer<typeof SecuredDistributionChange
  *     this day's;
  *   · the version: 409 `STALE_DOCUMENT` unless `version` is its delivery leg's current version
  *     (null ⇔ no leg);
+ *   · a take-off (`crewAssignmentId` null): 422 `OPERATIONS_CREW_DAY_MISMATCH` when its leg rides a
+ *     crew row of ANOTHER day — an overdue one's leg left on a past day's van is that day's record
+ *     (Round 30), which no save changes;
  *   · the leg: 409 `OPERATIONS_DISTRIBUTION_LEG_STARTED` when the captain has started it in the app
  *     (its `executionStatus` is not `pending`) and the change would move or clear it;
  *   · the van: 404 when the crew row does not exist (or was removed); 422

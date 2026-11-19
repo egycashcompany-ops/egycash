@@ -5,8 +5,8 @@
 // احطها على العربيه او المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى ولما يحفظ …».
 //
 // WHAT IT SHOWS — one read (`GET /operations/secured/distribution?date=`):
-//   · THE DAY: today by default, any later day by the picker, never a past one (a past day's vans
-//     have left — the boards' rule; a stale `?date=` opens on today);
+//   · THE DAY: today by default, any later day by the picker — and (Round 30) any PAST one, opened
+//     as that day's RECORD, read only (below);
 //   · THE VANS, on the RIGHT: every crew row of the day's crew board, as a card — number, planned
 //     time, direction, captain(s), both specialists (by the crew plan's grant: without it the slots
 //     are not drawn, rather than drawn empty), what it carries and its load;
@@ -78,6 +78,16 @@
 //   · «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل»: the van card redrawn — the
 //     captain in a frame of his own, the counts in a row of their own (`VanCard`).
 //
+// ROUND 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى»:
+// «يوم التسليم» takes a past day. It opens as that day's RECORD (`isRecordDay` — before the read's
+// today or the live Cairo day; the server says so too, `past`): what rode its vans as it is saved
+// now, the vans with their crews, direction and counts, the ones on no van. NOTHING can change it —
+// no drag, no «نقل إلى…», no «توزيع تلقائي», no «تراجع» (nor Ctrl+Z), no «حفظ», no proposal: the
+// screen is drawn exactly as for a reader without the edit grant, and the server refuses a past
+// day's save whatever is sent (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`). A calm notice says the
+// day is a record (`RecordNotice`), and «العودة إلى اليوم» stands where the acts were. The filters
+// and the hover cards still work — reading is not changing.
+//
 // WHO. The screen is `operationsShipment.view`'s; moving and saving are `operationsShipment.edit`'s
 // (assign-delivery's grant — distributing IS assigning the delivery leg, for many at once). A reader
 // without it sees the day's plan as it stands, with nothing to drag.
@@ -137,6 +147,7 @@ import {
   FilterAreaSelect,
   FilterTextBox,
   MoveMenu,
+  RecordNotice,
   ShipmentCardBody,
   ShipmentChip,
   TOP_FIGURES,
@@ -157,6 +168,7 @@ import {
   distributionColumns,
   distributionSaveBody,
   isProposed,
+  isRecordDay,
   isStartedLeg,
   moveToVan,
   openingDistributionHistory,
@@ -165,7 +177,8 @@ import {
   placeShipment,
   placementOf,
   proposeByDirection,
-  readDistributionDate,
+  readDistributionDay,
+  recordPackaging,
   refusedShipmentId,
   reschedulesOnSave,
   sameDistributionDraft,
@@ -235,8 +248,9 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   const today = useCairoToday();
-  const date = readDistributionDate(sp.get('date'), today);
-  const canEdit = can('operationsShipment.edit');
+  // Round 30 — any real day, a past one too: it opens as its record.
+  const date = readDistributionDay(sp.get('date'));
+  const mayEdit = can('operationsShipment.edit');
   const canReadVault = can('operationsVault.view');
 
   const board = useOperationsSecuredDistribution(date);
@@ -258,13 +272,21 @@ export const SecuredDistributionPage = (): JSX.Element => {
   // The server's day — the one the vans and the shipments are of.
   const day = data?.date.slice(0, 10) ?? date ?? today;
   const minDay = data?.today.slice(0, 10) ?? today;
+  // Round 30 — a past day is its RECORD: read only, for everyone. Before the read is in (the URL's
+  // day judged against the live Cairo day), on the server's word (`past`), and on a screen left open
+  // past midnight (the read's day against the live one).
+  const isRecord = data?.past === true || isRecordDay(day, today, minDay);
+  // Every act below asks this one: who may distribute, on a day that can still be distributed.
+  const canEdit = mayEdit && !isRecord;
 
   // The person's work between the read and «حفظ» — with its history, so «تراجع» takes back one
   // operation a press (Round 24).
   const [history, setHistory] = useState<UndoHistory<DistributionDraft>>(() =>
     startHistory(EMPTY_DRAFT),
   );
-  const draft = history.now;
+  // A record shows what the SERVER holds, never a draft: moves left unsaved when the day turned
+  // into one (the screen open past midnight) are not drawn, not counted and not sent.
+  const draft = isRecord ? EMPTY_DRAFT : history.now;
   /** ONE operation on the draft; one that changed nothing is not recorded. */
   const applyDraft = (
     what: UndoWhat,
@@ -305,14 +327,23 @@ export const SecuredDistributionPage = (): JSX.Element => {
   const setDay = (value: string): void => {
     guard.confirmLeave(() => {
       const next = new URLSearchParams(sp);
-      // Emptied (or a past day typed in), the screen goes back to today.
-      if (value === '' || value <= minDay) next.delete('date');
+      // Emptied, or today, the screen is on its default — today. Round 30: any other day, a past
+      // one too (its record), is asked for by name.
+      if (value === '' || value === today) next.delete('date');
       else next.set('date', value);
       setSp(next);
       setHistory(startHistory(EMPTY_DRAFT));
       setSeeded(null);
       setRefused(null);
     });
+  };
+  /**
+   * Round 30 — «العودة إلى اليوم»: off a record, onto today. A record reached by midnight passing (no
+   * `?date=`) has no other day to leave — the default read is read again, and answers today.
+   */
+  const backToToday = (): void => {
+    if (sp.get('date') === null) void board.refetch();
+    else setDay('');
   };
 
   const bankOf = (id: string) => banks.data?.items.find((bank) => bank.id === id);
@@ -324,11 +355,15 @@ export const SecuredDistributionPage = (): JSX.Element => {
   };
   const currencyOf = (id: string): OperationsCurrencyDto | undefined =>
     currencies.data?.items.find((currency) => currency.id === id);
-  const packagingOf = (id: string) => packaging.data?.get(id);
+  // Round 30 — a record's packages are the read's own (held, or handed over since): the vault's
+  // holdings no longer carry what left on the day's vans. Every other day reads the holdings.
+  const recordCounts = isRecord ? recordPackaging(data?.recordPackages) : null;
+  const packagingOf = (id: string) =>
+    recordCounts === null ? packaging.data?.get(id) : recordCounts.get(id);
   // Round 25 critic — a 0 is written only once the vault's counts are in: while the read is out, or
   // after it failed, the van says «…» / «—» and the chip's card does not call a vault shipment «not in
   // the vault».
-  const packagesRead = packagingRead(canReadVault, packaging);
+  const packagesRead = recordCounts === null ? packagingRead(canReadVault, packaging) : 'ready';
 
   const columns = distributionColumns(rows, vans, draft);
   // Round 28 critic — the areas the day's محصنات name, so a van's direction that IS one of them is
@@ -1117,12 +1152,8 @@ export const SecuredDistributionPage = (): JSX.Element => {
         <TopRow
           data-distribution-toolbar="true"
           day={
-            <DayBox
-              label={t('operations.distribution.day')}
-              value={day}
-              min={minDay}
-              onChange={setDay}
-            />
+            // Round 30 — no floor: a past day opens as its record.
+            <DayBox label={t('operations.distribution.day')} value={day} onChange={setDay} />
           }
           figures={
             <div role="status" data-distribution-figures="true" className={TOP_FIGURES}>
@@ -1175,7 +1206,34 @@ export const SecuredDistributionPage = (): JSX.Element => {
             </div>
           }
           end={
-            canEdit ? (
+            isRecord ? (
+              // Round 30 — a record has no acts: where they stand, the day says it is one, and the
+              // way back to today (a move between days, not a change — for every reader).
+              <span
+                data-distribution-record-acts="true"
+                className="flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:justify-end"
+              >
+                <span
+                  data-distribution-record-mark="true"
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-black text-sky-800 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200"
+                >
+                  <BoardIcon d={[...PATH.lock]} className="h-3.5 w-3.5" />
+                  {t('operations.distribution.record.mark')}
+                </span>
+                <button
+                  type="button"
+                  data-distribution-today="true"
+                  onClick={backToToday}
+                  title={t('operations.distribution.record.todayHint', {
+                    day: dayText(`${today}T00:00:00.000Z`),
+                  })}
+                  className={BRAND_BUTTON}
+                >
+                  <BoardIcon d={[...SHIPMENT_PATH.calendar]} className="h-3.5 w-3.5" />
+                  {t('operations.distribution.record.today')}
+                </button>
+              </span>
+            ) : canEdit ? (
               <span
                 data-distribution-acts="true"
                 className="flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:justify-end"
@@ -1237,29 +1295,39 @@ export const SecuredDistributionPage = (): JSX.Element => {
         />
 
         {/* What the marks on the cards mean — a slim line under the top row, and the proposals not
-            saved yet at its end. */}
-        <DayNote
-          data-distribution-bar="true"
-          end={
-            canEdit && proposedCount > 0 ? (
-              <CardMark tone="proposed" data-proposed-count={String(proposedCount)}>
-                {t('operations.distribution.proposedCount', {
-                  count: countText(proposedCount, locale),
-                })}
-              </CardMark>
-            ) : undefined
-          }
-        >
-          <BoardIcon
-            d={[...SHIPMENT_PATH.info]}
-            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500"
+            saved yet at its end. Round 30 — on a past day, in its place, the record's notice. */}
+        {isRecord ? (
+          <RecordNotice
+            data-distribution-record={day}
+            title={t('operations.distribution.record.title', {
+              day: dayText(`${day}T00:00:00.000Z`),
+            })}
+            body={t('operations.distribution.record.body')}
           />
-          <p className="min-w-0 text-xs font-bold leading-5 text-slate-500 dark:text-slate-400">
-            {canEdit
-              ? t('operations.distribution.dragHint')
-              : t('operations.distribution.viewOnly')}
-          </p>
-        </DayNote>
+        ) : (
+          <DayNote
+            data-distribution-bar="true"
+            end={
+              canEdit && proposedCount > 0 ? (
+                <CardMark tone="proposed" data-proposed-count={String(proposedCount)}>
+                  {t('operations.distribution.proposedCount', {
+                    count: countText(proposedCount, locale),
+                  })}
+                </CardMark>
+              ) : undefined
+            }
+          >
+            <BoardIcon
+              d={[...SHIPMENT_PATH.info]}
+              className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500"
+            />
+            <p className="min-w-0 text-xs font-bold leading-5 text-slate-500 dark:text-slate-400">
+              {canEdit
+                ? t('operations.distribution.dragHint')
+                : t('operations.distribution.viewOnly')}
+            </p>
+          </DayNote>
+        )}
 
         {tooLarge ? (
           <BoardRefusal>

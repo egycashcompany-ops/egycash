@@ -76,6 +76,17 @@ describe('the read', () => {
     );
     expect(OperationsSecuredDistributionQuerySchema.safeParse({}).success).toBe(true);
   });
+
+  it('asks for a PAST day by its date too — the server answers it as its record (Round 30)', async () => {
+    vi.mocked(get).mockClear();
+    await getSecuredDistribution('2026-11-01');
+    expect(vi.mocked(get).mock.calls.map(([path]) => path)).toEqual([
+      '/operations/secured/distribution?date=2026-11-01',
+    ]);
+    expect(OperationsSecuredDistributionQuerySchema.safeParse({ date: '2026-11-01' }).success).toBe(
+      true,
+    );
+  });
 });
 
 describe('«حفظ» — one request, every change', () => {

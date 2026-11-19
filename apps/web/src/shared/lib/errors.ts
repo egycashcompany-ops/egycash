@@ -79,7 +79,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // (the screen marks its card). These reach a desk whose screen was read before a colleague, the
     // vault or the captain acted — or that was left open past midnight.
     OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
-      'That day has passed — its vans have left. Distribute today or a later day.',
+      'That day has passed — its vans have left, and its record is view only. Distribute today or a later day.',
     OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
       'A secured shipment on this screen has already left the vault — it can no longer be placed on a van.',
     OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
@@ -177,7 +177,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_CREW_CAPTAIN_MISMATCH: 'لم يعد هذا القائد ضمن طاقم المركبة المختارة.',
     OPERATIONS_DELIVERY_LEG_REQUIRED: 'إحدى الشحنات بلا طاقم تسليم بعد — عيّن طاقمها قبل صرفها.',
     OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
-      'هذا اليوم قد مضى وغادرت سياراته — وزّع على اليوم أو على يوم بعده.',
+      'هذا اليوم قد مضى وغادرت سياراته، وسجله للعرض فقط — وزّع على اليوم أو على يوم بعده.',
     OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
       'إحدى المحصنات في هذه الشاشة غادرت الخزينة بالفعل، فلم يعد وضعها على سيارة ممكنًا.',
     OPERATIONS_DISTRIBUTION_NOT_ON_DAY:

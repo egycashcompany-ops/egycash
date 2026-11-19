@@ -46,6 +46,7 @@ import {
   VAN_LOOK,
   VAN_STATE_STRIPE,
 } from '../components/distribution-look';
+import { dayText } from '../components/SecuredDistributionParts';
 import { SecuredDistributionPage } from './SecuredDistributionPage';
 import { VaultHandoverPage } from './VaultHandoverPage';
 
@@ -233,6 +234,8 @@ const answer = (
 ): OperationsSecuredDistributionDto => ({
   date: `${TODAY}T00:00:00.000Z`,
   today: `${TODAY}T00:00:00.000Z`,
+  past: false,
+  recordPackages: null,
   crewPlanVisible: true,
   crews: VANS,
   shipments: ROWS,
@@ -362,6 +365,13 @@ const cardOf = (html: string, id: string): string => {
   return html.slice(html.lastIndexOf('<div', start), next === -1 ? undefined : next);
 };
 
+/** The opening tag of the `tag` element carrying `attr` (Round 30). */
+const openingTag = (html: string, attr: string, tag = 'input'): string => {
+  const at = html.indexOf(attr);
+  expect(at, attr).toBeGreaterThan(-1);
+  return html.slice(html.lastIndexOf(`<${tag}`, at), html.indexOf('>', at));
+};
+
 describe('«توزيع المحصنات» — the desk', () => {
   const html = render({
     path: '/operations/secured/distribution',
@@ -478,13 +488,18 @@ describe('«توزيع المحصنات» — the desk', () => {
     expect(v101).toContain('data-van-packages="unknown"');
   });
 
-  it('opens on the day with no day before today, and the drag hint', () => {
-    expect(html).toMatch(
-      new RegExp(
-        `type="date"[^>]*value="${TODAY}"[^>]*min="${TODAY}"|min="${TODAY}"[^>]*value="${TODAY}"`,
-      ),
-    );
+  // REWRITTEN in Round 30 — it was «opens on the day with no day before today» (`min` = today on
+  // the day box). The owner: «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل
+  // حاجه ك سجل يعنى» — the box has no floor now: a past day opens as its record (the suite below).
+  it('opens on the day — with no floor: a past day can be picked, as its record — and the drag hint', () => {
+    const box = openingTag(html, 'data-distribution-day="true"');
+    expect(box).toContain(`value="${TODAY}"`);
+    expect(box).not.toContain('min=');
     expect(html).toContain(ar('operations.distribution.dragHint'));
+    // Today is no record: its acts are there, its notice is not.
+    expect(html).toContain('data-distribution-acts="true"');
+    expect(html).not.toContain('data-distribution-record');
+    expect(html).not.toContain('data-distribution-today');
   });
 });
 
@@ -553,6 +568,168 @@ describe('«توزيع المحصنات» — the day’s edges', () => {
     expect(html).toMatch(
       /data-distribution-save="0"[^>]*disabled=""|disabled=""[^>]*data-distribution-save="0"/,
     );
+  });
+});
+
+// ── Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى» ──
+describe('«توزيع المحصنات» — a PAST day is its record, read only (Round 30)', () => {
+  const PATH_DIST = '/operations/secured/distribution' as const;
+  const YESTERDAY = new Date(Date.parse(`${TODAY}T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  // The read as the server answers a past day — with a direction id left on a row all the same, so
+  // the screen is seen to propose NOTHING whatever reaches it.
+  const recordOf = (over: Partial<OperationsSecuredDistributionDto> = {}) =>
+    answer({ date: `${YESTERDAY}T00:00:00.000Z`, past: true, ...over });
+  const html = render({ path: PATH_DIST, permissions: DESK, data: recordOf(), date: YESTERDAY });
+  const WRITES = [
+    'data-distribution-acts',
+    'data-distribution-auto',
+    'data-distribution-discard',
+    'data-distribution-save',
+    'data-proposed-count',
+  ];
+
+  it('opens the past day in «يوم التسليم» and says it is a record — view only, it cannot be changed', () => {
+    expect(openingTag(html, 'data-distribution-day="true"')).toContain(`value="${YESTERDAY}"`);
+    expect(html).toContain(`data-distribution-record="${YESTERDAY}"`);
+    const title = ar('operations.distribution.record.title', {
+      day: dayText(`${YESTERDAY}T00:00:00.000Z`),
+    });
+    expect(title).toContain('للعرض فقط، لا يمكن التعديل');
+    expect(title).toContain(YESTERDAY);
+    expect(html).toContain(title);
+    expect(html).toContain(ar('operations.distribution.record.body'));
+    expect(translate('en', 'operations.distribution.record.title', { day: YESTERDAY })).toContain(
+      'view only',
+    );
+    // Not the hint of a day that can be distributed, nor the grant's words.
+    expect(html).not.toContain(ar('operations.distribution.dragHint'));
+    expect(html).not.toContain(ar('operations.distribution.viewOnly'));
+  });
+
+  it('offers no write — no «توزيع تلقائي», «تراجع» or «حفظ» — and the way back to today where they stood', () => {
+    for (const write of WRITES) expect(html, write).not.toContain(write);
+    expect(html).toContain('data-distribution-record-mark="true"');
+    expect(html).toContain(ar('operations.distribution.record.mark'));
+    const back = openingTag(html, 'data-distribution-today="true"', 'button');
+    expect(back).toContain('type="button"');
+    expect(back).toContain(
+      `title="${ar('operations.distribution.record.todayHint', { day: dayText(`${TODAY}T00:00:00.000Z`) })}"`,
+    );
+    expect(html).toContain(`${ar('operations.distribution.record.today')}</button>`);
+  });
+
+  it('moves nothing — no drag, no «نقل إلى…» (the keyboard’s way and the phone’s), no proposal applied', () => {
+    expect(html).not.toContain('draggable="true"');
+    expect(html).not.toContain('data-move-open');
+    expect(html).not.toContain('data-shipment-tone="proposed"');
+    expect(html).not.toContain('data-shipment-tone="moved"');
+    expect(html).not.toContain('data-mark="reschedule"');
+    // The one whose direction names van 101 stays where the record has it — on no van.
+    expect(leftOf(html)).toContain('data-distribution-shipment="s-maadi"');
+    expect(vanOf(html, 'cr-101')).not.toContain('data-distribution-shipment="s-maadi"');
+    // No van invites a drop.
+    expect(html).not.toContain(ar('operations.distribution.dropHere'));
+    expect(html).not.toContain('data-drop-armed');
+    expect(html).not.toContain(ar('operations.distribution.dropBack'));
+  });
+
+  it('shows the day as it is saved — the vans and their loads, the marks — and keeps the filters', () => {
+    expect(vanOf(html, 'cr-101')).toContain('data-distribution-shipment="s-captain"');
+    expect(vanOf(html, 'cr-104')).toContain('data-distribution-shipment="s-104"');
+    expect(vanOf(html, 'cr-112')).toContain('data-distribution-shipment="s-started"');
+    expect(cardOf(html, 's-late')).toContain('data-mark="overdue"');
+    expect(cardOf(html, 's-started')).toContain('data-mark="started"');
+    expect(cardOf(html, 's-104')).toContain('data-mark="captain"');
+    // Every van of the day, with its direction; the figures read the record.
+    for (const v of VANS) expect(html).toContain(`data-distribution-van="${v.crewAssignmentId}"`);
+    expect(html).toContain('data-van-direction="مدينة نصر"');
+    expect(html).toContain('data-figure="unplaced"');
+    // Reading is not changing: both filter bars are there.
+    expect(html).toContain('data-filter-bar="vans"');
+    expect(html).toContain('data-filter-bar="unplaced"');
+    // A van that would have said «اسحب المحصنات إلى هنا» says it holds nothing.
+    const empty = render({
+      path: PATH_DIST,
+      permissions: DESK,
+      data: recordOf({ shipments: [] }),
+      date: YESTERDAY,
+    });
+    expect(vanOf(empty, 'cr-101')).toContain(ar('operations.distribution.emptyVan'));
+  });
+
+  it('counts a record’s packages from the read — what went out on a van still counts, not the vault’s holdings', () => {
+    const vaultDesk = [...DESK, 'operationsVault.view'];
+    const counted = render({
+      path: PATH_DIST,
+      permissions: vaultDesk,
+      data: recordOf({
+        recordPackages: [{ shipmentId: 's-captain', bags: 3, cartons: 1, boxes: 2 }],
+      }),
+      date: YESTERDAY,
+    });
+    // 101 carries «s-captain» on the record (handed over since, so the holdings know nothing of it):
+    // its counts are the read's. The holdings' «s-maadi» (on no van) adds nothing to it.
+    expect(vanOf(counted, 'cr-101')).toContain('data-van-packages="1/3/2"');
+    // A reader without the vault's grant has no packages, record or not.
+    expect(vanOf(html, 'cr-101')).toContain('data-van-packages="unknown"');
+  });
+
+  it('is a record before the server has answered (the URL’s day), and on yesterday’s read left open past midnight', () => {
+    const loading = render({ path: PATH_DIST, permissions: DESK, data: null, date: YESTERDAY });
+    expect(loading).toContain(`data-distribution-record="${YESTERDAY}"`);
+    for (const write of WRITES) expect(loading, write).not.toContain(write);
+    // No `?date=`: the screen opened on "today", read before midnight — the server then said
+    // `past: false`. The live Cairo day has moved on: those vans have left.
+    const stale = render({
+      path: PATH_DIST,
+      permissions: DESK,
+      data: answer({
+        date: `${YESTERDAY}T00:00:00.000Z`,
+        today: `${YESTERDAY}T00:00:00.000Z`,
+        past: false,
+      }),
+    });
+    expect(stale).toContain(`data-distribution-record="${YESTERDAY}"`);
+    for (const write of WRITES) expect(stale, write).not.toContain(write);
+    expect(stale).not.toContain('data-shipment-tone="proposed"');
+    expect(stale).not.toContain('draggable="true"');
+  });
+
+  it('is the same record for a reader without the edit grant — the notice and the way back', () => {
+    const viewer = render({
+      path: PATH_DIST,
+      permissions: ['operationsShipment.view'],
+      data: recordOf({ crewPlanVisible: false }),
+      date: YESTERDAY,
+    });
+    expect(viewer).toContain(`data-distribution-record="${YESTERDAY}"`);
+    expect(viewer).toContain('data-distribution-today="true"');
+    expect(viewer).not.toContain(ar('operations.distribution.viewOnly'));
+  });
+
+  it('shuts every act through ONE gate — the drop, the menu, the captain switch, the proposals, «تراجع» and Ctrl+Z', () => {
+    expect(DIST).toContain(
+      'const isRecord = data?.past === true || isRecordDay(day, today, minDay);',
+    );
+    expect(DIST).toContain('const canEdit = mayEdit && !isRecord;');
+    // A record draws what the server holds, never a draft.
+    expect(DIST).toContain('const draft = isRecord ? EMPTY_DRAFT : history.now;');
+    // «تراجع», its button and its keys (Ctrl+Z, ⌘Z) end at the gate.
+    expect(DIST).toContain('if (!canEdit || lastMove === null || undoWords === null) return;');
+    // A move (drop or menu) and a captain switched.
+    expect(DIST.match(/^ {4}if \(!canEdit\) return;$/gm) ?? []).toHaveLength(2);
+    // The screen takes no drop, and the first read proposes nothing.
+    expect(DIST).toMatch(
+      /'onDragOver' \| 'onDragEnter' \| 'onDragLeave' \| 'onDrop'\n {2}> = canEdit\n/,
+    );
+    expect(DIST).toContain('openingDistributionHistory(data.shipments, data.crews, canEdit)');
+    // The day box has no floor here; the vault's keeps today's, and opens no past day.
+    expect(DIST).toContain('readDistributionDay(sp.get(');
+    expect(DIST).not.toContain('min={minDay}');
+    expect(HANDOVER).toContain('min={minDay}');
+    expect(HANDOVER).toContain("readDistributionDate(sp.get('date'), today)");
   });
 });
 

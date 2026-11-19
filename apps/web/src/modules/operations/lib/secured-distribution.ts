@@ -27,6 +27,7 @@ import {
   isYmd,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
+  type OperationsSecuredDistributionPackagesDto,
   type OperationsSecuredDistributionRowDto,
   type OperationsShipmentDto,
   type SecuredDistributionChange,
@@ -57,13 +58,34 @@ export type DistributionVan = Pick<
 > & { securedType?: boolean };
 
 /**
- * The day the URL asks for (`?date=`), or null for the server's default — TODAY in Cairo. Null as
- * well for anything that is not a real calendar day, and for a day BEFORE `today`: the server
- * refuses a past day (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` — the boards' «no past day» rule: a
- * past day's vans have left), so a stale bookmark opens on today rather than on a refusal.
+ * «تسليم المحصنات»'s day from the URL (`?date=`), or null for the server's default — TODAY in Cairo.
+ * Null as well for anything that is not a real calendar day, and for a day BEFORE `today`: the
+ * vault hands over today's vans only and reads the days to come as the plan — a past day's vans have
+ * left, so a stale bookmark opens on today. (Round 30: «توزيع المحصنات» opens a past day as its
+ * record — `readDistributionDay`; the vault's screen keeps this rule.)
  */
 export const readDistributionDate = (raw: string | null, today: string): string | null =>
   raw !== null && isYmd(raw) && raw >= today ? raw : null;
+
+/**
+ * Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى»:
+ * «توزيع المحصنات»'s day from the URL — ANY real calendar day, a past one too (it opens as that day's
+ * record, `isRecordDay`); null for the server's default, today in Cairo, and for anything that is
+ * not a real day.
+ */
+export const readDistributionDay = (raw: string | null): string | null =>
+  raw !== null && isYmd(raw) ? raw : null;
+
+/**
+ * Round 30 — is the screen's day a RECORD: before today? Then it is read only — no drag, no «نقل
+ * إلى…», no «توزيع تلقائي», no «تراجع», no «حفظ», no proposal — and the server refuses its save (422
+ * `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`) whatever is sent. Judged against EVERY today given — the
+ * read's (`today` on the answer) and the live Cairo day — so a screen left open past midnight on
+ * yesterday's read turns into its record too, and one whose read is not in yet already is one.
+ * Days are 'YYYY-MM-DD' (they order as text); an empty today is no day and judges nothing.
+ */
+export const isRecordDay = (day: string, ...todays: readonly string[]): boolean =>
+  todays.some((today) => today !== '' && day < today);
 
 /** Where a shipment is: a van of the day and the captain it goes with, or both null — unplaced. */
 export interface Placement {
@@ -572,6 +594,25 @@ export const loadPackages = (
  * the good read's counts: 'ready'.
  */
 export type PackagingRead = 'ready' | 'pending' | 'failed' | 'forbidden';
+
+/**
+ * Round 30 — a RECORD's packages (`recordPackages` on the read of a past day): shipment id → its
+ * counts at the vault's receipt, held now or SINCE HANDED OVER — the vault's holdings no longer carry
+ * what left on the day's vans, so a record read from them would call a van that went out «0». Null
+ * when the read carries none (today and every later day, or a reader without the vault's grant):
+ * the screen then reads the vault's holdings, as before.
+ */
+export const recordPackaging = (
+  counted: readonly OperationsSecuredDistributionPackagesDto[] | null | undefined,
+): ReadonlyMap<string, Packaging> | null =>
+  counted === null || counted === undefined
+    ? null
+    : new Map(
+        counted.map(({ shipmentId, bags, cartons, boxes }) => [
+          shipmentId,
+          { bags, cartons, boxes },
+        ]),
+      );
 
 export const packagingRead = (
   readable: boolean,

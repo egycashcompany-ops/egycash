@@ -291,6 +291,40 @@ export const TopRow = ({
 export const TOP_FIGURES = 'flex min-w-0 flex-wrap items-center justify-center gap-1.5';
 
 /**
+ * Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى»:
+ * a PAST day's notice, under the top row in the hint's place — calm (the sky of the day's own box,
+ * the clock turned back), never an alarm: the day is a record, view only, and it says what it shows.
+ * `role="status"` so a screen reader hears it once the day opens.
+ */
+export const RecordNotice = ({
+  title,
+  body,
+  ...rest
+}: { title: string; body: string } & Record<`data-${string}`, string>): JSX.Element => (
+  <div
+    {...rest}
+    role="status"
+    className="flex min-w-0 items-start gap-2.5 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 dark:border-sky-400/30 dark:bg-sky-400/[0.08]"
+  >
+    <span
+      aria-hidden
+      className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 ring-1 ring-inset ring-sky-200 dark:bg-sky-400/15 dark:text-sky-200 dark:ring-sky-300/30"
+    >
+      <BoardIcon d={[...SHIPMENT_PATH.history]} className="h-3.5 w-3.5" />
+    </span>
+    <div className="min-w-0">
+      <p
+        data-record-title="true"
+        className="text-[13px] font-black leading-6 text-sky-900 dark:text-sky-100"
+      >
+        {title}
+      </p>
+      <p className="text-xs font-bold leading-5 text-slate-600 dark:text-slate-300">{body}</p>
+    </div>
+  </div>
+);
+
+/**
  * Under the top row (Round 26b): what the screen has to say about the day — a slim line, no band of
  * its own — and, at its end, the marks of the work not saved yet.
  */
@@ -307,8 +341,9 @@ export const DayNote = ({
 
 /**
  * The day — «يوم التسليم» — as the boards' date box draws a day (`BoardDateBox`: the calendar at its
- * start, its name written beside the date), with a floor: no day before today (`min`), the boards'
- * «no past day» rule.
+ * start, its name written beside the date), with a floor where one is given (`min`): «تسليم
+ * المحصنات» picks no day before today. Round 30 — «توزيع المحصنات» gives none: a past day opens as
+ * its record, read only (`RecordNotice`).
  */
 export const DayBox = ({
   label,
@@ -318,7 +353,7 @@ export const DayBox = ({
 }: {
   label: string;
   value: string;
-  min: string;
+  min?: string;
   onChange: (value: string) => void;
 }): JSX.Element => (
   <FilterWithIcon

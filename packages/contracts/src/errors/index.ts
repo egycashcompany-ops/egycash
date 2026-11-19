@@ -116,6 +116,18 @@ export const ErrorCodes = {
   OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
   OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
   /**
+   * 422 (Round 29, «استيراد فروع من شيت») — the bank's branch sheet cannot be compared: no header row
+   * naming «اسم الفرع» in its first rows, no visible sheet, or over a cap. `details` name the missing
+   * column or the cap (`TOO_LARGE`), never a cell's content.
+   */
+  OPERATIONS_BRANCH_IMPORT_LAYOUT: 'OPERATIONS_BRANCH_IMPORT_LAYOUT',
+  /**
+   * 409 (Round 29) — «تأكيد الاستيراد» after the comparison went out of date: the file is not the one
+   * compared (`details[0].code` 'FILE_CHANGED'), or the bank's branches or the areas changed so the
+   * plan is no longer the one shown ('PLAN_CHANGED'). Nothing was written; compare again.
+   */
+  OPERATIONS_BRANCH_IMPORT_CHANGED: 'OPERATIONS_BRANCH_IMPORT_CHANGED',
+  /**
    * The destination branch is not a branch of the destination bank (`secondaryBankId ?? mainBankId`)
    * — legacy's client-side to-branch filter (main_ops.ejs:501-503), made a domain rule. The ORIGIN
    * carries no bank rule: it may belong to any bank, the main bank being the billed one.
@@ -288,9 +300,10 @@ export const ErrorCodes = {
 
   // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
   /**
-   * 422 — the distribution screen (`GET`/`POST /operations/secured/distribution`) asked for a day
-   * before today on the Cairo calendar: a past day's vans have left. One detail: `field` 'date',
-   * `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   * 422 — the distribution save (`POST /operations/secured/distribution`) named a day before today
+   * on the Cairo calendar: a past day's vans have left. One detail: `field` 'date', `code`
+   * 'MIN_DATE', `message` = today ('YYYY-MM-DD'). Round 30: the read (`GET`) answers such a day as
+   * its record, read only — this is what keeps it so.
    */
   OPERATIONS_DISTRIBUTION_DAY_IN_PAST: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
   /**

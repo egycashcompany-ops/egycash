@@ -19,6 +19,12 @@
 // in the database, so it never shows here. A row of another type that already carries one of the
 // screen's shipments stays listed, marked, so nothing on it vanishes — and takes no new one.
 //
+// ROUND 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى»:
+// `view()` serves a PAST day too, as its RECORD — the day's saved vans and what rides them, from the
+// live legs of that day — and `save()` refuses every write of one (422
+// `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, checked before any shipment): the record is read only on
+// the server, whatever a client sends.
+//
 // A SHIPMENT IS "ON A VAN" THROUGH ITS DELIVERY LEG and nothing else — the leg «صرف الخزينة»'s assign
 // dialog wrote (secured.service.ts `assignDeliveryLeg`), the one the dispatch checks, the captain's
 // phone reads and the captain report attributes. So distributing changes exactly the fact every
@@ -185,6 +191,11 @@ export interface DistributionView extends DayBoardView {
   day: Date;
   today: Date;
   /**
+   * Round 30 — `day` is before `today`: the screen is that day's RECORD, read only. The save refuses
+   * it (`resolveDay`).
+   */
+  past: boolean;
+  /**
    * The crew rows of the day the screen lists, as van cards: the vans in van-code order, then
    * (Round 24) the rows without a van in the order they were added. Since Round 25 only the rows of
    * the «محصنة» type, and those of another type that carry one of the listed shipments
@@ -193,6 +204,12 @@ export interface DistributionView extends DayBoardView {
   vans: OperationsSecuredDistributionCrewDto[];
   /** shipment id → when the vault took it in. */
   receivedAt: Map<string, Date>;
+  /**
+   * Round 30 — shipment id → its packages as the vault counted them at its receipt, held or since
+   * handed over (the live custody; a cancelled receipt is none). A record reads them here: the
+   * vault's holdings no longer carry what left on the day's vans.
+   */
+  packages: Map<string, { bags: number; cartons: number; boxes: number }>;
   /** shipment id → its LIVE delivery leg. */
   deliveryLeg: Map<string, OperationsShipmentAssignmentDoc>;
   /** shipment id → the vans of the day its area's direction names (see the contract). */
@@ -230,14 +247,25 @@ type Written =
 
 class OperationsDistributionService {
   /**
-   * The day a distribution request means — the day asked for, or TODAY in Cairo — refused when it
-   * is before today. "Today" is Cairo's (the boards' rule): between Cairo midnight and UTC midnight
-   * the two calendars name different days, and the desk works on Cairo's.
+   * The day a distribution request means — the day asked for, or TODAY in Cairo — and whether it
+   * is PAST (before today). "Today" is Cairo's (the boards' rule): between Cairo midnight and UTC
+   * midnight the two calendars name different days, and the desk works on Cairo's.
    */
-  resolveDay(date: Date | undefined, now: Date): { day: Date; today: Date } {
+  dayOf(date: Date | undefined, now: Date): { day: Date; today: Date; past: boolean } {
     const today = cairoCalendarDate(now);
     const day = date === undefined ? today : utcDay(date);
-    if (ymdOf(day) < ymdOf(today)) throw dayInPast(ymdOf(day), cairoYmd(now));
+    return { day, today, past: ymdOf(day) < ymdOf(today) };
+  }
+
+  /**
+   * The day a distribution WRITE means — `dayOf`'s, refused when it is past (422
+   * `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`). Round 30 — «ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك
+   * سجل يعنى»: a past day opens on the screen as its record (`view`), and this is what keeps it one —
+   * whatever a client sends, nothing of a past day is written.
+   */
+  resolveDay(date: Date | undefined, now: Date): { day: Date; today: Date } {
+    const { day, today, past } = this.dayOf(date, now);
+    if (past) throw dayInPast(ymdOf(day), cairoYmd(now));
     return { day, today };
   }
 
@@ -261,17 +289,45 @@ class OperationsDistributionService {
    * (`isSecuredRow`); a row of another type (or none) only while it holds the LIVE delivery leg of a
    * shipment listed here — then marked (`securedType` false), never a target of a proposal. The
    * direction's proposals look at the «محصنة» rows alone.
+   *
+   * Round 30 — «عاوز هنا يقدر يجيب اليوم اللى قبله ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل
+   * يعنى»: a PAST day is no longer refused — it is read as its RECORD (`past` true), and the save
+   * still refuses it (`resolveDay`). Its shipments are the ones due on it, WHATEVER became of them
+   * since (handed over, delivered, still in the vault, never received), and the ones whose live
+   * delivery leg rides one of its crew rows (`distributionRecordFilter`); its vans are its saved
+   * crew rows by the same rule as a day to come. A record proposes nothing: every
+   * `directionVanIds` is empty. What it cannot show is said in the contract
+   * (`OperationsSecuredDistributionDto.past`).
    */
   async view(date: Date | undefined, now: Date = new Date()): Promise<DistributionView> {
-    const { day, today } = this.resolveDay(date, now);
-    const count = await operationsShipmentRepository.countSecuredForDistribution(day, today);
+    const { day, today, past } = this.dayOf(date, now);
+    const dayDoc = await operationsDayService.findByDate(day);
+    // A past day's record — the shipments whose LIVE delivery leg rides a crew row of the day,
+    // whatever their due day says.
+    const riding =
+      past && dayDoc !== null
+        ? [
+            ...new Set(
+              (await operationsShipmentAssignmentRepository.findForDay(dayDoc._id))
+                .filter((leg) => leg.leg === 'delivery')
+                .map((leg) => String(leg.shipmentId)),
+            ),
+          ]
+        : [];
+    const count = past
+      ? await operationsShipmentRepository.countSecuredDistributionRecord(day, riding)
+      : await operationsShipmentRepository.countSecuredForDistribution(day, today);
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) {
       throw historyTooLarge(
         count,
         `${String(count)} secured shipments are due or overdue for ${ymdOf(day)} — at most ${String(OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS)} can be shown`,
       );
     }
-    const docs = (await operationsShipmentRepository.securedForDistribution(day, today)).sort(
+    const docs = (
+      past
+        ? await operationsShipmentRepository.securedDistributionRecord(day, riding)
+        : await operationsShipmentRepository.securedForDistribution(day, today)
+    ).sort(
       (a, b) =>
         (a.deliveryDate?.getTime() ?? 0) - (b.deliveryDate?.getTime() ?? 0) ||
         a.createdAt.getTime() - b.createdAt.getTime() ||
@@ -279,7 +335,6 @@ class OperationsDistributionService {
     );
     const ids = docs.map((d) => String(d._id));
 
-    const dayDoc = await operationsDayService.findByDate(day);
     const [legs, securedType, types] = await Promise.all([
       operationsShipmentAssignmentRepository.findByShipments(ids),
       operationsShiftTypeRepository.findSecuredType(),
@@ -341,18 +396,30 @@ class OperationsDistributionService {
       ...board,
       day,
       today,
+      past,
       vans,
       receivedAt: new Map([...custody].map(([id, view]) => [id, view.receivedAt] as const)),
+      packages: new Map(
+        [...custody].map(
+          ([id, view]) =>
+            [id, { bags: view.bagCount, cartons: view.cartonCount, boxes: view.boxCount }] as const,
+        ),
+      ),
       deliveryLeg: new Map(
         legs
           .filter((leg) => leg.leg === 'delivery')
           .map((leg) => [String(leg.shipmentId), leg] as const),
       ),
       // «المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى» — the one rule, from the contract, so the
-      // screen and the server cannot read a direction two ways.
+      // screen and the server cannot read a direction two ways. Round 30: a past day's record
+      // proposes nothing — none of it can be placed.
       directionVanIds: new Map(
         docs.map(
-          (doc) => [String(doc._id), operationsDirectionVanIds(doc.areaName, proposable)] as const,
+          (doc) =>
+            [
+              String(doc._id),
+              past ? [] : operationsDirectionVanIds(doc.areaName, proposable),
+            ] as const,
         ),
       ),
     };
@@ -442,6 +509,19 @@ class OperationsDistributionService {
       if (change.crewAssignmentId === null || change.captainEmployeeId === null) {
         // Off its van. Off a van it was not on is no change at all.
         if (leg === null) continue;
+        // Round 30 (verifier) — off a van OF THE DAY saved, never another day's: an overdue one's
+        // leg left on a PAST day's van belongs to that day's record (`view`), which no save changes.
+        // The screen never sends this (on the day's screen such a shipment is on none of its vans);
+        // only a hand-made request could. Placing it on one of the day's vans still moves it, its
+        // date with it — the overdue flow.
+        if (dayDoc === null || String(leg.operationsDayId) !== String(dayDoc._id)) {
+          throw refused(
+            ErrorCodes.OPERATIONS_CREW_DAY_MISMATCH,
+            422,
+            id,
+            `shipment ${id} rides a van of another day — a save of ${dayYmd} takes off only that day's`,
+          );
+        }
         if (isLegStarted(leg)) throw legStartedRefusal(id, 'it cannot be taken off');
         plans.push({ kind: 'remove', shipment, leg });
         continue;

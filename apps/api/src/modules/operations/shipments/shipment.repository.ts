@@ -133,6 +133,26 @@ const distributionFilter = (day: Date, today: Date): FilterQuery<OperationsShipm
   ],
 });
 
+/**
+ * Round 30 — «توزيع المحصنات» on a PAST day, read as its RECORD: the secured shipments due out on
+ * `day` (a UTC midnight), WHATEVER has become of them since — drafts that never reached the vault,
+ * ones still in it, ones handed over or delivered — plus `riding`: the shipments whose LIVE delivery
+ * leg rides a crew row of that day (an overdue one placed on that day's van has its delivery date
+ * moved to the day, so it is usually due on it too). The first branch rides
+ * `ix_type_delivery_date_status`, the second the `_id` index.
+ */
+const distributionRecordFilter = (
+  day: Date,
+  riding: readonly string[],
+): FilterQuery<OperationsShipmentDoc> => ({
+  isDeleted: false,
+  shipmentType: 'secured',
+  $or: [
+    { deliveryDate: day },
+    ...(riding.length === 0 ? [] : [{ _id: { $in: riding.map((id) => new Types.ObjectId(id)) } }]),
+  ],
+});
+
 class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc> {
   constructor() {
     super(OperationsShipmentModel, {}); // org scoping arrives with the day/board slice if needed
@@ -268,6 +288,26 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   /** How many rows `securedForDistribution` would return — counted before anything is loaded. */
   async countSecuredForDistribution(day: Date, today: Date): Promise<number> {
     return this.model.countDocuments(distributionFilter(day, today)).exec();
+  }
+
+  /**
+   * Round 30 — a PAST distribution day's record (`distributionRecordFilter`): the shipments due on
+   * it, at any status, and those whose live delivery leg rides one of its crew rows (`riding`). In
+   * no particular order — the service orders them as it orders a day to come.
+   */
+  async securedDistributionRecord(
+    day: Date,
+    riding: readonly string[],
+  ): Promise<OperationsShipmentDoc[]> {
+    return this.model
+      .find(distributionRecordFilter(day, riding))
+      .lean<OperationsShipmentDoc[]>()
+      .exec();
+  }
+
+  /** How many rows `securedDistributionRecord` would return — counted before anything is loaded. */
+  async countSecuredDistributionRecord(day: Date, riding: readonly string[]): Promise<number> {
+    return this.model.countDocuments(distributionRecordFilter(day, riding)).exec();
   }
 
   /**

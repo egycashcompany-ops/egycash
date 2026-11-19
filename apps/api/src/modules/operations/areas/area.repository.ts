@@ -18,6 +18,18 @@ class OperationsAreaRepository extends BaseRepository<OperationsAreaDoc> {
       .exec();
     return rows.map((row) => row.name);
   }
+
+  /**
+   * Every live area, stopped ones included — what a branch sheet's areas are matched against
+   * (Round 29): the unique name holds among all of them.
+   */
+  async liveAll(): Promise<OperationsAreaDoc[]> {
+    return this.model
+      .find({ isDeleted: false })
+      .sort({ _id: 1 })
+      .lean<OperationsAreaDoc[]>()
+      .exec();
+  }
 }
 
 export const operationsAreaRepository = new OperationsAreaRepository();

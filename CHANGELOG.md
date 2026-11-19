@@ -59,6 +59,23 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR: every employee's photo in one go, matched by the code in each file's name.** «عندى صور
+  الموظفين كلهم عايز أرفعهم دفع واحده متسمى كل صورة بالكود + أسم الموظف (الكود صحيح أكيد لكن الأسماء
+  ممكن يبقي فيها حروف متلغبطه أو مسافات)», then «غير كله باللى هبعته جديد».
+  ([employee module design](docs/12-planning/employee-module-design.md) §8)
+  - «رفع صور الموظفين» on the employees list, for holders of `employee.editPersonal`: pick the photos
+    or a whole folder, or drop them. The code in each name decides who the photo is for. Arabic digits
+    count, and a code missing its leading zero is completed. The name in the file only flags a file
+    whose name does not look like the matched employee.
+  - A table shows, before anything is sent, what each file will do: ready (replacing the current
+    photo), no code, no employee with that code, two files for one employee, or not an image the
+    profile takes.
+  - Each photo is cut around the face, as the profile's own photo is, and sent two at a time with
+    progress. A photo with no face found goes uncropped, and a large one is shrunk under 5 MB. Failures
+    can be retried, and «إيقاف» stops the run.
+  - `POST /hr/employees/codes/lookup` answers which employees hold the codes, within the caller's
+    `employee.editPersonal` scope. The photos themselves go through the existing photo upload.
+
 - **IT: hand a device, a line or consumables to an employee of another branch.** «لما حد فى فرع
   بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح إنه يعرف يسلم
   لحد فى فرع تاني».

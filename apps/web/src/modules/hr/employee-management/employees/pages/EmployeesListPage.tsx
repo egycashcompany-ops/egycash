@@ -39,6 +39,10 @@ import { type EmployeeDto } from '@ecms/contracts';
 const RosterImportDialog = lazy(() =>
   import('../components/RosterImportDialog').then((m) => ({ default: m.RosterImportDialog })),
 );
+// The face search behind it is loaded only when the dialog opens.
+const BulkPhotoUploadDialog = lazy(() =>
+  import('../components/BulkPhotoUploadDialog').then((m) => ({ default: m.BulkPhotoUploadDialog })),
+);
 import { employeeColumns } from '../lib/employee-columns';
 import {
   departmentGroupsIn,
@@ -115,6 +119,7 @@ export const EmployeesListPage = (): JSX.Element => {
 
   const canSettle = can('employee.viewCompensation');
   const [importOpen, setImportOpen] = useState(false);
+  const [photosOpen, setPhotosOpen] = useState(false);
   const [cardOf, setCardOf] = useState<EmployeeDto | null>(null);
   // «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: every filter is a comma list
   // in the URL, its picks ORed. A value the vocabulary does not carry (an old link) is dropped
@@ -313,6 +318,18 @@ export const EmployeesListPage = (): JSX.Element => {
                 {t('employees.roster.action')}
               </Button>
             </Can>
+            {/* «عايز أرفعهم دفع واحده»: every photo at once, by the code in each file's name. The
+                photo write's own key, as on the profile. */}
+            <Can permission="employee.editPersonal">
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={<UploadIcon className="h-4 w-4" />}
+                onClick={() => setPhotosOpen(true)}
+              >
+                {t('employees.photoBatch.action')}
+              </Button>
+            </Can>
             <Can permission="employee.registerDirect">
               <Button size="sm" variant="secondary" onClick={() => navigate('register')}>
                 {t('employees.actions.registerDirect')}
@@ -457,6 +474,11 @@ export const EmployeesListPage = (): JSX.Element => {
 
       <IdCardDialog employee={cardOf} onClose={() => setCardOf(null)} />
 
+      {photosOpen && (
+        <Suspense fallback={null}>
+          <BulkPhotoUploadDialog onClose={() => setPhotosOpen(false)} />
+        </Suspense>
+      )}
       {importOpen && (
         <Suspense fallback={null}>
           <RosterImportDialog

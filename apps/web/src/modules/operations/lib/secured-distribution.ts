@@ -24,6 +24,8 @@
 // The vault's screen reads the same answer and moves nothing: its vans' loads are the SAVED places,
 // and «تسليم» sends only the shipments the vault actually holds (`handoverRequest`).
 import {
+  addDaysYmd,
+  daysBetweenYmd,
   isYmd,
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
@@ -86,6 +88,95 @@ export const readDistributionDay = (raw: string | null): string | null =>
  */
 export const isRecordDay = (day: string, ...todays: readonly string[]): boolean =>
   todays.some((today) => today !== '' && day < today);
+
+/** What the screen knows of its read when it judges the day (`isRecordScreen`). */
+export interface RecordRead {
+  /** The read's `today` ('YYYY-MM-DD') — the SERVER's Cairo day when it answered. */
+  today: string;
+  /** The read's `past` — the server's word that the day is a record. */
+  past: boolean;
+  /** The Cairo day on THIS screen's clock when the read arrived ('YYYY-MM-DD'). */
+  readOn: string;
+}
+
+/**
+ * R30 critic — is the SCREEN a record? Once the read is in, the SERVER decides: `past`, and nothing
+ * the desk PC's clock says overrides a `past: false` — a clock a day (or a few minutes before
+ * midnight) ahead turned today's screen into a record and stopped the desk distributing. The one
+ * thing the screen adds is MIDNIGHT PASSING while it stays open: the days its own clock has seen go
+ * by since the read arrived (`readOn` to `liveToday`, both on that clock, so a clock set wrong
+ * moves both ends alike) move the server's today on by as many — a read of today turns into its
+ * record, a read of a day to come does not. Before the read is in, the URL's day against the live
+ * Cairo day (`isRecordDay`) — nothing is drawn to move yet.
+ */
+export const isRecordScreen = (
+  day: string,
+  liveToday: string,
+  read: RecordRead | null,
+): boolean => {
+  if (read === null) return isRecordDay(day, liveToday);
+  if (read.past) return true;
+  if (!isYmd(read.readOn) || !isYmd(liveToday) || !isYmd(read.today)) return false;
+  const passed = daysBetweenYmd(read.readOn, liveToday);
+  return passed > 0 && day < addDaysYmd(read.today, passed);
+};
+
+/**
+ * R30 critic — «يوم التسليم» changed to `value`: the `?date=` to set (null — none: the server's
+ * default, today), and whether the read must be ASKED AGAIN because the URL does not change. A
+ * screen opened with no `?date=` and left open past midnight is yesterday's record under the URL
+ * of "today": picking today there leaves the URL — and the read's key — as they are, so nothing
+ * would be read; it is read again instead (as «العودة إلى اليوم» does).
+ */
+export const distributionDayChange = (
+  current: string | null,
+  value: string,
+  liveToday: string,
+): { date: string | null; reread: boolean } => {
+  const date = value === '' || value === liveToday ? null : value;
+  return { date, reread: date === current };
+};
+
+/**
+ * R30 critic — the work on screen a RECORD no longer draws: the changes still in the draft when the
+ * day turned into one (the screen left open past midnight with moves not saved — the server refuses
+ * a past day's save, so they can never be saved). 0 on a day that can be distributed.
+ */
+export const unsavedOnRecord = (
+  isRecord: boolean,
+  rows: readonly DistributionRowFacts[],
+  draft: DistributionDraft,
+): number => (isRecord ? distributionChanges(rows, draft).length : 0);
+
+/** R30 critic — may «تراجع» take a step back: on a screen that may distribute (never a record), with one to take. */
+export const mayUndo = (canEdit: boolean, lastMove: unknown): boolean =>
+  canEdit && lastMove !== null && lastMove !== undefined;
+
+/** The fields of a key press the screen's Ctrl+Z reads — a `KeyboardEvent`'s own. */
+export type UndoKeyPress = Pick<
+  KeyboardEvent,
+  'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey' | 'code' | 'key' | 'target' | 'preventDefault'
+>;
+
+/**
+ * R30 critic — Ctrl+Z (⌘Z), as the page registers it on the document. Outside a text box the key
+ * is the screen's: it takes back one step when `allowed()` (`mayUndo`) says so, and is swallowed
+ * otherwise. In a text box, with Shift or Alt, or any other key: the browser's. On a RECORD
+ * `allowed()` is false — the key changes nothing, not even the history kept behind the record.
+ */
+export const distributionUndoKey =
+  (step: {
+    allowed: () => boolean;
+    undo: () => void;
+    inTextBox: (target: EventTarget | null) => boolean;
+  }) =>
+  (event: UndoKeyPress): void => {
+    if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
+    if (event.code !== 'KeyZ' && event.key.toLowerCase() !== 'z') return;
+    if (step.inTextBox(event.target)) return;
+    event.preventDefault();
+    if (step.allowed()) step.undo();
+  };
 
 /** Where a shipment is: a van of the day and the captain it goes with, or both null — unplaced. */
 export interface Placement {

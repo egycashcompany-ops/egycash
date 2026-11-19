@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { OPERATIONS_DIRECTION_MAX_LENGTH } from '@ecms/contracts';
 import {
+  directionAddOffer,
+  directionAddRefusal,
   directionItems,
   directionItemsAtOpen,
   directionOnLeave,
@@ -13,6 +15,7 @@ import {
   isHandTypedDirection,
   opensOnText,
   typedDirection,
+  withDirectionAdd,
 } from './direction-pick';
 
 const AREAS = ['المعادي', 'المعادي الجديدة', 'حلوان', 'مدينة نصر', 'شبرا/الخيمة'];
@@ -279,5 +282,134 @@ describe('the highlighted row (`highlightedDirectionRow`) — what Enter takes',
     expect(highlightedDirectionRow(0, 0, true, false)).toBe(-1);
     expect(highlightedDirectionRow(0, 0, true, true)).toBe(0);
     expect(highlightedDirectionRow(0, 0, false, true)).toBe(-1);
+  });
+});
+
+// Round 28c — asked whether a direction typed by hand should also go on the list, the owner: «يعرض
+// عليا اضيفه او لا». The list offers BOTH: «استخدام «…» اتجاهًا» (this row only, as Round 28 left it)
+// and «إضافة «…» إلى القائمة» (written to «المناطق» at once), the add right after the typed row.
+describe('Round 28c — «إضافة «…» إلى القائمة» (`directionAddOffer`, `withDirectionAdd`)', () => {
+  const ARCHIVED = ['الدقي', 'طريق المطار'];
+  const add = (direction: string) => ({ kind: 'add', direction }) as const;
+  /** The list as the box shows it to a desk who may add. */
+  const listed = (query: string, refused: Parameters<typeof directionAddOffer>[3] = null) =>
+    withDirectionAdd(
+      directionItems(query, AREAS),
+      directionAddOffer(query, AREAS, ARCHIVED, refused),
+    );
+
+  it('a name no area answers: «استخدام» first (Enter keeps the row-only choice), «إضافة» right after it', () => {
+    expect(listed('طريق السويس')).toEqual([typed('طريق السويس'), add('طريق السويس')]);
+    // The name added is the text tidied as the save tidies it — the name «المناطق» stores.
+    expect(directionAddOffer('  طريق\u200f   السويس ', AREAS, ARCHIVED)).toEqual({
+      kind: 'add',
+      name: 'طريق السويس',
+    });
+    expect(listed('  طريق   السويس ')).toEqual([typed('طريق السويس'), add('طريق السويس')]);
+    // Enter takes the highlighted first row; the arrows reach the add, then «مسح الاتجاه».
+    expect(highlightedDirectionRow(2, 0, true, false)).toBe(0);
+    expect(highlightedDirectionRow(2, 1, true, true)).toBe(1);
+    expect(highlightedDirectionRow(2, 2, true, true)).toBe(2);
+  });
+
+  it('is offered for ONE name only — never a direction of several parts, split as the save splits it', () => {
+    for (const several of [
+      'المعادي - طريق السويس',
+      'طريق السويس و الواحات',
+      'الواحات/الفيوم',
+      'الواحات، الفيوم',
+      'الواحات + الفيوم',
+    ]) {
+      expect(directionAddOffer(several, AREAS, ARCHIVED), several).toBeNull();
+      expect(
+        listed(several).some((item) => item.kind === 'add'),
+        several,
+      ).toBe(false);
+    }
+    // «و» joined to a word is part of it, as the save reads it: one name.
+    expect(directionAddOffer('وادي النطرون', AREAS, ARCHIVED)).toEqual({
+      kind: 'add',
+      name: 'وادي النطرون',
+    });
+  });
+
+  it('is never offered for text that names nothing, nor past the hand-typed ceiling (the ceiling itself is)', () => {
+    for (const nothing of ['', '   ', '-', '!!!', '\u200b']) {
+      expect(directionAddOffer(nothing, AREAS, ARCHIVED), JSON.stringify(nothing)).toBeNull();
+    }
+    const longest = 'ط'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH);
+    expect(directionAddOffer(longest, AREAS, ARCHIVED)).toEqual({ kind: 'add', name: longest });
+    expect(directionAddOffer(`${longest}ب`, AREAS, ARCHIVED)).toBeNull();
+  });
+
+  it('is never offered when an active area answers the text — the list offers that area instead', () => {
+    // Exactly (folded), part of a name, its words in another order, one letter away.
+    for (const answered of ['المعادى', 'معادي', 'شبرا الخيمه', 'المعا', 'نصر مدينة', 'حلوات']) {
+      expect(directionAddOffer(answered, AREAS, ARCHIVED), answered).toBeNull();
+      expect(
+        listed(answered).some((item) => item.kind === 'add'),
+        answered,
+      ).toBe(false);
+    }
+  });
+
+  it('an ARCHIVED area that answers the text is said, and no add is offered — «المناطق» holds it', () => {
+    expect(directionAddOffer('الدقى', AREAS, ARCHIVED)).toEqual({
+      kind: 'archived',
+      area: 'الدقي',
+    });
+    expect(directionAddOffer('طريق المطار', AREAS, ARCHIVED)).toEqual({
+      kind: 'archived',
+      area: 'طريق المطار',
+    });
+    // The list keeps «استخدام» for the row, and nothing more.
+    expect(listed('الدقى')).toEqual([typed('الدقى')]);
+  });
+
+  it('nothing is offered while the lists are read, or for a desk who may not write the catalog (null)', () => {
+    expect(directionAddOffer('طريق السويس', AREAS, null)).toBeNull();
+    expect(withDirectionAdd(directionItems('طريق السويس', AREAS), null)).toEqual([
+      typed('طريق السويس'),
+    ]);
+  });
+
+  it('an add refused for this very name is not offered again — unless it failed for a reason that may pass', () => {
+    for (const reason of ['duplicate', 'forbidden', 'invalid'] as const) {
+      expect(listed('طريق السويس', { name: 'طريق السويس', reason }), reason).toEqual([
+        typed('طريق السويس'),
+      ]);
+      // Another name is offered as ever.
+      expect(listed('طريق الواحات', { name: 'طريق السويس', reason }), reason).toEqual([
+        typed('طريق الواحات'),
+        add('طريق الواحات'),
+      ]);
+    }
+    expect(listed('طريق السويس', { name: 'طريق السويس', reason: 'failed' })).toEqual([
+      typed('طريق السويس'),
+      add('طريق السويس'),
+    ]);
+  });
+
+  it('puts the add right after the typed row it adds, and nowhere without one', () => {
+    const items = [area('المعادي'), typed('طريق')];
+    expect(withDirectionAdd(items, { kind: 'add', name: 'طريق' })).toEqual([
+      area('المعادي'),
+      typed('طريق'),
+      add('طريق'),
+    ]);
+    expect(withDirectionAdd([area('المعادي')], { kind: 'add', name: 'طريق' })).toEqual([
+      area('المعادي'),
+    ]);
+    expect(withDirectionAdd(items, { kind: 'archived', area: 'الدقي' })).toEqual(items);
+  });
+
+  it('reads the catalog’s refusal: 409 held, 403 no grant, 400 the name — anything else may pass', () => {
+    expect(directionAddRefusal({ status: 409 })).toBe('duplicate');
+    expect(directionAddRefusal({ status: 403 })).toBe('forbidden');
+    expect(directionAddRefusal({ status: 400 })).toBe('invalid');
+    expect(directionAddRefusal({ status: 422 })).toBe('invalid');
+    expect(directionAddRefusal({ status: 500 })).toBe('failed');
+    expect(directionAddRefusal(new TypeError('Failed to fetch'))).toBe('failed');
+    expect(directionAddRefusal(null)).toBe('failed');
   });
 });

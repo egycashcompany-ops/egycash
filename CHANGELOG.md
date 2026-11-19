@@ -1882,6 +1882,62 @@ its entry here in the same PR.
         (`operations-crew-plan.spec.ts`); (web) the load writes what the save takes, judges the text
         it writes, names the directions it left behind, `hidesAnyOf`, the page's wiring, and the
         three new strings in both catalogs.
+  - Round 28c — «الاتجاه»: يعرض الإضافة إلى القائمة. The owner, on «الاتجاه»: «الاتجاة زى ما قولنا اكتبه
+    اختارمن الداتا ليست او ان اكتبه ويجبلى ان ممكن اضيف لو مش موجود». Asked whether a direction typed
+    by hand — «استخدام «…» اتجاهًا», saved on that row only and never added to the list — should also
+    go on the list, he answered: «يعرض عليا اضيفه او لا».
+    - The box (both screens, «لوحة التشغيلة» and «الطاقم الثابت»): for a name no area answers, the list
+      offers BOTH — «استخدام «…» اتجاهًا» first, as Round 28 left it (this row only; Enter takes it,
+      every Round 28 key and rule kept), then «إضافة «…» إلى القائمة» («Add “…” to the list»), a plus
+      where the typed row has its pen, reached by the arrows (Enter takes the highlighted one; each
+      row's id is the box's `aria-activedescendant`, as in Round 28). Its hint: «تُضاف إلى «المناطق» في
+      البيانات المرجعية فورًا، لا عند «حفظ»، ولا يحذفها «تراجع».»
+    - The add is «المناطق»'s own create (`POST /operations/areas`) under the catalog's own grant
+      (`operationsCatalog.manage` — no new permission): a desk without it is never offered the add (the
+      box is given no `add`), and the server takes the actor from the token. The name is the typed
+      text tidied as the save tidies a direction (`normalizeOperationsDirection`); its English name is
+      left empty, for «البيانات المرجعية». The areas' list is read again BEFORE the row is told; then the
+      row takes the area in the catalog's own spelling — one operation, which «تراجع» takes back
+      without taking the area off. The toast says so: «أُضيفت «…» إلى «المناطق»» — «وُضعت اتجاهًا لهذا
+      الصف. يعيد «تراجع» اتجاه الصف وحده، وتبقى المنطقة في القائمة.» The box, the board's filters and the
+      hand-typed pen read the new area from then on. «توزيع المحصنات» reads a van's direction against
+      its محصنات' own areas, not this list, so it needs no reading again.
+    - When it is offered (`directionAddOffer`, `lib/direction-pick.ts`): text that names something; at
+      most `OPERATIONS_DIRECTION_MAX_LENGTH` (80), the hand-typed ceiling — an area's name has no
+      ceiling of its own, and a longer name added as an area would have escaped it; ONE part, none of
+      the separators the direction rules split at («المعادي - طريق السويس», «الواحات/الفيوم», «… و …» are
+      directions of several); no active area answering it (exactly, folded, part of a name, its words
+      in another order, one letter away — the list offers that area instead); and no archived one:
+      «الدقى» beside an archived «الدقي» is said («… موجودة في «المناطق» لكنها موقوفة — فعّلها من البيانات
+      المرجعية لتظهر هنا.»), not added twice. Nothing is offered until both lists are read.
+    - While it is written, the row's box shows the name with a spinner, read-only and `aria-busy`
+      («جارٍ إضافة «…» إلى «المناطق»…»): it takes no key but Tab and its list does not open. One request a
+      row — a second Enter adds nothing — and two rows adding the same name (folded) at once share one
+      (`directionAddQueue`, `api/direction-area.ts`).
+    - A refusal is said — a toast, the box red with the reason as its title, and above the list when
+      the box is opened — and the typed text is NOT lost: the box keeps it, «استخدام «…» اتجاهًا» is
+      offered first, and the add is not offered again for that name unless it failed for a reason that
+      may pass (the network). Duplicate (409 — an area added meanwhile, which the list, read again,
+      then offers), no permission (403), the name refused (400), or failed. A pick, leaving the box or
+      Escape answers it.
+    - The server (`areas/area.service.ts`): the create refuses a name that FOLDS to a live area's
+      (`foldOperationsAreaName` — «المعادى» or «معادي» beside «المعادي», an archived one too) with the
+      unique index's own answer, 409 `DUPLICATE`, naming the area (and «(archived)»). The index held the
+      exact name only, so another spelling of one area went in beside it. The catalog dialog's add
+      gets the same answer; its edit is unchanged.
+    - Its own small hook file (`api/direction-area.ts`): the archived names
+      (`useArchivedOperationsAreaNames`, under the areas' key) and the create with its own `onError`,
+      so a refusal is said once; `useCreateOperationsArea`, the catalog dialog's, is unchanged.
+    - Tests: none rewritten — Round 28's list, keys and leaving rule are unchanged. New: (api,
+      `operations-crew-plan.spec.ts`, run whole) the add answers the area's own spelling and the board
+      then reads it as an area; folded duplicates — another spelling, the article off, the exact name,
+      an archived one — refused 409 `DUPLICATE`, nothing added; a planner without
+      `operationsCatalog.manage` refused 403 while his row still takes the text. (web)
+      `direction-pick.spec.ts` — when each option is offered, and the order; `crew-plan-controls.spec.tsx`
+      — both options and the hint, the archived note, the refusal, pending, the refused box, and no
+      `add` = Round 28's box; `direction-area.spec.ts` — the archived names' request, the create on a
+      real QueryClient (the areas read again before the answer, the global notifier quiet), one
+      request a row and one a name, the refusals' reasons, and both pages' wiring.
   - Round 29 — «استيراد فروع من شيت» on «البيانات المرجعية» → «الفروع». The owner, with four banks'
     branch lists: «عاوز اضيف دول فى البيانات المرجعية تبع (الفروع والبنوك والمناطق) ملحوظه هتلاقى area
     دى ضيفها ل منطقة العمليات و منطقة الحسابات تمام ؟» and «وعاوز جمب اضافة فرع فوق يقدر يضيف شيت ويقارن
@@ -1903,7 +1959,8 @@ its entry here in the same PR.
       العمليات» and «منطقة الحسابات»; an area «المناطق» lacks is created (Arabic in the name, English
       in `nameEn` — «فى خانة العربى اكتبها عربي وفى خانة الانجليزى اكتبها انجليزى»), one it holds (its
       Arabic name folded, or its English name without case) reused in its own spelling and its empty
-      English name filled; an area in Latin letters only stands for both names. A branch the bank
+      English name filled; an area in Latin letters only stands for both names, and one in Arabic
+      letters under «Area» is the Arabic name, never written as the English one. A branch the bank
       holds by name takes the sheet's code and area («حدّث الكود والمنطقة»); an empty cell never wipes;
       an address only where the branch has none. «ضيف رقم بعد الكود»: the first branch of a code keeps
       it, each further one «-2», «-3», … past every suffix the bank uses (a held branch keeps its own;

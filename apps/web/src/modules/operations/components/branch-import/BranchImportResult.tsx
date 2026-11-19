@@ -170,7 +170,12 @@ export const BranchImportResult = ({
             className="rounded border border-slate-200 bg-white px-1.5 py-px font-medium text-slate-700 dark:border-slate-700 dark:bg-[#0b0f19] dark:text-slate-300"
           >
             {t(`${W}col.${column.role}`)}{' '}
-            <span dir="ltr" className={cn(NUM, 'text-[11px] text-slate-400')}>
+            {/* No ligatures: the digits' font draws «(C)» as «©» in a left-to-right line. */}
+            <span
+              dir="ltr"
+              data-branch-import-column={column.column}
+              className={cn(NUM, 'text-[11px] text-slate-400 [font-variant-ligatures:none]')}
+            >
               ({column.column})
             </span>
           </span>

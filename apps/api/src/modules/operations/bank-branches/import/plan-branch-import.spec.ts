@@ -344,6 +344,27 @@ describe('planBranchImport — areas', () => {
     expect(plan.rows.map((r) => r.areaLatinOnly)).toEqual([true, true]);
   });
 
+  it('never writes an area given in Arabic letters as an English name', () => {
+    // «فى خانة العربى اكتبها عربي وفى خانة الانجليزى اكتبها انجليزى»: an «Area» cell typed in Arabic
+    // is the area's Arabic name — alone, or beside an Arabic column that names it already.
+    const plan = planBranchImport(
+      [
+        row('فرع أ', '1', { en: 'منطقة الوادي' }),
+        row('فرع ب', '2', { ar: 'منطقة السهل', en: 'السهل' }),
+      ],
+      [],
+      [area('a1', 'منطقة السهل')],
+    );
+    expect(plan.newAreas).toEqual([
+      { name: 'منطقة الوادي', nameEn: null, rows: 1, latinOnly: false },
+    ]);
+    expect(plan.filledAreas).toEqual([]);
+    expect(plan.rows.map((r) => [r.after?.opsAreaName, r.areaLatinOnly])).toEqual([
+      ['منطقة الوادي', false],
+      ['منطقة السهل', false],
+    ]);
+  });
+
   it('creates an area for an unchanged branch that names one the catalog lacks', () => {
     const palm = held('فرع النخلة', '1', {
       opsAreaName: 'منطقة الأفق',

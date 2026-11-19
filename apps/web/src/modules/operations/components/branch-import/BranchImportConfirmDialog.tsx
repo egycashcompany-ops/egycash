@@ -1,6 +1,6 @@
 // «تأكيد الاستيراد» (Round 29) — what the import writes, in one go, before it does: the new
-// branches, the branches updated (and how many of the codes take a suffix), the new areas, the
-// English names filled, and the rows left out. The fuel-card comparison's confirmation
+// branches, the branches updated (and how many of the codes they write take a suffix), the new
+// areas, the English names filled, and the rows left out. The fuel-card comparison's confirmation
 // (ReconcileConfirmDialog.tsx): nothing is written until it is confirmed here.
 import { type OperationsBranchImportCompareDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
@@ -8,6 +8,7 @@ import { Dialog } from '../../../../shared/ui/Dialog';
 import { Button } from '../../../../shared/ui/Button';
 import { cn } from '../../../../shared/lib/cn';
 import { NUM } from '../../../fleet/components/FuelCardBoard';
+import { suffixedWrites } from '../../lib/branch-import';
 
 const W = 'operations.catalogs.branchImport.';
 
@@ -66,7 +67,7 @@ export const BranchImportConfirmDialog = ({
         />
         <Line
           label={t(`${W}dialog.suffixed`)}
-          value={counts.suffixed}
+          value={suffixedWrites(result)}
           tone="text-amber-600 dark:text-amber-400"
         />
         <Line

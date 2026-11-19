@@ -8,12 +8,14 @@
 // suggestion list and leaves every branch that already carries the name exactly as it is. There
 // is nothing to cascade, because nothing points at it.
 import {
+  foldOperationsAreaName,
   type CreateOperationsArea,
   type ListOperationsReferenceQuery,
   type Paginated,
   type UpdateOperationsArea,
 } from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
+import { ConflictError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsAreaRepository } from './area.repository';
 import { type OperationsAreaDoc } from './area.model';
@@ -37,6 +39,23 @@ export const areaSnapshot = (doc: OperationsAreaDoc) => ({
 
 class OperationsAreaService {
   async create(input: CreateOperationsArea, by: string): Promise<OperationsAreaDoc> {
+    // Round 28c — «الاتجاه» on «لوحة التشغيلة» offers «إضافة «…» إلى القائمة» for a name the desk
+    // typed. A name that FOLDS to a live area's (`foldOperationsAreaName` — «المعادى» beside
+    // «المعادي»; an archived one too) is that area, never a second spelling of it: the direction
+    // rules would read the two as one. The unique index holds the exact name only; this holds the
+    // rest, with the same answer (409 `DUPLICATE`).
+    const folded = foldOperationsAreaName(input.name);
+    const same =
+      folded === ''
+        ? undefined
+        : (await operationsAreaRepository.liveAll()).find(
+            (area) => foldOperationsAreaName(area.name) === folded,
+          );
+    if (same !== undefined) {
+      throw new ConflictError(
+        `the area «${same.name}»${same.isActive ? '' : ' (archived)'} already has this name`,
+      );
+    }
     const doc = await operationsAreaRepository.create({ ...input, isActive: true }, { by });
     await auditService.record({
       entityRef: entityRef(String(doc._id)),

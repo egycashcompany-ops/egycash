@@ -126,9 +126,11 @@ const refused = (code: ErrorCode, status: number, shipmentId: string, message: s
 
 /**
  * 422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST` — the boards' «no past day» rule: a past day's vans have
- * left. The detail names the earliest day allowed, as the shipment form's date refusals do.
+ * left. The detail names the earliest day allowed, as the shipment form's date refusals do. Round 30
+ * critic: `assign-delivery` (secured.service.ts) refuses a past day's van with it too — the same
+ * delivery leg, the same record.
  */
-const dayInPast = (day: string, today: string): AppError =>
+export const dayInPast = (day: string, today: string): AppError =>
   new AppError(
     ErrorCodes.OPERATIONS_DISTRIBUTION_DAY_IN_PAST,
     422,
@@ -303,16 +305,11 @@ class OperationsDistributionService {
     const { day, today, past } = this.dayOf(date, now);
     const dayDoc = await operationsDayService.findByDate(day);
     // A past day's record — the shipments whose LIVE delivery leg rides a crew row of the day,
-    // whatever their due day says.
+    // whatever their due day says. R30 critic: their ids alone, the secured ones only — the day's
+    // daily legs are never loaded, nor sent back in the count's and the read's `$in`.
     const riding =
       past && dayDoc !== null
-        ? [
-            ...new Set(
-              (await operationsShipmentAssignmentRepository.findForDay(dayDoc._id))
-                .filter((leg) => leg.leg === 'delivery')
-                .map((leg) => String(leg.shipmentId)),
-            ),
-          ]
+        ? await operationsShipmentAssignmentRepository.securedDeliveryShipmentIdsOfDay(dayDoc._id)
         : [];
     const count = past
       ? await operationsShipmentRepository.countSecuredDistributionRecord(day, riding)

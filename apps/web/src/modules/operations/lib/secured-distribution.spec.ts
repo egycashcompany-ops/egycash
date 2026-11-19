@@ -1,7 +1,7 @@
 // «توزيع المحصنات» / «تسليم المحصنات» (Round 12) — the screens' rules, pure. The owner: «وهشد المحصنة
 // احطها على العربيه او المحصنة اللى نفس الاتجاه بتاع العربيه تتحط تلقائى ولما يحفظ … بس لما يدوس تسليم
 // المحصنات هتتسلم ساعتها وخلاص مش هتبقى ف الخزنة».
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   operationsDirectionAreas,
   operationsDirectionMatchesArea,
@@ -15,14 +15,18 @@ import {
   captainOn,
   distributionChanges,
   distributionColumns,
+  distributionDayChange,
   distributionSaveBody,
+  distributionUndoKey,
   handoverBlock,
   handoverRequest,
   handoverShipments,
   isProposed,
   isRecordDay,
+  isRecordScreen,
   isStartedLeg,
   landingCaptain,
+  mayUndo,
   loadFigures,
   loadPackages,
   packagingRead,
@@ -45,9 +49,11 @@ import {
   savedPlacement,
   shownCaptain,
   takesShipments,
+  unsavedOnRecord,
   withoutShipment,
   type DistributionDraft,
   type DistributionRowFacts,
+  type UndoKeyPress,
 } from './secured-distribution';
 import { lastStep, record, undo } from './crew-undo';
 
@@ -165,6 +171,170 @@ describe('the day «توزيع المحصنات» opens on — a past one as its
     // No day to judge by judges nothing.
     expect(isRecordDay('2026-11-11')).toBe(false);
     expect(isRecordDay('2026-11-11', '')).toBe(false);
+  });
+
+  // R30 critic — the client's clock overrode the server's `past: false`: a PC a day (or a few
+  // minutes before midnight) ahead drew today's screen as a record and the desk could not
+  // distribute. Once the read is in, the server decides; the screen adds only midnight passing.
+  describe('R30 critic — the SERVER says whether the screen is a record (`isRecordScreen`)', () => {
+    const read = (today: string, readOn: string, past = false) => ({ today, past, readOn });
+
+    it('takes the server’s `past: false` over a PC clock that runs ahead — today stays today', () => {
+      // The server's today is the 12th; this PC already says the 13th, at the read and now (a day
+      // ahead, or a few minutes ahead just before midnight — the same two days on its clock).
+      expect(isRecordScreen('2026-11-12', '2026-11-13', read('2026-11-12', '2026-11-13'))).toBe(
+        false,
+      );
+      // The old rule (every today given) called it a record — the defect.
+      expect(isRecordDay('2026-11-12', '2026-11-13', '2026-11-12')).toBe(true);
+    });
+
+    it('takes the server’s `past: true` over a PC clock that runs behind', () => {
+      expect(
+        isRecordScreen('2026-11-11', '2026-11-10', read('2026-11-12', '2026-11-10', true)),
+      ).toBe(true);
+    });
+
+    it('turns the read of today into its record when midnight passes on the open screen — not a day to come', () => {
+      // Read on the 12th (server and PC agree); the PC's day is the 13th now.
+      expect(isRecordScreen('2026-11-12', '2026-11-13', read('2026-11-12', '2026-11-12'))).toBe(
+        true,
+      );
+      // A read of the 13th made on the 12th is the new today — still distributable.
+      expect(isRecordScreen('2026-11-13', '2026-11-13', read('2026-11-12', '2026-11-12'))).toBe(
+        false,
+      );
+      expect(isRecordScreen('2026-11-14', '2026-11-13', read('2026-11-12', '2026-11-12'))).toBe(
+        false,
+      );
+      // A PC a day ahead still sees ONE midnight pass: the server's 12th has turned too.
+      expect(isRecordScreen('2026-11-12', '2026-11-14', read('2026-11-12', '2026-11-13'))).toBe(
+        true,
+      );
+      // Two midnights: the 13th, read on the 12th, has passed as well.
+      expect(isRecordScreen('2026-11-13', '2026-11-14', read('2026-11-12', '2026-11-12'))).toBe(
+        true,
+      );
+    });
+
+    it('before the read is in: the URL’s day against the live Cairo day', () => {
+      expect(isRecordScreen('2026-11-11', '2026-11-12', null)).toBe(true);
+      expect(isRecordScreen('2026-11-12', '2026-11-12', null)).toBe(false);
+      expect(isRecordScreen('2026-11-20', '2026-11-12', null)).toBe(false);
+    });
+
+    it('judges nothing it cannot read — a malformed day is no midnight passed', () => {
+      expect(isRecordScreen('2026-11-12', '2026-11-13', read('2026-11-12', ''))).toBe(false);
+      expect(isRecordScreen('2026-11-12', '', read('2026-11-12', '2026-11-12'))).toBe(false);
+    });
+  });
+
+  // R30 critic — the screen opened with no `?date=` and left past midnight is yesterday's record
+  // under the URL of "today": picking today in «يوم التسليم» changed neither the URL nor the read's
+  // key, so nothing was read and the record stayed.
+  it('R30 critic — asks the read again when the day picked leaves the URL as it is', () => {
+    expect(distributionDayChange(null, TODAY, TODAY)).toEqual({ date: null, reread: true });
+    expect(distributionDayChange(null, '', TODAY)).toEqual({ date: null, reread: true });
+    // A day by name, or back to today from one: the URL moves, the key with it.
+    expect(distributionDayChange(null, '2026-11-11', TODAY)).toEqual({
+      date: '2026-11-11',
+      reread: false,
+    });
+    expect(distributionDayChange('2026-11-11', TODAY, TODAY)).toEqual({
+      date: null,
+      reread: false,
+    });
+    expect(distributionDayChange('2026-11-11', '', TODAY)).toEqual({ date: null, reread: false });
+    expect(distributionDayChange('2026-11-11', '2026-11-20', TODAY)).toEqual({
+      date: '2026-11-20',
+      reread: false,
+    });
+  });
+
+  // R30 critic — moves left unsaved when midnight passed vanished without a word.
+  it('R30 critic — counts the work a record no longer draws — none on a day that can be distributed', () => {
+    const rows = [row('s-1'), placed('s-2', V1.crewAssignmentId, 'c1', 0), row('s-3')];
+    const draft = moveToVan(
+      moveToVan(EMPTY_DRAFT, rows[0] as DistributionRowFacts, V1),
+      rows[1] as DistributionRowFacts,
+      V2,
+    );
+    expect(distributionChanges(rows, draft)).toHaveLength(2);
+    expect(unsavedOnRecord(true, rows, draft)).toBe(2);
+    expect(unsavedOnRecord(false, rows, draft)).toBe(0);
+    expect(unsavedOnRecord(true, rows, EMPTY_DRAFT)).toBe(0);
+  });
+
+  // R30 critic — the record's keyboard rule was pinned only by matching the page's source text.
+  // The handler the page registers is this one; driven here with key presses.
+  describe('R30 critic — Ctrl+Z (⌘Z) on a record changes nothing (`distributionUndoKey`)', () => {
+    const press = (over: Partial<UndoKeyPress> = {}) => {
+      const preventDefault = vi.fn();
+      const event = {
+        ctrlKey: true,
+        metaKey: false,
+        shiftKey: false,
+        altKey: false,
+        code: 'KeyZ',
+        key: 'z',
+        target: null,
+        ...over,
+        preventDefault,
+      } as UndoKeyPress;
+      return { event, preventDefault };
+    };
+    const handler = (allowed: boolean, inTextBox = false) => {
+      const undo = vi.fn();
+      return {
+        undo,
+        onKey: distributionUndoKey({ allowed: () => allowed, undo, inTextBox: () => inTextBox }),
+      };
+    };
+
+    it('on a record: the key is the screen’s and is swallowed — no step taken back', () => {
+      // `mayUndo` is false on a record whatever the history holds.
+      expect(mayUndo(false, { what: { kind: 'move' } })).toBe(false);
+      const { undo, onKey } = handler(mayUndo(false, { what: { kind: 'move' } }));
+      for (const over of [{}, { ctrlKey: false, metaKey: true }, { key: 'Z' }, { key: 'ئ' }]) {
+        const { event, preventDefault } = press(over);
+        onKey(event);
+        expect(preventDefault).toHaveBeenCalledTimes(1);
+      }
+      expect(undo).not.toHaveBeenCalled();
+    });
+
+    it('on a day that can be distributed, with a step: takes it back, once a press', () => {
+      expect(mayUndo(true, { what: { kind: 'move' } })).toBe(true);
+      const { undo, onKey } = handler(true);
+      onKey(press().event);
+      onKey(press({ ctrlKey: false, metaKey: true }).event);
+      expect(undo).toHaveBeenCalledTimes(2);
+      // Nothing to take back: swallowed, nothing done.
+      expect(mayUndo(true, null)).toBe(false);
+      const none = handler(mayUndo(true, null));
+      none.onKey(press().event);
+      expect(none.undo).not.toHaveBeenCalled();
+    });
+
+    it('leaves the browser its own keys — a text box’s undo, Shift or Alt, any other key', () => {
+      const { undo, onKey } = handler(true, true);
+      const inBox = press();
+      onKey(inBox.event);
+      expect(inBox.preventDefault).not.toHaveBeenCalled();
+      const open = handler(true);
+      for (const over of [
+        { shiftKey: true },
+        { altKey: true },
+        { ctrlKey: false },
+        { code: 'KeyY', key: 'y' },
+      ]) {
+        const { event, preventDefault } = press(over);
+        open.onKey(event);
+        expect(preventDefault, JSON.stringify(over)).not.toHaveBeenCalled();
+      }
+      expect(undo).not.toHaveBeenCalled();
+      expect(open.undo).not.toHaveBeenCalled();
+    });
   });
 
   it('reads a record’s packages from the read itself — none carried, the vault’s holdings as before', () => {

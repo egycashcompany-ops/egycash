@@ -299,8 +299,17 @@ export const TOP_FIGURES = 'flex min-w-0 flex-wrap items-center justify-center g
 export const RecordNotice = ({
   title,
   body,
+  unsaved = null,
   ...rest
-}: { title: string; body: string } & Record<`data-${string}`, string>): JSX.Element => (
+}: {
+  title: string;
+  body: string;
+  /**
+   * R30 critic — the screen was left open past midnight with work not saved: what became of it,
+   * said on the notice while the record stands (the page also says it once, as it happens).
+   */
+  unsaved?: string | null;
+} & Record<`data-${string}`, string>): JSX.Element => (
   <div
     {...rest}
     role="status"
@@ -320,6 +329,14 @@ export const RecordNotice = ({
         {title}
       </p>
       <p className="text-xs font-bold leading-5 text-slate-600 dark:text-slate-300">{body}</p>
+      {unsaved !== null && (
+        <p
+          data-record-unsaved="true"
+          className="mt-0.5 text-xs font-black leading-5 text-amber-800 dark:text-amber-200"
+        >
+          {unsaved}
+        </p>
+      )}
     </div>
   </div>
 );
@@ -1564,6 +1581,7 @@ export const VanCard = ({
   count,
   packages,
   takesNone = false,
+  calm = false,
   actions,
   drop,
   children,
@@ -1588,6 +1606,12 @@ export const VanCard = ({
    * nothing, and leaves it out.
    */
   takesNone?: boolean;
+  /**
+   * R30 critic — a past day's RECORD (`RecordNotice`): the van is read back, never placed on, so it
+   * wears no placing alarm — no rose «بلا قائد» edge, stripe or frame, no amber kept row, no refusal
+   * on an empty load. Its words stay (they say what the row was), in the card's neutral slate.
+   */
+  calm?: boolean;
   /** Above the van — the vault's «تسليم» and «طباعة». */
   actions?: ReactNode;
   drop?: {
@@ -1649,13 +1673,15 @@ export const VanCard = ({
           ? VAN_CARD.place
           : drop?.over === 'refuse'
             ? VAN_CARD.refuse
-            : captain === null
-              ? cn(VAN_CARD.noCaptain, kept && VAN_CARD.keptShape)
-              : kept
-                ? VAN_CARD.kept
-                : drop?.armed === true
-                  ? VAN_CARD.armed
-                  : VAN_CARD.rest,
+            : calm
+              ? cn(VAN_CARD.rest, kept && VAN_CARD.keptShape)
+              : captain === null
+                ? cn(VAN_CARD.noCaptain, kept && VAN_CARD.keptShape)
+                : kept
+                  ? VAN_CARD.kept
+                  : drop?.armed === true
+                    ? VAN_CARD.armed
+                    : VAN_CARD.rest,
       )}
     >
       {/* The van's one colour at its start edge — the same on every van; a state's (Round 27 —
@@ -1665,11 +1691,13 @@ export const VanCard = ({
         data-van-stripe="true"
         className={cn(
           'pointer-events-none absolute inset-y-0 start-0 z-[1] w-[3px]',
-          captain === null
-            ? VAN_STATE_STRIPE.noCaptain
-            : kept
-              ? VAN_STATE_STRIPE.kept
-              : VAN_LOOK.stripe,
+          calm
+            ? VAN_LOOK.stripe
+            : captain === null
+              ? VAN_STATE_STRIPE.noCaptain
+              : kept
+                ? VAN_STATE_STRIPE.kept
+                : VAN_LOOK.stripe,
         )}
       />
       {actions !== undefined && (
@@ -1723,12 +1751,15 @@ export const VanCard = ({
               }
               className={cn(
                 'flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-bold leading-4',
-                KEPT_NOTICE.strip,
+                calm ? KEPT_NOTICE.quietStrip : KEPT_NOTICE.strip,
               )}
             >
               <BoardIcon
-                d={[...PATH.warn]}
-                className={cn('h-3.5 w-3.5 shrink-0', KEPT_NOTICE.icon)}
+                d={calm ? [...SHIPMENT_PATH.info] : [...PATH.warn]}
+                className={cn(
+                  'h-3.5 w-3.5 shrink-0',
+                  calm ? KEPT_NOTICE.quietIcon : KEPT_NOTICE.icon,
+                )}
               />
               <span className="min-w-0">
                 {t('operations.distribution.notSecured')}
@@ -1751,15 +1782,25 @@ export const VanCard = ({
               data-van-captain-line={van.crewAssignmentId}
               className={cn(
                 'col-span-2 flex min-w-0 items-center rounded-lg px-2 py-1 ring-1 ring-inset',
-                captain === null ? CAPTAIN_FRAME.none : CAPTAIN_FRAME.some,
+                captain === null
+                  ? calm
+                    ? CAPTAIN_FRAME.quiet
+                    : CAPTAIN_FRAME.none
+                  : CAPTAIN_FRAME.some,
               )}
             >
               {captain === null ? (
                 <span
                   data-van-captain="none"
-                  className="flex min-w-0 items-center gap-1.5 text-[12.5px] font-black leading-5 text-rose-700 dark:text-rose-300"
+                  className={cn(
+                    'flex min-w-0 items-center gap-1.5 text-[12.5px] font-black leading-5',
+                    calm ? CAPTAIN_FRAME.quietWords : 'text-rose-700 dark:text-rose-300',
+                  )}
                 >
-                  <BoardIcon d={[...PATH.warn]} className="h-4 w-4 shrink-0" />
+                  <BoardIcon
+                    d={calm ? [...SHIPMENT_PATH.person] : [...PATH.warn]}
+                    className="h-4 w-4 shrink-0"
+                  />
                   <span className="min-w-0 truncate">
                     {t('operations.distribution.noCaptainShort')}
                   </span>
@@ -1817,7 +1858,7 @@ export const VanCard = ({
             // One look at a time — see the card's own edge above.
             drop?.over === 'place'
               ? LOAD_LOOK.place
-              : count === 0 && takesNone
+              : count === 0 && takesNone && !calm
                 ? LOAD_LOOK.refuse
                 : LOAD_LOOK.area,
             count === 0 && 'border-dashed',

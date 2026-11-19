@@ -220,6 +220,12 @@ export const CAPTAIN_MARK = 'bg-emerald-700 text-white dark:bg-emerald-700 dark:
 export const CAPTAIN_FRAME = {
   some: 'bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30',
   none: 'bg-rose-50 ring-rose-200 dark:bg-rose-500/[0.08] dark:ring-rose-400/30',
+  /**
+   * R30 critic — «بلا قائد» on a RECORD: a fact of the day read back, not a warning about placing —
+   * neutral slate, its words in the slate of the card's other words.
+   */
+  quiet: 'bg-slate-50 ring-slate-200 dark:bg-slate-400/[0.06] dark:ring-slate-600/50',
+  quietWords: 'text-slate-600 dark:text-slate-300',
 } as const;
 
 /**
@@ -247,6 +253,10 @@ export const KEPT_NOTICE = {
   strip:
     'border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-400/25 dark:bg-amber-400/[0.06] dark:text-amber-100',
   icon: 'text-amber-600 dark:text-amber-400',
+  /** R30 critic — on a RECORD: the same words, read back in neutral slate — nothing to act on. */
+  quietStrip:
+    'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600/50 dark:bg-slate-400/[0.06] dark:text-slate-200',
+  quietIcon: 'text-slate-400 dark:text-slate-500',
 } as const;
 
 /** Where a chip stands, and its state — which of the chip's looks it wears. */

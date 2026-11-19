@@ -39,14 +39,17 @@ import { ApiError } from '../../../shared/lib/api-client';
 import { HISTORY_TOO_LARGE, cairoToday } from '../lib/shipment-history';
 import { __securedDistributionKey } from '../api/operations-queries';
 import {
+  CAPTAIN_FRAME,
   CHIP_LOOK,
   COLUMN_WARN,
   COUNT_LOOK,
+  KEPT_NOTICE,
+  LOAD_LOOK,
   VAN_CARD,
   VAN_LOOK,
   VAN_STATE_STRIPE,
 } from '../components/distribution-look';
-import { dayText } from '../components/SecuredDistributionParts';
+import { RecordNotice, dayText } from '../components/SecuredDistributionParts';
 import { SecuredDistributionPage } from './SecuredDistributionPage';
 import { VaultHandoverPage } from './VaultHandoverPage';
 
@@ -267,6 +270,7 @@ const render = ({
   refused = false,
   date = null,
   packaging = 'ready',
+  updatedAt,
 }: {
   path: '/operations/secured/distribution' | '/operations/vault/handover';
   permissions: string[];
@@ -277,6 +281,8 @@ const render = ({
   date?: string | null;
   /** The vault's packaging read: answered, still out, or failed. */
   packaging?: 'ready' | 'pending' | 'failed';
+  /** R30 critic — when the read arrived (ms); now when not given. */
+  updatedAt?: number;
 }): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
@@ -312,7 +318,13 @@ const render = ({
       fetchStatus: 'idle',
     });
   }
-  if (data !== null) qc.setQueryData(__securedDistributionKey(date), data);
+  if (data !== null) {
+    qc.setQueryData(
+      __securedDistributionKey(date),
+      data,
+      updatedAt === undefined ? undefined : { updatedAt },
+    );
+  }
   if (refused) {
     qc.setDefaultOptions({ queries: { ...qc.getDefaultOptions().queries, retryOnMount: false } });
     const query = qc.getQueryCache().build(qc, { queryKey: [...__securedDistributionKey(null)] });
@@ -676,12 +688,16 @@ describe('«توزيع المحصنات» — a PAST day is its record, read onl
     expect(vanOf(html, 'cr-101')).toContain('data-van-packages="unknown"');
   });
 
+  // REWRITTEN by the R30 critic — it judged the read left open past midnight by the read's `today`
+  // against the PC's live day alone, so a read that arrived NOW with the server's `past: false` (a PC
+  // clock running ahead) was drawn as a record too. Midnight passing is now the days the screen's own
+  // clock saw go by since the read arrived (`isRecordScreen`): the stale read below arrived yesterday.
   it('is a record before the server has answered (the URL’s day), and on yesterday’s read left open past midnight', () => {
     const loading = render({ path: PATH_DIST, permissions: DESK, data: null, date: YESTERDAY });
     expect(loading).toContain(`data-distribution-record="${YESTERDAY}"`);
     for (const write of WRITES) expect(loading, write).not.toContain(write);
-    // No `?date=`: the screen opened on "today", read before midnight — the server then said
-    // `past: false`. The live Cairo day has moved on: those vans have left.
+    // No `?date=`: the screen opened on "today", read YESTERDAY (before midnight) — the server then
+    // said `past: false`. The live Cairo day has moved on since: those vans have left.
     const stale = render({
       path: PATH_DIST,
       permissions: DESK,
@@ -690,11 +706,33 @@ describe('«توزيع المحصنات» — a PAST day is its record, read onl
         today: `${YESTERDAY}T00:00:00.000Z`,
         past: false,
       }),
+      updatedAt: Date.parse(`${YESTERDAY}T12:00:00.000Z`),
     });
     expect(stale).toContain(`data-distribution-record="${YESTERDAY}"`);
     for (const write of WRITES) expect(stale, write).not.toContain(write);
     expect(stale).not.toContain('data-shipment-tone="proposed"');
     expect(stale).not.toContain('draggable="true"');
+  });
+
+  // R30 critic — `isRecord` let the PC's own clock override the server's `past: false`: a desk PC a
+  // day ahead (or minutes ahead just before midnight) saw today's screen as a record and could not
+  // distribute at all.
+  it('R30 critic — trusts the server’s `past: false` over a PC clock that runs ahead: the desk still distributes', () => {
+    // The server's today is what this PC calls yesterday; the read arrived just now.
+    const ahead = render({
+      path: PATH_DIST,
+      permissions: DESK,
+      data: answer({
+        date: `${YESTERDAY}T00:00:00.000Z`,
+        today: `${YESTERDAY}T00:00:00.000Z`,
+        past: false,
+      }),
+    });
+    expect(ahead).not.toContain('data-distribution-record=');
+    expect(ahead).toContain('data-distribution-acts="true"');
+    expect(ahead).toContain('data-distribution-save');
+    expect(ahead).toContain('draggable="true"');
+    expect(ahead).toContain(ar('operations.distribution.dragHint'));
   });
 
   it('is the same record for a reader without the edit grant — the notice and the way back', () => {
@@ -709,17 +747,26 @@ describe('«توزيع المحصنات» — a PAST day is its record, read onl
     expect(viewer).not.toContain(ar('operations.distribution.viewOnly'));
   });
 
+  // REWRITTEN by the R30 critic — it pinned `isRecord` as the server's `past` OR the PC's clock
+  // (`isRecordDay(day, today, minDay)`), «تراجع»'s gate as `!canEdit || lastMove === null`, and two
+  // `if (!canEdit) return;` (the move and the captain switch). The record is now the server's word
+  // plus midnight passing (`isRecordScreen`), «تراجع» and its keys ask `mayUndo` (the keys through
+  // `distributionUndoKey`, driven in lib/secured-distribution.spec.ts), and the gate stands in the
+  // draft's one writer too (`applyDraft`) and in «توزيع تلقائي».
   it('shuts every act through ONE gate — the drop, the menu, the captain switch, the proposals, «تراجع» and Ctrl+Z', () => {
-    expect(DIST).toContain(
-      'const isRecord = data?.past === true || isRecordDay(day, today, minDay);',
-    );
+    expect(DIST).toContain('const isRecord = isRecordScreen(');
     expect(DIST).toContain('const canEdit = mayEdit && !isRecord;');
     // A record draws what the server holds, never a draft.
     expect(DIST).toContain('const draft = isRecord ? EMPTY_DRAFT : history.now;');
     // «تراجع», its button and its keys (Ctrl+Z, ⌘Z) end at the gate.
-    expect(DIST).toContain('if (!canEdit || lastMove === null || undoWords === null) return;');
-    // A move (drop or menu) and a captain switched.
-    expect(DIST.match(/^ {4}if \(!canEdit\) return;$/gm) ?? []).toHaveLength(2);
+    expect(DIST).toContain('const undoAllowed = mayUndo(canEdit, lastMove) && undoWords !== null;');
+    expect(DIST).toContain('if (!undoAllowed) return;');
+    expect(DIST).toContain('const onKey = distributionUndoKey({');
+    expect(DIST).toContain('allowed: () => undoRef.current.allowed,');
+    // The draft's one writer (a drop, the menu, a captain, «توزيع تلقائي»), the move, the captain
+    // switched and «توزيع تلقائي» itself.
+    expect(DIST.match(/^ {4}if \(!canEdit\) return;$/gm) ?? []).toHaveLength(4);
+    expect(DIST.match(/setHistory\(\(current\) =>\n\s+record\(/g) ?? []).toHaveLength(1);
     // The screen takes no drop, and the first read proposes nothing.
     expect(DIST).toMatch(
       /'onDragOver' \| 'onDragEnter' \| 'onDragLeave' \| 'onDrop'\n {2}> = canEdit\n/,
@@ -730,6 +777,113 @@ describe('«توزيع المحصنات» — a PAST day is its record, read onl
     expect(DIST).not.toContain('min={minDay}');
     expect(HANDOVER).toContain('min={minDay}');
     expect(HANDOVER).toContain("readDistributionDate(sp.get('date'), today)");
+  });
+
+  // R30 critic — the record still drew the alarms about PLACING: 130 (no captain) framed rose with
+  // «بلا قائد — لا تأخذ محصنات», a kept row's amber «ليس من نوع محصنة», and the «بلا سيارة» head and
+  // figure in the rose warning, though nothing can or should be done on a record.
+  it('R30 critic — draws the record calmly: no placing alarm on a van, the column or the figure', () => {
+    const KEPT = van('140', [person('c7', 'سامي رأفت')], 'الهرم', {
+      securedType: false,
+      shiftTypeName: 'يومية',
+    });
+    const ON_KEPT = shipment('s-kept', {
+      areaName: 'الهرم',
+      delivery: leg('cr-140', 'c7'),
+      deliveryLegVersion: 0,
+      placedCrewAssignmentId: 'cr-140',
+    });
+    const day = (data: OperationsSecuredDistributionDto, date: string | null) =>
+      render({ path: PATH_DIST, permissions: DESK, data, date });
+    const record = day(
+      recordOf({ crews: [...VANS, KEPT], shipments: [...ROWS, ON_KEPT] }),
+      YESTERDAY,
+    );
+    const today = day(answer({ crews: [...VANS, KEPT], shipments: [...ROWS, ON_KEPT] }), null);
+    const tag = (html: string, id: string, attr: string, el: string) =>
+      openingTag(vanOf(html, id), attr, el);
+
+    // Today: 130 wears the owner's «بلا قائد» rose, its empty load refuses; 140 its kept amber.
+    expect(openingTag(today, 'data-distribution-van="cr-130"', 'article')).toContain(
+      VAN_CARD.noCaptain,
+    );
+    expect(vanOf(today, 'cr-130')).toContain(ar('operations.distribution.noCaptain'));
+    expect(vanOf(today, 'cr-130')).toContain('data-empty-load="refuse"');
+    expect(openingTag(today, 'data-distribution-van="cr-140"', 'article')).toContain(VAN_CARD.kept);
+
+    // The record: the same vans, read back — the card's rest look, the van's own stripe…
+    const card130 = openingTag(record, 'data-distribution-van="cr-130"', 'article');
+    expect(card130).toContain(VAN_CARD.rest);
+    expect(card130).not.toContain(VAN_CARD.noCaptain);
+    expect(tag(record, 'cr-130', 'data-van-stripe="true"', 'span')).toContain(VAN_LOOK.stripe);
+    expect(tag(record, 'cr-130', 'data-van-stripe="true"', 'span')).not.toContain(
+      VAN_STATE_STRIPE.noCaptain,
+    );
+    // …«بلا قائد» still said, in the neutral frame…
+    expect(tag(record, 'cr-130', 'data-van-captain-line="cr-130"', 'div')).toContain(
+      CAPTAIN_FRAME.quiet,
+    );
+    expect(tag(record, 'cr-130', 'data-van-captain="none"', 'span')).toContain(
+      CAPTAIN_FRAME.quietWords,
+    );
+    expect(vanOf(record, 'cr-130')).toContain(ar('operations.distribution.noCaptainShort'));
+    // …and its empty load says it held nothing — not that it takes nothing.
+    expect(vanOf(record, 'cr-130')).toContain('data-empty-load="empty"');
+    expect(vanOf(record, 'cr-130')).toContain(ar('operations.distribution.emptyVan'));
+    expect(vanOf(record, 'cr-130')).not.toContain(ar('operations.distribution.noCaptain'));
+    expect(tag(record, 'cr-130', 'data-van-load="cr-130"', 'div')).not.toContain(LOAD_LOOK.refuse);
+    // The kept row: its words stay (what the row was), read back in slate.
+    const card140 = openingTag(record, 'data-distribution-van="cr-140"', 'article');
+    expect(card140).toContain(VAN_CARD.rest);
+    expect(card140).toContain(VAN_CARD.keptShape);
+    expect(card140).not.toContain(VAN_CARD.kept);
+    expect(tag(record, 'cr-140', 'data-van-not-secured=', 'p')).toContain(KEPT_NOTICE.quietStrip);
+    expect(vanOf(record, 'cr-140')).toContain('data-distribution-shipment="s-kept"');
+    // «بلا سيارة»: its head and the top figure count, calmly — the محصنات' own cyan.
+    const left = leftOf(record);
+    const head = left.slice(0, left.indexOf('</header>'));
+    expect(head).toContain('data-column-icon="plain"');
+    expect(head).not.toContain(COLUMN_WARN.count);
+    const at = record.indexOf('data-figure="unplaced"');
+    const pill = record.slice(
+      record.lastIndexOf('<span', at),
+      record.indexOf('data-figure="', at + 10),
+    );
+    expect(pill).toContain(COUNT_LOOK.shipments.square);
+    expect(pill).not.toContain(COLUMN_WARN.figure);
+  });
+
+  // R30 critic — on a screen with no `?date=` that midnight turned into yesterday's record, picking
+  // today in «يوم التسليم» changed neither the URL nor the read's key: nothing was read again.
+  it('R30 critic — asks the read again when «يوم التسليم» leaves the URL as it is; «العودة إلى اليوم» is the same act', () => {
+    expect(DIST).toContain(
+      "const { date: asked, reread } = distributionDayChange(sp.get('date'), value, today);",
+    );
+    expect(DIST).toContain('if (reread) void board.refetch();');
+    expect(DIST).toContain("const backToToday = (): void => setDay('');");
+  });
+
+  // R30 critic — moves left unsaved when midnight passed vanished without a word.
+  it('R30 critic — says what became of work left unsaved when the day turned into a record', () => {
+    const words = ar('operations.distribution.record.unsaved', { count: '٦' });
+    expect(words).toContain('٦');
+    expect(words).toContain('لا يمكن حفظها');
+    expect(translate('en', 'operations.distribution.record.unsaved', { count: 6 })).toContain(
+      'can no longer be saved',
+    );
+    const notice = (unsaved: string | null) =>
+      renderToStaticMarkup(
+        <RecordNotice title="t" body="b" unsaved={unsaved} data-distribution-record={YESTERDAY} />,
+      );
+    expect(notice(words)).toContain('data-record-unsaved="true"');
+    expect(notice(words)).toContain(words);
+    expect(notice(null)).not.toContain('data-record-unsaved');
+    // The page counts it from the history behind the record (`unsavedOnRecord`), says it once as
+    // it happens and on the notice while the record stands; a deep-linked record has none.
+    expect(DIST).toContain('const lostOnRecord = unsavedOnRecord(isRecord, rows, history.now);');
+    expect(DIST).toContain("t('operations.distribution.record.unsavedTitle')");
+    expect(DIST).toContain('unsaved={');
+    expect(html).not.toContain('data-record-unsaved');
   });
 });
 
@@ -941,10 +1095,15 @@ describe('what the screens are built from', () => {
 
   // Round 24 — «تراجع» is off while «حفظ» is in flight: the save's success starts the history
   // afresh, so a press in that window would vanish unsaid and the move it named would be saved.
+  // REWRITTEN by the R30 critic — the gate read `if (!canEdit || lastMove === null || undoWords ===
+  // null) return;`; it is now ONE answer (`undoAllowed`, from `mayUndo`) that the button's act and
+  // Ctrl+Z (`distributionUndoKey`) both ask — the same rule: no step while «حفظ» is in flight.
   it('takes nothing back while the save is in flight — the button, the press and Ctrl+Z alike', () => {
     expect(DIST).toContain('const lastMove = undoableStep(history, save.isPending);');
     expect(DIST).toContain('disabled={lastMove === null}');
-    expect(DIST).toContain('if (!canEdit || lastMove === null || undoWords === null) return;');
+    expect(DIST).toContain('const undoAllowed = mayUndo(canEdit, lastMove) && undoWords !== null;');
+    expect(DIST).toContain('if (!undoAllowed) return;');
+    expect(DIST).toContain('allowed: () => undoRef.current.allowed,');
   });
 
   // Round 17 — every count of محصنات on the two screens takes its own Arabic form («محصنة واحدة ·

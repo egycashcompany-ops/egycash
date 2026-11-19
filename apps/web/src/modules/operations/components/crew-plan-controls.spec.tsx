@@ -19,9 +19,16 @@ import {
 } from '@ecms/contracts';
 import { localeSlice } from '../../../store/localeSlice';
 import { translate } from '../../../platform/localization/i18n';
-import { directionItems } from '../lib/direction-pick';
+import {
+  directionAddOffer,
+  directionItems,
+  withDirectionAdd,
+  type DirectionAddRefusal,
+} from '../lib/direction-pick';
+import { type DirectionAdd } from '../api/direction-area';
 import {
   CELL_BOX,
+  REFUSED_BOX,
   DirectionOptions,
   DirectionPicker,
   ShiftTypePicker,
@@ -330,5 +337,212 @@ describe('the direction list — «استخدام «…» اتجاهًا» (Roun
     );
     expect(html).not.toContain(ar('operations.crewPlan.direction.empty'));
     expect(kinds(html)).toEqual([]);
+  });
+});
+
+// Round 28c — «يعرض عليا اضيفه او لا»: beside «استخدام «…» اتجاهًا» (this row only), the list offers
+// «إضافة «…» إلى القائمة» — written to «المناطق» at once. The box shows the add pending, and a refusal
+// with the name kept.
+describe('Round 28c — «إضافة «…» إلى القائمة» in the direction box', () => {
+  const AREAS = ['المعادي', 'المعادي الجديدة', 'حلوان'];
+  const en = (key: string): string => translate('en', key);
+  const list = (
+    query: string,
+    extra: {
+      value?: string | null;
+      active?: number;
+      archived?: readonly string[] | null;
+      refused?: { name: string; reason: DirectionAddRefusal } | null;
+    } = {},
+  ): string => {
+    const offer = directionAddOffer(query, AREAS, extra.archived ?? [], extra.refused ?? null);
+    return render(
+      <ul>
+        <DirectionOptions
+          listId="l"
+          items={withDirectionAdd(directionItems(query, AREAS), offer)}
+          active={extra.active ?? 0}
+          value={extra.value ?? null}
+          archivedArea={offer?.kind === 'archived' ? offer.area : null}
+          refused={extra.refused ?? null}
+          onHover={() => undefined}
+          onPick={() => undefined}
+          onAdd={() => undefined}
+        />
+      </ul>,
+    );
+  };
+  const kinds = (html: string): string[] =>
+    [...html.matchAll(/data-direction-option="(\w+)"/g)].map((match) => match[1] as string);
+
+  it('offers BOTH for a name no area holds: «استخدام» first and highlighted, «إضافة» right after, with its hint', () => {
+    const html = list('طريق السويس');
+    expect(kinds(html)).toEqual(['typed', 'add']);
+    expect(html).toContain(
+      `>${ar('operations.crewPlan.direction.useTyped').replace('{{text}}', 'طريق السويس')}<`,
+    );
+    expect(html).toContain(
+      `>${ar('operations.crewPlan.direction.addToList').replace('{{text}}', 'طريق السويس')}<`,
+    );
+    // Enter takes the highlighted row — the row-only one, as Round 28 left it.
+    expect(html).toMatch(
+      /id="l-option-0"[^>]*data-direction-option="typed"[^>]*data-active="true"/,
+    );
+    expect(html).toMatch(
+      /id="l-option-1" role="option" aria-selected="false" data-direction-option="add"/,
+    );
+    // The hint says the add is written at once, not at «حفظ», and «تراجع» does not take it back.
+    const hint = ar('operations.crewPlan.direction.addHint');
+    expect(html).toContain(`data-direction-add-hint="true"`);
+    expect(html).toContain(`>${hint}<`);
+    for (const word of ['فورًا', '«حفظ»', '«تراجع»', '«المناطق»']) expect(hint).toContain(word);
+    // A plus where the typed row has its pen.
+    expect(html).toContain('d="M12 5v14"');
+  });
+
+  it('the arrows reach the add (Enter then takes it), and «مسح الاتجاه» after it', () => {
+    const html = list('طريق السويس', { value: 'حلوان', active: 1 });
+    expect(html).toMatch(/id="l-option-1"[^>]*data-direction-option="add"[^>]*data-active="true"/);
+    expect(html).toMatch(/id="l-option-2"[^>]*data-direction-option="clear"/);
+  });
+
+  it('says the strings in formal Arabic and in English', () => {
+    expect(ar('operations.crewPlan.direction.addToList')).toBe('إضافة «{{text}}» إلى القائمة');
+    expect(en('operations.crewPlan.direction.addToList')).toBe('Add “{{text}}” to the list');
+    for (const key of [
+      'addHint',
+      'adding',
+      'added',
+      'addedBody',
+      'archived',
+      'addRefused.duplicate',
+      'addRefused.forbidden',
+      'addRefused.invalid',
+      'addRefused.failed',
+    ]) {
+      const full = `operations.crewPlan.direction.${key}`;
+      expect(ar(full), full).not.toBe(full);
+      expect(en(full), full).not.toBe(full);
+    }
+    // «تراجع» takes back the row's direction, never the area — the toast after the add says so.
+    expect(ar('operations.crewPlan.direction.addedBody')).toContain('«تراجع»');
+    expect(ar('operations.crewPlan.direction.addedBody')).toContain('تبقى المنطقة في القائمة');
+  });
+
+  it('no add for a name an area holds, for several parts, past the ceiling — or for a desk without the grant', () => {
+    expect(kinds(list('المعا'))).toEqual(['area', 'area', 'typed']);
+    expect(kinds(list('المعادي - طريق السويس'))).toEqual(['typed']);
+    expect(kinds(list('ط'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH + 1)))).toEqual([]);
+    // No grant (or the lists still read): `archived` is null — the box is given no `add`.
+    const html = render(
+      <ul>
+        <DirectionOptions
+          listId="l"
+          items={withDirectionAdd(
+            directionItems('طريق السويس', AREAS),
+            directionAddOffer('طريق السويس', AREAS, null),
+          )}
+          active={0}
+          value={null}
+          onHover={() => undefined}
+          onPick={() => undefined}
+        />
+      </ul>,
+    );
+    expect(kinds(html)).toEqual(['typed']);
+    expect(html).not.toContain(ar('operations.crewPlan.direction.addToList').slice(0, 6));
+  });
+
+  it('an archived area holding the name is said, and no add offered', () => {
+    const html = list('الدقى', { archived: ['الدقي'] });
+    expect(kinds(html)).toEqual(['typed']);
+    expect(html).toContain('data-direction-archived="true"');
+    expect(html).toContain(
+      ar('operations.crewPlan.direction.archived').replace('{{area}}', 'الدقي'),
+    );
+  });
+
+  it('a refusal is said above the rows, the text kept for the row — and the add not offered again', () => {
+    for (const reason of ['duplicate', 'forbidden', 'invalid'] as const) {
+      const html = list('طريق السويس', { refused: { name: 'طريق السويس', reason } });
+      expect(html).toContain(`role="alert" data-direction-add-refused="${reason}"`);
+      expect(html).toContain(
+        ar(`operations.crewPlan.direction.addRefused.${reason}`).replace('{{text}}', 'طريق السويس'),
+      );
+      expect(kinds(html), reason).toEqual(['typed']);
+      expect(html.indexOf('role="alert"')).toBeLessThan(html.indexOf('data-direction-option'));
+    }
+    // A failure that may pass: the add is offered again, beside the row-only choice.
+    expect(
+      kinds(list('طريق السويس', { refused: { name: 'طريق السويس', reason: 'failed' } })),
+    ).toEqual(['typed', 'add']);
+  });
+
+  const picker = (add: Partial<DirectionAdd>, value: string | null = 'حلوان'): string =>
+    render(
+      <DirectionPicker
+        rowKey="r"
+        value={value}
+        options={AREAS}
+        disabled={false}
+        onChange={() => undefined}
+        add={{
+          archived: [],
+          pending: null,
+          refused: null,
+          onAdd: () => undefined,
+          onSettle: () => undefined,
+          ...add,
+        }}
+      />,
+    );
+
+  it('while the add is written the row shows it pending: the name, a spinner, read-only, busy — nothing more taken', () => {
+    const html = picker({ pending: 'طريق السويس' });
+    const box = classOf(html, 'role="combobox"');
+    expect(box).toEqual(expect.arrayContaining(CELL));
+    expect(html).toContain('value="طريق السويس"');
+    expect(html).toContain('readonly=""');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('data-direction-adding="true"');
+    expect(html).toContain('data-direction-adding-spinner="true"');
+    expect(html).toContain('animate-spin');
+    // The chevron gives way to the spinner.
+    expect(html).not.toContain('d="m6 9 6 6 6-6"');
+    const adding = ar('operations.crewPlan.direction.adding').replace('{{text}}', 'طريق السويس');
+    expect(html).toContain(`title="${adding}"`);
+    const note = /aria-describedby="([^"]+)"/.exec(html)?.[1] as string;
+    expect(html).toContain(`id="${note}" class="sr-only" role="status">${adding}<`);
+  });
+
+  it('a refused add keeps the name in the box, marked red and said — the row’s direction unchanged', () => {
+    const html = picker({ refused: { name: 'طريق السويس', reason: 'duplicate' } });
+    const said = ar('operations.crewPlan.direction.addRefused.duplicate').replace(
+      '{{text}}',
+      'طريق السويس',
+    );
+    expect(html).toContain('value="طريق السويس"');
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('data-direction-add-refused="duplicate"');
+    expect(html).toContain(`title="${said}"`);
+    expect(classOf(html, 'role="combobox"')).toEqual(
+      expect.arrayContaining(REFUSED_BOX.split(/\s+/)),
+    );
+    expect(html).not.toContain('readonly');
+  });
+
+  it('given no add (no grant), the box is Round 28’s, unchanged', () => {
+    const without = render(
+      <DirectionPicker
+        rowKey="r"
+        value="حلوان"
+        options={AREAS}
+        disabled={false}
+        onChange={() => undefined}
+      />,
+    );
+    expect(picker({})).toBe(without);
+    expect(without).not.toContain('aria-busy');
+    expect(without).not.toContain('data-direction-add');
   });
 });

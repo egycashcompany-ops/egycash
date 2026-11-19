@@ -29,6 +29,16 @@
 // dropped, trimmed, inner spaces one. Text that names nothing («-», «/») is never taken, and text
 // typed by hand past `OPERATIONS_DIRECTION_MAX_LENGTH` is not either — the list says so instead
 // (`directionTooLong`) of the box cutting a paste without a word.
+//
+// Round 28c — asked whether a direction typed by hand should also go on the list, the owner: «يعرض
+// عليا اضيفه او لا». So beside «استخدام «…» اتجاهًا» (this row only, unchanged) the list offers
+// «إضافة «…» إلى القائمة» (`directionAddOffer`, `withDirectionAdd`) — the name added to «المناطق»,
+// the catalog the list is read from, then put on the row in the area's own spelling. Right AFTER
+// the typed row, so Enter still takes the row-only choice and the add is one arrow away. Offered
+// only for a desk who may write the catalog, and only for ONE new name: text that names something,
+// within the hand-typed ceiling, of one part (none of the save's separators — «المعادي - طريق» is
+// a direction of several), and that no area answers — an active one (the list offers it instead)
+// or an archived one (the list says so, `{ kind: 'archived' }`: restored, not added twice).
 import {
   OPERATIONS_DIRECTION_MAX_LENGTH,
   OPERATIONS_DIRECTION_SEPARATOR,
@@ -40,9 +50,14 @@ import {
 } from '@ecms/contracts';
 import { fold } from '../../../shared/lib/fold';
 
-/** One row of the box's list: an area (its own spelling), or the text as the desk typed it. */
+/**
+ * One row of the box's list: an area (its own spelling), the text as the desk typed it, or (Round
+ * 28c) that text offered to «المناطق» — «إضافة «…» إلى القائمة».
+ */
 export type DirectionItem =
-  { kind: 'area'; direction: string } | { kind: 'typed'; direction: string };
+  | { kind: 'area'; direction: string }
+  | { kind: 'typed'; direction: string }
+  | { kind: 'add'; direction: string };
 
 /** The text as a hand-typed direction, tidied — or null when there is nothing to take. */
 export const typedDirection = (query: string): string | null => {
@@ -290,4 +305,75 @@ export const highlightedDirectionRow = (
   const count = itemCount + (hasValue ? 1 : 0);
   if (count === 0 || active < 0 || active >= count) return -1;
   return itemCount === 0 && !arrowed ? -1 : active;
+};
+
+// ── Round 28c — «إضافة «…» إلى القائمة» ──────────────────────────────────────────────────────────
+
+/** Why «المناطق» refused an add — said in the list, the typed text kept for the row instead. */
+export type DirectionAddRefusal = 'duplicate' | 'forbidden' | 'invalid' | 'failed';
+
+/** An add «المناطق» refused: the name it was for, and why. */
+export interface DirectionAddRefused {
+  name: string;
+  reason: DirectionAddRefusal;
+}
+
+/**
+ * What the list offers about adding the typed text to «المناطق»: the add itself (`name`, the text
+ * tidied as the save tidies it — the name the catalog stores), or, when an ARCHIVED area answers
+ * the text, that area — said, not added again (the catalog holds the name; it is restored there).
+ */
+export type DirectionAddOffer = { kind: 'add'; name: string } | { kind: 'archived'; area: string };
+
+/**
+ * Round 28c — may «إضافة «…» إلى القائمة» be offered for `query`? (See the head of this file.)
+ * `archived` is null while the archived areas are read — or for a desk who may not write the
+ * catalog: nothing is offered then. An add refused for this very name (`refused`) is not offered
+ * again, unless it failed for a reason that may pass (`failed` — the network, the server).
+ */
+export const directionAddOffer = (
+  query: string,
+  options: readonly string[],
+  archived: readonly string[] | null,
+  refused: DirectionAddRefused | null = null,
+): DirectionAddOffer | null => {
+  if (archived === null) return null;
+  const name = typedDirection(query);
+  // Nothing named, past the hand-typed ceiling, or several parts: no one name to add.
+  if (name === null || OPERATIONS_DIRECTION_SEPARATOR.test(name)) return null;
+  // An active area answers it: the list offers that area.
+  if (exactAreas(name, options) !== null || areasAnswering(name, options).length > 0) return null;
+  const asleep = exactAreas(name, archived) ?? areasAnswering(name, archived)[0];
+  if (asleep !== undefined) return { kind: 'archived', area: asleep };
+  if (refused !== null && refused.name === name && refused.reason !== 'failed') return null;
+  return { kind: 'add', name };
+};
+
+/** The list with «إضافة «…» إلى القائمة» right after the typed row it adds — Enter keeps the row's. */
+export const withDirectionAdd = (
+  items: readonly DirectionItem[],
+  offer: DirectionAddOffer | null,
+): DirectionItem[] => {
+  if (offer === null || offer.kind !== 'add') return [...items];
+  const at = items.findIndex((item) => item.kind === 'typed' && item.direction === offer.name);
+  if (at === -1) return [...items];
+  return [
+    ...items.slice(0, at + 1),
+    { kind: 'add', direction: offer.name },
+    ...items.slice(at + 1),
+  ];
+};
+
+/**
+ * Why the catalog refused the add, from the answer: 409 — the name is held (added meanwhile, in
+ * any spelling that folds to it, archived too); 403 — no grant to write the catalog; 400 — the
+ * name itself; anything else (the network, the server) may pass, and the add is offered again.
+ */
+export const directionAddRefusal = (error: unknown): DirectionAddRefusal => {
+  const status =
+    typeof error === 'object' && error !== null ? (error as { status?: unknown }).status : null;
+  if (status === 409) return 'duplicate';
+  if (status === 403) return 'forbidden';
+  if (status === 400 || status === 422) return 'invalid';
+  return 'failed';
 };

@@ -12123,6 +12123,9 @@ const en: Record<string, string> = {
   'operations.distribution.record.mark': 'Record · view only',
   'operations.distribution.record.today': 'Back to today',
   'operations.distribution.record.todayHint': 'Open today’s distribution ({{day}})',
+  'operations.distribution.record.unsavedTitle': 'The day ended before Save',
+  'operations.distribution.record.unsaved':
+    'Unsaved changes: {{count}} — the day ended before Save, so they can no longer be saved.',
   'operations.distribution.proposedCount': '{{count}} proposed, not saved',
   'operations.distribution.tooLarge':
     'This day holds more than {{max}} secured shipments — more than one screen can show.',
@@ -12641,6 +12644,23 @@ const en: Record<string, string> = {
   'operations.crewPlan.direction.tooLong':
     'A direction typed by hand is at most {{max}} characters — this one is {{count}}. Shorten it to keep it.',
   'operations.crewPlan.direction.clear': 'Clear the direction',
+  'operations.crewPlan.direction.addToList': 'Add “{{text}}” to the list',
+  'operations.crewPlan.direction.addHint':
+    'Added to «Areas» in the reference data at once, not at «Save» — «Undo» does not take it off.',
+  'operations.crewPlan.direction.adding': 'Adding “{{text}}” to «Areas»…',
+  'operations.crewPlan.direction.added': '“{{area}}” added to «Areas»',
+  'operations.crewPlan.direction.addedBody':
+    'It is now this row’s direction. «Undo» takes back the row’s direction only — the area stays on the list. Its English name can be filled in later in the reference data.',
+  'operations.crewPlan.direction.archived':
+    '“{{area}}” is in «Areas» but archived — restore it in the reference data to list it here.',
+  'operations.crewPlan.direction.addRefused.duplicate':
+    '“{{text}}” was not added: «Areas» already has an area of that name, added meanwhile. Pick it from the list, or use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.forbidden':
+    '“{{text}}” was not added: you may not add to «Areas». You can use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.invalid':
+    '“{{text}}” was not added: «Areas» does not take this name. You can use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.failed':
+    '“{{text}}” could not be added just now. Try again, or use the text on this row only.',
   'operations.crewPlan.time.open': 'Choose the time',
   'operations.crewPlan.time.hours': 'Hour',
   'operations.crewPlan.time.minutes': 'Minute',
@@ -27453,6 +27473,9 @@ const ar: Record<string, string> = {
   'operations.distribution.record.mark': 'سجل · للعرض فقط',
   'operations.distribution.record.today': 'العودة إلى اليوم',
   'operations.distribution.record.todayHint': 'فتح توزيع اليوم ({{day}})',
+  'operations.distribution.record.unsavedTitle': 'انتهى اليوم قبل «حفظ»',
+  'operations.distribution.record.unsaved':
+    'التغييرات غير المحفوظة: {{count}} — انتهى اليوم قبل «حفظ»، فلا يمكن حفظها الآن.',
   'operations.distribution.proposedCount': '{{count}} مقترحة لم تُحفظ',
   'operations.distribution.tooLarge':
     'محصنات هذا اليوم أكثر من {{max}} — أكثر مما يمكن عرضه مرة واحدة.',
@@ -27945,6 +27968,23 @@ const ar: Record<string, string> = {
   'operations.crewPlan.direction.tooLong':
     'طول الاتجاه المكتوب يدويًا {{count}}، والحد الأقصى {{max}} حرفًا — اختصره ليُحفَظ.',
   'operations.crewPlan.direction.clear': 'مسح الاتجاه',
+  'operations.crewPlan.direction.addToList': 'إضافة «{{text}}» إلى القائمة',
+  'operations.crewPlan.direction.addHint':
+    'تُضاف إلى «المناطق» في البيانات المرجعية فورًا، لا عند «حفظ»، ولا يحذفها «تراجع».',
+  'operations.crewPlan.direction.adding': 'جارٍ إضافة «{{text}}» إلى «المناطق»…',
+  'operations.crewPlan.direction.added': 'أُضيفت «{{area}}» إلى «المناطق»',
+  'operations.crewPlan.direction.addedBody':
+    'وُضعت اتجاهًا لهذا الصف. يعيد «تراجع» اتجاه الصف وحده، وتبقى المنطقة في القائمة. ويُكتب اسمها الإنجليزي لاحقًا في البيانات المرجعية.',
+  'operations.crewPlan.direction.archived':
+    '«{{area}}» موجودة في «المناطق» لكنها موقوفة — فعّلها من البيانات المرجعية لتظهر هنا.',
+  'operations.crewPlan.direction.addRefused.duplicate':
+    'لم تُضَف «{{text}}»: في «المناطق» منطقة بهذا الاسم أُضيفت في هذه الأثناء. اخترها من القائمة، أو استخدم النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.forbidden':
+    'لم تُضَف «{{text}}»: لا تملك صلاحية الإضافة إلى «المناطق». يمكنك استخدام النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.invalid':
+    'لم تُضَف «{{text}}»: لا تقبل «المناطق» هذا الاسم. يمكنك استخدام النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.failed':
+    'تعذّرت إضافة «{{text}}» الآن. أعِد المحاولة، أو استخدم النص لهذا الصف وحده.',
   'operations.crewPlan.time.open': 'اختيار التوقيت',
   'operations.crewPlan.time.hours': 'الساعة',
   'operations.crewPlan.time.minutes': 'الدقيقة',

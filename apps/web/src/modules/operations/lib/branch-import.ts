@@ -76,6 +76,18 @@ export const filterCounts = (
   problem: dto.counts.problem,
 });
 
+/**
+ * «أكواد معدَّلة (ضمنها)» in the confirmation — the suffixed codes this import WRITES: a new
+ * branch's, and a held branch's whose code changes to one. `counts.suffixed` (the «كود معدَّل»
+ * tile) also counts the held rows that already carry their suffix and are written nothing.
+ */
+export const suffixedWrites = (dto: OperationsBranchImportCompareDto): number =>
+  dto.rows.filter(
+    (row) =>
+      row.codeSuffixed &&
+      (row.outcome === 'new' || (row.outcome === 'update' && row.changes.includes('code'))),
+  ).length;
+
 /** Whether «تأكيد الاستيراد» would write anything at all. */
 export const writesAnything = (dto: OperationsBranchImportCompareDto): boolean =>
   dto.counts.new + dto.counts.update + dto.counts.areasNew + dto.counts.areasFilled > 0;

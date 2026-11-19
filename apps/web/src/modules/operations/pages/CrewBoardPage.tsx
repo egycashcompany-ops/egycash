@@ -123,6 +123,7 @@ import {
   useOperationsStandingCrew,
   usePlanOperationsCrew,
 } from '../api/operations-queries';
+import { useArchivedOperationsAreaNames, useDirectionAreaAdd } from '../api/direction-area';
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { CrewPlanChip } from '../components/CrewPlanChip';
 import {
@@ -764,6 +765,21 @@ export const CrewBoardPage = (): JSX.Element => {
     // The refused box is changed: what it said no longer describes it.
     setRefusal((current) => (current?.key === key ? null : current));
   };
+  // Round 28c — «الاتجاه»'s «إضافة «…» إلى القائمة» («يعرض عليا اضيفه او لا»): for a planner who also
+  // holds the catalog's own grant (no new one). The area is written at once; the row then takes it
+  // as any direction change — ONE operation, which «تراجع» takes back without taking the area off.
+  const canAddArea = canPlan && can('operationsCatalog.manage');
+  const archivedAreas = useArchivedOperationsAreaNames(canAddArea);
+  const areaAdd = useDirectionAreaAdd((key, area) => {
+    if (rows.some((row) => row.key === key)) patch(key, { direction: area });
+  });
+  const addFor = (key: string) =>
+    canAddArea
+      ? areaAdd.forRow(
+          key,
+          areaNames.isSuccess && archivedAreas.isSuccess ? archivedAreas.data : null,
+        )
+      : undefined;
   /**
    * The row's colour picked by hand — or (null) taken off, back to its type's. ONE operation for
    * «تراجع», said with the colour: «تلوين الصف 150 باللون كحلي» / «إعادة الصف 150 إلى لون نوعه».
@@ -1419,6 +1435,7 @@ export const CrewBoardPage = (): JSX.Element => {
             options={directions}
             disabled={!canPlan}
             onChange={(direction) => patch(row.key, { direction })}
+            add={addFor(row.key)}
           />
         </div>
       ),

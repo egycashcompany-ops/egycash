@@ -8,7 +8,8 @@
 // (`ambiguousName`); one held branch is that branch (update or unchanged); none is a new branch,
 // which needs a code (`noCode`).
 //
-// AREAS. The sheet's Arabic and English area (an only area in Latin letters stands for both). It is
+// AREAS. The sheet's Arabic and English area (an only area in Latin letters stands for both; an
+// English cell in Arabic letters is the Arabic name, never an English one). It is
 // the area «المناطق» holds whose Arabic name folds (`foldOperationsAreaName`) to the sheet's, else
 // whose English name equals the sheet's without case — written in that area's own spelling, its
 // empty English name filled from the sheet. Else it is a new area, created once, and later rows
@@ -114,7 +115,13 @@ const LATIN_LETTER = /[A-Za-z]/u;
 const sheetAreaOf = (
   row: BranchSheetRow,
 ): { ar: string; en: string | null; latinOnly: boolean } | null => {
-  const { areaAr, areaEn } = row;
+  let { areaAr, areaEn } = row;
+  // An English cell in Arabic letters is no English name («فى خانة الانجليزى اكتبها انجليزى»): it
+  // is the Arabic one where the sheet gives none, and is dropped beside one it gives.
+  if (areaEn !== null && ARABIC_LETTER.test(areaEn) && !LATIN_LETTER.test(areaEn)) {
+    areaAr ??= areaEn;
+    areaEn = null;
+  }
   if (areaAr === null && areaEn === null) return null;
   // Only the English: it stands for the Arabic too.
   if (areaAr === null) return { ar: areaEn as string, en: areaEn, latinOnly: true };

@@ -1056,6 +1056,78 @@ describe('«الاتجاه» — an area respelled, anything else typed by hand 
   });
 });
 
+// Round 28c — asked whether a direction typed by hand should also go on the list, the owner: «يعرض
+// عليا اضيفه او لا». The box offers «إضافة «…» إلى القائمة» beside «استخدام «…» اتجاهًا», and the
+// add is the areas catalog's own create (`POST /operations/areas`, `operationsCatalog.manage` — no
+// new grant), written at once, not at «حفظ».
+describe('Round 28c — «إضافة «…» إلى القائمة»: the direction box adds a name to «المناطق»', () => {
+  const addArea = (name: string, token = adminToken): request.Test =>
+    request(app)
+      .post('/api/v1/operations/areas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name, nameEn: null });
+  const areaNames = async (): Promise<string[]> => {
+    const res = await request(app)
+      .get('/api/v1/operations/areas?pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return data<{ name: string }[]>(res).map((row) => row.name);
+  };
+  const messageOf = (res: request.Response): string =>
+    (res.body as { error: { message: string } }).error.message;
+
+  it('adds the name as the box sends it, answers it in the area’s own spelling, and the board then reads it as an area', async () => {
+    const added = await addArea('طريق الواحات');
+    expect(added.status, JSON.stringify(added.body)).toBe(201);
+    expect(data<{ name: string; nameEn: string | null; isActive: boolean }>(added)).toMatchObject({
+      name: 'طريق الواحات',
+      nameEn: null,
+      isActive: true,
+    });
+    // An area now: beside another, in another spelling, the save respells both — a hand-typed
+    // direction would have been stored as typed.
+    const onRow = await saved({ rows: [{ vehicleId: van3, direction: 'طريق الواحات و المعادى' }] });
+    expect(vanRow(onRow, van3)?.crew?.direction).toBe('طريق الواحات - المعادي');
+    const cleared = await saved({ rows: [{ vehicleId: van3, direction: null }] });
+    expect(vanRow(cleared, van3)?.crew?.direction).toBeNull();
+  });
+
+  // The unique index held the exact name only: «المعادى» beside «المعادي» went in as a second
+  // spelling of one area, which the direction rules read as one.
+  it('refuses a name that folds to a live area’s — another spelling, the article off, an archived one — 409 DUPLICATE, nothing added', async () => {
+    const before = await areaNames();
+    for (const name of ['المعادى', 'معادي', 'طريق الواحات', 'الدقى']) {
+      const refused = await addArea(name);
+      expect(refused.status, name).toBe(409);
+      expect(errorOf(refused).code, name).toBe(ErrorCodes.DUPLICATE);
+    }
+    // The refusal names the area that holds the name, and says when it is archived.
+    expect(messageOf(await addArea('المعادى'))).toContain('«المعادي»');
+    expect(messageOf(await addArea('الدقى'))).toContain('«الدقي» (archived)');
+    expect(await areaNames()).toEqual(before);
+  });
+
+  it('is the catalog’s own grant: a planner without operationsCatalog.manage is refused (403), and his row still takes the text', async () => {
+    const planner = await tokenWith('ops-r28c-planner@ecms.local', [
+      'operationsCrew.view',
+      'operationsCrew.plan',
+    ]);
+    const refused = await addArea('طريق الفيوم', planner);
+    expect(refused.status).toBe(403);
+    expect(await areaNames()).not.toContain('طريق الفيوم');
+    // «استخدام «…» اتجاهًا» — on his row only, as typed.
+    const typed = await save(
+      { rows: [{ vehicleId: van3, direction: 'طريق الفيوم' }] },
+      DAY,
+      planner,
+    );
+    expect(typed.status, JSON.stringify(typed.body)).toBe(200);
+    expect(vanRow(data<OperationsCrewBoardDto>(typed), van3)?.crew?.direction).toBe('طريق الفيوم');
+    const cleared = await saved({ rows: [{ vehicleId: van3, direction: null }] });
+    expect(vanRow(cleared, van3)?.crew?.direction).toBeNull();
+  });
+});
+
 describe('the slots — «من 1 ل 2 قادة و من 2 ل 4 اخصائيين»', () => {
   it('refuses a third person in any slot, and asks no minimum', async () => {
     for (const slot of ['captainEmployeeIds', 'specialist1EmployeeIds', 'specialist2EmployeeIds']) {

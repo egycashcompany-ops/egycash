@@ -33,10 +33,12 @@ import {
   filterCounts,
   isOutOfDate,
   refusalKeyOf,
+  suffixedWrites,
   visibleRows,
   writesAnything,
 } from '../../lib/branch-import';
 import { CatalogsPage } from '../../pages/CatalogsPage';
+import { BranchImportConfirmDialog } from './BranchImportConfirmDialog';
 import { BranchImportResult } from './BranchImportResult';
 import { BranchImportUpload } from './BranchImportUpload';
 
@@ -234,6 +236,65 @@ describe('the rules of the comparison screen', () => {
     expect([...BRANCH_IMPORT_FILTERS]).toEqual(Object.keys(filterCounts(DTO)));
   });
 
+  it('counts in «أكواد معدَّلة (ضمنها)» only the suffixed codes this import writes', () => {
+    // A sheet imported before and read again: its held «116-2» is «كود معدَّل» but unchanged, so
+    // the confirmation of the one new row must not say 2 codes are adjusted among 1 write.
+    const again: OperationsBranchImportCompareDto = {
+      ...DTO,
+      rows: [
+        row({ row: 2, outcome: 'unchanged', branchId: 'b1', before: values('116', null) }),
+        row({
+          row: 3,
+          outcome: 'unchanged',
+          branchId: 'b2',
+          before: values('116-2', null),
+          after: values('116-2', null),
+          codeSuffixed: true,
+        }),
+        row({
+          row: 4,
+          outcome: 'update',
+          branchId: 'b3',
+          before: values('116-3', 'منطقة قديمة'),
+          after: values('116-3', 'منطقة الأفق'),
+          changes: ['opsAreaName', 'financeAreaName'],
+          codeSuffixed: true,
+        }),
+        row({ row: 5, name: 'فرع جديد', after: values('116-4', null), codeSuffixed: true }),
+        row({
+          row: 6,
+          outcome: 'update',
+          branchId: 'b4',
+          sheetCode: '200',
+          before: values('900', null),
+          after: values('200-2', null),
+          changes: ['code'],
+          codeSuffixed: true,
+        }),
+      ],
+      counts: { ...DTO.counts, new: 1, update: 2, unchanged: 2, suffixed: 4 },
+    };
+    expect(suffixedWrites(again)).toBe(2);
+    const html = renderToStaticMarkup(
+      <Provider
+        store={configureStore({
+          reducer: { locale: localeSlice.reducer },
+          preloadedState: { locale: { locale: 'ar' as const, dir: 'rtl' as const } },
+        })}
+      >
+        <BranchImportConfirmDialog
+          result={again}
+          open
+          busy={false}
+          onClose={() => undefined}
+          onConfirm={() => undefined}
+        />
+      </Provider>,
+    );
+    const line = html.slice(html.indexOf(translate('ar', `${W}dialog.suffixed`)));
+    expect(line.slice(0, line.indexOf('</li>'))).toMatch(/>2<\/span>$/u);
+  });
+
   it('has something to write only with a new or updated branch, or an area', () => {
     expect(writesAnything(DTO)).toBe(true);
     const nothing = {
@@ -390,6 +451,16 @@ describe('the comparison, drawn', () => {
 
   it('draws in English too, with no raw key', () => {
     expect(result({}, 'en')).not.toContain(W);
+  });
+
+  it('draws each column letter without ligatures — «(C)» never turns into «©»', () => {
+    // The digits' font joins «(C)» into one copyright glyph in a left-to-right line.
+    const html = result({}, 'en');
+    for (const column of ['A', 'B', 'C']) {
+      expect(tagOf(html, `data-branch-import-column="${column}"`)).toContain(
+        '[font-variant-ligatures:none]',
+      );
+    }
   });
 });
 

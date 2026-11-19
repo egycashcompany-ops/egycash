@@ -20,6 +20,7 @@
 // last suite plans van 4 on TODAY and TOMORROW (Cairo) — the real clock, both sides of the rule —
 // and then moves the clock to 00:30 Cairo on TOMORROW, where UTC still says TODAY.
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { type Types } from 'mongoose';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Express } from 'express';
@@ -61,6 +62,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { OperationsShipmentAssignmentModel } from '../../src/modules/operations/shipments/shipment-assignment.model';
+import { operationsShipmentAssignmentRepository } from '../../src/modules/operations/shipments/shipment-assignment.repository';
 import { OperationsShipmentModel } from '../../src/modules/operations/shipments/shipment.model';
 import { OperationsVaultCustodyModel } from '../../src/modules/operations/vault/vault-custody.model';
 import { type AuthContext } from '../../src/shared/types';
@@ -2571,6 +2573,7 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
   let crew5 = ''; // OPS-R30-A — captain A, «المعادي»
   let crew6 = ''; // OPS-R30-B — captain C, «الهرم»
   let outOnVan = ''; // on van 5, handed over on its day — gone from the vault
+  let doneOnVan = ''; // R30 critic — on van 5, handed over with it and since DELIVERED (`completed`)
   let heldOnVan = ''; // on van 6, never handed over — still in the vault, now «متأخرة»
   let draftOnVan = ''; // a draft (never received) on van 5
   let neverPlaced = ''; // in the vault, due on the day, on no van
@@ -2591,6 +2594,8 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
 
     outOnVan = (await book(PLAN, 'الدقي')).id;
     await intoVault(outOnVan);
+    doneOnVan = (await book(PLAN, 'الدقي')).id;
+    await intoVault(doneOnVan, 3);
     heldOnVan = (await book(PLAN, 'الدقي')).id;
     await intoVault(heldOnVan);
     draftOnVan = (await book(PLAN, 'الدقي')).id;
@@ -2604,6 +2609,7 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
     const placed = await save(
       [
         { shipmentId: outOnVan, crewAssignmentId: crew5, captainEmployeeId: capA, version: null },
+        { shipmentId: doneOnVan, crewAssignmentId: crew5, captainEmployeeId: capA, version: null },
         { shipmentId: heldOnVan, crewAssignmentId: crew6, captainEmployeeId: capC, version: null },
         { shipmentId: draftOnVan, crewAssignmentId: crew5, captainEmployeeId: capA, version: null },
         { shipmentId: takenOff, crewAssignmentId: crew6, captainEmployeeId: capC, version: null },
@@ -2630,12 +2636,27 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
     expect(planned.shipments.find((s) => s.id === takenOff)?.directionCrewAssignmentIds).toEqual([
       crew6,
     ]);
-    const out = await dispatchOn(PLAN, { crewAssignmentId: crew5, shipmentIds: [outOnVan] });
+    const out = await dispatchOn(PLAN, {
+      crewAssignmentId: crew5,
+      shipmentIds: [outOnVan, doneOnVan],
+    });
     expect(out.status, JSON.stringify(out.body)).toBe(200);
+    // R30 critic — and one of them DELIVERED since: the shipment's own «تم الاستلام», as the desk
+    // records it (`POST /operations/shipments/:id/complete`).
+    const done = await request(app)
+      .post(`/api/v1/operations/shipments/${doneOnVan}/complete`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (await read(doneOnVan)).version });
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    expect(data<OperationsShipmentDto>(done).status).toBe('completed');
 
     // …and the day passes: PLAN's shipments due on RECORD, PLAN's operating day RECORD's.
     await OperationsShipmentModel.updateMany(
-      { _id: { $in: [outOnVan, heldOnVan, draftOnVan, neverPlaced, takenOff, stray] } },
+      {
+        _id: {
+          $in: [outOnVan, doneOnVan, heldOnVan, draftOnVan, neverPlaced, takenOff, stray],
+        },
+      },
       { $set: { collectionDate: new Date(iso(RECORD)), deliveryDate: new Date(iso(RECORD)) } },
     ).exec();
     await OperationsShipmentModel.db
@@ -2665,13 +2686,21 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
 
     const byId = new Map(view.shipments.map((s) => [s.id, s]));
     expect([...byId.keys()].sort()).toEqual(
-      [outOnVan, heldOnVan, draftOnVan, neverPlaced, takenOff, stray].sort(),
+      [outOnVan, doneOnVan, heldOnVan, draftOnVan, neverPlaced, takenOff, stray].sort(),
     );
     // Handed over on its day: listed, on its van, at its stage now.
     expect(byId.get(outOnVan)).toMatchObject({
       status: 'dispatched',
       securedStage: 'dispatched',
       placedCrewAssignmentId: crew5,
+      overdue: false,
+    });
+    // R30 critic — handed over and DELIVERED since: listed, on the van that took it, at its stage.
+    expect(byId.get(doneOnVan)).toMatchObject({
+      status: 'completed',
+      securedStage: 'completed',
+      placedCrewAssignmentId: crew5,
+      delivery: { crewAssignmentId: crew5, captainEmployeeId: capA },
       overdue: false,
     });
     // Never handed over: on its van, and «متأخرة» — it is still in the vault, its day passed.
@@ -2696,9 +2725,16 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
     // no longer carry; the draft it never took in is absent.
     const counted = new Map((view.recordPackages ?? []).map((p) => [p.shipmentId, p]));
     expect([...counted.keys()].sort()).toEqual(
-      [outOnVan, heldOnVan, neverPlaced, takenOff, stray].sort(),
+      [outOnVan, doneOnVan, heldOnVan, neverPlaced, takenOff, stray].sort(),
     );
     expect(counted.get(outOnVan)).toEqual({ shipmentId: outOnVan, bags: 2, cartons: 0, boxes: 0 });
+    // …and the one delivered since, as the vault counted it at its receipt.
+    expect(counted.get(doneOnVan)).toEqual({
+      shipmentId: doneOnVan,
+      bags: 3,
+      cartons: 0,
+      boxes: 0,
+    });
     // On today's read the packages are the vault's holdings, read apart, as before.
     expect((await viewOf(today)).recordPackages).toBeNull();
   });
@@ -2706,13 +2742,13 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
   it('is the same read for every reader of the screen — the vault’s too, the crew plan withheld', async () => {
     const viewer = await viewOf(RECORD, viewerToken);
     expect(viewer.past).toBe(true);
-    expect(viewer.shipments).toHaveLength(6);
+    expect(viewer.shipments).toHaveLength(7);
     // The vault's packages are the vault's: a reader without its grant gets none.
     expect(viewer.recordPackages).toBeNull();
     const vault = await viewOf(RECORD, vaultToken);
     expect(vault).toMatchObject({ past: true, crewPlanVisible: false });
     expect(vault.crews.map((c) => c.crewAssignmentId)).toEqual([crew5, crew6]);
-    expect(vault.recordPackages).toHaveLength(5);
+    expect(vault.recordPackages).toHaveLength(6);
     expect((await distribution(`?date=${RECORD}`, nobodyToken)).status).toBe(403);
   });
 
@@ -2796,7 +2832,7 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
     // Its leg is where the record shows it — on the record's van, not on one of today's.
     expect(held?.delivery?.crewAssignmentId).toBe(crew6);
     // The record's own — handed over, a draft due on a past day — are not today's.
-    for (const gone of [outOnVan, draftOnVan]) {
+    for (const gone of [outOnVan, doneOnVan, draftOnVan]) {
       expect(live.shipments.some((s) => s.id === gone)).toBe(false);
     }
   });
@@ -2839,5 +2875,81 @@ describe('Round 30 — a PAST day opens as its record: read only, every write re
     expect(legAfter?.__v).toBe(legBefore?.__v);
     const record = await viewOf(RECORD);
     expect(record.shipments.find((s) => s.id === heldOnVan)?.placedCrewAssignmentId).toBe(crew6);
+  });
+
+  // R30 critic — `assign-delivery` writes the very leg the record shows («صرف الخزينة»'s old door;
+  // `distributing is that act, for many at once`), and it only asked that the crew row be of the
+  // shipment's delivery day: `heldOnVan` (due on RECORD, still in the vault) moved from RECORD's van
+  // 6 to its van 5 with a 200, and the record changed. It refuses a past day as the save does.
+  it('refuses `assign-delivery` onto a van of the record — 422 DAY_IN_PAST, the leg untouched', async () => {
+    const today = cairoYmd(new Date());
+    const legBefore = await deliveryLegOf(heldOnVan);
+    expect(String(legBefore?.crewAssignmentId)).toBe(crew6);
+    const since = seenEvents.length;
+    for (const [crewAssignmentId, captainEmployeeId] of [
+      [crew5, capA], // the record's other van
+      [crew6, capC], // the van it is on — not even the same place again
+    ] as const) {
+      const res = await request(app)
+        .post(`/api/v1/operations/secured/${heldOnVan}/assign-delivery`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ crewAssignmentId, captainEmployeeId, version: legBefore?.__v ?? 0 });
+      expect(res.status, JSON.stringify(res.body)).toBe(422);
+      expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DISTRIBUTION_DAY_IN_PAST);
+      expect(errorOf(res).details).toEqual([{ field: 'date', code: 'MIN_DATE', message: today }]);
+    }
+    const legAfter = await deliveryLegOf(heldOnVan);
+    expect(String(legAfter?._id)).toBe(String(legBefore?._id));
+    expect(legAfter?.__v).toBe(legBefore?.__v);
+    expect(String(legAfter?.crewAssignmentId)).toBe(crew6);
+    expect(String(legAfter?.captainEmployeeId)).toBe(capC);
+    expect(
+      seenEvents
+        .slice(since)
+        .filter(
+          (e) =>
+            e.name === OperationsEvents.SecuredLegAssigned &&
+            JSON.stringify(e.payload).includes(heldOnVan),
+        ),
+    ).toEqual([]);
+    const record = await viewOf(RECORD);
+    expect(record.shipments.find((s) => s.id === heldOnVan)?.placedCrewAssignmentId).toBe(crew6);
+  });
+
+  // R30 critic — the record's riders were found by loading EVERY live leg of the day (pickup and
+  // delivery, daily and secured) and sending their ids back in two `$in`s. They are the day's
+  // delivery legs of SECURED shipments, ids only, joined on the server.
+  it('finds what rides the record’s vans without loading the day’s legs — secured delivery legs only', async () => {
+    const recordDay = await OperationsShipmentModel.db
+      .collection('operations_days')
+      .findOne({ date: new Date(iso(RECORD)) });
+    expect(recordDay).not.toBeNull();
+    const dayId = recordDay?._id as Types.ObjectId;
+    const riders = async (): Promise<string[]> =>
+      (await operationsShipmentAssignmentRepository.securedDeliveryShipmentIdsOfDay(dayId)).sort();
+    // Every live delivery leg on RECORD's vans — `stray` (due another day) among them.
+    expect(await riders()).toEqual([outOnVan, doneOnVan, heldOnVan, draftOnVan, stray].sort());
+    // A shipment that is not secured is never among them (its legs are the day board's).
+    await OperationsShipmentModel.updateOne({ _id: stray }, { $set: { shipmentType: 'daily' } });
+    try {
+      expect(await riders()).not.toContain(stray);
+    } finally {
+      await OperationsShipmentModel.updateOne(
+        { _id: stray },
+        { $set: { shipmentType: 'secured' } },
+      );
+    }
+    // The record's read asks for them — and never for the whole day's legs.
+    const whole = vi.spyOn(operationsShipmentAssignmentRepository, 'findForDay');
+    const ids = vi.spyOn(operationsShipmentAssignmentRepository, 'securedDeliveryShipmentIdsOfDay');
+    try {
+      const view = await viewOf(RECORD);
+      expect(view.shipments.find((s) => s.id === stray)?.placedCrewAssignmentId).toBe(crew6);
+      expect(whole).not.toHaveBeenCalled();
+      expect(ids).toHaveBeenCalledTimes(1);
+    } finally {
+      whole.mockRestore();
+      ids.mockRestore();
+    }
   });
 });

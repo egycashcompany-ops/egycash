@@ -92,6 +92,89 @@ export const ListItCatalogQuerySchema = PaginationQuerySchema.extend({
 }).strict();
 export type ListItCatalogQuery = z.infer<typeof ListItCatalogQuerySchema>;
 
+// ── Places — «المواقع» (per branch, 2026-11-19) ─────────────────────────────
+//
+// Where a department keeps what it holds — «غرفة السيرفرات», «غرفة الكاميرات» — one list PER BRANCH
+// on the catalogs page (`/it/locations`). Its own collection, not a catalog kind: the catalog is
+// org-wide with one name per kind, and a place is a branch's (two branches may each have «غرفة
+// السيرفرات»). Managed under `itCatalog.manage` within the caller's branch reach. A place never
+// changes branch — a new one is made — and is retired (`isActive: false`), never deleted: retiring
+// is refused (409) while assets are held there, and a retired place still names the rows written
+// with it.
+
+export interface ItLocationDto {
+  id: string;
+  /** The branch the place is in — the scope it is read and written under. Never changes. */
+  branchId: string;
+  /** Unique by its Arabic name within the branch. */
+  name: { ar: string; en: string };
+  code: string | null;
+  description: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  /**
+   * «في عهدته الآن» — the assets held at this place right now (OPEN department intervals), counted
+   * within the reader's `itAsset.view`; null when the reader does not hold it.
+   */
+  heldAssets: number | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A picker's row — names only, readable on any IT read grant (as the department options). */
+export interface ItLocationOptionDto {
+  id: string;
+  branchId: string;
+  name: { ar: string; en: string };
+  isActive: boolean;
+}
+
+const locationCore = {
+  name: LocalizedStringSchema,
+  code: z.string().trim().min(1).max(30).optional(),
+  description: z.string().trim().max(500).optional(),
+  sortOrder: z.number().int().min(0).default(0),
+};
+
+/** A new place, in a branch the caller's `itCatalog.manage` reaches (the server's 403). */
+export const CreateItLocationSchema = z.object({ branchId: objectId(), ...locationCore }).strict();
+export type CreateItLocation = z.infer<typeof CreateItLocationSchema>;
+
+/** No `branchId`: a place does not move to another branch. `isActive: false` retires it. */
+export const UpdateItLocationSchema = z
+  .object({
+    name: LocalizedStringSchema.optional(),
+    code: locationCore.code.nullable().optional(),
+    description: locationCore.description.nullable().optional(),
+    sortOrder: z.number().int().min(0).optional(),
+    isActive: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItLocation = z.infer<typeof UpdateItLocationSchema>;
+
+/** The catalogs page's tab: by branch, by status, by name or code. */
+export const ListItLocationsQuerySchema = PaginationQuerySchema.extend({
+  branchId: objectId().optional(),
+  isActive: booleanQuery().optional(),
+  /** The Arabic or English name, or the code. */
+  search: z.string().trim().max(200).optional(),
+}).strict();
+export type ListItLocationsQuery = z.infer<typeof ListItLocationsQuerySchema>;
+
+/**
+ * `GET /it/locations/options` — every branch's places, or one branch's; the active ones unless
+ * `includeInactive` (to name the place of an old row).
+ */
+export const ItLocationOptionsQuerySchema = z
+  .object({
+    branchId: objectId().optional(),
+    includeInactive: booleanQuery().optional(),
+  })
+  .strict();
+export type ItLocationOptionsQuery = z.infer<typeof ItLocationOptionsQuerySchema>;
+
 // ── Vendors (design §2.9 — IT-owned until Procurement exists, §13-Q6) ───────
 
 export const ItVendorContactSchema = z
@@ -232,8 +315,9 @@ export interface ItAssetDto {
   accessories: string[];
   /**
    * Who holds it right now — «لو متسلم اسم الشخص اللى متسلمله الحاجة». The OPEN custody
-   * interval's employee, read at response time through the platform directory like every
-   * holder label IT prints; null while nobody holds it (or the interval cannot be read).
+   * interval's holder — an employee, or a department at a place — read at response time through
+   * the platform directory like every holder label IT prints; null while nobody holds it (or the
+   * interval cannot be read).
    */
   holder: ItAssetHolderDto | null;
   /**
@@ -247,12 +331,85 @@ export interface ItAssetDto {
   updatedAt: string;
 }
 
-/** The holder an asset row names: the open interval's employee and when they received it. */
+// ── Custody holders: an employee, or a department at a place (2026-11-19) ────
+//
+// «عند تسليم الأصول والمستهلكات يكون فى إمكانية إنى مأسلمش لموظف ولكن أعينها فى مكان بس تبقى على
+// عهده الإدارة .. زى السيرفرات والكاميرات والسويتشات». A server, a camera or a switch is held by a
+// DEPARTMENT (any active department, in any branch), kept at a PLACE of the branch's «المواقع» list
+// (`/it/locations`), and signed for by the department's RESPONSIBLE PERSON — a current employee
+// chosen at the hand-over. The holder is the department, never the signer: the signer's own
+// custody, the leavers' panels and the «already held» checks all stay personal custody. An asset
+// interval, a receipt or a movement written before this reads `employee`.
+
+export const IT_ASSET_HOLDER_KINDS = ['employee', 'department'] as const;
+export const ItAssetHolderKindSchema = z.enum(IT_ASSET_HOLDER_KINDS);
+export type ItAssetHolderKind = z.infer<typeof ItAssetHolderKindSchema>;
+
+/**
+ * «في عهدة إدارة … — الموقع …»: the department that holds it, the place it is kept at, and who
+ * signs for the department. The place must be in the asset's branch (the store's, for
+ * consumables) and every id must name an ACTIVE row — the SERVER's refusals (422 on
+ * `department.departmentId`, `department.locationId` or `department.responsibleEmployeeId`), since
+ * the contract sees ids only.
+ */
+export const ItCustodianDepartmentInputSchema = z
+  .object({
+    departmentId: objectId(),
+    locationId: objectId(),
+    responsibleEmployeeId: objectId(),
+  })
+  .strict();
+export type ItCustodianDepartmentInput = z.infer<typeof ItCustodianDepartmentInputSchema>;
+
+/**
+ * The department and the place a paper (a receipt, a memo) was written for — a snapshot, like the
+ * rest of the paper. The signer is the paper's own `employeeId` and its name fields.
+ */
+export interface ItCustodianDepartmentDto {
+  departmentId: string;
+  /** Null when the department could not be read when the paper was written. */
+  departmentName: { ar: string; en: string } | null;
+  locationId: string;
+  locationName: { ar: string; en: string } | null;
+}
+
+/**
+ * Exactly one holder on a hand-over: an employee (`employeeId`) or a department (`department`).
+ * Additive — a body naming only `employeeId` is what it always was.
+ */
+const refineOneHolder = (
+  value: { employeeId?: string | undefined; department?: ItCustodianDepartmentInput | undefined },
+  ctx: z.RefinementCtx,
+  message: string,
+): void => {
+  if ((value.employeeId === undefined) === (value.department === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['employeeId'], message });
+  }
+};
+
+const HAND_OVER_ONE_HOLDER = 'a hand-over names an employee or a department — exactly one';
+
+/**
+ * The holder an asset row names: the open interval's holder and when it was received. Flat, as a
+ * mobile line's (`ItMobileLineHolderDto`): the fields of the other kind are null. Every label is
+ * read at response time and is null when it cannot be read — the screen falls back to the id.
+ */
 export interface ItAssetHolderDto {
-  employeeId: string;
-  /** Null when the directory cannot name the employee — the screen falls back to the id. */
+  /** `employee` on every interval written before department custody. */
+  kind: ItAssetHolderKind;
+  /** The employee who holds it; null for a department. */
+  employeeId: string | null;
   employeeCode: string | null;
   employeeName: string | null;
+  /** The department that holds it, and the place it is kept at; null for an employee. */
+  departmentId: string | null;
+  departmentName: { ar: string; en: string } | null;
+  locationId: string | null;
+  locationName: { ar: string; en: string } | null;
+  /** Who signed for the department; null for an employee. */
+  responsibleEmployeeId: string | null;
+  responsibleEmployeeCode: string | null;
+  responsibleEmployeeName: string | null;
   assignedAt: string;
 }
 
@@ -377,6 +534,10 @@ const assetCore = {
   /** A pre-existing printed tag/barcode number — legacy labels keep working (design §2.2). */
   externalTag: z.string().trim().min(1).max(120).optional(),
   branchId: objectId(),
+  /**
+   * «وصف المكان» — free text, kept as it was. The place a department holds a device at is the
+   * custody interval's `locationId` (the «المواقع» list), not this.
+   */
   location: z.string().trim().max(200).optional(),
   purchase: ItAssetPurchaseSchema.optional(),
   warranty: ItAssetWarrantySchema.optional(),
@@ -422,6 +583,18 @@ export const ListItAssetsQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
   /** The assets this employee holds right now — an OPEN custody interval, not a past one. */
   holderEmployeeId: objectId().optional(),
+  /**
+   * «جهة الاستلام» — the assets held right now by an employee, or by a department. Like every
+   * holder filter, it means the OPEN interval; it intersects with the others.
+   */
+  holderKind: ItAssetHolderKindSchema.optional(),
+  /** «الإدارة» — the assets this department holds right now (an OPEN interval). */
+  holderDepartmentId: objectId().optional(),
+  /**
+   * «الموقع» — the assets held at this place right now (an OPEN interval) — «إيه اللي في غرفة
+   * السيرفرات». Not the free-text `location` («وصف المكان»).
+   */
+  locationId: objectId().optional(),
   /**
    * «الاسم» — one or more of the register's own names (`GET /it/assets/names`), each matched
    * EXACTLY, so a pick means every asset by that name. A name may hold a comma, so the list is a
@@ -470,7 +643,10 @@ export type ItAssetLabels = z.infer<typeof ItAssetLabelsSchema>;
 export interface ItAssetAssignmentDto {
   id: string;
   assetId: string;
-  assignedToEmployeeId: string;
+  /** Who holds the asset over this interval — `employee` on every interval before 2026-11-19. */
+  holderKind: ItAssetHolderKind;
+  /** The employee holder; null for a department interval. */
+  assignedToEmployeeId: string | null;
   /**
    * The holder's code and name, read through the platform directory at RESPONSE time (IT-6).
    *
@@ -482,6 +658,18 @@ export interface ItAssetAssignmentDto {
    */
   assignedToEmployeeCode: string | null;
   assignedToEmployeeName: string | null;
+  /**
+   * A department interval: the department, the place it is kept at, and who signed for it — all
+   * null for an employee. Labelled at response time under the same rule as the employee's (never
+   * denormalized onto the interval); a name is null when it cannot be read.
+   */
+  departmentId: string | null;
+  departmentName: { ar: string; en: string } | null;
+  locationId: string | null;
+  locationName: { ar: string; en: string } | null;
+  responsibleEmployeeId: string | null;
+  responsibleEmployeeCode: string | null;
+  responsibleEmployeeName: string | null;
   /**
    * WHAT was received — the register's own subject, which it did not name until IT-6.
    *
@@ -532,7 +720,9 @@ export interface ItAssetAssignmentDto {
  */
 export const AssignItAssetSchema = z
   .object({
-    employeeId: objectId(),
+    /** The holder: an employee, or a department at a place — exactly one. */
+    employeeId: objectId().optional(),
+    department: ItCustodianDepartmentInputSchema.optional(),
     assignedAt: z.coerce.date().optional(),
     conditionOnIssue: z.string().trim().max(500).optional(),
     expectedReturnAt: z.coerce.date().optional(),
@@ -540,6 +730,7 @@ export const AssignItAssetSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    refineOneHolder(value, ctx, HAND_OVER_ONE_HOLDER);
     if (
       value.expectedReturnAt !== undefined &&
       value.assignedAt !== undefined &&
@@ -567,10 +758,16 @@ export type ReturnItAsset = z.infer<typeof ReturnItAssetSchema>;
  * Transfer moves custody in ONE fact (design §2.5): person→person, branch→branch, or both. It is
  * never expressed as return + assign, because the history must show intent rather than mechanics.
  * At least one destination is required — a transfer to nowhere is not a transfer.
+ *
+ * The new holder is an employee (`toEmployeeId`) or a department at a place (`toDepartment`), never
+ * both. A change of the department, the place or the responsible person is a new holder — a room
+ * change and a re-signing after the responsible person left are transfers too. The SERVER refuses
+ * moving a department-held asset to another branch without a new holder: a place does not travel.
  */
 export const TransferItAssetSchema = z
   .object({
     toEmployeeId: objectId().optional(),
+    toDepartment: ItCustodianDepartmentInputSchema.optional(),
     toBranchId: objectId().optional(),
     at: z.coerce.date().optional(),
     conditionOnReturn: z.string().trim().max(500).optional(),
@@ -585,11 +782,22 @@ export const TransferItAssetSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.toEmployeeId === undefined && value.toBranchId === undefined) {
+    if (value.toEmployeeId !== undefined && value.toDepartment !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['toEmployeeId'],
-        message: 'a transfer needs a new holder, a new branch, or both',
+        message: 'a transfer names one new holder — an employee or a department, not both',
+      });
+    }
+    if (
+      value.toEmployeeId === undefined &&
+      value.toDepartment === undefined &&
+      value.toBranchId === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['toEmployeeId'],
+        message: 'a transfer needs a new holder (employee or department), a new branch, or both',
       });
     }
   });
@@ -860,8 +1068,20 @@ export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   /** `true` → only the open interval; `false` → only closed ones. Omitted → both. */
   open: booleanQuery().optional(),
   assetId: objectId().optional(),
+  /** The employee holder — never who signed for a department (that is `responsibleEmployeeId`). */
   employeeId: objectId().optional(),
   branchId: objectId().optional(),
+  /** «جهة الاستلام» — the intervals held by an employee, or by a department. */
+  holderKind: ItAssetHolderKindSchema.optional(),
+  /** The department intervals of this department. */
+  departmentId: objectId().optional(),
+  /** The department intervals at this place. */
+  locationId: objectId().optional(),
+  /**
+   * The department intervals this person signed for — «عهد إدارات وقّع عليها» on their page. Not
+   * their own custody, which is `employeeId`.
+   */
+  responsibleEmployeeId: objectId().optional(),
   // «زود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the register's columns.
   /** The asset — its code, name or serial, matched as typed. */
   search: z.string().trim().max(200).optional(),
@@ -884,7 +1104,9 @@ export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   receipt: ItAssignmentReceiptStateSchema.optional(),
   /**
    * `true` → the intervals whose holder HR shows as having left (FR-13's «assets held by exited
-   * employees», the dashboard's panel opened as a list); `false` → the others.
+   * employees», the dashboard's panel opened as a list); `false` → the others. EMPLOYEE custody
+   * either way: a department interval is in neither answer (its responsible person leaving is
+   * flagged in the audit, and the custody stands).
    */
   holderExited: booleanQuery().optional(),
 }).strict();
@@ -945,7 +1167,14 @@ export type ItHandOverLine = z.infer<typeof ItHandOverLineSchema>;
 export const IT_HAND_OVER_MAX_LINES = 20;
 
 const handOverShape = {
-  employeeId: objectId(),
+  /**
+   * The holder — exactly one of the two. `employeeId`: the employee who holds and signs.
+   * `department`: «في عهدة إدارة …» at a place, signed by its responsible person; every line must
+   * then be in the place's branch (the SERVER's refusal, `department.locationId` `OTHER_BRANCH`),
+   * so a department paper lists one branch's assets.
+   */
+  employeeId: objectId().optional(),
+  department: ItCustodianDepartmentInputSchema.optional(),
   lines: z.array(ItHandOverLineSchema).min(1).max(IT_HAND_OVER_MAX_LINES),
   assignedAt: z.coerce.date().optional(),
   expectedReturnAt: z.coerce.date().optional(),
@@ -953,12 +1182,15 @@ const handOverShape = {
 
 const refineHandOver = (
   value: {
+    employeeId?: string | undefined;
+    department?: ItCustodianDepartmentInput | undefined;
     lines: { assetId: string }[];
     assignedAt?: Date | undefined;
     expectedReturnAt?: Date | undefined;
   },
   ctx: z.RefinementCtx,
 ): void => {
+  refineOneHolder(value, ctx, HAND_OVER_ONE_HOLDER);
   const seen = new Set<string>();
   value.lines.forEach((line, index) => {
     if (seen.has(line.assetId)) {
@@ -984,8 +1216,9 @@ const refineHandOver = (
 };
 
 /**
- * Hand-over: one employee, one or more in-stock assets, ONE receipt — in one transaction (FR-3),
- * so a paper never lists an asset the system did not hand over, nor the reverse.
+ * Hand-over: one employee — or one department at one place — one or more in-stock assets, ONE
+ * receipt — in one transaction (FR-3), so a paper never lists an asset the system did not hand
+ * over, nor the reverse.
  */
 export const HandOverItAssetsSchema = z
   .object({
@@ -1003,9 +1236,10 @@ export type HandOverItAssets = z.infer<typeof HandOverItAssetsSchema>;
 
 /**
  * What to print BEFORE anything is recorded. `handOver` checks exactly what the hand-over will
- * (current employee, assets in stock), so the paper is never printed for a hand-over the system
- * would then refuse; `transfer` is the one-line paper of a transfer to a new holder, whose asset
- * is out (with somebody else) rather than in stock.
+ * (a current employee — or an active department, an active place in the lines' branch and a
+ * current responsible person — and assets in stock), so the paper is never printed for a
+ * hand-over the system would then refuse; `transfer` is the one-line paper of a transfer to a new
+ * holder, whose asset is out (with somebody else) rather than in stock.
  */
 export const PreviewItCustodyReceiptSchema = z
   .object({ ...handOverShape, kind: z.enum(['handOver', 'transfer']).default('handOver') })
@@ -1061,6 +1295,11 @@ export interface ItCustodyReceiptDocumentDto {
   formNumber: number | null;
   /** «التاريخ» — the hand-over's own date. */
   issuedAt: string;
+  /**
+   * The SIGNER — the employee who holds the devices, or, on a department paper, the department's
+   * responsible person who signs for it. Every field below (name, code, job, national ID, section,
+   * department) is the signer's.
+   */
   employeeId: string;
   /** «أقر أنا /» and «الاسم:». Null when the directory could not name the employee. */
   employeeName: string | null;
@@ -1080,6 +1319,12 @@ export interface ItCustodyReceiptDocumentDto {
   section: { ar: string; en: string } | null;
   /** «– …» — the employee's department («الإدارة»). */
   department: { ar: string; en: string } | null;
+  /**
+   * A DEPARTMENT CUSTODY paper — «ليكون في عهدة إدارة … بموقع …»: the department that holds the
+   * devices and the place they are kept at, as they were named when the paper was written. Null on
+   * an employee's paper, and on every receipt written before department custody.
+   */
+  custodian: ItCustodianDepartmentDto | null;
   lines: ItCustodyReceiptLineDto[];
 }
 
@@ -1321,19 +1566,33 @@ export const ItAssetEventPayloadV1 = z.object({
 });
 export type ItAssetEventPayload = z.infer<typeof ItAssetEventPayloadV1>;
 
+/**
+ * The department holder's fields on a custody event (2026-11-19). Optional — an event published
+ * before department custody has none of them — and null on an employee's. `employeeId` is null on
+ * a department's: the event names the holder, and the department is the holder, not its signer.
+ */
+const departmentHolderEventFields = {
+  holderKind: ItAssetHolderKindSchema.nullable().optional(),
+  departmentId: objectId().nullable().optional(),
+  locationId: objectId().nullable().optional(),
+  responsibleEmployeeId: objectId().nullable().optional(),
+};
+
 export const ItAssetAssignedPayloadV1 = z.object({
   assetId: objectId(),
   assetCode: z.string(),
-  employeeId: objectId(),
+  employeeId: objectId().nullable(),
   assignmentId: objectId(),
+  ...departmentHolderEventFields,
 });
 export type ItAssetAssignedPayload = z.infer<typeof ItAssetAssignedPayloadV1>;
 
 export const ItAssetReturnedPayloadV1 = z.object({
   assetId: objectId(),
   assetCode: z.string(),
-  employeeId: objectId(),
+  employeeId: objectId().nullable(),
   condition: z.string().nullable(),
+  ...departmentHolderEventFields,
 });
 export type ItAssetReturnedPayload = z.infer<typeof ItAssetReturnedPayloadV1>;
 
@@ -1344,6 +1603,11 @@ export const ItAssetTransferredPayloadV1 = z.object({
   toEmployeeId: objectId().nullable(),
   fromBranchId: objectId().nullable(),
   toBranchId: objectId().nullable(),
+  /** A department holder before / after — absent on an event from before department custody. */
+  fromDepartmentId: objectId().nullable().optional(),
+  toDepartmentId: objectId().nullable().optional(),
+  fromLocationId: objectId().nullable().optional(),
+  toLocationId: objectId().nullable().optional(),
 });
 export type ItAssetTransferredPayload = z.infer<typeof ItAssetTransferredPayloadV1>;
 
@@ -2531,8 +2795,14 @@ export interface ItMobileLineReceiptLineDto {
   accountNumber: string | null;
 }
 
-/** The paper: the device acknowledgment's header, and the one line it is for. */
-export interface ItMobileLineReceiptDocumentDto extends Omit<ItCustodyReceiptDocumentDto, 'lines'> {
+/**
+ * The paper: the device acknowledgment's header, and the one line it is for. A line is held by an
+ * employee or a car, never by a department, so the device paper's `custodian` is not carried.
+ */
+export interface ItMobileLineReceiptDocumentDto extends Omit<
+  ItCustodyReceiptDocumentDto,
+  'lines' | 'custodian'
+> {
   line: ItMobileLineReceiptLineDto;
 }
 
@@ -2757,22 +3027,28 @@ export type ItConsumableIssueLine = z.infer<typeof ItConsumableIssueLineSchema>;
 export const IT_CONSUMABLE_ISSUE_MAX_LINES = 20;
 
 /**
- * «صرف لموظف»: one employee, one or more items from ONE branch's store, ONE memo — in one
- * transaction, so the paper never lists what the store did not give, nor the reverse.
+ * «صرف لموظف»: one employee — or one department at one place, signed for by its responsible person
+ * («صرف لإدارة») — one or more items from ONE branch's store, ONE memo — in one transaction, so the
+ * paper never lists what the store did not give, nor the reverse. A department's place must be in
+ * the store's branch (the SERVER's refusal, `department.locationId` `OTHER_BRANCH`).
  *
  * The printer counter's own cross-field rules: a reset names the reading it starts from; a reading
  * belongs to the printer the line names; and two lines on ONE printer carry ONE reading — one memo
- * has one `at`, and a printer has one display, so its lines are one placement on its counter.
+ * has one `at`, and a printer has one display, so its lines are one placement on its counter. They
+ * hold whoever the memo is for: a toner onto a department-held printer takes its reading too.
  */
 export const IssueItConsumablesSchema = z
   .object({
-    employeeId: objectId(),
+    /** Who it goes to — exactly one of the two. */
+    employeeId: objectId().optional(),
+    department: ItCustodianDepartmentInputSchema.optional(),
     issuedAt: z.coerce.date().optional(),
     notes: z.string().trim().max(2000).optional(),
     lines: z.array(ItConsumableIssueLineSchema).min(1).max(IT_CONSUMABLE_ISSUE_MAX_LINES),
   })
   .strict()
   .superRefine((value, ctx) => {
+    refineOneHolder(value, ctx, 'a memo is issued to an employee or to a department — exactly one');
     const seen = new Set<string>();
     /** The first reading line of each printer — what every later line on it must repeat. */
     const readingOf = new Map<string, { reading: number; reset: boolean }>();
@@ -2891,10 +3167,21 @@ export interface ItConsumableMovementDto {
   consumableCode: string | null;
   consumableName: string | null;
   typeId: string | null;
-  /** The person an issue went to, or a return came from. */
+  /** The person an issue went to, or a return came from. Null on an issue to a department. */
   employeeId: string | null;
   employeeCode: string | null;
   employeeName: string | null;
+  /**
+   * An issue to a department: the department, the place, and who signed the memo for it — labelled
+   * at response time (a name is null when it cannot be read). All null on every other row.
+   */
+  departmentId: string | null;
+  departmentName: { ar: string; en: string } | null;
+  locationId: string | null;
+  locationName: { ar: string; en: string } | null;
+  responsibleEmployeeId: string | null;
+  responsibleEmployeeCode: string | null;
+  responsibleEmployeeName: string | null;
   /** The asset an issued item was installed on. */
   assetId: string | null;
   assetCode: string | null;
@@ -2981,7 +3268,14 @@ export const ListItConsumableMovementsQuerySchema = PaginationQuerySchema.extend
   kind: ItConsumableMovementKindSchema.optional(),
   consumableId: objectId().optional(),
   typeId: objectId().optional(),
+  /** The person an issue went to (or a return came from) — never a department's signer. */
   employeeId: objectId().optional(),
+  /** Issues to this department. */
+  departmentId: objectId().optional(),
+  /** Issues to a department at this place. */
+  locationId: objectId().optional(),
+  /** Issues to a department this person signed the memo for. */
+  responsibleEmployeeId: objectId().optional(),
   assetId: objectId().optional(),
   branchId: objectId().optional(),
   from: z.coerce.date().optional(),
@@ -3091,10 +3385,19 @@ export interface ItConsumableMemoLineDto {
 export interface ItConsumableMemoDocumentDto {
   memoNumber: number;
   issuedAt: string;
+  /**
+   * The SIGNER — the employee it went to, or, on a department memo, the responsible person who
+   * received it for the department («المستلم عن الإدارة»). The name, code and job are the signer's.
+   */
   employeeId: string;
   employeeName: string | null;
   employeeCode: string | null;
   jobTitle: { ar: string; en: string } | null;
+  /**
+   * A department memo — «لصالح إدارة … بموقع …»: the department and the place, as named when the
+   * memo was written. Null on an employee's memo, and on every memo written before 2026-11-19.
+   */
+  custodian: ItCustodianDepartmentDto | null;
   /** Who issued it — the IT signature block's name. */
   issuedByName: string | null;
   notes: string | null;
@@ -3190,6 +3493,13 @@ export interface ItDashboardActivityItemDto {
   employeeId: string | null;
   employeeCode: string | null;
   employeeName: string | null;
+  /**
+   * The department handed to (assigned, transferred to) or returned from, and its place — when the
+   * holder was a department («إدارة …»); null otherwise.
+   */
+  departmentId: string | null;
+  departmentName: { ar: string; en: string } | null;
+  locationName: { ar: string; en: string } | null;
   /** A move between branches. */
   fromBranchId: string | null;
   toBranchId: string | null;

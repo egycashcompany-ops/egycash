@@ -18,6 +18,8 @@ import {
   type ItCustodyReceiptDto,
   type ItAssetHistoryEntryDto,
   type ItCatalogItemDto,
+  type ItLocationDto,
+  type ItLocationOptionDto,
   type ItVendorDto,
   type ItPersonDto,
   type ItTechnicianDto,
@@ -36,6 +38,7 @@ import {
 } from '@ecms/contracts';
 import { type DirectoryEmployeeListing } from '../../platform/directory';
 import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
+import { type ItLocationDoc } from './locations/location.model';
 import { type ItVendorDoc } from './vendors/vendor.model';
 import { type ItAssetDoc, type ItAssetSpecsSub } from './assets/asset.model';
 import { type ItAssetAssignmentDoc } from './assets/assignment.model';
@@ -77,6 +80,33 @@ export const toItCatalogItemDto = (doc: ItCatalogItemDoc): ItCatalogItemDto => (
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * A place of «المواقع» (design §2). `heldAssets` — «في عهدته الآن», the assets held there now — is
+ * counted by the caller under the reader's `itAsset.view` and handed in: null when the reader does
+ * not hold it, never guessed here.
+ */
+export const toItLocationDto = (doc: ItLocationDoc, heldAssets: number | null): ItLocationDto => ({
+  id: String(doc._id),
+  branchId: String(doc.branchId),
+  name: doc.name,
+  code: doc.code,
+  description: doc.description,
+  sortOrder: doc.sortOrder,
+  isActive: doc.isActive,
+  heldAssets,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/** A picker's row — names only. */
+export const toItLocationOptionDto = (doc: ItLocationDoc): ItLocationOptionDto => ({
+  id: String(doc._id),
+  branchId: String(doc.branchId),
+  name: doc.name,
+  isActive: doc.isActive,
 });
 
 export const toItVendorDto = (doc: ItVendorDoc): ItVendorDto => ({

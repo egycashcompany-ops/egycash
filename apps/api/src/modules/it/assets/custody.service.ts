@@ -55,6 +55,26 @@ import { type ItAssetDoc } from './asset.model';
 import { itCustodyReceiptRepository } from './receipt.repository';
 import { type ItCustodyReceiptDoc, type ItCustodyReceiptLineSub } from './receipt.model';
 import { readReceiptHolder, type ReceiptHolder } from './receipt-holder';
+import {
+  departmentHolderOf,
+  employeeHolderId,
+  holderAuditChanges,
+  holderHistory,
+  holderOfInterval,
+  holderOfRequest,
+  intervalHolderFields,
+  sameHolder as isSameHolder,
+  signerOf,
+  type CustodyHolder,
+  type DepartmentHolder,
+} from './custody-holder';
+import {
+  custodianRefusal,
+  custodianSnapshot,
+  readCustodian,
+  refuseOutsidePlaceBranch,
+  type CustodianRead,
+} from './custodian';
 import { claimReceiptNumber, receiptNumberFor } from './receipt-number';
 import { readDeviceTypesOf, receiptDeviceFields } from './receipt-device';
 import {

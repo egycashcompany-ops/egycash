@@ -49,8 +49,10 @@ const sha256 = (data: Buffer | string): string => createHash('sha256').update(da
 
 /**
  * The plan, hashed: everything the compare SHOWS that the apply would write — each row's outcome,
- * branch, values before and after, the areas created and filled — with the bank and the file. A
- * change anywhere in it is a different plan; an edit the plan does not reach is not.
+ * branch, values before and after, the areas created and filled — with the bank and the file, and
+ * the marks shown beside a row (Round 29 critic: a held branch spelt like a new row, added since
+ * the compare, is one the reader never saw marked). A change anywhere in it is a different plan;
+ * an edit the plan does not reach is not.
  */
 export const planDigestOf = (bankId: string, fileSha256: string, plan: BranchImportPlan): string =>
   sha256(
@@ -64,6 +66,8 @@ export const planDigestOf = (bankId: string, fileSha256: string, plan: BranchImp
         row.branchId,
         row.before,
         row.after,
+        row.similarTo?.branchId ?? null,
+        row.areaNote,
       ]),
       newAreas: plan.newAreas.map((area) => [area.name, area.nameEn]),
       filledAreas: plan.filledAreas.map((area) => [area.id, area.nameEn]),

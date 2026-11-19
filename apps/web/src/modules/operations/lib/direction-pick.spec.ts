@@ -4,12 +4,15 @@
 import { describe, expect, it } from 'vitest';
 import { OPERATIONS_DIRECTION_MAX_LENGTH } from '@ecms/contracts';
 import {
+  directionAddHeld,
   directionAddOffer,
   directionAddOfferInBox,
   directionAddRefusal,
+  directionAddRefusalText,
   directionItems,
   directionItemsAtOpen,
   directionOnLeave,
+  directionKeyAction,
   directionTooLong,
   endsMidAreaWord,
   highlightedDirectionRow,
@@ -343,15 +346,34 @@ describe('Round 28c — «إضافة «…» إلى القائمة» (`direction
     expect(directionAddOffer(`${longest}ب`, AREAS, ARCHIVED)).toBeNull();
   });
 
-  it('is never offered when an active area answers the text — the list offers that area instead', () => {
-    // Exactly (folded), a piece of a name's word, its words in another order, one letter away.
-    for (const answered of ['المعادى', 'معادي', 'شبرا الخيمه', 'المعا', 'نصر مدينة', 'حلوات']) {
+  // Round 28c critic — REWRITTEN: it held «المعا», «نصر مدينة» and «حلوات» back too (a piece, the
+  // words reordered, a typo), which is how names of other places lost the add; now see the next.
+  it('is never offered when an active area IS the name, folded — the list offers that area instead', () => {
+    // Exactly, in another spelling, the article off, a mark for a space: the server's own rule.
+    for (const answered of ['المعادي', 'المعادى', 'معادي', 'شبرا الخيمه']) {
       expect(directionAddOffer(answered, AREAS, ARCHIVED), answered).toBeNull();
       expect(
         listed(answered).some((item) => item.kind === 'add'),
         answered,
       ).toBe(false);
     }
+  });
+
+  // Round 28c critic — the verifier's wider «same name» (words reordered, one letter away, a piece
+  // of a word) held back names of other places with no word why: «المنيب» beside «المنيل», «طرة»
+  // beside «القنطرة», «شبرا» beside «شبرامنت». The server takes them (it folds exactly).
+  it('a near miss, a piece, the words reordered are other names: the areas first (the «did you mean»), «استخدام», then «إضافة»', () => {
+    const PLACES = ['المنيل', 'القنطرة شرق', 'شبرامنت', 'مدينة نصر', 'حلوان', 'المعادي'];
+    const shown = (query: string) =>
+      withDirectionAdd(directionItems(query, PLACES), directionAddOffer(query, PLACES, []));
+    expect(shown('المنيب')).toEqual([area('المنيل'), typed('المنيب'), add('المنيب')]);
+    expect(shown('طرة')).toEqual([area('القنطرة شرق'), typed('طرة'), add('طرة')]);
+    expect(shown('شبرا')).toEqual([area('شبرامنت'), typed('شبرا'), add('شبرا')]);
+    expect(shown('نصر مدينة')).toEqual([area('مدينة نصر'), typed('نصر مدينة'), add('نصر مدينة')]);
+    expect(shown('حلوات')).toEqual([area('حلوان'), typed('حلوات'), add('حلوات')]);
+    // Still being typed: the area is first — what Enter takes — and the add two arrows away.
+    expect(shown('المعا')).toEqual([area('المعادي'), typed('المعا'), add('المعا')]);
+    expect(highlightedDirectionRow(3, 0, false, false)).toBe(0);
   });
 
   // Round 28c verifier — «لو مش موجود»: a whole name a LONGER area only contains is not on the list.
@@ -364,15 +386,15 @@ describe('Round 28c — «إضافة «…» إلى القائمة» (`direction
     }
     expect(listed('مدينة')).toEqual([area('مدينة نصر'), typed('مدينة'), add('مدينة')]);
     expect(listed('نصر')).toEqual([area('مدينة نصر'), typed('نصر'), add('نصر')]);
-    // A PIECE of a word is still the area being typed, or a piece of it: no add.
+    // Round 28c critic — REWRITTEN: a PIECE of a word held the add back («القاه», «طريق الم» even
+    // named the archived «طريق المطار»); only a folded match does now — the areas still come first.
     for (const piece of ['القاه', 'قاهر', 'المعادي الجديد', 'عادي', 'الجدي']) {
-      expect(directionAddOffer(piece, LONGER, []), piece).toBeNull();
+      expect(directionAddOffer(piece, LONGER, []), piece).toEqual({ kind: 'add', name: piece });
     }
-    // Against the archived alike: «طريق» is a name of its own, «طريق الم» a piece of «طريق المطار».
     expect(directionAddOffer('طريق', AREAS, ARCHIVED)).toEqual({ kind: 'add', name: 'طريق' });
     expect(directionAddOffer('طريق الم', AREAS, ARCHIVED)).toEqual({
-      kind: 'archived',
-      area: 'طريق المطار',
+      kind: 'add',
+      name: 'طريق الم',
     });
   });
 
@@ -417,6 +439,12 @@ describe('Round 28c — «إضافة «…» إلى القائمة» (`direction
     });
     // The list keeps «استخدام» for the row, and nothing more.
     expect(listed('الدقى')).toEqual([typed('الدقى')]);
+    // Round 28c critic — named only when it IS the name: «مصر» is not «مصر القديمة», restored.
+    expect(directionAddOffer('مصر', AREAS, ['مصر القديمة'])).toEqual({ kind: 'add', name: 'مصر' });
+    expect(directionAddOffer('مصر القديمه', AREAS, ['مصر القديمة'])).toEqual({
+      kind: 'archived',
+      area: 'مصر القديمة',
+    });
   });
 
   it('nothing is offered while the lists are read, or for a desk who may not write the catalog (null)', () => {
@@ -456,6 +484,50 @@ describe('Round 28c — «إضافة «…» إلى القائمة» (`direction
     expect(withDirectionAdd(items, { kind: 'archived', area: 'الدقي' })).toEqual(items);
   });
 
+  // Round 28c critic — a 409 always said «added meanwhile», even of an archived area never listed.
+  it('a 409 names the area holding the name, and says when it is archived — else the reason’s words', () => {
+    const held = (code: string, message: string) => ({
+      status: 409,
+      details: [{ field: 'name', code, message }],
+    });
+    expect(directionAddHeld(held('AREA_ACTIVE', 'المعادي'))).toEqual({
+      area: 'المعادي',
+      archived: false,
+    });
+    expect(directionAddHeld(held('AREA_ARCHIVED', 'الدقي'))).toEqual({
+      area: 'الدقي',
+      archived: true,
+    });
+    for (const none of [{ status: 409 }, held('OTHER', 'x'), held('AREA_ACTIVE', ''), null, 'x']) {
+      expect(directionAddHeld(none), JSON.stringify(none)).toBeNull();
+    }
+    expect(
+      directionAddRefusalText({
+        name: 'الدقى',
+        reason: 'duplicate',
+        held: { area: 'الدقي', archived: true },
+      }),
+    ).toEqual({
+      key: 'operations.crewPlan.direction.addRefused.heldArchived',
+      vars: { text: 'الدقى', area: 'الدقي' },
+    });
+    expect(
+      directionAddRefusalText({
+        name: 'المعادى',
+        reason: 'duplicate',
+        held: { area: 'المعادي', archived: false },
+      }).key,
+    ).toBe('operations.crewPlan.direction.addRefused.heldActive');
+    // No detail (an older server) — the plain words, which no longer say «meanwhile».
+    expect(directionAddRefusalText({ name: 'المعادى', reason: 'duplicate' })).toEqual({
+      key: 'operations.crewPlan.direction.addRefused.duplicate',
+      vars: { text: 'المعادى' },
+    });
+    expect(directionAddRefusalText({ name: 'x', reason: 'forbidden', held: null }).key).toBe(
+      'operations.crewPlan.direction.addRefused.forbidden',
+    );
+  });
+
   it('reads the catalog’s refusal: 409 held, 403 no grant, 400 the name — anything else may pass', () => {
     expect(directionAddRefusal({ status: 409 })).toBe('duplicate');
     expect(directionAddRefusal({ status: 403 })).toBe('forbidden');
@@ -464,5 +536,93 @@ describe('Round 28c — «إضافة «…» إلى القائمة» (`direction
     expect(directionAddRefusal({ status: 500 })).toBe('failed');
     expect(directionAddRefusal(new TypeError('Failed to fetch'))).toBe('failed');
     expect(directionAddRefusal(null)).toBe('failed');
+  });
+});
+
+// Round 28c critic — the box's keyboard was pinned only by rendering the list with a row lit: no web
+// spec ran Enter on «إضافة», a second Enter while it is written, or «مسح الاتجاه». The web suite has
+// no DOM, so the keys are read by `directionKeyAction` (the box only carries its answer out) and a
+// desk's keystrokes are walked here, the list rebuilt at each step as the box rebuilds it.
+describe('the box’s keys (`directionKeyAction`) — a desk’s keystrokes, walked', () => {
+  const AREAS_HERE = ['المعادي', 'حلوان'];
+  const add = (direction: string) => ({ kind: 'add', direction }) as const;
+  /** The box as it stands after `query` was typed, the arrows on `active`. */
+  const box = (
+    query: string,
+    over: { active?: number; arrowed?: boolean; pending?: boolean; value?: string | null } = {},
+    offering = true,
+  ) => {
+    const items = withDirectionAdd(
+      directionItems(query, AREAS_HERE),
+      offering ? directionAddOffer(query, AREAS_HERE, []) : null,
+    );
+    const active = over.active ?? 0;
+    const hasValue = (over.value ?? 'حلوان') !== null;
+    return {
+      open: true,
+      pending: over.pending ?? false,
+      items,
+      active,
+      lit: highlightedDirectionRow(items.length, active, hasValue, over.arrowed ?? false),
+      hasValue,
+    };
+  };
+
+  it('typed, ↓ reaches «إضافة» and Enter takes IT — the add, not the row-only text', () => {
+    const typedBox = box('طريق السويس');
+    expect(typedBox.items).toEqual([typed('طريق السويس'), add('طريق السويس')]);
+    // Enter at once takes the highlighted row-only choice, as Round 28 left it.
+    expect(directionKeyAction('Enter', typedBox)).toEqual({
+      kind: 'take',
+      direction: 'طريق السويس',
+    });
+    const down = directionKeyAction('ArrowDown', typedBox);
+    expect(down).toEqual({ kind: 'move', active: 1 });
+    const onAdd = box('طريق السويس', { active: 1, arrowed: true });
+    expect(directionKeyAction('Enter', onAdd)).toEqual({ kind: 'add', name: 'طريق السويس' });
+    // ↓ again: «مسح الاتجاه»; again: round to the first; ↑ from the first: «مسح الاتجاه».
+    expect(directionKeyAction('ArrowDown', onAdd)).toEqual({ kind: 'move', active: 2 });
+    const onClear = box('طريق السويس', { active: 2, arrowed: true });
+    expect(directionKeyAction('Enter', onClear)).toEqual({ kind: 'take', direction: null });
+    expect(directionKeyAction('ArrowDown', onClear)).toEqual({ kind: 'move', active: 0 });
+    expect(directionKeyAction('ArrowUp', typedBox)).toEqual({ kind: 'move', active: 2 });
+  });
+
+  it('while the add is written every key but Tab is swallowed — a second Enter adds nothing', () => {
+    const writing = box('طريق السويس', { active: 1, arrowed: true, pending: true });
+    for (const key of ['Enter', 'ArrowDown', 'ArrowUp', 'Escape', 'a', 'Backspace', ' ']) {
+      expect(directionKeyAction(key, writing), key).toEqual({ kind: 'block' });
+    }
+    expect(directionKeyAction('Tab', writing)).toEqual({ kind: 'pass' });
+    // Shut, too: no arrow opens it while the name is written.
+    expect(directionKeyAction('ArrowDown', { ...writing, open: false })).toEqual({ kind: 'block' });
+  });
+
+  it('a desk without the grant: no «إضافة» to reach — ↓ goes from the text to «مسح الاتجاه»', () => {
+    const plain = box('طريق السويس', {}, false);
+    expect(plain.items).toEqual([typed('طريق السويس')]);
+    expect(directionKeyAction('ArrowDown', plain)).toEqual({ kind: 'move', active: 1 });
+    expect(
+      directionKeyAction('Enter', box('طريق السويس', { active: 1, arrowed: true }, false)),
+    ).toEqual({ kind: 'take', direction: null });
+  });
+
+  it('an area searched for is what Enter takes; nothing lit takes nothing; Escape closes; Tab leaves', () => {
+    const searching = box('المعا');
+    expect(searching.items).toEqual([area('المعادي'), typed('المعا'), add('المعا')]);
+    expect(directionKeyAction('Enter', searching)).toEqual({ kind: 'take', direction: 'المعادي' });
+    // Past the ceiling there is no row — Enter does not clear the row's direction.
+    const tooLong = box('ط'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH + 1));
+    expect(tooLong.items).toEqual([]);
+    expect(directionKeyAction('Enter', tooLong)).toEqual({ kind: 'block' });
+    expect(directionKeyAction('Escape', searching)).toEqual({ kind: 'close' });
+    expect(directionKeyAction('Tab', searching)).toEqual({ kind: 'leave' });
+    expect(directionKeyAction('a', searching)).toEqual({ kind: 'pass' });
+    // Shut: ↓ opens it; Enter, Escape and Tab are the page's.
+    const shut = { ...searching, open: false };
+    expect(directionKeyAction('ArrowDown', shut)).toEqual({ kind: 'open' });
+    for (const key of ['Enter', 'Escape', 'Tab']) {
+      expect(directionKeyAction(key, shut), key).toEqual({ kind: 'pass' });
+    }
   });
 });

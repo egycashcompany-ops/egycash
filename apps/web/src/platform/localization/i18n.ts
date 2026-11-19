@@ -12669,10 +12669,16 @@ const en: Record<string, string> = {
   'operations.crewPlan.direction.added': '“{{area}}” added to «Areas»',
   'operations.crewPlan.direction.addedBody':
     'It is now this row’s direction. «Undo» takes back the row’s direction only — the area stays on the list. Its English name can be filled in later in the reference data.',
+  'operations.crewPlan.direction.addedNotPlaced':
+    'The row’s direction was not changed: the row or the day changed while the area was being added. Pick “{{area}}” from the list if it is meant for this row.',
   'operations.crewPlan.direction.archived':
     '“{{area}}” is in «Areas» but archived — restore it in the reference data to list it here.',
   'operations.crewPlan.direction.addRefused.duplicate':
-    '“{{text}}” was not added: «Areas» already has an area of that name, added meanwhile. Pick it from the list, or use the text on this row only.',
+    '“{{text}}” was not added: «Areas» already has an area of that name. Pick it from the list, or use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.heldActive':
+    '“{{text}}” was not added: «Areas» already has “{{area}}” under that name. Pick it from the list, or use the text on this row only.',
+  'operations.crewPlan.direction.addRefused.heldArchived':
+    '“{{text}}” was not added: «Areas» has “{{area}}” under that name, but archived — restore it in the reference data, or use the text on this row only.',
   'operations.crewPlan.direction.addRefused.forbidden':
     '“{{text}}” was not added: you may not add to «Areas». You can use the text on this row only.',
   'operations.crewPlan.direction.addRefused.invalid':
@@ -28011,10 +28017,16 @@ const ar: Record<string, string> = {
   'operations.crewPlan.direction.added': 'أُضيفت «{{area}}» إلى «المناطق»',
   'operations.crewPlan.direction.addedBody':
     'وُضعت اتجاهًا لهذا الصف. يعيد «تراجع» اتجاه الصف وحده، وتبقى المنطقة في القائمة. ويُكتب اسمها الإنجليزي لاحقًا في البيانات المرجعية.',
+  'operations.crewPlan.direction.addedNotPlaced':
+    'لم يتغيّر اتجاه الصف: تغيّر الصف أو اليوم أثناء الإضافة. اختر «{{area}}» من القائمة إن كانت لهذا الصف.',
   'operations.crewPlan.direction.archived':
     '«{{area}}» موجودة في «المناطق» لكنها موقوفة — فعّلها من البيانات المرجعية لتظهر هنا.',
   'operations.crewPlan.direction.addRefused.duplicate':
-    'لم تُضَف «{{text}}»: في «المناطق» منطقة بهذا الاسم أُضيفت في هذه الأثناء. اخترها من القائمة، أو استخدم النص لهذا الصف وحده.',
+    'لم تُضَف «{{text}}»: في «المناطق» منطقة بهذا الاسم. اخترها من القائمة، أو استخدم النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.heldActive':
+    'لم تُضَف «{{text}}»: في «المناطق» منطقة «{{area}}» بهذا الاسم. اخترها من القائمة، أو استخدم النص لهذا الصف وحده.',
+  'operations.crewPlan.direction.addRefused.heldArchived':
+    'لم تُضَف «{{text}}»: في «المناطق» منطقة «{{area}}» بهذا الاسم لكنها موقوفة — فعّلها من البيانات المرجعية، أو استخدم النص لهذا الصف وحده.',
   'operations.crewPlan.direction.addRefused.forbidden':
     'لم تُضَف «{{text}}»: لا تملك صلاحية الإضافة إلى «المناطق». يمكنك استخدام النص لهذا الصف وحده.',
   'operations.crewPlan.direction.addRefused.invalid':

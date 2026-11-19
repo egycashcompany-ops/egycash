@@ -23,7 +23,6 @@ import { BranchImportConfirmDialog } from './BranchImportConfirmDialog';
 import { BranchImportResult } from './BranchImportResult';
 import { BranchImportUpload } from './BranchImportUpload';
 
-
 export const BranchImportPanel = ({
   banks,
   onClose,

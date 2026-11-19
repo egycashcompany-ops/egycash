@@ -53,6 +53,8 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { OperationsCrewAssignmentModel } from '../../src/modules/operations/crew/crew-assignment.model';
 import { operationsCrewAssignmentRepository } from '../../src/modules/operations/crew/crew-assignment.repository';
 import { OperationsShiftTypeModel } from '../../src/modules/operations/shift-types/shift-type.model';
+import { OperationsAreaModel } from '../../src/modules/operations/areas/area.model';
+import { operationsAreaRepository } from '../../src/modules/operations/areas/area.repository';
 import { seedOperationsShiftTypes } from '../../src/modules/operations/shift-types/shift-type.service';
 import {
   migrateCrewAssignmentIndexes,
@@ -1104,7 +1106,53 @@ describe('Round 28c — «إضافة «…» إلى القائمة»: the direct
     // The refusal names the area that holds the name, and says when it is archived.
     expect(messageOf(await addArea('المعادى'))).toContain('«المعادي»');
     expect(messageOf(await addArea('الدقى'))).toContain('«الدقي» (archived)');
+    // Round 28c critic — and so does its detail, for a screen to say which area holds it (the box
+    // said «added meanwhile» of an archived area its list never had).
+    expect(errorOf(await addArea('المعادى')).details).toEqual([
+      { field: 'name', code: 'AREA_ACTIVE', message: 'المعادي' },
+    ]);
+    expect(errorOf(await addArea('الدقى')).details).toEqual([
+      { field: 'name', code: 'AREA_ARCHIVED', message: 'الدقي' },
+    ]);
     expect(await areaNames()).toEqual(before);
+  });
+
+  // Round 28c critic — the folded rule held the create only: renaming an area in «البيانات
+  // المرجعية» to another spelling of a live one went through, and the direction rules then read the
+  // two as one.
+  it('refuses a RENAME to another spelling of a live area alike — 409 with the detail — and lets an area keep its own name', async () => {
+    const rename = (target: { id: string; version: number }, body: Record<string, unknown>) =>
+      request(app)
+        .patch(`/api/v1/operations/areas/${target.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ...body, version: target.version });
+    const fresh = await area('حدائق القبة');
+    for (const [name, code, holder] of [
+      ['المعادى', 'AREA_ACTIVE', 'المعادي'],
+      ['الدقى', 'AREA_ARCHIVED', 'الدقي'],
+    ] as const) {
+      const refused = await rename(fresh, { name });
+      expect(refused.status, name).toBe(409);
+      expect(errorOf(refused)).toMatchObject({
+        code: ErrorCodes.DUPLICATE,
+        details: [{ field: 'name', code, message: holder }],
+      });
+    }
+    // Its own name respelled is no other area's.
+    const respelled = await rename(fresh, { name: 'حدائق القبه' });
+    expect(respelled.status, JSON.stringify(respelled.body)).toBe(200);
+    // Two spellings written before the rule (straight to the catalog) still save what is not the
+    // name — the English name, archived, restored.
+    const twin = await operationsAreaRepository.create(
+      { name: 'المعادى', nameEn: null, governorate: null, isActive: true },
+      { by: adminId },
+    );
+    const kept = await rename(
+      { id: String(twin._id), version: twin.__v },
+      { nameEn: 'Maadi', isActive: false },
+    );
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+    await OperationsAreaModel.deleteOne({ _id: twin._id }).exec();
   });
 
   it('is the catalog’s own grant: a planner without operationsCatalog.manage is refused (403), and his row still takes the text', async () => {

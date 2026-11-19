@@ -86,7 +86,7 @@ const CodeCell = ({ row }: { row: OperationsBranchImportRowDto }) => {
       />
     );
   }
-  if (row.codeSuffixed && isOperationsBranchImportSuffixedWrite(row)) {
+  if (isOperationsBranchImportSuffixedWrite(row)) {
     return (
       <Change
         from={<Code code={row.sheetCode} />}

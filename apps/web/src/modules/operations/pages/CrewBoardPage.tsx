@@ -123,7 +123,11 @@ import {
   useOperationsStandingCrew,
   usePlanOperationsCrew,
 } from '../api/operations-queries';
-import { useArchivedOperationsAreaNames, useDirectionAreaAdd } from '../api/direction-area';
+import {
+  addLandsOn,
+  useArchivedOperationsAreaNames,
+  useDirectionAreaAdd,
+} from '../api/direction-area';
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { CrewPlanChip } from '../components/CrewPlanChip';
 import {
@@ -770,13 +774,19 @@ export const CrewBoardPage = (): JSX.Element => {
   // as any direction change — ONE operation, which «تراجع» takes back without taking the area off.
   const canAddArea = canPlan && can('operationsCatalog.manage');
   const archivedAreas = useArchivedOperationsAreaNames(canAddArea);
-  const areaAdd = useDirectionAreaAdd((key, area) => {
-    if (rows.some((row) => row.key === key)) patch(key, { direction: area });
+  // Round 28c critic — the add belongs to its day and to the row as it was: stepped to another day,
+  // the row gone (a «حفظ» read-back renames a new row), or its direction changed meanwhile by
+  // another route, and the area is only added to the list — the toast says the row was not changed.
+  const areaAdd = useDirectionAreaAdd(day, (key, area, from) => {
+    if (!addLandsOn(rows, key, from)) return false;
+    patch(key, { direction: area });
+    return true;
   });
-  const addFor = (key: string) =>
+  const addFor = (row: { key: string; direction: string | null }) =>
     canAddArea
       ? areaAdd.forRow(
-          key,
+          row.key,
+          row.direction,
           areaNames.isSuccess && archivedAreas.isSuccess ? archivedAreas.data : null,
         )
       : undefined;
@@ -1435,7 +1445,7 @@ export const CrewBoardPage = (): JSX.Element => {
             options={directions}
             disabled={!canPlan}
             onChange={(direction) => patch(row.key, { direction })}
-            add={addFor(row.key)}
+            add={addFor(row)}
           />
         </div>
       ),

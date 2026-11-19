@@ -37,12 +37,14 @@
 // the typed row, so Enter still takes the row-only choice and the add is one arrow away. Offered
 // only for a desk who may write the catalog, and only for ONE new name: text that names something,
 // within the hand-typed ceiling, of one part (none of the save's separators — «المعادي - طريق» is
-// a direction of several), and that no area already IS (`isAreaNamed` — folded alike, its words
-// reordered, a typo, or a piece of its word) — an active one (the list offers it instead) or an
-// archived one (the list says so, `{ kind: 'archived' }`: restored, not added twice). A whole name
-// a longer area only contains («القاهرة» beside «القاهرة الجديدة») is not on the list: offered.
-// And the box opened on its row's own hand-typed direction offers it too — «استخدام» yesterday,
-// «إضافة» today.
+// a direction of several), and that no area already IS — FOLDED alike (`sameAreaName`, the
+// server's own duplicate rule: «المعادى», «معادي») — an active one (the list offers it instead) or
+// an archived one (the list says so, `{ kind: 'archived' }`: restored, not added twice). Round 28c
+// critic — nothing wider: a name an area only contains («القاهرة» beside «القاهرة الجديدة», «السلام»
+// beside «دار السلام»), holds a piece of («طرة» in «القنطرة»), or is one letter from («المنيب» beside
+// «المنيل») is another place, and the server takes it; the list shows those areas FIRST (what Enter
+// takes — the «did you mean»), then «استخدام», then «إضافة». And the box opened on its row's own
+// hand-typed direction offers it too — «استخدام» yesterday, «إضافة» today.
 import {
   OPERATIONS_DIRECTION_MAX_LENGTH,
   OPERATIONS_DIRECTION_SEPARATOR,
@@ -316,10 +318,20 @@ export const highlightedDirectionRow = (
 /** Why «المناطق» refused an add — said in the list, the typed text kept for the row instead. */
 export type DirectionAddRefusal = 'duplicate' | 'forbidden' | 'invalid' | 'failed';
 
-/** An add «المناطق» refused: the name it was for, and why. */
+/**
+ * The area «المناطق» says already holds a refused name (a 409's detail — Round 28c critic): named,
+ * and whether it is archived, so the box says which area instead of guessing it was added meanwhile.
+ */
+export interface DirectionAddHeld {
+  area: string;
+  archived: boolean;
+}
+
+/** An add «المناطق» refused: the name it was for, why, and (a 409) the area holding the name. */
 export interface DirectionAddRefused {
   name: string;
   reason: DirectionAddRefusal;
+  held?: DirectionAddHeld | null;
 }
 
 /**
@@ -330,33 +342,14 @@ export interface DirectionAddRefused {
 export type DirectionAddOffer = { kind: 'add'; name: string } | { kind: 'archived'; area: string };
 
 /**
- * Round 28c verifier — is `area` the very name `name` is, so that adding `name` would list it
- * twice? Folded alike (the server's own duplicate rule — «المعادى», «معادي»), its words in another
- * order («نصر مدينة»), one letter away (a typo, four letters or more — «حلوات»), or `name` a PIECE
- * of it, inside one of its words («المعا», «عادي», «المعادي الجديد» — still being typed). A whole
- * name that a longer area's name only CONTAINS word for word is another name — «القاهرة» beside
- * «القاهرة الجديدة», «مصر» beside «مصر الجديدة», «معادي» beside «المعادي الجديدة» — not on the list
- * («لو مش موجود»): the list offers that area first, as ever, and the add as well.
+ * Is `area` the very name `name` is, so that adding `name` would list it twice? FOLDED alike —
+ * `foldOperationsAreaName`, the rule the server refuses a second spelling by («المعادى», «معادي»,
+ * «شبرا الخيمه» for «شبرا/الخيمة»). Round 28c critic — the verifier's wider rule (words reordered,
+ * one letter away, a piece of a word) held back names of other places — «المنيب» beside «المنيل»,
+ * «طرة» beside «القنطرة» — with no word why; the list's areas answering first are the near miss.
  */
-const isAreaNamed = (area: string, name: string): boolean => {
-  if (foldOperationsAreaName(area) === foldOperationsAreaName(name)) return true;
-  const q = searchFold(name);
-  const n = searchFold(area);
-  const words = (text: string): string => text.split(' ').map(wordFold).sort().join(' ');
-  if (words(q) === words(n)) return true;
-  if (
-    q.replace(/ /gu, '').length >= NEAR_MISS_LETTERS &&
-    (oneLetterAway(q, n) || oneLetterAway(wordFold(name), wordFold(area)))
-  ) {
-    return true;
-  }
-  // Held whole words, the article kept or taken off alike, is a shorter name; else a piece.
-  return (
-    n.includes(q) &&
-    !` ${n} `.includes(` ${q} `) &&
-    !` ${wordFold(area)} `.includes(` ${wordFold(name)} `)
-  );
-};
+const sameAreaName = (area: string, name: string): boolean =>
+  foldOperationsAreaName(area) === foldOperationsAreaName(name);
 
 /**
  * Round 28c — may «إضافة «…» إلى القائمة» be offered for `query`? (See the head of this file.)
@@ -375,8 +368,8 @@ export const directionAddOffer = (
   // Nothing named, past the hand-typed ceiling, or several parts: no one name to add.
   if (name === null || OPERATIONS_DIRECTION_SEPARATOR.test(name)) return null;
   // An active area IS this name: the list offers that area.
-  if (options.some((option) => isAreaNamed(option, name))) return null;
-  const asleep = archived.find((option) => isAreaNamed(option, name));
+  if (options.some((option) => sameAreaName(option, name))) return null;
+  const asleep = archived.find((option) => sameAreaName(option, name));
   if (asleep !== undefined) return { kind: 'archived', area: asleep };
   if (refused !== null && refused.name === name && refused.reason !== 'failed') return null;
   return { kind: 'add', name };
@@ -415,9 +408,10 @@ export const withDirectionAdd = (
 };
 
 /**
- * Why the catalog refused the add, from the answer: 409 — the name is held (added meanwhile, in
- * any spelling that folds to it, archived too); 403 — no grant to write the catalog; 400 — the
- * name itself; anything else (the network, the server) may pass, and the add is offered again.
+ * Why the catalog refused the add, from the answer: 409 — the name is held (in any spelling that
+ * folds to it, archived too — `directionAddHeld` names the area); 403 — no grant to write the
+ * catalog; 400 — the name itself; anything else (the network, the server) may pass, and the add is
+ * offered again.
  */
 export const directionAddRefusal = (error: unknown): DirectionAddRefusal => {
   const status =
@@ -426,4 +420,92 @@ export const directionAddRefusal = (error: unknown): DirectionAddRefusal => {
   if (status === 403) return 'forbidden';
   if (status === 400 || status === 422) return 'invalid';
   return 'failed';
+};
+
+/** The area a 409 names as holding the name (its detail `AREA_ACTIVE` / `AREA_ARCHIVED`), or null. */
+export const directionAddHeld = (error: unknown): DirectionAddHeld | null => {
+  const details =
+    typeof error === 'object' && error !== null ? (error as { details?: unknown }).details : null;
+  if (!Array.isArray(details)) return null;
+  for (const detail of details as { code?: unknown; message?: unknown }[]) {
+    if (typeof detail?.message !== 'string' || detail.message === '') continue;
+    if (detail.code === 'AREA_ACTIVE') return { area: detail.message, archived: false };
+    if (detail.code === 'AREA_ARCHIVED') return { area: detail.message, archived: true };
+  }
+  return null;
+};
+
+/**
+ * What a refusal says — one text wherever it is said (above the list, the box's own note, a toast):
+ * a 409 naming its area says which, and whether archived; else the reason's own words.
+ */
+export const directionAddRefusalText = (
+  refusal: DirectionAddRefused,
+): { key: string; vars: Record<string, string> } => {
+  const held = refusal.reason === 'duplicate' ? (refusal.held ?? null) : null;
+  if (held !== null) {
+    return {
+      key: `operations.crewPlan.direction.addRefused.${held.archived ? 'heldArchived' : 'heldActive'}`,
+      vars: { text: refusal.name, area: held.area },
+    };
+  }
+  return {
+    key: `operations.crewPlan.direction.addRefused.${refusal.reason}`,
+    vars: { text: refusal.name },
+  };
+};
+
+/**
+ * What a key does in the direction box (Round 28c critic — the box's keyboard pinned without a DOM,
+ * which the web suite has none of). `active` is the row the arrows are on, `lit` the highlighted
+ * one (`highlightedDirectionRow`), `items` the list as shown (`withDirectionAdd`):
+ *   · while an add is written (`pending`) every key but Tab is swallowed — a second Enter adds
+ *     nothing, a letter types nothing over the name;
+ *   · ↓/↑ open the list, then walk its rows and «مسح الاتجاه» after them, round;
+ *   · Enter takes the highlighted row: an area or «استخدام «…» اتجاهًا» (`take`), «إضافة «…» إلى
+ *     القائمة» (`add`), «مسح الاتجاه» (`take` null) — nothing highlighted, nothing taken;
+ *   · Escape closes the list (the box keeps its value); Tab leaves it (`directionOnLeave`).
+ * Any other key is the box's own (`pass`).
+ */
+export type DirectionKeyAction =
+  | { kind: 'pass' }
+  | { kind: 'block' }
+  | { kind: 'open' }
+  | { kind: 'move'; active: number }
+  | { kind: 'take'; direction: string | null }
+  | { kind: 'add'; name: string }
+  | { kind: 'close' }
+  | { kind: 'leave' };
+
+export const directionKeyAction = (
+  key: string,
+  box: {
+    open: boolean;
+    pending: boolean;
+    items: readonly DirectionItem[];
+    active: number;
+    lit: number;
+    hasValue: boolean;
+  },
+): DirectionKeyAction => {
+  if (box.pending) return key === 'Tab' ? { kind: 'pass' } : { kind: 'block' };
+  if (key === 'ArrowDown' || key === 'ArrowUp') {
+    if (!box.open) return { kind: 'open' };
+    const count = box.items.length + (box.hasValue ? 1 : 0);
+    const step = key === 'ArrowDown' ? 1 : -1;
+    return { kind: 'move', active: count === 0 ? 0 : (box.active + step + count) % count };
+  }
+  if (!box.open) return { kind: 'pass' };
+  if (key === 'Enter') {
+    if (box.lit === -1) return { kind: 'block' };
+    if (box.lit === box.items.length && box.hasValue) return { kind: 'take', direction: null };
+    const picked = box.items[box.lit];
+    if (picked === undefined) return { kind: 'block' };
+    return picked.kind === 'add'
+      ? { kind: 'add', name: picked.direction }
+      : { kind: 'take', direction: picked.direction };
+  }
+  if (key === 'Escape') return { kind: 'close' };
+  if (key === 'Tab') return { kind: 'leave' };
+  return { kind: 'pass' };
 };

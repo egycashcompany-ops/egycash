@@ -503,9 +503,28 @@ describe('POST /operations/bank-branches/import/apply', () => {
       { name: 'منطقة المرجان', nameEn: 'Coral', rows: 2, latinOnly: false },
     ]);
 
-    const applied = await apply(
+    // A held branch spelt like a new row, added after the compare (its own code, so no suffix
+    // moves): the reader never saw that row marked — nothing is written, compare again.
+    await mkBranch({ bankId: otherBankId, name: 'فرع الكرومِ', code: 'L-1' });
+    const stale = await apply(
       book,
       { fileSha256: dto.fileSha256, planDigest: dto.planDigest },
+      { bank: otherBankId },
+    );
+    expect(stale.status, JSON.stringify(stale.body)).toBe(409);
+    expect((stale.body as { error: { details: { code: string }[] } }).error.details[0]?.code).toBe(
+      'PLAN_CHANGED',
+    );
+    expect((await branchesOf(otherBankId)).size).toBe(2);
+    const again = data<OperationsBranchImportCompareDto>(
+      await compare(book, { bank: otherBankId }),
+    );
+    expect(again.rows[1]?.similarTo?.name).toBe('فرع الكرومِ');
+    expect(again.counts.similar).toBe(2);
+
+    const applied = await apply(
+      book,
+      { fileSha256: again.fileSha256, planDigest: again.planDigest },
       { bank: otherBankId },
     );
     expect(applied.status, JSON.stringify(applied.body)).toBe(200);

@@ -84,7 +84,11 @@ import {
   useRemoveOperationsStandingCrew,
   useSetOperationsStandingCrew,
 } from '../api/operations-queries';
-import { useArchivedOperationsAreaNames, useDirectionAreaAdd } from '../api/direction-area';
+import {
+  addLandsOn,
+  useArchivedOperationsAreaNames,
+  useDirectionAreaAdd,
+} from '../api/direction-area';
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { DirectionPicker, TimePicker } from '../components/CrewPlanControls';
 import {
@@ -623,13 +627,18 @@ const StandingCrewBoard = (): JSX.Element => {
   // the catalog's own grant; the area written at once, the vehicle's direction one operation.
   const canAddArea = canPlan && can('operationsCatalog.manage');
   const archivedAreas = useArchivedOperationsAreaNames(canAddArea);
-  const areaAdd = useDirectionAreaAdd((key, area) => {
-    if (rows.some((row) => row.key === key)) patch(key, { direction: area });
+  // Round 28c critic — and lands only on the row as it was sent (gone, or its direction changed
+  // meanwhile by another route: only added to the list, the toast says so). One board: one scope.
+  const areaAdd = useDirectionAreaAdd('standing', (key, area, from) => {
+    if (!addLandsOn(rows, key, from)) return false;
+    patch(key, { direction: area });
+    return true;
   });
-  const addFor = (key: string) =>
+  const addFor = (row: { key: string; direction: string | null }) =>
     canAddArea
       ? areaAdd.forRow(
-          key,
+          row.key,
+          row.direction,
           areaNames.isSuccess && archivedAreas.isSuccess ? archivedAreas.data : null,
         )
       : undefined;
@@ -936,7 +945,7 @@ const StandingCrewBoard = (): JSX.Element => {
             options={directions}
             disabled={!canPlan}
             onChange={(direction) => patch(row.key, { direction })}
-            add={addFor(row.key)}
+            add={addFor(row)}
           />
         </div>
       ),

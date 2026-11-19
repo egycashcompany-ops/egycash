@@ -56,10 +56,12 @@ import { BoardIcon, NUM } from '../../fleet/components/FuelCardBoard';
 import { parseClock, shiftTypeChoices, type CrewRowColour } from '../lib/crew-plan';
 import {
   directionAddOfferInBox,
+  directionAddRefusalText,
   directionItems,
   directionItemsAtOpen,
   directionOnLeave,
   directionTooLong,
+  directionKeyAction,
   highlightedDirectionRow,
   isHandTypedDirection,
   opensOnText,
@@ -229,6 +231,13 @@ const directionOptionId = (listId: string, index: number): string => `${listId}-
 /** «إضافة «…» إلى القائمة»'s plus, where the typed row has its pen and an area its pin. */
 const ADD_ICON = ['M12 5v14', 'M5 12h14'];
 
+/** A refused add's mark at the box's start, where a hand-typed value has its pen (Round 28c critic). */
+const REFUSED_ICON = [
+  'M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  'M12 9v4',
+  'M12 17h.01',
+];
+
 /**
  * The rows of the direction box's list (`directionItems`): the areas, «استخدام «…» اتجاهًا» — the
  * text as typed, with a pen where an area has its pin, set apart by a line when areas precede it —
@@ -242,8 +251,9 @@ const ADD_ICON = ['M12 5v14', 'M5 12h14'];
  *
  * Round 28c — «إضافة «…» إلى القائمة» (an `add` item, a plus where the typed row has its pen) sits
  * right after the typed row, its hint under it: written to «المناطق» at once, not at «حفظ», and
- * «تراجع» does not take it back. An archived area that holds the name is said instead
- * (`archivedArea`); an add «المناطق» refused is said at the top (`refused`), the text kept.
+ * «تراجع» does not take it back. What the list says of the add — a refusal, an archived area
+ * holding the name — is `DirectionNotes`, outside the listbox (Round 28c critic: a listbox holds
+ * options only).
  */
 export const DirectionOptions = ({
   listId,
@@ -251,8 +261,6 @@ export const DirectionOptions = ({
   active,
   value,
   tooLong = null,
-  archivedArea = null,
-  refused = null,
   onHover,
   onPick,
   onAdd,
@@ -265,10 +273,6 @@ export const DirectionOptions = ({
   value: string | null;
   /** The length of text typed past `OPERATIONS_DIRECTION_MAX_LENGTH` (`directionTooLong`). */
   tooLong?: number | null;
-  /** An archived area that holds what is typed — said, and no add offered (`directionAddOffer`). */
-  archivedArea?: string | null;
-  /** The add «المناطق» just refused for this text, said above the rows. */
-  refused?: DirectionAddRefused | null;
   onHover: (index: number) => void;
   onPick: (direction: string | null) => void;
   /** «إضافة «…» إلى القائمة» picked — the name to add. */
@@ -278,15 +282,6 @@ export const DirectionOptions = ({
   const locale = useAppSelector((state) => state.locale.locale);
   return (
     <>
-      {refused !== null && (
-        <li
-          role="alert"
-          data-direction-add-refused={refused.reason}
-          className="px-2.5 py-2 text-[12.5px] font-bold leading-snug text-rose-700 dark:text-rose-300"
-        >
-          {t(`operations.crewPlan.direction.addRefused.${refused.reason}`, { text: refused.name })}
-        </li>
-      )}
       {tooLong !== null && (
         <li
           role="presentation"
@@ -369,15 +364,6 @@ export const DirectionOptions = ({
           )}
         </li>
       ))}
-      {archivedArea !== null && (
-        <li
-          role="presentation"
-          data-direction-archived="true"
-          className="px-2.5 py-2 text-[12px] font-semibold leading-snug text-amber-800 dark:text-amber-200"
-        >
-          {t('operations.crewPlan.direction.archived', { area: archivedArea })}
-        </li>
-      )}
       {value !== null && (
         <li
           id={directionOptionId(listId, items.length)}
@@ -396,6 +382,48 @@ export const DirectionOptions = ({
         >
           {t('operations.crewPlan.direction.clear')}
         </li>
+      )}
+    </>
+  );
+};
+
+/**
+ * Round 28c critic — what the direction list says of the add, ABOVE the listbox and not inside it
+ * (a listbox holds options only): the add «المناطق» just refused for the text in the box (the text
+ * kept for the row — `directionAddRefusalText`, which names the area holding the name), and an
+ * archived area that IS the name, so no add is offered (`directionAddOffer`). The archived note has
+ * an id the box names in `aria-describedby` (`archivedId`); the refusal is the box's own note.
+ */
+export const DirectionNotes = ({
+  archivedId,
+  refused,
+  archivedArea,
+}: {
+  archivedId: string;
+  refused: DirectionAddRefused | null;
+  archivedArea: string | null;
+}): JSX.Element | null => {
+  const t = useT();
+  if (refused === null && archivedArea === null) return null;
+  const said = refused === null ? null : directionAddRefusalText(refused);
+  return (
+    <>
+      {refused !== null && said !== null && (
+        <p
+          data-direction-add-refused={refused.reason}
+          className="px-2.5 py-2 text-[12.5px] font-bold leading-snug text-rose-700 dark:text-rose-300"
+        >
+          {t(said.key, said.vars)}
+        </p>
+      )}
+      {archivedArea !== null && (
+        <p
+          id={archivedId}
+          data-direction-archived="true"
+          className="px-2.5 py-2 text-[12px] font-semibold leading-snug text-amber-800 dark:text-amber-200"
+        >
+          {t('operations.crewPlan.direction.archived', { area: archivedArea })}
+        </p>
       )}
     </>
   );
@@ -425,9 +453,13 @@ export const DirectionPicker = ({
   const t = useT();
   const id = useId();
   const noteId = `${id}-note`;
+  const archivedNoteId = `${id}-archived`;
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
+  // Round 28c critic — the box's live region speaks only while it has the focus; away from it, the
+  // page's toast says a refusal instead (`useDirectionAreaAdd`): said once, not twice.
+  const [focused, setFocused] = useState(false);
   const [query, setQuery] = useState('');
   // Has the desk typed since the box opened? Until then the list is the box's opening list
   // (`directionItemsAtOpen`) and leaving it changes nothing.
@@ -469,20 +501,38 @@ export const DirectionPicker = ({
   const tooLong = edited ? directionTooLong(query, options) : null;
   // The refusal is said while the list holds the very name refused.
   const refusalShown =
-    refused !== null && edited && normalizeOperationsDirection(query) === refused.name
+    open && refused !== null && edited && normalizeOperationsDirection(query) === refused.name
       ? refused
       : null;
+  const refusalWords = refused === null ? null : directionAddRefusalText(refused);
+  const refusalSaid = refusalWords === null ? null : t(refusalWords.key, refusalWords.vars);
+  const archivedArea = open && offer?.kind === 'archived' ? offer.area : null;
   /** What the box says of itself: the add pending, the add refused, a hand-typed value — or none. */
   const note =
     pending !== null
       ? t('operations.crewPlan.direction.adding', { text: pending })
-      : refused !== null
-        ? t(`operations.crewPlan.direction.addRefused.${refused.reason}`, { text: refused.name })
+      : refusalSaid !== null
+        ? refusalSaid
         : handTyped
           ? t('operations.crewPlan.direction.handTyped', { direction: current })
           : null;
-  /** Rows the arrows walk: the items, then «مسح الاتجاه» when the row has a direction. */
-  const count = items.length + (value !== null ? 1 : 0);
+  /**
+   * Round 28c critic — the box's live region, always there (a region made with its words is often
+   * not spoken): the add pending, the refusal the list now shows, an archived area holding the name.
+   */
+  const live = !focused
+    ? ''
+    : pending !== null
+      ? (note ?? '')
+      : refusalShown !== null
+        ? (refusalSaid ?? '')
+        : archivedArea !== null
+          ? t('operations.crewPlan.direction.archived', { area: archivedArea })
+          : '';
+  const describedBy =
+    [note !== null ? noteId : null, archivedArea !== null ? archivedNoteId : null]
+      .filter((part) => part !== null)
+      .join(' ') || undefined;
   /** The highlighted row — what Enter takes; -1 for none. */
   const lit = highlightedDirectionRow(items.length, active, value !== null, arrowed);
 
@@ -555,45 +605,38 @@ export const DirectionPicker = ({
     setArrowed(false);
   }, [refused]);
 
+  // The keys, as `directionKeyAction` reads them (pinned there): while the add is written the box
+  // takes no key but Tab — a second Enter adds nothing; Enter takes the highlighted row — an area,
+  // «استخدام «…» اتجاهًا», «إضافة «…» إلى القائمة», or «مسح الاتجاه».
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
-    // Round 28c — while the add is written the box takes no key but Tab: a second Enter adds nothing.
-    if (pending !== null) {
-      if (event.key !== 'Tab') event.preventDefault();
+    const action = directionKeyAction(event.key, {
+      open,
+      pending: pending !== null,
+      items,
+      active,
+      lit,
+      hasValue: value !== null,
+    });
+    if (action.kind === 'pass') return;
+    if (action.kind === 'leave') {
+      leave();
       return;
     }
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      if (!open) {
-        openList();
-        return;
-      }
-      setArrowed(true);
-      setActive((at) =>
-        count === 0 ? 0 : (at + (event.key === 'ArrowDown' ? 1 : -1) + count) % count,
-      );
-      return;
-    }
-    if (event.key === 'Enter' && open) {
-      event.preventDefault();
-      // The highlighted row — an area, «استخدام «…» اتجاهًا», «إضافة «…» إلى القائمة», or «مسح الاتجاه».
-      if (lit === -1) return;
-      if (lit === items.length && value !== null) {
-        commit(null);
-        return;
-      }
-      const picked = items[lit];
-      if (picked?.kind === 'add') addToList(picked.direction);
-      else if (picked !== undefined) commit(picked.direction);
-      return;
-    }
-    if (event.key === 'Escape' && open) {
-      event.preventDefault();
+    event.preventDefault();
+    if (action.kind === 'close') {
       event.stopPropagation();
       close();
       settleRefusal();
-      return;
+    } else if (action.kind === 'open') {
+      openList();
+    } else if (action.kind === 'move') {
+      setArrowed(true);
+      setActive(action.active);
+    } else if (action.kind === 'take') {
+      commit(action.direction);
+    } else if (action.kind === 'add') {
+      addToList(action.name);
     }
-    if (event.key === 'Tab' && open) leave();
   };
 
   return (
@@ -608,6 +651,17 @@ export const DirectionPicker = ({
           <BoardIcon d={PLAN_ICON.pen} className="h-4 w-4" />
         </span>
       )}
+      {/* Round 28c critic — a refused add marks the box; closed, it shows the row's real direction
+          (what «حفظ» saves), the refusal its title, the name back on opening. */}
+      {refused !== null && pending === null && (
+        <span
+          aria-hidden
+          data-direction-add-refused-mark="true"
+          className="pointer-events-none absolute start-2 top-2 text-rose-600 dark:text-rose-400"
+        >
+          <BoardIcon d={REFUSED_ICON} className="h-4 w-4" />
+        </span>
+      )}
       <input
         ref={input}
         type="text"
@@ -617,9 +671,9 @@ export const DirectionPicker = ({
         aria-controls={id}
         aria-autocomplete="list"
         aria-activedescendant={open && lit !== -1 ? directionOptionId(id, lit) : undefined}
-        aria-describedby={note !== null ? noteId : undefined}
+        aria-describedby={describedBy}
         aria-busy={pending !== null ? true : undefined}
-        aria-invalid={refused !== null ? true : undefined}
+        aria-invalid={refusalShown !== null ? true : undefined}
         autoComplete="off"
         disabled={disabled}
         // Round 28c — while the add is written the box holds the name: nothing typed over it.
@@ -629,9 +683,11 @@ export const DirectionPicker = ({
         data-direction-hand-typed={handTyped ? 'true' : undefined}
         data-direction-adding={pending !== null ? 'true' : undefined}
         data-direction-add-refused={refused?.reason}
-        // Closed, the box shows the name being added, or the one refused (kept, not lost).
-        value={open ? query : (pending ?? refused?.name ?? current)}
+        // Closed, the box shows the name being added — or the row's own direction: a refused name is
+        // kept for the list (it comes back on opening), never shown as what the row holds.
+        value={open ? query : (pending ?? current)}
         onFocus={(event) => {
+          setFocused(true);
           openList();
           // Its own text, all of it chosen: typed over at once, or a word of it fixed in place.
           if (seeded && pending === null && refused === null) {
@@ -655,6 +711,7 @@ export const DirectionPicker = ({
         }}
         onBlur={(event) => {
           keepSelection.current = false;
+          setFocused(false);
           // A click on the list keeps the focus on the box (its rows prevent the blur); anything
           // else that takes it away is leaving.
           if (!box.current?.contains(event.relatedTarget as Node | null)) {
@@ -665,15 +722,18 @@ export const DirectionPicker = ({
         className={cn(
           CELL_BOX,
           'pe-6',
-          handTyped && pending === null && refused === null && 'ps-7',
-          refused !== null && REFUSED_BOX,
+          pending === null && (handTyped || refused !== null) && 'ps-7',
+          refusalShown !== null && REFUSED_BOX,
         )}
       />
       {note !== null && (
-        <span id={noteId} className="sr-only" role={pending !== null ? 'status' : undefined}>
+        <span id={noteId} className="sr-only">
           {note}
         </span>
       )}
+      <span className="sr-only" role="status" aria-live="polite" data-direction-live={rowKey}>
+        {live}
+      </span>
       {pending !== null ? (
         <span
           data-direction-adding-spinner="true"
@@ -701,6 +761,11 @@ export const DirectionPicker = ({
         width={240}
         data-direction-list={rowKey}
       >
+        <DirectionNotes
+          archivedId={archivedNoteId}
+          refused={refusalShown}
+          archivedArea={archivedArea}
+        />
         <ul id={id} role="listbox" aria-label={t('operations.crewPlan.columns.direction')}>
           <DirectionOptions
             listId={id}
@@ -708,8 +773,6 @@ export const DirectionPicker = ({
             active={lit}
             value={value}
             tooLong={tooLong}
-            archivedArea={offer?.kind === 'archived' ? offer.area : null}
-            refused={refusalShown}
             onHover={(index) => {
               setActive(index);
               setArrowed(true);

@@ -2008,7 +2008,8 @@ its entry here in the same PR.
       an English name that is another area's is never written on this one (`englishElsewhere`); an
       «Area» cell with any Arabic letter is the Arabic name, and Latin under «المنطقة» beside Arabic
       under «Area» is read swapped back. All of these are «للمراجعة» — a filter, a line above the
-      counts with «اعرضها», and a line in the confirmation. «كود معدَّل» (tile, filter, row chip,
+      counts with «اعرضها», and a line in the confirmation — and are in `planDigest`: a lookalike
+      added after the compare refuses the apply (409, nothing written). «كود معدَّل» (tile, filter, row chip,
       `counts.suffixed`) counts only the suffixed codes the import writes — a held «116-2» read again
       shows its code and the sheet's, written nothing. The filters are toggle buttons
       (`aria-pressed`), old → new values say «كان» / «أصبح» to a screen reader, the toast is a short

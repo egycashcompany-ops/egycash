@@ -87,18 +87,23 @@ afterEach(() => {
 });
 
 describe('the settings inventory the screen renders', () => {
-  it('declares sixty-one settings, and no key twice', () => {
+  it('declares sixty-three settings, and no key twice', () => {
+    // Sixty-three since 18 November: `hr.attendance.minPunchGapMinutes`, which decides when two
+    // scans are one visit to the reader, and `hr.attendance.countAbsence`, which decides whether a
+    // working day with no scan is published as an absence. Both carry one of the owner's rulings,
+    // and the count is pinned so neither can arrive without the settings screen learning to name
+    // it — the failure this pin produces is the one that sends you to the i18n catalogue.
     registerAll();
     const keys = listSettingDeclarations().map((declaration) => declaration.key);
-    expect(keys).toHaveLength(61);
-    expect(new Set(keys).size).toBe(61);
+    expect(keys).toHaveLength(63);
+    expect(new Set(keys).size).toBe(63);
   });
 
   it('declares exactly the keys the contracts name — no more, no fewer', () => {
     registerAll();
     const declared = listSettingDeclarations().map((d) => d.key).sort();
     const expected = Object.values(EXPECTED).flat().sort();
-    expect(expected).toHaveLength(61);
+    expect(expected).toHaveLength(63);
     expect(declared).toEqual(expected);
   });
 

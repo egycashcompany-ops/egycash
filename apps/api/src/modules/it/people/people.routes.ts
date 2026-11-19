@@ -4,6 +4,7 @@ import { Router } from 'express';
 import {
   ItPersonIdParamSchema,
   ListItPeopleQuerySchema,
+  ListItRecipientsQuerySchema,
   ListItTechniciansQuerySchema,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
@@ -11,8 +12,10 @@ import { authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   IT_PEOPLE_GRANTS,
+  IT_RECIPIENT_GRANTS,
   getItPerson,
   listItPeople,
+  listItRecipients,
   listItTechnicians,
 } from './people.controller';
 
@@ -28,6 +31,13 @@ import {
  * when ANY of the three the caller holds reaches them, each in its own scope
  * (`people.controller.ts`); what a person holds of the ASSETS is still counted only within
  * `itAsset.view`.
+ *
+ * `/recipients` (2026-11-18) is the one exception, and only inside a hand-over's box: whoever may
+ * HAND something over (`itAsset.assign`, `itMobileLine.assign` or `itConsumable.assign`) names
+ * anybody who works here today, in any branch — «أسمح إنه يعرف يسلم لحد فى فرع تاني». A name, a
+ * code and a branch, a few at a time, for what is typed; the register, the filters and the person
+ * pages stay on the rule above. A person page is also the reader's once their registers NAME the
+ * person — «المُسلِّم يرى ما سلّمه» (`people.service.get`).
  */
 export const buildItPeopleRouter = (): Router => {
   const router = Router();
@@ -37,6 +47,14 @@ export const buildItPeopleRouter = (): Router => {
     authorizeAny(...IT_PEOPLE_GRANTS),
     validate({ query: ListItPeopleQuerySchema }),
     asyncHandler(listItPeople),
+  );
+  // Before '/:employeeId', so the segment is never read as an id.
+  router.get(
+    '/recipients',
+    authenticate,
+    authorizeAny(...IT_RECIPIENT_GRANTS),
+    validate({ query: ListItRecipientsQuerySchema }),
+    asyncHandler(listItRecipients),
   );
   router.get(
     '/:employeeId',

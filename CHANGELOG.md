@@ -9,7 +9,76 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **Eight hours is eight hours: worked time, lateness and the attendance report, by the owner's
+  two rulings of 18 November.** «worked time = last check-out − first check-in», «Late = check-in
+  after 09:00», and «The CSV export of the daily sheet isn't usable by HR … Rebuild it as a report
+  for people, not a database dump.»
+  - **Worked time is last check-out − first check-in, flat.** No break subtracted, nothing clamped
+    to the roster: the question is how long the person was at work. A check-out after midnight is
+    simply a later instant, so a night shift needs no special case.
+  - **The company working day is 09:00–17:00, eight hours, with no grace** — the default pattern,
+    which shipped inert and is now on. A branch may override every hour of it, and an employee with
+    a real shift assignment is unaffected.
+  - **Lateness is conditional, and this is the rule that matters.** An arrival after nine is late
+    ONLY IF the eight hours were not completed. In at 09:40, out at 17:40: eight hours, nothing
+    owed, «حاضر». The owner had asked a day earlier for no company-wide start time at all, because
+    departments arrive between six and ten and one hour would mark honest people late — and then
+    answered that objection with this rule rather than withdrawing it.
+  - **A short day reports two numbers, because they answer two questions:** «التأخير» (check-in −
+    09:00) and «النقص» (480 − worked). In at 09:00, out at 16:00 is not late at all and is an hour
+    short. Overtime is worked − required rather than «after 17:00», so 07:00–17:00 earns two hours.
+  - **A day with a check-in and no check-out reports nothing at all.** «حضر فقط», and worked, late,
+    shortfall, early leave and overtime are blank rather than zero. This answers the owner's own
+    export of 18 November, where five people read «حاضر» with zero worked minutes: the cause was a
+    re-tap on the reader paired positionally as a departure — fixed by collapsing scans within ten
+    minutes (`hr.attendance.minPunchGapMinutes`) — and the second half of the cause was a display
+    that printed «0:00» with confidence where it had nothing to say.
+  - **A working day with no scan reads «لا يوجد تسجيل», not «غائب»** («lateness only for now»),
+    behind `hr.attendance.countAbsence`, which ships OFF. Nothing new reaches payroll's absent-day
+    count — which matters with two years of history being re-derived from machines whose quiet days
+    may mean a broken reader rather than an absence. A manager's own `markAbsent` is unaffected.
+  - **Weekly rest stays Friday and Saturday**, which was already the shipped default.
+  - **The CSV is a report now, not a dump.** Eighteen columns in the owner's order — code, name,
+    branch, department, job title, date as dd/mm/yyyy, the status in the words the screen uses,
+    check-in and check-out on a twelve-hour clock, worked, required, late, shortfall, early leave,
+    calculated overtime, approved overtime, the day's punch count, and notes as sentences
+    («لا يوجد انصراف», «الشهر مغلق من المرتبات», «بصمة يدوية»). UTF-8 BOM so Excel reads the
+    Arabic, every value quoted so a spreadsheet cannot eat the leading zero of «0100052».
+  - **And it is no longer a query over day documents.** It resolves the days through the same call
+    the screens make, so the file IS the sheet: a person with no stored row still has a line, the
+    statuses agree with the screen, and the file inherits the screen's filters, search and sort.
+    The raw technical shape is gone rather than hidden behind an option — nothing consumed it.
+  - **The daily sheet is ordered by clicking its headings**, server-side across the whole day and
+    before pagination, so page 2 continues page 1. Check-in ascending by default; check-out, hours
+    worked, late, shortfall, name, code and status all sortable; people with no time stay last in
+    both directions; `?sort=` and `?dir=` keep the choice through a refresh, the Back button and a
+    shared link, and the export follows it. The employee page's daily record toggles the same way
+    on its date, check-in, check-out and hours columns.
+
 ### Added
+
+- **IT: hand a device, a line or consumables to an employee of another branch.** «لما حد فى فرع
+  بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح إنه يعرف يسلم
+  لحد فى فرع تاني».
+  - Every hand-over box («المستلم» on the asset hand-over, the new holder on a transfer, «صرف
+    لموظف», «مرتجع من», the line hand-over) now finds the current employees of EVERY branch, for
+    whoever holds that register's hand-over grant (`itAsset.assign`, `itMobileLine.assign` or
+    `itConsumable.assign`): `GET /it/people/recipients?search=&pageSize=` — a required search, at
+    most 20 a time, each row only the name, the code and the branch. The command bar's branch does
+    not narrow it. The employees register and every filter box are unchanged: still the reader's
+    own scope.
+  - What is handed over stays registered in the sender's branch, as before — consumables leave the
+    sender's store; the recipient's own branch sees nothing of it.
+  - The sender can open the recipient's IT page (`GET /it/people/:employeeId`): it is found once
+    the sender's own registers name the person — a custody interval of an asset or a line, or a
+    consumables issue or return, each within that register's own read scope — and every section of
+    it still shows only what the sender's grants reach.
+  - Fixed: a single asset's «نقل» to another branch now goes only to an active branch the user's
+    `itAsset.assign` reaches whole, as «نقل إلى فرع» does (403 otherwise; 400 for an inactive
+    branch) — a branch user could send a device into a branch they cannot see, where it vanished
+    from their register. Moving to the same branch, or naming none, is unchanged.
 
 - **Org chart: drag a job to change its order, and print the chart.**
   ([org-chart design](docs/12-planning/org-chart-design.md) §2.2, §2.4, §5.7)
@@ -2849,6 +2918,72 @@ its entry here in the same PR.
   printed page carries a script of its own».
 
 ### Changed
+
+- **Fleet: «الطقم الثابت» (`/fleet/fixed-roster`) in the look of «تعيين السيارات», as the approved
+  sample.** «واعمل ديزاين شاشة الطاقم الثابت زى التعيين اليومى», the owner's answers to the sample
+  «1 ب / 2 ج», then «انت لسه معملتش بيدج الطاقم الثابت». The screen is now the daily roster's board
+  without a day: no date, no day arrows, no «يوم سابق», no availability words, no absence or leave —
+  a standing crew stays as it is until somebody changes it.
+  - The page header «الطقم الثابت» under «الحركة» stays on top at every width (answer 2 ج), and
+    its own Excel button is gone: the one Excel control is the daily «تصدير Excel» pill on a
+    computer and the daily Excel button on a tablet or a phone. The file is unchanged: the rows on
+    show, eight columns.
+  - On a computer (1280 px and up): under the header, the cars the filters leave, in Arabic's own
+    plural («سيارة واحدة»، «سيارتان»، «3 سيارات»، «11 سيارة»; this screen only), beside the Excel
+    pill. Then the dark filter bar — «كود السيارة», the counters and the red reset; the «كل المهمات»
+    dropdown is gone, the mission chips are the filter — and the boards' dark table. The code is
+    bold white with the car card on hover and no colour of its own per car. The two seats are the
+    daily seat, the code under the name. «ملاحظات» shows three lines at most, the whole note on
+    hover. «إجراءات» is pinned. «بلا طقم» is yellow, as the daily «بلا سائق»; rose is the
+    workshop's alone. A workshop car's row is rose and its standing crew stays editable. On a
+    1280 px screen a seat's name may take a second line, so the whole table fits with nothing under
+    «إجراءات» (measured with two 24-letter names in one row); from 1366 px it keeps one line.
+  - The drivers panel beside the table: «السائقون (n)», n the drivers with no fixed crew, listed
+    first (name, code under it, no «متاح»). Then «معيّنون على سيارات أخرى» with the blue «سيارة
+    أخرى» for a driver held on a car that is not on the board (another branch's, or a car out of
+    service). As on the daily board he is listed only: not counted, not dragged, and not offered by
+    any seat's list or the pen dialog — no edit here can release him, so such a save could only be
+    refused. «لا يوجد سائقون بلا طقم ثابت» replaces the old line that said «في هذا التاريخ».
+  - «إجراءات»: the pen on every row opens «تعديل · {code}» with the mission, the two seats drawn as
+    the daily dialog's (name and code with ✕, «اختيار سائق» on an empty seat) and the note, under
+    the same rules (seat 2 waits for seat 1, never the same person twice). A new swap button
+    (both seats filled) trades seat 1 and seat 2. The bin «إفراغ الطقم» still empties both seats
+    at once, keeps the mission and the note, and asks nothing.
+  - On a tablet or a phone (under 1280 px): cards instead of the table, always in code order (the
+    workshop car in its place, unlocked); «ابحث بكود السيارة…» with the Excel button beside it; the
+    filter row («عوامل التصفية», where the mission filter is, the counters, and «السائقون» with its
+    count — an icon and the number on a phone). A seat tap opens a list that also offers the drivers
+    on other cars with their car's code — a pick moves him; or choose the driver first in «السائقون»
+    and tap the seat. The swap sits between the seats; ⋮ holds «تعديل» (the note) and «إفراغ الطقم»;
+    the mission is the button by the code. A landscape tablet shows cars 60% and drivers 40%.
+  - Every edit is a draft. The save bar at the foot shows only with unsaved work: the edited car
+    codes (a tap brings the car into view, lifting only the filter that hides it), «تراجع» (the last
+    edit, up to 50), «إلغاء» (asks first when more than one car is edited) and «حفظ». A reload keeps
+    the unsaved edits; «تراجع» starts again. A driver taken from another car shows «سيُنقل من
+    السيارة 214 عند الحفظ» under his new seat until the save. A viewer sees no «إجراءات» and no
+    save bar.
+  - A refused save keeps the draft and now says why in Arabic, naming the driver and the car that
+    holds him, never an internal id or the server's English — or «سيارة أخرى ليست في هذه الشاشة»
+    when that car is outside the reader's branches. A car no longer in service, a switched-off
+    driver profile, an employee not on a driving seat and a retired mission type each have their
+    own line. The toast's title is «تعذّر حفظ الطقم الثابت» and the reason is the line under it,
+    which wraps whole (a one-line title would cut the car's code off).
+  - `POST /fleet/fixed-roster`'s refusals carry `details` for that line: `FIXED_CREW_DRIVER_HELD`
+    (the driver's employee id) with `FIXED_CREW_HOLDER` (the holding car's code, only when the
+    caller's scope reads that car), `FIXED_CREW_VEHICLE_NOT_ACTIVE` (the car's code),
+    `FIXED_CREW_PROFILE_INACTIVE` and `FIXED_CREW_NOT_A_DRIVER` (the employee id, after the existing
+    detail), and `FIXED_CREW_MISSION_INACTIVE` (the mission type id). Same status and error code,
+    and the same message — except that a holding car outside the caller's scope is now «a vehicle
+    outside your scope» in it rather than its internal id; no names and no out-of-scope id in the
+    body.
+  - Unchanged: the fixed crew's rules, endpoints and data (no new field, no migration); the
+    permissions (`fleetRoster.plan` edits; the branch picker narrows the cars, the drivers are the
+    whole company); the hover cards (today's car and drivers, from the daily roster); and «تعيين
+    السيارات» itself — its shared pieces gained optional props whose defaults draw it exactly as
+    before. Answer 1 ب: this screen flags no standing member who can no longer drive; that stays on
+    «تعيين السيارات».
+  - Five words only the old screen read are removed: `fleet.fixedRoster.subtitle`, `.summary`,
+    `.driversHint`, `.removeDriver` and `.unsaved`.
 
 - **«لوحة تحكم الحركة» at `/fleet`: «العهدة», a NEW tab right after «الوقود والمصروفات», and
   «التراخيص والتجديدات», which replaces the old «التراخيص» body under the same key, as approved.**

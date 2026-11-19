@@ -530,8 +530,196 @@ export type ListAttendanceDaysQuery = z.infer<typeof ListAttendanceDaysQuerySche
  * One date only, by construction — a sheet is a day. Several branches and several sections, ORed,
  * the same multi-filters the day list takes.
  */
+/**
+ * WHAT THE SHEET CAN BE ORDERED BY, and it is a closed list because the order is computed rather
+ * than read: `sortBy` on `PaginationQuerySchema` is a free string, which for this screen would mean
+ * a typo silently falling back to some default instead of being refused.
+ *
+ * The columns are the ones a supervisor actually asks the sheet about. `checkIn` leads because the
+ * first question of the morning is who arrived and in what order.
+ *
+ * `name` is the Arabic legal name and `code` the employee code — the two identity columns — and
+ * `status` is the RESOLVED status, not a stored field, which is the reason this ordering cannot be
+ * a database sort. See `sheet-order.ts`.
+ */
+/**
+ * WHAT A DAY IS CALLED ON SCREEN — the display vocabulary, which is not the stored one.
+ *
+ * It lives here, beside `ATTENDANCE_DAY_STATUSES`, because TWO places have to say the same word
+ * about the same day and they are in different applications. The screens read these labels, and so
+ * does the CSV export — the owner's requirement is literally «the same label the screen shows», and
+ * a CSV that said `checkedIn` while the table beside it said «حضر فقط» is the defect that asked for
+ * this. One table, one mapping, no second copy to drift.
+ *
+ * It differs from the stored vocabulary in exactly two places, and both are about the reader rather
+ * than the record:
+ *
+ *  - `pending` is called «لم يحضر بعد» — a day still being lived has not become an absence;
+ *  - `checkedIn` is called «حضر فقط», ON EVERY DATE. An earlier draft of this table split it by the
+ *    calendar — «في العمل» on today, «حضر فقط» once the day had finished — and the owner's ruling of
+ *    18 November collapsed the two: a day with a check-in and no check-out says «حضر فقط», and
+ *    every figure on it is blank rather than zero. One name for one fact. The live «في العمل»
+ *    reading is recoverable (the stored status and the date are both still here) if it is ever
+ *    wanted back for today's sheet.
+ *
+ * `weekend` and `dayOff` both read «يوم راحة»: the reader does not care which rule made the day a
+ * rest day, and the stored status still records which.
+ */
+/**
+ * THE FIVE NUMBERS A PERSON READS ABOUT A DAY — and `null` wherever there is nothing to say.
+ *
+ * It exists because the stored row cannot carry this distinction and should not try to. A row's
+ * `workedMinutes` is a quantity for payroll: an integer, zero when nothing was measured, which is
+ * the right shape for arithmetic over a month. On a screen that same zero is a LIE TOLD IN
+ * CONFIDENCE — «ساعات العمل 0:00» against somebody who has been at work since eight o'clock and
+ * simply has not scanned out. The owner's words, on his own export of 18 November: «If 'present'
+ * means in AND out, worked time can't be 0» and «A missing check-out is blank, not 00:00».
+ *
+ * So the quantities stay as they are and this is what the screens and the CSV read. The rule is
+ * ONE rule, applied in `figuresOf` and nowhere else:
+ *
+ *   NOTHING IS REPORTED UNLESS IT WAS MEASURED. Both ends of the day are needed — a first check-in
+ *   AND a last check-out. With either missing, all five are null: not worked, not late, not short,
+ *   not early, not overtime. Lateness goes too, and deliberately: an arrival without a departure
+ *   cannot be judged against a rule whose whole subject is whether the eight hours were completed.
+ *
+ * A measured zero is still a zero and is reported as one — being exactly on time is a fact about
+ * the day, not an absence of one. What each SCREEN does with a zero is its own business; the
+ * CSV leaves the exception columns empty so that the real exceptions stand out of forty rows.
+ */
+export interface AttendanceDayFigures {
+  /** Last check-out − first check-in, flat. No break is subtracted (the owner's rule 1). */
+  workedMinutes: number | null;
+  /** First check-in − the expected start, when the day fell short. */
+  lateMinutes: number | null;
+  /** Required − worked, when positive. The real missing time. */
+  shortfallMinutes: number | null;
+  earlyLeaveMinutes: number | null;
+  /** Worked − required, when positive. Derived, and worth nothing until a manager approves it. */
+  overtimeMinutes: number | null;
+  /** What the day was supposed to hold; null when nobody has said when this person works. */
+  requiredMinutes: number | null;
+}
+
+/** All five blank. Exported so a caller never has to spell a null object correctly. */
+export const NO_FIGURES: AttendanceDayFigures = {
+  workedMinutes: null,
+  lateMinutes: null,
+  shortfallMinutes: null,
+  earlyLeaveMinutes: null,
+  overtimeMinutes: null,
+  requiredMinutes: null,
+};
+
+/**
+ * The reported figures of a resolved day. Pure, and the ONLY place the blanking rule is written.
+ *
+ * `requiredMinutes` survives a blanked day on purpose: «this person owed eight hours» is true
+ * whether or not they scanned out, and a reader looking at a «حضر فقط» row is better served by
+ * seeing what the day was meant to be than by a sixth empty column.
+ */
+export const figuresOf = (day: {
+  firstInAt: string | Date | null;
+  lastOutAt: string | Date | null;
+  workedMinutes: number;
+  lateMinutes: number;
+  shortfallMinutes: number;
+  earlyLeaveMinutes: number;
+  overtimeMinutes: number;
+  requiredMinutes: number | null;
+}): AttendanceDayFigures => {
+  if (day.firstInAt === null || day.lastOutAt === null) {
+    return { ...NO_FIGURES, requiredMinutes: day.requiredMinutes };
+  }
+  return {
+    workedMinutes: day.workedMinutes,
+    lateMinutes: day.lateMinutes,
+    shortfallMinutes: day.shortfallMinutes,
+    earlyLeaveMinutes: day.earlyLeaveMinutes,
+    overtimeMinutes: day.overtimeMinutes,
+    requiredMinutes: day.requiredMinutes,
+  };
+};
+
+export const ATTENDANCE_DISPLAY_STATUSES = [
+  'present',
+  'late',
+  'earlyLeave',
+  'lateAndEarly',
+  'incomplete',
+  'notYetIn',
+  'absent',
+  'onLeave',
+  'dayOff',
+  'holiday',
+  'noSchedule',
+  'noRecord',
+] as const;
+export const AttendanceDisplayStatusSchema = z.enum(ATTENDANCE_DISPLAY_STATUSES);
+export type AttendanceDisplayStatus = z.infer<typeof AttendanceDisplayStatusSchema>;
+
+/** The stored status as a reader sees it. Pure, total, and date-independent. */
+export const displayStatusOf = (status: AttendanceDayStatus): AttendanceDisplayStatus => {
+  switch (status) {
+    case 'pending':
+      return 'notYetIn';
+    case 'checkedIn':
+      return 'incomplete';
+    case 'weekend':
+      return 'dayOff';
+    default:
+      // Every other stored value is its own display value. The two vocabularies are deliberately
+      // spelled separately so a new stored status cannot silently inherit a label it has not been
+      // given — it fails this cast instead, and the spec pins both lists.
+      return status as AttendanceDisplayStatus;
+  }
+};
+
+/**
+ * The words themselves, in both languages — the ONE place they are written.
+ *
+ * The web catalog carries the same strings under `attendanceView.status.*` because the screens
+ * resolve their copy through the translator like every other label, and a test asserts the two
+ * agree word for word. That test is the whole reason this table is worth having: without it the
+ * CSV and the screen drift the first time somebody rewords one of them.
+ */
+export const ATTENDANCE_DISPLAY_LABELS: Record<AttendanceDisplayStatus, LocalizedString> = {
+  present: { ar: 'حاضر', en: 'Present' },
+  late: { ar: 'متأخر', en: 'Late' },
+  earlyLeave: { ar: 'انصراف مبكر', en: 'Left early' },
+  lateAndEarly: { ar: 'تأخير وانصراف مبكر', en: 'Late and left early' },
+  incomplete: { ar: 'حضر فقط', en: 'Checked in only' },
+  notYetIn: { ar: 'لم يحضر بعد', en: 'Not yet in' },
+  absent: { ar: 'غائب', en: 'Absent' },
+  onLeave: { ar: 'في إجازة', en: 'On leave' },
+  dayOff: { ar: 'يوم راحة', en: 'Day off' },
+  holiday: { ar: 'عطلة رسمية', en: 'Holiday' },
+  noSchedule: { ar: 'لا يوجد جدول', en: 'No schedule' },
+  noRecord: { ar: 'لا يوجد تسجيل', en: 'No record' },
+};
+
+export const ATTENDANCE_SHEET_SORTS = [
+  'checkIn',
+  'checkOut',
+  'worked',
+  'late',
+  'shortfall',
+  'name',
+  'code',
+  'status',
+] as const;
+export const AttendanceSheetSortSchema = z.enum(ATTENDANCE_SHEET_SORTS);
+export type AttendanceSheetSort = z.infer<typeof AttendanceSheetSortSchema>;
+
 export const ListAttendanceSheetQuerySchema = PaginationQuerySchema.extend({
   date: z.coerce.date(),
+  /**
+   * The column, closed to the seven above, and ASCENDING BY DEFAULT — both deliberate departures
+   * from `PaginationQuerySchema`, whose `sortBy` is any string and whose `sortDir` defaults to
+   * `desc`. A sheet opens on the morning in the order it happened: the first arrival at the top.
+   */
+  sortBy: AttendanceSheetSortSchema.default('checkIn'),
+  sortDir: z.enum(['asc', 'desc']).default('asc'),
   branchId: listQuery(objectId()),
   sectionId: listQuery(objectId()),
   /**
@@ -688,8 +876,16 @@ export interface AttendanceEmployeeSummaryDto {
   /** Averaged over the days that HAVE measured hours, and their total. */
   avgWorkedMinutes: number | null;
   totalWorkedMinutes: number;
+  /**
+   * Days that are LATE UNDER THE RULE — the eight hours unfinished and the arrival after the
+   * expected start. A day made up by staying later is not one of them, which is the point of the
+   * rule: this counter answers «how often did somebody actually owe the company time», not «how
+   * often was somebody not at their desk at nine».
+   */
   lateDays: number;
   lateMinutesTotal: number;
+  /** The owner's «إجمالي النقص»: every day's shortfall added up over the period. */
+  shortfallMinutesTotal: number;
   absentDays: number;
   /** Days with a check-in and no check-out: present, hours unknown. */
   incompleteDays: number;
@@ -738,9 +934,12 @@ export interface AttendanceEmployeeDayDto {
   status: AttendanceDayStatus;
   firstInAt: string | null;
   lastOutAt: string | null;
-  workedMinutes: number;
-  lateMinutes: number;
-  earlyLeaveMinutes: number;
+  /**
+   * The same five numbers the sheet carries, by the same rule — blank where nothing was measured.
+   * They replaced three bare integers here: a month of «0:00» worked against days whose check-out
+   * was simply missing is the defect this whole shape exists to end.
+   */
+  figures: AttendanceDayFigures;
   /** What they were due that date, resolved at read time; null when nobody has said. */
   expectedStartAt: string | null;
   expectedEndAt: string | null;
@@ -748,6 +947,19 @@ export interface AttendanceEmployeeDayDto {
   provisional: boolean;
   /** Frozen by payroll — the day is evidence now and no recompute will touch it. */
   frozen: boolean;
+  /**
+   * What the day was, beyond its numbers: a hand-entered punch, an approved correction, a scan at
+   * another branch, a manager's decision. The sheet has carried these as row tags all along; the
+   * employee page and the CSV were the two readers left without them, which is why a month's
+   * export could not say why a figure looked the way it did.
+   */
+  flags: AttendanceDayFlag[];
+  /**
+   * Overtime a manager has released, or null when no row has concluded the day. Distinct from
+   * `figures.overtimeMinutes`, which is what the engine derived and what payroll does not pay
+   * until this number rises to meet it (D5).
+   */
+  approvedOvertimeMinutes: number | null;
   /** Every scan of that date, in order, so the timeline can draw them. */
   punches: { at: string; direction: AttendancePunchDirection; source: AttendancePunchSource }[];
 }
@@ -803,16 +1015,60 @@ export interface AttendanceSheetRowDto {
   provisionalDay: {
     firstInAt: string | null;
     lastOutAt: string | null;
-    workedMinutes: number;
-    lateMinutes: number;
-    earlyLeaveMinutes: number;
   } | null;
+  /**
+   * The five numbers to put on the screen, resolved from `day ?? provisionalDay` by `figuresOf` —
+   * so a client never decides for itself which source to read or when a zero means nothing.
+   *
+   * It sits on the ROW rather than inside either source because it is the same question about the
+   * same day either way: what was worked, how late, how short, how early, how much over.
+   */
+  figures: AttendanceDayFigures;
+  /**
+   * Where they sit, resolved to names by the server — the same reason `employeeDepartment` is
+   * here: a client that had to name a branch or a job title would need two more catalogues AND the
+   * keys that guard them, and a reader of attendance alone would see blanks.
+   *
+   * They are on the ROW rather than fetched by the export because the export IS this sheet: one
+   * resolution, one set of names, and no second query that could disagree with the screen.
+   */
+  employeeBranch: LocalizedString | null;
+  employeeJobTitle: LocalizedString | null;
+  /**
+   * How many scans the devices recorded for this employee on this date — BEFORE the re-tap
+   * collapse, so it answers «how many times did the reader see this finger» rather than «how many
+   * events did the engine conclude». Those are different questions and the second is already
+   * visible in the times.
+   */
+  punchCount: number;
 }
 
 /**
- * The AT-6 CSV export — the §15.1 columns plus the two display labels, read from the day rows
- * (frozen and live alike), NEVER re-derived from punches. Range-capped like recompute: an export
- * is a report, not a dump.
+ * THE CSV EXPORT — a report for people, which is what it was not.
+ *
+ * It used to emit the §15.1 feed columns straight off the day rows: `employeeId` as a 24-character
+ * object id, `status` as `checkedIn`, minutes as raw integers, `flags` joined with pipes, no
+ * check-in or check-out time anywhere in the file, and the rows ordered by employee code. The
+ * owner's verdict on his own export of 18 November was that HR could not use it, and he was right:
+ * every column that would answer a question about a person was missing, and every column present
+ * answered a question about the database.
+ *
+ * TWO THINGS CHANGED, and the second is the structural one:
+ *
+ *  1. The columns are the ones a human reads — names, branch, department, job title, times in a
+ *     twelve-hour clock, durations as h:mm, the status in the same words the screen uses, and
+ *     notes written out. `attendance-report.ts` holds that layout.
+ *
+ *  2. IT IS NO LONGER A QUERY OVER DAY DOCUMENTS. It resolves the days exactly as the screens do,
+ *     through the same function, so the file IS the sheet: a person with no stored row still has a
+ *     line, the statuses agree with the ones on screen, and the file inherits the screen's
+ *     filters, its search and its sort instead of its own ordering by code. A report that
+ *     disagreed with the page it was taken from would be worse than no report.
+ *
+ * THE RAW TECHNICAL SHAPE IS GONE RATHER THAN HIDDEN BEHIND AN OPTION. Nothing consumed it: the
+ * three HR buttons were its only callers, and the payroll feed it mirrored never travels as a file
+ * — it is an internal port (`attendance-quantity.port.ts`) read in process. Keeping a second shape
+ * alive for nobody is how a module acquires two answers to one question.
  */
 export const ExportAttendanceQuerySchema = z
   .object({
@@ -822,14 +1078,30 @@ export const ExportAttendanceQuerySchema = z
     /** The daily sheet's own filters, so the file is the sheet: several branches and sections, ORed. */
     branchId: listQuery(objectId()),
     sectionId: listQuery(objectId()),
-    status: AttendanceDayStatusSchema.optional(),
+    /**
+     * Several statuses, as the sheet's own buckets pass them — it used to take one. A reader who
+     * has filtered the screen to «غائب، لا يوجد تسجيل» and presses export means both.
+     */
+    status: listQuery(AttendanceDayStatusSchema),
+    /** The screen's search box, so the file holds the rows the reader was actually looking at. */
+    search: z.string().trim().min(1).max(100).optional(),
+    /** And the screen's order. Check-in ascending by default, as the sheet opens. */
+    sortBy: AttendanceSheetSortSchema.default('checkIn'),
+    sortDir: z.enum(['asc', 'desc']).default('asc'),
   })
   .strict()
   .refine((v) => v.to >= v.from, { path: ['to'], message: 'to must be on or after from' })
-  .refine((v) => (v.to.getTime() - v.from.getTime()) / 86_400_000 <= 92, {
-    path: ['to'],
-    message: 'the export window is capped at 92 days',
-  });
+  // ONE EMPLOYEE MAY ASK FOR A YEAR; the whole company may ask for a quarter. The two shapes cost
+  // very different amounts — a day of the sheet resolves every employed person on it — so the cap
+  // follows the shape rather than splitting the endpoint in two.
+  .refine(
+    (v) =>
+      (v.to.getTime() - v.from.getTime()) / 86_400_000 <= (v.employeeId === undefined ? 92 : 366),
+    {
+      path: ['to'],
+      message: 'the export window is capped at 92 days, or 366 days for one employee',
+    },
+  );
 export type ExportAttendanceQuery = z.infer<typeof ExportAttendanceQuerySchema>;
 
 /** Range-capped: recomputation is a repair tool, not a batch job (the scheduler owns bulk). */
@@ -946,6 +1218,25 @@ export interface AttendanceDayDto {
   /** Raw minutes past grace (D4) — priced by Payroll, never here. */
   lateMinutes: number;
   earlyLeaveMinutes: number;
+  /**
+   * HOW MUCH OF THE REQUIRED DAY WAS NOT WORKED — the owner's «النقص», and the number the
+   * flexible-hours rule of 18 November actually turns on.
+   *
+   * `required − worked` when that is positive, else 0. It is stored rather than derived at read
+   * time because it is the figure a deduction would be priced from, and a quantity payroll may one
+   * day read must be written by the same recompute that wrote the status it agrees with.
+   *
+   * It is NOT the same thing as `lateMinutes`, and the difference is the whole rule: somebody who
+   * arrives at 09:40 and leaves at 17:40 has forty late minutes by the clock and NO shortfall, so
+   * the day reads «حاضر». Lateness measures the arrival; shortfall measures the day.
+   */
+  shortfallMinutes: number;
+  /**
+   * The minutes this date was supposed to hold — the shift's own span, or the default pattern's
+   * (480 for 09:00–17:00). Null when nobody has said when this person works, which is also when
+   * nothing can be late, short or overtime.
+   */
+  requiredMinutes: number | null;
   /** What the engine derived; approval (AT-5) releases some of it into `approvedOvertimeMinutes`. */
   overtimeMinutes: number;
   /** Only this number ever reaches the Payroll feed (D5). */
@@ -1532,6 +1823,8 @@ export const HrAttendanceSettingKeys = {
    * in every case, and no history import needs one.
    */
   ImportMaxAgeDays: 'hr.attendance.importMaxAgeDays',
+  MinPunchGapMinutes: 'hr.attendance.minPunchGapMinutes',
+  CountAbsence: 'hr.attendance.countAbsence',
 } as const;
 
 // ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────

@@ -97,14 +97,17 @@ describe('a HEAD request', () => {
 });
 
 describe('the streamed exports', () => {
-  // The audit export has its own behavioural spec; the attendance and ATM register exports have
-  // none, so this holds all three to the shared loop that is tested above.
+  // The audit export has its own behavioural spec; the ATM register export has none, so this holds
+  // both to the shared loop that is tested above.
+  //
+  // THE ATTENDANCE EXPORT LEFT THIS LIST on 18 November, and not by being excused. It stopped
+  // being a query over day documents: it resolves each date through the same service call the
+  // screens make, so there is no cursor for `streamRows` to read. The properties that list was
+  // really protecting still hold of it and are asserted separately below, and it now has the
+  // behavioural spec it lacked — `hr-attendance.spec.ts` takes a real export apart cell by cell,
+  // which is a stronger guard than any of these string matches.
   const src = join(dirname(fileURLToPath(import.meta.url)), '../..');
-  it.each([
-    'platform/audit/audit.export.ts',
-    'modules/hr/attendance/day-records/attendance-export.ts',
-    'modules/atm/register/register-export.ts',
-  ])(
+  it.each(['platform/audit/audit.export.ts', 'modules/atm/register/register-export.ts'])(
     '%s reads its cursor through streamRows, audits every outcome and answers HEAD alone',
     (file) => {
       const code = readFileSync(join(src, file), 'utf8');
@@ -118,4 +121,41 @@ describe('the streamed exports', () => {
       expect(head).toBeLessThan(code.indexOf('drainingWriter(res)'));
     },
   );
+
+  describe('the attendance export, which resolves instead of reading a cursor', () => {
+    const code = (): string =>
+      readFileSync(join(src, 'modules/hr/attendance/day-records/attendance-export.ts'), 'utf8');
+
+    it('answers HEAD before it makes a writer, so it resolves nothing for one', () => {
+      const file = code();
+      const head = file.indexOf('if (isHeadRequest(res))');
+      expect(head).toBeGreaterThan(-1);
+      expect(head).toBeLessThan(file.indexOf('drainingWriter(res)'));
+    });
+
+    it('audits how the download ended, and rethrows only after the row has landed', () => {
+      const file = code();
+      // The audit is owed whether or not the read succeeded — somebody asked for this file.
+      expect(file).toContain("{ field: 'completed', old: null, new: completed }");
+      expect(file).toContain("{ field: 'rowCount', old: null, new: rowCount }");
+      const audited = file.indexOf('await auditService.record(');
+      const rethrown = file.indexOf('if (failure !== undefined) throw failure;');
+      expect(audited).toBeGreaterThan(-1);
+      expect(rethrown).toBeGreaterThan(audited);
+    });
+
+    it('stops reading the moment the client goes, like the cursor-based exports do', () => {
+      // `drainingWriter` answers false when the socket has gone. A loop that ignored it would keep
+      // resolving branch-days for a download nobody is receiving.
+      expect(code()).toMatch(/if \(!\(await write\(csvRow\(reportCells\(row, locale\)\)\)\)\)/);
+    });
+
+    it('RESOLVES ONE DATE AT A TIME over a range — the memory property the cursor used to give', () => {
+      const file = code();
+      // A 92-day sheet export must never hold 92 days of rows at once: a day of the sheet resolves
+      // every employed person on it. The per-date loop is what keeps it to one branch-day.
+      expect(file).toContain('for (const date of datesBetween(from, to))');
+      expect(file).toContain('const rows = await sheetRowsFor(date, query, scope, query.sortBy)');
+    });
+  });
 });

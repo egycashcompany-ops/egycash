@@ -64,6 +64,10 @@ vi.mock('./asset-event.repository', () => ({
 vi.mock('../maintenance/order.repository', () => ({
   itMaintenanceOrderRepository: { hasActiveForAsset: vi.fn(async () => false) },
 }));
+// A transfer to another branch reads the target branch (2026-11-18): a live one.
+vi.mock('../../../platform/organization', () => ({
+  branchRepository: { findById: vi.fn(async () => ({ status: 'active' })) },
+}));
 
 const { itAssetCustodyService } = await import('./custody.service');
 
@@ -80,6 +84,8 @@ const ctx = {
   userId: String(new Types.ObjectId()),
   locale: 'ar',
   identity: { displayName: { ar: 'فني', en: 'Technician' } },
+  // Org-wide, so the move to another branch below reaches it.
+  permissions: { 'itAsset.assign': 'organization' },
 } as never;
 const scope = {} as never;
 

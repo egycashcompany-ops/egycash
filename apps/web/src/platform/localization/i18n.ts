@@ -2461,6 +2461,12 @@ const en: Record<string, string> = {
   'attendanceView.avg': 'avg {{t}}',
   'attendanceView.dailyRecord': 'Daily record',
   'attendanceView.newestFirst': 'newest first',
+  'attendanceView.oldestFirst': 'in this order',
+  'attendanceView.codeCol': 'Code',
+  'attendanceView.shortfallCol': 'Shortfall',
+  'attendanceView.shortfallTotal': 'missing from the required hours',
+  'attendanceView.sortAscending': 'Sort ascending',
+  'attendanceView.sortDescending': 'Sort descending',
   'attendanceView.date': 'Date',
   'attendanceView.arrived': 'Arrived',
   'attendanceView.left': 'Left',
@@ -2475,7 +2481,6 @@ const en: Record<string, string> = {
   'attendanceView.status.late': 'Late',
   'attendanceView.status.earlyLeave': 'Left early',
   'attendanceView.status.lateAndEarly': 'Late and left early',
-  'attendanceView.status.checkedIn': 'At work',
   'attendanceView.status.incomplete': 'Checked in only',
   'attendanceView.status.notYetIn': 'Not yet in',
   'attendanceView.status.absent': 'Absent',
@@ -8522,14 +8527,10 @@ const en: Record<string, string> = {
 
   // Fleet — fixed crew (FW-7 sibling): the standing crew of a car, with no date and no
   // availability verdict — those belong to the DAILY roster above.
-  'fleet.fixedRoster.subtitle':
-    'The standing crew of each vehicle — no date, and it stays until you change it',
   'fleet.fixedRoster.driversTitle': 'Drivers',
-  'fleet.fixedRoster.driversHint': 'Drag a driver onto a slot',
   'fleet.fixedRoster.driverSearchPlaceholder': 'Search by name, code or number',
   'fleet.fixedRoster.driverSearchEmpty': 'No driver matches that search',
   'fleet.fixedRoster.needsFirstDriver': 'Assign driver 1 first',
-  'fleet.fixedRoster.removeDriver': 'Remove from this slot',
   'fleet.fixedRoster.clearCrew': 'Clear this crew',
   'fleet.fixedRoster.editHint': 'Mission type, crew and notes — saved together',
   'fleet.fixedRoster.noMissionType': 'No mission type',
@@ -8538,10 +8539,8 @@ const en: Record<string, string> = {
   'fleet.fixedRoster.noDriver': 'No driver',
   'fleet.fixedRoster.sameDriverTwice': 'The two slots cannot hold the same person',
   'fleet.fixedRoster.unassigned': 'No crew',
-  'fleet.fixedRoster.unsaved': 'You have unsaved changes',
   'fleet.fixedRoster.saved': 'Fixed crews saved',
   'fleet.fixedRoster.noVehicles': 'No vehicles',
-  'fleet.fixedRoster.summary': '{{total}} vehicles · {{crewed}} crewed',
   // How many cars the CURRENT filter matches — the registry's own tally, in its bar.
   'fleet.vehicles.count': '{{count}} vehicles',
   'fleet.vehicles.sortReset': 'Default order',
@@ -8560,9 +8559,41 @@ const en: Record<string, string> = {
   'fleet.roster.counter.total': 'Total',
   'fleet.roster.counter.workshop': 'Workshop',
   'fleet.roster.counter.assigned': 'Operating',
-  // The standing board counts crews, not missions — see `FixedRosterPage`.
+  // The standing board counts crews, not missions — see `fixedCounters` in `lib/fixed-roster-model.ts`.
   'fleet.fixedRoster.counter.crewed': 'Crewed',
   'fleet.fixedRoster.counter.uncrewed': 'No crew',
+  // The fixed board: its car count in five forms, the empty pool line, and the save refusal in
+  // words — the driver by name, the holding car by code; never an id, never the server's English.
+  // The refusal is a toast: «title» on its one line, the reason under it (it wraps, whole).
+  'fleet.fixedRoster.poolEmpty': 'Every driver is on a fixed crew',
+  'fleet.fixedRoster.refusal.title': 'Fixed crews not saved',
+  'fleet.fixedRoster.refusal.held': 'Driver {{name}} is on the fixed crew of vehicle {{code}}.',
+  'fleet.fixedRoster.refusal.heldUnnamed':
+    'One of the drivers is on the fixed crew of vehicle {{code}}.',
+  'fleet.fixedRoster.refusal.heldElsewhere':
+    'Driver {{name}} is on the fixed crew of another vehicle that is not on this screen (another branch, or a deleted vehicle).',
+  'fleet.fixedRoster.refusal.heldElsewhereUnnamed':
+    'One of the drivers is on the fixed crew of another vehicle that is not on this screen (another branch, or a deleted vehicle).',
+  'fleet.fixedRoster.refusal.profileInactive':
+    'Driver {{name}}’s fleet profile is switched off, so he cannot be on a fixed crew.',
+  'fleet.fixedRoster.refusal.profileInactiveUnnamed':
+    'One driver’s fleet profile is switched off, so he cannot be on a fixed crew.',
+  'fleet.fixedRoster.refusal.notADriver': '{{name}} does not hold a driving seat.',
+  'fleet.fixedRoster.refusal.notADriverUnnamed':
+    'One of the chosen people does not hold a driving seat.',
+  'fleet.fixedRoster.refusal.vehicleNotActive':
+    'Vehicle {{code}} is no longer in service, so it cannot carry a crew.',
+  'fleet.fixedRoster.refusal.missionInactive':
+    'The chosen mission type is no longer available — choose another.',
+  'fleet.fixedRoster.refusal.needsFirst': 'Assign driver 1 before driver 2.',
+  'fleet.fixedRoster.refusal.generic':
+    'Your changes are kept — check the edited vehicles and try again.',
+  'fleet.fixedRoster.carCount.one': 'One vehicle',
+  'fleet.fixedRoster.carCount.two': 'Two vehicles',
+  'fleet.fixedRoster.carCount.few': '{{count}} vehicles',
+  'fleet.fixedRoster.carCount.many': '{{count}} vehicles',
+  'fleet.fixedRoster.carCount.other': '{{count}} vehicles',
+  'fleet.fixedRoster.matchedRows': 'Rows after the filters',
   'fleet.roster.allMissions': 'All missions',
   // The go-live notice — what the boot-time import recorded, printed where the data should be.
   // The licence scan's own zoom — the browser's enlarges the page, this enlarges the picture.
@@ -9623,6 +9654,9 @@ const en: Record<string, string> = {
   'it.custody.pickerNoResults': 'No employee matches that search.',
   'it.custody.pickerNoAccess':
     'Choosing an employee needs the view permission of the IT assets, the mobile lines or the consumables.',
+  'it.custody.pickerNoAccessHandOver':
+    'Choosing a recipient needs the hand-over permission of the IT assets, the mobile lines or the consumables.',
+  'it.custody.pickerBranch': 'Branch: {{name}}',
   'it.custody.pickerExited': 'Left',
   'it.custody.clearPick': 'Clear the selected employee',
   'it.custody.method.sold': 'Sold',
@@ -11367,6 +11401,10 @@ const en: Record<string, string> = {
     'Days a manager may decide an attendance day alone',
   'systemAdmin.settings.keys.hr.attendance.importMaxAgeDays':
     'How old a scan may be and still be imported',
+  'systemAdmin.settings.keys.hr.attendance.minPunchGapMinutes':
+    'Minutes within which two scans count as one',
+  'systemAdmin.settings.keys.hr.attendance.countAbsence':
+    'Record a working day with no scan as an absence',
   'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
     'Weekly changes by one manager before review flags them',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
@@ -11496,6 +11534,10 @@ const en: Record<string, string> = {
     'How far back a supervisor may decide a day on their own authority. An older day is recorded and takes effect only after HR approves it.',
   'systemAdmin.settings.descriptions.hr.attendance.importMaxAgeDays':
     'In days. 0 means no limit, which is the default, so a branch can send its whole history. A scan dated in the future is always refused, whatever this says — that is a device clock, not history.',
+  'systemAdmin.settings.descriptions.hr.attendance.minPunchGapMinutes':
+    'A finger that reads poorly is often presented again a few seconds later. The device records two scans, and without this the second one is read as a departure — which produced days marked present with no working hours at all. Ten minutes is the default: longer than any repeated attempt, and shorter than any real working day. Zero switches it off.',
+  'systemAdmin.settings.descriptions.hr.attendance.countAbsence':
+    'When off, which is the default, a working day with no scan reads «no record» — a statement about the evidence rather than about the person — and it is not counted as an absence for payroll. When on, the same day is recorded as an absence. A supervisor\u2019s own decision to mark somebody absent is unaffected either way.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
     'The number of attendance days one supervisor may change in a week before the change log highlights them for a look. Nothing is blocked or refused by it — a broken reader produces many legitimate changes.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
@@ -17875,6 +17917,12 @@ const ar: Record<string, string> = {
   'attendanceView.avg': 'المتوسط {{t}}',
   'attendanceView.dailyRecord': 'السجل اليومي',
   'attendanceView.newestFirst': 'الأحدث أولًا',
+  'attendanceView.oldestFirst': 'بهذا الترتيب',
+  'attendanceView.codeCol': 'الكود',
+  'attendanceView.shortfallCol': 'النقص',
+  'attendanceView.shortfallTotal': 'الوقت الناقص من الساعات المطلوبة',
+  'attendanceView.sortAscending': 'ترتيب تصاعدي',
+  'attendanceView.sortDescending': 'ترتيب تنازلي',
   'attendanceView.date': 'التاريخ',
   'attendanceView.arrived': 'الحضور',
   'attendanceView.left': 'الانصراف',
@@ -17889,8 +17937,7 @@ const ar: Record<string, string> = {
   'attendanceView.status.late': 'متأخر',
   'attendanceView.status.earlyLeave': 'انصراف مبكر',
   'attendanceView.status.lateAndEarly': 'تأخير وانصراف مبكر',
-  'attendanceView.status.checkedIn': 'في العمل',
-  'attendanceView.status.incomplete': 'دخول فقط',
+  'attendanceView.status.incomplete': 'حضر فقط',
   'attendanceView.status.notYetIn': 'لم يحضر بعد',
   'attendanceView.status.absent': 'غائب',
   'attendanceView.status.onLeave': 'في إجازة',
@@ -23774,13 +23821,10 @@ const ar: Record<string, string> = {
   'fleet.alarms.refresh': 'تحديث',
 
   // Fleet — fixed crew (FW-7 sibling)
-  'fleet.fixedRoster.subtitle': 'الطقم الثابت لكل سيارة — بلا تاريخ، ويظل كما هو حتى تغيّره',
   'fleet.fixedRoster.driversTitle': 'السائقون',
-  'fleet.fixedRoster.driversHint': 'اسحب السائق إلى الخانة',
   'fleet.fixedRoster.driverSearchPlaceholder': 'ابحث بالاسم أو الكود أو الرقم',
   'fleet.fixedRoster.driverSearchEmpty': 'لا يوجد سائق مطابق للبحث',
   'fleet.fixedRoster.needsFirstDriver': 'عيّن السائق الأول أولاً',
-  'fleet.fixedRoster.removeDriver': 'إزالة من هذه الخانة',
   'fleet.fixedRoster.clearCrew': 'إفراغ الطقم',
   'fleet.fixedRoster.editHint': 'نوع المهمة والطقم والملاحظات — تُحفظ معًا',
   'fleet.fixedRoster.noMissionType': 'بدون نوع مهمة',
@@ -23789,10 +23833,8 @@ const ar: Record<string, string> = {
   'fleet.fixedRoster.noDriver': 'بدون سائق',
   'fleet.fixedRoster.sameDriverTwice': 'لا يمكن أن يحمل الخانتين نفس الشخص',
   'fleet.fixedRoster.unassigned': 'بلا طقم',
-  'fleet.fixedRoster.unsaved': 'لديك تغييرات غير محفوظة',
   'fleet.fixedRoster.saved': 'تم حفظ الطقم الثابت',
   'fleet.fixedRoster.noVehicles': 'لا توجد سيارات',
-  'fleet.fixedRoster.summary': '{{total}} سيارة · {{crewed}} بطقم',
   'fleet.vehicles.count': '{{count}} سيارة',
   'fleet.vehicles.sortReset': 'الترتيب الافتراضي',
   'fleet.vehicles.sortResetTitle': 'إعادة الجدول إلى ترتيبه الأصلي حسب الكود',
@@ -23811,6 +23853,33 @@ const ar: Record<string, string> = {
   'fleet.roster.counter.assigned': 'تشغيل',
   'fleet.fixedRoster.counter.crewed': 'بطقم',
   'fleet.fixedRoster.counter.uncrewed': 'بلا طقم',
+  // الطقم الثابت: عدد السيارات بصيغ العدد الخمس، والقائمة الفارغة، وسطر رفض الحفظ بالعربية:
+  // العنوان في سطر الإشعار، والسبب تحته كاملًا.
+  'fleet.fixedRoster.poolEmpty': 'لا يوجد سائقون بلا طقم ثابت',
+  'fleet.fixedRoster.refusal.title': 'تعذّر حفظ الطقم الثابت',
+  'fleet.fixedRoster.refusal.held': 'السائق {{name}} في الطقم الثابت للسيارة {{code}}.',
+  'fleet.fixedRoster.refusal.heldUnnamed': 'أحد السائقين في الطقم الثابت للسيارة {{code}}.',
+  'fleet.fixedRoster.refusal.heldElsewhere':
+    'السائق {{name}} في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة محذوفة).',
+  'fleet.fixedRoster.refusal.heldElsewhereUnnamed':
+    'أحد السائقين في الطقم الثابت لسيارة أخرى ليست في هذه الشاشة (فرع آخر أو سيارة محذوفة).',
+  'fleet.fixedRoster.refusal.profileInactive':
+    'ملف السائق {{name}} موقوف، فلا يمكن وضعه في طقم ثابت.',
+  'fleet.fixedRoster.refusal.profileInactiveUnnamed':
+    'ملف أحد السائقين موقوف، فلا يمكن وضعه في طقم ثابت.',
+  'fleet.fixedRoster.refusal.notADriver': '{{name}} ليس على وظيفة سائق.',
+  'fleet.fixedRoster.refusal.notADriverUnnamed': 'أحد المختارين ليس على وظيفة سائق.',
+  'fleet.fixedRoster.refusal.vehicleNotActive':
+    'السيارة {{code}} لم تعد في الخدمة، فلا يمكن حفظ طقم لها.',
+  'fleet.fixedRoster.refusal.missionInactive': 'نوع المهمة المختار لم يعد متاحًا — اختر نوعًا آخر.',
+  'fleet.fixedRoster.refusal.needsFirst': 'عيّن السائق الأول قبل الثاني.',
+  'fleet.fixedRoster.refusal.generic': 'تعديلاتك باقية — راجع السيارات المعدَّلة ثم أعد المحاولة.',
+  'fleet.fixedRoster.carCount.one': 'سيارة واحدة',
+  'fleet.fixedRoster.carCount.two': 'سيارتان',
+  'fleet.fixedRoster.carCount.few': '{{count}} سيارات',
+  'fleet.fixedRoster.carCount.many': '{{count}} سيارة',
+  'fleet.fixedRoster.carCount.other': '{{count}} سيارة',
+  'fleet.fixedRoster.matchedRows': 'عدد الصفوف بعد عوامل التصفية',
   'fleet.roster.allMissions': 'كل المهمات',
   // إشعار بدء التشغيل — ما سجّله الاستيراد عند الإقلاع، مطبوعًا حيث كان ينبغي أن تظهر البيانات.
   // زوم الصورة نفسها — زوم المتصفح يكبّر الصفحة، وهذا يكبّر الرخصة.
@@ -24861,6 +24930,9 @@ const ar: Record<string, string> = {
   'it.custody.pickerNoResults': 'لا يوجد موظف مطابق لهذا البحث.',
   'it.custody.pickerNoAccess':
     'اختيار الموظف يتطلب صلاحية عرض أصول تقنية المعلومات أو خطوط المحمول أو المستهلكات.',
+  'it.custody.pickerNoAccessHandOver':
+    'اختيار المستلِم يتطلب صلاحية التسليم في أصول تقنية المعلومات أو خطوط المحمول أو المستهلكات.',
+  'it.custody.pickerBranch': 'الفرع: {{name}}',
   'it.custody.pickerExited': 'منتهي الخدمة',
   'it.custody.clearPick': 'إلغاء اختيار الموظف',
   'it.custody.method.sold': 'بيع',
@@ -26577,6 +26649,10 @@ const ar: Record<string, string> = {
     'عدد الأيام التي يبتّ فيها المسؤول منفردًا',
   'systemAdmin.settings.keys.hr.attendance.importMaxAgeDays':
     'أقصى عمر للبصمة المقبولة عند الاستيراد',
+  'systemAdmin.settings.keys.hr.attendance.minPunchGapMinutes':
+    'الدقائق التي تُحتسب خلالها بصمتان كبصمة واحدة',
+  'systemAdmin.settings.keys.hr.attendance.countAbsence':
+    'تسجيل يوم العمل بدون بصمة كغياب',
   'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
     'عدد التعديلات الأسبوعية قبل تمييزها للمراجعة',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
@@ -26706,6 +26782,10 @@ const ar: Record<string, string> = {
     'المدة التي يجوز خلالها للمسؤول أن يبتّ في يوم حضور بسلطته وحده. وما كان أقدم من ذلك يُسجَّل القرار بشأنه ولا يسري إلا بعد اعتماد الموارد البشرية.',
   'systemAdmin.settings.descriptions.hr.attendance.importMaxAgeDays':
     'بالأيام. والقيمة صفر تعني بلا حد، وهي الأصل، حتى يتمكن الفرع من إرسال تاريخه كاملًا. أما البصمة المؤرخة في المستقبل فمرفوضة دائمًا مهما كانت هذه القيمة، لأنها خلل في ساعة الجهاز لا تاريخ.',
+  'systemAdmin.settings.descriptions.hr.attendance.minPunchGapMinutes':
+    'البصمة التي لا تُقرأ جيدًا تُعاد بعد ثوانٍ قليلة في كثير من الأحيان، فيسجل الجهاز بصمتين، وبدون هذا الإعداد تُقرأ الثانية كانصراف — وهو ما جعل أيامًا تظهر بحالة حاضر وبدون أي ساعات عمل. القيمة الافتراضية عشر دقائق: أطول من أي محاولة مُعادة، وأقصر من أي يوم عمل حقيقي. والصفر يوقف الإعداد.',
+  'systemAdmin.settings.descriptions.hr.attendance.countAbsence':
+    'عند الإيقاف، وهو الوضع الافتراضي، يُقرأ يوم العمل بدون بصمة «لا يوجد تسجيل» — وهو وصف للدليل المتاح لا للموظف — ولا يُحتسب غيابًا في المرتبات. وعند التشغيل يُسجل اليوم نفسه غيابًا. أما قرار المسؤول بتسجيل الغياب بنفسه فلا يتأثر في الحالتين.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
     'عدد أيام الحضور التي يجوز لمسؤول واحد تعديلها في الأسبوع قبل أن يُميّزها سجل التغييرات للاطّلاع عليها. ولا يترتب على تجاوز هذا العدد منع ولا رفض؛ فالجهاز المعطّل ينتج تعديلات كثيرة ومشروعة.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':

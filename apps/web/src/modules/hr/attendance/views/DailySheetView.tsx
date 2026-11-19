@@ -3,10 +3,10 @@
 import type { ReactNode } from 'react';
 import { cn } from '../../../../shared/lib/cn';
 import { ArrivalRiver, PresenceSummary, type ArrivalSlot } from './view-charts';
-import { AttendanceCanvas, DayStepper, DayTimeline, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, Sheet, SheetHead, StatusText, Tag, TimelineScale } from './view-parts';
+import { ariaSort, AttendanceCanvas, DayStepper, DayTimeline, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, Sheet, SheetHead, SortableHead, StatusText, Tag, TimelineScale } from './view-parts';
 import { arrow, clock, num, shortDuration, timeSpan } from './view-format';
 import { useViewLabels } from './view-labels';
-import type { SheetFilter, SheetRow, SheetSummary } from './view-types';
+import type { SheetFilter, SheetRow, SheetSort, SheetSortKey, SheetSummary } from './view-types';
 
 export interface DailySheetViewProps {
   /** «الثلاثاء، 17 نوفمبر 2026», already formatted. */
@@ -40,10 +40,21 @@ export interface DailySheetViewProps {
   onExport?: () => void;
   /** Opens the employee's attendance page. */
   onOpenEmployee?: (id: string) => void;
+  /**
+   * The order the rows arrived in, and how to ask for another.
+   *
+   * THE VIEW DOES NOT SORT. It renders what it was given and reports a click, because the order is
+   * decided across the WHOLE day on the server and then paged — sorting here would reorder the
+   * fifty rows of this page among themselves and make page 2 a separate little island, which is
+   * the defect the owner reported («never sort only the current page»).
+   */
+  sort?: SheetSort;
+  onSort?: (by: SheetSortKey, dir: 'asc' | 'desc') => void;
 }
 
 export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
   const { t, status } = useViewLabels();
+  const sortHint = (dir: 'asc' | 'desc'): string => t(dir === 'asc' ? 'sortAscending' : 'sortDescending');
   const s = p.summary;
   const busiest = p.arrivals.reduce<ArrivalSlot | null>((b, a) => (a.count > (b?.count ?? 0) ? a : b), null);
   const dayStart = p.dayStart;
@@ -151,14 +162,38 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
         <div className="mt-4 hidden lg:block">
           <table className="w-full">
             <thead>
-              <tr className={cn('border-y border-[var(--att-line)] bg-[var(--att-sheet-2)] text-[12px]', INK3)}>
-                <th className="py-2.5 pe-3 ps-6 text-start font-medium">{t('employee')}</th>
-                <th className="px-3 py-2.5 text-start font-medium">{t('status')}</th>
-                <th className="px-3 py-2.5 text-start font-medium">{t('inOut')}</th>
-                <th className="w-[26%] px-3 py-2 text-start font-medium">
+              <tr className={cn('group/head border-y border-[var(--att-line)] bg-[var(--att-sheet-2)] text-[12px]', INK3)}>
+                <th className="py-2.5 pe-3 ps-6 text-start font-medium" aria-sort={ariaSort('name', p.sort)}>
+                  <SortableHead column="name" label={t('employee')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                  <span className={cn('mx-1', INK3)} aria-hidden="true">
+                    ·
+                  </span>
+                  <SortableHead column="code" label={t('codeCol')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                </th>
+                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('status', p.sort)}>
+                  <SortableHead column="status" label={t('status')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                </th>
+                {/* One cell holds both times, so it holds both controls — «الحضور» is the sheet's
+                    default order and «الانصراف» the other end of the same day. */}
+                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('checkIn', p.sort)}>
+                  <SortableHead column="checkIn" label={t('arrived')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                  <span className={cn('mx-1', INK3)} aria-hidden="true">
+                    ·
+                  </span>
+                  <SortableHead column="checkOut" label={t('left')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                </th>
+                <th className="w-[22%] px-3 py-2 text-start font-medium">
                   <TimelineScale />
                 </th>
-                <th className="px-3 py-2.5 text-start font-medium">{t('lateCol')}</th>
+                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('worked', p.sort)}>
+                  <SortableHead column="worked" label={t('worked')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                </th>
+                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('late', p.sort)}>
+                  <SortableHead column="late" label={t('lateCol')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                </th>
+                <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('shortfall', p.sort)}>
+                  <SortableHead column="shortfall" label={t('shortfallCol')} sort={p.sort} onSort={p.onSort} hint={sortHint} />
+                </th>
                 <th className="px-3 py-2.5 text-start font-medium">{t('overtime')}</th>
                 <th className="py-2.5 pe-6 ps-3">
                   <span className="sr-only">{t('actions')}</span>
@@ -189,7 +224,27 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
                   <td className="px-3 py-3">
                     <DayTimeline inAt={r.inAt} outAt={r.outAt} expected={r.expected} />
                   </td>
-                  <td className={cn('px-3 py-3 text-sm', FIG)}>{r.lateMinutes > 0 ? <span className="font-semibold text-[color:var(--att-warn)]">{shortDuration(r.lateMinutes)}</span> : <Dash />}</td>
+                  {/* WORKED, as h:mm — and a dash, never «0:00», on a day with no check-out. The
+                      figure is the server's and it is null exactly when nothing was measured. */}
+                  <td className={cn('px-3 py-3 text-sm', FIG)}>
+                    {r.worked === null ? <Dash /> : <span className={cn('font-semibold', INK)}>{shortDuration(r.worked)}</span>}
+                  </td>
+                  <td className={cn('px-3 py-3 text-sm', FIG)}>
+                    {r.lateMinutes !== null && r.lateMinutes > 0 ? (
+                      <span className="font-semibold text-[color:var(--att-warn)]">{shortDuration(r.lateMinutes)}</span>
+                    ) : (
+                      <Dash />
+                    )}
+                  </td>
+                  {/* «النقص» — what is actually missing from the day, which is NOT the lateness: a
+                      09:40 arrival that stays until 17:40 is late by nothing and short by nothing. */}
+                  <td className={cn('px-3 py-3 text-sm', FIG)}>
+                    {r.shortfallMinutes !== null && r.shortfallMinutes > 0 ? (
+                      <span className="font-semibold text-[color:var(--att-warn)]">{shortDuration(r.shortfallMinutes)}</span>
+                    ) : (
+                      <Dash />
+                    )}
+                  </td>
                   <td className={cn('px-3 py-3 text-sm', FIG)}>
                     {r.overtimeApproved + r.overtimeDerived > 0 ? (
                       <bdi>
@@ -219,7 +274,15 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
               <div className="mt-3 flex items-center justify-between gap-3">
                 <InOut row={r} />
                 <div className="flex flex-wrap justify-end gap-1">
-                  {r.lateMinutes > 0 && <Tag tone="warn">{`+${shortDuration(r.lateMinutes)}`}</Tag>}
+                  {/* The owner's own wording, «متأخر 0:25» — the word and the amount, because on a
+                      phone there is no column heading to supply the word. */}
+                  {r.worked !== null && <Tag tone="accent">{`${t('worked')} ${shortDuration(r.worked)}`}</Tag>}
+                  {r.lateMinutes !== null && r.lateMinutes > 0 && (
+                    <Tag tone="warn">{`${status('late')} ${shortDuration(r.lateMinutes)}`}</Tag>
+                  )}
+                  {r.shortfallMinutes !== null && r.shortfallMinutes > 0 && (
+                    <Tag tone="warn">{`${t('shortfallCol')} ${shortDuration(r.shortfallMinutes)}`}</Tag>
+                  )}
                   {r.tags.map((tag) => (
                     <Tag key={tag} tone="accent">
                       {tag}

@@ -122,6 +122,39 @@ export interface DeriveDayInput {
     outAt: Date | null;
   } | null;
   /**
+   * HOW CLOSE TWO SCANS HAVE TO BE TO COUNT AS ONE, in minutes.
+   *
+   * THE DEFECT THIS ANSWERS, in the owner's own figures: five people read «حاضر» with ZERO worked
+   * minutes on 18 November, and a sixth with five. Nobody works a zero-minute day. What the device
+   * recorded was a RE-TAP — a finger that read poorly, presented again seconds later — and the
+   * pairing below is positional (`punches[0]` in, last out) because the K40 Pro logs presence
+   * without a direction. So the second tap became a departure.
+   *
+   * On a shift-less day that produced «حاضر, 0 minutes». On a ROSTERED day it is worse: a re-tap at
+   * 08:00 would pair as a departure eight hours before the shift ends, and the engine would hand
+   * payroll eight hours of «انصراف مبكر» for somebody who worked the whole day.
+   *
+   * Zero switches it off and the engine pairs every punch as it did before.
+   */
+  minPunchGapMinutes: number;
+  /**
+   * WHETHER A WORKING DAY WITH NO SCAN IS AN ACCUSATION — the owner's ruling of 18 November,
+   * «lateness only for now», made an input rather than assumed.
+   *
+   * False, and an expected day whose hour has passed with nothing on it reads `noRecord`: «لا يوجد
+   * تسجيل», a statement about the evidence. True, and the same day reads `absent`, which is a
+   * statement about the person and a quantity payroll prices.
+   *
+   * The difference matters most on the two years of history being re-derived: the machines were
+   * holding the punches, so a day with none may mean somebody did not come — or may mean the
+   * reader was down, or that the scans are still in quarantine. Until the hours per department are
+   * in and the backfill has run clean, the honest word is the one about the evidence.
+   *
+   * A MANAGER'S `markAbsent` IS NOT AFFECTED. Somebody looked and said so; that is evidence of a
+   * different kind and it still writes `absent`.
+   */
+  countAbsence: boolean;
+  /**
    * The instant the derivation is being made at — INJECTED, never read from the clock, because
    * this file's contract is "same inputs, byte-identical output" and a function that reads the
    * clock has no such contract. It decides one thing only: whether an expected day with no
@@ -136,8 +169,12 @@ export interface DerivedDay {
   lastOutAt: Date | null;
   workedMinutes: number;
   lateMinutes: number;
+  /** Required − worked, when positive — the owner's «النقص». */
+  shortfallMinutes: number;
   earlyLeaveMinutes: number;
   overtimeMinutes: number;
+  /** The minutes the date was supposed to hold; null when nobody has said when they work. */
+  requiredMinutes: number | null;
   leaveId: string | null;
   flags: AttendanceDayFlag[];
 }
@@ -181,22 +218,54 @@ export const punchWindowFor = (
     return { from: cairoInstant(workDate, '00:00'), to: new Date(nextMidnight.getTime() - 1) };
   }
   const { start, end } = shiftWindow(workDate, shift);
-  return {
-    from: new Date(start.getTime() - PUNCH_WINDOW_BEFORE_MS),
-    to: new Date(end.getTime() + PUNCH_WINDOW_AFTER_MS),
-  };
+  const from = new Date(start.getTime() - PUNCH_WINDOW_BEFORE_MS);
+  const to = new Date(end.getTime() + PUNCH_WINDOW_AFTER_MS);
+  if (shift.crossesMidnight) return { from, to };
+  // A SAME-DAY PATTERN MAY NOT REACH INTO THE NEXT DAY'S OWN MARGIN.
+  //
+  // This became load-bearing the moment the 09:00–17:00 company default was switched on, because
+  // until then most employees had NO expectation and their window was the strict Cairo day. With
+  // the pattern on, day D's window runs to 05:00 on D+1 and day D+1's begins at 03:00 — so a scan
+  // at four in the morning fell inside BOTH. Positional pairing would then make it D's last-out,
+  // reporting a nineteen-hour day, and D+1's first-in at the same time. Night security scanning at
+  // 04:00 is exactly who that would have happened to.
+  //
+  // The tail is kept as long as it can honestly be: for 09:00–17:00 it still runs to 03:00 the
+  // next morning, which is ten hours past the end and far beyond any real departure. What it can
+  // no longer do is claim a punch the next day has a better claim to.
+  //
+  // A shift that genuinely CROSSES MIDNIGHT is left alone. Consecutive night shifts' windows do
+  // overlap, deliberately and from the start: the roster says which day a 17:00 scan belongs to,
+  // and a night worker's late exit belongs to the night that was worked.
+  const nextWindowStart = new Date(
+    shiftWindow(new Date(workDate.getTime() + 86_400_000), shift).start.getTime() -
+      PUNCH_WINDOW_BEFORE_MS,
+  );
+  return { from, to: to < nextWindowStart ? to : new Date(nextWindowStart.getTime() - 1) };
 };
 
 const minutesBetween = (from: Date, to: Date): number =>
   Math.floor((to.getTime() - from.getTime()) / 60_000);
+
+/**
+ * THE MINUTES A DAY IS SUPPOSED TO HOLD: the shift's span less its unpaid break.
+ *
+ * Taken from the window rather than from `startTime`/`endTime` as strings, so a pattern that
+ * crosses midnight and one that does not are the same arithmetic, and a DST switch inside the day
+ * is counted as the clock actually ran rather than as the wall times suggest.
+ */
+const requiredMinutesOf = (start: Date, end: Date, breakMinutes: number): number =>
+  Math.max(0, minutesBetween(start, end) - breakMinutes);
 
 const empty = {
   firstInAt: null,
   lastOutAt: null,
   workedMinutes: 0,
   lateMinutes: 0,
+  shortfallMinutes: 0,
   earlyLeaveMinutes: 0,
   overtimeMinutes: 0,
+  requiredMinutes: null as number | null,
   leaveId: null,
   flags: [] as AttendanceDayFlag[],
 };
@@ -218,23 +287,58 @@ const flagsOf = (punches: readonly EnginePunch[], employeeBranchId: string): Att
 const byTime = (punches: readonly EnginePunch[]): EnginePunch[] =>
   [...punches].sort((a, b) => a.at.getTime() - b.at.getTime());
 
+/**
+ * ONE EVENT PER VISIT TO THE READER: a punch within `minutes` of the one before it is the same
+ * presentation of the same finger, not a second event.
+ *
+ * It runs on the SORTED list and keeps the FIRST of each cluster, so the recorded instant is the
+ * one the person actually arrived at rather than the moment their third attempt succeeded.
+ *
+ * It is applied before anything branches on how many punches there are, which is what makes it fix
+ * both shapes at once: the shift-less day that read «حاضر, 0 minutes» and the rostered day that
+ * would have reported hours of early leave. A day left with ONE event after this is a check-in and
+ * says so — which is the honest reading of a single visit to the glass.
+ *
+ * What it must NOT do is collapse a real day. Two scans nine hours apart are not a cluster: the
+ * comparison is against the previous KEPT punch, so a long day keeps both ends however many
+ * re-taps surround them, and `minutes` is far below any worked day and far above any re-tap.
+ */
+const collapseRetaps = (punches: readonly EnginePunch[], minutes: number): EnginePunch[] => {
+  if (minutes <= 0 || punches.length < 2) return [...punches];
+  const gap = minutes * 60_000;
+  const kept: EnginePunch[] = [punches[0] as EnginePunch];
+  for (const punch of punches.slice(1)) {
+    const previous = kept[kept.length - 1] as EnginePunch;
+    if (punch.at.getTime() - previous.at.getTime() >= gap) kept.push(punch);
+  }
+  return kept;
+};
+
 export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // 1 — not employed on that date: no row at all.
   if (!input.employed) return null;
 
   // What the DEVICES saw. Kept under its own name because a decision may replace what the day is
   // derived FROM without changing what was observed — the flags below still describe the evidence.
-  const evidence = byTime(input.punches);
-  const flags = flagsOf(evidence, input.employeeBranchId);
+  const observed = byTime(input.punches);
+  // THE FLAGS DESCRIBE EVERYTHING THE DEVICES SAW, so they are taken before the re-tap collapse:
+  // a manual punch or a punch recorded at another branch must still be flagged even when it is the
+  // second tap of a cluster and so plays no part in the pairing below.
+  const flags = flagsOf(observed, input.employeeBranchId);
+  // ONE EVENT PER VISIT TO THE READER. Everything downstream pairs positionally, so this is the
+  // only place the difference between «two taps» and «an arrival and a departure» can be drawn.
+  const evidence = collapseRetaps(observed, input.minPunchGapMinutes);
 
   // 2 — leave wins over absence. A half-day keeps the worked half: presence minutes are computed
   // when they exist, but nothing is "late" against a day the employee was excused from.
   if (input.leave !== null) {
     const first = evidence[0] ?? null;
     const last = evidence.length >= 2 ? (evidence[evidence.length - 1] ?? null) : null;
+    // Flat, like every other worked figure here: last out − first in. Rule 1 of 18 November is a
+    // company-wide definition of worked time, so a half day does not get a second one.
     const worked =
       input.leave.halfDay && first !== null && last !== null
-        ? Math.max(0, minutesBetween(first.at, last.at) - (input.shift?.breakMinutes ?? 0))
+        ? Math.max(0, minutesBetween(first.at, last.at))
         : 0;
     return {
       ...empty,
@@ -330,43 +434,84 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // The cut is the expected END, not the start: the day stops being winnable when the shift it
   // belonged to has finished, not when it began.
   if (punches.length === 0) {
-    const { end } = shiftWindow(input.workDate, input.shift);
-    return { ...empty, status: input.now < end ? 'pending' : 'absent', flags };
-  }
-
-  // 7 — checked in, never checked out: the ordinary working day here, not an anomaly. The hours
-  // are genuinely unknown, so `workedMinutes` stays 0 and nothing is early leave or overtime —
-  // guessing a departure into a day is still refused (D6). LATENESS IS DIFFERENT: they were
-  // expected at a time and the arrival is on record, so it is computed, with the same grace the
-  // full day below uses.
-  if (punches.length === 1) {
-    const firstIn = (punches[0] as EnginePunch).at;
-    const { start } = shiftWindow(input.workDate, input.shift);
-    const graceInEnd = new Date(start.getTime() + input.shift.graceInMinutes * 60_000);
+    const { start, end } = shiftWindow(input.workDate, input.shift);
+    const required = requiredMinutesOf(start, end, input.shift.breakMinutes);
+    // AND WHICH WORD FOR A DAY THAT IS OVER is the owner's ruling, carried in `countAbsence`:
+    // `absent` accuses, `noRecord` reports that ECMS has nothing. See that field.
+    const concluded: AttendanceDayStatus = input.countAbsence ? 'absent' : 'noRecord';
     return {
       ...empty,
-      status: 'checkedIn',
-      firstInAt: firstIn,
-      lateMinutes: firstIn > graceInEnd ? minutesBetween(start, firstIn) : 0,
+      status: input.now < end ? 'pending' : concluded,
+      requiredMinutes: required,
       flags,
     };
   }
 
-  // 8 — compute. First-in / last-out over the attributed window; directions recorded by devices
-  // are advisory (many log presence only), so the pairing is positional.
+  // 7 — checked in, never checked out: the ordinary working day here, not an anomaly. «حضر فقط»,
+  // and EVERY FIGURE ON IT IS ZERO — which the reader turns into a blank cell, never «0:00».
+  //
+  // LATENESS USED TO BE COMPUTED HERE and no longer is, and that is a consequence of the owner's
+  // flexible-hours rule rather than a simplification. Under that rule an arrival after nine is
+  // only late IF THE EIGHT HOURS WERE NOT COMPLETED — somebody in at 09:40 and out at 17:40 owes
+  // nothing. With no check-out, whether the hours were completed is exactly what is unknown, so
+  // declaring the arrival late would be a verdict reached by ignoring the test the rule asks for.
+  // The day keeps its arrival time, which is the fact, and makes no claim about it.
+  if (punches.length === 1) {
+    const { start, end } = shiftWindow(input.workDate, input.shift);
+    return {
+      ...empty,
+      status: 'checkedIn',
+      firstInAt: (punches[0] as EnginePunch).at,
+      requiredMinutes: requiredMinutesOf(start, end, input.shift.breakMinutes),
+      flags,
+    };
+  }
+
+  // 8 — COMPUTE, under the owner's flexible-hours rule of 18 November. The whole rule, in order:
+  //
+  //   worked    = last out − first in, flat. No break is subtracted and nothing is clamped to the
+  //               shift's own hours: the question is how long the person was here.
+  //   required  = the shift's span less its break — 480 minutes for the 09:00–17:00 default.
+  //   COMPLETED THE HOURS?  Then the day is «حاضر» and it is not late, not short and not early,
+  //               WHATEVER TIME THEY ARRIVED. In at 09:40, out at 17:40, eight hours: nothing owed,
+  //               nothing to answer for. This is the clause that makes the rule flexible, and it is
+  //               deliberately indifferent to the clock at both ends of the day.
+  //   SHORT?      Then two different numbers are reported, because they answer two different
+  //               questions and the owner asked for both:
+  //                 late      = first in − the expected start (past grace) — how late they were;
+  //                 shortfall = required − worked — how much time is actually missing.
+  //               They are usually different. In at 09:40, out at 17:00: late 0:40 and short 0:40,
+  //               the same by coincidence. In at 09:00, out at 16:00: late 0:00 and short 1:00.
+  //   early leave = the end less the last out, and ONLY on a short day. Leaving at 15:00 after
+  //               starting at 07:00 is a completed day, so it is not early by this rule — which is
+  //               the same clause as above, read from the other end.
+  //   overtime  = worked − required, when positive. NOT «after 17:00»: the person who worked
+  //               07:00–17:00 did ten hours and two of them are over, whatever hour they fell in.
+  //               Derived only — payroll pays it after a manager approves it (D5), as before.
+  //
+  // Directions recorded by devices are advisory (many log presence only), so the pairing is
+  // positional: first scan in, last scan out.
   const firstIn = (punches[0] as EnginePunch).at;
   const lastOut = (punches[punches.length - 1] as EnginePunch).at;
   const { start, end } = shiftWindow(input.workDate, input.shift);
+  const requiredMinutes = requiredMinutesOf(start, end, input.shift.breakMinutes);
 
-  const workedMinutes = Math.max(
-    0,
-    minutesBetween(firstIn, lastOut) - input.shift.breakMinutes,
-  );
+  // Flat presence. A check-out after midnight is simply a later instant than the check-in, so a
+  // night shift's span is correct here with no special case — the day's identity was already
+  // settled upstream by the attribution window (D3), not by which calendar date the exit fell in.
+  const workedMinutes = Math.max(0, minutesBetween(firstIn, lastOut));
+  const completed = workedMinutes >= requiredMinutes;
+  const shortfallMinutes = completed ? 0 : requiredMinutes - workedMinutes;
+
   const graceInEnd = new Date(start.getTime() + input.shift.graceInMinutes * 60_000);
-  const lateMinutes = firstIn > graceInEnd ? minutesBetween(start, firstIn) : 0;
   const graceOutStart = new Date(end.getTime() - input.shift.graceOutMinutes * 60_000);
-  const earlyLeaveMinutes = lastOut < graceOutStart ? minutesBetween(lastOut, end) : 0;
-  const overtimeMinutes = lastOut > end ? minutesBetween(end, lastOut) : 0;
+  // `minutesBetween` floors, which is what makes «09:00 or earlier is on time» exact to the
+  // owner's wording: an arrival at 09:00:40 is past the start instant but rounds to zero late
+  // minutes, and the status below turns only on the MINUTES, not on the instant.
+  const lateMinutes = !completed && firstIn > graceInEnd ? minutesBetween(start, firstIn) : 0;
+  const earlyLeaveMinutes =
+    !completed && lastOut < graceOutStart ? minutesBetween(lastOut, end) : 0;
+  const overtimeMinutes = Math.max(0, workedMinutes - requiredMinutes);
 
   const status: AttendanceDayStatus =
     lateMinutes > 0 && earlyLeaveMinutes > 0
@@ -375,6 +520,8 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
         ? 'late'
         : earlyLeaveMinutes > 0
           ? 'earlyLeave'
+          // «حاضر» — either the hours were completed, or what is missing is inside a grace somebody
+          // granted on purpose. The shortfall is still reported; the day is simply not an offence.
           : 'present';
 
   return {
@@ -383,8 +530,10 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
     lastOutAt: lastOut,
     workedMinutes,
     lateMinutes,
+    shortfallMinutes,
     earlyLeaveMinutes,
     overtimeMinutes,
+    requiredMinutes,
     leaveId: null,
     flags,
   };

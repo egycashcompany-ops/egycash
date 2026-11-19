@@ -6,9 +6,10 @@
 // stores, their ledger and their memos serve on `itConsumable.*` — the same ACTION the asset key
 // had, and no route of either on `itAsset` any more (no «either key» fallback: that would make the
 // new rows of the role matrix mean nothing). `/it/people`, the holder boxes of all three screens,
-// opens on ANY of the three registers' read grants. `authorize` and `authorizeAny` are replaced by
-// stand-ins that carry the keys they were given, so the router stack says which gate each route
-// has; everything else is the real module.
+// opens on ANY of the three registers' read grants; `/it/people/recipients`, the box a hand-over
+// names its recipient in (2026-11-18), on ANY of their hand-over grants. `authorize` and
+// `authorizeAny` are replaced by stand-ins that carry the keys they were given, so the router
+// stack says which gate each route has; everything else is the real module.
 import { type Router } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -147,7 +148,20 @@ describe('the holder boxes of all three screens', () => {
     };
     expect(Object.fromEntries(gates('/it/people', buildItPeopleRouter()))).toEqual({
       'GET /it/people/': any,
+      'GET /it/people/recipients': {
+        keys: ['itAsset.assign', 'itMobileLine.assign', 'itConsumable.assign'],
+        any: true,
+      },
       'GET /it/people/:employeeId': any,
     });
+  });
+
+  // «أسمح إنه يعرف يسلم لحد فى فرع تاني» (2026-11-18) — a hand-over's box names anybody employed,
+  // in every branch, so it opens on the ACT's grant: a reader who may only look gets a 403.
+  it('open /it/people/recipients on ANY of the three hand-over grants, before the id route', () => {
+    const paths = gates('/it/people', buildItPeopleRouter()).map(([route]) => route);
+    expect(paths.indexOf('GET /it/people/recipients')).toBeLessThan(
+      paths.indexOf('GET /it/people/:employeeId'),
+    );
   });
 });

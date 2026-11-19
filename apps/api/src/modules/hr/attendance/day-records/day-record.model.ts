@@ -21,6 +21,10 @@ export interface AttendanceDayDoc extends BaseDocFields {
   /** Raw minutes past grace (D4) — Payroll prices them, this module never does. */
   lateMinutes: number;
   earlyLeaveMinutes: number;
+  /** Required − worked when positive: the owner's «النقص», the real missing time. */
+  shortfallMinutes: number;
+  /** What the date was supposed to hold; null when nobody has said when this person works. */
+  requiredMinutes: number | null;
   /** Derived by the engine; worth nothing to Payroll until approval releases it (D5). */
   overtimeMinutes: number;
   /** Stamped by the AT-5 approval, always ≤ overtimeMinutes; the only number the feed carries. */
@@ -45,6 +49,10 @@ const dayRecordSchema = new Schema<AttendanceDayDoc>(
     workedMinutes: { type: Number, required: true, default: 0 },
     lateMinutes: { type: Number, required: true, default: 0 },
     earlyLeaveMinutes: { type: Number, required: true, default: 0 },
+    // Both additive, and both safe on the rows already written: a legacy row reads 0 and null
+    // until the backfill re-derives it, which is exactly what «not computed yet» should look like.
+    shortfallMinutes: { type: Number, required: true, default: 0 },
+    requiredMinutes: { type: Number, default: null },
     overtimeMinutes: { type: Number, required: true, default: 0 },
     approvedOvertimeMinutes: { type: Number, required: true, default: 0 },
     leaveId: { type: Schema.Types.ObjectId, default: null },

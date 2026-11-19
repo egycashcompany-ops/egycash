@@ -176,6 +176,43 @@ describe('the batch plan', () => {
     expect(row?.nameInFile).toBe('Ahmed احمد');
   });
 
+  it('holds a name whose codes belong to different people, never guessing between them', () => {
+    const people = new Map([
+      ['C2', employee('C2', 'احمد محمد سيد')],
+      ['0101845', employee('0101845', 'احمد محمد عبد الله')],
+    ]);
+    const [row] = planPhotoBatch([file('C2 احمد محمد 0101845.jpg')], people, new Set());
+    expect(row?.status).toBe('ambiguous');
+    expect(row?.employee).toBeNull();
+    expect([...(row?.rivalCodes ?? [])].sort()).toEqual(['0101845', 'C2']);
+  });
+
+  it('takes one person reached by two codes in the name as that person', () => {
+    const one = employee('0101469', 'محمد مصطفى');
+    const both = new Map([
+      ['0101469', one],
+      ['EX-0101469', one],
+    ]);
+    expect(planPhotoBatch([file('EX-0101469 محمد.jpg')], both, new Set())[0]?.status).toBe('ready');
+  });
+
+  it('pads nothing in a name that already holds a full-length number, such as a camera date', () => {
+    expect(parsePhotoName('20231105_101845.jpg').padded).toEqual([]);
+    const camera = new Map([['0101845', employee('0101845', 'احمد محمد')]]);
+    expect(planPhotoBatch([file('20231105_101845.jpg')], camera, new Set())[0]?.status).toBe(
+      'unknownCode',
+    );
+  });
+
+  it('sends a padded match only when the name in the file backs it', () => {
+    const rows = planPhotoBatch(
+      [file('101469.jpg'), file('101469 سارة علي.jpg'), file('101469 محمد مصطفي.jpg')],
+      matches,
+      new Set(),
+    );
+    expect(rows.map((r) => r.status)).toEqual(['unconfirmed', 'unconfirmed', 'ready']);
+  });
+
   it('matches a code whose leading zero was dropped, and says so', () => {
     const [row] = planPhotoBatch([file('101469 محمد.jpg')], matches, new Set());
     expect(row?.status).toBe('ready');
@@ -189,6 +226,6 @@ describe('the batch plan', () => {
 
   it('counts the rows by state for the summary', () => {
     const rows = planPhotoBatch([file('0101469 م.jpg'), file('0999999 م.jpg')], matches, new Set());
-    expect(countByStatus(rows)).toMatchObject({ ready: 1, unknownCode: 1, duplicate: 0 });
+    expect(countByStatus(rows)).toMatchObject({ ready: 1, unknownCode: 1, duplicate: 0, ambiguous: 0 });
   });
 });

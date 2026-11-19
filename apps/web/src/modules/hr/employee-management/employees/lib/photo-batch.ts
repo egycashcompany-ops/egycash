@@ -74,8 +74,11 @@ export const nameBeside = (stem: string, code: string | null): string =>
  * Every run of digits is a candidate, longest first — the employee's code is the long number in the
  * name. A run one or two digits SHORTER than a code is also tried with the zeros a spreadsheet drops
  * in front of it (`101469` → `0101469`), because no code is that short, so the padded one is the
- * only thing it can mean; a shorter run (a copy's «(2)») is not padded, and a run longer than any
- * code (a time stamp) is not tried. A word of letters and digits (an external person's `EX-2900`) is
+ * only thing it can mean — unless the name already holds a full-length number; a shorter run (a
+ * copy's «(2)») is not padded, and a run longer than any code (a time stamp) is not tried.
+ *
+ * The order only says which code to show for a file nobody holds: the plan never takes the first
+ * match on trust — a name whose codes match two different people is held (`ambiguous`). A word of letters and digits (an external person's `EX-2900`) is
  * tried just BEFORE the digits inside it — more exact than they are, and never ahead of a longer
  * number elsewhere in the name, so a stray `C2` cannot beat the employee's code.
  */
@@ -88,10 +91,13 @@ export const parsePhotoName = (fileName: string): ParsedPhotoName => {
   const add = (code: string): void => {
     if (code !== '' && !candidates.includes(code)) candidates.push(code);
   };
+  // A name that holds a full-length number already has its code (or a camera's date): nothing in it
+  // lost its zeros, so no short run is padded — `20231105_101845` is no `0101845`.
+  const hasFullRun = runs.some((run) => run.length >= EMPLOYEE_CODE_MIN_DIGITS);
   for (const run of [...runs].sort((a, b) => b.length - a.length)) {
     for (const word of words) if (word.includes(run)) add(word);
     add(run);
-    if (run.length >= PADDED_FROM_DIGITS && run.length < EMPLOYEE_CODE_MIN_DIGITS) {
+    if (!hasFullRun && run.length >= PADDED_FROM_DIGITS && run.length < EMPLOYEE_CODE_MIN_DIGITS) {
       const full = run.padStart(EMPLOYEE_CODE_MIN_DIGITS, '0');
       if (!candidates.includes(full)) padded.push(full);
       add(full);
@@ -156,7 +162,14 @@ export type PhotoRowStatus =
   /** Not a JPEG, PNG or WebP picture. */
   | 'unsupported'
   /** Left out by the person. */
-  | 'excluded';
+  | 'excluded'
+  /** The name holds codes of two or more different people: it is held, never guessed. Rename it. */
+  | 'ambiguous'
+  /**
+   * Matched only once zeros were put back in front of the code, and the name in the file does not
+   * back it (none, or not the employee's): too weak to replace a photo on. Rename it with the code.
+   */
+  | 'unconfirmed';
 
 export interface PhotoFileInput {
   /** Unique within the batch: the same file, however it was picked, has the same key. */
@@ -177,6 +190,8 @@ export interface PhotoRow {
   employee: EmployeeCodeMatchDto | null;
   /** The name in the file does not look like the employee's (`NAME_LIKENESS_FLOOR`). */
   nameDiffers: boolean;
+  /** Every code in the name that someone holds, when they are different people (`ambiguous`). */
+  rivalCodes: string[];
 }
 
 const PHOTO_TYPES: readonly string[] = EMPLOYEE_PHOTO_MIME_TYPES;
@@ -197,36 +212,48 @@ export const planFiles = (
 ): PhotoRow[] =>
   files.map((file) => {
     const parsed = parsePhotoName(file.name);
-    const hit = parsed.candidates.find((code) => matches.has(code)) ?? null;
+    // Every code in the name that someone holds. One person: that is the match. Two or more
+    // different people: the file is held — the wrong one would lose their photo to it.
+    const held = parsed.candidates.filter((code) => matches.has(code));
+    const people = new Set(held.map((code) => matches.get(code)?.id));
+    const rivals = people.size > 1 ? held : [];
+    const hit = rivals.length > 0 ? null : (held[0] ?? null);
     const employee = hit === null ? null : (matches.get(hit) ?? null);
     // The name beside the code that MATCHED, not beside the likeliest one.
     const nameInFile = hit === null ? parsed.nameInFile : nameBeside(parsed.stem, hit);
+    const padded = hit !== null && parsed.padded.includes(hit);
+    // Against each name the employee HAS: a missing English name is no name, not a match.
+    const nameDiffers =
+      employee !== null &&
+      Math.max(
+        ...[employee.fullNameAr, employee.fullNameEn ?? '']
+          .filter((name) => name.trim() !== '')
+          .map((name) => nameLikeness(nameInFile, name)),
+        0,
+      ) < NAME_LIKENESS_FLOOR;
     const status: PhotoRowStatus = excluded.has(file.key)
       ? 'excluded'
       : !PHOTO_TYPES.includes(file.type)
         ? 'unsupported'
         : parsed.candidates.length === 0
           ? 'noCode'
-          : employee === null
-            ? 'unknownCode'
-            : 'ready';
+          : rivals.length > 0
+            ? 'ambiguous'
+            : employee === null
+              ? 'unknownCode'
+              : padded && (nameInFile === '' || nameDiffers)
+                ? 'unconfirmed'
+                : 'ready';
     return {
       key: file.key,
       name: file.name,
       status,
       code: hit ?? parsed.candidates[0] ?? null,
-      padded: hit !== null && parsed.padded.includes(hit),
+      padded,
       nameInFile,
       employee,
-      // Against each name the employee HAS: a missing English name is no name, not a match.
-      nameDiffers:
-        employee !== null &&
-        Math.max(
-          ...[employee.fullNameAr, employee.fullNameEn ?? '']
-            .filter((name) => name.trim() !== '')
-            .map((name) => nameLikeness(nameInFile, name)),
-          0,
-        ) < NAME_LIKENESS_FLOOR,
+      nameDiffers,
+      rivalCodes: rivals,
     };
   });
 
@@ -272,6 +299,8 @@ export const countByStatus = (rows: readonly PhotoRow[]): Record<PhotoRowStatus,
     duplicate: 0,
     unsupported: 0,
     excluded: 0,
+    ambiguous: 0,
+    unconfirmed: 0,
   };
   for (const row of rows) counts[row.status] += 1;
   return counts;

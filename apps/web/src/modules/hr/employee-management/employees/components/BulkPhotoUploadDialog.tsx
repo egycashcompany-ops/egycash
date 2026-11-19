@@ -163,13 +163,20 @@ const PhotoRowView = memo(function PhotoRowView({
         return { text: t('employees.photoBatch.unsupported'), tone: 'bad' };
       case 'excluded':
         return { text: t('employees.photoBatch.excluded'), tone: 'muted' };
+      case 'ambiguous':
+        return {
+          text: t('employees.photoBatch.ambiguous', { codes: row.rivalCodes.join('، ') }),
+          tone: 'bad',
+        };
+      case 'unconfirmed':
+        return { text: t('employees.photoBatch.unconfirmed'), tone: 'bad' };
     }
   })();
   return (
     <tr data-photo-row={row.status}>
       <td className="px-2 py-1.5">
         {/* Only a photo that names an employee can be left out or put back; the rest never go. */}
-        {row.employee !== null && row.status !== 'unsupported' && (
+        {(row.status === 'ready' || row.status === 'duplicate' || row.status === 'excluded') && (
           <input
             type="checkbox"
             aria-label={t('employees.photoBatch.include', { name: row.name })}
@@ -465,6 +472,7 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
               // Reading a dropped folder is part of finding the photos: «Upload» waits for it.
               lookups.current += 1;
               setLooking(true);
+              setNotice(null);
               void filesOfDrop(e.dataTransfer.items)
                 .then(async ({ files, skipped }) => {
                   await take(files.length > 0 ? files : plain);
@@ -539,6 +547,11 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
                 {differing > 0 && (
                   <span className="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                     {t('employees.photoBatch.countNameDiffers', { n: differing })}
+                  </span>
+                )}
+                {counts.ambiguous + counts.unconfirmed > 0 && (
+                  <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                    {t('employees.photoBatch.countRename', { n: counts.ambiguous + counts.unconfirmed })}
                   </span>
                 )}
                 {counts.unknownCode + counts.noCode > 0 && (

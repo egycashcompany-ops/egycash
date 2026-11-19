@@ -67,7 +67,8 @@ its entry here in the same PR.
     or a whole folder, or drop them. The code in each name decides who the photo is for. Arabic digits
     count, a code missing one or two leading zeros is completed, and an external person's code
     (`EX-2900`) is read whole. The name in the file only flags a file whose name does not look like
-    the matched employee.
+    the matched employee. A name holding codes of two different people, or a zero-completed code the
+    name does not confirm, is held for renaming, never guessed.
   - A table shows, before anything is sent, what each file will do: ready (replacing the current
     photo), no code, no employee with that code, two files for one employee, or not an image the
     profile takes.

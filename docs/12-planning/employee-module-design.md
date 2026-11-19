@@ -197,8 +197,13 @@ New sidebar app **Employees** (dynamic-nav application, peer of Recruitment):
   - **The code decides.** Each file's name is read for a code: every run of digits, longest first,
     with Arabic-Indic digits read as ASCII; a word of letters and digits (an external person's
     `EX-2900`) is tried first. A run one or two digits shorter than a code (7 digits) is also tried
-    with the leading zeros a spreadsheet drops; a shorter one (a copy's «(2)») is not, and a run longer
-    than any code (20) is not asked about. `POST /hr/employees/codes/lookup` answers which employees
+    with the leading zeros a spreadsheet drops — unless the name already holds a full-length number
+    (a camera's `20231105_101845` is no `0101845`); a shorter one (a copy's «(2)») is not padded, and
+    a run longer than any code (20) is not asked about.
+  - **Never a guess.** A name whose codes match two different people is held («الاسم فيه أكواد
+    لأكثر من شخص») and not sent. A match made only by putting zeros back is sent only when the name in
+    the file confirms it; otherwise it is held too. Both ask for the file to be renamed — the owner
+    replaces every photo, so a photo on the wrong person is the one mistake that must not happen. `POST /hr/employees/codes/lookup` answers which employees
     hold the codes, within the photo write's own scope; a code nobody in reach holds is simply absent.
     Files join the table only once their lookup has answered, so a failed lookup leaves nothing
     claiming «no employee», and the same files can be picked again.

@@ -7,7 +7,7 @@
 // A photo with NO face found is not lost: it goes as it is, as the profile's dialog keeps it, and
 // its row says so, so HR can look at it and crop it by hand from the profile. When it is larger
 // than the server accepts (5 MB) it is shrunk first, in its own proportions, so a camera's photo
-// never needs editing before it is picked.
+// never needs editing before it is picked. A picture that cannot be opened at all fails instead.
 import { EMPLOYEE_PHOTO_MAX_MB, EMPLOYEE_PHOTO_MIME_TYPES } from '@ecms/contracts';
 import { cropToFile, locateFace, readyFaceSearch } from '../face-crop/a4-face';
 
@@ -68,18 +68,29 @@ const shrink = async (file: File, name: string): Promise<File> => {
 /**
  * The photo to upload for one employee: cut to the card's frame around the face, else the photo as
  * it is (shrunk when over the limit). `name` names the file sent — the employee's code.
+ *
+ * A picture this browser cannot open at all — a copy cut short, a HEIC renamed `.jpg` — throws, and
+ * its row fails: sent as it is, it would replace a photo that works with one that shows nothing.
  */
+/** The picture could not be opened in this browser: its row fails and nothing is sent. */
+export class UnreadablePhotoError extends Error {
+  constructor() {
+    super('the picture could not be opened');
+    this.name = 'UnreadablePhotoError';
+  }
+}
+
 export const prepareBatchPhoto = async (file: File, name: string): Promise<PreparedPhoto> => {
+  let located: Awaited<ReturnType<typeof locateFace>>;
   try {
-    const { sheet, crop } = await locateFace(file);
-    if (crop !== null) {
-      const cut = await cropToFile(sheet, crop, `${name}.jpg`);
-      return { file: cut, cropped: true, noFace: false, shrunk: false };
-    }
+    located = await locateFace(file);
   } catch {
-    // A picture the face search could not read still goes, uncropped, under the ordinary rules.
-    // (The search itself is loaded before the run — `readyFaceSearch` — so its failing to load
-    // stops the run instead of sending every photo uncropped.)
+    throw new UnreadablePhotoError();
+  }
+  const { sheet, crop } = located;
+  if (crop !== null) {
+    const cut = await cropToFile(sheet, crop, `${name}.jpg`);
+    return { file: cut, cropped: true, noFace: false, shrunk: false };
   }
   if (fitsAsIs(file)) return { file, cropped: false, noFace: true, shrunk: false };
   return { file: await shrink(file, name), cropped: false, noFace: true, shrunk: true };

@@ -19,6 +19,12 @@ export const asciiDigits = (value: string): string =>
 export const EMPLOYEE_CODE_MIN_DIGITS = 7;
 /** The shortest run of digits given back its dropped zeros: a code that lost one or two of them. */
 export const PADDED_FROM_DIGITS = EMPLOYEE_CODE_MIN_DIGITS - 2;
+/**
+ * The longest any code can be (`EXTERNAL_EMPLOYEE_CODE_PATTERN`: 20 characters; an employee's is at
+ * most 12 digits). A longer run of digits — a scanner's time stamp — can be nobody's code, and
+ * asking about it would only make the server refuse the whole question.
+ */
+export const LONGEST_CODE = 20;
 
 export interface ParsedPhotoName {
   /** The codes the name could mean, most likely first. */
@@ -36,16 +42,21 @@ export interface ParsedPhotoName {
  * also tried with the zeros a spreadsheet drops in front of it (`101469` → `0101469`), because no
  * code is that short, so the padded one is the only thing it can mean. A shorter run — the `2` of a
  * copy's «(2)» — is no code that lost its zeros, so it is not padded. A whole word of letters, digits and
- * dashes is a candidate too, for the external people's codes.
+ * dashes that holds a letter is tried FIRST: an external person's code (`EX-2900`), more exact than
+ * the digits inside it.
  */
 export const parsePhotoName = (fileName: string): ParsedPhotoName => {
   const stem = asciiDigits(fileName.replace(/\.[^./\\]+$/u, '')).trim();
-  const runs = [...stem.matchAll(/\d+/gu)].map((m) => m[0]);
+  const runs = [...stem.matchAll(/\d+/gu)].map((m) => m[0]).filter((run) => run.length <= LONGEST_CODE);
   const candidates: string[] = [];
   const padded: string[] = [];
   const add = (code: string): void => {
     if (code !== '' && !candidates.includes(code)) candidates.push(code);
   };
+  const words = stem
+    .split(/[\s_+]+/u)
+    .filter((word) => /^[A-Za-z0-9-]{2,20}$/u.test(word) && /\d/u.test(word));
+  for (const word of words) if (/[A-Za-z]/u.test(word)) add(word);
   for (const run of [...runs].sort((a, b) => b.length - a.length)) {
     add(run);
     if (run.length >= PADDED_FROM_DIGITS && run.length < EMPLOYEE_CODE_MIN_DIGITS) {
@@ -54,11 +65,10 @@ export const parsePhotoName = (fileName: string): ParsedPhotoName => {
       add(full);
     }
   }
-  for (const word of stem.split(/[\s_+]+/u)) {
-    if (/^[A-Za-z0-9-]{2,20}$/u.test(word) && /\d/u.test(word)) add(word);
-  }
+  for (const word of words) add(word);
   const nameInFile = stem
-    .replace(/[A-Za-z]*\d[A-Za-z0-9-]*/gu, ' ')
+    // A code with its letters (`EX-2900`), or bare digits: neither is part of the name.
+    .replace(/[A-Za-z][A-Za-z-]*\d[A-Za-z0-9-]*|\d[A-Za-z0-9-]*/gu, ' ')
     .replace(/[_\-.+()[\]{}#،,]+/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();
@@ -124,7 +134,7 @@ export type PhotoRowStatus =
   | 'excluded';
 
 export interface PhotoFileInput {
-  /** Unique within the batch (the path when a folder was picked, else the name and size). */
+  /** Unique within the batch: the same file, however it was picked, has the same key. */
   key: string;
   name: string;
   type: string;
@@ -152,15 +162,15 @@ export const codesToLookUp = (files: readonly PhotoFileInput[]): string[] => [
 ];
 
 /**
- * Each file's row: matched by code, then checked. `excluded` holds the keys the person unticked;
- * duplicates are counted among the files still included, so unticking all but one clears them.
+ * Each file's row, on its own: matched by code, then checked. `excluded` holds the keys the person
+ * unticked. Duplicates are marked after, by `markDuplicates` — `planPhotoBatch` does both.
  */
-export const planPhotoBatch = (
+export const planFiles = (
   files: readonly PhotoFileInput[],
   matches: ReadonlyMap<string, EmployeeCodeMatchDto>,
   excluded: ReadonlySet<string>,
-): PhotoRow[] => {
-  const rows: PhotoRow[] = files.map((file) => {
+): PhotoRow[] =>
+  files.map((file) => {
     const parsed = parsePhotoName(file.name);
     const hit = parsed.candidates.find((code) => matches.has(code)) ?? null;
     const employee = hit === null ? null : (matches.get(hit) ?? null);
@@ -192,18 +202,39 @@ export const planPhotoBatch = (
         ) < NAME_LIKENESS_FLOOR,
     };
   });
+
+/**
+ * Two included files for one employee: both are marked, until all but one are left out. A file
+ * already uploaded in this run (`settled`) competes with nothing — a corrected photo picked after
+ * it is simply the next one sent, and replaces it. Rows that are not marked are returned as they
+ * were, so a memoized row is not drawn again.
+ */
+export const markDuplicates = (
+  rows: readonly PhotoRow[],
+  settled: ReadonlySet<string> = new Set(),
+): PhotoRow[] => {
   const perEmployee = new Map<string, number>();
+  const competes = (row: PhotoRow): boolean =>
+    row.status === 'ready' && row.employee !== null && !settled.has(row.key);
   for (const row of rows) {
-    if (row.status === 'ready' && row.employee !== null) {
+    if (competes(row) && row.employee !== null) {
       perEmployee.set(row.employee.id, (perEmployee.get(row.employee.id) ?? 0) + 1);
     }
   }
   return rows.map((row) =>
-    row.status === 'ready' && row.employee !== null && (perEmployee.get(row.employee.id) ?? 0) > 1
+    competes(row) && row.employee !== null && (perEmployee.get(row.employee.id) ?? 0) > 1
       ? { ...row, status: 'duplicate' }
       : row,
   );
 };
+
+/** Each file's row, duplicates marked: `planFiles` then `markDuplicates`. */
+export const planPhotoBatch = (
+  files: readonly PhotoFileInput[],
+  matches: ReadonlyMap<string, EmployeeCodeMatchDto>,
+  excluded: ReadonlySet<string>,
+  settled: ReadonlySet<string> = new Set(),
+): PhotoRow[] => markDuplicates(planFiles(files, matches, excluded), settled);
 
 /** How many rows are in each state — the summary over the table. */
 export const countByStatus = (rows: readonly PhotoRow[]): Record<PhotoRowStatus, number> => {

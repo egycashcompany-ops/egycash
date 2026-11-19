@@ -6,6 +6,8 @@ import {
   asciiDigits,
   codesToLookUp,
   countByStatus,
+  LONGEST_CODE,
+  markDuplicates,
   nameLikeness,
   NAME_LIKENESS_FLOOR,
   parsePhotoName,
@@ -52,6 +54,18 @@ describe('reading a code out of a file name', () => {
   it('tries every run of digits, longest first, and an external code word', () => {
     expect(parsePhotoName('2023 0101469 محمد.jpg').candidates.slice(0, 2)).toEqual(['0101469', '2023']);
     expect(parsePhotoName('EXT-12 Ahmed.jpg').candidates).toContain('EXT-12');
+  });
+
+  it('tries an external code before the digits inside it, and keeps it out of the name', () => {
+    const parsed = parsePhotoName('EX-2900 احمد محمد.jpg');
+    expect(parsed.candidates[0]).toBe('EX-2900');
+    expect(parsed.nameInFile).toBe('احمد محمد');
+  });
+
+  it('asks about no run of digits longer than any code can be', () => {
+    const stamp = '2023110514302212345678901234567';
+    expect(stamp.length).toBeGreaterThan(LONGEST_CODE);
+    expect(parsePhotoName(`0101469 أحمد ${stamp}.jpg`).candidates).toEqual(['0101469']);
   });
 
   it('finds no code in a name without digits', () => {
@@ -117,6 +131,17 @@ describe('the batch plan', () => {
     ]);
     const kept = planPhotoBatch(files, matches, new Set(['0101469 محمد (2).jpg']));
     expect(kept.map((r) => r.status)).toEqual(['ready', 'excluded']);
+  });
+
+  it('lets a corrected photo follow one already uploaded, without a duplicate', () => {
+    const files = [file('0101469 محمد.jpg'), file('0101469 محمد مصطفى.jpg')];
+    const rows = planPhotoBatch(files, matches, new Set(), new Set(['0101469 محمد.jpg']));
+    expect(rows.map((r) => r.status)).toEqual(['ready', 'ready']);
+  });
+
+  it('hands back the rows it does not mark as they were', () => {
+    const rows = planPhotoBatch([file('0102000 أحمد.jpg')], matches, new Set());
+    expect(markDuplicates(rows)[0]).toBe(rows[0]);
   });
 
   it('matches a code whose leading zero was dropped, and says so', () => {

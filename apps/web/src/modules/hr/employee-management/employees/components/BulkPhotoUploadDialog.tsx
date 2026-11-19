@@ -14,7 +14,7 @@
 //    after the ones under way.
 //
 // The dialog does not close on a stray click, and asks before closing while photos are going up.
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { type EmployeeCodeMatchDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
@@ -30,11 +30,12 @@ import { EMPLOYEE_PHOTO_ACCEPT, lookupEmployeeCodes, uploadEmployeePhotoFile } f
 import {
   codesToLookUp,
   countByStatus,
-  planPhotoBatch,
+  markDuplicates,
+  planFiles,
   type PhotoFileInput,
   type PhotoRow,
 } from '../lib/photo-batch';
-import { prepareBatchPhoto, readyFaceSearch } from '../lib/photo-prepare';
+import { prepareBatchPhoto, readyFaceSearch, UnreadablePhotoError } from '../lib/photo-prepare';
 import { runQueue } from '../lib/photo-batch-run';
 
 interface PickedFile extends PhotoFileInput {
@@ -48,23 +49,44 @@ type Progress =
   | { state: 'done'; cropped: boolean; shrunk: boolean }
   | { state: 'failed'; message: string };
 
+/**
+ * One key per file however it was reached — a drop, the photos picker or the folder picker give it
+ * different paths (or none), so the path is no part of it.
+ */
 const keyOf = (file: File): string =>
-  `${(file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name}:${String(file.size)}`;
+  `${file.name}:${String(file.size)}:${String(file.lastModified)}`;
 
-/** The files of a drop, folders opened (as the folder picker does). */
-const filesOfDrop = async (items: DataTransferItemList): Promise<File[]> => {
+/** A hidden file — a Mac's «._» companion of each photo, or `.DS_Store` — is no photo. */
+const isHidden = (file: File): boolean => file.name.startsWith('.');
+
+/**
+ * The files of a drop, folders opened (as the folder picker does). An entry the browser cannot
+ * read is skipped, not the whole drop: `skipped` counts them so the person is told.
+ */
+const filesOfDrop = async (items: DataTransferItemList): Promise<{ files: File[]; skipped: number }> => {
   const out: File[] = [];
+  let skipped = 0;
   const walk = async (entry: FileSystemEntry): Promise<void> => {
     if (entry.isFile) {
       const fileEntry = entry as FileSystemFileEntry;
-      out.push(await new Promise<File>((ok, fail) => fileEntry.file(ok, fail)));
+      try {
+        out.push(await new Promise<File>((ok, fail) => fileEntry.file(ok, fail)));
+      } catch {
+        skipped += 1;
+      }
       return;
     }
     if (entry.isDirectory) {
       const reader = (entry as FileSystemDirectoryEntry).createReader();
       // A folder's entries come in pages: read until an empty one.
       for (;;) {
-        const page = await new Promise<FileSystemEntry[]>((ok, fail) => reader.readEntries(ok, fail));
+        let page: FileSystemEntry[];
+        try {
+          page = await new Promise<FileSystemEntry[]>((ok, fail) => reader.readEntries(ok, fail));
+        } catch {
+          skipped += 1;
+          break;
+        }
         if (page.length === 0) break;
         for (const child of page) await walk(child);
       }
@@ -75,7 +97,7 @@ const filesOfDrop = async (items: DataTransferItemList): Promise<File[]> => {
     .map((item) => item.webkitGetAsEntry())
     .filter((entry): entry is FileSystemEntry => entry !== null);
   for (const entry of entries) await walk(entry);
-  return out;
+  return { files: out, skipped };
 };
 
 const TONE = {
@@ -210,38 +232,47 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   const filesInput = useRef<HTMLInputElement>(null);
   const folderInput = useRef<HTMLInputElement>(null);
 
-  const rows = useMemo(() => planPhotoBatch(picked, matches, excluded), [picked, matches, excluded]);
+  // Planned in two steps: each file on its own (only when the picks, answers or ticks change), then
+  // duplicates — where a photo already uploaded competes with nothing, so a corrected one picked
+  // after it can still go. The second step re-runs only when another photo is done.
+  const planned = useMemo(() => planFiles(picked, matches, excluded), [picked, matches, excluded]);
+  const doneKeys = [...progress].filter(([, p]) => p.state === 'done').map(([key]) => key).join('\n');
+  const settled = useMemo(() => new Set(doneKeys === '' ? [] : doneKeys.split('\n')), [doneKeys]);
+  const rows = useMemo(() => markDuplicates(planned, settled), [planned, settled]);
   const counts = countByStatus(rows);
   const byKey = useMemo(() => new Map(picked.map((p) => [p.key, p])), [picked]);
-  const done = [...progress.values()].filter((p) => p.state === 'done').length;
-  const failed = rows.filter((row) => progress.get(row.key)?.state === 'failed');
-  const pending = rows.filter(
-    (row) => row.status === 'ready' && progress.get(row.key)?.state !== 'done',
-  );
+  const done = settled.size;
+  // What the upload button sends: every included, matched photo not yet up — a failed one again
+  // with the rest. A failed photo the person unticked, or that is now one of two, is not sent.
+  const pending = rows.filter((row) => row.status === 'ready' && !settled.has(row.key));
+  const failedCount = pending.filter((row) => progress.get(row.key)?.state === 'failed').length;
   const differing = rows.filter((row) => row.status === 'ready' && row.nameDiffers).length;
   const replacing = rows.filter((row) => row.status === 'ready' && row.employee?.photoFileId !== null).length;
 
   /**
-   * Take a pick (or a drop): photos only, each once, then ask who holds the new files' codes. The
-   * answer is ADDED to what is known, so an earlier pick answered late never undoes a later one.
+   * Take a pick (or a drop): photos only, each once. The new files join the table only once the
+   * server has said who holds their codes — so no row ever reads «no employee» for a code nobody
+   * was asked about, and a pick whose question failed can simply be picked again. The answer is
+   * ADDED to what is known, so an earlier pick answered late never undoes a later one.
    */
   const take = async (files: readonly File[]): Promise<void> => {
     const seen = new Set(picked.map((p) => p.key));
     const fresh = files
+      .filter((file) => !isHidden(file))
       .filter((file) => file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/iu.test(file.name))
       .map((file) => ({ key: keyOf(file), name: file.name, type: file.type, file }))
       .filter((p) => !seen.has(p.key));
     if (fresh.length === 0) return;
-    setPicked((now) => {
-      const have = new Set(now.map((p) => p.key));
-      return [...now, ...fresh.filter((p) => !have.has(p.key))];
-    });
     lookups.current += 1;
     setLooking(true);
     setNotice(null);
     try {
       const found = await lookupEmployeeCodes(codesToLookUp(fresh));
       setMatches((now) => new Map([...now, ...found.map((m) => [m.code, m] as const)]));
+      setPicked((now) => {
+        const have = new Set(now.map((p) => p.key));
+        return [...now, ...fresh.filter((p) => !have.has(p.key))];
+      });
     } catch (error) {
       setNotice(errorMessage(error, locale));
     } finally {
@@ -249,6 +280,20 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
       if (lookups.current === 0) setLooking(false);
     }
   };
+
+  // Leaving with the dialog open — the browser's Back, another page — is a stop: the photos under
+  // way finish and no new one starts, as «Stop and close» does. And while it is open, a file let go
+  // anywhere but the drop zone does nothing (the browser would open it in place of the app).
+  useEffect(() => {
+    const ignore = (e: DragEvent): void => e.preventDefault();
+    window.addEventListener('dragover', ignore);
+    window.addEventListener('drop', ignore);
+    return () => {
+      stop.current = true;
+      window.removeEventListener('dragover', ignore);
+      window.removeEventListener('drop', ignore);
+    };
+  }, []);
 
   const toggle = useCallback(
     (key: string): void =>
@@ -279,7 +324,11 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
       return;
     }
     for (const row of list) mark(row.key, { state: 'waiting' });
-    const leave = (e: BeforeUnloadEvent): void => e.preventDefault();
+    const leave = (e: BeforeUnloadEvent): void => {
+      e.preventDefault();
+      // Older browsers show the prompt only when `returnValue` is set.
+      e.returnValue = '';
+    };
     window.addEventListener('beforeunload', leave);
     try {
       await runQueue(
@@ -297,7 +346,13 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
             // The run is the person's own long task: while it works, their session is not idle.
             markActivity();
           } catch (error) {
-            mark(row.key, { state: 'failed', message: errorMessage(error, locale) });
+            mark(row.key, {
+              state: 'failed',
+              message:
+                error instanceof UnreadablePhotoError
+                  ? t('employees.photoBatch.unreadable')
+                  : errorMessage(error, locale),
+            });
           }
         },
         { concurrency: 2, shouldStop: () => stop.current },
@@ -305,6 +360,14 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
     } finally {
       window.removeEventListener('beforeunload', leave);
       setRunning(false);
+      // The run is over: a «stop and close?» still open would describe a run that has ended.
+      setConfirmClose(false);
+      // Refreshed when the last photo has landed — also after «Stop and close», whose photos under
+      // way land after the dialog has gone.
+      if (uploadedAny.current) {
+        void qc.invalidateQueries({ queryKey: ['hr', 'employees'] });
+        void qc.invalidateQueries({ queryKey: ['hr', 'employeePhotos'] });
+      }
       setProgress((now) => {
         // Stopped before their turn: back to ready, not «waiting» for ever.
         const next = new Map(now);
@@ -353,10 +416,6 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
               <Button variant="danger" onClick={() => (stop.current = true)}>
                 {t('employees.photoBatch.stop')}
               </Button>
-            ) : failed.length > 0 ? (
-              <Button onClick={() => void send(failed)}>
-                {t('employees.photoBatch.retry', { n: failed.length })}
-              </Button>
             ) : (
               <Button
                 disabled={pending.length === 0 || looking}
@@ -388,9 +447,12 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
               if (running) return;
               // Read now: the drop's lists are emptied once this handler returns.
               const plain = [...e.dataTransfer.files];
-              void filesOfDrop(e.dataTransfer.items).then((files) =>
-                take(files.length > 0 ? files : plain),
-              );
+              void filesOfDrop(e.dataTransfer.items)
+                .then(async ({ files, skipped }) => {
+                  await take(files.length > 0 ? files : plain);
+                  if (skipped > 0) setNotice(t('employees.photoBatch.dropSkipped', { n: skipped }));
+                })
+                .catch((error: unknown) => setNotice(errorMessage(error, locale)));
             }}
           >
             <p className="text-slate-600 dark:text-slate-300">{t('employees.photoBatch.drop')}</p>
@@ -427,6 +489,10 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
             />
           </div>
 
+          {looking && rows.length === 0 && (
+            <p className="text-sm text-slate-500">{t('employees.photoBatch.looking')}</p>
+          )}
+
           {notice !== null && (
             <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
               {notice}
@@ -457,6 +523,11 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
                 {counts.duplicate > 0 && (
                   <span className="rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
                     {t('employees.photoBatch.countDuplicate', { n: counts.duplicate })}
+                  </span>
+                )}
+                {failedCount > 0 && (
+                  <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                    {t('employees.photoBatch.countFailed', { n: failedCount })}
                   </span>
                 )}
                 {counts.unsupported > 0 && (

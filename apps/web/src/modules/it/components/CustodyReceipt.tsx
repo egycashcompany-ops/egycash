@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import {
   type ItAssetAssignmentDto,
   type ItCustodyReceiptDocumentDto,
+  type ItCustodyReceiptDto,
   type ItCustodyReceiptSignedCopyDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -34,7 +35,32 @@ import {
   useItCustodyReceipt,
   useUploadReceiptSignedCopy,
 } from '../api/it-queries';
-import { printCustodyReceipt, type ReceiptWindowLabels } from '../lib/custody-receipt-print';
+import {
+  paperCustodian,
+  printCustodyReceipt,
+  type ReceiptWindowLabels,
+} from '../lib/custody-receipt-print';
+
+/**
+ * The signed copy's dialog says whose paper it is: the signer — and on a department's paper
+ * (2026-11-19), the department and the place he signed for.
+ */
+const signedCopyDescription = (
+  t: (key: string, params?: Record<string, string | number>) => string,
+  paper: { employeeName: string | null; custodian?: ItCustodyReceiptDto['custodian'] } | undefined,
+): string => {
+  if (paper === undefined) return '';
+  const custodian = paperCustodian(paper);
+  const signer = paper.employeeName ?? '';
+  if (custodian === null) return signer;
+  const place = t('it.custody.department.heldAt', {
+    department: custodian.department ?? '—',
+    location: custodian.location ?? '—',
+  });
+  return signer === ''
+    ? place
+    : `${place} — ${t('it.custody.department.signedBy', { name: signer })}`;
+};
 
 /** What the signed copy may be: a phone photo of the paper, or the office scanner's PDF. */
 export const RECEIPT_COPY_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
@@ -50,7 +76,13 @@ const iconButton =
 export interface ReceiptStore {
   useReceipt: (id: string | null) => {
     data:
-      { employeeName: string | null; signedCopy: ItCustodyReceiptSignedCopyDto | null } | undefined;
+      | {
+          employeeName: string | null;
+          signedCopy: ItCustodyReceiptSignedCopyDto | null;
+          /** A department's paper (2026-11-19): the department and the place it is for. */
+          custodian?: ItCustodyReceiptDto['custodian'];
+        }
+      | undefined;
     isPending: boolean;
   };
   useUploadSignedCopy: () => {
@@ -257,7 +289,7 @@ export const SignedCopyDialog = ({
         onClose={onClose}
         size="xl"
         title={t('it.custody.receipt.signedTitle')}
-        description={receipt.data?.employeeName ?? ''}
+        description={signedCopyDescription(t, receipt.data)}
         footer={
           <>
             <Button variant="secondary" onClick={onClose}>

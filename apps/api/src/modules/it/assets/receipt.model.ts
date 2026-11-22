@@ -9,6 +9,12 @@
 // employee signed; reprinting it after the asset was edited (its specifications, its accessories)
 // or the employee's title changed must reproduce that paper — not compose a different one under
 // the same signature.
+//
+// A DEPARTMENT CUSTODY paper (2026-11-19) — «ليكون في عهدة إدارة … بموقع …» — names the department
+// and the place in `custodian`, and its `employeeId` is the SIGNER: the department's responsible
+// person, whose name, job and identity line the paper prints as it prints an employee's. Nothing
+// reads `employeeId` as the holder (the mapper, the print, the signed copy's name and
+// `ix_employee_issued` only), so it stays required and every older paper is what it was.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 import { assetSpecsSchema, type ItAssetSpecsSub } from './asset.model';
@@ -42,12 +48,22 @@ export interface ItCustodyReceiptSignedCopySub {
   uploadedAt: Date;
 }
 
+/** The department and the place a department custody paper was written for — a snapshot. */
+export interface ItCustodyReceiptCustodianSub {
+  departmentId: Types.ObjectId;
+  /** Null when the department could not be named when the paper was written. */
+  departmentName: { ar: string; en: string } | null;
+  locationId: Types.ObjectId;
+  locationName: { ar: string; en: string } | null;
+}
+
 export interface ItCustodyReceiptDoc extends BaseDocFields {
   /**
    * The paper's own number (`EGYCASH-IT-F-14-0001`). Optional in the type because receipts from
    * before numbering have none until they are printed again.
    */
   formNumber?: number | null;
+  /** The SIGNER — the employee who holds the devices, or a department's responsible person. */
   employeeId: Types.ObjectId;
   employeeCode: string | null;
   employeeName: string | null;
@@ -68,6 +84,11 @@ export interface ItCustodyReceiptDoc extends BaseDocFields {
   branchId: Types.ObjectId;
   lines: ItCustodyReceiptLineSub[];
   signedCopy: ItCustodyReceiptSignedCopySub | null;
+  /**
+   * A department custody paper's department and place. ABSENT on every receipt before 2026-11-19,
+   * null on an employee's paper.
+   */
+  custodian?: ItCustodyReceiptCustodianSub | null;
 }
 
 const lineSchema = new Schema<ItCustodyReceiptLineSub>(
@@ -99,6 +120,18 @@ const signedCopySchema = new Schema<ItCustodyReceiptSignedCopySub>(
   { _id: false },
 );
 
+const nameSchema = (): Schema => new Schema({ ar: String, en: String }, { _id: false });
+
+const custodianSchema = new Schema<ItCustodyReceiptCustodianSub>(
+  {
+    departmentId: { type: Schema.Types.ObjectId, required: true },
+    departmentName: { type: nameSchema(), default: null },
+    locationId: { type: Schema.Types.ObjectId, required: true },
+    locationName: { type: nameSchema(), default: null },
+  },
+  { _id: false },
+);
+
 const receiptSchema = new Schema<ItCustodyReceiptDoc>(
   {
     formNumber: { type: Number, default: null },
@@ -123,6 +156,7 @@ const receiptSchema = new Schema<ItCustodyReceiptDoc>(
     branchId: { type: Schema.Types.ObjectId, required: true },
     lines: { type: [lineSchema], required: true },
     signedCopy: { type: signedCopySchema, default: null },
+    custodian: { type: custodianSchema, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

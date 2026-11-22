@@ -54,6 +54,7 @@ import {
 } from '@ecms/contracts';
 import { EGYCASH_LOGO } from '../../gold/lib/egycash-logo';
 import { openPrintWindow, writePrintWindow } from '../../../shared/lib/print-window';
+import { bareDepartmentName } from './custody-holder';
 
 /** The words the tab around the paper shows, in the reader's language — the paper is Arabic. */
 export interface ReceiptWindowLabels {
@@ -375,21 +376,43 @@ export const RECEIPT_HEAD = `${RECEIPT_LETTERHEAD}
 /**
  * The undertaking, «وهذا إقرار مني بذلك», and «المقر بما فيه» — what the employee signs. The
  * undertaking agrees with what the paper hands over, and is the form's own masculine unless the
- * paper says otherwise.
+ * paper says otherwise. On a department's paper (2026-11-19) the signer signs FOR the department:
+ * `onBehalfOf` adds «عن إدارة: …» under his name. The undertaking is not paraphrased — the
+ * responsible person does undertake it.
  */
 export const receiptClosing = (
   employeeName: string | null,
   issuedAt: string,
   gender: ItemGender = 'masculine',
+  onBehalfOf: string | null = null,
 ): string =>
   `<p class="undertaking">${RECEIPT_AGREEMENT[gender].undertaking}</p>
   <p class="oath">وهذا إقرار مني بذلك ،،،</p>
   <div class="signs">
     <div class="by">المقر بما فيه</div>
-    <div>الاسم: ${esc(signatureName(employeeName))}</div>
+    <div>الاسم: ${esc(signatureName(employeeName))}</div>${
+      onBehalfOf === null ? '' : `\n    <div>عن إدارة: ${esc(onBehalfOf)}</div>`
+    }
     <div>التوقيع:</div>
     <div>التاريخ: ${receiptDate(issuedAt)}</div>
   </div>`;
+
+/**
+ * A DEPARTMENT CUSTODY paper's department and place, as the paper writes them — the department
+ * without a leading «إدارة» (the paper writes «إدارة …» itself). Null on an employee's paper.
+ */
+export const paperCustodian = (
+  paper: Partial<Pick<ItCustodyReceiptDocumentDto, 'custodian'>>,
+): { department: string | null; location: string | null } | null => {
+  const custodian = paper.custodian ?? null;
+  if (custodian === null) return null;
+  const department = custodian.departmentName?.ar.trim() ?? '';
+  const location = custodian.locationName?.ar.trim() ?? '';
+  return {
+    department: department === '' ? null : bareDepartmentName(department),
+    location: location === '' ? null : location,
+  };
+};
 
 /** The footer: «EGYCASH | IT Dept. |» with the paper's number, and the red block beside it. */
 export const receiptFooter = (number: string, block: string): string =>
@@ -410,15 +433,18 @@ export const receiptSheet = ({
   body,
   block,
   gender = 'masculine',
+  onBehalfOf = null,
 }: {
   paper: Pick<ItCustodyReceiptDocumentDto, 'formNumber' | 'employeeName' | 'issuedAt'>;
   body: string;
   block: string;
   gender?: ItemGender;
+  /** A department's paper: the department the signer signs for. */
+  onBehalfOf?: string | null;
 }): string => `<section class="page">
   ${RECEIPT_HEAD}
   ${body}
-  ${receiptClosing(paper.employeeName, paper.issuedAt, gender)}
+  ${receiptClosing(paper.employeeName, paper.issuedAt, gender, onBehalfOf)}
   ${receiptFooter(receiptNumberLabel(paper.formNumber), block)}
 </section>`;
 
@@ -436,13 +462,23 @@ const page = (
   const accessories = line.accessories.filter((item) => item.trim() !== '');
   const gender = kindGender(deviceKind(line));
   const words = RECEIPT_AGREEMENT[gender];
+  // A department custody paper (2026-11-19): the responsible person acknowledges FOR the
+  // department — «بصفتي المسؤول عن إدارة …» — that the device is «في عهدة إدارة … بموقع …».
+  const custodian = paperCustodian(paper);
+  const capacity =
+    custodian === null ? '' : `، بصفتي المسؤول عن إدارة ${fill(custodian.department, 24)}`;
+  const heldAt =
+    custodian === null
+      ? ''
+      : ` ليكون في عهدة إدارة ${fill(custodian.department, 24)} بموقع ${fill(custodian.location, 20)}`;
   return receiptSheet({
     paper,
-    body: `<p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)}، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ` ${words.specs}` : '.'}</p>
+    body: `<p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)}، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)}${capacity} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${heldAt}${groups.length > 0 ? ` ${words.specs}` : '.'}</p>
   ${groups.length > 0 ? specTable(groups) : ''}
   ${accessories.length > 0 ? `<p class="lead">${words.accessories}</p><div class="items">${accessoryList(accessories)}</div>` : ''}`,
     block: count > 1 ? `${String(index + 1)}/${String(count)}` : '',
     gender,
+    onBehalfOf: custodian === null ? null : (custodian.department ?? ''),
   });
 };
 
@@ -559,15 +595,21 @@ export const receiptDocument = ({
   sheets,
   style = '',
 }: {
-  paper: Pick<ItCustodyReceiptDocumentDto, 'formNumber' | 'employeeName'>;
+  paper: Pick<ItCustodyReceiptDocumentDto, 'formNumber' | 'employeeName'> &
+    Partial<Pick<ItCustodyReceiptDocumentDto, 'custodian'>>;
   labels: Pick<ReceiptWindowLabels, 'print' | 'close'>;
   sheets: string;
   /** Rules for this paper's own parts, after the shared ones. */
   style?: string;
 }): string => {
   const number = receiptNumberLabel(paper.formNumber);
+  const custodian = paperCustodian(paper);
   return paperDocument({
-    title: `إقرار استلام ${number} — ${paper.employeeName ?? ''}`,
+    // A department's paper is titled by the department it is for, not by its signer.
+    title:
+      custodian === null
+        ? `إقرار استلام ${number} — ${paper.employeeName ?? ''}`
+        : `إقرار استلام ${number} — إدارة ${custodian.department ?? ''}`,
     number,
     labels,
     sheets,

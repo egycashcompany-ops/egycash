@@ -9,8 +9,10 @@ import {
   type ItDashboardQuery,
 } from '@ecms/contracts';
 import { getDirectoryEmployees, type DirectoryEmployee } from '../../../platform/directory';
+import { departmentRepository } from '../../../platform/organization';
 import { settingsService } from '../../../platform/settings';
 import { type ScopeSelector } from '../../../shared/types';
+import { itLocationRepository } from '../locations/location.repository';
 import { itAssetRepository } from '../assets/asset.repository';
 import { itAssetEventRepository } from '../assets/asset-event.repository';
 import {
@@ -162,13 +164,27 @@ class ItDashboardService {
     const employeeIds = [
       ...new Set(movements.flatMap((m) => (m.employeeId === null ? [] : [m.employeeId]))),
     ];
-    const [assets, employees] = await Promise.all([
+    // A department holder's line names the department and its place — one read of each, and none
+    // at all on a panel with no department custody (2026-11-19).
+    const departmentIds = [
+      ...new Set(movements.flatMap((m) => (m.departmentId === null ? [] : [m.departmentId]))),
+    ];
+    const locationIds = [
+      ...new Set(movements.flatMap((m) => (m.locationId === null ? [] : [m.locationId]))),
+    ];
+    const [assets, employees, departments, locations] = await Promise.all([
       unread.length === 0 ? [] : itAssetRepository.findByIdsSystem(unread),
       employeeIds.length === 0
         ? new Map<string, DirectoryEmployee>()
         : getDirectoryEmployees(employeeIds),
+      departmentIds.length === 0 ? [] : departmentRepository.findByIdsSystem(departmentIds),
+      locationIds.length === 0 ? [] : itLocationRepository.findByIdsSystem(locationIds),
     ]);
     for (const asset of assets) known.set(String(asset._id), asset);
+    const nameOf = (row: { _id: unknown; name: { ar: string; en: string } }) =>
+      [String(row._id), { ar: row.name.ar, en: row.name.en }] as const;
+    const departmentNames = new Map(departments.map(nameOf));
+    const locationNames = new Map(locations.map(nameOf));
 
     return {
       items: movements.flatMap((movement) => {
@@ -176,6 +192,14 @@ class ItDashboardService {
           movement,
           known.get(movement.assetId),
           movement.employeeId === null ? undefined : employees.get(movement.employeeId),
+          {
+            departmentName:
+              movement.departmentId === null
+                ? undefined
+                : departmentNames.get(movement.departmentId),
+            locationName:
+              movement.locationId === null ? undefined : locationNames.get(movement.locationId),
+          },
         );
         return item === null ? [] : [item];
       }),

@@ -33,9 +33,18 @@ const mocks = vi.hoisted(() => ({
   memosByIds: vi.fn(),
   assetsByIds: vi.fn(),
   employees: vi.fn(),
+  departmentsByIds: vi.fn(),
+  locationsByIds: vi.fn(),
 }));
 
 const ready = () => vi.fn(async () => undefined);
+
+vi.mock('../../../platform/organization', () => ({
+  departmentRepository: { findByIdsSystem: mocks.departmentsByIds },
+}));
+vi.mock('../locations/location.repository', () => ({
+  itLocationRepository: { findByIdsSystem: mocks.locationsByIds },
+}));
 
 vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unitOfWork }));
 vi.mock('../../../platform/audit', () => ({ auditService: { record: mocks.audit } }));
@@ -467,6 +476,24 @@ describe('the ledger', () => {
     });
   });
 
+  // «صرف لإدارة» (2026-11-19): each id beside its type, so the field's partial index serves it.
+  it('finds the issues to a department, to a place, and those a person signed for', async () => {
+    const DEPARTMENT = String(new Types.ObjectId());
+    const PLACE = String(new Types.ObjectId());
+    const SIGNER = String(new Types.ObjectId());
+    await itConsumableService.listMovements(
+      { ...page, departmentId: DEPARTMENT, locationId: PLACE, responsibleEmployeeId: SIGNER },
+      scope,
+    );
+    expect(params().filter).toEqual({
+      $and: [
+        { departmentId: { $eq: new Types.ObjectId(DEPARTMENT), $type: 'objectId' } },
+        { locationId: { $eq: new Types.ObjectId(PLACE), $type: 'objectId' } },
+        { responsibleEmployeeId: { $eq: new Types.ObjectId(SIGNER), $type: 'objectId' } },
+      ],
+    });
+  });
+
   it('lists one item’s movements only once the item itself is seen, under the same scope', async () => {
     mocks.findItem.mockResolvedValue(null);
     await expect(itConsumableService.itemMovements(ITEM, page, scope)).rejects.toBeInstanceOf(
@@ -520,6 +547,69 @@ describe('the ledger', () => {
     });
     expect([...labels.memos.keys()]).toEqual([String(MEMO)]);
     expect(labels.memos.get(String(MEMO))).toEqual({ memoNumber: 7, signed: true });
+    // No row went to a department: neither the departments nor the places are asked.
+    expect(mocks.departmentsByIds).not.toHaveBeenCalled();
+    expect(mocks.locationsByIds).not.toHaveBeenCalled();
+    expect(labels.departments.size).toBe(0);
+    expect(labels.locations.size).toBe(0);
+  });
+
+  it('names a department issue’s department, place and signer — one read each, the signer with the employees', async () => {
+    const DEPARTMENT = new Types.ObjectId();
+    const PLACE = new Types.ObjectId();
+    const SIGNER = new Types.ObjectId();
+    const toDepartment = {
+      _id: new Types.ObjectId(),
+      consumableId: new Types.ObjectId(ITEM),
+      kind: 'issued',
+      employeeId: null,
+      departmentId: DEPARTMENT,
+      locationId: PLACE,
+      responsibleEmployeeId: SIGNER,
+      assetId: null,
+      memoId: null,
+    };
+    const toEmployee = { ...toDepartment, _id: new Types.ObjectId(), employeeId: EMPLOYEE };
+    for (const key of ['departmentId', 'locationId', 'responsibleEmployeeId'] as const) {
+      Reflect.deleteProperty(toEmployee, key);
+    }
+    mocks.itemsByIds.mockResolvedValue([item()]);
+    mocks.memosByIds.mockResolvedValue([]);
+    mocks.employees.mockResolvedValue(
+      new Map([
+        [EMPLOYEE, { code: '0101002', fullNameAr: 'وليد صفوت جلال' }],
+        [String(SIGNER), { code: '0101007', fullNameAr: 'شريف ممدوح فاروق' }],
+      ]),
+    );
+    mocks.departmentsByIds.mockResolvedValue([
+      { _id: DEPARTMENT, name: { ar: 'تكنولوجيا المعلومات', en: 'IT' } },
+    ]);
+    mocks.locationsByIds.mockResolvedValue([
+      { _id: PLACE, name: { ar: 'غرفة السيرفرات', en: 'Server room' } },
+    ]);
+
+    const labels = await itConsumableService.movementLabels(
+      [toDepartment, toDepartment, toEmployee] as never,
+      scope,
+    );
+
+    // One directory batch for the employee AND the signer.
+    expect(mocks.employees).toHaveBeenCalledTimes(1);
+    expect(mocks.employees).toHaveBeenCalledWith([String(SIGNER), String(EMPLOYEE)]);
+    expect(mocks.departmentsByIds).toHaveBeenCalledWith([String(DEPARTMENT)]);
+    expect(mocks.locationsByIds).toHaveBeenCalledWith([String(PLACE)]);
+    expect(labels.departments.get(String(DEPARTMENT))).toEqual({
+      ar: 'تكنولوجيا المعلومات',
+      en: 'IT',
+    });
+    expect(labels.locations.get(String(PLACE))).toEqual({
+      ar: 'غرفة السيرفرات',
+      en: 'Server room',
+    });
+    expect(labels.employees.get(String(SIGNER))).toEqual({
+      code: '0101007',
+      fullNameAr: 'شريف ممدوح فاروق',
+    });
   });
 
   it('reads a transfer’s other store’s item with the page’s own items — once each, in one read', async () => {

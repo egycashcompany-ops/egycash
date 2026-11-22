@@ -27,6 +27,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { ItHomePage } from './ItHomePage';
+import { NO_DEPARTMENT_ACTIVITY } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -123,6 +124,7 @@ const movement = (over: Partial<ItDashboardActivityItemDto>): ItDashboardActivit
   employeeId: 'e-1',
   employeeCode: '0100052',
   employeeName: 'محمد أحمد علي',
+  ...NO_DEPARTMENT_ACTIVITY,
   fromBranchId: null,
   toBranchId: null,
   ...over,
@@ -161,6 +163,19 @@ const ACTIVITY = {
       employeeId: null,
       employeeCode: null,
       employeeName: null,
+    }),
+    // 2026-11-19 — a server handed to the IT department at its server room.
+    movement({
+      id: 'ev-5',
+      assetId: 'asset-5',
+      assetCode: 'AST-00900',
+      assetName: 'Dell PowerEdge R740',
+      employeeId: null,
+      employeeCode: null,
+      employeeName: null,
+      departmentId: 'd-it',
+      departmentName: { ar: 'تقنية المعلومات', en: 'Information Technology' },
+      locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
     }),
   ],
 };
@@ -510,6 +525,8 @@ describe('the figures', () => {
     expect(text(block(html, 'data-activity="transferred"'))).toContain(
       'إلى 0100077 — أكتوبر ← المهندسين',
     );
+    // A department holder, with its place — «آخر الحركات» names the department.
+    expect(text(block(html, 'AST-00900'))).toContain('إلى إدارة تقنية المعلومات — غرفة السيرفرات');
   });
 
   it('never print the asset’s branch today as where an older movement happened', () => {

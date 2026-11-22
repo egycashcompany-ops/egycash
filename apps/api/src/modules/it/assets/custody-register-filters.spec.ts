@@ -163,19 +163,22 @@ describe('each register filter as a database condition', () => {
 
   it('reads «حالة المستلِم» as the leavers HR named — and every other holder for «على رأس العمل»', () => {
     const leavers = [id(), id()];
+    // EMPLOYEE custody either way: a department interval (no employee holder — `null`) would
+    // otherwise slip into «على رأس العمل» through `$nin`, and a department does not leave.
+    const employeeHeld = { holderKind: { $ne: 'department' } };
     expect(
       assignmentRegisterFilter({ holderExited: { exited: true, exitedEmployeeIds: leavers } }, NOW),
-    ).toEqual({ assignedToEmployeeId: { $in: leavers } });
+    ).toEqual({ $and: [employeeHeld, { assignedToEmployeeId: { $in: leavers } }] });
     expect(
       assignmentRegisterFilter(
         { holderExited: { exited: false, exitedEmployeeIds: leavers } },
         NOW,
       ),
-    ).toEqual({ assignedToEmployeeId: { $nin: leavers } });
+    ).toEqual({ $and: [employeeHeld, { assignedToEmployeeId: { $nin: leavers } }] });
     // Nobody has left: «ترك العمل» is honestly empty, «على رأس العمل» everybody.
     expect(
       assignmentRegisterFilter({ holderExited: { exited: true, exitedEmployeeIds: [] } }, NOW),
-    ).toEqual({ assignedToEmployeeId: { $in: [] } });
+    ).toEqual({ $and: [employeeHeld, { assignedToEmployeeId: { $in: [] } }] });
     // Beside the holder named outright: both read the holder, so neither overwrites the other.
     const employee = id();
     expect(
@@ -187,7 +190,48 @@ describe('each register filter as a database condition', () => {
         NOW,
       ),
     ).toEqual({
-      $and: [{ assignedToEmployeeId: employee }, { assignedToEmployeeId: { $in: leavers } }],
+      $and: [
+        { assignedToEmployeeId: employee },
+        employeeHeld,
+        { assignedToEmployeeId: { $in: leavers } },
+      ],
+    });
+  });
+
+  it('reads «جهة الاستلام», «الإدارة», «الموقع» and the signer — department custody (2026-11-19)', () => {
+    const department = id();
+    const location = id();
+    const signer = id();
+    // A department's intervals; an employee's are «not a department's» — an interval from before
+    // department custody carries no `holderKind` at all.
+    expect(assignmentRegisterFilter({ holderKind: 'department' }, NOW)).toEqual({
+      holderKind: 'department',
+    });
+    expect(assignmentRegisterFilter({ holderKind: 'employee' }, NOW)).toEqual({
+      holderKind: { $ne: 'department' },
+    });
+    // Each id with `$type`, so the partial index on its field serves it — and each its own clause.
+    expect(
+      assignmentRegisterFilter(
+        {
+          open: true,
+          departmentId: String(department),
+          locationId: String(location),
+          responsibleEmployeeId: String(signer),
+        },
+        NOW,
+      ),
+    ).toEqual({
+      $and: [
+        { returnedAt: null },
+        { departmentId: { $eq: department, $type: 'objectId' } },
+        { locationId: { $eq: location, $type: 'objectId' } },
+        { responsibleEmployeeId: { $eq: signer, $type: 'objectId' } },
+      ],
+    });
+    // The signer is never the employee holder: `employeeId` still reads `assignedToEmployeeId`.
+    expect(assignmentRegisterFilter({ employeeId: String(signer) }, NOW)).toEqual({
+      assignedToEmployeeId: signer,
     });
   });
 
@@ -365,6 +409,29 @@ describe('the register reads each set a filter names once, and only when asked',
       scope,
     });
     expect(params.now).toBeInstanceOf(Date);
+  });
+
+  it('hands the department custody filters on as they came — facts of the interval, read nothing', async () => {
+    const [department, location, signer] = [String(id()), String(id()), String(id())];
+    await itAssetAssignmentService.list(
+      query({
+        holderKind: 'department',
+        departmentId: department,
+        locationId: location,
+        responsibleEmployeeId: signer,
+        open: 'true',
+      }),
+      scope,
+    );
+    expect(mocks.idsMatching).not.toHaveBeenCalled();
+    expect(mocks.countByHolder).not.toHaveBeenCalled();
+    expect(mocks.listFiltered.mock.calls[0]?.[0]).toMatchObject({
+      holderKind: 'department',
+      departmentId: department,
+      locationId: location,
+      responsibleEmployeeId: signer,
+      open: true,
+    });
   });
 
   it('reads the matching assets ONCE, under the caller’s scope, for the categories, «الصنف» and the search together', async () => {

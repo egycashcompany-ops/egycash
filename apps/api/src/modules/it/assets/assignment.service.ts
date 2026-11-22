@@ -81,7 +81,8 @@ export const exitedHolderIds = (
  * of them in one directory batch — and HR is asked nothing when nobody holds anything.
  *
  * Shared by the register's «حالة المستلِم» and the dashboard's «أصول مع موظفين تركوا العمل», so the
- * figure on the dashboard is the number of rows the register opens with.
+ * figure on the dashboard is the number of rows the register opens with. EMPLOYEE custody only
+ * (`countByHolder`): a department's interval names no holder who could leave.
  */
 export const leaverHoldings = async (
   filter: FilterQuery<ItAssetAssignmentDoc>,
@@ -129,6 +130,12 @@ class ItAssetAssignmentService {
       assetIds,
       employeeId: query.employeeId,
       branchId: query.branchId,
+      // «جهة الاستلام», «الإدارة», «الموقع», and the person who signed for a department — the last
+      // their page's «عهد إدارات وقّع عليها» (2026-11-19).
+      holderKind: query.holderKind,
+      departmentId: query.departmentId,
+      locationId: query.locationId,
+      responsibleEmployeeId: query.responsibleEmployeeId,
       assignedFrom: query.assignedFrom,
       assignedTo: query.assignedTo,
       returnedFrom: query.returnedFrom,

@@ -23,6 +23,12 @@
 // فقط» switches back. It is opened for ONE person: choosing somebody else lists their devices
 // again. Optional too: without it a person's box offers their devices and nothing else.
 //
+// **A department's devices** (2026-11-19, department custody): given `holderDepartmentId` (and its
+// `holderLocationId`), the box is that department's list at that place instead of a person's — a
+// toner onto the server-room printer — the same way, in the department's words («الأجهزة التي في
+// عهدة الإدارة المختارة الآن», «أجهزة الإدارة فقط»: `pickerHolderWords`). `branchId` narrows any box
+// to one branch: a department hand-over lists one branch's assets, the place's.
+//
 // **A failed request is not an answer.** «لا يوجد في عهدة …» and «لا توجد نتائج» are said only for
 // a request that came back empty; one that failed says so, with a retry.
 //
@@ -43,6 +49,8 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { formatNumber } from '../../../shared/lib/format';
 import { useItAsset } from '../api/it-queries';
 import * as api from '../api/it-api';
+import { holderName, holderOfAsset } from '../lib/custody-holder';
+import { type Translate } from '../lib/register-export';
 
 const PAGE_SIZE = 8;
 /** One person's devices are listed whole up to this many; past it, typing searches among them. */
@@ -56,9 +64,12 @@ export const AssetPicker = ({
   exclude = [],
   withoutStatus,
   holderEmployeeId = '',
+  holderDepartmentId = '',
+  holderLocationId = '',
   holderLabel = '',
   showHolder = false,
   allowOther = false,
+  branchId = '',
 }: {
   /** The picked asset id, '' when none. */
   value: string;
@@ -79,7 +90,16 @@ export const AssetPicker = ({
    * searches the whole register.
    */
   holderEmployeeId?: string;
-  /** Who that is — the employee box's label — for the hint above the list and the empty answer. */
+  /**
+   * Or the devices this department holds right now — at `holderLocationId` when one is given —
+   * listed the same way. Ignored while `holderEmployeeId` is set.
+   */
+  holderDepartmentId?: string;
+  holderLocationId?: string;
+  /**
+   * Who that is — the employee box's label, or the department at its place — for the hint above
+   * the list and the empty answer.
+   */
   holderLabel?: string;
   /** Every row also says the serial and who holds it («في عهدة …» / «في المخزن»). */
   showHolder?: boolean;
@@ -88,17 +108,30 @@ export const AssetPicker = ({
    * فقط» comes back. Without it (the default) a person's box offers their devices only.
    */
   allowOther?: boolean;
+  /** Offer only the assets of this branch — '' (the default) every branch the reader reaches. */
+  branchId?: string;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [search, setSearch] = useState('');
-  // The person «جهاز آخر» was opened for; null while their own devices are listed.
+  // The holder «جهاز آخر» was opened for; null while their own devices are listed.
   const [otherFor, setOtherFor] = useState<string | null>(null);
   const allowed = can('itAsset.view');
-  const byHolder = holderEmployeeId !== '';
+  const holder = pickerHolderKey({ holderEmployeeId, holderDepartmentId, holderLocationId });
+  const byHolder = holder !== '';
+  const words = pickerHolderWords(t, { holderEmployeeId, holderDepartmentId, holderLabel });
   const typed = search.trim() !== '';
-  const request = pickerRequest({ holderEmployeeId, allowOther, otherFor, search, status });
+  const request = pickerRequest({
+    holderEmployeeId,
+    holderDepartmentId,
+    holderLocationId,
+    branchId,
+    allowOther,
+    otherFor,
+    search,
+    status,
+  });
   const holderList = request.mode === 'holder';
   const other = request.mode === 'other';
 
@@ -157,15 +190,11 @@ export const AssetPicker = ({
       {byHolder && (
         <p
           aria-live="polite"
-          data-asset-picker-holder={holderEmployeeId}
+          data-asset-picker-holder={holder}
           data-asset-picker-mode={request.mode}
           className="text-xs text-slate-500 dark:text-slate-400"
         >
-          {other
-            ? t('it.assets.pickerOtherHint')
-            : holderLabel === ''
-              ? t('it.assets.pickerHolderHintAnon')
-              : t('it.assets.pickerHolderHint', { name: holderLabel })}
+          {other ? t('it.assets.pickerOtherHint') : words.hint}
         </p>
       )}
       <SearchInput
@@ -187,11 +216,7 @@ export const AssetPicker = ({
               className="flex flex-wrap items-center justify-between gap-2 p-3"
             >
               <p aria-live="polite" className="text-sm text-slate-600 dark:text-slate-300">
-                {shows === 'searchError'
-                  ? t('it.assets.pickerSearchError')
-                  : holderLabel === ''
-                    ? t('it.assets.pickerHolderErrorAnon')
-                    : t('it.assets.pickerHolderError', { name: holderLabel })}
+                {shows === 'searchError' ? t('it.assets.pickerSearchError') : words.error}
               </p>
               <Button size="sm" variant="secondary" onClick={() => void results.refetch()}>
                 {t('common.retry')}
@@ -199,9 +224,7 @@ export const AssetPicker = ({
             </div>
           ) : shows === 'holderNone' ? (
             <p role="note" className="p-4 text-sm text-slate-500 dark:text-slate-400">
-              {holderLabel === ''
-                ? t('it.assets.pickerHolderNoneAnon')
-                : t('it.assets.pickerHolderNone', { name: holderLabel })}
+              {words.none}
             </p>
           ) : shows === 'noResults' ? (
             <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
@@ -245,14 +268,14 @@ export const AssetPicker = ({
               data-asset-picker-toggle="holder"
               onClick={() => setOtherFor(null)}
             >
-              {t('it.assets.pickerHolderOnly')}
+              {words.only}
             </Button>
           ) : (
             <Button
               size="sm"
               variant="ghost-brand"
               data-asset-picker-toggle="other"
-              onClick={() => setOtherFor(holderEmployeeId)}
+              onClick={() => setOtherFor(holder)}
             >
               {t('it.assets.pickerOther')}
             </Button>
@@ -264,23 +287,84 @@ export const AssetPicker = ({
 };
 
 /**
+ * Whose devices the box lists — the employee, or the department at its place — as one key: what
+ * «جهاز آخر» is opened for and the hint's data attribute. '' when the box has no holder.
+ */
+export const pickerHolderKey = ({
+  holderEmployeeId,
+  holderDepartmentId = '',
+  holderLocationId = '',
+}: {
+  holderEmployeeId: string;
+  holderDepartmentId?: string;
+  holderLocationId?: string;
+}): string =>
+  holderEmployeeId !== ''
+    ? holderEmployeeId
+    : holderDepartmentId === ''
+      ? ''
+      : `${holderDepartmentId}@${holderLocationId}`;
+
+/**
+ * What a holder's box says — above the list, when it is empty, when it failed, and on the way back
+ * from «جهاز آخر». A holder named (`holderLabel`) is named whoever it is; one not named yet is said
+ * by kind: a department's box (no person, a department given) says «الإدارة المختارة» and «أجهزة
+ * الإدارة فقط», never the employee's words.
+ */
+export const pickerHolderWords = (
+  t: Translate,
+  {
+    holderEmployeeId,
+    holderDepartmentId = '',
+    holderLabel = '',
+  }: { holderEmployeeId: string; holderDepartmentId?: string; holderLabel?: string },
+): { hint: string; none: string; error: string; only: string } => {
+  const name = { name: holderLabel };
+  const named = holderLabel !== '';
+  if (holderEmployeeId === '' && holderDepartmentId !== '') {
+    return {
+      hint: named ? t('it.assets.pickerHolderHint', name) : t('it.assets.pickerDepartmentHintAnon'),
+      none: named ? t('it.assets.pickerHolderNone', name) : t('it.assets.pickerDepartmentNoneAnon'),
+      error: named
+        ? t('it.assets.pickerHolderError', name)
+        : t('it.assets.pickerDepartmentErrorAnon'),
+      only: t('it.assets.pickerDepartmentOnly'),
+    };
+  }
+  return {
+    hint: named ? t('it.assets.pickerHolderHint', name) : t('it.assets.pickerHolderHintAnon'),
+    none: named ? t('it.assets.pickerHolderNone', name) : t('it.assets.pickerHolderNoneAnon'),
+    error: named ? t('it.assets.pickerHolderError', name) : t('it.assets.pickerHolderErrorAnon'),
+    only: t('it.assets.pickerHolderOnly'),
+  };
+};
+
+/**
  * Which list the box is, and what it asks the server for:
  *   · `register` — no holder: the whole register, asked only once something is typed (today's
  *     request, exactly);
- *   · `holder` — one person's devices, asked and listed before a word is typed, the holder in the
- *     key so their list is never served to another box typed into with the same letters;
+ *   · `holder` — one person's devices (or one department's at its place), asked and listed before
+ *     a word is typed, the holder in the key so their list is never served to another box typed
+ *     into with the same letters;
  *   · `other` — «جهاز آخر» opened from that list: the whole register's own request again. It is
- *     opened for one person (`otherFor`), so a box whose person changes lists the new one's
+ *     opened for one holder (`otherFor`), so a box whose holder changes lists the new one's
  *     devices; and only where the caller allows it.
+ * `branchId` narrows any of the three to one branch.
  */
 export const pickerRequest = ({
   holderEmployeeId,
+  holderDepartmentId = '',
+  holderLocationId = '',
+  branchId = '',
   allowOther,
   otherFor,
   search,
   status,
 }: {
   holderEmployeeId: string;
+  holderDepartmentId?: string;
+  holderLocationId?: string;
+  branchId?: string;
   allowOther: boolean;
   otherFor: string | null;
   search: string;
@@ -293,29 +377,38 @@ export const pickerRequest = ({
   untyped: boolean;
 } => {
   const statusFilter = status === undefined ? {} : { status };
-  const mode =
-    holderEmployeeId === ''
-      ? 'register'
-      : allowOther && otherFor === holderEmployeeId
-        ? 'other'
-        : 'holder';
+  const branchFilter = branchId === '' ? {} : { branchId };
+  const holder = pickerHolderKey({ holderEmployeeId, holderDepartmentId, holderLocationId });
+  const mode = holder === '' ? 'register' : allowOther && otherFor === holder ? 'other' : 'holder';
   if (mode === 'holder') {
+    const byDepartment = holderEmployeeId === '';
     return {
       mode,
-      queryKey: listKey('it', 'assets', { picker: search, status, holderEmployeeId }),
+      queryKey: listKey('it', 'assets', {
+        picker: search,
+        status,
+        ...(byDepartment ? { holderDepartmentId, holderLocationId } : { holderEmployeeId }),
+        ...branchFilter,
+      }),
       params: {
-        holderEmployeeId,
+        ...(byDepartment
+          ? {
+              holderDepartmentId,
+              ...(holderLocationId === '' ? {} : { locationId: holderLocationId }),
+            }
+          : { holderEmployeeId }),
         pageSize: HOLDER_PAGE_SIZE,
         ...(search.trim() === '' ? {} : { search }),
         ...statusFilter,
+        ...branchFilter,
       },
       untyped: true,
     };
   }
   return {
     mode,
-    queryKey: listKey('it', 'assets', { picker: search, status }),
-    params: { search, pageSize: PAGE_SIZE, ...statusFilter },
+    queryKey: listKey('it', 'assets', { picker: search, status, ...branchFilter }),
+    params: { search, pageSize: PAGE_SIZE, ...statusFilter, ...branchFilter },
     untyped: false,
   };
 };
@@ -389,7 +482,8 @@ export const AssetPickerRow = ({
   onPick: () => void;
 }): JSX.Element => {
   const t = useT();
-  const holder = asset.holder;
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const holder = asset.holder === null ? null : holderOfAsset(asset.holder);
   const facts = showSerial || showHolder;
   return (
     <button
@@ -415,12 +509,14 @@ export const AssetPickerRow = ({
               </span>
             )}
             {showHolder && (
-              <span data-asset-holder={holder?.employeeId ?? ''}>
+              <span
+                data-asset-holder={
+                  holder === null ? '' : (holder.employeeId ?? holder.departmentId ?? '')
+                }
+              >
                 {holder === null
                   ? t(`it.assets.status.${asset.status}`)
-                  : t('it.assets.pickerHeldBy', {
-                      name: holder.employeeName ?? holder.employeeCode ?? holder.employeeId,
-                    })}
+                  : t('it.assets.pickerHeldBy', { name: holderName(holder, locale, t) })}
               </span>
             )}
           </span>

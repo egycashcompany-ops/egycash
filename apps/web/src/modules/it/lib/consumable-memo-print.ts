@@ -27,6 +27,11 @@
 //
 // NO SCRIPT INSIDE THE PAGE — the tab inherits the app's Content-Security-Policy; printing and the
 // toolbar are attached by `shared/lib/print-window.ts`, every printed document's one door.
+//
+// A DEPARTMENT MEMO (2026-11-19 — «صرف لإدارة»): the items go to a department at a place, received
+// for it by its responsible person. Only the statement, the receiver's block and the title change:
+// «… بصفتي المسؤول عن إدارة … بأنني قد استلمت … لصالح إدارة … بموقع …:», «المستلم عن الإدارة», and
+// «— إدارة …» in the tab's title. The undertaking is the approved one, unchanged.
 import {
   formatConsumableMemoNumber,
   type ItConsumableIssueReason,
@@ -40,6 +45,7 @@ import {
   esc,
   fill,
   formDigits,
+  paperCustodian,
   paperDocument,
   receiptDate,
   receiptFooter,
@@ -129,11 +135,14 @@ const itemsTable = (lines: readonly ItConsumableMemoLineDto[]): string =>
  * start of an Arabic line, where the form's own block of the receiver stands — and the IT officer
  * who handed them over on the left. Each name is its first three parts, as on the device paper.
  */
-const signatures = (paper: ItConsumableMemoDocumentDto): string =>
-  `<div class="memo-signs">
+const signatures = (paper: ItConsumableMemoDocumentDto): string => {
+  const custodian = paperCustodian(paper);
+  return `<div class="memo-signs">
     <div class="sign" data-sign="receiver">
-      <div class="by">المستلم</div>
-      <div>الاسم: ${esc(signatureName(paper.employeeName))}</div>
+      <div class="by">${custodian === null ? 'المستلم' : 'المستلم عن الإدارة'}</div>
+      <div>الاسم: ${esc(signatureName(paper.employeeName))}</div>${
+        custodian === null ? '' : `\n      <div>عن إدارة: ${esc(custodian.department ?? '')}</div>`
+      }
       <div>التوقيع:</div>
       <div>التاريخ: ${receiptDate(paper.issuedAt)}</div>
     </div>
@@ -143,6 +152,7 @@ const signatures = (paper: ItConsumableMemoDocumentDto): string =>
       <div>التوقيع:</div>
     </div>
   </div>`;
+};
 
 /** The memo's own parts, after the form's shared rules. */
 const MEMO_STYLE = `  .memo-items { width: calc(100% - 24mm); margin: 0 12mm 1mm; border-collapse: collapse; table-layout: fixed; font-size: 12.5pt; line-height: 1.3; }
@@ -176,10 +186,17 @@ export const buildConsumableMemoHtml = (
 ): string => {
   const number = formatConsumableMemoNumber(paper.memoNumber);
   const notes = paper.notes?.trim() ?? '';
+  const custodian = paperCustodian(paper);
+  const capacity =
+    custodian === null ? '' : ` بصفتي المسؤول عن إدارة ${fill(custodian.department, 24)}`;
+  const forDepartment =
+    custodian === null
+      ? ''
+      : ` لصالح إدارة ${fill(custodian.department, 24)} بموقع ${fill(custodian.location, 20)}`;
   const sheet = `<section class="page">
   ${RECEIPT_LETTERHEAD}
   <h1>${CONSUMABLE_MEMO_TITLE}</h1>
-  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)} بأنني قد استلمت من قطاع تكنولوجيا المعلومات الأصناف الموضحة أدناه:</p>
+  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)}${capacity} بأنني قد استلمت من قطاع تكنولوجيا المعلومات الأصناف الموضحة أدناه${forDepartment}:</p>
   ${itemsTable(paper.lines)}
   ${notes === '' ? '' : `<p class="memo-notes">ملاحظات: ${esc(notes)}</p>`}
   <p class="undertaking">${CONSUMABLE_MEMO_UNDERTAKING}</p>
@@ -187,7 +204,11 @@ export const buildConsumableMemoHtml = (
   ${receiptFooter(number, '')}
 </section>`;
   return paperDocument({
-    title: `${CONSUMABLE_MEMO_TITLE} ${number} — ${paper.employeeName ?? ''}`,
+    // A department's memo is titled by the department it is for, not by its signer.
+    title:
+      custodian === null
+        ? `${CONSUMABLE_MEMO_TITLE} ${number} — ${paper.employeeName ?? ''}`
+        : `${CONSUMABLE_MEMO_TITLE} ${number} — إدارة ${custodian.department ?? ''}`,
     number,
     labels,
     sheets: sheet,

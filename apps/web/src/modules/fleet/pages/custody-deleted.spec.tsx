@@ -16,6 +16,7 @@ import {
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
+import { errorMessage } from '../../../shared/lib/errors';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
@@ -391,7 +392,9 @@ describe('«العمليات المحذوفة» — the lines', () => {
     const phone = element(html, 'data-deleted-error-phone="true"');
     expect(phone).toContain('sm:hidden');
     expect(text(phone)).toContain(ar('common.error.title'));
-    expect(text(phone)).toContain('down');
+    // In words an Arabic reader reads: the thrown English «down» gives way to the general line.
+    expect(text(phone)).toContain(errorMessage(undefined, 'ar'));
+    expect(text(phone)).not.toContain('down');
     expect(text(phone)).toContain(ar('common.retry'));
     expect(html).not.toContain('data-deleted-cards="true"');
     expect(html).not.toContain('data-deleted-empty-phone="true"');

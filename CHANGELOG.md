@@ -28,16 +28,15 @@ its entry here in the same PR.
     الكارت»), the custody receipts as one figure in «العهدة» («مصروفات العهدة») for a reader of the
     custody screens — a receipts-only reader sees their parts in «مصروف التشغيل حسب النوع» («وقود من
     العهدة», «كاوتش», «غسيل», «صيانة»), with no total of their own; «فواتير التوكيل» (amount, rows,
-    «بانتظار الفاتورة»)
-    in «الوقود والمصروفات»; «البيانات متاحة من …» on «الوقود والمصروفات» and «العهدة», and the
-    note that operating expenses and dealership invoices are never added together on «الوقود
-    والمصروفات». Dropped for good: the maintenance visits counted by CHECK-IN day (count, out,
-    still in, the share out) — no other tab counts by that day; the nearest are «خرجت من الورشة»
-    (by exit day) on «الصيانة والورش» and «في الورشة الآن» — the outstanding amount of the OPEN
-    accidents alone («الحوادث ومطالبات التأمين» shows «إجمالي المتبقي» of all the period's files,
-    open and closed), and the percentage bars of the coverage, of the open accidents and of the
-    rows with an amount; the «كارت ثم عهدة» bar is each kind's share in «مصروف التشغيل حسب النوع».
-    The 26 words only that tab read are gone from both languages.
+    «بانتظار الفاتورة») in «الوقود والمصروفات»; «البيانات متاحة من …» on «الوقود والمصروفات» and
+    «العهدة», and the note that operating expenses and dealership invoices are never added
+    together on «الوقود والمصروفات». Dropped for good: the maintenance visits counted by CHECK-IN
+    day (count, out, still in, the share out) — no other tab counts by that day; the nearest are
+    «خرجت من الورشة» (by exit day) on «الصيانة والورش» and «في الورشة الآن» — the outstanding amount
+    of the OPEN accidents alone («الحوادث ومطالبات التأمين» shows «إجمالي المتبقي» of all the
+    period's files, open and closed), and the percentage bars of the coverage, of the open accidents
+    and of the rows with an amount; the «كارت ثم عهدة» bar is each kind's share in «مصروف التشغيل
+    حسب النوع». The 26 words only that tab read are gone from both languages.
   - **`GET /fleet/dashboard/period` lost `visits` and `accidents.openRemaining`**, the two parts
     only that tab read (`accidents` is `{ count, open, undated, totals }`); with them the
     maintenance service's `visitStates` and the repository's `stateCounts`, which nothing else
@@ -57,8 +56,9 @@ its entry here in the same PR.
     copy button («نسخ الرقم المرجعي»), the id on the clipboard, in the button's tooltip and in
     `data-request-id`, never in the text; in English "Reference:" and the id (left to right,
     isolated, on one line) with the same button. With no id, no line. Every screen's «تعذّر
-    التحميل» and `DataTable` draw it; on the Fleet dark tables the whole line takes the size the
-    old line had, so its name and the id are one size. New word `common.error.reference`.
+    التحميل» and `DataTable` draw it; on the Fleet dark tables the whole line takes one quiet size
+    (13px from 1750px, 12.5px below, never above the message), so its name and the id match. New
+    word `common.error.reference`.
   - **Small fixes:**
     - «شهر انتهاء الترخيص» on «السيارات» and «التراخيص», and the «حسب الشهر» months on
       «الإخطارات»: Latin digits, «أكتوبر 2026 (12)» (`monthCountOptions`).
@@ -82,9 +82,9 @@ its entry here in the same PR.
     «الحركة › الطقم الثابت», no visible title, no divider — reversing answer 2 ج of the screen's
     approved sample. The board's own first row is the top of the page: the car count and the Excel
     pill on a computer, the car search and the Excel button on a phone or a tablet; the table and
-    the cards get the header's rows back. A visually hidden h1 («الطقم الثابت») stays for screen readers. The
-    page container, the sticky rows and the save bar are as they were; the daily «تعيين السيارات»
-    is untouched.
+    the cards get the header's rows back. A visually hidden h1 («الطقم الثابت») stays for screen
+    readers. The page container, the sticky rows and the save bar are as they were; the daily
+    «تعيين السيارات» is untouched.
   - Unchanged: the data (no migration), the permissions, every endpoint but the two fields above,
     and the mistaken page, which was deleted outside the repository.
 

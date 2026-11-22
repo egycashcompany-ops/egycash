@@ -76,11 +76,11 @@ describe('Fleet figures — a plain zero everywhere («الارقام ال0 … 
   it('sets the shared error panel’s request id in the figures’ face on the boards’ table', () => {
     // `ErrorState` (shared, left alone) writes the id `font-mono`; inside `DARK_TABLE` it is the
     // figures' face — and nothing else. The size is the whole reference LINE's, so the line's name
-    // («الرقم المرجعي» / “Reference”) and the id are one size, the sizes the table gave it before.
+    // («الرقم المرجعي» / “Reference”) and the id are one size, never above the 14px message.
     expect(DARK_TABLE).toContain(ERROR_ID_AS_FIGURES);
     expect(ERROR_ID_AS_FIGURES.split(' ')).toEqual([
       `[&_td_.font-mono]:${FIGURES_FONT}`,
-      'min-[1750px]:[&_td_[data-error-reference]]:!text-base',
+      'min-[1750px]:[&_td_[data-error-reference]]:!text-[13px]',
       'max-[1749px]:[&_td_[data-error-reference]]:!text-[12.5px]',
     ]);
     // …and the hooks are the panel's own: the id's monospace, the line's marker.

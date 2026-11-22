@@ -104,6 +104,7 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
+
 /** The registry's cars of the chosen statuses — every car when none is chosen, as the table. */
 export const ofStatuses = <V extends Pick<FleetVehicleDto, 'status'>>(
   vehicles: readonly V[],
@@ -890,10 +891,7 @@ export const VehiclesListPage = (): JSX.Element => {
               <svg
                 viewBox="0 0 24 24"
                 aria-hidden
-                className={cn(
-                  'h-3 w-3 transition-transform sm:h-3.5 sm:w-3.5',
-                  breakdownOpen && 'rotate-180',
-                )}
+                className={cn('h-3 w-3 transition-transform sm:h-3.5 sm:w-3.5', breakdownOpen && 'rotate-180')}
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={2.5}
@@ -991,11 +989,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 }
                 label={t('fleet.vehicles.board.expired')}
                 value={registryFigures.expired}
-                valueClass={
-                  registryFigures.expired > 0
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-emerald-600 dark:text-emerald-400'
-                }
+                valueClass={registryFigures.expired > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}
                 unit={t('fleet.vehicles.board.licences')}
               />
               <FigureChip
@@ -1070,11 +1064,7 @@ export const VehiclesListPage = (): JSX.Element => {
             {/* «عايز الفلتر فى صف واحد … طبقاً لطول البيانات اللى ممكن تتكتب فيه»: every control is
               as wide as what it holds — a plate is ten characters, a code four — and the
               dropdowns run tight, so the whole bar is one row on a desktop screen. */}
-            <FilterWithIcon
-              icon={FILTER_ICON.car}
-              tone="text-emerald-600 dark:text-emerald-400"
-              className="w-24 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-600 dark:text-emerald-400" className="w-24 shrink-0">
               <VehicleCodeFilter
                 fullWidth
                 density="tight"
@@ -1090,11 +1080,7 @@ export const VehiclesListPage = (): JSX.Element => {
               questions about the fleet, and a one-answer control made the reader ask each of them
               twice and add the two counts up by hand. Branch has taken several since it was
               written; the other five now read the same way. */}
-            <FilterWithIcon
-              icon={FILTER_ICON.make}
-              tone="text-slate-600 dark:text-slate-300"
-              className="w-24 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300" className="w-24 shrink-0">
               <MultiSelect
                 clearable
                 className="w-full"
@@ -1111,11 +1097,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 onChange={(ids) => patch({ type: writeList(ids) })}
               />
             </FilterWithIcon>
-            <FilterWithIcon
-              icon={FILTER_ICON.plate}
-              tone="text-sky-600 dark:text-sky-400"
-              className="w-24 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.plate} tone="text-sky-600 dark:text-sky-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.plate')}
                 placeholder={t('fleet.vehicles.columns.plate')}
@@ -1125,11 +1107,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 density="tight"
               />
             </FilterWithIcon>
-            <FilterWithIcon
-              icon={FILTER_ICON.chassis}
-              tone="text-slate-500 dark:text-slate-400"
-              className="w-24 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.chassis} tone="text-slate-500 dark:text-slate-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.chassis')}
                 placeholder={t('fleet.vehicles.columns.chassis')}
@@ -1139,11 +1117,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 density="tight"
               />
             </FilterWithIcon>
-            <FilterWithIcon
-              icon={FILTER_ICON.motor}
-              tone="text-slate-500 dark:text-slate-400"
-              className="w-24 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.motor} tone="text-slate-500 dark:text-slate-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.motor')}
                 placeholder={t('fleet.vehicles.columns.motor')}
@@ -1154,22 +1128,14 @@ export const VehiclesListPage = (): JSX.Element => {
               />
             </FilterWithIcon>
             {/* `BranchFilterSelect` takes no width of its own; its trigger is sized from here. */}
-            <FilterWithIcon
-              icon={FILTER_ICON.branch}
-              tone="text-violet-600 dark:text-violet-300"
-              className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!pe-2"
-            >
+            <FilterWithIcon icon={FILTER_ICON.branch} tone="text-violet-600 dark:text-violet-300" className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!pe-2">
               <BranchFilterSelect
                 clearable
                 value={branchIds}
                 onChange={(ids) => patch({ branch: writeList(ids) })}
               />
             </FilterWithIcon>
-            <FilterWithIcon
-              icon={FILTER_ICON.operation}
-              tone="text-slate-600 dark:text-slate-300"
-              className="w-24 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.operation} tone="text-slate-600 dark:text-slate-300" className="w-24 shrink-0">
               <CatalogMultiSelect
                 kind="operation"
                 className="w-full"
@@ -1180,11 +1146,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 label={t('fleet.vehicles.filters.short.operation')}
               />
             </FilterWithIcon>
-            <FilterWithIcon
-              icon={FILTER_ICON.insurance}
-              tone="text-emerald-700 dark:text-emerald-300"
-              className="w-24 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.insurance} tone="text-emerald-700 dark:text-emerald-300" className="w-24 shrink-0">
               <CatalogMultiSelect
                 kind="insuranceCompany"
                 className="w-full"
@@ -1195,11 +1157,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 label={t('fleet.vehicles.filters.short.insurance')}
               />
             </FilterWithIcon>
-            <FilterWithIcon
-              icon={FILTER_ICON.licence}
-              tone="text-amber-700 dark:text-amber-300"
-              className="w-24 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.licence} tone="text-amber-700 dark:text-amber-300" className="w-24 shrink-0">
               <CatalogMultiSelect
                 kind="licenseClass"
                 className="w-full"
@@ -1211,11 +1169,7 @@ export const VehiclesListPage = (): JSX.Element => {
               />
             </FilterWithIcon>
             {/* The months the licences run out in — several at once, each with its count of cars. */}
-            <FilterWithIcon
-              icon={FILTER_ICON.calendar}
-              tone="text-cyan-600 dark:text-cyan-400"
-              className="w-32 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400" className="w-32 shrink-0">
               <MultiSelect
                 clearable
                 className="w-full"
@@ -1258,11 +1212,7 @@ export const VehiclesListPage = (): JSX.Element => {
             {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet
               («داخل الورشة / خرج», «مفتوح / مغلق») stay as they are: with two options a
               multi-select can only say what a single one already said. */}
-            <FilterWithIcon
-              icon={FILTER_ICON.status}
-              tone="text-slate-600 dark:text-slate-300"
-              className="w-20 shrink-0"
-            >
+            <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-600 dark:text-slate-300" className="w-20 shrink-0">
               <MultiSelect
                 clearable
                 className="w-full"
@@ -1346,10 +1296,7 @@ export const VehiclesListPage = (): JSX.Element => {
               ]}
               licence={
                 <span className="flex items-center gap-1.5">
-                  <span
-                    dir="ltr"
-                    className={cn('font-semibold text-slate-900 dark:text-slate-100', NUM)}
-                  >
+                  <span dir="ltr" className={cn('font-semibold text-slate-900 dark:text-slate-100', NUM)}>
                     {ymd(v.licenseExpiresAt)}
                   </span>
                   <LicenceTag state={expiryState(v.licenseExpiresAt, warnDays)} />
@@ -1428,12 +1375,12 @@ const DARK_BAR = DARK_FILTER_BAR;
  * writes it `font-mono` — Consolas on Windows, a struck zero — in English; Arabic draws only its
  * name and the copy button), drawn in a cell across the row when a board's list fails. The id is
  * set here in the figures' face («الارقام ال0 … ميكونش جوا شرطه»); the SIZE goes to the whole
- * reference line (`data-error-reference`), the sizes the line had when these tables sized
- * `.font-mono` with their figures, so its name and the id are one size. The shared panel itself is
- * left as the other modules have it.
+ * reference line (`data-error-reference`), so its name and the id are one size — and a quiet one,
+ * never above the 14px message over it: 13px from 1750px, the 12.5px the line had below. The
+ * shared panel itself is left as the other modules have it.
  */
 export const ERROR_ID_AS_FIGURES =
-  "[&_td_.font-mono]:[font-family:Azeret_Mono,'Cairo',ui-sans-serif,sans-serif] min-[1750px]:[&_td_[data-error-reference]]:!text-base max-[1749px]:[&_td_[data-error-reference]]:!text-[12.5px]";
+  "[&_td_.font-mono]:[font-family:Azeret_Mono,'Cairo',ui-sans-serif,sans-serif] min-[1750px]:[&_td_[data-error-reference]]:!text-[13px] max-[1749px]:[&_td_[data-error-reference]]:!text-[12.5px]";
 
 /** The fuel screens' dark table, laid over `DataTable` — the drivers screen's too. */
 export const DARK_TABLE = cn(
@@ -1554,9 +1501,7 @@ const VehicleCard = ({
           >
             {vehicle.code}
           </span>
-          <span className="truncate text-base font-bold text-slate-900 dark:text-white">
-            {typeName}
-          </span>
+          <span className="truncate text-base font-bold text-slate-900 dark:text-white">{typeName}</span>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">
           <VehicleStatusBadge status={vehicle.status} />
@@ -1575,9 +1520,7 @@ const VehicleCard = ({
             key={label}
             className="min-w-0 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1.5"
           >
-            <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              {label}
-            </span>
+            <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
             <span
               dir="auto"
               className={cn(

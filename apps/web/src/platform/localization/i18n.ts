@@ -11861,7 +11861,8 @@ const en: Record<string, string> = {
   'operations.catalogs.branchImport.rowsCount.few': '{{count}} rows',
   'operations.catalogs.branchImport.rowsCount.many': '{{count}} rows',
   'operations.catalogs.branchImport.rowsCount.other': '{{count}} rows',
-  'operations.catalogs.branchImport.layout': 'Read from the sheet «{{sheet}}», its header on row {{row}}:',
+  'operations.catalogs.branchImport.layout':
+    'Read from the sheet «{{sheet}}», its header on row {{row}}:',
   'operations.catalogs.branchImport.latinNote':
     'An area written in Latin letters only is taken as its English name, and used as its Arabic name too.',
   'operations.catalogs.branchImport.kpi.new': 'New',
@@ -11915,7 +11916,8 @@ const en: Record<string, string> = {
   'operations.catalogs.branchImport.change.was': 'was',
   'operations.catalogs.branchImport.change.now': 'now',
   'operations.catalogs.branchImport.dialog.similar': 'New branches like a held one',
-  'operations.catalogs.branchImport.dialog.areaNotes': 'Rows whose area is not the sheet’s as given',
+  'operations.catalogs.branchImport.dialog.areaNotes':
+    'Rows whose area is not the sheet’s as given',
   'operations.catalogs.branchImport.doneDetail':
     'New branches: {{created}} · branches updated: {{updated}} · new areas: {{areas}} · English area names written: {{filled}}',
   'operations.catalogs.branchImport.problem.noName': 'The row has no branch name.',
@@ -11952,7 +11954,8 @@ const en: Record<string, string> = {
     'The sheet is larger than a bank’s branch list (at most 5,000 branches).',
   'operations.catalogs.branchImport.refusal.noSheet': 'The workbook has no visible sheet.',
   'operations.catalogs.branchImport.refusal.fileTooLarge': 'The file is larger than 10 MB.',
-  'operations.catalogs.branchImport.refusal.unreadable': 'The file is not an Excel workbook (.xlsx).',
+  'operations.catalogs.branchImport.refusal.unreadable':
+    'The file is not an Excel workbook (.xlsx).',
   'operations.catalogs.branchImport.refusal.unknownBank':
     'This bank is not active any more — choose another.',
   'operations.catalogs.branchImport.refusal.changed':
@@ -27474,7 +27477,8 @@ const ar: Record<string, string> = {
   'operations.catalogs.branchImport.refusal.noSheet': 'لا يحتوي الملف على شيت ظاهر.',
   'operations.catalogs.branchImport.refusal.fileTooLarge': 'حجم الملف أكبر من 10 ميجابايت.',
   'operations.catalogs.branchImport.refusal.unreadable': 'الملف ليس ملف Excel بصيغة ‎.xlsx.',
-  'operations.catalogs.branchImport.refusal.unknownBank': 'هذا البنك لم يعد نشطًا — اختر بنكًا آخر.',
+  'operations.catalogs.branchImport.refusal.unknownBank':
+    'هذا البنك لم يعد نشطًا — اختر بنكًا آخر.',
   'operations.catalogs.branchImport.refusal.changed':
     'تغيّرت فروع البنك أو المناطق أو الملف منذ المقارنة، ولم يُكتب شيء. أعد المقارنة.',
   'operations.catalogs.currency.add': 'إضافة عملة',

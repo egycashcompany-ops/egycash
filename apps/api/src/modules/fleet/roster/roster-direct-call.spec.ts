@@ -76,13 +76,13 @@ const doc = (vehicleId: string, driver1: string | null = null) => ({
 });
 
 /**
- * The day planned: TOMORROW, at UTC midnight. `plan()` refuses a day in the past, so a fixed date
- * (this file used 2026-11-20) turns every test here into a «past date» refusal once it goes by.
+ * A day the roster still plans: `plan()` refuses a day before today (UTC), so a fixed date (it was
+ * 2026-11-20) turned every case here into that refusal the day it passed. A week ahead, at midnight.
  */
-const PLAN_DAY = (() => {
+const PLAN_DAY = ((): Date => {
   const day = new Date();
   day.setUTCHours(0, 0, 0, 0);
-  day.setUTCDate(day.getUTCDate() + 1);
+  day.setUTCDate(day.getUTCDate() + 7);
   return day;
 })();
 

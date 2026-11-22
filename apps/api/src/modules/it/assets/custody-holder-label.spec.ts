@@ -164,3 +164,68 @@ describe('the custody receipt on a register row', () => {
     expect(toItAssetAssignmentDto(row, undefined, undefined, new Map()).receiptSigned).toBe(false);
   });
 });
+
+// 2026-11-19 — «في عهدة إدارة … — الموقع …»: a department's interval names the department, the
+// place and who signed for it, and nobody as its employee holder.
+describe('a department custody row', () => {
+  const IT = new Types.ObjectId();
+  const SERVER_ROOM = new Types.ObjectId();
+  const SIGNER = new Types.ObjectId();
+  const held = (): ItAssetAssignmentDoc =>
+    ({
+      ...assignment(),
+      holderKind: 'department',
+      assignedToEmployeeId: null,
+      departmentId: IT,
+      locationId: SERVER_ROOM,
+      responsibleEmployeeId: SIGNER,
+    }) as ItAssetAssignmentDoc;
+
+  it('names the department, the place and the signer — labelled at response time', () => {
+    const dto = toItAssetAssignmentDto(
+      held(),
+      new Map([[String(SIGNER), { code: 'EMP-0042', fullNameAr: 'وليد صفوت جلال' }]]),
+      undefined,
+      undefined,
+      {
+        departments: new Map([[String(IT), { ar: 'تكنولوجيا المعلومات', en: 'IT' }]]),
+        locations: new Map([[String(SERVER_ROOM), { ar: 'غرفة السيرفرات', en: 'Server room' }]]),
+      },
+    );
+    expect(dto).toMatchObject({
+      holderKind: 'department',
+      // Not the signer's personal custody, and never the text "null".
+      assignedToEmployeeId: null,
+      assignedToEmployeeCode: null,
+      assignedToEmployeeName: null,
+      departmentId: String(IT),
+      departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+      locationId: String(SERVER_ROOM),
+      locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+      responsibleEmployeeId: String(SIGNER),
+      responsibleEmployeeCode: 'EMP-0042',
+      responsibleEmployeeName: 'وليد صفوت جلال',
+    });
+  });
+
+  it('keeps the ids when nothing could be named', () => {
+    expect(toItAssetAssignmentDto(held())).toMatchObject({
+      departmentId: String(IT),
+      departmentName: null,
+      locationId: String(SERVER_ROOM),
+      locationName: null,
+      responsibleEmployeeId: String(SIGNER),
+      responsibleEmployeeName: null,
+    });
+  });
+
+  it('reads an interval from before department custody as an employee’s, its department fields null', () => {
+    expect(toItAssetAssignmentDto(assignment())).toMatchObject({
+      holderKind: 'employee',
+      assignedToEmployeeId: String(EMPLOYEE),
+      departmentId: null,
+      locationId: null,
+      responsibleEmployeeId: null,
+    });
+  });
+});

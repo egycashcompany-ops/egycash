@@ -101,7 +101,7 @@ The register row. One asset = one physical (or licensed-hardware) item.
 | `serialNumber?`, `model?`, `manufacturer?` | identity card; `serialNumber` sparse-unique |
 | `externalTag?` | a pre-existing printed tag/barcode number, searchable — legacy labels keep working without printing (D2) |
 | `branchId` | data-scope anchor; changes only via **transfer** (§2.5) or **«نقل إلى فرع»**, the move to another branch (below) — which for a held asset IS that transfer |
-| `location?` | free text (room/desk) within the branch |
+| `location?` | free text (room/desk) within the branch — «وصف المكان» on the screens since 2026-11-19. Not the PLACE a department holds a device at: that is the custody interval's `locationId`, a row of the branch's «المواقع» (§2.4.1, §2.5). The two are never converted into each other; the inventory devices whose text names a department or a room stay as they are (§17 2026-11-19, default 10) |
 | `purchase?` | `{ date, cost?, vendorId?, invoiceRef? }` — recorded facts, not accounting |
 | `warranty?` | `{ vendorId?, start, end, terms? }` — embedded (D9); expiry sweep reads `warranty.end` |
 | `currentAssignmentId?` | denormalized head of the open assignment, `null` when in stock |
@@ -408,12 +408,81 @@ precedent:
   also the catalogs page's realtime refresh. After the run row, a type the IT team unticks stays
   unticked.
 
+«المواقع» — the places a department keeps what it holds — is NOT a kind here, though it is edited
+on the same page (§17 2026-11-19): this collection is org-wide (its repository has no
+`branchField`), with ONE name per kind (`ux_kind_name_ar`), so «غرفة السيرفرات» in a second branch
+would be refused, and widening that index is drift index-sync never rebuilds. A place is a
+branch's and every row of it needs a reach check — a list that carries behaviour, so its own
+collection (§2.4.1), the ATM per-branch labels (`atm_ref_labels`) the precedent.
+
+#### 2.4.1 `it_locations` — the branches' places («المواقع», §17 2026-11-19)
+
+`{ branchId (required, never changes — a new place is made instead), name { ar, en }, code?,
+description?, sortOrder (0), isActive (true) }` — unique by `name.ar` within a branch
+(`ux_branch_name_ar`, live rows), and `ix_branch_active_sort` for the pickers. Read and written
+through `branchField: 'branchId'`, under `itCatalog.manage` within the caller's branch reach (no key
+was added): a place is created in a branch that grant reaches (403 otherwise; 400
+`body.branchId` `UNKNOWN` for one unknown or inactive, the transfer's `body.toBranchId` precedent),
+a duplicate name in the branch is a 409, and
+the create dialog's branches are the server's (`GET /it/locations/branch-targets`, the move-targets'
+contract). A place is RETIRED (`isActive: false`), never deleted — refused (409) while assets are
+held there, «N assets are held at this place; transfer or return them first»; a past consumables
+issue does not hold it. A retired place still names the rows written with it (the options'
+`includeInactive`). The tab shows «في عهدته الآن» — the assets held there now, one `$group` of the
+open intervals under the reader's `itAsset.view`, `null` without it — linking to the asset list
+filtered by the place. Pickers read `GET /it/locations/options` (names only, unscoped, on any IT
+read grant — the department options' posture), filtered by the branch on the client: the asset
+hand-over's lines' branch, a transfer's target branch, the consumables store's branch. Audit
+entity `location`; realtime ref `it.location` (`itCatalog.manage`).
+
 ### 2.5 `it_asset_assignments` — Assignment (custody record)
 
 Open/closed custody intervals; the open one is denormalized on the asset.
 
-`{ assetId, assignedToEmployeeId, assignedByUserId, assignedAt, conditionOnIssue?,
-expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
+`{ assetId, holderKind?, assignedToEmployeeId | null, departmentId?, locationId?,
+responsibleEmployeeId?, assignedByUserId, assignedAt, conditionOnIssue?, expectedReturnAt?,
+returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
+
+**The holder is an employee, or a DEPARTMENT at a PLACE** (§17 2026-11-19, FR-22): «في عهدة إدارة …
+— الموقع …» — a server, a camera or a switch held by a department, kept at a place of the branch's
+«المواقع» (§2.4.1), signed for by the department's responsible person. Separate fields, the mobile
+lines' precedent: `holderKind` (`employee` | `department`, ABSENT on every interval before
+2026-11-19 and read `employee` — nothing was migrated); `assignedToEmployeeId`, required unless the
+holder is a department (null then); `departmentId`, `locationId` and `responsibleEmployeeId`,
+required iff it is. The signer is never put in `assignedToEmployeeId`: a department's server would
+then be the signer's own custody — on the holder column, the `holderEmployeeId` filter, the
+person's open custody, the leavers' panels, the «already held» checks and the consumables' «his
+devices». Every custody site reads the holder through ONE pure module (`assets/custody-holder.ts`:
+the holder of an interval or a request, whether two are the same, the signer, the interval's,
+history's and audit's keys) — never `String(assignedToEmployeeId)`, which compiles for a null and
+prints «null». Partial indexes `ix_department_open`, `ix_location_open`, `ix_responsible_open` serve
+the department's reads; `ux_open_assignment_per_asset` is holder-agnostic and holds for both
+kinds (ADR-021's addendum).
+
+- **A department hand-over** reads, before its transaction (`assets/custodian.ts`), the responsible
+  person through the receipt holder seam — a leaver is refused, «a department's custody can only be
+  signed for by a current employee» (FR-15) — the department (any ACTIVE platform department, in
+  any branch: head-office IT may hold a branch's server; 422 `body.department.departmentId`
+  `UNKNOWN` / `INACTIVE`) and the place (an active one; 422 `body.department.locationId` `UNKNOWN` /
+  `INACTIVE`). Inside it, every line is read and judged before anything is written: in stock, and
+  in the PLACE'S BRANCH (422 `body.department.locationId` `OTHER_BRANCH`, naming every asset that is
+  not) — one place per paper, so a department paper lists one branch's assets. The interval is the
+  department's; the history entry carries `holderKind`, `departmentId`, `locationId` and
+  `responsibleEmployeeId` in place of `employeeId`; the `assign` audit row their four changes in
+  place of `holder`; `it.asset.assigned` `employeeId: null` with the department's fields.
+- **The holder's labels** are read at response time, never denormalized (IT-6): an asset answer's
+  `holder` and a register row are flat (the mobile line's shape) — `kind`, the employee's id, code
+  and name, or the department's id and name, the place's id and name and the signer's id, code and
+  name, the other kind's null; one directory batch for the holders and the signers together, plus
+  one read of the departments and one of the places for a page that has any (`custody-labels.ts`).
+- **Its readers**: the asset list's `holderKind`, `holderDepartmentId` and `locationId` mean the
+  OPEN interval as `holderEmployeeId` does, all in ONE read of the open intervals so they
+  intersect; «موظف» alone is «held now, and not by a department». The register's `holderKind`,
+  `departmentId`, `locationId` and `responsibleEmployeeId` are clauses of the interval.
+  `holderExited` (both answers) and the dashboard's «أصول مع موظفين تركوا العمل» stay EMPLOYEE
+  custody: a department interval is in neither, and a person's `openCustodyCount` counts their own
+  custody only. A person's page is also opened by a department custody they signed for (§7), and
+  lists it in a card of its own, «عهد إدارات وقّع عليها».
 
 - **Assign**: asset must be `inStock`; creates the record, stamps `currentAssignmentId`, writes
   the `assigned` event, fires `it.asset.assigned`.
@@ -442,11 +511,32 @@ expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
   interval. The holder is not refused for having left: a same-hands move hands nobody anything
   (FR-15). The move date may not precede the hand-over it closes, as for any transfer — the move
   checks it for every held asset before anything is written and names each one (`beforeCustody`,
-  §2.2).
+  §2.2). **A department-held asset does not move this way** (`heldAtLocation`, after
+  `alreadyThere` and before `beforeCustody`, 422): a place does not travel — moved along, the
+  department's custody would be at no place, and returning it to stock on the way would write a
+  custody fact nobody witnessed (FR-13). It moves with «نقل» to a place in the new branch, or after
+  its return.
+- **A transfer with a department on either side** (§17 2026-11-19): department → employee,
+  employee → department, another room, or the department signing again with a new responsible
+  person. A department is the same holder only with the same department, place AND signer, so
+  changing any one of them is a NEW holder — a new paper, nothing carried over; a department is
+  never the employee who signs for it. `toDepartment` is read and judged before the transaction as
+  a hand-over's department is (`body.toDepartment.*`). The place must be in the branch the asset is
+  held in after the transfer (422 `body.toDepartment.locationId` `OTHER_BRANCH`), and a
+  department-held asset sent to another branch must name its new holder there — a place in that
+  branch, or an employee (422 «held by a department at a place in its branch»). The history keys
+  are the employee's `fromEmployeeId` / `toEmployeeId` as before, and for a department its
+  `from…` / `to…` `DepartmentId`, `LocationId` and `ResponsibleEmployeeId`; the event adds
+  `fromDepartmentId`, `toDepartmentId`, `fromLocationId`, `toLocationId` whenever a department is on
+  either side. **Re-signing** is the remedy when a responsible person leaves: the custody stands
+  (FR-13), flagged in the audit (`alertRaised`, `responsibleExited`), until a transfer names the
+  same department and place with a new signer.
+- **Return** is always allowed for both kinds; the history, the audit and `it.asset.returned` name
+  the department (`employeeId: null`).
 - **Dispose**: asset must not have an open assignment; sets `disposal`, terminal status; the code
   is never reused; row is never deleted.
-- **Receipt** (FR-18): every interval opened for a person carries `receiptId` — the custody
-  receipt it was handed over on (§2.5.1). An interval from before receipts has none.
+- **Receipt** (FR-18): every interval opened for a person — or a department — carries `receiptId`,
+  the custody receipt it was handed over on (§2.5.1). An interval from before receipts has none.
 
 #### 2.5.1 `it_custody_receipts` — Custody receipt (إقرار استلام, FR-18)
 
@@ -456,7 +546,21 @@ hand-over:
 `{ formNumber, employeeId, employeeCode?, employeeName?, jobTitle?{ar,en}, nationalId?, section?{ar,en}, department?{ar,en}, issuedAt, issuedByUserId, branchId,
 lines[{ assetId, assignmentId, assetCode, name, serialNumber?, conditionOnIssue?, notes?,
 deviceType?, manufacturer?, model?, specs?, accessories[] }],
-signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
+signedCopy?{ fileId, fileName, mime, size, uploadedAt },
+custodian?{ departmentId, departmentName?{ar,en}, locationId, locationName?{ar,en} } }`
+
+- **A DEPARTMENT CUSTODY paper** (§17 2026-11-19) names the department and the place in
+  `custodian` — a snapshot, like the rest of the paper; absent on every receipt before it, null on
+  an employee's. `employeeId` is the SIGNER: the employee who holds the devices, or the
+  department's responsible person — whose name, code, job, national ID (under the same
+  `itAsset.viewNationalId`) and «– …» department are the paper's as an employee's are. Nothing reads
+  `employeeId` as the holder, so it stays required. The paper's `branchId` is the place's, every
+  line's too; the number series is F-14's; the undertaking is not paraphrased — the responsible
+  person undertakes it. The statement reads «… بصفتي المسؤول عن إدارة … بأنني قد استلمت … ليكون في
+  عهدة إدارة … بموقع …», the closing adds «عن إدارة: …» and the title «— إدارة …». The audit row adds
+  `departmentId` and `locationId`; the signed copy is filed under the department and the signer.
+  The preview refuses exactly what the hand-over would, and for a transfer's paper «already held by
+  this department at this place, signed by this person».
 
 - Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
   holder); the lines and the signer are a snapshot of what was recorded — what the paper printed
@@ -469,7 +573,8 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
   (`receipt-device.ts`) serves the preview, the hand-over, a transfer and a receipt issued for older
   custody, so the paper previewed is the paper stored. Lines from before the acknowledgment have
   none of these and print the asset's name as the device.
-- `branchId` is the first line's branch — the read-scope anchor, like an interval's.
+- `branchId` is the first line's branch (a department paper's: the place's) — the read-scope
+  anchor, like an interval's.
 - The holder's identity is read from HR through the directory (`getDirectoryIdentityFacts`: the
   national ID and the section, a lookup of its own so the raw ID never joins `DirectoryEmployee`)
   and the organization (the section's and department's names). `nationalId` is stored RAW for the
@@ -636,7 +741,10 @@ on the answer, never stored.
 - **`it_consumable_movements`** — the append-only ledger: `{ consumableId, kind: received | issued |
   scrapped | returned | transferredOut | transferredIn, qty (always positive — the kind says which
   way), at, branchId, byUserId, employeeId?, assetId?, reason?, memoId?, notes?, transferId?,
-  counterpartBranchId?, counterpartConsumableId?, counterReading?, counterReset? }` — the
+  counterpartBranchId?, counterpartConsumableId?, counterReading?, counterReset?, departmentId?,
+  locationId?, responsibleEmployeeId? }` — the department's three present only on an issue to a
+  department (`employeeId` null on it, below, «صرف لإدارة»; partial indexes `ix_department_at`,
+  `ix_location_at`, `ix_responsible_at`); the
   transfer's three null except on a transfer's pair (index `ix_transfer` on `transferId`); the
   counter's two present only on a counted issue (below, «عداد الطابعة»), `counterReset` only when
   true — so an old row and an uncounted one read alike, and the ledger's answer says `null` /
@@ -778,7 +886,8 @@ on the answer, never stored.
 - **`it_consumable_memos`** — «مذكرة صرف مستهلكات», ONE per issue action, listing every item it
   gave: `{ memoNumber, issuedAt, employeeId, employeeCode?, employeeName?, jobTitle?, issuedByUserId,
   issuedByName?, branchId, lines[{ consumableId, movementId, code, name, typeName?, unit, qty, reason,
-  assetId?, assetCode?, assetName? }], notes?, signedCopy? }` — a snapshot of what it printed, on the
+  assetId?, assetCode?, assetName? }], notes?, signedCopy?, custodian?{ departmentId,
+  departmentName?, locationId, locationName? } }` — a snapshot of what it printed, on the
   device acknowledgment's letterhead with a series of its own (§2.1), not F-14: an F-14 paper
   undertakes to give back what it lists, and a consumable is used up. No national ID on it. The
   issue writes the movements, the counters and the memo in ONE transaction, its number reserved
@@ -791,6 +900,19 @@ on the answer, never stored.
   under the same number. Nothing else of the paper changes, and the `signedCopy` already filed stays
   as it is: it is the paper that was signed that day, and the audit trail says what changed after.
   A movement whose memo is gone (the reset below) is corrected all the same, with no memo row.
+- **«صرف لإدارة» — an issue to a DEPARTMENT at a place** (§17 2026-11-19, FR-22): the issue names an
+  employee OR `department { departmentId, locationId, responsibleEmployeeId }`, exactly one. The
+  responsible person (a current employee — a leaver refused), the department (active, any branch)
+  and the place (active) are read before the transaction, and the place must be in the STORE'S
+  branch (422 `body.department.locationId` `OTHER_BRANCH`). Each `issued` row writes
+  `employeeId: null` — the field means whom it went to — and the department's three ids; the memo
+  is the same memo, its `employeeId` and name, code and job the SIGNER's (the responsible person,
+  «المستلم عن الإدارة»), its `custodian` the department and the place («لصالح إدارة … بموقع …»),
+  its `branchId` the store's and its number `EGYCASH-IT-CON`'s series. The ledger labels the
+  department, the place and the signer at response time and filters by `departmentId`,
+  `locationId` and `responsibleEmployeeId`; the person's page lists the department issues they
+  signed for. The printer counter is unchanged — keyed on the printer alone, so a toner onto a
+  department-held printer still takes its reading. A return names no department in this version.
 - The workforce reset KEEPS the items and the ledger (the ledger is the stock's explanation) and
   PURGES the memos, which name a person, as it does the other papers; a movement whose memo is gone
   offers none.
@@ -813,6 +935,8 @@ hours of filing; no `employeeId` path.
 ```
 it_catalog_items(assetCategory) 1─n it_assets ──1─n it_asset_events        (history)
                           │ ├──1─n it_asset_assignments ──n─1 hr employees (custody)
+                          │ │        └──n─1 platform departments + it_locations (a department's
+                          │ │           custody at a place, signed by an hr employee — 2026-11-19)
                           │ ├──1─n it_maintenance_orders ──n─1 it_maintenance_plans
                           │ │        └──1─n it_spare_part_movements ──n─1 it_spare_parts
                           │ ├──1─n it_software_installations ──n─1 it_software_products
@@ -831,9 +955,11 @@ it_mobile_lines ──1─n it_mobile_line_events                               
               └──n─0..1 it_mobile_line_receipts                              (one line per paper)
 it_catalog_items(consumableType) 1─n it_consumables (one per item per branch)
    └──1─n it_consumable_movements ──n─0..1 hr employees    (issued to / returned by)
+              ├──n─0..1 platform departments + it_locations (issued to a department, 2026-11-19)
               ├──n─0..1 it_assets                           (installed on)
               ├──n─0..1 it_consumable_memos                 (one memo per issue, n items)
               └──n─0..1 it_consumables                      (a transfer's other store's item)
+it_locations ──n─1 platform branches                      (a branch's places, «المواقع»)
 it_vehicle_checks ──n─1 fleet_vehicles (id + code/branch snapshot, read through it/fleet-boundary.ts)
    └── photos ──n─1 platform files                          (≤ 5 per report)
 ```
@@ -863,6 +989,9 @@ and dispose write their audit row inside that transaction; a transfer — and «
 to another branch that takes the same path for a held asset (§2.2) — writes its audit rows after
 the commit, so a row never outlives a transfer the database then refused (§10). Guards:
 assign requires `inStock`; return/transfer require an open assignment; dispose requires none.
+The holder of each is an employee or a department at a place (§2.5, §17 2026-11-19): a hand-over
+or a transfer to a department is judged on the department, the place and its branch, and the
+signer; «نقل إلى فرع» refuses a department-held asset; a return takes either back.
 
 ### 4.4 Ticket lifecycle (code-defined state machine — D4)
 
@@ -947,12 +1076,16 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   app is server-side search + resolve-by-id from its first commit (ADR-019 rule 5); the one
   exception is the vehicle-code picker of FR-21, which lists every active car (ADR-037).
 - **FR-13** `hr.employee.exited` never auto-returns assets — physical custody changes only when
-  a human records the return (§9.1).
+  a human records the return (§9.1). A leaver who signed for a DEPARTMENT's custody is flagged on
+  each of those assets too (`alertRaised`, `responsibleExited`): the custody is the department's and
+  stands; the department signs again by a transfer (§2.5, §17 2026-11-19). «حالة المستلِم» and the
+  dashboard's leavers row stay employee custody.
 - **FR-14** A requester may cancel their **own** ticket while it is still `open`, and may add
   public comments to their own tickets — ownership rules riding the `own` scope, not grants; no
   permission is minted for either.
-- **FR-15** Custody is handed only to a current employee: `assign`, and a `transfer` that names a
-  new holder, refuse an employee HR reports as `exited` (422). A branch move in the same hands is
+- **FR-15** Custody is handed only to a current employee, or to a department on a current
+  employee's signature (§17 2026-11-19): `assign`, and a `transfer` that names a new holder, refuse
+  an employee — or a department's responsible person — HR reports as `exited` (422). A branch move in the same hands is
   not a hand-over and stays open to a departed holder. The custody register's holder search finds
   every status, leavers included; the hand-over pickers offer the employed alone (§17,
   2026-09-27), of every branch (`/it/people/recipients`, §17 2026-11-18).
@@ -991,7 +1124,9 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   only for a reader holding `itAsset.viewNationalId`; the form's «صادرة من قسم … – … بتاريخ …» is
   not printed; the name under the signature is the first three parts (§17, 2026-10-05). The
   employee's code follows the company, «… بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي …»
-  (§17, 2026-10-06).
+  (§17, 2026-10-06). A hand-over to a DEPARTMENT is made on a department custody receipt — the same
+  paper and number series, naming the department and the place, signed by the department's
+  responsible person (§2.5.1, §17 2026-11-19).
 - **FR-19** Mobile lines are a register of their own (§2.10) under their own grants
   (`itMobileLine.*`, page «خطوط المحمول» — the asset grants `itAsset.*` until §17 2026-11-17): registered with their network, number, account, plan and SIM; handed over to a
   current employee — on a printed «إقرار استلام», print first (as devices were until §17,
@@ -1023,7 +1158,9 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   ledger (§2.11 «عداد الطابعة», §17 2026-11-19). The register shows each item's balance, what was issued
   and what was scrapped, and flags an item at its minimum; the movements log answers who was given
   what, and goes to Excel and PDF as the register does. An asset's page lists the consumables
-  installed on it; an employee's IT page lists what they were issued (§17, 2026-10-28).
+  installed on it; an employee's IT page lists what they were issued (§17, 2026-10-28). An issue
+  may go to a DEPARTMENT at a place of the store's branch instead, on a memo its responsible person
+  signs (FR-22, §2.11 «صرف لإدارة»).
 - **FR-21** A user granted the vehicle check (`itVehicleCheck.create`, given through a role) files,
   from a phone, a report on any ACTIVE car: the car (searched by its code), the day (today, may be
   an earlier one), «يعمل» or «لا يعمل» for each of the eleven devices in the owner's order (every
@@ -1034,6 +1171,20 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   filing): the latest report of each active car, the faults per device, the cars not checked for
   seven days, the reports with their photos, Excel and PDF; a wrong report is soft-deleted under
   `itVehicleCheck.delete` (§17, 2026-11-10; [design §11](it-vehicle-checks-design.md)).
+- **FR-22 «عهدة إدارة بموقع»** — assets and consumables may be handed, instead of to an employee,
+  to a DEPARTMENT kept at a PLACE: «أعينها فى مكان بس تبقى على عهده الإدارة .. زى السيرفرات
+  والكاميرات والسويتشات» (§17 2026-11-19). The department is any active department of any branch,
+  the IT department preselected; the place is one of the branch's «المواقع» (§2.4.1, managed on
+  the catalogs page under `itCatalog.manage`), in the asset's branch — the store's, for
+  consumables — one place per paper; the paper (the device receipt, or the consumables memo) names
+  the department and the place and is signed by the department's responsible person, any current
+  employee, chosen at the hand-over. The asset list, the custody register and the ledger show
+  «في عهدة إدارة … — …» and filter by department, place and holder kind; the asset's history and
+  the dashboard's latest movements name the department; «مُسلَّم» counts department custody; the
+  responsible person's page lists, in a card of its own, the department custody they signed for,
+  not counted as their own. A department-held asset moves to another branch only by «نقل» naming
+  its new holder there; «نقل إلى فرع» refuses it. A leaving responsible person is flagged and the
+  custody stands (FR-13). Mobile lines are not handed to departments.
 
 ## 6. States catalog
 
@@ -1060,9 +1211,10 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 | `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer + the move to another branch — one custody grant, the roster-precedent: one operational surface; a transfer to ANOTHER branch only to an active one that grant reaches whole, as «نقل إلى فرع» — 403 / 400 otherwise, §2.5, §17 2026-11-18; the recipient of a hand-over may work in any branch, and what is handed over stays in the asset's branch), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
 | `/it/mobile-lines` | `itMobileLine.view` (the register, a line, its history, its intervals, its acknowledgments read back and reprinted, the lines section of an employee's IT history, the home's lines panel) | `itMobileLine.create` (register a line), `.edit` (edit — its branch included, to one that grant reaches — suspend, reactivate), `.assign` (hand over + return + the line's acknowledgment: print it first, file and withdraw its signed copy), `.viewNationalId` (the holder's national ID on the line acknowledgment — Security Architecture §3's sensitive-data grant, the line's own; the device receipt keeps `itAsset.viewNationalId`). Page `it.mobile-lines` («خطوط المحمول»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-20 until then, and open nothing here now |
 | `/it/consumables` (+ `/movements`) | `itConsumable.view` (each store, an item, its movements, the ledger, the memos read back and reprinted, the consumables section of an employee's IT history, the home's consumables panel, an asset page's «installed» card — the asset labels a ledger row shows are part of the item's record and read under this grant) | `itConsumable.create` (add an item to a store that grant reaches), `.edit` (edit, retire, receive, scrap), `.assign` (issue to an employee with its memo, take back from one, file and withdraw the memo's signed copy, transfer stock to another branch's store that grant reaches — the picker lists no other: the server names them, `GET /it/consumables/transfer-targets`, under the same grant; «تعديل الجهاز» on an issued row of the ledger — set, change or clear the device it sits in, the row found within `itConsumable.view`, §2.11, §17 2026-11-17). An issue's «installed on», and a device «تعديل الجهاز» names, is an asset within the caller's OWN `itAsset.view` — without that grant every asset is «not found», and only clearing it is left; the screen offers the action only with `itConsumable.assign` AND `itAsset.view`. A toner's issue names its printer, so in practice issuing a toner needs `itAsset.view` as well (every issuer got it with the store's keys on 2026-11-17; only a role edited since lacks it — §17 2026-11-19). A toner item's cartridges and their average (`GET /it/consumables/:id/cartridges`) read under `itConsumable.view`, the item within its scope and the printers named under it. Page `it.consumables` («المستهلكات»). Its own keys since §17 2026-11-17; the asset grants carried it from §17 2026-10-28 until then, and open nothing here now |
-| `/it/people` (the filter boxes, the employees register, a person's head) | ANY of `itAsset.view`, `itMobileLine.view`, `itConsumable.view` | read-only; a person is found when ANY of those three the caller holds reaches them — one selector per held grant, OR-ed by the directory (`anyOfScopes`) — never one key's units standing for the others' (two grants can reach different branches, or one be `own`), and each person's `openCustodyCount` — the assets they hold — is counted within the caller's `itAsset.view` only: 0 for everyone to a caller without it (§17, 2026-11-17). A person's head (`GET /it/people/:employeeId`) is ALSO found when the caller's own registers NAME the person — an asset custody interval (open or closed) within `itAsset.view`, a line custody interval within `itMobileLine.view`, or a consumables movement (an issue or a return) naming them within `itConsumable.view`, each asked only for a grant the caller holds and scoped exactly as that register's own list (the row's own `branchId`) — and is then read from the directory unscoped: the sender of a hand-over to another branch opens the recipient's page, and every section of it is still the sender's own registers («المُسلِّم يرى ما سلّمه», §17 2026-11-18). The list itself is unchanged |
+| `/it/people` (the filter boxes, the employees register, a person's head) | ANY of `itAsset.view`, `itMobileLine.view`, `itConsumable.view` | read-only; a person is found when ANY of those three the caller holds reaches them — one selector per held grant, OR-ed by the directory (`anyOfScopes`) — never one key's units standing for the others' (two grants can reach different branches, or one be `own`), and each person's `openCustodyCount` — the assets they hold — is counted within the caller's `itAsset.view` only: 0 for everyone to a caller without it (§17, 2026-11-17). A person's head (`GET /it/people/:employeeId`) is ALSO found when the caller's own registers NAME the person — an asset custody interval (open or closed) within `itAsset.view`, a line custody interval within `itMobileLine.view`, or a consumables movement (an issue or a return) naming them within `itConsumable.view`, each asked only for a grant the caller holds and scoped exactly as that register's own list (the row's own `branchId`) — and is then read from the directory unscoped: the sender of a hand-over to another branch opens the recipient's page, and every section of it is still the sender's own registers («المُسلِّم يرى ما سلّمه», §17 2026-11-18). A department's custody interval, or a department's issue, also NAMES the responsible person who signed for it (`responsibleEmployeeId`, §17 2026-11-19). The list itself is unchanged |
 | `/it/people/recipients` (a hand-over's box: «المستلم» on the asset hand-over, the new holder on a transfer, the consumables issue and return, the line hand-over) | ANY of `itAsset.assign`, `itMobileLine.assign`, `itConsumable.assign` — the act's own grant, no key added | read-only; anybody who works here today (`employed` — FR-15/16) in EVERY branch, for a required search, a few at a time (`pageSize` ≤ 20, default 8), by name — neither a grant's reach nor the command bar's branch is applied (the `/it/technicians` precedent: the population is bounded by the act, the search and the page). Each row is `{ employeeId, code, fullNameAr, branchId }` and nothing else — no dates, no login, no custody counts (§17 2026-11-18) |
 | `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories and the consumables' types — one grant, the `fleetCatalog.manage` precedent) |
+| `/it/catalogs?kind=location` («المواقع», `/it/locations`) | `itCatalog.manage`, within its branch reach (the tab's list, scoped by the place's branch; «في عهدته الآن» counted within the reader's `itAsset.view`, `null` without it) | `itCatalog.manage` (add a place in a branch that grant reaches — the dialog's branches are the server's, `GET /it/locations/branch-targets`; edit; retire — refused while assets are held there). The pickers' `GET /it/locations/options` reads on ANY of `itAsset.view`, `itConsumable.view`, `itCatalog.manage`, unscoped, names only — a hand-over may name a place in a branch the caller's catalog grant does not reach. No key was added (§2.4.1, §17 2026-11-19) |
 | `/it/tickets` | `itTicket.view` (scoped; requesters see own) | `itTicket.create`, `.edit` (work the ticket: status, priority, internal comments), `.assign` (dispatch decision, its own grant), `.close` (close + reopen + cancel, both-directions precedent) |
 | `/it/helpdesk-settings` | — | `itSlaPolicy.manage` (priorities + their SLA targets — behaviour-carrying, its own grant: the `fleetMaintenanceRule.manage` precedent) |
 | `/it/maintenance` | `itMaintenance.view` | `itMaintenance.create`, `.edit`, `.complete` (complete + cancel) |
@@ -1087,9 +1239,16 @@ view. All permissions land in the generated matrix.
 | Event | Payload v1 (beyond ids) | Fired when |
 |---|---|---|
 | `it.asset.registered` / `.updated` | assetCode, categoryId | registry writes |
-| `it.asset.assigned` | assetCode, employeeId, assignmentId | §4.3 |
-| `it.asset.returned` | assetCode, employeeId, condition? | §4.3 |
-| `it.asset.transferred` | assetCode, fromEmployeeId?, toEmployeeId?, fromBranchId?, toBranchId? | §4.3 · the move to another branch (§2.2), once per asset — no employee for one in stock |
+| `it.asset.assigned` | assetCode, employeeId (null for a department), assignmentId, holderKind?, departmentId?, locationId?, responsibleEmployeeId? | §4.3 |
+| `it.asset.returned` | assetCode, employeeId (null for a department), condition?, holderKind?, departmentId?, locationId?, responsibleEmployeeId? | §4.3 |
+| `it.asset.transferred` | assetCode, fromEmployeeId?, toEmployeeId?, fromBranchId?, toBranchId?, fromDepartmentId?, toDepartmentId?, fromLocationId?, toLocationId? | §4.3 · the move to another branch (§2.2), once per asset — no employee for one in stock |
+
+Department custody (§17 2026-11-19) changed two payloads in v1 without a version bump: the
+`employeeId` of `assigned` and `returned` became nullable — the event names the holder, and a
+department is the holder, not its signer — and the department's fields are optional, absent on
+every earlier event and on an employee's. Nothing in the repository subscribes to the three, and
+ADR-008 consumers are tolerant readers; an automation filtering on `employeeId` simply does not
+match a department's.
 | `it.asset.disposed` | assetCode, method, reason | §4.3 |
 | `it.asset.warrantyExpiring` / `.warrantyExpired` | assetCode, warrantyEnd, vendorId? | expiry sweep |
 | `it.ticket.opened` | ticketCode, categoryId, priorityId, requesterUserId, assetId? | creation |
@@ -1120,7 +1279,8 @@ responsible; asset assigned → notify the holder.
 
 ## 9. Integration points
 
-**9.1 HR (live):** custody references employees; requesters/technicians are platform users.
+**9.1 HR (live):** custody references employees or departments — a department's custody is
+signed by an employee (§2.5, §17 2026-11-19); requesters/technicians are platform users.
 IT NAMES employees through its own read-only `/it/people` (under any of `itAsset.view`,
 `itMobileLine.view` and `itConsumable.view` — §7, §17 2026-11-17), `/it/people/recipients`
 (under any of `itAsset.assign`, `itMobileLine.assign` and `itConsumable.assign` — §7, §17
@@ -1134,7 +1294,9 @@ reads its recipient through the directory, unscoped, as it always did (`receipt-
 Subscribes to `hr.employee.exited`: assets held by the leaver are **flagged** (dashboard panel
 "assets held by exited employees" + notification to IT) — never auto-returned (FR-13); the exit
 checklist is the human process, the flag is its safety net. The leaver's mobile lines are flagged
-the same way, by a second subscription (`it.flagMobileLinesHeldByExitedEmployee`, FR-19).
+the same way, by a second subscription (`it.flagMobileLinesHeldByExitedEmployee`, FR-19). The same
+asset subscription flags the department custody the leaver SIGNED for (`responsibleExited`) — the
+custody stands, and the department signs again (§17 2026-11-19).
 **9.2 Fleet (boundary, no coupling):** vehicles never enter `it_assets`; `it_maintenance_*` and
 `fleet_maintenance_visits` are different domains that happen to share a word. No shared code, no
 shared collections. A tracker SIM handed to a car (FR-19) names the car by the code and plate
@@ -1185,6 +1347,17 @@ memo's row is written only when the device changed (the paper carries no reading
 `requiresCounterReading` is in its `create` / `update` diff (§2.4), and the go-live step's tick
 writes an `update` row per ticked type naming its run key as `source`.
 
+Department custody (§2.5, §17 2026-11-19): an asset custody row names a DEPARTMENT holder by
+`holderKind`, `departmentId`, `locationId` and `responsibleEmployeeId` in place of `holder` — a
+hand-over's `assign` row null → each, a return's each → null, a transfer's the ones that changed
+(and between the kinds, `holder` on the employee's side); between two employees the one `holder`
+change it always was. A department paper's `create` row adds `departmentId` and `locationId` beside
+`employeeId`, the signer. A leaving responsible person writes an `alertRaised` row per asset they
+signed for, `responsibleExited` null → their id. A department issue's `assign` rows on the items
+name the department, the place and the signer in place of `employeeId`, and the memo's row names
+the signer, the department and the place. The places themselves audit under entity `location`
+(`create`, `update`, retire as an `update` of `isActive`).
+
 The bulk upload (§2.2, §17 2026-11-16) writes, after its commit and with the caller as the actor,
 through the go-live's own write path: a `create` row per new asset (its code, serial number and
 status), an `update` row per filled device (each field filled, old→new), and a `transfer` row per
@@ -1200,7 +1373,9 @@ warranty expiring 30/60/90 · recently registered/disposed. *Built as the `/it` 
 2026-11-03): the counts by status under a category (several) and a branch filter, by category and
 by branch, «يحتاج متابعة» (held by leavers, receipts awaiting signature, overdue returns, warranty
 ending within `it.warrantyWarnDays`), the latest movements, the lines' networks and the consumables
-at their minimum.*
+at their minimum.* Department custody (§17 2026-11-19): «مُسلَّم» counts it with the rest; «آخر
+الحركات» names a department holder («إدارة …» and its place) in place of a person; «أصول مع موظفين
+تركوا العمل» stays employee custody.
 **Ticket dashboard:** open by priority/technician/category · SLA at-risk (§4.5) and breached ·
 aging buckets · resolved-this-week.
 **Maintenance dashboard:** plans due within horizon · overdue orders · parts below min · cost
@@ -1219,8 +1394,9 @@ cars ([design §11](it-vehicle-checks-design.md)).
 
 | Prefix | Named actions beyond CRUD |
 |---|---|
-| `/it/assets` | list filter `warrantyEndsWithinDays` (the dashboard's warranty row) · `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `POST /move-branch` (`MoveItAssetsToBranchSchema`: up to 100 assets to one branch, all or none, a held one with its custody; 200 → `ItAssetsBranchMoveResultDto`; 403 target out of reach · 400 no such active branch · 404 an asset out of scope · 422/409 every asset that holds it back, named — §2.2) · `GET /move-targets` (under `itAsset.assign`; → `ItMoveTargetsDto { branchIds }`: every active branch for which `keyReachesBranch(ctx, 'itAsset.assign', id)` holds — the test the move applies — in the branch options' order; what the move's picker offers, §2.2 — the consumables' transfer asked it too until §17 2026-11-17 and now has its own, `GET /it/consumables/transfer-targets`; registered before `/:id`) · `GET /import/branches` (under `itAsset.create`; → `ItMoveTargetsDto { branchIds }`, the move-targets' contract: every active branch `itAsset.create` reaches, by the same function asked of that grant (`moveTargetBranchIds(ctx, permissionKey, branches)`, the move passing `itAsset.assign`) — where the bulk upload may register, so its branch picker offers nothing the upload answers 403; in the branch options' order; registered before `/:id`, §2.2) · `POST /import` («رفع جماعي», under `itAsset.create`; registered before `/:id`; multipart, held in memory: `file` — one `.xlsx`, ≤ `IT_ASSET_IMPORT_MAX_MB` (5 MB), ≤ `IT_ASSET_IMPORT_MAX_ROWS` (500) lines, its workbook never inflated whole (one sheet, each part under its inflated cap — a sheet past it refused before any of it is read — then parsed as it streams, handed to the reader in 64 KB slices cut on character boundaries (the parser decodes each piece on its own: a cut inside an Arabic letter read as «�»), and stopped one line past the 500th — §2.2) — and the text fields of `ItAssetImportFieldsSchema`: `branchId?` (omitted on a first preview: the sheet's name suggests it), `kindCategories?` (JSON `{ "<النوع>": "<categoryId>" }`), `apply`, and with it `fileSha256`, `planHash` and `rows` (JSON, the sheet rows kept); without `apply` 200 → `ItAssetImportPreviewDto` (`fileSha256`, `planHash`, `sheetName`, `branchId`, `suggestedBranchId`, `kinds`, `rows` of `ItAssetImportRowDto` — decision, warnings, the device, fills, kept values, `selectable`/`selected` — and `counts` per decision), nothing written; with it 201 → `ItAssetImportResultDto` (created / filled / moved / unchanged, and each asset written: row, id, code, action); 400 a malformed field · 403 a branch inactive or out of `itAsset.create`'s reach · 409 the file or the plan is not the preview's («preview again») · 422 not an `.xlsx`, over the caps (the file past 5 MB — multer's `TOO_LARGE`; more than 500 lines; more than 500 zip entries or a ZIP64 marker, a part past its inflated cap, or the read past its 20 seconds — `SHEET_TOO_LARGE`, its `message` the part, `entries` or `time`, the sentence «the workbook is larger than one branch's sheet — upload the custody sheet on its own (at most 500 lines)»), a header missing or out of place, no branch chosen or suggested, a category that is not an active asset category, a row not in the file or not selectable — §2.2; nothing is written on any refusal) · `GET /:id/history` · `GET /:id/assignments` · `GET /:id/counter-readings` («عداد الطابعة», under `itAsset.view`; the asset within its scope, else 404; → `ItPrinterCounterDto { assetId, latest, readings }`: every reading of the printer, from every store, newest first, each an `ItPrinterCounterReadingDto` — the movement, `at`, `reading`, `reset`, the toner's id, code and name, and `replaced` (the same item's previous cartridge on the printer and its `pages`, null across a reset; the whole field null for an item's first) — and `latest`, the newest without its pairing; ONE object over the whole timeline, not a page — a deviation from API Standards §4 recorded here, as the vehicle checks' `/vehicles` is: the pairing needs every row, and a printer has dozens a year — §2.11, §17 2026-11-19) · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` and says `hasActiveMaintenance` (an order open or in progress, read for the whole page in one query — §2.2) |
-| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `holderExited` (the holder HR shows as having left — the dashboard's FR-13 row), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none) |
+| `/it/assets` | list filter `warrantyEndsWithinDays` (the dashboard's warranty row) · department custody's `holderKind`, `holderDepartmentId` and `locationId` (the OPEN interval, as `holderEmployeeId` — one read for all of them, so they intersect; §2.5, §17 2026-11-19) · `GET /by-code/:code` (scan) · `GET /names` (the register's distinct names, for the name filter; `categoryId`, one or more, narrows them) · the list's `categoryId` and `name` take several values each (`name` a name list, each matched exactly) · `POST /:id/assign` · `/:id/return` · `/:id/transfer` · `/:id/dispose` · `POST /move-branch` (`MoveItAssetsToBranchSchema`: up to 100 assets to one branch, all or none, a held one with its custody; 200 → `ItAssetsBranchMoveResultDto`; 403 target out of reach · 400 no such active branch · 404 an asset out of scope · 422/409 every asset that holds it back, named — §2.2) · `GET /move-targets` (under `itAsset.assign`; → `ItMoveTargetsDto { branchIds }`: every active branch for which `keyReachesBranch(ctx, 'itAsset.assign', id)` holds — the test the move applies — in the branch options' order; what the move's picker offers, §2.2 — the consumables' transfer asked it too until §17 2026-11-17 and now has its own, `GET /it/consumables/transfer-targets`; registered before `/:id`) · `GET /import/branches` (under `itAsset.create`; → `ItMoveTargetsDto { branchIds }`, the move-targets' contract: every active branch `itAsset.create` reaches, by the same function asked of that grant (`moveTargetBranchIds(ctx, permissionKey, branches)`, the move passing `itAsset.assign`) — where the bulk upload may register, so its branch picker offers nothing the upload answers 403; in the branch options' order; registered before `/:id`, §2.2) · `POST /import` («رفع جماعي», under `itAsset.create`; registered before `/:id`; multipart, held in memory: `file` — one `.xlsx`, ≤ `IT_ASSET_IMPORT_MAX_MB` (5 MB), ≤ `IT_ASSET_IMPORT_MAX_ROWS` (500) lines, its workbook never inflated whole (one sheet, each part under its inflated cap — a sheet past it refused before any of it is read — then parsed as it streams, handed to the reader in 64 KB slices cut on character boundaries (the parser decodes each piece on its own: a cut inside an Arabic letter read as «�»), and stopped one line past the 500th — §2.2) — and the text fields of `ItAssetImportFieldsSchema`: `branchId?` (omitted on a first preview: the sheet's name suggests it), `kindCategories?` (JSON `{ "<النوع>": "<categoryId>" }`), `apply`, and with it `fileSha256`, `planHash` and `rows` (JSON, the sheet rows kept); without `apply` 200 → `ItAssetImportPreviewDto` (`fileSha256`, `planHash`, `sheetName`, `branchId`, `suggestedBranchId`, `kinds`, `rows` of `ItAssetImportRowDto` — decision, warnings, the device, fills, kept values, `selectable`/`selected` — and `counts` per decision), nothing written; with it 201 → `ItAssetImportResultDto` (created / filled / moved / unchanged, and each asset written: row, id, code, action); 400 a malformed field · 403 a branch inactive or out of `itAsset.create`'s reach · 409 the file or the plan is not the preview's («preview again») · 422 not an `.xlsx`, over the caps (the file past 5 MB — multer's `TOO_LARGE`; more than 500 lines; more than 500 zip entries or a ZIP64 marker, a part past its inflated cap, or the read past its 20 seconds — `SHEET_TOO_LARGE`, its `message` the part, `entries` or `time`, the sentence «the workbook is larger than one branch's sheet — upload the custody sheet on its own (at most 500 lines)»), a header missing or out of place, no branch chosen or suggested, a category that is not an active asset category, a row not in the file or not selectable — §2.2; nothing is written on any refusal) · `GET /:id/history` · `GET /:id/assignments` · `GET /:id/counter-readings` («عداد الطابعة», under `itAsset.view`; the asset within its scope, else 404; → `ItPrinterCounterDto { assetId, latest, readings }`: every reading of the printer, from every store, newest first, each an `ItPrinterCounterReadingDto` — the movement, `at`, `reading`, `reset`, the toner's id, code and name, and `replaced` (the same item's previous cartridge on the printer and its `pages`, null across a reset; the whole field null for an item's first) — and `latest`, the newest without its pairing; ONE object over the whole timeline, not a page — a deviation from API Standards §4 recorded here, as the vehicle checks' `/vehicles` is: the pairing needs every row, and a printer has dozens a year — §2.11, §17 2026-11-19) · `POST /labels` (PDF) · `GET /export` — every asset answer names its current `holder` and says `hasActiveMaintenance` (an order open or in progress, read for the whole page in one query — §2.2) |
+| `/it/assignments` | the custody register: `open`, `branchId`, `employeeId`, and a filter per column — `search` (the asset's code, name or serial), `categoryId` (one or more), `assetName` (one or more asset names, exactly), `holderExited` (the holder HR shows as having left — the dashboard's FR-13 row; employee custody only), `assignedFrom/To`, `overdue`, `returnedFrom/To`, `receipt` (signed / unsigned / none), and department custody's `holderKind`, `departmentId`, `locationId`, `responsibleEmployeeId` (the person's «عهد إدارات وقّع عليها») — every row names `holderKind` and, for a department, its department, place and signer (§2.5, §17 2026-11-19) |
+| `/it/locations` | «المواقع» (§2.4.1, under `itCatalog.manage`): `GET /` (`ListItLocationsQuerySchema`: `branchId`, `isActive`, `search`, paginated; each row `ItLocationDto` with `heldAssets`) · `GET /options` (`ItLocationOptionsQuerySchema`: `branchId?`, `includeInactive?`; → `ItLocationOptionDto[]`, on any of `itAsset.view`, `itConsumable.view`, `itCatalog.manage`) · `GET /branch-targets` (→ `ItMoveTargetsDto`) · `POST /` (`CreateItLocationSchema`; 403 out of reach · 400 no such active branch · 409 the name taken in the branch) · `PATCH /:id` (`UpdateItLocationSchema`, no `branchId`; 409 retiring a place assets are held at) — §17 2026-11-19 |
 | `/it/catalog-items` | archive (kinds: assetCategory, ticketCategory, consumableType) · `requiresCounterReading` on the create (default false; 400 on another kind) and the update body (422 ticking it on another kind) and on every answer — §2.4, §17 2026-11-19 |
 | `/it/tickets` | `POST /:id/assign` · `/:id/status` · `/:id/resolve` · `/:id/close` · `/:id/reopen` · `/:id/cancel` · `GET+POST /:id/comments` · attachments via platform files |
 | `/it/ticket-priorities` | carry the SLA targets (§2.6) |
@@ -1232,12 +1408,12 @@ cars ([design §11](it-vehicle-checks-design.md)).
 | `/it/vendors` | — |
 | `/it/people` | read-only: `GET /` (search, `status` all/employed/exited, branch) · `GET /:employeeId` (also found when the caller's own registers name the person — §7, §17 2026-11-18) — HR's people through the directory (§9.1), under any of the three registers' read grants (§7) · `GET /recipients` (`ListItRecipientsQuerySchema`: `search` required, 1–100 · `pageSize` 1–20, default 8; strict; → `ItRecipientDto[]` `{ employeeId, code, fullNameAr, branchId }`, the `data` the array, no meta; the employed of every branch by name, unscoped and not narrowed by the command bar; under any of `itAsset.assign`, `itMobileLine.assign`, `itConsumable.assign` — 403 otherwise; registered before `/:employeeId` — §7, §17 2026-11-18) |
 | `/it/technicians` | read-only: `GET /` — the IT departments' people (FR-17) |
-| `/it/custody-receipts` | `POST /preview` (the paper and its new number; nothing else written) · `POST /` (the hand-over: intervals + receipt) · `GET /:id` · `POST /:id/print` (print again, under its number) · `GET+POST+DELETE /:id/signed-copy` — FR-18; plus `POST /it/assignments/:id/receipt` for an interval from before receipts |
+| `/it/custody-receipts` | `POST /preview` (the paper and its new number; nothing else written) · `POST /` (the hand-over: intervals + receipt) · `GET /:id` · `POST /:id/print` (print again, under its number) · `GET+POST+DELETE /:id/signed-copy` — FR-18; plus `POST /it/assignments/:id/receipt` for an interval from before receipts. The hand-over, the preview and `/it/assets/:id/assign` name `employeeId` OR `department { departmentId, locationId, responsibleEmployeeId }`, exactly one (400 otherwise); `/it/assets/:id/transfer` takes `toEmployeeId` OR `toDepartment`, never both. Refusals of a department: 422 on `body.department.*` / `body.toDepartment.*` — `departmentId` `UNKNOWN` / `INACTIVE`, `locationId` `UNKNOWN` / `INACTIVE` / `OTHER_BRANCH` — and 422 for a responsible person who left; every paper answers `custodian` (§2.5, §2.5.1, §17 2026-11-19) |
 | `/it/mobile-lines` | `GET /summary` (each network's figures under the filters) · `POST /:id/assign` (employee or car) · `/:id/return` · `/:id/suspend` · `/:id/reactivate` · `GET /:id/history` — FR-19 |
 | `/it/mobile-line-assignments` | read-only: `GET /` (open, line, employee, branch) — FR-19 |
 | `/it/mobile-line-receipts` | `POST /preview` · `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-19 |
-| `/it/consumables` | `POST /issue` (one employee, n items of one store, one memo; a line takes `counterReading` and `counterReset` — required with `assetId` and `qty` 1 on an item whose type `requiresCounterReading`, refused on any other: 422 `IT_CONSUMABLE_COUNTER_REQUIRED` (a detail per gap) · `…_BELOW_PREVIOUS` / `…_ABOVE_NEXT` (the figures in the details) · 422 a reading on an item that takes none · 400 a reset without a reading, a reading without a printer, two readings on one printer — §2.11 «عداد الطابعة», §17 2026-11-19) · `GET /:id/cartridges` (under `itConsumable.view`; the item within its scope, else 404; → `ItConsumableCartridgesDto { consumableId, averagePages, counted, cartridges }`: each cartridge of the item, newest first — printer, install reading, the next cartridge of the same name there from any store (`removedAt`, `removedReading`) and its `pages`, null while not replaced or across a reset — and the rounded mean of the known pages over `counted` of them; ONE object, not a page, as `/it/assets/:id/counter-readings`) · `POST /transfer` (`TransferItConsumablesSchema`: up to 50 items of one store, each with a quantity, to another branch's store; one `transferId`; 201 → `ItConsumableTransferResultDto`; 403 target out of reach · 404 an item out of scope · 422 two stores, the same store, more than on hand, another unit or a retired item there · 400 no such active branch — §2.11) · `GET /transfer-targets` (→ `ItMoveTargetsDto`: the transfer picker's branches — the active branches `itConsumable.assign` reaches whole, by the transfer's own test; before `/:id` — §17 2026-11-17) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
-| `/it/consumable-movements` | `GET /` (kind — `transferredOut` and `transferredIn` among them — item, type, employee, asset, branch, from/to, search; each row carries its `version`) · `PATCH /:id/installed-on` («تعديل الجهاز», under `itConsumable.assign`; `SetItConsumableInstalledOnSchema { assetId: objectId \| null, counterReading?, counterReset?, version }`; 200 → the `ItConsumableMovementDto` as it now stands, the same device included with nothing written; 404 a movement out of `itConsumable.view`'s scope or deleted, or a device out of the caller's own `itAsset.view` — any device without it · 422 not an `issued` movement, or a disposed device · 409 a stale version; the memo line follows it — §2.11, §17 2026-11-17. On a counted row, §17 2026-11-19: a device named needs its reading — 422 `IT_CONSUMABLE_COUNTER_REQUIRED` · 422 `…_BELOW_PREVIOUS` / `…_ABOVE_NEXT` on the field `counterReading` · 422 a reset the old printer's later readings rest on · 422 a reading for a row recorded without one · 400 a reading or reset with `assetId: null`, a reset without a reading; one memo, one printer, one reading: a reading written on a printer — a correction there, or a move onto one where rows of its memo sit — is written to every other counted row of the memo on it whose reading or reset differs, in the same transaction, each row written having its version moved on and audited on its own item; a move off leaves them as they are) — every row carries `counterReading` and `counterReset` — FR-20 |
+| `/it/consumables` | `POST /issue` (one employee — or one department at a place of the store's branch, `department { departmentId, locationId, responsibleEmployeeId }`, exactly one, the memo answering `custodian` (§2.11 «صرف لإدارة», §17 2026-11-19) — n items of one store, one memo; a line takes `counterReading` and `counterReset` — required with `assetId` and `qty` 1 on an item whose type `requiresCounterReading`, refused on any other: 422 `IT_CONSUMABLE_COUNTER_REQUIRED` (a detail per gap) · `…_BELOW_PREVIOUS` / `…_ABOVE_NEXT` (the figures in the details) · 422 a reading on an item that takes none · 400 a reset without a reading, a reading without a printer, two readings on one printer — §2.11 «عداد الطابعة», §17 2026-11-19) · `GET /:id/cartridges` (under `itConsumable.view`; the item within its scope, else 404; → `ItConsumableCartridgesDto { consumableId, averagePages, counted, cartridges }`: each cartridge of the item, newest first — printer, install reading, the next cartridge of the same name there from any store (`removedAt`, `removedReading`) and its `pages`, null while not replaced or across a reset — and the rounded mean of the known pages over `counted` of them; ONE object, not a page, as `/it/assets/:id/counter-readings`) · `POST /transfer` (`TransferItConsumablesSchema`: up to 50 items of one store, each with a quantity, to another branch's store; one `transferId`; 201 → `ItConsumableTransferResultDto`; 403 target out of reach · 404 an item out of scope · 422 two stores, the same store, more than on hand, another unit or a retired item there · 400 no such active branch — §2.11) · `GET /transfer-targets` (→ `ItMoveTargetsDto`: the transfer picker's branches — the active branches `itConsumable.assign` reaches whole, by the transfer's own test; before `/:id` — §17 2026-11-17) · `GET /:id/movements` · `POST /:id/receive` · `/:id/scrap` · `/:id/return` — FR-20; list filters `search`, `typeId`, `branchId`, `belowMin`, `active` |
+| `/it/consumable-movements` | `GET /` (kind — `transferredOut` and `transferredIn` among them — item, type, employee, asset, branch, from/to, search, and a department issue's `departmentId`, `locationId`, `responsibleEmployeeId`; each row carries its `version`, and its department, place and signer labelled — §17 2026-11-19) · `PATCH /:id/installed-on` («تعديل الجهاز», under `itConsumable.assign`; `SetItConsumableInstalledOnSchema { assetId: objectId \| null, counterReading?, counterReset?, version }`; 200 → the `ItConsumableMovementDto` as it now stands, the same device included with nothing written; 404 a movement out of `itConsumable.view`'s scope or deleted, or a device out of the caller's own `itAsset.view` — any device without it · 422 not an `issued` movement, or a disposed device · 409 a stale version; the memo line follows it — §2.11, §17 2026-11-17. On a counted row, §17 2026-11-19: a device named needs its reading — 422 `IT_CONSUMABLE_COUNTER_REQUIRED` · 422 `…_BELOW_PREVIOUS` / `…_ABOVE_NEXT` on the field `counterReading` · 422 a reset the old printer's later readings rest on · 422 a reading for a row recorded without one · 400 a reading or reset with `assetId: null`, a reset without a reading; one memo, one printer, one reading: a reading written on a printer — a correction there, or a move onto one where rows of its memo sit — is written to every other counted row of the memo on it whose reading or reset differs, in the same transaction, each row written having its version moved on and audited on its own item; a move off leaves them as they are) — every row carries `counterReading` and `counterReset` — FR-20 |
 | `/it/consumable-memos` | `GET /:id` · `POST /:id/print` · `GET+POST+DELETE /:id/signed-copy` — FR-20 |
 | `/it/vehicle-checks` | `GET /vehicles` (the active cars `{ id, code }` in Fleet's code order, paginated; the form walks the pages — the owner's «تظهر كلها», an ADR-019 deviation the design records) · `POST /` (file; a known `clientRequestId` returns the existing report) · `POST /:id/photos` (one photo, the reporter only, within 24 hours, ≤ 5) — under `itVehicleCheck.create` · `GET /dashboard` (the figures, the latest per car, the overdue cars) · `GET /` (the reports: window, branch, car, a code, faults, a device) · `GET /:id` · `GET /:id/photos/:fileId` (the bytes) — under `itVehicleCheck.view`, scoped · `DELETE /:id` (soft) — under `itVehicleCheck.delete` — FR-21 |
 | `/it/dashboard` | `GET /assets` (status counts: totals, by category, by branch, and «يحتاج متابعة»; `categoryId` one or more, `branchId`) · `GET /activity` (the latest movements, same filters) — built; `/tickets` · `/maintenance` · `GET /reports/warranty` still planned |
@@ -2169,3 +2345,72 @@ starts only on an explicit owner GO.
     `ItConsumableCartridgeDto`, the issue line's and the device change's `counterReading` /
     `counterReset`, the movement's `counterReading` / `counterReset`, the catalog's
     `requiresCounterReading`.
+- **Department custody at a place** (2026-11-19) — owner request: «عند تسليم الأصول والمستهلكات
+  يكون فى إمكانية إنى مأسلمش لموظف ولكن أعينها فى مكان بس تبقى على عهده الإدارة .. زى السيرفرات
+  والكاميرات والسويتشات وهكذا .. الأصول أو المستهلكات الخاصة بالإدارة». Asked three questions, he
+  chose each recommended answer:
+  1. **The custodian is a DEPARTMENT chosen at the hand-over**, the IT department preselected —
+     «في عهدة إدارة …».
+  2. **The PLACE comes from a new per-branch list, «المواقع»**, on the catalogs page (§2.4.1).
+  3. **A DEPARTMENT CUSTODY RECEIPT** — and a memo for consumables — naming the department and the
+     place, signed by the department's responsible person chosen at the hand-over; its signed copy
+     uploaded as any paper's.
+
+  Mobile lines are out of scope. The design's defaults, adopted as written:
+  1. The department may be any active department of any branch; IT is preselected — the IT row of
+     the place's branch, else the first configured (`it.technicianDepartmentIds`).
+  2. The responsible person is required: any current employee, from the recipients box (FR-15); not
+     checked against the department's members (per-branch department rows would refuse head-office
+     IT staff signing for a branch's IT row), and not prefilled (the department's `managerId` is a
+     user id, not an employee).
+  3. The place is in the asset's branch — the store's, for consumables — so a department paper
+     lists one branch's assets.
+  4. One place per paper or memo, not one per line.
+  5. The same number series: F-14 for devices, `EGYCASH-IT-CON` for memos.
+  6. «نقل إلى فرع» refuses a department-held asset; a single «نقل» to another branch names its new
+     holder there — a place in that branch, or an employee.
+  7. A leaving responsible person is flagged in the audit, custody untouched; IT re-signs by a
+     transfer. «حالة المستلِم» and «أصول مع موظفين تركوا العمل» stay employee custody; a dashboard
+     row for it is deferred.
+  8. The responsible person's page gets a separate card, «عهد إدارات وقّع عليها», not counted in
+     their own open custody.
+  9. The dashboard's «مُسلَّم» includes department custody; «آخر الحركات» names the department.
+  10. The asset's free-text `location` stays, relabelled «وصف المكان»; the inventory devices whose
+      text names a department or a room are NOT converted (a separate one-off if he asks).
+  11. A place is retired, never deleted, and retiring is refused while assets are held there.
+  12. A consumables return names no department in this version.
+  13. The workforce reset wipes department custody with the rest — it deletes whole collections,
+      and `responsibleEmployeeId` sits on collections it already purges.
+  14. Places are managed under `itCatalog.manage` within the caller's branch reach; names are
+      unique per branch.
+
+  What was built:
+  - **The holder** (§2.5): `holderKind` and the department's three ids on `it_asset_assignments`,
+    beside a nullable `assignedToEmployeeId` — never the signer in it; old rows read `employee`
+    with no migration; three partial indexes. One pure module, `assets/custody-holder.ts`, is how
+    every custody site reads a holder (the holder of an interval or a request, `sameHolder`,
+    `signerOf`, the interval's, the history's and the audit's keys), and `assets/custodian.ts`
+    reads the department, the place and the signer with their refusals, before the transaction.
+  - **The paper** (§2.5.1): `custodian` on `it_custody_receipts` and on the memo; `employeeId` is
+    the signer on both. The print's department statement, closing and title (§2.5.1).
+  - **The rules**: the hand-over judges every line before writing (in stock, in the place's
+    branch); a transfer's new holder is any change of department, place or signer; a place does not
+    travel to another branch; «نقل إلى فرع» refuses `heldAtLocation`; the return takes either kind;
+    the exit flags `responsibleExited`.
+  - **The readers**: the asset's `holder` and the register's rows flat, labelled at response time
+    (one directory batch for holders and signers, one read each of departments and places); the
+    asset list's `holderKind` / `holderDepartmentId` / `locationId`, the register's `holderKind` /
+    `departmentId` / `locationId` / `responsibleEmployeeId`; `holderExited` employee-only; the person
+    page opened by what they signed for; the dashboard's latest movements naming the department.
+  - **«المواقع»** (§2.4.1): `it_locations`, its routes under `itCatalog.manage`, the options for the
+    pickers, «في عهدته الآن», the retire rule.
+  - **The consumables** (§2.11 «صرف لإدارة»): the issue to a department, the movements' three ids
+    and labels and filters, the memo's `custodian`.
+  - **Refusals**: 422 field issues on the request's own key — `body.department.departmentId` /
+    `body.toDepartment.departmentId` `UNKNOWN` / `INACTIVE`, `….locationId` `UNKNOWN` / `INACTIVE` /
+    `OTHER_BRANCH` — and 422 for a responsible person who left; no error code was added.
+  - **Events** (§8.1): `employeeId` nullable on `assigned` and `returned`, the department's fields
+    optional on all three custody events, v1 kept.
+  - §2.2, §2.4, §2.4.1, §2.5, §2.5.1, §2.11, §3, §4.3, §5 (FR-13, FR-15, FR-18, FR-20, new FR-22), §7,
+    §8.1, §9.1, §10, §11 and §12 amended; ADR-021 gained an addendum (one open interval per asset,
+    whatever its holder).

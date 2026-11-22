@@ -24,11 +24,21 @@ const mocks = vi.hoisted(() => ({
   createMovement: vi.fn(),
   counterTimeline: vi.fn(),
   createMemo: vi.fn(),
+  departmentsByIds: vi.fn(),
+  locationsByIds: vi.fn(),
 }));
 
 const ready = () => vi.fn(async () => undefined);
 
 vi.mock('../assets/receipt-holder', () => ({ readReceiptHolder: mocks.readReceiptHolder }));
+// «صرف لإدارة»: the department and its place, read through the asset hand-over's own seam.
+vi.mock('../../../platform/organization', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  departmentRepository: { findByIdsSystem: mocks.departmentsByIds },
+}));
+vi.mock('../locations/location.repository', () => ({
+  itLocationRepository: { findByIdsSystem: mocks.locationsByIds },
+}));
 vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unitOfWork }));
 vi.mock('../../../platform/audit', () => ({ auditService: { record: mocks.audit } }));
 vi.mock('../shared/sequence', () => ({ reserveSequenceBlock: mocks.reserve }));
@@ -425,6 +435,295 @@ describe('what an issue refuses — before anything is written', () => {
     );
     expect(memo.lines).toHaveLength(1);
     expect(mocks.assetsByIds).not.toHaveBeenCalled();
+  });
+});
+
+// «عند تسليم الأصول والمستهلكات يكون فى إمكانية إنى مأسلمش لموظف ولكن أعينها فى مكان بس تبقى على
+// عهده الإدارة» (owner, 2026-11-19).
+describe('«صرف لإدارة» — a memo to a department at a place, signed for by its responsible person', () => {
+  const DEPARTMENT = new Types.ObjectId();
+  const PLACE = new Types.ObjectId();
+  const SIGNER = String(new Types.ObjectId());
+  const department = (over: Record<string, unknown> = {}) => ({
+    _id: DEPARTMENT,
+    name: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+    status: 'active',
+    isDeleted: false,
+    ...over,
+  });
+  const place = (over: Record<string, unknown> = {}) => ({
+    _id: PLACE,
+    branchId: STORE,
+    name: { ar: 'غرفة السيرفرات', en: 'Server room' },
+    isActive: true,
+    isDeleted: false,
+    ...over,
+  });
+  const signerHolder = (status: DirectoryEmployee['status']) => ({
+    ...holderFor(status),
+    employee: { ...person(status), employeeId: SIGNER, code: '0101007' },
+    employeeCode: '0101007',
+    employeeName: 'شريف ممدوح فاروق',
+    jobTitle: { ar: 'مهندس شبكات', en: 'Network engineer' },
+  });
+  /** The first block's two lines, to IT at the server room instead of an employee. */
+  const toIt = (over: Record<string, unknown> = {}) => {
+    const { issuedAt, notes, lines } = input();
+    return {
+      issuedAt,
+      notes,
+      lines,
+      department: {
+        departmentId: String(DEPARTMENT),
+        locationId: String(PLACE),
+        responsibleEmployeeId: SIGNER,
+        ...over,
+      },
+    };
+  };
+  const rows = async () =>
+    (await Promise.all(
+      mocks.createMovement.mock.results.map((result) => result.value as Promise<unknown>),
+    )) as Record<string, unknown>[];
+  const nothingWritten = () => {
+    expect(mocks.unitOfWork).not.toHaveBeenCalled();
+    expect(mocks.reserve).not.toHaveBeenCalled();
+    expect(mocks.moveStock).not.toHaveBeenCalled();
+    expect(mocks.createMemo).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+  };
+  /** The 422's one field issue. */
+  const refusedOn = async (attempt: Promise<unknown>, field: string, code: string) => {
+    await expect(attempt).rejects.toMatchObject({
+      httpStatus: 422,
+      details: [expect.objectContaining({ field, code })],
+    });
+  };
+
+  beforeEach(() => {
+    mocks.readReceiptHolder.mockResolvedValue(signerHolder('active'));
+    mocks.departmentsByIds.mockResolvedValue([department()]);
+    mocks.locationsByIds.mockResolvedValue([place()]);
+  });
+
+  it('writes the department, the place and the signer on every row — and no employee', async () => {
+    await itConsumableIssueService.issue(toIt(), ctx, scope, assetScope);
+
+    // The signer is read through HR, as an employee recipient is; the two catalogs by id.
+    expect(mocks.readReceiptHolder).toHaveBeenCalledWith(SIGNER);
+    expect(mocks.departmentsByIds).toHaveBeenCalledWith([String(DEPARTMENT)]);
+    expect(mocks.locationsByIds).toHaveBeenCalledWith([String(PLACE)]);
+    const movements = await rows();
+    expect(movements).toHaveLength(2);
+    for (const row of movements) {
+      expect(row).toMatchObject({
+        kind: 'issued',
+        branchId: STORE,
+        employeeId: null,
+        departmentId: DEPARTMENT,
+        locationId: PLACE,
+        responsibleEmployeeId: new Types.ObjectId(SIGNER),
+      });
+    }
+  });
+
+  it('writes ONE memo signed by the responsible person, naming the department and the place', async () => {
+    const { memo } = await itConsumableIssueService.issue(toIt(), ctx, scope, assetScope);
+
+    expect(mocks.reserve).toHaveBeenCalledWith('consumableMemo:global', 1, SESSION);
+    expect(memo).toMatchObject({
+      memoNumber: 41,
+      employeeId: new Types.ObjectId(SIGNER),
+      employeeCode: '0101007',
+      employeeName: 'شريف ممدوح فاروق',
+      jobTitle: { ar: 'مهندس شبكات', en: 'Network engineer' },
+      custodian: {
+        departmentId: DEPARTMENT,
+        departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+        locationId: PLACE,
+        locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+      },
+      // The memo is still the store's paper.
+      branchId: STORE,
+    });
+    expect(memo).not.toHaveProperty('nationalId');
+  });
+
+  it('an employee’s memo names no department', async () => {
+    const { memo } = await itConsumableIssueService.issue(input(), ctx, scope, assetScope);
+    expect(memo.custodian).toBeNull();
+    for (const row of await rows()) expect(row).not.toHaveProperty('departmentId');
+  });
+
+  it('audits each item to the department, the place and the signer, and the memo with its signer', async () => {
+    await itConsumableIssueService.issue(toIt(), ctx, scope, assetScope);
+    const rowsAudited = mocks.audit.mock.calls.map(
+      ([entry]) =>
+        entry as {
+          entityRef: { entityType: string };
+          changes: { field: string; old: unknown; new: unknown }[];
+        },
+    );
+    const [ink, , paper] = rowsAudited;
+    expect(ink?.changes).toEqual(
+      expect.arrayContaining([
+        { field: 'departmentId', old: null, new: String(DEPARTMENT) },
+        { field: 'locationId', old: null, new: String(PLACE) },
+        { field: 'responsibleEmployeeId', old: null, new: SIGNER },
+      ]),
+    );
+    // Nobody is the employee it went to.
+    expect(ink?.changes.map((entry) => entry.field)).not.toContain('employeeId');
+    expect(paper?.entityRef.entityType).toBe('consumableMemo');
+    expect(paper?.changes).toEqual(
+      expect.arrayContaining([
+        { field: 'employeeId', old: null, new: SIGNER },
+        { field: 'departmentId', old: null, new: String(DEPARTMENT) },
+        { field: 'locationId', old: null, new: String(PLACE) },
+      ]),
+    );
+    expect(auditedWhileCommitted).toEqual([true, true, true]);
+  });
+
+  it('a signer who has left — before even the items are read', async () => {
+    mocks.readReceiptHolder.mockResolvedValue(signerHolder('exited'));
+    const attempt = itConsumableIssueService.issue(toIt(), ctx, scope, assetScope);
+    await expect(attempt).rejects.toBeInstanceOf(BusinessRuleError);
+    await expect(attempt).rejects.toThrow(/0101007 has left the company/);
+    expect(mocks.itemsByIds).not.toHaveBeenCalled();
+    nothingWritten();
+  });
+
+  it('a department that is unknown, deleted or inactive', async () => {
+    mocks.departmentsByIds.mockResolvedValue([]);
+    await refusedOn(
+      itConsumableIssueService.issue(toIt(), ctx, scope, assetScope),
+      'body.department.departmentId',
+      'UNKNOWN',
+    );
+    mocks.departmentsByIds.mockResolvedValue([department({ isDeleted: true })]);
+    await refusedOn(
+      itConsumableIssueService.issue(toIt(), ctx, scope, assetScope),
+      'body.department.departmentId',
+      'UNKNOWN',
+    );
+    mocks.departmentsByIds.mockResolvedValue([department({ status: 'inactive' })]);
+    await refusedOn(
+      itConsumableIssueService.issue(toIt(), ctx, scope, assetScope),
+      'body.department.departmentId',
+      'INACTIVE',
+    );
+    expect(mocks.itemsByIds).not.toHaveBeenCalled();
+    nothingWritten();
+  });
+
+  it('a place that is unknown or retired', async () => {
+    mocks.locationsByIds.mockResolvedValue([]);
+    await refusedOn(
+      itConsumableIssueService.issue(toIt(), ctx, scope, assetScope),
+      'body.department.locationId',
+      'UNKNOWN',
+    );
+    mocks.locationsByIds.mockResolvedValue([place({ isActive: false })]);
+    await refusedOn(
+      itConsumableIssueService.issue(toIt(), ctx, scope, assetScope),
+      'body.department.locationId',
+      'INACTIVE',
+    );
+    nothingWritten();
+  });
+
+  it('a place outside the store’s branch — what this store gives is kept in its own branch', async () => {
+    mocks.locationsByIds.mockResolvedValue([place({ branchId: new Types.ObjectId() })]);
+    const attempt = itConsumableIssueService.issue(toIt(), ctx, scope, assetScope);
+    await refusedOn(attempt, 'body.department.locationId', 'OTHER_BRANCH');
+    await expect(attempt).rejects.toThrow(/place in the store's branch/);
+    nothingWritten();
+  });
+
+  it('a department in ANOTHER branch is fine — only the place is the store’s', async () => {
+    mocks.departmentsByIds.mockResolvedValue([department({ branchId: new Types.ObjectId() })]);
+    const { memo } = await itConsumableIssueService.issue(toIt(), ctx, scope, assetScope);
+    expect(memo.custodian?.departmentId).toEqual(DEPARTMENT);
+  });
+
+  it('a body naming both, or neither, is refused — the contract’s rule, held here too', async () => {
+    await expect(
+      itConsumableIssueService.issue({ ...toIt(), employeeId: EMPLOYEE }, ctx, scope, assetScope),
+    ).rejects.toThrow('a memo is issued to an employee or to a department — exactly one');
+    const { issuedAt, notes, lines } = toIt();
+    await expect(
+      itConsumableIssueService.issue({ issuedAt, notes, lines }, ctx, scope, assetScope),
+    ).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(mocks.readReceiptHolder).not.toHaveBeenCalled();
+    nothingWritten();
+  });
+
+  describe('a toner onto a printer the department holds — its counter, unchanged', () => {
+    const PRINTER = new Types.ObjectId();
+    const toner = (line: Record<string, unknown> = {}) => ({
+      ...toIt(),
+      lines: [
+        {
+          consumableId: String(INK),
+          qty: 1,
+          reason: 'new' as const,
+          assetId: String(PRINTER),
+          ...line,
+        },
+      ],
+    });
+
+    beforeEach(() => {
+      mocks.typesByIds.mockResolvedValue([
+        { _id: INKS, name: { ar: 'حبارات', en: 'Ink & toner' }, requiresCounterReading: true },
+      ]);
+      // In the department's custody: `assigned`, as every held asset is.
+      mocks.assetsByIds.mockResolvedValue([
+        { _id: PRINTER, assetCode: 'AST-00077', name: 'HP LaserJet M404', status: 'assigned' },
+      ]);
+    });
+
+    it('still needs its reading', async () => {
+      await expect(
+        itConsumableIssueService.issue(toner(), ctx, scope, assetScope),
+      ).rejects.toMatchObject({
+        code: 'IT_CONSUMABLE_COUNTER_REQUIRED',
+        details: [{ field: 'lines.0.counterReading', code: 'REQUIRED' }],
+      });
+      nothingWritten();
+    });
+
+    it('is judged on that printer’s own timeline', async () => {
+      mocks.counterTimeline.mockResolvedValue([
+        {
+          _id: new Types.ObjectId(),
+          consumableId: INK,
+          assetId: PRINTER,
+          at: new Date('2026-10-01T09:00:00.000Z'),
+          memoId: new Types.ObjectId(),
+          counterReading: 15000,
+        },
+      ]);
+      await expect(
+        itConsumableIssueService.issue(toner({ counterReading: 15000 }), ctx, scope, assetScope),
+      ).rejects.toMatchObject({ code: 'IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS' });
+
+      mocks.counterTimeline.mockResolvedValue([]);
+      await itConsumableIssueService.issue(
+        toner({ counterReading: 16000 }),
+        ctx,
+        scope,
+        assetScope,
+      );
+      expect(mocks.counterTimeline).toHaveBeenLastCalledWith([PRINTER], SESSION);
+      expect((await rows()).at(-1)).toMatchObject({
+        assetId: PRINTER,
+        counterReading: 16000,
+        employeeId: null,
+        departmentId: DEPARTMENT,
+      });
+    });
   });
 });
 

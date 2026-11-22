@@ -22,8 +22,10 @@ import {
   mayChangeDevices,
   mayChangeInstalledOn,
   pickedHeldByOther,
+  recipientKey,
   type InstalledOnState,
 } from './consumable-installed-on';
+import { departmentHolder } from '../custody-holder-fixtures';
 
 const WALEED = '64b000000000000000000001';
 const HANY = '64b000000000000000000003';
@@ -236,6 +238,36 @@ describe('a «جهاز آخر» pick says whose it is', () => {
       pickedHeldByOther(row(), state({ assetId: 'a-4', asset: device('a-4', null) })),
     ).toBeNull();
     expect(pickedHeldByOther(row(), state())).toBeNull();
+  });
+
+  // 2026-11-19 — an issue to a department: its own devices are those it holds at its place.
+  it('an issue to a department: its device at its place is its own; another place’s is not', () => {
+    const issued = {
+      ...row({ employeeId: null }),
+      departmentId: 'd-it',
+      locationId: 'l-servers',
+    };
+    const at = (id: string, locationId: string) =>
+      ({
+        id,
+        status: 'assigned',
+        holder: departmentHolder({ departmentId: 'd-it', locationId }),
+      }) as ItAssetDto;
+    expect(recipientKey(issued)).toBe('d-it@l-servers');
+    expect(
+      pickedHeldByOther(issued, state({ assetId: 'a-7', asset: at('a-7', 'l-servers') })),
+    ).toBeNull();
+    expect(
+      pickedHeldByOther(issued, state({ assetId: 'a-8', asset: at('a-8', 'l-cctv') }))?.locationId,
+    ).toBe('l-cctv');
+    // A person's device is somebody else's to the department.
+    expect(
+      pickedHeldByOther(issued, state({ assetId: 'a-2', asset: device('a-2', WALEED) })),
+    ).not.toBeNull();
+    // And to a person, the department's device is somebody else's.
+    expect(
+      pickedHeldByOther(row(), state({ assetId: 'a-7', asset: at('a-7', 'l-servers') })),
+    ).not.toBeNull();
   });
 });
 

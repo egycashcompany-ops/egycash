@@ -1,7 +1,7 @@
 # ADR-021: IT asset custody is an append-only event chain, not a status field
 
 **Status:** Accepted, amended · **Date:** 2026-08-09 · **Amended:** 2026-11-11 (a transfer's audit
-follows its commit)
+follows its commit) · **Addendum:** 2026-11-19 (a department may hold an asset)
 
 > The frozen IT design (§14, 2026-08-03) reserved this as "ADR-020". ADR-020 was taken by
 > [Shared file storage](ADR-020-shared-file-storage.md) on 2026-08-05 and numbers are never reused,
@@ -126,3 +126,29 @@ for up to 100 assets in ONE transaction, all of them or none.
   event and without its audit row. Accepted: `it_asset_events` is the business record and is written
   in the transaction; the audit row is the security record this ADR already keeps apart from it, and
   a missing row is better than one recording a transfer that never happened.
+
+## Addendum — 2026-11-19: a department may hold an asset
+
+**Status:** Accepted · **Changes nothing above.** The single open interval per asset holds for
+both holder kinds.
+
+The owner asked to hand assets to a department kept at a place, signed for by its responsible
+person — «أعينها فى مكان بس تبقى على عهده الإدارة .. زى السيرفرات والكاميرات والسويتشات»
+([IT design §2.5 and §17, 2026-11-19](../12-planning/it-module-design.md)). An interval of
+`it_asset_assignments` now names its holder by kind: an employee (`assignedToEmployeeId`, as
+before), or a department (`departmentId`, `locationId`, `responsibleEmployeeId`, with
+`assignedToEmployeeId` null). An interval written before carries no kind and is an employee's.
+
+- **The invariant is unchanged.** `ux_open_assignment_per_asset` is on `assetId` alone, partial on
+  `returnedAt: null` — it never named the holder, so an asset still has at most ONE open interval,
+  whoever holds it. A department's custody and an employee's are never open on one asset at once,
+  and a change between them is a transfer: the open interval closed and the next opened in one
+  transaction, one `transferred` event, never return + assign.
+- **The chain is the same chain.** Every custody action still writes the interval, the asset's
+  denormalization and the history event in its transaction; the history and audit name the
+  department, the place and the signer where they named the employee. The signer is not the
+  holder: putting them in `assignedToEmployeeId` would have made a department's server the signer's
+  personal custody in every reader of the chain.
+- **What a department adds is a rule of the place, not of the chain**: its place is in the asset's
+  branch, so a department-held asset does not move to another branch in the same hands — a branch
+  change names a new holder there (a transfer), and the bulk move refuses it.

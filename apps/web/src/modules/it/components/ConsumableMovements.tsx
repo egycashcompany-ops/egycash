@@ -58,6 +58,7 @@ import {
   movementEmployee,
   movementReason,
 } from '../lib/consumable-movement-register-export';
+import { holderName, holderOfMovement, responsibleText } from '../lib/custody-holder';
 import { ConsumableInstalledOnDialog } from './ConsumableInstalledOnDialog';
 import { ConsumableMemoActions } from './ConsumableMemo';
 import { ItUserName } from './ItUserName';
@@ -228,6 +229,21 @@ const useConsumableMovementColumns = (
       key: 'employee',
       header: t('it.consumables.movements.columns.employee'),
       render: (m) => {
+        // An issue to a department (2026-11-19): «إدارة … — …», and who signed the memo under it.
+        const holder = holderOfMovement(m);
+        if (holder?.kind === 'department') {
+          const signer = responsibleText(holder);
+          return (
+            <span className="flex flex-col leading-tight" data-movement-department={m.departmentId}>
+              <span>{holderName(holder, locale, t)}</span>
+              {signer !== '' && (
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('it.custody.department.signedBy', { name: signer })}
+                </span>
+              )}
+            </span>
+          );
+        }
         const label = movementEmployee(m);
         if (m.employeeId === null || label === null) return '—';
         if (!linksToAssets) return label;
@@ -407,7 +423,7 @@ const MovementsCard = ({
   title: string;
   description: string;
   empty: string;
-  filter: { assetId: string } | { employeeId: string };
+  filter: { assetId: string } | { employeeId: string } | { responsibleEmployeeId: string };
   options: MovementColumnOptions;
 }): JSX.Element => {
   const [page, setPage] = useState(1);
@@ -465,6 +481,27 @@ export const EmployeeConsumablesCard = ({ employeeId }: { employeeId: string }):
       empty={t('it.consumables.employeeCard.empty')}
       filter={{ employeeId }}
       options={{ employee: false }}
+    />
+  );
+};
+
+/**
+ * The department issues this person signed the memo for (2026-11-19) — «عهد إدارات وقّع عليها» on
+ * their page: the department's, never theirs, so the recipient column stays to say whose.
+ */
+export const SignedDepartmentConsumablesCard = ({
+  employeeId,
+}: {
+  employeeId: string;
+}): JSX.Element => {
+  const t = useT();
+  return (
+    <MovementsCard
+      title={t('it.people.signedDepartments.consumablesTitle')}
+      description={t('it.people.signedDepartments.consumablesHint')}
+      empty={t('it.people.signedDepartments.consumablesEmpty')}
+      filter={{ responsibleEmployeeId: employeeId }}
+      options={{}}
     />
   );
 };

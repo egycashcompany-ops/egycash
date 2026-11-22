@@ -41,6 +41,7 @@ import {
 import type * as InstalledOnRules from '../lib/consumable-installed-on';
 import { type InstalledOnState } from '../lib/consumable-installed-on';
 import { ConsumableInstalledOnDialog } from './ConsumableInstalledOnDialog';
+import { NO_DEPARTMENT } from '../custody-holder-fixtures';
 import { ConsumableMovementsDialog } from './ConsumableDialogs';
 import {
   AssetConsumablesCard,
@@ -148,6 +149,8 @@ const PRINTER = asset({
   name: 'HP LaserJet Pro M404',
   serialNumber: 'PHBQ7K21',
   holder: {
+    kind: 'employee',
+    ...NO_DEPARTMENT,
     employeeId: HANY,
     employeeCode: '0100091',
     employeeName: 'هاني رأفت سليم',
@@ -174,6 +177,7 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   employeeId: WALEED,
   employeeCode: '0100052',
   employeeName: 'وليد صفوت جلال',
+  ...NO_DEPARTMENT,
   assetId: LAPTOP.id,
   assetCode: LAPTOP.assetCode,
   assetName: LAPTOP.name,

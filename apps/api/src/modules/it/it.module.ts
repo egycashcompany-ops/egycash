@@ -16,6 +16,7 @@
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
+import { buildItLocationsRouter } from './locations';
 import { buildItVendorsRouter } from './vendors';
 import {
   buildItAssetsRouter,
@@ -461,6 +462,9 @@ export const itModule: ModuleManifest = {
     { prefix: '/it/consumable-movements', router: buildItConsumableMovementsRouter() },
     { prefix: '/it/consumable-memos', router: buildItConsumableMemosRouter() },
     { prefix: '/it/catalog-items', router: buildItCatalogRouter() },
+    // «المواقع» — each branch's places, where a department keeps what it holds («غرفة السيرفرات»):
+    // the catalogs page's fourth tab, and the place a department hand-over or issue names.
+    { prefix: '/it/locations', router: buildItLocationsRouter() },
     { prefix: '/it/vendors', router: buildItVendorsRouter() },
     { prefix: '/it/tickets', router: buildItTicketsRouter() },
     { prefix: '/it/ticket-priorities', router: buildItTicketPrioritiesRouter() },
@@ -495,6 +499,7 @@ export const itModule: ModuleManifest = {
     'it_consumable_memos',
     'it_vehicle_checks',
     'it_catalog_items',
+    'it_locations',
     'it_vendors',
     'it_sequences',
     'it_tickets',

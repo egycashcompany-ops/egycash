@@ -19,7 +19,8 @@ import { BusinessRuleError, ConflictError } from '../../../shared/errors';
 import { keyReachesBranch, type AuthContext } from '../../../shared/types';
 
 /** Why one asset does not move. */
-export type AssetMoveRefusal = 'disposed' | 'underMaintenance' | 'alreadyThere' | 'beforeCustody';
+export type AssetMoveRefusal =
+  'disposed' | 'underMaintenance' | 'alreadyThere' | 'heldAtLocation' | 'beforeCustody';
 
 /** The facts the rule reads off an asset — its state, its branch, and an open maintenance order. */
 export interface AssetMoveCandidate {
@@ -33,12 +34,20 @@ export interface AssetMoveCandidate {
    * first.
    */
   heldSince: Date | null;
+  /**
+   * A DEPARTMENT holds it, at a place of its branch (2026-11-19). A place does not travel: moved
+   * along, the department's custody would be at no place at all, and returning it to stock on the
+   * way would write a custody fact nobody witnessed (FR-13). It moves with «نقل», to a place in
+   * the new branch (or an employee), or after its return. Optional: false when not said.
+   */
+  heldByDepartment?: boolean;
 }
 
 /**
  * Whether one asset may move to `toBranchId` on `at`, and if not, why — in the order the reasons
  * outrank each other: a disposed asset is not there to move at all, one in the technician's hands
- * is not IT's to move today, then where it already is, and only then the date the move gives.
+ * is not IT's to move today, then where it already is, then a department's place it cannot leave,
+ * and only then the date the move gives.
  */
 export const assetMoveRefusal = (
   asset: AssetMoveCandidate,
@@ -48,6 +57,7 @@ export const assetMoveRefusal = (
   if (asset.status === 'disposed') return 'disposed';
   if (asset.status === 'underMaintenance' || asset.activeMaintenance) return 'underMaintenance';
   if (asset.branchId === toBranchId) return 'alreadyThere';
+  if (asset.heldByDepartment === true) return 'heldAtLocation';
   if (asset.heldSince !== null && at.getTime() < asset.heldSince.getTime()) return 'beforeCustody';
   return null;
 };
@@ -57,6 +67,8 @@ const REFUSAL_TEXT: Record<AssetMoveRefusal, string> = {
   underMaintenance:
     'under maintenance; complete or cancel its maintenance order before you move it',
   alreadyThere: 'already in that branch',
+  heldAtLocation:
+    'held by a department at a place in its branch; move it with «نقل» to a place in the new branch, or return it first',
   beforeCustody:
     "held only since after the move's date; the move cannot precede the assignment it closes",
 };
@@ -65,6 +77,7 @@ const ORDER: readonly AssetMoveRefusal[] = [
   'disposed',
   'underMaintenance',
   'alreadyThere',
+  'heldAtLocation',
   'beforeCustody',
 ];
 

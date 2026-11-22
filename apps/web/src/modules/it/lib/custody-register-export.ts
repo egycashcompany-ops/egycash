@@ -7,6 +7,8 @@
 // columns of their own: in a sheet a code is something to filter and sort by, not a caption. One
 // column the table does not show — «تزود سيريال الأصول لما أعمل Extract»: the asset's serial, right
 // after its code, written as TEXT, so a serial of digits keeps its leading zeros and is never summed.
+// A department's interval (2026-11-19) writes «إدارة …» as its holder, and its place and who signed
+// for it in «الموقع» and «المسؤول» — blank for an employee's.
 import {
   IT_ASSIGNMENT_RECEIPT_STATES,
   type ItAssetAssignmentDto,
@@ -15,6 +17,13 @@ import {
 } from '@ecms/contracts';
 import { formatDate } from '../../../shared/lib/format';
 import { type FleetReport } from '../../fleet/lib/fleet-report-print';
+import {
+  holderCode,
+  holderMain,
+  holderOfAssignment,
+  locationText,
+  responsibleText,
+} from './custody-holder';
 import {
   filterLine,
   itRegisterReport,
@@ -42,6 +51,8 @@ export const custodyRegisterHeader = (t: Translate): string[] => [
   t('it.custody.assignedAt'),
   t('it.custody.holder'),
   t('it.custody.export.holderCode'),
+  t('it.custody.department.location'),
+  t('it.custody.department.responsible'),
   t('it.assets.columns.branch'),
   t('it.custody.expectedReturnAt'),
   t('it.assets.columns.status'),
@@ -60,6 +71,8 @@ export const custodyRegisterLine = (
   empty: string,
 ): string[] => {
   const day = (iso: string | null): string => (iso === null ? empty : formatDate(iso, locale));
+  const holder = holderOfAssignment(row);
+  const department = holder.kind === 'department';
   return [
     // The table's own fallbacks: an asset outside the reader's scope says so, and a holder HR
     // cannot name is shown by the id the row carries rather than by a guess.
@@ -69,8 +82,10 @@ export const custodyRegisterLine = (
     // serial is no more theirs to read than its name.
     row.assetSerialNumber ?? empty,
     day(row.assignedAt),
-    row.assignedToEmployeeName ?? row.assignedToEmployeeId,
-    row.assignedToEmployeeCode ?? empty,
+    holderMain(holder, locale, t),
+    holderCode(holder) ?? empty,
+    department ? locationText(holder, locale) : empty,
+    department ? responsibleText(holder) : empty,
     branchName.get(row.branchId) ?? empty,
     day(row.expectedReturnAt),
     row.returnedAt === null ? t('it.custody.open') : t('it.custody.closed'),
@@ -112,6 +127,13 @@ export interface CustodyRegisterFilters {
   holder: string | null;
   /** «حالة المستلِم» — left (true) or still employed (false); null when not set. */
   holderExited: boolean | null;
+  /** «جهة الاستلام» — an employee's intervals, or a department's; null when not set. */
+  holderKind: 'employee' | 'department' | null;
+  /** «الإدارة» / «الموقع» by name — `''` for one set but not among the options. */
+  department: string | null;
+  location: string | null;
+  /** The department intervals one person signed for — their page's link — by name. */
+  responsible: string | null;
   /** «بحث» — the asset's code, name or serial, as typed. */
   search: string | null;
   /** The categories chosen, by name — `''` for one set but not among the options. */
@@ -164,6 +186,13 @@ export const custodyRegisterFilters = ({
   employeeId,
   holderLabel,
   holderExited,
+  holderKind = '',
+  departmentId = '',
+  departmentName,
+  locationId = '',
+  locationName,
+  responsibleId = '',
+  responsibleLabel = '',
   search,
   categoryIds,
   categoryName,
@@ -183,6 +212,17 @@ export const custodyRegisterFilters = ({
   employeeId: string;
   holderLabel: string;
   holderExited: boolean | null;
+  /** «جهة الاستلام» — the screen's `holderKind` param, '' when not set. */
+  holderKind?: string;
+  departmentId?: string;
+  /** Department id → «تقنية المعلومات — أسيوط», as the filter's select names it. */
+  departmentName?: ReadonlyMap<string, string>;
+  locationId?: string;
+  /** Place id → its name, as the filter's select names it. */
+  locationName?: ReadonlyMap<string, string>;
+  /** Who signed — the person page's link — and the name its chip shows. */
+  responsibleId?: string;
+  responsibleLabel?: string;
   search: string;
   categoryIds: readonly string[];
   categoryName: ReadonlyMap<string, string>;
@@ -204,6 +244,15 @@ export const custodyRegisterFilters = ({
         holderLabel ||
         employeeId,
   holderExited,
+  holderKind: holderKind === 'employee' || holderKind === 'department' ? holderKind : null,
+  department: departmentId === '' ? null : (departmentName?.get(departmentId) ?? ''),
+  location: locationId === '' ? null : (locationName?.get(locationId) ?? ''),
+  responsible:
+    responsibleId === ''
+      ? null
+      : rows.find((row) => row.responsibleEmployeeId === responsibleId)?.responsibleEmployeeName ||
+        responsibleLabel ||
+        responsibleId,
   search: search.trim() === '' ? null : search.trim(),
   categories: categoryIds.length === 0 ? null : categoryIds.map((id) => categoryName.get(id) ?? ''),
   assetNames: assetNames.length === 0 ? null : [...assetNames],
@@ -256,6 +305,24 @@ export const custodyRegisterSubtitle = (
             ? t('it.custody.filters.holderExited')
             : t('it.custody.filters.holderEmployed'),
         }),
+    filters.holderKind === null
+      ? null
+      : t('it.custody.department.export.holderKindIs', {
+          kind: t(`it.custody.department.kind.${filters.holderKind}`),
+        }),
+    filters.department === null
+      ? null
+      : t('it.custody.department.export.departmentIs', {
+          name: filters.department || t('it.custody.department.export.oneDepartment'),
+        }),
+    filters.location === null
+      ? null
+      : t('it.custody.department.export.locationIs', {
+          name: filters.location || t('it.custody.department.export.oneLocation'),
+        }),
+    filters.responsible === null
+      ? null
+      : t('it.custody.department.export.responsibleIs', { name: filters.responsible }),
     filters.search === null ? null : t('it.export.searchIs', { q: filters.search }),
     filters.categories === null
       ? null
@@ -278,7 +345,7 @@ export const custodyRegisterSubtitle = (
   ]);
 };
 
-/** The printed register: the company's report form, landscape for eleven columns, nobody signs it. */
+/** The printed register: the company's report form, landscape for thirteen columns, nobody signs it. */
 export const custodyRegisterReport = (
   rows: readonly ItAssetAssignmentDto[],
   context: CustodyRegisterContext,

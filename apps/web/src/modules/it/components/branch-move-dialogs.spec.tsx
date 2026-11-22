@@ -25,6 +25,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { AssetBranchMoveDialog } from './AssetBranchMoveDialog';
+import { NO_DEPARTMENT, departmentHolder } from '../custody-holder-fixtures';
 import { TransferConsumablesDialog } from './ConsumableDialogs';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -121,6 +122,8 @@ const HELD = asset({
   assetCode: 'AST-00002',
   status: 'assigned',
   holder: {
+    kind: 'employee',
+    ...NO_DEPARTMENT,
     employeeId: 'e-1',
     employeeCode: '0100052',
     employeeName: 'وليد صفوت جلال',
@@ -187,6 +190,23 @@ describe('«نقل إلى فرع» — the assets', () => {
     expect(rowOf(page, 'data-move-asset="a-5"')).toContain(
       ar('it.assets.move.refused.underMaintenance'),
     );
+  });
+
+  // 2026-11-19 — a place does not travel: a server a department holds at its branch's server room
+  // stays, and says to move it with «نقل» (the server's `heldAtLocation`).
+  it('shows a department-held asset as staying, named by the department and its place', () => {
+    const server = asset({
+      id: 'a-6',
+      assetCode: 'AST-00006',
+      status: 'assigned',
+      holder: departmentHolder(),
+    });
+    const page = render(<AssetBranchMoveDialog open onClose={() => {}} assets={[server]} />);
+    const row = rowOf(page, 'data-move-asset="a-6"');
+    expect(row).toContain('data-move-state="heldAtLocation"');
+    expect(row).toContain(ar('it.assets.move.refused.heldAtLocation'));
+    expect(row).toContain('إدارة تقنية المعلومات — غرفة السيرفرات');
+    expect(page).not.toContain('data-move-held-note');
   });
 });
 

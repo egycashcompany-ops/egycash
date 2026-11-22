@@ -1264,8 +1264,7 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     // every attended day would report half the real figure.
     const emp = await inBranch();
     const full = recentWorkday();
-    // The NEXT workday, not simply the next day: a Thursday's next day is a Friday, recomputed as
-    // the weekend, and the second «day at work» would then be no day at work at all.
+    // The next WORKDAY, not simply the next day: a Friday or a holiday there is no day at work.
     let openEnded = addDays(full, 1);
     while ([5, 6].includes(isoWeekday(openEnded)) || HOLIDAY_ISO.has(dateOnlyIso(openEnded))) {
       openEnded = addDays(openEnded, 1);

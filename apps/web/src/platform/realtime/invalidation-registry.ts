@@ -613,6 +613,14 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['it', 'catalogs'],
     ['it', 'priorities'],
   ],
+  // «المواقع» — a branch's places: the catalogs tab and the pickers' names, and — a renamed place
+  // being what every department holder cell names — the assets and the custody register, as the
+  // place mutations' own `onSuccess` says.
+  'it.location': [
+    ['it', 'locations'],
+    ['it', 'assets'],
+    ['it', 'custody'],
+  ],
   'it.license': [['it', 'licenses']],
   'it.maintenanceOrder': [
     ['it', 'maintenance'],

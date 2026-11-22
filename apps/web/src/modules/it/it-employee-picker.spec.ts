@@ -112,11 +112,14 @@ const sources = (dir = HERE): string[] =>
  * The only places a person is HANDED something: custody hand-overs, a mobile line's hand-over
  * (FR-19), a ticket's technician, and the consumables' issue (FR-20). The consumables' return
  * names who brought an item back in the same file: recording it is ADDING a record — «لكن فى
- * حاله الاضافه اللى موجود بس» — so it asks for the same population.
+ * حاله الاضافه اللى موجود بس» — so it asks for the same population. A department's custody
+ * (2026-11-19) is signed by its responsible person, chosen in the department's fields the asset
+ * hand-over, the transfer and the consumables' issue share — a hand-over's box too.
  */
 const HAND_OVERS = [
   'components/ConsumableDialogs.tsx',
   'components/CustodyDialogs.tsx',
+  'components/DepartmentCustodianFields.tsx',
   'components/MobileLineDialogs.tsx',
   'components/TicketDialogs.tsx',
 ];
@@ -171,7 +174,7 @@ describe('which box asks for which population', () => {
   // المستهلكات .. أسمح إنه يعرف يسلم لحد فى فرع تاني»: every box a person is HANDED something in
   // searches every branch — the asset's hand-over and transfer, the line's hand-over, the
   // consumables' issue and return — and no other box does.
-  it('every hand-over’s person box searches every branch — the five of them, by name', () => {
+  it('every hand-over’s person box searches every branch — the six of them, by name', () => {
     const employeeBoxes = (rel: string): string[] =>
       pickers(code(rel)).filter((element) => element.startsWith('<EmployeePicker'));
     const handOvers = HAND_OVERS.flatMap((rel) =>
@@ -188,6 +191,7 @@ describe('which box asks for which population', () => {
       ['components/ConsumableDialogs.tsx', 'it.consumables.issue.employee'],
       ['components/CustodyDialogs.tsx', 'it.custody.holder'],
       ['components/CustodyDialogs.tsx', 'it.custody.newHolder'],
+      ['components/DepartmentCustodianFields.tsx', 'it.custody.department.responsibleReceiver'],
       ['components/MobileLineDialogs.tsx', 'it.custody.holder'],
     ]);
     // Nowhere else: the employees register, a person's page and every filter keep `/it/people`.

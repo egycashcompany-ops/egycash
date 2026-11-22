@@ -7,6 +7,10 @@
 // opens rather than on the day it does. `consumableType` (FR-20) is the third tab for the same
 // reason: the consumables' types («حبارات», «كابلات», «محولات» …) are localized names the IT team
 // edits, which is exactly what this collection already is — one tab per kind, read off the enum.
+//
+// «المواقع» (2026-11-19) is a fourth tab, after the kinds, and NOT a kind: each branch's places, its
+// own list (`?kind=location`, `components/LocationsTab.tsx`) — a catalog row is org-wide with one
+// name per kind, and two branches may each have «غرفة السيرفرات».
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { IT_CATALOG_KINDS, type ItCatalogItemDto, type ItCatalogKind } from '@ecms/contracts';
@@ -23,7 +27,11 @@ import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { useItCatalogItems } from '../api/it-queries';
 import { CatalogItemDialog } from '../components/CatalogItemDialog';
+import { LocationsTab } from '../components/LocationsTab';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** The places' tab — `?kind=location`, outside the catalog's kinds. */
+const LOCATION_TAB = 'location';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -43,6 +51,7 @@ export const ItCatalogsPage = (): JSX.Element => {
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const kindParam = sp.get('kind');
+  const locationTab = kindParam === LOCATION_TAB;
   const kind: ItCatalogKind = isKind(kindParam) ? kindParam : 'assetCategory';
   const active = sp.get('active') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -79,9 +88,10 @@ export const ItCatalogsPage = (): JSX.Element => {
     }),
     [paramsKey],
   );
-  const { data, isLoading, isError, error, refetch } = useItCatalogItems(params);
+  const { data, isLoading, isError, error, refetch } = useItCatalogItems(params, !locationTab);
 
   const [creating, setCreating] = useState(false);
+  const [creatingLocation, setCreatingLocation] = useState(false);
   const [editing, setEditing] = useState<ItCatalogItemDto | null>(null);
 
   const actionButton =
@@ -178,9 +188,9 @@ export const ItCatalogsPage = (): JSX.Element => {
               <Button
                 size="sm"
                 leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setCreating(true)}
+                onClick={() => (locationTab ? setCreatingLocation(true) : setCreating(true))}
               >
-                {t('it.catalogs.addItem')}
+                {locationTab ? t('it.locations.add') : t('it.catalogs.addItem')}
               </Button>
             </Can>
           }
@@ -195,11 +205,11 @@ export const ItCatalogsPage = (): JSX.Element => {
             <button
               key={k}
               role="tab"
-              aria-selected={kind === k}
+              aria-selected={!locationTab && kind === k}
               type="button"
               onClick={() => patch({ kind: k === 'assetCategory' ? null : k })}
               className={`rounded-t-lg px-4 py-2 text-sm ${
-                kind === k
+                !locationTab && kind === k
                   ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
                   : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
               }`}
@@ -207,40 +217,63 @@ export const ItCatalogsPage = (): JSX.Element => {
               {t(`it.catalogs.kind.${k}`)}
             </button>
           ))}
-        </div>
-
-        <FilterBar hasActiveFilters={active !== ''} onClear={() => patch({ active: null })}>
-          <Select
-            aria-label={t('it.assets.columns.status')}
-            value={active}
-            onChange={(e) => patch({ active: e.target.value || null })}
-            className="w-auto"
+          <button
+            role="tab"
+            aria-selected={locationTab}
+            type="button"
+            data-catalogs-tab={LOCATION_TAB}
+            onClick={() => patch({ kind: LOCATION_TAB, sort: null })}
+            className={`rounded-t-lg px-4 py-2 text-sm ${
+              locationTab
+                ? 'border-b-2 border-brand-600 font-semibold text-brand-700 dark:text-brand-300'
+                : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
           >
-            <option value="">{t('it.catalogs.allStatuses')}</option>
-            <option value="true">{t('it.catalogs.active')}</option>
-            <option value="false">{t('it.catalogs.archived')}</option>
-          </Select>
-        </FilterBar>
-
-        <div className={BOARD_TABLE_FILL_LOW}>
-          <DataTable
-            columns={columns}
-            rows={data?.items ?? []}
-            rowKey={(r) => r.id}
-            loading={isLoading}
-            error={isError ? error : undefined}
-            onRetry={() => void refetch()}
-            sort={sort}
-            onSortChange={changeSort}
-            stickyHead
-          />
+            {t('it.locations.tab')}
+          </button>
         </div>
-        {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
-            meta={data.meta}
-            onPageChange={(p) => patch({ page: String(p) }, false)}
-            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+
+        {locationTab ? (
+          <LocationsTab
+            creating={creatingLocation}
+            onCloseCreate={() => setCreatingLocation(false)}
           />
+        ) : (
+          <>
+            <FilterBar hasActiveFilters={active !== ''} onClear={() => patch({ active: null })}>
+              <Select
+                aria-label={t('it.assets.columns.status')}
+                value={active}
+                onChange={(e) => patch({ active: e.target.value || null })}
+                className="w-auto"
+              >
+                <option value="">{t('it.catalogs.allStatuses')}</option>
+                <option value="true">{t('it.catalogs.active')}</option>
+                <option value="false">{t('it.catalogs.archived')}</option>
+              </Select>
+            </FilterBar>
+
+            <div className={BOARD_TABLE_FILL_LOW}>
+              <DataTable
+                columns={columns}
+                rows={data?.items ?? []}
+                rowKey={(r) => r.id}
+                loading={isLoading}
+                error={isError ? error : undefined}
+                onRetry={() => void refetch()}
+                sort={sort}
+                onSortChange={changeSort}
+                stickyHead
+              />
+            </div>
+            {data !== undefined && data.meta.totalItems > 0 && (
+              <Pagination
+                meta={data.meta}
+                onPageChange={(p) => patch({ page: String(p) }, false)}
+                onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+              />
+            )}
+          </>
         )}
       </div>
 

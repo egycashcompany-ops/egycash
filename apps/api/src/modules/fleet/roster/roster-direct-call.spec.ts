@@ -75,9 +75,19 @@ const doc = (vehicleId: string, driver1: string | null = null) => ({
   notes: null,
 });
 
+/**
+ * The day planned: TOMORROW, at UTC midnight. `plan()` refuses a day in the past, so a fixed date
+ * (this file used 2026-11-20) turns every test here into a «past date» refusal once it goes by.
+ */
+const PLAN_DAY = (() => {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() + 1);
+  return day;
+})();
+
 /** The payload an internal caller builds by hand — never parsed, and spelled in UPPER hex. */
-const shouting = (rows: Record<string, unknown>[]) =>
-  ({ date: new Date('2026-11-20T00:00:00.000Z'), rows }) as never;
+const shouting = (rows: Record<string, unknown>[]) => ({ date: PLAN_DAY, rows }) as never;
 
 beforeEach(() => {
   vi.clearAllMocks();

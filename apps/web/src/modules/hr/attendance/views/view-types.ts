@@ -31,7 +31,13 @@ export interface SheetRow {
   name: string;
   code: string;
   photoUrl?: string | null;
+  /** The profile photo's file, so the page can draw the face (`avatar`). */
+  photoFileId?: string | null;
+  /** The face, drawn by the page (it fetches the photo); initials when absent. */
+  avatar?: React.ReactNode;
   department?: string | null;
+  jobTitle?: string | null;
+  branch?: string | null;
   status: ViewStatus;
   expected: TimeSpan | null;
   inAt: number | null;
@@ -146,6 +152,23 @@ export interface EmployeeDay {
   tags: string[];
   /** Optional per-day action (e.g. «اتخاذ قرار»). */
   action?: React.ReactNode;
+  /** Every scan of the day, in order — the scan log. Empty when there were none. */
+  scans?: ScanEntry[];
+  /** Scans beyond the counted arrival and departure; the «N repeats» badge shows only when > 0. */
+  repeats?: number;
+}
+
+/** One scan in the employee's scan log. */
+export interface ScanEntry {
+  /** Cairo wall clock to the second, «08:59:41». */
+  time: string;
+  /** Days after the work date the scan fell on (a night or 24-hour shift's check-out). */
+  dayOffset: number;
+  direction: 'in' | 'out' | 'unknown';
+  role: 'arrival' | 'departure' | 'repeat';
+  source: 'device' | 'manual' | 'regularization' | 'web';
+  device: string | null;
+  branch: string | null;
 }
 
 /**

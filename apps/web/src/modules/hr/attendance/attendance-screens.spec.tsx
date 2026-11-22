@@ -192,6 +192,8 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   employeeBranch: { ar: 'المهندسين', en: 'Mohandessin' },
   employeeJobTitle: { ar: 'أمين خزينة', en: 'Treasurer' },
   punchCount: 2,
+  checkInCount: 1,
+  checkOutCount: 1,
   // DERIVED FROM THE ROW'S OWN DAY, never written out beside it. Spelled separately they drifted
   // immediately: the day said twenty minutes late and the hand-written figures said none, so the
   // screen drew a dash and the test that asked for «0:20» was right to fail.
@@ -325,22 +327,24 @@ describe('the daily sheet reads quantities and offers only what the caller may d
   });
 
   it('writes the arrival before the departure, in the direction being read', () => {
-    // The pair is «in → out» in English and «in ← out» in Arabic: the arrow follows the reading
-    // direction, so the ARRIVAL is the one the eye reaches first in either language. Written with
-    // one fixed arrow it reads backwards in one of the two.
+    // The card puts the ARRIVAL first in reading order in both languages (start side in RTL and
+    // LTR alike), so the eye reaches the check-in before the check-out either way.
     const en = sheet({ permissions: ['attendance.view'] }).replace(/<[^>]+>/g, '');
-    expect(en).toContain('9:20 AM → 5:00 PM');
+    expect(en.indexOf('9:20 AM')).toBeGreaterThan(-1);
+    expect(en.indexOf('9:20 AM')).toBeLessThan(en.lastIndexOf('5:00 PM'));
     const ar = sheet({ locale: 'ar', permissions: ['attendance.view'] }).replace(/<[^>]+>/g, '');
-    expect(ar).toContain('9:20 ص ← 5:00 م');
+    expect(ar.indexOf('9:20 ص')).toBeGreaterThan(-1);
+    expect(ar.indexOf('9:20 ص')).toBeLessThan(ar.lastIndexOf('5:00 م'));
   });
 });
 
 describe('the order of the sheet, and the URL that holds it', () => {
   it('opens on check-in ascending and says so where a screen reader can hear it', () => {
     const html = sheet({ permissions: ['attendance.view'] });
-    // The owner's default. `aria-sort` is the part a screen reader announces; the arrow beside it
-    // is the same fact drawn for the eye, and marked `aria-hidden` so it is not read twice.
-    expect(html).toContain('aria-sort="ascending"');
+    // The owner's default. The sort is a row of pressed/unpressed buttons now (a board of people,
+    // not a table): `aria-pressed` is what a screen reader announces, the ▲ is for the eye.
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('▲');
     expect(html).toContain('Arrived');
     // Every sortable heading is a real BUTTON, so it is in the tab order and answers Enter and
     // Space with no key handling of our own — «keyboard-accessible headers», his words.
@@ -371,7 +375,7 @@ describe('the order of the sheet, and the URL that holds it', () => {
       },
     });
     expect(html).toContain('EMP-0007');
-    expect(html).toContain('aria-sort="descending"');
+    expect(html).toContain('▼');
   });
 
   it('ignores a sort nobody declared rather than sending it to the server', () => {
@@ -383,7 +387,7 @@ describe('the order of the sheet, and the URL that holds it', () => {
       seed: seedSheet([sheetRow()]),
     });
     expect(html).toContain('EMP-0007');
-    expect(html).toContain('aria-sort="ascending"');
+    expect(html).toContain('▲');
   });
 });
 
@@ -615,6 +619,9 @@ describe('the employee period', () => {
       flags: [],
       approvedOvertimeMinutes: 0,
       punches: [],
+      repeatCount: 0,
+      checkInCount: 0,
+      checkOutCount: 0,
       ...rest,
       firstInAt,
       lastOutAt,

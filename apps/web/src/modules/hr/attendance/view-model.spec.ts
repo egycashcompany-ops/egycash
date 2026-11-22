@@ -73,6 +73,8 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   employeeBranch: { ar: 'المهندسين', en: 'Mohandessin' },
   employeeJobTitle: { ar: 'أمين خزينة', en: 'Treasurer' },
   punchCount: 2,
+  checkInCount: 1,
+  checkOutCount: 1,
   figures: {
     workedMinutes: 480,
     lateMinutes: 0,
@@ -199,6 +201,9 @@ const resolvedDay = (
     flags: [],
     approvedOvertimeMinutes: 0,
     punches: [],
+    repeatCount: 0,
+    checkInCount: 0,
+    checkOutCount: 0,
     ...rest,
     firstInAt,
     lastOutAt,
@@ -235,7 +240,17 @@ describe('a day of an employee period', () => {
       resolvedDay({
         date: '2026-11-12',
         provisional: true,
-        punches: [{ at: '2026-11-12T07:57:00.000Z', direction: 'in', source: 'device' }],
+        punches: [
+          {
+            at: '2026-11-12T07:57:00.000Z',
+            direction: 'in',
+            source: 'device',
+            role: 'arrival',
+            deviceId: 'GED7241700280',
+            deviceName: 'K40 Pro',
+            branchName: null,
+          },
+        ],
       }),
       { today: '2026-11-18', label },
     );

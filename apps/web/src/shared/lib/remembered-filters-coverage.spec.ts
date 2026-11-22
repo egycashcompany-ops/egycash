@@ -282,6 +282,10 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   // answers to, short by nature and shorter every time one is linked or ignored, beside the
   // backfill's progress. Narrowing it would only hide the thing it exists to show.
   ['modules/hr/attendance/pages/DeviceHealthPage.tsx'],
+  // «ساعات العمل» is an EDITOR, not a list: one row per department, each with its own hours, and a
+  // Save. Its search box narrows what is on screen while somebody edits, so there is no chosen view
+  // of stored data to carry between visits — remembering it would restore a filter over a form.
+  ['modules/hr/attendance/pages/WorkingHoursPage.tsx'],
   ['modules/atm/pages/AtmSettingsPage.tsx'],
   [
     'modules/atm/pages/LayoutImportPage.tsx',

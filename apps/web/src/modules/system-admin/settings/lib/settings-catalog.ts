@@ -150,6 +150,14 @@ export const MANAGED_ELSEWHERE: Readonly<Record<string, ManagedElsewhere>> = {
     route: '/operations/crew-departments',
     screen: 'operations.crew.departments.title',
   },
+  // «ساعات العمل»: a map of department id → hours, edited on its own tab of the HR settings screen
+  // with department names, presets and a computed end time. A raw-JSON field here would be both
+  // unusable and the only disabled control on a screen whose rule is that a holder of
+  // `setting.edit` can edit everything it shows.
+  'hr.attendance.departmentHours': {
+    route: '/hr-settings/working-hours',
+    screen: 'attendance.workingHours.title',
+  },
 };
 
 /**

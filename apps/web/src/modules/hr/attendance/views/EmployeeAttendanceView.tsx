@@ -1,11 +1,15 @@
-// One person's attendance — what opens when HR clicks an employee (and what an employee sees for
-// themselves). Figures, then the month as a calendar beside a punctuality strip, hours per day, and
-// the day-by-day record. Presentational: the page computes the figures and passes them in.
+// One person's attendance — what opens on the employee's profile (and what an employee sees for
+// themselves). Redesigned as a dashboard: a header, a row of KPI cards, the period as a full-width
+// calendar, the two trends side by side, then the day-by-day record with each day's scan log.
+// Presentational: the page computes the figures and passes them in.
 import type { ReactNode } from 'react';
 import { cn } from '../../../../shared/lib/cn';
-import { ArrivalTrend, HoursBars, MonthHeatmap } from './view-charts';
-import { ariaSort, AttendanceCanvas, DOT, DayTimeline, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, Sheet, SheetHead, SortableHead, StatusText, Tag, TimelineScale, type Tone } from './view-parts';
-import { arrow, clock, dayLabel, duration, num, shortDuration } from './view-format';
+import { ArrivalTrend, HoursBars } from './view-charts';
+import { MonthCalendar, type CalendarLegendItem } from './MonthCalendar';
+import { DayRecord } from './DayRecord';
+import { RepeatScansLog, repeatDays } from './repeat-scans-log';
+import { AttendanceCanvas, DOT, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, Sheet, SheetHead, Tag, type Tone } from './view-parts';
+import { arrow, clock, duration, num } from './view-format';
 import { useViewLabels } from './view-labels';
 import { sortEmployeeDays } from './day-order';
 import type {
@@ -14,6 +18,7 @@ import type {
   EmployeeDaysSort,
   EmployeeHeader,
   EmployeeKpis,
+  ViewStatus,
 } from './view-types';
 
 export interface EmployeeAttendanceViewProps {
@@ -25,62 +30,78 @@ export interface EmployeeAttendanceViewProps {
   kpis: EmployeeKpis;
   /** Every day of the period, oldest → newest. */
   days: EmployeeDay[];
-  /**
-   * Start of this person's working day and its grace, minutes — the punctuality band. `null` when
-   * they have no shift and no default pattern: no lateness line is drawn, because nobody has said
-   * when they are due.
-   */
+  /** Start of this person's working day and its grace, minutes; null when nobody said. */
   dayStart: number | null;
   grace: number;
   /** ISO date of today, to ring it on the calendar. */
   today?: string;
-  /**
-   * The date the reader picked on the calendar. Ringed there and highlighted in the daily record,
-   * which is the point: over a year, finding the same date in 366 lines by eye is the screen's job.
-   */
+  /** The date the reader picked on the calendar; ringed there and highlighted in the record. */
   picked?: string | null;
-  /** Given, the calendar's cells become buttons. Omitted, it stays a plain read-only grid. */
   onPickDay?: (date: string) => void;
   onExport?: () => void;
-  /**
-   * The order of the daily record, and how to ask for another. Omitted, the list reads newest
-   * first — a month is read backwards from its most recent day.
-   */
   sort?: EmployeeDaysSort;
   onSort?: (by: EmployeeDaySort, dir: 'asc' | 'desc') => void;
+  /** Inside the employee's profile, which already shows who this is: no second avatar and name. */
+  compactHeader?: boolean;
 }
+
+const LEGEND_GROUPS: { tone: Tone; statuses: ViewStatus[]; key: 'present' | 'late' | 'incomplete' | 'absent' | 'onLeave' }[] = [
+  { tone: 'ok', statuses: ['present'], key: 'present' },
+  { tone: 'warn', statuses: ['late', 'earlyLeave', 'lateAndEarly'], key: 'late' },
+  { tone: 'warn', statuses: ['incomplete'], key: 'incomplete' },
+  { tone: 'bad', statuses: ['absent'], key: 'absent' },
+  { tone: 'info', statuses: ['onLeave'], key: 'onLeave' },
+];
 
 export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Element => {
   const { employee, kpis, days } = p;
   const { t, status, locale } = useViewLabels();
   const dur = (m: number | null): string => duration(m, t('hours'), t('minutes'));
   const sort: EmployeeDaysSort = p.sort ?? { by: 'date', dir: 'desc' };
-  const sortHint = (dir: 'asc' | 'desc'): string => t(dir === 'asc' ? 'sortAscending' : 'sortDescending');
-  // `days` arrives oldest first (the calendar's contiguous run, which the heatmap needs in that
-  // order); the record below is a different reading of the same days, so it gets its own order.
   const ordered = sortEmployeeDays(days, sort.by, sort.dir);
-  const meta = [employee.jobTitle, employee.department, employee.branch].filter((x): x is string => typeof x === 'string' && x !== '');
+  const meta = [employee.jobTitle, employee.department, employee.branch].filter(
+    (x): x is string => typeof x === 'string' && x !== '',
+  );
   const onTimeRate = kpis.daysPresent > 0 ? Math.round(((kpis.daysPresent - kpis.lateDays) / kpis.daysPresent) * 100) : 0;
+  const presence = kpis.daysExpected > 0 ? Math.round((kpis.daysPresent / kpis.daysExpected) * 100) : 0;
+
+  const legend: CalendarLegendItem[] = [
+    ...LEGEND_GROUPS.map((g) => ({
+      tone: g.tone,
+      label: g.key === 'incomplete' ? status('incomplete') : t(g.key),
+      count: days.filter((d) => g.statuses.includes(d.status)).length,
+    })),
+    {
+      tone: 'muted' as const,
+      label: t('legendOther'),
+      count: days.filter((d) => ['dayOff', 'holiday', 'noSchedule', 'noRecord', 'notYetIn'].includes(d.status)).length,
+    },
+  ];
 
   return (
     <AttendanceCanvas>
       <PageHeader
-        lead={<PersonAvatar name={employee.name} photoUrl={employee.photoUrl} size="lg" />}
+        {...(p.compactHeader === true ? {} : { lead: <PersonAvatar name={employee.name} photoUrl={employee.photoUrl} size="lg" /> })}
         eyebrow={
-          <span>
-            <bdi className={FIG}>#{employee.code}</bdi>
-            {meta.length > 0 ? ` · ${meta.join(' · ')}` : ''}
-          </span>
+          p.compactHeader === true ? (
+            t('attendance')
+          ) : (
+            <span>
+              <bdi className={FIG}>#{employee.code}</bdi>
+              {meta.length > 0 ? ` · ${meta.join(' · ')}` : ''}
+            </span>
+          )
         }
-        title={employee.name}
+        title={p.compactHeader === true ? p.periodLabel : employee.name}
         meta={
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
             {employee.lastPunch && (
-              <span>
+              <span className="inline-flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-[var(--att-ok)]" />
                 {t('lastPunch')} <bdi className={cn('font-semibold', INK)}>{employee.lastPunch}</bdi>
               </span>
             )}
-            {kpis.incompleteDays > 0 && <Tag tone="warn">{`${num(kpis.incompleteDays)} ${t('incomplete')}`}</Tag>}
+            {p.compactHeader !== true && <span className={INK3}>{p.periodLabel}</span>}
           </span>
         }
         actions={
@@ -95,49 +116,53 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
         }
       />
 
+      {/* KPI cards — one number each, large, with the one line that explains it. */}
+      {/* Four cards, not six: attendance, punctuality, the usual day, and the hours. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <Kpi tone="ok" label={t('daysPresent')} value={`${kpis.daysPresent}`} suffix={`/${kpis.daysExpected}`} note={`${presence}%`} bar={presence} />
+        <Kpi
+          tone={kpis.lateDays > 0 ? 'warn' : 'ok'}
+          label={t('onTimeRate')}
+          value={`${onTimeRate}%`}
+          note={`${num(kpis.lateDays)} ${t('lateDays')}`}
+          bar={onTimeRate}
+        />
+        <Kpi
+          tone="accent"
+          label={t('usualDay')}
+          value={clock(kpis.usualArrival)}
+          suffix={`${arrow()} ${clock(kpis.usualDeparture)}`}
+          note={`${t('usualArrival')} · ${t('usualDeparture')}`}
+        />
+        <Kpi
+          tone={kpis.shortfallTotal > 0 ? 'warn' : 'info'}
+          label={t('hoursPerDay')}
+          value={dur(kpis.avgWorked)}
+          note={kpis.shortfallTotal > 0 ? `${t('shortfallCol')} ${dur(kpis.shortfallTotal)}` : t('inTotal', { t: dur(kpis.totalWorked) })}
+        />
+      </div>
+
       <Sheet>
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7">
-          <Figure label={t('daysPresent')} value={`${kpis.daysPresent}/${kpis.daysExpected}`} note={p.periodLabel} tone="ok" />
-          <Figure label={t('onTimeRate')} value={`${onTimeRate}%`} note={t('ofPresentDays')} tone="ok" />
-          <Figure label={t('usualArrival')} value={clock(kpis.usualArrival)} note={t('avgFirstIn')} />
-          <Figure label={t('usualDeparture')} value={clock(kpis.usualDeparture)} note={t('avgLastOut')} />
-          <Figure label={t('hoursPerDay')} value={dur(kpis.avgWorked)} note={t('inTotal', { t: dur(kpis.totalWorked) })} />
-          <Figure label={t('lateDays')} value={String(kpis.lateDays)} note={t('lateTotal', { t: dur(kpis.lateMinutesTotal) })} tone="warn" />
-          {/* «النقص» — the period's missing time, which is the figure a deduction would read and
-              the one «أيام التأخير» does NOT answer: a month of late arrivals all made up by
-              staying later shows late days and no shortfall at all. */}
-          <Figure
-            label={t('shortfallCol')}
-            value={dur(kpis.shortfallTotal === 0 ? null : kpis.shortfallTotal)}
-            note={t('shortfallTotal')}
-            {...(kpis.shortfallTotal > 0 ? { tone: 'warn' as const } : {})}
+        <SheetHead
+          title={t('calendarTitle')}
+          note={t('calendarNote', { a: kpis.absentDays, l: kpis.lateDays })}
+          actions={kpis.incompleteDays > 0 ? <Tag tone="warn">{`${num(kpis.incompleteDays)} ${status('incomplete')}`}</Tag> : undefined}
+        />
+        <div className="pt-4">
+          <MonthCalendar
+            days={days}
+            weekdays={t('weekdays').split(',')}
+            statusLabel={status}
+            locale={locale}
+            legend={legend}
+            {...(p.today !== undefined ? { today: p.today } : {})}
+            {...(p.picked !== undefined ? { picked: p.picked } : {})}
+            {...(p.onPickDay !== undefined ? { onPick: p.onPickDay } : {})}
           />
         </div>
       </Sheet>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] sm:gap-6">
-        <Sheet>
-          <SheetHead title={t('calendarTitle')} note={t('calendarNote', { a: kpis.absentDays, l: kpis.lateDays })} />
-          <div className="pt-4">
-            <MonthHeatmap
-              days={days}
-              weekdays={t('weekdays').split(',')}
-              statusLabel={status}
-              locale={locale}
-              {...(p.today !== undefined ? { today: p.today } : {})}
-              {...(p.picked !== undefined ? { picked: p.picked } : {})}
-              {...(p.onPickDay !== undefined ? { onPick: p.onPickDay } : {})}
-            />
-          </div>
-          <Legend
-            items={[
-              { tone: 'ok', label: status('present') },
-              { tone: 'warn', label: status('late') },
-              { tone: 'bad', label: status('absent') },
-              { tone: 'info', label: status('onLeave') },
-            ]}
-          />
-        </Sheet>
+      <div className="grid gap-5 lg:grid-cols-2 sm:gap-6">
         <Sheet>
           <SheetHead
             title={t('punctualityTitle')}
@@ -151,14 +176,13 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
             <ArrivalTrend days={days} dayStart={p.dayStart} grace={p.grace} usual={kpis.usualArrival} labels={{ limit: t('lateAfter'), usual: t('usualDay'), week: (n) => t('weekN', { n }), empty: t('noDays') }} locale={locale} />
           </div>
         </Sheet>
+        <Sheet>
+          <SheetHead title={t('hoursChart')} note={kpis.avgWorked !== null ? t('hoursChartNote', { t: dur(kpis.avgWorked) }) : t('hoursChartEmpty')} />
+          <div className="pt-5">
+            <HoursBars days={days} avg={kpis.avgWorked} locale={locale} format={dur} weekLabel={(n) => t('weekN', { n })} />
+          </div>
+        </Sheet>
       </div>
-
-      <Sheet>
-        <SheetHead title={t('hoursChart')} note={kpis.avgWorked !== null ? t('hoursChartNote', { t: dur(kpis.avgWorked) }) : t('hoursChartEmpty')} />
-        <div className="pt-5">
-          <HoursBars days={days} avg={kpis.avgWorked} locale={locale} format={dur} weekLabel={(n) => t('weekN', { n })} />
-        </div>
-      </Sheet>
 
       <Sheet className="overflow-hidden">
         <SheetHead
@@ -168,142 +192,65 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
         {ordered.length === 0 ? (
           <p className={cn('px-6 py-16 text-center text-sm', INK3)}>{t('noDays')}</p>
         ) : (
-          <>
-            <div className="mt-4 hidden md:block">
-              <table className="w-full">
-                <thead>
-                  <tr className={cn('border-y border-[var(--att-line)] bg-[var(--att-sheet-2)] text-[12px]', INK3)}>
-                    <th className="py-2.5 pe-3 ps-6 text-start font-medium" aria-sort={ariaSort('date', sort)}>
-                      <SortableHead column="date" label={t('date')} sort={sort} onSort={p.onSort} hint={sortHint} />
-                    </th>
-                    <th className="px-3 py-2.5 text-start font-medium">{t('status')}</th>
-                    <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('checkIn', sort)}>
-                      <SortableHead column="checkIn" label={t('arrived')} sort={sort} onSort={p.onSort} hint={sortHint} />
-                      <span className={cn('mx-1', INK3)} aria-hidden="true">
-                        ·
-                      </span>
-                      <SortableHead column="checkOut" label={t('left')} sort={sort} onSort={p.onSort} hint={sortHint} />
-                    </th>
-                    <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('worked', sort)}>
-                      <SortableHead column="worked" label={t('worked')} sort={sort} onSort={p.onSort} hint={sortHint} />
-                    </th>
-                    <th className="w-[30%] px-3 py-2 text-start font-medium">
-                      <TimelineScale />
-                    </th>
-                    <th className="py-2.5 pe-6 ps-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {ordered.map((d) => (
-                    <tr
-                      key={d.date}
-                      // The anchor the calendar scrolls to, and the row it rings. One id per date
-                      // on this screen, so a second table on the page cannot collide with it.
-                      id={`att-day-${d.date}`}
-                      className={cn(
-                        'border-b border-[var(--att-line)] last:border-b-0 hover:bg-[var(--att-sheet-2)]',
-                        d.date === p.picked && 'bg-[var(--att-sheet-2)] ring-2 ring-inset ring-[var(--att-accent)]',
-                      )}
-                    >
-                      <td className={cn('whitespace-nowrap py-3 pe-3 ps-6 text-sm font-semibold', INK)}>{dayLabel(d.date, locale)}</td>
-                      <td className="px-3 py-3">
-                        <StatusText status={d.status} label={status(d.status)} />
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="inline-flex flex-wrap items-center gap-2">
-                          <Span inAt={d.inAt} outAt={d.outAt} />
-                          {d.lateMinutes !== null && d.lateMinutes > 0 && (
-                            <Tag tone="warn">{`${status('late')} ${shortDuration(d.lateMinutes)}`}</Tag>
-                          )}
-                          {d.shortfall !== null && d.shortfall > 0 && (
-                            <Tag tone="warn">{`${t('shortfallCol')} ${shortDuration(d.shortfall)}`}</Tag>
-                          )}
-                          {d.tags.map((tag) => (
-                            <Tag key={tag} tone="accent">
-                              {tag}
-                            </Tag>
-                          ))}
-                        </span>
-                      </td>
-                      <td className={cn('px-3 py-3 text-sm', FIG, d.worked === null ? 'text-[color:var(--att-muted)]' : cn('font-semibold', INK))}>{dur(d.worked)}</td>
-                      <td className="px-3 py-3">
-                        <DayTimeline inAt={d.inAt} outAt={d.outAt} expected={d.expected} />
-                      </td>
-                      <td className="py-3 pe-6 ps-3 text-end">{d.action}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <ul className="mt-4 border-t border-[var(--att-line)] md:hidden">
-              {ordered.map((d) => (
-                <li
-                  key={d.date}
-                  id={`att-day-m-${d.date}`}
-                  className={cn(
-                    'border-b border-[var(--att-line)] px-5 py-4 last:border-b-0',
-                    d.date === p.picked && 'bg-[var(--att-sheet-2)] ring-2 ring-inset ring-[var(--att-accent)]',
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <span className={cn('text-sm font-semibold', INK)}>{dayLabel(d.date, locale)}</span>
-                    <StatusText status={d.status} label={status(d.status)} />
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <Span inAt={d.inAt} outAt={d.outAt} />
-                    {d.worked !== null && <span className={cn('text-sm font-semibold', FIG, INK)}>{dur(d.worked)}</span>}
-                    {d.lateMinutes !== null && d.lateMinutes > 0 && (
-                      <Tag tone="warn">{`${status('late')} ${shortDuration(d.lateMinutes)}`}</Tag>
-                    )}
-                    {d.shortfall !== null && d.shortfall > 0 && (
-                      <Tag tone="warn">{`${t('shortfallCol')} ${shortDuration(d.shortfall)}`}</Tag>
-                    )}
-                    {d.tags.map((tag) => (
-                      <Tag key={tag} tone="accent">
-                        {tag}
-                      </Tag>
-                    ))}
-                  </div>
-                  <div className="mt-2">
-                    <DayTimeline inAt={d.inAt} outAt={d.outAt} expected={d.expected} />
-                  </div>
-                  {d.action !== undefined && <div className="mt-2 flex justify-end">{d.action}</div>}
-                </li>
-              ))}
-            </ul>
-          </>
+          <div className="mt-4">
+            <DayRecord days={ordered} locale={locale} picked={p.picked} today={p.today ?? ""} sort={sort} onSort={p.onSort} />
+          </div>
         )}
+      </Sheet>
+
+      {/* THE REPEATED SCANS LOG — days with more than one check-in or check-out */}
+      <Sheet className="overflow-hidden">
+        <SheetHead title={t('repeatLog')} note={`${t('repeatLogNote')} · ${num(repeatDays(days).length)}`} />
+        <div className="mt-3">
+          <RepeatScansLog days={days} locale={locale} />
+        </div>
       </Sheet>
     </AttendanceCanvas>
   );
 };
 
-const Figure = ({ label, value, note, tone }: { label: string; value: string; note: string; tone?: Tone }): JSX.Element => (
-  <div className="border-[var(--att-line)] px-5 py-5 [&:not(:first-child)]:border-s max-sm:[&:nth-child(odd)]:border-s-0 max-sm:[&:nth-child(n+3)]:border-t sm:max-xl:[&:nth-child(3n+1)]:border-s-0 sm:max-xl:[&:nth-child(n+4)]:border-t">
-    <p className={cn('flex items-center gap-2 text-[13px] font-medium', INK2)}>
-      {tone !== undefined && <span className={cn('h-2 w-2 rounded-full', DOT[tone])} />}
-      {label}
+const KPI_BAR: Record<Tone, string> = {
+  ok: 'bg-[var(--att-ok)]',
+  warn: 'bg-[var(--att-warn)]',
+  bad: 'bg-[var(--att-bad)]',
+  info: 'bg-[var(--att-info)]',
+  muted: 'bg-[var(--att-muted)]',
+  accent: 'bg-[var(--att-accent)]',
+};
+
+const Kpi = ({
+  label,
+  value,
+  suffix,
+  note,
+  tone,
+  bar,
+}: {
+  label: string;
+  value: string;
+  suffix?: string;
+  note: string;
+  tone: Tone;
+  bar?: number;
+}): JSX.Element => (
+  <div className="att-kpi px-5 py-5 sm:px-6">
+    <p className={cn('flex items-center gap-2 text-[12.5px] font-medium', INK2)}>
+      <span className={cn('h-2 w-2 rounded-full', DOT[tone])} />
+      <span className="truncate">{label}</span>
     </p>
-    <p className={cn('mt-2 text-[28px] font-semibold leading-none', FIG, INK)}>
+    <p className={cn('mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[28px] font-semibold leading-none tracking-[-0.02em] sm:text-[34px]', FIG, INK)}>
       <bdi>{value}</bdi>
+      {suffix !== undefined && <span className={cn('text-[14px] font-medium', INK3)}>{suffix}</span>}
     </p>
-    <p className={cn('mt-2 truncate text-[12px]', INK3)}>{note}</p>
+    {bar !== undefined ? (
+      <div className="mt-3 flex items-center gap-2">
+        <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--att-muted-soft)]">
+          <span className={cn('block h-full rounded-full', KPI_BAR[tone])} style={{ width: `${Math.max(0, Math.min(100, bar))}%` }} />
+        </span>
+        <span className={cn('text-[11.5px]', FIG, INK3)}>{note}</span>
+      </div>
+    ) : (
+      <p className={cn('mt-3 truncate text-[12px]', INK3)}>{note}</p>
+    )}
   </div>
-);
-
-const Legend = ({ items }: { items: { tone: Tone; label: string }[] }): JSX.Element => (
-  <div className={cn('flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--att-line)] px-5 py-3 text-[12px] sm:px-6', INK2)}>
-    {items.map((i) => (
-      <span key={i.label} className="inline-flex items-center gap-1.5">
-        <span className={cn('h-2.5 w-2.5 rounded-[3px]', DOT[i.tone])} />
-        {i.label}
-      </span>
-    ))}
-  </div>
-);
-
-const Span = ({ inAt, outAt }: { inAt: number | null; outAt: number | null }): JSX.Element => (
-  <span className={cn('whitespace-nowrap text-[13.5px]', FIG, inAt === null ? 'text-[color:var(--att-muted)]' : cn('font-semibold', INK))}>
-    {clock(inAt)} <span className={INK3}>{arrow()}</span> {clock(outAt)}
-  </span>
 );

@@ -11,3 +11,6 @@ import './app';
 import './modules';
 // IT's go-live bookkeeping — reached only through the go-live steps server.ts and worker.ts start.
 import './modules/it/go-live/go-live-run.model';
+// HR's go-live bookkeeping — the same shape: reached only through the step server.ts starts, so
+// nothing in `./modules` pulls it in and its unique index would never be built without this line.
+import './modules/hr/go-live/go-live-run.model';

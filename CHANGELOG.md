@@ -70,6 +70,39 @@ its entry here in the same PR.
 
 ### Added
 
+- **«ساعات العمل»: the hours each department owes, edited on their own screen.** A new tab on
+  «الإعدادات» (`/hr-settings/working-hours`) sets the working hours per department for employees
+  with no shift assignment — hours, an optional start time, and the end time computed from them —
+  with the department's branch and headcount beside each row, and «سجل التعديلات» showing who
+  changed which department's hours and when. Nothing new is stored for the log: every save goes
+  through the settings service, which already writes the actor, the time and the whole map before
+  and after. Saving re-derives the current month for the people in the departments that changed,
+  so the sheet, the profile and payroll's feed agree with the new rule; frozen days are refused by
+  `computeDay` and never re-priced.
+  - **Its own permission, `attendance.manageWorkingHours`** — not the shift catalog's
+    `attendance.manageShifts`, on the `hiringRequirement` precedent. A hub tab needs a page and
+    `validatePageRegistry` refuses a page no permission administers, so borrowing the shift key
+    would have left the role matrix saying the company's working hours are administered by the key
+    that administers the shift catalog. They are not the same power: saving the hours re-derives a
+    department's unfrozen days and payroll reads what that writes; editing the catalog does not.
+    **Nobody loses the working day on the day of the deploy.** The working hours were HR's to set
+    through the shift catalog until now — a shift carries the start, the end and the break — so
+    every role and every live delegated grant holding `attendance.manageShifts` is given the new
+    key once, by a versioned go-live step. It widens nobody: a holder gains the key only beside the
+    key it already exercised the same power under, in the same grant and the same scope. It runs
+    once, so a key an administrator removes afterwards stays removed. `super-admin` is widened
+    separately, because a seeded system role is frozen at its first seed and no copy writes it.
+  - `hr.attendance.departmentHours` is the setting behind it. It is a map, so the generic settings
+    screen does not try to edit it: the row says how much is set and offers «يُعدَّل من شاشة
+    «ساعات العمل»» rather than a raw-JSON box that would be both unusable and the one disabled
+    control on a screen whose rule is that a holder of `setting.edit` can edit everything it shows.
+
+- **Repeated scans are named rather than counted twice.** A day's punches are now attributed to
+  the shift they belong to (within half a day of its start or end), the arrival and the departure
+  are the two that count, and everything else is marked a repeat — the `repeatedPunches` flag, a
+  per-scan role on the employee's day, and «عدد مرات الحضور / الانصراف» on the sheet row. The
+  attendance report gains the two columns to match.
+
 - **HR bulk photos: one photo per duplicate, chosen for you, and no photo sent twice.** «عايز
   المكرر تختار منه أنت تلقائي واحده وترفعها… مش عايز أرفع اللى اترفعوا».
   ([employee module design](docs/12-planning/employee-module-design.md) §8)

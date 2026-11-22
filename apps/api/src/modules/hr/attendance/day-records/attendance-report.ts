@@ -68,6 +68,8 @@ export const ATTENDANCE_REPORT_COLUMNS: readonly { key: string; ar: string; en: 
   { key: 'overtime', ar: 'الإضافي المحتسب', en: 'Overtime (calculated)' },
   { key: 'approvedOvertime', ar: 'الإضافي المعتمد', en: 'Overtime (approved)' },
   { key: 'punches', ar: 'عدد البصمات', en: 'Punches' },
+  { key: 'checkIns', ar: 'مرات تسجيل الحضور', en: 'Times checked in' },
+  { key: 'checkOuts', ar: 'مرات تسجيل الانصراف', en: 'Times checked out' },
   { key: 'notes', ar: 'ملاحظات', en: 'Notes' },
 ];
 
@@ -151,6 +153,9 @@ const FLAG_NOTES: Record<AttendanceDayFlag, LocalizedString> = {
   regularizedPunch: { ar: 'تسوية معتمدة', en: 'Approved correction' },
   crossBranchPunch: { ar: 'بصمة من فرع آخر', en: 'Punch at another branch' },
   overriddenByManager: { ar: 'قرار مدير', en: 'Manager decision' },
+  // Never printed as a note: the two count columns already say it, and the owner asked that
+  // repeats raise no warnings outside the employee's scan log.
+  repeatedPunches: { ar: '', en: '' },
 };
 
 const MISSING_CHECK_OUT: LocalizedString = { ar: 'لا يوجد انصراف', en: 'Check-out missing' };
@@ -182,7 +187,7 @@ export const reportNotes = (
   if (day.firstInAt !== null && day.lastOutAt === null) notes.push(MISSING_CHECK_OUT);
   if (day.frozen) notes.push(FROZEN);
   if (day.provisional && day.firstInAt !== null) notes.push(PROVISIONAL);
-  for (const flag of day.flags) notes.push(FLAG_NOTES[flag]);
+  for (const flag of day.flags) if (flag !== 'repeatedPunches') notes.push(FLAG_NOTES[flag]);
   return notes.map((note) => (locale === 'ar' ? note.ar : note.en)).join(' · ');
 };
 
@@ -201,6 +206,9 @@ export interface ReportRow {
   figures: AttendanceDayFigures;
   approvedOvertimeMinutes: number | null;
   punchCount: number;
+  /** Times Check-in / Check-out was pressed that day — the owner's two export columns. */
+  checkInCount: number;
+  checkOutCount: number;
   flags: readonly AttendanceDayFlag[];
   frozen: boolean;
   provisional: boolean;
@@ -232,6 +240,8 @@ export const reportCells = (row: ReportRow, locale: ReportLocale): string[] => [
   // The scan count is a measurement, so a real zero prints: «0» on a «غائب» line is the answer to
   // «did the reader see them at all», and that answer is worth having in the file.
   String(row.punchCount),
+  String(row.checkInCount),
+  String(row.checkOutCount),
   reportNotes(row, locale),
 ];
 

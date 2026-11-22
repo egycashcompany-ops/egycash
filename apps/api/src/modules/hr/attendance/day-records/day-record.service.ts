@@ -23,6 +23,7 @@ import {
   type AttendanceSheetSummaryQuery,
   type AttendanceEmployeeDayDto,
   type AttendanceDayStatus,
+  type LocalizedString,
   ATTENDANCE_DAY_STATUSES,
   type Paginated,
   type RecomputeAttendanceDays,
@@ -53,15 +54,19 @@ import { shiftAssignmentService } from '../assignments';
 // calls back into this service to derive the days an import touched. Importing the repository
 // straight keeps that dependency one-way.
 import { punchRepository } from '../punches/punch.repository';
+import { AttendanceDeviceModel } from '../devices/attendance-device.model';
+import { BranchModel } from '../../../../platform/organization/branches/branch.model';
 import {
   cairoInstant,
   deriveDay,
+  punchTally,
   punchWindowFor,
+  scanRoles,
   type EnginePunch,
   type EngineShift,
 } from './derive-day';
 import {
-  defaultPatternForBranch,
+  defaultPatternFor,
   expectationsForDate,
   type DayExpectation,
 } from './expectations';
@@ -327,6 +332,7 @@ class DayRecordService {
       loadDayInputs([employee], start, end),
     ]);
     const storedByDate = new Map(storedRows.map((row) => [dateOnlyIso(toDateOnly(row.workDate)), row]));
+    const names = await this.scanLogNames(start, end, inputs, employee);
 
     // ONE reading of the clock for the whole period, so two dates cannot be resolved against
     // different "now"s — the same discipline the sheet keeps.
@@ -378,14 +384,77 @@ class DayRecordService {
         // a provisional day still knows that one of its punches was entered by hand.
         flags: times === null ? [] : [...times.flags],
         approvedOvertimeMinutes: stored === null ? null : stored.approvedOvertimeMinutes,
-        punches: assembled.punches.map((punch) => ({
-          at: punch.at.toISOString(),
-          direction: punch.direction,
-          source: punch.source,
-        })),
+        ...this.scanLog(assembled.punches, assembled.input.minPunchGapMinutes, names),
       });
     }
     return out;
+  }
+
+  /**
+   * The names the scan log prints beside each scan: the machine (by serial) and the branch it
+   * stands in. Two small queries for the whole period, never one per scan.
+   */
+  private async scanLogNames(
+    start: Date,
+    end: Date,
+    inputs: Awaited<ReturnType<typeof loadDayInputs>>,
+    employee: EmployeeDoc,
+  ): Promise<{ devices: Map<string, string>; branches: Map<string, LocalizedString> }> {
+    const deviceIds = new Set<string>();
+    const branchIds = new Set<string>();
+    const now = new Date();
+    for (let d = start; d.getTime() <= end.getTime(); d = addDays(d, 1)) {
+      const assembled = inputs.assemble(employee, d, now);
+      if (assembled === null) continue;
+      for (const p of assembled.punches) {
+        if (p.deviceId) deviceIds.add(p.deviceId.toUpperCase());
+        if (p.branchIdAtPunch) branchIds.add(p.branchIdAtPunch);
+      }
+    }
+    const [devices, branches] = await Promise.all([
+      deviceIds.size === 0
+        ? Promise.resolve([] as { code: string; name: string }[])
+        : AttendanceDeviceModel.find({ code: { $in: [...deviceIds] }, isDeleted: false })
+            .select({ code: 1, name: 1 })
+            .lean<{ code: string; name: string }[]>()
+            .exec(),
+      branchIds.size === 0
+        ? Promise.resolve([] as { _id: Types.ObjectId; name: LocalizedString }[])
+        : BranchModel.find({ _id: { $in: [...branchIds].map((id) => new Types.ObjectId(id)) } })
+            .select({ name: 1 })
+            .lean<{ _id: Types.ObjectId; name: LocalizedString }[]>()
+            .exec(),
+    ]);
+    return {
+      devices: new Map(devices.map((d) => [d.code, d.name])),
+      branches: new Map(branches.map((b) => [String(b._id), b.name])),
+    };
+  }
+
+  /** One day's scan log: every scan tagged arrival / departure / repeat, plus the press counts. */
+  private scanLog(
+    punches: readonly EnginePunch[],
+    minPunchGapMinutes: number,
+    names: { devices: Map<string, string>; branches: Map<string, LocalizedString> },
+  ): Pick<AttendanceEmployeeDayDto, 'punches' | 'repeatCount' | 'checkInCount' | 'checkOutCount'> {
+    const roles = scanRoles(punches, minPunchGapMinutes);
+    const tally = punchTally(punches, minPunchGapMinutes);
+    return {
+      punches: [...roles].map(([punch, role]) => ({
+        at: punch.at.toISOString(),
+        direction: punch.direction,
+        source: punch.source,
+        role,
+        deviceId: punch.deviceId ?? null,
+        deviceName:
+          punch.deviceId == null ? null : (names.devices.get(punch.deviceId.toUpperCase()) ?? null),
+        branchName:
+          punch.branchIdAtPunch === null ? null : (names.branches.get(punch.branchIdAtPunch) ?? null),
+      })),
+      repeatCount: tally.repeats,
+      checkInCount: tally.checkIns,
+      checkOutCount: tally.checkOuts,
+    };
   }
 
   /**
@@ -462,7 +531,16 @@ class DayRecordService {
       employee === null
         ? Promise.resolve(new Map<string, DayExpectation | null>())
         : expectationsForDate(
-            [{ id: employeeId, branchId: String(employee.employment.branchId) }],
+            [
+              {
+                id: employeeId,
+                branchId: String(employee.employment.branchId),
+                departmentId:
+                  employee.employment.departmentId == null
+                    ? null
+                    : String(employee.employment.departmentId),
+              },
+            ],
             to,
           ),
       punchRepository.lastPunchIn(
@@ -684,6 +762,10 @@ class DayRecordService {
         // re-tap collapse, because «six scans» is a fact about the door and the collapse is an
         // interpretation of it. HR asked for it on the export to tell a quiet day from a busy one.
         punchCount: assembled.punches.length,
+        ...(() => {
+          const tally = punchTally(assembled.punches, assembled.input.minPunchGapMinutes);
+          return { checkInCount: tally.checkIns, checkOutCount: tally.checkOuts };
+        })(),
       });
     }
     return { rows, employeeIds: employees.map((employee) => employee._id), ...rosterOf(expectations) };
@@ -867,7 +949,11 @@ class DayRecordService {
     // shift document was involved — a day that says it belongs to a shift that was never assigned
     // would be a lie that the payroll feed then carries.
     const expectation: EngineShift | null =
-      shift ?? (await defaultPatternForBranch(String(employee.employment.branchId)));
+      shift ??
+      (await defaultPatternFor(
+        String(employee.employment.branchId),
+        employee.employment.departmentId == null ? null : String(employee.employment.departmentId),
+      ));
 
     // THE PUNCHES ARE LOADED WHETHER OR NOT THERE IS AN EXPECTATION. This used to sit inside
     // `if (shift !== null)`, so an employee with no shift assignment had an empty punch list by

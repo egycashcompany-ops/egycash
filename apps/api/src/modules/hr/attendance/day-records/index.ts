@@ -22,6 +22,8 @@ export {
   type DayResolutionInput,
 } from './resolve-display-status';
 export {
+  defaultPatternFor,
+  departmentHoursMap,
   defaultPatternForBranch,
   expectationsForDate,
   type DayExpectation,

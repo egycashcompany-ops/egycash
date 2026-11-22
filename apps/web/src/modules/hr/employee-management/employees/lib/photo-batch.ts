@@ -7,7 +7,11 @@
 // whose name looks like somebody else's is flagged for a look — never refused, never re-matched.
 //
 // «غير كله باللى هبعته جديد»: a matched employee's current photo is replaced.
-import { EMPLOYEE_PHOTO_MIME_TYPES, foldOrgUnitName, type EmployeeCodeMatchDto } from '@ecms/contracts';
+import {
+  EMPLOYEE_PHOTO_MIME_TYPES,
+  foldOrgUnitName,
+  type EmployeeCodeMatchDto,
+} from '@ecms/contracts';
 
 /** Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits as ASCII — a name typed in Arabic. */
 export const asciiDigits = (value: string): string =>
@@ -50,7 +54,8 @@ const codeWords = (stem: string): string[] => {
       for (let to = parts.length; to > from; to -= 1) {
         const word = parts.slice(from, to).join('-');
         const fits = word.length >= 2 && word.length <= LONGEST_CODE;
-        if (fits && /[A-Za-z]/u.test(word) && /\d/u.test(word) && !out.includes(word)) out.push(word);
+        if (fits && /[A-Za-z]/u.test(word) && /\d/u.test(word) && !out.includes(word))
+          out.push(word);
       }
     }
   }
@@ -84,7 +89,9 @@ export const nameBeside = (stem: string, code: string | null): string =>
  */
 export const parsePhotoName = (fileName: string): ParsedPhotoName => {
   const stem = asciiDigits(fileName.replace(/\.[^./\\]+$/u, '')).trim();
-  const runs = [...stem.matchAll(/\d+/gu)].map((m) => m[0]).filter((run) => run.length <= LONGEST_CODE);
+  const runs = [...stem.matchAll(/\d+/gu)]
+    .map((m) => m[0])
+    .filter((run) => run.length <= LONGEST_CODE);
   const words = codeWords(stem);
   const candidates: string[] = [];
   const padded: string[] = [];
@@ -169,7 +176,12 @@ export type PhotoRowStatus =
    * Matched only once zeros were put back in front of the code, and the name in the file does not
    * back it (none, or not the employee's): too weak to replace a photo on. Rename it with the code.
    */
-  | 'unconfirmed';
+  | 'unconfirmed'
+  /**
+   * The employee's photo already went up recently (`PlanOptions.skipSince`): not sent again, so a
+   * second pick of the same folder — after a reload, the next day — sends only what is missing.
+   */
+  | 'recent';
 
 export interface PhotoFileInput {
   /** Unique within the batch: the same file, however it was picked, has the same key. */
@@ -201,6 +213,21 @@ export const codesToLookUp = (files: readonly PhotoFileInput[]): string[] => [
   ...new Set(files.flatMap((file) => parsePhotoName(file.name).candidates)),
 ];
 
+export interface PlanOptions {
+  /**
+   * Skip the employees whose current photo was uploaded at or after this time (ms since epoch):
+   * «مش عايز أرفع اللى اترفعوا». Null sends everyone again.
+   */
+  skipSince?: number | null;
+}
+
+/** Was this employee's current photo uploaded at or after `since`? */
+export const photoIsRecent = (employee: EmployeeCodeMatchDto, since: number | null): boolean => {
+  if (since === null || employee.photoUploadedAt === null) return false;
+  const at = Date.parse(employee.photoUploadedAt);
+  return Number.isFinite(at) && at >= since;
+};
+
 /**
  * Each file's row, on its own: matched by code, then checked. `excluded` holds the keys the person
  * unticked. Duplicates are marked after, by `markDuplicates` — `planPhotoBatch` does both.
@@ -209,6 +236,7 @@ export const planFiles = (
   files: readonly PhotoFileInput[],
   matches: ReadonlyMap<string, EmployeeCodeMatchDto>,
   excluded: ReadonlySet<string>,
+  { skipSince = null }: PlanOptions = {},
 ): PhotoRow[] =>
   files.map((file) => {
     const parsed = parsePhotoName(file.name);
@@ -243,7 +271,9 @@ export const planFiles = (
               ? 'unknownCode'
               : padded && (nameInFile === '' || nameDiffers)
                 ? 'unconfirmed'
-                : 'ready';
+                : photoIsRecent(employee, skipSince)
+                  ? 'recent'
+                  : 'ready';
     return {
       key: file.key,
       name: file.name,
@@ -288,7 +318,63 @@ export const planPhotoBatch = (
   matches: ReadonlyMap<string, EmployeeCodeMatchDto>,
   excluded: ReadonlySet<string>,
   settled: ReadonlySet<string> = new Set(),
-): PhotoRow[] => markDuplicates(planFiles(files, matches, excluded), settled);
+  options: PlanOptions = {},
+): PhotoRow[] => markDuplicates(planFiles(files, matches, excluded, options), settled);
+
+/** What is known of a file beyond its name, to choose between two photos of one person. */
+export interface PhotoFileFacts {
+  size: number;
+  lastModified: number;
+}
+
+/** How well the name in the file fits the employee: the better of their two names. */
+const fitOf = (row: PhotoRow): number =>
+  row.employee === null
+    ? 0
+    : Math.max(
+        ...[row.employee.fullNameAr, row.employee.fullNameEn ?? '']
+          .filter((name) => name.trim() !== '')
+          .map((name) => nameLikeness(row.nameInFile, name)),
+        0,
+      );
+
+/**
+ * One photo of each employee who has several: «المكرر تختار منه أنت تلقائي واحده». The one kept
+ * is the one whose name in the file fits the employee best; then the newest file (the later
+ * shot); then the largest (the sharper copy); then the name, so the choice never depends on the
+ * order the files came in. A file that already failed in this dialog goes after all of them. Only rows marked `duplicate` take part. Returns the keys to leave out.
+ */
+export const pickOnePerEmployee = (
+  rows: readonly PhotoRow[],
+  factsOf: (key: string) => PhotoFileFacts | undefined,
+  /** A file that already failed to go up: ranked last, so picking again tries the other one. */
+  failed: (key: string) => boolean = () => false,
+): { keep: Set<string>; leave: Set<string> } => {
+  const groups = new Map<string, PhotoRow[]>();
+  for (const row of rows) {
+    if (row.status !== 'duplicate' || row.employee === null) continue;
+    groups.set(row.employee.id, [...(groups.get(row.employee.id) ?? []), row]);
+  }
+  const keep = new Set<string>();
+  const leave = new Set<string>();
+  for (const group of groups.values()) {
+    const ranked = [...group].sort((a, b) => {
+      const broken = Number(failed(a.key)) - Number(failed(b.key));
+      if (broken !== 0) return broken;
+      const fit = fitOf(b) - fitOf(a);
+      if (fit !== 0) return fit;
+      const newer = (factsOf(b.key)?.lastModified ?? 0) - (factsOf(a.key)?.lastModified ?? 0);
+      if (newer !== 0) return newer;
+      const larger = (factsOf(b.key)?.size ?? 0) - (factsOf(a.key)?.size ?? 0);
+      if (larger !== 0) return larger;
+      return a.name.localeCompare(b.name);
+    });
+    const [best, ...rest] = ranked;
+    if (best !== undefined) keep.add(best.key);
+    for (const row of rest) leave.add(row.key);
+  }
+  return { keep, leave };
+};
 
 /** How many rows are in each state — the summary over the table. */
 export const countByStatus = (rows: readonly PhotoRow[]): Record<PhotoRowStatus, number> => {
@@ -301,6 +387,7 @@ export const countByStatus = (rows: readonly PhotoRow[]): Record<PhotoRowStatus,
     excluded: 0,
     ambiguous: 0,
     unconfirmed: 0,
+    recent: 0,
   };
   for (const row of rows) counts[row.status] += 1;
   return counts;

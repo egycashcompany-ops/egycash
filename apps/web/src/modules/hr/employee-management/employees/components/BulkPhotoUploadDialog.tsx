@@ -22,15 +22,21 @@ import { useAppSelector } from '../../../../../store';
 import { markActivity } from '../../../../../platform/auth/idle-session';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
-import { Checkbox } from '../../../../../shared/ui/form';
+import { Select } from '../../../../../shared/ui/form';
 import { CloseIcon, UploadIcon } from '../../../../../shared/ui/icons';
 import { cn } from '../../../../../shared/lib/cn';
 import { errorMessage } from '../../../../../shared/lib/errors';
-import { EMPLOYEE_PHOTO_ACCEPT, lookupEmployeeCodes, uploadEmployeePhotoFile } from '../api/employee-photo';
+import { formatDateTime } from '../../../../../shared/lib/format';
+import {
+  EMPLOYEE_PHOTO_ACCEPT,
+  lookupEmployeeCodes,
+  uploadEmployeePhotoFile,
+} from '../api/employee-photo';
 import {
   codesToLookUp,
   countByStatus,
   markDuplicates,
+  pickOnePerEmployee,
   planFiles,
   type PhotoFileInput,
   type PhotoRow,
@@ -69,7 +75,9 @@ const isHidden = (file: File): boolean => file.name.startsWith('.');
  * The files of a drop, folders opened (as the folder picker does). An entry the browser cannot
  * read is skipped, not the whole drop: `skipped` counts them so the person is told.
  */
-const filesOfDrop = async (items: DataTransferItemList): Promise<{ files: File[]; skipped: number }> => {
+const filesOfDrop = async (
+  items: DataTransferItemList,
+): Promise<{ files: File[]; skipped: number }> => {
   const out: File[] = [];
   let skipped = 0;
   const walk = async (entry: FileSystemEntry): Promise<void> => {
@@ -115,6 +123,20 @@ const NEVER_SENT: ReadonlySet<PhotoRowStatus> = new Set([
   'unconfirmed',
 ]);
 
+/** How far back a photo already uploaded is left alone. */
+const SKIP_CHOICES = ['today', 'week', 'month', 'none'] as const;
+type SkipChoice = (typeof SKIP_CHOICES)[number];
+
+/** The cut-off for a choice: the start of this computer's day, 7 or 30 days back; or none. */
+const skipSinceOf = (choice: SkipChoice, now: number): number | null => {
+  if (choice === 'none') return null;
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (choice === 'week') start.setDate(start.getDate() - 6);
+  if (choice === 'month') start.setDate(start.getDate() - 29);
+  return start.getTime();
+};
+
 /** A file's own identity apart from its name: a renamed file keeps its size and modified time. */
 const contentOf = (file: File): string => `${String(file.size)}:${String(file.lastModified)}`;
 
@@ -136,6 +158,7 @@ const PhotoRowView = memo(function PhotoRowView({
   locale,
   onToggle,
   onRemove,
+  auto,
 }: {
   row: PhotoRow;
   run: Progress | undefined;
@@ -143,6 +166,8 @@ const PhotoRowView = memo(function PhotoRowView({
   locale: Locale;
   onToggle: (key: string) => void;
   onRemove: (key: string) => void;
+  /** Chosen (or left out) by «one photo per employee», not by the person's own tick. */
+  auto: 'kept' | 'left' | null;
 }): JSX.Element {
   const t = useT();
   const status = ((): { text: string; tone: keyof typeof TONE } => {
@@ -150,14 +175,19 @@ const PhotoRowView = memo(function PhotoRowView({
       return run.cropped
         ? { text: t('employees.photoBatch.doneCropped'), tone: 'ok' }
         : {
-            text: t(run.shrunk ? 'employees.photoBatch.doneShrunk' : 'employees.photoBatch.doneNoFace'),
+            text: t(
+              run.shrunk ? 'employees.photoBatch.doneShrunk' : 'employees.photoBatch.doneNoFace',
+            ),
             tone: 'warn',
           };
     // A failure is shown while the row is still to be sent; once it is left out or one of two, the
     // row says that instead — what the person has to act on now.
-    if (run?.state === 'failed' && row.status === 'ready') return { text: run.message, tone: 'bad' };
-    if (run?.state === 'preparing') return { text: t('employees.photoBatch.preparing'), tone: 'muted' };
-    if (run?.state === 'uploading') return { text: t('employees.photoBatch.uploading'), tone: 'muted' };
+    if (run?.state === 'failed' && row.status === 'ready')
+      return { text: run.message, tone: 'bad' };
+    if (run?.state === 'preparing')
+      return { text: t('employees.photoBatch.preparing'), tone: 'muted' };
+    if (run?.state === 'uploading')
+      return { text: t('employees.photoBatch.uploading'), tone: 'muted' };
     if (run?.state === 'waiting') return { text: t('employees.photoBatch.waiting'), tone: 'muted' };
     switch (row.status) {
       case 'ready':
@@ -177,7 +207,19 @@ const PhotoRowView = memo(function PhotoRowView({
       case 'unsupported':
         return { text: t('employees.photoBatch.unsupported'), tone: 'bad' };
       case 'excluded':
-        return { text: t('employees.photoBatch.excluded'), tone: 'muted' };
+        return {
+          text: t(
+            auto === 'left' ? 'employees.photoBatch.autoLeft' : 'employees.photoBatch.excluded',
+          ),
+          tone: 'muted',
+        };
+      case 'recent':
+        return {
+          text: t('employees.photoBatch.recent', {
+            when: formatDateTime(row.employee?.photoUploadedAt ?? null, locale),
+          }),
+          tone: 'muted',
+        };
       case 'ambiguous':
         return {
           text: t('employees.photoBatch.ambiguous', { codes: row.rivalCodes.join('، ') }),
@@ -246,7 +288,14 @@ const PhotoRowView = memo(function PhotoRowView({
           </>
         )}
       </td>
-      <td className={cn('px-2 py-1.5 text-xs', TONE[status.tone])}>{status.text}</td>
+      <td className={cn('px-2 py-1.5 text-xs', TONE[status.tone])}>
+        {status.text}
+        {auto === 'kept' && row.status === 'ready' && run?.state !== 'done' && (
+          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+            {t('employees.photoBatch.autoKept')}
+          </div>
+        )}
+      </td>
     </tr>
   );
 });
@@ -260,7 +309,16 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   const [looking, setLooking] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
-  const [onlyAttention, setOnlyAttention] = useState(false);
+  const [view, setView] = useState<'all' | 'attention' | 'several'>('all');
+  // «مش عايز أرفع اللى اترفعوا»: by default the people whose photo went up in the last 7 days are
+  // skipped, so picking the same folder again — after a reload, the next day — sends nothing twice.
+  // Counted from when the dialog opened, in this computer's own days.
+  const [skip, setSkip] = useState<SkipChoice>('week');
+  const [openedAt] = useState(() => Date.now());
+  const skipSince = useMemo(() => skipSinceOf(skip, openedAt), [skip, openedAt]);
+  /** What «one photo per employee» chose, so its rows can say so. */
+  const [autoKept, setAutoKept] = useState<Set<string>>(new Set());
+  const [autoLeft, setAutoLeft] = useState<Set<string>>(new Set());
   const [progress, setProgress] = useState<Map<string, Progress>>(new Map());
   const [running, setRunning] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -275,11 +333,20 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   // Planned in two steps: each file on its own (only when the picks, answers or ticks change), then
   // duplicates — where a photo already uploaded competes with nothing, so a corrected one picked
   // after it can still go. The second step re-runs only when another photo is done.
-  const planned = useMemo(() => planFiles(picked, matches, excluded), [picked, matches, excluded]);
-  const doneKeys = [...progress].filter(([, p]) => p.state === 'done').map(([key]) => key).join('\n');
+  const planned = useMemo(
+    () => planFiles(picked, matches, excluded, { skipSince }),
+    [picked, matches, excluded, skipSince],
+  );
+  const doneKeys = [...progress]
+    .filter(([, p]) => p.state === 'done')
+    .map(([key]) => key)
+    .join('\n');
   const settled = useMemo(() => new Set(doneKeys === '' ? [] : doneKeys.split('\n')), [doneKeys]);
   const rows = useMemo(() => markDuplicates(planned, settled), [planned, settled]);
   const counts = countByStatus(rows);
+  const duplicatePeople = new Set(
+    rows.filter((row) => row.status === 'duplicate').map((row) => row.employee?.id),
+  ).size;
   const byKey = useMemo(() => new Map(picked.map((p) => [p.key, p])), [picked]);
   const done = settled.size;
   // What the upload button sends: every included, matched photo not yet up — a failed one again
@@ -303,8 +370,13 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
       ...new Map(
         files
           .filter((file) => !isHidden(file))
-          .filter((file) => file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/iu.test(file.name))
-          .map((file) => [keyOf(file), { key: keyOf(file), name: file.name, type: file.type, file }] as const),
+          .filter(
+            (file) => file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/iu.test(file.name),
+          )
+          .map(
+            (file) =>
+              [keyOf(file), { key: keyOf(file), name: file.name, type: file.type, file }] as const,
+          ),
       ).values(),
     ].filter((p) => !seen.has(p.key));
     if (fresh.length === 0) return;
@@ -449,11 +521,45 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
     const run = progress.get(row.key)?.state;
     return (
       run === 'failed' ||
-      (row.status !== 'ready' && row.status !== 'excluded') ||
+      (row.status !== 'ready' && row.status !== 'excluded' && row.status !== 'recent') ||
       row.nameDiffers
     );
   };
-  const shown = onlyAttention ? rows.filter(needsAttention) : rows;
+  // «خلينى أقدر أحدد المكرر»: every row of an employee with more than one file — the ones still
+  // to choose between, and the ones already chosen, so the choice can be seen and changed.
+  const severalOf = useMemo(() => {
+    const perEmployee = new Map<string, number>();
+    for (const row of rows) {
+      if (row.employee !== null)
+        perEmployee.set(row.employee.id, (perEmployee.get(row.employee.id) ?? 0) + 1);
+    }
+    return new Set([...perEmployee].filter(([, n]) => n > 1).map(([id]) => id));
+  }, [rows]);
+  const shown =
+    view === 'attention'
+      ? rows.filter(needsAttention)
+      : view === 'several'
+        ? rows.filter((row) => row.employee !== null && severalOf.has(row.employee.id))
+        : rows;
+
+  /** «المكرر تختار منه أنت تلقائي واحده»: keep one photo of each employee, leave the rest out. */
+  const pickOneEach = (): void => {
+    const { keep, leave } = pickOnePerEmployee(
+      rows,
+      (key) => {
+        const source = byKey.get(key)?.file;
+        return source === undefined
+          ? undefined
+          : { size: source.size, lastModified: source.lastModified };
+      },
+      // A file that already failed here goes last: picking it again would only fail again.
+      (key) => progress.get(key)?.state === 'failed',
+    );
+    if (leave.size === 0) return;
+    setExcluded((now) => new Set([...now, ...leave]));
+    setAutoLeft((now) => new Set([...now, ...leave]));
+    setAutoKept((now) => new Set([...now, ...keep]));
+  };
 
   const total = done + pending.length;
   return (
@@ -527,10 +633,20 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
           >
             <p className="text-slate-600 dark:text-slate-300">{t('employees.photoBatch.drop')}</p>
             <div className="flex flex-wrap justify-center gap-2">
-              <Button size="sm" variant="secondary" disabled={running} onClick={() => filesInput.current?.click()}>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={running}
+                onClick={() => filesInput.current?.click()}
+              >
                 {t('employees.photoBatch.pickFiles')}
               </Button>
-              <Button size="sm" variant="secondary" disabled={running} onClick={() => folderInput.current?.click()}>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={running}
+                onClick={() => folderInput.current?.click()}
+              >
                 {t('employees.photoBatch.pickFolder')}
               </Button>
             </div>
@@ -564,7 +680,10 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
           )}
 
           {notice !== null && (
-            <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+            <p
+              role="alert"
+              className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
+            >
               {notice}
             </p>
           )}
@@ -587,12 +706,16 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
                 )}
                 {counts.ambiguous + counts.unconfirmed > 0 && (
                   <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
-                    {t('employees.photoBatch.countRename', { n: counts.ambiguous + counts.unconfirmed })}
+                    {t('employees.photoBatch.countRename', {
+                      n: counts.ambiguous + counts.unconfirmed,
+                    })}
                   </span>
                 )}
                 {counts.unknownCode + counts.noCode > 0 && (
                   <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
-                    {t('employees.photoBatch.countUnmatched', { n: counts.unknownCode + counts.noCode })}
+                    {t('employees.photoBatch.countUnmatched', {
+                      n: counts.unknownCode + counts.noCode,
+                    })}
                   </span>
                 )}
                 {counts.duplicate > 0 && (
@@ -605,19 +728,56 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
                     {t('employees.photoBatch.countFailed', { n: failedCount })}
                   </span>
                 )}
+                {counts.recent > 0 && (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {t('employees.photoBatch.countRecent', { n: counts.recent })}
+                  </span>
+                )}
                 {counts.unsupported > 0 && (
                   <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
                     {t('employees.photoBatch.countUnsupported', { n: counts.unsupported })}
                   </span>
                 )}
-                {looking && <span className="text-slate-500">{t('employees.photoBatch.looking')}</span>}
-                <span className="ms-auto">
-                  <Checkbox
-                    checked={onlyAttention}
-                    onChange={() => setOnlyAttention((on) => !on)}
-                    label={t('employees.photoBatch.onlyAttention')}
-                  />
-                </span>
+                {looking && (
+                  <span className="text-slate-500">{t('employees.photoBatch.looking')}</span>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {counts.duplicate > 0 && !running && (
+                  <Button size="sm" variant="secondary" onClick={pickOneEach}>
+                    {t('employees.photoBatch.pickOneEach', { n: duplicatePeople })}
+                  </Button>
+                )}
+                <label className="ms-auto flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                  {t('employees.photoBatch.skipLabel')}
+                  <Select
+                    density="tight"
+                    value={skip}
+                    disabled={running}
+                    onChange={(e) => setSkip(e.target.value as SkipChoice)}
+                    aria-label={t('employees.photoBatch.skipLabel')}
+                  >
+                    {SKIP_CHOICES.map((choice) => (
+                      <option key={choice} value={choice}>
+                        {t(`employees.photoBatch.skip.${choice}`)}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                  {t('employees.photoBatch.viewLabel')}
+                  <Select
+                    density="tight"
+                    value={view}
+                    onChange={(e) => setView(e.target.value as typeof view)}
+                    aria-label={t('employees.photoBatch.viewLabel')}
+                  >
+                    <option value="all">{t('employees.photoBatch.view.all')}</option>
+                    <option value="attention">{t('employees.photoBatch.view.attention')}</option>
+                    <option value="several">{t('employees.photoBatch.view.several')}</option>
+                  </Select>
+                </label>
               </div>
 
               {(running || done > 0) && total > 0 && (
@@ -639,10 +799,18 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
                   <thead className="sticky top-0 bg-slate-50 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                     <tr>
                       <th className="w-8 px-2 py-2" />
-                      <th className="px-2 py-2 text-start font-medium">{t('employees.photoBatch.colFile')}</th>
-                      <th className="px-2 py-2 text-start font-medium">{t('employees.photoBatch.colCode')}</th>
-                      <th className="px-2 py-2 text-start font-medium">{t('employees.photoBatch.colEmployee')}</th>
-                      <th className="px-2 py-2 text-start font-medium">{t('employees.photoBatch.colStatus')}</th>
+                      <th className="px-2 py-2 text-start font-medium">
+                        {t('employees.photoBatch.colFile')}
+                      </th>
+                      <th className="px-2 py-2 text-start font-medium">
+                        {t('employees.photoBatch.colCode')}
+                      </th>
+                      <th className="px-2 py-2 text-start font-medium">
+                        {t('employees.photoBatch.colEmployee')}
+                      </th>
+                      <th className="px-2 py-2 text-start font-medium">
+                        {t('employees.photoBatch.colStatus')}
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -655,6 +823,9 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
                         locale={locale}
                         onToggle={toggle}
                         onRemove={remove}
+                        auto={
+                          autoLeft.has(row.key) ? 'left' : autoKept.has(row.key) ? 'kept' : null
+                        }
                       />
                     ))}
                   </tbody>

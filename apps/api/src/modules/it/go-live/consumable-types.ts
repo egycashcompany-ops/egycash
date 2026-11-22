@@ -23,6 +23,7 @@ import { ItCatalogItemModel, type ItCatalogItemDoc } from '../catalog-items/cata
 import {
   IT_CONSUMABLE_TYPE_CODES,
   IT_CONSUMABLE_TYPE_NAMES,
+  IT_COUNTER_READING_TYPE_CODES,
   consumableTypeSortOrder,
   matchConsumableTypes,
   type ItConsumableTypeCode,
@@ -52,7 +53,7 @@ export type ConsumableTypesOutcome =
 
 type SeededType = Pick<
   ItCatalogItemDoc,
-  'kind' | 'name' | 'description' | 'sortOrder' | 'isActive'
+  'kind' | 'name' | 'description' | 'sortOrder' | 'isActive' | 'requiresCounterReading'
 > & { _id: Types.ObjectId; code: ItConsumableTypeCode };
 
 /**
@@ -116,6 +117,9 @@ export const seedItConsumableTypes = async (): Promise<ConsumableTypesOutcome> =
         description: null,
         sortOrder: consumableTypeSortOrder(code),
         isActive: true,
+        // A fresh catalog's «حبارات» is born taking the printer's counter; the live catalog's is
+        // ticked once by `consumable-counter-types.ts` (its run then finds it already ticked).
+        requiresCounterReading: IT_COUNTER_READING_TYPE_CODES.includes(code),
       });
     }
     if (created.length > 0) await ItCatalogItemModel.insertMany(created, { session });
@@ -143,6 +147,7 @@ export const seedItConsumableTypes = async (): Promise<ConsumableTypesOutcome> =
             description: type.description,
             sortOrder: type.sortOrder,
             isActive: type.isActive,
+            requiresCounterReading: type.requiresCounterReading,
           },
         ),
         { field: 'source', old: null, new: IT_CONSUMABLE_TYPES_MARK },

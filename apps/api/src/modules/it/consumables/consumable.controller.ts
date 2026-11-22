@@ -34,6 +34,7 @@ import { toItConsumableDto, toItConsumableMemoDto, toItConsumableMovementDto } f
 import { itConsumableService } from './consumable.service';
 import { itConsumableIssueService } from './consumable-issue.service';
 import { itConsumableInstalledOnService } from './consumable-installed-on.service';
+import { itConsumableCounterService } from './consumable-counter.service';
 import { itConsumableTransferService } from './consumable-transfer.service';
 import { type ItConsumableMovementDoc } from './consumable-movement.model';
 
@@ -114,6 +115,17 @@ export const listItConsumableMovementsOf = async (req: Request, res: Response): 
     res,
     await itConsumableService.itemMovements(params.id, query, viewScope(req)),
   );
+};
+
+/**
+ * «عداد الطابعة» — one toner item's cartridges and the average per cartridge, read once the item
+ * itself is, under the same scope (404 otherwise). One object over the whole of it, not a page.
+ */
+export const getItConsumableCartridges = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const scope = viewScope(req);
+  const item = await itConsumableService.get(params.id, scope);
+  ok(res, await itConsumableCounterService.cartridges(item, scope));
 };
 
 /** The ledger across items — the movements page, the asset's card and the employee's card. */

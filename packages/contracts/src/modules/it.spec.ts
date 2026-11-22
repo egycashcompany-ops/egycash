@@ -69,7 +69,12 @@ import {
   ItVehicleCheckDashboardQuerySchema,
   ItVehicleCheckPhotoParamSchema,
   ListItVehicleChecksQuerySchema,
+  IT_PRINTER_COUNTER_MAX,
+  IssueItConsumablesSchema,
+  SetItConsumableInstalledOnSchema,
+  UpdateItCatalogItemSchema,
 } from './it.js';
+import { ErrorCodes } from '../errors/index.js';
 
 const oid = (n: number): string => n.toString(16).padStart(24, '0');
 
@@ -965,5 +970,175 @@ describe('it vehicle checks dashboard contracts', () => {
     ]) {
       expect(ItVehicleCheckPhotoParamSchema.safeParse(params).success).toBe(false);
     }
+  });
+});
+
+// «عداد الطابعة» (2026-11-19): what the contract can hold without seeing the item's type. Whether a
+// line NEEDS a reading, and whether it is strictly above the printer's last one, are the server's
+// rules (it reads the type and the timeline); the shape and the cross-field rules are here.
+describe('it consumables: the printer counter', () => {
+  const name = { ar: 'حبارات', en: 'Toners' };
+  const issue = (lines: Record<string, unknown>[]) => ({ employeeId: oid(1), lines });
+  const line = (n: number, extra: Record<string, unknown> = {}) => ({
+    consumableId: oid(10 + n),
+    qty: 1,
+    ...extra,
+  });
+  const issueIssues = (lines: Record<string, unknown>[]) => {
+    const parsed = IssueItConsumablesSchema.safeParse(issue(lines));
+    return parsed.success ? [] : parsed.error.issues.map((i) => [i.path.join('.'), i.message]);
+  };
+
+  it('flags a type «يتطلب عداد الطباعة» — off by default, a consumableType only', () => {
+    expect(
+      CreateItCatalogItemSchema.parse({ kind: 'consumableType', name }).requiresCounterReading,
+    ).toBe(false);
+    expect(
+      CreateItCatalogItemSchema.parse({
+        kind: 'consumableType',
+        name,
+        requiresCounterReading: true,
+      }).requiresCounterReading,
+    ).toBe(true);
+    for (const kind of ['assetCategory', 'ticketCategory']) {
+      const refused = CreateItCatalogItemSchema.safeParse({
+        kind,
+        name,
+        requiresCounterReading: true,
+      });
+      expect(refused.success).toBe(false);
+      expect(refused.error?.issues[0]?.path).toEqual(['requiresCounterReading']);
+      expect(
+        CreateItCatalogItemSchema.safeParse({ kind, name, requiresCounterReading: false }).success,
+      ).toBe(true);
+    }
+    expect(
+      CreateItCatalogItemSchema.safeParse({
+        kind: 'consumableType',
+        name,
+        requiresCounterReading: 1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('edits the flag, and leaves it untouched when it is not sent', () => {
+    expect(UpdateItCatalogItemSchema.parse({ version: 0, requiresCounterReading: true })).toEqual({
+      version: 0,
+      requiresCounterReading: true,
+    });
+    expect(UpdateItCatalogItemSchema.parse({ version: 0 })).not.toHaveProperty(
+      'requiresCounterReading',
+    );
+    expect(
+      UpdateItCatalogItemSchema.safeParse({ version: 0, requiresCounterReading: null }).success,
+    ).toBe(false);
+  });
+
+  it('takes a reading and a reset on an issue line, onto its printer', () => {
+    const parsed = IssueItConsumablesSchema.parse(
+      issue([line(1, { assetId: oid(2), counterReading: 15_230, counterReset: true })]),
+    );
+    expect(parsed.lines[0]).toEqual({
+      consumableId: oid(11),
+      qty: 1,
+      reason: 'new',
+      assetId: oid(2),
+      counterReading: 15_230,
+      counterReset: true,
+    });
+    // A line with no reading is what it always was — the server says whether its type needs one.
+    expect(IssueItConsumablesSchema.parse(issue([line(1)])).lines[0]).toEqual({
+      consumableId: oid(11),
+      qty: 1,
+      reason: 'new',
+    });
+    expect(issueIssues([line(1, { assetId: oid(2), counterReading: 0 })])).toEqual([]);
+  });
+
+  it('bounds the reading: a whole number from 0 to the max', () => {
+    for (const counterReading of [IT_PRINTER_COUNTER_MAX, 0, 1]) {
+      expect(issueIssues([line(1, { assetId: oid(2), counterReading })])).toEqual([]);
+    }
+    for (const counterReading of [-1, 12.5, IT_PRINTER_COUNTER_MAX + 1, '15230', null]) {
+      expect(issueIssues([line(1, { assetId: oid(2), counterReading })])).not.toEqual([]);
+    }
+    expect(
+      issueIssues([line(1, { assetId: oid(2), counterReading: 5, counterReset: 'yes' })]),
+    ).not.toEqual([]);
+  });
+
+  it('refuses a reset with no reading, and a reading with no printer', () => {
+    expect(issueIssues([line(1, { assetId: oid(2), counterReset: true })])).toEqual([
+      ['lines.0.counterReset', 'a reset names the reading it starts from'],
+    ]);
+    expect(issueIssues([line(1, { counterReading: 100 })])).toEqual([
+      ['lines.0.assetId', 'a counter reading belongs to the printer the item is installed on'],
+    ]);
+    // `counterReset: false` says nothing, so it needs no reading.
+    expect(issueIssues([line(1, { assetId: oid(2), counterReset: false })])).toEqual([]);
+  });
+
+  it('holds two lines on one printer to one reading — one memo, one display', () => {
+    const p = oid(2);
+    // The same reading and reset: two colours fitted at once.
+    expect(
+      issueIssues([
+        line(1, { assetId: p, counterReading: 500 }),
+        line(2, { assetId: p, counterReading: 500 }),
+      ]),
+    ).toEqual([]);
+    expect(
+      issueIssues([
+        line(1, { assetId: p, counterReading: 500 }),
+        line(2, { assetId: p, counterReading: 501 }),
+        line(3, { assetId: p, counterReading: 500, counterReset: true }),
+      ]),
+    ).toEqual([
+      ['lines.1.counterReading', 'two lines on one printer carry one counter reading'],
+      ['lines.2.counterReading', 'two lines on one printer carry one counter reading'],
+    ]);
+    // Another printer, or a line on the same printer with no reading (a cable), is not compared.
+    expect(
+      issueIssues([
+        line(1, { assetId: p, counterReading: 500 }),
+        line(2, { assetId: oid(3), counterReading: 20 }),
+        line(3, { assetId: p }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('carries the reading through «تعديل الجهاز», and never onto «بدون جهاز»', () => {
+    expect(
+      SetItConsumableInstalledOnSchema.parse({
+        assetId: oid(2),
+        counterReading: 900,
+        counterReset: true,
+        version: 3,
+      }),
+    ).toEqual({ assetId: oid(2), counterReading: 900, counterReset: true, version: 3 });
+    expect(SetItConsumableInstalledOnSchema.parse({ assetId: null, version: 0 })).toEqual({
+      assetId: null,
+      version: 0,
+    });
+    const refused = (body: Record<string, unknown>) => {
+      const parsed = SetItConsumableInstalledOnSchema.safeParse(body);
+      return parsed.success ? [] : parsed.error.issues.map((i) => [i.path.join('.'), i.message]);
+    };
+    expect(refused({ assetId: null, counterReading: 900, version: 0 })).toEqual([
+      ['counterReading', 'a counter reading belongs to a device; «بدون جهاز» takes none'],
+    ]);
+    expect(refused({ assetId: oid(2), counterReset: true, version: 0 })).toEqual([
+      ['counterReset', 'a reset names the reading it starts from'],
+    ]);
+    expect(refused({ assetId: oid(2), counterReading: -1, version: 0 })).not.toEqual([]);
+    expect(refused({ assetId: oid(2), counterReading: 9, version: 0, pages: 4 })).not.toEqual([]);
+  });
+
+  it('names the three refusals in the error catalog', () => {
+    expect(ErrorCodes.IT_CONSUMABLE_COUNTER_REQUIRED).toBe('IT_CONSUMABLE_COUNTER_REQUIRED');
+    expect(ErrorCodes.IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS).toBe(
+      'IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS',
+    );
+    expect(ErrorCodes.IT_CONSUMABLE_COUNTER_ABOVE_NEXT).toBe('IT_CONSUMABLE_COUNTER_ABOVE_NEXT');
   });
 });

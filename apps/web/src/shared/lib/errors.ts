@@ -120,6 +120,15 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A deleted row carries secured shipments. While they are in the vault, take them off it on «Secured distribution» first; once they have left the vault the row stays — it can be emptied, or given a vehicle.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
+    // «عداد الطابعة» (IT consumables, 2026-11-19): a toner goes onto a printer with its counter. The
+    // issue and «تعديل الجهاز» word each on the line's own field, with the figures (`details`);
+    // these are the same refusals without them, wherever else they surface.
+    IT_CONSUMABLE_COUNTER_REQUIRED:
+      'This item takes the printer’s counter: name the printer it goes into and its counter reading, one cartridge a line.',
+    IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS:
+      'The counter reading must be higher than the last reading recorded for this printer — if its counter was reset, tick «The printer’s counter was reset».',
+    IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
+      'This reading is dated before a later reading of the same printer, so it must be lower than that one.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -202,6 +211,12 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
       'على صف محذوف محصنات. ما دامت في الخزينة فأزِلها عنه في «توزيع المحصنات» أولًا؛ وإن كانت قد خرجت من الخزينة فيبقى الصف، ويمكن تفريغه أو إعطاؤه سيارة.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
+    IT_CONSUMABLE_COUNTER_REQUIRED:
+      'هذا الصنف يتطلب عداد الطابعة: حدِّد الطابعة التي يُركَّب عليها وقراءة عدادها، حبارة واحدة في كل سطر.',
+    IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS:
+      'قراءة العداد يجب أن تكون أكبر من آخر قراءة مسجّلة لهذه الطابعة — وإذا صُفِّر عدادها فحدِّد «تم تصفير عداد الطابعة».',
+    IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
+      'تاريخ هذه القراءة سابق لقراءة لاحقة مسجّلة للطابعة نفسها، فيجب أن تكون أقل منها.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',

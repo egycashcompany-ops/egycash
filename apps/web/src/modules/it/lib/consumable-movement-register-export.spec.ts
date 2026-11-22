@@ -15,6 +15,7 @@ import {
   consumableMovementRegisterReport,
   consumableMovementRegisterSubtitle,
   movementAsset,
+  movementCounterReading,
   movementCounterpart,
   movementEmployee,
   movementReason,
@@ -54,6 +55,8 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   assetId: 'a-12',
   assetCode: 'AST-00012',
   assetName: 'لاب توب Lenovo',
+  counterReading: null,
+  counterReset: false,
   reason: 'replacement',
   memoId: 'memo-1',
   memoNumber: 7,
@@ -189,6 +192,7 @@ describe('the ledger’s columns', () => {
       'الموظف',
       'كود الموظف',
       'مركّب على',
+      'قراءة العداد',
       'السبب',
       'رقم المذكرة',
       'توقيع المذكرة',
@@ -207,6 +211,8 @@ describe('the ledger’s columns', () => {
       'محمد أحمد علي',
       '0100052',
       'AST-00012 — لاب توب Lenovo',
+      // No counter reading: a mouse takes none.
+      '',
       'بدل تالف',
       'EGYCASH-IT-CON-0007',
       'بانتظار التوقيع',
@@ -225,6 +231,7 @@ describe('the ledger’s columns', () => {
       '',
       '',
       '',
+      '',
       // A receipt has no reason; its notes are what the reason cell shows, on screen and in the file.
       'جرد أكتوبر',
       '',
@@ -239,26 +246,35 @@ describe('the ledger’s columns', () => {
       context,
       '',
     );
-    expect(cells[9]).toBe('بدل تالف — للمكتب الأمامي');
+    expect(cells[10]).toBe('بدل تالف — للمكتب الأمامي');
   });
 
   it('write a transfer’s two halves signed by their kind — out of one store, into the other', () => {
     const out = consumableMovementRegisterLine(SENT, context, '');
     expect(out[1]).toBe('تحويل إلى فرع');
     expect(out[5]).toBe(-5);
-    expect(out[9]).toBe('إلى فرع أكتوبر (CON-00031)');
+    expect(out[10]).toBe('إلى فرع أكتوبر (CON-00031)');
     // No person, no asset, no memo: the ledger is the record.
-    expect([out[6], out[8], out[10], out[11]]).toEqual(['', '', '', '']);
+    expect([out[6], out[8], out[9], out[11], out[12]]).toEqual(['', '', '', '', '']);
     const into = consumableMovementRegisterLine(ARRIVED, context, '');
     expect(into[1]).toBe('تحويل من فرع');
     expect(into[3]).toBe('CON-00031');
     expect(into[5]).toBe(5);
-    expect(into[9]).toBe('من فرع المهندسين (CON-00004)');
+    expect(into[10]).toBe('من فرع المهندسين (CON-00004)');
   });
 
   it('say a signed memo is signed', () => {
     const cells = consumableMovementRegisterLine(movement({ memoSigned: true }), context, '');
-    expect(cells[11]).toBe('موقّع');
+    expect(cells[12]).toBe('موقّع');
+  });
+
+  it('write a toner’s counter reading as a NUMBER — with «تصفير» beside it, in words, on a reset', () => {
+    const toner = movement({ qty: 1, counterReading: 12_480 });
+    expect(consumableMovementRegisterLine(toner, context, '')[9]).toBe(12_480);
+    const reset = movement({ qty: 1, counterReading: 1_250, counterReset: true });
+    expect(consumableMovementRegisterLine(reset, context, '')[9]).toBe('١٬٢٥٠ (تصفير)');
+    expect(movementCounterReading(t, reset, 'en')).toBe('1,250 (تصفير)');
+    expect(movementCounterReading(t, movement(), 'ar')).toBeNull();
   });
 });
 
@@ -338,10 +354,10 @@ describe('the printed ledger', () => {
   const report = consumableMovementRegisterReport([movement(), RECEIVED], context, 'كل الحركات');
   const html = buildFleetReportHtml(report);
 
-  it('is «حركات المستهلكات» on the company form, landscape for thirteen columns', () => {
+  it('is «حركات المستهلكات» on the company form, landscape for fourteen columns', () => {
     expect(report.title).toBe('حركات المستهلكات');
     expect(report.orientation).toBe('landscape');
-    expect(report.header).toHaveLength(13);
+    expect(report.header).toHaveLength(14);
     expect(html).toContain('EGYCASH-IT-CON-0007');
   });
 
@@ -351,6 +367,7 @@ describe('the printed ledger', () => {
     expect(issued).toMatch(/[-−؜]/u);
     expect(report.rows[1]?.[5]).toBe('٢٤');
     expect(report.rows[1]?.[6]).toBe('—');
-    expect(report.rows[1]?.[12]).toBe('—');
+    expect(report.rows[1]?.[9]).toBe('—');
+    expect(report.rows[1]?.[13]).toBe('—');
   });
 });

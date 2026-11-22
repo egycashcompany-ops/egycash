@@ -94,8 +94,17 @@ describe('every endpoint the IT client calls exists on the API', () => {
         // …and the branches it may register in: the ones the create grant reaches, as only the
         // server can judge them.
         'get /import/branches',
+        // «عداد الطابعة» (2026-11-19): the printer's counter readings — a fact of the printer, on
+        // this router (no consumables route authorizes on `itAsset`).
+        'get /:id/counter-readings',
       ]),
     );
+    expect(CLIENT).toContain('get<ItPrinterCounterDto>(`/it/assets/${assetId}/counter-readings`)');
+    expect(
+      /router\.get\(\s*'\/:id\/counter-readings',\s*authenticate,\s*authorize\('itAsset\.view'\)/u.test(
+        ASSET_ROUTES,
+      ),
+    ).toBe(true);
     // …and the client calls exactly those.
     expect(CLIENT).toContain('`/it/assets${buildQuery(params)}`');
     // Narrowed by the categories chosen — «والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على
@@ -336,13 +345,25 @@ describe('the people and technicians the IT client reads exist on the API', () =
   it('mounts both read-only routers', () => {
     expect(MANIFEST).toContain("prefix: '/it/people'");
     expect(MANIFEST).toContain("prefix: '/it/technicians'");
-    // Read-only by construction: IT writes nothing about a person.
-    expect(declared(PEOPLE_ROUTES)).toEqual(new Set(['get /', 'get /:employeeId']));
+    // Read-only by construction: IT writes nothing about a person. `/recipients` (2026-11-18) is a
+    // hand-over's box, in every branch.
+    expect(declared(PEOPLE_ROUTES)).toEqual(
+      new Set(['get /', 'get /recipients', 'get /:employeeId']),
+    );
+    // Declared before `/:employeeId`, or Express reads «recipients» as an id and answers 404.
+    const at = (path: string): number =>
+      PEOPLE_ROUTES.search(new RegExp(`router\\.get\\(\\s*'${path}'`, 'u'));
+    expect(at('/recipients')).toBeGreaterThan(-1);
+    expect(at('/recipients')).toBeLessThan(at('/:employeeId'));
   });
 
   it('the client calls them — and never HR’s employee endpoint', () => {
     expect(CLIENT).toContain('getPage<ItPersonDto>(`/it/people${buildQuery(params)}`)');
     expect(CLIENT).toContain('`/it/people/${employeeId}`');
+    // The answer is the list itself — `ok(res, items)`, no paging — so `get`, not `getPage`.
+    expect(CLIENT).toContain(
+      'get<ItRecipientDto[]>(`/it/people/recipients${buildQuery({ search, pageSize })}`)',
+    );
     expect(CLIENT).toContain('`/it/technicians${buildQuery(');
     expect(CLIENT).not.toContain('/hr/employees');
   });
@@ -552,6 +573,8 @@ describe('the consumables the IT client calls exist on the API, on the store’s
         'get /:id',
         'patch /:id',
         'get /:id/movements',
+        // «عداد الطابعة» (2026-11-19): a toner's cartridges and the pages each printed.
+        'get /:id/cartridges',
         // Stock moves only by a named movement, never by a PATCH of a quantity (ADR-024) — and
         // the issue is ONE action for one memo, however many items it carries.
         'post /issue',
@@ -578,6 +601,7 @@ describe('the consumables the IT client calls exist on the API, on the store’s
     for (const action of ['receive', 'scrap', 'return']) {
       expect(CLIENT, `client never calls /${action}`).toContain(`/it/consumables/\${id}/${action}`);
     }
+    expect(CLIENT).toContain('get<ItConsumableCartridgesDto>(`/it/consumables/${id}/cartridges`)');
   });
 
   // Append-only for QUANTITIES: one list, and one correction — «تعديل الجهاز» (2026-11-17), the
@@ -629,6 +653,7 @@ describe('the consumables the IT client calls exist on the API, on the store’s
       [ITEMS, 'get', '/:id', 'itConsumable.view'],
       [ITEMS, 'patch', '/:id', 'itConsumable.edit'],
       [ITEMS, 'get', '/:id/movements', 'itConsumable.view'],
+      [ITEMS, 'get', '/:id/cartridges', 'itConsumable.view'],
       [ITEMS, 'post', '/issue', 'itConsumable.assign'],
       // A transfer rides the custody grant the issue and the return ride — and so does the list
       // of where it may go, judged by that very grant.
@@ -1441,7 +1466,41 @@ describe('people ride IT’s grants, never HR’s', () => {
     // refuses nor hides one it allows.
     const picker = readFileSync(resolve(HERE, 'components/EmployeePicker.tsx'), 'utf8');
     expect(grants(picker)).toEqual(grants(controller));
-    expect(picker).toContain('IT_PEOPLE_GRANTS.some((grant) => can(grant))');
+    expect(picker).toContain('handOver ? IT_RECIPIENT_GRANTS : IT_PEOPLE_GRANTS');
+    expect(picker).toContain('employeePickerGrants(handOver).some((grant) => can(grant))');
+  });
+
+  // «صاحب صلاحية التسليم» (owner, 2026-11-18): a hand-over's box — in every branch — opens on the
+  // ACT's grant, any register's «تسليم», not on a read grant and not on a new key. The box asks
+  // under the very grants the route checks, so it neither offers a search the server refuses nor
+  // says «no access» to a keeper the server would answer.
+  it('a hand-over’s box rides ANY register’s hand-over grant — the route’s, the box’s, the same', () => {
+    const people = route('buildItPeopleRouter');
+    const block = /router\.get\(\s*'\/recipients',[\s\S]*?\);/u.exec(people)?.[0] ?? '';
+    expect(block).toContain('asyncHandler(listItRecipients)');
+    const gate = /authorizeAny\(([^)]*)\)/u.exec(block)?.[1] ?? '';
+    const controller = readFileSync(resolve(API_SRC, 'people/people.controller.ts'), 'utf8');
+    const literal = (source: string): string[] =>
+      [...source.matchAll(/'([^']+)'/g)].map((m) => m[1] ?? '');
+    // Either the keys written in the gate, or the constant it spreads, read where it is declared.
+    const spread = /^\s*\.\.\.(\w+)\s*$/u.exec(gate)?.[1];
+    const routeGrants =
+      spread === undefined
+        ? literal(gate)
+        : literal(
+            new RegExp(`export const ${spread}\\b[^=]*=\\s*\\[([^\\]]*)\\]`).exec(
+              controller,
+            )?.[1] ?? '',
+          );
+    expect(routeGrants).toEqual(['itAsset.assign', 'itMobileLine.assign', 'itConsumable.assign']);
+    const picker = readFileSync(resolve(HERE, 'components/EmployeePicker.tsx'), 'utf8');
+    const boxGrants = literal(
+      /export const IT_RECIPIENT_GRANTS = \[([^\]]*)\]/u.exec(picker)?.[1] ?? '',
+    );
+    expect(boxGrants).toEqual(routeGrants);
+    // …asked under its own key, apart from the scoped search's.
+    expect(picker).toContain("listKey('it', 'recipientSearch', { search })");
+    expect(picker).toContain('api.searchRecipients(search)');
   });
 
   it('the technicians ride the help desk’s work grants — a requester does not get the list', () => {

@@ -11,6 +11,7 @@
 // file (not barrel) to keep the import graph acyclic (see employee.migration.ts).
 import { Types } from 'mongoose';
 import {
+  type EmployeeCodeMatchDto,
   HrEmployeeEvents,
   HrEmployeeTemplates,
   loginProfileNames,
@@ -1486,6 +1487,26 @@ class EmployeeService {
    * makes one of the two fail with a 409 rather than silently undoing the other. If the link does
    * not land, the file just filed is referenced by nothing and is withdrawn.
    */
+  /**
+   * The employees holding these codes, for the bulk photo upload: each code once, within the scope
+   * the photo write itself needs, so the screen offers exactly the people it may then change.
+   */
+  async lookupCodes(codes: readonly string[], scope: ScopeSelector): Promise<EmployeeCodeMatchDto[]> {
+    const unique = [...new Set(codes.map((code) => code.trim()).filter((code) => code !== ''))];
+    const docs = await employeeRepository.findByCodesInScope(unique, scope);
+    return docs.map((doc) => ({
+      id: String(doc._id),
+      code: doc.code,
+      fullNameAr: doc.personal.fullNameAr,
+      fullNameEn: doc.personal.fullNameEn ?? null,
+      status: doc.status,
+      photoFileId:
+        doc.personal.photoFileId === null || doc.personal.photoFileId === undefined
+          ? null
+          : String(doc.personal.photoFileId),
+    }));
+  }
+
   async setPhoto(
     ctx: AuthContext,
     id: string,

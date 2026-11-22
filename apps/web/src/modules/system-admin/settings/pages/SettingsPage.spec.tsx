@@ -124,12 +124,15 @@ const SHAPES: Record<string, { type: string; defaultValue: unknown }> = {
   [HrAttendanceSettingKeys.AbsenceNotify]: { type: 'boolean', defaultValue: true },
   // The default working pattern (1b): the times are STRINGS so they get a text box, and the whole
   // reason it is six scalars rather than one object is that an object would land on `readonly`.
-  [HrAttendanceSettingKeys.DefaultPatternEnabled]: { type: 'boolean', defaultValue: false },
+  // ON, and with no grace, since the owner set the company working day on 18 November.
+  [HrAttendanceSettingKeys.DefaultPatternEnabled]: { type: 'boolean', defaultValue: true },
   [HrAttendanceSettingKeys.DefaultPatternStartTime]: { type: 'string', defaultValue: '09:00' },
   [HrAttendanceSettingKeys.DefaultPatternEndTime]: { type: 'string', defaultValue: '17:00' },
   [HrAttendanceSettingKeys.DefaultPatternBreakMinutes]: { type: 'number', defaultValue: 0 },
-  [HrAttendanceSettingKeys.DefaultPatternGraceInMinutes]: { type: 'number', defaultValue: 15 },
+  [HrAttendanceSettingKeys.DefaultPatternGraceInMinutes]: { type: 'number', defaultValue: 0 },
   [HrAttendanceSettingKeys.DefaultPatternGraceOutMinutes]: { type: 'number', defaultValue: 0 },
+  [HrAttendanceSettingKeys.MinPunchGapMinutes]: { type: 'number', defaultValue: 10 },
+  [HrAttendanceSettingKeys.CountAbsence]: { type: 'boolean', defaultValue: false },
   [HrAttendanceSettingKeys.DecisionApprovalAfterDays]: { type: 'number', defaultValue: 7 },
   [HrAttendanceSettingKeys.DecisionWeeklyReviewThreshold]: { type: 'number', defaultValue: 20 },
   [OperationsSettingKeys.CashTransferOperationIds]: { type: 'array', defaultValue: [] },
@@ -270,9 +273,11 @@ const sectionAround = (markup: string, key: string): string | null => {
 };
 
 describe('the fixture tracks the real registry', () => {
-  it('covers every declared setting key, and there are seventy of them', () => {
-    expect(DECLARED_KEYS).toHaveLength(70);
-    expect(new Set(DECLARED_KEYS).size).toBe(70);
+  it('covers every declared setting key, and there are seventy-two of them', () => {
+    // Seventy-two since 18 November: `hr.attendance.minPunchGapMinutes` and
+    // `hr.attendance.countAbsence`, both of which carry one of the owner's rulings.
+    expect(DECLARED_KEYS).toHaveLength(72);
+    expect(new Set(DECLARED_KEYS).size).toBe(72);
     const uncovered = DECLARED_KEYS.filter((key) => SHAPES[key] === undefined);
     expect(uncovered, 'a setting was declared without a shape in this fixture').toEqual([]);
   });
@@ -465,7 +470,7 @@ describe('every setting reaches the screen', () => {
   });
 
   it('shows a count of what is displayed against the total', () => {
-    expect(markup).toContain('Showing 70 of 70');
+    expect(markup).toContain('Showing 72 of 72');
   });
 });
 
@@ -687,22 +692,22 @@ describe('the filters are addressable', () => {
     const markup = render({ search: '?q=auth.lockout' });
     expect(markup).toContain(SettingKeys.LockoutMaxAttempts);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 2 of 70');
+    expect(markup).toContain('Showing 2 of 72');
   });
 
   it('reads the department from the URL, and selects its tab', () => {
     const markup = render({ search: '?dept=fleet' });
     expect(markup).toContain(FleetSettingKeys.AlarmRedKm);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 21 of 70');
+    expect(markup).toContain('Showing 21 of 72');
     expect(markup).toMatch(new RegExp(`role="tab" aria-selected="true"[^>]*>${translate('en', 'systemAdmin.settings.departments.fleet')}`));
   });
 
   it('falls back to all for a department the screen has nothing for', () => {
-    expect(render({ search: '?dept=warehouse' })).toContain('Showing 70 of 70');
+    expect(render({ search: '?dept=warehouse' })).toContain('Showing 72 of 72');
     // A real department with no setting today (or a stale remembered one) is not a dead end.
     const other = render({ search: '?dept=other' });
-    expect(other).toContain('Showing 70 of 70');
+    expect(other).toContain('Showing 72 of 72');
     expect(other).toMatch(/role="tab" aria-selected="true"[^>]*>All/);
   });
 

@@ -36,6 +36,7 @@ import { startItAioOctoberGoLive } from './modules/it/go-live/aio-october';
 import { startItAssetSpecsGoLive } from './modules/it/go-live/asset-specs';
 import { startItBranchCustodyGoLive } from './modules/it/go-live/branch-custody';
 import { startItConsumableTypesGoLive } from './modules/it/go-live/consumable-types';
+import { startItConsumableCounterTypesGoLive } from './modules/it/go-live/consumable-counter-types';
 import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
 
 const main = async (): Promise<void> => {
@@ -107,6 +108,10 @@ const main = async (): Promise<void> => {
   // named, once; then his approved count («دخّل الأرصدة») entered in the head office's store, once,
   // after the types it is filed under — started second, so it waits for them (see each file).
   startItConsumableTypesGoLive();
+  // «عند صرف الصنف : حبارة أو النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة»
+  // — the live «حبارات» ticked «يتطلب عداد الطباعة», once, after the types it ticks (it waits for
+  // them, as the opening stock does; see the file).
+  startItConsumableCounterTypesGoLive();
   startItConsumablesOpeningGoLive();
 
   const workers = startWorkers();

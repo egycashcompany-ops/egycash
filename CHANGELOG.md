@@ -9,7 +9,123 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **Eight hours is eight hours: worked time, lateness and the attendance report, by the owner's
+  two rulings of 18 November.** «worked time = last check-out − first check-in», «Late = check-in
+  after 09:00», and «The CSV export of the daily sheet isn't usable by HR … Rebuild it as a report
+  for people, not a database dump.»
+  - **Worked time is last check-out − first check-in, flat.** No break subtracted, nothing clamped
+    to the roster: the question is how long the person was at work. A check-out after midnight is
+    simply a later instant, so a night shift needs no special case.
+  - **The company working day is 09:00–17:00, eight hours, with no grace** — the default pattern,
+    which shipped inert and is now on. A branch may override every hour of it, and an employee with
+    a real shift assignment is unaffected.
+  - **Lateness is conditional, and this is the rule that matters.** An arrival after nine is late
+    ONLY IF the eight hours were not completed. In at 09:40, out at 17:40: eight hours, nothing
+    owed, «حاضر». The owner had asked a day earlier for no company-wide start time at all, because
+    departments arrive between six and ten and one hour would mark honest people late — and then
+    answered that objection with this rule rather than withdrawing it.
+  - **A short day reports two numbers, because they answer two questions:** «التأخير» (check-in −
+    09:00) and «النقص» (480 − worked). In at 09:00, out at 16:00 is not late at all and is an hour
+    short. Overtime is worked − required rather than «after 17:00», so 07:00–17:00 earns two hours.
+  - **A day with a check-in and no check-out reports nothing at all.** «حضر فقط», and worked, late,
+    shortfall, early leave and overtime are blank rather than zero. This answers the owner's own
+    export of 18 November, where five people read «حاضر» with zero worked minutes: the cause was a
+    re-tap on the reader paired positionally as a departure — fixed by collapsing scans within ten
+    minutes (`hr.attendance.minPunchGapMinutes`) — and the second half of the cause was a display
+    that printed «0:00» with confidence where it had nothing to say.
+  - **A working day with no scan reads «لا يوجد تسجيل», not «غائب»** («lateness only for now»),
+    behind `hr.attendance.countAbsence`, which ships OFF. Nothing new reaches payroll's absent-day
+    count — which matters with two years of history being re-derived from machines whose quiet days
+    may mean a broken reader rather than an absence. A manager's own `markAbsent` is unaffected.
+  - **Weekly rest stays Friday and Saturday**, which was already the shipped default.
+  - **The CSV is a report now, not a dump.** Eighteen columns in the owner's order — code, name,
+    branch, department, job title, date as dd/mm/yyyy, the status in the words the screen uses,
+    check-in and check-out on a twelve-hour clock, worked, required, late, shortfall, early leave,
+    calculated overtime, approved overtime, the day's punch count, and notes as sentences
+    («لا يوجد انصراف», «الشهر مغلق من المرتبات», «بصمة يدوية»). UTF-8 BOM so Excel reads the
+    Arabic, every value quoted so a spreadsheet cannot eat the leading zero of «0100052».
+  - **And it is no longer a query over day documents.** It resolves the days through the same call
+    the screens make, so the file IS the sheet: a person with no stored row still has a line, the
+    statuses agree with the screen, and the file inherits the screen's filters, search and sort.
+    The raw technical shape is gone rather than hidden behind an option — nothing consumed it.
+  - **The daily sheet is ordered by clicking its headings**, server-side across the whole day and
+    before pagination, so page 2 continues page 1. Check-in ascending by default; check-out, hours
+    worked, late, shortfall, name, code and status all sortable; people with no time stay last in
+    both directions; `?sort=` and `?dir=` keep the choice through a refresh, the Back button and a
+    shared link, and the export follows it. The employee page's daily record toggles the same way
+    on its date, check-in, check-out and hours columns.
+
 ### Added
+
+- **IT consumables: the printer's counter, required when a toner goes in.** «عند صرف الصنف : حبارة
+  أو النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة —
+  يعني إجبارى أدخل عدد الورق المطبوع عند تركيب الحبارة», and «وأكيد مش هيدخل عدد ورق أقل أو مساوي
+  للى موجود».
+  - A consumable type may be ticked «يتطلب عداد الطباعة» (`requiresCounterReading`); «حبارات» is
+    ticked from the start, by a one-time go-live step on the live catalog.
+  - An item of such a type is issued one cartridge a line, onto the printer it goes into, with that
+    printer's counter reading — refused otherwise (`IT_CONSUMABLE_COUNTER_REQUIRED`, a detail per
+    gap). The reading must be strictly above the printer's last one, and strictly below a later one
+    when the issue is backdated, unless «تم تصفير عداد الطابعة» is ticked
+    (`IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS` / `…_ABOVE_NEXT`, the figure in the details). It is
+    judged inside the write's transaction under a per-printer lock, so two clerks on one printer
+    cannot both land.
+  - What a cartridge printed is the next reading of the same item (by name, across stores) on that
+    printer less its own — computed when read, never stored. `GET /it/assets/:id/counter-readings`
+    (under `itAsset.view`) gives a printer's readings and the last one;
+    `GET /it/consumables/:id/cartridges` (under `itConsumable.view`) gives a toner item's cartridges
+    and the average per cartridge; every ledger row carries `counterReading` and `counterReset`.
+  - «تعديل الجهاز» on a counted toner moves the reading with the device: a new printer needs its
+    reading, the same printer with a new reading corrects it, and «بدون جهاز» takes it off. A reset
+    the later readings rest on cannot leave its printer. An issue recorded before the counter takes
+    none afterwards. One memo, one printer, one reading: a reading written on a printer (a
+    correction, or a move onto a printer where toners of the same memo sit) is written to every
+    other toner of that memo on it whose reading differs, each audited on its own item; a move off
+    a printer leaves them.
+  - Docs: IT module design §2.4, §2.11, §5, §7, §10, §12, §17 (2026-11-19).
+
+- **HR: every employee's photo in one go, matched by the code in each file's name.** «عندى صور
+  الموظفين كلهم عايز أرفعهم دفع واحده متسمى كل صورة بالكود + أسم الموظف (الكود صحيح أكيد لكن الأسماء
+  ممكن يبقي فيها حروف متلغبطه أو مسافات)», then «غير كله باللى هبعته جديد».
+  ([employee module design](docs/12-planning/employee-module-design.md) §8)
+  - «رفع صور الموظفين» on the employees list, for holders of `employee.editPersonal`: pick the photos
+    or a whole folder, or drop them. The code in each name decides who the photo is for. Arabic digits
+    count, a code missing one or two leading zeros is completed, and an external person's code
+    (`EX-2900`) is read whole. The name in the file only flags a file whose name does not look like
+    the matched employee. A name holding codes of two different people, or a zero-completed code the
+    name does not confirm, is held for renaming, never guessed.
+  - A table shows, before anything is sent, what each file will do: ready (replacing the current
+    photo), no code, no employee with that code, two files for one employee, or not an image the
+    profile takes.
+  - Each photo is cut around the face, as the profile's own photo is, and sent two at a time with
+    progress. A photo with no face found goes uncropped, and a large one is shrunk under 5 MB. A
+    picture the browser cannot open is not sent. A failed photo is sent again with the next «رفع»,
+    and «إيقاف» (or leaving the page) stops the run after the photos under way.
+  - `POST /hr/employees/codes/lookup` answers which employees hold the codes, within the caller's
+    `employee.editPersonal` scope. The photos themselves go through the existing photo upload.
+
+- **IT: hand a device, a line or consumables to an employee of another branch.** «لما حد فى فرع
+  بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح إنه يعرف يسلم
+  لحد فى فرع تاني».
+  - Every hand-over box («المستلم» on the asset hand-over, the new holder on a transfer, «صرف
+    لموظف», «مرتجع من», the line hand-over) now finds the current employees of EVERY branch, for
+    whoever holds that register's hand-over grant (`itAsset.assign`, `itMobileLine.assign` or
+    `itConsumable.assign`): `GET /it/people/recipients?search=&pageSize=` — a required search, at
+    most 20 a time, each row only the name, the code and the branch. The command bar's branch does
+    not narrow it. The employees register and every filter box are unchanged: still the reader's
+    own scope.
+  - What is handed over stays registered in the sender's branch, as before — consumables leave the
+    sender's store; the recipient's own branch sees nothing of it.
+  - The sender can open the recipient's IT page (`GET /it/people/:employeeId`): it is found once
+    the sender's own registers name the person — a custody interval of an asset or a line, or a
+    consumables issue or return, each within that register's own read scope — and every section of
+    it still shows only what the sender's grants reach.
+  - Fixed: a single asset's «نقل» to another branch now goes only to an active branch the user's
+    `itAsset.assign` reaches whole, as «نقل إلى فرع» does (403 otherwise; 400 for an inactive
+    branch) — a branch user could send a device into a branch they cannot see, where it vanished
+    from their register. Moving to the same branch, or naming none, is unchanged.
 
 - **Org chart: drag a job to change its order, and print the chart.**
   ([org-chart design](docs/12-planning/org-chart-design.md) §2.2, §2.4, §5.7)

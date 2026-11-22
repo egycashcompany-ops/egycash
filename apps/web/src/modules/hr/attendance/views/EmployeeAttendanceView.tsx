@@ -4,10 +4,17 @@
 import type { ReactNode } from 'react';
 import { cn } from '../../../../shared/lib/cn';
 import { ArrivalTrend, HoursBars, MonthHeatmap } from './view-charts';
-import { AttendanceCanvas, DOT, DayTimeline, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, Sheet, SheetHead, StatusText, Tag, TimelineScale, type Tone } from './view-parts';
+import { ariaSort, AttendanceCanvas, DOT, DayTimeline, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, Sheet, SheetHead, SortableHead, StatusText, Tag, TimelineScale, type Tone } from './view-parts';
 import { arrow, clock, dayLabel, duration, num, shortDuration } from './view-format';
 import { useViewLabels } from './view-labels';
-import type { EmployeeDay, EmployeeHeader, EmployeeKpis } from './view-types';
+import { sortEmployeeDays } from './day-order';
+import type {
+  EmployeeDay,
+  EmployeeDaySort,
+  EmployeeDaysSort,
+  EmployeeHeader,
+  EmployeeKpis,
+} from './view-types';
 
 export interface EmployeeAttendanceViewProps {
   employee: EmployeeHeader;
@@ -35,13 +42,23 @@ export interface EmployeeAttendanceViewProps {
   /** Given, the calendar's cells become buttons. Omitted, it stays a plain read-only grid. */
   onPickDay?: (date: string) => void;
   onExport?: () => void;
+  /**
+   * The order of the daily record, and how to ask for another. Omitted, the list reads newest
+   * first — a month is read backwards from its most recent day.
+   */
+  sort?: EmployeeDaysSort;
+  onSort?: (by: EmployeeDaySort, dir: 'asc' | 'desc') => void;
 }
 
 export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Element => {
   const { employee, kpis, days } = p;
   const { t, status, locale } = useViewLabels();
   const dur = (m: number | null): string => duration(m, t('hours'), t('minutes'));
-  const newestFirst = [...days].reverse();
+  const sort: EmployeeDaysSort = p.sort ?? { by: 'date', dir: 'desc' };
+  const sortHint = (dir: 'asc' | 'desc'): string => t(dir === 'asc' ? 'sortAscending' : 'sortDescending');
+  // `days` arrives oldest first (the calendar's contiguous run, which the heatmap needs in that
+  // order); the record below is a different reading of the same days, so it gets its own order.
+  const ordered = sortEmployeeDays(days, sort.by, sort.dir);
   const meta = [employee.jobTitle, employee.department, employee.branch].filter((x): x is string => typeof x === 'string' && x !== '');
   const onTimeRate = kpis.daysPresent > 0 ? Math.round(((kpis.daysPresent - kpis.lateDays) / kpis.daysPresent) * 100) : 0;
 
@@ -79,13 +96,22 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
       />
 
       <Sheet>
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7">
           <Figure label={t('daysPresent')} value={`${kpis.daysPresent}/${kpis.daysExpected}`} note={p.periodLabel} tone="ok" />
           <Figure label={t('onTimeRate')} value={`${onTimeRate}%`} note={t('ofPresentDays')} tone="ok" />
           <Figure label={t('usualArrival')} value={clock(kpis.usualArrival)} note={t('avgFirstIn')} />
           <Figure label={t('usualDeparture')} value={clock(kpis.usualDeparture)} note={t('avgLastOut')} />
           <Figure label={t('hoursPerDay')} value={dur(kpis.avgWorked)} note={t('inTotal', { t: dur(kpis.totalWorked) })} />
           <Figure label={t('lateDays')} value={String(kpis.lateDays)} note={t('lateTotal', { t: dur(kpis.lateMinutesTotal) })} tone="warn" />
+          {/* «النقص» — the period's missing time, which is the figure a deduction would read and
+              the one «أيام التأخير» does NOT answer: a month of late arrivals all made up by
+              staying later shows late days and no shortfall at all. */}
+          <Figure
+            label={t('shortfallCol')}
+            value={dur(kpis.shortfallTotal === 0 ? null : kpis.shortfallTotal)}
+            note={t('shortfallTotal')}
+            {...(kpis.shortfallTotal > 0 ? { tone: 'warn' as const } : {})}
+          />
         </div>
       </Sheet>
 
@@ -135,8 +161,11 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
       </Sheet>
 
       <Sheet className="overflow-hidden">
-        <SheetHead title={t('dailyRecord')} note={`${p.periodLabel} · ${t('newestFirst')}`} />
-        {newestFirst.length === 0 ? (
+        <SheetHead
+          title={t('dailyRecord')}
+          note={`${p.periodLabel} · ${sort.by === 'date' && sort.dir === 'desc' ? t('newestFirst') : t('oldestFirst')}`}
+        />
+        {ordered.length === 0 ? (
           <p className={cn('px-6 py-16 text-center text-sm', INK3)}>{t('noDays')}</p>
         ) : (
           <>
@@ -144,10 +173,20 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
               <table className="w-full">
                 <thead>
                   <tr className={cn('border-y border-[var(--att-line)] bg-[var(--att-sheet-2)] text-[12px]', INK3)}>
-                    <th className="py-2.5 pe-3 ps-6 text-start font-medium">{t('date')}</th>
+                    <th className="py-2.5 pe-3 ps-6 text-start font-medium" aria-sort={ariaSort('date', sort)}>
+                      <SortableHead column="date" label={t('date')} sort={sort} onSort={p.onSort} hint={sortHint} />
+                    </th>
                     <th className="px-3 py-2.5 text-start font-medium">{t('status')}</th>
-                    <th className="px-3 py-2.5 text-start font-medium">{t('inOut')}</th>
-                    <th className="px-3 py-2.5 text-start font-medium">{t('worked')}</th>
+                    <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('checkIn', sort)}>
+                      <SortableHead column="checkIn" label={t('arrived')} sort={sort} onSort={p.onSort} hint={sortHint} />
+                      <span className={cn('mx-1', INK3)} aria-hidden="true">
+                        ·
+                      </span>
+                      <SortableHead column="checkOut" label={t('left')} sort={sort} onSort={p.onSort} hint={sortHint} />
+                    </th>
+                    <th className="px-3 py-2.5 text-start font-medium" aria-sort={ariaSort('worked', sort)}>
+                      <SortableHead column="worked" label={t('worked')} sort={sort} onSort={p.onSort} hint={sortHint} />
+                    </th>
                     <th className="w-[30%] px-3 py-2 text-start font-medium">
                       <TimelineScale />
                     </th>
@@ -155,7 +194,7 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
                   </tr>
                 </thead>
                 <tbody>
-                  {newestFirst.map((d) => (
+                  {ordered.map((d) => (
                     <tr
                       key={d.date}
                       // The anchor the calendar scrolls to, and the row it rings. One id per date
@@ -173,7 +212,12 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
                       <td className="px-3 py-3">
                         <span className="inline-flex flex-wrap items-center gap-2">
                           <Span inAt={d.inAt} outAt={d.outAt} />
-                          {d.lateMinutes > 0 && <Tag tone="warn">{`+${shortDuration(d.lateMinutes)}`}</Tag>}
+                          {d.lateMinutes !== null && d.lateMinutes > 0 && (
+                            <Tag tone="warn">{`${status('late')} ${shortDuration(d.lateMinutes)}`}</Tag>
+                          )}
+                          {d.shortfall !== null && d.shortfall > 0 && (
+                            <Tag tone="warn">{`${t('shortfallCol')} ${shortDuration(d.shortfall)}`}</Tag>
+                          )}
                           {d.tags.map((tag) => (
                             <Tag key={tag} tone="accent">
                               {tag}
@@ -192,7 +236,7 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
               </table>
             </div>
             <ul className="mt-4 border-t border-[var(--att-line)] md:hidden">
-              {newestFirst.map((d) => (
+              {ordered.map((d) => (
                 <li
                   key={d.date}
                   id={`att-day-m-${d.date}`}
@@ -208,7 +252,12 @@ export const EmployeeAttendanceView = (p: EmployeeAttendanceViewProps): JSX.Elem
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <Span inAt={d.inAt} outAt={d.outAt} />
                     {d.worked !== null && <span className={cn('text-sm font-semibold', FIG, INK)}>{dur(d.worked)}</span>}
-                    {d.lateMinutes > 0 && <Tag tone="warn">{`+${shortDuration(d.lateMinutes)}`}</Tag>}
+                    {d.lateMinutes !== null && d.lateMinutes > 0 && (
+                      <Tag tone="warn">{`${status('late')} ${shortDuration(d.lateMinutes)}`}</Tag>
+                    )}
+                    {d.shortfall !== null && d.shortfall > 0 && (
+                      <Tag tone="warn">{`${t('shortfallCol')} ${shortDuration(d.shortfall)}`}</Tag>
+                    )}
                     {d.tags.map((tag) => (
                       <Tag key={tag} tone="accent">
                         {tag}

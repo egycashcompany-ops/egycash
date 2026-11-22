@@ -23,6 +23,7 @@ import {
   type ItConsumableIssueResultDto,
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
+  type ItPrinterCounterDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -48,6 +49,8 @@ let storeOnlyKeeperToken: string;
 let branchAId: string;
 let branchBId: string;
 let typeId: string;
+/** A type that takes the printer's counter («يتطلب عداد الطباعة», 2026-11-19). */
+let tonerTypeId: string;
 let categoryId: string;
 
 const EMPLOYEE = new Types.ObjectId();
@@ -272,6 +275,15 @@ beforeAll(async () => {
   });
   expect(type.status).toBe(201);
   typeId = data<ItCatalogItemDto>(type).id;
+
+  const toners = await api.post('/catalog-items', {
+    kind: 'consumableType',
+    code: 'laser',
+    name: { ar: 'حبارات ليزر', en: 'Laser toners' },
+    requiresCounterReading: true,
+  });
+  expect(toners.status).toBe(201);
+  tonerTypeId = data<ItCatalogItemDto>(toners).id;
 
   const category = await api.post('/catalog-items', {
     kind: 'assetCategory',
@@ -581,5 +593,346 @@ describe('who may change it', () => {
     expect((await setDevice(inBMovement, inA.id, keeperAToken)).status).toBe(404);
     expect((await setDevice(inBMovement, null, keeperAToken)).status).toBe(404);
     expect((await rowOf(inBMovement)).version).toBe(0);
+  });
+});
+
+// «عداد الطابعة» (2026-11-19) — on a counted issue the reading taken on the device is part of the one
+// correctable fact: it moves with the device and is checked again where it lands, the same device
+// with a new reading corrects it, and «بدون جهاز» takes it off with the device.
+describe('a counted toner — the device and the reading taken on it', () => {
+  /** A toner onto a printer at a reading, and its ledger row. */
+  const fit = async (
+    item: ItConsumableDto,
+    assetId: string,
+    counterReading: number,
+    counterReset = false,
+  ): Promise<{ memo: ItConsumableMemoDto; movement: ItConsumableMovementDto }> => {
+    const res = await api.post('/consumables/issue', {
+      employeeId: String(EMPLOYEE),
+      lines: [
+        {
+          consumableId: item.id,
+          qty: 1,
+          assetId,
+          counterReading,
+          ...(counterReset ? { counterReset: true } : {}),
+        },
+      ],
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const { memo } = data<ItConsumableIssueResultDto>(res);
+    const rows = data<ItConsumableMovementDto[]>(
+      await api.get(`/consumables/${item.id}/movements?kind=issued&pageSize=100`),
+    );
+    const movement = rows.find((row) => row.id === memo.lines[0]?.movementId);
+    expect(movement).toBeDefined();
+    return { memo, movement: movement as ItConsumableMovementDto };
+  };
+  const counterOf = async (assetId: string): Promise<ItPrinterCounterDto> =>
+    data<ItPrinterCounterDto>(await api.get(`/assets/${assetId}/counter-readings`));
+  const move = (
+    movement: Pick<ItConsumableMovementDto, 'id' | 'version'>,
+    body: Record<string, unknown>,
+  ) =>
+    api.patch(`/consumable-movements/${movement.id}/installed-on`, {
+      version: movement.version,
+      ...body,
+    });
+  const errorOf = (res: request.Response) =>
+    (res.body as { error: { code: string; details?: unknown[] } }).error;
+
+  it('moves to another printer with that printer’s reading — off the old one’s counter, onto the new', async () => {
+    const item = await stock({ typeId: tonerTypeId });
+    const before = await device('Counted printer 1');
+    const after = await device('Counted printer 2');
+    const { memo, movement } = await fit(item, before.id, 15000);
+
+    const res = await move(movement, { assetId: after.id, counterReading: 42000 });
+    expect(res.status).toBe(200);
+    expect(data<ItConsumableMovementDto>(res)).toMatchObject({
+      assetId: after.id,
+      counterReading: 42000,
+      counterReset: false,
+      version: 1,
+    });
+    expect((await counterOf(before.id)).readings).toEqual([]);
+    expect((await counterOf(after.id)).latest).toMatchObject({
+      movementId: movement.id,
+      reading: 42000,
+    });
+    // The paper follows the device; it never carried the reading.
+    expect((await memoOf(memo.id)).lines[0]?.assetId).toBe(after.id);
+    const audit = await AuditLogModel.find({
+      'entityRef.entityType': 'consumable',
+      'entityRef.entityId': item.id,
+      action: 'update',
+    })
+      .lean()
+      .exec();
+    expect(audit[0]?.changes).toEqual([
+      { field: 'installedOn', old: before.id, new: after.id },
+      { field: 'counterReading', old: 15000, new: 42000 },
+      { field: 'movementId', old: null, new: movement.id },
+    ]);
+  });
+
+  it('refuses a move with no reading — and a reading the new printer’s counter is already past', async () => {
+    const item = await stock({ typeId: tonerTypeId });
+    const before = await device('Counted printer 3');
+    const after = await device('Counted printer 4');
+    const { movement } = await fit(item, before.id, 15000);
+    // A later reading on the new printer: the moved toner's issue is dated before it.
+    await fit(await stock({ typeId: tonerTypeId }), after.id, 50000);
+
+    const bare = await move(movement, { assetId: after.id });
+    expect(bare.status).toBe(422);
+    expect(errorOf(bare)).toMatchObject({
+      code: 'IT_CONSUMABLE_COUNTER_REQUIRED',
+      details: [expect.objectContaining({ field: 'counterReading', code: 'REQUIRED' })],
+    });
+    // Backdated against the later 50000 on the new printer: refused with that figure.
+    const past = await move(movement, { assetId: after.id, counterReading: 50000 });
+    expect(past.status).toBe(422);
+    expect(errorOf(past)).toMatchObject({
+      code: 'IT_CONSUMABLE_COUNTER_ABOVE_NEXT',
+      details: [
+        expect.objectContaining({
+          field: 'counterReading',
+          code: 'NEXT_READING',
+          message: '50000',
+        }),
+        expect.objectContaining({ field: 'counterReading', code: 'NEXT_AT' }),
+      ],
+    });
+    expect(await rowOf(movement)).toMatchObject({ assetId: before.id, counterReading: 15000 });
+  });
+
+  it('«بدون جهاز» takes the reading off with the device', async () => {
+    const item = await stock({ typeId: tonerTypeId });
+    const printer = await device('Counted printer 5');
+    const { movement } = await fit(item, printer.id, 15000);
+
+    // A reading for «no device» is the schema's refusal.
+    expect((await move(movement, { assetId: null, counterReading: 1 })).status).toBe(400);
+    const res = await move(movement, { assetId: null });
+    expect(res.status).toBe(200);
+    expect(data<ItConsumableMovementDto>(res)).toMatchObject({
+      assetId: null,
+      counterReading: null,
+      counterReset: false,
+    });
+    expect(await counterOf(printer.id)).toMatchObject({ latest: null, readings: [] });
+  });
+
+  it('a reset the later readings rest on cannot leave its printer', async () => {
+    const printer = await device('Counted printer 6');
+    const target = await device('Counted printer 7');
+    await fit(await stock({ typeId: tonerTypeId }), printer.id, 90000);
+    const { movement: reset } = await fit(
+      await stock({ typeId: tonerTypeId }),
+      printer.id,
+      10,
+      true,
+    );
+    await fit(await stock({ typeId: tonerTypeId }), printer.id, 900);
+
+    for (const body of [{ assetId: null }, { assetId: target.id, counterReading: 5 }]) {
+      const res = await move(reset, body);
+      expect(res.status).toBe(422);
+      expect(errorOf(res).code).toBe('BUSINESS_RULE_VIOLATION');
+      expect(JSON.stringify(res.body)).toContain('counter again');
+    }
+    expect(await rowOf(reset)).toMatchObject({
+      assetId: printer.id,
+      counterReading: 10,
+      counterReset: true,
+      version: 0,
+    });
+  });
+
+  it('corrects a mistyped reading on the device it already names — the paper left as it is', async () => {
+    const item = await stock({ typeId: tonerTypeId });
+    const printer = await device('Counted printer 8');
+    const { memo, movement } = await fit(item, printer.id, 15000);
+
+    const res = await move(movement, { assetId: printer.id, counterReading: 15500 });
+    expect(res.status).toBe(200);
+    expect(data<ItConsumableMovementDto>(res)).toMatchObject({
+      assetId: printer.id,
+      counterReading: 15500,
+      version: 1,
+    });
+    expect((await memoOf(memo.id)).version).toBe(memo.version);
+    // The same again is nothing to write.
+    const again = await move(
+      { id: movement.id, version: 1 },
+      {
+        assetId: printer.id,
+        counterReading: 15500,
+      },
+    );
+    expect(data<ItConsumableMovementDto>(again).version).toBe(1);
+    // A device named with no reading is a refusal even when it is the same one.
+    expect((await move({ id: movement.id, version: 1 }, { assetId: printer.id })).status).toBe(422);
+  });
+
+  // «One memo, one printer, one reading» — the lines of one memo on one printer are one display read
+  // once: a write of the reading of one of them is a write of it on all of them.
+  describe('one memo, one printer, one reading', () => {
+    /** One memo of several toners, each line onto a printer at a reading; its ledger rows in order. */
+    const fitMemo = async (
+      lines: { item: ItConsumableDto; assetId: string; counterReading: number }[],
+    ): Promise<{ memo: ItConsumableMemoDto; rows: ItConsumableMovementDto[] }> => {
+      const res = await api.post('/consumables/issue', {
+        employeeId: String(EMPLOYEE),
+        lines: lines.map(({ item, assetId, counterReading }) => ({
+          consumableId: item.id,
+          qty: 1,
+          assetId,
+          counterReading,
+        })),
+      });
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      const { memo } = data<ItConsumableIssueResultDto>(res);
+      const rows = await Promise.all(
+        lines.map(async ({ item }, index) => {
+          const found = data<ItConsumableMovementDto[]>(
+            await api.get(`/consumables/${item.id}/movements?kind=issued&pageSize=100`),
+          ).find((row) => row.id === memo.lines[index]?.movementId);
+          expect(found).toBeDefined();
+          return found as ItConsumableMovementDto;
+        }),
+      );
+      return { memo, rows };
+    };
+    const readingsOf = async (assetId: string) =>
+      (await counterOf(assetId)).readings.map((r) => [r.movementId, r.reading]).sort();
+
+    it('correcting one line’s reading corrects the memo’s other line on that printer — and a later issue is held above it', async () => {
+      const black = await stock({ typeId: tonerTypeId });
+      const cyan = await stock({ typeId: tonerTypeId });
+      const printer = await device('Counted printer 9');
+      const {
+        rows: [k, c],
+      } = await fitMemo([
+        { item: black, assetId: printer.id, counterReading: 1000 },
+        { item: cyan, assetId: printer.id, counterReading: 1000 },
+      ]);
+      if (k === undefined || c === undefined) throw new Error('two rows expected');
+
+      const res = await move(k, { assetId: printer.id, counterReading: 1500 });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+      // The printer's counter: one memo, one reading — both lines at 1500.
+      expect(await readingsOf(printer.id)).toEqual(
+        [
+          [k.id, 1500],
+          [c.id, 1500],
+        ].sort(),
+      );
+      expect((await counterOf(printer.id)).latest).toMatchObject({ reading: 1500 });
+      // The ledger: the other line moved with it, and its version moved on.
+      expect(await rowOf(c)).toMatchObject({
+        assetId: printer.id,
+        counterReading: 1500,
+        counterReset: false,
+        version: 1,
+      });
+      const ledger = data<ItConsumableMovementDto[]>(
+        await api.get(`/consumable-movements?assetId=${printer.id}&pageSize=100`),
+      );
+      expect(ledger.map((row) => [row.id, row.counterReading]).sort()).toEqual(
+        [
+          [k.id, 1500],
+          [c.id, 1500],
+        ].sort(),
+      );
+      // Its item's trail names the change and the row.
+      const audit = await AuditLogModel.find({
+        'entityRef.entityType': 'consumable',
+        'entityRef.entityId': cyan.id,
+        action: 'update',
+      })
+        .lean()
+        .exec();
+      expect(audit.map((row) => row.changes)).toEqual([
+        [
+          { field: 'counterReading', old: 1000, new: 1500 },
+          { field: 'movementId', old: null, new: c.id },
+        ],
+      ]);
+      // A dialog opened on the other line before is now a stale read.
+      expect((await move(c, { assetId: printer.id, counterReading: 1600 })).status).toBe(409);
+
+      // The timeline reads 1500 at that moment: a later 1200 is below it.
+      const later = await api.post('/consumables/issue', {
+        employeeId: String(EMPLOYEE),
+        lines: [
+          {
+            consumableId: (await stock({ typeId: tonerTypeId })).id,
+            qty: 1,
+            assetId: printer.id,
+            counterReading: 1200,
+          },
+        ],
+      });
+      expect(later.status).toBe(422);
+      expect(errorOf(later)).toMatchObject({
+        code: 'IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS',
+        details: [
+          expect.objectContaining({ code: 'PREVIOUS_READING', message: '1500' }),
+          expect.objectContaining({ code: 'PREVIOUS_AT' }),
+        ],
+      });
+    });
+
+    it('a line moved onto the printer where another line of its memo sits rewrites that one to the reading typed — and a move off leaves it', async () => {
+      const black = await stock({ typeId: tonerTypeId });
+      const cyan = await stock({ typeId: tonerTypeId });
+      const first = await device('Counted printer 10');
+      const second = await device('Counted printer 11');
+      const {
+        memo,
+        rows: [k, c],
+      } = await fitMemo([
+        { item: black, assetId: first.id, counterReading: 1000 },
+        { item: cyan, assetId: second.id, counterReading: 3000 },
+      ]);
+      if (k === undefined || c === undefined) throw new Error('two rows expected');
+
+      const res = await move(c, { assetId: first.id, counterReading: 1200 });
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(await readingsOf(first.id)).toEqual(
+        [
+          [k.id, 1200],
+          [c.id, 1200],
+        ].sort(),
+      );
+      expect((await counterOf(second.id)).readings).toEqual([]);
+      const black1 = await rowOf(k);
+      expect(black1).toMatchObject({ assetId: first.id, counterReading: 1200, version: 1 });
+      // The paper's line followed the moved one only.
+      expect((await memoOf(memo.id)).lines.map((line) => line.assetId)).toEqual([
+        first.id,
+        first.id,
+      ]);
+
+      // Off the printer again: the line left there keeps the reading.
+      expect((await move(black1, { assetId: null })).status).toBe(200);
+      expect(await readingsOf(first.id)).toEqual([[c.id, 1200]]);
+      expect(await rowOf(c)).toMatchObject({ assetId: first.id, counterReading: 1200 });
+    });
+  });
+
+  it('an issue recorded without a reading takes none afterwards — and moves as it always did', async () => {
+    const item = await stock();
+    const printer = await device('Uncounted printer');
+    const { movement } = await issueOne(item, printer.id);
+    expect(movement).toMatchObject({ counterReading: null, counterReset: false });
+
+    const res = await move(movement, { assetId: printer.id, counterReading: 100 });
+    expect(res.status).toBe(422);
+    expect(JSON.stringify(res.body)).toContain('recorded without a counter reading');
+    expect((await move(movement, { assetId: null })).status).toBe(200);
   });
 });

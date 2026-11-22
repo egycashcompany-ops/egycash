@@ -143,6 +143,19 @@ const recentWorkday = (): Date => {
   return day;
 };
 
+/**
+ * An OLD workday — past the seven-day threshold an old-day decision waits behind, and never a weekend
+ * or a seeded holiday (a fixed «20 days ago» lands on a Friday or a Saturday two days a week, and
+ * that day is then recomputed as `weekend`, whatever a decision says).
+ */
+const oldWorkday = (): Date => {
+  let day = addDays(cairoToday(), -20);
+  while ([5, 6].includes(isoWeekday(day)) || HOLIDAY_ISO.has(dateOnlyIso(day))) {
+    day = addDays(day, -1);
+  }
+  return day;
+};
+
 /** A recent WEEKEND day per the seeded calendar (Fri=5). */
 const recentWeekendDay = (): Date => {
   let day = addDays(cairoToday(), -10);
@@ -211,6 +224,19 @@ beforeAll(async () => {
     key: SettingKeys.TotpEnforcedForPrivileged,
     scope: 'organization',
     value: false,
+  });
+  // ABSENCE ON, FOR THIS FILE ONLY, and the reason is worth stating because the shipped default is
+  // the opposite. This file's subject is what the derivation engine computes over HTTP, and
+  // «absent» is the word that computation produces for an expected day nobody turned up to. The
+  // owner's ruling of 18 November — «lateness only for now», so such a day reads «لا يوجد تسجيل»
+  // instead — is a decision about what the company PUBLISHES, not about what the engine can work
+  // out, and it ships as `hr.attendance.countAbsence: false` with its own coverage in
+  // `attendance-settings-defaults.spec.ts` and `derive-day.spec.ts`. Leaving it off here would
+  // have turned forty assertions about the engine into assertions about one setting.
+  await settingsService.set(ctx, {
+    key: HrAttendanceSettingKeys.CountAbsence,
+    scope: 'organization',
+    value: true,
   });
   adminToken = await login('admin@ecms.local');
   await mkUser('outsider@ecms.local');
@@ -542,9 +568,14 @@ describe('the derivation engine over HTTP', () => {
 // this workforce, who have no shift assignment. The tests that matter are the two edges: it is
 // INERT until switched on, and a real assignment BEATS it.
 //
-// Every test here puts the switch back, because these settings are process-wide and the rest of
-// this file is written against a shift-less day deriving as `noSchedule`.
-describe('the default working pattern (1b)', () => {
+// Every test here puts the settings back, because they are process-wide.
+//
+// THE BLOCK'S PREMISE INVERTED on 18 November. The pattern used to ship INERT, and the rest of
+// this file was written against a shift-less day deriving as `noSchedule`. The owner then set the
+// company day — 09:00–17:00, eight hours, no grace — so the pattern is ON by default and a
+// shift-less employee HAS an expectation. The tests that proved the inert behaviour now prove the
+// switch in the other direction: off gives «لا يوجد جدول», on holds the day to the hours.
+describe('the default working pattern', () => {
   const patternCtx = (): AuthContext => ({
     // `settingsService.set` stamps `updatedBy`, so this has to be a real ObjectId.
     userId: new Types.ObjectId().toString(),
@@ -605,11 +636,25 @@ describe('the default working pattern (1b)', () => {
     }
   });
 
-  it('is inert until it is switched on — a day with no shift has no schedule', async () => {
+  it('ships ON, so a shift-less day is held to the company hours', async () => {
     const emp = await regEmployee();
     const workday = recentWorkday();
     await recompute(emp.id, workday);
+    // Nine to five, and nobody came: an absence rather than «nobody said when this person works».
+    // (`countAbsence` is on for this file — see the note in the global setup.)
+    expect((await dayRow(emp.id, workday)).status).toBe('absent');
+  });
+
+  it('switched OFF, the same day reads «لا يوجد جدول» — nobody has said when they work', async () => {
+    const emp = await regEmployee();
+    const workday = recentWorkday();
+    await setPattern({ enabled: false });
+    await recompute(emp.id, workday);
     expect((await dayRow(emp.id, workday)).status).toBe('noSchedule');
+    // And nothing is judged against an hour nobody set.
+    const row = await dayRow(emp.id, workday);
+    expect(row.lateMinutes).toBe(0);
+    expect(row.requiredMinutes).toBeNull();
   });
 
   it('once on, an unassigned employee with no punches is ABSENT', async () => {
@@ -620,25 +665,48 @@ describe('the default working pattern (1b)', () => {
     expect((await dayRow(emp.id, workday)).status).toBe('absent');
   });
 
-  it('once on, lateness is measured for somebody who was never assigned a shift', async () => {
+  it('measures lateness for somebody never assigned a shift — but only on a SHORT day', async () => {
     const emp = await regEmployee();
     const workday = recentWorkday();
-    await setPattern({ enabled: true, startTime: '09:00', endTime: '17:00', graceInMinutes: 15 });
+    await setPattern({ enabled: true, startTime: '09:00', endTime: '17:00', graceInMinutes: 0 });
 
+    // A lone punch is a check-in, and NOTHING on it is judged. Lateness under the owner's rule
+    // depends on whether the eight hours were completed, and with no check-out that is exactly
+    // what nobody knows — so the arrival is recorded and no verdict is reached.
     await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:40').toISOString() });
     await recompute(emp.id, workday);
     const row = await dayRow(emp.id, workday);
-    // A lone punch is still a check-in; what the pattern adds is the lateness.
     expect(row.status).toBe('checkedIn');
-    expect(row.lateMinutes).toBe(40);
+    expect(row.lateMinutes).toBe(0);
+    expect(row.requiredMinutes).toBe(480);
 
-    // And the full day computes against the pattern's end, break and all.
+    // Out at 17:00: 440 minutes against 480 required, so the day IS short and the arrival IS late.
     await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:00').toISOString() });
     await recompute(emp.id, workday);
-    const full = await dayRow(emp.id, workday);
-    expect(full.status).toBe('late');
-    expect(full.workedMinutes).toBe(440); // 09:40→17:00 is 440 minutes, no break configured
-    expect(full.overtimeMinutes).toBe(0);
+    const short = await dayRow(emp.id, workday);
+    expect(short.status).toBe('late');
+    expect(short.workedMinutes).toBe(440);
+    expect(short.lateMinutes).toBe(40);
+    expect(short.shortfallMinutes).toBe(40);
+    expect(short.overtimeMinutes).toBe(0);
+  });
+
+  it('does NOT call the same arrival late once the eight hours are finished', async () => {
+    // The owner's own example: «09:40 → 17:40 … they are NOT late and NOT early.» Same arrival as
+    // the test above, forty minutes more at the end, and the day is «حاضر» with nothing owed.
+    const emp = await regEmployee();
+    const workday = recentWorkday();
+    await setPattern({ enabled: true, startTime: '09:00', endTime: '17:00', graceInMinutes: 0 });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '09:40').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '17:40').toISOString() });
+    await recompute(emp.id, workday);
+    const row = await dayRow(emp.id, workday);
+    expect(row.status).toBe('present');
+    expect(row.workedMinutes).toBe(480);
+    expect(row.lateMinutes).toBe(0);
+    expect(row.shortfallMinutes).toBe(0);
+    expect(row.earlyLeaveMinutes).toBe(0);
+    expect(row.overtimeMinutes).toBe(0);
   });
 
   it('A REAL ASSIGNMENT WINS: the pattern never argues with somebody who was assigned', async () => {
@@ -657,8 +725,13 @@ describe('the default working pattern (1b)', () => {
     // day would have run to 22:00 — so every number here is GENERAL's.
     expect(row.status).toBe('present');
     expect(row.lateMinutes).toBe(0);
-    expect(row.workedMinutes).toBe(475 - GENERAL.breakMinutes);
-    expect(row.overtimeMinutes).toBe(0); // 17:00 is GENERAL's end, not the pattern's 22:00
+    // 09:05 → 17:00 is 475 minutes of presence, flat — the break is not subtracted from worked
+    // time, it sets what the day REQUIRED. The seeded GENERAL has no break, so 480 is required and
+    // the day is five minutes short of it, which is NOT lateness: 09:05 is inside its grace.
+    expect(row.workedMinutes).toBe(475);
+    expect(row.requiredMinutes).toBe(480);
+    expect(row.shortfallMinutes).toBe(5);
+    expect(row.overtimeMinutes).toBe(0);
     expect(row.shiftId).toBe(GENERAL.id);
   });
 
@@ -671,10 +744,17 @@ describe('the default working pattern (1b)', () => {
       { scope: 'branch', scopeRef: BRANCH_ID },
     );
 
+    // A SHORT day, so the lateness clause is live: 11:30 → 19:00 is 450 minutes against the
+    // branch pattern's 480. Under the flexible rule a full day would report no lateness at all,
+    // whichever hour it was measured against — so proving WHICH pattern applied needs a day that
+    // actually owes time.
     await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '11:30').toISOString() });
+    await recordPunch({ employeeId: emp.id, at: cairoInstant(workday, '19:00').toISOString() });
     await recompute(emp.id, workday);
+    const row = await dayRow(emp.id, workday);
     // 30 minutes late against the BRANCH's 11:00, not 150 against the company's 09:00.
-    expect((await dayRow(emp.id, workday)).lateMinutes).toBe(30);
+    expect(row.lateMinutes).toBe(30);
+    expect(row.shortfallMinutes).toBe(30);
   });
 
   it('leaves `shiftId` null when the expectation came from the pattern', async () => {
@@ -722,6 +802,15 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     HrAttendanceSettingKeys.DefaultPatternGraceInMinutes,
     HrAttendanceSettingKeys.DefaultPatternGraceOutMinutes,
   ] as const;
+
+  /** The pattern OFF, so a shift-less employee has no expectation and reads «لا يوجد جدول». */
+  const switchPatternOff = async (): Promise<void> => {
+    await settingsService.set(patternCtx(), {
+      key: HrAttendanceSettingKeys.DefaultPatternEnabled,
+      scope: 'organization',
+      value: false,
+    });
+  };
 
   /** The pattern on company-wide, 09:00–17:00, so everybody in this block is EXPECTED. */
   const switchPatternOn = async (): Promise<void> => {
@@ -899,13 +988,16 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
   });
 
   it('says the SCHEDULE IS MISSING, not «يوم راحة», when nobody said when the person was due', async () => {
-    // THE PRODUCTION BUG. The pattern is off and the employee has no assignment, on a working day.
-    // This answered `dayOff`, so every employee on the sheet read «يوم راحة» on a Tuesday — the
-    // company claiming it owed them no work, which nobody had decided, and which hid the real
-    // problem: an empty roster. Recomputed first, so the stored row and the sheet are checked to
-    // give the same answer rather than two.
+    // THE PRODUCTION BUG, and it needs the pattern switched OFF to reproduce now — the company
+    // hours of 18 November mean a shift-less employee normally HAS an expectation. The case is
+    // still live for any branch that turns the pattern off, and the answer must stay «لا يوجد
+    // جدول»: this once answered `dayOff`, so every employee on the sheet read «يوم راحة» on a
+    // Tuesday — the company claiming it owed them no work, which nobody had decided, and which hid
+    // the real problem of an empty roster. Recomputed first, so the stored row and the sheet are
+    // checked to give the same answer rather than two.
     const emp = await inBranch();
     const workday = recentWorkday();
+    await switchPatternOff();
     await recompute(emp.id, workday);
     expect((await dayRow(emp.id, workday)).status).toBe('noSchedule');
     const mine = (await sheet(workday)).rows.find((r) => r.employeeId === emp.id);
@@ -995,9 +1087,12 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     const emp = await inBranch();
     await inBranch();
     const workday = recentWorkday();
+    await switchPatternOff();
     await recompute(emp.id, workday);
     // With the pattern off and no assignment, every one of them has no schedule — a status that
-    // exists nowhere in the database and can only be filtered after it is worked out.
+    // exists nowhere in the database and can only be filtered after it is worked out. The pattern
+    // is switched off explicitly now that the company hours ship on; the property under test is
+    // the filter, not which status happens to be the default.
     const res = await request(app)
       .get(
         `/api/v1/hr/attendance/days/sheet?date=${dateOnlyIso(workday)}&branchId=${SHEET_BRANCH}&status=noSchedule&pageSize=100`,
@@ -1414,7 +1509,7 @@ describe('manager day decisions (stage 3)', () => {
     const emp = await regEmployee();
     await assign(emp.id, GENERAL.id);
     // Past the default seven-day threshold.
-    const old = addDays(cairoToday(), -20);
+    const old = oldWorkday();
     await recompute(emp.id, old);
     const before = (await dayRow(emp.id, old)).status;
 
@@ -1444,7 +1539,7 @@ describe('manager day decisions (stage 3)', () => {
     const author = await decidingEmployee();
     const emp = await regEmployee();
     await assign(emp.id, GENERAL.id);
-    const old = addDays(cairoToday(), -20);
+    const old = oldWorkday();
     await recompute(emp.id, old);
 
     const res = await decide(
@@ -1775,7 +1870,14 @@ describe('AT-4 — freeze + the payroll feed seam', () => {
     expect(rec.computed).toBe(0);
     const after = await dayRow(emp.id, workday);
     expect({ ...after }).toEqual({ ...frozenRow });
-  });
+    // A MINUTE, not the default five seconds. `freezePeriod` walks every computable employee
+    // across every day of the month — by this point in the file that is some fifty employees over
+    // thirty-one days — and each day is a derivation with its own reads. It sat just inside the
+    // default until the company working pattern was switched on, which gives every one of those
+    // employees an expectation to resolve; the work is the same shape, there is simply more of it
+    // per day. The three tests after this one read the feed it froze, so a timeout here fails them
+    // too and the real cause is a long way from where they report it.
+  }, 60_000);
 
   it('the feed returns EXACTLY the twelve §15.1 fields, schema-valid, frozen rows only', async () => {
     const { period } = previousMonth();
@@ -2097,7 +2199,7 @@ describe('AT-5 — regularizations and overtime approval', () => {
     expect((normal.body.data as AttendanceRegularizationDto[]).map((r) => r.id)).not.toContain(
       reg.id,
     );
-  });
+  }, 60_000);
 });
 
 // ── AT-6 — the reading surfaces: scoped lists, the ESS own-scope, the queue, the CSV ─────────
@@ -2413,7 +2515,7 @@ describe('AT-6 — screens, self-service and export', () => {
     expect((await get('hr/attendance/regularizations?status=pendingHr,nonsense', adminToken)).status).toBe(400);
   });
 
-  it('exports the §15.1 columns as CSV, behind attendance.export, audited', async () => {
+  it('exports a report a person can read, behind attendance.export, audited', async () => {
     const emp = await regEmployee();
     await assign(emp.id, GENERAL.id);
     const workday = recentWorkday();
@@ -2430,25 +2532,85 @@ describe('AT-6 — screens, self-service and export', () => {
     const res = await get(`hr/attendance/export?${range}&employeeId=${emp.id}`, adminToken);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/csv');
-    expect(res.headers['content-disposition']).toContain('attendance-export-');
+    // Named after the DATES, not the moment of export.
+    expect(res.headers['content-disposition']).toContain(`attendance-${dateOnlyIso(workday)}.csv`);
 
-    const lines = res.text.trim().split('\n');
-    // The header is the two labels plus the twelve feed fields, in the contract's order.
-    expect(lines[0]).toBe(['employeeCode', 'employeeName', ...ATTENDANCE_FEED_FIELDS].join(','));
-    const row = (lines.find((line) => line.includes(emp.code)) ?? '').split(',');
-    expect(row[0]).toBe(emp.code);
-    expect(row[2]).toBe(emp.id);
-    expect(row[3]).toBe(dateOnlyIso(workday));
-    expect(row[4]).toBe('present');
-    // Only the APPROVED overtime is exported — the derived surplus never leaves the module.
-    expect(row).toHaveLength(14);
+    // EXCEL OPENS IT AS UTF-8 because of this, and Arabic is unreadable without it.
+    expect(res.text.startsWith('\ufeff')).toBe(true);
 
-    // The window is capped like recompute: an export is a report, not a dump.
-    const wide = await get(
-      `hr/attendance/export?from=2024-01-01&to=2025-01-01`,
-      adminToken,
+    const lines = res.text.replace('\ufeff', '').trim().split('\r\n');
+    // The English headers, in the owner's order — this admin's locale is `en`. Every value quoted,
+    // which is also what stops a spreadsheet eating the leading zero of an employee code.
+    expect(lines[0]).toBe(
+      [
+        'Employee code',
+        'Name',
+        'Branch',
+        'Department',
+        'Job title',
+        'Date',
+        'Status',
+        'Check-in',
+        'Check-out',
+        'Worked',
+        'Required',
+        'Late',
+        'Shortfall',
+        'Early leave',
+        'Overtime (calculated)',
+        'Overtime (approved)',
+        'Punches',
+        'Notes',
+      ]
+        .map((header) => `"${header}"`)
+        .join(','),
     );
-    expect(wide.status).toBe(400);
+
+    const row = (lines.find((line) => line.includes(emp.code)) ?? '')
+      .split('","')
+      .map((cell) => cell.replace(/^"|"$/g, ''));
+    expect(row).toHaveLength(18);
+    expect(row[0]).toBe(emp.code);
+    // dd/mm/yyyy, his words — read, not parsed.
+    const [y, m, d] = dateOnlyIso(workday).split('-');
+    expect(row[5]).toBe(`${d}/${m}/${y}`);
+    expect(row[6]).toBe('Present');
+    // THE TIMES, which the old file did not carry at all, on a twelve-hour clock.
+    expect(row[7]).toBe('9:00 am');
+    expect(row[8]).toBe('5:00 pm');
+    // Durations as h:mm. The seeded GENERAL shift is 09:00–17:00 with no break, so a day worked
+    // end to end is exactly the eight hours it required.
+    expect(row[9]).toBe('8:00');
+    expect(row[10]).toBe('8:00');
+    // Late, shortfall, early leave, calculated overtime, approved overtime — all empty rather
+    // than «0:00», because nothing was wrong with this day and five zeros per row is noise.
+    expect(row.slice(11, 16)).toEqual(['', '', '', '', '']);
+    expect(row[16]).toBe('2');
+
+    // A MISSING CHECK-OUT IS BLANK, NEVER 0:00 — the defect the owner reported by name.
+    const half = await regEmployee();
+    await assign(half.id, GENERAL.id);
+    await recordPunch({ employeeId: half.id, at: cairoInstant(workday, '09:40').toISOString() });
+    await recompute(half.id, workday);
+    const halfRes = await get(`hr/attendance/export?${range}&employeeId=${half.id}`, adminToken);
+    const halfRow = (halfRes.text.split('\r\n').find((line) => line.includes(half.code)) ?? '')
+      .split('","')
+      .map((cell) => cell.replace(/^"|"$/g, ''));
+    expect(halfRow[6]).toBe('Checked in only');
+    expect(halfRow[7]).toBe('9:40 am');
+    expect(halfRow[8]).toBe('');
+    // Worked, late, shortfall, early leave and overtime: all five blank, none of them zero.
+    expect(halfRow.slice(9, 10)).toEqual(['']);
+    expect(halfRow.slice(11, 16)).toEqual(['', '', '', '', '']);
+    expect(halfRow[17]).toContain('Check-out missing');
+
+    // The window is capped like recompute: an export is a report, not a dump. 92 days for the
+    // sheet, a year for one employee.
+    expect((await get('hr/attendance/export?from=2024-01-01&to=2025-01-01', adminToken)).status).toBe(400);
+    expect(
+      (await get(`hr/attendance/export?from=2026-01-01&to=2026-06-01&employeeId=${emp.id}`, adminToken))
+        .status,
+    ).toBe(200);
 
     // The export audits ITSELF — once the download has ended (`streamAttendanceExport`: the audit
     // never holds up the file), so on a busy machine the next request can be answered before that

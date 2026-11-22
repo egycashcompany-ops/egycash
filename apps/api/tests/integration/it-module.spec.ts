@@ -7,6 +7,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
+import { Types } from 'mongoose';
 import {
   ItEvents,
   SettingKeys,
@@ -31,7 +32,9 @@ import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { ItAssetAssignmentModel } from '../../src/modules/it/assets/assignment.model';
+import { ItCatalogItemModel } from '../../src/modules/it/catalog-items/catalog-item.model';
 import { ItCustodyReceiptModel } from '../../src/modules/it/assets/receipt.model';
 import { type AuthContext } from '../../src/shared/types';
 
@@ -229,6 +232,138 @@ describe('it catalogs', () => {
       .send({ isActive: false, version: row.version });
     expect(archived.status).toBe(200);
     expect(data<ItCatalogItemDto>(archived).isActive).toBe(false);
+  });
+
+  // «يتطلب عداد الطباعة» (the owner, 19 November 2026): a consumable type's flag — an item of the
+  // type is issued onto a printer with its counter reading. Ticked on «حبارات» by the deploy.
+  describe('«يتطلب عداد الطباعة»', () => {
+    const post = (body: Record<string, unknown>) =>
+      request(app)
+        .post('/api/v1/it/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(body);
+    const patch = (id: string, body: Record<string, unknown>) =>
+      request(app)
+        .patch(`/api/v1/it/catalog-items/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send(body);
+    const listed = async (kind: string, id: string): Promise<ItCatalogItemDto | undefined> => {
+      const res = await request(app)
+        .get(`/api/v1/it/catalog-items?kind=${kind}&pageSize=100`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return data<ItCatalogItemDto[]>(res).find((row) => row.id === id);
+    };
+    const audits = (id: string) =>
+      AuditLogModel.find({
+        'entityRef.moduleId': 'it',
+        'entityRef.entityType': 'catalogItem',
+        'entityRef.entityId': id,
+      })
+        .sort({ at: 1, _id: 1 })
+        .lean()
+        .exec();
+    const errorCode = (res: request.Response): string =>
+      (res.body as { error?: { code?: string } }).error?.code ?? '';
+
+    it('is false unless sent, and a consumable type is created with it ticked', async () => {
+      const plain = await post({
+        kind: 'assetCategory',
+        name: { ar: 'طابعات ليزر', en: 'Lasers' },
+      });
+      expect(plain.status).toBe(201);
+      expect(data<ItCatalogItemDto>(plain).requiresCounterReading).toBe(false);
+
+      const toner = await post({
+        kind: 'consumableType',
+        name: { ar: 'أحبار ملونة', en: 'Colour toner' },
+        requiresCounterReading: true,
+      });
+      expect(toner.status).toBe(201);
+      const row = data<ItCatalogItemDto>(toner);
+      expect(row.requiresCounterReading).toBe(true);
+      expect((await listed('consumableType', row.id))?.requiresCounterReading).toBe(true);
+      const [created] = await audits(row.id);
+      expect(created?.action).toBe('create');
+      expect(created?.changes).toContainEqual({
+        field: 'requiresCounterReading',
+        old: null,
+        new: true,
+      });
+    });
+
+    it('is refused on any other kind — the contract on a create, the server on an update', async () => {
+      const created = await post({
+        kind: 'ticketCategory',
+        name: { ar: 'أعطال طابعات', en: 'Printer faults' },
+        requiresCounterReading: true,
+      });
+      expect(created.status).toBe(400);
+      expect(
+        (created.body as { error: { details: { field: string }[] } }).error.details,
+      ).toContainEqual(expect.objectContaining({ field: 'body.requiresCounterReading' }));
+
+      const category = data<ItCatalogItemDto>(
+        await post({ kind: 'assetCategory', name: { ar: 'أجهزة عرض', en: 'Projectors' } }),
+      );
+      const ticked = await patch(category.id, {
+        requiresCounterReading: true,
+        version: category.version,
+      });
+      expect(ticked.status).toBe(422);
+      expect(errorCode(ticked)).toBe('BUSINESS_RULE_VIOLATION');
+      // Nothing written: the version the form holds still saves.
+      const unchanged = await listed('assetCategory', category.id);
+      expect(unchanged).toMatchObject({ requiresCounterReading: false, version: category.version });
+
+      // Unticking is never refused, whatever the kind.
+      const unticked = await patch(category.id, {
+        requiresCounterReading: false,
+        version: category.version,
+      });
+      expect(unticked.status).toBe(200);
+    });
+
+    it('ticks and unticks a consumable type — a row from before the flag reads false', async () => {
+      // Written before 2026-11-19: the row has no key at all.
+      const legacyId = new Types.ObjectId();
+      const at = new Date('2026-11-17T08:00:00.000Z');
+      await ItCatalogItemModel.collection.insertOne({
+        _id: legacyId,
+        kind: 'consumableType',
+        code: null,
+        name: { ar: 'تونر قديم', en: 'Old toner' },
+        description: null,
+        sortOrder: 0,
+        isActive: true,
+        schemaVersion: 1,
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        createdBy: null,
+        updatedBy: null,
+        createdAt: at,
+        updatedAt: at,
+        __v: 0,
+      });
+      const id = String(legacyId);
+      expect((await listed('consumableType', id))?.requiresCounterReading).toBe(false);
+
+      const ticked = await patch(id, { requiresCounterReading: true, version: 0 });
+      expect(ticked.status).toBe(200);
+      expect(data<ItCatalogItemDto>(ticked)).toMatchObject({
+        requiresCounterReading: true,
+        version: 1,
+      });
+      const unticked = await patch(id, { requiresCounterReading: false, version: 1 });
+      expect(unticked.status).toBe(200);
+      expect(data<ItCatalogItemDto>(unticked).requiresCounterReading).toBe(false);
+
+      expect((await audits(id)).map((row) => [row.action, row.changes])).toEqual([
+        ['update', [{ field: 'requiresCounterReading', old: false, new: true }]],
+        ['update', [{ field: 'requiresCounterReading', old: true, new: false }]],
+      ]);
+    });
   });
 
   // The read gate serves two callers with different grants, and getting it wrong breaks one of

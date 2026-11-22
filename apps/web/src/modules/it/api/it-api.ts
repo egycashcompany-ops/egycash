@@ -66,6 +66,7 @@ import {
   type ItCatalogItemDto,
   type ItVendorDto,
   type ItPersonDto,
+  type ItRecipientDto,
   type ItTechniciansPageDto,
   type HandOverItAssets,
   type ItCustodyReceiptDocumentDto,
@@ -87,8 +88,10 @@ import {
   type UpdateItMobileLine,
   type CreateItConsumable,
   type IssueItConsumables,
+  type ItConsumableCartridgesDto,
   type ItConsumableDto,
   type ItConsumableIssueResultDto,
+  type ItPrinterCounterDto,
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
   type ItConsumableTransferResultDto,
@@ -181,6 +184,16 @@ export const searchPeople = (
   pageSize = 8,
 ): Promise<Paginated<ItPersonDto>> =>
   listPeople({ search, status: includeExited ? 'all' : 'employed', pageSize });
+
+/**
+ * A hand-over's box (2026-11-18 — «أسمح إنه يعرف يسلم لحد فى فرع تاني»): whoever works here today,
+ * in EVERY branch, opened by the act's own grant (`itAsset.assign`, `itMobileLine.assign` or
+ * `itConsumable.assign`) rather than the registers' reads. The server forces the employed and
+ * ignores the command-bar branch; a row is a name, a code and the branch HR places the person in —
+ * nothing else. The answer is the list itself: no paging, a few names for what was typed.
+ */
+export const searchRecipients = (search: string, pageSize = 8): Promise<ItRecipientDto[]> =>
+  get<ItRecipientDto[]>(`/it/people/recipients${buildQuery({ search, pageSize })}`);
 
 /**
  * The IT departments' people — who a ticket may be assigned to (`it.technicianDepartmentIds`).
@@ -525,6 +538,27 @@ export const setConsumableInstalledOn = (
   body: SetItConsumableInstalledOn,
 ): Promise<ItConsumableMovementDto> =>
   patch<ItConsumableMovementDto>(`/it/consumable-movements/${id}/installed-on`, body);
+
+// «عداد الطابعة» (2026-11-19) — «عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها
+// الحبارة»: the readings typed as each toner went in, and the pages each cartridge printed — both
+// computed by the server over the printer's whole timeline, every store's issues included, and
+// answered as one object rather than a page (the pairing needs every row).
+
+/**
+ * One printer's counter, newest first: each reading with the toner it was taken with and the
+ * cartridge of the same item it replaced. `latest` is what «صرف» shows under the reading box. Read
+ * under `itAsset.view` — a fact of the printer.
+ */
+export const getPrinterCounter = (assetId: string): Promise<ItPrinterCounterDto> =>
+  get<ItPrinterCounterDto>(`/it/assets/${assetId}/counter-readings`);
+
+/**
+ * One toner item's cartridges, newest first — each with the printer it went into, the reading it
+ * went in at, the reading it was replaced at and the pages between — and the average over those
+ * whose pages are known. Read under `itConsumable.view`.
+ */
+export const getConsumableCartridges = (id: string): Promise<ItConsumableCartridgesDto> =>
+  get<ItConsumableCartridgesDto>(`/it/consumables/${id}/cartridges`);
 
 // The memo (مذكرة صرف مستهلكات): recorded by the issue, printed again any time with the same
 // number, and the employee's signed copy filed against it — the line acknowledgment's steps.

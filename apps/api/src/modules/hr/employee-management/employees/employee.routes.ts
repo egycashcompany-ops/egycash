@@ -35,6 +35,7 @@ import {
   listEmployeeIdCardPrints,
   linkEmployeeUser,
   listEmployees,
+  lookupEmployeeCodes,
   listSubordinates,
   getEmployeeNationalIdCard,
   registerEmployeeDirect,
@@ -60,6 +61,7 @@ import {
   JobTitlePlacementQuerySchema,
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
+  LookupEmployeeCodesSchema,
   RehireCheckQuerySchema,
   ChangeEmployeeCodeSchema,
   PurgeEmployeeSchema,
@@ -168,6 +170,15 @@ export const buildEmployeesRouter = (): Router => {
    * staff across the whole registry, which is a different amount of authority from onboarding one
    * walk-in hire.
    */
+  // The bulk photo upload's match: which employees hold the codes read from the files' names. It
+  // takes the photo write's own key and scope; the photos themselves go through `/:id/photo`.
+  router.post(
+    '/codes/lookup',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ body: LookupEmployeeCodesSchema }),
+    asyncHandler(lookupEmployeeCodes),
+  );
   router.post(
     '/import',
     authenticate,

@@ -586,6 +586,34 @@ export const ErrorCodes = {
    */
   IT_VEHICLE_CHECK_NOTES_REQUIRED: 'IT_VEHICLE_CHECK_NOTES_REQUIRED',
 
+  // ── IT consumables: the printer counter («عداد الطابعة», docs/12-planning/it-module-design.md §2.11)
+  /**
+   * 422 — an issue line of a type that `requiresCounterReading` («حبارات») with no printer
+   * («مركّب على»), no counter reading, or a quantity other than one (one cartridge a line); or
+   * «تعديل الجهاز» moving a counted issue onto a device with no reading. Nothing was written. One
+   * detail per gap: `field` 'lines.<i>.assetId', 'lines.<i>.counterReading' or 'lines.<i>.qty' (the
+   * issue, `<i>` the line's index in the request) or 'counterReading' (the device change); `code`
+   * 'REQUIRED', or 'ONE_CARTRIDGE' on the quantity; `message` free text.
+   */
+  IT_CONSUMABLE_COUNTER_REQUIRED: 'IT_CONSUMABLE_COUNTER_REQUIRED',
+  /**
+   * 422 — the reading is not STRICTLY above the printer's previous reading (ordered by `at`, then
+   * id), and the reading is not ticked «تم تصفير عداد الطابعة». Equal is refused too; only lines of
+   * ONE issue on one printer share a reading. Read inside the write's transaction, under the
+   * printer's lock, so it is the reading another clerk wrote a moment ago. Nothing was written. Two
+   * details on the reading's field (`lines.<i>.counterReading`, or `counterReading` on «تعديل
+   * الجهاز»): `{ code: 'PREVIOUS_READING', message: <that reading, a plain integer> }` and
+   * `{ code: 'PREVIOUS_AT', message: <its time, ISO 8601> }`.
+   */
+  IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS: 'IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS',
+  /**
+   * 422 — a backdated reading (an issue or a correction dated before a later reading of that
+   * printer) is not STRICTLY below that later reading, and the later one is not a reset. Nothing was
+   * written. Two details on the reading's field, as `IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS`:
+   * `{ code: 'NEXT_READING', message: <that reading> }` and `{ code: 'NEXT_AT', message: <its time> }`.
+   */
+  IT_CONSUMABLE_COUNTER_ABOVE_NEXT: 'IT_CONSUMABLE_COUNTER_ABOVE_NEXT',
+
   // ── Crew roster (B3) ──────────────────────────────────────────────────────────────────────────
   /** The employee holds no operations requirements row, so is not on the crew roster. */
 } as const;

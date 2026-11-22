@@ -15,6 +15,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  figuresOf,
   type AttendanceDayDto,
   type AttendanceEmployeeDayDto,
   type AttendanceDecisionDto,
@@ -56,6 +57,8 @@ const day = (over: Partial<AttendanceDayDto> = {}): AttendanceDayDto => ({
   workedMinutes: 460,
   lateMinutes: 20,
   earlyLeaveMinutes: 0,
+  shortfallMinutes: 20,
+  requiredMinutes: 480,
   overtimeMinutes: 90,
   approvedOvertimeMinutes: 30,
   leaveId: null,
@@ -186,6 +189,13 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   expectedEndAt: `${TODAY}T15:00:00.000Z`,
   day: day(),
   provisionalDay: null,
+  employeeBranch: { ar: 'المهندسين', en: 'Mohandessin' },
+  employeeJobTitle: { ar: 'أمين خزينة', en: 'Treasurer' },
+  punchCount: 2,
+  // DERIVED FROM THE ROW'S OWN DAY, never written out beside it. Spelled separately they drifted
+  // immediately: the day said twenty minutes late and the hand-written figures said none, so the
+  // screen drew a dash and the test that asked for «0:20» was right to fail.
+  figures: figuresOf(day()),
   ...over,
 });
 
@@ -208,6 +218,7 @@ const summary = (
   totalWorkedMinutes: 460,
   lateDays: 1,
   lateMinutesTotal: 20,
+  shortfallMinutesTotal: 20,
   absentDays: 0,
   incompleteDays: 0,
   dayStart: 9 * 60,
@@ -219,7 +230,12 @@ const summary = (
   ...over,
 });
 
-const dailyFilters = { date: TODAY, page: 1, pageSize: 50 };
+/**
+ * What the page asks for on first load — `sortBy` / `sortDir` included, because the order is part
+ * of the request now and therefore part of the cache key. The default is check-in ascending, which
+ * is how the sheet opens.
+ */
+const dailyFilters = { date: TODAY, page: 1, pageSize: 50, sortBy: 'checkIn', sortDir: 'asc' };
 
 /** Seeds the SHEET cache — the daily sheet reads `/days/sheet`, not the day list. */
 const seedSheet =
@@ -316,6 +332,58 @@ describe('the daily sheet reads quantities and offers only what the caller may d
     expect(en).toContain('9:20 AM → 5:00 PM');
     const ar = sheet({ locale: 'ar', permissions: ['attendance.view'] }).replace(/<[^>]+>/g, '');
     expect(ar).toContain('9:20 ص ← 5:00 م');
+  });
+});
+
+describe('the order of the sheet, and the URL that holds it', () => {
+  it('opens on check-in ascending and says so where a screen reader can hear it', () => {
+    const html = sheet({ permissions: ['attendance.view'] });
+    // The owner's default. `aria-sort` is the part a screen reader announces; the arrow beside it
+    // is the same fact drawn for the eye, and marked `aria-hidden` so it is not read twice.
+    expect(html).toContain('aria-sort="ascending"');
+    expect(html).toContain('Arrived');
+    // Every sortable heading is a real BUTTON, so it is in the tab order and answers Enter and
+    // Space with no key handling of our own — «keyboard-accessible headers», his words.
+    expect(html).toContain('title="Sort descending"');
+    for (const column of ['Employee', 'Code', 'Status', 'Arrived', 'Left', 'Worked', 'Late', 'Shortfall']) {
+      expect(html, column).toContain(column);
+    }
+  });
+
+  it('READS THE ORDER OUT OF THE URL, so a refresh, Back and a shared link all keep it', () => {
+    // The request itself is keyed on the order, so seeding the cache under `worked`/`desc` and
+    // getting rows back IS the proof that the page asked for that order: a page still asking for
+    // the default would find nothing in the cache and render an empty table.
+    const html = render(<DailySheetPage />, {
+      permissions: ['attendance.view'],
+      path: '/attendance/daily?sort=worked&dir=desc',
+      seed: (qc) => {
+        qc.setQueryData(
+          listKey('hr', 'attendanceSheet', {
+            date: TODAY,
+            page: 1,
+            pageSize: 50,
+            sortBy: 'worked',
+            sortDir: 'desc',
+          }),
+          paged([sheetRow()]),
+        );
+      },
+    });
+    expect(html).toContain('EMP-0007');
+    expect(html).toContain('aria-sort="descending"');
+  });
+
+  it('ignores a sort nobody declared rather than sending it to the server', () => {
+    // A hand-edited or stale link must not travel to the server to be refused with a 400 — and
+    // must not leave the screen empty either. It falls back to the default order.
+    const html = render(<DailySheetPage />, {
+      permissions: ['attendance.view'],
+      path: '/attendance/daily?sort=salary&dir=sideways',
+      seed: seedSheet([sheetRow()]),
+    });
+    expect(html).toContain('EMP-0007');
+    expect(html).toContain('aria-sort="ascending"');
   });
 });
 
@@ -526,21 +594,44 @@ describe('the employee period', () => {
    * a page of stored rows — which is the fix: a date with no row used to be absent from the answer,
    * so the month skipped exactly the days that had punches and no recompute.
    */
-  const resolved = (over: Partial<AttendanceEmployeeDayDto> = {}): AttendanceEmployeeDayDto => ({
-    date: PERIOD.from,
-    status: 'present',
-    firstInAt: `${PERIOD.from}T06:40:00.000Z`,
-    lastOutAt: `${PERIOD.from}T14:10:00.000Z`,
-    workedMinutes: 450,
-    lateMinutes: 0,
-    earlyLeaveMinutes: 0,
-    expectedStartAt: null,
-    expectedEndAt: null,
-    provisional: false,
-    frozen: false,
-    punches: [],
-    ...over,
-  });
+  const resolved = (
+    over: Partial<Omit<AttendanceEmployeeDayDto, 'figures'>> & {
+      workedMinutes?: number;
+      lateMinutes?: number;
+    } = {},
+  ): AttendanceEmployeeDayDto => {
+    const { workedMinutes = 450, lateMinutes = 0, ...rest } = over;
+    const firstInAt =
+      'firstInAt' in rest ? (rest.firstInAt ?? null) : `${PERIOD.from}T06:40:00.000Z`;
+    const lastOutAt =
+      'lastOutAt' in rest ? (rest.lastOutAt ?? null) : `${PERIOD.from}T14:10:00.000Z`;
+    return {
+      date: PERIOD.from,
+      status: 'present',
+      expectedStartAt: null,
+      expectedEndAt: null,
+      provisional: false,
+      frozen: false,
+      flags: [],
+      approvedOvertimeMinutes: 0,
+      punches: [],
+      ...rest,
+      firstInAt,
+      lastOutAt,
+      // Through `figuresOf`, so a fixture with no check-out carries the server's blanks — which is
+      // what the «حضر فقط» case below is checking the screen does with them.
+      figures: figuresOf({
+        firstInAt,
+        lastOutAt,
+        workedMinutes,
+        lateMinutes,
+        shortfallMinutes: 0,
+        earlyLeaveMinutes: 0,
+        overtimeMinutes: 0,
+        requiredMinutes: 480,
+      }),
+    };
+  };
 
   it('leads with who it is about and the figures the server computed', () => {
     const html = month([resolved()]);

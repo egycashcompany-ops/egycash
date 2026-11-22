@@ -21,8 +21,29 @@
 //   • a HAND-OVER (assign, transfer) finds the people who work here today, and nobody else.
 // The hand-over is the default, so a new box that forgets to choose cannot offer a leaver
 // custody. The server refuses that hand-over too; this only keeps the box from offering it.
+//
+// A HAND-OVER'S BOX IN EVERY BRANCH (2026-11-18 — «لما حد فى فرع بيسلم جهاز لحد فى فرع تاني مش
+// بيعرف يشوف اسمه ... أسمح إنه يعرف يسلم لحد فى فرع تاني»): `/it/people` reaches only the people the
+// reader's read grants reach — a branch keeper's own branch — so a keeper could not name a colleague
+// of another branch. With `handOver` the box asks `/it/people/recipients` instead: whoever works
+// here today in ANY branch, opened by the act's own grant — any of the three registers' «تسليم»
+// (`IT_RECIPIENT_GRANTS`, the owner's «صاحب صلاحية التسليم») — and each row also says the branch, so
+// two people of one name are told apart. Only the hand-over dialogs pass it; every filter, the
+// employees register and a person's page keep `/it/people` and its scope. Without the prop the box
+// is exactly the one it was: the same request, the same key, the same rows.
+//
+// The decisions — which grants, which request, the rows of an answer, a branch's name — are the
+// pure helpers below the component, proven without a browser; the component only wires them.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  type ItPersonDto,
+  type ItRecipientDto,
+  type Locale,
+  type OrgUnitOptionDto,
+  type Paginated,
+} from '@ecms/contracts';
+import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { Badge } from '../../../shared/ui/Badge';
@@ -30,6 +51,8 @@ import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { listKey } from '../../../shared/lib/query-keys';
+import { localized } from '../../../shared/lib/format';
+import { useItBranchOptions } from '../api/it-queries';
 import * as api from '../api/it-api';
 
 /**
@@ -38,6 +61,16 @@ import * as api from '../api/it-api';
  */
 export const IT_PEOPLE_GRANTS = ['itAsset.view', 'itMobileLine.view', 'itConsumable.view'] as const;
 
+/**
+ * The hand-over grants of the same three registers — ANY of them opens `/it/people/recipients`,
+ * the hand-over box's search in every branch, as that route's `authorizeAny` says.
+ */
+export const IT_RECIPIENT_GRANTS = [
+  'itAsset.assign',
+  'itMobileLine.assign',
+  'itConsumable.assign',
+] as const;
+
 export const EmployeePicker = ({
   value,
   valueLabel,
@@ -45,6 +78,7 @@ export const EmployeePicker = ({
   ariaLabel,
   placeholder,
   includeExited = false,
+  handOver = false,
 }: {
   /** The picked employee id, '' when none. */
   value: string;
@@ -56,24 +90,33 @@ export const EmployeePicker = ({
   placeholder?: string;
   /** `true` for a search: the people who have left are found too, and marked as such. */
   includeExited?: boolean;
+  /**
+   * `true` in a hand-over dialog: whoever works here today in EVERY branch, under the act's own
+   * grant, each row with its branch. Never with `includeExited` — a hand-over names nobody who left.
+   */
+  handOver?: boolean;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
   const [search, setSearch] = useState('');
-  const allowed = IT_PEOPLE_GRANTS.some((grant) => can(grant));
+  const allowed = employeePickerGrants(handOver).some((grant) => can(grant));
+  const request = employeePickerRequest({ search, includeExited, handOver });
 
   const results = useQuery({
     // The population is part of the key: a search's wider answer must never be served from the
     // cache to a hand-over box that was typed into with the same letters.
-    queryKey: listKey('it', 'employeeSearch', { search, includeExited }),
-    queryFn: () => api.searchPeople(search, { includeExited }),
+    queryKey: request.queryKey,
+    queryFn: request.queryFn,
     enabled: allowed && search.trim() !== '',
     staleTime: 30_000,
   });
+  const rows = employeePickerRows(results.data);
 
   if (!allowed) {
     return (
-      <p className="text-sm text-slate-500 dark:text-slate-400">{t('it.custody.pickerNoAccess')}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400">
+        {t(handOver ? 'it.custody.pickerNoAccessHandOver' : 'it.custody.pickerNoAccess')}
+      </p>
     );
   }
 
@@ -105,46 +148,151 @@ export const EmployeePicker = ({
             <div className="grid place-items-center p-4">
               <Spinner />
             </div>
-          ) : (results.data?.items.length ?? 0) === 0 ? (
+          ) : rows.length === 0 ? (
             <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
               {t('it.custody.pickerNoResults')}
             </p>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-              {(results.data?.items ?? []).map((employee) => {
-                const label = `${employee.fullNameAr} (${employee.code})`;
-                return (
-                  <li key={employee.employeeId}>
-                    <button
-                      type="button"
-                      aria-pressed={employee.employeeId === value}
-                      onClick={() => {
-                        onChange(employee.employeeId, label);
-                        setSearch('');
-                      }}
-                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800/60 ${
-                        employee.employeeId === value
-                          ? 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/40 dark:text-brand-300'
-                          : 'text-slate-700 dark:text-slate-200'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span>{employee.fullNameAr}</span>
-                        {employee.status === 'exited' && (
-                          <Badge size="sm">{t('it.custody.pickerExited')}</Badge>
-                        )}
-                      </span>
-                      <span className="font-mono text-xs text-slate-500" dir="ltr">
-                        {employee.code}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
+              {rows.map((employee) => (
+                <li key={employee.employeeId}>
+                  <EmployeePickerRow
+                    employee={employee}
+                    handOver={handOver}
+                    pressed={employee.employeeId === value}
+                    onPick={() => {
+                      onChange(employee.employeeId, pickerLabel(employee));
+                      setSearch('');
+                    }}
+                  />
+                </li>
+              ))}
             </ul>
           )}
         </div>
       )}
     </div>
+  );
+};
+
+/** One person a row lists, whichever search answered — a recipient is employed, so has no status. */
+export interface PickerPerson {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  branchId: string | null;
+  status?: ItPersonDto['status'];
+}
+
+/** What the two searches answer: the people's page, or the recipients' list itself. */
+export type PickerAnswer = Paginated<ItPersonDto> | ItRecipientDto[];
+
+/** The label a pick carries to the caller's chip — the same for either search. */
+export const pickerLabel = (employee: PickerPerson): string =>
+  `${employee.fullNameAr} (${employee.code})`;
+
+/** The grants that open the box: a hand-over's are the act's own; any other box's, the reads. */
+export const employeePickerGrants = (handOver: boolean): readonly string[] =>
+  handOver ? IT_RECIPIENT_GRANTS : IT_PEOPLE_GRANTS;
+
+/**
+ * The request the box makes, and the key it is cached under — a hand-over asks the recipients in
+ * every branch; every other box asks the people, exactly as it always did.
+ */
+export const employeePickerRequest = ({
+  search,
+  includeExited,
+  handOver,
+}: {
+  search: string;
+  includeExited: boolean;
+  handOver: boolean;
+}): { queryKey: readonly unknown[]; queryFn: () => Promise<PickerAnswer> } =>
+  handOver
+    ? {
+        queryKey: listKey('it', 'recipientSearch', { search }),
+        queryFn: () => api.searchRecipients(search),
+      }
+    : {
+        queryKey: listKey('it', 'employeeSearch', { search, includeExited }),
+        queryFn: () => api.searchPeople(search, { includeExited }),
+      };
+
+/** The rows an answer lists, none before it arrives. */
+export const employeePickerRows = (data: PickerAnswer | undefined): readonly PickerPerson[] =>
+  data === undefined ? [] : Array.isArray(data) ? data : data.items;
+
+/** A branch named from the session's branch list — «—» when it is not there (or not yet). */
+export const recipientBranchName = (
+  branchId: string | null,
+  branches: readonly OrgUnitOptionDto[] | undefined,
+  locale: Locale,
+): string => {
+  const branch = branchId === null ? undefined : branches?.find((b) => b.id === branchId);
+  return branch === undefined ? '—' : localized(branch.name, locale);
+};
+
+/** Where HR places a recipient — read from the cached branch list, so no request of its own. */
+const RecipientBranch = ({ branchId }: { branchId: string | null }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const branches = useItBranchOptions();
+  return (
+    <span
+      data-picker-branch={branchId ?? ''}
+      className="text-xs text-slate-500 dark:text-slate-400"
+    >
+      {t('it.custody.pickerBranch', {
+        name: recipientBranchName(branchId, branches.data, locale),
+      })}
+    </span>
+  );
+};
+
+/**
+ * One person in the list: the name — marked when they have left — and the code. A hand-over's row
+ * also says the branch under the name; without `handOver` it is the row every box always had.
+ */
+export const EmployeePickerRow = ({
+  employee,
+  handOver = false,
+  pressed,
+  onPick,
+}: {
+  employee: PickerPerson;
+  handOver?: boolean;
+  pressed: boolean;
+  onPick: () => void;
+}): JSX.Element => {
+  const t = useT();
+  const name = (
+    <span className="flex items-center gap-2">
+      <span>{employee.fullNameAr}</span>
+      {employee.status === 'exited' && <Badge size="sm">{t('it.custody.pickerExited')}</Badge>}
+    </span>
+  );
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onPick}
+      className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800/60 ${
+        pressed
+          ? 'bg-brand-50 font-medium text-brand-700 dark:bg-brand-950/40 dark:text-brand-300'
+          : 'text-slate-700 dark:text-slate-200'
+      }`}
+    >
+      {handOver ? (
+        <span className="flex min-w-0 flex-col gap-0.5">
+          {name}
+          <RecipientBranch branchId={employee.branchId} />
+        </span>
+      ) : (
+        name
+      )}
+      <span className="font-mono text-xs text-slate-500" dir="ltr">
+        {employee.code}
+      </span>
+    </button>
   );
 };

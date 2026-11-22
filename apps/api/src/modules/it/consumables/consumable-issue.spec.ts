@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   itemsByIds: vi.fn(),
   moveStock: vi.fn(),
   createMovement: vi.fn(),
+  counterTimeline: vi.fn(),
   createMemo: vi.fn(),
 }));
 
@@ -45,7 +46,11 @@ vi.mock('./consumable.repository', () => ({
   },
 }));
 vi.mock('./consumable-movement.repository', () => ({
-  itConsumableMovementRepository: { create: mocks.createMovement, ensureCollection: ready() },
+  itConsumableMovementRepository: {
+    create: mocks.createMovement,
+    counterTimelineSystem: mocks.counterTimeline,
+    ensureCollection: ready(),
+  },
 }));
 vi.mock('./consumable-memo.repository', () => ({
   itConsumableMemoRepository: { create: mocks.createMemo, ensureCollection: ready() },
@@ -166,10 +171,12 @@ beforeEach(() => {
       scrappedQty: effect.scrapped,
     }),
   );
+  // The row as written — with the id the issue allocated for it.
   mocks.createMovement.mockImplementation(async (data: Record<string, unknown>) => ({
-    ...data,
     _id: new Types.ObjectId(),
+    ...data,
   }));
+  mocks.counterTimeline.mockResolvedValue([]);
   mocks.createMemo.mockImplementation(async (data: Record<string, unknown>) => data);
 });
 
@@ -418,5 +425,285 @@ describe('what an issue refuses — before anything is written', () => {
     );
     expect(memo.lines).toHaveLength(1);
     expect(mocks.assetsByIds).not.toHaveBeenCalled();
+  });
+});
+
+// «يعني إجبارى أدخل عدد الورق المطبوع عند تركيب الحبارة … وأكيد مش هيدخل عدد ورق أقل أو مساوي للى
+// موجود» (owner, 2026-11-19).
+describe('«عداد الطابعة» — a toner of a type that takes the printer’s counter', () => {
+  const PRINTER = new Types.ObjectId();
+  const printer = {
+    _id: PRINTER,
+    assetCode: 'AST-00050',
+    name: 'HP LaserJet M404',
+    status: 'inStock',
+  };
+  /** A row already on the printer's timeline, as the repository reads it. */
+  const reading = (at: string, counterReading: number, over: Record<string, unknown> = {}) => ({
+    _id: new Types.ObjectId(),
+    consumableId: INK,
+    assetId: PRINTER,
+    at: new Date(at),
+    memoId: new Types.ObjectId(),
+    counterReading,
+    ...over,
+  });
+  const toner = (over: Record<string, unknown> = {}) => ({
+    employeeId: EMPLOYEE,
+    issuedAt: ISSUED_AT,
+    lines: [
+      {
+        consumableId: String(INK),
+        qty: 1,
+        reason: 'new' as const,
+        assetId: String(PRINTER),
+        counterReading: 15000,
+        ...over,
+      },
+    ],
+  });
+  /** On the printer, with no reading typed. */
+  const unread = () => ({
+    employeeId: EMPLOYEE,
+    issuedAt: ISSUED_AT,
+    lines: [
+      { consumableId: String(INK), qty: 1, reason: 'new' as const, assetId: String(PRINTER) },
+    ],
+  });
+  const rows = async () =>
+    (await Promise.all(
+      mocks.createMovement.mock.results.map((result) => result.value as Promise<unknown>),
+    )) as Record<string, unknown>[];
+
+  beforeEach(() => {
+    // «حبارات» takes the printer's counter; the mice do not.
+    mocks.typesByIds.mockResolvedValue([
+      { _id: INKS, name: { ar: 'حبارات', en: 'Ink & toner' }, requiresCounterReading: true },
+      { _id: MICE, name: { ar: 'ماوس', en: 'Mice' } },
+    ]);
+    mocks.assetsByIds.mockResolvedValue([printer]);
+  });
+
+  const nothingWritten = () => {
+    expect(mocks.moveStock).not.toHaveBeenCalled();
+    expect(mocks.createMovement).not.toHaveBeenCalled();
+    expect(mocks.createMemo).not.toHaveBeenCalled();
+    expect(mocks.audit).not.toHaveBeenCalled();
+  };
+
+  it('writes the reading on the row — with the id it was placed under — after locking and reading the printer in the transaction', async () => {
+    mocks.counterTimeline.mockResolvedValue([reading('2026-10-01T09:00:00.000Z', 12000)]);
+    await itConsumableIssueService.issue(toner(), ctx, scope, assetScope);
+
+    expect(mocks.reserve).toHaveBeenCalledWith(`printerCounter:${String(PRINTER)}`, 1, SESSION);
+    expect(mocks.counterTimeline).toHaveBeenCalledWith([PRINTER], SESSION);
+    const [row] = await rows();
+    expect(row).toMatchObject({ assetId: PRINTER, counterReading: 15000 });
+    expect(row?._id).toBeInstanceOf(Types.ObjectId);
+    // `counterReset` is present only when true.
+    expect(row).not.toHaveProperty('counterReset');
+    // The lock is taken before the printer's readings are read.
+    const lockAt = mocks.reserve.mock.invocationCallOrder[1] ?? 0;
+    expect(lockAt).toBeLessThan(mocks.counterTimeline.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it('audits the reading with the issue', async () => {
+    await itConsumableIssueService.issue(
+      toner({ counterReading: 40, counterReset: true }),
+      ctx,
+      scope,
+      assetScope,
+    );
+    const [entry] = mocks.audit.mock.calls.map(
+      ([value]) => value as { changes: { field: string; old: unknown; new: unknown }[] },
+    );
+    expect(entry?.changes).toEqual(
+      expect.arrayContaining([
+        { field: 'counterReading', old: null, new: 40 },
+        { field: 'counterReset', old: null, new: true },
+      ]),
+    );
+  });
+
+  it('a first reading on a printer with none is taken as it is', async () => {
+    await itConsumableIssueService.issue(toner({ counterReading: 0 }), ctx, scope, assetScope);
+    expect((await rows())[0]).toMatchObject({ counterReading: 0 });
+  });
+
+  it('requires the printer, the reading and one cartridge — every gap one detail of ONE refusal', async () => {
+    const attempt = itConsumableIssueService.issue(
+      {
+        employeeId: EMPLOYEE,
+        lines: [{ consumableId: String(INK), qty: 2, reason: 'new' }],
+      },
+      ctx,
+      scope,
+      assetScope,
+    );
+    await expect(attempt).rejects.toMatchObject({
+      code: 'IT_CONSUMABLE_COUNTER_REQUIRED',
+      httpStatus: 422,
+      details: [
+        {
+          field: 'lines.0.assetId',
+          code: 'REQUIRED',
+          message: expect.stringMatching(/مركّب على/u),
+        },
+        { field: 'lines.0.counterReading', code: 'REQUIRED' },
+        { field: 'lines.0.qty', code: 'ONE_CARTRIDGE' },
+      ],
+    });
+    await expect(attempt).rejects.toThrow(/CON-00001 takes the printer's counter/u);
+    expect(mocks.unitOfWork).not.toHaveBeenCalled();
+    nothingWritten();
+  });
+
+  it('a printer with no reading is the one gap named', async () => {
+    const attempt = itConsumableIssueService.issue(unread(), ctx, scope, assetScope);
+    await expect(attempt).rejects.toMatchObject({
+      code: 'IT_CONSUMABLE_COUNTER_REQUIRED',
+      details: [{ field: 'lines.0.counterReading', code: 'REQUIRED' }],
+    });
+    nothingWritten();
+  });
+
+  it('a reading sent for an item that takes none is refused', async () => {
+    const attempt = itConsumableIssueService.issue(
+      {
+        employeeId: EMPLOYEE,
+        lines: [
+          {
+            consumableId: String(MOUSE),
+            qty: 1,
+            reason: 'new',
+            assetId: String(PRINTER),
+            counterReading: 5,
+          },
+        ],
+      },
+      ctx,
+      scope,
+      assetScope,
+    );
+    await expect(attempt).rejects.toMatchObject({
+      code: 'BUSINESS_RULE_VIOLATION',
+      message: "item CON-00002 does not take the printer's counter; send no reading",
+    });
+    nothingWritten();
+  });
+
+  it('a reading NOT ABOVE the printer’s last one is refused with its figures — equal included', async () => {
+    const last = reading('2026-10-01T09:00:00.000Z', 15000);
+    mocks.counterTimeline.mockResolvedValue([last]);
+    const attempt = itConsumableIssueService.issue(toner(), ctx, scope, assetScope);
+    await expect(attempt).rejects.toMatchObject({
+      code: 'IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS',
+      httpStatus: 422,
+      details: [
+        { field: 'lines.0.counterReading', code: 'PREVIOUS_READING', message: '15000' },
+        {
+          field: 'lines.0.counterReading',
+          code: 'PREVIOUS_AT',
+          message: '2026-10-01T09:00:00.000Z',
+        },
+      ],
+    });
+    await expect(attempt).rejects.toThrow(/AST-00050's last reading 15000/u);
+    nothingWritten();
+  });
+
+  it('a backdated reading not below a later one is refused with that one’s figures', async () => {
+    mocks.counterTimeline.mockResolvedValue([
+      reading('2026-10-01T09:00:00.000Z', 12000),
+      reading('2026-11-05T09:00:00.000Z', 14000),
+    ]);
+    const attempt = itConsumableIssueService.issue(toner(), ctx, scope, assetScope);
+    await expect(attempt).rejects.toMatchObject({
+      code: 'IT_CONSUMABLE_COUNTER_ABOVE_NEXT',
+      details: [
+        { field: 'lines.0.counterReading', code: 'NEXT_READING', message: '14000' },
+        { field: 'lines.0.counterReading', code: 'NEXT_AT', message: '2026-11-05T09:00:00.000Z' },
+      ],
+    });
+    nothingWritten();
+  });
+
+  it('a reset may read below the last one — and the row says it was a reset', async () => {
+    mocks.counterTimeline.mockResolvedValue([reading('2026-10-01T09:00:00.000Z', 15000)]);
+    await itConsumableIssueService.issue(
+      toner({ counterReading: 120, counterReset: true }),
+      ctx,
+      scope,
+      assetScope,
+    );
+    expect((await rows())[0]).toMatchObject({ counterReading: 120, counterReset: true });
+  });
+
+  it('two lines on one printer are one placement: one lock, one reading on both rows', async () => {
+    mocks.typesByIds.mockResolvedValue([
+      { _id: INKS, name: { ar: 'حبارات', en: 'Ink & toner' }, requiresCounterReading: true },
+      { _id: MICE, name: { ar: 'حبارات ملونة', en: 'Colour toner' }, requiresCounterReading: true },
+    ]);
+    mocks.counterTimeline.mockResolvedValue([reading('2026-10-01T09:00:00.000Z', 12000)]);
+    await itConsumableIssueService.issue(
+      {
+        employeeId: EMPLOYEE,
+        issuedAt: ISSUED_AT,
+        lines: [
+          {
+            consumableId: String(INK),
+            qty: 1,
+            reason: 'new',
+            assetId: String(PRINTER),
+            counterReading: 15000,
+          },
+          {
+            consumableId: String(MOUSE),
+            qty: 1,
+            reason: 'new',
+            assetId: String(PRINTER),
+            counterReading: 15000,
+          },
+        ],
+      },
+      ctx,
+      scope,
+      assetScope,
+    );
+    const locks = mocks.reserve.mock.calls.filter(([key]) => String(key).startsWith('printer'));
+    expect(locks).toHaveLength(1);
+    expect((await rows()).map((row) => row.counterReading)).toEqual([15000, 15000]);
+  });
+
+  it('a retired «حبارات» still takes the counter — the flag is read as the type stands', async () => {
+    mocks.typesByIds.mockResolvedValue([
+      {
+        _id: INKS,
+        name: { ar: 'حبارات', en: 'Ink & toner' },
+        isActive: false,
+        requiresCounterReading: true,
+      },
+    ]);
+    await expect(
+      itConsumableIssueService.issue(unread(), ctx, scope, assetScope),
+    ).rejects.toMatchObject({ code: 'IT_CONSUMABLE_COUNTER_REQUIRED' });
+  });
+
+  it('an item of a type that takes no counter is issued as before: no lock, no reading on its row', async () => {
+    // The ink and the mouse of the first block, neither type taking the counter.
+    mocks.typesByIds.mockResolvedValue([
+      { _id: INKS, name: { ar: 'حبارات', en: 'Ink & toner' }, requiresCounterReading: false },
+      { _id: MICE, name: { ar: 'ماوس', en: 'Mice' } },
+    ]);
+    mocks.assetsByIds.mockResolvedValue([
+      { _id: ASSET, assetCode: 'AST-00031', name: 'Lenovo ThinkCentre', status: 'assigned' },
+    ]);
+    await itConsumableIssueService.issue(input(), ctx, scope, assetScope);
+    expect(mocks.counterTimeline).not.toHaveBeenCalled();
+    expect(mocks.reserve).toHaveBeenCalledTimes(1);
+    for (const row of await rows()) {
+      expect(row).not.toHaveProperty('counterReading');
+      expect(row).not.toHaveProperty('counterReset');
+    }
   });
 });

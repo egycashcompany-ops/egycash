@@ -6,9 +6,10 @@
 // stores, their ledger and their memos serve on `itConsumable.*` — the same ACTION the asset key
 // had, and no route of either on `itAsset` any more (no «either key» fallback: that would make the
 // new rows of the role matrix mean nothing). `/it/people`, the holder boxes of all three screens,
-// opens on ANY of the three registers' read grants. `authorize` and `authorizeAny` are replaced by
-// stand-ins that carry the keys they were given, so the router stack says which gate each route
-// has; everything else is the real module.
+// opens on ANY of the three registers' read grants; `/it/people/recipients`, the box a hand-over
+// names its recipient in (2026-11-18), on ANY of their hand-over grants. `authorize` and
+// `authorizeAny` are replaced by stand-ins that carry the keys they were given, so the router
+// stack says which gate each route has; everything else is the real module.
 import { type Router } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -109,6 +110,9 @@ describe('the consumables answer to their own grants', () => {
       'GET /it/consumables/:id': single('itConsumable.view'),
       'PATCH /it/consumables/:id': single('itConsumable.edit'),
       'GET /it/consumables/:id/movements': single('itConsumable.view'),
+      // «عداد الطابعة» (2026-11-19) — a toner item's cartridges, on the store's read grant. The
+      // printer's own readings are the ASSETS router's (`/it/assets/:id/counter-readings`).
+      'GET /it/consumables/:id/cartridges': single('itConsumable.view'),
       'POST /it/consumables/:id/receive': single('itConsumable.edit'),
       'POST /it/consumables/:id/scrap': single('itConsumable.edit'),
       'POST /it/consumables/:id/return': single('itConsumable.assign'),
@@ -139,6 +143,16 @@ describe('the consumables answer to their own grants', () => {
   });
 });
 
+// «عداد الطابعة» (2026-11-19) — a printer's readings are a fact of the printer: on the register's
+// read grant, served by the assets router, so no consumables route needs an `itAsset` key.
+describe('the printer’s counter', () => {
+  it('reads on itAsset.view, from the assets router', async () => {
+    const { buildItAssetsRouter } = await import('./assets');
+    const routes = Object.fromEntries(gates('/it/assets', buildItAssetsRouter()));
+    expect(routes['GET /it/assets/:id/counter-readings']).toEqual(single('itAsset.view'));
+  });
+});
+
 describe('the holder boxes of all three screens', () => {
   it('open /it/people on ANY of the three registers’ read grants', () => {
     const any: Gate = {
@@ -147,7 +161,20 @@ describe('the holder boxes of all three screens', () => {
     };
     expect(Object.fromEntries(gates('/it/people', buildItPeopleRouter()))).toEqual({
       'GET /it/people/': any,
+      'GET /it/people/recipients': {
+        keys: ['itAsset.assign', 'itMobileLine.assign', 'itConsumable.assign'],
+        any: true,
+      },
       'GET /it/people/:employeeId': any,
     });
+  });
+
+  // «أسمح إنه يعرف يسلم لحد فى فرع تاني» (2026-11-18) — a hand-over's box names anybody employed,
+  // in every branch, so it opens on the ACT's grant: a reader who may only look gets a 403.
+  it('open /it/people/recipients on ANY of the three hand-over grants, before the id route', () => {
+    const paths = gates('/it/people', buildItPeopleRouter()).map(([route]) => route);
+    expect(paths.indexOf('GET /it/people/recipients')).toBeLessThan(
+      paths.indexOf('GET /it/people/:employeeId'),
+    );
   });
 });

@@ -4,13 +4,15 @@
 // What a source-reading test cannot see: the owner's types written as ordinary catalog rows of the
 // new kind, in his order; a type the IT team already made left exactly as it is and nothing seeded
 // beside it — by its code or by its Arabic name, retired or not — an asset category of the same name
-// not counted as one; and the whole thing done once, so a type deleted since stays deleted.
+// not counted as one; and the whole thing done once, so a type deleted since stays deleted. And a
+// fresh catalog's «حبارات» born taking the printer's counter («يتطلب عداد الطباعة»), no other type.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { moduleManifests } from '../../src/modules';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { ItCatalogItemModel } from '../../src/modules/it/catalog-items/catalog-item.model';
 import { ItGoLiveRunModel } from '../../src/modules/it/go-live/go-live-run.model';
 import {
@@ -105,15 +107,20 @@ describe('seeding the consumable types', () => {
         isActive: true,
         isDeleted: false,
         createdBy: null,
+        // None of these goes into a printer: only «حبارات» takes the counter.
+        requiresCounterReading: false,
       });
     }
 
-    // The IT team's own, exactly as they were — no twin beside either.
-    expect(await ItCatalogItemModel.findById(TONER).lean().exec()).toMatchObject({
+    // The IT team's own, exactly as they were — no twin beside either. Their toner type is not
+    // ticked here either: the seed leaves a kept row alone, and the counter's own step ticks it.
+    const toner = await ItCatalogItemModel.findById(TONER).lean().exec();
+    expect(toner).toMatchObject({
       code: 'INK',
       name: { ar: 'أحبار وتونر' },
       isActive: false,
     });
+    expect(toner).not.toHaveProperty('requiresCounterReading');
     expect(await ItCatalogItemModel.findById(CABLES).lean().exec()).toMatchObject({
       code: null,
       isActive: true,
@@ -137,5 +144,45 @@ describe('seeding the consumable types', () => {
     expect((await seedItConsumableTypes()).status).toBe('alreadyDone');
     expect(await liveTypes()).toHaveLength(8);
     expect(await ItCatalogItemModel.countDocuments({ kind: 'consumableType' }).exec()).toBe(9);
+  });
+
+  // «يتطلب عداد الطباعة», ticked on «حبارات» from the start (19 November 2026): a catalog that
+  // never had the types gets all nine, and its «حبارات» is born taking the printer's counter.
+  it('seeds a fresh catalog’s «حبارات» taking the printer counter, and no other type', async () => {
+    await ItCatalogItemModel.deleteMany({ kind: 'consumableType' }).exec();
+    await ItGoLiveRunModel.deleteOne({ key: IT_CONSUMABLE_TYPES_MARK }).exec();
+
+    const outcome = await seedItConsumableTypes();
+    expect(outcome).toMatchObject({ status: 'done', kept: [] });
+
+    expect(
+      (await liveTypes()).map((type) => [type.code, type.name.ar, type.requiresCounterReading]),
+    ).toEqual([
+      ['ink', 'حبارات', true],
+      ['cables', 'كابلات', false],
+      ['adapters', 'محولات', false],
+      ['mice', 'ماوس', false],
+      ['keyboards', 'كيبورد', false],
+      ['memory', 'رامات', false],
+      ['storage', 'هاردات', false],
+      ['flash', 'فلاشات', false],
+      ['other', 'أخرى', false],
+    ]);
+
+    // Its audit row says so, as the catalog service's would for a type made ticked.
+    const ink = (await liveTypes()).find((type) => type.code === 'ink');
+    const created = await AuditLogModel.findOne({
+      'entityRef.moduleId': 'it',
+      'entityRef.entityType': 'catalogItem',
+      'entityRef.entityId': String(ink?._id),
+      action: 'create',
+    })
+      .lean()
+      .exec();
+    expect(created?.changes).toContainEqual({
+      field: 'requiresCounterReading',
+      old: null,
+      new: true,
+    });
   });
 });

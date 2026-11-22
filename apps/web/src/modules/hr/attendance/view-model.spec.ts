@@ -7,6 +7,7 @@
 // not borrow the look of a rest day.
 import { describe, expect, it } from 'vitest';
 import {
+  figuresOf,
   ATTENDANCE_DAY_STATUSES,
   type AttendanceDayDto,
   type AttendanceEmployeeDayDto,
@@ -43,6 +44,8 @@ const day = (over: Partial<AttendanceDayDto> = {}): AttendanceDayDto => ({
   workedMinutes: 480,
   lateMinutes: 0,
   earlyLeaveMinutes: 0,
+  shortfallMinutes: 0,
+  requiredMinutes: 480,
   overtimeMinutes: 0,
   approvedOvertimeMinutes: 0,
   leaveId: null,
@@ -67,6 +70,17 @@ const sheetRow = (over: Partial<AttendanceSheetRowDto> = {}): AttendanceSheetRow
   expectedEndAt: '2026-11-02T15:00:00.000Z',
   day: day(),
   provisionalDay: null,
+  employeeBranch: { ar: 'المهندسين', en: 'Mohandessin' },
+  employeeJobTitle: { ar: 'أمين خزينة', en: 'Treasurer' },
+  punchCount: 2,
+  figures: {
+    workedMinutes: 480,
+    lateMinutes: 0,
+    shortfallMinutes: 0,
+    earlyLeaveMinutes: 0,
+    overtimeMinutes: 0,
+    requiredMinutes: 480,
+  },
   ...over,
 });
 
@@ -92,20 +106,21 @@ describe('the day vocabulary, as the screens say it', () => {
     // A status with no mapping would be a compile error inside `toViewStatus`; this proves the
     // enum it switches over is the one the contracts declare, so growing the enum breaks here.
     for (const status of ATTENDANCE_DAY_STATUSES) {
-      expect(typeof toViewStatus(status, false)).toBe('string');
+      expect(typeof toViewStatus(status)).toBe('string');
     }
   });
 
-  it('splits a check-in with no check-out on whether the day is over', () => {
-    // The same stored value, two different things to tell a reader: at work now, or a day that
-    // ended without a check-out.
-    expect(toViewStatus('checkedIn', true)).toBe('checkedIn');
-    expect(toViewStatus('checkedIn', false)).toBe('incomplete');
+  it('calls a check-in with no check-out «حضر فقط», on every date', () => {
+    // This USED to split on the calendar — «في العمل» on today, «حضر فقط» once the day was over —
+    // and the owner's ruling of 18 November collapsed the two: one word for one fact, wherever it
+    // is read, and every figure on such a day blank rather than zero.
+    expect(toViewStatus('checkedIn')).toBe('incomplete');
+    expect(toViewStatus('incomplete')).toBe('incomplete');
   });
 
   it('calls a weekend a rest day and a missing roster something else entirely', () => {
-    expect(toViewStatus('weekend', false)).toBe('dayOff');
-    expect(toViewStatus('noSchedule', false)).toBe('noSchedule');
+    expect(toViewStatus('weekend')).toBe('dayOff');
+    expect(toViewStatus('noSchedule')).toBe('noSchedule');
   });
 });
 
@@ -159,23 +174,46 @@ describe('a line of the daily sheet', () => {
 });
 
 /** A date as the SERVER resolves it — one entry per calendar day, not a stored row. */
+/**
+ * A resolved day. `workedMinutes` / `lateMinutes` are spelled flat for readability and go through
+ * `figuresOf`, so a fixture with no `lastOutAt` carries the server's blanks — which is what the
+ * cases below are actually about.
+ */
 const resolvedDay = (
-  over: Partial<AttendanceEmployeeDayDto> = {},
-): AttendanceEmployeeDayDto => ({
-  date: '2026-11-02',
-  status: 'present',
-  firstInAt: '2026-11-02T06:40:00.000Z',
-  lastOutAt: '2026-11-02T14:10:00.000Z',
-  workedMinutes: 450,
-  lateMinutes: 0,
-  earlyLeaveMinutes: 0,
-  expectedStartAt: null,
-  expectedEndAt: null,
-  provisional: false,
-  frozen: false,
-  punches: [],
-  ...over,
-});
+  over: Partial<Omit<AttendanceEmployeeDayDto, 'figures'>> & {
+    workedMinutes?: number;
+    lateMinutes?: number;
+    shortfallMinutes?: number;
+  } = {},
+): AttendanceEmployeeDayDto => {
+  const { workedMinutes = 450, lateMinutes = 0, shortfallMinutes = 0, ...rest } = over;
+  const firstInAt = 'firstInAt' in rest ? (rest.firstInAt ?? null) : '2026-11-02T06:40:00.000Z';
+  const lastOutAt = 'lastOutAt' in rest ? (rest.lastOutAt ?? null) : '2026-11-02T14:10:00.000Z';
+  return {
+    date: '2026-11-02',
+    status: 'present',
+    expectedStartAt: null,
+    expectedEndAt: null,
+    provisional: false,
+    frozen: false,
+    flags: [],
+    approvedOvertimeMinutes: 0,
+    punches: [],
+    ...rest,
+    firstInAt,
+    lastOutAt,
+    figures: figuresOf({
+      firstInAt,
+      lastOutAt,
+      workedMinutes,
+      lateMinutes,
+      shortfallMinutes,
+      earlyLeaveMinutes: 0,
+      overtimeMinutes: 0,
+      requiredMinutes: 480,
+    }),
+  };
+};
 
 describe('a day of an employee period', () => {
   it('leaves hours null when there is no check-out', () => {

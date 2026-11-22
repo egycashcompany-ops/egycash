@@ -14,6 +14,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  ATTENDANCE_SHEET_SORTS,
   type AttendanceDayDto,
   type AttendanceDayStatus,
   type AttendanceSheetRowDto,
@@ -37,10 +38,18 @@ import { downloadAttendanceExport } from '../api/attendance-api';
 import { useAttendanceSheet, useAttendanceSheetSummary } from '../api/attendance-queries';
 import { addDays } from '../components/period';
 import { cairoNowMinutes, cairoToday, toSheetRow } from '../view-model';
-import { DailySheetView, type SheetFilter } from '../views';
+import { DailySheetView, type SheetFilter, type SheetSortKey } from '../views';
+import { exportFileName, soleBranchName } from '../export-name';
 
-/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['branch', 'section', 'status', 'q'] as const;
+/**
+ * Remembered across visits: this screen's filters AND its order. `page` is derived, never kept.
+ *
+ * The order belongs here with the filters rather than being reset on every visit, for the same
+ * reason the status bucket does: it is how a particular person reads this screen. A supervisor who
+ * opens the sheet to find the shortfalls wants them first tomorrow too. The default — check-in
+ * ascending — is never written to the URL, so a reader who has chosen nothing still opens on it.
+ */
+const REMEMBERED_FILTERS = ['branch', 'section', 'status', 'q', 'sort', 'dir'] as const;
 
 /**
  * Which day statuses each counter stands for.
@@ -103,6 +112,24 @@ export const DailySheetPage = (): JSX.Element => {
   const sectionIds = readList(sp, 'section');
   const statuses = readList(sp, 'status') as AttendanceDayStatus[];
   const search = sp.get('q') ?? '';
+  /**
+   * THE ORDER, IN THE URL — so a refresh, the Back button and a pasted link all keep it, which is
+   * what the owner asked for. Read defensively: anything the vocabulary does not contain falls
+   * back to the default rather than travelling to the server to be refused.
+   */
+  const sortBy: SheetSortKey = (ATTENDANCE_SHEET_SORTS as readonly string[]).includes(
+    sp.get('sort') ?? '',
+  )
+    ? (sp.get('sort') as SheetSortKey)
+    : 'checkIn';
+  const sortDir: 'asc' | 'desc' = sp.get('dir') === 'desc' ? 'desc' : 'asc';
+  const onSort = (by: SheetSortKey, dir: 'asc' | 'desc'): void =>
+    patch({
+      // The default order is left OUT of the URL rather than written into it, so the address stays
+      // clean until somebody actually changes something.
+      sort: by === 'checkIn' && dir === 'asc' ? null : by,
+      dir: by === 'checkIn' && dir === 'asc' ? null : dir,
+    });
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
   const [approving, setApproving] = useState<AttendanceDayDto | null>(null);
@@ -132,9 +159,11 @@ export const DailySheetPage = (): JSX.Element => {
       ...scopeFilters,
       page,
       pageSize: 50,
+      sortBy,
+      sortDir,
       ...(statuses.length === 0 ? {} : { status: statuses }),
     }),
-    [scopeFilters, page, statuses.join(',')],
+    [scopeFilters, page, sortBy, sortDir, statuses.join(',')],
   );
   const days = useAttendanceSheet(filters, date !== '');
   // Deliberately NOT narrowed by the status filter: the band is what the filter is chosen FROM, so
@@ -175,12 +204,22 @@ export const DailySheetPage = (): JSX.Element => {
     if (exporting) return;
     setExporting(true);
     setExportError(null);
-    downloadAttendanceExport({
-      from: date,
-      to: date,
-      ...(branchIds.length === 0 ? {} : { branchId: branchIds }),
-      ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
-    })
+    // THE FILE IS WHAT IS ON SCREEN: the same date, branches, sections, status buckets, search
+    // box AND order. It used to send only the date and the two id lists, so a reader who had
+    // filtered to «غائب» and sorted by arrival got an unfiltered file ordered by employee code.
+    downloadAttendanceExport(
+      {
+        from: date,
+        to: date,
+        sortBy,
+        sortDir,
+        ...(branchIds.length === 0 ? {} : { branchId: branchIds }),
+        ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
+        ...(statuses.length === 0 ? {} : { status: statuses }),
+        ...(search === '' ? {} : { search }),
+      },
+      exportFileName(date, date, soleBranchName(branchIds, branches.data, locale)),
+    )
       .catch((error: unknown) => {
         setExportError(error instanceof Error ? error.message : String(error));
       })
@@ -327,6 +366,8 @@ export const DailySheetPage = (): JSX.Element => {
             <Pagination meta={days.data.meta} onPageChange={setPage} />
           )
         }
+        sort={{ by: sortBy, dir: sortDir }}
+        onSort={onSort}
         {...(can('attendance.export') ? { onExport: runExport } : {})}
         onOpenEmployee={(id) => navigate(`/attendance/employees/${id}?from=${date}&to=${date}`)}
       />

@@ -969,6 +969,10 @@ const PersonName = ({
           className,
         )}
         {...hover.triggerProps}
+        // R31 review — the name's own direction (an Arabic name, even on the English screen): cut
+        // beside the mark, it loses its END under the «…», never its start — on an LTR screen the
+        // box's direction cut «احمد سيد بركة محمد» to «…يد بركة محمد».
+        dir="auto"
         onPointerDown={(event) => {
           pointer.current = event.pointerType;
         }}
@@ -1076,10 +1080,15 @@ export const tileFigureSize = (figure: string): string =>
  *   · `line` — the van card's: ONE line — its icon, its figure, then its word beside them («1 محصنة»,
  *     «4 حقائب»), so the tile is one line high. The icon and the figure sit close, as one mark; the
  *     word a space after; the tile's own side room small (the line is centred — it only matters
- *     when the line is long). A three-digit figure a step smaller (`lineFigureSize`). Where a tile
- *     is still too narrow for the three on one line (the narrowest card with three digits and the
- *     longest words, or English «103 Secured»), the word steps under them, as the tile was before —
- *     never cut, never spilling, never an ellipsis in a count's name.
+ *     when the line is long). A three-digit figure a step smaller (`lineFigureSize`). R31 review —
+ *     the line is ONE line high always, whatever the width and the fonts: on a narrow tile (the
+ *     three-a-row cards, 82–90px: 1024, 1340–1440, 1800) a figure of two characters or more takes
+ *     one more step down and the word sits a pixel closer (`lineFigureTight`), so «10 Secured»,
+ *     «12 Cartons», «103 Secured» at 1440 and «103 محصنات» keep their word; and where even that
+ *     line cannot hold the word (three digits in English on the narrowest card, four digits), the
+ *     word steps out of view, never onto a second line — the tile keeps its icon and figure, and
+ *     says the whole count on hover (`title`) and to a screen reader. Never cut, never spilling,
+ *     never an ellipsis in a count's name.
  *   · `stack` — the van's hover card's: its icon and figure on one line, its word under them (Round
  *     26b) — four tiles side by side on that 18rem card leave each too narrow for one line.
  */
@@ -1097,6 +1106,23 @@ export const lineFigureSize = (figure: string): string =>
       : figure.length <= 5
         ? 'text-[12px]'
         : 'text-[11px]';
+
+/**
+ * R31 review — the same figure on a NARROW one-line tile (its room under 5.5rem: the three-a-row
+ * cards' 82–90px tiles), one step further down so the word keeps the line: two characters 13px,
+ * three 12px, four or five 11px, longer 10px; one character as ever. A container query on the tile
+ * itself (`[container-type:inline-size]`), so it follows the card's width, not the screen's.
+ */
+export const lineFigureTight = (figure: string): string =>
+  figure.length <= 1
+    ? ''
+    : figure.length === 2
+      ? '[@container(max-width:5.5rem)]:text-[13px]'
+      : figure.length === 3
+        ? '[@container(max-width:5.5rem)]:text-[12px]'
+        : figure.length <= 5
+          ? '[@container(max-width:5.5rem)]:text-[11px]'
+          : '[@container(max-width:5.5rem)]:text-[10px]';
 
 export const CountTile = ({
   kind,
@@ -1129,19 +1155,27 @@ export const CountTile = ({
         data-count-kind={kind}
         data-count-zero={some ? undefined : 'true'}
         data-count-layout="line"
-        {...(said === undefined ? {} : { title: said })}
+        // R31 review — the whole count on hover: the محصنات' own phrase, a package's «12 كرتونة» —
+        // where a narrow tile cannot show the word, this still says it.
+        {...(said !== undefined
+          ? { title: said }
+          : typeof value === 'number'
+            ? { title: `${figure} ${word}` }
+            : {})}
         className={cn(
-          'flex min-w-0 items-center justify-center rounded-lg px-0.5 py-1.5 ring-1 ring-inset',
+          'flex min-w-0 items-center justify-center rounded-lg px-0.5 py-1.5 ring-1 ring-inset [container-type:inline-size]',
           some ? look.chip : look.zero,
           className,
         )}
       >
         {/* ONE line: the icon and the figure as one mark, then the word — the same colours, sizes
-            and order as the stacked tile. Where the three cannot share a line, the word alone
-            steps under (`flex-wrap`); cut only if it could not fit a line of its own. */}
+            and order as the stacked tile. R31 review — one line HIGH, always (`h-5`): where the
+            three cannot share it, the word alone wraps onto a second line that is out of view
+            (`overflow-hidden`), never a two-line tile; a narrow tile first tightens the line
+            (`lineFigureTight`) so that only the extreme counts ever need it. */}
         <span
           {...hidden}
-          className="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-x-[3px]"
+          className="flex h-5 min-w-0 max-w-full flex-wrap items-center justify-center gap-x-[3px] overflow-hidden [@container(max-width:5.5rem)]:gap-x-0.5"
         >
           <span className="flex shrink-0 items-center gap-x-0.5">
             <BoardIcon
@@ -1154,6 +1188,7 @@ export const CountTile = ({
                 NUM,
                 'font-black leading-5',
                 lineFigureSize(figure),
+                lineFigureTight(figure),
                 some ? look.figure : look.zeroFigure,
               )}
             >

@@ -50,6 +50,7 @@ import {
   VanCounts,
   hoverIsOnChip,
   lineFigureSize,
+  lineFigureTight,
 } from './SecuredDistributionParts';
 import { CAPTAIN_FRAME, CAPTAIN_MARK, COUNT_LOOK } from './distribution-look';
 
@@ -211,7 +212,7 @@ describe('Round 25 — the captain’s line, the count FIRST; Round 26b — each
     expect(line).not.toContain('data-count-kind');
     expect(line).toMatch(
       new RegExp(
-        `data-captain-mark="true"[^>]*>[\\s\\S]*?${tr('ar', 'operations.crewPlan.role.captain')}</span><span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0">عبد الرحمن محمد عبد العزيز الشناوي</span>`,
+        `data-captain-mark="true"[^>]*>[\\s\\S]*?${tr('ar', 'operations.crewPlan.role.captain')}</span><span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0" dir="auto">عبد الرحمن محمد عبد العزيز الشناوي</span>`,
       ),
     );
     // Round 31 — «واسم القائد برضو يكون جمب الاشارة الخضرة»: his mark, then his name on the SAME
@@ -608,7 +609,7 @@ describe('Round 31 — «العدد والكلام على صف واحد مش ص�
   };
   /** The visible parts of a one-line tile, in the order drawn: the icon, the figure, the word. */
   const LINE =
-    /data-count-layout="line"[^>]*class="flex min-w-0 items-center justify-center rounded-lg px-0\.5 py-1\.5 ring-1 ring-inset [^"]*">(?:<span aria-hidden="true" |<span )class="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-x-\[3px\]"><span class="flex shrink-0 items-center gap-x-0\.5"><svg [^]*?<\/svg><span dir="ltr" class="[^"]*">([^<]+)<\/span><\/span><span class="max-w-full truncate text-\[10\.5px\] font-bold leading-4">([^<]+)<\/span><\/span>/;
+    /data-count-layout="line"[^>]*class="flex min-w-0 items-center justify-center rounded-lg px-0\.5 py-1\.5 ring-1 ring-inset [^"]*">(?:<span aria-hidden="true" |<span )class="flex h-5 min-w-0 max-w-full flex-wrap items-center justify-center gap-x-\[3px\] overflow-hidden \[@container\(max-width:5\.5rem\)\]:gap-x-0\.5"><span class="flex shrink-0 items-center gap-x-0\.5"><svg [^]*?<\/svg><span dir="ltr" class="[^"]*">([^<]+)<\/span><\/span><span class="max-w-full truncate text-\[10\.5px\] font-bold leading-4">([^<]+)<\/span><\/span>/;
   const parts = (html: string, mark: string): [string, string] => {
     const m = LINE.exec(tileOf(html, mark));
     expect(m, mark).not.toBeNull();
@@ -663,7 +664,7 @@ describe('Round 31 — «العدد والكلام على صف واحد مش ص�
     const said = tr('ar', 'operations.distribution.loadCount.few', { count: '3' });
     expect(tile).toContain(`title="${said}"`);
     expect(tile).toContain(`<span class="sr-only">${said}</span>`);
-    expect(tile).toMatch(/<span aria-hidden="true" class="flex min-w-0 max-w-full flex-wrap/);
+    expect(tile).toMatch(/<span aria-hidden="true" class="flex h-5 min-w-0 max-w-full flex-wrap/);
   });
 
   it('the colours and the 0 look are the tile’s as before — only the layout changed', () => {
@@ -688,21 +689,74 @@ describe('Round 31 — «العدد والكلام على صف واحد مش ص�
     expect(parts(unknown, 'data-van-package="boxes"')).toEqual(['—', 'صناديق']);
   });
 
-  it('a three-digit figure a step smaller so the word keeps the line; where it still cannot, the word steps under — never cut', () => {
+  // R31 review — REWRITTEN: this spec pinned the builder's fallback (the word wrapping UNDER the
+  // figure — a two-line tile, and its row with it: «10 Secured» at 1024/1340/1366, «103 Secured» at
+  // 1440). The tile is now one line high always: a narrow tile tightens first, and only where even
+  // that line cannot hold the word does the word leave the view — said on hover and to a reader.
+  it('one line HIGH always: a three-digit figure a step smaller; on a narrow tile every longer figure one more step and the word closer; where the line still cannot hold the word, the word leaves the view — never a second line, never cut', () => {
     expect(lineFigureSize('0')).toBe('text-[15px]');
     expect(lineFigureSize('99')).toBe('text-[15px]');
     expect(lineFigureSize('103')).toBe('text-[13px]');
     expect(lineFigureSize('1,251')).toBe('text-[12px]');
     expect(lineFigureSize('12,345')).toBe('text-[11px]');
+    // On a narrow tile (its room under 5.5rem — the three-a-row cards' 82–90px tiles).
+    expect(lineFigureTight('0')).toBe('');
+    expect(lineFigureTight('12')).toBe('[@container(max-width:5.5rem)]:text-[13px]');
+    expect(lineFigureTight('103')).toBe('[@container(max-width:5.5rem)]:text-[12px]');
+    expect(lineFigureTight('1,251')).toBe('[@container(max-width:5.5rem)]:text-[11px]');
+    expect(lineFigureTight('12,345')).toBe('[@container(max-width:5.5rem)]:text-[10px]');
     const html = card(VAN, { packages: { cartons: 103, bags: 12, boxes: 1251 } });
-    expect(tileOf(html, 'data-van-package="cartons"')).toMatch(/text-\[13px\][^"]*">103</);
-    expect(tileOf(html, 'data-van-package="bags"')).toMatch(/text-\[15px\][^"]*">12</);
-    expect(tileOf(html, 'data-van-package="boxes"')).toMatch(/text-\[12px\][^"]*">1,251</);
-    // The fallback: the line WRAPS (the word under the icon and figure, which never part) rather
-    // than cut the word or spill out of the tile.
+    expect(tileOf(html, 'data-van-package="cartons"')).toMatch(
+      /text-\[13px\] \[@container\(max-width:5\.5rem\)\]:text-\[12px\][^"]*">103</,
+    );
+    expect(tileOf(html, 'data-van-package="bags"')).toMatch(
+      /text-\[15px\] \[@container\(max-width:5\.5rem\)\]:text-\[13px\][^"]*">12</,
+    );
+    expect(tileOf(html, 'data-van-package="boxes"')).toMatch(
+      /text-\[12px\] \[@container\(max-width:5\.5rem\)\]:text-\[11px\][^"]*">1,251</,
+    );
+    // The tile is the container its narrow step asks about — the card's width, not the screen's.
     const tile = tileOf(html, 'data-van-package="cartons"');
-    expect(tile).toContain('flex-wrap items-center justify-center');
+    expect(tile).toMatch(/data-count-layout="line"[^>]*class="[^"]*\[container-type:inline-size\]/);
+    // ONE line high, whatever the fonts: the word may wrap only onto a line out of view — the icon
+    // and the figure never part, the word is never cut (no ellipsis in a count's name).
+    expect(tile).toContain(
+      'class="flex h-5 min-w-0 max-w-full flex-wrap items-center justify-center gap-x-[3px] overflow-hidden [@container(max-width:5.5rem)]:gap-x-0.5"',
+    );
     expect(tile).toContain('<span class="flex shrink-0 items-center gap-x-0.5">');
+    expect(html).not.toMatch(/data-count-layout="line"[^>]*class="[^"]*flex-col/);
+    // …and the whole count on hover, where the word cannot show: a package's own phrase.
+    expect(tile).toMatch(/data-count-layout="line" title="103 كراتين"/);
+    expect(tileOf(html, 'data-van-package="bags"')).toContain('title="12 حقيبة"');
+    // «…» / «—» say no count — no phrase to hover.
+    expect(
+      tileOf(render(<PackageCounts packages="pending" />), 'data-van-package="cartons"'),
+    ).not.toContain('title=');
+  });
+
+  it('[en] the whole count on hover in English too, and the محصنات tile keeps its own phrase', () => {
+    const html = card(VAN, {
+      locale: 'en',
+      count: 10,
+      packages: { cartons: 12, bags: 1, boxes: 0 },
+    });
+    expect(tileOf(html, 'data-van-package="cartons"')).toContain(
+      `title="12 ${tr('en', 'operations.distribution.packageWord.cartons.other')}"`,
+    );
+    expect(tileOf(html, 'data-van-count="10"')).toContain(
+      `title="${tr('en', 'operations.distribution.loadCount.other', { count: '10' })}"`,
+    );
+  });
+
+  it('a cut captain’s name keeps its START in view on either screen — the name’s own direction, not the box’s', () => {
+    // On the English (LTR) screen an Arabic name cut by the box's direction lost its first letters
+    // («احمد سيد بركة محمد» → «…يد بركة محمد»); `dir="auto"` gives the name its own (Arabic) side,
+    // so the «…» stands where the name ENDS — on the Arabic screen as on the English one.
+    for (const locale of ['ar', 'en'] as const) {
+      expect(lineOf(card(VAN, { locale }))).toMatch(
+        /<span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0" dir="auto">/,
+      );
+    }
   });
 
   it('the van’s hover card keeps its four tiles stacked, four across — too narrow for one line there', () => {

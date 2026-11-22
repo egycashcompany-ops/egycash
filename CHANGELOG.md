@@ -12,8 +12,10 @@ its entry here in the same PR.
 ### Changed
 
 - **Fleet: the owner's follow-ups of 22 November — «أرقام الفترة» removed, «إجمالي العهدة», no
-  error code on screen, and the six small fixes.** His answers to the six open items left after
-  #759: «أرقام الفترة» شيله · اجمالى العهدة · لا سيبها زى ما هى · صلحها · امسحها · صلحهم.
+  English on the error panel, the six small fixes, and «الطقم الثابت» without its page header.**
+  His answers to the six open items left after #759: «أرقام الفترة» شيله · اجمالى العهدة · لا سيبها
+  زى ما هى · صلحها · امسحها · صلحهم; then, over a picture of the fixed roster's header, «الجزء اللى
+  فوق دا شيله بتاع العنوان واللى فوقه».
   - **«لوحة تحكم الحركة»: the tab «أرقام الفترة» (key `period`) is gone.** The strip has eleven
     tabs, ending «التراخيص والتجديدات» · «ملخصات»; «ملخصات» was not named and is untouched. An old
     link to the removed tab (`?tab=period`, with or without its period) opens the first visible
@@ -22,8 +24,11 @@ its entry here in the same PR.
     القراءة بعد», «متوسط لكل سيارة» and the readings «لـX من Y» under it, «قراءات تحتاج مراجعة»;
     the month's on «نظرة عامة»); the accidents' count, the open ones and the undated ones in
     «الحوادث ومطالبات التأمين» («حوادث الفترة»); «مصروف التشغيل» in «الوقود والمصروفات» (the
-    month's on «نظرة عامة»), the card receipts in its «مصروف التشغيل حسب النوع», the custody
-    receipts in «العهدة» («مصروفات العهدة»); «فواتير التوكيل» (amount, rows, «بانتظار الفاتورة»)
+    month's on «نظرة عامة»), the card receipts in its «مصروف التشغيل حسب النوع» («وقود من
+    الكارت»), the custody receipts as one figure in «العهدة» («مصروفات العهدة») for a reader of the
+    custody screens — a receipts-only reader sees their parts in «مصروف التشغيل حسب النوع» («وقود من
+    العهدة», «كاوتش», «غسيل», «صيانة»), with no total of their own; «فواتير التوكيل» (amount, rows,
+    «بانتظار الفاتورة»)
     in «الوقود والمصروفات»; «البيانات متاحة من …» on «الوقود والمصروفات» and «العهدة», and the
     note that operating expenses and dealership invoices are never added together on «الوقود
     والمصروفات». Dropped for good: the maintenance visits counted by CHECK-IN day (count, out,
@@ -43,28 +48,43 @@ its entry here in the same PR.
     those.
   - **«نظرة عامة»: the card «رصيد العهدة النقدية» is «إجمالي العهدة»** ("Custody fund total"), the
     same figure and the same links. **«سجل العهدة» keeps «2 سيارات»** — no change.
-  - **The shared error state never prints the server's error code** («INTERNAL» …), in either
-    language: the friendly message was already chosen by it. When the server sent a request id,
-    one quiet line «الرقم المرجعي: req_…» stays under the message (the id left to right, isolated),
-    so support can still find the request in the API log; with no id, no line. Every screen's
-    «تعذّر التحميل» and `DataTable` draw it. New word `common.error.reference`.
+  - **The shared error state shows an Arabic reader no English at all.** It never prints the
+    server's error code («INTERNAL» …), in either language: the friendly message was already chosen
+    by it. In Arabic, a message with no Arabic letter in it — the server's own English sentence for
+    a code the friendly table does not word yet, or a client-side error — gives way to the general
+    line «حدث خطأ ما. يُرجى المحاولة مجددًا.» (toasts are unchanged). When the server sent a request
+    id, one quiet line stays under the message for support: in Arabic «الرقم المرجعي» and the shared
+    copy button («نسخ الرقم المرجعي»), the id on the clipboard, in the button's tooltip and in
+    `data-request-id`, never in the text; in English "Reference:" and the id (left to right,
+    isolated, on one line) with the same button. With no id, no line. Every screen's «تعذّر
+    التحميل» and `DataTable` draw it; on the Fleet dark tables the whole line takes the size the
+    old line had, so its name and the id are one size. New word `common.error.reference`.
   - **Small fixes:**
     - «شهر انتهاء الترخيص» on «السيارات» and «التراخيص», and the «حسب الشهر» months on
       «الإخطارات»: Latin digits, «أكتوبر 2026 (12)» (`monthCountOptions`).
     - The car page (`/fleet/vehicles/:id`): every figure and date of the page in Latin digits,
-      «آخر قراءة عداد» and its «أعلى قراءة … كم» line included. The printed sheet is unchanged.
+      «آخر قراءة عداد» and its «أعلى قراءة … كم» line included, and the record's counts grouped like
+      the rest («1,234 قراءة»). The printed sheet is unchanged (its two dates keep the shared
+      Arabic-Indic digits, as the registry's own print does).
     - The car record's «الحوادث» counts by the car's code, as its link opens the list (old-book
       files under that code included), so the number is the list it opens and «سجل نظيف» follows
       it — as «العدادات» and «الصيانة» already did.
     - A driver's name and code no longer touch in Arabic: the gap is fixed once in the shared name
       (`EmployeeName`), so the daily «تعيين السيارات» «تعديل» dialog, the «السائقون» form,
-      «مخالفات السيارات» and the dashboard's «المخالفات» tab all gain it. «الطقم الثابت» keeps its
-      own.
+      «مخالفات السيارات» and the dashboard's «المخالفات المرورية والتسويات» tab all gain it. «الطقم
+      الثابت» keeps its own.
     - The daily roster's notes take 500 letters at most, on a computer and a phone, as «الطقم
       الثابت» (the API's limit).
     - «نوع المهمة» on the computer boards of «تعيين السيارات» and «الطقم الثابت»: a long name
       ends in «…» and the hover shows the whole name. No width changed: both tables fit at 1280,
       1366 and 1920 exactly as before (measured).
+  - **«الطقم الثابت» (`/fleet/fixed-roster`) has no page header at any width** — no breadcrumbs
+    «الحركة › الطقم الثابت», no visible title, no divider — reversing answer 2 ج of the screen's
+    approved sample. The board's own first row is the top of the page: the car count and the Excel
+    pill on a computer, the car search and the Excel button on a phone or a tablet; the table and
+    the cards get the header's rows back. A visually hidden h1 («الطقم الثابت») stays for screen readers. The
+    page container, the sticky rows and the save bar are as they were; the daily «تعيين السيارات»
+    is untouched.
   - Unchanged: the data (no migration), the permissions, every endpoint but the two fields above,
     and the mistaken page, which was deleted outside the repository.
 

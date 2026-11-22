@@ -9,9 +9,11 @@
 // away more than one car's work.
 //
 // MINUS THE DAY: a standing crew is a fact about a car, true until somebody changes it — so no
-// stepper, no «يوم سابق», no availability word, no absence, no licence block. The page header
-// («الطقم الثابت» under «الحركة») is the shell's, on top at every width (owner's answer 2 ج); this
-// board draws no title of its own, and the toolbar's Excel pill is the screen's ONE Excel control.
+// stepper, no «يوم سابق», no availability word, no absence, no licence block. NO PAGE HEADER: the
+// owner had it removed at every width (22 November, «الجزء اللى فوق دا شيله بتاع العنوان واللى
+// فوقه»), so this board's toolbar row is the top of the page; the shell keeps only a visually
+// hidden h1. This board draws no title of its own, and the toolbar's Excel pill is the screen's ONE
+// Excel control.
 //
 // THE FIXED RULES, unchanged: a car the workshop holds keeps an editable standing crew (its mission,
 // its seats, the pen, the swap, the bin); «إفراغ الطقم» empties both seats at once and keeps the
@@ -320,8 +322,9 @@ export const FixedDeskBoard = ({
   return (
     <>
       <div className={BOARD_FRAME} data-fixed-desk="true">
-        {/* The toolbar row under the page header: how many cars the filters leave, and the one
-            Excel control of this screen («تصدير Excel» — the table on screen, eight columns). */}
+        {/* The toolbar row, the top of the page (there is no page header): how many cars the
+            filters leave, and the one Excel control of this screen («تصدير Excel» — the table on
+            screen, eight columns). */}
         <div className="flex items-center justify-between gap-2" data-fixed-toolbar="true">
           <span
             role="status"

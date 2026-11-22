@@ -15,29 +15,43 @@ nothing else:
 2. **«نظرة عامة»: «رصيد العهدة النقدية» → «إجمالي العهدة»** (en "Custody fund total"): the value of
    one key; same figure, same links.
 3. **«سجل العهدة» keeps «2 سيارات»**: no change anywhere.
-4. **The shared `ErrorState` never prints the server's error code** («INTERNAL» …) in either
-   language. When the server sent a request id, one quiet «الرقم المرجعي: req_…» line stays (the
-   id in a `bdi dir="ltr"`, `font-mono` kept for the Fleet tables' restyle), so a screenshot still
-   finds the request in the API log. New key `common.error.reference`.
+4. **The shared `ErrorState` shows an Arabic reader no English at all.** It never prints the
+   server's error code («INTERNAL» …) in either language. In Arabic, a message with no Arabic
+   letter (the server's own English for a code the friendly table does not word yet, a client
+   `Error`) gives way to the general line («حدث خطأ ما…»); toasts are unchanged. When the server
+   sent a request id, one quiet line stays for support: in Arabic «الرقم المرجعي» and the shared
+   `CopyIdButton` («نسخ الرقم المرجعي») — the id on the clipboard, in the tooltip and in
+   `data-request-id`, never in the text; in English "Reference:" and the id (a `bdi dir="ltr"`,
+   `whitespace-nowrap font-mono`) with the same button. On the Fleet dark tables
+   `ERROR_ID_AS_FIGURES` now sizes the whole line (`[data-error-reference]`), so the name and the id
+   are one size. New key `common.error.reference`.
 5. The mistaken page (artifact) was deleted outside the repository; nothing to build.
 6. The small fixes:
    - a. `monthCountOptions`: `ar-EG-u-nu-latn` → «أكتوبر 2026 (12)» on «السيارات», «التراخيص»
      and «الإخطارات».
    - b. The car page: page-local Latin helpers for every figure and date of the page body
-     («آخر قراءة عداد», «أعلى قراءة … كم» included); the print sheet and the shared `format.ts`
-     unchanged.
+     («آخر قراءة عداد», «أعلى قراءة … كم» included, and the record counts grouped, «1,234 قراءة»);
+     the print sheet (its two dates in the shared ar-EG digits, as the registry's print) and the
+     shared `format.ts` unchanged — told to the owner as a question.
    - c. The car record counts «الحوادث» with `vehicleCodes: [code]`, the filter its link sends (as
      odometer and maintenance already did, #753 D20(d)), so the number equals the opened list.
    - d. `EmployeeName`: the margin moves to a span in the page's direction and the code is a
      `bdi dir="ltr"` inside it — the gap between name and code in both directions, for every
      reader (the daily «تعديل» dialog, «السائقون», «مخالفات السيارات», the dashboard's
-     «المخالفات»). `FixedCrewDialog` keeps its approved face.
+     «المخالفات المرورية والتسويات»). `FixedCrewDialog` keeps its approved face.
    - e. `ROSTER_NOTE_MAX = 500` (the API's `PlanFleetRosterRowSchema.notes.max(500)`) on the daily
      desk dialog and the daily phone notes sheet.
    - f. `MISSION_BOX` gains `[&_select]:!truncate` and both desk boards pass the chosen mission's
      name as the select's `title` (`CatalogSelect` gets an optional `title`, default the aria
      label). No width changed: scrollWidth − clientWidth is 0 before and after at 1280, 1366 and
      1920 on both boards, every column width identical.
+7. **«الطقم الثابت» has no page header at any width** (owner, over a picture of it: «الجزء اللى
+   فوق دا شيله بتاع العنوان واللى فوقه»; it reverses answer 2 ج). `FixedRosterPage` drops
+   `PageHeader` — the breadcrumbs «الحركة › الطقم الثابت», the title and its divider — and keeps
+   only `<h1 className="sr-only">`; the board's first row (the car count + Excel pill on a
+   computer, the search + Excel button on a tablet and a phone) is the top of the page. The page
+   container (`fullHeight`), the sticky rows and the save bar are unchanged; the daily «تعيين
+   السيارات» is untouched.
 
 ## ما يجب أن يعرفه صاحب الطلب
 
@@ -50,19 +64,21 @@ nothing else:
 7. «الحوادث»: العدد والمفتوحة منها والحوادث اللي من غير تاريخ موجودين في «الحوادث ومطالبات التأمين» («حوادث الفترة»).
 8. «المتبقي» بتاع الحوادث المفتوحة لوحدها اتشال؛ في «الحوادث ومطالبات التأمين» فيه «إجمالي المتبقي» لكل حوادث الفترة المفتوحة والمقفولة («مبالغ ملفات حوادث الفترة»). ونسبة «المفتوحة منها» اتشالت.
 9. «مصروف التشغيل» موجود في «الوقود والمصروفات» بنفس الاسم، وبتاع الشهر في «نظرة عامة».
-10. «إيصالات الكارت» موجودة في «مصروف التشغيل حسب النوع» في «الوقود والمصروفات»، و«إيصالات العهدة» موجودة في تبويب «العهدة» باسم «مصروفات العهدة» (ومتقسمة حسب النوع في «الوقود والمصروفات»). شريط «كارت ثم عهدة» اتشال، والنسبة بقت لكل نوع في «مصروف التشغيل حسب النوع».
+10. «إيصالات الكارت» موجودة في «مصروف التشغيل حسب النوع» في «الوقود والمصروفات» باسم «وقود من الكارت». «إيصالات العهدة» كرقم واحد موجودة في تبويب «العهدة» باسم «مصروفات العهدة» للي عنده صلاحية العهدة؛ واللي معندوش الصلاحية دي هيلاقيها متقسمة بس في «مصروف التشغيل حسب النوع» («وقود من العهدة» و«كاوتش» و«غسيل» و«صيانة») من غير رقم إجمالي لوحده. شريط «كارت ثم عهدة» اتشال، والنسبة بقت لكل نوع في «مصروف التشغيل حسب النوع».
 11. «فواتير التوكيل» (المبلغ وعدد الصفوف و«بانتظار الفاتورة») موجودة في «الوقود والمصروفات» بنفس الاسم؛ نسبة «الصفوف المسجّلة قيمتها» اتشالت.
 12. «البيانات متاحة من …» بتفضل تظهر في «الوقود والمصروفات» و«العهدة»، والجملة اللي بتقول إن مصروف التشغيل وفواتير التوكيل ما بيتجمعوش موجودة في «الوقود والمصروفات».
 13. كارت «رصيد العهدة النقدية» في «نظرة عامة» بقى اسمه «إجمالي العهدة»، نفس الرقم ونفس الرابط.
 14. «سجل العهدة»: سيبنا «2 سيارات» زي ما هي، ما اتغيرش حاجة.
-15. رسالة الغلط: الكلمة الإنجليزي (كود الغلط) مش هتظهر لحد تاني. اللي بيفضل تحت الرسالة سطر صغير «الرقم المرجعي» عشان الدعم الفني يلاقي الطلب، والرقم ده نفسه حروف وأرقام بالإنجليزي لأنه رقم الطلب عندهم.
+15. رسالة الغلط: مفيش أي كلام إنجليزي هيظهر فيها بالعربي تاني. كود الغلط اتشال، ولو السبب اللي جاي من السيرفر لسه ملوش جملة عربي هتظهر الجملة العامة «حدث خطأ ما. يُرجى المحاولة مجددًا.» بدل الجملة الإنجليزي. تحت الرسالة سطر صغير «الرقم المرجعي» وجنبه زرار نسخ: الرقم نفسه مش مكتوب على الشاشة، بس لما تدوس الزرار بيتنسخ عشان تبعته للدعم الفني. التنبيهات اللي بتطلع بعد الحفظ ما اتغيرتش؛ لو شفت فيها جملة إنجليزي في غلط نادر قولنا.
 16. الصفحة اللي اتعملت بالغلط اتمسحت.
 17. «شهر انتهاء الترخيص» في «السيارات» و«التراخيص»، وشهور «حسب الشهر» في «الإخطارات»: الأرقام بقت إنجليزي زي باقي السيستم.
-18. صفحة السيارة: كل الأرقام والتواريخ بقت أرقام إنجليزي، ومنها «آخر قراءة عداد» وسطر «أعلى قراءة». ورقة الطباعة زي ما هي.
+18. صفحة السيارة: كل الأرقام والتواريخ بقت أرقام إنجليزي، ومنها «آخر قراءة عداد» وسطر «أعلى قراءة»، والأعداد اللي في سجل السيارة بقت بفاصلة زي باقي الصفحة («1,234 قراءة»). ورقة «طباعة التقرير» ما اتغيرتش: تاريخ الانضمام وانتهاء الترخيص فيها لسه بالأرقام العربي زي ورقة طباعة «السيارات»؛ لو عايزهم إنجليزي قولنا.
 19. «الحوادث» في سجل السيارة بقت بتتعد بكود السيارة زي الرابط بالظبط، فالرقم بقى نفس عدد اللي بيفتح (ومعاه حوادث الدفتر القديم اللي على نفس الكود).
-20. «تعديل» في «تعيين السيارات»: بقى فيه مسافة بين اسم السواق وكوده. اتصلحت في المكان المشترك، فالمسافة اتظبطت كمان في «مخالفات السيارات» و«السائقون» وتبويب «المخالفات» في «لوحة تحكم الحركة».
+20. «تعديل» في «تعيين السيارات»: بقى فيه مسافة بين اسم السواق وكوده. اتصلحت في المكان المشترك، فالمسافة اتظبطت كمان في «مخالفات السيارات» و«السائقون» وتبويب «المخالفات المرورية والتسويات» في «لوحة تحكم الحركة».
 21. ملاحظات «تعيين السيارات» على الكمبيوتر والموبايل: بقى ليها حد أقصى 500 حرف زي «الطقم الثابت».
 22. «نوع المهمة» على الكمبيوتر في «تعيين السيارات» و«الطقم الثابت»: الاسم الطويل بيتقفل بثلاث نقط، ولما تقف عليه بالماوس يظهر الاسم كله، وعرض الجدول زي ما هو على اللابتوب والشاشة الكبيرة.
+23. «الطقم الثابت»: شلنا الجزء اللي فوق كله، «الحركة › الطقم الثابت» والعنوان «الطقم الثابت» والخط اللي تحتهم، على الكمبيوتر والتابلت والموبايل. ده عكس اللي اخترته قبل كده في السؤال 2 (ج). الصفحة دلوقتي بتبدأ على طول بسطر عدد السيارات وزرار التصدير لإكسل على الكمبيوتر، وبالبحث وزرار الإكسل على التابلت والموبايل، والجدول والكروت خدوا المساحة اللي كان واخدها العنوان. «تعيين السيارات» زي ما هي.
+24. حاجات صغيرة لاحظناها ومش في اللي طلبته فما لمسناهاش: عدد السيارات فوق جدول «السيارات» و«التراخيص» وعدد «الإخطارات» لسه بالأرقام العربي زي «١٥ سيارة»؛ و«المخالفات» في سجل السيارة لسه بتتعد بالسيارة مش بكودها زي الرابط، فممكن الرقم يختلف عن اللي بيفتح؛ وكلام العدد في سجل السيارة زي «3 حادث» و«14 عمليات» مش مظبوط نحويًا. لو عايز أي حاجة فيهم تتصلح قولنا.
 
 ## Scope
 
@@ -79,10 +95,17 @@ nothing else:
   `tab-period.tsx`, `period-tabs.tsx` and `fleet-dashboard-period-tabs.spec.tsx` deleted; the
   shared filter-bar cases of the deleted spec moved to the new
   `fleet-dashboard-period-filters.spec.tsx`; the two dashboard fixtures.
-- web, answer 4 and a–f: `ErrorState.tsx` (+ new `error-state.spec.tsx`), `licence-months.ts`,
-  `VehicleDetailPage.tsx`, `EmployeeName.tsx`, `CatalogSelect.tsx`, `RosterAssignDialog.tsx`,
+- web, answer 4 and a–f: `ErrorState.tsx` (+ new `error-state.spec.tsx`; it now uses the shared
+  `CopyIdButton`), `VehiclesListPage.tsx` (`ERROR_ID_AS_FIGURES` sizes the whole reference line;
+  `fleet-figures-font.spec.ts`), `licence-months.ts`, `VehicleDetailPage.tsx`, `EmployeeName.tsx`,
+  `CatalogSelect.tsx`, `RosterAssignDialog.tsx`,
   `roster/{roster-parts,RosterDeskBoard,RosterTouchBoard,FixedDeskBoard,FixedCrewDialog}.tsx`, and
   their specs.
+- web, the fixed roster's header: `FixedRosterPage.tsx` (no `PageHeader`, an `sr-only` h1),
+  comments in `FixedDeskBoard.tsx` / `FixedTouchBoard.tsx`; `fleet-fixed-roster.spec.tsx`,
+  `fleet-fixed-roster-touch.spec.tsx` and `lib/fixed-roster-model.spec.ts` re-pointed from «one
+  title on top» to «no page header, a hidden h1, the board's first row on top» (desk, phone,
+  portrait, landscape and the short phone). Design doc §4.5b + revision 1.26.
 - i18n: 26 keys removed (ar + en), `fleet.dash.overview.kpi.custody.title` re-valued,
   `common.error.reference` added. CHANGELOG `[Unreleased]` entry.
 - Follow-on edits: `dash-shell.tsx` (the `PageRead` doc no longer names `PeriodTab`),
@@ -111,8 +134,9 @@ nothing else:
 - [x] ar + en translations; RTL-safe layout — every key in both; the name/code gap fixed with a
       `bdi` in the page's direction; Latin digits.
 - [x] Docs updated in this PR (permission matrix, DB design, CHANGELOG, ADR if architectural) —
-      CHANGELOG; the permission matrix and DB design are unchanged (no key, no schema); no doc
-      named the removed tab.
+      CHANGELOG; `fleet-module-design.md` §4.5b (no page header on «الطقم الثابت») + revision 1.26;
+      the permission matrix and DB design are unchanged (no key, no schema); no doc named the
+      removed tab.
 
 ## Verification
 
@@ -162,9 +186,15 @@ the licence-month options, the car page, the daily dialog's gap (before / after)
   days that HAVE hours» used `recentWorkday() + 1`, a Friday (`weekend`) whenever the run is on a
   Sunday — it now takes the next workday (`workdayAfter`, skipping the weekend and the seeded
   holidays). Every assertion is unchanged.
-- Seen, not in the owner's list, not touched: the vehicles list's title count is still
-  Arabic-Indic (`VehiclesListPage`), and the car record still counts violations by id while its
-  link opens by code.
+- Seen, not in the owner's list, not touched, and asked in told item 24: the title counts of
+  «السيارات» (`VehiclesListPage`), «التراخيص» (`LicensingPage`) and «الإخطارات» (`NoticesPage`)
+  are still Arabic-Indic (`formatNumber(…, locale)`); the car record still counts violations by id
+  while its link opens by code; the record chips' number agreement («3 حادث», «14 عمليات»). The
+  print sheet's two dates keep the shared ar-EG digits (told item 18, asked).
+- `ErrorState` only: toasts still read `errorMessage` as before, so a toast for a code the Arabic
+  table does not word still shows the server's English (told item 15 says so). The Arabic table's
+  `BUSINESS_RULE` entry does not match the real code `BUSINESS_RULE_VIOLATION`; mapping it would
+  change toasts too, so it is left for a separate follow-up.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 

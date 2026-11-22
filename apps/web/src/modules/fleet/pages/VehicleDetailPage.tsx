@@ -455,7 +455,8 @@ export const VehicleDetailPage = (): JSX.Element => {
           'border-emerald-500/20 bg-emerald-500/10 font-medium text-emerald-600 dark:text-emerald-400',
       };
     }
-    return { tag: t(`fleet.vehicle.count.${key}`, { count: String(n) }) };
+    // Grouped like every other figure on the page («1,234 قراءة»), in Latin digits.
+    return { tag: t(`fleet.vehicle.count.${key}`, { count: latinNumber(n) }) };
   };
   const make = type === undefined ? '—' : localized(type.name, locale);
   /** «طباعة التقرير»: the car's whole file, the same sheet the registry's print button opens. */

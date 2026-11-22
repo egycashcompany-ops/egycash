@@ -267,6 +267,26 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
     expect(queryOf(odometerHref()).getAll('vehicleCodes')).toEqual(['200']);
   });
 
+  it('writes a record count grouped like the page’s other figures — «1,234 قراءة», Latin', () => {
+    // Owner's (b), the car page consistently: «120,000» and «111,750 كم» are grouped, so a
+    // history row's count is too — never «1234 قراءة», never Arabic-Indic.
+    const total = (totalItems: number) => ({
+      items: [],
+      meta: { page: 1, pageSize: 1, totalItems, totalPages: totalItems },
+    });
+    const markup = drawProfile(vehicleWith('150'), (qc) => {
+      qc.setQueryData(
+        listKey('fleet', 'odometer', { vehicleCodes: ['150'], page: 1, pageSize: 1 }),
+        total(1234),
+      );
+    });
+    expect(markup).toContain(translate('ar', 'fleet.vehicle.count.odometer', { count: '1,234' }));
+    expect(markup).not.toContain(
+      translate('ar', 'fleet.vehicle.count.odometer', { count: '1234' }),
+    );
+    expect(markup).not.toContain('١٬٢٣٤');
+  });
+
   it('«الصيانة» counts with the code its link sends too — the old book’s visits included', () => {
     // The audit's car 194: two visits on the registry car and one from the old book under its
     // code with no car attached. The maintenance screen opened by `vehicleCodes=194` lists 3; the

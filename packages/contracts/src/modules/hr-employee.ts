@@ -880,6 +880,11 @@ export interface EmployeeCodeMatchDto {
   status: EmployeeStatus;
   /** The current photo's file, or null — a new one replaces it (the owner's choice). */
   photoFileId: string | null;
+  /**
+   * When the current photo was uploaded (ISO), or null with no photo. The bulk upload skips the
+   * people whose photo went up recently, so a second pick of the same folder sends nothing twice.
+   */
+  photoUploadedAt: string | null;
 }
 
 export interface EmployeeDto {

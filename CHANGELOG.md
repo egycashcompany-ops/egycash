@@ -59,6 +59,15 @@ its entry here in the same PR.
 
 ### Added
 
+- **HR bulk photos: one photo per duplicate, chosen for you, and no photo sent twice.** «عايز
+  المكرر تختار منه أنت تلقائي واحده وترفعها… مش عايز أرفع اللى اترفعوا».
+  ([employee module design](docs/12-planning/employee-module-design.md) §8)
+  - «اختيار صورة واحدة لكل مكرر تلقائيًا» keeps the file whose name fits the employee best (then
+    the newest, then the largest) and leaves the rest out; «عرض: المكرر فقط» lists them.
+  - The people whose photo was already uploaded today are skipped by default (or in the last 7
+    days, or none), so picking the whole folder again sends only what is missing.
+    `POST /hr/employees/codes/lookup` now answers `photoUploadedAt` for each employee.
+
 - **IT consumables: the printer's counter, required when a toner goes in.** «عند صرف الصنف : حبارة
   أو النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة —
   يعني إجبارى أدخل عدد الورق المطبوع عند تركيب الحبارة», and «وأكيد مش هيدخل عدد ورق أقل أو مساوي

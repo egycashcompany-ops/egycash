@@ -155,6 +155,17 @@ class FileRepository extends BaseRepository<FileDoc> {
    * «Live» is the same three clauses the listing uses — not soft-deleted, the latest version, and
    * `active` rather than archived — so a caller cannot see a file here that the listing would hide.
    */
+  /** When each of these files was uploaded — only the date, for a caller that already holds them. */
+  async uploadedAtByIds(ids: readonly string[]): Promise<Map<string, Date>> {
+    if (ids.length === 0) return new Map();
+    const docs = await this.model
+      .find({ _id: { $in: [...ids] } } as FilterQuery<FileDoc>)
+      .select({ uploadedAt: 1 })
+      .lean<Array<Pick<FileDoc, '_id' | 'uploadedAt'>>>()
+      .exec();
+    return new Map(docs.map((doc) => [String(doc._id), doc.uploadedAt]));
+  }
+
   async entityIdsWithLiveFiles(
     moduleId: string,
     entityTypes: readonly string[],

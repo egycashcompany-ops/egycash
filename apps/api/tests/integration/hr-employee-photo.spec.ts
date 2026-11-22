@@ -651,13 +651,20 @@ describe('POST /hr/employees/codes/lookup', () => {
     expect(found.map((m) => m.code).sort()).toEqual([employee.code, other.code].sort());
     const mine = found.find((m) => m.code === employee.code);
     expect(mine).toMatchObject({ id: employee.id, fullNameAr: 'موظف بصورة', status: employee.status });
-    expect(found.find((m) => m.code === other.code)?.photoFileId).toBeNull();
+    const otherMatch = found.find((m) => m.code === other.code);
+    expect(otherMatch?.photoFileId).toBeNull();
+    expect(otherMatch?.photoUploadedAt).toBeNull();
   });
 
-  it('says whether the employee already has a photo — the one the upload will replace', async () => {
+  it('says whether the employee already has a photo, and when it went up', async () => {
+    const before = Date.now();
     await uploadPhoto(editorToken, employee.id, PNG, 'face.png', 'image/png');
     const [match] = data<EmployeeCodeMatchDto[]>(await lookup(editorToken, [employee.code]));
     expect(match?.photoFileId).not.toBeNull();
+    // The screen skips the people whose photo is already new: this is what it reads.
+    const at = Date.parse(match?.photoUploadedAt ?? '');
+    expect(at).toBeGreaterThanOrEqual(before - 1000);
+    expect(at).toBeLessThanOrEqual(Date.now() + 1000);
   });
 
   it('needs employee.editPersonal: a viewer may not ask', async () => {

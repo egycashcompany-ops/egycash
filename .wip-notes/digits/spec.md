@@ -18,3 +18,5 @@ Excel numeric cells, typed input values, the ATM register's D7 «Latin in both l
 
 Standing rules: summary + DARK pictures before the PR; Arabic-only messages to the owner; soft
 delete; no data change; never print PINs; mask cards; memory rule (one vitest at a time).
+
+Survey workflow: run wf_e3ea191c-e5c (read-only; copy of the script beside this file). Journal: /root/.claude/projects/-home-user/85f289ec-521b-5944-9b89-a0120b22d71a/subagents/workflows/wf_e3ea191c-e5c/journal.jsonl

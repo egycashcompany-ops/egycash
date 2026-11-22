@@ -327,6 +327,17 @@ describe('«المكرر تختار منه أنت تلقائي واحده» — 
     );
   });
 
+  it('passes over a file that already failed, so picking again tries the other', () => {
+    const failedOne = '0601746 محمد ابراهيم عبود محمد شحاته (2).jpg';
+    const { keep } = pickOnePerEmployee(
+      rows,
+      (key) => facts.get(key),
+      (key) => key === failedOne,
+    );
+    expect(keep.has('0601746 محمد ابراهيم عبود محمد شحاته.jpg')).toBe(true);
+    expect(keep.has(failedOne)).toBe(false);
+  });
+
   it('touches no row that is not one of several', () => {
     const single = planPhotoBatch([file('0601746 محمد.jpg')], people, new Set());
     expect(pickOnePerEmployee(single, () => undefined).leave.size).toBe(0);

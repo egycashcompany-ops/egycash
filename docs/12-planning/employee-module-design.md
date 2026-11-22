@@ -230,9 +230,10 @@ New sidebar app **Employees** (dynamic-nav application, peer of Recruitment):
       then by name — the same choice whatever order the files came in. The rows say what was chosen
       and can still be ticked by hand. «عرض: المكرر فقط» shows every row of such employees.
     - The lookup returns when each employee's current photo was uploaded (`photoUploadedAt`, the
-      photo file's own `uploadedAt`). By default the dialog skips the people whose photo went up
-      today («تخطي الصور المرفوعة: اليوم»; also the last 7 days, or nothing), so picking the same
-      folder again after a reload sends only what is still missing. Within one dialog a photo
+      photo file's own `uploadedAt`). By default the dialog skips the people whose photo went up in
+      the last 7 days («تخطي الصور المرفوعة: آخر 7 أيام»; also today, the last 30 days, or nothing),
+      so picking the same folder again after a reload — the next day too — sends only what is still
+      missing. A file that already failed is the last one the automatic choice keeps. Within one dialog a photo
       already sent is never offered again whatever the choice.
 - **Employee Files** pages move under this app unchanged. Recruitment app loses its Employees entry.
 - Future-proof (F6): Attendance/Leave/Payroll/Performance each become an additive tab + action

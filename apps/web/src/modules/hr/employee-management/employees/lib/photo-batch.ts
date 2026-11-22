@@ -342,11 +342,13 @@ const fitOf = (row: PhotoRow): number =>
  * One photo of each employee who has several: «المكرر تختار منه أنت تلقائي واحده». The one kept
  * is the one whose name in the file fits the employee best; then the newest file (the later
  * shot); then the largest (the sharper copy); then the name, so the choice never depends on the
- * order the files came in. Only rows marked `duplicate` take part. Returns the keys to leave out.
+ * order the files came in. A file that already failed in this dialog goes after all of them. Only rows marked `duplicate` take part. Returns the keys to leave out.
  */
 export const pickOnePerEmployee = (
   rows: readonly PhotoRow[],
   factsOf: (key: string) => PhotoFileFacts | undefined,
+  /** A file that already failed to go up: ranked last, so picking again tries the other one. */
+  failed: (key: string) => boolean = () => false,
 ): { keep: Set<string>; leave: Set<string> } => {
   const groups = new Map<string, PhotoRow[]>();
   for (const row of rows) {
@@ -357,6 +359,8 @@ export const pickOnePerEmployee = (
   const leave = new Set<string>();
   for (const group of groups.values()) {
     const ranked = [...group].sort((a, b) => {
+      const broken = Number(failed(a.key)) - Number(failed(b.key));
+      if (broken !== 0) return broken;
       const fit = fitOf(b) - fitOf(a);
       if (fit !== 0) return fit;
       const newer = (factsOf(b.key)?.lastModified ?? 0) - (factsOf(a.key)?.lastModified ?? 0);

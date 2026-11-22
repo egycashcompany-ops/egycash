@@ -124,15 +124,16 @@ const NEVER_SENT: ReadonlySet<PhotoRowStatus> = new Set([
 ]);
 
 /** How far back a photo already uploaded is left alone. */
-const SKIP_CHOICES = ['today', 'week', 'none'] as const;
+const SKIP_CHOICES = ['today', 'week', 'month', 'none'] as const;
 type SkipChoice = (typeof SKIP_CHOICES)[number];
 
-/** The cut-off for a choice: the start of this computer's day, or a week before it; or none. */
+/** The cut-off for a choice: the start of this computer's day, 7 or 30 days back; or none. */
 const skipSinceOf = (choice: SkipChoice, now: number): number | null => {
   if (choice === 'none') return null;
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   if (choice === 'week') start.setDate(start.getDate() - 6);
+  if (choice === 'month') start.setDate(start.getDate() - 29);
   return start.getTime();
 };
 
@@ -309,10 +310,10 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
   const [notice, setNotice] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [view, setView] = useState<'all' | 'attention' | 'several'>('all');
-  // «مش عايز أرفع اللى اترفعوا»: by default the people whose photo went up today are skipped, so
-  // picking the same folder again — after a reload, or to finish the duplicates — sends nothing
-  // twice. Counted from when the dialog opened, in this computer's own day.
-  const [skip, setSkip] = useState<SkipChoice>('today');
+  // «مش عايز أرفع اللى اترفعوا»: by default the people whose photo went up in the last 7 days are
+  // skipped, so picking the same folder again — after a reload, the next day — sends nothing twice.
+  // Counted from when the dialog opened, in this computer's own days.
+  const [skip, setSkip] = useState<SkipChoice>('week');
   const [openedAt] = useState(() => Date.now());
   const skipSince = useMemo(() => skipSinceOf(skip, openedAt), [skip, openedAt]);
   /** What «one photo per employee» chose, so its rows can say so. */
@@ -543,12 +544,17 @@ export const BulkPhotoUploadDialog = ({ onClose }: { onClose: () => void }): JSX
 
   /** «المكرر تختار منه أنت تلقائي واحده»: keep one photo of each employee, leave the rest out. */
   const pickOneEach = (): void => {
-    const { keep, leave } = pickOnePerEmployee(rows, (key) => {
-      const source = byKey.get(key)?.file;
-      return source === undefined
-        ? undefined
-        : { size: source.size, lastModified: source.lastModified };
-    });
+    const { keep, leave } = pickOnePerEmployee(
+      rows,
+      (key) => {
+        const source = byKey.get(key)?.file;
+        return source === undefined
+          ? undefined
+          : { size: source.size, lastModified: source.lastModified };
+      },
+      // A file that already failed here goes last: picking it again would only fail again.
+      (key) => progress.get(key)?.state === 'failed',
+    );
     if (leave.size === 0) return;
     setExcluded((now) => new Set([...now, ...leave]));
     setAutoLeft((now) => new Set([...now, ...leave]));

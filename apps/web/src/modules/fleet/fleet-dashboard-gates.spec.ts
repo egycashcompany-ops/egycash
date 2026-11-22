@@ -97,11 +97,13 @@ describe('the home route', () => {
   });
 
   it('gains no key from the overview’s two new sections — no new permission key', () => {
-    // «مخالفات قائمة» is gated as the year's fines, «زيارات الصيانة» by exit day as the visits.
+    // «مخالفات قائمة» is gated as the year's fines, «زيارات الصيانة» by exit day as the workshop
+    // screen it opens (the check-in-day section it once matched went with its tab).
     expect(fleetDashboardGateKeys('violationsOpen')).toEqual(
       fleetDashboardGateKeys('violationsYear'),
     );
-    expect(fleetDashboardGateKeys('exits')).toEqual(fleetDashboardGateKeys('visits'));
+    expect(fleetDashboardGateKeys('exits')).toEqual(['fleetMaintenance.view']);
+    expect('visits' in FLEET_DASHBOARD_GATES).toBe(false);
     const before = new Set(
       PAGE_SECTIONS.filter(
         (section) => section !== 'violationsOpen' && section !== 'exits',

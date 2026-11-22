@@ -2,9 +2,10 @@
 // شاشة الطاقم الثابت زى التعيين اليومى»), minus the day.
 //
 // The risk of a twin is in the difference: a day that crept back in (a stepper, «يوم سابق», an
-// availability word), a second title or a second Excel control (owner's answer 2 ج: the page
-// header on top, ONE Excel per width), a flag on a standing member who can no longer drive (answer
-// 1 ب: none), a workshop lock copied from the day, a save that writes without being asked. Each is
+// availability word), a page header that came back or a second Excel control (the owner had the
+// header removed at every width on 22 November, reversing answer 2 ج; ONE Excel per width), a flag
+// on a standing member who can no longer drive (answer 1 ب: none), a workshop lock copied from the
+// day, a save that writes without being asked. Each is
 // asserted directly. The phone and tablet board has its own spec (`fleet-fixed-roster-touch.spec`);
 // the board model's behaviour (undo, swap, transfer, counters, the payload) is
 // `lib/fixed-roster-model.spec.ts`, the refusal line `lib/fixed-save-refusal.spec.ts`, the rules
@@ -297,24 +298,41 @@ const chip = (markup: string, key: string): string => {
 };
 const count = (markup: string, needle: string): number => markup.split(needle).length - 1;
 
-// ── 1. One header, one Excel, no day ────────────────────────────────────────────────────────────
+// ── 1. No page header, one Excel, no day ─────────────────────────────────────────────────────────
 
-describe('the screen: the page header on top, one Excel, no day (answer 2 ج)', () => {
-  it('draws ONE title — «الطقم الثابت», under «الحركة» in the breadcrumbs', () => {
+describe('the screen: no page header, one Excel, no day (owner, 22 November)', () => {
+  it('draws NO page header — no breadcrumbs, no visible title, no divider', () => {
     const markup = render();
-    expect(count(markup, '<h1'), 'one title on the page').toBe(1);
+    expect(SHELL, 'the shell draws no PageHeader').not.toContain('PageHeader');
+    expect(markup, 'no breadcrumbs: no link to «الحركة»').not.toContain('href="/fleet"');
+    expect(markup, 'nor its trail').not.toContain('aria-label="breadcrumb"');
+    expect(markup, 'nor the word «الحركة»').not.toContain(`>${t('fleet.module.title')}<`);
+    // The one title left is for a screen reader: «الطقم الثابت», visually hidden.
+    expect(count(markup, '<h1'), 'one h1 on the page').toBe(1);
     const h1 = markup.slice(markup.indexOf('<h1'), markup.indexOf('</h1>'));
+    expect(h1, 'visually hidden').toContain('class="sr-only"');
     expect(h1).toContain(t('fleet.nav.fixedRoster'));
-    expect(markup, 'the trail starts at the fleet').toContain('href="/fleet"');
-    expect(markup).toContain(t('fleet.module.title'));
+    expect(count(markup, t('fleet.nav.fixedRoster')), 'and nowhere else on the page').toBe(1);
   });
 
-  it('keeps the header free of controls — the Excel pill lives in the toolbar row', () => {
-    const header = SHELL.slice(
-      SHELL.indexOf('<PageHeader'),
-      SHELL.indexOf('/>', SHELL.indexOf('<PageHeader')),
+  it('opens on the toolbar row — the car count and the Excel pill are the first thing drawn', () => {
+    const markup = render();
+    const board = markup.indexOf('data-fixed-desk="true"');
+    expect(board, 'the board').toBeGreaterThan(-1);
+    expect(markup.indexOf('</h1>'), 'the hidden title before the board').toBeLessThan(board);
+    const before = markup.slice(markup.indexOf('</h1>') + '</h1>'.length, board);
+    expect(before, 'nothing visible between the hidden title and the board').not.toMatch(
+      />[^<\s]/u,
     );
-    expect(header, 'no actions in the header').not.toContain('actions');
+    const first = markup.slice(board);
+    expect(
+      first.indexOf('data-fixed-toolbar="true"'),
+      'the toolbar row opens the board',
+    ).toBeLessThan(first.indexOf('data-fixed-filters="true"'));
+    expect(SHELL).toContain('<PageContainer fullHeight>');
+  });
+
+  it('keeps the Excel pill in the toolbar row — the screen’s one Excel control', () => {
     expect(SCREEN, 'the old header button is gone').not.toContain('ExportSheetButton');
     const markup = render();
     expect(all(markup, 'data-export'), 'ONE Excel control, the screen’s own hook').toEqual([
@@ -638,6 +656,41 @@ describe('the table — the daily board’s seven columns, the standing crew’s
       'onMouseDown={(event) => event.stopPropagation()}',
     );
     expect(mission).toContain("allLabel={t('fleet.fixedRoster.noMissionType')}");
+  });
+
+  it('cuts a long mission with «…» and hovers its whole name — the box’s width unchanged', () => {
+    const LONG = 'نقل أموال (يومي) بين الفروع والبنوك';
+    const qc = client();
+    qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'missionType' }], {
+      items: [{ id: MT, kind: 'missionType', name: { ar: LONG, en: 'Cash run' }, isActive: true }],
+      meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+    });
+    const select = (markup: string, code: string): string => {
+      const row_ = carRow(markup, code);
+      const at = row_.indexOf('<select');
+      return row_.slice(at, row_.indexOf('>', at) + 1);
+    };
+    for (const [markup, name] of [
+      [render(), 'نقل نقدية'],
+      [render({ qc }), LONG],
+    ] as const) {
+      expect(select(markup, '150'), 'the hover is the chosen mission’s name').toContain(
+        `title="${name}"`,
+      );
+      expect(select(markup, '150'), 'and still says what the box is for').toContain(
+        `aria-label="150 · ${t('fleet.roster.fields.mission')}"`,
+      );
+      expect(select(markup, '150')).not.toContain(
+        `title="150 · ${t('fleet.roster.fields.mission')}"`,
+      );
+      // No mission chosen: nothing to hover but what the box is for.
+      expect(select(markup, '151')).toContain(`title="151 · ${t('fleet.roster.fields.mission')}"`);
+      const box = carRow(markup, '150').slice(0, carRow(markup, '150').indexOf('<select'));
+      const boxClass = box.slice(box.lastIndexOf('<div class="mx-auto')).replaceAll('&amp;', '&');
+      expect(boxClass, 'the shared box, cutting with «…»').toContain('[&_select]:!truncate');
+      expect(boxClass, 'at the widths it had').toContain('mx-auto w-[9.5rem] max-[1535px]:w-36 ');
+    }
+    expect(BOARD_FILE).toContain('title={missionTitle(m.missionName, row.missionTypeId)}');
   });
 
   it('draws each seat as the daily seat — the name, the code under it', () => {
@@ -984,10 +1037,17 @@ describe('the pen dialog — «تعديل · 150», the four facts together', ()
     expect(seat).toContain('HR-1');
     expect(seat, 'a real gap between name and code').toContain('gap-x-2');
     expect(seat).toContain(`aria-label="${t('common.clear')}"`);
-    expect(DIALOG, 'its own face — the daily EmployeeName is left as approved').not.toContain(
+    expect(DIALOG, 'its own face, as approved — not the shared EmployeeName').not.toContain(
       'EmployeeName',
     );
-    expect(read('components/EmployeeName.tsx'), 'and is unchanged').toContain(
+    // The shared renderer keeps a gap of its own now (the owner's 22 November «صلحهم»): the margin
+    // on an element in the page's direction, the code isolated inside it — no longer `ms-2` on
+    // the left-to-right code, which in Arabic put the gap on the far side.
+    const shared = read('components/EmployeeName.tsx');
+    expect(shared, 'the shared gap').toContain(
+      '<span className="ms-2 font-figures text-xs text-slate-500">\n          <bdi dir="ltr">{person.code}</bdi>',
+    );
+    expect(shared, 'the old margin on the code is gone').not.toContain(
       '<span className="ms-2 font-figures text-xs text-slate-500" dir="ltr">',
     );
   });

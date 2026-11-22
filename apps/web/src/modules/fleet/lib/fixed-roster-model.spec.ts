@@ -938,17 +938,22 @@ describe('«حفظ»', () => {
 
 // ── 13. the shell ────────────────────────────────────────────────────────────────────────────────
 
-describe('the shell (answer 2 ج)', () => {
+describe('the shell (no page header, owner 22 November)', () => {
   const SHELL = fixedSource(['shell']);
-  it('draws the page header at every width, with no actions, and no Excel of its own', () => {
+  it('draws NO page header at any width — only a hidden h1 — and no Excel of its own', () => {
     expect(SHELL).toContain('<PageContainer fullHeight>');
-    expect(SHELL).toContain("title={t('fleet.nav.fixedRoster')}");
-    expect(SHELL).toContain("{ label: t('fleet.module.title'), to: '/fleet' }");
+    expect(SHELL, 'no PageHeader, imported or drawn').not.toContain('PageHeader');
+    expect(SHELL, 'no breadcrumbs').not.toContain('breadcrumbs');
+    expect(SHELL, 'no trail to «الحركة»').not.toContain("t('fleet.module.title')");
+    expect(SHELL).toContain(`<h1 className="sr-only">{t('fleet.nav.fixedRoster')}</h1>`);
     expect(SHELL).not.toContain('actions=');
     expect(SHELL).not.toContain('ExportSheetButton');
-    expect(SHELL.indexOf('<PageHeader'), 'above both boards').toBeLessThan(
+    expect(SHELL.indexOf('<h1 className="sr-only">'), 'above both boards').toBeLessThan(
       SHELL.indexOf("layout === 'desktop'"),
     );
+    // One PageContainer around both boards, whichever the width: the hidden title is the only
+    // thing in it besides the board.
+    expect(SHELL.split('<PageContainer').length - 1).toBe(1);
   });
 
   it('keeps the URL keys, the remembered set and the default order', () => {

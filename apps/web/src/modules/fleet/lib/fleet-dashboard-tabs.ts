@@ -152,6 +152,10 @@ export const tabBadges = (
 
 const ONE_DECIMAL = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 const TWO_DECIMALS = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+const KM = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+
+/** Kilometres as the boards write them: whole, comma-grouped («12,345»). */
+export const kmText = (value: number): string => KM.format(value);
 
 /** A part's share of a whole, 0–100; `null` when there is no whole to share. */
 export const share = (part: number, whole: number): number | null =>

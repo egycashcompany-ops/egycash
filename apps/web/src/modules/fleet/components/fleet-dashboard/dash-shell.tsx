@@ -88,9 +88,8 @@ export interface NowTabProps {
 }
 
 /**
- * R2 under the PAGE's filters (the period bar's one state, as the address bar holds it), as a tab of
- * «الآن» and a period both draws it (the first: «الصيانة والورش»). The four old period tabs get the
- * same read through `PeriodTab`; this is the same query, handed to a mixed tab with its own face.
+ * R2 under the PAGE's filters (the period bar's one state, as the address bar holds it), handed to
+ * each mixed tab — a tab of «الآن» and a period — with its own face (the first: «الصيانة والورش»).
  */
 export interface PageRead {
   /** The answer; the previous one stays while a new filter loads. `undefined` before any answer. */

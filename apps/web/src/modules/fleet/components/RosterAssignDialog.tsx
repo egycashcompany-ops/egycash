@@ -18,6 +18,7 @@ import { Field, Textarea } from '../../../shared/ui/form';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { CatalogSelect } from './CatalogSelect';
 import { EmployeeName } from './EmployeeName';
+import { ROSTER_NOTE_MAX } from './roster/roster-parts';
 
 const vehicleCode = (board: FleetRosterDayDto, vehicleId: string): string | null =>
   board.rows.find((row) => row.vehicleId === vehicleId)?.code ?? null;
@@ -172,9 +173,7 @@ export const RosterAssignDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={submit}>
-            {t('common.save')}
-          </Button>
+          <Button onClick={submit}>{t('common.save')}</Button>
         </>
       }
     >
@@ -206,7 +205,14 @@ export const RosterAssignDialog = ({
           />
         </Field>
         <Field label={t('fleet.attendance.fields.notes')}>
-          <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          {/* The API's cap, as the touch notes sheet and «الطقم الثابت»: a longer note was
+              taken here and only refused at «حفظ». */}
+          <Textarea
+            rows={2}
+            maxLength={ROSTER_NOTE_MAX}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
         </Field>
       </div>
     </Dialog>

@@ -58,7 +58,14 @@ import {
   UnavailableList,
   type DriverTab,
 } from './roster-drivers';
-import { CodeList, EditsBar, PastDayBanner, slashDate, weekdayOf } from './roster-parts';
+import {
+  CodeList,
+  EditsBar,
+  PastDayBanner,
+  ROSTER_NOTE_MAX,
+  slashDate,
+  weekdayOf,
+} from './roster-parts';
 import {
   CarSearch,
   ConfirmSheet,
@@ -562,6 +569,7 @@ export const RosterTouchBoard = ({
       />
       <NotesSheet
         row={notesFor}
+        maxLength={ROSTER_NOTE_MAX}
         onClose={() => setNotesFor(null)}
         onSave={(notes) => {
           if (notesFor !== null) m.actions.notes(notesFor.vehicleId, notes);

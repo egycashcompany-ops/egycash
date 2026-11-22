@@ -12,8 +12,8 @@
 //      للورشة» | «أطول بقاء في الورشة الآن» (the second is R1's: «لقطة الآن», the period moves nothing)
 //
 // EVERY PERIOD FIGURE IS BY EXIT DAY (§4a Q1): R2 `exits` — the visits that LEFT the workshop in the
-// range; their links carry `outFrom` / `outTo` and never `from` / `to`. «أرقام الفترة» keeps its own
-// check-in count and says so. Each read has its own face: R1 on its way or failed costs «الآن» and the
+// range; their links carry `outFrom` / `outTo` and never `from` / `to`. No tab counts the visits by
+// their check-in day. Each read has its own face: R1 on its way or failed costs «الآن» and the
 // longest-stay card only; R2 on its way or failed costs the period figures only.
 //
 // NOTHING IS COUNTED HERE. Every figure is a field a read sent: the alarm counts are `red` / `yellow`

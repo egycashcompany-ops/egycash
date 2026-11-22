@@ -18,7 +18,7 @@ import { type AuthContext } from '../../../shared/types';
 
 const fn = (): Mock => vi.fn();
 const odometer = { kmBreakdown: fn() };
-const maintenance = { visitStates: fn(), exitBreakdown: fn() };
+const maintenance = { exitBreakdown: fn() };
 const accidents = { summaryOver: fn(), undatedCount: fn(), list: fn() };
 const receipts = {
   summaryOver: fn(),
@@ -108,7 +108,6 @@ const parse = (raw: Record<string, string>) => FleetDashboardPeriodQuerySchema.p
 const day = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
 
 const KM = { total: 1200 };
-const VISITS = { count: 4, closed: 3, open: 1 };
 /** The exit-day breakdown as the maintenance module answers it — passed through untouched. */
 const EXITS = {
   count: 37,
@@ -180,7 +179,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   settings.resolve.mockResolvedValue(3);
   odometer.kmBreakdown.mockResolvedValue(KM);
-  maintenance.visitStates.mockResolvedValue(VISITS);
   maintenance.exitBreakdown.mockResolvedValue(EXITS);
   branches.listAll.mockResolvedValue([
     { _id: B1, name: CAIRO },
@@ -278,7 +276,6 @@ beforeEach(() => {
 
 const USES: Record<FleetDashboardPeriodSection, readonly Mock[]> = {
   km: [odometer.kmBreakdown],
-  visits: [maintenance.visitStates],
   exits: [maintenance.exitBreakdown],
   accidents: [accidents.summaryOver, accidents.undatedCount],
   // The listed files' cars (code + make id), then their makes — one read each.
@@ -529,8 +526,10 @@ describe('R2 — screen-shaped calls (D9)', () => {
       operationIds: [OP1],
       branchIds: [B2],
     };
-    // «أرقام الفترة»: the CHECK-IN day, exactly as the maintenance list's `from`/`to`.
-    expect(maintenance.visitStates).toHaveBeenCalledWith(shaped);
+    // No section counts visits by the CHECK-IN day any more (the retired `period` tab's): the
+    // maintenance module is asked once, by the exit day (below), never with `from`/`to`.
+    expect(maintenance.exitBreakdown).toHaveBeenCalledTimes(1);
+    expect(maintenance.exitBreakdown).not.toHaveBeenCalledWith(shaped);
     expect(accidents.summaryOver).toHaveBeenCalledWith(shaped);
     expect(accidents.summaryOver).toHaveBeenCalledWith({ ...shaped, status: 'open' });
     expect(receipts.summaryOver).toHaveBeenCalledWith(shaped);
@@ -574,7 +573,6 @@ describe('R2 — screen-shaped calls (D9)', () => {
   it('«كل فروعي» narrows every module to BOTH branches — the list the links carry as `branch=a,b`', async () => {
     await fleetDashboardPeriodService.read(ctxWith(ALL_KEYS, MULTI, 'branch'), NOW, parse({}));
     const both = { from: day(TODAY), to: day(TODAY), branchIds: [B1, B2] };
-    expect(maintenance.visitStates).toHaveBeenCalledWith(both);
     expect(maintenance.exitBreakdown).toHaveBeenCalledWith({
       outFrom: day(TODAY),
       outTo: day(TODAY),
@@ -673,7 +671,9 @@ describe('R2 — screen-shaped calls (D9)', () => {
     expect(accidents.undatedCount).toHaveBeenCalledWith({});
     // «مبالغ ملفات حوادث الفترة» = the period summary itself without its count: no other query.
     const { count, ...totals } = PERIOD_SUMS;
-    expect(dto.accidents).toEqual({ count, open: 1, openRemaining: 700, undated: 25, totals });
+    expect(dto.accidents).toEqual({ count, open: 1, undated: 25, totals });
+    // The open files' own remaining (the retired `period` tab's) is no field any more.
+    expect(dto.accidents).not.toHaveProperty('openRemaining');
     expect(accidents.summaryOver).toHaveBeenCalledTimes(2);
   });
 
@@ -740,11 +740,31 @@ describe('R2 — the figures as their modules give them', () => {
     expect(dto.dealershipList).toEqual({ rows: [DEALER_ROW], more: 4 });
     expect(dto.violations).toBe(VIOLATIONS);
     expect(dto.violationList).toEqual({ rows: [VIOLATION_ROW], more: 2 });
-    // «الصيانة والورش» (exit day) and «أرقام الفترة» (check-in day): each as its module answers.
+    // «الصيانة والورش» (exit day): as its module answers. No check-in count beside it.
     expect(dto.exits).toBe(EXITS);
     expect(dto.dealership).toEqual({ amount: 4000, rows: 5, pending: 2, dataFrom: '2026-09-01' });
     expect(dto.km).toBe(KM);
-    expect(dto.visits).toBe(VISITS);
+    expect('visits' in dto).toBe(false);
+  });
+
+  it('runs the twelve R2 sections and nothing else: the retired `period` tab’s `visits` is gone', async () => {
+    const dto = await fleetDashboardPeriodService.read(ctxWith(ALL_KEYS), NOW, parse({}));
+    expect(FLEET_DASHBOARD_PERIOD_SECTIONS).toHaveLength(12);
+    expect(FLEET_DASHBOARD_PERIOD_SECTIONS as readonly string[]).not.toContain('visits');
+    expect(Object.keys(dto)).toEqual([
+      'today',
+      'asOf',
+      'range',
+      'vehicleScope',
+      ...FLEET_DASHBOARD_PERIOD_SECTIONS,
+      'unavailable',
+    ]);
+    for (const s of FLEET_DASHBOARD_PERIOD_SECTIONS) expect(dto[s], s).not.toBeNull();
+    expect(dto.unavailable).toEqual([]);
+    expect(Object.keys(dto)).not.toContain('visits');
+    // Every stub of every section was asked; the maintenance module only for the exit day.
+    for (const stub of EVERY_STUB) expect(stub).toHaveBeenCalled();
+    expect(Object.keys(maintenance)).toEqual(['exitBreakdown']);
   });
 
   it('the accident list: date only, the code (a legacy row’s own), the culprit ids, what is left', async () => {
@@ -842,7 +862,7 @@ describe('R2 — the figures as their modules give them', () => {
     const dto = await fleetDashboardPeriodService.read(ctxWith(ALL_KEYS), NOW, parse({}));
     expect(dto.km).toBeNull();
     expect(dto.unavailable).toEqual(['km']);
-    expect(dto.visits).not.toBeNull();
+    expect(dto.exits).not.toBeNull();
     expect(dto.opex).not.toBeNull();
   });
 });

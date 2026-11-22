@@ -1,6 +1,6 @@
 // «لوحة تحكم الحركة» — the fleet module's home (/fleet), Phase 1.
 //
-// Two reads feed twelve tabs, in the strip's order (FLEET_DASHBOARD_TABS): the six rebuilt tabs
+// Two reads feed eleven tabs, in the strip's order (FLEET_DASHBOARD_TABS): the six rebuilt tabs
 // «نظرة عامة» (overview), «الحركة اليوم» (today), «توزيع السيارات» (distribution),
 // «الصيانة والورش» (maintenance), «العدادات والكيلومترات» (km) and «الحوادث ومطالبات التأمين»
 // (accidents) — the last four rebuilt in place, under their old keys, so every old link opens the
@@ -8,7 +8,9 @@
 // `ranking` opens `km`) — then three NEW tabs with no old tab of their own, «المخالفات المرورية
 // والتسويات» (violations), «الوقود والمصروفات» (fuel) and «العهدة» (custody), then «التراخيص
 // والتجديدات» (licences), rebuilt under the old «التراخيص» key (an old link opens the new body),
-// then the two old tabs «أرقام الفترة» (period) and «ملخصات» (summaries), drawn as before:
+// then the one old tab kept, «ملخصات» (summaries), drawn as before. The old `period` tab is retired
+// (the owner, 2026-11-22): every figure of it is drawn by another tab, or dropped, and a link to it
+// opens the first tab the reader sees. The reads:
 //   · R1 `GET /fleet/dashboard/now`    — the state of the fleet NOW, one Cairo `today`;
 //   · R2 `GET /fleet/dashboard/period` — a period's figures, a preset or a custom range. The overview
 //     and «توزيع السيارات» also read R2 for «هذا الشهر» on their own (never the page filters) — the
@@ -44,13 +46,14 @@ import {
 /**
  * The strip, in its visible order: «نظرة عامة» · «الحركة اليوم» · «توزيع السيارات» ·
  * «الصيانة والورش» · «العدادات والكيلومترات» · «الحوادث ومطالبات التأمين» · «المخالفات المرورية
- * والتسويات» · «الوقود والمصروفات» · «العهدة» · «التراخيص والتجديدات» · «أرقام الفترة» · «ملخصات».
+ * والتسويات» · «الوقود والمصروفات» · «العهدة» · «التراخيص والتجديدات» · «ملخصات».
  * `overview` and `today` replaced the old `alerts` and `now` (a link to either opens its
  * replacement); `distribution`, `maintenance`, `km`, `accidents` and `licences` were rebuilt under
  * their own keys (an old link opens the new body); the old `ranking` («ترتيب السيارات») is retired —
  * its top and bottom five live in «العدادات والكيلومترات», and a link to it opens `km`.
  * `violations`, `fuel` and `custody` are NEW tabs (no old tab of their own, so no old key maps onto
- * them). The last two are the old tabs, unchanged, kept until the owner retires them.
+ * them). The last is the one old tab kept, unchanged. The old `period` tab is retired (the owner,
+ * 2026-11-22): it is no tab any more, so a link to it opens the first tab the reader sees.
  */
 export const FLEET_DASHBOARD_TABS = [
   'overview',
@@ -63,7 +66,6 @@ export const FLEET_DASHBOARD_TABS = [
   'fuel',
   'custody',
   'licences',
-  'period',
   'summaries',
 ] as const;
 export type FleetDashboardTab = (typeof FLEET_DASHBOARD_TABS)[number];
@@ -72,6 +74,11 @@ export type FleetDashboardTab = (typeof FLEET_DASHBOARD_TABS)[number];
  * What a tab draws from: 'now' = R1; 'period' = R2 under the page filters; 'month' = R2 «هذا الشهر»
  * with no filter at all (the overview's month card, the km of «توزيع السيارات»); 'web' = a screen's
  * own hooks in the browser (the custody board; the supply contracts' summary).
+ * Every tab that reads 'period' is one of the seven MIXED tabs, and draws the page filter bar inside
+ * its body: «الصيانة والورش», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات», «الوقود
+ * والمصروفات», «العهدة» and «التراخيص والتجديدات» between their «الآن» band (R1, or the custody
+ * screen's own reads) and their period band (R2); «العدادات والكيلومترات» at the top of its body. No
+ * tab reads R2 alone any more (the retired `period` tab was the one).
  */
 export type FleetDashboardRead = 'now' | 'period' | 'month' | 'web';
 export const FLEET_DASHBOARD_TAB_READS: Readonly<
@@ -87,18 +94,8 @@ export const FLEET_DASHBOARD_TAB_READS: Readonly<
   fuel: ['now', 'period'],
   custody: ['web', 'period'],
   licences: ['now', 'period'],
-  period: ['period'],
   summaries: ['now', 'web'],
 });
-
-/**
- * The old tab drawn under the page filter bar (the old `PeriodTab` wrapper), read from R2 alone —
- * «أرقام الفترة», kept until the owner retires it. The seven MIXED tabs draw the bar inside their
- * body: «الصيانة والورش», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات», «الوقود
- * والمصروفات», «العهدة» and «التراخيص والتجديدات» between their «الآن» band (R1, or the custody
- * screen's own reads) and their period band (R2); «العدادات والكيلومترات» at the top of its body.
- */
-export const FLEET_DASHBOARD_PERIOD_TABS = ['period'] as const;
 
 export const FLEET_DASHBOARD_PRESETS = [
   'thisMonth',
@@ -401,7 +398,6 @@ export const FLEET_DASHBOARD_NOW_SECTIONS = [
 ] as const;
 export const FLEET_DASHBOARD_PERIOD_SECTIONS = [
   'km',
-  'visits',
   'exits',
   'accidents',
   'accidentList',
@@ -506,7 +502,6 @@ export const FLEET_DASHBOARD_GATES: Readonly<Record<FleetDashboardSection, Fleet
     violationsYear: gate('now', 'fleetViolation.view', '/fleet/violations'),
     violationsOpen: gate('now', 'fleetViolation.view', '/fleet/violations'),
     km: gate('period', 'fleetOdometer.view', '/fleet/odometer'),
-    visits: gate('period', 'fleetMaintenance.view', '/fleet/maintenance'),
     exits: gate('period', 'fleetMaintenance.view', '/fleet/maintenance'),
     accidents: gate('period', 'fleetAccident.view', '/fleet/accidents'),
     accidentList: gate('period', 'fleetAccident.view', '/fleet/accidents'),
@@ -652,7 +647,6 @@ export const FLEET_DASHBOARD_TAB_SECTIONS: Readonly<
    */
   custody: ['custodyFund'],
   summaries: ['fuelCharging', 'custodyFund', 'accidentsOpen', 'violationsYear'],
-  period: ['km', 'visits', 'accidents', 'opex', 'dealership'],
   /**
    * «العدادات والكيلومترات» (the old «الكيلومترات» and «ترتيب السيارات» in one body): the period's km
    * (R2) and the cars with no recent reading now (R1), both under `fleetOdometer.view`.
@@ -700,8 +694,8 @@ export const FLEET_DASHBOARD_TAB_SECTIONS: Readonly<
  * Sections a tab DRAWS that never make it visible on their own: «توزيع السيارات» shows the km of
  * «هذا الشهر» (the 'month' read) and the supply contracts (a PART section) only beside its R1
  * figures; «العهدة» its period band (the custody spend `opex` and where it stands `custodyStates`)
- * only beside the fund — a receipts-only reader keeps that spend on «أرقام الفترة» and «الوقود
- * والمصروفات»; «التراخيص والتجديدات» the period's licence expenses (`licenceSpend`, PAGELESS) only
+ * only beside the fund — a receipts-only reader keeps that spend on «الوقود والمصروفات»;
+ * «التراخيص والتجديدات» the period's licence expenses (`licenceSpend`, PAGELESS) only
  * beside its R1 figures.
  */
 export const FLEET_DASHBOARD_TAB_PARTS: Readonly<
@@ -1428,11 +1422,6 @@ export interface FleetDashboardPeriodDto {
   vehicleScope: FleetDashboardVehicleScopeDto;
   km: FleetDashboardPeriodKmDto | null;
   /**
-   * By CHECK-IN day — «أرقام الفترة» alone («بتاريخ دخول الورشة»): the visits that entered in the
-   * range, and their state now.
-   */
-  visits: FleetDashboardPeriodVisitsDto | null;
-  /**
    * Visits that LEFT the workshop in the range (EXIT day, `outFrom`/`outTo`, never `from`/`to`), over
    * the maintenance list's own filter — every period figure of «الصيانة والورش» and the overview's
    * «زيارات الصيانة» («بتاريخ الخروج من الورشة»).
@@ -1440,12 +1429,10 @@ export interface FleetDashboardPeriodDto {
   exits: FleetDashboardPeriodExitsDto | null;
   /**
    * By ACCIDENT day, over the accidents register's own filter. `undated`: company view only.
-   * `openRemaining` (the open files' remaining) is «أرقام الفترة»'s.
    */
   accidents: {
     count: number;
     open: number;
-    openRemaining: number;
     undated: number | null;
     /**
      * «مبالغ ملفات حوادث الفترة»: the period's files, open AND closed, as their amounts stand NOW —
@@ -1606,8 +1593,7 @@ export type FleetDashboardNoReadingReason =
   | 'joinedAfter';
 
 /**
- * «العدادات والكيلومترات» (and «أرقام الفترة»'s km), R-14…R-17. Every count is a field here, never a
- * list's length.
+ * «العدادات والكيلومترات», R-14…R-17. Every count is a field here, never a list's length.
  */
 export interface FleetDashboardPeriodKmDto {
   total: number;
@@ -1705,14 +1691,6 @@ export interface FleetDashboardInvalidReadingDto {
   to: number;
   /** < 0. */
   km: number;
-}
-
-/** T6.3/T6.4, R-18 — «أرقام الفترة»: visits by CHECK-IN day. */
-export interface FleetDashboardPeriodVisitsDto {
-  /** State NOW («حتى الآن»): closed + open = count. */
-  count: number;
-  closed: number;
-  open: number;
 }
 
 /** One bar of «الصيانة والورش»'s period pair (by work type, by workshop). */

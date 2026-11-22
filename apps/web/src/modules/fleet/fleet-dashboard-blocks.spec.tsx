@@ -4,8 +4,8 @@
 // the range chip from the read's echo; «منذ اليوم»; one read's skeleton, error or band; and the
 // source rules every dashboard file keeps (no counting, no sample piece).
 import { createElement, type ReactElement } from 'react';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -432,14 +432,32 @@ describe('the shared blocks’ source', () => {
     expect(source('tab-km.tsx')).not.toContain("from './tab-maintenance'");
   });
 
-  it('leaves «أرقام الفترة» alone under the period hand-over; the three mixed panels are not there', () => {
-    const src = source('period-tabs.tsx');
-    expect(src).toContain("tab: 'period';");
-    for (const name of ['MaintenanceTab', 'KmTab', 'RankingTab', 'AccidentsTab']) {
-      expect(src, name).not.toContain(name);
+  it('mounts no period-only tab: the page draws R2 through the seven mixed panels alone', () => {
+    // The period-figures tab is gone (22 November): the page mounts no `PeriodTab`, and no file of
+    // the web app imports the old hand-over (`period-tabs`) or the old body (`tab-period`).
+    const page = readFileSync(join(DASH, '..', '..', 'pages', 'FleetDashboardPage.tsx'), 'utf8');
+    expect(page).not.toMatch(/\bPeriodTab\b/u);
+    expect(page).not.toContain('isPeriodTab');
+    for (const name of [
+      'MaintenanceTab',
+      'KmTab',
+      'AccidentsTab',
+      'ViolationsTab',
+      'FuelTab',
+      'CustodyTab',
+      'LicencesTab',
+    ]) {
+      expect(page, name).toContain(`: ${name},`);
     }
-    for (const key of ['maintenance', 'km', 'ranking', 'accidents']) {
-      expect(src, key).not.toMatch(new RegExp(`\\b${key}:`, 'u'));
-    }
+    const SRC = join(DASH, '..', '..', '..', '..');
+    const importers = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const at = join(dir, entry.name);
+        if (entry.isDirectory()) return importers(at);
+        if (!/\.tsx?$/u.test(entry.name)) return [];
+        const src = readFileSync(at, 'utf8');
+        return /from '[^']*\/(?:period-tabs|tab-period)'/u.test(src) ? [relative(SRC, at)] : [];
+      });
+    expect(importers(SRC)).toEqual([]);
   });
 });

@@ -233,8 +233,6 @@ const everyLink = (): DashLink[] => {
       P.kmDay('2026-10-11', 'km.invalidList.row'),
       P.vehiclesByCodes(['305', '318'], 'km.noDistance'),
       P.vehicle('v1', 'km.vehicle'),
-      P.visits(),
-      P.visits('visits.closed', { state: 'closed' }),
       P.exits('exits.byWorkType', { workTypes: ['w1'] }),
       P.exits('exits.byWorkshop', { workshops: ['s1'] }),
       P.exits('exits.topVehicle', { vehicleCodes: ['207'] }),
@@ -250,7 +248,6 @@ const everyLink = (): DashLink[] => {
       P.dealershipRow({ code: '221', date: '2026-10-29', workKind: 'maintenance' }),
       P.opex(),
       P.opex('opex.card', 'card'),
-      P.opexCustody(),
       P.custodySpend('opex.custody'),
       P.custodySpend('opex.custody.tyres', 'tyres'),
       P.licenceSpend('licenceSpend.total'),
@@ -269,8 +266,8 @@ const everyLink = (): DashLink[] => {
     custodyLinks.licenceWaiting(null, 'custodyFund.settle'),
   );
   const sp = new URLSearchParams('tab=overview&period=last30&type=t1');
-  for (const tab of ['today', 'distribution', 'maintenance', 'accidents', 'period'] as const) {
-    all.push(tabLink(tab, `${tab === 'today' ? 'roster' : 'visits'}.tab`, sp, [tab]));
+  for (const tab of ['today', 'distribution', 'maintenance', 'accidents', 'km'] as const) {
+    all.push(tabLink(tab, `${tab === 'today' ? 'roster' : 'exits'}.tab`, sp, [tab]));
   }
   return all.flatMap((link) => (link === null ? [] : [link]));
 };
@@ -467,12 +464,17 @@ describe('the branch and the vehicle set travel as filters', () => {
   it('keeps a 60-car type a link: the type goes as `type`, never as a list of codes', () => {
     const many = ids(60, 0x100);
     const P = periodLinks({ range: RANGE, vehicleScope: { ...NO_SET, count: 60, typeIds: many } });
-    for (const link of [P.km(), P.visits(), P.accidents(), P.opex(), P.dealership()]) {
+    for (const link of [P.km(), P.accidents(), P.opex(), P.dealership()]) {
       const params = parse(link).params;
       expect(params.get('type')?.split(','), link?.to).toEqual(many);
       expect(params.has('vehicleCodes'), link?.to).toBe(false);
       expect([params.get('from'), params.get('to')]).toEqual([RANGE.from, RANGE.to]);
     }
+    // The workshop's period figures are by EXIT day: the same type, over the check-out bounds.
+    const exits = parse(P.exits()).params;
+    expect(exits.get('type')?.split(',')).toEqual(many);
+    expect(exits.has('vehicleCodes')).toBe(false);
+    expect([exits.get('outFrom'), exits.get('outTo')]).toEqual([RANGE.from, RANGE.to]);
   });
 
   it('carries operation, branch and the reader’s own codes under the screens’ names', () => {
@@ -499,12 +501,12 @@ describe('the branch and the vehicle set travel as filters', () => {
     const plain = periodLinks({
       range: RANGE,
       vehicleScope: { ...NO_SET, vehicleCodes: ['133'] },
-    }).opexCustody();
+    }).custodySpend('opex.custody');
     expect(parse(plain).pathname).toBe('/fleet/custody-expenses');
     const typed = periodLinks({
       range: RANGE,
       vehicleScope: { ...NO_SET, typeIds: ['t1'] },
-    }).opexCustody();
+    }).custodySpend('opex.custody');
     expect(parse(typed).pathname).toBe('/fleet/receipts');
     expect(parse(typed).params.get('source')).toBe('custody');
   });
@@ -563,18 +565,19 @@ describe('the branch the figures cover (plan D12): the switcher, else the reader
   it('narrows the period set the same way, and a row’s own branch still wins (km by branch)', () => {
     const P = periodLinks({ range: RANGE, vehicleScope: MINE_SET });
     expect(parse(P.km()).params.get('branch')).toBe('b1,b2');
-    expect(parse(P.visits()).params.get('branch')).toBe('b1,b2');
+    expect(parse(P.exits()).params.get('branch')).toBe('b1,b2');
     const row = periodLinks({ range: RANGE, vehicleScope: { ...MINE_SET, branchId: 'b2' } });
     expect(parse(row.km('km.byBranch')).params.get('branch')).toBe('b2');
   });
 
   it('sends the custody part to the receipts for a narrowed reader, «كل فروعي» included (D20)', () => {
-    const mine = periodLinks({ range: RANGE, vehicleScope: MINE_SET }).opexCustody();
+    const mine = periodLinks({ range: RANGE, vehicleScope: MINE_SET }).custodySpend('opex.custody');
     expect(parse(mine).pathname).toBe('/fleet/receipts');
     expect(parse(mine).params.get('branch')).toBe('b1,b2');
-    expect(parse(periodLinks({ range: RANGE, vehicleScope: NO_SET }).opexCustody()).pathname).toBe(
-      '/fleet/custody-expenses',
-    );
+    expect(
+      parse(periodLinks({ range: RANGE, vehicleScope: NO_SET }).custodySpend('opex.custody'))
+        .pathname,
+    ).toBe('/fleet/custody-expenses');
   });
 });
 
@@ -651,10 +654,10 @@ describe('the links of «نظرة عامة» and «الحركة اليوم»', (
       expect(parse(link).params.has('from')).toBe(false);
       expect(parse(link).params.has('to')).toBe(false);
     }
-    // «أرقام الفترة» keeps its check-in days, and its state alone.
-    expect(P.visits('visits.open', { state: 'open' })?.to).toBe(
-      `/fleet/maintenance?from=${RANGE.from}&to=${RANGE.to}&type=t1&operation=o1&branch=b1&vehicleCodes=133,141&state=open`,
-    );
+    // No figure opens the visits by their check-in day any more: the period-figures tab that drew
+    // them is gone (22 November), and so are its two builders.
+    expect('visits' in P).toBe(false);
+    expect('opexCustody' in P).toBe(false);
   });
 
   it('opens a «الآن» row of «الصيانة والورش» on its own car: the alarms board, the open visit', () => {
@@ -855,7 +858,10 @@ describe('the custody figures', () => {
     expect(plain.custodySpend('opex.custody.wash', 'wash')?.to).toBe(
       `/fleet/custody-expenses?source=wash&from=${RANGE.from}&to=${RANGE.to}&vehicleCodes=133`,
     );
-    expect(plain.custodySpend('opex.custody')).toEqual(plain.opexCustody());
+    expect(plain.custodySpend('opex.custody')).toEqual({
+      to: `/fleet/custody-expenses?from=${RANGE.from}&to=${RANGE.to}&vehicleCodes=133`,
+      metric: 'opex.custody',
+    });
     const mine = periodLinks({ range: RANGE, vehicleScope: MINE_SET });
     expect(mine.custodySpend('opex.custody.maintenance', 'maintenance')?.to).toBe(
       `/fleet/receipts?from=${RANGE.from}&to=${RANGE.to}&branch=b1,b2&kind=maintenance&source=custody`,
@@ -1177,13 +1183,11 @@ const PERIOD_CALLS: [string, (P: PeriodLinks) => DashLink | null][] = [
   ['kmDay', (P) => P.kmDay('2026-10-11', 'km.invalidList.row')],
   ['vehiclesByCodes', (P) => P.vehiclesByCodes(['305'], 'km.noDistance')],
   ['vehicle', (P) => P.vehicle('v1', 'km.vehicle')],
-  ['visits', (P) => P.visits()],
   ['exits', (P) => P.exits()],
   ['accidents', (P) => P.accidents()],
   ['accidentDay', (P) => P.accidentDay('154', '2026-10-05')],
   ['opex', (P) => P.opex()],
   ['opexFuel', (P) => P.opexFuel()],
-  ['opexCustody', (P) => P.opexCustody()],
   ['custodySpend', (P) => P.custodySpend('opex.custody.wash', 'wash')],
   ['licenceSpend', (P) => P.licenceSpend('licenceSpend.total')],
   ['dealership', (P) => P.dealership()],
@@ -1373,12 +1377,10 @@ describe('the audit’s link fixes (D07, D10, D20, D21, D37)', () => {
         'kmDay',
         'km',
         'opex',
-        'opexCustody',
         'opexFuel',
         'opexKind',
         'violationRow (no code)',
         'violations',
-        'visits',
       ].sort(),
     );
     // A licence memo has no branch (the figure is the whole company's for every reader): kept.
@@ -1417,8 +1419,6 @@ describe('the audit’s link fixes (D07, D10, D20, D21, D37)', () => {
     ]) {
       expect(parse(link).params.get('sort'), link?.to).toBe('outDate:desc');
     }
-    // «أرقام الفترة» counts check-ins: its list keeps the screen's own order.
-    expect(parse(P.visits()).params.has('sort')).toBe(false);
     // «عرض الباقي» of «أقرب التراخيص»: nearest expiry first, as the card's rows.
     expect(NOW.vehicleLicencesWithin60()).toEqual({
       to: `/fleet/vehicles?status=active&licExpBefore=${addDaysYmd(TODAY, 60)}&sort=licenseExpiresAt:asc`,

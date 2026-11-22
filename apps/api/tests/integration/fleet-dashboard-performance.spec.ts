@@ -109,9 +109,10 @@ const PLAN = { r1: 45, r2: 15 };
 // asked only when a visit is open), and «أطول بقاء في الورشة الآن» names its ≤ 5 rows with ONE
 // catalog `namesByIds` and ONE vehicle-types read (+2) — 69 measured; with the two of the line
 // above, 71.
-// R2: «أرقام الفترة»'s visits shrink to ONE `$group` (was a `$facet` + the catalog names + the cars
-// — −2), and the exits grow from one count into the exit-day breakdown: ONE `$facet` + the catalog
-// names + the cars + ONE vehicle-types read for the ranked cars' makes (+3) — 20.
+// R2: the (since retired) `period` tab's visits shrink to ONE `$group` (was a `$facet` + the
+// catalog names + the cars — −2), and the exits grow from one count into the exit-day breakdown:
+// ONE `$facet` + the catalog names + the cars + ONE vehicle-types read for the ranked cars' makes
+// (+3) — 20.
 // «العدادات والكيلومترات» + «الحوادث ومطالبات التأمين» (build-ka): R1 69 → 68 measured — the notices
 // are ONE read of the open notices (`dashboardDigest`), not the screen's two full reads (−1 here,
 // with no notice in the fixture; −3 with notices on cars and drivers, +1 for their rows' makes),
@@ -150,7 +151,10 @@ const PLAN = { r1: 45, r2: 15 };
 // R2 34 → 37 measured: «منها حتى الآن» is ONE `$group` of the custody receipts by memo plus ONE read
 // of the memos' statuses (+2; the statuses asked only when a receipt is on a memo), «مصروفات
 // التراخيص» ONE `$group` (+1). With the conditional `latestChainDates` above: 38.
-const CEILING = { r1: 75, r2: 38 };
+// R2 37 → 36 measured (October and the whole year alike): the retired `period` tab's `visits` — its
+// one `$group` by the check-in day — is gone (−1). The ceiling is the measurement itself now (lower
+// only, never raise): the conditional `latestChainDates` is never asked on this fixture.
+const CEILING = { r1: 75, r2: 36 };
 /**
  * R2 narrowed by a type and car codes: the same sections plus the set's own resolution. The six
  * modules resolve the filter as their screens do, but inside one read each narrowing is asked of
@@ -169,7 +173,10 @@ const CEILING = { r1: 75, r2: 38 };
  */
 // 41 measured with «العهدة» + «التراخيص والتجديدات» (the same +3 as R2 above, the set still
 // resolved once); 42 with the conditional `latestChainDates`.
-const CEILING_FILTERED_R2 = 42;
+// 41 → 39 measured: the retired `period` tab's `visits` is gone — its one `$group` and the
+// maintenance list's own code resolution for it (−2; `exits` keeps its own). The ceiling is the
+// measurement itself now (lower only, never raise).
+const CEILING_FILTERED_R2 = 39;
 
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
@@ -990,14 +997,19 @@ describe('every car unread (after a holiday): the no-reading line reads one row 
 });
 
 describe('a type of more than 50 cars travels as `typeIds` and every screen reproduces it', () => {
-  it('km, visits, accidents, receipts, dealership = their screens with typeIds', async () => {
+  it('km, exits, accidents, receipts, dealership = their screens with typeIds', async () => {
     const dto = ok<FleetDashboardPeriodDto>(
       await get('/fleet/dashboard/period', { ...OCT, typeIds: BIG }),
     );
     expect(dto.vehicleScope).toMatchObject({ typeIds: [BIG], count: BIG_TYPE_CARS });
     const q = { from: OCT.from, to: OCT.to, typeIds: BIG };
     expect(dto.km?.total).toBe(ok<{ km: number }>(await get('/fleet/odometer/summary', q)).km);
-    expect(dto.visits?.count).toBe(await total('/fleet/maintenance', q));
+    // «الصيانة والورش»: the maintenance list over the EXIT day with the same type (no check-in
+    // count: `visits` left with the retired `period` tab).
+    const exitQ = { outFrom: OCT.from, outTo: OCT.to, typeIds: BIG };
+    expect(dto.exits?.count).toBeGreaterThan(0);
+    expect(dto.exits?.count).toBe(await total('/fleet/maintenance', exitQ));
+    expect(dto).not.toHaveProperty('visits');
     expect(dto.accidents?.count).toBe(
       ok<{ count: number }>(await get('/fleet/accidents/summary', q)).count,
     );
@@ -1014,6 +1026,6 @@ describe('a type of more than 50 cars travels as `typeIds` and every screen repr
     // The two types partition the fleet: their kilometres add up to the company's.
     const company = ok<FleetDashboardPeriodDto>(await get('/fleet/dashboard/period', OCT));
     expect((dto.km?.total ?? 0) + (small.km?.total ?? 0)).toBe(company.km?.total);
-    expect((dto.visits?.count ?? 0) + (small.visits?.count ?? 0)).toBe(company.visits?.count);
+    expect((dto.exits?.count ?? 0) + (small.exits?.count ?? 0)).toBe(company.exits?.count);
   });
 });

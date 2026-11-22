@@ -3,9 +3,9 @@
 // over the ONE board model the page shell holds (`useFixedRosterBoard`), so a rotate keeps the
 // draft and its undo steps.
 //
-//   phone       (< 768px)      the page header and the first row (the car search, the Excel
-//                              button) scroll away; only the filter row (filter · reset · counters
-//                              · drivers) stays on top. One card per car, a seat tap opens the
+//   phone       (< 768px)      the first row (the car search, the Excel button) is the top of
+//                              the page and scrolls away; only the filter row (filter · reset ·
+//                              counters · drivers) stays on top. One card per car, a seat tap opens the
 //                              driver picker sheet, the unsaved bar at the screen's foot
 //   portrait    (768–1023px)   the same, wider: two seats side by side per card; the first row and
 //                              the filter row (with the drivers button) stay on top
@@ -17,9 +17,11 @@
 //                              the screen; only the unsaved bar stays at the bottom
 //
 // MINUS THE DAY: a standing crew is a fact about a car, true until somebody changes it — so no
-// stepper, no «يوم سابق», no tabs of who is free today, no absent list, no availability word. The
-// page header («الطقم الثابت» under «الحركة») is the shell's, on top at every width (owner's
-// answer 2 ج): this board draws no title, and its Excel button is the screen's one Excel control.
+// stepper, no «يوم سابق», no tabs of who is free today, no absent list, no availability word. NO
+// PAGE HEADER at any width (owner, 22 November: «الجزء اللى فوق دا شيله بتاع العنوان واللى فوقه»):
+// the first row is the top of the page and the cards get the header's rows back; the shell keeps
+// only a visually hidden h1. This board draws no title, and its Excel button is the screen's one
+// Excel control.
 // It is written for the shell's `PageContainer`: no outer padding of its own; what runs edge to
 // edge (the sticky header, the unsaved bar) bleeds by the container's padding.
 //
@@ -613,7 +615,7 @@ export const FixedTouchBoard = ({
     // bottom even when a search leaves two cars. `-mb-6` takes back the container's bottom padding
     // for the same reason: the bar is the screen's foot, not 24px above it.
     <div data-fixed-touch={layout} className="-mb-6 flex flex-1 flex-col">
-      {/* Phone (upright or sideways): the first row scrolls away with the page header. */}
+      {/* Phone (upright or sideways): the first row, the top of the page, scrolls away. */}
       {phone && firstRow}
       <div
         data-touch-header="true"

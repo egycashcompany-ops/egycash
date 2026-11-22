@@ -29,6 +29,7 @@ import {
 } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
+import { translate } from '../../platform/localization/i18n';
 import { fleetDashboardKeys } from './api/fleet-dashboard-queries';
 import { periodLiveness } from './lib/fleet-dashboard-refresh';
 import { readPeriodFilters, toPeriodQuery } from './lib/fleet-dashboard-url';
@@ -415,8 +416,14 @@ describe('«نظرة عامة» — the heading and the six KPI cards', () => {
     expect(links(body)).toHaveLength(2);
   });
 
-  it('K6 «رصيد العهدة النقدية»: the fund from the custody screen’s own read, and «فتح لوحة العهدة»', () => {
+  it('K6 «إجمالي العهدة»: the fund from the custody screen’s own read, and «فتح لوحة العهدة»', () => {
     const body = kpi(html, 'custody');
+    // The owner's word (22 November): the card is «إجمالي العهدة» — the same figure, the same links.
+    expect(ar('fleet.dash.overview.kpi.custody.title')).toBe('إجمالي العهدة');
+    expect(translate('en', 'fleet.dash.overview.kpi.custody.title')).toBe('Custody fund total');
+    expect(text(body)).toContain('إجمالي العهدة');
+    expect(text(body)).not.toContain('رصيد العهدة النقدية');
+    expect(text(html)).not.toContain('رصيد العهدة النقدية');
     expect(text(body)).toContain('159,974.54');
     expect(hrefOf(body, 'custodyFund.total')).toEqual(['/fleet/custody/dashboard']);
     expect(hrefOf(body, 'custodyFund.dashboard')).toEqual(['/fleet/custody/dashboard']);
@@ -723,12 +730,8 @@ describe('«نظرة عامة» — «مؤشرات الأقسام والأبوا
     expect(noAccidents).not.toContain('data-dash-hub-foot="incidents"');
     expect(hubCard(noAccidents, 'incidents')).toContain('data-dash-hub-line="violations"');
     expect(hrefOf(noAccidents, 'accidents.tab')).toEqual([]);
-    // «الصيانة والورش» shows through any of its four parts — the period's visits are not one of
-    // them any more: without them its card keeps its lines AND its foot…
-    const noVisits = page('/fleet?tab=overview', { period: { ...MONTH, visits: null } });
-    expect(noVisits).toContain('data-dash-hub-foot="maintenance"');
-    expect(hrefOf(noVisits, 'workshop.tab')).toHaveLength(2);
-    // …and with none of the four it is not in the bar, and nothing on the overview opens it.
+    // «الصيانة والورش» shows through any of its four parts: with none of the four it is not in the
+    // bar, and nothing on the overview opens it.
     const none = page('/fleet?tab=overview', {
       now: { ...NOW, workshop: null, maintenanceAlarm: null, dealershipPending: null },
       period: { ...MONTH, exits: null },
@@ -871,7 +874,7 @@ describe('«نظرة عامة» — «ملخص إحصائيات هذا الشه�
     client.setQueryData(pageKey, {
       ...MONTH,
       km: { ...need(MONTH.km), total: 9999 },
-      accidents: { count: 77, open: 0, openRemaining: 0, undated: 0 },
+      accidents: { count: 77, open: 0, undated: 0 },
       exits: { ...need(MONTH.exits), count: 55 },
     });
     const filtered = renderDashboard({ url, client });

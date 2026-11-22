@@ -2023,6 +2023,12 @@ export interface OperationsCrewBoardCrewDto {
   /** «النوع» — a type of the `أنواع التشغيل` catalog (`GET /operations/shift-types`), or null. */
   shiftTypeId: string | null;
   rowColour: OperationsCrewRowColour | null;
+  /**
+   * Round 32 critic — how many محصنات «توزيع المحصنات» placed on this crew row (its LIVE legs). They
+   * ride the row, so they stay with its van whatever crosses in «تبديل بين سيارتين»; the board's
+   * window says how many before a captain or a direction leaves a row that holds some.
+   */
+  shipments: number;
 }
 
 /**
@@ -2057,6 +2063,12 @@ export interface OperationsCrewBoardRowDto {
   drivers: OperationsDayBoardDriverDto[];
   missionTypeId: string | null;
   crew: OperationsCrewBoardCrewDto | null;
+  /**
+   * Round 32 critic — set when the van's Fleet code names nothing (`vehicleCodeNamesNothing` —
+   * «0», «00», «0000» …): the board names the van by its plate and its make, as its «بدون سيارة»
+   * list did when it was picked, never by the bare zeros. Null for every van with a code.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
 }
 
 /** Round 20 — a van Fleet's workshop holds on the board's day («صيانة» on the legacy strip). */
@@ -2163,7 +2175,8 @@ export interface OperationsCrewBoardDto {
    * Round 32 — a car off the roster whose code names nothing is in `uncoded`, last, named by its
    * plate; one whose plate names nothing either is LEFT OUT (nothing would tell it from the next) and
    * counted in `unidentifiedVehicles`. A roster van is never left out. Codes are compared naturally,
-   * a code that names nothing after every one that does (`compareVehicleCodesNaturally`).
+   * a code that names nothing after every one that does, two of those by their plate
+   * (`compareVehiclesForPicker`).
    */
   freeVehicles: OperationsCrewBoardFreeVehicleDto[];
   /**
@@ -2525,6 +2538,11 @@ export interface OperationsStandingCrewRowDto {
   id: string;
   vehicleId: string;
   vehicleCode: string;
+  /**
+   * Round 32 critic — set when the van's Fleet code names nothing («0», «00» …): the row is named by
+   * its plate and its make, as «إضافة سيارة» named it — see `OperationsCrewBoardFreeVehicleDto`.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
   /** Same shape and same ceiling as a day's crew — this is the template that day is seeded from. */
   captainEmployeeIds: string[];
   specialist1EmployeeIds: string[];

@@ -64,6 +64,7 @@ const stored = (
   id: 'sc1',
   vehicleId: 'v1',
   vehicleCode: 'C-1',
+  uncoded: null,
   captainEmployeeIds: [],
   specialist1EmployeeIds: [],
   specialist2EmployeeIds: [],

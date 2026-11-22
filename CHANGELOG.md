@@ -2427,7 +2427,7 @@ its entry here in the same PR.
         ticks of both cards cross at once — the default), «نقل المحدد ←» and «نقل المحدد →» (only
         the sending card's ticks; the receiving card says «تستقبل»). UNDER them, the two cards
         AFTER the change, side by side, before anything is touched: what arrives («من 213»), the
-        value a moved field replaces (struck, «بدلًا من …»), what goes («ينتقل إلى …»), and what a
+        value a field moved one way replaces (struck, «بدلًا من …»), what goes («ينتقل إلى …»), and what a
         rule keeps where it is, with the reason. Tab stays in the window, Escape closes it, the
         focus goes back to the row's «⇄».
       - THE RULES (`lib/crew-swap.ts`, pure): a person keeps his slot role — a captain to «قائد
@@ -2436,8 +2436,10 @@ its entry here in the same PR.
         (Round 23 — a seat held there before the rule stays), no room left (two a slot, counted
         AFTER the operation: the ones leaving make room for the ones arriving), and an archived type
         (only an active one is given to another row — the save's rule). Nobody is ever on two rows
-        (Q11): people only cross between the two. A field ticked on one card MOVES (the other takes
-        its value, the sending row is left without one); ticked on both, the values are exchanged.
+        (Q11): people only cross between the two. A field in «تبديل المحدد ⇄» is ONE exchange the two
+        cards share — ticked on either, both values cross (the window ticks the pair); in «نقل
+        المحدد» one way it MOVES (the other row takes it, its own value named as replaced, the
+        sending row left without one).
       - «تطبيق» changes the DRAFT only, as ONE operation: one press of «تراجع» puts both rows back
         («تراجع عن: التبديل بين 213 و255»); «حفظ (2)» counts the two rows and saves them as any
         other change. Nothing new on the server: the save already takes both rows of a move.
@@ -2471,6 +2473,51 @@ its entry here in the same PR.
       what stays with its reason, the receiving card), the board's wiring (only where it may be
       planned, the «⇄» on the code's line and never beside the bin, one operation of «تراجع»), and
       every word in both languages.
+    - Round 32 critic (the build's, never the owner's):
+      - A, after the pick: a car picked by its plate landed on its row as the bare «0» — on the van's
+        cell, its card, the van filter, Excel, «تراجع»'s words and the swap window — the owner's
+        zeros back on the board. Every board row (and «الطاقم الثابت»'s) now carries `uncoded` from
+        the server (`OperationsCrewBoardRowDto`, `OperationsStandingCrewRowDto`; one Fleet read,
+        `namesByIds`), and the board names the van by its plate with «بلا كود» (`vanName`) wherever it
+        draws or says it — the plate wraps between its letters and its digits, so the van column keeps
+        its width at 1366, 1440 and 1920 (measured: 66px at 1440, the bins inside the frame; on one
+        line it ran them 29px out), the row a line taller. A van freed in the draft keeps its plate on
+        both lists (it came back a bare «0000» in «باقي السيارات»); two uncoded cars are ordered by
+        their PLATE, as the lists said,
+        not by their count of zeros (`compareVehiclesForPicker`); a roster van with no code keeps its
+        drivers under its plate. «توزيع المحصنات» and the screens after it still show Fleet's code.
+      - B: midnight under an open slot list or «بدون سيارة» list wrote into the hidden draft (and said
+        «work not saved» again): every change to the draft now passes `canPlan` (`apply`), and the
+        lists and a picked-up chip shut with the day.
+      - C: an archived type in an exchange was lost from both rows (the other row's type took its
+        place, its own was dropped): the exchange is now off both ways, each row named why
+        («نوع 213 مؤرشف ويبقى عليها — فلا يُبادَل النوعان»). A field ticked on one card in «تبديل
+        المحدد ⇄» threw the other row's value away; it is now exchanged. Ctrl+Z inside the window
+        took back the board's last operation behind it; it does nothing while any window is open
+        (`isBoardUndoKey`). After a swap, «الطاقم الثابت» off emptied the row that now held the
+        other van's people; the swap now lets go of the two rows (`applySwapToDraft`). A one-way move
+        is said as one («نقل المحدد من 213 إلى 255»). The arrow keys follow the language (`modeStepOf`).
+        The preview's notes start their own line. Each card says how many محصنات ride its row
+        (`shipments` on `OperationsCrewBoardCrewDto`, one count for the day), and the preview warns
+        when its captains or its direction change: «تبقى على 213 المحصنات الموزَّعة عليها (6)، وقد
+        وُزِّعت قبل تغيير القائد أو الاتجاه. راجِعها في «توزيع المحصنات» بعد الحفظ».
+      - Specs rewritten (each pinned the defect): (api) `operations-crew-round32.spec.ts` «lists the
+        cars by code NATURALLY, the uncoded LAST by their plate …» and «الطاقم الثابت … the uncoded
+        last» — `['00', '0']` by plate (they pinned `['0', '00']`); (web) `crew-round32.spec.tsx` the
+        two lists' uncoded order, the same; `lib/crew-swap.spec.ts` «a field ticked on BOTH cards is
+        exchanged; ticked on one, it moves …» → «a field is ONE exchange …» and «a type archived since
+        the row took it stays on its row; an active one moves» → «… in an exchange the other row
+        keeps its own too»; `crew-swap-dialog.spec.tsx` the ticked count (the pair's tick) and «the
+        preview … the value a moved field replaces (struck)» → «… the fields exchanged — nothing
+        thrown away» (the struck value is a one-way move's, its own case), and the page's wiring →
+        `applySwapToDraft` / `swapOperation`; `crew-undo.spec.ts` «Ctrl+Z / ⌘Z does the same outside
+        a text box» → through `isBoardUndoKey`; `crew-vehicles.spec.ts` the «إضافية» line (with
+        «بلا كود») and «إزالة»'s words (`vanName`). New: (contracts) `compareVehiclesForPicker`; (api)
+        the rows' `uncoded`, a crew row's `shipments` (live legs only); (web) the van named by its
+        plate through pick, reload, card, filter, Excel and «إزالة», «الطاقم الثابت»'s rows, the freed
+        vans, the roster van's drivers, midnight's one gate, `isBoardUndoKey`, the exchange and the
+        archived pair, `applySwapToDraft`, `swapOperation`, `modeStepOf`, `shipmentsLeftBehind`, the
+        window's pair tick, the shipments note and the notes' line.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

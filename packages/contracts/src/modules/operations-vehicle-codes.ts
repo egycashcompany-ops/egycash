@@ -51,6 +51,30 @@ export const compareVehicleCodesNaturally = (a: string, b: string): number => {
 };
 
 /**
+ * THE PICKERS' ORDER OF CARS — Round 32 critic: by code naturally (`compareVehicleCodesNaturally`),
+ * and two cars whose codes BOTH name nothing by their PLATE, the thing that names them — never by
+ * their count of zeros («0» before «00» said nothing to the planner reading «ن ق ل 4521» above
+ * «ب ط 118»). The codes break a tie of plates, so the order is the same on every machine.
+ */
+export const compareVehiclesForPicker = (
+  a: { vehicleCode: string; plateNumber?: string | null },
+  b: { vehicleCode: string; plateNumber?: string | null },
+): number => {
+  const [blankA, blankB] = [
+    vehicleCodeNamesNothing(a.vehicleCode),
+    vehicleCodeNamesNothing(b.vehicleCode),
+  ];
+  if (blankA && blankB) {
+    const [plateA, plateB] = [a.plateNumber ?? '', b.plateNumber ?? ''];
+    const byPlate =
+      plateA.localeCompare(plateB, 'ar', { numeric: true }) ||
+      (plateA < plateB ? -1 : plateA > plateB ? 1 : 0);
+    if (byPlate !== 0) return byPlate;
+  }
+  return compareVehicleCodesNaturally(a.vehicleCode, b.vehicleCode);
+};
+
+/**
  * Round 32 — a car of the fleet whose code names nothing (`vehicleCodeNamesNothing`), as the pickers
  * list it: by what does name it.
  */

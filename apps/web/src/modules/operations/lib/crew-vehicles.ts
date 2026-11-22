@@ -32,7 +32,7 @@
 // the standing crew's keeps its group, named by its plate. Codes naturally: 61, 101, 150 …
 import {
   OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
-  compareVehicleCodesNaturally,
+  compareVehiclesForPicker,
   type OperationsCrewBoardFreeVehicleDto,
   type OperationsCrewFreeVehicleGroup,
   type OperationsDayBoardDriverDto,
@@ -65,16 +65,32 @@ export interface VehicleChoice {
 /**
  * Codes in number order — «P9» before «P10», «9» before «150», 61 before 101 — as the server orders
  * its groups; Round 32: a code that names nothing («0», «00» …) after every one that does, those by
- * their plate (`compareVehicleCodesNaturally`).
+ * their PLATE (`compareVehiclesForPicker` — the Round 32 critic: by their count of zeros, «0» before
+ * «00», before).
  */
 export const byVehicleCode = (
   a: { vehicleCode: string; uncoded?: OperationsUncodedVehicleDto | null },
   b: { vehicleCode: string; uncoded?: OperationsUncodedVehicleDto | null },
 ): number =>
-  compareVehicleCodesNaturally(a.vehicleCode, b.vehicleCode) ||
-  (a.uncoded?.plateNumber ?? '').localeCompare(b.uncoded?.plateNumber ?? '', 'ar', {
-    numeric: true,
-  });
+  compareVehiclesForPicker(
+    { vehicleCode: a.vehicleCode, plateNumber: a.uncoded?.plateNumber ?? null },
+    { vehicleCode: b.vehicleCode, plateNumber: b.uncoded?.plateNumber ?? null },
+  );
+
+/**
+ * Round 32 critic — the name a van goes by wherever the board draws or says it (its cell, its card,
+ * the van filter, Excel, «تراجع», the swap window): its Fleet code — or, a code that names nothing
+ * («0», «00» …), its PLATE, as the «بدون سيارة» list named it when it was picked. The owner's «ايه
+ * الاصفار دى» came back on the van's cell the moment such a car was given to a row. Null for a row
+ * without a van.
+ */
+export const vanName = (van: {
+  vehicleCode: string | null;
+  uncoded?: OperationsUncodedVehicleDto | null;
+}): string | null =>
+  van.uncoded != null && van.uncoded.plateNumber.trim() !== ''
+    ? van.uncoded.plateNumber
+    : van.vehicleCode;
 
 /**
  * What the «بدون سيارة» cell of row `forKey` offers, in the order it lists them (see the head of
@@ -113,7 +129,7 @@ export const vehicleChoices = (
       drivers: row.drivers,
       vanKey: row.key,
       pickable: true,
-      uncoded: freeById.get(row.vehicleId as string)?.uncoded ?? null,
+      uncoded: row.uncoded ?? freeById.get(row.vehicleId as string)?.uncoded ?? null,
     }))
     .sort(byVehicleCode);
   const offRoster = (vehicle: OperationsCrewBoardFreeVehicleDto): VehicleChoice => ({
@@ -145,12 +161,13 @@ export const vehicleChoices = (
       offRoster({
         vehicleId: row.vehicleId as string,
         vehicleCode: row.vehicleCode ?? '…',
-        group: 'other',
         onRoster: false,
         inWorkshop: workshop.has(row.vehicleId as string),
         drivers: [],
-        // Its saved row's code is all the board holds of it: named by that, as it is.
-        uncoded: null,
+        // Round 32 critic — named as its saved row named it: by its plate when its code names
+        // nothing, in «سيارات بلا كود في الأسطول» (it was a bare «0000» at the end of «أخرى»).
+        group: row.uncoded != null ? 'uncoded' : 'other',
+        uncoded: row.uncoded ?? null,
       }),
     );
   const rank = (group: OperationsCrewFreeVehicleGroup): number =>
@@ -197,5 +214,7 @@ export const giveVehicle = (
     vehicleCode: choice.vehicleCode,
     onRoster: false,
     drivers: [],
+    // Round 32 critic — the row is named by the plate it was picked by, never by the bare zeros.
+    uncoded: choice.uncoded,
   });
 };

@@ -12,6 +12,7 @@
 // written here.
 import {
   compareVehicleCodesNaturally,
+  compareVehiclesForPicker,
   vehicleCodeNamesNothing,
   type LocalizedString,
   type OperationsUncodedVehicleDto,
@@ -43,3 +44,16 @@ export const isUnidentified = (vehicle: NamedVehicle): boolean =>
 /** Codes naturally — 61, 101, 150 … — a code that names nothing last (the contracts' rule). */
 export const byVehicleCodeNaturally = (a: string, b: string): number =>
   compareVehicleCodesNaturally(a, b);
+
+/**
+ * Round 32 critic — two cars as a picker lists them: by code naturally, and two whose codes both
+ * name nothing by their PLATE (`compareVehiclesForPicker`) — never by their count of zeros.
+ */
+export const byCarForPicker = (
+  a: { vehicleCode: string; uncoded: OperationsUncodedVehicleDto | null },
+  b: { vehicleCode: string; uncoded: OperationsUncodedVehicleDto | null },
+): number =>
+  compareVehiclesForPicker(
+    { vehicleCode: a.vehicleCode, plateNumber: a.uncoded?.plateNumber ?? null },
+    { vehicleCode: b.vehicleCode, plateNumber: b.uncoded?.plateNumber ?? null },
+  );

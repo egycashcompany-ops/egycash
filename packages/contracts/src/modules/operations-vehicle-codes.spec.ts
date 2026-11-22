@@ -5,6 +5,7 @@ import { ErrorCodes } from '../errors/index.js';
 import { OPERATIONS_CREW_FREE_VEHICLE_GROUPS } from './operations.js';
 import {
   compareVehicleCodesNaturally,
+  compareVehiclesForPicker,
   vehicleCodeNamesNothing,
 } from './operations-vehicle-codes.js';
 
@@ -71,6 +72,48 @@ describe('compareVehicleCodesNaturally — the pickers’ order', () => {
     const a = sorted(['0', '00', '000', '61', '٠']);
     const b = sorted(['٠', '000', '61', '00', '0']);
     expect(a).toEqual(b);
+  });
+});
+
+describe('compareVehiclesForPicker — the uncoded by their PLATE (Round 32 critic)', () => {
+  const sorted = (
+    cars: readonly { vehicleCode: string; plateNumber?: string | null }[],
+  ): string[] => [...cars].sort(compareVehiclesForPicker).map((car) => car.vehicleCode);
+
+  it('orders two cars whose codes name nothing by their plate — not by their count of zeros', () => {
+    // «0» is «ن ق ل 4521» and «00» is «ب ط 118»: by plate «ب» comes before «ن».
+    expect(
+      sorted([
+        { vehicleCode: '0', plateNumber: 'ن ق ل 4521' },
+        { vehicleCode: '00', plateNumber: 'ب ط 118' },
+      ]),
+    ).toEqual(['00', '0']);
+    expect(
+      sorted([
+        { vehicleCode: '00', plateNumber: 'ب ط 118' },
+        { vehicleCode: '0', plateNumber: 'ن ق ل 4521' },
+      ]),
+    ).toEqual(['00', '0']);
+  });
+
+  it('a plate’s numbers in number order, and the codes break a tie of plates', () => {
+    expect(
+      sorted([
+        { vehicleCode: '000', plateNumber: 'ر ع 1200' },
+        { vehicleCode: '0', plateNumber: 'ر ع 999' },
+        { vehicleCode: '00', plateNumber: 'ر ع 999' },
+      ]),
+    ).toEqual(['0', '00', '000']);
+  });
+
+  it('coded cars by code naturally, before every uncoded one — whatever their plates', () => {
+    expect(
+      sorted([
+        { vehicleCode: '0', plateNumber: 'أ 1' },
+        { vehicleCode: '150', plateNumber: 'ي 9' },
+        { vehicleCode: '61', plateNumber: 'ي 8' },
+      ]),
+    ).toEqual(['61', '150', '0']);
   });
 });
 

@@ -159,6 +159,7 @@ const crew = (over: Partial<OperationsCrewBoardCrewDto> = {}): OperationsCrewBoa
   notes: null,
   shiftTypeId: null,
   rowColour: null,
+  shipments: 0,
   ...over,
 });
 
@@ -179,6 +180,7 @@ describe('toPlanRows — the board as the server sends it', () => {
         driver2EmployeeId: null,
         drivers: [{ employeeId: 'd1', fullNameAr: 'سائق' }],
         missionTypeId: null,
+        uncoded: null,
         crew: crew({
           id: 'c-213',
           captainEmployeeIds: ['a'],
@@ -197,6 +199,7 @@ describe('toPlanRows — the board as the server sends it', () => {
         driver2EmployeeId: null,
         drivers: [],
         missionTypeId: null,
+        uncoded: null,
         crew: null,
       },
     ],

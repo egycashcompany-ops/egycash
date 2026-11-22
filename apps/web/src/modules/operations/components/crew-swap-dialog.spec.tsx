@@ -139,6 +139,8 @@ const render = (
     locale?: Locale;
     initial?: { bKey: string; picks?: SwapPicks; mode?: SwapMode };
     away?: Record<string, 'absent' | 'onLeave'>;
+    rows?: readonly PlanRow[];
+    rules?: SwapRules;
   } = {},
 ): string => {
   const locale = options.locale ?? 'ar';
@@ -157,12 +159,12 @@ const render = (
     >
       <CrewSwapDialog
         aKey={V150.key}
-        rows={ROWS}
+        rows={options.rows ?? ROWS}
         rowName={(row) =>
           row.vehicleCode ?? translate(locale, 'operations.crewPlan.looseRow', { n: '1' })
         }
         member={member}
-        rules={rules(options.away)}
+        rules={options.rules ?? rules(options.away)}
         shiftTypes={TYPES}
         colourName={(colour) =>
           translate(locale, `operations.catalogs.shiftType.colours.${colour}`)
@@ -236,7 +238,13 @@ describe('two cards side by side, the ticks, the ways and the preview AFTER', ()
 
   it('the ticked items are checked; each card has «الكل» · «الطاقم فقط» · «لا شيء»', () => {
     const first = card(html, 'data-swap-card="a"');
-    expect(first.match(/data-swap-ticked="true"/g)).toHaveLength(4);
+    // Round 32 critic — 4 ticked on 150 and, in «تبديل المحدد ⇄», the time ticked on 213: a field
+    // is the pair's exchange, its box the same on both cards (it read 4 — the time crossed unticked).
+    expect(first.match(/data-swap-ticked="true"/g)).toHaveLength(5);
+    expect(first).toMatch(/data-swap-item="field:plannedTime" data-swap-ticked="true"/);
+    expect(card(html, 'data-swap-card="b"')).toMatch(
+      /data-swap-item="field:direction" data-swap-ticked="true"/,
+    );
     for (const pick of ['all', 'crew', 'none']) {
       expect(html).toContain(`data-swap-quick="a:${pick}"`);
       expect(html).toContain(`data-swap-quick="b:${pick}"`);
@@ -257,22 +265,25 @@ describe('two cards side by side, the ticks, the ways and the preview AFTER', ()
     expect(t('operations.crewPlan.swap.mode.aToB', undefined, 'en')).toBe('Move selected →');
   });
 
-  it('the preview: who arrives «من 213» / «من 150», the value a moved field replaces (struck), what goes', () => {
+  // Round 32 critic — REWRITTEN. In «تبديل المحدد ⇄» it pinned 150's own 07:30 — never ticked —
+  // «replaced by 213's 09:00 — struck»: a swap threw a value away. A field is now exchanged; the
+  // struck «بدلًا من» is a one-way move's (the next case).
+  it('the preview: who arrives «من 213» / «من 150», the fields exchanged — nothing thrown away — what goes', () => {
     const after150 = card(html, 'data-swap-preview="a"');
     const after213 = card(html, 'data-swap-preview="b"');
-    // c2 comes to 150 and c1 goes to 213; the directions are exchanged; 213's time moves to 150.
+    // c2 comes to 150 and c1 goes to 213; the directions and the times are exchanged.
     expect(after150).toContain('data-swap-arrived="person:c2"');
     expect(after150).toContain('data-swap-arrived="field:direction"');
     expect(after150).toContain('data-swap-arrived="field:plannedTime"');
     expect(text(after150)).toContain(t('operations.crewPlan.swap.from', { row: '213' }));
     expect(after213).toContain('data-swap-arrived="person:c1"');
     expect(after213).toContain('data-swap-arrived="person:s2"');
+    expect(after213).toContain('data-swap-arrived="field:plannedTime"');
     expect(text(after213)).toContain('المعادي');
-    // 150's time 07:30 is replaced by 213's 09:00 — struck in the preview.
-    expect(after150).toContain('data-swap-replaced="plannedTime"');
-    expect(after150).toMatch(/<s[^>]*>07:30<\/s>/);
-    // The notes went to 213, which had none: nothing replaced there.
-    expect(after213).not.toContain('data-swap-replaced');
+    expect(text(after213)).toContain('07:30');
+    expect(text(after150)).toContain('09:00');
+    // An exchange replaces nothing.
+    expect(html).not.toContain('data-swap-replaced');
     expect(text(after150)).toContain(
       t('operations.crewPlan.swap.left', {
         row: '213',
@@ -280,18 +291,28 @@ describe('two cards side by side, the ticks, the ways and the preview AFTER', ()
           NAMES.c1,
           NAMES.s2,
           t('operations.crewPlan.columns.direction'),
+          t('operations.crewPlan.columns.time'),
           t('operations.crewPlan.columns.notes'),
         ].join('، '),
       }),
     );
-    // Apply counts what crosses: 3 people + direction both ways + time + notes.
-    expect(html).toContain('data-swap-apply="7"');
+    // Apply counts what crosses: 3 people + direction both ways + time both ways + notes.
+    expect(html).toContain('data-swap-apply="8"');
     expect(text(html)).toContain(
       t('operations.crewPlan.swap.summary', {
-        moved: formatNumber(7, 'ar'),
+        moved: formatNumber(8, 'ar'),
         kept: formatNumber(0, 'ar'),
       }),
     );
+  });
+
+  it('one way: a field moved onto a value names the value it replaces, struck', () => {
+    const oneWay = render({
+      initial: { bKey: V213.key, picks: { a: [fieldItem('plannedTime')], b: [] }, mode: 'aToB' },
+    });
+    const after213 = card(oneWay, 'data-swap-preview="b"');
+    expect(after213).toContain('data-swap-replaced="plannedTime"');
+    expect(after213).toMatch(/<s[^>]*>09:00<\/s>/);
   });
 
   it('a rule keeps an item back — shown on the preview with its reason, counted as staying', () => {
@@ -332,6 +353,86 @@ describe('two cards side by side, the ticks, the ways and the preview AFTER', ()
   });
 });
 
+describe('Round 32 critic — the window', () => {
+  it('in «تبديل المحدد ⇄» a field ticked on one card shows ticked on both — the pair’s exchange, named so', () => {
+    const html = render({
+      initial: { bKey: V213.key, picks: { a: [fieldItem('direction')], b: [] }, mode: 'swap' },
+    });
+    const second = card(html, 'data-swap-card="b"');
+    expect(second).toMatch(/data-swap-item="field:direction" data-swap-ticked="true"/);
+    expect(second).toContain(
+      `aria-label="${t('operations.crewPlan.swap.itemExchange', {
+        item: `${t('operations.crewPlan.columns.direction')}: حلوان`,
+        to: '150',
+      })}"`,
+    );
+    // One way, the same tick is the sending card's alone.
+    const oneWay = render({
+      initial: { bKey: V213.key, picks: { a: [fieldItem('direction')], b: [] }, mode: 'aToB' },
+    });
+    expect(card(oneWay, 'data-swap-card="b"')).not.toContain('data-swap-ticked');
+  });
+
+  it('an archived type in an exchange: both rows keep theirs, each named why', () => {
+    const archived = render({
+      rules: { ...rules(), typeMayGo: (id) => id !== 't-daily' },
+      initial: { bKey: V213.key, picks: { a: [fieldItem('shiftTypeId')], b: [] }, mode: 'swap' },
+    });
+    const after150 = card(archived, 'data-swap-preview="a"');
+    const after213 = card(archived, 'data-swap-preview="b"');
+    expect(after150).toContain('data-swap-kept="field:shiftTypeId"');
+    expect(after213).toContain('data-swap-kept="field:shiftTypeId"');
+    expect(text(after150)).toContain('يومي');
+    expect(text(after213)).toContain('احتياطي');
+    expect(text(after213)).toContain(
+      t('operations.crewPlan.swap.reason.archivedPair', { row: '150' }),
+    );
+    expect(archived).not.toContain('data-swap-replaced');
+    expect(archived).toMatch(
+      /data-swap-apply="0"[^>]*disabled=""|disabled=""[^>]*data-swap-apply="0"/,
+    );
+  });
+
+  it('says how many محصنات ride a row — and that they stay when its captain or its direction leaves', () => {
+    const holding = { ...V150, shipments: 6 };
+    const html = render({
+      rows: [holding, V213, LOOSE],
+      initial: { bKey: V213.key, picks: { a: [personItem('c1')], b: [] }, mode: 'aToB' },
+    });
+    expect(text(card(html, 'data-swap-card="a"'))).toContain(
+      t('operations.crewPlan.swap.shipments', { count: formatNumber(6, 'ar') }),
+    );
+    expect(card(html, 'data-swap-card="b"')).not.toContain('data-swap-shipments');
+    const after150 = card(html, 'data-swap-preview="a"');
+    expect(after150).toContain('data-swap-shipments-stay="a"');
+    expect(text(after150)).toContain(
+      t('operations.crewPlan.swap.shipmentsStay', { row: '150', count: formatNumber(6, 'ar') }),
+    );
+    // Only a specialist leaving: nothing to say.
+    const quiet = render({
+      rows: [holding, V213, LOOSE],
+      initial: { bKey: V213.key, picks: { a: [personItem('s1')], b: [] }, mode: 'aToB' },
+    });
+    expect(quiet).not.toContain('data-swap-shipments-stay');
+  });
+
+  it('the notes start their own line on the preview — never under the label column', () => {
+    const html = render({
+      initial: { bKey: V213.key, picks: { a: [fieldItem('direction')], b: [] }, mode: 'swap' },
+    });
+    const notesLabels = [...html.matchAll(/<span class="([^"]*)">ملاحظات<\/span>/g)].map(
+      (match) => match[1] ?? '',
+    );
+    expect(notesLabels.length).toBeGreaterThan(0);
+    for (const classes of notesLabels) expect(classes).toContain('sm:col-start-1');
+  });
+
+  it('the arrow keys read the language: `modeStepOf` with the window’s locale', () => {
+    const dialog = read('./CrewSwapDialog.tsx');
+    expect(dialog).toContain("const by = modeStepOf(event.key, locale === 'ar');");
+  });
+});
+
 describe('the board wires it — one operation, never on a record', () => {
   const page = read('../pages/CrewBoardPage.tsx');
 
@@ -354,9 +455,18 @@ describe('the board wires it — one operation, never on a record', () => {
     expect(page).toMatch(/data-cell-control="swap"\s+data-row-swap=\{row\.key\}/);
   });
 
-  it('«تطبيق» is ONE step of «تراجع» on the draft — `applySwap` under the board’s own rules', () => {
+  // Round 32 critic — REWRITTEN for the operation's name and the standing toggle: ONE step of
+  // «تراجع» on the whole draft (`applySwapToDraft` — the rows by `applySwap`, the standing crew's
+  // bookkeeping let go of the two rows), called a swap or a move by its way (`swapOperation`).
+  it('«تطبيق» is ONE step of «تراجع» on the draft — `applySwapToDraft` under the board’s own rules', () => {
+    expect(page).toContain(
+      'const what = swapOperation(mode, { a: nameOfRow(aKey), b: nameOfRow(bKey) });',
+    );
+    expect(page).toContain(
+      'apply(what, (draft) => applySwapToDraft(draft, aKey, bKey, picks, mode, swapRules));',
+    );
     expect(page).toMatch(
-      /applyRows\(\{ kind: 'swap', vars \}, \(current\) =>\s*applySwap\(current, aKey, bKey, picks, mode, swapRules\),?\s*\)/,
+      /what\.kind === 'swap' \? 'operations\.crewPlan\.swap\.done' : 'operations\.crewPlan\.swap\.moved'/,
     );
     expect(page).toContain('awayOf: (employeeId) => awayOf(memberOf(employeeId))');
     expect(t('operations.crewPlan.undo.kind.swap', { a: '150', b: '213' })).toBe(

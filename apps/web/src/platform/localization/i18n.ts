@@ -13009,6 +13009,15 @@ const en: Record<string, string> = {
   'operations.crewPlan.undo.kind.restoreRow': 'putting row {{row}} back',
   // Round 32 C — «تبديل بين سيارتين»: two vans' cards side by side, what crosses ticked item by item.
   'operations.crewPlan.undo.kind.swap': 'the swap between {{a}} and {{b}}',
+  // Round 32 critic — a one-way move is said as one, never as a swap.
+  'operations.crewPlan.undo.kind.move': 'moving the selected from {{from}} to {{to}}',
+  'operations.crewPlan.swap.moved': 'Moved the selected from {{from}} to {{to}}',
+  'operations.crewPlan.swap.itemExchange': 'Exchange {{item}} with {{to}}',
+  'operations.crewPlan.swap.reason.archivedPair':
+    'the type on {{row}} is archived and stays there — so the two types are not exchanged',
+  'operations.crewPlan.swap.shipments': 'Secured: {{count}}',
+  'operations.crewPlan.swap.shipmentsStay':
+    'The {{count}} secured shipments placed on {{row}} stay on it — they were placed before its captain or direction changed. Review them on «Secured distribution» after saving.',
   'operations.crewPlan.swap.open': 'Swap with another vehicle…',
   'operations.crewPlan.swap.openRow': 'Swap {{row}} with another vehicle…',
   'operations.crewPlan.swap.title': 'Swap between two vehicles',
@@ -13084,6 +13093,8 @@ const en: Record<string, string> = {
   // Round 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى»: a car whose Fleet code is only zeros.
   'operations.crewPlan.vehicles.group.uncoded': 'Vehicles with no code in Fleet',
   'operations.crewPlan.vehicles.noCode': 'no code',
+  'operations.crewPlan.vehicles.noCodeHint':
+    'Its vehicle code in Fleet is only zeros — it is named here by its plate. Correct the code in «Fleet» → «Vehicles».',
   'operations.crewPlan.vehicles.uncodedLabel':
     'Plate {{plate}} — {{make}} — no vehicle code in Fleet',
   'operations.crewPlan.vehicles.unidentified':
@@ -28652,6 +28663,15 @@ const ar: Record<string, string> = {
   'operations.crewPlan.undo.kind.restoreRow': 'إعادة الصف {{row}}',
   // Round 32 C — «تبديل بين سيارتين».
   'operations.crewPlan.undo.kind.swap': 'التبديل بين {{a}} و{{b}}',
+  // Round 32 critic — النقل باتجاه واحد يُسمّى نقلًا، لا تبديلًا.
+  'operations.crewPlan.undo.kind.move': 'نقل المحدد من {{from}} إلى {{to}}',
+  'operations.crewPlan.swap.moved': 'تم نقل المحدد من {{from}} إلى {{to}}',
+  'operations.crewPlan.swap.itemExchange': 'تبديل {{item}} مع {{to}}',
+  'operations.crewPlan.swap.reason.archivedPair':
+    'نوع {{row}} مؤرشف ويبقى عليها — فلا يُبادَل النوعان',
+  'operations.crewPlan.swap.shipments': 'محصنات: {{count}}',
+  'operations.crewPlan.swap.shipmentsStay':
+    'تبقى على {{row}} المحصنات الموزَّعة عليها ({{count}})، وقد وُزِّعت قبل تغيير القائد أو الاتجاه. راجِعها في «توزيع المحصنات» بعد الحفظ.',
   'operations.crewPlan.swap.open': 'تبديل مع سيارة أخرى…',
   'operations.crewPlan.swap.openRow': 'تبديل {{row}} مع سيارة أخرى…',
   'operations.crewPlan.swap.title': 'تبديل بين سيارتين',
@@ -28723,6 +28743,8 @@ const ar: Record<string, string> = {
   // Round 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى».
   'operations.crewPlan.vehicles.group.uncoded': 'سيارات بلا كود في الأسطول',
   'operations.crewPlan.vehicles.noCode': 'بلا كود',
+  'operations.crewPlan.vehicles.noCodeHint':
+    'كود السيارة في «الحركة» أصفار فقط — تُسمّى هنا بلوحتها، ويُصحَّح الكود في «الحركة» ← «السيارات».',
   'operations.crewPlan.vehicles.uncodedLabel':
     'اللوحة {{plate}} — {{make}} — بلا كود سيارة في الأسطول',
   'operations.crewPlan.vehicles.unidentified':

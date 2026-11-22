@@ -117,7 +117,12 @@ import { crewMembers, slotIds } from './crew-slots';
 import { crewAvailabilityOn } from './crew-requirements.service';
 import { CREW_SLOT_FIELD, crewRolesOf, refuseWrongSlots } from './crew-roles';
 import { directionResolver } from './crew-direction';
-import { byVehicleCodeNaturally, isUnidentified, uncodedOf } from './uncoded-vehicles';
+import {
+  byCarForPicker,
+  byVehicleCodeNaturally,
+  isUnidentified,
+  uncodedOf,
+} from './uncoded-vehicles';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
 
@@ -145,12 +150,19 @@ const snapshot = (doc: OperationsCrewAssignmentDoc) => ({
   rowColour: canonicalCrewRowColour(doc.rowColour),
 });
 
-/** The board's view of a crew row — its id, then its facts. */
-const toCrewDto = (doc: OperationsCrewAssignmentDoc): OperationsCrewBoardCrewDto => ({
+/**
+ * The board's view of a crew row — its id, then its facts, then (Round 32 critic) how many
+ * محصنات ride it (`legs`, a `countLiveByCrew` answer for the day's rows).
+ */
+const toCrewDto = (
+  doc: OperationsCrewAssignmentDoc,
+  legs: ReadonlyMap<string, number>,
+): OperationsCrewBoardCrewDto => ({
   // The id is spread in HERE rather than added to `snapshot`, which the audit diffs also use — an
   // entity's own id in its own change list is noise, since `entityRef.entityId` already carries it.
   id: String(doc._id),
   ...snapshot(doc),
+  shipments: legs.get(String(doc._id)) ?? 0,
 });
 
 /** Everyone the payload row puts on the vehicle, across all three slots. */
@@ -321,10 +333,27 @@ class OperationsCrewService {
     // ONE Fleet read for every van's code, ONE directory read for every driver's name — the van
     // cards' own shape (shipment.service.ts `vanCardsOf`), rather than a read per row. ONE workshop
     // read for the «صيانة» figure and the free list together.
-    const vehicleCodes = await fleetVehicleRepository.codesByIds([
+    // Round 32 critic — with its plate and type: a van whose code names nothing («0», «00» …) is
+    // named on the board by its plate, as its «بدون سيارة» list named it (`uncoded`).
+    const vehicleNames = await fleetVehicleRepository.namesByIds([
       ...dutyRows.map((duty) => String(duty.vehicleId)),
       ...offRoster.map((row) => String(row.vehicleId)),
     ]);
+    const codeOfVan = (vehicleId: string): string => vehicleNames.get(vehicleId)?.code ?? vehicleId;
+    const uncodedOfVan = (vehicleId: string) => {
+      const named = vehicleNames.get(vehicleId);
+      return named === undefined
+        ? null
+        : uncodedOf(
+            { vehicleCode: named.code, plateNumber: named.plateNumber, typeId: named.typeId },
+            typeNames,
+          );
+    };
+    // Round 32 critic — the محصنات each of the day's rows holds: they ride the row, and the board's
+    // «تبديل بين سيارتين» says how many before a captain or a direction leaves it. ONE read.
+    const legsByCrew = await operationsShipmentAssignmentRepository.countLiveByCrew(
+      crewRows.map((row) => String(row._id)),
+    );
     // `!= null`, not `!== null`: a `.lean()` row hands an absent field back as `undefined`, and
     // `String(undefined)` would name a driver "undefined".
     const driverIdsOf = (duty: (typeof dutyRows)[number]): string[] =>
@@ -354,7 +383,7 @@ class OperationsCrewService {
         const crew = crewByVehicle.get(String(duty.vehicleId));
         return {
           vehicleId: String(duty.vehicleId),
-          vehicleCode: vehicleCodes.get(String(duty.vehicleId)) ?? String(duty.vehicleId),
+          vehicleCode: codeOfVan(String(duty.vehicleId)),
           fleetDutyAssignmentId: String(duty._id),
           driver1EmployeeId:
             duty.driver1EmployeeId == null ? null : String(duty.driver1EmployeeId),
@@ -362,19 +391,21 @@ class OperationsCrewService {
             duty.driver2EmployeeId == null ? null : String(duty.driver2EmployeeId),
           drivers: driverNames(duty),
           missionTypeId: duty.missionTypeId == null ? null : String(duty.missionTypeId),
-          crew: crew === undefined ? null : toCrewDto(crew),
+          crew: crew === undefined ? null : toCrewDto(crew, legsByCrew),
+          uncoded: uncodedOfVan(String(duty.vehicleId)),
         };
       }),
       // Round 24 — a van given on this board that the roster does not have: no Fleet facts at all.
       ...offRoster.map((row): OperationsCrewBoardRowDto => ({
         vehicleId: String(row.vehicleId),
-        vehicleCode: vehicleCodes.get(String(row.vehicleId)) ?? String(row.vehicleId),
+        vehicleCode: codeOfVan(String(row.vehicleId)),
         fleetDutyAssignmentId: null,
         driver1EmployeeId: null,
         driver2EmployeeId: null,
         drivers: [],
         missionTypeId: null,
-        crew: toCrewDto(row),
+        crew: toCrewDto(row, legsByCrew),
+        uncoded: uncodedOfVan(String(row.vehicleId)),
       })),
     ];
 
@@ -382,7 +413,7 @@ class OperationsCrewService {
     const vehiclelessRows = crewRows
       .filter((row) => !hasVan(row))
       .sort(byCreation)
-      .map(toCrewDto);
+      .map((row) => toCrewDto(row, legsByCrew));
 
     // «صيانة» — Operations' own vans only, never the whole fleet (a company-wide workshop count
     // would be noise on a cash board): the day's vans (roster, and a crew row's off the roster),
@@ -429,10 +460,8 @@ class OperationsCrewService {
         (a, b) =>
           OPERATIONS_CREW_FREE_VEHICLE_GROUPS.indexOf(a.group) -
             OPERATIONS_CREW_FREE_VEHICLE_GROUPS.indexOf(b.group) ||
-          byCode(a.vehicleCode, b.vehicleCode) ||
-          (a.uncoded?.plateNumber ?? '').localeCompare(b.uncoded?.plateNumber ?? '', 'ar', {
-            numeric: true,
-          }) ||
+          // Round 32 critic — two uncoded cars by their PLATE (their zeros say nothing).
+          byCarForPicker(a, b) ||
           a.vehicleId.localeCompare(b.vehicleId),
       );
 

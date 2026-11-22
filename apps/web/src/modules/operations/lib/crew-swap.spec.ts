@@ -6,19 +6,30 @@
 // archived type) keeping an item where it is, named; and the whole operation as ONE step of «تراجع»,
 // counted as the two rows «حفظ» will send.
 import { describe, expect, it } from 'vitest';
-import { changeCount, planChanges, vehiclelessRow, type PlanRow } from './crew-plan';
+import {
+  changeCount,
+  clearStandingFromPlan,
+  planChanges,
+  vehiclelessRow,
+  type PlanRow,
+} from './crew-plan';
+import { translate } from '../../../platform/localization/i18n';
 import {
   NO_PICKS,
   QUICK_PICKS,
   SLOT_PATH,
   applySwap,
+  applySwapToDraft,
   fieldItem,
   livePicks,
+  modeStepOf,
   personItem,
   planSwap,
   quickPick,
   sendsFrom,
+  shipmentsLeftBehind,
   swapItems,
+  swapOperation,
   type SwapPicks,
   type SwapRules,
 } from './crew-swap';
@@ -148,7 +159,10 @@ describe('«تبديل المحدد ⇄» — the ticked items of both cards cro
     });
   });
 
-  it('a field ticked on BOTH cards is exchanged; ticked on one, it moves and the other value is named as replaced', () => {
+  // Round 32 critic — REWRITTEN. It pinned that a field ticked on ONE card «moves and the other
+  // value is named as replaced» even in «تبديل المحدد ⇄»: 213's own 09:00 — never ticked — was
+  // thrown away by a SWAP. A field is now one exchange the two cards share (the window ticks the pair).
+  it('a field is ONE exchange: ticked on either card or on both, the two values cross — nothing thrown away', () => {
     const result = planSwap(
       V150,
       V213,
@@ -158,13 +172,28 @@ describe('«تبديل المحدد ⇄» — the ticked items of both cards cro
     );
     expect(result.a.direction).toBe('حلوان');
     expect(result.b.direction).toBe('المعادي');
-    // The time went from 150 to 213: 213 takes 07:30 and loses its 09:00, 150 is left without one.
+    // The time ticked on 150 alone is exchanged too: 213 takes 07:30, and 150 takes 213's 09:00.
     expect(result.b.plannedTime).toBe('07:30');
-    expect(result.a.plannedTime).toBeNull();
-    expect(result.replaced).toEqual([{ on: 'b', field: 'plannedTime', was: '09:00' }]);
+    expect(result.a.plannedTime).toBe('09:00');
+    expect(result.replaced).toEqual([]);
+    expect(result.moved).toEqual(
+      expect.arrayContaining([
+        { from: 'a', item: 'field:plannedTime' },
+        { from: 'b', item: 'field:plannedTime' },
+      ]),
+    );
+    // Ticked on 213's card alone, the same exchange.
+    const fromB = planSwap(V150, V213, picks([], [fieldItem('plannedTime')]), 'swap', RULES);
+    expect([fromB.a.plannedTime, fromB.b.plannedTime]).toEqual(['09:00', '07:30']);
     // Nothing else moved.
     expect(result.a.slots).toEqual(V150.slots);
     expect(result.b.notes).toBeNull();
+  });
+
+  it('one way, a field still MOVES and the value it lands on is named as replaced', () => {
+    const result = planSwap(V150, V213, picks([fieldItem('plannedTime')]), 'aToB', RULES);
+    expect([result.a.plannedTime, result.b.plannedTime]).toEqual([null, '07:30']);
+    expect(result.replaced).toEqual([{ on: 'b', field: 'plannedTime', was: '09:00' }]);
   });
 
   it('a field moved onto an empty one replaces nothing', () => {
@@ -346,21 +375,48 @@ describe('the board’s rules keep an item where it is — named, never applied'
     expect(everyone).toEqual(['c1', 'c2', 'c5']);
   });
 
-  it('a type archived since the row took it stays on its row; an active one moves', () => {
+  // Round 32 critic — REWRITTEN. It pinned 213's active type crossing onto 150 «replacing the archived
+  // one it held» in an exchange the card said kept the archived one: it ended on NEITHER row, and the
+  // archived type cannot be picked again. The archived type stays — and so does the other.
+  it('a type archived since the row took it stays on its row — in an exchange the other row keeps its own too', () => {
     const rules = rulesWith({ archived: ['t-daily'] });
-    const result = planSwap(
+    for (const ticks of [
+      picks([fieldItem('shiftTypeId')], [fieldItem('shiftTypeId')]),
+      picks([], [fieldItem('shiftTypeId')]),
+      picks([fieldItem('shiftTypeId')], []),
+    ]) {
+      const result = planSwap(V150, V213, ticks, 'swap', rules);
+      expect(result.a.shiftTypeId).toBe('t-daily');
+      expect(result.b.shiftTypeId).toBe('t-reserve');
+      expect(result.refused).toEqual([
+        { from: 'a', item: 'field:shiftTypeId', reason: 'archivedType' },
+        { from: 'b', item: 'field:shiftTypeId', reason: 'archivedPair' },
+      ]);
+      expect(result.replaced).toEqual([]);
+      expect(result.moved).toEqual([]);
+      // Nothing crossed at all: the same rows.
+      expect(result.a).toBe(V150);
+    }
+    // The rest of an exchange still crosses around it.
+    const withDirection = planSwap(
       V150,
       V213,
-      picks([fieldItem('shiftTypeId')], [fieldItem('shiftTypeId')]),
+      picks([fieldItem('shiftTypeId'), fieldItem('direction')]),
       'swap',
       rules,
     );
-    expect(result.refused).toEqual([
+    expect(withDirection.a).toMatchObject({ shiftTypeId: 't-daily', direction: 'حلوان' });
+    expect(withDirection.b).toMatchObject({ shiftTypeId: 't-reserve', direction: 'المعادي' });
+    // One way, the archived type is refused; an ACTIVE type sent onto its row replaces it — as a
+    // type picked by hand there would, named in the preview.
+    const sent = planSwap(V150, V213, picks([fieldItem('shiftTypeId')]), 'aToB', rules);
+    expect(sent.refused).toEqual([
       { from: 'a', item: 'field:shiftTypeId', reason: 'archivedType' },
     ]);
-    // 213's active type still crosses onto 150 (replacing the archived one it held).
-    expect(result.a.shiftTypeId).toBe('t-reserve');
-    expect(result.b.shiftTypeId).toBeNull();
+    expect(sent.b.shiftTypeId).toBe('t-reserve');
+    const back = planSwap(V150, V213, picks([], [fieldItem('shiftTypeId')]), 'bToA', rules);
+    expect(back.a.shiftTypeId).toBe('t-reserve');
+    expect(back.replaced).toEqual([{ on: 'a', field: 'shiftTypeId', was: 't-daily' }]);
     // Unless the row it goes to already holds it on the server.
     const held = rulesWith({ archived: ['t-daily'], heldBy: { 't-daily': 'van:v-213' } });
     expect(
@@ -459,5 +515,101 @@ describe('the ticks follow the rows as they are', () => {
     expect(livePicks(V150, V213, ticks)).toBe(ticks);
     const moved = { ...V150, slots: { ...V150.slots, captain: [] }, notes: null };
     expect(livePicks(moved, V213, ticks)).toEqual({ a: [], b: ['person:c2'] });
+  });
+});
+
+describe('Round 32 critic — the board around the operation', () => {
+  const OTHER = van('9', { slots: { captain: ['c8'], specialist1: [], specialist2: [] } });
+
+  it('the standing crew’s toggle lets go of the two rows — its «off» no longer empties the wrong one', () => {
+    // «الطاقم الثابت» filled 150 (and 9); 213's crew is hand-placed. Swapped, then the toggle off.
+    const draft: CrewDraft = {
+      rows: [V150, OTHER, V213],
+      standingKeys: [V150.key, OTHER.key],
+      standingDirections: { [V150.key]: 'المعادي' },
+    };
+    const after = applySwapToDraft(
+      draft,
+      V150.key,
+      V213.key,
+      picks(quickPick(V150, 'crew'), quickPick(V213, 'crew')),
+      'swap',
+      RULES,
+    );
+    expect(after.standingKeys).toEqual([OTHER.key]);
+    expect(after.standingDirections).toEqual({});
+    const off = clearStandingFromPlan(
+      after.rows,
+      after.standingKeys ?? [],
+      after.standingDirections ?? {},
+    );
+    // 213's hand-placed people, now on 150, stay where the planner put them — and so does the
+    // standing crew, now on 213; only the load's other van is emptied.
+    expect(off.find((row) => row.key === V150.key)?.slots.captain).toEqual(['c2']);
+    expect(off.find((row) => row.key === V213.key)?.slots.captain).toEqual(['c1']);
+    expect(off.find((row) => row.key === OTHER.key)?.slots.captain).toEqual([]);
+    // Before the fix the «off» emptied 150 — 213's people back to the pools — and left the loaded
+    // crew on 213.
+    const unfixed = clearStandingFromPlan(after.rows, draft.standingKeys ?? [], {});
+    expect(unfixed.find((row) => row.key === V150.key)?.slots.captain).toEqual([]);
+  });
+
+  it('nothing crossed: the same draft; no standing load: only the rows change', () => {
+    const draft: CrewDraft = { rows: [V150, V213], standingKeys: null };
+    expect(applySwapToDraft(draft, V150.key, V213.key, NO_PICKS, 'swap', RULES)).toBe(draft);
+    const after = applySwapToDraft(draft, V150.key, V213.key, picks(all(V150)), 'aToB', RULES);
+    expect(after.standingKeys).toBeNull();
+    expect(after.rows).not.toBe(draft.rows);
+  });
+
+  it('a one-way move is called a move, from the sending row — never «التبديل بين …»', () => {
+    const names = { a: '213', b: '255' };
+    expect(swapOperation('swap', names)).toEqual({ kind: 'swap', vars: { a: '213', b: '255' } });
+    expect(swapOperation('aToB', names)).toEqual({
+      kind: 'move',
+      vars: { from: '213', to: '255' },
+    });
+    expect(swapOperation('bToA', names)).toEqual({
+      kind: 'move',
+      vars: { from: '255', to: '213' },
+    });
+    expect(translate('ar', 'operations.crewPlan.undo.kind.move', { from: '213', to: '255' })).toBe(
+      'نقل المحدد من 213 إلى 255',
+    );
+    expect(translate('en', 'operations.crewPlan.swap.moved', { from: '213', to: '255' })).toBe(
+      'Moved the selected from 213 to 255',
+    );
+  });
+
+  it('the arrow keys follow the reading direction — the next way to the left in Arabic, to the right in English', () => {
+    // The three ways in a row: «نقل ←» «تبديل ⇄» «نقل →» from the start side.
+    expect(modeStepOf('ArrowLeft', true)).toBe(1);
+    expect(modeStepOf('ArrowRight', true)).toBe(-1);
+    expect(modeStepOf('ArrowRight', false)).toBe(1);
+    expect(modeStepOf('ArrowLeft', false)).toBe(-1);
+    // In a column (at lg), down is next in both languages.
+    expect(modeStepOf('ArrowDown', true)).toBe(1);
+    expect(modeStepOf('ArrowDown', false)).toBe(1);
+    expect(modeStepOf('ArrowUp', false)).toBe(-1);
+    expect(modeStepOf('Tab', false)).toBe(0);
+  });
+
+  it('the محصنات a row holds stay on it — said when its captains or its direction change', () => {
+    const holding = { ...V150, shipments: 6 };
+    const crossed = planSwap(holding, V213, picks([personItem('c1')]), 'aToB', RULES);
+    expect(shipmentsLeftBehind(holding, crossed.a)).toBe(6);
+    const direction = planSwap(holding, V213, picks([fieldItem('direction')]), 'swap', RULES);
+    expect(shipmentsLeftBehind(holding, direction.a)).toBe(6);
+    // A specialist or the notes leaving does not change what they were placed for.
+    const notes = planSwap(
+      holding,
+      V213,
+      picks([personItem('s1'), fieldItem('notes')]),
+      'aToB',
+      RULES,
+    );
+    expect(shipmentsLeftBehind(holding, notes.a)).toBe(0);
+    // A row holding none says nothing.
+    expect(shipmentsLeftBehind(V150, crossed.a)).toBe(0);
   });
 });

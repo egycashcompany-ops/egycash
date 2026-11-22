@@ -19,6 +19,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
+import { Types } from 'mongoose';
 import {
   ErrorCodes,
   SettingKeys,
@@ -41,6 +42,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { OperationsCrewAssignmentModel } from '../../src/modules/operations/crew/crew-assignment.model';
+import { OperationsShipmentAssignmentModel } from '../../src/modules/operations/shipments/shipment-assignment.model';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -253,16 +255,18 @@ describe('Round 32 A — «بدون سيارة»: no bare «0000», and codes in
       '1000',
     ]);
     // «0» and «00» — named by a plate — last, in their own group, by their plate and their make.
+    // Round 32 critic — BY THEIR PLATE, as the title says: «ب ط 118» («00») before «ن ق ل 4521»
+    // («0»). This pinned ['0', '00'] — the count of zeros, which says nothing to the planner.
     const uncoded = free.filter((car) => car.group === 'uncoded');
-    expect(uncoded.map((car) => car.vehicleCode)).toEqual(['0', '00']);
-    expect(codes.slice(-2)).toEqual(['0', '00']);
+    expect(uncoded.map((car) => car.vehicleCode)).toEqual(['00', '0']);
+    expect(codes.slice(-2)).toEqual(['00', '0']);
     expect(uncoded[0]?.uncoded).toEqual({
-      plateNumber: 'ن ق ل 4521',
-      typeName: { ar: 'تويوتا هاي إس', en: 'Toyota HiAce' },
-    });
-    expect(uncoded[1]?.uncoded).toEqual({
       plateNumber: 'ب ط 118',
       typeName: { ar: 'ميتسوبيشي', en: 'Mitsubishi' },
+    });
+    expect(uncoded[1]?.uncoded).toEqual({
+      plateNumber: 'ن ق ل 4521',
+      typeName: { ar: 'تويوتا هاي إس', en: 'Toyota HiAce' },
     });
     // A car with a code carries no `uncoded`.
     expect(free.find((car) => car.vehicleCode === '61')?.uncoded).toBeNull();
@@ -278,6 +282,11 @@ describe('Round 32 A — «بدون سيارة»: no bare «0000», and codes in
     const rosterVan = free.find((car) => car.vehicleCode === '00000');
     expect(rosterVan).toMatchObject({ group: 'roster', onRoster: true });
     expect(rosterVan?.uncoded?.plateNumber).toBe('00');
+    // Round 32 critic — and its ROW on the board is named by that plate too, never «00000» bare.
+    expect(view.rows.find((row) => row.vehicleCode === '00000')?.uncoded).toEqual({
+      plateNumber: '00',
+      typeName: { ar: 'تويوتا هاي إس', en: 'Toyota HiAce' },
+    });
   });
 
   it('a row may take an uncoded car — the save asks Fleet as for any car', async () => {
@@ -287,6 +296,48 @@ describe('Round 32 A — «بدون سيارة»: no bare «0000», and codes in
     // On the board now, under its code as Fleet holds it — and off the free list.
     expect(after.rows.find((row) => row.vehicleId === vans['0'])?.crew?.notes).toBe('بلا كود');
     expect(after.freeVehicles.some((car) => car.vehicleId === vans['0'])).toBe(false);
+    // Round 32 critic — the row carries what names it: its plate and its make, so the board draws
+    // «ن ق ل 4521 · بلا كود» where it drew the bare «0». A van with a code carries none.
+    const row = after.rows.find((one) => one.vehicleId === vans['0']);
+    expect(row?.uncoded).toEqual({
+      plateNumber: 'ن ق ل 4521',
+      typeName: { ar: 'تويوتا هاي إس', en: 'Toyota HiAce' },
+    });
+    const coded = await save({ rows: [{ vehicleId: vans['150'], notes: 'بكود' }] }, DAY);
+    expect(coded.status, JSON.stringify(coded.body)).toBe(200);
+    expect(
+      data<OperationsCrewBoardDto>(coded).rows.find((one) => one.vehicleId === vans['150'])
+        ?.uncoded,
+    ).toBeNull();
+  });
+
+  it('each crew row says how many محصنات ride it — what «تبديل بين سيارتين» warns of', async () => {
+    const view = await board(DAY);
+    const row = view.rows.find((one) => one.vehicleId === vans['0']);
+    const crewId = row?.crew?.id ?? '';
+    expect(row?.crew?.shipments).toBe(0);
+    // Two live legs and a retired one, as «توزيع المحصنات» leaves them on the row.
+    const leg = (isDeleted: boolean) => ({
+      shipmentId: new Types.ObjectId(),
+      leg: 'delivery',
+      operationsDayId: new Types.ObjectId(),
+      captainEmployeeId: new Types.ObjectId(),
+      vehicleId: new Types.ObjectId(vans['0']),
+      crewAssignmentId: new Types.ObjectId(crewId),
+      sequence: 1,
+      isDeleted,
+    });
+    await OperationsShipmentAssignmentModel.collection.insertMany([
+      leg(false),
+      { ...leg(false), sequence: 2 },
+      leg(true),
+    ]);
+    const after = await board(DAY);
+    expect(after.rows.find((one) => one.vehicleId === vans['0'])?.crew?.shipments).toBe(2);
+    expect(after.rows.find((one) => one.vehicleId === vans['150'])?.crew?.shipments).toBe(0);
+    await OperationsShipmentAssignmentModel.collection.deleteMany({
+      crewAssignmentId: new Types.ObjectId(crewId),
+    });
   });
 
   it('«الطاقم الثابت»: its rows and «إضافة سيارة» by code NATURALLY (they were text), the uncoded last, its own row kept', async () => {
@@ -294,14 +345,18 @@ describe('Round 32 A — «بدون سيارة»: no bare «0000», and codes in
     // Its rows — «101» was listed before «61» as text. Its uncoded van «000000» is its own row: kept,
     // as it is, after the coded ones.
     expect(view.rows.map((row) => row.vehicleCode)).toEqual(['61', '101', '000000']);
+    // Round 32 critic — the row says what names it (its plate), as «إضافة سيارة» named it.
+    expect(view.rows.map((row) => row.uncoded?.plateNumber ?? null)).toEqual([null, null, '000']);
     // What may still join: number order, then the uncoded by plate, the unnamed left out.
+    // Round 32 critic — BY PLATE: «ب ط 118» («00») before «ن ق ل 4521» («0»); this pinned
+    // [… '0', '00'], the count of zeros.
     expect(view.available.map((car) => car.vehicleCode)).toEqual([
       '9',
       '150',
       '213',
       '1000',
-      '0',
       '00',
+      '0',
     ]);
     expect(view.available.find((car) => car.vehicleCode === '00')?.uncoded).toEqual({
       plateNumber: 'ب ط 118',

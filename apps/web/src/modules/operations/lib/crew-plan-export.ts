@@ -8,6 +8,7 @@
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { type XlsxSheet } from '../../../shared/lib/xlsx-writer';
 import { CREW_SLOTS, type PlanRow } from './crew-plan';
+import { vanName } from './crew-vehicles';
 
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
 
@@ -24,6 +25,17 @@ export const crewPlanExportHeader = (t: Translate): string[] => [
 ];
 
 /**
+ * Round 32 critic — the van as the sheet names it: its code — or, a code that names nothing («0»,
+ * «00» …), its plate marked «بلا كود», as the board draws it. Null for a row without a van.
+ */
+export const sheetVanName = (t: Translate, row: PlanRow): string | null => {
+  const name = vanName(row);
+  return name !== null && row.uncoded != null && name !== row.vehicleCode
+    ? `${name} (${t('operations.crewPlan.vehicles.noCode')})`
+    : name;
+};
+
+/**
  * The rows as the sheet holds them. A person the roster no longer names reads as «—»; the type by
  * its name in «أنواع التشغيل» (`typeName`), as the row shows it — blank for a row with none.
  */
@@ -37,7 +49,7 @@ export const crewPlanSheet = (
   serialHeader: t('operations.reportBoard.serial'),
   header: crewPlanExportHeader(t),
   rows: rows.map((row) => [
-    row.vehicleCode ?? t('operations.crewPlan.noVehicle'),
+    sheetVanName(t, row) ?? t('operations.crewPlan.noVehicle'),
     ...CREW_SLOTS.map((slot) =>
       row.slots[slot].map((id) => memberOf(id)?.fullNameAr ?? '—').join(' / '),
     ),
@@ -62,7 +74,7 @@ export const standingCrewSheet = (
   serialHeader: t('operations.reportBoard.serial'),
   header: crewPlanExportHeader(t).slice(0, 6),
   rows: rows.map((row) => [
-    row.vehicleCode ?? '',
+    sheetVanName(t, row) ?? '',
     ...CREW_SLOTS.map((slot) =>
       row.slots[slot].map((id) => memberOf(id)?.fullNameAr ?? '—').join(' / '),
     ),

@@ -99,6 +99,7 @@ describe('toBoardRows', () => {
         driver2EmployeeId: null,
         drivers: [],
         missionTypeId: null,
+        uncoded: null,
         crew: null,
       },
     ]);
@@ -117,6 +118,7 @@ describe('toBoardRows', () => {
         driver2EmployeeId: null,
         drivers: [],
         missionTypeId: null,
+        uncoded: null,
         crew: {
           id: 'c1',
           captainEmployeeIds: ['e1'],
@@ -127,6 +129,7 @@ describe('toBoardRows', () => {
           notes: null,
           shiftTypeId: null,
           rowColour: null,
+          shipments: 0,
         },
       },
     ]);
@@ -145,6 +148,7 @@ describe('toBoardRows', () => {
         driver2EmployeeId: null,
         drivers: [],
         missionTypeId: null,
+        uncoded: null,
         crew: {
           id: 'c1',
           captainEmployeeIds: ['e1', 'e2'],
@@ -155,6 +159,7 @@ describe('toBoardRows', () => {
           notes: null,
           shiftTypeId: null,
           rowColour: null,
+          shipments: 0,
         },
       },
     ]);
@@ -638,6 +643,7 @@ describe('the Fleet-planned operation reaches the screen', () => {
     drivers: [],
     missionTypeId: null,
     crew: null,
+    uncoded: null,
     ...over,
   });
 

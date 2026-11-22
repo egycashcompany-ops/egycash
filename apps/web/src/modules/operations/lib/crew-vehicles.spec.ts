@@ -62,6 +62,7 @@ const crew = (crewId: string, over: Record<string, unknown> = {}) => ({
   notes: null,
   shiftTypeId: null,
   rowColour: null,
+  shipments: 0,
   ...over,
 });
 
@@ -80,6 +81,7 @@ const BOARD: OperationsCrewBoardDto = {
       driver2EmployeeId: null,
       drivers: [{ employeeId: id(81), fullNameAr: 'سائق أول' }],
       missionTypeId: null,
+      uncoded: null,
       crew: crew(id(11), { captainEmployeeIds: [id(61)] }),
     },
     {
@@ -90,6 +92,7 @@ const BOARD: OperationsCrewBoardDto = {
       driver2EmployeeId: null,
       drivers: [{ employeeId: id(82), fullNameAr: 'سائق ثان' }],
       missionTypeId: null,
+      uncoded: null,
       crew: null,
     },
     {
@@ -100,6 +103,7 @@ const BOARD: OperationsCrewBoardDto = {
       driver2EmployeeId: null,
       drivers: [],
       missionTypeId: null,
+      uncoded: null,
       crew: crew(id(17), { captainEmployeeIds: [id(67)] }),
     },
   ],
@@ -150,7 +154,7 @@ describe('the board reads which vans the roster has (`onRoster`)', () => {
       'utf8',
     );
     expect(page).toMatch(
-      /<span className="flex flex-col items-start gap-0\.5" data-van-code-stack="true">\s*<CrewVehicleHoverCode[\s\S]*?\/>\s*<span className="flex flex-wrap items-center gap-0\.5" data-van-second-line="true">[\s\S]*?\{releasable \? \([\s\S]*?data-van-release=[\s\S]*?<\/button>\s*\) : \(\s*!row\.onRoster && \([\s\S]*?data-off-roster="true"[\s\S]*?<\/span>\s*\)\s*\)\}\s*\{swapPill\(row\)\}\s*<\/span>\s*<\/span>\s*\{warn\}/,
+      /<span className="flex flex-col items-start gap-0\.5" data-van-code-stack="true">\s*<CrewVehicleHoverCode[\s\S]*?\/>\s*<span className="flex flex-wrap items-center gap-0\.5" data-van-second-line="true">[\s\S]*?\{releasable \? \([\s\S]*?data-van-release=[\s\S]*?<\/button>\s*\) : \(\s*!row\.onRoster && \([\s\S]*?data-off-roster="true"[\s\S]*?<\/span>\s*\)\s*\)\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?\{row\.uncoded != null && <NoCodeTag [^>]*\/>\}\s*\{swapPill\(row\)\}\s*<\/span>\s*<\/span>\s*\{warn\}/,
     );
   });
 });
@@ -483,7 +487,8 @@ describe('a van the save refused, taken off its row (`releaseVan`, Round 24)', (
     // The button: on the refused row's van cell, one operation «تراجع» can take back.
     expect(page).toContain('data-van-release={row.key}');
     expect(page).toMatch(
-      /applyRows\(\{ kind: 'dropVan', vars: \{ code: row\.vehicleCode \?\? '', row: named \} \}, \(current\) =>\s*releaseVan\(current, serverRows, row\.key\),/,
+      // Round 32 critic — the van named as the row names it (`vanName`: its plate when its code names nothing).
+      /applyRows\(\{ kind: 'dropVan', vars: \{ code: vanName\(row\) \?\? '', row: named \} \}, \(current\) =>\s*releaseVan\(current, serverRows, row\.key\),/,
     );
     // Shown only on a refused row whose van was given here, for someone who may plan.
     expect(page).toContain(

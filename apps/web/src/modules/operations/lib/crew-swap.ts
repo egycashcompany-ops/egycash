@@ -12,9 +12,13 @@
 //   · «تبديل المحدد ⇄» (`swap`) — the ticked items of both rows cross at once;
 //   · «نقل المحدد» one way (`aToB`, `bToA`) — only the ticked items of the sending row cross; the
 //     receiving row's ticks are not read.
-// A field ticked on one row only MOVES: the other row takes its value (and loses its own, which the
-// preview names — `replaced`), the sending row is left without one. Ticked on both, the two values
-// are exchanged. An empty field is nothing to send, so it is never an item.
+// A FIELD — one value a row:
+//   · in «تبديل المحدد ⇄» it is ONE exchange the two cards share (Round 32 critic): ticked on either
+//     card, the two values cross — each row takes the other's, or the one value moves into the empty
+//     row. It was a move there too, and the other row's own value — never ticked — was thrown away;
+//   · in «نقل المحدد» one way the sending row's value MOVES: the other row takes it (and loses its
+//     own, which the preview names — `replaced`), the sending row is left without one.
+// An empty field is nothing to send, so it is never an item.
 //
 // THE BOARD'S RULES, as every other way of seating somebody holds to them, so nothing here makes a
 // draft the save would refuse:
@@ -27,7 +31,9 @@
 //     the room AFTER the operation — the people leaving a slot make room for the ones arriving;
 //   · Q11 (nobody twice): people only ever cross between the two rows, never copied;
 //   · a type archived since a row took it stays on that row (the server takes only an ACTIVE type
-//     newly given to a row — `typeMayGo`).
+//     newly given to a row — `typeMayGo`). In an exchange the other row's type then stays too
+//     (`archivedPair`): it could only land where the archived one stays (the Round 32 critic — it
+//     landed, and the archived type was lost from both rows).
 // What a rule keeps back is listed (`refused`) and left exactly where it was; the rest is applied.
 //
 // ONE OPERATION. The page records `applySwap` as one step of «تراجع» (`lib/crew-undo.ts`): one press
@@ -43,6 +49,7 @@ import {
   type PlanRowPatch,
   type WrongSlot,
 } from './crew-plan';
+import { type CrewDraft, type UndoWhat } from './crew-undo';
 
 /** The row's own fields an operation may carry across, in the cards' order. */
 export const SWAP_FIELDS = [
@@ -121,8 +128,12 @@ export interface SwapRules {
   typeMayGo: (shiftTypeId: string, toKey: string) => boolean;
 }
 
-/** Why an item stays where it is. */
-export type SwapRefusal = CrewAway | WrongSlot | 'captainFull' | 'specialistsFull' | 'archivedType';
+/**
+ * Why an item stays where it is. `archivedPair` — an exchanged field whose other half is an
+ * archived type that stays on its row: there is nowhere for this one to land.
+ */
+export type SwapRefusal =
+  CrewAway | WrongSlot | 'captainFull' | 'specialistsFull' | 'archivedType' | 'archivedPair';
 
 export interface SwapMove {
   /** The side it leaves. */
@@ -137,7 +148,7 @@ export interface SwapRefused {
   item: string;
   reason: SwapRefusal;
 }
-/** A value the receiving row held and loses: a field moved onto it, not exchanged. */
+/** A value the receiving row held and loses: a field MOVED onto it one way (never in an exchange). */
 export interface SwapReplaced {
   on: SwapSide;
   field: SwapField;
@@ -279,33 +290,54 @@ export const planSwap = (
 
   // ── The fields ──────────────────────────────────────────────────────────────────────────────
   const fields: { a: PlanRowPatch; b: PlanRowPatch } = { a: {}, b: {} };
+  const set = (side: SwapSide, field: SwapField, to: string | null): void => {
+    Object.assign(fields[side], { [field]: to });
+  };
   for (const field of SWAP_FIELDS) {
     const item = fieldItem(field);
     const value = { a: a[field], b: b[field] };
-    const goes = { a: false, b: false };
-    for (const side of ['a', 'b'] as const) {
+    // A type archived since the row took it stays on that row: the other row would be GIVEN it,
+    // which the save refuses (only an active type is newly given).
+    const stays = (side: SwapSide): boolean => {
       const own = value[side];
-      if (own === null || !sends(side, item)) continue;
-      // A type archived since the row took it stays on that row: the other row would be GIVEN it,
-      // which the save refuses (only an active type is newly given).
-      if (field === 'shiftTypeId' && !rules.typeMayGo(own, rowOf[otherSide(side)].key)) {
-        refused.push({ from: side, item, reason: 'archivedType' });
+      return (
+        field === 'shiftTypeId' && own !== null && !rules.typeMayGo(own, rowOf[otherSide(side)].key)
+      );
+    };
+    if (mode === 'swap') {
+      // ONE exchange the two cards share: ticked on either, both values cross.
+      if (!ticked.a.has(item) && !ticked.b.has(item)) continue;
+      if (value.a === null && value.b === null) continue;
+      if (stays('a') || stays('b')) {
+        // Off, both ways: the archived type stays — and so does the other row's, which could only
+        // land where it stays. Each named on its own row.
+        for (const side of ['a', 'b'] as const) {
+          if (value[side] === null) continue;
+          refused.push({ from: side, item, reason: stays(side) ? 'archivedType' : 'archivedPair' });
+        }
         continue;
       }
-      goes[side] = true;
-      moved.push({ from: side, item });
-    }
-    for (const side of ['a', 'b'] as const) {
-      const other = otherSide(side);
-      if (goes[other]) {
-        // Moved onto a value this row keeps no copy of: the preview names what it loses.
-        const own = value[side];
-        if (!goes[side] && own !== null) replaced.push({ on: side, field, was: own });
-        Object.assign(fields[side], { [field]: value[other] });
-      } else if (goes[side]) {
-        Object.assign(fields[side], { [field]: null });
+      for (const side of ['a', 'b'] as const) {
+        if (value[side] !== null) moved.push({ from: side, item });
       }
+      set('a', field, value.b);
+      set('b', field, value.a);
+      continue;
     }
+    // One way: the sending row's ticked value moves; the receiving row's own is replaced, named.
+    const from: SwapSide = mode === 'aToB' ? 'a' : 'b';
+    const to = otherSide(from);
+    const own = value[from];
+    if (own === null || !sends(from, item)) continue;
+    if (stays(from)) {
+      refused.push({ from, item, reason: 'archivedType' });
+      continue;
+    }
+    moved.push({ from, item });
+    const was = value[to];
+    if (was !== null) replaced.push({ on: to, field, was });
+    set(to, field, own);
+    set(from, field, null);
   }
 
   const crossed = moved.length > 0;
@@ -334,6 +366,81 @@ export const applySwap = (
   const result = planSwap(a, b, picks, mode, rules);
   if (result.moved.length === 0) return rows;
   return rows.map((row) => (row.key === aKey ? result.a : row.key === bKey ? result.b : row));
+};
+
+/**
+ * «تطبيق» on the whole draft (Round 32 critic): the rows by `applySwap` — and the standing crew's
+ * bookkeeping lets go of the two rows once anything crossed. What «الطاقم الثابت» loaded onto them is
+ * no longer what they hold: its «off» emptied the row that now held the other van's people and left
+ * the loaded ones on the other van. After a swap both rows are the planner's own, kept as he made
+ * them; the load's other rows are untouched. Nothing crossed → the same draft.
+ */
+export const applySwapToDraft = (
+  draft: CrewDraft,
+  aKey: string,
+  bKey: string,
+  picks: SwapPicks,
+  mode: SwapMode,
+  rules: SwapRules,
+): CrewDraft => {
+  const rows = applySwap(draft.rows, aKey, bKey, picks, mode, rules);
+  if (rows === draft.rows) return draft;
+  const touched = (key: string): boolean => key === aKey || key === bKey;
+  const keys = draft.standingKeys;
+  if (keys === null || !keys.some(touched)) return { ...draft, rows };
+  const directions = draft.standingDirections;
+  return {
+    ...draft,
+    rows,
+    standingKeys: keys.filter((key) => !touched(key)),
+    ...(directions === undefined
+      ? {}
+      : {
+          standingDirections: Object.fromEntries(
+            Object.entries(directions).filter(([key]) => !touched(key)),
+          ),
+        }),
+  };
+};
+
+/**
+ * What «تراجع» and the toast call the operation (Round 32 critic): «التبديل بين 213 و255» for an
+ * exchange; a one-way move says so, from the sending row to the other — «نقل المحدد ←» was announced
+ * as a swap.
+ */
+export const swapOperation = (
+  mode: SwapMode,
+  names: { a: string; b: string },
+): UndoWhat & { kind: 'swap' | 'move' } =>
+  mode === 'swap'
+    ? { kind: 'swap', vars: { a: names.a, b: names.b } }
+    : mode === 'aToB'
+      ? { kind: 'move', vars: { from: names.a, to: names.b } }
+      : { kind: 'move', vars: { from: names.b, to: names.a } };
+
+/**
+ * The three ways in a row, under the arrow keys (Round 32 critic): the NEXT way lies in the reading
+ * direction — to the LEFT in Arabic, to the RIGHT in English — and down where they stand in a column
+ * (at `lg`). It was Arabic's for both: in English → chose the way on the left. 0 for any other key.
+ */
+export const modeStepOf = (key: string, rtl: boolean): -1 | 0 | 1 => {
+  if (key === 'ArrowDown') return 1;
+  if (key === 'ArrowUp') return -1;
+  if (key === 'ArrowLeft') return rtl ? 1 : -1;
+  if (key === 'ArrowRight') return rtl ? -1 : 1;
+  return 0;
+};
+
+/**
+ * Round 32 critic — the محصنات riding a row stay on it whatever crosses (they ride its saved crew
+ * row, and so its van). Said where it matters: a row that holds some and whose captains or
+ * direction the operation changes — they were placed for the crew and the direction it had.
+ */
+export const shipmentsLeftBehind = (before: PlanRow, after: PlanRow): number => {
+  const count = before.shipments ?? 0;
+  if (count === 0) return 0;
+  const captains = (row: PlanRow): string => [...row.slots.captain].sort().join(',');
+  return captains(before) !== captains(after) || before.direction !== after.direction ? count : 0;
 };
 
 /**

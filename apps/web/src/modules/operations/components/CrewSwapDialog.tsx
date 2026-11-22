@@ -47,11 +47,14 @@ import {
   SWAP_MODES,
   fieldItem,
   livePicks,
+  modeStepOf,
   otherSide,
   personItem,
   planSwap,
   quickPick,
   sendsFrom,
+  shipmentsLeftBehind,
+  swapItems,
   type SwapField,
   type SwapMode,
   type SwapPicks,
@@ -226,14 +229,36 @@ export const CrewSwapDialog = ({
         ?.focus({ preventScroll: true }),
     );
   };
+  // Round 32 critic — in «تبديل المحدد ⇄» a FIELD is one exchange the two cards share
+  // (`planSwap`): its box reads the same on both cards, and ticking it on either ticks the pair.
+  const sharedField = (id: string): boolean => mode === 'swap' && id.startsWith('field:');
+  const isTicked = (side: SwapSide, id: string): boolean =>
+    sharedField(id) ? live.a.includes(id) || live.b.includes(id) : live[side].includes(id);
   const toggle = (side: SwapSide, id: string): void =>
     setPicks((current) => {
+      if (mode === 'swap' && id.startsWith('field:')) {
+        const on = current.a.includes(id) || current.b.includes(id);
+        const pair = (list: readonly string[]): string[] =>
+          on ? list.filter((one) => one !== id) : [...list.filter((one) => one !== id), id];
+        return { a: pair(current.a), b: pair(current.b) };
+      }
       const list = current[side];
       const next = list.includes(id) ? list.filter((one) => one !== id) : [...list, id];
       return { ...current, [side]: next };
     });
   const pickAll = (side: SwapSide, row: PlanRow, pick: (typeof QUICK_PICKS)[number]): void =>
-    setPicks((current) => ({ ...current, [side]: quickPick(row, pick) }));
+    setPicks((current) => {
+      const own = quickPick(row, pick);
+      if (mode !== 'swap') return { ...current, [side]: own };
+      // A field this card shows is the pair's: «الطاقم فقط» and «لا شيء» take it off the other
+      // card too (a field this row has none of is the other card's alone).
+      const other = otherSide(side);
+      const shown = new Set(swapItems(row).map((item) => item.id));
+      const kept = current[other].filter(
+        (id) => !(id.startsWith('field:') && shown.has(id) && !own.includes(id)),
+      );
+      return side === 'a' ? { a: own, b: kept } : { a: kept, b: own };
+    });
 
   const typeOf = (id: string): OperationsShiftTypeDto | undefined =>
     shiftTypes.find((type) => type.id === id);
@@ -328,11 +353,10 @@ export const CrewSwapDialog = ({
   // Dense, so both cards and the preview under them fit a 1440×900 screen: a label column, one
   // line a person, the fields two to a line (the notes a line of their own).
   const pickCard = (side: SwapSide, row: PlanRow): JSX.Element => {
-    const ticks = side === 'a' ? live.a : live.b;
     const sending = sendsFrom(mode, side);
     const to = name[otherSide(side)];
     const box = (id: string, label: string, content: ReactNode): JSX.Element => {
-      const on = ticks.includes(id);
+      const on = isTicked(side, id);
       return (
         <label
           key={id}
@@ -350,7 +374,12 @@ export const CrewSwapDialog = ({
             type="checkbox"
             checked={on}
             disabled={!sending}
-            aria-label={t('operations.crewPlan.swap.item', { item: label, to })}
+            aria-label={t(
+              sharedField(id)
+                ? 'operations.crewPlan.swap.itemExchange'
+                : 'operations.crewPlan.swap.item',
+              { item: label, to },
+            )}
             onChange={() => toggle(side, id)}
             className="h-4 w-4 shrink-0 cursor-pointer accent-brand-600 disabled:cursor-not-allowed"
           />
@@ -387,6 +416,13 @@ export const CrewSwapDialog = ({
           drivers={t('operations.crewPlan.swap.drivers', {
             names: row.drivers.map((driver) => driver.fullNameAr ?? '—').join('، '),
           })}
+          shipments={
+            (row.shipments ?? 0) > 0
+              ? t('operations.crewPlan.swap.shipments', {
+                  count: formatNumber(row.shipments ?? 0, locale),
+                })
+              : null
+          }
           tools={
             <>
               {!sending && (
@@ -481,6 +517,7 @@ export const CrewSwapDialog = ({
     const replaced = new Map(
       outcome.replaced.filter((one) => one.on === side).map((one) => [one.field, one.was]),
     );
+    const behind = shipmentsLeftBehind(before, row);
     const leaving = outcome.moved
       .filter((move) => move.from === side)
       .map((move) =>
@@ -525,6 +562,7 @@ export const CrewSwapDialog = ({
           name={name[side]}
           row={row}
           drivers={null}
+          shipments={null}
           tools={null}
         />
         <div className={SLOT_GRID}>
@@ -584,6 +622,21 @@ export const CrewSwapDialog = ({
             data-swap-leaving={side}
           >
             {t('operations.crewPlan.swap.left', { row: from, items: leaving.join('، ') })}
+          </p>
+        )}
+        {/* Round 32 critic — the محصنات ride the row: said before its captains or its direction
+            change under them (they were placed for the crew and the direction it had). */}
+        {behind > 0 && (
+          <p
+            role="note"
+            className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[11.5px] font-bold text-amber-900 ring-1 ring-inset ring-amber-300 dark:bg-amber-400/10 dark:text-amber-200 dark:ring-amber-400/30"
+            data-swap-shipments-stay={side}
+          >
+            <BoardIcon d={PATH.warn} className="mt-px h-3.5 w-3.5 shrink-0" />
+            {t('operations.crewPlan.swap.shipmentsStay', {
+              row: name[side],
+              count: formatNumber(behind, locale),
+            })}
           </p>
         )}
       </section>
@@ -692,13 +745,11 @@ export const CrewSwapDialog = ({
       aria-label={t('operations.crewPlan.swap.mode.group')}
       data-swap-modes="true"
       onKeyDown={(event) => {
-        if (['ArrowDown', 'ArrowLeft'].includes(event.key)) {
-          event.preventDefault();
-          stepMode(1);
-        } else if (['ArrowUp', 'ArrowRight'].includes(event.key)) {
-          event.preventDefault();
-          stepMode(-1);
-        }
+        // The next way lies in the reading direction — left in Arabic, right in English.
+        const by = modeStepOf(event.key, locale === 'ar');
+        if (by === 0) return;
+        event.preventDefault();
+        stepMode(by);
       }}
       className="flex flex-row flex-wrap items-stretch justify-center gap-2 lg:w-36 lg:flex-col lg:justify-center"
     >
@@ -824,6 +875,7 @@ const CardHead = ({
   name,
   row,
   drivers,
+  shipments,
   tools,
 }: {
   id: string;
@@ -832,6 +884,8 @@ const CardHead = ({
   row: PlanRow;
   /** The drivers — Fleet's, they stay with the van — under the line; null on the preview. */
   drivers: string | null;
+  /** Round 32 critic — «محصنات: ٦», the shipments riding the row (they stay); null for none. */
+  shipments: string | null;
   tools: ReactNode;
 }): JSX.Element => (
   <header className="flex min-w-0 flex-col gap-0.5 border-b border-slate-200 pb-2 dark:border-[#2b3b6b]/70">
@@ -852,6 +906,17 @@ const CardHead = ({
       <span className="shrink-0 text-[10.5px] font-black text-slate-500 dark:text-slate-400">
         {order}
       </span>
+      {shipments !== null && (
+        <span
+          className={cn(
+            TAG,
+            'gap-1 bg-amber-100 px-1.5 text-amber-900 ring-1 ring-inset ring-amber-300 dark:bg-amber-400/15 dark:text-amber-200 dark:ring-amber-400/30',
+          )}
+          data-swap-shipments="true"
+        >
+          {shipments}
+        </span>
+      )}
       {tools !== null && (
         <span className="ms-auto flex flex-wrap items-center justify-end gap-1">{tools}</span>
       )}
@@ -885,7 +950,10 @@ const Labelled = ({
   children: ReactNode;
 }): JSX.Element => (
   <>
-    <span className={cn(GROUP_LABEL, 'pt-1.5')}>{label}</span>
+    {/* A wide one starts its own line (Round 32 critic): after an odd count of fields — the
+        preview leaves out the ones empty before and after — its label fell in the third column
+        and its value wrapped under the first label. */}
+    <span className={cn(GROUP_LABEL, 'pt-1.5', wide && 'sm:col-start-1')}>{label}</span>
     <div className={cn('flex min-w-0 flex-col gap-1', wide && 'sm:col-span-3')}>{children}</div>
   </>
 );

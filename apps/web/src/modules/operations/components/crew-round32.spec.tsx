@@ -27,10 +27,24 @@ import { authSlice } from '../../../store/authSlice';
 import { translate } from '../../../platform/localization/i18n';
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
-import { vehiclelessRow, type PlanRow } from '../lib/crew-plan';
+import {
+  planRowCard,
+  releaseVan,
+  toPlanRows,
+  vehiclelessRow,
+  type PlanRow,
+} from '../lib/crew-plan';
+import { sheetVanName } from '../lib/crew-plan-export';
+import { vanFilterOptions } from '../lib/crew-plan-filter';
 import { isCrewRecord } from '../lib/crew-record';
-import { searchVehicleChoices, vehicleChoices, type VehicleChoice } from '../lib/crew-vehicles';
-import { standingVehicleChoices } from '../lib/standing-crew';
+import {
+  giveVehicle,
+  searchVehicleChoices,
+  vanName,
+  vehicleChoices,
+  type VehicleChoice,
+} from '../lib/crew-vehicles';
+import { standingVehicleChoices, toStandingPlanRows } from '../lib/standing-crew';
 import { CrewVehiclePicker } from './CrewVehiclePicker';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
@@ -84,17 +98,20 @@ describe('A — the board’s «بدون سيارة» list: no bare «0000», co
   const choices = vehicleChoices([LOOSE], [LOOSE], FREE, LOOSE.key);
 
   it('lists the coded cars by number — 61 before 101, 9 before 150 — and the uncoded LAST, by their plate', () => {
+    // Round 32 critic — BY THEIR PLATE, as the title says: «ب ط 118» («00») before «ن ق ل 4521»
+    // («0»). This pinned … '0', '00' — their count of zeros, which says nothing to the planner.
     expect(choices.map((one) => one.vehicleCode)).toEqual([
       '61',
       '101',
       '9',
       '150',
       '213',
-      '0',
       '00',
+      '0',
     ]);
     expect(choices.slice(-2).map((one) => one.group)).toEqual(['uncoded', 'uncoded']);
-    expect(choices.at(-2)?.uncoded).toEqual({ plateNumber: 'ن ق ل 4521', typeName: HIACE });
+    expect(choices.at(-2)?.uncoded).toEqual({ plateNumber: 'ب ط 118', typeName: null });
+    expect(choices.at(-1)?.uncoded).toEqual({ plateNumber: 'ن ق ل 4521', typeName: HIACE });
     expect(choices.find((one) => one.vehicleCode === '61')?.uncoded).toBeNull();
     // Picked as any car: the row takes it where it stands.
     expect(choices.at(-1)).toMatchObject({ pickable: true, vanKey: null, onRoster: false });
@@ -104,7 +121,7 @@ describe('A — the board’s «بدون سيارة» list: no bare «0000», co
     const shuffled = [...FREE].reverse();
     expect(
       vehicleChoices([LOOSE], [LOOSE], shuffled, LOOSE.key).map((one) => one.vehicleCode),
-    ).toEqual(['61', '101', '9', '150', '213', '0', '00']);
+    ).toEqual(['61', '101', '9', '150', '213', '00', '0']);
   });
 
   it('keeps a ROSTER van whose code names nothing in the roster’s group — named by its plate', () => {
@@ -154,9 +171,12 @@ describe('A — «الطاقم الثابت»’s «إضافة سيارة» list
 
   it('lists the coded in number order, then the uncoded in their own group, last', () => {
     const list = standingVehicleChoices([], [], available, false);
-    expect(list.map((one) => one.vehicleCode)).toEqual(['61', '101', '0', '00']);
+    // Round 32 critic — the uncoded by their PLATE («ب ط 118» before «ن ق ل 4521»), not by their
+    // zeros (this pinned '0', '00').
+    expect(list.map((one) => one.vehicleCode)).toEqual(['61', '101', '00', '0']);
     expect(list.map((one) => one.group)).toEqual(['other', 'other', 'uncoded', 'uncoded']);
-    expect(list[2]?.uncoded?.plateNumber).toBe('ن ق ل 4521');
+    expect(list[2]?.uncoded?.plateNumber).toBe('ب ط 118');
+    expect(list[3]?.uncoded?.plateNumber).toBe('ن ق ل 4521');
     // Narrowed to the cash-transfer vehicles: the coded under that heading; the uncoded still last.
     expect(standingVehicleChoices([], [], available, true).map((one) => one.group)).toEqual([
       'cashTransfer',
@@ -352,5 +372,171 @@ describe('B — the page on a record', () => {
       'هذا اليوم قد مضى — لوحته سجل للعرض فقط. خطِّط لليوم أو ليوم لاحق.',
     );
     expect(errorMessage(refused, 'en')).toContain('its board is a record, view only');
+  });
+});
+
+// ── Round 32 critic ──────────────────────────────────────────────────────────────────────────────
+describe('Round 32 critic — a van picked by its plate is NAMED by its plate on the board', () => {
+  const PLATE = { plateNumber: 'ن ق ل 4521', typeName: HIACE };
+  const picked = vehicleChoices([LOOSE], [LOOSE], FREE, LOOSE.key).find(
+    (one) => one.vehicleId === 'v-0',
+  ) as VehicleChoice;
+  const rows = giveVehicle([LOOSE], LOOSE.key, picked);
+  const row = rows[0] as PlanRow;
+
+  it('the row takes what names it — and the board draws its plate, never the bare «0»', () => {
+    expect(row).toMatchObject({ vehicleId: 'v-0', vehicleCode: '0', uncoded: PLATE });
+    expect(vanName(row)).toBe('ن ق ل 4521');
+    // A van with a code — and a row without one — as before.
+    expect(vanName({ vehicleCode: '213', uncoded: null })).toBe('213');
+    expect(vanName(LOOSE)).toBeNull();
+    // Its hover card, the van filter and Excel name it by its plate too.
+    expect(planRowCard(row, () => undefined).vehicleCode).toBe('ن ق ل 4521');
+    expect(vanFilterOptions(rows)).toEqual([{ value: 'v-0', label: 'ن ق ل 4521' }]);
+    expect(sheetVanName((key) => t(key), row)).toBe('ن ق ل 4521 (بلا كود)');
+    // Taken off its row again («إزالة»), the row is «بدون سيارة» — nothing of the car is left.
+    expect(releaseVan(rows, [LOOSE], LOOSE.key)[0]?.uncoded).toBeNull();
+  });
+
+  it('the server’s rows carry it: a saved uncoded van reads as its plate after a reload', () => {
+    const plan = toPlanRows({
+      date: '2026-11-23T00:00:00.000Z',
+      today: '2026-11-22T00:00:00.000Z',
+      past: false,
+      day: null,
+      rows: [
+        {
+          vehicleId: 'v-0',
+          vehicleCode: '0',
+          fleetDutyAssignmentId: null,
+          driver1EmployeeId: null,
+          driver2EmployeeId: null,
+          drivers: [],
+          missionTypeId: null,
+          crew: null,
+          uncoded: PLATE,
+        },
+      ],
+      vehiclelessRows: [],
+      workshopVehicles: [],
+      freeVehicles: [],
+      unidentifiedVehicles: 0,
+    });
+    expect(plan[0]?.uncoded).toEqual(PLATE);
+    expect(vanName(plan[0] as PlanRow)).toBe('ن ق ل 4521');
+  });
+
+  it('the board draws the plate and «بلا كود» on the van’s cell; every word about the van says the plate', () => {
+    const page = read('../pages/CrewBoardPage.tsx');
+    expect(page).toContain("code={vanName(row) ?? '…'}");
+    expect(page).toContain('{row.uncoded != null && <NoCodeTag');
+    expect(page).toContain("vanName(row) ??\n    t('operations.crewPlan.looseRow', {");
+    expect(page).toContain(
+      'vars: { code: vanName(choice) ?? choice.vehicleCode, row: rowName(row) }',
+    );
+    expect(page).not.toContain('row.vehicleCode ??\n');
+    expect(page).not.toMatch(/code=\{row\.vehicleCode/u);
+  });
+
+  it('«الطاقم الثابت» names its uncoded vans by their plate too', () => {
+    const standingRows = toStandingPlanRows([
+      {
+        id: 's-1',
+        vehicleId: 'v-000000',
+        vehicleCode: '000000',
+        uncoded: { plateNumber: 'ج د 77', typeName: null },
+        captainEmployeeIds: [],
+        specialist1EmployeeIds: [],
+        specialist2EmployeeIds: [],
+        direction: null,
+        plannedTime: null,
+        version: 0,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ]);
+    expect(vanName(standingRows[0] as PlanRow)).toBe('ج د 77');
+    const page = read('../pages/StandingCrewPage.tsx');
+    expect(page).toContain("const rowName = (row: PlanRow): string => vanName(row) ?? '…';");
+    expect(page).toContain('{row.uncoded != null && <NoCodeTag');
+  });
+});
+
+describe('Round 32 critic — a van freed in the draft keeps its plate on the lists', () => {
+  it('«بدون سيارة»: a saved off-roster row with an uncoded van, deleted here, is listed by its plate with the uncoded', () => {
+    const held: PlanRow = {
+      ...vehiclelessRow(5),
+      key: 'van:v-0000',
+      vehicleId: 'v-0000',
+      vehicleCode: '0000',
+      onRoster: false,
+      crewId: 'crew-0000',
+      uncoded: { plateNumber: 'س م 3030', typeName: null },
+    };
+    const list = vehicleChoices([LOOSE], [LOOSE, held], FREE, LOOSE.key);
+    const freed = list.find((one) => one.vehicleId === 'v-0000');
+    // It was a bare «0000» at the end of «باقي السيارات».
+    expect(freed).toMatchObject({ group: 'uncoded', uncoded: { plateNumber: 'س م 3030' } });
+    // Among the uncoded, by its plate: «ب ط 118», «س م 3030», «ن ق ل 4521».
+    expect(list.slice(-3).map((one) => one.vehicleId)).toEqual(['v-00', 'v-0000', 'v-0']);
+  });
+
+  it('«إضافة سيارة»: a van taken out of the standing crew here keeps its plate, with the uncoded', () => {
+    const held: PlanRow = {
+      ...vehiclelessRow(6),
+      key: 'van:v-000',
+      vehicleId: 'v-000',
+      vehicleCode: '000',
+      crewId: 's-2',
+      uncoded: { plateNumber: 'ص ع 12', typeName: null },
+    };
+    const list = standingVehicleChoices([], [held], [], false);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ group: 'uncoded', uncoded: { plateNumber: 'ص ع 12' } });
+  });
+});
+
+describe('Round 32 critic — a ROSTER van with no code keeps its drivers under its plate', () => {
+  it('draws the drivers (what the roster’s group is for), its make beside «بلا كود»', () => {
+    const roster: VehicleChoice = {
+      vehicleId: 'v-00000',
+      vehicleCode: '00000',
+      group: 'roster',
+      onRoster: true,
+      inWorkshop: false,
+      drivers: [
+        { employeeId: 'd1', fullNameAr: 'أحمد السائق' },
+        { employeeId: 'd2', fullNameAr: 'محمود السائق' },
+      ],
+      vanKey: 'van:v-00000',
+      pickable: true,
+      uncoded: { plateNumber: 'ك ل 90', typeName: HIACE },
+    };
+    const html = render([roster], 0);
+    const drawn = text(html.slice(html.indexOf('data-vehicle-option="v-00000"')));
+    expect(drawn).toContain('ك ل 90');
+    expect(drawn).toContain('أحمد السائق، محمود السائق');
+    expect(html).toContain('data-vehicle-make="true"');
+    expect(drawn).toContain('تويوتا هاي إس');
+  });
+});
+
+describe('Round 32 critic — midnight under an open list writes nothing', () => {
+  const page = read('../pages/CrewBoardPage.tsx');
+
+  it('every change to the draft passes ONE gate — `apply` asks `canPlan`', () => {
+    expect(page).toMatch(
+      /const apply = \(what: UndoWhat, change: \(draft: CrewDraft\) => CrewDraft, merge\?: string\): void => \{[\s\S]{0,400}?if \(!canPlan\) return;\s*setHistory\(/u,
+    );
+    // Every operation goes through it (`applyRows` is `apply` on the rows).
+    expect(page).toMatch(
+      /const applyRows = [\s\S]*?=> apply\(what, \(draft\) => \(\{ \.\.\.draft, rows: change\(draft\.rows\) \}\), merge\);/u,
+    );
+  });
+
+  it('a slot’s list, a row’s «بدون سيارة» and a picked-up chip shut as the day becomes its record', () => {
+    expect(page).toContain(
+      'if (!canPlan && (picker !== null || vanPicker !== null || selected !== null)) {',
+    );
   });
 });

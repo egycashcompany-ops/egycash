@@ -200,6 +200,8 @@ export const CrewVehiclePicker = ({
       .map((driver) => driver.fullNameAr)
       .filter((name): name is string => name !== null && name !== '');
     // Round 32 — a car with no code: its plate where the code would be, its make under it.
+    // Round 32 critic — a ROSTER van with no code keeps its drivers under it (what the roster's
+    // group is there to show); its make then rides beside «بلا كود».
     const uncoded = choice.uncoded;
     const make =
       uncoded?.typeName == null
@@ -207,7 +209,8 @@ export const CrewVehiclePicker = ({
         : locale === 'en' && uncoded.typeName.en !== ''
           ? uncoded.typeName.en
           : uncoded.typeName.ar;
-    const second = uncoded !== null ? (make === null ? [] : [make]) : drivers;
+    const second = drivers.length > 0 || uncoded === null ? drivers : make === null ? [] : [make];
+    const makeBeside = uncoded !== null && drivers.length > 0 ? make : null;
     return (
       <div
         key={choice.vehicleId}
@@ -231,7 +234,9 @@ export const CrewVehiclePicker = ({
         title={
           choice.pickable
             ? undefined
-            : t('operations.crewPlan.vehicles.workshopRefused', { code: choice.vehicleCode })
+            : t('operations.crewPlan.vehicles.workshopRefused', {
+                code: uncoded?.plateNumber ?? choice.vehicleCode,
+              })
         }
         onMouseEnter={() => {
           if (choice.pickable) setActiveId(choice.vehicleId);
@@ -276,9 +281,15 @@ export const CrewVehiclePicker = ({
               >
                 {uncoded.plateNumber}
               </bdi>
-              <span className="shrink-0 rounded border border-dashed border-slate-300 px-1 text-[10px] font-bold leading-4 text-slate-500 dark:border-slate-600 dark:text-slate-400">
-                {t('operations.crewPlan.vehicles.noCode')}
-              </span>
+              <NoCodeTag />
+              {makeBeside !== null && (
+                <span
+                  className="min-w-0 truncate text-[10.5px] font-bold leading-4 text-slate-500 dark:text-slate-400"
+                  data-vehicle-make="true"
+                >
+                  {makeBeside}
+                </span>
+              )}
             </span>
           )}
           {second.length > 0 && (
@@ -409,5 +420,26 @@ export const CrewVehiclePicker = ({
       {list}
     </div>,
     document.body,
+  );
+};
+
+/**
+ * «بلا كود» — the quiet mark beside a plate standing where a code would be (Round 32): the van's
+ * Fleet code names nothing («0», «00» …). The pickers' and — since the Round 32 critic — the
+ * boards' own, so a van picked by its plate reads the same on its row.
+ */
+export const NoCodeTag = ({ className }: { className?: string }): JSX.Element => {
+  const t = useT();
+  return (
+    <span
+      data-no-code="true"
+      title={t('operations.crewPlan.vehicles.noCodeHint')}
+      className={cn(
+        'shrink-0 rounded border border-dashed border-slate-300 px-1 text-[10px] font-bold leading-4 text-slate-500 dark:border-slate-600 dark:text-slate-400',
+        className,
+      )}
+    >
+      {t('operations.crewPlan.vehicles.noCode')}
+    </span>
   );
 };

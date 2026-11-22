@@ -164,6 +164,8 @@ export const toStandingPlanRows = (
     shiftTypeId: null,
     rowColour: null,
     notes: null,
+    // Round 32 critic — a van whose code names nothing is named by its plate on this screen too.
+    uncoded: row.uncoded ?? null,
   }));
 
 /** A board row → the card-position row the payload is written from (`toStandingPayloadRows`). */
@@ -327,12 +329,18 @@ export const standingEditsLost = (
  * the save sends an edit of that row rather than a removal and a new one.
  */
 export const newStandingPlanRow = (
-  vehicle: { vehicleId: string; vehicleCode: string },
+  vehicle: {
+    vehicleId: string;
+    vehicleCode: string;
+    uncoded?: OperationsStandingAvailableVehicleDto['uncoded'];
+  },
   serverRows: readonly PlanRow[] = [],
 ): PlanRow => ({
   key: `van:${vehicle.vehicleId}`,
   vehicleId: vehicle.vehicleId,
   vehicleCode: vehicle.vehicleCode,
+  // Round 32 critic — named as «إضافة سيارة» named it: by its plate when its code names nothing.
+  uncoded: vehicle.uncoded ?? null,
   onRoster: false,
   crewId: serverRows.find((row) => row.vehicleId === vehicle.vehicleId)?.crewId ?? null,
   drivers: [],
@@ -367,7 +375,9 @@ export const standingVehicleChoices = (
           {
             vehicleId: row.vehicleId,
             vehicleCode: row.vehicleCode ?? row.vehicleId,
-            uncoded: null,
+            // Round 32 critic — listed as the standing crew held it: by its plate, with the uncoded
+            // (it was a bare «0000» among the coded).
+            uncoded: row.uncoded ?? null,
           },
         ],
   );

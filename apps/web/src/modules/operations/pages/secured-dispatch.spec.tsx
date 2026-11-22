@@ -471,6 +471,7 @@ const crewBoard = (date: string): OperationsCrewBoardDto => ({
       driver2EmployeeId: null,
       drivers: [],
       missionTypeId: null,
+      uncoded: null,
       crew: {
         id: 'ca-1',
         captainEmployeeIds: ['e-1'],
@@ -481,6 +482,7 @@ const crewBoard = (date: string): OperationsCrewBoardDto => ({
         notes: null,
         shiftTypeId: null,
         rowColour: null,
+        shipments: 0,
       },
     },
   ],

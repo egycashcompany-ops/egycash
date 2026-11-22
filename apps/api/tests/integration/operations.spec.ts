@@ -469,9 +469,10 @@ beforeAll(async () => {
     });
   expect(rosterRes.status).toBe(200);
 
-  // The areas the crews below head for. Since Round 20 a crew row's «الاتجاه» must name an ACTIVE
-  // operations area («لازم اختار من الاتجاهات اللى موجوده بتاعت البنوك»), so the directions this file
-  // plans with exist before the first plan. None is a name the areas suite creates itself.
+  // The areas the crews below head for. Since Round 20 a crew row's «الاتجاه» is read against the
+  // ACTIVE operations areas — refused unless it named them until Round 28 («عاوز الاتجاه اقدر اكتبه
+  // بايدى لو مش موجود فى الليست»), respelled as they spell it since. None is a name the areas suite
+  // creates itself.
   for (const name of ['الجيزة', 'القاهرة', 'بنها']) {
     const areaRes = await request(app)
       .post('/api/v1/operations/areas')
@@ -1957,6 +1958,88 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
       code: 'NOT_A_SPECIALIST',
       message: reflagged,
     });
+
+    await drop(vehicleBId);
+  });
+
+  it('Round 28 — «الاتجاه» typed by hand: an area’s name respelled, anything else kept as typed, the row’s own kept exactly', async () => {
+    // «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست» — the day's rule, here too, so the two
+    // boxes behave alike and (Round 28b) so the day can take it: «تحميل الطاقم الثابت» copies the
+    // people and the direction, never the time — judged on the board by the same rule
+    // (`standingDirectionForDay`, apps/web lib/standing-load.ts).
+    // 'الجيزة' is an active area of this file; nothing else typed is.
+    const directionOf = (res: request.Response): string | null | undefined =>
+      data<OperationsStandingCrewBoardDto>(res).rows.find((r) => r.vehicleId === vehicleBId)
+        ?.direction;
+
+    const respelled = await save([{ vehicleId: vehicleBId, direction: '  الجيزه ' }]);
+    expect(respelled.status, JSON.stringify(respelled.body)).toBe(200);
+    expect(directionOf(respelled)).toBe('الجيزة');
+
+    const typed = await save([{ vehicleId: vehicleBId, direction: ' طريق   مصر  الإسماعيلية ' }]);
+    expect(typed.status, JSON.stringify(typed.body)).toBe(200);
+    expect(directionOf(typed)).toBe('طريق مصر الإسماعيلية');
+
+    // A legacy direction with spaces of its own stays EXACTLY as written while sent unchanged
+    // (spaces aside), and the save is a no-op.
+    const { OperationsStandingCrewModel } =
+      await import('../../src/modules/operations/standing-crew/standing-crew.model');
+    const { Types } = await import('mongoose');
+    await OperationsStandingCrewModel.collection.updateOne(
+      { vehicleId: new Types.ObjectId(vehicleBId), isDeleted: false },
+      { $set: { direction: 'طريق  السويس ' } },
+    );
+    const kept = await save([{ vehicleId: vehicleBId, direction: 'طريق السويس' }]);
+    expect(kept.status).toBe(200);
+    expect(data<{ changedCount: number }>(kept).changedCount).toBe(0);
+    expect(directionOf(kept)).toBe('طريق  السويس ');
+
+    // Naming nothing once tidied — blank, «-», a zero-width space — or HAND-TYPED past the ceiling:
+    // refused by the save on the row's own field, nothing written.
+    for (const nothing of ['   ', ' - ', '\u200b']) {
+      const refused = await save([{ vehicleId: vehicleBId, direction: nothing }]);
+      expect(refused.status, nothing).toBe(400);
+      expect(refused.body.error.details, nothing).toEqual([
+        expect.objectContaining({ field: 'body.rows.0.direction', code: 'TOO_SMALL' }),
+      ]);
+    }
+    const tooLong = await save([{ vehicleId: vehicleBId, direction: 'ا'.repeat(81) }]);
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.error.details).toEqual([
+      expect.objectContaining({ field: 'body.rows.0.direction', code: 'TOO_BIG' }),
+    ]);
+    expect(directionOf(await standing())).toBe('طريق  السويس ');
+
+    // Round 28 verify — the ceiling is the hand-typed text's, not the row's own: a direction past
+    // it already on the row, sent back unchanged, is kept and the row saved (the shape refused it).
+    const legacy = 'طريق '.repeat(20).trim();
+    await OperationsStandingCrewModel.collection.updateOne(
+      { vehicleId: new Types.ObjectId(vehicleBId), isDeleted: false },
+      { $set: { direction: legacy } },
+    );
+    const keptLong = await save([
+      { vehicleId: vehicleBId, direction: legacy, plannedTime: '06:10' },
+    ]);
+    expect(keptLong.status, JSON.stringify(keptLong.body)).toBe(200);
+    expect(directionOf(keptLong)).toBe(legacy);
+
+    // Round 28 critic — the plain box this screen had before #741 stored any text, «  » (a blank)
+    // included. Sent back unchanged beside another change (the desk drags a captain off the van),
+    // it is the row's own — kept, the row saved; the shape refused it and nothing on the row could
+    // be saved until somebody happened to clear its direction.
+    await OperationsStandingCrewModel.collection.updateOne(
+      { vehicleId: new Types.ObjectId(vehicleBId), isDeleted: false },
+      { $set: { direction: '  ' } },
+    );
+    const keptBlank = await save([
+      { vehicleId: vehicleBId, direction: '  ', plannedTime: '06:20' },
+    ]);
+    expect(keptBlank.status, JSON.stringify(keptBlank.body)).toBe(200);
+    expect(directionOf(keptBlank)).toBe('  ');
+    // A pasted bidi mark is tidied away: «‏طريق» is stored «طريق».
+    const marked = await save([{ vehicleId: vehicleBId, direction: '\u200fطريق السويس\u200e' }]);
+    expect(marked.status, JSON.stringify(marked.body)).toBe(200);
+    expect(directionOf(marked)).toBe('طريق السويس');
 
     await drop(vehicleBId);
   });

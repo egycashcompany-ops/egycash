@@ -15,6 +15,10 @@
 // Round 26b — «وافصل الاليطار بتاع القائد عن المحصنة وحسن شكل العربيه بالكامل»: the count of محصنات and
 // the captain each in a frame of their own. R26b critic — on the same row, the count FIRST, as Round
 // 25 set it («الصف نفسه بتاع القائد يكون قبله عدد المحصنات»); the packages under them, then the load.
+//
+// Round 31 — «عاوز العدد والكلام على صف واحد مش صفين يعنى المحصنات والعدد والايقون فى صف واحد واسم
+// القائد برضو يكون جمب الاشارة الخضرة»: each count ONE line (icon, figure, word), and the captain's
+// name beside his green mark.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -37,13 +41,18 @@ import {
   DistributionColumn,
   FilterAreaSelect,
   FilterTextBox,
+  CountTile,
   PackageCounts,
   ShipmentCardBody,
   ShipmentChip,
   VAN_GRID,
   VanCard,
+  VanCounts,
   hoverIsOnChip,
+  lineFigureSize,
+  lineFigureTight,
 } from './SecuredDistributionParts';
+import { CAPTAIN_FRAME, CAPTAIN_MARK, COUNT_LOOK } from './distribution-look';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -170,6 +179,15 @@ describe('the van card’s head — one line', () => {
     expect(head).not.toContain('data-van-time');
   });
 
+  // Round 28 critic — `trim()` kept a zero-width space: the pill was drawn empty-looking instead of
+  // «بلا اتجاه», while the filters already counted the van «بدون اتجاه».
+  it('a direction that names nothing («-», a zero-width space) is «بلا اتجاه» too', () => {
+    for (const direction of ['\u200b', ' - ', '!!!']) {
+      const head = headOf(card({ ...VAN, direction }));
+      expect(head, direction).toContain(`>${tr('ar', 'operations.distribution.noDirection')}<`);
+    }
+  });
+
   it('the whole card is the van’s drop mark — head, captain’s line, packages and load alike', () => {
     const html = card(VAN);
     expect(html).toMatch(/^<article data-distribution-van="cr-249" data-drop-van="cr-249"/);
@@ -178,7 +196,7 @@ describe('the van card’s head — one line', () => {
 });
 
 describe('Round 25 — the captain’s line, the count FIRST; Round 26b — each in its own frame', () => {
-  it('the count FIRST, in its Arabic form, then the captain with his mark, his name cut and a card trigger', () => {
+  it('the count FIRST, in its Arabic form, then the captain: his mark and his name BESIDE it on one line (Round 31), cut, a card trigger', () => {
     const html = card(VAN);
     const crew = crewOf(html);
     // Round 25 — the captain's row opens on the count of محصنات, its whole Arabic form said.
@@ -194,9 +212,16 @@ describe('Round 25 — the captain’s line, the count FIRST; Round 26b — each
     expect(line).not.toContain('data-count-kind');
     expect(line).toMatch(
       new RegExp(
-        `data-captain-mark="true"[^>]*>[\\s\\S]*?${tr('ar', 'operations.crewPlan.role.captain')}</span><span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0">عبد الرحمن محمد عبد العزيز الشناوي</span>`,
+        `data-captain-mark="true"[^>]*>[\\s\\S]*?${tr('ar', 'operations.crewPlan.role.captain')}</span><span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0" dir="auto">عبد الرحمن محمد عبد العزيز الشناوي</span>`,
       ),
     );
+    // Round 31 — «واسم القائد برضو يكون جمب الاشارة الخضرة»: his mark, then his name on the SAME
+    // line — a row, not Round 26b's column (mark over name); the mark keeps its width, the name is
+    // cut to what is left.
+    expect(line).toMatch(
+      /data-van-captain="c1" class="flex min-w-0 flex-1 items-center gap-1\.5"><span data-captain-mark="true" class="inline-flex shrink-0 /,
+    );
+    expect(line).not.toMatch(/data-van-captain="c1" class="[^"]*flex-col/);
   });
 
   it('two captains: only the FIRST one put on the row', () => {
@@ -571,5 +596,205 @@ describe('the columns', () => {
     expect(html).not.toContain('data-column-toggle');
     expect(html).not.toContain('data-column-open');
     expect(html).not.toContain('hidden=""');
+  });
+});
+
+describe('Round 31 — «العدد والكلام على صف واحد مش صفين»: each count and the captain ONE line', () => {
+  /** One tile's markup, from its mark to the next tile (or the end of its row). */
+  const tileOf = (html: string, mark: string): string => {
+    const from = html.indexOf(mark);
+    const rest = html.slice(from + mark.length);
+    const next = rest.search(/data-(?:van-count|van-package|van-captain-line|van-card-count-of)=/);
+    return html.slice(from, next === -1 ? undefined : from + mark.length + next);
+  };
+  /** The visible parts of a one-line tile, in the order drawn: the icon, the figure, the word. */
+  const LINE =
+    /data-count-layout="line"[^>]*class="flex min-w-0 items-center justify-center rounded-lg px-0\.5 py-1\.5 ring-1 ring-inset [^"]*">(?:<span aria-hidden="true" |<span )class="flex h-5 min-w-0 max-w-full flex-wrap items-center justify-center gap-x-\[3px\] overflow-hidden \[@container\(max-width:5\.5rem\)\]:gap-x-0\.5"><span class="flex shrink-0 items-center gap-x-0\.5"><svg [^]*?<\/svg><span dir="ltr" class="[^"]*">([^<]+)<\/span><\/span><span class="max-w-full truncate text-\[10\.5px\] font-bold leading-4">([^<]+)<\/span><\/span>/;
+  const parts = (html: string, mark: string): [string, string] => {
+    const m = LINE.exec(tileOf(html, mark));
+    expect(m, mark).not.toBeNull();
+    return [m?.[1] ?? '', m?.[2] ?? ''];
+  };
+
+  for (const locale of ['ar', 'en'] as const) {
+    it(`[${locale}] on the van card every count is ONE line — its icon, its figure, then its word beside them`, () => {
+      const html = card(VAN, { locale, count: 2, packages: { cartons: 2, bags: 4, boxes: 0 } });
+      const words =
+        locale === 'ar'
+          ? ['محصنتان', 'كرتونتان', 'حقائب', 'صناديق']
+          : ['Secured', 'Cartons', 'Bags', 'Boxes'];
+      const marks = [
+        'data-van-count="2"',
+        'data-van-package="cartons"',
+        'data-van-package="bags"',
+        'data-van-package="boxes"',
+      ];
+      expect(marks.map((mark) => parts(html, mark))).toEqual([
+        ['2', words[0]],
+        ['2', words[1]],
+        ['4', words[2]],
+        ['0', words[3]],
+      ]);
+      // No stacked tile left on the van card: no word on a line of its own under the figure.
+      expect(html).not.toMatch(/data-van-(?:count|package)="[^"]*"[^>]*class="[^"]*flex-col/);
+      expect(html.match(/data-count-layout="line"/g)).toHaveLength(4);
+    });
+  }
+
+  it('the singular, dual and plural words stay the count’s own — «1 محصنة · 2 محصنتان · 3 محصنات», «1 كرتونة · 2 كرتونتان · 11 صندوقًا»', () => {
+    for (const [count, word] of [
+      [1, 'محصنة'],
+      [2, 'محصنتان'],
+      [3, 'محصنات'],
+      [11, 'محصنة'],
+    ] as const) {
+      expect(parts(card(VAN, { count }), `data-van-count="${count}"`)).toEqual([
+        String(count),
+        word,
+      ]);
+    }
+    const html = card(VAN, { packages: { cartons: 1, bags: 2, boxes: 11 } });
+    expect(parts(html, 'data-van-package="cartons"')).toEqual(['1', 'كرتونة']);
+    expect(parts(html, 'data-van-package="bags"')).toEqual(['2', 'حقيبتان']);
+    expect(parts(html, 'data-van-package="boxes"')).toEqual(['11', 'صندوقًا']);
+  });
+
+  it('the محصنات tile still says the whole phrase to a screen reader and on hover; its visible line is hidden from it', () => {
+    const tile = tileOf(card(VAN, { count: 3 }), 'data-van-count="3"');
+    const said = tr('ar', 'operations.distribution.loadCount.few', { count: '3' });
+    expect(tile).toContain(`title="${said}"`);
+    expect(tile).toContain(`<span class="sr-only">${said}</span>`);
+    expect(tile).toMatch(/<span aria-hidden="true" class="flex h-5 min-w-0 max-w-full flex-wrap/);
+  });
+
+  it('the colours and the 0 look are the tile’s as before — only the layout changed', () => {
+    const html = card(VAN, { count: 0, packages: { cartons: 2, bags: 0, boxes: 1 } });
+    const classOf = (mark: string): string =>
+      new RegExp(`${mark}[^>]*? class="([^"]*)"`).exec(html)?.[1] ?? '';
+    expect(classOf('data-van-count="0"')).toContain(COUNT_LOOK.shipments.zero);
+    expect(classOf('data-van-package="cartons"')).toContain(COUNT_LOOK.cartons.chip);
+    expect(classOf('data-van-package="bags"')).toContain(COUNT_LOOK.bags.zero);
+    expect(classOf('data-van-package="boxes"')).toContain(COUNT_LOOK.boxes.chip);
+    const zero = tileOf(html, 'data-van-package="bags"');
+    expect(zero).toContain('data-count-zero="true"');
+    expect(zero).toContain(COUNT_LOOK.bags.zeroMark);
+    expect(zero).toContain(COUNT_LOOK.bags.zeroFigure);
+    const some = tileOf(html, 'data-van-package="cartons"');
+    expect(some).toContain(COUNT_LOOK.cartons.mark);
+    expect(some).toContain(COUNT_LOOK.cartons.figure);
+    // «…» while the vault is read, «—» when it cannot be — the kind's own name beside it.
+    const pending = render(<PackageCounts packages="pending" />);
+    expect(parts(pending, 'data-van-package="cartons"')).toEqual(['…', 'كراتين']);
+    const unknown = render(<PackageCounts packages={null} />);
+    expect(parts(unknown, 'data-van-package="boxes"')).toEqual(['—', 'صناديق']);
+  });
+
+  // R31 review — REWRITTEN: this spec pinned the builder's fallback (the word wrapping UNDER the
+  // figure — a two-line tile, and its row with it: «10 Secured» at 1024/1340/1366, «103 Secured» at
+  // 1440). The tile is now one line high always: a narrow tile tightens first, and only where even
+  // that line cannot hold the word does the word leave the view — said on hover and to a reader.
+  it('one line HIGH always: a three-digit figure a step smaller; on a narrow tile every longer figure one more step and the word closer; where the line still cannot hold the word, the word leaves the view — never a second line, never cut', () => {
+    expect(lineFigureSize('0')).toBe('text-[15px]');
+    expect(lineFigureSize('99')).toBe('text-[15px]');
+    expect(lineFigureSize('103')).toBe('text-[13px]');
+    expect(lineFigureSize('1,251')).toBe('text-[12px]');
+    expect(lineFigureSize('12,345')).toBe('text-[11px]');
+    // On a narrow tile (its room under 5.5rem — the three-a-row cards' 82–90px tiles).
+    expect(lineFigureTight('0')).toBe('');
+    expect(lineFigureTight('12')).toBe('[@container(max-width:5.5rem)]:text-[13px]');
+    expect(lineFigureTight('103')).toBe('[@container(max-width:5.5rem)]:text-[12px]');
+    expect(lineFigureTight('1,251')).toBe('[@container(max-width:5.5rem)]:text-[11px]');
+    expect(lineFigureTight('12,345')).toBe('[@container(max-width:5.5rem)]:text-[10px]');
+    const html = card(VAN, { packages: { cartons: 103, bags: 12, boxes: 1251 } });
+    expect(tileOf(html, 'data-van-package="cartons"')).toMatch(
+      /text-\[13px\] \[@container\(max-width:5\.5rem\)\]:text-\[12px\][^"]*">103</,
+    );
+    expect(tileOf(html, 'data-van-package="bags"')).toMatch(
+      /text-\[15px\] \[@container\(max-width:5\.5rem\)\]:text-\[13px\][^"]*">12</,
+    );
+    expect(tileOf(html, 'data-van-package="boxes"')).toMatch(
+      /text-\[12px\] \[@container\(max-width:5\.5rem\)\]:text-\[11px\][^"]*">1,251</,
+    );
+    // The tile is the container its narrow step asks about — the card's width, not the screen's.
+    const tile = tileOf(html, 'data-van-package="cartons"');
+    expect(tile).toMatch(/data-count-layout="line"[^>]*class="[^"]*\[container-type:inline-size\]/);
+    // ONE line high, whatever the fonts: the word may wrap only onto a line out of view — the icon
+    // and the figure never part, the word is never cut (no ellipsis in a count's name).
+    expect(tile).toContain(
+      'class="flex h-5 min-w-0 max-w-full flex-wrap items-center justify-center gap-x-[3px] overflow-hidden [@container(max-width:5.5rem)]:gap-x-0.5"',
+    );
+    expect(tile).toContain('<span class="flex shrink-0 items-center gap-x-0.5">');
+    expect(html).not.toMatch(/data-count-layout="line"[^>]*class="[^"]*flex-col/);
+    // …and the whole count on hover, where the word cannot show: a package's own phrase.
+    expect(tile).toMatch(/data-count-layout="line" title="103 كراتين"/);
+    expect(tileOf(html, 'data-van-package="bags"')).toContain('title="12 حقيبة"');
+    // «…» / «—» say no count — no phrase to hover.
+    expect(
+      tileOf(render(<PackageCounts packages="pending" />), 'data-van-package="cartons"'),
+    ).not.toContain('title=');
+  });
+
+  it('[en] the whole count on hover in English too, and the محصنات tile keeps its own phrase', () => {
+    const html = card(VAN, {
+      locale: 'en',
+      count: 10,
+      packages: { cartons: 12, bags: 1, boxes: 0 },
+    });
+    expect(tileOf(html, 'data-van-package="cartons"')).toContain(
+      `title="12 ${tr('en', 'operations.distribution.packageWord.cartons.other')}"`,
+    );
+    expect(tileOf(html, 'data-van-count="10"')).toContain(
+      `title="${tr('en', 'operations.distribution.loadCount.other', { count: '10' })}"`,
+    );
+  });
+
+  it('a cut captain’s name keeps its START in view on either screen — the name’s own direction, not the box’s', () => {
+    // On the English (LTR) screen an Arabic name cut by the box's direction lost its first letters
+    // («احمد سيد بركة محمد» → «…يد بركة محمد»); `dir="auto"` gives the name its own (Arabic) side,
+    // so the «…» stands where the name ENDS — on the Arabic screen as on the English one.
+    for (const locale of ['ar', 'en'] as const) {
+      expect(lineOf(card(VAN, { locale }))).toMatch(
+        /<span data-van-person="c1" class="min-w-0 truncate[^"]*" tabindex="0" dir="auto">/,
+      );
+    }
+  });
+
+  it('the van’s hover card keeps its four tiles stacked, four across — too narrow for one line there', () => {
+    const html = render(
+      <VanCounts count={2} packages={{ cartons: 2, bags: 4, boxes: 0 }} of="card" />,
+    );
+    expect(html).not.toContain('data-count-layout');
+    expect(html.match(/data-count-kind=/g)).toHaveLength(4);
+    expect(html).toMatch(/data-van-card-count-of="shipments"[^>]*class="flex min-w-0 flex-col /);
+    // And a tile asked for nothing is the stacked one — the hover card's, as Round 26b drew it.
+    expect(render(<CountTile kind="bags" value={4} word="حقائب" />)).toMatch(
+      /class="flex min-w-0 flex-col items-center justify-center rounded-lg px-1 pb-1 pt-1\.5/,
+    );
+  });
+
+  it('«بلا قائد» stays one line in its frame — the rose one, or the record’s quiet one', () => {
+    const none = card({ ...VAN, captains: [] }, { count: 0 });
+    const line = lineOf(none);
+    expect(line).toContain(CAPTAIN_FRAME.none);
+    expect(line).toMatch(/data-van-captain="none" class="flex min-w-0 items-center gap-1\.5 /);
+    const calm = render(
+      <VanCard
+        van={{ ...VAN, captains: [] }}
+        crewPlanVisible
+        day="2026-11-18"
+        count={0}
+        packages={null}
+        calm
+      >
+        <p>load</p>
+      </VanCard>,
+    );
+    expect(lineOf(calm)).toContain(CAPTAIN_FRAME.quiet);
+    expect(lineOf(calm)).toMatch(/data-van-captain="none" class="flex min-w-0 items-center /);
+    // With a captain: the mark (its green as ever), then the name, in the frame's one row.
+    const some = lineOf(card(VAN));
+    expect(some).toContain(CAPTAIN_FRAME.some);
+    expect(some).toContain(CAPTAIN_MARK);
+    expect(some.indexOf('data-captain-mark')).toBeLessThan(some.indexOf('data-van-person='));
   });
 });

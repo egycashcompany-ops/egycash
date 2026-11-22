@@ -208,6 +208,20 @@ export const matchesVanFilter = (
   vanMatchesArea(van, load, filter.area, context.areaNames);
 
 /**
+ * Round 28 critic — the areas the screen's محصنات name, each once: what a van's direction is read
+ * against (`directionParts`), so a direction that IS one of them is one area, never split at its
+ * separator — «شبرا/الخيمة» offered «شبرا» and «الخيمة» in the right area box, two areas no محصنة
+ * has, and a van of «شبرا/الخيمة» answered neither.
+ */
+export const shipmentAreaNames = (rows: readonly Pick<FilterShipment, 'areaName'>[]): string[] => [
+  ...new Set(
+    rows.flatMap((row) =>
+      row.areaName == null || row.areaName.trim() === '' ? [] : [row.areaName.trim()],
+    ),
+  ),
+];
+
+/**
  * The right area box's choices: every area the vans' directions name and every area their محصنات
  * name, once, in Arabic order — then «بلا اتجاه» (`NO_AREA`) when a van has no direction.
  */

@@ -55,6 +55,7 @@ import {
   PinIcon,
   PlayIcon,
   PlusIcon,
+  UploadIcon,
 } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -81,6 +82,7 @@ import {
   ShiftTypeDialog,
 } from '../components/CatalogDialogs';
 import { ShiftTypeTag } from '../components/shift-type-look';
+import { BranchImportPanel } from '../components/branch-import/BranchImportPanel';
 import { SHIFT_TYPE_LIST } from '../lib/crew-plan';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -225,6 +227,9 @@ export const CatalogsPage = (): JSX.Element => {
   const [editingArea, setEditingArea] = useState<OperationsAreaDto | null>(null);
   const [editingShiftType, setEditingShiftType] = useState<OperationsShiftTypeDto | null>(null);
   const [creating, setCreating] = useState(false);
+  // Round 29 — «وعاوز جمب اضافة فرع فوق يقدر يضيف شيت ويقارن زى بتاع كروت الشحن كدا»: the branches
+  // tab shows the sheet import in place of its list while this is on.
+  const [importing, setImporting] = useState(false);
 
   // ── The drag orders — Fleet's catalogs page, step for step (`useDragOrder`) ────────────────────
   const mayOrder = can('operationsCatalog.manage');
@@ -623,10 +628,22 @@ export const CatalogsPage = (): JSX.Element => {
       <PageHeader
         title={t('operations.catalogs.title')}
         actions={
-          <Button onClick={() => setCreating(true)}>
-            <PlusIcon className="h-4 w-4" />
-            {t(addLabelKey[kind])}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {kind === 'branches' && !importing && can('operationsCatalog.manage') && (
+              <Button
+                variant="secondary"
+                onClick={() => setImporting(true)}
+                data-branch-import-open="true"
+              >
+                <UploadIcon className="h-4 w-4" />
+                {t('operations.catalogs.branchImport.open')}
+              </Button>
+            )}
+            <Button onClick={() => setCreating(true)}>
+              <PlusIcon className="h-4 w-4" />
+              {t(addLabelKey[kind])}
+            </Button>
+          </div>
         }
       />
 
@@ -635,7 +652,10 @@ export const CatalogsPage = (): JSX.Element => {
           <button
             key={option}
             type="button"
-            onClick={() => patchParams({ kind: option })}
+            onClick={() => {
+              setImporting(false);
+              patchParams({ kind: option });
+            }}
             className={
               option === kind
                 ? 'border-b-2 border-brand-500 px-4 py-2 text-sm font-medium text-brand-600 dark:text-brand-400'
@@ -659,7 +679,13 @@ export const CatalogsPage = (): JSX.Element => {
           empty={t('operations.catalogs.bank.empty')}
         />
       )}
-      {kind === 'branches' && (
+      {kind === 'branches' && importing && (
+        <BranchImportPanel
+          banks={(bankOptions.data?.items ?? []).filter((bank) => bank.isActive)}
+          onClose={() => setImporting(false)}
+        />
+      )}
+      {kind === 'branches' && !importing && (
         <DataTable
           columns={branchColumns}
           rows={branches.data?.items ?? []}
@@ -726,7 +752,7 @@ export const CatalogsPage = (): JSX.Element => {
         </>
       )}
 
-      {activeMeta !== undefined && (
+      {activeMeta !== undefined && !(kind === 'branches' && importing) && (
         <Pagination
           meta={activeMeta}
           onPageChange={(next) => patchParams({ page: String(next) }, false)}

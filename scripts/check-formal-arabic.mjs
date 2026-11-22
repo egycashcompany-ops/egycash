@@ -68,6 +68,8 @@ const FORMAL = new Set([
   'فاتورة',
   // The line acknowledgment's «بأنني قد استلمت خط محمول رقم … وبياناته كالتالي:».
   'بياناته', 'وبياناته',
+  // «اتجاه» in the accusative, the crew board's «استخدام «…» اتجاهًا» (Round 28).
+  'اتجاهًا',
 ]);
 
 /**

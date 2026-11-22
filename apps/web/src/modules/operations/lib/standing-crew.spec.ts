@@ -846,7 +846,6 @@ describe('Round 27 review — a refused PUT, read as the board reads its own', (
     expect(planRefusal(refused, sent)).toEqual({
       key: 'van:v-501',
       field: 'slot',
-      parts: [],
       person: { employeeId: 'cap-z', reason: 'notCaptain' },
     });
   });

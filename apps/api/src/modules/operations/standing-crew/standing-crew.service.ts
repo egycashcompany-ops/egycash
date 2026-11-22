@@ -22,6 +22,13 @@
 //     (`OPERATIONS_CREW_MEMBER_WRONG_SLOT`, `crew/crew-roles.ts`) — or the standing crew would seed
 //     a day with seats the day refuses. Somebody already in that slot of that vehicle's row stays.
 //     The other requirement flags still gate nothing (approved decision 2).
+//   · ROUND 28 — «الاتجاه» as the day stores it (`crew/crew-direction.ts`): «عاوز الاتجاه اقدر اكتبه
+//     بايدى لو مش موجود فى الليست». A NEW or CHANGED direction naming active areas is stored in
+//     their spelling, anything else as typed (tidied); the row's own stays while sent unchanged.
+//     The same rule as the day's, and since Round 28b the day takes it: «تحميل الطاقم الثابت»
+//     (`standing-load.ts` on the board) seeds a van it fills with this row's PEOPLE AND DIRECTION —
+//     the direction only where the day's row has none, never one the day's save would refuse —
+//     never its time.
 //   · A vehicle must exist in the Fleet registry — but NOT be on a duty roster. Being rostered is
 //     a per-DAY fact and this row has no day; demanding it would make the permanent crew of a
 //     vehicle un-editable on any day Fleet had not yet rostered it.
@@ -51,6 +58,7 @@ import { settingsService } from '../../../platform/settings';
 import { fleetVehicleRepository } from '../fleet-boundary';
 import { slotIds } from '../crew/crew-slots';
 import { CREW_SLOT_FIELD, crewRolesOf, refuseWrongSlots } from '../crew/crew-roles';
+import { directionResolver } from '../crew/crew-direction';
 import { operationsStandingCrewRepository } from './standing-crew.repository';
 import { type OperationsStandingCrewDoc } from './standing-crew.model';
 
@@ -274,7 +282,13 @@ class OperationsStandingCrewService {
         changes: ReturnType<typeof diffChanges>;
       }[] = [];
 
-      for (const row of input.rows) {
+      // «الاتجاه» — the day's rule (Round 28, `crew-direction.ts`): an area's name in the area's
+      // spelling, anything else as typed, the row's own kept exactly while sent unchanged. One
+      // rule so the two boxes behave alike — and (Round 28b) because the day reads it: «تحميل
+      // الطاقم الثابت» copies the people and the direction, never the time (`standing-load.ts`).
+      const directionOf = directionResolver();
+
+      for (const [index, row] of input.rows.entries()) {
         const current = byVehicle.get(row.vehicleId);
         // An omitted slot CLEARS it, the same dialect the daily board speaks. The board sends
         // whole rows; `undefined` means "nobody", never "keep what is there".
@@ -282,7 +296,7 @@ class OperationsStandingCrewService {
           captainEmployeeIds: row.captainEmployeeIds ?? [],
           specialist1EmployeeIds: row.specialist1EmployeeIds ?? [],
           specialist2EmployeeIds: row.specialist2EmployeeIds ?? [],
-          direction: row.direction ?? null,
+          direction: await directionOf(row.direction, [current?.direction], index),
           plannedTime: row.plannedTime ?? null,
         };
         const set: Partial<OperationsStandingCrewDoc> = {

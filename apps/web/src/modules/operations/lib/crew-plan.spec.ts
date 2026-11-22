@@ -167,6 +167,8 @@ const crew = (over: Partial<OperationsCrewBoardCrewDto> = {}): OperationsCrewBoa
 describe('toPlanRows — the board as the server sends it', () => {
   const board: OperationsCrewBoardDto = {
     date: '2026-11-16T00:00:00.000Z',
+    today: '2026-11-15T00:00:00.000Z',
+    past: false,
     day: null,
     rows: [
       {
@@ -204,6 +206,7 @@ describe('toPlanRows — the board as the server sends it', () => {
     ],
     workshopVehicles: [{ vehicleId: 'v-310', vehicleCode: '310' }],
     freeVehicles: [],
+    unidentifiedVehicles: 0,
   };
 
   it('reads the type, the colour, the drivers, then the rows without a van in their order', () => {

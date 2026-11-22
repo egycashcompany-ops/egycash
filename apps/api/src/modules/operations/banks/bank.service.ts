@@ -13,13 +13,14 @@ import { operationsBankRepository } from './bank.repository';
 import { type OperationsBankDoc } from './bank.model';
 import { containsText } from '../catalog-search';
 
-const entityRef = (id: string) => ({
+/** Exported for the deploy's load of the owner's four banks (Round 29b), which may create one. */
+export const bankEntityRef = (id: string) => ({
   moduleId: 'operations',
   entityType: 'bank',
   entityId: id,
 });
 
-const snapshot = (doc: OperationsBankDoc) => ({
+export const bankSnapshot = (doc: OperationsBankDoc) => ({
   code: doc.code,
   name: doc.name,
   opsName: doc.opsName,
@@ -32,9 +33,9 @@ class OperationsBankService {
   async create(input: CreateOperationsBank, by: string): Promise<OperationsBankDoc> {
     const doc = await operationsBankRepository.create({ ...input, isActive: true }, { by });
     await auditService.record({
-      entityRef: entityRef(String(doc._id)),
+      entityRef: bankEntityRef(String(doc._id)),
       action: 'create',
-      changes: diffChanges({}, snapshot(doc)),
+      changes: diffChanges({}, bankSnapshot(doc)),
     });
     return doc;
   }
@@ -64,9 +65,9 @@ class OperationsBankService {
     const { version, ...fields } = input;
     const updated = await operationsBankRepository.updateById(id, fields, { by, version });
     await auditService.record({
-      entityRef: entityRef(id),
+      entityRef: bankEntityRef(id),
       action: 'update',
-      changes: diffChanges(snapshot(before), snapshot(updated)),
+      changes: diffChanges(bankSnapshot(before), bankSnapshot(updated)),
     });
     return updated;
   }

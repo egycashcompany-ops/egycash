@@ -99,6 +99,8 @@ export const PLAN_ICON = {
   ],
   // «استخدام «…» اتجاهًا» (Round 28) — a pen: the direction as the desk typed it.
   pen: ['M4 20h4L19 9l-4-4L4 16z', 'M13.5 6.5l4 4'],
+  // «تبديل بين سيارتين» (Round 32 C) — two arrows crossing the other way: ⇄.
+  swap: ['M4 8h15', 'M15 4l4 4-4 4', 'M20 16H5', 'M9 12l-4 4 4 4'],
 } as const;
 
 /**

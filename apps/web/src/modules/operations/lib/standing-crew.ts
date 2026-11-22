@@ -13,6 +13,7 @@
 import {
   CREW_SLOT_CAPACITY,
   type OperationsCrewMemberDto,
+  type OperationsStandingAvailableVehicleDto,
   type OperationsStandingCrewBoardDto,
   type OperationsStandingCrewRowDto,
 } from '@ecms/contracts';
@@ -112,7 +113,7 @@ export const mergeStandingRows = (
  * standing crew yet". That is the fact the entity exists to record, so the row must be saveable.
  */
 export const newStandingRow = (
-  vehicle: OperationsStandingCrewBoardDto['available'][number],
+  vehicle: Pick<OperationsStandingCrewBoardDto['available'][number], 'vehicleId' | 'vehicleCode'>,
 ): BoardRow => ({
   vehicleId: vehicle.vehicleId,
   vehicleCode: vehicle.vehicleCode,
@@ -347,18 +348,28 @@ export const newStandingPlanRow = (
  * What «إضافة سيارة» offers, through the draft: the server's `available` (active, designated, in no
  * standing row), and a vehicle taken out here and not saved yet — less any vehicle a row of the
  * draft holds. By code, numbers in number order («9» before «150»), as the board's list orders them.
+ *
+ * Round 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى»: a vehicle whose code names nothing («0», «00»
+ * …) comes LAST, in its own group, named by its plate (`uncoded`); the server leaves out one whose
+ * plate names nothing either. A vehicle taken out here is listed as the standing crew held it.
  */
 export const standingVehicleChoices = (
   rows: readonly PlanRow[],
   serverRows: readonly PlanRow[],
-  available: readonly { vehicleId: string; vehicleCode: string }[],
+  available: readonly OperationsStandingAvailableVehicleDto[],
   designated: boolean,
 ): VehicleChoice[] => {
   const held = new Set(rows.flatMap((row) => (row.vehicleId === null ? [] : [row.vehicleId])));
-  const takenOut = serverRows.flatMap((row) =>
+  const takenOut = serverRows.flatMap((row): OperationsStandingAvailableVehicleDto[] =>
     row.vehicleId === null || held.has(row.vehicleId)
       ? []
-      : [{ vehicleId: row.vehicleId, vehicleCode: row.vehicleCode ?? row.vehicleId }],
+      : [
+          {
+            vehicleId: row.vehicleId,
+            vehicleCode: row.vehicleCode ?? row.vehicleId,
+            uncoded: null,
+          },
+        ],
   );
   const seen = new Set<string>();
   return [...available, ...takenOut]
@@ -371,13 +382,14 @@ export const standingVehicleChoices = (
       vehicleId: vehicle.vehicleId,
       vehicleCode: vehicle.vehicleCode,
       // Narrowed to the cash-transfer operations' vehicles when that is configured; every active
-      // vehicle otherwise — and the list's heading says which.
-      group: designated ? 'cashTransfer' : 'other',
+      // vehicle otherwise — and the list's heading says which. Round 32: one with no code, last.
+      group: vehicle.uncoded !== null ? 'uncoded' : designated ? 'cashTransfer' : 'other',
       onRoster: false,
       inWorkshop: false,
       drivers: [],
       vanKey: null,
       pickable: true,
+      uncoded: vehicle.uncoded,
     }))
     .sort(byVehicleCode);
 };

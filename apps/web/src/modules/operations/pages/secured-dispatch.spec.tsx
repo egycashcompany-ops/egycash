@@ -459,6 +459,8 @@ describe('a vault too full to list at once', () => {
 
 const crewBoard = (date: string): OperationsCrewBoardDto => ({
   date: `${date}T00:00:00.000Z`,
+  today: `${date}T00:00:00.000Z`,
+  past: false,
   day: null,
   rows: [
     {
@@ -485,6 +487,7 @@ const crewBoard = (date: string): OperationsCrewBoardDto => ({
   vehiclelessRows: [],
   workshopVehicles: [],
   freeVehicles: [],
+  unidentifiedVehicles: 0,
 });
 const directory = (date: string): OperationsCrewDirectoryDto => ({
   date: `${date}T00:00:00.000Z`,

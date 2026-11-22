@@ -219,6 +219,14 @@ export const ErrorCodes = {
    * 'removeCrewAssignmentIds' (`code` 'REMOVAL_INDEX', `message` the removal's index in the save).
    */
   OPERATIONS_CREW_ROW_HAS_SHIPMENTS: 'OPERATIONS_CREW_ROW_HAS_SHIPMENTS',
+  /**
+   * 422 — Round 32: a crew-board save (`POST /operations/crew-board`) named a day before today on
+   * the Cairo calendar. The owner: «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار
+   * فقط» — a past day opens on «لوحة التشغيلة» as its RECORD, view only (the read answers it with
+   * `past: true`), and this keeps it so whatever a client sends: nothing of it is written, checked
+   * before any row. One detail: `field` 'date', `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   */
+  OPERATIONS_CREW_DAY_IN_PAST: 'OPERATIONS_CREW_DAY_IN_PAST',
   OPERATIONS_CUSTODY_NOT_HELD: 'OPERATIONS_CUSTODY_NOT_HELD',
   OPERATIONS_NOT_A_SECURED_SHIPMENT: 'OPERATIONS_NOT_A_SECURED_SHIPMENT',
   /** The crew row must sit on the shipment's own delivery day. */

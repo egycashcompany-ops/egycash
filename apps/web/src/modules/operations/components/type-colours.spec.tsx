@@ -681,9 +681,11 @@ describe('the board wires it', () => {
     expect(between).toContain('data-standing-toggle');
   });
 
-  it('opens the card with the catalog grant the reference tab already uses — no new one', () => {
+  // Round 32 — rewritten: on a past day the board is its record, view only («وانا عاوزها اظهار
+  // فقط»), so the card opens read only there too, whatever the grant.
+  it('opens the card with the catalog grant the reference tab already uses — no new one — read only on a past day’s record (Round 32)', () => {
     expect(page).toContain("const canColourTypes = can('operationsCatalog.manage');");
-    expect(page).toContain('canEdit={canColourTypes}');
+    expect(page).toContain('canEdit={canColourTypes && !isRecord}');
     expect(page).toContain('listed={strip.chips.map(({ type }) => type)}');
     expect(page).toContain('sheet={phone}');
   });

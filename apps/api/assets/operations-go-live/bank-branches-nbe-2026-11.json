@@ -1,0 +1,5040 @@
+{
+  "source": "«فروع البنك الأهلي - جاهز للاستيراد.xlsx» — البنك الأهلي المصري: the owner's branch list (Round 29), read by the import's own reader (read-branch-sheet.ts), its first visible tab «الفروع», header on row 1",
+  "bank": "nbe",
+  "rowsRead": 629,
+  "leftOut": [],
+  "rows": [
+    {
+      "row": 2,
+      "name": "وحدة تصدير فوائض البنكنوت - طنطا",
+      "code": "773",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 3,
+      "name": "وحدة تصدير فوائض البنكنوت اسكندرية",
+      "code": "774",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 4,
+      "name": "وحدة تصدير فوائض البنكنوت - السبعين",
+      "code": "772",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 5,
+      "name": "وحدة تصدير فوائض البنكنوت - الرئيسى",
+      "code": "771",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 6,
+      "name": "النصر",
+      "code": "002",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 7,
+      "name": "الحلمية الجديدة",
+      "code": "171",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 8,
+      "name": "محمد فريد",
+      "code": "622",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 9,
+      "name": "نقابة المهندسين",
+      "code": "124",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 10,
+      "name": "ثروت",
+      "code": "003",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 11,
+      "name": "المبتديان السيدة زينب",
+      "code": "625",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 12,
+      "name": "الرئيسي",
+      "code": "001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 13,
+      "name": "جامعة عين شمس",
+      "code": "623",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 14,
+      "name": "الأزهر للمعاملات الاسلامية",
+      "code": "190",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 15,
+      "name": "شارع عدلى",
+      "code": "635",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 16,
+      "name": "العاصمة",
+      "code": "009",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 17,
+      "name": "الزمالك",
+      "code": "116",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 18,
+      "name": "الجزيرة",
+      "code": "088",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 19,
+      "name": "جمال الدين ابوالمحاسن",
+      "code": "191",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 20,
+      "name": "باب الشعرية",
+      "code": "043",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 21,
+      "name": "محمد مظهر",
+      "code": "019",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 22,
+      "name": "رمسيس",
+      "code": "007",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 23,
+      "name": "جاردن سيتي",
+      "code": "157",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 24,
+      "name": "عبدالعزيز ال سعود",
+      "code": "031",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 25,
+      "name": "ايكونيا -الزمالك",
+      "code": "620",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 26,
+      "name": "السيدة زينب",
+      "code": "154",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 27,
+      "name": "نادى اتحاد الشرطة الرياضى",
+      "code": "621",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 28,
+      "name": "اركاديا",
+      "code": "075",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 29,
+      "name": "أغا خان",
+      "code": "156",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 30,
+      "name": "روض الفرج",
+      "code": "152",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 31,
+      "name": "منشية الحرية",
+      "code": "034",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 32,
+      "name": "الخلفاوى",
+      "code": "177",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 33,
+      "name": "مصر القديمة",
+      "code": "176",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 34,
+      "name": "الساحل",
+      "code": "142",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 35,
+      "name": "البرج",
+      "code": "077",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 36,
+      "name": "ميدان فيكتوريا بشبرا",
+      "code": "059",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 37,
+      "name": "شبرا الخيمة",
+      "code": "173",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 38,
+      "name": "دوران شبرا",
+      "code": "011",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 39,
+      "name": "محطة مصر",
+      "code": "081",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 40,
+      "name": "شمال القاهرة",
+      "code": "110",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 41,
+      "name": "علوي",
+      "code": "004",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 42,
+      "name": "الموسكى",
+      "code": "101",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 43,
+      "name": "الفجالة",
+      "code": "008",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 44,
+      "name": "كامل صدقى الفجالة",
+      "code": "624",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 45,
+      "name": "العباسية",
+      "code": "109",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 46,
+      "name": "الحمزاوى",
+      "code": "103",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 47,
+      "name": "الشريفين",
+      "code": "006",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 48,
+      "name": "الدمرداش",
+      "code": "133",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 49,
+      "name": "الروضة",
+      "code": "117",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 50,
+      "name": "شبرا",
+      "code": "153",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 51,
+      "name": "القصر العيني",
+      "code": "150",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 52,
+      "name": "التوفيقية",
+      "code": "119",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 53,
+      "name": "الجولف",
+      "code": "138",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 54,
+      "name": "ترعة الجبل",
+      "code": "614",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 55,
+      "name": "الخانكة",
+      "code": "111",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 56,
+      "name": "الميرغني",
+      "code": "137",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 57,
+      "name": "دار المدفعية",
+      "code": "027",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 58,
+      "name": "السبع عمارات",
+      "code": "086",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 59,
+      "name": "عمارات العبور",
+      "code": "032",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 60,
+      "name": "شرق القاهرة",
+      "code": "155",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 61,
+      "name": "روكسى",
+      "code": "126",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 62,
+      "name": "مصر الجديدة",
+      "code": "100",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 63,
+      "name": "يوسف عباس",
+      "code": "056",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 64,
+      "name": "الثورة",
+      "code": "132",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 65,
+      "name": "زهراء عين شمس",
+      "code": "014",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 66,
+      "name": "عين شمس",
+      "code": "131",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 67,
+      "name": "الاميرية",
+      "code": "068",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 68,
+      "name": "السواح",
+      "code": "123",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 69,
+      "name": "تريومف",
+      "code": "129",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 70,
+      "name": "البنيان",
+      "code": "095",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 71,
+      "name": "العزيز بالله الزيتون",
+      "code": "602",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 72,
+      "name": "النزهة",
+      "code": "102",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 73,
+      "name": "مصر والسودان",
+      "code": "066",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 74,
+      "name": "حدائق القبة",
+      "code": "108",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 75,
+      "name": "جسر السويس",
+      "code": "127",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 76,
+      "name": "المطرية",
+      "code": "613",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 77,
+      "name": "فريد سميكة",
+      "code": "022",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 78,
+      "name": "القناطر الخيرية",
+      "code": "112",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 79,
+      "name": "شبين القناطر",
+      "code": "030",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 80,
+      "name": "كفر شكر",
+      "code": "374",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 81,
+      "name": "كورنيش القناطر الخيرية",
+      "code": "603",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 82,
+      "name": "كورنيش بنها",
+      "code": "608",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 83,
+      "name": "سعد زغلول بنها",
+      "code": "377",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 84,
+      "name": "قليوب",
+      "code": "093",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 85,
+      "name": "جولف سيتى العبور",
+      "code": "041",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 86,
+      "name": "العبور",
+      "code": "071",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 87,
+      "name": "سوق الجملة مدينة العبور",
+      "code": "136",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 88,
+      "name": "قها",
+      "code": "375",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 89,
+      "name": "بنها",
+      "code": "376",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 90,
+      "name": "طوخ",
+      "code": "441",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 91,
+      "name": "مول البلبيسى",
+      "code": "606",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 92,
+      "name": "مول السلام",
+      "code": "646",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 93,
+      "name": "عمر بن الخطاب",
+      "code": "144",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 94,
+      "name": "الميريلاند",
+      "code": "074",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 95,
+      "name": "منشية البكرى",
+      "code": "046",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 96,
+      "name": "الحجاز",
+      "code": "115",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 97,
+      "name": "مشروع اهالينا",
+      "code": "013",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 98,
+      "name": "اهالينا 2",
+      "code": "607",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 99,
+      "name": "سيتي ستارز",
+      "code": "139",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 100,
+      "name": "العروبة",
+      "code": "134",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 101,
+      "name": "ابوبكر الصديق",
+      "code": "063",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 102,
+      "name": "السباق",
+      "code": "118",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 103,
+      "name": "شيراتون هليوبوليس",
+      "code": "078",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 104,
+      "name": "الخليفة المأمون",
+      "code": "130",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 105,
+      "name": "نزية خليفة",
+      "code": "128",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 106,
+      "name": "بين السرايات",
+      "code": "036",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 107,
+      "name": "جامعة القاهرة",
+      "code": "164",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 108,
+      "name": "الدقي",
+      "code": "160",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 109,
+      "name": "ام المصريين",
+      "code": "044",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 110,
+      "name": "بيرا ميزا",
+      "code": "169",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 111,
+      "name": "النيل",
+      "code": "165",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 112,
+      "name": "ميدان الجلاء",
+      "code": "663",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 113,
+      "name": "هندسة القاهرة",
+      "code": "186",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 114,
+      "name": "ميدان المساحة",
+      "code": "178",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 115,
+      "name": "شارع مراد",
+      "code": "005",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 116,
+      "name": "عدى",
+      "code": "170",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 117,
+      "name": "التحرير للمعاملات الاسلامية",
+      "code": "189",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 118,
+      "name": "الحوامدية",
+      "code": "091",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 119,
+      "name": "هضبة الاهرام",
+      "code": "048",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 120,
+      "name": "فرع فيصل",
+      "code": "187",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 121,
+      "name": "كورنيش المعادي",
+      "code": "159",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 122,
+      "name": "الجيزة",
+      "code": "161",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 123,
+      "name": "اول الهرم",
+      "code": "097",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 124,
+      "name": "مصطفى كامل بالملك فيصل",
+      "code": "175",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 125,
+      "name": "المعادي الجديدة",
+      "code": "195",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 126,
+      "name": "القطامية الطريق الدائرى",
+      "code": "666",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 127,
+      "name": "الخمسين بزهراء المعادى",
+      "code": "020",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 128,
+      "name": "الكوم الأخضر بالهرم",
+      "code": "661",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 129,
+      "name": "البد رشين",
+      "code": "166",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 130,
+      "name": "محطة حلوان",
+      "code": "047",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 131,
+      "name": "العياط",
+      "code": "050",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 132,
+      "name": "الهرم",
+      "code": "163",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 133,
+      "name": "المنيب",
+      "code": "035",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 134,
+      "name": "15 مايو",
+      "code": "087",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 135,
+      "name": "مول وسط البلد - 15 مايو",
+      "code": "662",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 136,
+      "name": "المريوطية بالهرم",
+      "code": "058",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 137,
+      "name": "حدائق حلوان",
+      "code": "660",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 138,
+      "name": "الصف",
+      "code": "181",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 139,
+      "name": "حلوان",
+      "code": "151",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 140,
+      "name": "منيل شيحة",
+      "code": "060",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 141,
+      "name": "العمرانية",
+      "code": "064",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 142,
+      "name": "الأوتوستراد",
+      "code": "198",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 143,
+      "name": "اللبينى",
+      "code": "016",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 144,
+      "name": "زهراء المعادى",
+      "code": "096",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 145,
+      "name": "سرايات المعادي",
+      "code": "158",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 146,
+      "name": "شارع 9 المعادى",
+      "code": "061",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 147,
+      "name": "دار السلام",
+      "code": "039",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 148,
+      "name": "سما المعادي",
+      "code": "172",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 149,
+      "name": "المعادي",
+      "code": "196",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 150,
+      "name": "المركز الأوليمبي بالمعادي",
+      "code": "033",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 151,
+      "name": "نادي المعادي",
+      "code": "194",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 152,
+      "name": "البحر الأعظم",
+      "code": "179",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 153,
+      "name": "سبورتنج",
+      "code": "252",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 154,
+      "name": "سابا باشا",
+      "code": "242",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 155,
+      "name": "نادي سموحة",
+      "code": "209",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 156,
+      "name": "المنشية",
+      "code": "202",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 157,
+      "name": "سموحة",
+      "code": "211",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 158,
+      "name": "وسط اسكندرية",
+      "code": "241",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 159,
+      "name": "محطة سيدى جابر",
+      "code": "234",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 160,
+      "name": "محرم بك الجديد",
+      "code": "264",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 161,
+      "name": "الإسكندرية",
+      "code": "200",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 162,
+      "name": "العطارين",
+      "code": "266",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 163,
+      "name": "طوسون",
+      "code": "201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 164,
+      "name": "الشلالات",
+      "code": "224",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 165,
+      "name": "الشاطبى",
+      "code": "248",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 166,
+      "name": "سانت جينى كفر عبدة",
+      "code": "249",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 167,
+      "name": "سيدى جابر الشيخ",
+      "code": "238",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 168,
+      "name": "نادى قضاة الاسكندرية",
+      "code": "258",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 169,
+      "name": "محافظة الاسكندرية",
+      "code": "255",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 170,
+      "name": "الحمام بمرسى مطروح",
+      "code": "223",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 171,
+      "name": "الماسة العلمين",
+      "code": "263",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 172,
+      "name": "النوبارية الجديدة",
+      "code": "244",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 173,
+      "name": "السلوم",
+      "code": "219",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 174,
+      "name": "سيدى عبد الرحمن",
+      "code": "260",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 175,
+      "name": "العلمين",
+      "code": "246",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 176,
+      "name": "مرسى مطروح",
+      "code": "213",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 177,
+      "name": "برج العرب",
+      "code": "217",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 178,
+      "name": "القبارى",
+      "code": "232",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 179,
+      "name": "تحيا مصر",
+      "code": "235",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 180,
+      "name": "المنطقة الحرة بالإسكندرية",
+      "code": "259",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 181,
+      "name": "بشاير الخير",
+      "code": "261",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 182,
+      "name": "الإقبال",
+      "code": "203",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 183,
+      "name": "العجمي",
+      "code": "204",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 184,
+      "name": "الهانوفيل",
+      "code": "230",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 185,
+      "name": "العامرية",
+      "code": "240",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 186,
+      "name": "الدخيلة",
+      "code": "254",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 187,
+      "name": "الدلنجات",
+      "code": "256",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 188,
+      "name": "رمل ثان بالسيوف",
+      "code": "250",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 189,
+      "name": "المندرة",
+      "code": "229",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 190,
+      "name": "ادكو",
+      "code": "212",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 191,
+      "name": "كفر الدوار",
+      "code": "391",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 192,
+      "name": "أبو المطامير",
+      "code": "268",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 193,
+      "name": "المنتزة",
+      "code": "205",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 194,
+      "name": "أبو حمص",
+      "code": "389",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 195,
+      "name": "جرين بلازا",
+      "code": "243",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 196,
+      "name": "السيوف",
+      "code": "216",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 197,
+      "name": "دمنهور",
+      "code": "390",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 198,
+      "name": "البحيرة",
+      "code": "237",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 199,
+      "name": "رشيد",
+      "code": "394",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 200,
+      "name": "سيدى بشر قبلى",
+      "code": "265",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 201,
+      "name": "كوم حمادة",
+      "code": "392",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 202,
+      "name": "جنوب البحيرة – ايتاى البارود",
+      "code": "253",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 203,
+      "name": "الاسطول البحري ابوقير",
+      "code": "267",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 204,
+      "name": "المعمورة",
+      "code": "262",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 205,
+      "name": "مصطفى كامل اسكندرية",
+      "code": "226",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 206,
+      "name": "كينج مريوط",
+      "code": "257",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 207,
+      "name": "لوران",
+      "code": "239",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 208,
+      "name": "فلمنج",
+      "code": "269",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 209,
+      "name": "داون تاون",
+      "code": "227",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 210,
+      "name": "سيدي بشر",
+      "code": "231",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 211,
+      "name": "محرم بك",
+      "code": "210",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 212,
+      "name": "باكوس",
+      "code": "206",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 213,
+      "name": "ميناء الاسكندرية",
+      "code": "228",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 214,
+      "name": "مكتبة الاسكندرية",
+      "code": "247",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 215,
+      "name": "كامب شيزار",
+      "code": "233",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 216,
+      "name": "زيزنيا",
+      "code": "208",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 217,
+      "name": "فيكتوريا",
+      "code": "222",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 218,
+      "name": "جامعة الإسكندرية",
+      "code": "207",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 219,
+      "name": "سان ستيفانو",
+      "code": "218",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 220,
+      "name": "أبو العباس",
+      "code": "220",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 221,
+      "name": "رشدي",
+      "code": "236",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 222,
+      "name": "محطة الرمل",
+      "code": "215",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 223,
+      "name": "المستقبل",
+      "code": "322",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 224,
+      "name": "العريش",
+      "code": "330",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 225,
+      "name": "السويس",
+      "code": "320",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 226,
+      "name": "الاسماعيلية",
+      "code": "300",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 227,
+      "name": "شمال خليج السويس",
+      "code": "354",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 228,
+      "name": "التل الكبير",
+      "code": "303",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 229,
+      "name": "جامعة قناة السويس",
+      "code": "301",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 230,
+      "name": "حي السلام",
+      "code": "304",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 231,
+      "name": "القنطرة غرب",
+      "code": "306",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 232,
+      "name": "الثلاثينى",
+      "code": "358",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 233,
+      "name": "فايد",
+      "code": "302",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 234,
+      "name": "الصباح",
+      "code": "321",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 235,
+      "name": "دمياط الجديدة",
+      "code": "364",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 236,
+      "name": "محور دمياط",
+      "code": "367",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 237,
+      "name": "رأس البر",
+      "code": "368",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 238,
+      "name": "دمياط",
+      "code": "410",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 239,
+      "name": "فارسكور",
+      "code": "317",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 240,
+      "name": "بور فؤاد",
+      "code": "312",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 241,
+      "name": "25 ينايربورسعيد",
+      "code": "315",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 242,
+      "name": "حي الكويت",
+      "code": "311",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 243,
+      "name": "عزبة البرج",
+      "code": "409",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 244,
+      "name": "23يوليو بورسعيد",
+      "code": "313",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 245,
+      "name": "جمرك بورسعيد",
+      "code": "314",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 246,
+      "name": "النهضة",
+      "code": "408",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 247,
+      "name": "الزرقا",
+      "code": "411",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 248,
+      "name": "بور سعيد",
+      "code": "310",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 249,
+      "name": "القومية - الزقازيق",
+      "code": "362",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 250,
+      "name": "منيا القمح",
+      "code": "427",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 251,
+      "name": "أبو حماد",
+      "code": "423",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 252,
+      "name": "ديرب نجم",
+      "code": "422",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 253,
+      "name": "الزقازيق",
+      "code": "421",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 254,
+      "name": "احمد عرابي الزقازيق",
+      "code": "430",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 255,
+      "name": "منطقة بلبيس الصناعية",
+      "code": "360",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 256,
+      "name": "مشتول السوق",
+      "code": "447",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 257,
+      "name": "منشية بلبيس",
+      "code": "365",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 258,
+      "name": "بلبيس",
+      "code": "425",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 259,
+      "name": "النقابات زقازيق",
+      "code": "445",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 260,
+      "name": "اولاد صقر",
+      "code": "316",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 261,
+      "name": "فاقوس",
+      "code": "426",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 262,
+      "name": "الصالحية الجديدة",
+      "code": "361",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 263,
+      "name": "أبو كبير",
+      "code": "428",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 264,
+      "name": "ههيا الجديد",
+      "code": "366",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 265,
+      "name": "الحسينية",
+      "code": "446",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 266,
+      "name": "الإبراهيمية",
+      "code": "424",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 267,
+      "name": "كفر صقر",
+      "code": "420",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 268,
+      "name": "بسيون",
+      "code": "378",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 269,
+      "name": "قطور",
+      "code": "435",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 270,
+      "name": "زفتى",
+      "code": "382",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 271,
+      "name": "المعتصم - طنطا",
+      "code": "379",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 272,
+      "name": "جامعة طنطا",
+      "code": "386",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 273,
+      "name": "كفر الزيات",
+      "code": "385",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 274,
+      "name": "شرق النيل بكفر الزيات",
+      "code": "464",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 275,
+      "name": "الفاتح",
+      "code": "373",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 276,
+      "name": "طنطا",
+      "code": "381",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 277,
+      "name": "كورنيش زفتى",
+      "code": "467",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 278,
+      "name": "المحلة الكبرى",
+      "code": "380",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 279,
+      "name": "شكري القوتلي بالمحلة",
+      "code": "448",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 280,
+      "name": "شارع الجيش – المحلة الكبرى",
+      "code": "457",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 281,
+      "name": "سمنود",
+      "code": "384",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 282,
+      "name": "السنطة",
+      "code": "383",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 283,
+      "name": "الباجور",
+      "code": "414",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 284,
+      "name": "تلا",
+      "code": "405",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 285,
+      "name": "سرس الليان",
+      "code": "419",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 286,
+      "name": "جامعة المنوفيه",
+      "code": "406",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 287,
+      "name": "فرع المدينة الصناعية بقويسنا",
+      "code": "407",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 288,
+      "name": "البر الشرقى – شبين الكوم",
+      "code": "458",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 289,
+      "name": "شرق قويسنا",
+      "code": "461",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 290,
+      "name": "منوف",
+      "code": "417",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 291,
+      "name": "مدينه السادات",
+      "code": "413",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 292,
+      "name": "شبين الكوم",
+      "code": "412",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 293,
+      "name": "اشمون",
+      "code": "429",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 294,
+      "name": "بركة السبع",
+      "code": "431",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 295,
+      "name": "الشهداء",
+      "code": "418",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 296,
+      "name": "الجلاء",
+      "code": "416",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 297,
+      "name": "بنى عبيد",
+      "code": "453",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 298,
+      "name": "منية النصر",
+      "code": "372",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 299,
+      "name": "محافظة الدقهلية",
+      "code": "438",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 300,
+      "name": "ميت سلسيل",
+      "code": "462",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 301,
+      "name": "السنبلاوين",
+      "code": "439",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 302,
+      "name": "المنصورة",
+      "code": "432",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 303,
+      "name": "شارع الجيش المنصورة",
+      "code": "460",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 304,
+      "name": "دكرنس",
+      "code": "437",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 305,
+      "name": "الخلفاء الراشدين",
+      "code": "387",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 306,
+      "name": "كورنيش ميت غمر",
+      "code": "449",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 307,
+      "name": "اجا",
+      "code": "455",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 308,
+      "name": "جامعة المنصورة",
+      "code": "433",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 309,
+      "name": "شربين",
+      "code": "450",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 310,
+      "name": "ميت غمر",
+      "code": "434",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 311,
+      "name": "كورنيش دكرنس",
+      "code": "459",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 312,
+      "name": "مركز الرياض – كفر الشيخ",
+      "code": "456",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 313,
+      "name": "مطوبس",
+      "code": "468",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 314,
+      "name": "كفر الشيخ",
+      "code": "396",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 315,
+      "name": "سيدي سالم",
+      "code": "400",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 316,
+      "name": "فوه كفر الشيخ",
+      "code": "465",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 317,
+      "name": "محافظة كفر الشيخ",
+      "code": "401",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 318,
+      "name": "بيلا",
+      "code": "397",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 319,
+      "name": "دسوق",
+      "code": "399",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 320,
+      "name": "الحامول",
+      "code": "454",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 321,
+      "name": "بلقاس",
+      "code": "440",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 322,
+      "name": "نبروه",
+      "code": "442",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 323,
+      "name": "قلين",
+      "code": "395",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 324,
+      "name": "طلخا",
+      "code": "452",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 325,
+      "name": "بلطيم",
+      "code": "398",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 326,
+      "name": "بلقاس الجديد",
+      "code": "463",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 327,
+      "name": "جمصه",
+      "code": "451",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 328,
+      "name": "قنا",
+      "code": "523",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 329,
+      "name": "المنشية بقنا",
+      "code": "881",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 330,
+      "name": "جامعة جنوب الوادي بقنا",
+      "code": "537",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 331,
+      "name": "نقادة",
+      "code": "527",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 332,
+      "name": "مجمع الألومنيوم نجع حمادي",
+      "code": "880",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 333,
+      "name": "قفط",
+      "code": "525",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 334,
+      "name": "نجع حمادى",
+      "code": "526",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 335,
+      "name": "قوص",
+      "code": "540",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 336,
+      "name": "قنا الجديدة",
+      "code": "547",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 337,
+      "name": "فر شوط",
+      "code": "532",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 338,
+      "name": "دشنا",
+      "code": "491",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 339,
+      "name": "فيلة اسوان",
+      "code": "878",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 340,
+      "name": "اسوان الجديدة",
+      "code": "489",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 341,
+      "name": "اسنا",
+      "code": "495",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 342,
+      "name": "أبو سمبل",
+      "code": "541",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 343,
+      "name": "أسوان",
+      "code": "528",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 344,
+      "name": "طيبة الاقصر",
+      "code": "497",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 345,
+      "name": "ادفو",
+      "code": "529",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 346,
+      "name": "دراو",
+      "code": "534",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 347,
+      "name": "ارمنت بالأقصر",
+      "code": "883",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 348,
+      "name": "حورس - ادفو",
+      "code": "567",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 349,
+      "name": "نصر النوبة",
+      "code": "554",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 350,
+      "name": "سوبك – كوم أمبو اسوان",
+      "code": "552",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 351,
+      "name": "الأقصر",
+      "code": "524",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 352,
+      "name": "سفاجا",
+      "code": "344",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 353,
+      "name": "مارينا الجونة",
+      "code": "566",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 354,
+      "name": "راس غارب",
+      "code": "343",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 355,
+      "name": "امباير",
+      "code": "355",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 356,
+      "name": "حى السقالة",
+      "code": "356",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 357,
+      "name": "المدينة بمرسى علم",
+      "code": "305",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 358,
+      "name": "شلا تين",
+      "code": "542",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 359,
+      "name": "مرسى علم",
+      "code": "346",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 360,
+      "name": "الغردقة",
+      "code": "341",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 361,
+      "name": "القصير",
+      "code": "342",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 362,
+      "name": "الممشى بالغردقة",
+      "code": "357",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 363,
+      "name": "حى الدهار بالغردقة",
+      "code": "347",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 364,
+      "name": "حلايب",
+      "code": "879",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 365,
+      "name": "بيزنس بارك الجونة- الغردقة",
+      "code": "877",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 366,
+      "name": "الفيروز - الغردقة",
+      "code": "553",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 367,
+      "name": "ميناء سفاجا البحرى",
+      "code": "876",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 368,
+      "name": "سافوى شرم الشيخ",
+      "code": "359",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 369,
+      "name": "دهب",
+      "code": "353",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 370,
+      "name": "خليج نعمة",
+      "code": "349",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 371,
+      "name": "خليج نبق",
+      "code": "348",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 372,
+      "name": "حى النور شرم الشيخ",
+      "code": "882",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 373,
+      "name": "نويبع",
+      "code": "352",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 374,
+      "name": "شرم الشيخ",
+      "code": "340",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 375,
+      "name": "الطور",
+      "code": "350",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 376,
+      "name": "راس سدر",
+      "code": "331",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 377,
+      "name": "المقطم",
+      "code": "106",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 378,
+      "name": "مول اميرالد",
+      "code": "028",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 379,
+      "name": "احمد فخرى",
+      "code": "605",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 380,
+      "name": "السراج مول",
+      "code": "072",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 381,
+      "name": "مصطفى النحاس",
+      "code": "052",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 382,
+      "name": "ذاكر حسين",
+      "code": "053",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 383,
+      "name": "ابو داود الظاهرى",
+      "code": "021",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 384,
+      "name": "البطراوى",
+      "code": "015",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 385,
+      "name": "حى السفارات",
+      "code": "076",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 386,
+      "name": "عباس العقاد",
+      "code": "073",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 387,
+      "name": "السبعين بالتجمع الخامس",
+      "code": "085",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 388,
+      "name": "وزارة الداخلية",
+      "code": "026",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 389,
+      "name": "الحى العاشر",
+      "code": "040",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 390,
+      "name": "مول مدينتى",
+      "code": "025",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 391,
+      "name": "الرقابة الإدارية",
+      "code": "649",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 392,
+      "name": "الروبيكى",
+      "code": "057",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 393,
+      "name": "مول كروس تن العاشر من رمضان",
+      "code": "645",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 394,
+      "name": "الرحاب",
+      "code": "148",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 395,
+      "name": "مدينتي",
+      "code": "079",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 396,
+      "name": "رابعة العدوية",
+      "code": "125",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 397,
+      "name": "مكرم عبيد",
+      "code": "140",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 398,
+      "name": "الياسمين",
+      "code": "023",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 399,
+      "name": "نادى بلاتنيوم",
+      "code": "644",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 400,
+      "name": "جامعة الازهر",
+      "code": "143",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 401,
+      "name": "طيبة 2000",
+      "code": "121",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 402,
+      "name": "العاصمة الإدارية",
+      "code": "648",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 403,
+      "name": "العاشر من رمضان",
+      "code": "107",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 404,
+      "name": "الشروق",
+      "code": "114",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 405,
+      "name": "مدينة نصر",
+      "code": "104",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 406,
+      "name": "الطيران",
+      "code": "135",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 407,
+      "name": "مدينة بدر",
+      "code": "113",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 408,
+      "name": "الحى الثاني بالشروق",
+      "code": "029",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 409,
+      "name": "الماسة بشارع الطيران",
+      "code": "601",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 410,
+      "name": "الماظة",
+      "code": "024",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 411,
+      "name": "القرنفل بالقاهرة الجديدة",
+      "code": "067",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 412,
+      "name": "ووتر واى مول",
+      "code": "042",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 413,
+      "name": "اكاديمية الشرطة",
+      "code": "145",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 414,
+      "name": "الرحاب 2",
+      "code": "642",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 415,
+      "name": "ميراج سيتى",
+      "code": "643",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 416,
+      "name": "حى الاسمرات",
+      "code": "010",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 417,
+      "name": "نادى السكة الحديد",
+      "code": "609",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 418,
+      "name": "الحمد مول",
+      "code": "051",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 419,
+      "name": "داون تاون – القاهرة الجديدة",
+      "code": "647",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 420,
+      "name": "بتروسبورت",
+      "code": "147",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 421,
+      "name": "التسعين الشمالي القاهرة الجديدة",
+      "code": "650",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 422,
+      "name": "كايرو فستيفال",
+      "code": "094",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 423,
+      "name": "الرعاية المتكاملة بالقطامية",
+      "code": "193",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 424,
+      "name": "مول كايرو بزنس",
+      "code": "080",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 425,
+      "name": "المطار",
+      "code": "105",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 426,
+      "name": "شارع 9 بالمقطم",
+      "code": "012",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 427,
+      "name": "نادي الصيد بالقطامية",
+      "code": "120",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 428,
+      "name": "الهضبة الوسطى",
+      "code": "634",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 429,
+      "name": "القاهرة الجديدة",
+      "code": "146",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 430,
+      "name": "البطل احمد عبد العزيز",
+      "code": "082",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 431,
+      "name": "نجيب محفوظ",
+      "code": "049",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 432,
+      "name": "المتحف الزراعي",
+      "code": "180",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 433,
+      "name": "جامعة الدول العربية",
+      "code": "685",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 434,
+      "name": "البراجيل",
+      "code": "069",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 435,
+      "name": "اوسيم",
+      "code": "045",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 436,
+      "name": "مصدق",
+      "code": "185",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 437,
+      "name": "امبابة",
+      "code": "695",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 438,
+      "name": "سفنكس",
+      "code": "188",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 439,
+      "name": "المهندسين",
+      "code": "083",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 440,
+      "name": "شارع المراغي بالعجوزة",
+      "code": "092",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 441,
+      "name": "محى الدين ابو العز",
+      "code": "099",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 442,
+      "name": "العجوزة",
+      "code": "168",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 443,
+      "name": "سور نادى الزمالك",
+      "code": "167",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 444,
+      "name": "جزيرة العرب",
+      "code": "149",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 445,
+      "name": "منشأة القناطر الجيزة",
+      "code": "697",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 446,
+      "name": "سوريا بالمهندسين",
+      "code": "162",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 447,
+      "name": "التكامل",
+      "code": "174",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 448,
+      "name": "بالم مول",
+      "code": "667",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 449,
+      "name": "الحى المتميز بأكتوبر",
+      "code": "084",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 450,
+      "name": "شارع السودان",
+      "code": "018",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 451,
+      "name": "دريم لاند",
+      "code": "197",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 452,
+      "name": "الوراق",
+      "code": "062",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 453,
+      "name": "مول مصر",
+      "code": "038",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 454,
+      "name": "د. عبدالحليم محمود",
+      "code": "089",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 455,
+      "name": "نادى الصيد 6 أكتوبر",
+      "code": "684",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 456,
+      "name": "سوق اكتوبر",
+      "code": "065",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 457,
+      "name": "محور 26 يوليو – 6 اكتوبر",
+      "code": "694",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 458,
+      "name": "6 اكتوبر",
+      "code": "182",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 459,
+      "name": "المحور المركزى 6 اكتوبر",
+      "code": "184",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 460,
+      "name": "ستار مول",
+      "code": "037",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 461,
+      "name": "غرب سوميد",
+      "code": "090",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 462,
+      "name": "مول سيتى مارك - الشيخ زايد",
+      "code": "692",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 463,
+      "name": "هرم سيتى",
+      "code": "017",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 464,
+      "name": "المنطقة الصناعية 6 اكتوبر",
+      "code": "183",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 465,
+      "name": "محور الكفراوى - 6 اكتوبر",
+      "code": "693",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 466,
+      "name": "نيو جيزة",
+      "code": "680",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 467,
+      "name": "كونكورديا بلازا",
+      "code": "681",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 468,
+      "name": "الدبلوماسيين الشيخ زايد",
+      "code": "699",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 469,
+      "name": "النادي الأهلي – 6 أكتوبر",
+      "code": "682",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 470,
+      "name": "الجزيرة مول",
+      "code": "054",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 471,
+      "name": "داندى مول",
+      "code": "070",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 472,
+      "name": "الكرمة الشيخ زايد",
+      "code": "698",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 473,
+      "name": "بيفرلي هيلز",
+      "code": "055",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 474,
+      "name": "مول اركان بلازا",
+      "code": "686",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 475,
+      "name": "الشيخ زايد",
+      "code": "199",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 476,
+      "name": "امريكانا بلازا",
+      "code": "098",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 477,
+      "name": "اليجريا الشيخ زايد",
+      "code": "696",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 478,
+      "name": "القرية الذكية",
+      "code": "192",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 479,
+      "name": "اوبرا سيتى الشيخ زايد",
+      "code": "683",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 480,
+      "name": "مطاى",
+      "code": "492",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 481,
+      "name": "سما لوط",
+      "code": "511",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 482,
+      "name": "ملوي",
+      "code": "513",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 483,
+      "name": "ابو قرقاص",
+      "code": "549",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 484,
+      "name": "فرع المنيا",
+      "code": "508",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 485,
+      "name": "العرفانى - ملوى",
+      "code": "559",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 486,
+      "name": "ميدان الشرقى - المنيا",
+      "code": "852",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 487,
+      "name": "المنطقة الصناعية بالمنيا",
+      "code": "493",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 488,
+      "name": "دير مواس المنيا",
+      "code": "857",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 489,
+      "name": "المحطة بسمالوط",
+      "code": "494",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 490,
+      "name": "باب المزار",
+      "code": "859",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 491,
+      "name": "العدوة",
+      "code": "569",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 492,
+      "name": "المنيا الجديدة",
+      "code": "850",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 493,
+      "name": "جامعة المنيا",
+      "code": "509",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 494,
+      "name": "مغاغة",
+      "code": "512",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 495,
+      "name": "ابشواى",
+      "code": "501",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 496,
+      "name": "الفيوم",
+      "code": "500",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 497,
+      "name": "ببا بنى سويف",
+      "code": "856",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 498,
+      "name": "كوم اوشيم",
+      "code": "584",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 499,
+      "name": "شرق بني سويف",
+      "code": "546",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 500,
+      "name": "جامعة الفيوم",
+      "code": "548",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 501,
+      "name": "الوسطي",
+      "code": "506",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 502,
+      "name": "الفشن",
+      "code": "505",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 503,
+      "name": "طامية",
+      "code": "503",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 504,
+      "name": "بوش",
+      "code": "507",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 505,
+      "name": "الفيوم الجديدة",
+      "code": "854",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 506,
+      "name": "الحرية",
+      "code": "502",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 507,
+      "name": "محافظة بنى سويف",
+      "code": "490",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 508,
+      "name": "سنورس",
+      "code": "851",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 509,
+      "name": "بنى سويف",
+      "code": "504",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 510,
+      "name": "ساحل سليم",
+      "code": "496",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 511,
+      "name": "أسيوط الجديدة",
+      "code": "550",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 512,
+      "name": "ابوتيج",
+      "code": "515",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 513,
+      "name": "صدفا",
+      "code": "545",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 514,
+      "name": "ابنوب",
+      "code": "558",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 515,
+      "name": "أسيوط",
+      "code": "514",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 516,
+      "name": "الخارجة مجمع المصالح",
+      "code": "855",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 517,
+      "name": "ديروط",
+      "code": "536",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 518,
+      "name": "الداخلة",
+      "code": "583",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 519,
+      "name": "البحر الأعظم - ديروط",
+      "code": "577",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 520,
+      "name": "جامعة أسيوط",
+      "code": "516",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 521,
+      "name": "الخارجة",
+      "code": "544",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 522,
+      "name": "البدارى",
+      "code": "582",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 523,
+      "name": "منفلوط",
+      "code": "517",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 524,
+      "name": "الفرافرة",
+      "code": "853",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 525,
+      "name": "القوصية الجديد",
+      "code": "568",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 526,
+      "name": "الفتح",
+      "code": "520",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 527,
+      "name": "البلينا",
+      "code": "539",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 528,
+      "name": "ساقلته",
+      "code": "488",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 529,
+      "name": "سوهاج الجديدة",
+      "code": "551",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 530,
+      "name": "جامعة سوهاج",
+      "code": "498",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 531,
+      "name": "المراغة",
+      "code": "518",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 532,
+      "name": "طما",
+      "code": "533",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 533,
+      "name": "طهطا",
+      "code": "522",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 534,
+      "name": "جرجا",
+      "code": "521",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 535,
+      "name": "الكوثر بسوهاج",
+      "code": "543",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 536,
+      "name": "سوهاج",
+      "code": "519",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 537,
+      "name": "جرجا الجديد",
+      "code": "858",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 538,
+      "name": "اخميم",
+      "code": "499",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 539,
+      "name": "الزيتون",
+      "code": "122",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 540,
+      "name": "رفح",
+      "code": "335",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 541,
+      "name": "ايتاى البارود",
+      "code": "393",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 542,
+      "name": "المنزلة",
+      "code": "436",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 543,
+      "name": "ههيا",
+      "code": "444",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 544,
+      "name": "كوم أمبو",
+      "code": "530",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 545,
+      "name": "العقاد",
+      "code": "531",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 546,
+      "name": "القوصية",
+      "code": "535",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 547,
+      "name": "قو يسنا",
+      "code": "415",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 548,
+      "name": "سي شيل",
+      "code": "251",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 549,
+      "name": "بنى مزار",
+      "code": "510",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 550,
+      "name": "جامعة MSA",
+      "code": "18201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 551,
+      "name": "هيئة قناة السويس - الإسماعيلية",
+      "code": "30001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 552,
+      "name": "سوميد",
+      "code": "20001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 553,
+      "name": "الاكاديمية الوطنية لمكافحة الفساد",
+      "code": "64901",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 554,
+      "name": "ملحق فرع الجيزة",
+      "code": "16101",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 555,
+      "name": "المركز اللوجيستى - الدخيلة",
+      "code": "25401",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 556,
+      "name": "مجمع التعليم الخاص - القاهرة الجديدة",
+      "code": "14801",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 557,
+      "name": "المنيل",
+      "code": "11701",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 558,
+      "name": "الاهرام",
+      "code": "00105",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 559,
+      "name": "مسطرد",
+      "code": "00109",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 560,
+      "name": "جاسكو",
+      "code": "00103",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 561,
+      "name": "انبى",
+      "code": "00106",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 562,
+      "name": "ايجاس",
+      "code": "00107",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 563,
+      "name": "بترويل",
+      "code": "00108",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 564,
+      "name": "جابكو",
+      "code": "00102",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 565,
+      "name": "الهيئة",
+      "code": "00104",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 566,
+      "name": "مركز المعلومات",
+      "code": "00111",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 567,
+      "name": "خالدة للبترول",
+      "code": "00112",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 568,
+      "name": "ماريوت",
+      "code": "00101",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 569,
+      "name": "المركز اللوجيستى - بورتوفيق",
+      "code": "32201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 570,
+      "name": "بترول بلاعيم",
+      "code": "35001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 571,
+      "name": "المركز الطبى العالمى",
+      "code": "10701",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 572,
+      "name": "اكادمية الشرطة بالعباسية",
+      "code": "10901",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 573,
+      "name": "الكيت كات",
+      "code": "16801",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 574,
+      "name": "بتروجيت",
+      "code": "14601",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 575,
+      "name": "مطار ( 1 )",
+      "code": "10501",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 576,
+      "name": "مطار ( 2 )",
+      "code": "10502",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 577,
+      "name": "مطار ( 3 )",
+      "code": "10503",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 578,
+      "name": "المركز اللوجيستى - بالمطار",
+      "code": "10504",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 579,
+      "name": "الشركة القابضة مصر للطيران",
+      "code": "10505",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 580,
+      "name": "الجامعة الكندية",
+      "code": "18301",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 581,
+      "name": "نادى القضاه",
+      "code": "00201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 582,
+      "name": "كورنيش اسوان",
+      "code": "52802",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 583,
+      "name": "جامعة اسوان",
+      "code": "52801",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 584,
+      "name": "نادى قضاة اسيوط",
+      "code": "51401",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 585,
+      "name": "التليفزيون",
+      "code": "15601",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 586,
+      "name": "نادى قضاة بنى سويف",
+      "code": "50401",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 587,
+      "name": "المركز اللوجيستي - بورسعيد",
+      "code": "31401",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 588,
+      "name": "جامعة حلوان",
+      "code": "15101",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 589,
+      "name": "الجامعة الامريكية بالتجمع",
+      "code": "64701",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 590,
+      "name": "مدينة الانتاج الاعلامى",
+      "code": "19701",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 591,
+      "name": "المقر القديم دكرنس",
+      "code": "43701",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 592,
+      "name": "نادى دمنهور الرياضى",
+      "code": "39001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 593,
+      "name": "ميناء دمياط",
+      "code": "40801",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 594,
+      "name": "بتروجاس",
+      "code": "12501",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 595,
+      "name": "جنوب الوادى للبترول",
+      "code": "12502",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 596,
+      "name": "مجمع خدمات الامن - مدينة نصر",
+      "code": "12503",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 597,
+      "name": "راس شقير",
+      "code": "34301",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 598,
+      "name": "زيزينيا",
+      "code": "20801",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 599,
+      "name": "مكتب ميناء سفاجا (التربتيك)",
+      "code": "87602",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 600,
+      "name": "نادي التوفيفية للتنس",
+      "code": "18801",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 601,
+      "name": "جزيرة بدران",
+      "code": "15301",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 602,
+      "name": "مطار شرم الشيخ الدولي",
+      "code": "34001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 603,
+      "name": "الهيئة الاقتصادية لقناة السويس",
+      "code": "35401",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 604,
+      "name": "المركز اللوجيستى",
+      "code": "35402",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 605,
+      "name": "كورنيش طنطا",
+      "code": "38102",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 606,
+      "name": "نادى قضاة طنطا",
+      "code": "38101",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 607,
+      "name": "نادي الشمس",
+      "code": "02201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 608,
+      "name": "ملحق كوم حمادة",
+      "code": "39201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 609,
+      "name": "وسط حلوان",
+      "code": "04701",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 610,
+      "name": "امتداد رمسيس",
+      "code": "10401",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 611,
+      "name": "المطار بمرسي علم",
+      "code": "34601",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 612,
+      "name": "الضبعة",
+      "code": "21301",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 613,
+      "name": "ملحق فرع مرسي مطروح",
+      "code": "21302",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 614,
+      "name": "الجهاز المركزى للمحاسبات",
+      "code": "10001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 615,
+      "name": "مستشفى وادى النيل",
+      "code": "10002",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 616,
+      "name": "المركز اللوجيستى - الإسكندرية",
+      "code": "22801",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 617,
+      "name": "المركز اللوجيستى - سفاجا",
+      "code": "87603",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 618,
+      "name": "ميناء نويبع",
+      "code": "35201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 619,
+      "name": "ميناء شرق بورسعيد",
+      "code": "31201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 620,
+      "name": "جامعة الجلالة",
+      "code": "32201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 621,
+      "name": "عبدالعزيز فهمى",
+      "code": "12901",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 622,
+      "name": "الجامعة الامريكية الفلكى",
+      "code": "00113",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 623,
+      "name": "مدينة الأثاث بدمياط",
+      "code": "36701",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 624,
+      "name": "البساتين",
+      "code": "19501",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 625,
+      "name": "مكتب الجامعة المصرية اليابانية للعلوم والتكنولوجيا",
+      "code": "21701",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 626,
+      "name": "السلطان حسين",
+      "code": "20002",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 627,
+      "name": "بترول اسيوط",
+      "code": "51402",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 628,
+      "name": "مكتب نخل",
+      "code": "33001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 629,
+      "name": "مصلحة الأحوال المدنية بالعباسية",
+      "code": "13301",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 630,
+      "name": "مبنى الركاب رقم ( 3 ) صالة وصول مطار القاهرة",
+      "code": "10508",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    }
+  ]
+}

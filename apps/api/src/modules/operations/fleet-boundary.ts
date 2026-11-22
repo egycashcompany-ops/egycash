@@ -6,17 +6,23 @@
 // READ-ONLY by contract: Operations resolves duty rows and vehicle codes through these exports
 // and never writes a Fleet collection. Anything Operations needs beyond a read goes through a
 // Fleet-owned service, never around it.
-import { MAX_PAGE_SIZE } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type LocalizedString } from '@ecms/contracts';
 import { fleetVehicleService } from '../fleet/vehicles/vehicle.service';
 import { fleetVehicleRepository } from '../fleet/vehicles/vehicle.repository';
+import { fleetVehicleTypeRepository } from '../fleet/vehicle-types/vehicle-type.repository';
 
 export { fleetDutyAssignmentRepository } from '../fleet/roster/duty-assignment.repository';
 export { fleetVehicleRepository };
 
-/** One car of the fleet as Operations offers it: its id and its code. */
+/**
+ * One car of the fleet as Operations offers it: its id and its code — and (Round 32) its plate and
+ * its type, which name a car whose code names nothing («0», «00» …).
+ */
 export interface FleetVehicleOption {
   vehicleId: string;
   vehicleCode: string;
+  plateNumber: string;
+  typeId: string;
 }
 
 /**
@@ -39,12 +45,27 @@ export const fleetActiveVehicles = async (): Promise<FleetVehicleOption[]> => {
       sortDir: 'asc',
     });
     for (const vehicle of result.items) {
-      cars.push({ vehicleId: String(vehicle._id), vehicleCode: vehicle.code });
+      cars.push({
+        vehicleId: String(vehicle._id),
+        vehicleCode: vehicle.code,
+        plateNumber: vehicle.plateNumber,
+        typeId: String(vehicle.typeId),
+      });
     }
     totalPages = result.meta.totalPages;
     page += 1;
   } while (page <= totalPages);
   return cars;
+};
+
+/**
+ * Round 32 — the makes' names by id: Fleet's vehicle types («النوع»), every live one, archived
+ * included (a car keeps a retired type). What names a car whose code names nothing, beside its
+ * plate. A handful of rows, read once per board.
+ */
+export const fleetVehicleTypeNames = async (): Promise<Map<string, LocalizedString>> => {
+  const types = await fleetVehicleTypeRepository.listAll();
+  return new Map(types.map((type) => [String(type._id), type.name] as const));
 };
 
 /**

@@ -11,3 +11,5 @@ import './app';
 import './modules';
 // IT's go-live bookkeeping — reached only through the go-live steps server.ts and worker.ts start.
 import './modules/it/go-live/go-live-run.model';
+// Operations' go-live bookkeeping (Round 29b) — reached only through the load server.ts starts.
+import './modules/operations/go-live/go-live-run.model';

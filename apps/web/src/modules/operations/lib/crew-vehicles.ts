@@ -23,11 +23,20 @@
 // them (the cash-transfer operations' cars, the standing crew's, the rest), each by code with the
 // numbers in number order. A search narrows by the code («١٥٠» finds 150, «150 - 151» both) or by a
 // roster van's driver.
+//
+// ROUND 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى»: the list opened on «00000», «0000», «000», «00»,
+// «0», then «61». A car whose Fleet code names nothing (`vehicleCodeNamesNothing`) is listed LAST, in
+// its own group («سيارات بلا كود في الأسطول»), by its plate and its make — never a bare «0000» — and
+// found by its plate too; one whose plate names nothing either is not listed at all (the server
+// counts it, and the list says how many and where they are put right). A van already the day's or
+// the standing crew's keeps its group, named by its plate. Codes naturally: 61, 101, 150 …
 import {
   OPERATIONS_CREW_FREE_VEHICLE_GROUPS,
+  compareVehicleCodesNaturally,
   type OperationsCrewBoardFreeVehicleDto,
   type OperationsCrewFreeVehicleGroup,
   type OperationsDayBoardDriverDto,
+  type OperationsUncodedVehicleDto,
 } from '@ecms/contracts';
 import { foldIncludes } from '../../../shared/lib/fold';
 import { matchesVehicleCode } from '../../fleet/lib/vehicle-code-match';
@@ -46,11 +55,26 @@ export interface VehicleChoice {
   vanKey: string | null;
   /** False for a car off the roster in the workshop that day: the save would refuse it. */
   pickable: boolean;
+  /**
+   * Round 32 — its code names nothing («0», «00» …): what names it instead, its plate and its make.
+   * Null for a car with a code.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
 }
 
-/** Codes in number order — «P9» before «P10», «9» before «150» — as the server orders its groups. */
-export const byVehicleCode = (a: { vehicleCode: string }, b: { vehicleCode: string }): number =>
-  a.vehicleCode.localeCompare(b.vehicleCode, 'ar', { numeric: true });
+/**
+ * Codes in number order — «P9» before «P10», «9» before «150», 61 before 101 — as the server orders
+ * its groups; Round 32: a code that names nothing («0», «00» …) after every one that does, those by
+ * their plate (`compareVehicleCodesNaturally`).
+ */
+export const byVehicleCode = (
+  a: { vehicleCode: string; uncoded?: OperationsUncodedVehicleDto | null },
+  b: { vehicleCode: string; uncoded?: OperationsUncodedVehicleDto | null },
+): number =>
+  compareVehicleCodesNaturally(a.vehicleCode, b.vehicleCode) ||
+  (a.uncoded?.plateNumber ?? '').localeCompare(b.uncoded?.plateNumber ?? '', 'ar', {
+    numeric: true,
+  });
 
 /**
  * What the «بدون سيارة» cell of row `forKey` offers, in the order it lists them (see the head of
@@ -89,6 +113,7 @@ export const vehicleChoices = (
       drivers: row.drivers,
       vanKey: row.key,
       pickable: true,
+      uncoded: freeById.get(row.vehicleId as string)?.uncoded ?? null,
     }))
     .sort(byVehicleCode);
   const offRoster = (vehicle: OperationsCrewBoardFreeVehicleDto): VehicleChoice => ({
@@ -100,6 +125,7 @@ export const vehicleChoices = (
     drivers: [],
     vanKey: null,
     pickable: !vehicle.inWorkshop,
+    uncoded: vehicle.uncoded,
   });
   const others = free
     .filter((vehicle) => !vehicle.onRoster && !held.has(vehicle.vehicleId))
@@ -123,6 +149,8 @@ export const vehicleChoices = (
         onRoster: false,
         inWorkshop: workshop.has(row.vehicleId as string),
         drivers: [],
+        // Its saved row's code is all the board holds of it: named by that, as it is.
+        uncoded: null,
       }),
     );
   const rank = (group: OperationsCrewFreeVehicleGroup): number =>
@@ -134,7 +162,11 @@ export const vehicleChoices = (
   return [...roster, ...rest];
 };
 
-/** The list narrowed by what was typed: the code (every vehicle box's rule), or a driver's name. */
+/**
+ * The list narrowed by what was typed: the code (every vehicle box's rule), or a driver's name —
+ * and (Round 32) a car with no code by its plate. A code that names nothing is never matched by its
+ * zeros: «0» typed is the start of «0061», not «0000».
+ */
 export const searchVehicleChoices = (
   choices: readonly VehicleChoice[],
   search: string,
@@ -143,7 +175,8 @@ export const searchVehicleChoices = (
     ? [...choices]
     : choices.filter(
         (choice) =>
-          matchesVehicleCode(choice.vehicleCode, search) ||
+          (choice.uncoded === null && matchesVehicleCode(choice.vehicleCode, search)) ||
+          (choice.uncoded !== null && foldIncludes(choice.uncoded.plateNumber, search)) ||
           choice.drivers.some((driver) => foldIncludes(driver.fullNameAr ?? '', search)),
       );
 

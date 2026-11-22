@@ -1342,6 +1342,8 @@ const StandingCrewBoard = (): JSX.Element => {
           trigger={addTrigger}
           sheet={phone}
           choices={choices}
+          // Round 32 — the vehicles nothing names (code and plate), left out: said on the list.
+          unidentified={standing.data?.unidentifiedVehicles ?? 0}
           words={{
             title: t('operations.standingCrew.picker.title'),
             subtitle:

@@ -11,6 +11,17 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The roles page shows its departments side by side.** «بدل ما الإدارات تتحت بعض وتحت كل واحده
+  الأدوار لأ عايز الإدارات تبقي جنب بعض». `/system/roles` drew one department card under the
+  next; the cards now sit in columns that wrap onto the next row — as many as the list has room for
+  at 320 px a card, at most four: one on a phone, two at 768 and 1024 px, three at 1440, four from
+  1536. The count follows the list's own width, so with the navigation pinned open a 1536 screen
+  lays three cards rather than four cramped ones, and a scrollbar never costs a column. The owner
+  was shown this beside a board of columns that scrolls sideways and chose it, because the board
+  hides every department past the fourth. A role's or a department's name is now written in full,
+  wrapped (a word too long for its card breaks inside itself), rather than cut short. Nothing about
+  what a role grants, its filters or its paging changes.
+
 - **Eight hours is eight hours: worked time, lateness and the attendance report, by the owner's
   two rulings of 18 November.** «worked time = last check-out − first check-in», «Late = check-in
   after 09:00», and «The CSV export of the daily sheet isn't usable by HR … Rebuild it as a report

@@ -10,6 +10,11 @@
 // avoid paging), so the list is SORTED by department on the server. That keeps a department's roles
 // contiguous: a group never appears twice under the same heading on two pages.
 //
+// The departments sit SIDE BY SIDE, one card each, in columns that wrap onto the next row
+// (2026-11-22, «بدل ما الإدارات تتحت بعض وتحت كل واحده الأدوار لأ عايز الإدارات تبقي جنب بعض»; the
+// owner chose this over a board of columns that scrolls sideways, which hides every department past
+// the fourth). A phone has room for one card, so there they stack as before.
+//
 // The three filters answer the three questions an administrator opens
 // this screen with: "which role grants X" (search covers permission keys, not just names), "which
 // of these may I edit" (managed), and "which are effectively off" (unassigned).
@@ -58,6 +63,33 @@ const REMEMBERED_FILTERS = [
 ] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
+
+/**
+ * The department cards, side by side: as many to a row as the list has room for at 20rem (320 px)
+ * a card, and never more than four; the cards past the last column wrap onto the next row. On a
+ * 1440 screen that is three, at 1536 four, at 768 and 1024 two, and on a phone one
+ * (`min(100%, …)`: a card is never wider than the list). `items-start` keeps each card the height of
+ * its own roles rather than of the tallest card in its row.
+ *
+ * Counted from the list's own width rather than the screen's — `VAN_GRID` in operations does the
+ * same — because the navigation, pinned open, takes 240 px of it (the launchpad's panel) or 280 px
+ * (the rail and its panel): four columns by the screen's width would leave a pinned 1536 screen a
+ * card of 286–296 px, and a role's name about 80 px beside its two chips. 20rem rather than more
+ * leaves room for a scrollbar that takes layout space (Windows, or a Mac with a mouse): the list
+ * scrolls on a computer, and 15 px less must not drop a column. At most four: a card is at least a
+ * quarter of the list less its three gaps, so a 2560 screen lays four wide cards rather than seven
+ * narrow ones.
+ */
+const DEPARTMENT_GRID =
+  'grid grid-cols-[repeat(auto-fill,minmax(min(100%,max(20rem,calc((100%_-_3rem)/4))),1fr))] items-start gap-4';
+
+/**
+ * A role's or a department's name, written in full: it wraps between words, and a word too long for
+ * its card (a Latin name with no space, `operations.supervisor.cairo`) breaks inside itself rather
+ * than running under the chips or out of the card — and, on a phone, rather than widening the card
+ * past the screen.
+ */
+const NAME_WRAP = 'min-w-0 leading-snug [overflow-wrap:anywhere]';
 
 export const RolesListPage = (): JSX.Element => {
   const t = useT();
@@ -198,41 +230,53 @@ export const RolesListPage = (): JSX.Element => {
             <EmptyState title={t('systemAdmin.roles.empty')} />
           )}
 
-          {groups.map((group) => (
-            <Card key={group.id ?? 'none'}>
-              <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
-                <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                  {group.name}
-                </h3>
-                <span className="text-xs text-slate-400">
-                  {t('systemAdmin.roles.groupCount', { count: group.roles.length })}
-                </span>
-              </div>
-              <CardBody padded={false}>
-                <ul>
-                  {group.roles.map((role) => (
-                    <li key={role.id} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
-                      <button
-                        type="button"
-                        onClick={() => navigate(role.id)}
-                        className="flex w-full items-center gap-3 px-5 py-3 text-start hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                      >
-                        <span className="min-w-0 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                          {role.name[locale]}
-                        </span>
-                        <ManagedRoleBadge managed={role.managed} />
-                        <span className="ms-auto shrink-0">
-                          <Badge size="sm" tone="neutral">
-                            {t('systemAdmin.roles.permissionCount', { count: role.permissionKeys.length })}
-                          </Badge>
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </CardBody>
-            </Card>
-          ))}
+          {groups.length > 0 && (
+            <div className={DEPARTMENT_GRID}>
+              {groups.map((group) => (
+                <Card key={group.id ?? 'none'}>
+                  <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+                    <h3
+                      className={cn(NAME_WRAP, 'text-sm font-semibold text-slate-800 dark:text-slate-100')}
+                    >
+                      {group.name}
+                    </h3>
+                    <span className="shrink-0 text-xs text-slate-400">
+                      {t('systemAdmin.roles.groupCount', { count: group.roles.length })}
+                    </span>
+                  </div>
+                  <CardBody padded={false}>
+                    <ul>
+                      {group.roles.map((role) => (
+                        <li key={role.id} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => navigate(role.id)}
+                            className="flex w-full items-center gap-3 px-5 py-3 text-start hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                          >
+                            {/* The whole name, wrapped rather than cut: a card can be as little as
+                                a quarter of the list, and «مسؤول مراجعة السيارات» cut to «مسؤول
+                                مراجعة…» reads the same as every other «مسؤول مراجعة». */}
+                            <span
+                              className={cn(
+                                NAME_WRAP,
+                                'flex-1 text-sm font-medium text-slate-800 dark:text-slate-100',
+                              )}
+                            >
+                              {role.name[locale]}
+                            </span>
+                            <ManagedRoleBadge managed={role.managed} className="shrink-0" />
+                            <Badge size="sm" tone="neutral" className="shrink-0">
+                              {t('systemAdmin.roles.permissionCount', { count: role.permissionKeys.length })}
+                            </Badge>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardBody>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
 
         {data !== undefined && data.meta.totalPages > 1 && (

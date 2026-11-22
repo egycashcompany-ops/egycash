@@ -56,6 +56,11 @@ export const HR_SETTINGS_HUB = {
     // «التواصل»
     { key: 'announcements', permission: 'announcement.send', group: 'communication' },
     { key: 'notification-rules', permission: 'notificationRule.view', group: 'communication' },
+    // «الحضور» — «ساعات العمل» lives here, not as its own sidebar row (the owner, 22 Nov), and last in the list, not first: how
+    // many hours each department owes is a setting, administered with the shifts key.
+    // «ساعات العمل» — its own key, not the shift catalog's: saving the hours re-prices a
+    // department's unfrozen days, which managing the shift catalog never does.
+    { key: 'working-hours', permission: 'attendance.manageWorkingHours', group: 'attendance' },
   ],
 } as const satisfies NavigationHub;
 

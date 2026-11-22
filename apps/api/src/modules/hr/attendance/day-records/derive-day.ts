@@ -88,6 +88,8 @@ export interface EnginePunch {
   source: AttendancePunchSource;
   /** String id or null — compared against the employee's branch for the D8 flag. */
   branchIdAtPunch: string | null;
+  /** The machine serial, carried only so the scan log can name the device. Not used in arithmetic. */
+  deviceId?: string | null;
 }
 
 export interface DeriveDayInput {
@@ -244,6 +246,30 @@ export const punchWindowFor = (
   return { from, to: to < nextWindowStart ? to : new Date(nextWindowStart.getTime() - 1) };
 };
 
+const HALF_DAY_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * WHICH DAY A DIRECTIONAL SCAN BELONGS TO, when the days' windows overlap — which they do for a
+ * night shift and above all for a 24-hour one (security), where day D's window reaches far into
+ * D+1. A check-IN belongs to the day whose expected START it is within half a day of; a check-OUT
+ * to the day whose expected END it is within half a day of. So a guard's 08:05 check-out on the
+ * 18th closes the 17th's shift, and their 07:47 check-in on the 19th opens the 19th — neither is
+ * read as the 18th. Scans with no direction are left to the window, exactly as before.
+ */
+export const attributePunches = <P extends EnginePunch>(
+  workDate: Date,
+  shift: EngineShift | null,
+  punches: readonly P[],
+): P[] => {
+  if (shift === null) return [...punches];
+  const { start, end } = shiftWindow(workDate, shift);
+  return punches.filter((p) => {
+    if (p.direction === 'in') return Math.abs(p.at.getTime() - start.getTime()) <= HALF_DAY_MS;
+    if (p.direction === 'out') return Math.abs(p.at.getTime() - end.getTime()) <= HALF_DAY_MS;
+    return true;
+  });
+};
+
 const minutesBetween = (from: Date, to: Date): number =>
   Math.floor((to.getTime() - from.getTime()) / 60_000);
 
@@ -314,13 +340,75 @@ const collapseRetaps = (punches: readonly EnginePunch[], minutes: number): Engin
   return kept;
 };
 
+/**
+ * WHICH TWO SCANS ARE THE DAY — the owner's rule of 19 November: ARRIVAL = the FIRST check-in,
+ * DEPARTURE = the FIRST check-out after it. People press Check-out (or Check-in) more than once;
+ * the extra presses are repeats and never move the times.
+ *
+ *   · No punch carries a direction (presence-only readers) → positional: first scan, last scan.
+ *   · Arrival = the first `in`; with no `in` at all, the first scan.
+ *   · Departure = the first `out` AFTER the arrival. A lunch break-out reaches ECMS as `unknown`
+ *     (the branch maps ZK codes 2/3 to it), so it is never mistaken for leaving.
+ *   · No `out` after the arrival → the rule as it was: the last scan if it is later than the
+ *     arrival, else none (one visit → `checkedIn`).
+ *
+ * Input must be sorted. Returns the SAME object references it was given, so a caller can tell
+ * which of its punches were counted.
+ */
+export const countedPunches = (
+  sorted: readonly EnginePunch[],
+): { arrival: EnginePunch | null; departure: EnginePunch | null } => {
+  if (sorted.length === 0) return { arrival: null, departure: null };
+  const directional = sorted.some((p) => p.direction !== 'unknown');
+  const arrival =
+    (directional ? sorted.find((p) => p.direction === 'in') : undefined) ??
+    (sorted[0] as EnginePunch);
+  let departure: EnginePunch | null = directional
+    ? (sorted.find((p) => p.direction === 'out' && p.at.getTime() > arrival.at.getTime()) ?? null)
+    : null;
+  if (departure === null) {
+    const last = sorted[sorted.length - 1] as EnginePunch;
+    departure = last !== arrival && last.at.getTime() > arrival.at.getTime() ? last : null;
+  }
+  return { arrival, departure };
+};
+
+/** Per scan: counted as the arrival, the departure, or a repeat — the scan log's tags. */
+export const scanRoles = (
+  punches: readonly EnginePunch[],
+  minPunchGapMinutes: number,
+): Map<EnginePunch, 'arrival' | 'departure' | 'repeat'> => {
+  const observed = byTime(punches);
+  const { arrival, departure } = countedPunches(collapseRetaps(observed, minPunchGapMinutes));
+  return new Map(
+    observed.map((p) => [p, p === arrival ? 'arrival' : p === departure ? 'departure' : 'repeat']),
+  );
+};
+
+/** How many times Check-in / Check-out was pressed: directional scans plus the counted pair. */
+export const punchTally = (
+  punches: readonly EnginePunch[],
+  minPunchGapMinutes: number,
+): { checkIns: number; checkOuts: number; repeats: number } => {
+  const roles = scanRoles(punches, minPunchGapMinutes);
+  let checkIns = 0;
+  let checkOuts = 0;
+  let repeats = 0;
+  for (const [p, role] of roles) {
+    if (role === 'repeat') repeats += 1;
+    if (p.direction === 'in' || (p.direction === 'unknown' && role === 'arrival')) checkIns += 1;
+    if (p.direction === 'out' || (p.direction === 'unknown' && role === 'departure')) checkOuts += 1;
+  }
+  return { checkIns, checkOuts, repeats };
+};
+
 export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // 1 — not employed on that date: no row at all.
   if (!input.employed) return null;
 
   // What the DEVICES saw. Kept under its own name because a decision may replace what the day is
   // derived FROM without changing what was observed — the flags below still describe the evidence.
-  const observed = byTime(input.punches);
+  const observed = byTime(attributePunches(input.workDate, input.shift, input.punches));
   // THE FLAGS DESCRIBE EVERYTHING THE DEVICES SAW, so they are taken before the re-tap collapse:
   // a manual punch or a punch recorded at another branch must still be flagged even when it is the
   // second tap of a cluster and so plays no part in the pairing below.
@@ -328,12 +416,17 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // ONE EVENT PER VISIT TO THE READER. Everything downstream pairs positionally, so this is the
   // only place the difference between «two taps» and «an arrival and a departure» can be drawn.
   const evidence = collapseRetaps(observed, input.minPunchGapMinutes);
+  // EXTRA PRESSES. Everything the devices saw beyond the counted arrival and departure is a repeat;
+  // the flag lets HR filter for it, and the screens show it only in the employee's scan log.
+  const evidencePair = countedPunches(evidence);
+  const countedCount = (evidencePair.arrival ? 1 : 0) + (evidencePair.departure ? 1 : 0);
+  if (observed.length > countedCount) flags.push('repeatedPunches');
 
   // 2 — leave wins over absence. A half-day keeps the worked half: presence minutes are computed
   // when they exist, but nothing is "late" against a day the employee was excused from.
   if (input.leave !== null) {
-    const first = evidence[0] ?? null;
-    const last = evidence.length >= 2 ? (evidence[evidence.length - 1] ?? null) : null;
+    const first = evidencePair.arrival;
+    const last = evidencePair.departure;
     // Flat, like every other worked figure here: last out − first in. Rule 1 of 18 November is a
     // company-wide definition of worked time, so a half day does not get a second one.
     const worked =
@@ -403,11 +496,12 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
     // reaching here on a working day means only that NOBODY HAS SAID WHEN THIS PERSON WORKS.
     // `noSchedule` says that, which is a gap HR can close; «يوم راحة» said the opposite and hid it.
     if (punches.length === 0) return { ...empty, status: 'noSchedule', flags };
-    if (punches.length === 1) {
-      return { ...empty, status: 'checkedIn', firstInAt: (punches[0] as EnginePunch).at, flags };
+    const pair = countedPunches(punches);
+    if (pair.departure === null) {
+      return { ...empty, status: 'checkedIn', firstInAt: (pair.arrival as EnginePunch).at, flags };
     }
-    const firstIn = (punches[0] as EnginePunch).at;
-    const lastOut = (punches[punches.length - 1] as EnginePunch).at;
+    const firstIn = (pair.arrival as EnginePunch).at;
+    const lastOut = pair.departure.at;
     return {
       ...empty,
       status: 'present',
@@ -456,12 +550,13 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   // nothing. With no check-out, whether the hours were completed is exactly what is unknown, so
   // declaring the arrival late would be a verdict reached by ignoring the test the rule asks for.
   // The day keeps its arrival time, which is the fact, and makes no claim about it.
-  if (punches.length === 1) {
+  const pair = countedPunches(punches);
+  if (pair.departure === null) {
     const { start, end } = shiftWindow(input.workDate, input.shift);
     return {
       ...empty,
       status: 'checkedIn',
-      firstInAt: (punches[0] as EnginePunch).at,
+      firstInAt: (pair.arrival as EnginePunch).at,
       requiredMinutes: requiredMinutesOf(start, end, input.shift.breakMinutes),
       flags,
     };
@@ -489,10 +584,10 @@ export const deriveDay = (input: DeriveDayInput): DerivedDay | null => {
   //               07:00–17:00 did ten hours and two of them are over, whatever hour they fell in.
   //               Derived only — payroll pays it after a manager approves it (D5), as before.
   //
-  // Directions recorded by devices are advisory (many log presence only), so the pairing is
-  // positional: first scan in, last scan out.
-  const firstIn = (punches[0] as EnginePunch).at;
-  const lastOut = (punches[punches.length - 1] as EnginePunch).at;
+  // The pairing is `countedPunches`: first check-in, first check-out after it (positional only
+  // when no scan carries a direction). workedMinutes runs between exactly those two.
+  const firstIn = (pair.arrival as EnginePunch).at;
+  const lastOut = pair.departure.at;
   const { start, end } = shiftWindow(input.workDate, input.shift);
   const requiredMinutes = requiredMinutesOf(start, end, input.shift.breakMinutes);
 

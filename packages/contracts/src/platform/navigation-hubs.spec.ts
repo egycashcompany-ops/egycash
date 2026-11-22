@@ -39,6 +39,9 @@ describe('navigation hubs', () => {
       'hiringRequirement.manage',
       'announcement.send',
       'notificationRule.view',
+      // «ساعات العمل» — the department working hours, on their OWN key and not the shift
+      // catalog's; last in the list.
+      'attendance.manageWorkingHours',
     ]);
     expect(hubPermissions('/applicants')).toEqual([]);
     expect(hubPermissions('/hr-settings/announcements')).toEqual([]);

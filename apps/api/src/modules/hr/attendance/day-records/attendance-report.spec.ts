@@ -59,6 +59,8 @@ const row = (over: Partial<ReportRow> = {}): ReportRow => ({
   }),
   approvedOvertimeMinutes: 0,
   punchCount: 2,
+  checkInCount: 1,
+  checkOutCount: 1,
   flags: [],
   frozen: false,
   provisional: false,
@@ -66,7 +68,7 @@ const row = (over: Partial<ReportRow> = {}): ReportRow => ({
 });
 
 describe('the columns', () => {
-  it('are the eighteen the owner asked for, in his order', () => {
+  it('are the twenty the owner asked for, in his order', () => {
     expect(ATTENDANCE_REPORT_COLUMNS.map((column) => column.key)).toEqual([
       'code',
       'name',
@@ -85,6 +87,8 @@ describe('the columns', () => {
       'overtime',
       'approvedOvertime',
       'punches',
+      'checkIns',
+      'checkOuts',
       'notes',
     ]);
   });

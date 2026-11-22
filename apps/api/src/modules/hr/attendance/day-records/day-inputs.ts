@@ -23,6 +23,7 @@ import { pickAssignmentForDate, ShiftAssignmentModel, type ShiftAssignmentDoc } 
 import { AttendanceDecisionModel } from '../decisions/decision.model';
 import { AttendancePunchModel, type AttendancePunchDoc } from '../punches/punch.model';
 import {
+  attributePunches,
   cairoInstant,
   punchWindowFor,
   shiftWindow,
@@ -32,7 +33,7 @@ import {
 } from './derive-day';
 import { HrAttendanceSettingKeys } from '@ecms/contracts';
 import { settingsService } from '../../../../platform/settings';
-import { defaultPatternForBranch } from './expectations';
+import { defaultPatternFor, departmentHoursMap } from './expectations';
 
 /**
  * The leave statuses that COVER a date, so the derivation reports «إجازة» for it. Exported because
@@ -185,12 +186,23 @@ export const loadDayInputs = async (
     }),
   ]);
 
-  // One settings resolution per distinct branch, and only where it can actually be needed.
+  // One settings resolution per distinct (branch, department): a department's configured working
+  // hours win over the branch pattern for everyone in it who has no shift assignment.
+  const hoursMap = await departmentHoursMap();
+  const patternKey = (employee: EmployeeDoc): string =>
+    `${String(employee.employment.branchId)}:${String(employee.employment.departmentId ?? '')}`;
   const patterns = new Map<string, EngineShift | null>();
   for (const employee of employees) {
-    const branchId = String(employee.employment.branchId);
-    if (patterns.has(branchId)) continue;
-    patterns.set(branchId, await defaultPatternForBranch(branchId));
+    const key = patternKey(employee);
+    if (patterns.has(key)) continue;
+    patterns.set(
+      key,
+      await defaultPatternFor(
+        String(employee.employment.branchId),
+        employee.employment.departmentId == null ? null : String(employee.employment.departmentId),
+        hoursMap,
+      ),
+    );
   }
 
   // ── indexes over what was loaded ────────────────────────────────────────────
@@ -239,7 +251,7 @@ export const loadDayInputs = async (
     const assigned = picked === null ? undefined : shiftById.get(String(picked.shiftId));
     const shift: EngineShift | null =
       assigned === undefined
-        ? (patterns.get(String(employee.employment.branchId)) ?? null)
+        ? (patterns.get(patternKey(employee)) ?? null)
         : {
             startTime: assigned.startTime,
             endTime: assigned.endTime,
@@ -254,15 +266,18 @@ export const loadDayInputs = async (
   };
 
   const punchesFor = (employee: EmployeeDoc, workDate: Date, expectation: ResolvedExpectation | null): EnginePunch[] => {
-    const window = punchWindowFor(workDate, expectation === null ? null : expectation.shift);
-    return (punchesByEmployee.get(String(employee._id)) ?? [])
+    const shift = expectation === null ? null : expectation.shift;
+    const window = punchWindowFor(workDate, shift);
+    const inWindow = (punchesByEmployee.get(String(employee._id)) ?? [])
       .filter((p) => p.at.getTime() >= window.from.getTime() && p.at.getTime() <= window.to.getTime())
       .map((p) => ({
         at: p.at,
         direction: p.direction,
         source: p.source,
         branchIdAtPunch: p.branchIdAtPunch === null ? null : String(p.branchIdAtPunch),
+        deviceId: p.deviceId ?? null,
       }));
+    return attributePunches(workDate, shift, inWindow);
   };
 
   return {

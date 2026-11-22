@@ -45,6 +45,7 @@ import { startItConsumableTypesGoLive } from './modules/it/go-live/consumable-ty
 import { startItConsumableCounterTypesGoLive } from './modules/it/go-live/consumable-counter-types';
 import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
 import { startItScreenGrantsGoLive } from './modules/it/go-live/screen-grants';
+import { startHrWorkingHoursGrantsGoLive } from './modules/hr/go-live/working-hours-grants';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -151,6 +152,13 @@ const main = async (): Promise<void> => {
   // loses a screen the moment this deploy lands (see the file). The api ONLY, unlike the steps
   // above: the copy must land as close as it can to the new code serving the screens.
   startItScreenGrantsGoLive();
+
+  // «ساعات العمل» replaces what HR set through the shift catalog until now, so every role and
+  // delegated grant holding `attendance.manageShifts` is given `attendance.manageWorkingHours`,
+  // once, and nobody loses the working day the moment this deploy lands (see the file). The api
+  // ONLY, for the same reason as the step above: the copy must land as close as it can to the new
+  // code serving the screen.
+  startHrWorkingHoursGrantsGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

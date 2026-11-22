@@ -18,11 +18,13 @@ import {
   toItAssetAssignmentDto,
   toItAssetHistoryEntryDto,
   type ItAssetLabels,
+  type ItCustodianLabels,
   type ItHolderLabels,
   type ItReceiptStates,
 } from '../it.mappers';
-import { getDirectoryEmployees } from '../../../platform/directory';
 import { type ItAssetAssignmentDoc } from './assignment.model';
+import { holderOfInterval, signerOf } from './custody-holder';
+import { custodianLabels, employeeLabels } from './custody-labels';
 import { itAssetRepository } from './asset.repository';
 import { itAssetCustodyService } from './custody.service';
 // The asset each action answers with, its holder resolved — whom it was just handed to, or nobody.
@@ -103,18 +105,19 @@ export const listItAssetHistory = async (req: Request, res: Response): Promise<v
  *
  * One directory call per response, never one per row — and it runs through the platform seam, so
  * IT still does not import HR. An id the directory cannot resolve is simply absent from the map
- * and the row answers with nulls, which the screen renders as the id it always showed.
+ * and the row answers with nulls, which the screen renders as the id it always showed. The people
+ * are the employee holders and the responsible people who signed for a department, in the one
+ * batch; a page with department custody adds one read of its departments and one of its places.
  */
-const holderLabels = async (rows: readonly ItAssetAssignmentDoc[]): Promise<ItHolderLabels> => {
-  const employees = await getDirectoryEmployees(
-    rows.map((row) => String(row.assignedToEmployeeId)),
-  );
-  return new Map(
-    [...employees].map(([id, employee]) => [
-      id,
-      { code: employee.code, fullNameAr: employee.fullNameAr },
-    ]),
-  );
+const holderLabels = async (
+  rows: readonly ItAssetAssignmentDoc[],
+): Promise<{ holders: ItHolderLabels; custodians: ItCustodianLabels }> => {
+  const named = rows.map(holderOfInterval);
+  const [holders, custodians] = await Promise.all([
+    employeeLabels(named.map(signerOf)),
+    custodianLabels(named),
+  ]);
+  return { holders, custodians };
 };
 
 /**
@@ -155,12 +158,12 @@ export const listItAssetAssignments = async (req: Request, res: Response): Promi
   const { params, query } = validated<never, ListItAssignmentsQuery, IdParam>(req);
   const scope = custodyScope(req);
   const page = await itAssetAssignmentService.listForAsset(params.id, query, scope);
-  const [holders, assets, receipts] = await Promise.all([
+  const [{ holders, custodians }, assets, receipts] = await Promise.all([
     holderLabels(page.items),
     assetLabels(page.items, scope),
     receiptStates(page.items),
   ]);
-  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets, receipts));
+  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets, receipts, custodians));
 };
 
 /** The cross-asset custody register — "what is out, and who has it". */
@@ -168,10 +171,10 @@ export const listItAssignments = async (req: Request, res: Response): Promise<vo
   const { query } = validated<never, ListItAssignmentsQuery>(req);
   const scope = custodyScope(req);
   const page = await itAssetAssignmentService.list(query, scope);
-  const [holders, assets, receipts] = await Promise.all([
+  const [{ holders, custodians }, assets, receipts] = await Promise.all([
     holderLabels(page.items),
     assetLabels(page.items, scope),
     receiptStates(page.items),
   ]);
-  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets, receipts));
+  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets, receipts, custodians));
 };

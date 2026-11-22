@@ -1,5 +1,5 @@
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
-import { type Paginated } from '@ecms/contracts';
+import { type ItAssetHolderKind, type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { type ScopeSelector } from '../../../shared/types';
 import { cairoDayEnd, cairoDayStart } from '../shared/cairo-day';
@@ -39,8 +39,15 @@ export interface ItAssignmentRegisterFilter {
    * rather than an unfiltered page.
    */
   assetIds?: readonly Types.ObjectId[] | undefined;
+  /** The EMPLOYEE holder — never who signed for a department (`responsibleEmployeeId`). */
   employeeId?: string | undefined;
   branchId?: string | undefined;
+  /** «جهة الاستلام» — an employee's intervals, or a department's. */
+  holderKind?: ItAssetHolderKind | undefined;
+  /** A department's intervals, at a place, signed for by a person (2026-11-19). */
+  departmentId?: string | undefined;
+  locationId?: string | undefined;
+  responsibleEmployeeId?: string | undefined;
   assignedFrom?: Date | undefined;
   assignedTo?: Date | undefined;
   /** Only a closed interval has a return day, so either bound alone leaves out every open one. */
@@ -55,9 +62,22 @@ export interface ItAssignmentRegisterFilter {
   /**
    * «حالة المستلِم» — the holders HR shows as having left, already read through the directory
    * (`exitedHolderIds`). `exited: true` keeps the intervals they hold; `false` every other one.
+   * EMPLOYEE custody either way: a department interval is in neither answer.
    */
   holderExited?: { exited: boolean; exitedEmployeeIds: readonly Types.ObjectId[] } | undefined;
 }
+
+/**
+ * A department interval, as a condition. An interval from before 2026-11-19 carries no
+ * `holderKind` at all, so «an employee's» is «not a department's», never `holderKind: 'employee'`.
+ */
+const DEPARTMENT_HELD: FilterQuery<ItAssetAssignmentDoc> = { holderKind: 'department' };
+const EMPLOYEE_HELD: FilterQuery<ItAssetAssignmentDoc> = { holderKind: { $ne: 'department' } };
+
+/** An id filter on a field the partial indexes cover — the `$type` lets the index serve it. */
+const idOn = (field: 'departmentId' | 'locationId' | 'responsibleEmployeeId', id: string) => ({
+  [field]: { $eq: new Types.ObjectId(id), $type: 'objectId' },
+});
 
 /**
  * The register's filters as ONE database filter. Every filter is its own clause under `$and`, so
@@ -79,6 +99,13 @@ export const assignmentRegisterFilter = (
   }
   if (params.branchId !== undefined) {
     clauses.push({ branchId: new Types.ObjectId(params.branchId) });
+  }
+  if (params.holderKind === 'department') clauses.push(DEPARTMENT_HELD);
+  if (params.holderKind === 'employee') clauses.push(EMPLOYEE_HELD);
+  if (params.departmentId !== undefined) clauses.push(idOn('departmentId', params.departmentId));
+  if (params.locationId !== undefined) clauses.push(idOn('locationId', params.locationId));
+  if (params.responsibleEmployeeId !== undefined) {
+    clauses.push(idOn('responsibleEmployeeId', params.responsibleEmployeeId));
   }
   for (const window of [
     dayWindow('assignedAt', params.assignedFrom, params.assignedTo),
@@ -112,9 +139,11 @@ export const assignmentRegisterFilter = (
   }
   // FR-13's «assets held by exited employees» and its complement — `false` is every interval whose
   // holder HR does NOT show as gone, a holder it does not know included (nothing says they left).
+  // Both are EMPLOYEE custody: `$nin` alone would let a department's interval (no employee holder,
+  // `null`) into «not exited», and a department does not leave the company.
   if (params.holderExited !== undefined) {
     const ids = [...params.holderExited.exitedEmployeeIds];
-    clauses.push({
+    clauses.push(EMPLOYEE_HELD, {
       assignedToEmployeeId: params.holderExited.exited ? { $in: ids } : { $nin: ids },
     });
   }
@@ -184,7 +213,12 @@ class ItAssetAssignmentRepository extends BaseRepository<ItAssetAssignmentDoc> {
   ): Promise<Map<string, number>> {
     const rows = await this.model
       .aggregate<{ _id: Types.ObjectId; count: number }>([
-        { $match: this.baseFilter(scope, filter) },
+        // EMPLOYEE holders only: a department's interval has none, and is nobody's to leave with.
+        {
+          $match: this.baseFilter(scope, {
+            $and: [filter, { assignedToEmployeeId: { $ne: null } }],
+          }),
+        },
         { $group: { _id: '$assignedToEmployeeId', count: { $sum: 1 } } },
       ])
       .exec();
@@ -201,6 +235,50 @@ class ItAssetAssignmentRepository extends BaseRepository<ItAssetAssignmentDoc> {
       })
       .lean<ItAssetAssignmentDoc[]>()
       .exec();
+  }
+
+  /**
+   * Every department custody this person signed for and that is still open — what their leaving
+   * flags (the custody stands; the department signs again). Not their own custody.
+   */
+  async listOpenSignedBy(employeeId: string): Promise<ItAssetAssignmentDoc[]> {
+    return this.model
+      .find({
+        responsibleEmployeeId: { $eq: new Types.ObjectId(employeeId), $type: 'objectId' },
+        returnedAt: null,
+        isDeleted: false,
+      })
+      .lean<ItAssetAssignmentDoc[]>()
+      .exec();
+  }
+
+  /**
+   * The OPEN intervals the asset register's holder filters name — ONE read, every filter given
+   * narrowing together: the employee holder, the department, the place, and the holder kind. An
+   * id read for the asset list's `currentAssignmentId` (asset.service.ts), so it is unscoped like
+   * `listOpenForEmployee`: the assets themselves are read under the caller's scope.
+   */
+  async listOpenWhere(params: {
+    employeeId?: string | undefined;
+    departmentId?: string | undefined;
+    locationId?: string | undefined;
+    kind?: ItAssetHolderKind | undefined;
+  }): Promise<Types.ObjectId[]> {
+    const filter = assignmentRegisterFilter(
+      {
+        open: true,
+        employeeId: params.employeeId,
+        departmentId: params.departmentId,
+        locationId: params.locationId,
+        holderKind: params.kind,
+      },
+      new Date(),
+    );
+    const rows = await this.model
+      .find({ $and: [filter, { isDeleted: false }] }, { _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((row) => row._id);
   }
 
   async listFiltered(

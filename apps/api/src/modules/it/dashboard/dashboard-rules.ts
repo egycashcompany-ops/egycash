@@ -101,6 +101,12 @@ export interface ItDashboardMovement {
    */
   branchId: string | null;
   employeeId: string | null;
+  /**
+   * The department handed to (assigned, transferred to) or returned from, and its place — when a
+   * department held it (2026-11-19); null otherwise.
+   */
+  departmentId: string | null;
+  locationId: string | null;
   fromBranchId: string | null;
   toBranchId: string | null;
 }
@@ -114,7 +120,8 @@ const idOf = (value: unknown): string | null =>
  * (`returned`) or handed on to (`transferred`), as the custody actions record them; maintenance
  * and disposal name nobody. A transfer names its branches only when it crossed one — a transfer to
  * another holder in the same branch moved nobody between branches, and printing «أكتوبر ← أكتوبر»
- * would say it did.
+ * would say it did. A department holder (2026-11-19) is named by its department and its place —
+ * «إدارة …» — in place of a person; the person who signed for it is not the holder.
  */
 export const movementOfEvent = (
   event: Pick<ItAssetEventDoc, '_id' | 'type' | 'at' | 'subjectId' | 'metadata'>,
@@ -127,11 +134,18 @@ export const movementOfEvent = (
     assetId: String(event.subjectId),
     branchId: null,
     employeeId: null,
+    departmentId: null,
+    locationId: null,
     fromBranchId: null,
     toBranchId: null,
   };
   if (event.type === 'assigned' || event.type === 'returned') {
-    return { ...base, employeeId: idOf(metadata.employeeId) };
+    return {
+      ...base,
+      employeeId: idOf(metadata.employeeId),
+      departmentId: idOf(metadata.departmentId),
+      locationId: idOf(metadata.locationId),
+    };
   }
   if (event.type === 'transferred') {
     const from = idOf(metadata.fromBranchId);
@@ -141,6 +155,8 @@ export const movementOfEvent = (
       ...base,
       branchId: to,
       employeeId: idOf(metadata.toEmployeeId),
+      departmentId: idOf(metadata.toDepartmentId),
+      locationId: idOf(metadata.toLocationId),
       fromBranchId: crossed ? from : null,
       toBranchId: crossed ? to : null,
     };
@@ -158,6 +174,8 @@ export const movementOfRegistration = (
   assetId: String(asset._id),
   branchId: String(asset.branchId),
   employeeId: null,
+  departmentId: null,
+  locationId: null,
   fromBranchId: null,
   toBranchId: null,
 });
@@ -179,12 +197,17 @@ export const latestMovements = (
  * A movement as the panel prints it — the asset's code and name, the person's code and name as HR
  * keeps them. `null` when the asset cannot be named (it cannot happen for an asset read under the
  * reader's scope a moment ago; a line that could not say what moved is better left out). A person
- * HR does not know keeps their id and loses only the label, as every IT screen shows them.
+ * HR does not know keeps their id and loses only the label, as every IT screen shows them — and a
+ * department or place that cannot be read, the same.
  */
 export const toActivityItem = (
   movement: ItDashboardMovement,
   asset: Pick<ItAssetDoc, 'assetCode' | 'name' | 'branchId'> | undefined,
   employee: { code: string; fullNameAr: string } | undefined,
+  custodian: {
+    departmentName?: { ar: string; en: string } | undefined;
+    locationName?: { ar: string; en: string } | undefined;
+  } = {},
 ): ItDashboardActivityItemDto | null => {
   if (asset === undefined) return null;
   return {
@@ -198,6 +221,9 @@ export const toActivityItem = (
     employeeId: movement.employeeId,
     employeeCode: movement.employeeId === null ? null : (employee?.code ?? null),
     employeeName: movement.employeeId === null ? null : (employee?.fullNameAr ?? null),
+    departmentId: movement.departmentId,
+    departmentName: movement.departmentId === null ? null : (custodian.departmentName ?? null),
+    locationName: movement.locationId === null ? null : (custodian.locationName ?? null),
     fromBranchId: movement.fromBranchId,
     toBranchId: movement.toBranchId,
   };

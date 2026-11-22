@@ -60,6 +60,13 @@ import {
 } from '../components/CustodyDialogs';
 import { useAssetLabels } from '../components/useAssetLabels';
 import { SPEC_FIELDS, hasSpecsOrAccessories } from '../lib/asset-specs';
+import {
+  holderMain,
+  holderName,
+  holderOfAssignment,
+  locationText,
+  responsibleText,
+} from '../lib/custody-holder';
 
 const QR_SIZE = 132;
 
@@ -154,11 +161,10 @@ export const AssetDetailPage = (): JSX.Element => {
     rows.find((a) => a.id === asset.currentAssignmentId) ??
     rows.find((a) => a.returnedAt === null) ??
     null;
-  // IT-6 — the person, with the id as the fallback when the directory cannot answer.
-  const holderLabel =
-    openAssignment === null
-      ? null
-      : (openAssignment.assignedToEmployeeName ?? openAssignment.assignedToEmployeeId);
+  // IT-6 — the person, with the id as the fallback when the directory cannot answer; a department
+  // (2026-11-19) as «إدارة … — …».
+  const openHolder = openAssignment === null ? null : holderOfAssignment(openAssignment);
+  const holderLabel = openHolder === null ? null : holderName(openHolder, locale, t);
 
   return (
     <PageContainer>
@@ -417,13 +423,32 @@ export const AssetDetailPage = (): JSX.Element => {
               </p>
             ) : (
               <dl className="grid gap-x-6 sm:grid-cols-2">
-                <Fact
-                  label={t('it.custody.holder')}
-                  value={
-                    openAssignment.assignedToEmployeeName ?? openAssignment.assignedToEmployeeId
-                  }
-                  mono
-                />
+                {/* A department (2026-11-19): «في عهدة إدارة …», at its place, on its responsible
+                    person's signature. */}
+                {openHolder !== null && openHolder.kind === 'department' ? (
+                  <>
+                    <Fact
+                      label={t('it.custody.holder')}
+                      value={holderMain(openHolder, locale, t)}
+                    />
+                    <Fact
+                      label={t('it.custody.department.location')}
+                      value={locationText(openHolder, locale)}
+                    />
+                    <Fact
+                      label={t('it.custody.department.responsible')}
+                      value={responsibleText(openHolder)}
+                    />
+                  </>
+                ) : (
+                  <Fact
+                    label={t('it.custody.holder')}
+                    value={
+                      openAssignment.assignedToEmployeeName ?? openAssignment.assignedToEmployeeId
+                    }
+                    mono
+                  />
+                )}
                 <Fact
                   label={t('it.custody.assignedAt')}
                   value={formatDate(openAssignment.assignedAt, locale)}

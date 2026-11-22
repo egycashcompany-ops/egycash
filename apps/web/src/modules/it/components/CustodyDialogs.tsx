@@ -29,8 +29,16 @@ import { PrinterIcon, TrashIcon } from '../../../shared/ui/icons';
 import { EmployeePicker } from './EmployeePicker';
 import { AssetPicker } from './AssetPicker';
 import { useReceiptPrinter } from './CustodyReceipt';
+import {
+  CustodianKindSwitch,
+  DepartmentCustodianFields,
+  EMPTY_DEPARTMENT_CUSTODIAN,
+  departmentCustodianReady,
+  type DepartmentCustodianValue,
+} from './DepartmentCustodianFields';
 import { canHandOver, handOverPaper } from '../lib/hand-over-paper';
 import { branchMoveTargets } from '../lib/branch-move-targets';
+import { holderOfAssignment } from '../lib/custody-holder';
 import * as api from '../api/it-api';
 import { fromLines, toLines } from '../lib/asset-specs';
 import {
@@ -133,10 +141,42 @@ const message = (err: unknown, fallback: string): string =>
 // the hand-over then goes under a fresh number, as if nothing had been printed.
 // Each device is a page of the acknowledgment, and its accessories («ومشتملاته») start as the
 // asset's own list — edited here, they are what that page lists.
+//
+// «جهة الاستلام: موظف / إدارة» (2026-11-19): the receipt may instead put the devices «في عهدة إدارة
+// …» at one of its branch's places, signed by the department's responsible person — a server, a
+// camera, a switch. One place per paper, so a department hand-over lists ONE branch's devices: the
+// first line's branch is the place's, the box then offers only that branch's devices, and a line of
+// another branch (one the hand-over started from, or kept from the employee mode) is said and holds
+// the hand-over back — the server's `OTHER_BRANCH` refusal, before the round trip.
+
+/** «جهة الاستلام» — an employee, or a department at a place. */
+type CustodianKind = 'employee' | 'department';
+
+/** The request's holder — exactly one of the two, as the contract asks. */
+export const holderBody = (
+  kind: CustodianKind,
+  employeeId: string,
+  department: DepartmentCustodianValue,
+):
+  | { employeeId: string }
+  | {
+      department: { departmentId: string; locationId: string; responsibleEmployeeId: string };
+    } =>
+  kind === 'department'
+    ? {
+        department: {
+          departmentId: department.departmentId,
+          locationId: department.locationId,
+          responsibleEmployeeId: department.responsibleEmployeeId,
+        },
+      }
+    : { employeeId };
 
 /** One device on the receipt being prepared — one page of the acknowledgment. */
 interface DraftLine {
   assetId: string;
+  /** Its branch — a department paper lists one branch's devices, the place's. '' when unknown. */
+  branchId: string;
   condition: string;
   notes: string;
   /**
@@ -146,8 +186,9 @@ interface DraftLine {
   accessories: string | null;
 }
 
-const emptyLine = (assetId: string): DraftLine => ({
+const emptyLine = (assetId: string, branchId: string): DraftLine => ({
   assetId,
+  branchId,
   condition: '',
   notes: '',
   accessories: null,
@@ -210,8 +251,12 @@ export const AssignAssetDialog = ({
   const t = useT();
   const handOver = useHandOverItAssets();
   const printer = useReceiptPrinter();
+  const [kind, setKind] = useState<CustodianKind>('employee');
   const [employeeId, setEmployeeId] = useState('');
   const [employeeLabel, setEmployeeLabel] = useState('');
+  const [department, setDepartment] = useState<DepartmentCustodianValue>(
+    EMPTY_DEPARTMENT_CUSTODIAN,
+  );
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [assignedAt, setAssignedAt] = useState('');
   const [expectedReturnAt, setExpectedReturnAt] = useState('');
@@ -222,25 +267,37 @@ export const AssignAssetDialog = ({
   // The id, not the object: a refetch of the asset while the dialog is open must not wipe a
   // receipt that has already been printed.
   const startingAssetId = asset?.id ?? null;
+  const startingBranchId = asset?.branchId ?? '';
 
   useEffect(() => {
     if (open) {
+      setKind('employee');
       setEmployeeId('');
       setEmployeeLabel('');
-      setLines(startingAssetId === null ? [] : [emptyLine(startingAssetId)]);
+      setDepartment(EMPTY_DEPARTMENT_CUSTODIAN);
+      setLines(startingAssetId === null ? [] : [emptyLine(startingAssetId, startingBranchId)]);
       setAssignedAt(nowLocal());
       setExpectedReturnAt('');
       setPrintedFor(null);
       setPrintedNumber(null);
       setError(null);
     }
-  }, [open, startingAssetId]);
+  }, [open, startingAssetId, startingBranchId]);
 
   const orderWrong =
     expectedReturnAt !== '' && assignedAt !== '' && expectedReturnAt < assignedAt;
+  const toDepartment = kind === 'department';
+  // The place's branch: the first device's. Every other line must be of it — one place per paper.
+  const placeBranch = lines[0]?.branchId ?? '';
+  const otherBranchLines = toDepartment
+    ? lines.flatMap((line, index) =>
+        line.branchId !== '' && line.branchId !== placeBranch ? [index + 1] : [],
+      )
+    : [];
+  const holderChosen = toDepartment ? departmentCustodianReady(department) : employeeId !== '';
 
   const body: HandOverItAssets = {
-    employeeId,
+    ...holderBody(kind, employeeId, department),
     lines: lines.map((line) => ({
       assetId: line.assetId,
       ...(line.condition.trim() === '' ? {} : { conditionOnIssue: line.condition.trim() }),
@@ -253,7 +310,7 @@ export const AssignAssetDialog = ({
   // What was printed, as the server will be asked to record it. Any edit after printing changes
   // this, and the printed paper then no longer counts as this hand-over's.
   const payloadKey = JSON.stringify(body);
-  const ready = employeeId !== '' && lines.length > 0 && !orderWrong;
+  const ready = holderChosen && lines.length > 0 && !orderWrong && otherBranchLines.length === 0;
   const toRecord = handOverPaper(printedFor, payloadKey, printedNumber);
   const printed = toRecord.state === 'printed';
   const changedSincePrint = toRecord.state === 'stale';
@@ -339,18 +396,28 @@ export const AssignAssetDialog = ({
             ? t('it.custody.receipt.changedSincePrintHandOver')
             : t('it.custody.receipt.printOptional')}
       </p>
-      <Field label={t('it.custody.holder')} required>
-        <EmployeePicker
-          value={employeeId}
-          valueLabel={employeeLabel}
-          onChange={(id, label) => {
-            setEmployeeId(id);
-            setEmployeeLabel(label);
-          }}
-          ariaLabel={t('it.custody.holder')}
-          handOver
+      <CustodianKindSwitch value={kind} onChange={setKind} />
+      {toDepartment ? (
+        <DepartmentCustodianFields
+          value={department}
+          onChange={setDepartment}
+          branchId={placeBranch}
+          branchMissingHint={t('it.custody.department.locationAfterDevice')}
         />
-      </Field>
+      ) : (
+        <Field label={t('it.custody.holder')} required>
+          <EmployeePicker
+            value={employeeId}
+            valueLabel={employeeLabel}
+            onChange={(id, label) => {
+              setEmployeeId(id);
+              setEmployeeLabel(label);
+            }}
+            ariaLabel={t('it.custody.holder')}
+            handOver
+          />
+        </Field>
+      )}
       <Field label={t('it.custody.receipt.lines')} required hint={t('it.custody.receipt.linesHint')}>
         <div className="space-y-3">
           {lines.map((line, index) => (
@@ -395,13 +462,25 @@ export const AssignAssetDialog = ({
               />
             </div>
           ))}
+          {otherBranchLines.length > 0 && (
+            <p
+              role="alert"
+              data-receipt-other-branch={otherBranchLines.join(',')}
+              className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              {t('it.custody.department.mixedBranches', { lines: otherBranchLines.join('، ') })}
+            </p>
+          )}
           {lines.length < IT_HAND_OVER_MAX_LINES && (
             <AssetPicker
               value=""
               status="inStock"
               exclude={lines.map((line) => line.assetId)}
-              onChange={(assetId) => {
-                if (assetId !== '') setLines((current) => [...current, emptyLine(assetId)]);
+              branchId={toDepartment ? placeBranch : ''}
+              onChange={(assetId, picked) => {
+                if (assetId !== '') {
+                  setLines((current) => [...current, emptyLine(assetId, picked?.branchId ?? '')]);
+                }
               }}
               ariaLabel={t('it.custody.receipt.addLine')}
             />
@@ -532,8 +611,12 @@ export const TransferAssetDialog = ({
   const transfer = useTransferItAsset();
   const branches = useItBranchOptions();
   const reach = useItMoveTargets(open);
+  const [kind, setKind] = useState<CustodianKind>('employee');
   const [employeeId, setEmployeeId] = useState('');
   const [employeeLabel, setEmployeeLabel] = useState('');
+  const [department, setDepartment] = useState<DepartmentCustodianValue>(
+    EMPTY_DEPARTMENT_CUSTODIAN,
+  );
   const [branchId, setBranchId] = useState('');
   const [at, setAt] = useState('');
   const [condition, setCondition] = useState('');
@@ -545,8 +628,10 @@ export const TransferAssetDialog = ({
 
   useEffect(() => {
     if (open) {
+      setKind('employee');
       setEmployeeId('');
       setEmployeeLabel('');
+      setDepartment(EMPTY_DEPARTMENT_CUSTODIAN);
       setBranchId('');
       setAt(nowLocal());
       setCondition('');
@@ -567,12 +652,42 @@ export const TransferAssetDialog = ({
   const chosen = targets?.some((branch) => branch.id === branchId) === true ? branchId : '';
 
   // A transfer must MOVE something. The server enforces this too; catching it here saves the user
-  // a round trip to be told they changed nothing.
-  const movesHolder = employeeId !== '' && employeeId !== current?.assignedToEmployeeId;
+  // a round trip to be told they changed nothing. A new holder is a new employee, or a department
+  // at a place — and changing any of the department, the place or who signs for it is a new holder
+  // too: a move to another room, or the department signing again after its signer left.
+  const toDepartment = kind === 'department';
+  const held = current === null ? null : holderOfAssignment(current);
+  const movesHolder = toDepartment
+    ? departmentCustodianReady(department) &&
+      !(
+        held?.kind === 'department' &&
+        held.departmentId === department.departmentId &&
+        held.locationId === department.locationId &&
+        held.responsibleEmployeeId === department.responsibleEmployeeId
+      )
+    : employeeId !== '' && !(held?.kind !== 'department' && held?.employeeId === employeeId);
   const movesBranch = chosen !== '' && chosen !== asset.branchId;
+  // The new place is the target branch's: the asset's own, or the one chosen.
+  const placeBranch = chosen !== '' ? chosen : asset.branchId;
+  // A place does not travel: a department-held asset goes to another branch only to a new holder.
+  const strandsPlace = held?.kind === 'department' && movesBranch && !movesHolder;
+  // «إدارة» names a new holder in full — the department, its place and who signs — or sends
+  // nothing: a half-filled one beside a new branch would move the branch alone and keep the holder.
+  // A branch-only move is «موظف» with nobody picked.
+  const departmentUnfinished = toDepartment && !departmentCustodianReady(department);
 
   const body = {
-    ...(movesHolder ? { toEmployeeId: employeeId } : {}),
+    ...(movesHolder
+      ? toDepartment
+        ? {
+            toDepartment: {
+              departmentId: department.departmentId,
+              locationId: department.locationId,
+              responsibleEmployeeId: department.responsibleEmployeeId,
+            },
+          }
+        : { toEmployeeId: employeeId }
+      : {}),
     ...(movesBranch ? { toBranchId: chosen } : {}),
     ...(at === '' ? {} : { at: new Date(at) }),
     ...(movesHolder && condition.trim() !== '' ? { conditionOnIssue: condition.trim() } : {}),
@@ -582,7 +697,11 @@ export const TransferAssetDialog = ({
   // steps as a hand-over. A move between branches in the same hands needs no new paper.
   const payloadKey = JSON.stringify(body);
   const printed = printedFor === payloadKey;
-  const canSubmit = (movesHolder || movesBranch) && (!movesHolder || printed);
+  const canSubmit =
+    (movesHolder || movesBranch) &&
+    (!movesHolder || printed) &&
+    !strandsPlace &&
+    !departmentUnfinished;
 
   const print = async (): Promise<void> => {
     setError(null);
@@ -591,7 +710,7 @@ export const TransferAssetDialog = ({
       try {
         return await api.previewCustodyReceipt({
           kind: 'transfer',
-          employeeId,
+          ...holderBody(kind, employeeId, department),
           lines: [
             {
               assetId: asset.id,
@@ -674,18 +793,46 @@ export const TransferAssetDialog = ({
               : t('it.custody.receipt.transferPrintFirst')}
         </p>
       )}
-      <Field label={t('it.custody.newHolder')}>
-        <EmployeePicker
-          value={employeeId}
-          valueLabel={employeeLabel}
-          onChange={(id, label) => {
-            setEmployeeId(id);
-            setEmployeeLabel(label);
-          }}
-          ariaLabel={t('it.custody.newHolder')}
-          handOver
+      <CustodianKindSwitch value={kind} onChange={setKind} />
+      {toDepartment ? (
+        <DepartmentCustodianFields
+          value={department}
+          onChange={setDepartment}
+          branchId={placeBranch}
+          branchMissingHint={t('it.custody.department.locationAfterDevice')}
         />
-      </Field>
+      ) : (
+        <Field label={t('it.custody.newHolder')}>
+          <EmployeePicker
+            value={employeeId}
+            valueLabel={employeeLabel}
+            onChange={(id, label) => {
+              setEmployeeId(id);
+              setEmployeeLabel(label);
+            }}
+            ariaLabel={t('it.custody.newHolder')}
+            handOver
+          />
+        </Field>
+      )}
+      {departmentUnfinished && (
+        <p
+          role="note"
+          data-transfer-department-unfinished
+          className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          {t('it.custody.department.completeHolder')}
+        </p>
+      )}
+      {strandsPlace && (
+        <p
+          role="note"
+          data-transfer-strands-place
+          className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          {t('it.custody.department.placeStays')}
+        </p>
+      )}
       <Field
         label={t('it.custody.newBranch')}
         error={unread !== null ? errorMessage(unread, locale) : undefined}

@@ -6,8 +6,9 @@
 // at the other end; no paper («لا، السجل كفاية»), the asset's history is the record; several at
 // once («كذا حاجة مرة واحدة»), to ONE branch; and an asset held by an employee moves too — «ينتقل
 // مع عهدته»: its custody goes with it and the holder keeps it, which the dialog says before it is
-// sent. What the server would refuse — disposed, under maintenance, already in the chosen branch —
-// is shown as staying, with the reason, and left out of the request (`lib/asset-branch-move.ts`);
+// sent. What the server would refuse — disposed, under maintenance, already in the chosen branch,
+// held by a department at a place in its branch (2026-11-19: «انقله بـ«نقل»») — is shown as
+// staying, with the reason, and left out of the request (`lib/asset-branch-move.ts`);
 // the server still decides the rest, all or none. The branches offered are the ones the SERVER says
 // the caller's `itAsset.assign` reaches (`GET /it/assets/move-targets`) — it answers 403 for any
 // other, and `me` cannot tell them apart (`lib/branch-move-targets.ts`).
@@ -32,6 +33,7 @@ import {
   sharedBranch,
 } from '../lib/asset-branch-move';
 import { branchMoveTargets } from '../lib/branch-move-targets';
+import { holderName, holderOfAsset, personWithCode } from '../lib/custody-holder';
 
 /** `datetime-local` wants `YYYY-MM-DDTHH:mm`; an empty string means "let the server stamp now". */
 const nowLocal = (): string => {
@@ -211,7 +213,7 @@ export const AssetBranchMoveDialog = ({
           <ul className="max-h-72 divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
             {assets.map((asset) => {
               const verdict = assetMoveEligibility(asset, chosen);
-              const holder = asset.holder;
+              const holder = asset.holder === null ? null : holderOfAsset(asset.holder);
               return (
                 <li
                   key={asset.id}
@@ -233,11 +235,13 @@ export const AssetBranchMoveDialog = ({
                         ? t('it.assets.move.inStore')
                         : t('it.assets.move.heldBy', {
                             name:
-                              holder.employeeName === null
-                                ? (holder.employeeCode ?? holder.employeeId)
-                                : holder.employeeCode === null
-                                  ? holder.employeeName
-                                  : `${holder.employeeName} (${holder.employeeCode})`,
+                              holder.kind === 'department'
+                                ? holderName(holder, locale, t)
+                                : personWithCode(
+                                    holder.employeeName,
+                                    holder.employeeCode,
+                                    holder.employeeId,
+                                  ),
                           })}
                     </p>
                   </div>

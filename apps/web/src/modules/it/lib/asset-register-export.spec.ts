@@ -13,12 +13,14 @@ import {
   type AssetRegisterContext,
 } from './asset-register-export';
 import { warrantyWithin } from './warranty-window';
+import { departmentHolder, employeeHolder } from '../custody-holder-fixtures';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
 
 const context: AssetRegisterContext = {
   t,
+  locale: 'ar',
   categoryName: new Map([
     ['c-laptop', 'لاب توب'],
     ['c-printer', 'طابعات'],
@@ -26,12 +28,12 @@ const context: AssetRegisterContext = {
   branchName: new Map([['b-hq', 'المهندسين']]),
 };
 
-const HOLDER = {
+const HOLDER = employeeHolder({
   employeeId: 'e-1',
   employeeCode: '0100052',
   employeeName: 'محمد أحمد علي',
   assignedAt: '2026-10-07T09:00:00.000Z',
-};
+});
 
 const asset = (over: Partial<ItAssetDto> = {}): ItAssetDto =>
   ({
@@ -76,6 +78,8 @@ describe('the asset register’s columns', () => {
       'الحالة',
       'المستلِم',
       'كود الموظف',
+      'الموقع',
+      'المسؤول',
     ]);
   });
 
@@ -89,7 +93,27 @@ describe('the asset register’s columns', () => {
       t('it.assets.status.assigned'),
       'محمد أحمد علي',
       '0100052',
+      '',
+      '',
     ]);
+  });
+
+  // 2026-11-19 — «في عهدة إدارة …»: the department as the holder, its place and its signer in
+  // columns of their own, and no employee code (the department has none).
+  it('write a department holder as «إدارة …», with its place and who signed for it', () => {
+    expect(assetRegisterLine(asset({ holder: departmentHolder() }), context, '').slice(6)).toEqual([
+      'إدارة تقنية المعلومات',
+      '',
+      'غرفة السيرفرات',
+      'شريف ممدوح فاروق (0100077)',
+    ]);
+    // HR's own «إدارة …» in the name is not doubled.
+    const named = departmentHolder({
+      departmentName: { ar: 'إدارة تقنية المعلومات', en: 'IT' },
+    });
+    expect(assetRegisterLine(asset({ holder: named }), context, '')[6]).toBe(
+      'إدارة تقنية المعلومات',
+    );
   });
 
   it('leave a blank cell in the sheet where the table shows a dash', () => {
@@ -99,7 +123,7 @@ describe('the asset register’s columns', () => {
       context,
       '',
     );
-    expect(line.slice(2)).toEqual(['', '', '', t('it.assets.status.inStock'), '', '']);
+    expect(line.slice(2)).toEqual(['', '', '', t('it.assets.status.inStock'), '', '', '', '']);
   });
 
   it('write a holder HR cannot name by the id the row carries — never a guess', () => {
@@ -108,7 +132,7 @@ describe('the asset register’s columns', () => {
       context,
       '',
     );
-    expect(line.slice(6)).toEqual(['e-9', '']);
+    expect(line.slice(6)).toEqual(['e-9', '', '', '']);
   });
 });
 
@@ -216,6 +240,26 @@ describe('the filters the printed page names', () => {
     );
     expect(assetRegisterFilters(screen).warranty).toBeNull();
   });
+
+  it('name «جهة الاستلام», the department and the place — or say one is set', () => {
+    const filters = assetRegisterFilters({
+      ...screen,
+      holderKind: 'department',
+      departmentId: 'd-it',
+      departmentName: new Map([['d-it', 'تقنية المعلومات — أسيوط']]),
+      locationId: 'l-gone',
+      locationName: new Map(),
+    });
+    expect(filters).toMatchObject({
+      holderKind: 'department',
+      department: 'تقنية المعلومات — أسيوط',
+      location: '',
+    });
+    expect(assetRegisterSubtitle(t, { ...filters, asOf: 'اليوم' })).toBe(
+      'كل الحالات · كل الفئات · كل الفروع · جهة الاستلام: إدارة · الإدارة: تقنية المعلومات — أسيوط · الموقع: موقع محدد · بتاريخ اليوم',
+    );
+    expect(assetRegisterFilters({ ...screen, holderKind: 'nobody' }).holderKind).toBeNull();
+  });
 });
 
 describe('the printed asset register', () => {
@@ -236,6 +280,6 @@ describe('the printed asset register', () => {
 
   it('marks a blank box with a dash on paper — a serial it lacks, a holder nobody is', () => {
     expect(report.rows[1]?.[3]).toBe('—');
-    expect(report.rows[1]?.slice(6)).toEqual(['—', '—']);
+    expect(report.rows[1]?.slice(6)).toEqual(['—', '—', '—', '—']);
   });
 });

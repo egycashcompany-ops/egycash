@@ -14,6 +14,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { detailKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { AssetDetailPage } from './AssetDetailPage';
+import { NO_DEPARTMENT } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -67,6 +68,8 @@ const HELD: ItAssetDto = {
   specs: null,
   accessories: [],
   holder: {
+    kind: 'employee',
+    ...NO_DEPARTMENT,
     employeeId: 'e-1',
     employeeCode: '0100052',
     employeeName: 'وليد صفوت جلال',

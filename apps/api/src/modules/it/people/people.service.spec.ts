@@ -175,8 +175,9 @@ describe('a person the reader’s registers name — «المُسلِّم يرى
 
     const result = await itPeopleService.get(id, scopes, registers);
 
+    // Holding the asset, or having signed for a department that holds it (2026-11-19).
     expect(mocks.countAssetIntervals).toHaveBeenCalledWith(
-      { assignedToEmployeeId: person },
+      { $or: [{ assignedToEmployeeId: person }, { responsibleEmployeeId: person }] },
       assetScope,
     );
     // The person read UNSCOPED — neither a scope nor the grants' union — and status `all`.
@@ -213,7 +214,11 @@ describe('a person the reader’s registers name — «المُسلِّم يرى
     await expect(itPeopleService.get(id, scopes, registers)).resolves.toMatchObject({
       employeeId: id,
     });
-    expect(mocks.countMovements).toHaveBeenCalledWith({ employeeId: person }, storeScope);
+    // Issued to them, or a department's memo they signed for.
+    expect(mocks.countMovements).toHaveBeenCalledWith(
+      { $or: [{ employeeId: person }, { responsibleEmployeeId: person }] },
+      storeScope,
+    );
   });
 
   it('asks only the registers the reader holds a grant of', async () => {

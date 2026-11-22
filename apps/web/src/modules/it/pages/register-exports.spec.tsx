@@ -24,6 +24,7 @@ import { AssetsListPage } from './AssetsListPage';
 import { MobileLinesPage } from './MobileLinesPage';
 import { ConsumablesPage } from './ConsumablesPage';
 import { ConsumableMovementsPage } from './ConsumableMovementsPage';
+import { EMPLOYEE_INTERVAL } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -62,6 +63,7 @@ const me = (permissions: string[]): MeDto =>
 const interval: ItAssetAssignmentDto = {
   id: 'a-1',
   assetId: 'asset-1',
+  ...EMPLOYEE_INTERVAL,
   assignedToEmployeeId: 'e-1',
   assignedToEmployeeCode: '0100052',
   assignedToEmployeeName: 'محمد أحمد علي',

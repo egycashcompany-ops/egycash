@@ -59,6 +59,41 @@ its entry here in the same PR.
 
 ### Added
 
+- **IT: assets and consumables handed to a DEPARTMENT at a PLACE.** «عند تسليم الأصول والمستهلكات
+  يكون فى إمكانية إنى مأسلمش لموظف ولكن أعينها فى مكان بس تبقى على عهده الإدارة .. زى السيرفرات
+  والكاميرات والسويتشات وهكذا».
+  - **«المواقع»** — a new per-branch list of places («غرفة السيرفرات», «غرفة الكاميرات») on the
+    catalogs page, its own collection `it_locations` (`/it/locations`) under `itCatalog.manage`
+    within the caller's branch reach: names unique per branch, a place never changes branch, and it
+    is retired, never deleted — refused while assets are held there. The tab shows what each place
+    holds now.
+  - **The hand-over names an employee or a department** — «جهة الاستلام: موظف / إدارة». A
+    department hand-over names the department (any active department of any branch, IT
+    preselected), the place (in the assets' branch — one place, so one branch, per paper) and the
+    department's responsible person (any current employee), who signs. The same goes for a single
+    asset's assign, a transfer (`toDepartment`) and a consumables issue (the place in the store's
+    branch). Refusals are 422 on the request's own field (`body.department.departmentId` /
+    `.locationId` — `UNKNOWN`, `INACTIVE`, `OTHER_BRANCH`), and a responsible person who has left is
+    refused.
+  - **The department custody receipt and memo** — the same papers and number series, naming the
+    department and the place («ليكون في عهدة إدارة … بموقع …», «لصالح إدارة … بموقع …») and signed by
+    the responsible person; the signed copy uploads as any paper's. Every paper answers
+    `custodian` (null on an employee's); its `employeeId` is the signer.
+  - **Custody holds it as the department's, never the signer's**: `holderKind` and the
+    department, place and signer on the custody interval (old intervals read as an employee's, no
+    migration). The asset list, the custody register and the ledger show «في عهدة إدارة … — …» and
+    filter by department, place and holder kind; «حالة المستلِم», the leavers' panel and a person's
+    own open custody stay employee custody; the responsible person's page lists, apart, what they
+    signed for. A change of department, place or signer is a new holder and a new paper — a room
+    change and re-signing are transfers. A place does not travel: «نقل إلى فرع» refuses a
+    department-held asset, and a single «نقل» to another branch must name the holder there. A
+    responsible person who leaves is flagged in the audit (`responsibleExited`); the custody stands.
+  - The dashboard's «مُسلَّم» counts department custody and «آخر الحركات» names the department. The
+    asset's free-text `location` is relabelled «وصف المكان». The asset custody events carry the
+    department's fields, and `employeeId` is null on a department's `assigned` / `returned`.
+    Mobile lines are not handed to departments. ADR-021 gained an addendum; IT design §2.4.1, §2.5,
+    §2.5.1, §2.11, FR-22 and §17 (2026-11-19).
+
 - **IT consumables: the printer's counter, required when a toner goes in.** «عند صرف الصنف : حبارة
   أو النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة —
   يعني إجبارى أدخل عدد الورق المطبوع عند تركيب الحبارة», and «وأكيد مش هيدخل عدد ورق أقل أو مساوي

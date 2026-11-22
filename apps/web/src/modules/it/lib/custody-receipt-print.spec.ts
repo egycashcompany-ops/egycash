@@ -72,6 +72,7 @@ const paper = (
   nationalIdVisible: true,
   section: { ar: 'التسويات', en: 'Settlements' },
   department: { ar: 'الإدارة المالية', en: 'Finance' },
+  custodian: null,
   lines: [LAPTOP],
   ...overrides,
 });
@@ -567,5 +568,71 @@ describe('the specifications table keeps only what was typed', () => {
       group: 'System',
       rows: [{ label: 'Manufacturer / Model', value: 'Dell' }],
     });
+  });
+});
+
+// 2026-11-19 — «في عهدة إدارة … بموقع …»: a DEPARTMENT CUSTODY paper, signed by the department's
+// responsible person. Only the statement, the closing and the title change; the undertaking is the
+// form's, word for word, and the number series is the same.
+describe('a department custody paper', () => {
+  const custodian = {
+    departmentId: '000000000000000000000d01',
+    departmentName: { ar: 'تقنية المعلومات', en: 'Information Technology' },
+    locationId: '000000000000000000000f01',
+    locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+  };
+  const signer = {
+    employeeName: 'شريف ممدوح فاروق',
+    employeeCode: '0100077',
+    jobTitle: { ar: 'مهندس شبكات', en: 'Network engineer' },
+  };
+  const html = buildCustodyReceiptHtml(paper({ ...signer, custodian }), LABELS);
+
+  it('says the signer acknowledges FOR the department, and where the device is kept', () => {
+    expect(html).toContain('أقر أنا / <span class="fill"><bdi>شريف ممدوح فاروق</bdi></span>');
+    expect(html).toContain(
+      '، بصفتي المسؤول عن إدارة <span class="fill"><bdi>تقنية المعلومات</bdi></span> بأنني قد استلمت',
+    );
+    expect(html).toContain(
+      'برقم مسلسل <span class="fill whole"><bdi>B600DN3</bdi></span> ليكون في عهدة إدارة <span class="fill"><bdi>تقنية المعلومات</bdi></span> بموقع <span class="fill"><bdi>غرفة السيرفرات</bdi></span> ومواصفاته كالتالي:',
+    );
+  });
+
+  it('keeps the undertaking word for word, and signs «عن إدارة» under the name', () => {
+    expect(html).toContain(`<p class="undertaking">${RECEIPT_UNDERTAKING}</p>`);
+    expect(html).toContain('<div>الاسم: شريف ممدوح فاروق</div>');
+    expect(html).toContain('<div>عن إدارة: تقنية المعلومات</div>');
+  });
+
+  it('is titled by the department, under the same F-14 number', () => {
+    expect(html).toContain(
+      '<title>إقرار استلام EGYCASH-IT-F-14-0007 — إدارة تقنية المعلومات</title>',
+    );
+  });
+
+  it('writes HR’s «إدارة …» once, never «إدارة إدارة …»', () => {
+    const named = buildCustodyReceiptHtml(
+      paper({
+        custodian: { ...custodian, departmentName: { ar: 'إدارة الخزينة', en: 'Treasury' } },
+      }),
+      LABELS,
+    );
+    expect(named).toContain('عهدة إدارة <span class="fill"><bdi>الخزينة</bdi></span>');
+    expect(named).not.toContain('إدارة إدارة');
+  });
+
+  it('leaves the pen a line where the department or the place could not be named', () => {
+    const unnamed = buildCustodyReceiptHtml(
+      paper({ custodian: { ...custodian, departmentName: null, locationName: null } }),
+      LABELS,
+    );
+    expect(unnamed).toContain('بموقع <span class="fill">....................</span>');
+  });
+
+  it('an employee’s paper says none of it', () => {
+    const own = buildCustodyReceiptHtml(paper(), LABELS);
+    expect(own).not.toContain('بصفتي المسؤول');
+    expect(own).not.toContain('ليكون في عهدة');
+    expect(own).not.toContain('عن إدارة');
   });
 });

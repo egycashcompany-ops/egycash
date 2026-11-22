@@ -35,6 +35,13 @@
 // تانية», the register's asset it was installed on. That makes it a record that names a person, and
 // the workforce reset KEEPS it: it is the stock ledger, and deleting it would leave every on-hand
 // figure without the movements that explain it.
+//
+// Or — since 2026-11-19 — an issue goes to a DEPARTMENT kept at a PLACE, signed for by its
+// responsible person («صرف لإدارة»: «الأصول أو المستهلكات الخاصة بالإدارة»). Then `employeeId` is
+// NULL — it means who the items went to, and they went to the department — and the row carries
+// `departmentId`, `locationId` and `responsibleEmployeeId`, the memo's signer. The three keys are
+// present ONLY on such an issue (the counter keys' rule): every other row, and every row before,
+// has none, and reads «no department».
 import { Schema, model, type Types } from 'mongoose';
 import { IT_CONSUMABLE_MOVEMENT_KINDS, type ItConsumableMovementKind } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
@@ -49,8 +56,18 @@ export interface ItConsumableMovementDoc extends BaseDocFields {
   /** The item's store — fixed for the item's life, so the ledger is scoped with no join. */
   branchId: Types.ObjectId;
   byUserId: Types.ObjectId | null;
-  /** `issued`: who it went to; `returned`: who brought it back, when known. Null otherwise. */
+  /**
+   * `issued`: who it went to; `returned`: who brought it back, when known. Null otherwise — an
+   * issue to a department included: the department is who it went to, and its signer is
+   * `responsibleEmployeeId`, never this.
+   */
   employeeId: Types.ObjectId | null;
+  /** `issued` to a department: the platform department it went to. Absent on every other row. */
+  departmentId?: Types.ObjectId;
+  /** …the place («المواقع») it is kept at, in the store's branch… */
+  locationId?: Types.ObjectId;
+  /** …and who signed the memo for the department («المستلم عن الإدارة»). */
+  responsibleEmployeeId?: Types.ObjectId;
   /** `issued`: the asset it was installed on, when it was. Null otherwise. */
   assetId: Types.ObjectId | null;
   /**
@@ -68,7 +85,7 @@ export interface ItConsumableMovementDoc extends BaseDocFields {
   counterReset?: boolean;
   /** `issued`: `new` | `replacement`; `scrapped`: why, as written. Null otherwise. */
   reason: string | null;
-  /** `issued`: the memo the employee signed for it. */
+  /** `issued`: the memo signed for it — by the employee, or by the department's signer. */
   memoId: Types.ObjectId | null;
   notes: string | null;
   /**
@@ -92,6 +109,10 @@ const movementSchema = new Schema<ItConsumableMovementDoc>(
     branchId: { type: Schema.Types.ObjectId, required: true },
     byUserId: { type: Schema.Types.ObjectId, default: null },
     employeeId: { type: Schema.Types.ObjectId, default: null },
+    // No default: only an issue to a department carries them (the header).
+    departmentId: { type: Schema.Types.ObjectId },
+    locationId: { type: Schema.Types.ObjectId },
+    responsibleEmployeeId: { type: Schema.Types.ObjectId },
     assetId: { type: Schema.Types.ObjectId, default: null },
     // No empty array on every row: only a corrected issue carries it.
     installedOnBefore: { type: [Schema.Types.ObjectId], default: undefined },
@@ -115,6 +136,25 @@ movementSchema.index({ consumableId: 1, at: -1 }, { name: 'ix_consumable_at' });
 movementSchema.index({ branchId: 1, at: -1 }, { name: 'ix_branch_at' });
 // «وأتبدل لمين» — what a person was issued: the IT history page of an employee.
 movementSchema.index({ employeeId: 1, at: -1 }, { name: 'ix_employee_at' });
+// What went to a department, what went to a place («إيه اللي في غرفة السيرفرات»), and what a person
+// signed for on a department's behalf — the ledger's filters and the person page. Partial, so the
+// rows that name no department (every row before 2026-11-19) cost them nothing; a query uses one
+// when it names its field's id AND its type (`consumable.service.ts` ledgerFilter).
+movementSchema.index(
+  { departmentId: 1, at: -1 },
+  { name: 'ix_department_at', partialFilterExpression: { departmentId: { $type: 'objectId' } } },
+);
+movementSchema.index(
+  { locationId: 1, at: -1 },
+  { name: 'ix_location_at', partialFilterExpression: { locationId: { $type: 'objectId' } } },
+);
+movementSchema.index(
+  { responsibleEmployeeId: 1, at: -1 },
+  {
+    name: 'ix_responsible_at',
+    partialFilterExpression: { responsibleEmployeeId: { $type: 'objectId' } },
+  },
+);
 // «المستهلكات المركّبة عليه» — what was installed on an asset: its detail page. A printer's counter
 // timeline (its counted issues, in order) reads it too: a bounded scan of one asset's rows.
 movementSchema.index({ assetId: 1, at: -1 }, { name: 'ix_asset_at' });

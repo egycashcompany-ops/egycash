@@ -14,6 +14,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  type ItAssetAssignmentDto,
   type ItConsumableMovementDto,
   type ItMobileLineAssignmentDto,
   type ItPersonDto,
@@ -26,6 +27,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { ItEmployeeHistoryPage } from './ItEmployeeHistoryPage';
+import { IT_DEPARTMENT } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -127,11 +129,22 @@ const page = <T,>(items: T[], pageSize: number) => ({
   meta: { page: 1, pageSize, totalItems: items.length, totalPages: 1 },
 });
 
-const render = (permissions: string[]): string => {
+const render = (permissions: string[], signed: ItAssetAssignmentDto[] = []): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
   qc.setQueryData(detailKey('it', 'people', EMPLOYEE), PERSON);
+  // «عهد إدارات وقّع عليها» (2026-11-19): what departments hold on this person's signature.
+  qc.setQueryData(
+    listKey('it', 'custody', {
+      responsibleEmployeeId: EMPLOYEE,
+      open: true,
+      pageSize: 100,
+      sortBy: 'assignedAt',
+      sortDir: 'desc',
+    }),
+    page(signed, 100),
+  );
   const custody = (open: boolean) =>
     open
       ? { employeeId: EMPLOYEE, open, pageSize: 100, sortBy: 'assignedAt', sortDir: 'desc' }
@@ -220,5 +233,52 @@ describe('a person’s IT history — each section on its own register’s grant
     expect(SOURCE).toContain(
       "{can('itConsumable.view') && <EmployeeConsumablesCard employeeId={employeeId} />}",
     );
+  });
+});
+
+// 2026-11-19 — «عهد إدارات وقّع عليها»: a department's custody on this person's signature, in a
+// card of its own — never in their own custody above, and drawn only for a person who signs.
+describe('a person who signs for a department', () => {
+  const SERVER = {
+    id: 'a-9',
+    assetId: 'asset-9',
+    holderKind: 'department',
+    assignedToEmployeeId: null,
+    assignedToEmployeeCode: null,
+    assignedToEmployeeName: null,
+    ...IT_DEPARTMENT,
+    departmentName: { ...IT_DEPARTMENT.departmentName },
+    locationName: { ...IT_DEPARTMENT.locationName },
+    responsibleEmployeeId: EMPLOYEE,
+    assetCode: 'AST-00016',
+    assetName: 'Dell PowerEdge R740',
+    assetSerialNumber: null,
+    assignedByUserId: null,
+    assignedAt: '2026-11-19T09:00:00.000Z',
+    conditionOnIssue: null,
+    expectedReturnAt: null,
+    returnedAt: null,
+    returnedToUserId: null,
+    conditionOnReturn: null,
+    notes: null,
+    branchId: 'b-hq',
+    receiptId: null,
+    receiptSigned: null,
+    version: 0,
+    createdAt: '2026-11-19T09:00:00.000Z',
+    updatedAt: '2026-11-19T09:00:00.000Z',
+  } satisfies ItAssetAssignmentDto;
+
+  it('shows the department’s devices in a card of their own, with a link to the register', () => {
+    const html = render(['itAsset.view'], [SERVER]);
+    expect(html).toContain(ar('it.people.signedDepartments.title'));
+    expect(html).toContain('AST-00016');
+    expect(html).toContain('إدارة تقنية المعلومات');
+    expect(html).toContain('الموقع: غرفة السيرفرات');
+    expect(html).toContain(`href="/it/custody?responsible=${EMPLOYEE}&amp;open=true"`);
+  });
+
+  it('draws no such card for a person who signs for none', () => {
+    expect(render(['itAsset.view'])).not.toContain(ar('it.people.signedDepartments.title'));
   });
 });

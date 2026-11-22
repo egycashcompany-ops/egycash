@@ -9296,6 +9296,79 @@ const en: Record<string, string> = {
   'it.assets.move.refused.disposed': 'Disposed — stays',
   'it.assets.move.refused.underMaintenance': 'Under maintenance — stays',
   'it.assets.move.refused.alreadyThere': 'Already in this branch',
+  'it.assets.move.refused.heldAtLocation':
+    'Held by a department at a place in this branch — move it with «Transfer»',
+  // Department custody at a place (2026-11-19).
+  'it.custody.department.receiverKind': 'Received by',
+  'it.custody.department.kind.employee': 'Employee',
+  'it.custody.department.kind.department': 'Department',
+  'it.custody.department.anyKind': 'Any receiver',
+  'it.custody.department.department': 'Department',
+  'it.custody.department.anyDepartment': 'Any department',
+  'it.custody.department.location': 'Place',
+  'it.custody.department.anyLocation': 'Any place',
+  'it.custody.department.responsible': 'Responsible',
+  'it.custody.department.responsibleReceiver': 'Responsible receiver',
+  'it.custody.department.responsibleHint':
+    'Signs the acknowledgment for the department — any current employee.',
+  'it.custody.department.name': '{{department}} department',
+  'it.custody.department.heldAt': '{{department}} department — {{location}}',
+  'it.custody.department.atLocation': 'Place: {{location}}',
+  'it.custody.department.responsibleIs': 'Responsible: {{name}}',
+  'it.custody.department.signedBy': 'signed by {{name}}',
+  'it.custody.department.noLocations':
+    'No active places in this branch — add them under Catalogs › Places.',
+  'it.custody.department.locationAfterDevice':
+    "Add a device first: the place is chosen from the devices' branch.",
+  'it.custody.department.locationAfterItem':
+    "Choose an item first: the place is chosen from the store's branch.",
+  'it.custody.department.mixedBranches':
+    "A department hand-over lists one branch's devices — line {{lines}} is in another branch.",
+  'it.custody.department.placeStays':
+    'Held by a department at a place in its branch: name a place in the new branch, or an employee.',
+  'it.custody.department.completeHolder':
+    'Choose the department, the place and the responsible person.',
+  'it.custody.department.export.holderKindIs': 'Received by: {{kind}}',
+  'it.custody.department.export.departmentIs': 'Department: {{name}}',
+  'it.custody.department.export.locationIs': 'Place: {{name}}',
+  'it.custody.department.export.responsibleIs': 'Signed for a department by: {{name}}',
+  'it.custody.department.export.oneDepartment': 'a chosen department',
+  'it.custody.department.export.oneLocation': 'a chosen place',
+  'it.locations.tab': 'Places',
+  'it.locations.add': 'Add place',
+  'it.locations.edit': 'Edit place',
+  'it.locations.dialogHint': "Where a department keeps what it holds — each branch's own list.",
+  'it.locations.branchHint': 'A place stays in its branch; a new one is made for another.',
+  'it.locations.branchFixed': 'A place does not move to another branch.',
+  'it.locations.retireHint':
+    'Retired places stay on the rows written with them; retiring is refused while assets are held there.',
+  'it.locations.retired': 'Retired',
+  'it.locations.created': 'Place added',
+  'it.locations.updated': 'Place saved',
+  'it.locations.search': 'Search places by name or code',
+  'it.locations.empty': 'No places yet.',
+  'it.locations.columns.name': 'Name',
+  'it.locations.columns.heldAssets': 'Held there now',
+  'it.people.signedDepartments.title': 'Department custody they signed for',
+  'it.people.signedDepartments.hint':
+    "What departments hold now on this person's signature — the department's custody, not theirs.",
+  'it.people.signedDepartments.empty': 'No department holds a device on their signature now.',
+  'it.people.signedDepartments.openRegister': 'Open in the custody register',
+  'it.people.signedDepartments.consumablesTitle': 'Department issues they signed for',
+  'it.people.signedDepartments.consumablesHint':
+    'Consumables issued to a department on a memo this person signed.',
+  'it.people.signedDepartments.consumablesEmpty': 'No department issue signed by them.',
+  'it.consumables.issue.titleDepartment': 'Issue to a department',
+  'it.consumables.issue.printsMemoDepartment':
+    "The issue is recorded and its memo printed in one step; the department's responsible person signs it, then its signed copy is uploaded.",
+  'it.consumables.issue.departmentFilled':
+    'The department and its place were filled because the device on item {{n}} is held there.',
+  'it.consumables.issue.deviceClearedDepartment':
+    'The device was removed from item {{lines}} because the department chosen before holds it.',
+  'it.consumables.issue.devicesClearedDepartment':
+    'The devices were removed from items {{lines}} because the department chosen before holds them.',
+  'it.consumables.issuedDepartment':
+    "Issued. Upload the memo once the department's responsible person signs it.",
   'it.assets.move.leftOut': 'The assets marked as staying are left out; the rest move.',
   'it.assets.move.noTarget': 'There is no other branch you may move assets to.',
   'it.assets.move.theBranch': 'the chosen branch',
@@ -9339,7 +9412,7 @@ const en: Record<string, string> = {
   'it.assets.fields.manufacturer': 'Manufacturer',
   'it.assets.fields.model': 'Model',
   'it.assets.fields.branch': 'Branch',
-  'it.assets.fields.location': 'Location',
+  'it.assets.fields.location': 'Place description',
   'it.assets.fields.purchaseDate': 'Purchase date',
   'it.assets.fields.purchaseCost': 'Purchase cost',
   'it.assets.fields.purchaseVendor': 'Supplier',
@@ -10187,6 +10260,13 @@ const en: Record<string, string> = {
     'The devices {{name}} holds could not be loaded. Type to search, or retry.',
   'it.assets.pickerHolderErrorAnon':
     'The chosen employee’s devices could not be loaded. Type to search, or retry.',
+  // A department's box (2026-11-19) — its devices at its place, before it is named.
+  'it.assets.pickerDepartmentHintAnon': 'The devices the chosen department holds now',
+  'it.assets.pickerDepartmentNoneAnon':
+    'The chosen department holds no device now. This field may stay empty.',
+  'it.assets.pickerDepartmentErrorAnon':
+    'The chosen department’s devices could not be loaded. Type to search, or retry.',
+  'it.assets.pickerDepartmentOnly': 'The department’s devices only',
   'it.assets.pickerSearchError': 'The search could not be completed. Retry.',
 
   // FR-19 — mobile lines (خطوط المحمول): the register, the network cards, the hand-over and its
@@ -24871,6 +24951,75 @@ const ar: Record<string, string> = {
   'it.assets.move.refused.disposed': 'مستبعَد — لا يُنقل',
   'it.assets.move.refused.underMaintenance': 'تحت الصيانة — لا يُنقل',
   'it.assets.move.refused.alreadyThere': 'في هذا الفرع بالفعل',
+  'it.assets.move.refused.heldAtLocation': 'في عهدة إدارة بموقع في هذا الفرع — انقله بـ«نقل»',
+  // عهدة الإدارة بموقع (2026-11-19).
+  'it.custody.department.receiverKind': 'جهة الاستلام',
+  'it.custody.department.kind.employee': 'موظف',
+  'it.custody.department.kind.department': 'إدارة',
+  'it.custody.department.anyKind': 'كل جهات الاستلام',
+  'it.custody.department.department': 'الإدارة',
+  'it.custody.department.anyDepartment': 'كل الإدارات',
+  'it.custody.department.location': 'الموقع',
+  'it.custody.department.anyLocation': 'كل المواقع',
+  'it.custody.department.responsible': 'المسؤول',
+  'it.custody.department.responsibleReceiver': 'المسؤول المستلم',
+  'it.custody.department.responsibleHint':
+    'يوقّع الإقرار نيابةً عن الإدارة، ويجوز أن يكون أي موظف حالي.',
+  'it.custody.department.name': 'إدارة {{department}}',
+  'it.custody.department.heldAt': 'إدارة {{department}} — {{location}}',
+  'it.custody.department.atLocation': 'الموقع: {{location}}',
+  'it.custody.department.responsibleIs': 'المسؤول: {{name}}',
+  'it.custody.department.signedBy': 'بتوقيع {{name}}',
+  'it.custody.department.noLocations':
+    'لا توجد مواقع نشطة في هذا الفرع؛ تُضاف من «التصنيفات» ← «المواقع».',
+  'it.custody.department.locationAfterDevice': 'أضف جهازًا أولًا؛ فالموقع يُختار من فرع الأجهزة.',
+  'it.custody.department.locationAfterItem': 'اختر صنفًا أولًا؛ فالموقع يُختار من فرع المخزن.',
+  'it.custody.department.mixedBranches':
+    'إقرار الإدارة يضم أجهزة فرع واحد فقط، والجهاز رقم {{lines}} في فرع آخر.',
+  'it.custody.department.placeStays':
+    'هذا الأصل في عهدة إدارة بموقع في فرعه؛ حدِّد موقعًا في الفرع الجديد أو موظفًا.',
+  'it.custody.department.completeHolder': 'حدِّد الإدارة والموقع والمسؤول.',
+  'it.custody.department.export.holderKindIs': 'جهة الاستلام: {{kind}}',
+  'it.custody.department.export.departmentIs': 'الإدارة: {{name}}',
+  'it.custody.department.export.locationIs': 'الموقع: {{name}}',
+  'it.custody.department.export.responsibleIs': 'وقّع عن الإدارة: {{name}}',
+  'it.custody.department.export.oneDepartment': 'إدارة محددة',
+  'it.custody.department.export.oneLocation': 'موقع محدد',
+  'it.locations.tab': 'المواقع',
+  'it.locations.add': 'إضافة موقع',
+  'it.locations.edit': 'تعديل الموقع',
+  'it.locations.dialogHint': 'المكان الذي تحفظ فيه الإدارة ما في عهدتها، ولكل فرع قائمته.',
+  'it.locations.branchHint': 'يبقى الموقع في فرعه؛ ويُضاف موقع جديد لفرع آخر.',
+  'it.locations.branchFixed': 'لا يُنقل الموقع إلى فرع آخر.',
+  'it.locations.retireHint':
+    'يبقى الموقع الموقوف ظاهرًا في السجلات المكتوبة به، ويُرفض إيقافه ما دامت فيه أصول في العهدة.',
+  'it.locations.retired': 'موقوف',
+  'it.locations.created': 'تمت إضافة الموقع',
+  'it.locations.updated': 'تم حفظ الموقع',
+  'it.locations.search': 'ابحث في المواقع بالاسم أو الكود',
+  'it.locations.empty': 'لا توجد مواقع بعد.',
+  'it.locations.columns.name': 'الاسم',
+  'it.locations.columns.heldAssets': 'في عهدته الآن',
+  'it.people.signedDepartments.title': 'عهد إدارات وقّع عليها',
+  'it.people.signedDepartments.hint':
+    'ما في عهدة الإدارات الآن بتوقيع هذا الموظف؛ وهي عهدة الإدارة لا عهدته الشخصية.',
+  'it.people.signedDepartments.empty': 'لا توجد أجهزة في عهدة إدارة بتوقيعه حاليًا.',
+  'it.people.signedDepartments.openRegister': 'عرضها في سجل العهد',
+  'it.people.signedDepartments.consumablesTitle': 'مستهلكات صُرفت لإدارات بتوقيعه',
+  'it.people.signedDepartments.consumablesHint':
+    'المستهلكات المصروفة لإدارة بمذكرة وقّع عليها هذا الموظف.',
+  'it.people.signedDepartments.consumablesEmpty': 'لا توجد مستهلكات صُرفت لإدارة بتوقيعه.',
+  'it.consumables.issue.titleDepartment': 'صرف لإدارة',
+  'it.consumables.issue.printsMemoDepartment':
+    'يُسجَّل الصرف وتُطبع مذكرته في خطوة واحدة؛ يوقّع عليها المسؤول عن الإدارة، ثم تُرفع صورتها الموقّعة.',
+  'it.consumables.issue.departmentFilled':
+    'اختيرت الإدارة وموقعها تلقائيًا لأن الجهاز المختار في الصنف {{n}} في عهدتها.',
+  'it.consumables.issue.deviceClearedDepartment':
+    'أُزيل الجهاز من الصنف {{lines}} لأنه في عهدة الإدارة المختارة سابقًا.',
+  'it.consumables.issue.devicesClearedDepartment':
+    'أُزيلت الأجهزة من الأصناف {{lines}} لأنها في عهدة الإدارة المختارة سابقًا.',
+  'it.consumables.issuedDepartment':
+    'تم الصرف. ارفع صورة المذكرة بعد توقيع المسؤول عن الإدارة عليها.',
   'it.assets.move.leftOut': 'تُستبعد من النقل الأصول المعلَّمة بأنها لا تُنقل، ويُنقل الباقي.',
   'it.assets.move.noTarget': 'لا يوجد فرع آخر لديك صلاحية نقل الأصول إليه.',
   'it.assets.move.theBranch': 'الفرع المختار',
@@ -24914,7 +25063,7 @@ const ar: Record<string, string> = {
   'it.assets.fields.manufacturer': 'الشركة المصنِّعة',
   'it.assets.fields.model': 'الموديل',
   'it.assets.fields.branch': 'الفرع',
-  'it.assets.fields.location': 'الموقع',
+  'it.assets.fields.location': 'وصف المكان',
   'it.assets.fields.purchaseDate': 'تاريخ الشراء',
   'it.assets.fields.purchaseCost': 'تكلفة الشراء',
   'it.assets.fields.purchaseVendor': 'المورِّد',
@@ -25741,6 +25890,13 @@ const ar: Record<string, string> = {
     'تعذّر تحميل الأجهزة التي في عهدة {{name}}؛ اكتب للبحث، أو أعد المحاولة.',
   'it.assets.pickerHolderErrorAnon':
     'تعذّر تحميل أجهزة الموظف المختار؛ اكتب للبحث، أو أعد المحاولة.',
+  // مربع أجهزة الإدارة (2026-11-19): أجهزتها في موقعها، قبل أن تُسمّى.
+  'it.assets.pickerDepartmentHintAnon': 'الأجهزة التي في عهدة الإدارة المختارة الآن',
+  'it.assets.pickerDepartmentNoneAnon':
+    'لا يوجد في عهدة الإدارة المختارة أي جهاز الآن، ويمكن ترك هذا الحقل فارغًا.',
+  'it.assets.pickerDepartmentErrorAnon':
+    'تعذّر تحميل أجهزة الإدارة المختارة؛ اكتب للبحث، أو أعد المحاولة.',
+  'it.assets.pickerDepartmentOnly': 'أجهزة الإدارة فقط',
   'it.assets.pickerSearchError': 'تعذّر إتمام البحث؛ أعد المحاولة.',
 
   // FR-19 — خطوط المحمول: السجل، وبطاقات الشبكات، والتسليم وإقرار الاستلام.

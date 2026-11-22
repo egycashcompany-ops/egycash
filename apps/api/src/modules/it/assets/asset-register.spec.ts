@@ -27,8 +27,11 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   distinctNames: vi.fn(),
   findIntervals: vi.fn(),
+  listOpenWhere: vi.fn(),
   getDirectoryEmployees: vi.fn(),
   activeAssetIds: vi.fn(),
+  findDepartments: vi.fn(),
+  findLocations: vi.fn(),
 }));
 
 vi.mock('../../../platform/directory', () => ({
@@ -38,7 +41,16 @@ vi.mock('./asset.repository', () => ({
   itAssetRepository: { list: mocks.list, distinctNames: mocks.distinctNames },
 }));
 vi.mock('./assignment.repository', () => ({
-  itAssetAssignmentRepository: { findByIdsSystem: mocks.findIntervals },
+  itAssetAssignmentRepository: {
+    findByIdsSystem: mocks.findIntervals,
+    listOpenWhere: mocks.listOpenWhere,
+  },
+}));
+vi.mock('../../../platform/organization', () => ({
+  departmentRepository: { findByIdsSystem: mocks.findDepartments },
+}));
+vi.mock('../locations/location.repository', () => ({
+  itLocationRepository: { findByIdsSystem: mocks.findLocations },
 }));
 vi.mock('../maintenance/order.repository', () => ({
   itMaintenanceOrderRepository: { activeAssetIds: mocks.activeAssetIds },
@@ -114,11 +126,45 @@ const labels = (
   intervals: readonly ItAssetAssignmentDoc[],
   employees: readonly [string, { code: string; fullNameAr: string }][] = [],
   activeMaintenance: readonly string[] = [],
+  custodians: {
+    departments?: readonly [string, { ar: string; en: string }][];
+    locations?: readonly [string, { ar: string; en: string }][];
+  } = {},
 ): ItAssetHolderLabels => ({
   intervals: new Map(intervals.map((row) => [String(row._id), row])),
   employees: new Map(employees),
+  departments: new Map(custodians.departments ?? []),
+  locations: new Map(custodians.locations ?? []),
   activeMaintenance: new Set(activeMaintenance),
 });
+
+/** The fields of a department holder — all null on an employee's. */
+const NO_DEPARTMENT = {
+  departmentId: null,
+  departmentName: null,
+  locationId: null,
+  locationName: null,
+  responsibleEmployeeId: null,
+  responsibleEmployeeCode: null,
+  responsibleEmployeeName: null,
+};
+
+const IT_DEPARTMENT = new Types.ObjectId();
+const SERVER_ROOM = new Types.ObjectId();
+const SIGNER = new Types.ObjectId();
+
+/** An asset a department holds at a place, signed for by `SIGNER` (2026-11-19). */
+const heldByDepartment = () => {
+  const id = new Types.ObjectId();
+  const open = interval(id, {
+    holderKind: 'department',
+    assignedToEmployeeId: null,
+    departmentId: IT_DEPARTMENT,
+    locationId: SERVER_ROOM,
+    responsibleEmployeeId: SIGNER,
+  });
+  return { doc: asset({ _id: id, status: 'assigned', currentAssignmentId: open._id }), open };
+};
 
 const person = (id: Types.ObjectId, code: string, fullNameAr: string): DirectoryEmployee => ({
   employeeId: String(id),
@@ -145,9 +191,11 @@ describe('the holder an asset row names', () => {
     const { doc, open } = heldBy(EMPLOYEE);
     const dto = toItAssetDto(doc, labels([open], [[String(EMPLOYEE), MOHAMED]]));
     expect(dto.holder).toEqual({
+      kind: 'employee',
       employeeId: String(EMPLOYEE),
       employeeCode: '0100052',
       employeeName: 'محمد أحمد علي',
+      ...NO_DEPARTMENT,
       assignedAt: '2026-10-20T09:00:00.000Z',
     });
   });
@@ -156,10 +204,52 @@ describe('the holder an asset row names', () => {
   it('keeps the id when the directory cannot name the employee — nulls, never a guess', () => {
     const { doc, open } = heldBy(LEAVER);
     expect(toItAssetDto(doc, labels([open])).holder).toEqual({
+      kind: 'employee',
       employeeId: String(LEAVER),
       employeeCode: null,
       employeeName: null,
+      ...NO_DEPARTMENT,
       assignedAt: '2026-10-20T09:00:00.000Z',
+    });
+  });
+
+  it('reads an interval from before department custody — no `holderKind` — as an employee’s', () => {
+    const { doc, open } = heldBy(EMPLOYEE);
+    const old = { ...open } as Partial<ItAssetAssignmentDoc>;
+    delete old.holderKind;
+    expect(
+      toItAssetDto(doc, labels([old as ItAssetAssignmentDoc], [[String(EMPLOYEE), MOHAMED]]))
+        .holder,
+    ).toMatchObject({ kind: 'employee', employeeId: String(EMPLOYEE), departmentId: null });
+  });
+
+  it('is a department at a place — «في عهدة إدارة … — …» — signed for by its responsible person', () => {
+    const { doc, open } = heldByDepartment();
+    const named = labels([open], [[String(SIGNER), MOHAMED]], [], {
+      departments: [[String(IT_DEPARTMENT), { ar: 'تكنولوجيا المعلومات', en: 'IT' }]],
+      locations: [[String(SERVER_ROOM), { ar: 'غرفة السيرفرات', en: 'Server room' }]],
+    });
+    expect(toItAssetDto(doc, named).holder).toEqual({
+      kind: 'department',
+      // Nobody's personal custody — never the signer, never the text "null".
+      employeeId: null,
+      employeeCode: null,
+      employeeName: null,
+      departmentId: String(IT_DEPARTMENT),
+      departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+      locationId: String(SERVER_ROOM),
+      locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+      responsibleEmployeeId: String(SIGNER),
+      responsibleEmployeeCode: '0100052',
+      responsibleEmployeeName: 'محمد أحمد علي',
+      assignedAt: '2026-10-20T09:00:00.000Z',
+    });
+    // Names that cannot be read keep their ids.
+    expect(toItAssetDto(doc, labels([open])).holder).toMatchObject({
+      departmentId: String(IT_DEPARTMENT),
+      departmentName: null,
+      locationName: null,
+      responsibleEmployeeCode: null,
     });
   });
 
@@ -242,6 +332,98 @@ describe('resolving the holders of a response', () => {
     const holders = await itAssetService.holderLabels([asset(), asset()]);
     expect(mocks.getDirectoryEmployees).not.toHaveBeenCalled();
     expect(holders.intervals.size).toBe(0);
+    // …and an employee-only page reads no department and no place.
+    expect(mocks.findDepartments).not.toHaveBeenCalled();
+    expect(mocks.findLocations).not.toHaveBeenCalled();
+  });
+
+  it('names a department holder with two more reads, its signer in the one directory batch', async () => {
+    const person = heldBy(EMPLOYEE);
+    const server = heldByDepartment();
+    const camera = heldByDepartment();
+    mocks.findIntervals.mockResolvedValue([person.open, server.open, camera.open]);
+    mocks.getDirectoryEmployees.mockResolvedValue(new Map());
+    mocks.findDepartments.mockResolvedValue([
+      { _id: IT_DEPARTMENT, name: { ar: 'تكنولوجيا المعلومات', en: 'IT' } },
+    ]);
+    mocks.findLocations.mockResolvedValue([
+      { _id: SERVER_ROOM, name: { ar: 'غرفة السيرفرات', en: 'Server room' } },
+    ]);
+
+    const holders = await itAssetService.holderLabels([person.doc, server.doc, camera.doc]);
+
+    expect(mocks.getDirectoryEmployees).toHaveBeenCalledTimes(1);
+    expect(mocks.getDirectoryEmployees).toHaveBeenCalledWith([String(EMPLOYEE), String(SIGNER)]);
+    expect(mocks.findDepartments).toHaveBeenCalledTimes(1);
+    expect(mocks.findDepartments).toHaveBeenCalledWith([String(IT_DEPARTMENT)]);
+    expect(mocks.findLocations).toHaveBeenCalledWith([String(SERVER_ROOM)]);
+    expect(toItAssetDto(server.doc, holders).holder).toMatchObject({
+      kind: 'department',
+      departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+      locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+    });
+  });
+});
+
+describe('the holder filters — «الإدارة», «الموقع», «جهة الاستلام»', () => {
+  const scope = { scope: 'organization' } as never;
+  const filterSent = (): Record<string, unknown> =>
+    (mocks.list.mock.lastCall?.[0] as { filter: Record<string, unknown> }).filter;
+  const opened = [new Types.ObjectId(), new Types.ObjectId()];
+
+  beforeEach(() => {
+    mocks.list.mockResolvedValue({
+      items: [],
+      meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 1 },
+    });
+    mocks.listOpenWhere.mockResolvedValue(opened);
+  });
+
+  it('reads the open intervals ONCE for every holder filter together — they intersect', async () => {
+    const department = String(IT_DEPARTMENT);
+    const place = String(SERVER_ROOM);
+    await itAssetService.list(
+      ListItAssetsQuerySchema.parse({
+        holderDepartmentId: department,
+        locationId: place,
+        holderKind: 'department',
+      }),
+      scope,
+    );
+    expect(mocks.listOpenWhere).toHaveBeenCalledTimes(1);
+    expect(mocks.listOpenWhere).toHaveBeenCalledWith({
+      employeeId: undefined,
+      departmentId: department,
+      locationId: place,
+      kind: 'department',
+    });
+    expect(filterSent()).toEqual({ currentAssignmentId: { $in: opened } });
+  });
+
+  it('reads «موظف» alone as held now and not by a department — the departments the list read', async () => {
+    await itAssetService.list(ListItAssetsQuerySchema.parse({ holderKind: 'employee' }), scope);
+    expect(mocks.listOpenWhere).toHaveBeenCalledWith({ kind: 'department' });
+    expect(filterSent()).toEqual({ currentAssignmentId: { $ne: null, $nin: opened } });
+  });
+
+  it('keeps the employee holder filter as it was — the open intervals they hold', async () => {
+    await itAssetService.list(
+      ListItAssetsQuerySchema.parse({ holderEmployeeId: String(EMPLOYEE) }),
+      scope,
+    );
+    expect(mocks.listOpenWhere).toHaveBeenCalledWith({
+      employeeId: String(EMPLOYEE),
+      departmentId: undefined,
+      locationId: undefined,
+      kind: undefined,
+    });
+    expect(filterSent()).toEqual({ currentAssignmentId: { $in: opened } });
+  });
+
+  it('asks nothing of custody when no holder filter is set', async () => {
+    await itAssetService.list(ListItAssetsQuerySchema.parse({}), scope);
+    expect(mocks.listOpenWhere).not.toHaveBeenCalled();
+    expect(filterSent()).toEqual({});
   });
 });
 

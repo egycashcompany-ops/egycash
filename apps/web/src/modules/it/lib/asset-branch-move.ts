@@ -6,7 +6,9 @@
 // and sends the rest: a disposed asset is gone, one under maintenance moves when it comes back,
 // and one already in the chosen branch has nowhere to go. An asset HELD by an employee moves too —
 // «ينتقل مع عهدته»: its custody goes with it and the holder keeps it. No paper («لا، السجل كفاية»):
-// the asset's history is the record.
+// the asset's history is the record. One held by a DEPARTMENT at a place stays (2026-11-19): a place
+// is its branch's, and does not travel — it moves with «نقل» to a place in the new branch, or is
+// returned first (the server's `heldAtLocation`).
 import {
   IT_ASSET_MOVE_MAX,
   type ItAssetDto,
@@ -18,7 +20,12 @@ import { custodyPlural } from '../../fleet/lib/custody-words';
 import { type Translate } from './register-export';
 
 /** Why an asset stays where it is — each one the server refuses too. */
-export const ASSET_MOVE_REFUSALS = ['disposed', 'underMaintenance', 'alreadyThere'] as const;
+export const ASSET_MOVE_REFUSALS = [
+  'disposed',
+  'underMaintenance',
+  'alreadyThere',
+  'heldAtLocation',
+] as const;
 export type AssetMoveRefusal = (typeof ASSET_MOVE_REFUSALS)[number];
 
 /** What the move does to one asset: it goes (with its custody when held), or it stays and why. */
@@ -26,7 +33,8 @@ export type AssetMoveEligibility =
   { movable: true; held: boolean } | { movable: false; reason: AssetMoveRefusal };
 
 /** The facts the rule reads — what the register's row and the asset's page both carry. */
-export type MovableAsset = Pick<ItAssetDto, 'id' | 'status' | 'branchId' | 'hasActiveMaintenance'>;
+export type MovableAsset = Pick<ItAssetDto, 'id' | 'status' | 'branchId' | 'hasActiveMaintenance'> &
+  Partial<Pick<ItAssetDto, 'holder'>>;
 
 /**
  * One asset against the branch chosen. `toBranchId` empty is «not chosen yet»: only what no branch
@@ -35,9 +43,13 @@ export type MovableAsset = Pick<ItAssetDto, 'id' | 'status' | 'branchId' | 'hasA
  * «Under maintenance» is the status OR an order still open or in progress: an `open` order (the
  * preventive sweep's among them) leaves the asset `inStock`, and the server refuses the move of
  * such an asset all the same — so the status alone does not say it.
+ *
+ * Held by a department at a place: it stays whichever branch is chosen — the server's order, after
+ * «already there».
  */
 export const assetMoveEligibility = (
-  asset: Pick<ItAssetDto, 'status' | 'branchId' | 'hasActiveMaintenance'>,
+  asset: Pick<ItAssetDto, 'status' | 'branchId' | 'hasActiveMaintenance'> &
+    Partial<Pick<ItAssetDto, 'holder'>>,
   toBranchId: string,
 ): AssetMoveEligibility => {
   if (asset.status === 'disposed') return { movable: false, reason: 'disposed' };
@@ -47,6 +59,7 @@ export const assetMoveEligibility = (
   if (toBranchId !== '' && asset.branchId === toBranchId) {
     return { movable: false, reason: 'alreadyThere' };
   }
+  if (asset.holder?.kind === 'department') return { movable: false, reason: 'heldAtLocation' };
   return { movable: true, held: asset.status === 'assigned' };
 };
 

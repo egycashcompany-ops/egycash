@@ -5,9 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { type ItAssetDto, type ItPersonDto } from '@ecms/contracts';
 import {
   clearedLineNumbers,
+  custodianKey,
+  custodianReady,
   heldByOther,
   holderAnswer,
   holderName,
+  issueCustodianBody,
   issueHolderReducer,
   issueHolderStart,
   lineNumber,
@@ -16,6 +19,11 @@ import {
   type IssueHolderEvent,
   type IssueHolderState,
 } from './consumable-issue-holder';
+import { translate } from '../../../platform/localization/i18n';
+import { departmentHolder, employeeHolder } from '../custody-holder-fixtures';
+
+const t = (key: string, params?: Record<string, string | number>): string =>
+  translate('ar', key, params);
 
 interface Line extends IssueDeviceLine {
   qty: string;
@@ -201,15 +209,17 @@ describe('a device somebody else holds — said under its line', () => {
   });
 
   it('names them as the employee box does, or with what the register has', () => {
-    const holder = { employeeId: HANY, assignedAt: '' };
-    expect(holderName({ ...holder, employeeName: 'هاني رأفت سليم', employeeCode: '0100091' })).toBe(
+    const holder = employeeHolder({ employeeId: HANY, assignedAt: '' });
+    const name = (over: Partial<typeof holder>): string =>
+      holderName({ ...holder, ...over }, t, 'ar');
+    expect(name({ employeeName: 'هاني رأفت سليم', employeeCode: '0100091' })).toBe(
       'هاني رأفت سليم (0100091)',
     );
-    expect(holderName({ ...holder, employeeName: 'هاني رأفت سليم', employeeCode: null })).toBe(
-      'هاني رأفت سليم',
-    );
-    expect(holderName({ ...holder, employeeName: null, employeeCode: '0100091' })).toBe('0100091');
-    expect(holderName({ ...holder, employeeName: null, employeeCode: null })).toBe(HANY);
+    expect(name({ employeeName: 'هاني رأفت سليم', employeeCode: null })).toBe('هاني رأفت سليم');
+    expect(name({ employeeName: null, employeeCode: '0100091' })).toBe('0100091');
+    expect(name({ employeeName: null, employeeCode: null })).toBe(HANY);
+    // A department, as «إدارة … — …».
+    expect(holderName(departmentHolder(), t, 'ar')).toBe('إدارة تقنية المعلومات — غرفة السيرفرات');
   });
 });
 
@@ -406,5 +416,145 @@ describe('the lines themselves', () => {
     });
     const fresh = run(busy, { type: 'reset', lines: [line(0)] });
     expect(fresh).toEqual(issueHolderStart([line(0)]));
+  });
+});
+
+// «صرف لإدارة» (2026-11-19): the custodian is a department at a place, signed for by its
+// responsible person. Every rule above reads the custodian, never the signer.
+describe('a memo to a department', () => {
+  const IT = 'd-it';
+  const SERVERS = 'l-servers';
+  const CAMERAS = 'l-cameras';
+  /** A device the IT department holds at a place. */
+  const held = (id: string, locationId: string): ItAssetDto =>
+    ({
+      id,
+      assetCode: `AST-${id}`,
+      name: 'HP LaserJet',
+      status: 'assigned',
+      serialNumber: `SN-${id}`,
+      holder: departmentHolder({ departmentId: IT, locationId }),
+    }) as ItAssetDto;
+  const toDepartment = (state: IssueHolderState<Line>, locationId = SERVERS) =>
+    run(
+      state,
+      { type: 'mode', mode: 'department' },
+      { type: 'department', departmentId: IT, locationId },
+      { type: 'responsible', employeeId: SHERIF, label: 'شريف ممدوح فاروق (0100077)' },
+    );
+
+  it('names the department, its place and its signer — and is ready only with all three', () => {
+    const state = toDepartment(start(line(0)));
+    expect(custodianKey(state)).toBe(`${IT}@${SERVERS}`);
+    expect(custodianReady(state)).toBe(true);
+    expect(issueCustodianBody(state)).toEqual({
+      department: { departmentId: IT, locationId: SERVERS, responsibleEmployeeId: SHERIF },
+    });
+    expect(custodianReady(run(state, { type: 'responsible', employeeId: '', label: '' }))).toBe(
+      false,
+    );
+    expect(
+      custodianReady(run(state, { type: 'department', departmentId: IT, locationId: '' })),
+    ).toBe(false);
+    // The signer is never the custodian: his own devices are not what the lines list.
+    expect(state.employeeId).toBe('');
+    expect(
+      issueCustodianBody(run(start(line(0)), { type: 'person', employeeId: WALEED, label: 'x' })),
+    ).toEqual({ employeeId: WALEED });
+  });
+
+  it('switching «جهة الاستلام» takes the custodian before’s devices off the lines', () => {
+    const own = run(start(line(0, asset('a-1', WALEED)), line(1, asset('a-2', HANY))), {
+      type: 'person',
+      employeeId: WALEED,
+      label: 'x',
+    });
+    const switched = run(own, { type: 'mode', mode: 'department', departmentId: IT });
+    expect(switched.mode).toBe('department');
+    expect(switched.departmentId).toBe(IT);
+    expect(switched.employeeId).toBe('');
+    expect(switched.lines.map((each) => each.assetId)).toEqual(['', 'a-2']);
+    expect(clearedLineNumbers(switched)).toEqual([1]);
+    expect(switched.clearedFrom).toBe('employee');
+    // And back: the department's devices go.
+    const there = run(start(line(0, held('p-1', SERVERS))), {
+      type: 'mode',
+      mode: 'department',
+    });
+    const placed = run(there, { type: 'department', departmentId: IT, locationId: SERVERS });
+    const back = run(placed, { type: 'mode', mode: 'employee' });
+    expect(back.lines[0]?.assetId).toBe('');
+    expect(back.clearedFrom).toBe('department');
+    // The same mode again changes nothing.
+    expect(run(back, { type: 'mode', mode: 'employee' })).toBe(back);
+  });
+
+  it('another place is another custodian: the room before’s devices go, another room’s stay', () => {
+    const state = toDepartment(
+      start(
+        line(0, held('p-1', SERVERS)),
+        line(1, held('p-2', CAMERAS)),
+        line(2, asset('a-3', null)),
+      ),
+    );
+    const moved = run(state, { type: 'department', departmentId: IT, locationId: CAMERAS });
+    expect(moved.lines.map((each) => each.assetId)).toEqual(['', 'p-2', 'a-3']);
+    expect(clearedLineNumbers(moved)).toEqual([1]);
+    expect(moved.clearedFrom).toBe('department');
+  });
+
+  it('lists the department’s own device as its own, and another holder’s as somebody else’s', () => {
+    const state = toDepartment(
+      start(
+        line(0, held('p-1', SERVERS)),
+        line(1, held('p-2', CAMERAS)),
+        line(2, asset('a-3', HANY)),
+      ),
+    );
+    const key = custodianKey(state);
+    expect(heldByOther(state.lines[0] as Line, key)).toBeNull();
+    expect(heldByOther(state.lines[1] as Line, key)?.locationId).toBe(CAMERAS);
+    expect(heldByOther(state.lines[2] as Line, key)?.employeeId).toBe(HANY);
+  });
+
+  it('a device a department holds, picked with nobody chosen, fills the department and its place', () => {
+    const filled = run(start(line(0)), pick(0, held('p-1', SERVERS)));
+    expect(filled.mode).toBe('department');
+    expect([filled.departmentId, filled.locationId]).toEqual([IT, SERVERS]);
+    // …and leaves the signer to be chosen: nothing is asked of HR, nothing is ready yet.
+    expect(filled.responsibleEmployeeId).toBe('');
+    expect(filled.asking).toBeNull();
+    expect(filled.note).toEqual({ kind: 'filledDepartment', lineKey: 0 });
+    expect(custodianReady(filled)).toBe(false);
+  });
+
+  it('fills the place too when «إدارة» is chosen and only the department is (IT, preselected)', () => {
+    const preselected = run(start(line(0)), { type: 'mode', mode: 'department', departmentId: IT });
+    const filled = run(preselected, pick(0, held('p-1', CAMERAS)));
+    expect([filled.departmentId, filled.locationId]).toEqual([IT, CAMERAS]);
+  });
+
+  it('the department a device filled in is remembered — even when it is the IT row preselected', () => {
+    // «إدارة» first: the IT department preselected; then a device that same department holds.
+    const preselected = run(start(line(0)), { type: 'mode', mode: 'department', departmentId: IT });
+    expect(preselected.filledDepartmentId).toBe('');
+    const filled = run(preselected, pick(0, held('p-1', SERVERS)));
+    // The fields are told it came from the device, so the IT row of the store's branch, once an
+    // item names it, does not replace it (and take the device off its line).
+    expect(filled.filledDepartmentId).toBe(IT);
+    expect(filled.lines[0]?.assetId).toBe('p-1');
+    // A switch of «جهة الاستلام» forgets it; a department picked by hand is no longer the one filled.
+    expect(run(filled, { type: 'mode', mode: 'employee' }).filledDepartmentId).toBe('');
+    const handPicked = run(filled, { type: 'department', departmentId: 'd-other', locationId: '' });
+    expect(handPicked.departmentId === handPicked.filledDepartmentId).toBe(false);
+    expect(run(start(line(0)), { type: 'reset', lines: [line(0)] }).filledDepartmentId).toBe('');
+  });
+
+  it('a person’s device picked in «إدارة» asks nothing and changes nothing', () => {
+    const state = toDepartment(start(line(0)));
+    const picked = run(state, pick(0, asset('a-1', WALEED)));
+    expect(picked.asking).toBeNull();
+    expect(picked.mode).toBe('department');
+    expect(custodianKey(picked)).toBe(`${IT}@${SERVERS}`);
   });
 });

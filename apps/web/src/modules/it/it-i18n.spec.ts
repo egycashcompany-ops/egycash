@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   EMPLOYEE_STATUSES,
+  IT_ASSET_HOLDER_KINDS,
   IT_ASSET_IMPORT_DECISIONS,
   IT_ASSET_IMPORT_WARNINGS,
   IT_ASSET_STATUSES,
@@ -153,6 +154,13 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   // what moved — and what the other store did not have — in Arabic's five forms, all through
   // TEMPLATE keys the source scan below cannot see.
   { name: 'asset move refusal', prefix: 'it.assets.move.refused', values: ASSET_MOVE_REFUSALS },
+  // Department custody (2026-11-19): «جهة الاستلام: موظف / إدارة» — the switch, the filters and
+  // the files' filter line name the holder kind through a TEMPLATE key.
+  {
+    name: 'custody holder kind',
+    prefix: 'it.custody.department.kind',
+    values: IT_ASSET_HOLDER_KINDS,
+  },
   { name: 'assets moved count', prefix: 'it.assets.move.moved', values: CUSTODY_COUNT_FORMS },
   {
     name: 'consumables transferred count',

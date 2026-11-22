@@ -29,6 +29,7 @@ import { AssetConsumablesCard, EmployeeConsumablesCard } from '../components/Con
 import { IssueConsumablesDialog } from '../components/ConsumableDialogs';
 import { ConsumablesPage } from './ConsumablesPage';
 import { ConsumableMovementsPage } from './ConsumableMovementsPage';
+import { NO_DEPARTMENT } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -118,6 +119,7 @@ const movement = (over: Partial<ItConsumableMovementDto> = {}): ItConsumableMove
   employeeId: 'e-1',
   employeeCode: '0100052',
   employeeName: 'محمد أحمد علي',
+  ...NO_DEPARTMENT,
   assetId: 'a-12',
   assetCode: 'AST-00012',
   assetName: 'لاب توب Lenovo',

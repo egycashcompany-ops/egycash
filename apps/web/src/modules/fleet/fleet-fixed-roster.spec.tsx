@@ -640,6 +640,41 @@ describe('the table — the daily board’s seven columns, the standing crew’s
     expect(mission).toContain("allLabel={t('fleet.fixedRoster.noMissionType')}");
   });
 
+  it('cuts a long mission with «…» and hovers its whole name — the box’s width unchanged', () => {
+    const LONG = 'نقل أموال (يومي) بين الفروع والبنوك';
+    const qc = client();
+    qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'missionType' }], {
+      items: [{ id: MT, kind: 'missionType', name: { ar: LONG, en: 'Cash run' }, isActive: true }],
+      meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+    });
+    const select = (markup: string, code: string): string => {
+      const row_ = carRow(markup, code);
+      const at = row_.indexOf('<select');
+      return row_.slice(at, row_.indexOf('>', at) + 1);
+    };
+    for (const [markup, name] of [
+      [render(), 'نقل نقدية'],
+      [render({ qc }), LONG],
+    ] as const) {
+      expect(select(markup, '150'), 'the hover is the chosen mission’s name').toContain(
+        `title="${name}"`,
+      );
+      expect(select(markup, '150'), 'and still says what the box is for').toContain(
+        `aria-label="150 · ${t('fleet.roster.fields.mission')}"`,
+      );
+      expect(select(markup, '150')).not.toContain(
+        `title="150 · ${t('fleet.roster.fields.mission')}"`,
+      );
+      // No mission chosen: nothing to hover but what the box is for.
+      expect(select(markup, '151')).toContain(`title="151 · ${t('fleet.roster.fields.mission')}"`);
+      const box = carRow(markup, '150').slice(0, carRow(markup, '150').indexOf('<select'));
+      const boxClass = box.slice(box.lastIndexOf('<div class="mx-auto')).replaceAll('&amp;', '&');
+      expect(boxClass, 'the shared box, cutting with «…»').toContain('[&_select]:!truncate');
+      expect(boxClass, 'at the widths it had').toContain('mx-auto w-[9.5rem] max-[1535px]:w-36 ');
+    }
+    expect(BOARD_FILE).toContain('title={missionTitle(m.missionName, row.missionTypeId)}');
+  });
+
   it('draws each seat as the daily seat — the name, the code under it', () => {
     const markup = render();
     const seat = seatOf(markup, V1, 1);
@@ -984,10 +1019,17 @@ describe('the pen dialog — «تعديل · 150», the four facts together', ()
     expect(seat).toContain('HR-1');
     expect(seat, 'a real gap between name and code').toContain('gap-x-2');
     expect(seat).toContain(`aria-label="${t('common.clear')}"`);
-    expect(DIALOG, 'its own face — the daily EmployeeName is left as approved').not.toContain(
+    expect(DIALOG, 'its own face, as approved — not the shared EmployeeName').not.toContain(
       'EmployeeName',
     );
-    expect(read('components/EmployeeName.tsx'), 'and is unchanged').toContain(
+    // The shared renderer keeps a gap of its own now (the owner's 22 November «صلحهم»): the margin
+    // on an element in the page's direction, the code isolated inside it — no longer `ms-2` on
+    // the left-to-right code, which in Arabic put the gap on the far side.
+    const shared = read('components/EmployeeName.tsx');
+    expect(shared, 'the shared gap').toContain(
+      '<span className="ms-2 font-figures text-xs text-slate-500">\n          <bdi dir="ltr">{person.code}</bdi>',
+    );
+    expect(shared, 'the old margin on the code is gone').not.toContain(
       '<span className="ms-2 font-figures text-xs text-slate-500" dir="ltr">',
     );
   });

@@ -11,6 +11,63 @@ its entry here in the same PR.
 
 ### Changed
 
+- **Fleet: the owner's follow-ups of 22 November — «أرقام الفترة» removed, «إجمالي العهدة», no
+  error code on screen, and the six small fixes.** His answers to the six open items left after
+  #759: «أرقام الفترة» شيله · اجمالى العهدة · لا سيبها زى ما هى · صلحها · امسحها · صلحهم.
+  - **«لوحة تحكم الحركة»: the tab «أرقام الفترة» (key `period`) is gone.** The strip has eleven
+    tabs, ending «التراخيص والتجديدات» · «ملخصات»; «ملخصات» was not named and is untouched. An old
+    link to the removed tab (`?tab=period`, with or without its period) opens the first visible
+    tab, «نظرة عامة»; no hub card, badge or link pointed to it. Its figures still show elsewhere:
+    the kilometres in «العدادات والكيلومترات» («إجمالي الكيلومترات» with «مؤكدة حتى» and «لم تُغلق
+    القراءة بعد», «متوسط لكل سيارة» and the readings «لـX من Y» under it, «قراءات تحتاج مراجعة»;
+    the month's on «نظرة عامة»); the accidents' count, the open ones and the undated ones in
+    «الحوادث ومطالبات التأمين» («حوادث الفترة»); «مصروف التشغيل» in «الوقود والمصروفات» (the
+    month's on «نظرة عامة»), the card receipts in its «مصروف التشغيل حسب النوع», the custody
+    receipts in «العهدة» («مصروفات العهدة»); «فواتير التوكيل» (amount, rows, «بانتظار الفاتورة»)
+    in «الوقود والمصروفات»; «البيانات متاحة من …» on «الوقود والمصروفات» and «العهدة», and the
+    note that operating expenses and dealership invoices are never added together on «الوقود
+    والمصروفات». Dropped for good: the maintenance visits counted by CHECK-IN day (count, out,
+    still in, the share out) — no other tab counts by that day; the nearest are «خرجت من الورشة»
+    (by exit day) on «الصيانة والورش» and «في الورشة الآن» — the outstanding amount of the OPEN
+    accidents alone («الحوادث ومطالبات التأمين» shows «إجمالي المتبقي» of all the period's files,
+    open and closed), and the percentage bars of the coverage, of the open accidents and of the
+    rows with an amount; the «كارت ثم عهدة» bar is each kind's share in «مصروف التشغيل حسب النوع».
+    The 26 words only that tab read are gone from both languages.
+  - **`GET /fleet/dashboard/period` lost `visits` and `accidents.openRemaining`**, the two parts
+    only that tab read (`accidents` is `{ count, open, undated, totals }`); with them the
+    maintenance service's `visitStates` and the repository's `stateCounts`, which nothing else
+    called, and the contracts' `FLEET_DASHBOARD_PERIOD_TABS` and `FleetDashboardPeriodVisitsDto`.
+    No permission key changed, and the dashboard's key unions keep their members and order
+    (`visits` shared `fleetMaintenance.view` with `exits`, right after it). The read costs one
+    query less (36) and the filtered read two less (39); the performance ceilings were lowered to
+    those.
+  - **«نظرة عامة»: the card «رصيد العهدة النقدية» is «إجمالي العهدة»** ("Custody fund total"), the
+    same figure and the same links. **«سجل العهدة» keeps «2 سيارات»** — no change.
+  - **The shared error state never prints the server's error code** («INTERNAL» …), in either
+    language: the friendly message was already chosen by it. When the server sent a request id,
+    one quiet line «الرقم المرجعي: req_…» stays under the message (the id left to right, isolated),
+    so support can still find the request in the API log; with no id, no line. Every screen's
+    «تعذّر التحميل» and `DataTable` draw it. New word `common.error.reference`.
+  - **Small fixes:**
+    - «شهر انتهاء الترخيص» on «السيارات» and «التراخيص», and the «حسب الشهر» months on
+      «الإخطارات»: Latin digits, «أكتوبر 2026 (12)» (`monthCountOptions`).
+    - The car page (`/fleet/vehicles/:id`): every figure and date of the page in Latin digits,
+      «آخر قراءة عداد» and its «أعلى قراءة … كم» line included. The printed sheet is unchanged.
+    - The car record's «الحوادث» counts by the car's code, as its link opens the list (old-book
+      files under that code included), so the number is the list it opens and «سجل نظيف» follows
+      it — as «العدادات» and «الصيانة» already did.
+    - A driver's name and code no longer touch in Arabic: the gap is fixed once in the shared name
+      (`EmployeeName`), so the daily «تعيين السيارات» «تعديل» dialog, the «السائقون» form,
+      «مخالفات السيارات» and the dashboard's «المخالفات» tab all gain it. «الطقم الثابت» keeps its
+      own.
+    - The daily roster's notes take 500 letters at most, on a computer and a phone, as «الطقم
+      الثابت» (the API's limit).
+    - «نوع المهمة» on the computer boards of «تعيين السيارات» and «الطقم الثابت»: a long name
+      ends in «…» and the hover shows the whole name. No width changed: both tables fit at 1280,
+      1366 and 1920 exactly as before (measured).
+  - Unchanged: the data (no migration), the permissions, every endpoint but the two fields above,
+    and the mistaken page, which was deleted outside the repository.
+
 - **Eight hours is eight hours: worked time, lateness and the attendance report, by the owner's
   two rulings of 18 November.** «worked time = last check-out − first check-in», «Late = check-in
   after 09:00», and «The CSV export of the daily sheet isn't usable by HR … Rebuild it as a report

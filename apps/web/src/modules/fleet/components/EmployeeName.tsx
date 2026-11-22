@@ -68,6 +68,11 @@ export const useEmployeeName = (
  * A person by name with the code after it — and, hovered or reached with Tab, the driver card
  * (`DriverHoverCard`). `card={false}` inside a control that is itself the thing to press — an
  * option button — where a card and a tab stop of its own would be in the way.
+ *
+ * The gap sits on an element in the PAGE's direction and the code is isolated inside it. `ms-2`
+ * on the left-to-right code itself resolved in the code's own direction — the left, which in
+ * Arabic is the far side — so the name and the code touched on every Arabic screen that draws
+ * this (the daily «تعديل» dialog, the driver form, the violations).
  */
 export const EmployeeName = ({
   employeeId,
@@ -89,8 +94,8 @@ export const EmployeeName = ({
     <>
       <span {...hover.triggerProps}>
         {person.fullNameAr}
-        <span className="ms-2 font-figures text-xs text-slate-500" dir="ltr">
-          {person.code}
+        <span className="ms-2 font-figures text-xs text-slate-500">
+          <bdi dir="ltr">{person.code}</bdi>
         </span>
       </span>
       {hover.card}

@@ -23,9 +23,9 @@
 // no flag either). A driver the server holds on a car that is not on this board is not offered —
 // the daily rule: no edit here can release him, so the save could only be refused.
 //
-// The name and the code keep a gap between them here: `EmployeeName`'s `ms-2` sits on a
-// left-to-right code, which in Arabic is the side away from the name — so this dialog draws its
-// own face rather than change the daily dialog's.
+// The name and the code keep a gap between them here in a face of the dialog's own (a flex row
+// with `gap-x-2`). It was drawn before `EmployeeName` had its gap — the shared renderer now keeps
+// one too, its `ms-2` on an element in the page's direction — and it stays as approved.
 import { useState } from 'react';
 import { type FleetFixedCrewRowDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';

@@ -54,6 +54,7 @@ import {
   FIGURE,
   LAPTOP_ACTIONS,
   MISSION_BOX,
+  missionTitle,
   PINNED_CELL,
   PINNED_EDGE,
   PINNED_HEAD,
@@ -225,6 +226,7 @@ export const FixedDeskBoard = ({
               kind="missionType"
               value={row.missionTypeId ?? ''}
               ariaLabel={`${row.code} · ${t('fleet.roster.fields.mission')}`}
+              title={missionTitle(m.missionName, row.missionTypeId)}
               allLabel={t('fleet.fixedRoster.noMissionType')}
               density="tight"
               className="w-full"

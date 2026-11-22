@@ -4,6 +4,7 @@
 //   num / Count / CodeList   every figure in Latin digits («2026/11/09», «120», «(8)»)
 //   slashDate / weekdayOf    the day as the steppers say it: «الاثنين 2026/11/09»
 //   PastDayBanner            «يوم سابق.» — a past day is read, never planned
+//   ROSTER_NOTE_MAX          the day's note cap, on the computer's dialog and the touch notes sheet
 //   EditsBar                 the unsaved bar: what is unsaved, the edited cars, «تراجع» / «إلغاء» /
 //                            «حفظ» — a phone's two rows, a portrait tablet's strip, or the
 //                            landscape tablet's and the computer's floating bar
@@ -48,6 +49,15 @@ export const CodeList = ({
     ))}
   </span>
 );
+
+// ── the note ────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The longest note a day's row takes: the API's own limit (`PlanFleetRosterRowSchema.notes`), as
+ * «الطقم الثابت» caps its note. Without it the daily inputs took any length and the save came back
+ * refused for a note the reader could not see was too long.
+ */
+export const ROSTER_NOTE_MAX = 500;
 
 // ── the day ─────────────────────────────────────────────────────────────────────────────────────
 

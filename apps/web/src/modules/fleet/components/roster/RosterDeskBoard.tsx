@@ -151,9 +151,26 @@ export const ROSTER_TABLE = cn(
  * read figures in Azeret Mono first, whose wide space pushed «نقل أموال (يومي)» past the 9.5rem
  * box sized for Cairo. On a laptop the box is 9rem: «نقل أموال (يومي)» still whole beside the
  * chevron, with about 5px to spare.
+ *
+ * A longer name ends in «…» rather than being cut mid-letter, and the box's hover text is the
+ * whole name (`missionTitle`). The widths do not move, so neither table's fit at 1280 does.
  */
 export const MISSION_BOX =
-  "mx-auto w-[9.5rem] max-[1535px]:w-36 [&_select]:![font-family:'Cairo',ui-sans-serif,sans-serif]";
+  "mx-auto w-[9.5rem] max-[1535px]:w-36 [&_select]:![font-family:'Cairo',ui-sans-serif,sans-serif] [&_select]:!truncate";
+
+/**
+ * The hover text of a row's mission box: the chosen mission's whole name. `undefined` — the box's
+ * own label, «150 · نوع المهمة» — while none is chosen, or while the catalog does not name it yet
+ * (both boards' `missionName` says «—» then, which is no name to hover).
+ */
+export const missionTitle = (
+  missionName: (id: string | null) => string,
+  missionTypeId: string | null,
+): string | undefined => {
+  if (missionTypeId === null) return undefined;
+  const name = missionName(missionTypeId);
+  return name === '—' ? undefined : name;
+};
 
 /** Is the table wider than its frame? (Measured, not guessed from the screen's width.) */
 export const useOverflowing = (): [RefObject<HTMLDivElement>, boolean] => {
@@ -320,6 +337,7 @@ export const RosterDeskBoard = ({
               kind="missionType"
               value={row.missionTypeId ?? ''}
               ariaLabel={`${row.code} · ${t('fleet.roster.fields.mission')}`}
+              title={missionTitle(m.missionName, row.missionTypeId)}
               allLabel={t('fleet.fixedRoster.noMissionType')}
               // A car the workshop holds takes no mission (FR-5 refuses it with a 409): disabled
               // rather than hidden, so a mission already on the row stays legible.

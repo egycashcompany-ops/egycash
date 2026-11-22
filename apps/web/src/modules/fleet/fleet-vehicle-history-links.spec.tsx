@@ -296,6 +296,71 @@ describe('«العدادات» opens the car’s WHOLE history — the span its 
     ).toEqual(['194']);
   });
 
+  it('«الحوادث» counts with the code its link sends too — the old book’s files included', () => {
+    // Owner, 2026-11-22 («صلحهم»): the row counted the car's accidents by id while its link opens
+    // `/fleet/accidents?vehicleCodes=<code>`, which also lists the old book's files under that code
+    // (`vehicleClause`). Car 194: two files on the registry car, one from the old book.
+    const total = (totalItems: number) => ({
+      items: [],
+      meta: { page: 1, pageSize: 1, totalItems, totalPages: totalItems },
+    });
+    const byCode = (n: number) =>
+      [
+        listKey('fleet', 'accidents', { vehicleCodes: ['194'], page: 1, pageSize: 1 }),
+        total(n),
+      ] as const;
+    const byId = (n: number) =>
+      [
+        listKey('fleet', 'accidents', { vehicleId: VEHICLE_ID, page: 1, pageSize: 1 }),
+        total(n),
+      ] as const;
+    const accidents = (n: number): string =>
+      translate('ar', 'fleet.vehicle.count.accidents', { count: String(n) });
+    const clean = translate('ar', 'fleet.vehicle.count.accidentsClean');
+
+    const three = drawProfile(vehicleWith('194'), (qc) => {
+      qc.setQueryData(...byCode(3));
+      qc.setQueryData(...byId(2));
+    });
+    expect(three).toContain(accidents(3));
+    expect(three).not.toContain(accidents(2));
+    expect(accidents(3)).toBe('3 حادث');
+
+    // The old book's file is the car's only accident: the row says so, never «سجل نظيف» above a
+    // list that holds one.
+    const one = drawProfile(vehicleWith('194'), (qc) => {
+      qc.setQueryData(...byCode(1));
+      qc.setQueryData(...byId(0));
+    });
+    expect(one).toContain(accidents(1));
+    expect(one).not.toContain(clean);
+
+    // …and a car with none under its code is still «سجل نظيف», whatever the id count says.
+    const none = drawProfile(vehicleWith('194'), (qc) => {
+      qc.setQueryData(...byCode(0));
+      qc.setQueryData(...byId(4));
+    });
+    expect(none).toContain(clean);
+    expect(none).not.toContain(accidents(4));
+
+    // The filter the count asked with is the one the link carries.
+    expect(
+      queryOf(historyHrefs(drawProfile(vehicleWith('194'))).get('accidents') ?? '').getAll(
+        'vehicleCodes',
+      ),
+    ).toEqual(['194']);
+  });
+
+  it('the profile counts accidents by code in its source too — never by the car id', () => {
+    const source = read('pages/VehicleDetailPage.tsx');
+    const hook = /const useHistoryCounts[\s\S]*?\n\};\n/u.exec(source)?.[0] ?? '';
+    expect(hook).not.toBe('');
+    expect(hook).toMatch(
+      /useAccidents\(\s*\{ vehicleCodes: \[vehicleCode\], page: 1, pageSize: 1 \},\s*can\('fleetAccident\.view'\) && vehicleCode !== '',?\s*\)/u,
+    );
+    expect(hook).not.toMatch(/useAccidents\(\s*one\b/u);
+  });
+
   it('the other four rows stay as they were — no `period`, no date', () => {
     for (const [screen, href] of historyHrefs(drawProfile(vehicleWith('200')))) {
       if (screen === 'odometer') continue;

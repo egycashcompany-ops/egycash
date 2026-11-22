@@ -75,9 +75,16 @@ const doc = (vehicleId: string, driver1: string | null = null) => ({
   notes: null,
 });
 
+/**
+ * The day planned: tomorrow, in the service's own UTC day. A fixed date runs into the past and
+ * then trips the past-day guard (`PAST_DATE`) before any rule under test is reached — the
+ * 2026-11-20 this file used to send failed every case from 2026-11-21 on.
+ */
+const now = new Date();
+const PLAN_DAY = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+
 /** The payload an internal caller builds by hand — never parsed, and spelled in UPPER hex. */
-const shouting = (rows: Record<string, unknown>[]) =>
-  ({ date: new Date('2026-11-20T00:00:00.000Z'), rows }) as never;
+const shouting = (rows: Record<string, unknown>[]) => ({ date: PLAN_DAY, rows }) as never;
 
 beforeEach(() => {
   vi.clearAllMocks();

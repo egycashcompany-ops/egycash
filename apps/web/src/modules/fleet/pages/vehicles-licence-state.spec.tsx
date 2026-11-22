@@ -412,15 +412,21 @@ describe('D25 — the record’s «آخر قراءة عداد» is the newest re
   };
   const ODOMETER = ['fleetVehicle.view', 'fleetOdometer.view'];
 
-  // The tile writes its figures as the rest of the record does (`formatNumber`).
-  const km = (n: number): string => formatNumber(n, 'ar');
+  // The tile writes its figures in Latin digits, as the whole record does since the owner's
+  // 2026-11-22 follow-ups («صلحهم») — no longer in the shared `formatNumber`'s Arabic-Indic
+  // («٤٬٩٨٠»), which each case below asserts is gone.
+  const km = (n: number): string => new Intl.NumberFormat('en-US').format(n);
+  const arabicIndic = (n: number): string => formatNumber(n, 'ar');
 
   it('a chain that went backwards: 4,980 under «آخر قراءة عداد», «أعلى قراءة 5,000 كم» under it', () => {
     const html = record(byCode('605'), { readings: [backwards], permissions: ODOMETER });
     expect(html).toContain(t('fleet.vehicle.lastReading'));
     expect(html).toContain(`>${km(4980)}<`);
+    expect(km(4980)).toBe('4,980');
     expect(html).not.toContain(`>${km(5000)}<`);
     expect(html).toContain(t('fleet.vehicle.highestReading', { km: km(5000) }));
+    expect(html).not.toContain(arabicIndic(4980));
+    expect(html).not.toContain(arabicIndic(5000));
     expect(html).not.toContain(t('fleet.vehicle.lastReadingHint'));
   });
 
@@ -428,6 +434,7 @@ describe('D25 — the record’s «آخر قراءة عداد» is the newest re
     const healthy = { ...backwards, newest: { reading: 5000, date: backwards.latestReadingAt } };
     const html = record(byCode('605'), { readings: [healthy], permissions: ODOMETER });
     expect(html).toContain(`>${km(5000)}<`);
+    expect(html).not.toContain(arabicIndic(5000));
     expect(html).toContain(t('fleet.vehicle.lastReadingHint'));
     expect(html).not.toContain(t('fleet.vehicle.highestReading', { km: km(5000) }));
   });

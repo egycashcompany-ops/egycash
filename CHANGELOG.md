@@ -2256,11 +2256,19 @@ its entry here in the same PR.
     - The captain's name sits on the SAME line as his green «قائد», beside it, cut to what the frame
       has left (his person card says it whole, as before); «بلا قائد» and the record's quiet «بلا
       قائد» were one line already.
-    - Where a tile is still too narrow for the three (the narrowest three-a-row cards, 82–85px a
-      tile, with «103 محصنات» or English «10 Secured» / «12 Cartons»), the word steps under the icon
-      and figure — the old two-line tile, in that tile only — never cut, never spilling. Measured in
-      a browser at 390 to 2560: every Arabic count from 0 to 99 with every word, and every three-digit
-      package count, on one line at every width; at 1440, three-digit محصنات too.
+    - Each tile is one line HIGH at every width (R31 review — the sample had let the word step under
+      the figure on the narrow three-a-row cards, a two-line tile and row: English «10 Secured» /
+      «12 Cartons» at 1024 and 1340–1366, «103 Secured» at 1440). On a tile under 5.5rem (82–90px:
+      1024, 1340–1440, 1800) a figure of two characters or more is one more step smaller and the word
+      a pixel closer (`lineFigureTight`, a container query on the tile), so every count to 99 keeps
+      its word in both languages, three digits at 1440 too; only where even that line cannot hold it
+      (three digits in English on the 82–84px tiles, «103 محصنات» on the 82px ones, four digits)
+      does the word step out of view — never onto a second line, never cut — the tile then says the
+      whole count on hover («103 كراتين») and to a screen reader. Measured in a browser at 390, 768,
+      1024, 1280, 1340, 1366 and 1440, light and dark, Arabic and English, today and the record.
+    - R31 review — a cut captain's name keeps its START on the English screen too (`dir="auto"`):
+      the box's left-to-right direction had cut an Arabic name at its beginning («احمد سيد بركة محمد»
+      read «…يد بركة محمد»), which the shorter line beside the mark made common.
     - The van's hover card keeps its four tiles stacked, four across (18rem leaves each too narrow
       for one line); «تسليم المحصنات» wears the same van card, so its tiles are one line too.
     - Specs: the van card's captain spec rewritten («… then the captain: his mark and his name
@@ -2268,7 +2276,9 @@ its entry here in the same PR.
       tile it still pins (the hover card's); new: the Round 31 block in
       `distribution-van-card.spec.tsx` (one line in both languages, the words, the screen reader's
       phrase, the colours and the 0 look, the figure size and the wrap fallback, the hover card
-      stacked, «بلا قائد»).
+      stacked, «بلا قائد»). R31 review: the fallback spec REWRITTEN («one line HIGH always: … the
+      word leaves the view — never a second line, never cut»), the captain spec now pins the name's
+      `dir="auto"`; new: the whole count on hover in English, a cut name keeping its start.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

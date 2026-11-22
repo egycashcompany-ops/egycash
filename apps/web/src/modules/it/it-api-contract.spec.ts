@@ -94,8 +94,17 @@ describe('every endpoint the IT client calls exists on the API', () => {
         // …and the branches it may register in: the ones the create grant reaches, as only the
         // server can judge them.
         'get /import/branches',
+        // «عداد الطابعة» (2026-11-19): the printer's counter readings — a fact of the printer, on
+        // this router (no consumables route authorizes on `itAsset`).
+        'get /:id/counter-readings',
       ]),
     );
+    expect(CLIENT).toContain('get<ItPrinterCounterDto>(`/it/assets/${assetId}/counter-readings`)');
+    expect(
+      /router\.get\(\s*'\/:id\/counter-readings',\s*authenticate,\s*authorize\('itAsset\.view'\)/u.test(
+        ASSET_ROUTES,
+      ),
+    ).toBe(true);
     // …and the client calls exactly those.
     expect(CLIENT).toContain('`/it/assets${buildQuery(params)}`');
     // Narrowed by the categories chosen — «والبيانات اللى فى فلتر الفئات هي نفسها تتفلتر بناء على
@@ -564,6 +573,8 @@ describe('the consumables the IT client calls exist on the API, on the store’s
         'get /:id',
         'patch /:id',
         'get /:id/movements',
+        // «عداد الطابعة» (2026-11-19): a toner's cartridges and the pages each printed.
+        'get /:id/cartridges',
         // Stock moves only by a named movement, never by a PATCH of a quantity (ADR-024) — and
         // the issue is ONE action for one memo, however many items it carries.
         'post /issue',
@@ -590,6 +601,7 @@ describe('the consumables the IT client calls exist on the API, on the store’s
     for (const action of ['receive', 'scrap', 'return']) {
       expect(CLIENT, `client never calls /${action}`).toContain(`/it/consumables/\${id}/${action}`);
     }
+    expect(CLIENT).toContain('get<ItConsumableCartridgesDto>(`/it/consumables/${id}/cartridges`)');
   });
 
   // Append-only for QUANTITIES: one list, and one correction — «تعديل الجهاز» (2026-11-17), the
@@ -641,6 +653,7 @@ describe('the consumables the IT client calls exist on the API, on the store’s
       [ITEMS, 'get', '/:id', 'itConsumable.view'],
       [ITEMS, 'patch', '/:id', 'itConsumable.edit'],
       [ITEMS, 'get', '/:id/movements', 'itConsumable.view'],
+      [ITEMS, 'get', '/:id/cartridges', 'itConsumable.view'],
       [ITEMS, 'post', '/issue', 'itConsumable.assign'],
       // A transfer rides the custody grant the issue and the return ride — and so does the list
       // of where it may go, judged by that very grant.

@@ -115,6 +115,15 @@ describe('closed vocabularies', () => {
       // Task 2: how old a scan may be and still be imported, 0 meaning no limit. It replaces the
       // 90-day constant that was keeping two years of the branch machines' history out of ECMS.
       'hr.attendance.importMaxAgeDays',
+      // How close two scans must be to count as ONE visit to the reader. It answers the owner's
+      // five «حاضر with zero worked minutes» rows of 18 November: a finger that read poorly and was
+      // presented again seconds later became an arrival AND a departure, because the K40 Pro logs
+      // no direction and the pairing is positional.
+      'hr.attendance.minPunchGapMinutes',
+      // Whether a working day with no scan is an ACCUSATION. Off by the owner's ruling of the same
+      // day («lateness only for now»), so such a day reads «لا يوجد تسجيل» rather than «غائب» and
+      // nothing new reaches payroll's absent-day count while two years of history are re-derived.
+      'hr.attendance.countAbsence',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

@@ -3,7 +3,8 @@
 // is `register-export.ts`; this is what the ledger's table says.
 //
 // The columns are the table's — the date, the movement, the item, the quantity, the employee,
-// what it was installed on, the reason, the memo and who recorded it — with the codes the table
+// what it was installed on, the printer's counter a toner went in at, the reason, the memo and who
+// recorded it — with the codes the table
 // stacks under a name given columns of their own (in a sheet a code is something to filter by,
 // not a caption), and the memo's signature in words beside its number.
 //
@@ -22,7 +23,7 @@ import {
   type ItConsumableMovementKind,
   type Locale,
 } from '@ecms/contracts';
-import { formatDate, formatDateTime } from '../../../shared/lib/format';
+import { formatDate, formatDateTime, formatNumber } from '../../../shared/lib/format';
 import { type XlsxCell } from '../../../shared/lib/xlsx-writer';
 import { type FleetReport } from '../../fleet/lib/fleet-report-print';
 import { paperCells } from './consumable-register-export';
@@ -139,6 +140,21 @@ export const movementAsset = (movement: ItConsumableMovementDto): string | null 
   return label === '' ? null : label;
 };
 
+/**
+ * «قراءة العداد» (2026-11-19) — the printer's counter a toner went in at: a NUMBER in the sheet, so a
+ * column of them sorts and subtracts; with « (تصفير)» beside it, in the reader's digits, when that
+ * reading started the counter again. Null on every row that carries none.
+ */
+export const movementCounterReading = (
+  t: Translate,
+  movement: Pick<ItConsumableMovementDto, 'counterReading' | 'counterReset'>,
+  locale: Locale,
+): XlsxCell | null => {
+  if (movement.counterReading === null) return null;
+  if (!movement.counterReset) return movement.counterReading;
+  return `${formatNumber(movement.counterReading, locale)} (${t('it.consumables.counter.resetBadge')})`;
+};
+
 // ── The file ─────────────────────────────────────────────────────────────────
 
 export interface ConsumableMovementRegisterContext {
@@ -163,6 +179,7 @@ export const consumableMovementRegisterHeader = (t: Translate): string[] => [
   t('it.consumables.movements.columns.employee'),
   t('it.custody.export.holderCode'),
   t('it.consumables.movements.columns.installedOn'),
+  t('it.consumables.movements.columns.counter'),
   t('it.consumables.movements.columns.reason'),
   t('it.consumables.export.memoNumber'),
   t('it.consumables.export.memoState'),
@@ -187,6 +204,7 @@ export const consumableMovementRegisterLine = (
   row.employeeId === null ? empty : (row.employeeName ?? row.employeeId),
   row.employeeCode ?? empty,
   movementAsset(row) ?? (row.assetId === null ? empty : t('it.custody.assetUnknown')),
+  movementCounterReading(t, row, locale) ?? empty,
   movementReasonAndNotes(t, row, branchName) ?? empty,
   row.memoNumber === null ? empty : formatConsumableMemoNumber(row.memoNumber),
   row.memoId === null
@@ -318,7 +336,7 @@ export const consumableMovementRegisterSubtitle = (
     t('it.export.asOf', { date: filters.asOf }),
   ]);
 
-/** The printed ledger: the company's report form, landscape for thirteen columns, nobody signs it. */
+/** The printed ledger: the company's report form, landscape for fourteen columns, nobody signs it. */
 export const consumableMovementRegisterReport = (
   rows: readonly ItConsumableMovementDto[],
   context: ConsumableMovementRegisterContext,

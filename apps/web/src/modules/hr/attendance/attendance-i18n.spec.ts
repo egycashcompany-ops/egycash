@@ -24,7 +24,6 @@ const VIEW_STATUSES: ViewStatus[] = [
   'late',
   'earlyLeave',
   'lateAndEarly',
-  'checkedIn',
   'incomplete',
   'notYetIn',
   'absent',

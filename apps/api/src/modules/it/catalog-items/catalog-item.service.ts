@@ -5,7 +5,7 @@ import {
   type Paginated,
   type UpdateItCatalogItem,
 } from '@ecms/contracts';
-import { ConflictError } from '../../../shared/errors';
+import { BusinessRuleError, ConflictError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { itCatalogItemRepository } from './catalog-item.repository';
@@ -24,6 +24,8 @@ const snapshot = (doc: ItCatalogItemDoc) => ({
   description: doc.description,
   sortOrder: doc.sortOrder,
   isActive: doc.isActive,
+  // A row from before the flag has no key; it reads false, so ticking it audits false → true.
+  requiresCounterReading: doc.requiresCounterReading ?? false,
 });
 
 class ItCatalogItemService {
@@ -40,6 +42,8 @@ class ItCatalogItemService {
         description: input.description ?? null,
         sortOrder: input.sortOrder,
         isActive: true,
+        // The contract refuses it on any kind but `consumableType`, and defaults it to false.
+        requiresCounterReading: input.requiresCounterReading,
       },
       { by },
     );
@@ -67,12 +71,22 @@ class ItCatalogItemService {
 
   async update(id: string, input: UpdateItCatalogItem, by: string): Promise<ItCatalogItemDoc> {
     const before = await itCatalogItemRepository.getById(id);
+    // «يتطلب عداد الطباعة» belongs to a consumable type: an item of the type is what is issued onto
+    // a printer. The update body cannot see the row's kind, so the refusal is here. A 422 and not
+    // Fleet's 409 (its `countsForAlarm`): IT's ConflictError carries `DUPLICATE`, which would
+    // misname it. Unticking is always allowed.
+    if (input.requiresCounterReading === true && before.kind !== 'consumableType') {
+      throw new BusinessRuleError('only a consumableType takes the printer counter');
+    }
     const set: Partial<ItCatalogItemDoc> = {};
     if (input.code !== undefined) set.code = input.code;
     if (input.name !== undefined) set.name = input.name;
     if (input.description !== undefined) set.description = input.description;
     if (input.sortOrder !== undefined) set.sortOrder = input.sortOrder;
     if (input.isActive !== undefined) set.isActive = input.isActive;
+    if (input.requiresCounterReading !== undefined) {
+      set.requiresCounterReading = input.requiresCounterReading;
+    }
     const updated = await itCatalogItemRepository.updateById(id, set, {
       by,
       version: input.version,

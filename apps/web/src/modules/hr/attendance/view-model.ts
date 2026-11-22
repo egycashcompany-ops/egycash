@@ -8,6 +8,7 @@
 // NOTHING IS INVENTED HERE. A time nobody recorded stays `null`, a day the engine has concluded
 // nothing about says so, and no figure is computed that the server did not send.
 import {
+  displayStatusOf,
   type AttendanceDayDto,
   type AttendanceEmployeeDayDto,
   type AttendanceDayStatus,
@@ -51,47 +52,16 @@ const after = (first: number | null, second: number): number =>
 export const cairoNowMinutes = (now: Date = new Date()): number => cairoMinutes(now.toISOString());
 
 /**
- * The day vocabulary as the views name it.
+ * The day vocabulary as the views name it — which is now the CONTRACT'S vocabulary, not a second
+ * copy of it.
  *
- * `checkedIn` splits on the date: ON TODAY it means somebody is at work and has not scanned out
- * yet, which is an ordinary live state; on a PAST date the same stored value means the day ended
- * with no check-out, which is a different thing to tell a reader. The engine has one value for
- * both because the fact is the same; the screen has two because the question is not.
+ * It used to be a thirteen-case switch here, and it split `checkedIn` by the date: «في العمل» on
+ * today, «حضر فقط» once the day was over. The owner's ruling of 18 November collapsed that to one
+ * word, and more to the point the CSV needed the same mapping on the server, where this file
+ * cannot be imported. So the mapping moved to `@ecms/contracts` beside the statuses themselves and
+ * this delegates — the alternative being two switches that agree until one of them is edited.
  */
-export const toViewStatus = (status: AttendanceDayStatus, isToday: boolean): ViewStatus => {
-  switch (status) {
-    case 'present':
-      return 'present';
-    case 'late':
-      return 'late';
-    case 'earlyLeave':
-      return 'earlyLeave';
-    case 'lateAndEarly':
-      return 'lateAndEarly';
-    case 'checkedIn':
-      return isToday ? 'checkedIn' : 'incomplete';
-    case 'incomplete':
-      return 'incomplete';
-    case 'pending':
-      return 'notYetIn';
-    case 'absent':
-      return 'absent';
-    case 'onLeave':
-      return 'onLeave';
-    case 'weekend':
-    case 'dayOff':
-      return 'dayOff';
-    case 'holiday':
-      return 'holiday';
-    case 'noSchedule':
-      return 'noSchedule';
-    // The engine has concluded nothing about this date and no scan was seen for it. The view
-    // status already existed for "no row at all"; now the SERVER says it too, for a date it
-    // resolved rather than one the client found missing, and both arrive at the same word.
-    case 'noRecord':
-      return 'noRecord';
-  }
-};
+export const toViewStatus = (status: AttendanceDayStatus): ViewStatus => displayStatusOf(status);
 
 /** What was expected of somebody, in the views' minutes — null when nobody said. */
 const expectedSpan = (startAt: string | null, endAt: string | null): TimeSpan | null => {
@@ -134,13 +104,18 @@ export const toSheetRow = (
     // photo answers nothing this screen is opened to ask.
     photoUrl: null,
     department: row.employeeDepartment === null ? null : row.employeeDepartment[options.locale],
-    status: toViewStatus(row.status, row.date.slice(0, 10) === options.today),
+    status: toViewStatus(row.status),
     expected: expectedSpan(row.expectedStartAt, row.expectedEndAt),
     inAt,
     outAt: times?.lastOutAt == null ? null : after(inAt, cairoMinutes(times.lastOutAt)),
-    lateMinutes: times?.lateMinutes ?? 0,
+    // THE FIGURES ARE THE SERVER'S, nulls and all. This file used to coerce them — `?? 0` here and
+    // `workedMinutes === 0 ? null` below — which meant the screen decided what counted as
+    // unmeasured and the CSV decided separately. One rule now, applied once, on the server.
+    worked: row.figures.workedMinutes,
+    lateMinutes: row.figures.lateMinutes,
+    shortfallMinutes: row.figures.shortfallMinutes,
     overtimeApproved: day?.approvedOvertimeMinutes ?? 0,
-    overtimeDerived: day?.overtimeMinutes ?? 0,
+    overtimeDerived: row.figures.overtimeMinutes ?? 0,
     tags: marksOf(day, options.label),
     ...(options.actions === undefined ? {} : { actions: options.actions }),
   };
@@ -164,7 +139,7 @@ export const toEmployeeDay = (
   const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
   return {
     date,
-    status: day === null ? 'noRecord' : toViewStatus(day.status, date === options.today),
+    status: day === null ? 'noRecord' : toViewStatus(day.status),
     inAt,
     outAt: day?.lastOutAt == null ? null : after(inAt, cairoMinutes(day.lastOutAt)),
     // THE EXPECTATION NOW ARRIVES, resolved per date by the server. The old comment here said the
@@ -172,8 +147,9 @@ export const toEmployeeDay = (
     // and the reason the period endpoint carries it.
     expected: day === null ? null : expectedSpan(day.expectedStartAt, day.expectedEndAt),
     // Hours that were measured, or null — never a confident zero against a day with no check-out.
-    worked: day === null || day.workedMinutes === 0 ? null : day.workedMinutes,
-    lateMinutes: day?.lateMinutes ?? 0,
+    worked: day?.figures.workedMinutes ?? null,
+    lateMinutes: day?.figures.lateMinutes ?? null,
+    shortfall: day?.figures.shortfallMinutes ?? null,
     // A provisional day is one the engine has not concluded: the punches are real and the status is
     // a reading of them. Marked so a reader knows which, and so «لا يوجد تسجيل» is not the only
     // clue that the backfill still has work to do.

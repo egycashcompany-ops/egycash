@@ -26,6 +26,7 @@ import {
   deleteItAsset,
   getItAsset,
   getItAssetByCode,
+  getItAssetCounterReadings,
   listItAssetNames,
   listItAssets,
   renderItAssetLabels,
@@ -201,6 +202,17 @@ export const buildItAssetsRouter = (): Router => {
     authorize('itAsset.view'),
     validate({ query: ListItAssignmentsQuerySchema, params: IdParamSchema }),
     asyncHandler(listItAssetAssignments),
+  );
+  // «عداد الطابعة» (2026-11-19) — the printer's counter readings, each with the toner it was taken
+  // with and the cartridge of the same item it replaced. A fact of the printer: on the register's
+  // read grant (naming a printer at «صرف» needs it already), and read across every store's toners.
+  // On this router, not the consumables': no consumables route authorizes on `itAsset`.
+  router.get(
+    '/:id/counter-readings',
+    authenticate,
+    authorize('itAsset.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getItAssetCounterReadings),
   );
   return router;
 };

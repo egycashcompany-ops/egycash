@@ -854,6 +854,34 @@ export const EMPLOYEE_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp
 /** …of at most this many megabytes. */
 export const EMPLOYEE_PHOTO_MAX_MB = 5;
 
+/**
+ * «عندى صور الموظفين كلهم عايز أرفعهم دفع واحده متسمى كل صورة بالكود + أسم الموظف»: the bulk photo
+ * upload reads an employee code out of each file's name and asks which employees hold those codes.
+ *
+ * `POST /hr/employees/codes/lookup` (`employee.editPersonal`, within its scope — the photo write's own
+ * authority). A code nobody in the caller's reach holds is simply absent from the answer, so it
+ * reads as «no such employee» rather than leaking that one exists elsewhere. Each photo is then sent
+ * through `POST /hr/employees/:id/photo`, one at a time, exactly as the profile sends one.
+ */
+export const EMPLOYEE_CODE_LOOKUP_MAX = 5000;
+export const LookupEmployeeCodesSchema = z
+  .object({
+    codes: z.array(z.string().trim().min(1).max(30)).min(1).max(EMPLOYEE_CODE_LOOKUP_MAX),
+  })
+  .strict();
+export type LookupEmployeeCodes = z.infer<typeof LookupEmployeeCodesSchema>;
+
+/** One employee a looked-up code belongs to: enough to show the match and whether a photo exists. */
+export interface EmployeeCodeMatchDto {
+  id: string;
+  code: string;
+  fullNameAr: string;
+  fullNameEn: string | null;
+  status: EmployeeStatus;
+  /** The current photo's file, or null — a new one replaces it (the owner's choice). */
+  photoFileId: string | null;
+}
+
 export interface EmployeeDto {
   id: string;
   /** Permanent identity: the Global Employee Number, e.g. `0125` — never changes (ADR-017). */

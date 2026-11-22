@@ -10,7 +10,9 @@ import {
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
 import {
+  installedOnCounted,
   installedOnFailure,
+  installedOnReadingProblem,
   installedOnReducer,
   installedOnRequest,
   installedOnStale,
@@ -33,11 +35,16 @@ const grants =
 
 const row = (
   over: Partial<ItConsumableMovementDto> = {},
-): Pick<ItConsumableMovementDto, 'kind' | 'assetId' | 'version' | 'employeeId'> => ({
+): Pick<
+  ItConsumableMovementDto,
+  'kind' | 'assetId' | 'version' | 'employeeId' | 'counterReading' | 'counterReset'
+> => ({
   kind: 'issued',
   assetId: 'a-1',
   version: 3,
   employeeId: WALEED,
+  counterReading: null,
+  counterReset: false,
   ...over,
 });
 
@@ -87,6 +94,8 @@ describe('the choice', () => {
       assetId: '',
       asset: null,
       none: false,
+      counterReading: '',
+      counterReset: false,
       failure: null,
       refusedVersion: null,
     });
@@ -104,6 +113,8 @@ describe('the choice', () => {
       assetId: 'a-5',
       asset: printer,
       none: false,
+      counterReading: '',
+      counterReset: false,
       failure: null,
       refusedVersion: null,
     });
@@ -119,6 +130,8 @@ describe('the choice', () => {
       assetId: '',
       asset: null,
       none: true,
+      counterReading: '',
+      counterReset: false,
       failure: null,
       refusedVersion: null,
     });
@@ -242,5 +255,111 @@ describe('a refusal, read', () => {
       kind: 'refused',
       message: 'offline',
     });
+  });
+});
+
+describe('a toner issued with the printer’s counter («عداد الطابعة», 2026-11-19)', () => {
+  const toner = row({ counterReading: 12_400, counterReset: false });
+
+  it('is counted by its ROW — a reading on it — never by its type as the type stands now', () => {
+    expect(installedOnCounted(toner)).toBe(true);
+    expect(installedOnCounted(row())).toBe(false);
+  });
+
+  it('another device takes a new reading: nothing is sent without one', () => {
+    expect(installedOnRequest(toner, state({ assetId: 'a-5' }))).toBeNull();
+    expect(installedOnRequest(toner, state({ assetId: 'a-5', counterReading: '3200' }))).toEqual({
+      assetId: 'a-5',
+      counterReading: 3200,
+      version: 3,
+    });
+    expect(
+      installedOnRequest(toner, state({ assetId: 'a-5', counterReading: '0', counterReset: true })),
+    ).toEqual({ assetId: 'a-5', counterReading: 0, counterReset: true, version: 3 });
+  });
+
+  it('a reading typed with no device picked corrects it on the device the row names', () => {
+    expect(installedOnTarget(state({ counterReading: '12500' }), toner)).toBe('a-1');
+    expect(installedOnRequest(toner, state({ counterReading: '12500' }))).toEqual({
+      assetId: 'a-1',
+      counterReading: 12_500,
+      version: 3,
+    });
+    // The same device and the same reading: nothing to save, whichever way it was chosen.
+    expect(installedOnUnchanged(toner, state({ assetId: 'a-1', counterReading: '12400' }))).toBe(
+      true,
+    );
+    expect(installedOnUnchanged(toner, state({ assetId: 'a-1' }))).toBe(true);
+    expect(installedOnRequest(toner, state({ counterReading: '12400' }))).toBeNull();
+    // Ticking the reset on the same reading is a change.
+    expect(
+      installedOnRequest(toner, state({ counterReading: '12400', counterReset: true })),
+    ).toEqual({ assetId: 'a-1', counterReading: 12_400, counterReset: true, version: 3 });
+    // A row recorded without a reading: a reading typed names no device.
+    expect(installedOnTarget(state({ counterReading: '12500' }), row())).toBeUndefined();
+  });
+
+  it('«بدون جهاز» takes the reading off with the device', () => {
+    const ticked = installedOnReducer(
+      state({ assetId: 'a-5', counterReading: '3200', counterReset: true }),
+      { type: 'none', none: true },
+    );
+    expect(ticked).toEqual(state({ none: true }));
+    expect(installedOnRequest(toner, ticked)).toEqual({ assetId: null, version: 3 });
+  });
+
+  it('a reading belongs to the device it was typed for: another device starts the box again', () => {
+    const typed = installedOnReducer(state({ assetId: 'a-5', failure: { kind: 'conflict' } }), {
+      type: 'counter',
+      counterReading: '3200',
+      counterReset: true,
+    });
+    expect(typed).toEqual(state({ assetId: 'a-5', counterReading: '3200', counterReset: true }));
+    const moved = installedOnReducer(typed, { type: 'device', assetId: 'a-6', asset: null });
+    expect([moved.counterReading, moved.counterReset]).toEqual(['', false]);
+    const same = installedOnReducer(typed, { type: 'device', assetId: 'a-5', asset: null });
+    expect([same.counterReading, same.counterReset]).toEqual(['3200', true]);
+  });
+
+  it('a row recorded without a reading sends none, whatever was typed', () => {
+    expect(installedOnRequest(row(), state({ assetId: 'a-5', counterReading: '3200' }))).toEqual({
+      assetId: 'a-5',
+      version: 3,
+    });
+  });
+
+  it('a reading that is no whole number in range is said on its box; an empty box is not', () => {
+    for (const typed of ['12.5', '-3', '1000000000', 'abc']) {
+      expect(
+        installedOnReadingProblem(toner, state({ assetId: 'a-5', counterReading: typed })),
+        typed,
+      ).toEqual({ kind: 'readingInvalid' });
+      expect(
+        installedOnRequest(toner, state({ assetId: 'a-5', counterReading: typed })),
+      ).toBeNull();
+    }
+    expect(installedOnReadingProblem(toner, state({ assetId: 'a-5' }))).toBeNull();
+    expect(installedOnReadingProblem(row(), state({ counterReading: 'abc' }))).toBeNull();
+  });
+
+  it('the printer’s refusal is said on the reading’s box, with the reading it was held against', () => {
+    const below = new ApiError('IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS', 'not above', 422, [
+      { field: 'counterReading', code: 'PREVIOUS_READING', message: '12400' },
+      { field: 'counterReading', code: 'PREVIOUS_AT', message: '2026-11-01T09:00:00.000Z' },
+    ]);
+    expect(installedOnFailure(below, 'ar')).toEqual({
+      kind: 'counter',
+      problem: { kind: 'belowPrevious', reading: 12_400, at: '2026-11-01T09:00:00.000Z' },
+    });
+    const required = new ApiError('IT_CONSUMABLE_COUNTER_REQUIRED', 'required', 422, [
+      { field: 'counterReading', code: 'REQUIRED', message: 'a toner moves with a reading' },
+    ]);
+    expect(installedOnFailure(required, 'ar')).toEqual({
+      kind: 'counter',
+      problem: { kind: 'readingRequired' },
+    });
+    // A refusal that is not the counter's keeps the platform's own words.
+    const removal = new ApiError('BUSINESS_RULE', 'this reading starts the counter again', 422);
+    expect(installedOnFailure(removal, 'ar').kind).toBe('refused');
   });
 });

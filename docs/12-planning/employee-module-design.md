@@ -192,6 +192,37 @@ New sidebar app **Employees** (dynamic-nav application, peer of Recruitment):
   "Disable login" checked by default (D6). Exit: no login checkbox (D3 — automatic), shows
   direct-report count + reassignment decision, `eligibleForRehire` explicit.
 - **Direct registration** — gated multi-step form reusing applicant form sections + OCR.
+- **Photos in bulk** (2026-11-19) — «رفع صور الموظفين» on the employees list (`employee.editPersonal`),
+  for «عندى صور الموظفين كلهم عايز أرفعهم دفع واحده متسمى كل صورة بالكود + أسم الموظف».
+  - **The code decides.** Each file's name is read for a code: every run of digits, longest first,
+    with Arabic-Indic digits read as ASCII; a word of letters and digits (an external person's
+    `EX-2900`) is tried first. A run one or two digits shorter than a code (7 digits) is also tried
+    with the leading zeros a spreadsheet drops — unless the name already holds a full-length number
+    (a camera's `20231105_101845` is no `0101845`); a shorter one (a copy's «(2)») is not padded, and
+    a run longer than any code (20) is not asked about.
+  - **Never a guess.** A name whose codes match two different people is held («الاسم فيه أكواد
+    لأكثر من شخص») and not sent. A match made only by putting zeros back is sent only when the name in
+    the file confirms it; otherwise it is held too. Both ask for the file to be renamed — the owner
+    replaces every photo, so a photo on the wrong person is the one mistake that must not happen. `POST /hr/employees/codes/lookup` answers which employees
+    hold the codes, within the photo write's own scope; a code nobody in reach holds is simply absent.
+    Files join the table only once their lookup has answered, so a failed lookup leaves nothing
+    claiming «no employee», and the same files can be picked again.
+  - **The name only warns.** It is compared with the matched employee's names after folding the
+    letters people mix up and dropping spaces, against the start of the full name as well as the
+    whole of it. A file whose name does not look like the employee is flagged, never re-matched.
+  - **Before anything is sent,** a table says per file: ready (and whether it replaces a photo; the
+    owner chose to replace every one), no code, no employee, several files for one employee (untick
+    all but one), or not a JPG / PNG / WebP.
+  - **Sending:** two at a time. Each photo is first cut around its face in the browser, exactly as the
+    profile's own photo dialog cuts it (`face-crop/a4-face.ts`, 600 x 760). One with no face found
+    goes uncropped, shrunk when over 5 MB, and its row says so. Each goes through `POST /:id/photo`,
+    one request per photo, under the same rules and audit as the profile. The face search is loaded
+    before the run, and a run that cannot cut starts nothing (it would replace good photos with
+    uncropped ones). A picture the browser cannot open fails its row and is not sent. A failure is
+    said on its row and the next «رفع» sends it again with the rest, unless it was unticked; a photo
+    already sent competes with no later one, so a corrected photo can follow it. «إيقاف», closing, or
+    leaving the page stops after the ones under way. While the run works, the person's session is
+    kept active; closing asks first.
 - **Employee Files** pages move under this app unchanged. Recruitment app loses its Employees entry.
 - Future-proof (F6): Attendance/Leave/Payroll/Performance each become an additive tab + action
   group + timeline source; manual leave actions hide when the Leave module exists; compensation is

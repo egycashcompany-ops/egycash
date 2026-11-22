@@ -2461,6 +2461,12 @@ const en: Record<string, string> = {
   'attendanceView.avg': 'avg {{t}}',
   'attendanceView.dailyRecord': 'Daily record',
   'attendanceView.newestFirst': 'newest first',
+  'attendanceView.oldestFirst': 'in this order',
+  'attendanceView.codeCol': 'Code',
+  'attendanceView.shortfallCol': 'Shortfall',
+  'attendanceView.shortfallTotal': 'missing from the required hours',
+  'attendanceView.sortAscending': 'Sort ascending',
+  'attendanceView.sortDescending': 'Sort descending',
   'attendanceView.date': 'Date',
   'attendanceView.arrived': 'Arrived',
   'attendanceView.left': 'Left',
@@ -2475,7 +2481,6 @@ const en: Record<string, string> = {
   'attendanceView.status.late': 'Late',
   'attendanceView.status.earlyLeave': 'Left early',
   'attendanceView.status.lateAndEarly': 'Late and left early',
-  'attendanceView.status.checkedIn': 'At work',
   'attendanceView.status.incomplete': 'Checked in only',
   'attendanceView.status.notYetIn': 'Not yet in',
   'attendanceView.status.absent': 'Absent',
@@ -3156,6 +3161,57 @@ const en: Record<string, string> = {
   'employees.view.all': 'All',
   'employees.view.toSettle': 'Awaiting settlement',
   'employees.roster.action': 'Import roster',
+  'employees.photoBatch.action': 'Upload photos',
+  'employees.photoBatch.title': 'Upload employee photos in bulk',
+  'employees.photoBatch.hint': 'Name each photo with the employee code (the name may follow it). Photos are matched by the code only, cut around the face as on the profile, and replace the current photo.',
+  'employees.photoBatch.drop': 'Drop the photos or their folder here, or choose:',
+  'employees.photoBatch.pickFiles': 'Choose photos',
+  'employees.photoBatch.pickFolder': 'Choose a folder',
+  'employees.photoBatch.looking': 'Finding the employees…',
+  'employees.photoBatch.countReady': 'Ready: {{n}}',
+  'employees.photoBatch.countReplace': 'Replace a current photo: {{n}}',
+  'employees.photoBatch.countNameDiffers': 'Name looks different: {{n}}',
+  'employees.photoBatch.countUnmatched': 'No employee: {{n}}',
+  'employees.photoBatch.countDuplicate': 'Duplicates: {{n}}',
+  'employees.photoBatch.countUnsupported': 'Not a supported image: {{n}}',
+  'employees.photoBatch.countFailed': 'Failed — sent again with the next upload: {{n}}',
+  'employees.photoBatch.countRename': 'Rename to send: {{n}}',
+  'employees.photoBatch.remove': 'Remove {{name}} from the list',
+  'employees.photoBatch.ambiguous': 'The name holds the codes of different people ({{codes}}) — not sent; keep only the right code in the name',
+  'employees.photoBatch.unconfirmed': 'Matched only by putting back the leading zero, and the name in the file does not confirm it — not sent; name the file with the full code',
+  'employees.photoBatch.unreadable': 'This picture cannot be opened (damaged, or not really a JPEG, PNG or WebP) — nothing was sent',
+  'employees.photoBatch.faceSearchFailed': 'The face search failed on this photo — nothing was sent; the next upload tries it again',
+  'employees.photoBatch.dropSkipped': '{{n}} item(s) of the drop could not be read and were skipped.',
+  'employees.photoBatch.onlyAttention': 'Only what needs a look',
+  'employees.photoBatch.colFile': 'File',
+  'employees.photoBatch.colCode': 'Code',
+  'employees.photoBatch.colEmployee': 'Employee',
+  'employees.photoBatch.colStatus': 'Status',
+  'employees.photoBatch.include': 'Include {{name}}',
+  'employees.photoBatch.padded': 'Leading zero restored',
+  'employees.photoBatch.nameDiffers': 'Name in the file: {{name}}',
+  'employees.photoBatch.ready': 'Ready',
+  'employees.photoBatch.readyReplace': 'Ready — replaces the current photo',
+  'employees.photoBatch.noCode': 'No code in the file name',
+  'employees.photoBatch.unknownCode': 'No employee holds this code',
+  'employees.photoBatch.duplicate': 'Several photos for this employee — keep one',
+  'employees.photoBatch.unsupported': 'Not a JPG, PNG or WebP image',
+  'employees.photoBatch.excluded': 'Left out',
+  'employees.photoBatch.waiting': 'Waiting',
+  'employees.photoBatch.preparing': 'Cropping…',
+  'employees.photoBatch.uploading': 'Uploading…',
+  'employees.photoBatch.doneCropped': 'Uploaded, cut around the face',
+  'employees.photoBatch.doneNoFace': 'Uploaded uncropped — no face found; check it on the profile',
+  'employees.photoBatch.doneShrunk': 'Uploaded uncropped and made smaller — no face found; check it on the profile',
+  'employees.photoBatch.faceSearchUnavailable':
+    'The face search could not load, so nothing was uploaded (each photo would have gone uncropped). Reload the page and try again.',
+  'employees.photoBatch.upload': 'Upload {{n}} photos',
+  'employees.photoBatch.stop': 'Stop',
+  'employees.photoBatch.progress': '{{done}} of {{total}} uploaded',
+  'employees.photoBatch.closeTitle': 'Stop uploading?',
+  'employees.photoBatch.closeBody': 'Photos are still being uploaded. Those already sent stay; the rest will not be sent.',
+  'employees.photoBatch.keepGoing': 'Keep uploading',
+  'employees.photoBatch.stopAndClose': 'Stop and close',
   'employees.roster.title': 'Import the workforce roster',
   'employees.roster.subtitle':
     'Adds new employees and updates the ones that changed. A blank cell never erases what the system already holds.',
@@ -9451,6 +9507,10 @@ const en: Record<string, string> = {
   'it.catalogs.fields.code': 'Code',
   'it.catalogs.fields.sortOrder': 'Order',
   'it.catalogs.fields.description': 'Description',
+  'it.catalogs.fields.requiresCounterReading': 'Requires the printer counter',
+  'it.catalogs.fields.requiresCounterReadingHint':
+    'An item of this type is issued onto a printer, one cartridge a line, with that printer’s counter reading.',
+  'it.catalogs.counterBadge': 'Printer counter',
 
   'it.vendors.subtitle': 'Suppliers and warranty providers for IT assets',
   'it.vendors.searchPlaceholder': 'Vendor name or code',
@@ -10605,6 +10665,64 @@ const en: Record<string, string> = {
     'Somebody changed this issue first, and it is no longer shown in this list. Open the consumables movements to see the device it is installed on now.',
   'it.consumables.installedOn.left':
     'This issue is no longer shown in this list since it was read again, so what is shown above is as it was when this window opened.',
+  'it.consumables.installedOn.counterHint':
+    'Required when a device is chosen: that printer’s counter with the toner in it. With no device chosen, a reading corrects the one taken on the current printer.',
+  'it.consumables.installedOn.counterDropped':
+    'With no device, its counter reading leaves the printer’s record too.',
+  // «عداد الطابعة» (2026-11-19): the printer's counter, typed as a toner goes in.
+  'it.consumables.movements.columns.counter': 'Counter reading',
+  'it.consumables.counter.reading': 'Printer counter reading',
+  'it.consumables.counter.reset': 'The printer’s counter was reset',
+  'it.consumables.counter.resetHint':
+    'The reading may then be at or below the last one; the pages printed before the reset are unknown.',
+  'it.consumables.counter.resetBadge': 'Reset',
+  'it.consumables.counter.lastReading':
+    'Last reading recorded for this printer: {{reading}} — {{date}}',
+  'it.consumables.counter.lastReadingToner': 'Taken when {{toner}} was installed.',
+  'it.consumables.counter.lastReadingReset': 'The counter was reset at that reading.',
+  'it.consumables.counter.noReading': 'No reading has been recorded for this printer yet.',
+  'it.consumables.counter.loadingReading': 'Loading the printer’s last reading…',
+  'it.consumables.counter.readingUnavailable':
+    'The printer’s last reading could not be loaded; the reading is checked when the issue is saved.',
+  'it.consumables.counter.backdated':
+    'This issue is dated before that reading, so the reading is checked against the readings around its date when it is saved.',
+  'it.consumables.counter.printerRequired':
+    'Required for this item: the printer it will be installed on.',
+  'it.consumables.counter.needsAssets':
+    'This item is issued onto a printer from the assets register, which needs the assets view permission.',
+  'it.consumables.counter.oneCartridge': 'One cartridge a line, on the printer it goes into.',
+  'it.consumables.counter.readingRequired': 'Enter the printer’s counter reading.',
+  'it.consumables.counter.readingInvalid': 'Enter a whole number no greater than {{max}}.',
+  'it.consumables.counter.belowPrevious':
+    'The reading must be higher than the last reading recorded for this printer ({{reading}} on {{date}}). If its counter was reset, tick «The printer’s counter was reset».',
+  'it.consumables.counter.belowPreviousBare':
+    'The reading must be higher than the last reading recorded for this printer. If its counter was reset, tick «The printer’s counter was reset».',
+  'it.consumables.counter.aboveNext':
+    'This issue is dated before a later reading of this printer ({{reading}} on {{date}}), so its reading must be lower than that one.',
+  'it.consumables.counter.aboveNextBare':
+    'This issue is dated before a later reading of this printer, so its reading must be lower than that one.',
+  'it.consumables.counter.sameReading':
+    'Item {{n}} is on the same printer with another reading: the lines on one printer carry one reading.',
+  'it.consumables.counter.cardTitle': 'Printer counter',
+  'it.consumables.counter.cardHint':
+    'The counter readings recorded as each toner was installed on this printer, newest first, and the pages the cartridge it replaced printed.',
+  'it.consumables.counter.columns.reading': 'Counter reading',
+  'it.consumables.counter.columns.toner': 'Toner',
+  'it.consumables.counter.columns.replaced': 'Cartridge replaced',
+  'it.consumables.counter.columns.pages': 'Pages printed',
+  'it.consumables.counter.columns.printer': 'Printer',
+  'it.consumables.counter.columns.installReading': 'Reading at install',
+  'it.consumables.counter.columns.removedAt': 'Replaced on',
+  'it.consumables.counter.unknown': 'Unknown',
+  'it.consumables.counter.firstOfItem': 'The first of this item on the printer',
+  'it.consumables.counter.replacedAt': 'Installed {{date}} at {{reading}}',
+  'it.consumables.counter.latestOfItem': 'The latest of this item on the printer',
+  'it.consumables.counter.showAll': 'Show all ({{n}})',
+  'it.consumables.counter.showFewer': 'Show fewer',
+  'it.consumables.counter.cartridgesTitle': 'Cartridge life',
+  'it.consumables.counter.average': 'Average pages per cartridge: {{pages}} (over {{n}})',
+  'it.consumables.counter.noAverage':
+    'No cartridge of this item has been replaced on its printer yet, so no average is known.',
 
   // ── System Administration → Users (SA-1) ──────────────────────────────────
   // P10 — the notification-template catalog. The service has been complete since Sprint 3.3; this
@@ -11396,6 +11514,10 @@ const en: Record<string, string> = {
     'Days a manager may decide an attendance day alone',
   'systemAdmin.settings.keys.hr.attendance.importMaxAgeDays':
     'How old a scan may be and still be imported',
+  'systemAdmin.settings.keys.hr.attendance.minPunchGapMinutes':
+    'Minutes within which two scans count as one',
+  'systemAdmin.settings.keys.hr.attendance.countAbsence':
+    'Record a working day with no scan as an absence',
   'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
     'Weekly changes by one manager before review flags them',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour':
@@ -11525,6 +11647,10 @@ const en: Record<string, string> = {
     'How far back a supervisor may decide a day on their own authority. An older day is recorded and takes effect only after HR approves it.',
   'systemAdmin.settings.descriptions.hr.attendance.importMaxAgeDays':
     'In days. 0 means no limit, which is the default, so a branch can send its whole history. A scan dated in the future is always refused, whatever this says — that is a device clock, not history.',
+  'systemAdmin.settings.descriptions.hr.attendance.minPunchGapMinutes':
+    'A finger that reads poorly is often presented again a few seconds later. The device records two scans, and without this the second one is read as a departure — which produced days marked present with no working hours at all. Ten minutes is the default: longer than any repeated attempt, and shorter than any real working day. Zero switches it off.',
+  'systemAdmin.settings.descriptions.hr.attendance.countAbsence':
+    'When off, which is the default, a working day with no scan reads «no record» — a statement about the evidence rather than about the person — and it is not counted as an absence for payroll. When on, the same day is recorded as an absence. A supervisor\u2019s own decision to mark somebody absent is unaffected either way.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
     'The number of attendance days one supervisor may change in a week before the change log highlights them for a look. Nothing is blocked or refused by it — a broken reader produces many legitimate changes.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':
@@ -18072,6 +18198,12 @@ const ar: Record<string, string> = {
   'attendanceView.avg': 'المتوسط {{t}}',
   'attendanceView.dailyRecord': 'السجل اليومي',
   'attendanceView.newestFirst': 'الأحدث أولًا',
+  'attendanceView.oldestFirst': 'بهذا الترتيب',
+  'attendanceView.codeCol': 'الكود',
+  'attendanceView.shortfallCol': 'النقص',
+  'attendanceView.shortfallTotal': 'الوقت الناقص من الساعات المطلوبة',
+  'attendanceView.sortAscending': 'ترتيب تصاعدي',
+  'attendanceView.sortDescending': 'ترتيب تنازلي',
   'attendanceView.date': 'التاريخ',
   'attendanceView.arrived': 'الحضور',
   'attendanceView.left': 'الانصراف',
@@ -18086,8 +18218,7 @@ const ar: Record<string, string> = {
   'attendanceView.status.late': 'متأخر',
   'attendanceView.status.earlyLeave': 'انصراف مبكر',
   'attendanceView.status.lateAndEarly': 'تأخير وانصراف مبكر',
-  'attendanceView.status.checkedIn': 'في العمل',
-  'attendanceView.status.incomplete': 'دخول فقط',
+  'attendanceView.status.incomplete': 'حضر فقط',
   'attendanceView.status.notYetIn': 'لم يحضر بعد',
   'attendanceView.status.absent': 'غائب',
   'attendanceView.status.onLeave': 'في إجازة',
@@ -18757,6 +18888,57 @@ const ar: Record<string, string> = {
   'employees.view.all': 'الكل',
   'employees.view.toSettle': 'بانتظار التسوية',
   'employees.roster.action': 'استيراد ملف',
+  'employees.photoBatch.action': 'رفع صور الموظفين',
+  'employees.photoBatch.title': 'رفع صور الموظفين دفعة واحدة',
+  'employees.photoBatch.hint': 'سمِّ كل صورة بكود الموظف، ويمكن أن يكون الاسم بجانبه. تتم المطابقة بالكود وحده، وتُقص كل صورة حول الوجه كما في الملف الشخصي، وتحل محل الصورة الحالية.',
+  'employees.photoBatch.drop': 'اسحب الصور أو المجلد إلى هنا، أو اختر:',
+  'employees.photoBatch.pickFiles': 'اختيار الصور',
+  'employees.photoBatch.pickFolder': 'اختيار مجلد',
+  'employees.photoBatch.looking': 'جارٍ البحث عن الموظفين…',
+  'employees.photoBatch.countReady': 'جاهزة للرفع: {{n}}',
+  'employees.photoBatch.countReplace': 'تستبدل صورة حالية: {{n}}',
+  'employees.photoBatch.countNameDiffers': 'الاسم يبدو مختلفًا: {{n}}',
+  'employees.photoBatch.countUnmatched': 'بدون موظف: {{n}}',
+  'employees.photoBatch.countDuplicate': 'مكررة: {{n}}',
+  'employees.photoBatch.countUnsupported': 'ليست صورة مدعومة: {{n}}',
+  'employees.photoBatch.countFailed': 'فشل رفعها — تُرفع مرة أخرى مع الرفع التالي: {{n}}',
+  'employees.photoBatch.countRename': 'تحتاج إعادة تسمية: {{n}}',
+  'employees.photoBatch.remove': 'إزالة {{name}} من القائمة',
+  'employees.photoBatch.ambiguous': 'الاسم فيه أكواد لأكثر من شخص ({{codes}}) — لن تُرفع؛ اترك الكود الصحيح فقط في الاسم',
+  'employees.photoBatch.unconfirmed': 'طابقت فقط بعد إعادة الصفر في أول الكود، والاسم في الملف لا يؤكدها — لن تُرفع؛ سمِّ الملف بالكود كاملًا',
+  'employees.photoBatch.unreadable': 'تعذّر فتح هذه الصورة (تالفة، أو ليست JPEG أو PNG أو WebP فعلًا) — لم يُرفع شيء',
+  'employees.photoBatch.faceSearchFailed': 'فشل البحث عن الوجه في هذه الصورة — لم يُرفع شيء؛ يُعاد مع الرفع التالي',
+  'employees.photoBatch.dropSkipped': 'تعذّرت قراءة {{n}} من العناصر المسحوبة فتم تخطيها.',
+  'employees.photoBatch.onlyAttention': 'ما يحتاج مراجعة فقط',
+  'employees.photoBatch.colFile': 'الملف',
+  'employees.photoBatch.colCode': 'الكود',
+  'employees.photoBatch.colEmployee': 'الموظف',
+  'employees.photoBatch.colStatus': 'الحالة',
+  'employees.photoBatch.include': 'تضمين {{name}}',
+  'employees.photoBatch.padded': 'أُعيد الصفر في أوله',
+  'employees.photoBatch.nameDiffers': 'الاسم في الملف: {{name}}',
+  'employees.photoBatch.ready': 'جاهزة',
+  'employees.photoBatch.readyReplace': 'جاهزة — تستبدل الصورة الحالية',
+  'employees.photoBatch.noCode': 'لا يوجد كود في اسم الملف',
+  'employees.photoBatch.unknownCode': 'لا يوجد موظف بهذا الكود',
+  'employees.photoBatch.duplicate': 'أكثر من صورة لنفس الموظف — اترك واحدة فقط',
+  'employees.photoBatch.unsupported': 'ليست صورة بصيغة JPG أو PNG أو WebP',
+  'employees.photoBatch.excluded': 'مستبعدة',
+  'employees.photoBatch.waiting': 'في الانتظار',
+  'employees.photoBatch.preparing': 'جارٍ قص الصورة…',
+  'employees.photoBatch.uploading': 'جارٍ الرفع…',
+  'employees.photoBatch.doneCropped': 'تم الرفع بعد القص حول الوجه',
+  'employees.photoBatch.doneNoFace': 'تم الرفع بدون قص لعدم العثور على وجه؛ راجعها من الملف الشخصي',
+  'employees.photoBatch.doneShrunk': 'تم الرفع بعد تصغيرها وبدون قص لعدم العثور على وجه؛ راجعها من الملف الشخصي',
+  'employees.photoBatch.faceSearchUnavailable':
+    'تعذّر تحميل البحث عن الوجه، فلم تُرفع أي صورة (كانت كل صورة ستُرفع بدون قص). أعد تحميل الصفحة وحاول مرة أخرى.',
+  'employees.photoBatch.upload': 'رفع {{n}} صورة',
+  'employees.photoBatch.stop': 'إيقاف',
+  'employees.photoBatch.progress': 'تم رفع {{done}} من {{total}}',
+  'employees.photoBatch.closeTitle': 'إيقاف الرفع؟',
+  'employees.photoBatch.closeBody': 'ما زالت هناك صور تُرفع. الصور التي رُفعت تبقى، والباقي لن يُرفع.',
+  'employees.photoBatch.keepGoing': 'متابعة الرفع',
+  'employees.photoBatch.stopAndClose': 'إيقاف وإغلاق',
   'employees.roster.title': 'استيراد ملف الموظفين',
   'employees.roster.subtitle':
     'يضيف الموظفين الجدد ويعدّل ما تغيّر. والحقل الفارغ في الملف لا يمسح بيانات قائمة في النظام.',
@@ -24887,6 +25069,10 @@ const ar: Record<string, string> = {
   'it.catalogs.fields.code': 'الكود',
   'it.catalogs.fields.sortOrder': 'الترتيب',
   'it.catalogs.fields.description': 'الوصف',
+  'it.catalogs.fields.requiresCounterReading': 'يتطلب عداد الطباعة',
+  'it.catalogs.fields.requiresCounterReadingHint':
+    'يُصرف صنف هذا النوع على طابعة، حبارة واحدة في كل سطر، مع قراءة عداد تلك الطابعة.',
+  'it.catalogs.counterBadge': 'عداد الطباعة',
 
   'it.vendors.subtitle': 'موردو أصول تقنية المعلومات ومقدِّمو الضمان',
   'it.vendors.searchPlaceholder': 'اسم المورد أو كوده',
@@ -26018,6 +26204,61 @@ const ar: Record<string, string> = {
     'عدّل مستخدم آخر هذا الصرف قبلك، فلم يعد ظاهرًا في هذه القائمة؛ افتح سجل حركات المستهلكات لترى الجهاز المركّب عليه الآن.',
   'it.consumables.installedOn.left':
     'لم يعد هذا الصرف ظاهرًا في هذه القائمة بعد تحديثها، فالمعروض أعلاه كما كان عند فتح النافذة.',
+  'it.consumables.installedOn.counterHint':
+    'إلزامية عند اختيار جهاز: عداد تلك الطابعة والحبارة مركّبة عليها. وإن لم يُختر جهاز فالقراءة تصحّح القراءة المسجّلة على الطابعة الحالية.',
+  'it.consumables.installedOn.counterDropped': 'بدون جهاز تُحذف قراءة العداد أيضًا من سجل الطابعة.',
+  // «عداد الطابعة» (2026-11-19): عداد الطابعة عند تركيب الحبارة.
+  'it.consumables.movements.columns.counter': 'قراءة العداد',
+  'it.consumables.counter.reading': 'قراءة عداد الطابعة',
+  'it.consumables.counter.reset': 'تم تصفير عداد الطابعة',
+  'it.consumables.counter.resetHint':
+    'عندها يجوز أن تكون القراءة مساوية لآخر قراءة أو أقل منها، وتكون الصفحات المطبوعة قبل التصفير غير معروفة.',
+  'it.consumables.counter.resetBadge': 'تصفير',
+  'it.consumables.counter.lastReading': 'آخر قراءة مسجّلة لهذه الطابعة: {{reading}} — {{date}}',
+  'it.consumables.counter.lastReadingToner': 'سُجِّلت عند تركيب {{toner}}.',
+  'it.consumables.counter.lastReadingReset': 'صُفِّر العداد عند هذه القراءة.',
+  'it.consumables.counter.noReading': 'لا توجد قراءة سابقة لهذه الطابعة',
+  'it.consumables.counter.loadingReading': 'جارٍ تحميل آخر قراءة للطابعة…',
+  'it.consumables.counter.readingUnavailable':
+    'تعذّر تحميل آخر قراءة لهذه الطابعة، وسيُتحقَّق من القراءة عند الصرف.',
+  'it.consumables.counter.backdated':
+    'تاريخ هذا الصرف سابق لتلك القراءة، فيُتحقَّق من القراءة عند الصرف مقابل القراءات المحيطة بتاريخه.',
+  'it.consumables.counter.printerRequired': 'إلزامي لهذا الصنف: الطابعة التي ستُركَّب عليها',
+  'it.consumables.counter.needsAssets':
+    'يُصرف هذا الصنف على طابعة من سجل الأصول، ويتطلب ذلك صلاحية عرض الأصول.',
+  'it.consumables.counter.oneCartridge': 'حبارة واحدة في كل سطر، على الطابعة التي تُركَّب عليها.',
+  'it.consumables.counter.readingRequired': 'أدخل قراءة عداد الطابعة.',
+  'it.consumables.counter.readingInvalid': 'أدخل عددًا صحيحًا لا يزيد على {{max}}.',
+  'it.consumables.counter.belowPrevious':
+    'القراءة يجب أن تكون أكبر من آخر قراءة مسجّلة لهذه الطابعة ({{reading}} بتاريخ {{date}}). وإذا صُفِّر عداد الطابعة فحدِّد «تم تصفير عداد الطابعة».',
+  'it.consumables.counter.belowPreviousBare':
+    'القراءة يجب أن تكون أكبر من آخر قراءة مسجّلة لهذه الطابعة. وإذا صُفِّر عداد الطابعة فحدِّد «تم تصفير عداد الطابعة».',
+  'it.consumables.counter.aboveNext':
+    'تاريخ هذا الصرف سابق لقراءة لاحقة مسجّلة لهذه الطابعة ({{reading}} بتاريخ {{date}})، فيجب أن تكون القراءة أقل منها.',
+  'it.consumables.counter.aboveNextBare':
+    'تاريخ هذا الصرف سابق لقراءة لاحقة مسجّلة لهذه الطابعة، فيجب أن تكون القراءة أقل منها.',
+  'it.consumables.counter.sameReading':
+    'الصنف {{n}} على الطابعة نفسها بقراءة مختلفة، وأسطر الطابعة الواحدة تحمل قراءة واحدة.',
+  'it.consumables.counter.cardTitle': 'عداد الطابعة',
+  'it.consumables.counter.cardHint':
+    'قراءات العداد المسجّلة عند تركيب كل حبارة على هذه الطابعة، الأحدث أولًا، وعدد الصفحات التي طبعتها الحبارة المستبدلة.',
+  'it.consumables.counter.columns.reading': 'قراءة العداد',
+  'it.consumables.counter.columns.toner': 'الحبارة',
+  'it.consumables.counter.columns.replaced': 'الحبارة المستبدلة',
+  'it.consumables.counter.columns.pages': 'الصفحات المطبوعة',
+  'it.consumables.counter.columns.printer': 'الطابعة',
+  'it.consumables.counter.columns.installReading': 'القراءة عند التركيب',
+  'it.consumables.counter.columns.removedAt': 'تاريخ الاستبدال',
+  'it.consumables.counter.unknown': 'غير معروف',
+  'it.consumables.counter.firstOfItem': 'أول حبارة من هذا الصنف على الطابعة',
+  'it.consumables.counter.replacedAt': 'رُكِّبت {{date}} عند {{reading}}',
+  'it.consumables.counter.latestOfItem': 'آخر حبارة من هذا الصنف على الطابعة',
+  'it.consumables.counter.showAll': 'عرض الكل ({{n}})',
+  'it.consumables.counter.showFewer': 'عرض أقل',
+  'it.consumables.counter.cartridgesTitle': 'عمر الحبارات',
+  'it.consumables.counter.average': 'متوسط الصفحات لكل حبارة: {{pages}} (من {{n}})',
+  'it.consumables.counter.noAverage':
+    'لم تُستبدل أي حبارة من هذا الصنف على طابعتها بعد، فلا يوجد متوسط معروف.',
 
   // ── إدارة النظام ← المستخدمون (SA-1) ──────────────────────────────────────
   // P10 — قوالب الإشعارات.
@@ -26799,6 +27040,10 @@ const ar: Record<string, string> = {
     'عدد الأيام التي يبتّ فيها المسؤول منفردًا',
   'systemAdmin.settings.keys.hr.attendance.importMaxAgeDays':
     'أقصى عمر للبصمة المقبولة عند الاستيراد',
+  'systemAdmin.settings.keys.hr.attendance.minPunchGapMinutes':
+    'الدقائق التي تُحتسب خلالها بصمتان كبصمة واحدة',
+  'systemAdmin.settings.keys.hr.attendance.countAbsence':
+    'تسجيل يوم العمل بدون بصمة كغياب',
   'systemAdmin.settings.keys.hr.attendance.decisionWeeklyReviewThreshold':
     'عدد التعديلات الأسبوعية قبل تمييزها للمراجعة',
   'systemAdmin.settings.keys.hr.attendance.autoComputeHour': 'ساعة الاحتساب الليلي للحضور (0–23)',
@@ -26928,6 +27173,10 @@ const ar: Record<string, string> = {
     'المدة التي يجوز خلالها للمسؤول أن يبتّ في يوم حضور بسلطته وحده. وما كان أقدم من ذلك يُسجَّل القرار بشأنه ولا يسري إلا بعد اعتماد الموارد البشرية.',
   'systemAdmin.settings.descriptions.hr.attendance.importMaxAgeDays':
     'بالأيام. والقيمة صفر تعني بلا حد، وهي الأصل، حتى يتمكن الفرع من إرسال تاريخه كاملًا. أما البصمة المؤرخة في المستقبل فمرفوضة دائمًا مهما كانت هذه القيمة، لأنها خلل في ساعة الجهاز لا تاريخ.',
+  'systemAdmin.settings.descriptions.hr.attendance.minPunchGapMinutes':
+    'البصمة التي لا تُقرأ جيدًا تُعاد بعد ثوانٍ قليلة في كثير من الأحيان، فيسجل الجهاز بصمتين، وبدون هذا الإعداد تُقرأ الثانية كانصراف — وهو ما جعل أيامًا تظهر بحالة حاضر وبدون أي ساعات عمل. القيمة الافتراضية عشر دقائق: أطول من أي محاولة مُعادة، وأقصر من أي يوم عمل حقيقي. والصفر يوقف الإعداد.',
+  'systemAdmin.settings.descriptions.hr.attendance.countAbsence':
+    'عند الإيقاف، وهو الوضع الافتراضي، يُقرأ يوم العمل بدون بصمة «لا يوجد تسجيل» — وهو وصف للدليل المتاح لا للموظف — ولا يُحتسب غيابًا في المرتبات. وعند التشغيل يُسجل اليوم نفسه غيابًا. أما قرار المسؤول بتسجيل الغياب بنفسه فلا يتأثر في الحالتين.',
   'systemAdmin.settings.descriptions.hr.attendance.decisionWeeklyReviewThreshold':
     'عدد أيام الحضور التي يجوز لمسؤول واحد تعديلها في الأسبوع قبل أن يُميّزها سجل التغييرات للاطّلاع عليها. ولا يترتب على تجاوز هذا العدد منع ولا رفض؛ فالجهاز المعطّل ينتج تعديلات كثيرة ومشروعة.',
   'systemAdmin.settings.descriptions.hr.attendance.autoComputeHour':

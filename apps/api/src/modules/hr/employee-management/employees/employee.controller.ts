@@ -17,6 +17,7 @@ import {
   type JobTitlePlacementQuery,
   type LinkEmployeeUser,
   type ListEmployeesQuery,
+  type LookupEmployeeCodes,
   type RehireCheckQuery,
   type UpdateEmployeeInsurance,
   type UpdateEmployeeOfficer,
@@ -318,6 +319,16 @@ const sendPhoto = (
 };
 
 /** An employee's photo, for someone who may see the employee — scoped like `GET /:id`. */
+/**
+ * The employees holding these codes — the bulk photo upload's match. Within the photo write's own
+ * scope (`employee.editPersonal`), so the screen offers exactly the people it may then change.
+ */
+export const lookupEmployeeCodes = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<LookupEmployeeCodes>(req);
+  ok(res, await employeeService.lookupCodes(body.codes, scopeSelector(ctx, 'employee.editPersonal')));
+};
+
 export const getEmployeePhoto = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);

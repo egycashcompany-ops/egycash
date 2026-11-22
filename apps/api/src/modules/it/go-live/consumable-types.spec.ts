@@ -9,6 +9,7 @@ import { IT_CATALOG_KINDS } from '@ecms/contracts';
 import {
   IT_CONSUMABLE_TYPE_CODES,
   IT_CONSUMABLE_TYPE_NAMES,
+  IT_COUNTER_READING_TYPE_CODES,
   consumableTypeSortOrder,
   matchConsumableTypes,
   type LiveConsumableType,
@@ -71,6 +72,21 @@ describe('the list the owner approved', () => {
     orders.slice(1).forEach((order, index) => {
       expect(order - (orders[index] as number)).toBeGreaterThan(1);
     });
+  });
+
+  // «النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة» (19 November 2026).
+  it('ticks «يتطلب عداد الطباعة» on «حبارات» alone, one of his nine', () => {
+    expect(IT_COUNTER_READING_TYPE_CODES).toEqual(['ink']);
+    for (const type of IT_COUNTER_READING_TYPE_CODES) {
+      expect(IT_CONSUMABLE_TYPE_CODES).toContain(type);
+    }
+    expect(IT_CONSUMABLE_TYPE_NAMES.ink.ar).toBe('حبارات');
+  });
+
+  it('seeds a fresh catalog’s types with the flag from that list', () => {
+    expect(code('src/modules/it/go-live/consumable-types.ts')).toContain(
+      'requiresCounterReading: IT_COUNTER_READING_TYPE_CODES.includes(code)',
+    );
   });
 });
 

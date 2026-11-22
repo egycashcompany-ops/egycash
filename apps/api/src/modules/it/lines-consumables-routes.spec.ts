@@ -110,6 +110,9 @@ describe('the consumables answer to their own grants', () => {
       'GET /it/consumables/:id': single('itConsumable.view'),
       'PATCH /it/consumables/:id': single('itConsumable.edit'),
       'GET /it/consumables/:id/movements': single('itConsumable.view'),
+      // «عداد الطابعة» (2026-11-19) — a toner item's cartridges, on the store's read grant. The
+      // printer's own readings are the ASSETS router's (`/it/assets/:id/counter-readings`).
+      'GET /it/consumables/:id/cartridges': single('itConsumable.view'),
       'POST /it/consumables/:id/receive': single('itConsumable.edit'),
       'POST /it/consumables/:id/scrap': single('itConsumable.edit'),
       'POST /it/consumables/:id/return': single('itConsumable.assign'),
@@ -137,6 +140,16 @@ describe('the consumables answer to their own grants', () => {
       expect(gate, route).toBeDefined();
       for (const key of gate?.keys ?? []) expect(key, route).not.toMatch(/^itAsset\./u);
     }
+  });
+});
+
+// «عداد الطابعة» (2026-11-19) — a printer's readings are a fact of the printer: on the register's
+// read grant, served by the assets router, so no consumables route needs an `itAsset` key.
+describe('the printer’s counter', () => {
+  it('reads on itAsset.view, from the assets router', async () => {
+    const { buildItAssetsRouter } = await import('./assets');
+    const routes = Object.fromEntries(gates('/it/assets', buildItAssetsRouter()));
+    expect(routes['GET /it/assets/:id/counter-readings']).toEqual(single('itAsset.view'));
   });
 });
 

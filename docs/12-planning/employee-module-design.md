@@ -223,6 +223,18 @@ New sidebar app **Employees** (dynamic-nav application, peer of Recruitment):
     already sent competes with no later one, so a corrected photo can follow it. «إيقاف», closing, or
     leaving the page stops after the ones under way. While the run works, the person's session is
     kept active; closing asks first.
+  - **Duplicates and a second pass** (2026-11-22) — after the first run of 2,552 photos: «عايز المكرر
+    تختار منه أنت تلقائي واحده وترفعها… مش عايز أرفع اللى اترفعوا».
+    - «اختيار صورة واحدة لكل مكرر تلقائيًا» keeps one file per employee who has several and leaves
+      the others out: the file whose name fits the employee best, then the newest, then the largest,
+      then by name — the same choice whatever order the files came in. The rows say what was chosen
+      and can still be ticked by hand. «عرض: المكرر فقط» shows every row of such employees.
+    - The lookup returns when each employee's current photo was uploaded (`photoUploadedAt`, the
+      photo file's own `uploadedAt`). By default the dialog skips the people whose photo went up in
+      the last 7 days («تخطي الصور المرفوعة: آخر 7 أيام»; also today, the last 30 days, or nothing),
+      so picking the same folder again after a reload — the next day too — sends only what is still
+      missing. A file that already failed is the last one the automatic choice keeps. Within one dialog a photo
+      already sent is never offered again whatever the choice.
 - **Employee Files** pages move under this app unchanged. Recruitment app loses its Employees entry.
 - Future-proof (F6): Attendance/Leave/Payroll/Performance each become an additive tab + action
   group + timeline source; manual leave actions hide when the Leave module exists; compensation is

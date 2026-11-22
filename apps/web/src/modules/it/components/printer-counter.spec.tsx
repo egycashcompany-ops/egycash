@@ -47,6 +47,7 @@ import { CatalogItemDialog } from './CatalogItemDialog';
 import { ConsumableMovementsDialog, IssueConsumablesDialog } from './ConsumableDialogs';
 import { AssetConsumablesCard } from './ConsumableMovements';
 import { PrinterCounterCard } from './PrinterCounterCard';
+import { NO_DEPARTMENT } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -595,6 +596,7 @@ describe('the ledger’s «قراءة العداد»', () => {
     employeeId: WALEED,
     employeeCode: '0100052',
     employeeName: 'وليد صفوت جلال',
+    ...NO_DEPARTMENT,
     assetId: PRINTER.id,
     assetCode: PRINTER.assetCode,
     assetName: PRINTER.name,

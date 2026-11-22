@@ -5,7 +5,8 @@
 //   · The row's type and colour: «وعاوز زرا يبقى فى كذا لون اقدر الون به الصف».
 //   · Rows without a van: «وعاوز اقدر اضيف صف ميكونش ليه عربيه واضيف كل البيانات برضو» — created,
 //     edited, deleted and given a van, Q11 counting them, `ux_day_vehicle` partial on a present van.
-//   · «الاتجاه» from the areas: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى موجوده».
+//   · «الاتجاه» from the areas: «الاتجاه اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى موجوده» —
+//     reversed in Round 28, «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»: typed by hand.
 //   · The slots: «كل عربيه هيبقى عليه من 1 ل 2 قادة و من 2 ل 4 اخصائيين» — two at most, no minimum.
 //   · The read: the van's drivers by name («ولما اعمل هوفر على العربيه يظهر السواقيين اللى عليها»)
 //     and the day's vans in the workshop («صيانة»).
@@ -21,6 +22,7 @@ import { type Express } from 'express';
 import { Types } from 'mongoose';
 import {
   ErrorCodes,
+  OPERATIONS_DIRECTION_MAX_LENGTH,
   OPERATIONS_LEGACY_CREW_ROW_COLOURS,
   OperationsEvents,
   OperationsSettingKeys,
@@ -51,6 +53,8 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { OperationsCrewAssignmentModel } from '../../src/modules/operations/crew/crew-assignment.model';
 import { operationsCrewAssignmentRepository } from '../../src/modules/operations/crew/crew-assignment.repository';
 import { OperationsShiftTypeModel } from '../../src/modules/operations/shift-types/shift-type.model';
+import { OperationsAreaModel } from '../../src/modules/operations/areas/area.model';
+import { operationsAreaRepository } from '../../src/modules/operations/areas/area.repository';
 import { seedOperationsShiftTypes } from '../../src/modules/operations/shift-types/shift-type.service';
 import {
   migrateCrewAssignmentIndexes,
@@ -848,7 +852,7 @@ describe('the crew row’s type and colour', () => {
   });
 });
 
-describe('«الاتجاه» — picked from the areas, a legacy one kept', () => {
+describe('«الاتجاه» — an area respelled, anything else typed by hand (Round 28), a legacy one kept', () => {
   it('stores the area’s own spelling, and several areas joined', async () => {
     const one = await saved({ rows: [{ vehicleId: van3, direction: 'المعادى' }] });
     expect(vanRow(one, van3)?.crew?.direction).toBe('المعادي');
@@ -856,34 +860,351 @@ describe('«الاتجاه» — picked from the areas, a legacy one kept', () =
     expect(vanRow(two, van3)?.crew?.direction).toBe('المعادي - حلوان');
   });
 
-  it('refuses a new direction that is not an active area — OPERATIONS_DIRECTION_NOT_AN_AREA', async () => {
-    const res = await save({ rows: [{ vehicleId: van3, direction: 'المعادي - طريق السويس' }] });
-    expect(res.status).toBe(422);
-    expect(errorOf(res).code).toBe(ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA);
-    expect(errorOf(res).details).toEqual([
-      { field: 'direction', code: 'NOT_AN_AREA', message: 'طريق السويس' },
-      { field: 'rows', code: 'ROW_INDEX', message: '0' },
-    ]);
-    // An archived area is no area to pick.
-    const archived = await save({ rows: [{ vehicleId: van3, direction: 'الدقي' }] });
-    expect(archived.status).toBe(422);
-    expect(vanRow(await board(), van3)?.crew?.direction).toBe('المعادي - حلوان');
+  // REWRITTEN in Round 28 — was «refuses a new direction that is not an active area —
+  // OPERATIONS_DIRECTION_NOT_AN_AREA». The owner reversed that rule: «عاوز الاتجاه اقدر اكتبه بايدى
+  // لو مش موجود فى الليست».
+  it('Round 28 — takes a new direction no active area answers, stored as typed and tidied; the code is no longer sent', async () => {
+    const mixed = await save({ rows: [{ vehicleId: van3, direction: 'المعادي - طريق السويس' }] });
+    expect(mixed.status, JSON.stringify(mixed.body)).toBe(200);
+    expect(vanRow(data<OperationsCrewBoardDto>(mixed), van3)?.crew?.direction).toBe(
+      'المعادي - طريق السويس',
+    );
+    // Trimmed, and every run of spaces inside it one space — the letters as typed.
+    const spaced = await saved({
+      rows: [{ vehicleId: van3, direction: '  طريق   مصر\tالإسماعيلية ' }],
+    });
+    expect(vanRow(spaced, van3)?.crew?.direction).toBe('طريق مصر الإسماعيلية');
+    // An ARCHIVED area is no area to respell by: «الدقى» is kept as typed, not made «الدقي».
+    const archived = await saved({ rows: [{ vehicleId: van3, direction: 'الدقى' }] });
+    expect(vanRow(archived, van3)?.crew?.direction).toBe('الدقى');
   });
 
-  it('keeps a direction saved before the rule while it is sent unchanged, and refuses changing it to another', async () => {
+  it('Round 28 — never stores a blank direction, nor one past OPERATIONS_DIRECTION_MAX_LENGTH, and writes nothing then', async () => {
+    const before = vanRow(await board(), van3)?.crew?.direction;
+    const blank = await save({ rows: [{ vehicleId: van3, direction: '  \t ' }] });
+    expect(blank.status).toBe(400);
+    expect(errorOf(blank).code).toBe(ErrorCodes.VALIDATION_FAILED);
+    // Round 28 critic — refused by the save, on the row that sent it (the shape refused it before,
+    // and with it a row's own blank one sent back unchanged — see the next test); and «-» or a
+    // zero-width space, which name nothing either (the filters count such a row «بدون اتجاه»).
+    for (const nothing of ['  \t ', '-', ' ! ', '\u200b']) {
+      const refused = await save({
+        rows: [
+          { vehicleId: van3, direction: before ?? null },
+          { vehicleId: null, direction: nothing, notes: 'لن يُحفظ' },
+        ],
+      });
+      expect(refused.status, nothing).toBe(400);
+      expect(errorOf(refused).details, nothing).toEqual([
+        expect.objectContaining({ field: 'body.rows.1.direction', code: 'TOO_SMALL' }),
+      ]);
+    }
+    expect((await board()).vehiclelessRows.some((row) => row.notes === 'لن يُحفظ')).toBe(false);
+    const longest = 'ط'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH);
+    const tooLong = await save({ rows: [{ vehicleId: van3, direction: `${longest}ب` }] });
+    expect(tooLong.status).toBe(400);
+    expect(vanRow(await board(), van3)?.crew?.direction).toBe(before);
+    // The ceiling itself is taken, counted once tidied.
+    const atCeiling = await saved({ rows: [{ vehicleId: van3, direction: `  ${longest}  ` }] });
+    expect(vanRow(atCeiling, van3)?.crew?.direction).toBe(longest);
+  });
+
+  // Round 28 verify — the ceiling was the SHAPE's, on every direction: «معادي/حلوان/…» typed in 78
+  // characters is ten areas, stored in their spelling in 120 — refused (400) at once, the board's
+  // own respelling of it included — and a row's own direction of many areas saved since Round 20
+  // past 80 made the row unsavable. It is the hand-typed text's now.
+  it('holds only HAND-TYPED text to OPERATIONS_DIRECTION_MAX_LENGTH: a direction of areas is stored respelled past it, and a row’s own past it stays savable', async () => {
+    const more = [
+      'التجمع الخامس',
+      'القاهرة الجديدة',
+      'مصر الجديدة',
+      'المقطم',
+      'القطامية',
+      'الشيخ زايد',
+      'المهندسين',
+      'العجوزة',
+      'الزمالك',
+    ];
+    for (const name of more) await area(name);
+    const typed = 'تجمع خامس/قاهرة جديدة/مصر جديدة/مقطم/قطامية/شيخ زايد/مهندسين/عجوزة/زمالك/معادي';
+    expect(typed.length).toBeLessThanOrEqual(OPERATIONS_DIRECTION_MAX_LENGTH);
+    const respelled = [...more, 'المعادي'].join(' - ');
+    expect(respelled.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
+
+    const ten = await saved({ rows: [{ vehicleId: van3, direction: typed }] });
+    expect(vanRow(ten, van3)?.crew?.direction).toBe(respelled);
+    // The board sends the respelling itself (its box respells as the save does): taken too.
+    const sentRespelled = await saved({
+      rows: [{ vehicleId: van3, direction: respelled, notes: 'عشر مناطق' }],
+    });
+    expect(vanRow(sentRespelled, van3)?.crew).toMatchObject({
+      direction: respelled,
+      notes: 'عشر مناطق',
+    });
+
+    // A row's own direction past the ceiling — hand text written before — sent back unchanged with
+    // another change: kept, the row saved.
     const crewId = vanRow(await board(), van3)?.crew?.id as string;
-    // A direction written before Round 20 — free text no area answers.
+    const legacy = 'طريق '.repeat(20).trim();
+    expect(legacy.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
     await OperationsCrewAssignmentModel.updateOne(
       { _id: crewId },
-      { $set: { direction: 'طريق السويس' } },
+      { $set: { direction: legacy } },
+    ).exec();
+    const kept = await saved({ rows: [{ vehicleId: van3, direction: legacy, notes: 'كما هو' }] });
+    expect(vanRow(kept, van3)?.crew).toMatchObject({ direction: legacy, notes: 'كما هو' });
+
+    // CHANGED to hand-typed text past it: refused on the row that sent it, nothing written.
+    const tooLong = await save({
+      rows: [
+        { vehicleId: van3, direction: legacy, notes: 'لن يُحفظ' },
+        { vehicleId: null, direction: `${'ط'.repeat(OPERATIONS_DIRECTION_MAX_LENGTH)}ب` },
+      ],
+    });
+    expect(tooLong.status).toBe(400);
+    expect(errorOf(tooLong).code).toBe(ErrorCodes.VALIDATION_FAILED);
+    expect(errorOf(tooLong).details).toEqual([
+      expect.objectContaining({ field: 'body.rows.1.direction', code: 'TOO_BIG' }),
+    ]);
+    const after = await board();
+    expect(vanRow(after, van3)?.crew).toMatchObject({ direction: legacy, notes: 'كما هو' });
+    const strayRow = after.vehiclelessRows.find((row) => row.direction?.startsWith('ططط') === true);
+    expect(strayRow).toBeUndefined();
+  });
+
+  // Round 28b critic — split at «/» too, «شبرا/الخيمة - المعادي …» read again was no areas: the save
+  // stored typed «شبرا الخيمة - …» as «شبرا/الخيمة - …» (91 characters), then refused that very text
+  // sent NEW (400 TOO_BIG, hand-typed past the ceiling) — the form «تحميل الطاقم الثابت» copies a
+  // standing direction in, onto a day row with none, and the form the board's picker picks.
+  it('Round 28b critic — an area whose name holds a separator, inside a longer direction: its own respelling, sent new, is taken past the ceiling', async () => {
+    const names = ['العاشر من رمضان', 'السادس من أكتوبر', 'مدينة بدر', 'حدائق الأهرام', 'الرحاب'];
+    for (const name of ['شبرا/الخيمة', ...names]) await area(name);
+    const respelled = ['شبرا/الخيمة', 'المعادي', 'حلوان', ...names].join(' - ');
+    expect(respelled.length).toBeGreaterThan(OPERATIONS_DIRECTION_MAX_LENGTH);
+
+    // Typed as a desk types it: stored in the areas' spelling.
+    const typed = await saved({
+      rows: [
+        { vehicleId: van3, direction: ['شبرا الخيمة', 'المعادى', 'حلوان', ...names].join(' - ') },
+      ],
+    });
+    expect(vanRow(typed, van3)?.crew?.direction).toBe(respelled);
+
+    // That respelling sent NEW, on a row with no direction of its own: taken, stored unchanged.
+    const sent = await save({
+      rows: [{ vehicleId: null, direction: respelled, notes: 'r28b شبرا' }],
+    });
+    expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+    const loose = data<OperationsCrewBoardDto>(sent).vehiclelessRows.find(
+      (row) => row.notes === 'r28b شبرا',
+    );
+    expect(loose?.direction).toBe(respelled);
+    // The row was only the vehicle: gone again, for the rows-without-a-van tests that count them.
+    await saved({ rows: [], removeCrewAssignmentIds: [loose?.id as string] });
+    // Short, too: «شبرا/الخيمة - المعادي» is areas — respelled, not stored as hand-typed text.
+    const short = await saved({ rows: [{ vehicleId: van3, direction: 'شبرا/الخيمه - معادي' }] });
+    expect(vanRow(short, van3)?.crew?.direction).toBe('شبرا/الخيمة - المعادي');
+  });
+
+  // Round 28 critic — a row's OWN direction that names nothing (the board before Round 20 stored any
+  // text: «  », «-»), sent back unchanged beside another change: kept exactly, the row saved. The
+  // shape refused «  » once tidied, so nothing on that row could be saved until somebody cleared
+  // its direction — and the board marked no row.
+  it('keeps a row’s own blank or «-» direction sent back unchanged — the row stays savable', async () => {
+    const crewId = vanRow(await board(), van3)?.crew?.id as string;
+    for (const held of ['  ', '-', '\u200b']) {
+      await OperationsCrewAssignmentModel.updateOne(
+        { _id: crewId },
+        { $set: { direction: held } },
+      ).exec();
+      const kept = await save({
+        rows: [{ vehicleId: van3, direction: held, notes: `كما هو ${held.length}` }],
+      });
+      expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+      expect(vanRow(data<OperationsCrewBoardDto>(kept), van3)?.crew).toMatchObject({
+        direction: held,
+        notes: `كما هو ${held.length}`,
+      });
+    }
+    // Changed from it to text that names something: taken, tidied and with no invisible mark.
+    const changed = await saved({
+      rows: [{ vehicleId: van3, direction: '\u200fطريق   السويس\u200b' }],
+    });
+    expect(vanRow(changed, van3)?.crew?.direction).toBe('طريق السويس');
+  });
+
+  // REWRITTEN in Round 28 — was «keeps a direction saved before the rule while it is sent unchanged,
+  // and refuses changing it to another». Changing it to a hand-typed one is now taken.
+  it('keeps a direction saved before exactly while it is sent unchanged (spaces aside), and takes changing it to another', async () => {
+    const crewId = vanRow(await board(), van3)?.crew?.id as string;
+    // A direction written before Round 20 — free text no area answers, with spaces of its own.
+    await OperationsCrewAssignmentModel.updateOne(
+      { _id: crewId },
+      { $set: { direction: 'طريق  السويس ' } },
     ).exec();
     const kept = await saved({
       rows: [{ vehicleId: van3, direction: 'طريق السويس', notes: 'كما هو' }],
     });
-    expect(vanRow(kept, van3)?.crew).toMatchObject({ direction: 'طريق السويس', notes: 'كما هو' });
-    const changed = await save({ rows: [{ vehicleId: van3, direction: 'طريق الإسماعيلية' }] });
-    expect(changed.status).toBe(422);
+    expect(vanRow(kept, van3)?.crew).toMatchObject({ direction: 'طريق  السويس ', notes: 'كما هو' });
+    // Changed to another text no area answers: taken as typed (Round 20 refused it).
+    const changed = await saved({ rows: [{ vehicleId: van3, direction: 'طريق الإسماعيلية' }] });
+    expect(vanRow(changed, van3)?.crew?.direction).toBe('طريق الإسماعيلية');
+    // Changed to an area: the area's spelling, as ever.
+    const area = await saved({ rows: [{ vehicleId: van3, direction: 'حلوان' }] });
+    expect(vanRow(area, van3)?.crew?.direction).toBe('حلوان');
     // Clearing it is always allowed.
+    const cleared = await saved({ rows: [{ vehicleId: van3, direction: null }] });
+    expect(vanRow(cleared, van3)?.crew?.direction).toBeNull();
+  });
+});
+
+// Round 28c — asked whether a direction typed by hand should also go on the list, the owner: «يعرض
+// عليا اضيفه او لا». The box offers «إضافة «…» إلى القائمة» beside «استخدام «…» اتجاهًا», and the
+// add is the areas catalog's own create (`POST /operations/areas`, `operationsCatalog.manage` — no
+// new grant), written at once, not at «حفظ».
+describe('Round 28c — «إضافة «…» إلى القائمة»: the direction box adds a name to «المناطق»', () => {
+  const addArea = (name: string, token = adminToken): request.Test =>
+    request(app)
+      .post('/api/v1/operations/areas')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name, nameEn: null });
+  const areaNames = async (): Promise<string[]> => {
+    const res = await request(app)
+      .get('/api/v1/operations/areas?pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return data<{ name: string }[]>(res).map((row) => row.name);
+  };
+  const messageOf = (res: request.Response): string =>
+    (res.body as { error: { message: string } }).error.message;
+
+  it('adds the name as the box sends it, answers it in the area’s own spelling, and the board then reads it as an area', async () => {
+    const added = await addArea('طريق الواحات');
+    expect(added.status, JSON.stringify(added.body)).toBe(201);
+    expect(data<{ name: string; nameEn: string | null; isActive: boolean }>(added)).toMatchObject({
+      name: 'طريق الواحات',
+      nameEn: null,
+      isActive: true,
+    });
+    // An area now: beside another, in another spelling, the save respells both — a hand-typed
+    // direction would have been stored as typed.
+    const onRow = await saved({ rows: [{ vehicleId: van3, direction: 'طريق الواحات و المعادى' }] });
+    expect(vanRow(onRow, van3)?.crew?.direction).toBe('طريق الواحات - المعادي');
+    const cleared = await saved({ rows: [{ vehicleId: van3, direction: null }] });
+    expect(vanRow(cleared, van3)?.crew?.direction).toBeNull();
+  });
+
+  // The unique index held the exact name only: «المعادى» beside «المعادي» went in as a second
+  // spelling of one area, which the direction rules read as one.
+  it('refuses a name that folds to a live area’s — another spelling, the article off, an archived one — 409 DUPLICATE, nothing added', async () => {
+    const before = await areaNames();
+    for (const name of ['المعادى', 'معادي', 'طريق الواحات', 'الدقى']) {
+      const refused = await addArea(name);
+      expect(refused.status, name).toBe(409);
+      expect(errorOf(refused).code, name).toBe(ErrorCodes.DUPLICATE);
+    }
+    // The refusal names the area that holds the name, and says when it is archived.
+    expect(messageOf(await addArea('المعادى'))).toContain('«المعادي»');
+    expect(messageOf(await addArea('الدقى'))).toContain('«الدقي» (archived)');
+    // Round 28c critic — and so does its detail, for a screen to say which area holds it (the box
+    // said «added meanwhile» of an archived area its list never had).
+    expect(errorOf(await addArea('المعادى')).details).toEqual([
+      { field: 'name', code: 'AREA_ACTIVE', message: 'المعادي' },
+    ]);
+    expect(errorOf(await addArea('الدقى')).details).toEqual([
+      { field: 'name', code: 'AREA_ARCHIVED', message: 'الدقي' },
+    ]);
+    expect(await areaNames()).toEqual(before);
+  });
+
+  // Round 28c critic — the folded rule held the create only: renaming an area in «البيانات
+  // المرجعية» to another spelling of a live one went through, and the direction rules then read the
+  // two as one.
+  it('refuses a RENAME to another spelling of a live area alike — 409 with the detail — and lets an area keep its own name', async () => {
+    const rename = (target: { id: string; version: number }, body: Record<string, unknown>) =>
+      request(app)
+        .patch(`/api/v1/operations/areas/${target.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ...body, version: target.version });
+    const fresh = await area('حدائق القبة');
+    for (const [name, code, holder] of [
+      ['المعادى', 'AREA_ACTIVE', 'المعادي'],
+      ['الدقى', 'AREA_ARCHIVED', 'الدقي'],
+    ] as const) {
+      const refused = await rename(fresh, { name });
+      expect(refused.status, name).toBe(409);
+      expect(errorOf(refused)).toMatchObject({
+        code: ErrorCodes.DUPLICATE,
+        details: [{ field: 'name', code, message: holder }],
+      });
+    }
+    // Its own name respelled is no other area's.
+    const respelled = await rename(fresh, { name: 'حدائق القبه' });
+    expect(respelled.status, JSON.stringify(respelled.body)).toBe(200);
+    // Two spellings written before the rule (straight to the catalog) still save what is not the
+    // name — the English name, archived, restored.
+    const twin = await operationsAreaRepository.create(
+      { name: 'المعادى', nameEn: null, governorate: null, isActive: true },
+      { by: adminId },
+    );
+    const kept = await rename(
+      { id: String(twin._id), version: twin.__v },
+      { nameEn: 'Maadi', isActive: false },
+    );
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+    await OperationsAreaModel.deleteOne({ _id: twin._id }).exec();
+  });
+
+  // Round 28c critic — the folded check read the areas, then wrote: two desks pressing «إضافة» on
+  // two spellings of one new name at the same moment both passed it (the unique index holds the
+  // exact name only), and one spelling then silently won on every row. Checked and written one at
+  // a time now: one is added, the others are refused naming it.
+  it('two spellings of one new name sent at the same moment: ONE is added, the others refused 409 naming it', async () => {
+    const spellings = ['زهراء المعادى', 'زهراء المعادي', 'زهراء معادي'];
+    const answers = await Promise.all(spellings.map((name) => addArea(name)));
+    const statuses = answers.map((res) => res.status).sort();
+    expect(statuses, JSON.stringify(answers.map((res) => res.body))).toEqual([201, 409, 409]);
+    const won = data<{ name: string }>(
+      answers.find((res) => res.status === 201) as request.Response,
+    );
+    for (const refused of answers.filter((res) => res.status === 409)) {
+      expect(errorOf(refused).details).toEqual([
+        { field: 'name', code: 'AREA_ACTIVE', message: won.name },
+      ]);
+    }
+    expect((await areaNames()).filter((name) => spellings.includes(name))).toEqual([won.name]);
+    // Two renames to two spellings of one new name, at the same moment, alike.
+    const [one, two] = await Promise.all([area('حي السفارات'), area('حي الأشجار')]);
+    const renames = await Promise.all(
+      [
+        [one, 'الحي الثامن'],
+        [two, 'الحى الثامن'],
+      ].map(([target, name]) =>
+        request(app)
+          .patch(`/api/v1/operations/areas/${(target as { id: string }).id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name, version: (target as { version: number }).version }),
+      ),
+    );
+    expect(renames.map((res) => res.status).sort()).toEqual([200, 409]);
+  });
+
+  it('is the catalog’s own grant: a planner without operationsCatalog.manage is refused (403), and his row still takes the text', async () => {
+    const planner = await tokenWith('ops-r28c-planner@ecms.local', [
+      'operationsCrew.view',
+      'operationsCrew.plan',
+    ]);
+    const refused = await addArea('طريق الفيوم', planner);
+    expect(refused.status).toBe(403);
+    expect(await areaNames()).not.toContain('طريق الفيوم');
+    // «استخدام «…» اتجاهًا» — on his row only, as typed.
+    const typed = await save(
+      { rows: [{ vehicleId: van3, direction: 'طريق الفيوم' }] },
+      DAY,
+      planner,
+    );
+    expect(typed.status, JSON.stringify(typed.body)).toBe(200);
+    expect(vanRow(data<OperationsCrewBoardDto>(typed), van3)?.crew?.direction).toBe('طريق الفيوم');
     const cleared = await saved({ rows: [{ vehicleId: van3, direction: null }] });
     expect(vanRow(cleared, van3)?.crew?.direction).toBeNull();
   });

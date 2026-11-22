@@ -116,6 +116,18 @@ export const ErrorCodes = {
   OPERATIONS_UNKNOWN_BRANCH: 'OPERATIONS_UNKNOWN_BRANCH',
   OPERATIONS_UNKNOWN_CURRENCY: 'OPERATIONS_UNKNOWN_CURRENCY',
   /**
+   * 422 (Round 29, «استيراد فروع من شيت») — the bank's branch sheet cannot be compared: no header row
+   * naming «اسم الفرع» in its first rows, no visible sheet, or over a cap. `details` name the missing
+   * column or the cap (`TOO_LARGE`), never a cell's content.
+   */
+  OPERATIONS_BRANCH_IMPORT_LAYOUT: 'OPERATIONS_BRANCH_IMPORT_LAYOUT',
+  /**
+   * 409 (Round 29) — «تأكيد الاستيراد» after the comparison went out of date: the file is not the one
+   * compared (`details[0].code` 'FILE_CHANGED'), or the bank's branches or the areas changed so the
+   * plan is no longer the one shown ('PLAN_CHANGED'). Nothing was written; compare again.
+   */
+  OPERATIONS_BRANCH_IMPORT_CHANGED: 'OPERATIONS_BRANCH_IMPORT_CHANGED',
+  /**
    * The destination branch is not a branch of the destination bank (`secondaryBankId ?? mainBankId`)
    * — legacy's client-side to-branch filter (main_ops.ejs:501-503), made a domain rule. The ORIGIN
    * carries no bank rule: it may belong to any bank, the main bank being the billed one.
@@ -146,10 +158,13 @@ export const ErrorCodes = {
    */
   OPERATIONS_UNKNOWN_SHIFT_TYPE: 'OPERATIONS_UNKNOWN_SHIFT_TYPE',
   /**
-   * 422 — Round 20: a crew-board save gave a row a NEW or CHANGED «الاتجاه» that is not the name of
-   * an active operations area («لازم اختار من الاتجاهات اللى موجوده»). A direction the row already
-   * holds stays while it is sent unchanged. Details: one per part refused (`field` 'direction',
-   * `message` the part as typed), then `field` 'rows' (`code` 'ROW_INDEX', `message` the row's index).
+   * @deprecated UNUSED since Round 28 — no server sends it. Round 20 refused a crew-board save that
+   * gave a row a NEW or CHANGED «الاتجاه» that was not the name of an active operations area («لازم
+   * اختار من الاتجاهات اللى موجوده»); Round 28 reverses that («عاوز الاتجاه اقدر اكتبه بايدى لو مش
+   * موجود فى الليست»): a hand-typed direction is stored as typed. Kept so a client built before the
+   * change still reads the code, and so no other refusal reuses its name. Its details were: one per
+   * part refused (`field` 'direction', `message` the part as typed), then `field` 'rows' (`code`
+   * 'ROW_INDEX', `message` the row's index).
    */
   OPERATIONS_DIRECTION_NOT_AN_AREA: 'OPERATIONS_DIRECTION_NOT_AN_AREA',
   /**
@@ -285,9 +300,12 @@ export const ErrorCodes = {
 
   // ── «توزيع المحصنات» (Round 12) ─────────────────────────────────────────────────────────────
   /**
-   * 422 — the distribution screen (`GET`/`POST /operations/secured/distribution`) asked for a day
-   * before today on the Cairo calendar: a past day's vans have left. One detail: `field` 'date',
-   * `code` 'MIN_DATE', `message` = today ('YYYY-MM-DD').
+   * 422 — the distribution save (`POST /operations/secured/distribution`) named a day before today
+   * on the Cairo calendar: a past day's vans have left. One detail: `field` 'date', `code`
+   * 'MIN_DATE', `message` = today ('YYYY-MM-DD'). Round 30: the read (`GET`) answers such a day as
+   * its record, read only — this is what keeps it so. R30 critic: `POST
+   * /operations/secured/:id/assign-delivery` onto a crew row of such a day answers it too (the same
+   * delivery leg), with the same detail.
    */
   OPERATIONS_DISTRIBUTION_DAY_IN_PAST: 'OPERATIONS_DISTRIBUTION_DAY_IN_PAST',
   /**

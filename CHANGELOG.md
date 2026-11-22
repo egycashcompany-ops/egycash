@@ -87,6 +87,16 @@ its entry here in the same PR.
     «تعيين السيارات» is untouched.
   - Unchanged: the data (no migration), the permissions, every endpoint but the two fields above,
     and the mistaken page, which was deleted outside the repository.
+- **The roles page shows its departments side by side.** «بدل ما الإدارات تتحت بعض وتحت كل واحده
+  الأدوار لأ عايز الإدارات تبقي جنب بعض». `/system/roles` drew one department card under the
+  next; the cards now sit in columns that wrap onto the next row — as many as the list has room for
+  at 320 px a card, at most four: one on a phone, two at 768 and 1024 px, three at 1440, four from
+  1536. The count follows the list's own width, so with the navigation pinned open a 1536 screen
+  lays three cards rather than four cramped ones, and a scrollbar never costs a column. The owner
+  was shown this beside a board of columns that scrolls sideways and chose it, because the board
+  hides every department past the fourth. A role's or a department's name is now written in full,
+  wrapped (a word too long for its card breaks inside itself), rather than cut short. Nothing about
+  what a role grants, its filters or its paging changes.
 
 - **Eight hours is eight hours: worked time, lateness and the attendance report, by the owner's
   two rulings of 18 November.** «worked time = last check-out − first check-in», «Late = check-in
@@ -135,6 +145,51 @@ its entry here in the same PR.
     on its date, check-in, check-out and hours columns.
 
 ### Added
+
+- **HR bulk photos: one photo per duplicate, chosen for you, and no photo sent twice.** «عايز
+  المكرر تختار منه أنت تلقائي واحده وترفعها… مش عايز أرفع اللى اترفعوا».
+  ([employee module design](docs/12-planning/employee-module-design.md) §8)
+  - «اختيار صورة واحدة لكل مكرر تلقائيًا» keeps the file whose name fits the employee best (then
+    the newest, then the largest) and leaves the rest out; «عرض: المكرر فقط» lists them.
+  - The people whose photo was uploaded in the last 7 days are skipped by default (or today, the
+    last 30 days, or none), so picking the whole folder again — the next day too — sends only what
+    is missing.
+    `POST /hr/employees/codes/lookup` now answers `photoUploadedAt` for each employee.
+
+- **IT: assets and consumables handed to a DEPARTMENT at a PLACE.** «عند تسليم الأصول والمستهلكات
+  يكون فى إمكانية إنى مأسلمش لموظف ولكن أعينها فى مكان بس تبقى على عهده الإدارة .. زى السيرفرات
+  والكاميرات والسويتشات وهكذا».
+  - **«المواقع»** — a new per-branch list of places («غرفة السيرفرات», «غرفة الكاميرات») on the
+    catalogs page, its own collection `it_locations` (`/it/locations`) under `itCatalog.manage`
+    within the caller's branch reach: names unique per branch, a place never changes branch, and it
+    is retired, never deleted — refused while assets are held there. The tab shows what each place
+    holds now.
+  - **The hand-over names an employee or a department** — «جهة الاستلام: موظف / إدارة». A
+    department hand-over names the department (any active department of any branch, IT
+    preselected), the place (in the assets' branch — one place, so one branch, per paper) and the
+    department's responsible person (any current employee), who signs. The same goes for a single
+    asset's assign, a transfer (`toDepartment`) and a consumables issue (the place in the store's
+    branch). Refusals are 422 on the request's own field (`body.department.departmentId` /
+    `.locationId` — `UNKNOWN`, `INACTIVE`, `OTHER_BRANCH`), and a responsible person who has left is
+    refused.
+  - **The department custody receipt and memo** — the same papers and number series, naming the
+    department and the place («ليكون في عهدة إدارة … بموقع …», «لصالح إدارة … بموقع …») and signed by
+    the responsible person; the signed copy uploads as any paper's. Every paper answers
+    `custodian` (null on an employee's); its `employeeId` is the signer.
+  - **Custody holds it as the department's, never the signer's**: `holderKind` and the
+    department, place and signer on the custody interval (old intervals read as an employee's, no
+    migration). The asset list, the custody register and the ledger show «في عهدة إدارة … — …» and
+    filter by department, place and holder kind; «حالة المستلِم», the leavers' panel and a person's
+    own open custody stay employee custody; the responsible person's page lists, apart, what they
+    signed for. A change of department, place or signer is a new holder and a new paper — a room
+    change and re-signing are transfers. A place does not travel: «نقل إلى فرع» refuses a
+    department-held asset, and a single «نقل» to another branch must name the holder there. A
+    responsible person who leaves is flagged in the audit (`responsibleExited`); the custody stands.
+  - The dashboard's «مُسلَّم» counts department custody and «آخر الحركات» names the department. The
+    asset's free-text `location` is relabelled «وصف المكان». The asset custody events carry the
+    department's fields, and `employeeId` is null on a department's `assigned` / `returned`.
+    Mobile lines are not handed to departments. ADR-021 gained an addendum; IT design §2.4.1, §2.5,
+    §2.5.1, §2.11, FR-22 and §17 (2026-11-19).
 
 - **IT consumables: the printer's counter, required when a toner goes in.** «عند صرف الصنف : حبارة
   أو النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة —
@@ -1903,6 +1958,424 @@ its entry here in the same PR.
       values retuned in `distribution-round26.spec.tsx` and `secured-distribution.spec.tsx`: a
       waiting chip's edge rose-300 (was rose-500), a proposal's amber-400 on amber-50/70 (was
       amber-500 on amber-50), the page's figure squares /10 (was /15).
+  - Round 28 — «الاتجاه» يُكتب باليد. The owner, on «لوحة التشغيلة» with a row «بدون سيارة» and the
+    direction's list saying «لا يوجد اتجاه بهذا الاسم»: «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى
+    الليست فاهم ؟». This REVERSES the earlier rule «اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى
+    موجوده بتاعت البنوك» (Round 20): a direction no area answers is taken, on the daily board and on
+    «الطاقم الثابت».
+    - The save (`POST /operations/crew-board`, `PUT /operations/standing-crew`): a new or changed
+      direction that names active areas is still stored in the areas' own spelling («المعادى» →
+      «المعادي», «المعادى و حلوان» → «المعادي - حلوان»); anything else is stored as typed — trimmed,
+      each run of spaces one space (`normalizeOperationsDirection`), never blank, and that
+      hand-typed text at most `OPERATIONS_DIRECTION_MAX_LENGTH` (80) characters, else 400 on the
+      row's `direction`. A direction of areas is not held to it (ten areas typed in 78 characters
+      are 120 stored), nor one a row already holds, which stays exactly as written while it is sent
+      unchanged. `OPERATIONS_DIRECTION_NOT_AN_AREA` is no longer sent (the code stays in the
+      contracts, marked deprecated). The standing crew's save now reads the areas too, so the two
+      saves store a direction alike (`crew/crew-direction.ts`).
+    - The box (both screens): while typing a name that is not exactly an area, the list offers
+      «استخدام «…» اتجاهًا» («Use “…” as the direction») — first, and alone, when no area holds the
+      text, in place of the dead end; last when some areas do, so Enter still takes the highlighted
+      area. Enter takes the highlighted row. Leaving the box (Tab, a click outside): an area's exact
+      name → that area, in its spelling, as before; text no area holds → taken as typed; part of an
+      area's name → nothing taken (the desk was searching). The rule is `lib/direction-pick.ts`.
+    - A saved hand-typed direction is shown plainly — no amber «not on the list» look; its title says
+      it is typed by hand, not an area, and that «توزيع المحصنات» proposes by direction only for an
+      area it names. The board's direction filter and the distribution's area box list it by its
+      own words.
+    - Tests rewritten to the new rule: (api) «refuses a new direction that is not an active area» →
+      «Round 28 — takes a new direction no active area answers, stored as typed and tidied», «keeps a
+      direction saved before the rule while it is sent unchanged, and refuses changing it to another»
+      → «… and takes changing it to another»; (web) «places a direction that is not an area on its
+      row» → «places no row for a direction», «legacy free text is kept and marked» → «a hand-typed
+      direction is shown plainly»; (contracts) «is never empty once tidied, and at most
+      OPERATIONS_DIRECTION_MAX_LENGTH characters» → «… and leaves the length to the save» (the
+      ceiling held by the shape refused a direction of areas the save respells past 80, and a row's
+      own long one sent back unchanged). New: the blank and too-long refusals, the hand-typed-only
+      ceiling, the standing crew's save, the list and the leaving rule, the filters with a
+      hand-typed direction.
+    - Round 28 critic, fixed with tests that fail before and pass after:
+      - The save keeps a row's OWN direction sent back unchanged whatever it is — blank (spaces
+        only, which the standing crew's plain box before #741 and the board before Round 20 stored),
+        «-», or long. The shape refused the blank, so nothing on that row could be saved again. The
+        shape now refuses only the empty string, as before Round 28. A NEW or CHANGED direction that
+        names nothing (blank, «-», a zero-width space) is refused by the save with 400 on the row's
+        `direction` (`TOO_SMALL`). It was stored before, and the filters counted it «بدون اتجاه».
+        `normalizeOperationsDirection` also drops invisible format marks (`\p{Cf}`: bidi marks, a
+        zero-width space), and `operationsDirectionNamesSomething` is the shared «names something»
+        rule.
+      - An area whose name holds a separator: the area fold (`foldOperationsAreaName`) now reads a
+        punctuation mark or a symbol as a space, not as nothing. So «شبرا الخيمة» as typed is the
+        area «شبرا/الخيمة», stored in its spelling. `operationsDirectionMatchesArea` tries the whole
+        direction first, so a van picked as «شبرا/الخيمة» is proposed for its own area's محصنات
+        again (a bug older than this round). «توزيع المحصنات» reads the vans' directions against its
+        محصنات' areas (`shipmentAreaNames`), so the right area box no longer splits it into «شبرا»
+        and «الخيمة».
+      - The list: a near miss of an area comes before «استخدام «…» اتجاهًا». This covers the words
+        in another order («نصر مدينة»), one letter away from four letters on («حلوات» → «حلوان»),
+        and a separator typed as a space. A direction of several parts is completed on its last part
+        («المعادي - حلو» → «المعادي - حلوان»).
+      - Leaving the box: text that ends part-way through an area's word («حلو», «المعادي - حلو»)
+        goes back, as before. A WHOLE word is taken as typed, even one an area holds («مصر» beside
+        «مصر الجديدة»). It used to be thrown away without a word.
+      - The box: a hand-typed direction wears a small pen at its start. The title alone never showed
+        on a phone. Opened on a value that is not one area, the box keeps its text whole and
+        selected, so it can be read in full and corrected in place; it used to blank it. That value
+        is the list's first row, so Enter keeps it. The 80-character `maxLength`, which cut a paste
+        without a word, is gone. The list says when hand-typed text is too long («طول الاتجاه
+        المكتوب يدويًا …»). Each row has an id the box names as active (`aria-activedescendant`),
+        «مسح الاتجاه» is reached by the arrows, and the hand-typed note is the box's
+        `aria-describedby`.
+      - Comments corrected: the two saves share one rule so the two boxes behave alike. (Round 28
+        left «تحميل الطاقم الثابت» copying the people only; since Round 28b it copies the direction
+        too, never the time — below.)
+      - Tests rewritten to the critic's rule (the build's, never the owner's): (web) «text some area
+        holds → nothing taken» → «text that ends part-way through an area's word → nothing taken»
+        («نصر» is now taken), «caps the typing at the save's ceiling» → «cuts nothing typed or
+        pasted: the box has no maxLength — the list says when it is too long»; (contracts) «is never
+        empty once tidied, and leaves the length to the save» → «refuses only the empty string, and
+        leaves the rest to the save — blank, «-» and length included». The blank and «-» refusals
+        are pinned by the API's integration tests.
+  - Round 28b — «تحميل الطاقم الثابت» ينزّل الاتجاه. Asked «لما تعمل «تحميل الطاقم الثابت» على «لوحة
+    التشغيلة»، بينزل الناس بس من غير الاتجاه والتوقيت … تحب الاتجاه ينزل كمان؟», the owner answered:
+    «اه». He was asked about the direction only, so only the direction comes down with the crew —
+    never the time (التوقيت), the notes, the type or the colour. Web only: no server path seeds a day
+    from the standing crew (the load edits the board's draft, and «حفظ» writes it, as before).
+    - A van the load fills (somebody placed, by its two rules: only an empty van, nobody twice) takes
+      its standing row's «الاتجاه» when the day's row has none. A direction the day's row already
+      holds — typed by the planner, saved this morning — is kept, never overwritten. A van the load
+      does not fill takes nothing.
+    - Never a direction the day's save would refuse. The save's rule (`crew/crew-direction.ts`) is
+      mirrored line for line in `standingDirectionForDay` (`lib/standing-load.ts`): tidied
+      (`normalizeOperationsDirection`); one that names nothing (blank, «-», a zero-width space) is not
+      copied; one that names active areas is copied in the areas' own spelling, as the save stores it
+      («المعادى» → «المعادي», «معادي/حلوان» → «المعادي - حلوان»), however long; anything else is
+      hand-typed, copied as typed unless it is longer than `OPERATIONS_DIRECTION_MAX_LENGTH` (80). A
+      standing row may still hold such a legacy direction (its own, kept while sent unchanged), but
+      on the day's row it would be new. So «حفظ» after a load goes through — judged, since the
+      critic below, on the very text the load writes.
+    - Switching «الطاقم الثابت» off clears the direction it wrote, as it empties the vans it filled —
+      but only while the row still holds exactly that direction: one the planner typed over it after
+      the load stays his. The board's draft keeps what the load wrote beside the vans it filled
+      (`CrewDraft.standingDirections`, `lib/crew-undo.ts`; `sameCrewDraft` compares it), so one press
+      of «تراجع» takes the people and the directions back together, and «حفظ (n)» counts each filled
+      van once — 0 again after on → off.
+    - The toggle's hint says so: «يملأ المركبات الفارغة فقط: الطاقم، والاتجاه إن لم يكن للصف اتجاه.
+      راجِع ثم احفظ.» («Fills empty vehicles only: the crew, and the direction where the row has none.
+      Review, then save.»).
+    - Comments corrected where Round 28 wrote that the load copies the people only
+      (`crew/crew-direction.ts`, `standing-crew.service.ts`, the doc of
+      `SetOperationsStandingCrewRowSchema`, the standing crew's Round 28 integration test): it copies
+      the people and the direction, never the time.
+    - Tests rewritten to the new rule: (web) «keeps direction and plannedTime as the board had them»
+      (its standing row had no direction, and its comment said the toggle loads a crew only) → «keeps
+      the day row's own direction and time — a standing direction never overwrites one». New: the
+      direction copied onto a filled van with none; kept when the day's row has one; not copied onto
+      a van not filled; skipped when the save would refuse it (empty, blank, «-», a zero-width space,
+      «!!!», hand-typed past 80 — taken at 80); tidied, and in the areas' spelling; a direction of
+      areas past 80 copied; off clears it only while unchanged, with «حفظ (n)»; one press of «تراجع»
+      for the people and the directions; the page's wiring (`standing-load.spec.ts`,
+      `crew-plan.spec.ts`, `crew-undo.spec.ts`).
+    - Round 28b critic (the build's, never the owner's):
+      - «حفظ» after a load was refused whole (400 `TOO_BIG`) for a standing direction of eight areas
+        naming «شبرا/الخيمة». The load judged the STANDING text; the save judges the text it is sent
+        — the respelling «شبرا/الخيمة - المعادي - …» (91 characters) — and, split at «/» too, that
+        was «شبرا» and «الخيمة», no areas: hand-typed text past 80. `canonicalOperationsDirection`
+        (contracts) now reads a RUN of parts as one area wherever the text between them folds to its
+        name, the longest run first (as it already read the whole text), so its answer read again
+        is the same answer. The day's save, the standing crew's save and the board's picker take
+        «شبرا/الخيمة - …» however long, and the picker no longer marks «شبرا/الخيمة - المعادي»
+        hand-typed. `standingDirectionForDay` judges the text it writes, as the save does (and
+        writes the standing row's own text when a respelling would not read as areas again).
+      - The toggle waits for the areas' list: held while it loads («جارٍ تحميل قائمة المناطق — يُقرأ
+        بها كل اتجاه قبل تحميل الطاقم…» on it). Pressed before, a direction of areas past 80 was left
+        behind without a word, and a shorter one came down in the standing row's spelling. Switching
+        off never waits.
+      - A van it fills whose standing direction names something the save would refuse (hand-typed
+        past 80 — a legacy one, or any while the areas' list failed) is named in a notice, as the
+        people left off are: «لم يُنقل الاتجاه الثابت», then the vans' codes and why — «… — أطول من
+        ٨٠ حرفًا وليس أسماء مناطق. اكتبه على المركبة.» (`directionsLeftBehind`).
+      - What the load filled is in view: when a filter would hide a van it filled (`hidesAnyOf`,
+        `lib/crew-plan-filter.ts` — «بدون اتجاه» hid each van the moment it took its direction, and
+        «حفظ (n)» counted changes the planner could not see), the filters go, as they go for a new
+        row and for the row a refusal names.
+      - Not changed, the owner's call: at 1440 the direction column (8rem since Round 27) cuts a
+        longer direction («طريق السويس» beside the hand-typed pen, «المعادي - حلوان»); the whole text
+        is in the box's tooltip. The load now writes such directions across the board, so it shows
+        more often; the screenshot shows «طريق السويس» as it is.
+      - Tests, each failing before and passing after: (contracts) a run of parts read as one area,
+        every answer read again the same, and only what no run answers named unknown; (api) the
+        91-character respelling sent new on the day's save — 400 `TOO_BIG` before, 200 now
+        (`operations-crew-plan.spec.ts`); (web) the load writes what the save takes, judges the text
+        it writes, names the directions it left behind, `hidesAnyOf`, the page's wiring, and the
+        three new strings in both catalogs.
+  - Round 28c — «الاتجاه»: يعرض الإضافة إلى القائمة. The owner, on «الاتجاه»: «الاتجاة زى ما قولنا اكتبه
+    اختارمن الداتا ليست او ان اكتبه ويجبلى ان ممكن اضيف لو مش موجود». Asked whether a direction typed
+    by hand — «استخدام «…» اتجاهًا», saved on that row only and never added to the list — should also
+    go on the list, he answered: «يعرض عليا اضيفه او لا».
+    - The box (both screens, «لوحة التشغيلة» and «الطاقم الثابت»): for a name no area answers, the list
+      offers BOTH — «استخدام «…» اتجاهًا» first, as Round 28 left it (this row only; Enter takes it,
+      every Round 28 key and rule kept), then «إضافة «…» إلى القائمة» («Add “…” to the list»), a plus
+      where the typed row has its pen, reached by the arrows (Enter takes the highlighted one; each
+      row's id is the box's `aria-activedescendant`, as in Round 28). Its hint: «تُضاف إلى «المناطق» في
+      البيانات المرجعية فورًا، لا عند «حفظ»، ولا يحذفها «تراجع».»
+    - The add is «المناطق»'s own create (`POST /operations/areas`) under the catalog's own grant
+      (`operationsCatalog.manage` — no new permission): a desk without it is never offered the add (the
+      box is given no `add`), and the server takes the actor from the token. The name is the typed
+      text tidied as the save tidies a direction (`normalizeOperationsDirection`); its English name is
+      left empty, for «البيانات المرجعية». The areas' list is read again BEFORE the row is told; then the
+      row takes the area in the catalog's own spelling — one operation, which «تراجع» takes back
+      without taking the area off. The toast says so: «أُضيفت «…» إلى «المناطق»» — «وُضعت اتجاهًا لهذا
+      الصف. يعيد «تراجع» اتجاه الصف وحده، وتبقى المنطقة في القائمة.» The box, the board's filters and the
+      hand-typed pen read the new area from then on. «توزيع المحصنات» reads a van's direction against
+      its محصنات' own areas, not this list, so it needs no reading again.
+    - When it is offered (`directionAddOffer`, `lib/direction-pick.ts`): text that names something; at
+      most `OPERATIONS_DIRECTION_MAX_LENGTH` (80), the hand-typed ceiling — an area's name has no
+      ceiling of its own, and a longer name added as an area would have escaped it; ONE part, none of
+      the separators the direction rules split at («المعادي - طريق السويس», «الواحات/الفيوم», «… و …» are
+      directions of several); no active area that IS it, folded as the server compares (the list
+      offers that area instead — since the critic, nothing wider: see below); and no archived one:
+      «الدقى» beside an archived «الدقي» is said («… موجودة في «المناطق» لكنها موقوفة — فعّلها من البيانات
+      المرجعية لتظهر هنا.»), not added twice. Nothing is offered until both lists are read.
+    - While it is written, the row's box shows the name with a spinner, read-only and `aria-busy`
+      («جارٍ إضافة «…» إلى «المناطق»…»): it takes no key but Tab and its list does not open. One request a
+      row — a second Enter adds nothing — and two rows adding the same name (folded) at once share one
+      (`directionAddQueue`, `api/direction-area.ts`).
+    - A refusal is said — in place while its box has the focus (above the list, the box red), else by
+      a toast; shut, the box marks it and gives it as its title (critic, below) — and the typed text
+      is NOT lost: the box keeps it, «استخدام «…» اتجاهًا» is offered first, and the add is not offered
+      again for that name unless it failed for a reason that may pass (the network). Duplicate (409 —
+      the area holding the name, named, archived or not), no permission (403), the name refused
+      (400), or failed. A pick, leaving the box or Escape answers it.
+    - The server (`areas/area.service.ts`): the create refuses a name that FOLDS to a live area's
+      (`foldOperationsAreaName` — «المعادى» or «معادي» beside «المعادي», an archived one too) with the
+      unique index's own answer, 409 `DUPLICATE`, naming the area (and «(archived)»). The index held the
+      exact name only, so another spelling of one area went in beside it. The catalog dialog's add
+      gets the same answer — and, since the critic, its rename too.
+    - Its own small hook file (`api/direction-area.ts`): the archived names
+      (`useArchivedOperationsAreaNames`, under the areas' key) and the create with its own `onError`,
+      so a refusal is said once; `useCreateOperationsArea`, the catalog dialog's, is unchanged.
+    - Tests: none rewritten — Round 28's list, keys and leaving rule are unchanged. New: (api,
+      `operations-crew-plan.spec.ts`, run whole) the add answers the area's own spelling and the board
+      then reads it as an area; folded duplicates — another spelling, the article off, the exact name,
+      an archived one — refused 409 `DUPLICATE`, nothing added; a planner without
+      `operationsCatalog.manage` refused 403 while his row still takes the text. (web)
+      `direction-pick.spec.ts` — when each option is offered, and the order; `crew-plan-controls.spec.tsx`
+      — both options and the hint, the archived note, the refusal, pending, the refused box, and no
+      `add` = Round 28's box; `direction-area.spec.ts` — the archived names' request, the create on a
+      real QueryClient (the areas read again before the answer, the global notifier quiet), one
+      request a row and one a name, the refusals' reasons, and both pages' wiring.
+    - (Verifier, on the real stack) Two gaps against «لو مش موجود», fixed in `lib/direction-pick.ts`:
+      (1) «part of a name» blocked a whole name a LONGER area only contains — «القاهرة» beside
+      «القاهرة الجديدة», «مصر» beside «مصر الجديدة», «المعادي» beside «المعادي الجديدة» got no add
+      (the server takes them: they fold to other names), and «طريق» was said to be an archived «طريق
+      المطار». Now an area blocks the add only when it IS the name (`isAreaNamed`: folded alike, its
+      words reordered, one letter away, or the text a PIECE of its word — «المعا», «قاهر», still being
+      typed); a whole-word name gets the area first, «استخدام», then «إضافة». (2) The box opened on
+      its row's own hand-typed direction listed «استخدام «…» اتجاهًا» but no add, so a direction used
+      on the row once could never be added from the board; it is offered there too
+      (`directionAddOfferInBox`). New (web, `direction-pick.spec.ts`): «a whole name a longer area
+      only contains is another name …», «the box opened on its row’s own hand-typed direction offers
+      the add too …».
+    - (Critic) Nine findings, all real, each fixed with a test that fails before and passes after:
+      (1) «إضافة» was still held back by the search's wide match — the verifier's `isAreaNamed` kept
+      words reordered, one letter away and a piece of a word — so names of other places («المنيب»
+      beside «المنيل», «طرة» beside «القنطرة شرق», «مصر» beside an archived «مصر القديمة», which it
+      told the desk to restore) got no add and no word why. Now only an area that FOLDS to the name
+      holds it back (`sameAreaName`, the server's own rule); a near miss is an area listed FIRST —
+      what Enter takes, the «did you mean» — then «استخدام», then «إضافة». (2) A refusal outlived its
+      row: shut, the box showed the refused name in red where the row's direction is, after «تراجع»,
+      a load, on another day. Now it is held for one row on one board day (`directionAddSlot`) while
+      the row still holds the direction it was sent on (`refusalStillHolds`); shut, the box shows the
+      row's own direction, a mark at its start and the refusal as its title, the name back on
+      opening. (3) The add landed by row key alone: a day stepped meanwhile patched the same van on
+      the other day, and a row gone (a «حفظ» read-back renames `new:N`) dropped it while the toast
+      said it landed. It lands only on its own day, on a row still holding its direction at the send
+      (`addLandsOn`); else the toast says «لم يتغيّر اتجاه الصف: تغيّر الصف أو اليوم أثناء الإضافة…».
+      (4) The box opened on its row's own hand-typed direction — fixed by the verifier, above. (5)
+      `area.service.ts` leaned on Round 29's `liveAll()`; it reads the live areas with the model.
+      (6) The folded rule held the create only, and could be raced: a RENAME to another spelling of a
+      live area is refused alike (409, naming it), and a name is checked and written one at a time
+      (the API runs as one instance) — three spellings of one new name sent together: one 201, two
+      409s. (7) A 409 said «added meanwhile», even of an archived area: its detail names the area
+      holding the name and whether it is archived (`AREA_ACTIVE` / `AREA_ARCHIVED`), and the box says
+      which («… في «المناطق» منطقة «الدقي» بهذا الاسم لكنها موقوفة …»); the catalog's own dialog says
+      it in the reader's language too (`errorMessage`), not the server's English. Said once: in place
+      while the box has the focus, else by a toast — its title short («لم تُضَف «…» إلى «المناطق»»,
+      a toast's title is one line, cut), the whole reason under it. (8) Screen readers: the notes (a refusal, an
+      archived area) sit above the listbox, not in it, the archived one named in `aria-describedby`;
+      one live region a box, always there, speaks the pending add, the refusal and the archived note
+      while the box has the focus. (9) The box's keys are read by `directionKeyAction` (pure), walked
+      keystroke by keystroke — Enter on «إضافة» adds, a second Enter while it is written adds nothing
+      — and what the box does with each answer is pinned on its source.
+      Rewritten (named): «is never offered when an active area IS the name, folded …» (was «… answers
+      the text …»); «a whole name a longer area only contains …» (a piece is offered now); «no add for
+      a name an area IS …» (was «… an area holds …»); «an archived area holding the name is said above
+      the listbox …»; «a refusal is said above the listbox …»; «a refused add, the box shut: the row’s
+      own direction …» (was «… keeps the name in the box, marked red …»); the pages' wiring (the box
+      is given the row's direction). New: (api, `operations-crew-plan.spec.ts`, run whole) the 409's
+      detail, the rename refused, two spellings at the same moment; (web) `direction-pick.spec.ts` —
+      the near misses, `directionAddHeld` / `directionAddRefusalText`, the keys walked;
+      `direction-area.spec.ts` — the day and the row as it was, the refusal held per slot;
+      `crew-plan-controls.spec.tsx` — one live region, the keys carried out; `shared/lib/errors.spec.ts`
+      — the held area worded.
+  - Round 29 — «استيراد فروع من شيت» on «البيانات المرجعية» → «الفروع». The owner, with four banks'
+    branch lists: «عاوز اضيف دول فى البيانات المرجعية تبع (الفروع والبنوك والمناطق) ملحوظه هتلاقى area
+    دى ضيفها ل منطقة العمليات و منطقة الحسابات تمام ؟» and «وعاوز جمب اضافة فرع فوق يقدر يضيف شيت ويقارن
+    زى بتاع كروت الشحن كدا».
+    - Beside «إضافة فرع» (for `operationsCatalog.manage` only — no new permission): «استيراد من شيت».
+      «اختر البنك» (the sheet does not name it), «ارفع شيت الفروع» (.xlsx, ≤ 10 MB, ≤ 5 000 rows),
+      «مقارنة بالفروع» — the fuel-card sheet's flow and look. Nothing is written until «تأكيد
+      الاستيراد».
+    - The reader (`bank-branches/import/read-branch-sheet.ts`): the first VISIBLE tab, never inflated
+      whole (the fuel sheet's `one-sheet-zip`, streamed in slices); the header is the first of ten
+      rows naming «اسم الفرع» / «الفرع» / «Branches» / «Branch», and each column is bound by its label —
+      «رقم الفرع» / «الكود» / «كود الفرع» / «Code», «المنطقة» / «المنطقة (عربي)», «Area» / «Area
+      (English)» / «المنطقة (إنجليزي)», «عنوان الفرع» / «العنوان» / «Address»; any other column («م»,
+      «التكلفة») is never read. A merged area is every covered row's; blank rows and rows of a serial
+      alone are skipped; a code is the text the cell shows («084» stays «084»); names are stored
+      tidied (spaces, tatweel «ـ»); an area without a letter («ــــ») is none; a name cell that holds a
+      date is flagged.
+    - The owner's decisions (`plan-branch-import.ts`): the sheet's area goes into both «منطقة
+      العمليات» and «منطقة الحسابات»; an area «المناطق» lacks is created (Arabic in the name, English
+      in `nameEn` — «فى خانة العربى اكتبها عربي وفى خانة الانجليزى اكتبها انجليزى»), one it holds (its
+      Arabic name folded, or its English name without case) reused in its own spelling and its empty
+      English name filled; an area in Latin letters only stands for both names, and one in Arabic
+      letters under «Area» is the Arabic name, never written as the English one. A branch the bank
+      holds by name takes the sheet's code and area («حدّث الكود والمنطقة»); an empty cell never wipes;
+      an address only where the branch has none. «ضيف رقم بعد الكود»: the first branch of a code keeps
+      it, each further one «-2», «-3», … past every suffix the bank uses (a held branch keeps its own;
+      «0» likewise). Problems — no name, a date for a name, a name twice, a name two held branches
+      share, a new branch with no code — are listed and never written.
+    - The comparison: the five counts («جديد», «تحديث», «بدون تغيير», «كود معدَّل», «مشكلة»), the new
+      areas (Arabic | English) and the English names filled, every row (old → new code and area, the
+      sheet's code → the code stored, why a problem), filters and a search. «تأكيد الاستيراد» posts the
+      SAME file with the comparison's `fileSha256` and `planDigest`: the server plans again and refuses
+      (409 `OPERATIONS_BRANCH_IMPORT_CHANGED`, nothing written, «مقارنة من جديد») unless it is the plan
+      shown; then ONE transaction — the areas, the edits (a code two held branches swap passes
+      through a code of its own), the new branches — each audited as the catalog's add and edit. The
+      branches and areas lists are read again. The same sheet compared again is all «بدون تغيير».
+    - Checked on the real stack with the owner's four ready sheets (kept local), a few held branches
+      and areas seeded to overlap them: بنك مصر 672 rows (669 new, the seeded one updated, 74 codes
+      suffixed — the 18 «0» as 0 … 0-18 — 30 areas created, 1 English name filled, 2 rows whose name
+      is a date), CIB 201 (every new area with both names), البنك الأهلي 629 (no area, 1 suffix), بنك
+      القاهرة 230 (211 addresses, 8 suffixes); each compared again: nothing to write.
+    - Tests: (contracts) the labels, tidying, suffixes, the apply's hashes; (api) the reader (labels in
+      any order, a title row, merged areas, Latin areas, placeholder areas, leading zeros, tatweel,
+      dates, blank and serial rows, the visible tab, the caps), the planner (new / update /
+      unchanged, suffixes against the sheet and the bank, freed and swapped codes, areas reused /
+      created / filled, the problems, a second import plans nothing) and the
+      `operations-branch-import.spec.ts` integration suite (the grant, nothing written by a compare,
+      another file and a moved plan refused, one transaction, audits, a re-import, a swap); (web) the
+      button's grant, the steps, the comparison drawn, the filters, the refusals, the keys.
+    - Round 29 critic (the build's, never the owner's): a NEW row whose name the bank holds spelt
+      another way («ى/ي», «ة/ه», «أ/ا», Arabic-Indic digits — `operationsBranchNameLookalikeKey`) stays new,
+      as the owner's rule matches on the tidied name, and is marked «قد يكون مكرَّرًا» with the held
+      branch's name and code; a Latin-only area takes the Arabic name another row gives beside the
+      same English one, whichever row comes first (the first row's Latin had become the Arabic name);
+      an area found by its English name alone says the row's Arabic is not written (`byEnglish`), and
+      an English name that is another area's is never written on this one (`englishElsewhere`); an
+      «Area» cell with any Arabic letter is the Arabic name, and Latin under «المنطقة» beside Arabic
+      under «Area» is read swapped back. All of these are «للمراجعة» — a filter, a line above the
+      counts with «اعرضها», and a line in the confirmation — and are in `planDigest`: a lookalike
+      added after the compare refuses the apply (409, nothing written). «كود معدَّل» (tile, filter, row chip,
+      `counts.suffixed`) counts only the suffixed codes the import writes — a held «116-2» read again
+      shows its code and the sheet's, written nothing. The filters are toggle buttons
+      (`aria-pressed`), old → new values say «كان» / «أصبح» to a screen reader, the toast is a short
+      title with every count (the English names filled too) in its description. The specs' dates are
+      made up (two had come from the owner's sheet), and `shared/xlsx/stream-text.ts` has its own spec.
+  - Round 30 — «توزيع المحصنات» على يوم مضى: سجل للعرض فقط. On the screen's top row («يوم التسليم»,
+    the figures, «توزيع تلقائي», «تراجع», «حفظ (0)»), the owner: «عاوز هنا يقدر يجيب اليوم اللى قبله
+    ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى».
+    - «يوم التسليم» takes a past day (it had a floor at today). Today stays the default and every
+      later day is the plan, as before. «تسليم المحصنات» keeps its floor and its today-only «تسليم».
+    - The read (`GET /operations/secured/distribution?date=`) answered a past day with 422
+      `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`; it now answers it as that day's RECORD (`past: true`):
+      the day's saved «محصنة» crew rows (vans, captains, crew, direction, counts — the rule of a day to
+      come), every secured shipment due on the day WHATEVER its status now (handed over, delivered,
+      still in the vault — then «متأخرة» — or never received), and every one whose live delivery leg
+      rides one of the day's crew rows; each at its current stage, on the van its live leg rides or on
+      none. A record proposes nothing. Its cartons, bags and boxes are the vault's counts at receipt,
+      held or handed over since (`recordPackages`, to a reader of the vault only, its packaging read's
+      grant) — read from the vault's holdings, a van that went out would count 0. What it cannot
+      show is in the contract (`past`): a shipment taken off its van, or moved to another day, since;
+      and the overdue ones that waited in the vault that day without a van (which shipments were
+      overdue on a past day is not kept). The reads of today and of later days are unchanged.
+    - The save still refuses a past day (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, `MIN_DATE` =
+      today, before any shipment is looked at): the record is read only on the server whatever a
+      client sends. «تسليم» on a past day's van stays refused (`OPERATIONS_DISPATCH_NOT_TODAY`).
+      (Verifier) A save of TODAY could still take an overdue محصنة off the PAST day's van its leg
+      was left on — a hand-made request, the screen never sends it — and so change that day's
+      record; a take-off now reaches only a van of the day saved (422
+      `OPERATIONS_CREW_DAY_MISMATCH`, naming the shipment). Placing such a محصنة on one of today's
+      vans still moves it, re-dated: the overdue flow.
+    - On the screen a past day — by the URL's day before the read is in, by the server's `past`, or by
+      midnight passing over yesterday's read (`isRecordDay`) — is drawn as for a reader without the
+      edit grant: no drag, no «نقل إلى…», no «توزيع تلقائي», no «تراجع» (nor Ctrl+Z), no «حفظ», no
+      proposal, no unsaved draft. In the hint's place a calm notice, «سجل يوم … — للعرض فقط، لا يمكن
+      التعديل», and what it shows; where the acts stood, «سجل · للعرض فقط» and «العودة إلى اليوم». The
+      filters and the hover cards still work. No new permission.
+    - (Critic) `POST /operations/secured/:id/assign-delivery` writes the same delivery leg and took a
+      past day's van with a 200 (a hand-made request — no screen mounts its dialog now); it refuses
+      one as the save does (422 `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, same detail). The record's read
+      asks only for the day's secured delivery legs, ids joined on the server, instead of loading every
+      leg of the day. On the screen, once the read is in the SERVER's `past` decides, plus midnight
+      passing as the screen's own clock saw it (`isRecordScreen`): a PC clock running ahead no longer
+      turns today into a record. Picking today on a screen midnight turned into yesterday's record
+      reads it again; work left unsaved when the day ended is said (a toast and a line on the notice),
+      not dropped in silence; the record is drawn calmly (no rose «بلا قائد» frame, no «لا تأخذ
+      محصنات», no amber kept row, no rose «بلا سيارة»), its words kept. Ctrl+Z goes through one handler
+      (`distributionUndoKey`) tested with key presses, and the draft's one writer is shut on a record.
+      The suite's record now holds a DELIVERED one too. Rewritten (web): «is a record … on
+      yesterday’s read left open past midnight» (the stale read now arrived yesterday), «shuts every
+      act through ONE gate», «takes nothing back while the save is in flight».
+    - Tests rewritten to the new rule: (api) «opens on TODAY in Cairo, and refuses a day that has
+      passed» → «opens on TODAY in Cairo — and a day that has passed as its record, not a refusal»;
+      (web) «opens on the day with no day before today, and the drag hint» → «opens on the day — with
+      no floor: a past day can be picked, as its record — and the drag hint»; «never a past day — the
+      server refuses one» → «never a past day on the vault’s screen — a past day’s vans have left».
+      New: the Round 30 integration suite (the record's vans and shipments at every status, a leg left
+      on its van under a moved date, no proposal, its packages — the handed-over one's too — to the
+      vault's readers only, every reader, every save of the day refused with nothing written,
+      «تسليم» refused, the live day untouched, an unplanned past day); the page's record (the notice,
+      no write control, no drag, menu or proposal, the loads, marks and packages, before the read and
+      past midnight, a reader without the grant, the one gate); `readDistributionDay`, `isRecordDay`,
+      `recordPackaging`; the wire.
+  - Round 31 — بطاقة السيارة: العدد والكلمة في سطر واحد. On «توزيع المحصنات» (his screenshot: the
+    record of 2026-11-18, vans 101/104/112/125/249/106), the owner: «الصوره دى عاوز العدد والكلام على
+    صف واحد مش صفين يعنى المحصنات والعدد والايقون فى صف واحد واسم القائد برضو يكون جمب الاشارة
+    الخضرة اعملى سامبل كدا وورينى». A sample, built in the real van card (`VanCard`), so it can ship.
+    - Each count on the van card — محصنات, كراتين, حقائب, صناديق — is ONE line: its icon, its figure,
+      then its word beside them («1 محصنة», «4 حقائب», «2 كرتونتان»), so each tile and the card are
+      shorter. The words are the count's own as before (محصنة · محصنتان · محصنات; كرتونة · كرتونتان ·
+      كراتين …), the colours, the 0 look and the order of the tiles are Round 27d's, unchanged; a
+      three-digit figure is a step smaller (13px, `lineFigureSize`) so the word keeps the line.
+    - The captain's name sits on the SAME line as his green «قائد», beside it, cut to what the frame
+      has left (his person card says it whole, as before); «بلا قائد» and the record's quiet «بلا
+      قائد» were one line already.
+    - Each tile is one line HIGH at every width (R31 review — the sample had let the word step under
+      the figure on the narrow three-a-row cards, a two-line tile and row: English «10 Secured» /
+      «12 Cartons» at 1024 and 1340–1366, «103 Secured» at 1440). On a tile under 5.5rem (82–90px:
+      1024, 1340–1440, 1800) a figure of two characters or more is one more step smaller and the word
+      a pixel closer (`lineFigureTight`, a container query on the tile), so every count to 99 keeps
+      its word in both languages, three digits at 1440 too; only where even that line cannot hold it
+      (three digits in English on the 82–84px tiles, «103 محصنات» on the 82px ones, four digits)
+      does the word step out of view — never onto a second line, never cut — the tile then says the
+      whole count on hover («103 كراتين») and to a screen reader. Measured in a browser at 390, 768,
+      1024, 1280, 1340, 1366 and 1440, light and dark, Arabic and English, today and the record.
+    - R31 review — a cut captain's name keeps its START on the English screen too (`dir="auto"`):
+      the box's left-to-right direction had cut an Arabic name at its beginning («احمد سيد بركة محمد»
+      read «…يد بركة محمد»), which the shorter line beside the mark made common.
+    - The van's hover card keeps its four tiles stacked, four across (18rem leaves each too narrow
+      for one line); «تسليم المحصنات» wears the same van card, so its tiles are one line too.
+    - Specs: the van card's captain spec rewritten («… then the captain: his mark and his name
+      BESIDE it on one line (Round 31), cut, a card trigger»); R26b critic F8 renamed to the stacked
+      tile it still pins (the hover card's); new: the Round 31 block in
+      `distribution-van-card.spec.tsx` (one line in both languages, the words, the screen reader's
+      phrase, the colours and the 0 look, the figure size and the wrap fallback, the hover card
+      stacked, «بلا قائد»). R31 review: the fallback spec REWRITTEN («one line HIGH always: … the
+      word leaves the view — never a second line, never cut»), the captain spec now pins the name's
+      `dir="auto"`; new: the whole count on hover in English, a cut name keeping its start.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

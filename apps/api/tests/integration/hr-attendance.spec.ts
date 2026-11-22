@@ -156,19 +156,6 @@ const oldWorkday = (): Date => {
   return day;
 };
 
-/**
- * The first WORKDAY after `day` — never a weekend or a seeded holiday. A plain «day + 1» after a
- * recent Thursday is a Friday, which is recomputed as `weekend` (not a day at work), so a case that
- * needs two days at work failed whenever `recentWorkday()` landed on a Thursday (every Sunday).
- */
-const workdayAfter = (day: Date): Date => {
-  let next = addDays(day, 1);
-  while ([5, 6].includes(isoWeekday(next)) || HOLIDAY_ISO.has(dateOnlyIso(next))) {
-    next = addDays(next, 1);
-  }
-  return next;
-};
-
 /** A recent WEEKEND day per the seeded calendar (Fri=5). */
 const recentWeekendDay = (): Date => {
   let day = addDays(cairoToday(), -10);
@@ -1277,7 +1264,11 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     // every attended day would report half the real figure.
     const emp = await inBranch();
     const full = recentWorkday();
-    const openEnded = workdayAfter(full);
+    // The next WORKDAY, not simply the next day: a Friday or a holiday there is no day at work.
+    let openEnded = addDays(full, 1);
+    while ([5, 6].includes(isoWeekday(openEnded)) || HOLIDAY_ISO.has(dateOnlyIso(openEnded))) {
+      openEnded = addDays(openEnded, 1);
+    }
     await switchPatternOn();
     for (const [day, at, direction] of [
       [full, '09:00', 'in'],

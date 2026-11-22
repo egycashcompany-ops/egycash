@@ -139,10 +139,56 @@ describe('a line of «آخر الحركات»', () => {
       assetId: String(ASSET),
       branchId: null,
       employeeId: HOLDER,
+      departmentId: null,
+      locationId: null,
       fromBranchId: null,
       toBranchId: null,
     });
     expect(movementOfEvent(entry('returned', { employeeId: HOLDER })).employeeId).toBe(HOLDER);
+  });
+
+  it('names the department and its place when a department held it — never its signer', () => {
+    const department = String(id());
+    const place = String(id());
+    const signer = String(id());
+    const fields = {
+      holderKind: 'department',
+      departmentId: department,
+      locationId: place,
+      responsibleEmployeeId: signer,
+    };
+    for (const type of ['assigned', 'returned']) {
+      expect(movementOfEvent(entry(type, fields))).toMatchObject({
+        employeeId: null,
+        departmentId: department,
+        locationId: place,
+      });
+    }
+    // Handed on to a department — the line names where it went.
+    expect(
+      movementOfEvent(
+        entry('transferred', {
+          fromEmployeeId: HOLDER,
+          toDepartmentId: department,
+          toLocationId: place,
+          toResponsibleEmployeeId: signer,
+          fromBranchId: TANTA,
+          toBranchId: TANTA,
+        }),
+      ),
+    ).toMatchObject({ employeeId: null, departmentId: department, locationId: place });
+    // …and from a department to a person: the person, no department.
+    expect(
+      movementOfEvent(
+        entry('transferred', {
+          fromDepartmentId: department,
+          fromLocationId: place,
+          toEmployeeId: NEXT_HOLDER,
+          fromBranchId: TANTA,
+          toBranchId: TANTA,
+        }),
+      ),
+    ).toMatchObject({ employeeId: NEXT_HOLDER, departmentId: null, locationId: null });
   });
 
   it('names the branches of a move between two — «طنطا ← المهندسين» — and the new holder', () => {
@@ -200,6 +246,8 @@ describe('a line of «آخر الحركات»', () => {
       assetId: String(ASSET),
       branchId: TANTA,
       employeeId: null,
+      departmentId: null,
+      locationId: null,
       fromBranchId: null,
       toBranchId: null,
     });
@@ -213,6 +261,8 @@ describe('a line of «آخر الحركات»', () => {
       assetId: String(ASSET),
       branchId: null,
       employeeId: null,
+      departmentId: null,
+      locationId: null,
       fromBranchId: null,
       toBranchId: null,
     });
@@ -244,8 +294,35 @@ describe('a line of «آخر الحركات»', () => {
       employeeId: HOLDER,
       employeeCode: '0101002',
       employeeName: 'وليد صفوت جلال',
+      departmentId: null,
+      departmentName: null,
+      locationName: null,
       fromBranchId: null,
       toBranchId: null,
+    });
+    // A department's line: «إدارة …» and its place, as named now; nobody's code and name.
+    const department = String(id());
+    const place = String(id());
+    const toDepartment = movementOfEvent(
+      entry('assigned', { holderKind: 'department', departmentId: department, locationId: place }),
+    );
+    expect(
+      toActivityItem(toDepartment, asset, undefined, {
+        departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+        locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+      }),
+    ).toMatchObject({
+      employeeId: null,
+      employeeName: null,
+      departmentId: department,
+      departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+      locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+    });
+    // Names that cannot be read keep the id and lose only the label.
+    expect(toActivityItem(toDepartment, asset, undefined)).toMatchObject({
+      departmentId: department,
+      departmentName: null,
+      locationName: null,
     });
     // A transfer reads its branch from the entry, wherever the asset has gone since.
     const moved = movementOfEvent(

@@ -55,6 +55,15 @@ describe('folding an area name — the Arabic a typist actually types', () => {
     expect(foldOperationsAreaName('‏المعادي‏')).toBe('معادي');
     expect(foldOperationsAreaName('...')).toBe('');
   });
+
+  // Round 28 critic — a mark BETWEEN two words was dropped without a space: «شبرا/الخيمة» folded to
+  // «شبراالخيمه», which «شبرا الخيمة» as a desk types it never equalled.
+  it('reads a punctuation mark or a symbol between two words as a space', () => {
+    expect(foldOperationsAreaName('شبرا/الخيمة')).toBe('شبرا خيمه');
+    expect(foldOperationsAreaName('شبرا/الخيمة')).toBe(foldOperationsAreaName('شبرا الخيمة'));
+    expect(foldOperationsAreaName('ش.الهرم')).toBe(foldOperationsAreaName('ش الهرم'));
+    expect(foldOperationsAreaName('أبو-قير')).toBe('ابو قير');
+  });
 });
 
 describe('the areas a direction names', () => {
@@ -105,6 +114,15 @@ describe('a shipment matches a van when its area IS one of the van’s areas', (
     expect(operationsDirectionMatchesArea('مصر الجديدة', 'مصر')).toBe(false);
     expect(operationsDirectionMatchesArea('مصر', 'مصر الجديدة')).toBe(false);
     expect(operationsDirectionMatchesArea('المعادي الجديدة', 'المعادي')).toBe(false);
+  });
+
+  // Round 28 critic — split at «/», the van picked from the list as «شبرا/الخيمة» named «شبرا» and
+  // «خيمه», and was never proposed for its own area's محصنات.
+  it('matches an area whose own name holds a separator — the whole direction is read first', () => {
+    expect(operationsDirectionMatchesArea('شبرا/الخيمة', 'شبرا/الخيمة')).toBe(true);
+    expect(operationsDirectionMatchesArea('شبرا الخيمة', 'شبرا/الخيمة')).toBe(true);
+    // Still equality: the whole is never "contains".
+    expect(operationsDirectionMatchesArea('شبرا/الخيمة الجديدة', 'شبرا/الخيمة')).toBe(false);
   });
 
   it('matches nothing without an area or a direction', () => {

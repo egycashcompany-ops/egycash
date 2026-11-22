@@ -17,8 +17,17 @@ import { resolveCustodyReceiptCategoryId } from './receipt-files';
 import { readReceiptHolder } from './receipt-holder';
 import { nextReceiptNumber } from './receipt-number';
 import { readDeviceTypes, receiptDeviceFields } from './receipt-device';
-import { auditReceiptIssued, refuseLeaver, refuseUnlessInStock, signer } from './custody.service';
-import { type ItCustodyReceiptDoc } from './receipt.model';
+import {
+  auditReceiptIssued,
+  readHandOverHolder,
+  refuseUnlessInStock,
+  signer,
+} from './custody.service';
+import { holderOfInterval, sameHolder, signerOf, type DepartmentHolder } from './custody-holder';
+import { refuseOutsidePlaceBranch } from './custodian';
+import { departmentRepository } from '../../../platform/organization';
+import { itLocationRepository } from '../locations/location.repository';
+import { type ItCustodyReceiptCustodianSub, type ItCustodyReceiptDoc } from './receipt.model';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'custodyReceipt', entityId: id });
 
@@ -27,17 +36,17 @@ class ItCustodyReceiptService {
    * The paper, before anything is recorded — «طباعة إيصال الأول».
    *
    * Refuses exactly what the hand-over would refuse (a leaver, an asset out of stock, one the
-   * caller cannot see), so nobody signs a receipt for a hand-over the system then turns down.
-   * The one thing it writes is the counter: every print takes the next receipt number («كل طباعة
-   * زود رقم»), and the hand-over records the number of the paper that was signed. The receipt
-   * itself only exists once the hand-over does.
+   * caller cannot see — and for a department, a department or place that is not live, a
+   * responsible person who left, an asset outside the place's branch), so nobody signs a receipt
+   * for a hand-over the system then turns down. The one thing it writes is the counter: every
+   * print takes the next receipt number («كل طباعة زود رقم»), and the hand-over records the number
+   * of the paper that was signed. The receipt itself only exists once the hand-over does.
    */
   async preview(
     input: PreviewItCustodyReceipt,
     scope: ScopeSelector,
   ): Promise<ItCustodyReceiptDocumentDto> {
-    const holder = await readReceiptHolder(input.employeeId);
-    refuseLeaver(holder.employee);
+    const { holder: requested, signer: holder, custodian } = await readHandOverHolder(input);
 
     const ids = input.lines.map((line) => line.assetId);
     const found = new Map(
@@ -66,8 +75,12 @@ class ItCustodyReceiptService {
             `asset ${asset.assetCode} is not currently assigned; assign it rather than transferring it`,
           );
         }
-        if (String(open.assignedToEmployeeId) === input.employeeId) {
-          throw new BusinessRuleError(`asset ${asset.assetCode} is already held by this employee`);
+        if (sameHolder(holderOfInterval(open), requested)) {
+          throw new BusinessRuleError(
+            requested.kind === 'employee'
+              ? `asset ${asset.assetCode} is already held by this employee`
+              : `asset ${asset.assetCode} is already held by this department at this place, signed by this person`,
+          );
         }
       }
       lines.push({
@@ -81,12 +94,25 @@ class ItCustodyReceiptService {
         ...receiptDeviceFields(asset, deviceTypes, line.accessories),
       });
     }
+    // One place per paper: a department hand-over's lines are all in its branch — every asset that
+    // is not, named. Not a transfer's: it may take the asset to the place's branch, which this
+    // request does not name, so the transfer itself judges it (`transferInSession`).
+    if (custodian !== null && input.kind === 'handOver') {
+      refuseOutsidePlaceBranch(
+        custodian,
+        input.lines.flatMap((line) => {
+          const asset = found.get(line.assetId);
+          return asset === undefined ? [] : [asset];
+        }),
+      );
+    }
 
     return {
       // Last, once nothing above refused: a paper that is never printed takes no number.
       formNumber: await nextReceiptNumber(),
       issuedAt: (input.assignedAt ?? new Date()).toISOString(),
-      employeeId: input.employeeId,
+      // The SIGNER — the employee, or the department's responsible person.
+      employeeId: signerOf(requested),
       employeeName: holder.employeeName,
       employeeCode: holder.employeeCode,
       jobTitle: holder.jobTitle,
@@ -95,6 +121,15 @@ class ItCustodyReceiptService {
       nationalIdVisible: true,
       section: holder.section,
       department: holder.department,
+      custodian:
+        custodian === null
+          ? null
+          : {
+              departmentId: custodian.holder.departmentId,
+              departmentName: custodian.departmentName,
+              locationId: custodian.holder.locationId,
+              locationName: custodian.locationName,
+            },
       lines,
     };
   }
@@ -144,7 +179,13 @@ class ItCustodyReceiptService {
     }
     const [asset] = await itAssetRepository.findByIdsSystem([String(assignment.assetId)]);
     if (asset === undefined) throw new NotFoundError('asset not found');
-    const holder = await readReceiptHolder(String(assignment.assignedToEmployeeId));
+    // The signer: the employee, or a department's responsible person — whose paper also names the
+    // department and the place, read once. (Every department interval is opened with its paper, so
+    // in practice this is an employee's.)
+    const held = holderOfInterval(assignment);
+    const signerId = signerOf(held);
+    const holder = await readReceiptHolder(signerId);
+    const custodian = held.kind === 'department' ? await this.custodianOf(held) : null;
     const deviceTypes = await readDeviceTypes([asset]);
     await itCustodyReceiptRepository.ensureCollection();
     // Issued to be printed at once: it takes the next number, outside the transaction so a retry
@@ -164,7 +205,7 @@ class ItCustodyReceiptService {
         {
           _id: receiptId,
           formNumber,
-          employeeId: assignment.assignedToEmployeeId,
+          employeeId: new Types.ObjectId(signerId),
           ...signer(holder),
           issuedAt: assignment.assignedAt,
           issuedByUserId: new Types.ObjectId(ctx.userId),
@@ -182,14 +223,33 @@ class ItCustodyReceiptService {
             },
           ],
           signedCopy: null,
+          custodian,
         },
         { by: ctx.userId, session },
       );
-      await auditReceiptIssued(receiptId, String(assignment.assignedToEmployeeId), [
-        asset.assetCode,
-      ]);
+      await auditReceiptIssued(
+        receiptId,
+        signerId,
+        [asset.assetCode],
+        held.kind === 'department' ? held : null,
+      );
       return receipt;
     });
+  }
+
+  /** A department interval's department and place, named as they are today, for its paper. */
+  private async custodianOf(held: DepartmentHolder): Promise<ItCustodyReceiptCustodianSub> {
+    const [[department], [location]] = await Promise.all([
+      departmentRepository.findByIdsSystem([held.departmentId]),
+      itLocationRepository.findByIdsSystem([held.locationId]),
+    ]);
+    return {
+      departmentId: new Types.ObjectId(held.departmentId),
+      departmentName:
+        department === undefined ? null : { ar: department.name.ar, en: department.name.en },
+      locationId: new Types.ObjectId(held.locationId),
+      locationName: location === undefined ? null : { ar: location.name.ar, en: location.name.en },
+    };
   }
 
   // ── The signed copy (Files owns the bytes, the receipt owns the link) ─────
@@ -212,7 +272,12 @@ class ItCustodyReceiptService {
           entityType: 'custodyReceipt',
           entityId: id,
           categoryId: await resolveCustodyReceiptCategoryId(),
-          displayName: `custody receipt ${before.employeeCode ?? String(before.employeeId)}`,
+          // A department paper is filed under the department as well as its signer.
+          displayName: `custody receipt ${
+            before.custodian == null
+              ? ''
+              : `${before.custodian.departmentName?.en ?? String(before.custodian.departmentId)} / `
+          }${before.employeeCode ?? String(before.employeeId)}`,
           visibility: 'private',
           tags: [],
         },

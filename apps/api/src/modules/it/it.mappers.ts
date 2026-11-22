@@ -18,6 +18,8 @@ import {
   type ItCustodyReceiptDto,
   type ItAssetHistoryEntryDto,
   type ItCatalogItemDto,
+  type ItLocationDto,
+  type ItLocationOptionDto,
   type ItVendorDto,
   type ItPersonDto,
   type ItTechnicianDto,
@@ -36,9 +38,11 @@ import {
 } from '@ecms/contracts';
 import { type DirectoryEmployeeListing } from '../../platform/directory';
 import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
+import { type ItLocationDoc } from './locations/location.model';
 import { type ItVendorDoc } from './vendors/vendor.model';
 import { type ItAssetDoc, type ItAssetSpecsSub } from './assets/asset.model';
 import { type ItAssetAssignmentDoc } from './assets/assignment.model';
+import { holderOfInterval, type IntervalHolderFields } from './assets/custody-holder';
 import { type ItCustodyReceiptDoc } from './assets/receipt.model';
 import { type ItAssetEventDoc } from './assets/asset-event.model';
 import { type ItTicketDoc } from './tickets/ticket.model';
@@ -77,6 +81,33 @@ export const toItCatalogItemDto = (doc: ItCatalogItemDoc): ItCatalogItemDto => (
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
+});
+
+/**
+ * A place of «المواقع» (design §2). `heldAssets` — «في عهدته الآن», the assets held there now — is
+ * counted by the caller under the reader's `itAsset.view` and handed in: null when the reader does
+ * not hold it, never guessed here.
+ */
+export const toItLocationDto = (doc: ItLocationDoc, heldAssets: number | null): ItLocationDto => ({
+  id: String(doc._id),
+  branchId: String(doc.branchId),
+  name: doc.name,
+  code: doc.code,
+  description: doc.description,
+  sortOrder: doc.sortOrder,
+  isActive: doc.isActive,
+  heldAssets,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+/** A picker's row — names only. */
+export const toItLocationOptionDto = (doc: ItLocationDoc): ItLocationOptionDto => ({
+  id: String(doc._id),
+  branchId: String(doc.branchId),
+  name: doc.name,
+  isActive: doc.isActive,
 });
 
 export const toItVendorDto = (doc: ItVendorDoc): ItVendorDto => ({
@@ -123,18 +154,75 @@ export const toItAssetSpecsDto = (
  * the technician has the machine. The mapper only reads the maps, so the number of round-trips a
  * response costs is decided in one place.
  */
-export interface ItAssetHolderLabels {
+export interface ItAssetHolderLabels extends ItCustodianLabels {
   intervals: ReadonlyMap<string, ItAssetAssignmentDoc>;
+  /** The employee holders AND the responsible people who signed for a department. */
   employees: ItHolderLabels;
   /** The ids of the assets an order open or in progress still governs (`hasActiveMaintenance`). */
   activeMaintenance: ReadonlySet<string>;
 }
 
+/** A name per id — a department's, a place's — read once per response and handed in. */
+export type ItNameLabels = ReadonlyMap<string, { ar: string; en: string }>;
+
+/**
+ * The department intervals' names on ONE response (2026-11-19): their departments and their
+ * places, read by id in one go each. The responsible people are labelled with the employees.
+ */
+export interface ItCustodianLabels {
+  departments: ItNameLabels;
+  locations: ItNameLabels;
+}
+
+/**
+ * An interval's holder, flat — the employee's fields, or the department's, the place's and the
+ * signer's, the other kind's null. Every label is the map's, or null when it cannot be named; the
+ * screen then shows the id, never a guess.
+ */
+const intervalHolder = (
+  open: IntervalHolderFields,
+  employees: ItHolderLabels | undefined,
+  custodians: ItCustodianLabels | undefined,
+) => {
+  const holder = holderOfInterval(open);
+  if (holder.kind === 'employee') {
+    const employee = employees?.get(holder.employeeId);
+    return {
+      kind: holder.kind,
+      employeeId: holder.employeeId,
+      employeeCode: employee?.code ?? null,
+      employeeName: employee?.fullNameAr ?? null,
+      departmentId: null,
+      departmentName: null,
+      locationId: null,
+      locationName: null,
+      responsibleEmployeeId: null,
+      responsibleEmployeeCode: null,
+      responsibleEmployeeName: null,
+    };
+  }
+  const responsible = employees?.get(holder.responsibleEmployeeId);
+  return {
+    kind: holder.kind,
+    employeeId: null,
+    employeeCode: null,
+    employeeName: null,
+    departmentId: holder.departmentId,
+    departmentName: orgName(custodians?.departments.get(holder.departmentId)),
+    locationId: holder.locationId,
+    locationName: orgName(custodians?.locations.get(holder.locationId)),
+    responsibleEmployeeId: holder.responsibleEmployeeId,
+    responsibleEmployeeCode: responsible?.code ?? null,
+    responsibleEmployeeName: responsible?.fullNameAr ?? null,
+  };
+};
+
 /**
  * The holder an asset names — only through the interval the asset itself points at, and only while
  * that interval is open: a stale pointer, a closed or deleted interval, or another asset's interval
  * holds nothing. An employee the directory cannot name keeps their id, with null code and name, and
- * the screen shows the id — never a guess.
+ * the screen shows the id — never a guess. A department holder names its department, its place and
+ * who signed for it — «في عهدة إدارة … — …»; an interval from before 2026-11-19 is an employee's.
  */
 const assetHolder = (doc: ItAssetDoc, labels: ItAssetHolderLabels): ItAssetHolderDto | null => {
   const pointer = doc.currentAssignmentId == null ? null : String(doc.currentAssignmentId);
@@ -147,14 +235,7 @@ const assetHolder = (doc: ItAssetDoc, labels: ItAssetHolderLabels): ItAssetHolde
   ) {
     return null;
   }
-  const employeeId = String(open.assignedToEmployeeId);
-  const employee = labels.employees.get(employeeId);
-  return {
-    employeeId,
-    employeeCode: employee?.code ?? null,
-    employeeName: employee?.fullNameAr ?? null,
-    assignedAt: iso(open.assignedAt),
-  };
+  return { ...intervalHolder(open, labels.employees, labels), assignedAt: iso(open.assignedAt) };
 };
 
 /**
@@ -235,13 +316,18 @@ export type ItAssetLabels = ReadonlyMap<
 /** Whether each receipt on a page has its signed copy — one read per page, like the labels. */
 export type ItReceiptStates = ReadonlyMap<string, { signed: boolean }>;
 
+/**
+ * A custody interval. `holders` labels the employee holder AND a department's responsible person;
+ * `custodians` names a department interval's department and place (2026-11-19).
+ */
 export const toItAssetAssignmentDto = (
   doc: ItAssetAssignmentDoc,
   holders?: ItHolderLabels,
   assets?: ItAssetLabels,
   receipts?: ItReceiptStates,
+  custodians?: ItCustodianLabels,
 ): ItAssetAssignmentDto => {
-  const holder = holders?.get(String(doc.assignedToEmployeeId));
+  const holder = intervalHolder(doc, holders, custodians);
   const asset = assets?.get(String(doc.assetId));
   const receiptId = doc.receiptId == null ? null : String(doc.receiptId);
   return {
@@ -250,9 +336,17 @@ export const toItAssetAssignmentDto = (
     assetCode: asset?.assetCode ?? null,
     assetName: asset?.name ?? null,
     assetSerialNumber: asset?.serialNumber ?? null,
-    assignedToEmployeeId: String(doc.assignedToEmployeeId),
-    assignedToEmployeeCode: holder?.code ?? null,
-    assignedToEmployeeName: holder?.fullNameAr ?? null,
+    holderKind: holder.kind,
+    assignedToEmployeeId: holder.employeeId,
+    assignedToEmployeeCode: holder.employeeCode,
+    assignedToEmployeeName: holder.employeeName,
+    departmentId: holder.departmentId,
+    departmentName: holder.departmentName,
+    locationId: holder.locationId,
+    locationName: holder.locationName,
+    responsibleEmployeeId: holder.responsibleEmployeeId,
+    responsibleEmployeeCode: holder.responsibleEmployeeCode,
+    responsibleEmployeeName: holder.responsibleEmployeeName,
     assignedByUserId: doc.assignedByUserId === null ? null : String(doc.assignedByUserId),
     assignedAt: iso(doc.assignedAt),
     conditionOnIssue: doc.conditionOnIssue,
@@ -305,6 +399,16 @@ export const toItCustodyReceiptDto = (
   ...receiptNationalId(doc.nationalId, revealNationalId),
   section: orgName(doc.section),
   department: orgName(doc.department),
+  // A department custody paper's department and place; absent before 2026-11-19, null otherwise.
+  custodian:
+    doc.custodian == null
+      ? null
+      : {
+          departmentId: String(doc.custodian.departmentId),
+          departmentName: orgName(doc.custodian.departmentName),
+          locationId: String(doc.custodian.locationId),
+          locationName: orgName(doc.custodian.locationName),
+        },
   lines: doc.lines.map((line) => ({
     assetId: String(line.assetId),
     assignmentId: String(line.assignmentId),
@@ -553,11 +657,12 @@ export const toItConsumableDto = (doc: ItConsumableDoc): ItConsumableDto => ({
  * What a page of the ledger shows beside each movement, resolved ONCE per page by the caller and
  * handed in: the items (a transfer's other store's item among them, for its code), the employees
  * (through the directory), the assets (under the reader's scope — an asset from a branch they cannot
- * see is not named), and the memos with their signed state. The mapper only reads the maps, so what
- * a page costs is decided in one place.
+ * see is not named), the memos with their signed state, and the departments and places issues went
+ * to (2026-11-19). The mapper only reads the maps, so what a page costs is decided in one place.
  */
-export interface ItConsumableMovementLabels {
+export interface ItConsumableMovementLabels extends ItCustodianLabels {
   items: ReadonlyMap<string, { code: string; name: string; typeId: string }>;
+  /** The employees issues went to AND the people who signed for a department (2026-11-19). */
   employees: ItHolderLabels;
   assets: ReadonlyMap<string, { assetCode: string; name: string }>;
   memos: ReadonlyMap<string, { memoNumber: number; signed: boolean }>;
@@ -579,6 +684,13 @@ export const toItConsumableMovementDto = (
   const item = labels.items.get(String(doc.consumableId));
   const employeeId = idOrNull(doc.employeeId);
   const employee = employeeId === null ? undefined : labels.employees.get(employeeId);
+  // An issue to a department («صرف لإدارة»): the department, the place and the signer — absent on
+  // every other row (the movement model's header), so all six read null there.
+  const departmentId = idOrNull(doc.departmentId);
+  const locationId = idOrNull(doc.locationId);
+  const responsibleEmployeeId = idOrNull(doc.responsibleEmployeeId);
+  const responsible =
+    responsibleEmployeeId === null ? undefined : labels.employees.get(responsibleEmployeeId);
   const assetId = idOrNull(doc.assetId);
   const asset = assetId === null ? undefined : labels.assets.get(assetId);
   const memoId = paperOf(idOrNull(doc.memoId), labels.memos);
@@ -601,6 +713,13 @@ export const toItConsumableMovementDto = (
     employeeId,
     employeeCode: employee?.code ?? null,
     employeeName: employee?.fullNameAr ?? null,
+    departmentId,
+    departmentName: departmentId === null ? null : orgName(labels.departments.get(departmentId)),
+    locationId,
+    locationName: locationId === null ? null : orgName(labels.locations.get(locationId)),
+    responsibleEmployeeId,
+    responsibleEmployeeCode: responsible?.code ?? null,
+    responsibleEmployeeName: responsible?.fullNameAr ?? null,
     assetId,
     assetCode: asset?.assetCode ?? null,
     assetName: asset?.name ?? null,
@@ -625,7 +744,22 @@ export const toItConsumableMovementDto = (
   };
 };
 
-/** A memo — the paper as it was written (a snapshot), plus whether its signed copy is in. */
+/** A department memo's department and place as the paper keeps them; null on any other memo. */
+const memoCustodian = (custodian: ItConsumableMemoDoc['custodian']) =>
+  custodian == null
+    ? null
+    : {
+        departmentId: String(custodian.departmentId),
+        departmentName: orgName(custodian.departmentName),
+        locationId: String(custodian.locationId),
+        locationName: orgName(custodian.locationName),
+      };
+
+/**
+ * A memo — the paper as it was written (a snapshot), plus whether its signed copy is in. Its
+ * `employeeId` and name fields are the SIGNER; a department memo names its department and place in
+ * `custodian` (absent before 2026-11-19, null on an employee's memo).
+ */
 export const toItConsumableMemoDto = (doc: ItConsumableMemoDoc): ItConsumableMemoDto => ({
   id: String(doc._id),
   memoNumber: doc.memoNumber,
@@ -634,6 +768,7 @@ export const toItConsumableMemoDto = (doc: ItConsumableMemoDoc): ItConsumableMem
   employeeName: doc.employeeName ?? null,
   employeeCode: doc.employeeCode ?? null,
   jobTitle: orgName(doc.jobTitle),
+  custodian: memoCustodian(doc.custodian),
   issuedByName: doc.issuedByName ?? null,
   notes: doc.notes ?? null,
   lines: doc.lines.map((line) => ({

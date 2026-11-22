@@ -19,6 +19,7 @@ import {
   type CustodyRegisterContext,
   type CustodyRegisterFilters,
 } from './custody-register-export';
+import { EMPLOYEE_INTERVAL, IT_DEPARTMENT } from '../custody-holder-fixtures';
 
 const t = (key: string, params?: Record<string, string | number>): string =>
   translate('ar', key, params);
@@ -32,6 +33,7 @@ const context: CustodyRegisterContext = {
 const interval = (over: Partial<ItAssetAssignmentDto> = {}): ItAssetAssignmentDto => ({
   id: 'a-1',
   assetId: 'asset-1',
+  ...EMPLOYEE_INTERVAL,
   assignedToEmployeeId: 'e-1',
   assignedToEmployeeCode: '0100052',
   assignedToEmployeeName: 'محمد أحمد علي',
@@ -67,6 +69,8 @@ describe('the register’s columns', () => {
       'تاريخ التسليم',
       'المستلِم',
       'كود الموظف',
+      'الموقع',
+      'المسؤول',
       'الفرع',
       'موعد الإعادة',
       'الحالة',
@@ -83,11 +87,37 @@ describe('the register’s columns', () => {
       formatDate('2026-10-07T09:00:00.000Z', 'ar'),
       'محمد أحمد علي',
       '0100052',
+      '',
+      '',
       'المهندسين',
       '',
       'مُسلَّم',
       '',
       'بانتظار التوقيع',
+    ]);
+  });
+
+  // 2026-11-19 — a department's interval: «إدارة …» as the holder, its place and who signed for
+  // it in columns of their own, and no employee code.
+  it('write a department’s interval as «إدارة …», with its place and its signer', () => {
+    const line = custodyRegisterLine(
+      interval({
+        holderKind: 'department',
+        assignedToEmployeeId: null,
+        assignedToEmployeeCode: null,
+        assignedToEmployeeName: null,
+        ...IT_DEPARTMENT,
+        departmentName: { ...IT_DEPARTMENT.departmentName },
+        locationName: { ...IT_DEPARTMENT.locationName },
+      }),
+      context,
+      '',
+    );
+    expect(line.slice(4, 8)).toEqual([
+      'إدارة تقنية المعلومات',
+      '',
+      'غرفة السيرفرات',
+      'شريف ممدوح فاروق (0100077)',
     ]);
   });
 
@@ -108,7 +138,7 @@ describe('the register’s columns', () => {
       '—',
     );
     expect(line[3]).toBe(formatDate('2026-10-07T09:00:00.000Z', 'ar'));
-    expect(line.slice(7)).toEqual([
+    expect(line.slice(9)).toEqual([
       formatDate('2026-12-01T00:00:00.000Z', 'ar'),
       'مُسترجَع',
       formatDate('2026-11-20T00:00:00.000Z', 'ar'),
@@ -139,7 +169,9 @@ describe('the register’s columns', () => {
     expect(line[4]).toBe('e-1');
     expect(line[5]).toBe('—');
     expect(line[6]).toBe('—');
-    expect(line[10]).toBe('—');
+    expect(line[7]).toBe('—');
+    expect(line[8]).toBe('—');
+    expect(line[12]).toBe('—');
     // …and in the sheet the blank is a real blank, one the reader can filter on.
     expect(custodyRegisterLine(interval({ assetSerialNumber: null }), context, '')[2]).toBe('');
   });
@@ -148,6 +180,10 @@ describe('the register’s columns', () => {
 /** Every filter the register gained, unset — what a page with none of them in force prints. */
 const unset: Omit<CustodyRegisterFilters, 'open' | 'branch' | 'holder'> = {
   holderExited: null,
+  holderKind: null,
+  department: null,
+  location: null,
+  responsible: null,
   search: null,
   categories: null,
   assetNames: null,
@@ -206,6 +242,7 @@ describe('what the printed page says it is a view of', () => {
   it('names every one of the table’s filters in force, in the table’s order, before the day', () => {
     expect(
       custodyRegisterSubtitle(t, {
+        ...unset,
         open: 'all',
         branch: null,
         holder: null,
@@ -252,6 +289,32 @@ describe('what the printed page says it is a view of', () => {
     expect(line({ receipt: 'none' })).toContain('إيصال الاستلام: بدون إيصال');
     // A category set but not among the options is still said to be set.
     expect(line({ categories: [''] })).toContain('فئة محددة');
+  });
+
+  it('names «جهة الاستلام», the department, the place and who signed — after «حالة المستلِم»', () => {
+    expect(
+      custodyRegisterSubtitle(t, {
+        ...unset,
+        open: 'true',
+        branch: null,
+        holder: null,
+        holderKind: 'department',
+        department: 'تقنية المعلومات — أسيوط',
+        location: '',
+        responsible: 'شريف ممدوح فاروق',
+        asOf: 'اليوم',
+      }),
+    ).toBe(
+      [
+        'المُسلَّم حاليًا',
+        'كل الفروع',
+        'جهة الاستلام: إدارة',
+        'الإدارة: تقنية المعلومات — أسيوط',
+        'الموقع: موقع محدد',
+        'وقّع عن الإدارة: شريف ممدوح فاروق',
+        'بتاريخ اليوم',
+      ].join(' · '),
+    );
   });
 });
 
@@ -406,11 +469,11 @@ describe('the printed register', () => {
   const report = custodyRegisterReport([interval()], context, 'المُسلَّم حاليًا');
   const html = buildFleetReportHtml(report);
 
-  it('is the company’s report form, under the IT sector, landscape for eleven columns', () => {
+  it('is the company’s report form, under the IT sector, landscape for thirteen columns', () => {
     expect(report.title).toBe('عهدة الأصول');
     expect(report.department).toBe('قطاع تكنولوجيا المعلومات');
     expect(report.orientation).toBe('landscape');
-    expect(report.header).toHaveLength(11);
+    expect(report.header).toHaveLength(13);
     expect(html).toContain('@page { size: A4 landscape; margin: 14mm; }');
     expect(html).toContain('<th>م</th>');
     expect(html).toContain('AST-00012');

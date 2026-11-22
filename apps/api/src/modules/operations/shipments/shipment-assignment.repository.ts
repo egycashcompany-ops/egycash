@@ -5,6 +5,7 @@ import {
   OperationsShipmentAssignmentModel,
   type OperationsShipmentAssignmentDoc,
 } from './shipment-assignment.model';
+import { OperationsShipmentModel } from './shipment.model';
 
 class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsShipmentAssignmentDoc> {
   constructor() {
@@ -37,6 +38,37 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
       .session(session ?? null)
       .lean<OperationsShipmentAssignmentDoc[]>()
       .exec();
+  }
+
+  /**
+   * Round 30 critic — the SECURED shipments whose LIVE delivery leg rides a crew row of one day:
+   * what a past day's record lists beside the ones due on it (distribution.service.ts `view`). Ids
+   * only, the day's delivery legs alone (`ix_day_captain`'s day prefix), joined to the shipments
+   * here so a day's daily legs — pickup and delivery, as many as the day carries — never come back,
+   * nor reach the record's `$in`.
+   */
+  async securedDeliveryShipmentIdsOfDay(operationsDayId: Types.ObjectId): Promise<string[]> {
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId }>([
+        { $match: { operationsDayId, leg: 'delivery', isDeleted: false } },
+        { $group: { _id: '$shipmentId' } },
+        {
+          $lookup: {
+            from: OperationsShipmentModel.collection.collectionName,
+            localField: '_id',
+            foreignField: '_id',
+            pipeline: [
+              { $match: { shipmentType: 'secured', isDeleted: false } },
+              { $project: { _id: 1 } },
+            ],
+            as: 'secured',
+          },
+        },
+        { $match: { 'secured.0': { $exists: true } } },
+        { $project: { _id: 1 } },
+      ])
+      .exec();
+    return rows.map((row) => String(row._id));
   }
 
   /**

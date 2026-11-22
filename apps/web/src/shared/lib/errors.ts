@@ -79,7 +79,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // (the screen marks its card). These reach a desk whose screen was read before a colleague, the
     // vault or the captain acted — or that was left open past midnight.
     OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
-      'That day has passed — its vans have left. Distribute today or a later day.',
+      'That day has passed — its vans have left, and its record is view only. Distribute today or a later day.',
     OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
       'A secured shipment on this screen has already left the vault — it can no longer be placed on a van.',
     OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
@@ -96,11 +96,13 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'A van is handed over only on the day it goes out — this van is not one of today’s.',
     // «لوحة التشغيلة» (Round 20): a save gave a row a type archived on the reference screen since it
     // was picked, or a direction no area answers («لازم اختار من الاتجاهات اللى موجوده»). The board
-    // marks the row the refusal names (`planRefusal`); these are the words said with it.
+    // marks the row the refusal names (`planRefusal`); these are the words said with it. Round 28
+    // retired the direction's refusal («عاوز الاتجاه اقدر اكتبه بايدى»): no server sends it now, and
+    // its words stay only for an older server, said without marking a row.
     OPERATIONS_UNKNOWN_SHIFT_TYPE:
       'A row was given a shift type that is no longer active on the reference screen — choose another type on the marked row.',
     OPERATIONS_DIRECTION_NOT_AN_AREA:
-      'A direction is not one of the areas on the reference screen — choose it from the list on the marked row.',
+      'A direction is not one of the areas on the reference screen — this server still refuses a direction typed by hand.',
     // Round 22 — «لو القائد غايب … مقدرش احطه على العربيه»: somebody attendance has absent or on
     // leave that day was put on a row. The board names him on the marked row (`planRefusal`).
     OPERATIONS_CREW_MEMBER_ABSENT: 'Somebody on a row is absent or on leave on this day.',
@@ -184,7 +186,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_CREW_CAPTAIN_MISMATCH: 'لم يعد هذا القائد ضمن طاقم المركبة المختارة.',
     OPERATIONS_DELIVERY_LEG_REQUIRED: 'إحدى الشحنات بلا طاقم تسليم بعد — عيّن طاقمها قبل صرفها.',
     OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
-      'هذا اليوم قد مضى وغادرت سياراته — وزّع على اليوم أو على يوم بعده.',
+      'هذا اليوم قد مضى وغادرت سياراته، وسجله للعرض فقط — وزّع على اليوم أو على يوم بعده.',
     OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
       'إحدى المحصنات في هذه الشاشة غادرت الخزينة بالفعل، فلم يعد وضعها على سيارة ممكنًا.',
     OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
@@ -198,7 +200,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_UNKNOWN_SHIFT_TYPE:
       'أُعطي أحد الصفوف نوعًا لم يعد مفعّلًا في البيانات المرجعية — اختر نوعًا آخر في الصف المُعلَّم.',
     OPERATIONS_DIRECTION_NOT_AN_AREA:
-      'أحد الاتجاهات ليس من المناطق المسجلة في البيانات المرجعية — اختره من القائمة في الصف المُعلَّم.',
+      'أحد الاتجاهات ليس من المناطق المسجلة في البيانات المرجعية — ما زال الخادم يرفض الاتجاه المكتوب يدويًا.',
     OPERATIONS_CREW_MEMBER_ABSENT: 'على أحد الصفوف غائب أو من في إجازة في هذا اليوم.',
     OPERATIONS_CREW_MEMBER_WRONG_SLOT:
       'عُيِّن أحدهم في خانة لا تناسبه — قائد في خانة أخصائي، أو أخصائي في خانة القائد.',
@@ -247,9 +249,39 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
  */
 export const hasError = (error: unknown): boolean => error !== undefined && error !== null;
 
+/**
+ * Round 28c critic — «المناطق» refuses a name another area already holds in any spelling (folded:
+ * «المعادى» beside «المعادي», an archived one too), and names that area in its detail
+ * (`AREA_ACTIVE` / `AREA_ARCHIVED`). Wherever it surfaces — the catalog's own dialog among them —
+ * it is said in the reader's language, naming the area, not as the server's English sentence.
+ */
+const AREA_HELD: Record<Locale, { active: string; archived: string }> = {
+  en: {
+    active: '«Areas» already has “{area}” under this name.',
+    archived:
+      '«Areas» has “{area}” under this name, but archived — restore it instead of adding it again.',
+  },
+  ar: {
+    active: 'في «المناطق» منطقة «{area}» بهذا الاسم.',
+    archived: 'في «المناطق» منطقة «{area}» بهذا الاسم لكنها موقوفة — فعّلها بدل إضافتها مرة أخرى.',
+  },
+};
+
+const areaHeldMessage = (error: ApiError, locale: Locale): string | null => {
+  if (error.code !== 'DUPLICATE') return null;
+  const held = error.details?.find(
+    (detail) => detail.code === 'AREA_ACTIVE' || detail.code === 'AREA_ARCHIVED',
+  );
+  if (held === undefined || held.message === '') return null;
+  const words = AREA_HELD[locale][held.code === 'AREA_ARCHIVED' ? 'archived' : 'active'];
+  return words.replace('{area}', held.message);
+};
+
 export const errorMessage = (error: unknown, locale: Locale): string => {
   const table = FRIENDLY[locale];
   if (error instanceof ApiError) {
+    const held = areaHeldMessage(error, locale);
+    if (held !== null) return held;
     return table[error.code] ?? (error.message !== '' ? error.message : (table.UNKNOWN ?? 'Error'));
   }
   if (error instanceof TypeError) return table.NETWORK ?? 'Network error';

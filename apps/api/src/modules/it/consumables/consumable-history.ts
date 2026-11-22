@@ -6,7 +6,11 @@
 // and out, by whom, to whom, on which memo), and the item's own facts — registered, edited — are
 // the audit trail's, exactly as the spare parts' are.
 import { Types } from 'mongoose';
-import { type AuditChange, type ItConsumableMovementKind } from '@ecms/contracts';
+import {
+  type AuditChange,
+  type ItConsumableMovementKind,
+  type ItCustodianDepartmentInput,
+} from '@ecms/contracts';
 import { auditService } from '../../../platform/audit';
 import { publishAuditedChange } from '../../../platform/realtime';
 import { diffChanges } from '../../../shared/utils/diff';
@@ -141,13 +145,24 @@ export const auditStockMovement = async (input: {
   signalConsumable(input.consumableId, String(input.after.branchId));
 };
 
-/** The audit row of a memo: who was issued what, on which number. */
+/**
+ * The audit row of a memo: who was issued what, on which number. `employeeId` is the signer — the
+ * employee, or the responsible person of a department memo, which names its department and place
+ * beside it.
+ */
 export const auditConsumableMemoIssued = async (memo: ItConsumableMemoDoc): Promise<void> => {
+  const custodian = memo.custodian ?? null;
   await auditService.record({
     entityRef: consumableMemoEntityRef(String(memo._id)),
     action: 'create',
     changes: [
       change('employeeId', null, String(memo.employeeId)),
+      ...(custodian === null
+        ? []
+        : [
+            change('departmentId', null, String(custodian.departmentId)),
+            change('locationId', null, String(custodian.locationId)),
+          ]),
       change('memoNumber', null, memo.memoNumber),
       change(
         'items',
@@ -196,6 +211,11 @@ export interface ConsumableMovementInput {
   at: Date;
   byUserId: string | null;
   employeeId?: string | null;
+  /**
+   * An issue to a department («صرف لإدارة»): the department, its place and who signed for it — the
+   * row then names no `employeeId`.
+   */
+  department?: ItCustodianDepartmentInput | null;
   assetId?: string | null;
   reason?: string | null;
   memoId?: Types.ObjectId | null;
@@ -212,6 +232,9 @@ export interface ConsumableMovementInput {
  * One ledger row, every key present — null where the kind has nothing to say — so the ledger reads
  * one shape whatever moved. The row copies the item's store: an item never changes branch (a
  * transfer moves STOCK between two items, one per store), so the ledger is scoped with no join.
+ *
+ * The one exception is the department's three ids: present only on an issue to a department (the
+ * model's header), so every other row — and every row before — reads as it always did.
  */
 export const consumableMovementRow = (
   input: ConsumableMovementInput,
@@ -223,6 +246,13 @@ export const consumableMovementRow = (
   branchId: input.item.branchId,
   byUserId: input.byUserId === null ? null : new Types.ObjectId(input.byUserId),
   employeeId: input.employeeId == null ? null : new Types.ObjectId(input.employeeId),
+  ...(input.department == null
+    ? {}
+    : {
+        departmentId: new Types.ObjectId(input.department.departmentId),
+        locationId: new Types.ObjectId(input.department.locationId),
+        responsibleEmployeeId: new Types.ObjectId(input.department.responsibleEmployeeId),
+      }),
   assetId: input.assetId == null ? null : new Types.ObjectId(input.assetId),
   reason: input.reason ?? null,
   memoId: input.memoId ?? null,

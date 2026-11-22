@@ -10,13 +10,14 @@ import {
   NO_VAN,
   directionFilterOptions,
   directionParts,
+  hidesAnyOf,
   isRowFiltering,
   matchesPerson,
   matchesRowFilter,
   vanFilterOptions,
   type PlanRowFilter,
 } from './crew-plan-filter';
-import { vehiclelessRow, type PlanRow } from './crew-plan';
+import { loadStandingIntoPlan, vehiclelessRow, type PlanRow } from './crew-plan';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
@@ -108,6 +109,34 @@ describe('the direction — each area a direction names, and «بدون اتجا
     expect(shown({ directions: [helwan] })).toEqual(['van:v-150']);
     expect(shown({ directions: [NO_DIRECTION] })).toEqual(['van:v-24']);
   });
+
+  it('Round 28 — a direction typed by hand is offered and found by its own words, no crash', () => {
+    // «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»: the save keeps such a text as typed.
+    const rows = [
+      ...ROWS,
+      van('31', { direction: 'طريق السويس' }),
+      van('32', { direction: 'المعادي - طريق السويس' }),
+    ];
+    const labels = directionFilterOptions(rows, AREAS).map((option) => option.label);
+    expect(labels).toEqual(expect.arrayContaining(['طريق السويس', 'المعادي']));
+    // Each area once: the free text and the area beside it are two entries, never doubled.
+    expect(labels.filter((label) => label === 'طريق السويس')).toHaveLength(1);
+    const suez = directionParts('طريق السويس', AREAS)[0]?.value as string;
+    const maadi = directionParts('المعادي', AREAS)[0]?.value as string;
+    const found = (directions: string[]) =>
+      rows
+        .filter((one) =>
+          matchesRowFilter(
+            one,
+            { ...EMPTY_ROW_FILTER, directions },
+            { memberOf, areaNames: AREAS },
+          ),
+        )
+        .map((one) => one.key);
+    expect(found([suez])).toEqual(['van:v-31', 'van:v-32']);
+    // The area it names beside its own words still finds it.
+    expect(found([maadi])).toEqual(['van:v-150', 'van:v-32']);
+  });
 });
 
 describe('AND-ed, view only', () => {
@@ -143,5 +172,50 @@ describe('AND-ed, view only', () => {
       'المعروض ٥ من ٤٨',
     );
     expect(translate('ar', 'operations.crewPlan.countsHint')).toContain('كل صفوف اليوم');
+  });
+});
+
+// Round 28b critic — once a filled van takes its standing «الاتجاه», «بدون اتجاه» hid it at the press:
+// «حفظ (N)» counted changes the planner could not see, though the toggle asks him to review them.
+describe('the standing crew’s load is shown — the filters go when they would hide it', () => {
+  const AREAS_HERE = ['المعادي', 'حلوان'];
+  const noDirection: PlanRowFilter = { ...EMPTY_ROW_FILTER, directions: [NO_DIRECTION] };
+  const isShownBy =
+    (filter: PlanRowFilter) =>
+    (candidate: PlanRow): boolean =>
+      matchesRowFilter(candidate, filter, { memberOf: () => undefined, areaNames: AREAS_HERE });
+  const board = [van('1'), van('2'), van('3', { direction: 'حلوان' })];
+  const load = loadStandingIntoPlan(
+    board,
+    [
+      {
+        vehicleId: 'v-1',
+        captainEmployeeIds: ['a'],
+        specialist1EmployeeIds: [],
+        specialist2EmployeeIds: [],
+        direction: 'المعادي',
+      },
+      {
+        vehicleId: 'v-2',
+        captainEmployeeIds: ['b'],
+        specialist1EmployeeIds: [],
+        specialist2EmployeeIds: [],
+        direction: null,
+      },
+    ],
+    AREAS_HERE,
+  );
+
+  it('says when a filter hides a row the load filled — «بدون اتجاه» and the van that took one', () => {
+    expect(load.filledKeys).toEqual(['van:v-1', 'van:v-2']);
+    expect(load.rows.filter(isShownBy(noDirection)).map((r) => r.key)).toEqual(['van:v-2']);
+    expect(hidesAnyOf(load.rows, load.filledKeys, isShownBy(noDirection))).toBe(true);
+    expect(hidesAnyOf(load.rows, load.filledKeys, isShownBy(EMPTY_ROW_FILTER))).toBe(false);
+  });
+
+  it('a row it did not fill, hidden, keeps the filters', () => {
+    // Van 3 holds its own «حلوان»: hidden by «بدون اتجاه», but not the load's — van 2 is shown.
+    expect(hidesAnyOf(load.rows, ['van:v-2'], isShownBy(noDirection))).toBe(false);
+    expect(hidesAnyOf(load.rows, [], isShownBy(noDirection))).toBe(false);
   });
 });

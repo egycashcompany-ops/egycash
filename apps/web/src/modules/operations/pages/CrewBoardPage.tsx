@@ -54,7 +54,8 @@
 //
 // THE SAVE is one `PlanOperationsCrew` (`toPlan`): the changed rows, a saved row without a van by
 // its id, and the saved ones deleted. A refusal that names a row (a type archived on another desk
-// since it was picked, a direction that is not an area) is said AND marked on that row's box.
+// since it was picked) is said AND marked on that row's box. A direction is never refused since
+// Round 28 («عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى الليست»): one typed by hand is saved.
 //
 // ROUND 24 — after the owner's next look:
 //   · «تراجع» IS ONE STEP BACK — «وعاوز تراجع دا يتراجع عن اخر عمليه مش كل العمليات فاهم». It threw away
@@ -88,6 +89,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttribut
 import { useSearchParams } from 'react-router-dom';
 import {
   CREW_SLOT_CAPACITY,
+  OPERATIONS_DIRECTION_MAX_LENGTH,
   type Locale,
   type OperationsCrewMemberDto,
   type OperationsShiftTypeDto,
@@ -121,6 +123,11 @@ import {
   useOperationsStandingCrew,
   usePlanOperationsCrew,
 } from '../api/operations-queries';
+import {
+  addLandsOn,
+  useArchivedOperationsAreaNames,
+  useDirectionAreaAdd,
+} from '../api/direction-area';
 import { CrewVehicleHoverCode } from '../components/BoardCrewCards';
 import { CrewPlanChip } from '../components/CrewPlanChip';
 import {
@@ -224,6 +231,7 @@ import {
   NO_DIRECTION,
   NO_VAN,
   directionFilterOptions,
+  hidesAnyOf,
   isRowFiltering,
   matchesRowFilter,
   vanFilterOptions,
@@ -297,7 +305,7 @@ export const CrewBoardPage = (): JSX.Element => {
   // then refused. So the default board's pool waits for the board to name its day.
   const directory = useOperationsCrewDirectory(day === '' ? null : day, day !== '');
   const standing = useOperationsStandingCrew();
-  // EVERY active area, not one page: the save holds a new direction to all of them.
+  // EVERY active area, not one page: the save respells a new direction naming any of them.
   const areaNames = useActiveOperationsAreaNames();
   const shiftTypeList = useOperationsShiftTypes(SHIFT_TYPE_LIST);
   const plan = usePlanOperationsCrew();
@@ -419,11 +427,10 @@ export const CrewBoardPage = (): JSX.Element => {
   // keeps its changes, and «حفظ» saves them all. The chips below count the WHOLE DAY.
   const [rowFilter, setRowFilter] = useState<PlanRowFilter>(EMPTY_ROW_FILTER);
   const filtering = isRowFiltering(rowFilter) || typeFilter !== '';
-  const shown = rows.filter(
-    (row) =>
-      matchesShiftType(row, typeFilter) &&
-      matchesRowFilter(row, rowFilter, { memberOf, areaNames: directions }),
-  );
+  const isShown = (row: PlanRow): boolean =>
+    matchesShiftType(row, typeFilter) &&
+    matchesRowFilter(row, rowFilter, { memberOf, areaNames: directions });
+  const shown = rows.filter(isShown);
   const clearFilters = (): void => {
     setTypeFilter('');
     setRowFilter(EMPTY_ROW_FILTER);
@@ -762,6 +769,27 @@ export const CrewBoardPage = (): JSX.Element => {
     // The refused box is changed: what it said no longer describes it.
     setRefusal((current) => (current?.key === key ? null : current));
   };
+  // Round 28c — «الاتجاه»'s «إضافة «…» إلى القائمة» («يعرض عليا اضيفه او لا»): for a planner who also
+  // holds the catalog's own grant (no new one). The area is written at once; the row then takes it
+  // as any direction change — ONE operation, which «تراجع» takes back without taking the area off.
+  const canAddArea = canPlan && can('operationsCatalog.manage');
+  const archivedAreas = useArchivedOperationsAreaNames(canAddArea);
+  // Round 28c critic — the add belongs to its day and to the row as it was: stepped to another day,
+  // the row gone (a «حفظ» read-back renames a new row), or its direction changed meanwhile by
+  // another route, and the area is only added to the list — the toast says the row was not changed.
+  const areaAdd = useDirectionAreaAdd(day, (key, area, from) => {
+    if (!addLandsOn(rows, key, from)) return false;
+    patch(key, { direction: area });
+    return true;
+  });
+  const addFor = (row: { key: string; direction: string | null }) =>
+    canAddArea
+      ? areaAdd.forRow(
+          row.key,
+          row.direction,
+          areaNames.isSuccess && archivedAreas.isSuccess ? archivedAreas.data : null,
+        )
+      : undefined;
   /**
    * The row's colour picked by hand — or (null) taken off, back to its type's. ONE operation for
    * «تراجع», said with the colour: «تلوين الصف 150 باللون كحلي» / «إعادة الصف 150 إلى لون نوعه».
@@ -856,6 +884,7 @@ export const CrewBoardPage = (): JSX.Element => {
         captainEmployeeIds: row.captainEmployeeIds,
         specialist1EmployeeIds: row.specialist1EmployeeIds,
         specialist2EmployeeIds: row.specialist2EmployeeIds,
+        direction: row.direction,
       })),
     [standing.data],
   );
@@ -865,21 +894,57 @@ export const CrewBoardPage = (): JSX.Element => {
    * that day (Round 22 — no row takes him, and the save would refuse him), and somebody whose
    * standing seat is not his role's (Round 23 — written before the rule, or before his flags
    * changed; loaded, he would take a seat the save refuses). Each counts as not loaded.
+   *
+   * Round 28b — «اه»: a van it fills takes its standing «الاتجاه» too, when its row has none (never
+   * one the save refuses; in the areas' spelling, read against EVERY active area as the save reads
+   * them). Never the time. Off again clears the direction it wrote, unless it was changed since.
+   *
+   * Round 28b critic — so it waits for those areas (the toggle is held while their list loads: read
+   * against none, a direction of areas past the hand-typed ceiling was left behind without a word,
+   * and a shorter one came down in the standing row's spelling); names the vans whose standing
+   * direction it left behind all the same (the save would refuse it — a legacy hand-typed one, or
+   * any while the areas' list failed); and shows what it filled, the filters going when they would
+   * hide it (a van that took its direction left «بدون اتجاه» at the press).
    */
   const toggleStanding = (): void => {
     if (standingKeys !== null) {
       apply({ kind: 'standingClear' }, (draft) => ({
-        rows: clearStandingFromPlan(draft.rows, draft.standingKeys ?? []),
+        rows: clearStandingFromPlan(
+          draft.rows,
+          draft.standingKeys ?? [],
+          draft.standingDirections ?? {},
+        ),
         standingKeys: null,
       }));
       return;
     }
     const day = standingForDay(standingSources, memberOf);
-    const load = loadStandingIntoPlan(rows, day.sources);
-    // One operation, however many vans it filled: one press of «تراجع» takes the whole load back.
-    apply({ kind: 'standingLoad' }, () => ({ rows: load.rows, standingKeys: load.filledKeys }));
+    const load = loadStandingIntoPlan(rows, day.sources, areaNames.data ?? []);
+    // One operation, however many vans it filled: one press of «تراجع» takes the whole load back —
+    // its people and its directions together.
+    apply({ kind: 'standingLoad' }, () => ({
+      rows: load.rows,
+      standingKeys: load.filledKeys,
+      standingDirections: load.directions,
+    }));
+    // What it filled is what the planner reviews before «حفظ»: no filter may hide it.
+    if (hidesAnyOf(load.rows, load.filledKeys, isShown)) clearFilters();
     if (load.unavailable > 0) {
       toast.error(t('operations.crew.standing.unavailable', { count: load.unavailable }));
+    }
+    if (load.directionsLeftBehind.length > 0) {
+      // The vans and why on the second line: the toast cuts its first one to its width.
+      toast.error(
+        t('operations.crewPlan.standingDirectionLeft'),
+        t('operations.crewPlan.standingDirectionLeftWho', {
+          names: load.directionsLeftBehind
+            .map((key) => load.rows.find((row) => row.key === key))
+            .filter((row): row is PlanRow => row !== undefined)
+            .map((row) => rowName(row, load.rows))
+            .join('، '),
+          max: formatNumber(OPERATIONS_DIRECTION_MAX_LENGTH, locale),
+        }),
+      );
     }
     if (day.away.length > 0) {
       // The names on the second line: the toast cuts its first one to its width.
@@ -991,8 +1056,8 @@ export const CrewBoardPage = (): JSX.Element => {
       toast.success(t('operations.crewPlan.saved', { count: formatNumber(pending, locale) }));
     } catch (failure) {
       // A refusal that names a row is said in its own words AND marked on that row's box, brought
-      // into view — on a board of fifty vans «a direction is not an area» alone leaves the planner
-      // hunting for it. Anything else (a Q11 clash, a row deleted on another desk) is said only.
+      // into view — on a board of fifty vans «this type is no longer active» alone leaves the
+      // planner hunting for it. Anything else (a Q11 clash, a row deleted on another desk) is said only.
       const named = failure instanceof ApiError ? planRefusal(failure, sent) : null;
       // Round 24 — a deleted row that holds محصنات: put back where it was, and marked — its own
       // operation, so «تراجع» deletes it again if that is what the planner wants.
@@ -1033,23 +1098,21 @@ export const CrewBoardPage = (): JSX.Element => {
         board.data?.freeVehicles.find((van) => van.vehicleId === vehicleId)?.vehicleCode ??
         '—';
       const message =
-        placed.field === 'direction'
-          ? t('operations.crewPlan.refused.direction', { parts: placed.parts.join('، ') })
-          : placed.field === 'vehicle' && placed.vehicle !== undefined
-            ? t(`operations.crewPlan.refused.vehicle.${placed.vehicle.reason}`, {
-                code: vehicleCode(placed.vehicle.vehicleId),
+        placed.field === 'vehicle' && placed.vehicle !== undefined
+          ? t(`operations.crewPlan.refused.vehicle.${placed.vehicle.reason}`, {
+              code: vehicleCode(placed.vehicle.vehicleId),
+            })
+          : placed.field === 'remove'
+            ? t('operations.crewPlan.refused.remove', {
+                count: formatNumber(placed.removed?.shipments ?? 0, locale),
               })
-            : placed.field === 'remove'
-              ? t('operations.crewPlan.refused.remove', {
-                  count: formatNumber(placed.removed?.shipments ?? 0, locale),
-                })
-              : aboutPerson
-                ? placed.person === undefined
-                  ? t(`operations.crewPlan.refused.${placed.field}`)
-                  : t(`operations.crewPlan.refused.${placed.person.reason}`, {
-                      name: shownMember(placed.person.employeeId).fullNameAr,
-                    })
-                : t('operations.crewPlan.refused.type');
+            : aboutPerson
+              ? placed.person === undefined
+                ? t(`operations.crewPlan.refused.${placed.field}`)
+                : t(`operations.crewPlan.refused.${placed.person.reason}`, {
+                    name: shownMember(placed.person.employeeId).fullNameAr,
+                  })
+              : t('operations.crewPlan.refused.type');
       setRefusal({ ...placed, message });
       toast.error(
         errorMessage(failure, locale),
@@ -1381,8 +1444,8 @@ export const CrewBoardPage = (): JSX.Element => {
             value={row.direction}
             options={directions}
             disabled={!canPlan}
-            refused={refusedOn(row, 'direction')}
             onChange={(direction) => patch(row.key, { direction })}
+            add={addFor(row)}
           />
         </div>
       ),
@@ -1545,11 +1608,18 @@ export const CrewBoardPage = (): JSX.Element => {
                 type="button"
                 data-standing-toggle="true"
                 aria-pressed={standingKeys !== null}
-                disabled={standingSources.length === 0 && standingKeys === null}
+                // Round 28b critic — on, it reads each direction against the areas: not before
+                // their list answers. Off never waits.
+                disabled={
+                  standingKeys === null && (standingSources.length === 0 || areaNames.isPending)
+                }
+                aria-busy={standingKeys === null && areaNames.isPending}
                 title={
                   standingSources.length === 0
                     ? t('operations.crew.standing.none')
-                    : t('operations.crew.standing.hint')
+                    : standingKeys === null && areaNames.isPending
+                      ? t('operations.crew.standing.areasLoading')
+                      : t('operations.crew.standing.hint')
                 }
                 onClick={toggleStanding}
                 className={cn(

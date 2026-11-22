@@ -575,8 +575,8 @@ const securedDistributionPrefix: readonly unknown[] = [
  * than waiting for the crew topic to come back over the socket.
  *
  * The board owns the refusal (Round 20): it words it and marks the row the server named — a type
- * archived on another desk, a direction that is not an area — so the global notifier stays quiet,
- * one refusal, one message (see `formOwnsTheError`).
+ * archived on another desk (a direction is not refused since Round 28) — so the global notifier
+ * stays quiet, one refusal, one message (see `formOwnsTheError`).
  */
 export const usePlanOperationsCrew = () => {
   const qc = useQueryClient();
@@ -1088,10 +1088,10 @@ export const useOperationsAreas = (params: OperationsListParams, enabled = true)
 
 /**
  * Every ACTIVE area's name, however many pages it takes — «لوحة التشغيلة»'s direction (Round 20).
- * Since this round the save holds a new direction to the active areas («لازم اختار من الاتجاهات
- * اللى موجوده») — all of them, not a page of them. A list cut at the server's page cap (100) would
- * leave an area past it impossible to pick, and mark a saved direction that names it as «not an
- * area». Under the areas' key, so every area write and the areas' realtime topic stale it.
+ * The save respells a new direction naming any active area in the area's spelling (Round 28: and
+ * takes anything else as typed) — all of them, not a page of them. A list cut at the server's page
+ * cap (100) would leave an area past it off the list, and title a saved direction that names it as
+ * hand-typed. Under the areas' key, so every area write and the areas' realtime topic stale it.
  */
 export const useActiveOperationsAreaNames = (enabled = true) =>
   useQuery({

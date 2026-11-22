@@ -35,6 +35,8 @@ import { diffChanges } from '../../../shared/utils/diff';
 import type { ItConsumableMovementLabels, ItHolderLabels } from '../it.mappers';
 import { itCatalogItemRepository } from '../catalog-items/catalog-item.repository';
 import { itAssetRepository } from '../assets/asset.repository';
+import { custodianLabels } from '../assets/custody-labels';
+import { type DepartmentHolder } from '../assets/custody-holder';
 import { reserveSequenceBlock } from '../shared/sequence';
 import { cairoDayEnd, cairoDayStart } from '../shared/cairo-day';
 import { registerSearchPattern } from '../shared/register-search';
@@ -391,6 +393,14 @@ class ItConsumableService {
     if (query.employeeId !== undefined) {
       clauses.push({ employeeId: new Types.ObjectId(query.employeeId) });
     }
+    // An issue to a department: by the department, the place, or who signed for it. Each names its
+    // field's type beside the id, so the field's partial index serves it (the model's indexes).
+    for (const field of ['departmentId', 'locationId', 'responsibleEmployeeId'] as const) {
+      const id = query[field];
+      if (id !== undefined) {
+        clauses.push({ [field]: { $eq: new Types.ObjectId(id), $type: 'objectId' } });
+      }
+    }
     if (query.assetId !== undefined) clauses.push({ assetId: new Types.ObjectId(query.assetId) });
     if (query.branchId !== undefined) {
       clauses.push({ branchId: new Types.ObjectId(query.branchId) });
@@ -446,11 +456,27 @@ class ItConsumableService {
    * store's read grant, the one the rows themselves were read under: the device an item went on
    * is part of the item's record — its memo printed it — so the ledger names it to whoever may read
    * the ledger, whether or not they also read the asset register.
+   *
+   * An issue to a department (2026-11-19) adds its department and its place — one read each per
+   * page, in any state, as custody's are (`custodianLabels`) — and its signer, named with the
+   * employees in the same directory batch.
    */
   async movementLabels(
     rows: readonly ItConsumableMovementDoc[],
     scope: ScopeSelector,
   ): Promise<ItConsumableMovementLabels> {
+    const custodians: DepartmentHolder[] = rows.flatMap((row) =>
+      row.departmentId == null || row.locationId == null
+        ? []
+        : [
+            {
+              kind: 'department',
+              departmentId: String(row.departmentId),
+              locationId: String(row.locationId),
+              responsibleEmployeeId: idOf(row.responsibleEmployeeId) ?? '',
+            },
+          ],
+    );
     const assetIds = [...new Set(rows.flatMap((row) => idOf(row.assetId) ?? []))];
     const itemIds = [
       ...new Set(
@@ -461,13 +487,18 @@ class ItConsumableService {
         }),
       ),
     ];
-    const [items, employees, assets, memos] = await Promise.all([
+    const [items, employees, assets, memos, named] = await Promise.all([
       itConsumableRepository.findByIdsSystem(itemIds),
-      employeeLabels(rows.map((row) => idOf(row.employeeId))),
+      employeeLabels(
+        rows.flatMap((row) => [idOf(row.employeeId), idOf(row.responsibleEmployeeId)]),
+      ),
       assetIds.length === 0 ? [] : itAssetRepository.findManyByIds(assetIds, scope),
       itConsumableMemoRepository.findByIdsSystem(rows.flatMap((row) => idOf(row.memoId) ?? [])),
+      custodianLabels(custodians),
     ]);
     return {
+      departments: named.departments,
+      locations: named.locations,
       items: new Map(
         items.map((item) => [
           String(item._id),

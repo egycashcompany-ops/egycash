@@ -59,13 +59,17 @@ import {
 } from '../lib/consumable-movement-register-export';
 import { gatherRegister, printItRegister } from '../lib/register-export';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { SearchableSelect } from '../../../shared/ui/SearchableSelect';
+import { useCustodianFilterOptions } from '../components/useCustodianFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'asset',
   'branch',
+  'department',
   'employee',
   'from',
+  'location',
   'kind',
   'q',
   'size',
@@ -147,6 +151,9 @@ export const ConsumableMovementsPage = (): JSX.Element => {
   // the assets — its box searches their register, and its chip resolves through it.
   const canAssets = can('itAsset.view');
   const employeeId = sp.get('employee') ?? '';
+  // An issue to a department (2026-11-19): which department, at which place.
+  const departmentId = sp.get('department') ?? '';
+  const locationId = sp.get('location') ?? '';
   const assetId = canAssets ? (sp.get('asset') ?? '') : '';
   // Days as the date boxes write them, `YYYY-MM-DD` — what the request sends; the server reads
   // «إلى» as the whole of its day, as the custody register's does.
@@ -171,6 +178,8 @@ export const ConsumableMovementsPage = (): JSX.Element => {
     typeId !== '' ||
     branchId !== '' ||
     employeeId !== '' ||
+    departmentId !== '' ||
+    locationId !== '' ||
     assetId !== '' ||
     from !== '' ||
     to !== '' ||
@@ -185,6 +194,8 @@ export const ConsumableMovementsPage = (): JSX.Element => {
       typeId: typeId || undefined,
       branchId: branchId || undefined,
       employeeId: employeeId || undefined,
+      departmentId: departmentId || undefined,
+      locationId: locationId || undefined,
       assetId: assetId || undefined,
       from: from || undefined,
       to: to || undefined,
@@ -196,6 +207,7 @@ export const ConsumableMovementsPage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useItConsumableMovements(params);
   const rows = data?.items ?? [];
   const { columns, editor } = useConsumableMovementLedger(rows);
+  const custodianFilters = useCustodianFilterOptions(branchId);
 
   // The employee chip's label: the pick supplies it, kept WITH the id it was picked for (back and
   // forward change the id underneath); arriving on a link with only an id, the rows name the
@@ -278,6 +290,10 @@ export const ConsumableMovementsPage = (): JSX.Element => {
           branchName,
           employeeId,
           employeeLabel,
+          departmentId,
+          departmentName: custodianFilters.departmentName,
+          locationId,
+          locationName: custodianFilters.locationName,
           assetId,
           assetLabel,
           from,
@@ -332,6 +348,8 @@ export const ConsumableMovementsPage = (): JSX.Element => {
               type: null,
               branch: null,
               employee: null,
+              department: null,
+              location: null,
               asset: null,
               from: null,
               to: null,
@@ -439,6 +457,35 @@ export const ConsumableMovementsPage = (): JSX.Element => {
                 setPickedEmployee({ id, label });
                 patch({ employee: id || null });
               }}
+            />
+          </FilterField>
+          {/* «صرف لإدارة» (2026-11-19): the issues to a department, at a place. */}
+          <FilterField
+            label={t('it.custody.department.department')}
+            active={departmentId !== ''}
+            className={cn(FIELD, 'sm:w-56')}
+          >
+            <SearchableSelect
+              value={departmentId}
+              options={custodianFilters.departments}
+              placeholder={t('it.custody.department.anyDepartment')}
+              ariaLabel={t('it.custody.department.department')}
+              testId="filter-department"
+              onChange={(next) => patch({ department: next || null })}
+            />
+          </FilterField>
+          <FilterField
+            label={t('it.custody.department.location')}
+            active={locationId !== ''}
+            className={cn(FIELD, 'sm:w-56')}
+          >
+            <SearchableSelect
+              value={locationId}
+              options={custodianFilters.places}
+              placeholder={t('it.custody.department.anyLocation')}
+              ariaLabel={t('it.custody.department.location')}
+              testId="filter-location"
+              onChange={(next) => patch({ location: next || null })}
             />
           </FilterField>
           {canAssets && (

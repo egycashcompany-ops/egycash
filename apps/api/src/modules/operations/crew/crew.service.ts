@@ -47,8 +47,10 @@
 //     and counted by Q11 like any other row. Given a van later, it MOVES onto the van's row: the
 //     board sends the van's row with its crew and the old row's id to remove, one save (`plan`).
 //   · «الاتجاه» from the list — «اقدر اكتب بس فى الاخر لازم اختار من الاتجاهات اللى موجوده بتاعت
-//     البنوك»: a new or changed direction must name active operations areas, and is stored in their
-//     own spelling. One saved before, legacy free text included, stays while it is sent unchanged.
+//     البنوك»: a new or changed direction had to name active operations areas, stored in their
+//     own spelling. ROUND 28 reverses the refusal — «عاوز الاتجاه اقدر اكتبه بايدى لو مش موجود فى
+//     الليست»: an area's name is still respelled as the area spells it, anything else is stored as
+//     typed (`crew-direction.ts`). One saved before stays exactly while it is sent unchanged.
 //   · The van's drivers by name on the board, and the day's vans in the workshop («صيانة»).
 //
 // ROUND 24 — «عاوز لو عربيه من غير كود عادى تظهر ان اوزع عليها محصنات»: a row without a van takes
@@ -61,7 +63,6 @@ import {
   OperationsEvents,
   OperationsSettingKeys,
   canonicalCrewRowColour,
-  canonicalOperationsDirection,
   type OperationsCrewBoardCrewDto,
   type OperationsCrewBoardDto,
   type OperationsCrewBoardRowDto,
@@ -96,7 +97,6 @@ import {
   fleetVehiclesInWorkshop,
 } from '../fleet-boundary';
 import { operationsDayService, utcDay } from '../days/day.service';
-import { operationsAreaRepository } from '../areas/area.repository';
 import { operationsShiftTypeRepository } from '../shift-types/shift-type.repository';
 import { operationsStandingCrewRepository } from '../standing-crew/standing-crew.repository';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
@@ -106,6 +106,7 @@ import { moveRowLegsToVan, recordLegVanChanges, type LegVanChange } from '../ass
 import { crewMembers, slotIds } from './crew-slots';
 import { crewAvailabilityOn } from './crew-requirements.service';
 import { CREW_SLOT_FIELD, crewRolesOf, refuseWrongSlots } from './crew-roles';
+import { directionResolver } from './crew-direction';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
 
@@ -752,37 +753,12 @@ class OperationsCrewService {
         );
       });
 
-      // «الاتجاه» — read the areas only when some row brings a new direction (most saves move
-      // people and touch no direction at all).
-      let areaNames: string[] | null = null;
-      const directionOf = async (
-        row: PlanOperationsCrewRow,
-        current: OperationsCrewAssignmentDoc | undefined,
-        index: number,
-      ): Promise<string | null> => {
-        const direction = row.direction ?? null;
-        if (direction === null) return null;
-        // Unchanged — kept exactly as written, an old free-text direction included.
-        if (direction === current?.direction || carriedDirections.has(direction)) return direction;
-        areaNames ??= await operationsAreaRepository.activeNames();
-        const canonical = canonicalOperationsDirection(direction, areaNames);
-        if ('direction' in canonical) return canonical.direction;
-        throw new AppError(
-          ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA,
-          422,
-          `the direction names what is not an active area: ${canonical.unknown.join('، ')}`,
-          {
-            details: [
-              ...canonical.unknown.map((part) => ({
-                field: 'direction',
-                code: 'NOT_AN_AREA',
-                message: part,
-              })),
-              rowIndexDetail(index),
-            ],
-          },
-        );
-      };
+      // «الاتجاه» — Round 28: typed by hand when no area answers it («عاوز الاتجاه اقدر اكتبه بايدى لو
+      // مش موجود فى الليست»), an area's name still respelled as the area spells it. Unchanged —
+      // the row's own, or one a removed row carries over — is kept exactly as written, an old
+      // free-text direction included (`crew-direction.ts`). The areas are read once, and only
+      // when some row brings a new direction.
+      const directionOf = directionResolver();
 
       const changed: ChangedRow[] = [];
       const audits: PendingAudit[] = [];
@@ -845,7 +821,11 @@ class OperationsCrewService {
           captainEmployeeIds: row.captainEmployeeIds ?? [],
           specialist1EmployeeIds: row.specialist1EmployeeIds ?? [],
           specialist2EmployeeIds: row.specialist2EmployeeIds ?? [],
-          direction: await directionOf(row, current, index),
+          direction: await directionOf(
+            row.direction,
+            [current?.direction, ...carriedDirections],
+            index,
+          ),
           plannedTime: row.plannedTime ?? null,
           notes: row.notes ?? null,
           shiftTypeId: row.shiftTypeId ?? null,

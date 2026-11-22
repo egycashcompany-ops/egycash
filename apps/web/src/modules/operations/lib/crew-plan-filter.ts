@@ -145,3 +145,19 @@ export const matchesRowFilter = (
   }
   return matchesPerson(row, filter.person, context.memberOf);
 };
+
+/**
+ * Round 28b critic — do the filters hide any of these rows (`isShown`, the page's whole test: the
+ * type and the three)? The standing crew's load asks it of the vans it just filled: once a filled
+ * van takes its standing «الاتجاه», «بدون اتجاه» hid it at the press — «حفظ (N)» counted changes
+ * the planner could not see, though the toggle's hint asks him to review them first. When they do,
+ * the filters go, as they go for a new row (`addRow`) and for the row a refusal names.
+ */
+export const hidesAnyOf = (
+  rows: readonly PlanRow[],
+  keys: readonly string[],
+  isShown: (row: PlanRow) => boolean,
+): boolean => {
+  const wanted = new Set(keys);
+  return rows.some((row) => wanted.has(row.key) && !isShown(row));
+};

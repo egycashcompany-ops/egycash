@@ -21,6 +21,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { AssetsListPage } from './AssetsListPage';
+import { NO_DEPARTMENT, departmentHolder } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -70,6 +71,8 @@ const asset = (over: Partial<ItAssetDto> = {}): ItAssetDto => ({
   specs: null,
   accessories: [],
   holder: {
+    kind: 'employee',
+    ...NO_DEPARTMENT,
     employeeId: 'e-1',
     employeeCode: '0100052',
     employeeName: 'محمد أحمد علي',
@@ -89,6 +92,8 @@ const UNNAMED = asset({
   assetCode: 'AST-00013',
   currentAssignmentId: 'a-2',
   holder: {
+    kind: 'employee',
+    ...NO_DEPARTMENT,
     employeeId: 'e-9',
     employeeCode: null,
     employeeName: null,
@@ -101,6 +106,15 @@ const IN_STOCK = asset({
   status: 'inStock',
   currentAssignmentId: null,
   holder: null,
+});
+
+// 2026-11-19 — a server the IT department holds in its server room, on Sherif's signature.
+const SERVER = asset({
+  id: 'asset-5',
+  assetCode: 'AST-00016',
+  name: 'Dell PowerEdge R740',
+  currentAssignmentId: 'a-5',
+  holder: departmentHolder(),
 });
 
 const NAME = 'Lenovo ThinkCentre neo 50a 24';
@@ -149,6 +163,19 @@ const render = (path = '/it/assets'): string => {
     page([PRINTER]),
   );
   qc.setQueryData(listKey('it', 'assets', { ...FIRST_PAGE, categoryId: 'c-pc' }), page([HELD]));
+  // «إيه اللي في غرفة السيرفرات» — the place's link, and a department held by kind.
+  qc.setQueryData(
+    listKey('it', 'assets', { ...FIRST_PAGE, locationId: 'l-servers' }),
+    page([SERVER]),
+  );
+  qc.setQueryData(
+    listKey('it', 'assets', {
+      ...FIRST_PAGE,
+      holderKind: 'department',
+      holderDepartmentId: 'd-it',
+    }),
+    page([SERVER]),
+  );
   // «الضمان»: the bar's own window, and the dashboard's when its setting is another.
   qc.setQueryData(
     listKey('it', 'assets', { ...FIRST_PAGE, warrantyEndsWithinDays: 30 }),
@@ -240,6 +267,24 @@ describe('the holder’s column', () => {
 
   it('is a dash for an asset nobody holds', () => {
     expect(text(rowOf(html, 'AST-00014')[holderAt] ?? '')).toBe('—');
+  });
+
+  // 2026-11-19 — «في عهدة إدارة … — …»: the department, linking to everything held at its place,
+  // and the place under it. Never the signer's name in the holder's place.
+  it('names a department holder with its place under it, linking to what is held there', () => {
+    const atPlace = render('/it/assets?location=l-servers');
+    const cell = rowOf(atPlace, 'AST-00016')[holderAt] ?? '';
+    expect(cell).toContain('href="/it/assets?location=l-servers"');
+    expect(cell).toContain('إدارة تقنية المعلومات');
+    expect(cell).toContain('غرفة السيرفرات');
+    expect(cell).not.toContain('شريف ممدوح فاروق');
+    expect(cell).not.toContain('/it/employees/');
+  });
+
+  it('asks the register for «جهة الاستلام» and «الإدارة» as the URL names them', () => {
+    const byDepartment = render('/it/assets?holderKind=department&department=d-it');
+    expect(byDepartment).toContain('AST-00016');
+    expect(byDepartment).not.toContain('AST-00012');
   });
 });
 

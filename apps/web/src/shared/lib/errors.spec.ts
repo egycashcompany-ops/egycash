@@ -54,6 +54,27 @@ describe('errorMessage', () => {
     expect(errorMessage(boom, 'en')).not.toBe('Unexpected error');
   });
 
+  // Round 28c critic — «المناطق» refuses a name another area holds in any spelling, naming that
+  // area in its detail. The catalog's own dialog said the server's English sentence to an Arabic
+  // reader («the area «المعادي» already has this name»); it is worded, naming the area, now.
+  it('words a name «المناطق» already holds, naming the area — and saying when it is archived', () => {
+    const held = (code: string, area: string) =>
+      new ApiError(ErrorCodes.DUPLICATE, `the area «${area}» already has this name`, 409, [
+        { field: 'name', code, message: area },
+      ]);
+    expect(errorMessage(held('AREA_ACTIVE', 'المعادي'), 'ar')).toBe(
+      'في «المناطق» منطقة «المعادي» بهذا الاسم.',
+    );
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'ar')).toContain('«الدقي»');
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'ar')).toContain('موقوفة');
+    expect(errorMessage(held('AREA_ACTIVE', 'المعادي'), 'en')).toBe(
+      '«Areas» already has “المعادي” under this name.',
+    );
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'en')).toContain('archived');
+    // Any other duplicate keeps the server's own words, as before.
+    expect(errorMessage(new ApiError(ErrorCodes.DUPLICATE, 'taken', 409), 'ar')).toBe('taken');
+  });
+
   it('still falls back to the server message for a code it does not know', () => {
     expect(errorMessage(new ApiError('SOME_NEW_CODE', 'very specific', 400), 'ar')).toBe(
       'very specific',
@@ -117,7 +138,8 @@ describe('errorMessage', () => {
   });
 
   // «لوحة التشغيلة» (Round 20) — a save refused for a type archived since it was picked, or a
-  // direction no area answers. The board marks the row; these are the words said beside it.
+  // direction no area answers. The board marks the row; these are the words said beside it. Round 28
+  // retired the direction's refusal: its words stay, harmless, for an older server only.
   it('words the crew board’s two row refusals, each its own, never the server’s English', () => {
     const words: string[] = [];
     for (const code of [

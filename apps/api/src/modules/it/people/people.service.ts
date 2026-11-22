@@ -175,8 +175,15 @@ class ItPeopleService {
     const person = new Types.ObjectId(employeeId);
     const asks: (() => Promise<number>)[] = [];
     const { assets, lines, consumables } = registers;
+    // A department's custody, or a department's memo, NAMES the person who signed for it too
+    // (2026-11-19) — their page's «عهد إدارات وقّع عليها».
     if (assets !== null) {
-      asks.push(() => itAssetAssignmentRepository.count({ assignedToEmployeeId: person }, assets));
+      asks.push(() =>
+        itAssetAssignmentRepository.count(
+          { $or: [{ assignedToEmployeeId: person }, { responsibleEmployeeId: person }] },
+          assets,
+        ),
+      );
     }
     if (lines !== null) {
       asks.push(() =>
@@ -184,7 +191,12 @@ class ItPeopleService {
       );
     }
     if (consumables !== null) {
-      asks.push(() => itConsumableMovementRepository.count({ employeeId: person }, consumables));
+      asks.push(() =>
+        itConsumableMovementRepository.count(
+          { $or: [{ employeeId: person }, { responsibleEmployeeId: person }] },
+          consumables,
+        ),
+      );
     }
     for (const ask of asks) if ((await ask()) > 0) return true;
     return false;

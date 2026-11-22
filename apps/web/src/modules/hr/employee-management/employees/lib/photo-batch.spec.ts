@@ -11,17 +11,24 @@ import {
   nameLikeness,
   NAME_LIKENESS_FLOOR,
   parsePhotoName,
+  pickOnePerEmployee,
   planPhotoBatch,
   type PhotoFileInput,
 } from './photo-batch';
 
-const employee = (code: string, fullNameAr: string, photoFileId: string | null = null): EmployeeCodeMatchDto => ({
+const employee = (
+  code: string,
+  fullNameAr: string,
+  photoFileId: string | null = null,
+  photoUploadedAt: string | null = null,
+): EmployeeCodeMatchDto => ({
   id: `id-${code}`,
   code,
   fullNameAr,
   fullNameEn: null,
   status: 'active',
   photoFileId,
+  photoUploadedAt,
 });
 const file = (name: string, type = 'image/jpeg'): PhotoFileInput => ({ key: name, name, type });
 
@@ -46,13 +53,16 @@ describe('reading a code out of a file name', () => {
     expect(parsePhotoName('01469 محمد.jpg').padded).toEqual(['0001469']);
   });
 
-  it('pads no short number that cannot be a code, such as a copy\'s «(2)»', () => {
+  it("pads no short number that cannot be a code, such as a copy's «(2)»", () => {
     expect(parsePhotoName('0101469 محمد (2).jpg').candidates).toEqual(['0101469', '2']);
     expect(parsePhotoName('1469 محمد.jpg').padded).toEqual([]);
   });
 
   it('tries every run of digits, longest first, and an external code word', () => {
-    expect(parsePhotoName('2023 0101469 محمد.jpg').candidates.slice(0, 2)).toEqual(['0101469', '2023']);
+    expect(parsePhotoName('2023 0101469 محمد.jpg').candidates.slice(0, 2)).toEqual([
+      '0101469',
+      '2023',
+    ]);
     expect(parsePhotoName('EXT-12 Ahmed.jpg').candidates).toContain('EXT-12');
   });
 
@@ -73,7 +83,6 @@ describe('reading a code out of a file name', () => {
     expect(parsePhotoName('0101469 Ahmed C2.jpg').candidates[0]).toBe('0101469');
     expect(parsePhotoName('IMG-1 0101469 Ahmed.jpg').candidates[0]).toBe('0101469');
   });
-
 
   it('asks about no run of digits longer than any code can be', () => {
     const stamp = '2023110514302212345678901234567';
@@ -221,11 +230,116 @@ describe('the batch plan', () => {
   });
 
   it('asks the server about every code any file could carry, each once', () => {
-    expect(codesToLookUp([file('101469 a.jpg'), file('0101469 b.jpg')])).toEqual(['101469', '0101469']);
+    expect(codesToLookUp([file('101469 a.jpg'), file('0101469 b.jpg')])).toEqual([
+      '101469',
+      '0101469',
+    ]);
   });
 
   it('counts the rows by state for the summary', () => {
     const rows = planPhotoBatch([file('0101469 م.jpg'), file('0999999 م.jpg')], matches, new Set());
-    expect(countByStatus(rows)).toMatchObject({ ready: 1, unknownCode: 1, duplicate: 0, ambiguous: 0 });
+    expect(countByStatus(rows)).toMatchObject({
+      ready: 1,
+      unknownCode: 1,
+      duplicate: 0,
+      ambiguous: 0,
+    });
+  });
+});
+
+describe('«مش عايز أرفع اللى اترفعوا» — skipping the photos already up', () => {
+  const today = Date.parse('2026-11-22T00:00:00Z');
+  const people = new Map([
+    ['0601712', employee('0601712', 'عبدالرحمن محمد فاروق', 'f1', '2026-11-22T07:55:00Z')],
+    ['0601757', employee('0601757', 'خالد احمد محمد فوزى', 'f2', '2026-10-01T09:00:00Z')],
+    ['0601760', employee('0601760', 'احمد احمد امين لبلب')],
+  ]);
+  const files = [
+    file('0601712 عبدالرحمن محمد فاروق.jpg'),
+    file('0601757 خالد احمد محمد فوزى.jpg'),
+    file('0601760 احمد احمد امين لبلب.png', 'image/png'),
+  ];
+
+  it('holds back the people whose photo went up since the cut-off, and only them', () => {
+    const rows = planPhotoBatch(files, people, new Set(), new Set(), { skipSince: today });
+    expect(rows.map((r) => r.status)).toEqual(['recent', 'ready', 'ready']);
+  });
+
+  it('sends everyone again when nothing is skipped', () => {
+    const rows = planPhotoBatch(files, people, new Set(), new Set(), { skipSince: null });
+    expect(rows.map((r) => r.status)).toEqual(['ready', 'ready', 'ready']);
+  });
+
+  it("never counts a recent photo's second file as a duplicate", () => {
+    const twice = [file('0601712 عبدالرحمن.jpg'), file('0601712 عبدالرحمن محمد (2).jpg')];
+    const rows = planPhotoBatch(twice, people, new Set(), new Set(), { skipSince: today });
+    expect(rows.map((r) => r.status)).toEqual(['recent', 'recent']);
+  });
+});
+
+describe('«المكرر تختار منه أنت تلقائي واحده» — one photo per employee', () => {
+  const people = new Map([
+    ['0601746', employee('0601746', 'محمد ابراهيم عبود محمد شحاته')],
+    ['0601747', employee('0601747', 'احمد عبدالرحمن محمد جادو')],
+  ]);
+  const facts = new Map([
+    ['0601746 محمد ابراهيم عبود محمد شحاته.jpg', { size: 300, lastModified: 1 }],
+    ['0601746 محمد ابراهيم عبود محمد شحاته (2).jpg', { size: 200, lastModified: 5 }],
+    ['0601747 احمد عبدالرحمن.jpg', { size: 100, lastModified: 1 }],
+    ['0601747 سيد علي.jpg', { size: 900, lastModified: 9 }],
+  ]);
+  const rows = planPhotoBatch(
+    [...facts.keys()].map((name) => file(name)),
+    people,
+    new Set(),
+  );
+
+  it('keeps exactly one of each and leaves the rest out', () => {
+    expect(rows.every((r) => r.status === 'duplicate')).toBe(true);
+    const { keep, leave } = pickOnePerEmployee(rows, (key) => facts.get(key));
+    expect(keep.size).toBe(2);
+    expect(leave.size).toBe(2);
+    const after = planPhotoBatch(
+      [...facts.keys()].map((name) => file(name)),
+      people,
+      leave,
+    );
+    expect(
+      after
+        .filter((r) => r.status === 'ready')
+        .map((r) => r.employee?.code)
+        .sort(),
+    ).toEqual(['0601746', '0601747']);
+  });
+
+  it('prefers the name that fits, then the newer file', () => {
+    const { keep } = pickOnePerEmployee(rows, (key) => facts.get(key));
+    // Same name twice: the newer copy wins over the larger one.
+    expect(keep.has('0601746 محمد ابراهيم عبود محمد شحاته (2).jpg')).toBe(true);
+    // A name that is someone else's loses, however new or large the file.
+    expect(keep.has('0601747 احمد عبدالرحمن.jpg')).toBe(true);
+  });
+
+  it('chooses the same way whatever order the files came in', () => {
+    const reversed = [...rows].reverse();
+    expect([...pickOnePerEmployee(reversed, (key) => facts.get(key)).keep].sort()).toEqual(
+      [...pickOnePerEmployee(rows, (key) => facts.get(key)).keep].sort(),
+    );
+  });
+
+  it('passes over a file that already failed, so picking again tries the other', () => {
+    const failedOne = '0601746 محمد ابراهيم عبود محمد شحاته (2).jpg';
+    const { keep } = pickOnePerEmployee(
+      rows,
+      (key) => facts.get(key),
+      (key) => key === failedOne,
+    );
+    expect(keep.has('0601746 محمد ابراهيم عبود محمد شحاته.jpg')).toBe(true);
+    expect(keep.has(failedOne)).toBe(false);
+  });
+
+  it('touches no row that is not one of several', () => {
+    const single = planPhotoBatch([file('0601746 محمد.jpg')], people, new Set());
+    expect(pickOnePerEmployee(single, () => undefined).leave.size).toBe(0);
   });
 });

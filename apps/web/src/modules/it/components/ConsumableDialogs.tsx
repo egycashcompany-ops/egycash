@@ -49,6 +49,8 @@ import {
   useItCatalog,
   useItConsumableMovements,
   useItConsumableTransferTargets,
+  useItDepartmentOptions,
+  useItLocationOptions,
   useItPerson,
   useItPrinterCounters,
   useReceiveItConsumable,
@@ -67,9 +69,12 @@ import {
 import { branchMoveTargets } from '../lib/branch-move-targets';
 import {
   clearedLineNumbers,
+  custodianKey,
+  custodianReady,
   heldByOther,
   holderAnswer,
   holderName,
+  issueCustodianBody,
   issueHolderReducer,
   issueHolderStart,
   lineNumber,
@@ -77,6 +82,8 @@ import {
   type IssueHolderEvent,
   type IssueHolderState,
 } from '../lib/consumable-issue-holder';
+import { bareDepartmentName } from '../lib/custody-holder';
+import { CustodianKindSwitch, DepartmentCustodianFields } from './DepartmentCustodianFields';
 import {
   backdatedAgainst,
   clearMovedReadings,
@@ -884,6 +891,22 @@ export const IssueConsumablesDialog = ({
   // the other (`lib/consumable-issue-holder.ts`).
   const [state, dispatch] = useReducer(issueReducer, [blankLine(0, item)], issueHolderStart);
   const { employeeId, employeeLabel, lines } = state;
+  // «صرف لإدارة» (2026-11-19): the memo goes to a department at a place of the store's branch,
+  // signed by its responsible person. The custodian is the department at its place — its devices
+  // are what «مركّب على» lists — never the signer.
+  const toDepartment = state.mode === 'department';
+  const departments = useItDepartmentOptions(toDepartment);
+  const places = useItLocationOptions(toDepartment);
+  const departmentName = departments.data?.find((each) => each.id === state.departmentId)?.name;
+  const placeName = (places.data ?? []).find((each) => each.id === state.locationId)?.name;
+  const custodianLabel = toDepartment
+    ? departmentName === undefined || placeName === undefined
+      ? ''
+      : t('it.custody.department.heldAt', {
+          department: bareDepartmentName(localized(departmentName, locale)),
+          location: localized(placeName, locale),
+        })
+    : employeeLabel;
   const [issuedAt, setIssuedAt] = useState('');
   const [notes, setNotes] = useState('');
   const [nextKey, setNextKey] = useState(1);
@@ -967,7 +990,7 @@ export const IssueConsumablesDialog = ({
     line.consumable.branchId === memoBranch &&
     qtyOk(lineQty(line), line.consumable.onHandQty) &&
     counterCheck(line).ok;
-  const ready = employeeId !== '' && lines.length > 0 && counted.every(lineOk);
+  const ready = custodianReady(state) && lines.length > 0 && counted.every(lineOk);
   const replacing = lines.some((line) => line.reason === 'replacement');
 
   const submit = async (): Promise<void> => {
@@ -977,7 +1000,7 @@ export const IssueConsumablesDialog = ({
     const sent = lines;
     const sentIssuedAt = issuedAt;
     const body: IssueItConsumables = {
-      employeeId,
+      ...issueCustodianBody(state),
       ...(issuedAt === '' ? {} : { issuedAt: new Date(issuedAt) }),
       ...(notes.trim() === '' ? {} : { notes: notes.trim() }),
       lines: counted.map((line) => ({
@@ -1005,7 +1028,7 @@ export const IssueConsumablesDialog = ({
       }
     });
     if (memo !== null) {
-      toast.success(t('it.consumables.issued'));
+      toast.success(t(toDepartment ? 'it.consumables.issuedDepartment' : 'it.consumables.issued'));
       onClose();
     }
   };
@@ -1015,8 +1038,14 @@ export const IssueConsumablesDialog = ({
       open={open}
       onClose={onClose}
       size="xl"
-      title={t('it.consumables.issue.title')}
-      description={t('it.consumables.issue.printsMemo')}
+      title={t(
+        toDepartment ? 'it.consumables.issue.titleDepartment' : 'it.consumables.issue.title',
+      )}
+      description={t(
+        toDepartment
+          ? 'it.consumables.issue.printsMemoDepartment'
+          : 'it.consumables.issue.printsMemo',
+      )}
       error={error}
       busy={issue.isPending || printer.isPrinting}
       canSubmit={ready}
@@ -1024,42 +1053,95 @@ export const IssueConsumablesDialog = ({
       submitIcon={<PrinterIcon className="h-4 w-4" />}
       onSubmit={() => void submit()}
     >
+      <CustodianKindSwitch
+        value={state.mode}
+        onChange={(mode) => dispatch({ type: 'mode', mode })}
+      />
+      {toDepartment && (
+        <DepartmentCustodianFields
+          value={{
+            departmentId: state.departmentId,
+            locationId: state.locationId,
+            responsibleEmployeeId: state.responsibleEmployeeId,
+            responsibleLabel: state.responsibleLabel,
+          }}
+          onChange={(next) => {
+            if (next.departmentId !== state.departmentId || next.locationId !== state.locationId) {
+              dispatch({
+                type: 'department',
+                departmentId: next.departmentId,
+                locationId: next.locationId,
+              });
+            }
+            if (next.responsibleEmployeeId !== state.responsibleEmployeeId) {
+              dispatch({
+                type: 'responsible',
+                employeeId: next.responsibleEmployeeId,
+                label: next.responsibleLabel,
+              });
+            }
+          }}
+          branchId={memoBranch}
+          branchMissingHint={t('it.custody.department.locationAfterItem')}
+          filledFromDevice={
+            state.filledDepartmentId !== '' && state.filledDepartmentId === state.departmentId
+          }
+        />
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         {/* A hand-over: the people who work here today, in every branch, and nobody else. */}
-        <Field label={t('it.consumables.issue.employee')} required>
-          <EmployeePicker
-            value={employeeId}
-            valueLabel={employeeLabel}
-            onChange={(id, label) => dispatch({ type: 'person', employeeId: id, label })}
-            ariaLabel={t('it.consumables.issue.employee')}
-            handOver
-          />
-          {/* Whether a picked device filled the person — or why it could not. */}
-          <div aria-live="polite">
-            {state.note !== null && noteLine !== null && (
-              <p
-                role="note"
-                data-issue-holder-note={state.note.kind}
-                className={
-                  state.note.kind === 'filled'
-                    ? 'text-xs text-slate-500 dark:text-slate-400'
-                    : 'rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
-                }
-              >
-                {state.note.kind === 'filled'
-                  ? t('it.consumables.issue.holderFilled', { n: formatNumber(noteLine, locale) })
-                  : state.note.kind === 'exited'
-                    ? t('it.consumables.issue.holderExited', {
-                        n: formatNumber(noteLine, locale),
-                        name: state.note.name,
-                      })
-                    : t('it.consumables.issue.holderUnreadable', {
-                        n: formatNumber(noteLine, locale),
-                      })}
-              </p>
-            )}
-          </div>
-        </Field>
+        {toDepartment ? (
+          // Whether a picked device filled the department and its place — no empty cell otherwise.
+          state.note?.kind === 'filledDepartment' && noteLine !== null ? (
+            <p
+              role="note"
+              aria-live="polite"
+              data-issue-holder-note={state.note.kind}
+              className="self-end text-xs text-slate-500 dark:text-slate-400"
+            >
+              {t('it.consumables.issue.departmentFilled', { n: formatNumber(noteLine, locale) })}
+            </p>
+          ) : null
+        ) : (
+          <Field label={t('it.consumables.issue.employee')} required>
+            <EmployeePicker
+              value={employeeId}
+              valueLabel={employeeLabel}
+              onChange={(id, label) => dispatch({ type: 'person', employeeId: id, label })}
+              ariaLabel={t('it.consumables.issue.employee')}
+              handOver
+            />
+            {/* Whether a picked device filled the person — or why it could not. */}
+            <div aria-live="polite">
+              {state.note !== null && noteLine !== null && (
+                <p
+                  role="note"
+                  data-issue-holder-note={state.note.kind}
+                  className={
+                    state.note.kind === 'filled' || state.note.kind === 'filledDepartment'
+                      ? 'text-xs text-slate-500 dark:text-slate-400'
+                      : 'rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+                  }
+                >
+                  {state.note.kind === 'filled'
+                    ? t('it.consumables.issue.holderFilled', { n: formatNumber(noteLine, locale) })
+                    : state.note.kind === 'filledDepartment'
+                      ? t('it.consumables.issue.departmentFilled', {
+                          n: formatNumber(noteLine, locale),
+                        })
+                      : state.note.kind === 'exited'
+                        ? t('it.consumables.issue.holderExited', {
+                            n: formatNumber(noteLine, locale),
+                            name: state.note.name,
+                          })
+                        : t('it.consumables.issue.holderUnreadable', {
+                            n: formatNumber(noteLine, locale),
+                          })}
+                </p>
+              )}
+            </div>
+          </Field>
+        )}
         <Field label={t('it.consumables.fields.at')}>
           <Input
             type="datetime-local"
@@ -1085,8 +1167,8 @@ export const IssueConsumablesDialog = ({
             const qty = lineQty(line);
             const tooMany =
               line.consumable !== null && Number.isInteger(qty) && qty > line.consumable.onHandQty;
-            // A device somebody else holds, picked through «جهاز آخر»: the person stays.
-            const otherHolder = heldByOther(line, employeeId);
+            // A device somebody else holds, picked through «جهاز آخر»: the custodian stays.
+            const otherHolder = heldByOther(line, custodianKey(state));
             // «عداد الطابعة» — what the dialog finds wrong first, then what the server said.
             const check = counterCheck(line);
             const words = (problem: CounterProblem | null): string | undefined =>
@@ -1208,8 +1290,12 @@ export const IssueConsumablesDialog = ({
                     <AssetPicker
                       value={line.assetId}
                       withoutStatus="disposed"
-                      holderEmployeeId={employeeId}
-                      holderLabel={employeeLabel}
+                      holderEmployeeId={toDepartment ? '' : employeeId}
+                      holderDepartmentId={
+                        toDepartment && state.locationId !== '' ? state.departmentId : ''
+                      }
+                      holderLocationId={toDepartment ? state.locationId : ''}
+                      holderLabel={custodianLabel}
                       showHolder
                       allowOther
                       onChange={(assetId, asset) =>
@@ -1221,11 +1307,13 @@ export const IssueConsumablesDialog = ({
                       {otherHolder !== null && (
                         <p
                           role="note"
-                          data-issue-line-holder={otherHolder.employeeId}
+                          data-issue-line-holder={
+                            otherHolder.employeeId ?? otherHolder.departmentId ?? ''
+                          }
                           className="text-xs text-slate-500 dark:text-slate-400"
                         >
                           {t('it.consumables.issue.deviceHeldByOther', {
-                            name: holderName(otherHolder),
+                            name: holderName(otherHolder, t, locale),
                           })}
                         </p>
                       )}
@@ -1254,9 +1342,17 @@ export const IssueConsumablesDialog = ({
               data-issue-devices-cleared={cleared.join(',')}
               className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
             >
-              {cleared.length === 1
-                ? t('it.consumables.issue.deviceCleared', { lines: lineList(cleared, locale) })
-                : t('it.consumables.issue.devicesCleared', { lines: lineList(cleared, locale) })}
+              {state.clearedFrom === 'department'
+                ? cleared.length === 1
+                  ? t('it.consumables.issue.deviceClearedDepartment', {
+                      lines: lineList(cleared, locale),
+                    })
+                  : t('it.consumables.issue.devicesClearedDepartment', {
+                      lines: lineList(cleared, locale),
+                    })
+                : cleared.length === 1
+                  ? t('it.consumables.issue.deviceCleared', { lines: lineList(cleared, locale) })
+                  : t('it.consumables.issue.devicesCleared', { lines: lineList(cleared, locale) })}
             </p>
           )}
         </div>

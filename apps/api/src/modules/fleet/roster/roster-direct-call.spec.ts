@@ -76,12 +76,15 @@ const doc = (vehicleId: string, driver1: string | null = null) => ({
 });
 
 /**
- * The day planned: tomorrow, in the service's own UTC day. A fixed date runs into the past and
- * then trips the past-day guard (`PAST_DATE`) before any rule under test is reached — the
- * 2026-11-20 this file used to send failed every case from 2026-11-21 on.
+ * A day the roster still plans: `plan()` refuses a day before today (UTC), so a fixed date (it was
+ * 2026-11-20) turned every case here into that refusal the day it passed. A week ahead, at midnight.
  */
-const now = new Date();
-const PLAN_DAY = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+const PLAN_DAY = ((): Date => {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() + 7);
+  return day;
+})();
 
 /** The payload an internal caller builds by hand — never parsed, and spelled in UPPER hex. */
 const shouting = (rows: Record<string, unknown>[]) => ({ date: PLAN_DAY, rows }) as never;

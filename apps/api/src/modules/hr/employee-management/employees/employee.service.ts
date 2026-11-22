@@ -1494,17 +1494,27 @@ class EmployeeService {
   async lookupCodes(codes: readonly string[], scope: ScopeSelector): Promise<EmployeeCodeMatchDto[]> {
     const unique = [...new Set(codes.map((code) => code.trim()).filter((code) => code !== ''))];
     const docs = await employeeRepository.findByCodesInScope(unique, scope);
-    return docs.map((doc) => ({
-      id: String(doc._id),
-      code: doc.code,
-      fullNameAr: doc.personal.fullNameAr,
-      fullNameEn: doc.personal.fullNameEn ?? null,
-      status: doc.status,
-      photoFileId:
-        doc.personal.photoFileId === null || doc.personal.photoFileId === undefined
-          ? null
-          : String(doc.personal.photoFileId),
-    }));
+    const photoOf = (doc: EmployeeDoc): string | null =>
+      doc.personal.photoFileId === null || doc.personal.photoFileId === undefined
+        ? null
+        : String(doc.personal.photoFileId);
+    // When each current photo went up: the screen skips the people whose photo is already new.
+    const uploadedAt = await fileService.uploadedAtOf(
+      docs.map(photoOf).filter((id): id is string => id !== null),
+    );
+    return docs.map((doc) => {
+      const photoFileId = photoOf(doc);
+      const at = photoFileId === null ? undefined : uploadedAt.get(photoFileId);
+      return {
+        id: String(doc._id),
+        code: doc.code,
+        fullNameAr: doc.personal.fullNameAr,
+        fullNameEn: doc.personal.fullNameEn ?? null,
+        status: doc.status,
+        photoFileId,
+        photoUploadedAt: at === undefined ? null : at.toISOString(),
+      };
+    });
   }
 
   async setPhoto(

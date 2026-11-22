@@ -1,9 +1,0 @@
-{
-  "remove": [],
-  "set": {
-    "common.error.reference": {
-      "ar": "الرقم المرجعي",
-      "en": "Reference"
-    }
-  }
-}

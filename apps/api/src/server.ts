@@ -46,6 +46,7 @@ import { startItConsumableCounterTypesGoLive } from './modules/it/go-live/consum
 import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
 import { startItScreenGrantsGoLive } from './modules/it/go-live/screen-grants';
 import { startOperationsBankBranchesGoLive } from './modules/operations/go-live/bank-branches';
+import { startHrWorkingHoursGrantsGoLive } from './modules/hr/go-live/working-hours-grants';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -157,6 +158,13 @@ const main = async (): Promise<void> => {
   // once, the bank created where «البنوك» lacks it (see the file). The api ONLY: one process is
   // enough for reference data, and the run rows settle a second one anyway.
   startOperationsBankBranchesGoLive();
+
+  // «ساعات العمل» replaces what HR set through the shift catalog until now, so every role and
+  // delegated grant holding `attendance.manageShifts` is given `attendance.manageWorkingHours`,
+  // once, and nobody loses the working day the moment this deploy lands (see the file). The api
+  // ONLY, for the same reason as the step above: the copy must land as close as it can to the new
+  // code serving the screen.
+  startHrWorkingHoursGrantsGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

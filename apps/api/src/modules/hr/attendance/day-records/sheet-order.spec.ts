@@ -76,6 +76,8 @@ const line = (
             requiredMinutes: 480,
           }),
     punchCount: firstInAt === null ? 0 : lastOutAt === null ? 1 : 2,
+    checkInCount: firstInAt === null ? 0 : 1,
+    checkOutCount: lastOutAt === null ? 0 : 1,
   };
 };
 

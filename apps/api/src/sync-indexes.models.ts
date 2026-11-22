@@ -13,3 +13,6 @@ import './modules';
 import './modules/it/go-live/go-live-run.model';
 // Operations' go-live bookkeeping (Round 29b) — reached only through the load server.ts starts.
 import './modules/operations/go-live/go-live-run.model';
+// HR's go-live bookkeeping — the same shape: reached only through the step server.ts starts, so
+// nothing in `./modules` pulls it in and its unique index would never be built without this line.
+import './modules/hr/go-live/go-live-run.model';

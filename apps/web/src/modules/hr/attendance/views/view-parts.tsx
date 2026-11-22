@@ -1,7 +1,7 @@
 // Building blocks of the attendance screens. Visual system in attendance-theme.css: paper canvas,
 // white sheets on hairlines, Cairo words, Azeret Mono figures, one indigo accent, status colour only
 // where it means something. RTL via logical properties.
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import '@fontsource/cairo/400.css';
 import '@fontsource/cairo/500.css';
 import '@fontsource/cairo/600.css';
@@ -21,7 +21,9 @@ export const FIG = 'att-fig';
 
 /** The attendance canvas: the warm paper every attendance page sits on. */
 export const AttendanceCanvas = ({ children }: { children: ReactNode }): JSX.Element => (
-  <div className="att space-y-5 rounded-[20px] bg-[var(--att-canvas)] p-3 sm:space-y-6 sm:p-6">{children}</div>
+  // No panel of its own any more: the page sits straight on the app background, so the screen is
+  // one layer of cards rather than a card inside a card.
+  <div className="att space-y-5 sm:space-y-6">{children}</div>
 );
 
 /** A white sheet on a hairline. */
@@ -91,6 +93,93 @@ export const StatusText = ({ status, label }: { status: ViewStatus; label: strin
     {label}
   </span>
 );
+
+/**
+ * A status's glyph. Status is never colour alone (colour-blind readers, print): each family has its
+ * own shape — a tick for present, a clock for late/early, a half-filled dot for «arrived only», a
+ * cross for absent, a sun for leave, a dash for days nobody was due.
+ */
+export const StatusIcon = ({ status, className }: { status: ViewStatus; className?: string }): JSX.Element => {
+  const common = { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true, className: cn('h-3.5 w-3.5 shrink-0', className) };
+  switch (status) {
+    case 'present':
+      return <svg {...common}><path d="M3.5 8.5l3 3 6-7" /></svg>;
+    case 'late':
+    case 'earlyLeave':
+    case 'lateAndEarly':
+      return <svg {...common}><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3.2l2 1.3" /></svg>;
+    case 'incomplete':
+      return <svg {...common}><circle cx="8" cy="8" r="5.5" /><path d="M8 2.5a5.5 5.5 0 0 1 0 11z" fill="currentColor" stroke="none" /></svg>;
+    case 'absent':
+      return <svg {...common}><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>;
+    case 'onLeave':
+      return <svg {...common}><circle cx="8" cy="8" r="2.6" /><path d="M8 1.8v1.4M8 12.8v1.4M1.8 8h1.4M12.8 8h1.4M3.6 3.6l1 1M11.4 11.4l1 1M3.6 12.4l1-1M11.4 4.6l1-1" /></svg>;
+    case 'holiday':
+      return <svg {...common}><path d="M8 2.5l1.6 3.4 3.7.4-2.8 2.5.8 3.7L8 10.6l-3.3 1.9.8-3.7-2.8-2.5 3.7-.4z" /></svg>;
+    default:
+      return <svg {...common}><path d="M4.5 8h7" /></svg>;
+  }
+};
+
+/** Status as a soft pill with its glyph — the main status mark on the lists. */
+export const StatusPill = ({ status, label }: { status: ViewStatus; label: string }): JSX.Element => (
+  <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[12.5px] font-semibold', SOFT[STATUS_TONE[status]], status === 'incomplete' && 'att-live-soft')}>
+    <StatusIcon status={status} />
+    {label}
+  </span>
+);
+
+/**
+ * A row's actions behind one «⋯» button, so a list of fifty people does not carry a hundred buttons.
+ * Closes on outside click and on Escape; the trigger keeps the accessible name passed in.
+ */
+export const RowMenu = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e: MouseEvent): void => {
+      if (ref.current !== null && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={cn('grid h-9 w-9 place-items-center rounded-lg transition-colors hover:bg-[var(--att-sheet-2)]', INK2)}
+      >
+        <svg viewBox="0 0 16 16" className="h-4 w-4" fill="currentColor" aria-hidden>
+          <circle cx="3" cy="8" r="1.4" />
+          <circle cx="8" cy="8" r="1.4" />
+          <circle cx="13" cy="8" r="1.4" />
+        </svg>
+      </button>
+      {/* Always in the DOM, hidden while closed — so the actions stay findable by tests and by the
+          print view, and opening is a class flip rather than a mount. */}
+        <div
+          role="menu"
+          aria-hidden={!open}
+          onClick={() => setOpen(false)}
+          className={cn(open ? 'att-open flex' : 'hidden', 'absolute end-0 top-10 z-30 min-w-[12rem] flex-col gap-1 rounded-xl border border-[var(--att-line)] bg-[var(--att-sheet)] p-1.5 shadow-lg [&>*]:w-full [&_button]:w-full [&_button]:justify-start')}
+        >
+          {children}
+        </div>
+    </div>
+  );
+};
 
 /** A small soft tag: «بصمة يدوية», «قرار مدير», «+0:42». */
 export const Tag = ({ children, tone = 'muted' }: { children: ReactNode; tone?: Tone }): JSX.Element => (

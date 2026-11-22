@@ -10,5 +10,6 @@ export * from './decisions';
 export * from './overtime';
 export * from './backfill';
 export * from './quarantine';
+export { buildAttendanceWorkingHoursRouter } from './working-hours/working-hours.routes';
 export { registerHrAttendanceSettings } from './attendance.settings';
 export { migrateAttendance } from './attendance.migration';

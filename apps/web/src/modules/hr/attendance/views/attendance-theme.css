@@ -127,3 +127,50 @@ select.att-input {
 @media (prefers-reduced-motion: reduce) {
   .att-live, .att-rise { animation: none; }
 }
+
+/* Days nobody was due (weekend, holiday, no schedule, no record): a quiet hatch, so the working
+   days carry the colour and the rest recede. */
+.att-hatch {
+  background-color: var(--att-sheet-2);
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, var(--att-line) 6px 7px);
+}
+.att-kpi {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--att-line);
+  background: var(--att-sheet);
+  box-shadow: var(--att-shadow);
+  transition: border-color 140ms, transform 140ms, box-shadow 140ms;
+}
+button.att-kpi:hover { border-color: var(--att-line-strong); transform: translateY(-1px); }
+.att-kpi[aria-pressed='true'] { border-color: var(--att-accent); box-shadow: 0 0 0 1px var(--att-accent), var(--att-shadow); }
+@keyframes att-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.att-open { animation: att-open 180ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  button.att-kpi:hover { transform: none; }
+  .att-open { animation: none; }
+}
+@keyframes att-pulse-soft { 50% { opacity: 0.65; } }
+.att-live-soft { animation: att-pulse-soft 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .att-live-soft { animation: none; } }
+.att-sheet { border-radius: 16px; }
+.att-noscroll { scrollbar-width: none; }
+.att-noscroll::-webkit-scrollbar { display: none; }
+
+/* The late part of a day's bar: shift start to arrival, a soft red stripe rather than a solid block. */
+.att-late-stripe {
+  background: repeating-linear-gradient(135deg, var(--att-bad) 0 3px, color-mix(in srgb, var(--att-bad) 35%, transparent) 3px 6px);
+}
+
+/* The daily dashboard's top card: a soft brand glow in one corner, nothing louder. */
+.att-hero {
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--att-brand) 10%, transparent) 0%, transparent 55%),
+    var(--att-sheet);
+}
+[dir='rtl'] .att-hero {
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--att-brand) 10%, transparent) 0%, transparent 55%),
+    var(--att-sheet);
+}

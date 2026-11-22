@@ -4,7 +4,7 @@
 // (AT-5), and `absenceNotify` with its sweep (AT-7) — a setting nothing reads would be a lie on
 // the settings screen.
 import { z } from 'zod';
-import { HrAttendanceSettingKeys } from '@ecms/contracts';
+import { DepartmentHoursMapSchema, HrAttendanceSettingKeys } from '@ecms/contracts';
 import { declareSetting } from '../../../platform/settings';
 
 /**
@@ -164,6 +164,17 @@ export const registerHrAttendanceSettings = (): void => {
     schema: z.boolean(),
     defaultValue: false,
     allowedScopes: ['organization', 'branch'],
+  });
+  // WORKING HOURS PER DEPARTMENT (19 November). Edited from its own panel (Attendance › Working
+  // hours), not the generic settings screen, because the value is a map. Empty = every department
+  // uses the company default pattern above (eight hours).
+  declareSetting({
+    key: HrAttendanceSettingKeys.DepartmentHours,
+    description:
+      'Working hours per department for employees with no shift assignment — default: the company pattern (8 hours)',
+    schema: DepartmentHoursMapSchema,
+    defaultValue: {},
+    allowedScopes: ['organization'],
   });
   declareSetting({
     key: HrAttendanceSettingKeys.DecisionApprovalAfterDays,

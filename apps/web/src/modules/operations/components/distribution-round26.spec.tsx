@@ -1055,7 +1055,9 @@ describe('R26b critic', () => {
     expect(HANDOVER).toMatch(/<MoneyLine[\s\S]*?packages=\{loadFigures\(confirmLoad/);
   });
 
-  it('F8 — a long count stays in its tile: its figure a step smaller, the icon wrapping over it', () => {
+  it('F8 — a long count stays in its STACKED tile (the van’s hover card since Round 31): its figure a step smaller, the icon wrapping over it', () => {
+    // Round 31 — the van card's own tiles are one line now (`lineFigureSize`, its spec in
+    // distribution-van-card.spec.tsx); the stacked tile is the hover card's, and a tile's default.
     expect(tileFigureSize('0')).toBe('text-[15px]');
     expect(tileFigureSize('999')).toBe('text-[15px]');
     expect(tileFigureSize('1,251')).toBe('text-[13px]');

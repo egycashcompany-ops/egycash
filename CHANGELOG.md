@@ -2209,6 +2209,31 @@ its entry here in the same PR.
       no write control, no drag, menu or proposal, the loads, marks and packages, before the read and
       past midnight, a reader without the grant, the one gate); `readDistributionDay`, `isRecordDay`,
       `recordPackaging`; the wire.
+  - Round 31 — بطاقة السيارة: العدد والكلمة في سطر واحد. On «توزيع المحصنات» (his screenshot: the
+    record of 2026-11-18, vans 101/104/112/125/249/106), the owner: «الصوره دى عاوز العدد والكلام على
+    صف واحد مش صفين يعنى المحصنات والعدد والايقون فى صف واحد واسم القائد برضو يكون جمب الاشارة
+    الخضرة اعملى سامبل كدا وورينى». A sample, built in the real van card (`VanCard`), so it can ship.
+    - Each count on the van card — محصنات, كراتين, حقائب, صناديق — is ONE line: its icon, its figure,
+      then its word beside them («1 محصنة», «4 حقائب», «2 كرتونتان»), so each tile and the card are
+      shorter. The words are the count's own as before (محصنة · محصنتان · محصنات; كرتونة · كرتونتان ·
+      كراتين …), the colours, the 0 look and the order of the tiles are Round 27d's, unchanged; a
+      three-digit figure is a step smaller (13px, `lineFigureSize`) so the word keeps the line.
+    - The captain's name sits on the SAME line as his green «قائد», beside it, cut to what the frame
+      has left (his person card says it whole, as before); «بلا قائد» and the record's quiet «بلا
+      قائد» were one line already.
+    - Where a tile is still too narrow for the three (the narrowest three-a-row cards, 82–85px a
+      tile, with «103 محصنات» or English «10 Secured» / «12 Cartons»), the word steps under the icon
+      and figure — the old two-line tile, in that tile only — never cut, never spilling. Measured in
+      a browser at 390 to 2560: every Arabic count from 0 to 99 with every word, and every three-digit
+      package count, on one line at every width; at 1440, three-digit محصنات too.
+    - The van's hover card keeps its four tiles stacked, four across (18rem leaves each too narrow
+      for one line); «تسليم المحصنات» wears the same van card, so its tiles are one line too.
+    - Specs: the van card's captain spec rewritten («… then the captain: his mark and his name
+      BESIDE it on one line (Round 31), cut, a card trigger»); R26b critic F8 renamed to the stacked
+      tile it still pins (the hover card's); new: the Round 31 block in
+      `distribution-van-card.spec.tsx` (one line in both languages, the words, the screen reader's
+      phrase, the colours and the 0 look, the figure size and the wrap fallback, the hover card
+      stacked, «بلا قائد»).
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

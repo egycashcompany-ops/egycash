@@ -75,15 +75,30 @@ const heldName = (held: { name: string; isActive: boolean }): AppError => {
   });
 };
 
+/**
+ * Round 28c critic — the folded check reads the areas, then writes: two desks adding two spellings
+ * of one new name at the same moment («المعادى», «المعادي») both passed it, and one spelling then
+ * won on every row. A name is checked and written ONE AT A TIME (this API runs as one instance —
+ * `railway.json`); the exact name stays the unique index's, which no race passes.
+ */
+let naming: Promise<unknown> = Promise.resolve();
+const oneAtATime = <T>(work: () => Promise<T>): Promise<T> => {
+  const run = naming.then(work);
+  naming = run.catch(() => undefined);
+  return run;
+};
+
 class OperationsAreaService {
   async create(input: CreateOperationsArea, by: string): Promise<OperationsAreaDoc> {
     // Round 28c — «الاتجاه» on «لوحة التشغيلة» offers «إضافة «…» إلى القائمة» for a name the desk
     // typed. A name that FOLDS to a live area's (an archived one too) is that area, never a second
     // spelling of it: the direction rules would read the two as one. The unique index holds the
     // exact name only; this holds the rest, with the same answer (409 `DUPLICATE`).
-    const held = await areaHolding(input.name);
-    if (held !== null) throw heldName(held);
-    const doc = await operationsAreaRepository.create({ ...input, isActive: true }, { by });
+    const doc = await oneAtATime(async () => {
+      const held = await areaHolding(input.name);
+      if (held !== null) throw heldName(held);
+      return operationsAreaRepository.create({ ...input, isActive: true }, { by });
+    });
     await auditService.record({
       entityRef: entityRef(String(doc._id)),
       action: 'create',
@@ -118,11 +133,15 @@ class OperationsAreaService {
     // Round 28c critic — and a RENAME to another spelling of a live area is refused alike. Only a
     // new name is checked: an area kept under its name (its English name, archived, restored) is
     // saved whatever another area is called.
-    if (fields.name !== undefined && fields.name !== before.name) {
-      const held = await areaHolding(fields.name, id);
-      if (held !== null) throw heldName(held);
-    }
-    const updated = await operationsAreaRepository.updateById(id, fields, { by, version });
+    const renamed = fields.name !== undefined && fields.name !== before.name;
+    const write = () => operationsAreaRepository.updateById(id, fields, { by, version });
+    const updated = renamed
+      ? await oneAtATime(async () => {
+          const held = await areaHolding(fields.name as string, id);
+          if (held !== null) throw heldName(held);
+          return write();
+        })
+      : await write();
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',

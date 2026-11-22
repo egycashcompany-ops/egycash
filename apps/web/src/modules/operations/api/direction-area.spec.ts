@@ -263,7 +263,7 @@ describe('one screen’s adds — their day, their row as it was (`directionAddS
       forget: (slot) => held.delete(slot),
       toast: {
         success: (title, body) => said.push(`ok ${title} | ${body ?? ''}`),
-        error: (title) => said.push(`no ${title}`),
+        error: (title, body) => said.push(`no ${title} | ${body ?? ''}`),
       },
       ...over,
     };
@@ -299,11 +299,13 @@ describe('one screen’s adds — their day, their row as it was (`directionAddS
     expect(said).toEqual(['ok added:طريق الواحات | addedNotPlaced:طريق الواحات']);
   });
 
-  it('a refusal is held for its row with the direction it was sent on, and toasted — unless its box has the focus', () => {
+  // REWRITTEN (critic's screenshot): the toast was the whole reason as its one-line title, cut
+  // («لم تُضَف «طريق الفيوم»: في «المناطق» منطقة «طر…»); now a short title, the reason under it.
+  it('a refusal is held for its row with the direction it was sent on, and toasted (a short title, the reason under it) — unless its box has the focus', () => {
     const away = screen();
     away.on.refused(slot('van:259'), refusal, 'حلوان');
     expect(away.held.get(slot('van:259'))).toEqual({ refusal, from: 'حلوان' });
-    expect(away.said).toEqual(['no addRefused.failed']);
+    expect(away.said).toEqual(['no addRefusedTitle | addRefused.failed']);
     // The box still focused says it in place, once: no toast.
     const here = screen({ focusedRow: () => 'van:259' });
     here.on.refused(slot('van:259'), refusal, 'حلوان');
@@ -312,7 +314,7 @@ describe('one screen’s adds — their day, their row as it was (`directionAddS
     // Another row's box focused: the toast speaks for this one.
     const other = screen({ focusedRow: () => 'van:300' });
     other.on.refused(slot('van:259'), refusal, 'حلوان');
-    expect(other.said).toEqual(['no addRefused.failed']);
+    expect(other.said).toEqual(['no addRefusedTitle | addRefused.failed']);
   });
 
   it('a refusal for a day left is not held there — only toasted', () => {
@@ -320,7 +322,7 @@ describe('one screen’s adds — their day, their row as it was (`directionAddS
     step('2026-11-21');
     on.refused(slot('van:259'), refusal, 'حلوان');
     expect(held.size).toBe(0);
-    expect(said).toEqual(['no addRefused.failed']);
+    expect(said).toEqual(['no addRefusedTitle | addRefused.failed']);
   });
 
   it('a new add for the row forgets its last refusal', () => {

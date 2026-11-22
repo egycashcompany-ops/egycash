@@ -54,6 +54,27 @@ describe('errorMessage', () => {
     expect(errorMessage(boom, 'en')).not.toBe('Unexpected error');
   });
 
+  // Round 28c critic — «المناطق» refuses a name another area holds in any spelling, naming that
+  // area in its detail. The catalog's own dialog said the server's English sentence to an Arabic
+  // reader («the area «المعادي» already has this name»); it is worded, naming the area, now.
+  it('words a name «المناطق» already holds, naming the area — and saying when it is archived', () => {
+    const held = (code: string, area: string) =>
+      new ApiError(ErrorCodes.DUPLICATE, `the area «${area}» already has this name`, 409, [
+        { field: 'name', code, message: area },
+      ]);
+    expect(errorMessage(held('AREA_ACTIVE', 'المعادي'), 'ar')).toBe(
+      'في «المناطق» منطقة «المعادي» بهذا الاسم.',
+    );
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'ar')).toContain('«الدقي»');
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'ar')).toContain('موقوفة');
+    expect(errorMessage(held('AREA_ACTIVE', 'المعادي'), 'en')).toBe(
+      '«Areas» already has “المعادي” under this name.',
+    );
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'en')).toContain('archived');
+    // Any other duplicate keeps the server's own words, as before.
+    expect(errorMessage(new ApiError(ErrorCodes.DUPLICATE, 'taken', 409), 'ar')).toBe('taken');
+  });
+
   it('still falls back to the server message for a code it does not know', () => {
     expect(errorMessage(new ApiError('SOME_NEW_CODE', 'very specific', 400), 'ar')).toBe(
       'very specific',

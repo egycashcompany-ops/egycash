@@ -2001,25 +2001,25 @@ its entry here in the same PR.
       most `OPERATIONS_DIRECTION_MAX_LENGTH` (80), the hand-typed ceiling — an area's name has no
       ceiling of its own, and a longer name added as an area would have escaped it; ONE part, none of
       the separators the direction rules split at («المعادي - طريق السويس», «الواحات/الفيوم», «… و …» are
-      directions of several); no active area answering it (exactly, folded, part of a name, its words
-      in another order, one letter away — the list offers that area instead); and no archived one:
+      directions of several); no active area that IS it, folded as the server compares (the list
+      offers that area instead — since the critic, nothing wider: see below); and no archived one:
       «الدقى» beside an archived «الدقي» is said («… موجودة في «المناطق» لكنها موقوفة — فعّلها من البيانات
       المرجعية لتظهر هنا.»), not added twice. Nothing is offered until both lists are read.
     - While it is written, the row's box shows the name with a spinner, read-only and `aria-busy`
       («جارٍ إضافة «…» إلى «المناطق»…»): it takes no key but Tab and its list does not open. One request a
       row — a second Enter adds nothing — and two rows adding the same name (folded) at once share one
       (`directionAddQueue`, `api/direction-area.ts`).
-    - A refusal is said — a toast, the box red with the reason as its title, and above the list when
-      the box is opened — and the typed text is NOT lost: the box keeps it, «استخدام «…» اتجاهًا» is
-      offered first, and the add is not offered again for that name unless it failed for a reason that
-      may pass (the network). Duplicate (409 — an area added meanwhile, which the list, read again,
-      then offers), no permission (403), the name refused (400), or failed. A pick, leaving the box or
-      Escape answers it.
+    - A refusal is said — in place while its box has the focus (above the list, the box red), else by
+      a toast; shut, the box marks it and gives it as its title (critic, below) — and the typed text
+      is NOT lost: the box keeps it, «استخدام «…» اتجاهًا» is offered first, and the add is not offered
+      again for that name unless it failed for a reason that may pass (the network). Duplicate (409 —
+      the area holding the name, named, archived or not), no permission (403), the name refused
+      (400), or failed. A pick, leaving the box or Escape answers it.
     - The server (`areas/area.service.ts`): the create refuses a name that FOLDS to a live area's
       (`foldOperationsAreaName` — «المعادى» or «معادي» beside «المعادي», an archived one too) with the
       unique index's own answer, 409 `DUPLICATE`, naming the area (and «(archived)»). The index held the
       exact name only, so another spelling of one area went in beside it. The catalog dialog's add
-      gets the same answer; its edit is unchanged.
+      gets the same answer — and, since the critic, its rename too.
     - Its own small hook file (`api/direction-area.ts`): the archived names
       (`useArchivedOperationsAreaNames`, under the areas' key) and the create with its own `onError`,
       so a refusal is said once; `useCreateOperationsArea`, the catalog dialog's, is unchanged.
@@ -2045,6 +2045,48 @@ its entry here in the same PR.
       (`directionAddOfferInBox`). New (web, `direction-pick.spec.ts`): «a whole name a longer area
       only contains is another name …», «the box opened on its row’s own hand-typed direction offers
       the add too …».
+    - (Critic) Nine findings, all real, each fixed with a test that fails before and passes after:
+      (1) «إضافة» was still held back by the search's wide match — the verifier's `isAreaNamed` kept
+      words reordered, one letter away and a piece of a word — so names of other places («المنيب»
+      beside «المنيل», «طرة» beside «القنطرة شرق», «مصر» beside an archived «مصر القديمة», which it
+      told the desk to restore) got no add and no word why. Now only an area that FOLDS to the name
+      holds it back (`sameAreaName`, the server's own rule); a near miss is an area listed FIRST —
+      what Enter takes, the «did you mean» — then «استخدام», then «إضافة». (2) A refusal outlived its
+      row: shut, the box showed the refused name in red where the row's direction is, after «تراجع»,
+      a load, on another day. Now it is held for one row on one board day (`directionAddSlot`) while
+      the row still holds the direction it was sent on (`refusalStillHolds`); shut, the box shows the
+      row's own direction, a mark at its start and the refusal as its title, the name back on
+      opening. (3) The add landed by row key alone: a day stepped meanwhile patched the same van on
+      the other day, and a row gone (a «حفظ» read-back renames `new:N`) dropped it while the toast
+      said it landed. It lands only on its own day, on a row still holding its direction at the send
+      (`addLandsOn`); else the toast says «لم يتغيّر اتجاه الصف: تغيّر الصف أو اليوم أثناء الإضافة…».
+      (4) The box opened on its row's own hand-typed direction — fixed by the verifier, above. (5)
+      `area.service.ts` leaned on Round 29's `liveAll()`; it reads the live areas with the model.
+      (6) The folded rule held the create only, and could be raced: a RENAME to another spelling of a
+      live area is refused alike (409, naming it), and a name is checked and written one at a time
+      (the API runs as one instance) — three spellings of one new name sent together: one 201, two
+      409s. (7) A 409 said «added meanwhile», even of an archived area: its detail names the area
+      holding the name and whether it is archived (`AREA_ACTIVE` / `AREA_ARCHIVED`), and the box says
+      which («… في «المناطق» منطقة «الدقي» بهذا الاسم لكنها موقوفة …»); the catalog's own dialog says
+      it in the reader's language too (`errorMessage`), not the server's English. Said once: in place
+      while the box has the focus, else by a toast — its title short («لم تُضَف «…» إلى «المناطق»»,
+      a toast's title is one line, cut), the whole reason under it. (8) Screen readers: the notes (a refusal, an
+      archived area) sit above the listbox, not in it, the archived one named in `aria-describedby`;
+      one live region a box, always there, speaks the pending add, the refusal and the archived note
+      while the box has the focus. (9) The box's keys are read by `directionKeyAction` (pure), walked
+      keystroke by keystroke — Enter on «إضافة» adds, a second Enter while it is written adds nothing
+      — and what the box does with each answer is pinned on its source.
+      Rewritten (named): «is never offered when an active area IS the name, folded …» (was «… answers
+      the text …»); «a whole name a longer area only contains …» (a piece is offered now); «no add for
+      a name an area IS …» (was «… an area holds …»); «an archived area holding the name is said above
+      the listbox …»; «a refusal is said above the listbox …»; «a refused add, the box shut: the row’s
+      own direction …» (was «… keeps the name in the box, marked red …»); the pages' wiring (the box
+      is given the row's direction). New: (api, `operations-crew-plan.spec.ts`, run whole) the 409's
+      detail, the rename refused, two spellings at the same moment; (web) `direction-pick.spec.ts` —
+      the near misses, `directionAddHeld` / `directionAddRefusalText`, the keys walked;
+      `direction-area.spec.ts` — the day and the row as it was, the refusal held per slot;
+      `crew-plan-controls.spec.tsx` — one live region, the keys carried out; `shared/lib/errors.spec.ts`
+      — the held area worded.
   - Round 29 — «استيراد فروع من شيت» on «البيانات المرجعية» → «الفروع». The owner, with four banks'
     branch lists: «عاوز اضيف دول فى البيانات المرجعية تبع (الفروع والبنوك والمناطق) ملحوظه هتلاقى area
     دى ضيفها ل منطقة العمليات و منطقة الحسابات تمام ؟» and «وعاوز جمب اضافة فرع فوق يقدر يضيف شيت ويقارن

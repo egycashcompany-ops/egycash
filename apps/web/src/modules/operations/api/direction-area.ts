@@ -207,7 +207,10 @@ export interface DirectionAddScreen {
   pend: (slot: string, name: string | null) => void;
   hold: (slot: string, held: HeldRefusal) => void;
   forget: (slot: string) => void;
-  toast: { success: (title: string, body?: string) => void; error: (title: string) => void };
+  toast: {
+    success: (title: string, body?: string) => void;
+    error: (title: string, body?: string) => void;
+  };
 }
 
 /**
@@ -241,8 +244,12 @@ export const directionAddScreenEvents = (screen: DirectionAddScreen): DirectionA
     if (here) screen.hold(slot, { refusal, from });
     // The box that still has the focus says it in place; else the toast does.
     if (here && screen.focusedRow() === rowKey) return;
+    // A short title (a toast's title is one line, cut), the whole reason under it.
     const said = directionAddRefusalText(refusal);
-    screen.toast.error(screen.t(said.key, said.vars));
+    screen.toast.error(
+      screen.t('operations.crewPlan.direction.addRefusedTitle', { text: refusal.name }),
+      screen.t(said.key, said.vars),
+    );
   },
 });
 

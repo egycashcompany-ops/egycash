@@ -431,6 +431,7 @@ describe('Round 28c — «إضافة «…» إلى القائمة» in the dire
       'addRefused.invalid',
       'addRefused.failed',
       'addedNotPlaced',
+      'addRefusedTitle',
     ]) {
       const full = `operations.crewPlan.direction.${key}`;
       expect(ar(full), full).not.toBe(full);
@@ -601,6 +602,33 @@ describe('Round 28c — «إضافة «…» إلى القائمة» in the dire
     );
     expect(classOf(html, 'role="combobox"')).toContain('ps-7');
     expect(html).not.toContain('readonly');
+  });
+
+  // Round 28c critic — no web spec ran the box's keys: a regression that made Enter on «إضافة» take
+  // the text for the row (`commit`) instead of adding it would have left every spec green. The keys
+  // are read by `directionKeyAction` (walked keystroke by keystroke in `direction-pick.spec.ts`);
+  // the web suite has no DOM, so what the box does with each answer is pinned on its source.
+  it('the box carries each key’s answer out as read: «إضافة» adds, a row is taken, nothing typed while pending', () => {
+    const source = readFileSync(
+      fileURLToPath(new URL('./CrewPlanControls.tsx', import.meta.url)),
+      'utf8',
+    );
+    const picker = source.slice(source.indexOf('export const DirectionPicker'));
+    const keys = picker.slice(picker.indexOf('const onKeyDown'), picker.indexOf('return ('));
+    expect(keys).toContain('const action = directionKeyAction(event.key, {');
+    expect(keys).toMatch(/pending: pending !== null,\s*items,\s*active,\s*lit,/);
+    expect(keys).toMatch(/action\.kind === 'add'\) \{\s*addToList\(action\.name\);/);
+    expect(keys).toMatch(/action\.kind === 'take'\) \{\s*commit\(action\.direction\);/);
+    expect(keys).toMatch(
+      /action\.kind === 'move'\) \{\s*setArrowed\(true\);\s*setActive\(action\.active\);/,
+    );
+    expect(keys).not.toContain('commit(picked');
+    // One add a row: the box adds nothing while one is written, and takes no typing over the name.
+    expect(picker).toContain('if (add === undefined || pending !== null) return;');
+    expect(picker).toContain('readOnly={pending !== null}');
+    expect(picker).toMatch(/onChange=\{\(event\) => \{\s*if \(pending !== null\) return;/);
+    // A click on «إضافة» is the same add as Enter on it.
+    expect(picker).toContain('onAdd={addToList}');
   });
 
   it('given no add (no grant), the box is Round 28’s, unchanged', () => {

@@ -249,9 +249,39 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
  */
 export const hasError = (error: unknown): boolean => error !== undefined && error !== null;
 
+/**
+ * Round 28c critic — «المناطق» refuses a name another area already holds in any spelling (folded:
+ * «المعادى» beside «المعادي», an archived one too), and names that area in its detail
+ * (`AREA_ACTIVE` / `AREA_ARCHIVED`). Wherever it surfaces — the catalog's own dialog among them —
+ * it is said in the reader's language, naming the area, not as the server's English sentence.
+ */
+const AREA_HELD: Record<Locale, { active: string; archived: string }> = {
+  en: {
+    active: '«Areas» already has “{area}” under this name.',
+    archived:
+      '«Areas» has “{area}” under this name, but archived — restore it instead of adding it again.',
+  },
+  ar: {
+    active: 'في «المناطق» منطقة «{area}» بهذا الاسم.',
+    archived: 'في «المناطق» منطقة «{area}» بهذا الاسم لكنها موقوفة — فعّلها بدل إضافتها مرة أخرى.',
+  },
+};
+
+const areaHeldMessage = (error: ApiError, locale: Locale): string | null => {
+  if (error.code !== 'DUPLICATE') return null;
+  const held = error.details?.find(
+    (detail) => detail.code === 'AREA_ACTIVE' || detail.code === 'AREA_ARCHIVED',
+  );
+  if (held === undefined || held.message === '') return null;
+  const words = AREA_HELD[locale][held.code === 'AREA_ARCHIVED' ? 'archived' : 'active'];
+  return words.replace('{area}', held.message);
+};
+
 export const errorMessage = (error: unknown, locale: Locale): string => {
   const table = FRIENDLY[locale];
   if (error instanceof ApiError) {
+    const held = areaHeldMessage(error, locale);
+    if (held !== null) return held;
     return table[error.code] ?? (error.message !== '' ? error.message : (table.UNKNOWN ?? 'Error'));
   }
   if (error instanceof TypeError) return table.NETWORK ?? 'Network error';

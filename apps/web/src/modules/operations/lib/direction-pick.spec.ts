@@ -557,7 +557,8 @@ describe('the box’s keys (`directionKeyAction`) — a desk’s keystrokes, wal
       offering ? directionAddOffer(query, AREAS_HERE, []) : null,
     );
     const active = over.active ?? 0;
-    const hasValue = (over.value ?? 'حلوان') !== null;
+    // The row holds «حلوان» unless the case says otherwise (null: no direction).
+    const hasValue = over.value === undefined || over.value !== null;
     return {
       open: true,
       pending: over.pending ?? false,

@@ -1155,6 +1155,40 @@ describe('Round 28c — «إضافة «…» إلى القائمة»: the direct
     await OperationsAreaModel.deleteOne({ _id: twin._id }).exec();
   });
 
+  // Round 28c critic — the folded check read the areas, then wrote: two desks pressing «إضافة» on
+  // two spellings of one new name at the same moment both passed it (the unique index holds the
+  // exact name only), and one spelling then silently won on every row. Checked and written one at
+  // a time now: one is added, the others are refused naming it.
+  it('two spellings of one new name sent at the same moment: ONE is added, the others refused 409 naming it', async () => {
+    const spellings = ['زهراء المعادى', 'زهراء المعادي', 'زهراء معادي'];
+    const answers = await Promise.all(spellings.map((name) => addArea(name)));
+    const statuses = answers.map((res) => res.status).sort();
+    expect(statuses, JSON.stringify(answers.map((res) => res.body))).toEqual([201, 409, 409]);
+    const won = data<{ name: string }>(
+      answers.find((res) => res.status === 201) as request.Response,
+    );
+    for (const refused of answers.filter((res) => res.status === 409)) {
+      expect(errorOf(refused).details).toEqual([
+        { field: 'name', code: 'AREA_ACTIVE', message: won.name },
+      ]);
+    }
+    expect((await areaNames()).filter((name) => spellings.includes(name))).toEqual([won.name]);
+    // Two renames to two spellings of one new name, at the same moment, alike.
+    const [one, two] = await Promise.all([area('حي السفارات'), area('حي الأشجار')]);
+    const renames = await Promise.all(
+      [
+        [one, 'الحي الثامن'],
+        [two, 'الحى الثامن'],
+      ].map(([target, name]) =>
+        request(app)
+          .patch(`/api/v1/operations/areas/${(target as { id: string }).id}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ name, version: (target as { version: number }).version }),
+      ),
+    );
+    expect(renames.map((res) => res.status).sort()).toEqual([200, 409]);
+  });
+
   it('is the catalog’s own grant: a planner without operationsCatalog.manage is refused (403), and his row still takes the text', async () => {
     const planner = await tokenWith('ops-r28c-planner@ecms.local', [
       'operationsCrew.view',

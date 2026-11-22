@@ -144,6 +144,18 @@ const recentWorkday = (): Date => {
 };
 
 /**
+ * A recent workday whose NEXT day is a workday too — for a test that records on two days in a row.
+ * `recentWorkday` alone may return a Thursday, and its next day is then a Friday (`weekend`).
+ */
+const recentWorkdayPair = (): [Date, Date] => {
+  const isWorkday = (day: Date): boolean =>
+    ![5, 6].includes(isoWeekday(day)) && !HOLIDAY_ISO.has(dateOnlyIso(day));
+  let day = recentWorkday();
+  while (!isWorkday(day) || !isWorkday(addDays(day, 1))) day = addDays(day, 1);
+  return [day, addDays(day, 1)];
+};
+
+/**
  * An OLD workday — past the seven-day threshold an old-day decision waits behind, and never a weekend
  * or a seeded holiday (a fixed «20 days ago» lands on a Friday or a Saturday two days a week, and
  * that day is then recomputed as `weekend`, whatever a decision says).
@@ -1263,8 +1275,8 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     // On this payroll most days are a scan in and nothing out. Dividing the month's minutes by
     // every attended day would report half the real figure.
     const emp = await inBranch();
-    const full = recentWorkday();
-    const openEnded = addDays(full, 1);
+    // Both days must be workdays: a weekend day is recomputed as `weekend`, not as a day at work.
+    const [full, openEnded] = recentWorkdayPair();
     await switchPatternOn();
     for (const [day, at, direction] of [
       [full, '09:00', 'in'],

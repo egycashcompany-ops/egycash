@@ -13,6 +13,7 @@ import {
   sharedBranch,
   type MovableAsset,
 } from './asset-branch-move';
+import { departmentHolder } from '../custody-holder-fixtures';
 
 const asset = (
   id: string,
@@ -46,7 +47,37 @@ describe('one asset against the branch chosen', () => {
       movable: false,
       reason: 'alreadyThere',
     });
-    expect([...ASSET_MOVE_REFUSALS]).toEqual(['disposed', 'underMaintenance', 'alreadyThere']);
+    expect([...ASSET_MOVE_REFUSALS]).toEqual([
+      'disposed',
+      'underMaintenance',
+      'alreadyThere',
+      'heldAtLocation',
+    ]);
+  });
+
+  // 2026-11-19 — a place does not travel: a department-held asset stays, whichever branch is
+  // chosen — after «already there», as the server orders it — and moves with «نقل» instead.
+  it('leaves out an asset a department holds at a place, after «already there»', () => {
+    const server = { ...HELD, id: 'a-8', holder: departmentHolder() };
+    const verdict = { movable: false, reason: 'heldAtLocation' };
+    expect(assetMoveEligibility(server, 'b-oct')).toEqual(verdict);
+    expect(assetMoveEligibility(server, '')).toEqual(verdict);
+    expect(assetMoveEligibility(server, 'b-hq')).toEqual({
+      movable: false,
+      reason: 'alreadyThere',
+    });
+    expect(assetMoveEligibility({ ...server, status: 'disposed' }, 'b-oct')).toEqual({
+      movable: false,
+      reason: 'disposed',
+    });
+    const plan = assetMovePlan([IN_STOCK, server], 'b-oct');
+    expect(plan.movable.map((a) => a.id)).toEqual(['a-1']);
+    expect(plan.anyHeld).toBe(false);
+    // An employee's custody still moves with the asset.
+    expect(assetMoveEligibility({ ...HELD, holder: null }, 'b-oct')).toEqual({
+      movable: true,
+      held: true,
+    });
   });
 
   it('before a branch is chosen, refuses only what no branch could change', () => {

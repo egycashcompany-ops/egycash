@@ -35,6 +35,7 @@ import {
 import { ApiError } from '../../../shared/lib/api-client';
 import { errorMessage } from '../../../shared/lib/errors';
 import { counterFailures, counterValue, type CounterProblem } from './consumable-counter';
+import { assetHolderKey, departmentKey } from './consumable-issue-holder';
 
 /** The two grants «تعديل الجهاز» needs: the issue's own, and the register of devices its box searches. */
 export const INSTALLED_ON_GRANTS = ['itConsumable.assign', 'itAsset.view'] as const;
@@ -241,17 +242,30 @@ export const installedOnStale = (
 ): boolean => state.refusedVersion !== null && state.refusedVersion === movement.version;
 
 /**
+ * Who an issue went to, as the custodian key the holder rules compare: the employee's id, or — an
+ * issue to a department (2026-11-19) — the department at its place.
+ */
+export const recipientKey = (
+  movement: Pick<ItConsumableMovementDto, 'employeeId'> &
+    Partial<Pick<ItConsumableMovementDto, 'departmentId' | 'locationId'>>,
+): string =>
+  (movement.departmentId ?? null) === null
+    ? (movement.employeeId ?? '')
+    : departmentKey(movement.departmentId ?? '', movement.locationId ?? '');
+
+/**
  * A device somebody other than the recipient holds — picked through «جهاز آخر» (a shared printer, a
- * colleague's screen) — so the dialog can say whose it is. Null for the recipient's own device, a
- * device in stock, or nothing picked.
+ * colleague's screen) — so the dialog can say whose it is. Null for the recipient's own device (the
+ * person's, or the department's at its place), a device in stock, or nothing picked.
  */
 export const pickedHeldByOther = (
-  movement: Pick<ItConsumableMovementDto, 'employeeId'>,
+  movement: Pick<ItConsumableMovementDto, 'employeeId'> &
+    Partial<Pick<ItConsumableMovementDto, 'departmentId' | 'locationId'>>,
   state: Pick<InstalledOnState, 'assetId' | 'asset'>,
 ): NonNullable<ItAssetDto['holder']> | null => {
   const holder = state.asset?.holder ?? null;
   if (state.assetId === '' || holder === null) return null;
-  return holder.employeeId === movement.employeeId ? null : holder;
+  return assetHolderKey(holder) === recipientKey(movement) ? null : holder;
 };
 
 /**

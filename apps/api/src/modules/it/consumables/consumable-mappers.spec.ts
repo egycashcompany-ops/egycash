@@ -22,6 +22,9 @@ const TYPE = new Types.ObjectId();
 const STORE = new Types.ObjectId();
 const EMPLOYEE = new Types.ObjectId();
 const ASSET = new Types.ObjectId();
+const DEPARTMENT = new Types.ObjectId();
+const PLACE = new Types.ObjectId();
+const SIGNER = new Types.ObjectId();
 
 const item = (over: Partial<ItConsumableDoc> = {}): ItConsumableDoc =>
   ({
@@ -64,11 +67,26 @@ const issued = (memoId: Types.ObjectId | null): ItConsumableMovementDoc =>
 
 const labels = (over: Partial<ItConsumableMovementLabels> = {}): ItConsumableMovementLabels => ({
   items: new Map([[String(ITEM), { code: 'CON-00003', name: 'Mouse', typeId: String(TYPE) }]]),
-  employees: new Map([[String(EMPLOYEE), { code: '0101002', fullNameAr: 'وليد صفوت جلال' }]]),
+  employees: new Map([
+    [String(EMPLOYEE), { code: '0101002', fullNameAr: 'وليد صفوت جلال' }],
+    [String(SIGNER), { code: '0101007', fullNameAr: 'شريف ممدوح فاروق' }],
+  ]),
   assets: new Map([[String(ASSET), { assetCode: 'AST-00031', name: 'Lenovo ThinkCentre' }]]),
   memos: new Map(),
+  departments: new Map([[String(DEPARTMENT), { ar: 'تكنولوجيا المعلومات', en: 'IT' }]]),
+  locations: new Map([[String(PLACE), { ar: 'غرفة السيرفرات', en: 'Server room' }]]),
   ...over,
 });
+
+/** «صرف لإدارة» — the row names the department, the place and the signer, and no employee. */
+const toDepartment = (): ItConsumableMovementDoc =>
+  ({
+    ...issued(null),
+    employeeId: null,
+    departmentId: DEPARTMENT,
+    locationId: PLACE,
+    responsibleEmployeeId: SIGNER,
+  }) as unknown as ItConsumableMovementDoc;
 
 describe('an item on the register', () => {
   it('carries its three counters, and the reorder hint at or below its own minimum', () => {
@@ -104,6 +122,50 @@ describe('a movement on the ledger', () => {
       memoId: null,
       memoNumber: null,
       memoSigned: null,
+    });
+  });
+
+  it('names no department on a row that has none — an employee’s issue, and every row before', () => {
+    expect(toItConsumableMovementDto(issued(null), labels())).toMatchObject({
+      departmentId: null,
+      departmentName: null,
+      locationId: null,
+      locationName: null,
+      responsibleEmployeeId: null,
+      responsibleEmployeeCode: null,
+      responsibleEmployeeName: null,
+    });
+  });
+
+  // «صرف لإدارة» (2026-11-19).
+  it('names the department, the place and who signed for it — and no employee', () => {
+    expect(toItConsumableMovementDto(toDepartment(), labels())).toMatchObject({
+      employeeId: null,
+      employeeCode: null,
+      employeeName: null,
+      departmentId: String(DEPARTMENT),
+      departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+      locationId: String(PLACE),
+      locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+      responsibleEmployeeId: String(SIGNER),
+      responsibleEmployeeCode: '0101007',
+      responsibleEmployeeName: 'شريف ممدوح فاروق',
+    });
+  });
+
+  it('keeps the ids of a department, a place or a signer it cannot name', () => {
+    const row = toItConsumableMovementDto(
+      toDepartment(),
+      labels({ departments: new Map(), locations: new Map(), employees: new Map() }),
+    );
+    expect(row).toMatchObject({
+      departmentId: String(DEPARTMENT),
+      departmentName: null,
+      locationId: String(PLACE),
+      locationName: null,
+      responsibleEmployeeId: String(SIGNER),
+      responsibleEmployeeCode: null,
+      responsibleEmployeeName: null,
     });
   });
 
@@ -228,6 +290,76 @@ describe('a consumable type', () => {
 });
 
 describe('a memo', () => {
+  const memoDoc = (over: Record<string, unknown> = {}): ItConsumableMemoDoc =>
+    ({
+      _id: new Types.ObjectId(),
+      memoNumber: 42,
+      issuedAt: at,
+      employeeId: SIGNER,
+      employeeCode: '0101007',
+      employeeName: 'شريف ممدوح فاروق',
+      jobTitle: { ar: 'مهندس شبكات', en: 'Network engineer' },
+      issuedByUserId: null,
+      issuedByName: 'أحمد سمير',
+      branchId: STORE,
+      lines: [],
+      notes: null,
+      signedCopy: null,
+      __v: 0,
+      createdAt: at,
+      updatedAt: at,
+      ...over,
+    }) as unknown as ItConsumableMemoDoc;
+
+  // «لصالح إدارة … بموقع …» (2026-11-19).
+  it('names a department memo’s department and place — its signer the responsible person', () => {
+    const dto = toItConsumableMemoDto(
+      memoDoc({
+        custodian: {
+          departmentId: DEPARTMENT,
+          departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+          locationId: PLACE,
+          locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+        },
+      }),
+    );
+    expect(dto).toMatchObject({
+      employeeId: String(SIGNER),
+      employeeName: 'شريف ممدوح فاروق',
+      employeeCode: '0101007',
+      custodian: {
+        departmentId: String(DEPARTMENT),
+        departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+        locationId: String(PLACE),
+        locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+      },
+    });
+  });
+
+  it('names no department on an employee’s memo, nor on one written before (no key at all)', () => {
+    expect(toItConsumableMemoDto(memoDoc({ custodian: null })).custodian).toBeNull();
+    expect(toItConsumableMemoDto(memoDoc()).custodian).toBeNull();
+  });
+
+  it('keeps a department memo’s ids when its names could not be read that day', () => {
+    const dto = toItConsumableMemoDto(
+      memoDoc({
+        custodian: {
+          departmentId: DEPARTMENT,
+          departmentName: null,
+          locationId: PLACE,
+          locationName: null,
+        },
+      }),
+    );
+    expect(dto.custodian).toEqual({
+      departmentId: String(DEPARTMENT),
+      departmentName: null,
+      locationId: String(PLACE),
+      locationName: null,
+    });
+  });
+
   it('is the paper as it was written: the signer, the issuer and each row, no national ID', () => {
     const movementId = new Types.ObjectId();
     const doc = {

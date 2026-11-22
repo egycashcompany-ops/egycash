@@ -64,6 +64,10 @@ import {
   type ItDashboardActivityDto,
   type ItDashboardAssetsDto,
   type ItCatalogItemDto,
+  type CreateItLocation,
+  type ItLocationDto,
+  type ItLocationOptionDto,
+  type UpdateItLocation,
   type ItVendorDto,
   type ItPersonDto,
   type ItRecipientDto,
@@ -218,6 +222,31 @@ export const updateCatalogItem = (
   id: string,
   body: UpdateItCatalogItem,
 ): Promise<ItCatalogItemDto> => patch<ItCatalogItemDto>(`/it/catalog-items/${id}`, body);
+
+// ── Places — «المواقع» (2026-11-19) ─────────────────────────────────────────
+// Each branch's own list of places a department keeps what it holds at — «غرفة السيرفرات». The
+// catalogs page's tab and its writes ride `itCatalog.manage`; the pickers read names only
+// (`/options`), on any IT read that opens one.
+
+/** The catalogs page's tab: by branch, by status, by name or code. */
+export const listLocations = (params: ItListParams): Promise<Paginated<ItLocationDto>> =>
+  getPage<ItLocationDto>(`/it/locations${buildQuery(params)}`);
+
+/**
+ * Every branch's places, the retired ones too — ONE read the pickers filter by branch (and to the
+ * active ones), and every reader uses to name the place of an old row.
+ */
+export const listLocationOptions = (): Promise<ItLocationOptionDto[]> =>
+  get<ItLocationOptionDto[]>(`/it/locations/options${buildQuery({ includeInactive: true })}`);
+
+/** Where the create dialog may file a place: the branches `itCatalog.manage` reaches. */
+export const locationBranchTargets = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/locations/branch-targets');
+export const createLocation = (body: CreateItLocation): Promise<ItLocationDto> =>
+  post<ItLocationDto>('/it/locations', body);
+/** `isActive: false` retires it — refused (409) while assets are held there. */
+export const updateLocation = (id: string, body: UpdateItLocation): Promise<ItLocationDto> =>
+  patch<ItLocationDto>(`/it/locations/${id}`, body);
 
 // ── Vendors (design §2.9) ───────────────────────────────────────────────────
 export const listVendors = (params: ItListParams): Promise<Paginated<ItVendorDto>> =>

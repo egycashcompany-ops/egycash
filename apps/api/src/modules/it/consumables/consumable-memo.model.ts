@@ -14,10 +14,19 @@
 //
 // It names a person, and the workforce reset PURGES it, as it does the device and line papers —
 // the ledger rows that point at it then offer no paper (`it.mappers.ts`, the lines' `paperOf`).
+//
+// A DEPARTMENT memo (2026-11-19) — «لصالح إدارة … بموقع …» — names the department and the place in
+// `custodian`, and its `employeeId` is the SIGNER: the department's responsible person, whose code,
+// name and job the paper prints as it prints an employee's («المستلم عن الإدارة»). It is the device
+// receipt's shape for the same paper (receipt.model.ts): nothing reads `employeeId` as who the items
+// went to — the ledger row says that — so it stays required and every older memo is what it was.
 import { Schema, model, type Types } from 'mongoose';
 import { IT_CONSUMABLE_ISSUE_REASONS, type ItConsumableIssueReason } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
-import { type ItCustodyReceiptSignedCopySub } from '../assets/receipt.model';
+import {
+  type ItCustodyReceiptCustodianSub,
+  type ItCustodyReceiptSignedCopySub,
+} from '../assets/receipt.model';
 
 type Name = { ar: string; en: string };
 
@@ -43,11 +52,17 @@ export interface ItConsumableMemoDoc extends BaseDocFields {
   memoNumber: number;
   /** The issue's own date — what the paper prints. */
   issuedAt: Date;
+  /** The SIGNER — the employee it went to, or a department's responsible person. */
   employeeId: Types.ObjectId;
   // The signer as printed: «أقر أنا / [الاسم] بوظيفة [الوظيفة] كود [الكود]».
   employeeCode: string | null;
   employeeName: string | null;
   jobTitle: Name | null;
+  /**
+   * A department memo's department and place, as named that day. ABSENT on every memo before
+   * 2026-11-19, null on an employee's memo.
+   */
+  custodian?: ItCustodyReceiptCustodianSub | null;
   issuedByUserId: Types.ObjectId | null;
   /** «مسؤول تكنولوجيا المعلومات» — the issuer's name as the paper prints it. */
   issuedByName: string | null;
@@ -88,6 +103,16 @@ const signedCopySchema = new Schema<ItCustodyReceiptSignedCopySub>(
   { _id: false },
 );
 
+const custodianSchema = new Schema<ItCustodyReceiptCustodianSub>(
+  {
+    departmentId: { type: Schema.Types.ObjectId, required: true },
+    departmentName: { type: nameSchema, default: null },
+    locationId: { type: Schema.Types.ObjectId, required: true },
+    locationName: { type: nameSchema, default: null },
+  },
+  { _id: false },
+);
+
 const memoSchema = new Schema<ItConsumableMemoDoc>(
   {
     memoNumber: { type: Number, required: true },
@@ -96,6 +121,7 @@ const memoSchema = new Schema<ItConsumableMemoDoc>(
     employeeCode: { type: String, default: null },
     employeeName: { type: String, default: null },
     jobTitle: { type: nameSchema, default: null },
+    custodian: { type: custodianSchema, default: null },
     issuedByUserId: { type: Schema.Types.ObjectId, default: null },
     issuedByName: { type: String, default: null },
     branchId: { type: Schema.Types.ObjectId, required: true },

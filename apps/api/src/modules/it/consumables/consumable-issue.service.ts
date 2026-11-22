@@ -24,13 +24,30 @@
 // above its last reading — «وأكيد مش هيدخل عدد ورق أقل أو مساوي للى موجود» — unless it is a reset,
 // and strictly below a later one when the issue is backdated (`consumable-counter.ts`). The lines of
 // this memo on one printer share one reading (the contract's rule): they are one placement.
+//
+// «صرف لإدارة» (2026-11-19) — «عند تسليم الأصول والمستهلكات … أعينها فى مكان بس تبقى على عهده
+// الإدارة»: the memo may go to a DEPARTMENT kept at a PLACE instead of an employee, signed for by
+// the department's responsible person. They are read with the asset hand-over's own seam
+// (`readCustodian`): a signer who has left, a department that is not active and a place that is
+// retired are refused before anything else is read — and, once the store is known, a place outside
+// the store's branch («each branch keeps its own stock»: the place is where this store's items go).
+// The ledger rows then name the department, the place and the signer and no employee; the memo's
+// signer is the responsible person, and it names the department and the place (`custodian`). The
+// number series, the store and the counter are the same: a toner onto a printer a department holds
+// takes that printer's reading, judged on its timeline as any other.
 import { Types } from 'mongoose';
-import { type IssueItConsumables } from '@ecms/contracts';
+import { type AuditChange, type IssueItConsumables } from '@ecms/contracts';
 import { BusinessRuleError, NotFoundError } from '../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { refuseLeaver } from '../assets/custody.service';
-import { readReceiptHolder } from '../assets/receipt-holder';
+import {
+  custodianRefusal,
+  custodianSnapshot,
+  readCustodian,
+  type CustodianRead,
+} from '../assets/custodian';
+import { readReceiptHolder, type ReceiptHolder } from '../assets/receipt-holder';
 import { itAssetRepository } from '../assets/asset.repository';
 import { itCatalogItemRepository } from '../catalog-items/catalog-item.repository';
 import { reserveSequenceBlock } from '../shared/sequence';
@@ -72,6 +89,53 @@ const issuerNameOf = (ctx: AuthContext): string | null => {
   const en = ctx.identity?.displayName.en.trim() ?? '';
   return ar !== '' ? ar : en !== '' ? en : null;
 };
+
+/**
+ * Who the memo goes to, as HR and the catalogs answer: the employee — or the department, its place
+ * and its responsible person — and, either way, the SIGNER whose name the paper prints.
+ */
+interface Recipient {
+  /** The signer's employee id: the employee, or the department's responsible person. */
+  signerId: string;
+  signer: ReceiptHolder;
+  /** The department and the place, on an issue to a department; null on an employee's. */
+  custodian: CustodianRead | null;
+}
+
+/**
+ * Exactly one of the two — which the contract already holds; a caller that slipped past it is
+ * refused rather than guessed at. A leaver is refused either way: as the employee it would go to,
+ * or as the person who would sign for the department.
+ */
+const readRecipient = async (input: IssueItConsumables): Promise<Recipient> => {
+  if (input.department !== undefined && input.employeeId === undefined) {
+    const custodian = await readCustodian(input.department);
+    return {
+      signerId: custodian.holder.responsibleEmployeeId,
+      signer: custodian.signer,
+      custodian,
+    };
+  }
+  if (input.employeeId !== undefined && input.department === undefined) {
+    const signer = await readReceiptHolder(input.employeeId);
+    refuseLeaver(signer.employee);
+    return { signerId: input.employeeId, signer, custodian: null };
+  }
+  throw new BusinessRuleError('a memo is issued to an employee or to a department — exactly one');
+};
+
+/**
+ * Who an item's audit row says it went to: the employee — or the department, the place and who
+ * signed for it, in place of an employee.
+ */
+const recipientChanges = ({ signerId, custodian }: Recipient): AuditChange[] =>
+  custodian === null
+    ? [change('employeeId', null, signerId)]
+    : [
+        change('departmentId', null, custodian.holder.departmentId),
+        change('locationId', null, custodian.holder.locationId),
+        change('responsibleEmployeeId', null, signerId),
+      ];
 
 /** The refusal both the early check and the guarded write give — one message for one rule. */
 const notEnough = (item: ItConsumableDoc, qty: number): BusinessRuleError =>
@@ -119,9 +183,10 @@ class ItConsumableIssueService {
   ): Promise<ItConsumableIssueResult> {
     const issuedAt = input.issuedAt ?? new Date();
 
-    // 1. HR first — a leaver is refused before anything else is read, let alone written.
-    const holder = await readReceiptHolder(input.employeeId);
-    refuseLeaver(holder.employee);
+    // 1. HR first — a leaver is refused before anything else is read, let alone written; and for a
+    //    department, the department and its place, each refused unless it is live.
+    const recipient = await readRecipient(input);
+    const { signer, custodian } = recipient;
 
     // 2. The items as the caller sees them: every one found, active, holding enough, one store.
     const found = await itConsumableRepository.findManyByIds(
@@ -143,6 +208,15 @@ class ItConsumableIssueService {
     if (stores.length > 1) {
       throw new BusinessRuleError(
         "a memo lists one store's items: issue each branch's items on a memo of its own",
+      );
+    }
+    // A department's place is one of the store's branch's places: what this store gives is kept
+    // there, and a memo names one place.
+    if (custodian !== null && custodian.locationBranchId !== store) {
+      throw custodianRefusal(
+        'body.department.locationId',
+        'OTHER_BRANCH',
+        "a memo to a department names a place in the store's branch; this place is in another branch",
       );
     }
 
@@ -282,7 +356,9 @@ class ItConsumableIssueService {
               qty: line.qty,
               at: issuedAt,
               byUserId: by,
-              employeeId: input.employeeId,
+              // Who it went to: the employee — or the department, and then no employee at all.
+              employeeId: custodian === null ? recipient.signerId : null,
+              department: custodian?.holder ?? null,
               assetId: line.assetId ?? null,
               reason: line.reason,
               memoId,
@@ -324,11 +400,13 @@ class ItConsumableIssueService {
           _id: memoId,
           memoNumber,
           issuedAt,
-          employeeId: new Types.ObjectId(input.employeeId),
+          employeeId: new Types.ObjectId(recipient.signerId),
           // The signer as printed — no national ID on this paper.
-          employeeCode: holder.employeeCode,
-          employeeName: holder.employeeName,
-          jobTitle: holder.jobTitle,
+          employeeCode: signer.employeeCode,
+          employeeName: signer.employeeName,
+          jobTitle: signer.jobTitle,
+          // «لصالح إدارة … بموقع …» — the department and the place, as named today.
+          custodian: custodian === null ? null : custodianSnapshot(custodian),
           issuedByUserId: new Types.ObjectId(by),
           issuedByName: issuerNameOf(ctx),
           branchId: new Types.ObjectId(store),
@@ -350,7 +428,7 @@ class ItConsumableIssueService {
         after: item,
         extra: [
           change('movementId', null, String(movement._id)),
-          change('employeeId', null, input.employeeId),
+          ...recipientChanges(recipient),
           change('reason', null, line.reason),
           ...(line.assetId === undefined ? [] : [change('assetId', null, line.assetId)]),
           ...(counter === null ? [] : [change('counterReading', null, counter.reading)]),

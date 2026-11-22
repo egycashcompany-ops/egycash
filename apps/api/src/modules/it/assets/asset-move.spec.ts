@@ -64,6 +64,21 @@ describe('which asset may move', () => {
       'alreadyThere',
     );
   });
+
+  it('never one a department holds at a place of its branch — a place does not travel (2026-11-19)', () => {
+    const department = { status: 'assigned' as const, heldByDepartment: true };
+    expect(refusal({ ...department, heldSince: new Date('2026-01-01') }, THERE)).toBe(
+      'heldAtLocation',
+    );
+    // After where it already is, before the date the move gives.
+    expect(refusal({ ...department, heldSince: null }, HERE)).toBe('alreadyThere');
+    expect(refusal({ ...department, heldSince: new Date('2026-11-12') }, THERE)).toBe(
+      'heldAtLocation',
+    );
+    expect(refusal({ ...department, activeMaintenance: true }, THERE)).toBe('underMaintenance');
+    // An employee's custody still moves with them — false, or not said at all.
+    expect(refusal({ status: 'assigned', heldByDepartment: false }, THERE)).toBeNull();
+  });
 });
 
 describe('a refused move', () => {
@@ -89,8 +104,22 @@ describe('a refused move', () => {
     );
   });
 
-  it('is a rule (422) for a disposed asset, one already there, or a date before its custody — as custody refuses them', () => {
-    for (const reason of ['disposed', 'alreadyThere', 'beforeCustody'] as const) {
+  it('names a department-held asset in its place in the order — and how it moves instead', () => {
+    expect(
+      assetMoveRefusalError([
+        { assetCode: 'AST-00011', reason: 'beforeCustody' },
+        { assetCode: 'AST-00012', reason: 'heldAtLocation' },
+        { assetCode: 'AST-00013', reason: 'alreadyThere' },
+      ])?.message,
+    ).toBe(
+      'nothing was moved: asset AST-00013 is already in that branch; ' +
+        'asset AST-00012 is held by a department at a place in its branch; move it with «نقل» to a place in the new branch, or return it first; ' +
+        "asset AST-00011 is held only since after the move's date; the move cannot precede the assignment it closes",
+    );
+  });
+
+  it('is a rule (422) for a disposed asset, one already there, one a department holds, or a date before its custody — as custody refuses them', () => {
+    for (const reason of ['disposed', 'alreadyThere', 'heldAtLocation', 'beforeCustody'] as const) {
       expect(assetMoveRefusalError([{ assetCode: 'AST-1', reason }])?.httpStatus).toBe(422);
     }
   });

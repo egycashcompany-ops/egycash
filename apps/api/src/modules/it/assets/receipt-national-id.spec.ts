@@ -66,3 +66,38 @@ describe('the national ID on a receipt', () => {
     expect([dto.nationalId, dto.section, dto.department]).toEqual([null, null, null]);
   });
 });
+
+// 2026-11-19 — a DEPARTMENT CUSTODY paper: «ليكون في عهدة إدارة … بموقع …», signed by its
+// responsible person, whose identity line is the paper's as an employee's is.
+describe('the department a paper was written for', () => {
+  const IT = new Types.ObjectId();
+  const SERVER_ROOM = new Types.ObjectId();
+
+  it('names the department and the place as the paper kept them', () => {
+    const dto = toItCustodyReceiptDto(
+      receipt({
+        custodian: {
+          departmentId: IT,
+          departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+          locationId: SERVER_ROOM,
+          locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+        },
+      }),
+    );
+    expect(dto.custodian).toEqual({
+      departmentId: String(IT),
+      departmentName: { ar: 'تكنولوجيا المعلومات', en: 'IT' },
+      locationId: String(SERVER_ROOM),
+      locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+    });
+    // The signer's own department («– …») is still the signer's, not the custodian.
+    expect(dto.department).toEqual({ ar: 'الإدارة المالية', en: 'Finance' });
+  });
+
+  it('is null on an employee’s paper, and on every paper from before department custody', () => {
+    expect(toItCustodyReceiptDto(receipt({ custodian: null })).custodian).toBeNull();
+    const old = receipt();
+    delete old.custodian;
+    expect(toItCustodyReceiptDto(old).custodian).toBeNull();
+  });
+});

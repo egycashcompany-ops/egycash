@@ -38,6 +38,7 @@ import { cn } from '../../../shared/lib/cn';
 import {
   useItAssignments,
   useItBranchOptions,
+  useItConsumableMovements,
   useItDepartmentOptions,
   useItJobTitleOptions,
   useItMobileLineAssignments,
@@ -46,7 +47,11 @@ import {
 } from '../api/it-queries';
 import { PersonStatusBadge } from '../components/PersonStatusBadge';
 import { CustodyReceiptActions } from '../components/CustodyReceipt';
-import { EmployeeConsumablesCard } from '../components/ConsumableMovements';
+import {
+  EmployeeConsumablesCard,
+  SignedDepartmentConsumablesCard,
+} from '../components/ConsumableMovements';
+import { holderMain, holderOfAssignment, locationText } from '../lib/custody-holder';
 import { MobileLineReceiptActions } from '../components/MobileLineReceipt';
 import { MobileNetworkBadge } from '../components/MobileNetworkLogo';
 import { TicketStatusBadge } from '../components/TicketStatusBadge';
@@ -103,6 +108,25 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
     },
     employeeId !== '',
   );
+  // «عهد إدارات وقّع عليها» (2026-11-19): what departments hold now on this person's signature. Not
+  // their own custody — never counted in «في عهدته» — and drawn only when there is some.
+  const signed = useItAssignments(
+    {
+      responsibleEmployeeId: employeeId,
+      open: true,
+      pageSize: 100,
+      sortBy: 'assignedAt',
+      sortDir: 'desc',
+    },
+    employeeId !== '',
+  );
+  // The department issues they signed the memo for — asked once to know whether to draw the card.
+  const signedIssues = useItConsumableMovements(
+    { responsibleEmployeeId: employeeId, pageSize: 1 },
+    can('itConsumable.view') && employeeId !== '',
+  );
+  const signsForDepartments =
+    (signed.data?.items.length ?? 0) > 0 || (signedIssues.data?.meta.totalItems ?? 0) > 0;
 
   // Mobile lines — the lines' own read grant, and only for a reader who holds it. What they hold
   // now is a handful: one page holds it.
@@ -233,7 +257,33 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
         render: (a) => a.conditionOnReturn ?? '—',
       },
     ];
-    return { open, closed };
+    // «عهد إدارات وقّع عليها» (2026-11-19): what a department holds on this person's signature —
+    // the department's custody, not theirs, so it says whose and where.
+    const signed: Column<ItAssetAssignmentDto>[] = [
+      asset,
+      {
+        key: 'department',
+        header: t('it.custody.holder'),
+        render: (a) => {
+          const holder = holderOfAssignment(a);
+          return (
+            <span className="flex flex-col leading-tight">
+              <span>{holderMain(holder, locale, t)}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {t('it.custody.department.atLocation', { location: locationText(holder, locale) })}
+              </span>
+            </span>
+          );
+        },
+      },
+      assignedAt,
+      {
+        key: 'receipt',
+        header: t('it.custody.receipt.column'),
+        render: (a) => <CustodyReceiptActions assignment={a} />,
+      },
+    ];
+    return { open, closed, signed };
   }, [t, locale]);
 
   // The lines' own columns — a line is not an asset, and its row does not open the asset page.
@@ -469,6 +519,42 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
             gave back, each issue with the memo they signed. On the store's own read grant: without
             it the card is not drawn, so its ledger read is never asked. */}
         {can('itConsumable.view') && <EmployeeConsumablesCard employeeId={employeeId} />}
+
+        {/* «عهد إدارات وقّع عليها» (2026-11-19) — a department's custody on this person's
+            signature: the devices a department holds now, and what was issued to one. Apart from
+            their own custody above, and drawn only for a person who signs for one. */}
+        {signsForDepartments && (
+          <Card>
+            <CardHeader
+              title={t('it.people.signedDepartments.title')}
+              description={t('it.people.signedDepartments.hint')}
+            />
+            <CardBody>
+              <DataTable
+                embedded
+                columns={custodyColumns.signed}
+                rows={signed.data?.items ?? []}
+                rowKey={(a) => a.id}
+                loading={signed.isLoading}
+                error={signed.isError ? signed.error : undefined}
+                onRetry={() => void signed.refetch()}
+                onRowClick={(a) => navigate(`/it/assets/${a.assetId}`)}
+                empty={t('it.people.signedDepartments.empty')}
+              />
+              <p className="mt-3 text-xs">
+                <Link
+                  to={`/it/custody?responsible=${employeeId}&open=true`}
+                  className="text-brand-700 hover:underline dark:text-brand-300"
+                >
+                  {t('it.people.signedDepartments.openRegister')}
+                </Link>
+              </p>
+            </CardBody>
+          </Card>
+        )}
+        {signsForDepartments && can('itConsumable.view') && (
+          <SignedDepartmentConsumablesCard employeeId={employeeId} />
+        )}
 
         {can('itTicket.view') && (
           <Card>

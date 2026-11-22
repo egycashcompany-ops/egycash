@@ -86,6 +86,9 @@ import {
 import { gatherRegister, printItRegister } from '../lib/register-export';
 import { warrantyWindowOf, warrantyWindowOptions, warrantyWithin } from '../lib/warranty-window';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { SearchableSelect } from '../../../shared/ui/SearchableSelect';
+import { useCustodianFilterOptions } from '../components/useCustodianFilters';
+import { holderLink, holderMain, holderOfAsset, locationText } from '../lib/custody-holder';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 // `names` is the name list; `name` is where the single name filter kept its one name — still
@@ -93,7 +96,10 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 const REMEMBERED_FILTERS = [
   'branch',
   'category',
+  'department',
   'holder',
+  'holderKind',
+  'location',
   'name',
   'names',
   'q',
@@ -118,6 +124,14 @@ export const AssetsListPage = (): JSX.Element => {
   const branchId = sp.get('branch') ?? '';
   // Who holds it NOW — an employee id, so the filter survives a rename and can be linked.
   const holderId = sp.get('holder') ?? '';
+  // Department custody (2026-11-19): «جهة الاستلام», «الإدارة» and «الموقع» — each the OPEN
+  // interval's, like the holder. `location` is what «في عهدته الآن» and a holder cell link to:
+  // «إيه اللي في غرفة السيرفرات».
+  const holderKindParam = sp.get('holderKind') ?? '';
+  const holderKind =
+    holderKindParam === 'employee' || holderKindParam === 'department' ? holderKindParam : '';
+  const departmentId = sp.get('department') ?? '';
+  const locationId = sp.get('location') ?? '';
   // «الضمان»: ends within this many days from today — a window the API would refuse is none.
   const warrantyDays = warrantyWindowOf(sp.get('warrantyEndsWithinDays'));
   const warrantyLabel = warrantyDays === null ? '' : warrantyWithin(t, locale, warrantyDays);
@@ -155,6 +169,9 @@ export const AssetsListPage = (): JSX.Element => {
     categoryIds.length > 0 ||
     branchId !== '' ||
     holderId !== '' ||
+    holderKind !== '' ||
+    departmentId !== '' ||
+    locationId !== '' ||
     warrantyDays !== null;
 
   const params = useMemo(
@@ -169,10 +186,14 @@ export const AssetsListPage = (): JSX.Element => {
       categoryId: categoryQuery(categoryIds),
       branchId: branchId || undefined,
       holderEmployeeId: holderId || undefined,
+      holderKind: holderKind || undefined,
+      holderDepartmentId: departmentId || undefined,
+      locationId: locationId || undefined,
       warrantyEndsWithinDays: warrantyDays ?? undefined,
     }),
     [paramsKey],
   );
+  const custodianFilters = useCustodianFilterOptions(branchId);
   // Held while a category change settles its names — see `useCategoryNameFilter`.
   const { data, isLoading, isError, error, refetch } = useItAssets(params, !nameFilter.settling);
 
@@ -227,7 +248,7 @@ export const AssetsListPage = (): JSX.Element => {
   };
 
   // ── The register as a file: Excel and PDF, of everything the filters match ──────────────────
-  const exportContext = { t, categoryName, branchName };
+  const exportContext = { t, locale, categoryName, branchName };
   // Every asset the filters match, in the table's order — the table's own params, unpaged.
   const allRows = () => gatherRegister(params, api.listAssets);
   const exportSheet = async (): Promise<void> => {
@@ -253,6 +274,11 @@ export const AssetsListPage = (): JSX.Element => {
           branchName,
           holderId,
           holderLabel,
+          holderKind,
+          departmentId,
+          departmentName: custodianFilters.departmentName,
+          locationId,
+          locationName: custodianFilters.locationName,
           warranty: warrantyLabel,
           rows: all,
         }),
@@ -307,12 +333,35 @@ export const AssetsListPage = (): JSX.Element => {
     {
       // Right after the status that says it is out: who has it — their name, a link to everything
       // they hold, and their code under it, as the custody register shows a holder. An employee
-      // HR cannot name is shown by the id the row carries, never by a guess.
+      // HR cannot name is shown by the id the row carries, never by a guess. A department
+      // (2026-11-19): «إدارة …» with its place under it, linking to everything held there.
       key: 'holder',
       header: t('it.custody.holder'),
       render: (a) => {
+        if (a.holder === null) return '—';
+        const facts = holderOfAsset(a.holder);
+        if (facts.kind === 'department') {
+          const link = holderLink(facts);
+          const main = holderMain(facts, locale, t);
+          return (
+            <span
+              className="flex flex-col leading-tight"
+              data-holder-department={facts.departmentId}
+            >
+              {link === null ? (
+                <span>{main}</span>
+              ) : (
+                <Link to={link} className="hover:underline">
+                  {main}
+                </Link>
+              )}
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {locationText(facts, locale)}
+              </span>
+            </span>
+          );
+        }
         const holder = a.holder;
-        if (holder === null) return '—';
         return (
           <span className="flex flex-col leading-tight">
             <Link to={`/it/employees/${holder.employeeId}`} className="hover:underline">
@@ -431,6 +480,9 @@ export const AssetsListPage = (): JSX.Element => {
               category: null,
               branch: null,
               holder: null,
+              holderKind: null,
+              department: null,
+              location: null,
               warrantyEndsWithinDays: null,
             });
           }}
@@ -494,6 +546,34 @@ export const AssetsListPage = (): JSX.Element => {
               setPickedHolder({ id, label });
               patch({ holder: id || null });
             }}
+          />
+          {/* «جهة الاستلام», «الإدارة», «الموقع» — department custody, each the open interval's. */}
+          <Select
+            aria-label={t('it.custody.department.receiverKind')}
+            data-filter-holder-kind
+            value={holderKind}
+            onChange={(e) => patch({ holderKind: e.target.value || null })}
+            className="w-auto"
+          >
+            <option value="">{t('it.custody.department.anyKind')}</option>
+            <option value="employee">{t('it.custody.department.kind.employee')}</option>
+            <option value="department">{t('it.custody.department.kind.department')}</option>
+          </Select>
+          <SearchableSelect
+            value={departmentId}
+            options={custodianFilters.departments}
+            placeholder={t('it.custody.department.anyDepartment')}
+            ariaLabel={t('it.custody.department.department')}
+            testId="filter-department"
+            onChange={(next) => patch({ department: next || null })}
+          />
+          <SearchableSelect
+            value={locationId}
+            options={custodianFilters.places}
+            placeholder={t('it.custody.department.anyLocation')}
+            ariaLabel={t('it.custody.department.location')}
+            testId="filter-location"
+            onChange={(next) => patch({ location: next || null })}
           />
           {/* The two windows the bar always offers, and a linked one beside them (the dashboard's
               is the `it.warrantyWarnDays` setting), so a narrowed register never reads «الكل». */}

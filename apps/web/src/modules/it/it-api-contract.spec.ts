@@ -738,13 +738,20 @@ describe('the consumables the IT client calls exist on the API, on the store’s
     }
     // The ledger's screen, and the three narrowed reads: one item's dialog, an asset's card and a
     // person's card.
-    const ledger = [...sent('pages/ConsumableMovementsPage.tsx'), 'consumableId'];
+    // A person's «عهد إدارات وقّع عليها» card (2026-11-19) reads the ledger by `responsibleEmployeeId`.
+    const ledger = [
+      ...sent('pages/ConsumableMovementsPage.tsx'),
+      'consumableId',
+      'responsibleEmployeeId',
+    ];
     expect(ledger).toEqual(
       expect.arrayContaining([
         'kind',
         'typeId',
         'branchId',
         'employeeId',
+        'departmentId',
+        'locationId',
         'assetId',
         'from',
         'to',
@@ -1335,6 +1342,11 @@ describe('the client sends only filters the API declares', () => {
         'receipt',
         // «حالة المستلِم» — the dashboard's «أصول مع موظفين تركوا العمل», opened as a list.
         'holderExited',
+        // Department custody (2026-11-19) — and a person's «عهد إدارات وقّع عليها» link.
+        'holderKind',
+        'departmentId',
+        'locationId',
+        'responsibleEmployeeId',
       ]),
     );
     for (const field of sent) {
@@ -1357,6 +1369,10 @@ describe('the client sends only filters the API declares', () => {
         'categoryId',
         'branchId',
         'warrantyEndsWithinDays',
+        // Department custody (2026-11-19): «جهة الاستلام», «الإدارة», «الموقع».
+        'holderKind',
+        'holderDepartmentId',
+        'locationId',
       ]),
     );
     for (const field of sent) {
@@ -1511,5 +1527,67 @@ describe('people ride IT’s grants, never HR’s', () => {
 
   it('and no IT route asks for an HR permission', () => {
     expect(PEOPLE_ROUTES).not.toMatch(/employee\.(view|edit)/);
+  });
+});
+
+// «المواقع» (2026-11-19) — each branch's places: the catalogs tab and its writes on the catalogs'
+// own grant, the pickers' names on any IT read that opens one. Found through the manifest, as the
+// consumables' routers are.
+describe('the places the IT client calls exist on the API, on the grants it expects', () => {
+  const LOCATION_ROUTES = existsSync(resolve(API_SRC, 'locations/location.routes.ts'))
+    ? read('locations/location.routes.ts')
+    : '';
+  const gates = (verb: string, path: string): string[] => {
+    const route =
+      new RegExp(`router\\.${verb}\\(\\s*'${path}'[\\s\\S]*?\\);`).exec(LOCATION_ROUTES)?.[0] ?? '';
+    return [...route.matchAll(/authorize(?:Any)?\(([^)]*)\)/g)].flatMap((m) =>
+      [...(m[1] ?? '').matchAll(/'([^']+)'/g)].flatMap((k) => (k[1] ? [k[1]] : [])),
+    );
+  };
+
+  it('mounts `/it/locations` and declares the five routes the client calls', () => {
+    expect(MANIFEST).toContain("prefix: '/it/locations'");
+    expect(declared(LOCATION_ROUTES)).toEqual(
+      new Set(['get /', 'get /options', 'get /branch-targets', 'post /', 'patch /:id']),
+    );
+    // Literal segments before `/:id`, so `/options` is never read as an id.
+    expect(LOCATION_ROUTES.indexOf("'/options',")).toBeLessThan(LOCATION_ROUTES.indexOf("'/:id',"));
+    expect(CLIENT).toContain('getPage<ItLocationDto>(`/it/locations${buildQuery(params)}`)');
+    expect(CLIENT).toContain(
+      'get<ItLocationOptionDto[]>(`/it/locations/options${buildQuery({ includeInactive: true })}`)',
+    );
+    expect(CLIENT).toContain("get<ItMoveTargetsDto>('/it/locations/branch-targets')");
+    expect(CLIENT).toContain("post<ItLocationDto>('/it/locations', body)");
+    expect(CLIENT).toContain('patch<ItLocationDto>(`/it/locations/${id}`, body)');
+    // Retired, never deleted (FR-11).
+    expect(CLIENT).not.toContain("del<void>('/it/locations");
+  });
+
+  it('the tab and every write ride `itCatalog.manage`; the names, any IT read', () => {
+    expect(gates('get', '/')).toEqual(['itCatalog.manage']);
+    expect(gates('get', '/branch-targets')).toEqual(['itCatalog.manage']);
+    expect(gates('post', '/')).toEqual(['itCatalog.manage']);
+    expect(gates('patch', '/:id')).toEqual(['itCatalog.manage']);
+    expect(gates('get', '/options').sort()).toEqual([
+      'itAsset.view',
+      'itCatalog.manage',
+      'itConsumable.view',
+    ]);
+  });
+
+  it('the tab sends only the filters its query declares', () => {
+    const CONTRACTS = readFileSync(
+      resolve(HERE, '../../../../../packages/contracts/src/modules/it.ts'),
+      'utf8',
+    );
+    const schema =
+      /ListItLocationsQuerySchema = PaginationQuerySchema\.extend\(\{([\s\S]*?)\}\)/.exec(
+        CONTRACTS,
+      )?.[1] ?? '';
+    const tab = readFileSync(resolve(HERE, 'components/LocationsTab.tsx'), 'utf8');
+    const params = /const params = \{([\s\S]*?)\n {2}\};/.exec(tab)?.[1] ?? '';
+    const sent = [...params.matchAll(/\{ (\w+)[: ]/g)].map((m) => m[1] as string);
+    expect(sent).toEqual(['branchId', 'isActive', 'search']);
+    for (const field of sent) expect(schema, field).toContain(`${field}:`);
   });
 });

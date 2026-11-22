@@ -16,6 +16,7 @@ import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { CustodyPage } from './CustodyPage';
+import { EMPLOYEE_INTERVAL, IT_DEPARTMENT } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -47,6 +48,7 @@ const me = {
 const interval = (over: Partial<ItAssetAssignmentDto> = {}): ItAssetAssignmentDto => ({
   id: 'a-1',
   assetId: 'asset-1',
+  ...EMPLOYEE_INTERVAL,
   assignedToEmployeeId: 'e-1',
   assignedToEmployeeCode: '0100052',
   assignedToEmployeeName: 'محمد أحمد علي',
@@ -81,6 +83,20 @@ const PRINTER = interval({
   assetName: COMMA_NAME,
 });
 const OTHER = interval({ id: 'a-3', assetId: 'asset-3', assetCode: 'AST-00099', assetName: 'X' });
+// 2026-11-19 — a server the IT department holds at its server room, on Sherif's signature.
+const SERVER = interval({
+  id: 'a-4',
+  assetId: 'asset-4',
+  assetCode: 'AST-00016',
+  assetName: 'Dell PowerEdge R740',
+  holderKind: 'department',
+  assignedToEmployeeId: null,
+  assignedToEmployeeCode: null,
+  assignedToEmployeeName: null,
+  ...IT_DEPARTMENT,
+  departmentName: { ...IT_DEPARTMENT.departmentName },
+  locationName: { ...IT_DEPARTMENT.locationName },
+});
 
 const DEFAULT = { page: 1, pageSize: 25, sortBy: 'assignedAt', sortDir: 'desc', open: true };
 
@@ -113,6 +129,15 @@ const render = (path = '/it/custody'): string => {
   // «حالة المستلِم»: the intervals whose holder has left — the dashboard's link.
   qc.setQueryData(listKey('it', 'custody', { ...DEFAULT, holderExited: true }), page([OTHER]));
   qc.setQueryData(listKey('it', 'custody', { ...DEFAULT, holderExited: false }), page([LENOVO]));
+  // A person's «عهد إدارات وقّع عليها» link, and the department filters.
+  qc.setQueryData(
+    listKey('it', 'custody', { ...DEFAULT, responsibleEmployeeId: 'e-sherif' }),
+    page([SERVER]),
+  );
+  qc.setQueryData(
+    listKey('it', 'custody', { ...DEFAULT, holderKind: 'department', locationId: 'l-servers' }),
+    page([SERVER]),
+  );
   qc.setQueryData(
     listKey('it', 'custody', {
       ...DEFAULT,
@@ -246,6 +271,43 @@ describe('«حالة المستلِم»', () => {
   it('reads a value it does not offer as no filter, rather than a refused request', () => {
     const html = render('/it/custody?holderExited=maybe');
     // The unfiltered register's rows — the request carried no `holderExited`.
+    expect(html).toContain('AST-00012');
+    expect(html).toContain('AST-00099');
+  });
+});
+
+// 2026-11-19 — department custody: «إدارة …», its place and who signed for it in the holder's
+// column; «جهة الاستلام», «الإدارة» and «الموقع» in the bar; a person's signatures as a link.
+describe('a department’s custody in the register', () => {
+  it('names the department, its place and its signer — never the signer as the holder', () => {
+    const html = render('/it/custody?responsible=e-sherif');
+    expect(html).toContain('AST-00016');
+    expect(html).not.toContain('AST-00012');
+    expect(html).toContain('data-holder-department="d-it"');
+    expect(html).toContain('إدارة تقنية المعلومات');
+    expect(html).toContain('الموقع: غرفة السيرفرات');
+    expect(html).toContain('المسؤول: شريف ممدوح فاروق (0100077)');
+    // The link's person is said as a filter in force, which can be let go.
+    expect(html).toContain('data-filter-responsible="e-sherif"');
+  });
+
+  it('asks for «جهة الاستلام» and «الموقع» as the URL names them', () => {
+    const html = render('/it/custody?holderKind=department&location=l-servers');
+    expect(html).toContain('AST-00016');
+    expect(html).not.toContain('AST-00099');
+    const bar = fields(html);
+    expect(bar).toEqual(
+      expect.arrayContaining([
+        ar('it.custody.department.receiverKind'),
+        ar('it.custody.department.department'),
+        ar('it.custody.department.location'),
+      ]),
+    );
+  });
+
+  it('a value «جهة الاستلام» does not offer is no filter', () => {
+    const html = render('/it/custody?holderKind=car');
+    // The unfiltered register's rows — the request carried no `holderKind`.
     expect(html).toContain('AST-00012');
     expect(html).toContain('AST-00099');
   });

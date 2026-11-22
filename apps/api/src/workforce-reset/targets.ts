@@ -181,7 +181,10 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   operations_crew_requirements: { action: 'purge', why: 'somebody’s place in a crew requirement' },
   operations_standing_crews: { action: 'purge', why: 'a standing crew made of specific people' },
   operations_shipment_assignments: { action: 'purge', why: 'a shipment captained by somebody' },
-  it_asset_assignments: { action: 'purge', why: 'an asset held by somebody — the ASSET survives' },
+  it_asset_assignments: {
+    action: 'purge',
+    why: 'an asset held by somebody, or by a department on somebody’s signature — the ASSET survives',
+  },
   it_custody_receipts: { action: 'purge', why: 'the paper somebody signed for what they hold' },
   it_mobile_line_receipts: {
     action: 'purge',

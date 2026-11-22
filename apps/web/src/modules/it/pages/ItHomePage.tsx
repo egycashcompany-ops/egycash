@@ -102,6 +102,7 @@ import {
   type DashboardFilters,
 } from '../lib/it-dashboard';
 import { warrantyWithin } from '../lib/warranty-window';
+import { bareDepartmentName } from '../lib/custody-holder';
 
 /** Remembered across visits: the dashboard's two filters, under the asset register's own names. */
 const REMEMBERED_FILTERS = ['branch', 'category'] as const;
@@ -722,8 +723,20 @@ const activityDetail = (
   item: ItDashboardActivityItemDto,
   names: Names,
 ): string | null => {
-  // HR's name for the person, else their code — never a guessed name.
-  const person = item.employeeName ?? item.employeeCode;
+  // HR's name for the person, else their code — never a guessed name. A department holder
+  // (2026-11-19) falls back to «إدارة … — …», the place where the movement names one.
+  const department =
+    (item.departmentId ?? null) === null
+      ? null
+      : (() => {
+          const name = item.departmentName?.ar ?? null;
+          const place = item.locationName?.ar ?? null;
+          const label = t('it.custody.department.name', {
+            department: name === null ? '—' : bareDepartmentName(name),
+          });
+          return place === null ? label : `${label} — ${place}`;
+        })();
+  const person = item.employeeName ?? item.employeeCode ?? department;
   switch (item.kind) {
     case 'assigned':
       return person === null ? null : t('it.dashboard.activity.to', { name: person });

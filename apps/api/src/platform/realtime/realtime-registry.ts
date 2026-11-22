@@ -221,6 +221,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'it.consumable': { permission: 'itConsumable.view' },
   'it.consumableMemo': { permission: 'itConsumable.view' },
   'it.catalogItem': { permission: 'itCatalog.manage' },
+  // «المواقع» — each branch's places, managed on the catalogs page under the catalogs' own grant.
+  // Its writes also signal WITH the place's branch (location.service.ts), so a branch-scoped
+  // manager's room hears of them; the pickers that only read the names refetch on their own.
+  'it.location': { permission: 'itCatalog.manage' },
   'it.license': { permission: 'itLicense.view' },
   'it.maintenanceOrder': { permission: 'itMaintenance.view' },
   'it.maintenancePlan': { permission: 'itMaintenancePlan.manage' },

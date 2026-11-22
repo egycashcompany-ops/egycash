@@ -57,7 +57,7 @@ import {
   pickedHeldByOther,
 } from '../lib/consumable-installed-on';
 import { holderName } from '../lib/consumable-issue-holder';
-import { movementAsset, movementEmployee } from '../lib/consumable-movement-register-export';
+import { movementAsset, movementRecipient } from '../lib/consumable-movement-register-export';
 import { AssetPicker } from './AssetPicker';
 import { CounterReadingCell } from './ConsumableMovements';
 import { LastReadingNote } from './PrinterCounterCard';
@@ -109,7 +109,10 @@ export const ConsumableInstalledOnDialog = ({
     };
   }, []);
 
-  const recipient = movementEmployee(movement);
+  // The person it went to — or the department at its place (2026-11-19), whose devices the box
+  // then lists.
+  const recipient = movementRecipient(t, movement, locale);
+  const toDepartment = (movement.departmentId ?? null) !== null;
   const current = movement.assetId === null ? null : (movementAsset(movement) ?? '—');
   const body = installedOnRequest(movement, state);
   const target = installedOnTarget(state, movement);
@@ -260,6 +263,8 @@ export const ConsumableInstalledOnDialog = ({
               value={state.assetId}
               withoutStatus="disposed"
               holderEmployeeId={movement.employeeId ?? ''}
+              holderDepartmentId={toDepartment ? (movement.departmentId ?? '') : ''}
+              holderLocationId={toDepartment ? (movement.locationId ?? '') : ''}
               holderLabel={recipient ?? ''}
               showHolder
               allowOther
@@ -273,10 +278,12 @@ export const ConsumableInstalledOnDialog = ({
             {otherHolder !== null && (
               <p
                 role="note"
-                data-installed-on-holder={otherHolder.employeeId}
+                data-installed-on-holder={otherHolder.employeeId ?? otherHolder.departmentId ?? ''}
                 className="text-xs text-slate-500 dark:text-slate-400"
               >
-                {t('it.consumables.issue.deviceHeldByOther', { name: holderName(otherHolder) })}
+                {t('it.consumables.issue.deviceHeldByOther', {
+                  name: holderName(otherHolder, t, locale),
+                })}
               </p>
             )}
             {unchanged && (

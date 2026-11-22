@@ -27,6 +27,13 @@ import { formatDate, formatDateTime, formatNumber } from '../../../shared/lib/fo
 import { type XlsxCell } from '../../../shared/lib/xlsx-writer';
 import { type FleetReport } from '../../fleet/lib/fleet-report-print';
 import { paperCells } from './consumable-register-export';
+import {
+  holderMain,
+  holderName,
+  holderOfMovement,
+  locationText,
+  responsibleText,
+} from './custody-holder';
 import { filterLine, itRegisterReport, namedFilter, type Translate } from './register-export';
 
 // ── What a movement says, read BY KIND — the screens' columns read these too ──
@@ -131,6 +138,25 @@ export const movementEmployee = (movement: ItConsumableMovementDto): string | nu
   return movement.employeeCode ?? movement.employeeId;
 };
 
+/**
+ * Who an issue went to, in one line: the employee («name (code)»), or — an issue to a department
+ * (2026-11-19) — «إدارة … — …» and who signed the memo for it. Null on a row that names nobody.
+ */
+export const movementRecipient = (
+  t: Translate,
+  movement: ItConsumableMovementDto,
+  locale: Locale,
+): string | null => {
+  const holder = holderOfMovement(movement);
+  if (holder === null) return null;
+  if (holder.kind !== 'department') return movementEmployee(movement);
+  const signer = responsibleText(holder);
+  const place = holderName(holder, locale, t);
+  return signer === ''
+    ? place
+    : `${place} (${t('it.custody.department.signedBy', { name: signer })})`;
+};
+
 /** «AST-00012 — لاب توب Lenovo» — what the reader's scope lets the server name, or nothing. */
 export const movementAsset = (movement: ItConsumableMovementDto): string | null => {
   if (movement.assetId === null) return null;
@@ -178,6 +204,8 @@ export const consumableMovementRegisterHeader = (t: Translate): string[] => [
   t('it.consumables.movements.columns.qty'),
   t('it.consumables.movements.columns.employee'),
   t('it.custody.export.holderCode'),
+  t('it.custody.department.location'),
+  t('it.custody.department.responsible'),
   t('it.consumables.movements.columns.installedOn'),
   t('it.consumables.movements.columns.counter'),
   t('it.consumables.movements.columns.reason'),
@@ -194,26 +222,36 @@ export const consumableMovementRegisterLine = (
   row: ItConsumableMovementDto,
   { t, locale, typeName, branchName, userName }: ConsumableMovementRegisterContext,
   empty: string,
-): XlsxCell[] => [
-  formatDateTime(row.at, locale),
-  t(`it.consumables.kind.${row.kind}`),
-  row.consumableName ?? t('it.custody.assetUnknown'),
-  row.consumableCode ?? empty,
-  row.typeId === null ? empty : (typeName.get(row.typeId) ?? empty),
-  MOVEMENT_SIGN[row.kind] * row.qty,
-  row.employeeId === null ? empty : (row.employeeName ?? row.employeeId),
-  row.employeeCode ?? empty,
-  movementAsset(row) ?? (row.assetId === null ? empty : t('it.custody.assetUnknown')),
-  movementCounterReading(t, row, locale) ?? empty,
-  movementReasonAndNotes(t, row, branchName) ?? empty,
-  row.memoNumber === null ? empty : formatConsumableMemoNumber(row.memoNumber),
-  row.memoId === null
-    ? empty
-    : row.memoSigned === true
-      ? t('it.custody.receipt.signed')
-      : t('it.custody.receipt.awaitingSignature'),
-  row.byUserId === null ? empty : (userName.get(row.byUserId) ?? empty),
-];
+): XlsxCell[] => {
+  const holder = holderOfMovement(row);
+  const department = holder?.kind === 'department';
+  return [
+    formatDateTime(row.at, locale),
+    t(`it.consumables.kind.${row.kind}`),
+    row.consumableName ?? t('it.custody.assetUnknown'),
+    row.consumableCode ?? empty,
+    row.typeId === null ? empty : (typeName.get(row.typeId) ?? empty),
+    MOVEMENT_SIGN[row.kind] * row.qty,
+    holder !== null && department
+      ? holderMain(holder, locale, t)
+      : row.employeeId === null
+        ? empty
+        : (row.employeeName ?? row.employeeId),
+    department ? empty : (row.employeeCode ?? empty),
+    holder !== null && department ? locationText(holder, locale) : empty,
+    holder !== null && department ? responsibleText(holder) : empty,
+    movementAsset(row) ?? (row.assetId === null ? empty : t('it.custody.assetUnknown')),
+    movementCounterReading(t, row, locale) ?? empty,
+    movementReasonAndNotes(t, row, branchName) ?? empty,
+    row.memoNumber === null ? empty : formatConsumableMemoNumber(row.memoNumber),
+    row.memoId === null
+      ? empty
+      : row.memoSigned === true
+        ? t('it.custody.receipt.signed')
+        : t('it.custody.receipt.awaitingSignature'),
+    row.byUserId === null ? empty : (userName.get(row.byUserId) ?? empty),
+  ];
+};
 
 /** A date window as paper writes it — each bound a day in the reader's words, null when open. */
 export interface MovementDayWindow {
@@ -229,6 +267,11 @@ export interface ConsumableMovementRegisterFilters {
   /** `''` when a branch is set but its name is not among the options. */
   branch: string | null;
   employee: string | null;
+  /** «الإدارة» / «الموقع» by name — `''` for one set but not among the options. */
+  department: string | null;
+  location: string | null;
+  /** The department issues one person signed for — their page's card — by name. */
+  responsible: string | null;
   asset: string | null;
   period: MovementDayWindow | null;
   search: string | null;
@@ -255,6 +298,12 @@ export const consumableMovementRegisterFilters = ({
   branchName,
   employeeId,
   employeeLabel,
+  departmentId = '',
+  departmentName,
+  locationId = '',
+  locationName,
+  responsibleId = '',
+  responsibleLabel = '',
   assetId,
   assetLabel,
   from,
@@ -270,6 +319,14 @@ export const consumableMovementRegisterFilters = ({
   branchName: ReadonlyMap<string, string>;
   employeeId: string;
   employeeLabel: string;
+  departmentId?: string;
+  /** Department id → «تقنية المعلومات — أسيوط», as the filter's select names it. */
+  departmentName?: ReadonlyMap<string, string>;
+  locationId?: string;
+  /** Place id → its name, as the filter's select names it. */
+  locationName?: ReadonlyMap<string, string>;
+  responsibleId?: string;
+  responsibleLabel?: string;
   assetId: string;
   assetLabel: string;
   from: string;
@@ -284,6 +341,15 @@ export const consumableMovementRegisterFilters = ({
     type: typeId === '' ? null : (typeName.get(typeId) ?? ''),
     branch: branchId === '' ? null : (branchName.get(branchId) ?? ''),
     employee: employeeId === '' ? null : byEmployee?.employeeName || employeeLabel || employeeId,
+    department: departmentId === '' ? null : (departmentName?.get(departmentId) ?? ''),
+    location: locationId === '' ? null : (locationName?.get(locationId) ?? ''),
+    responsible:
+      responsibleId === ''
+        ? null
+        : rows.find((row) => row.responsibleEmployeeId === responsibleId)
+            ?.responsibleEmployeeName ||
+          responsibleLabel ||
+          responsibleId,
     asset:
       assetId === ''
         ? null
@@ -328,6 +394,19 @@ export const consumableMovementRegisterSubtitle = (
     filters.employee === null
       ? null
       : t('it.consumables.export.employeeIs', { name: filters.employee }),
+    filters.department === null
+      ? null
+      : t('it.custody.department.export.departmentIs', {
+          name: filters.department || t('it.custody.department.export.oneDepartment'),
+        }),
+    filters.location === null
+      ? null
+      : t('it.custody.department.export.locationIs', {
+          name: filters.location || t('it.custody.department.export.oneLocation'),
+        }),
+    filters.responsible === null
+      ? null
+      : t('it.custody.department.export.responsibleIs', { name: filters.responsible }),
     filters.asset === null ? null : t('it.consumables.export.assetIs', { name: filters.asset }),
     filters.period === null
       ? null
@@ -336,7 +415,7 @@ export const consumableMovementRegisterSubtitle = (
     t('it.export.asOf', { date: filters.asOf }),
   ]);
 
-/** The printed ledger: the company's report form, landscape for fourteen columns, nobody signs it. */
+/** The printed ledger: the company's report form, landscape for sixteen columns, nobody signs it. */
 export const consumableMovementRegisterReport = (
   rows: readonly ItConsumableMovementDto[],
   context: ConsumableMovementRegisterContext,

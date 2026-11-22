@@ -47,11 +47,14 @@ import {
 import {
   AssetPicker,
   AssetPickerRow,
+  pickerHolderKey,
+  pickerHolderWords,
   pickerListShows,
   pickerRequest,
   pickerRowFlags,
 } from './AssetPicker';
 import { IssueConsumablesDialog } from './ConsumableDialogs';
+import { NO_DEPARTMENT } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -175,6 +178,8 @@ const SHERIFS = asset({
   name: 'HP ProBook 450 G8',
   serialNumber: '5CD1234XYZ',
   holder: {
+    kind: 'employee',
+    ...NO_DEPARTMENT,
     employeeId: SHERIF,
     employeeCode: '0100077',
     employeeName: 'شريف ممدوح فاروق',
@@ -187,6 +192,8 @@ const HANYS = asset({
   name: 'HP LaserJet Pro M404',
   serialNumber: 'PHBQ7K21',
   holder: {
+    kind: 'employee',
+    ...NO_DEPARTMENT,
     employeeId: HANY,
     employeeCode: '0100091',
     employeeName: 'هاني رأفت سليم',
@@ -497,8 +504,11 @@ describe('the device first — its holder fills the person', () => {
     // …and the issue's box asks for exactly those rows, filtered by the person once chosen.
     const element = /<AssetPicker\b[\s\S]*?\/>/u.exec(source('components/ConsumableDialogs.tsx'));
     expect(element?.[0]).toMatch(/\bshowHolder\b/u);
-    expect(element?.[0]).toMatch(/\bholderEmployeeId=\{employeeId\}/u);
-    expect(element?.[0]).toMatch(/\bholderLabel=\{employeeLabel\}/u);
+    // The person — or, «صرف لإدارة» (2026-11-19), the department at its place — never the signer.
+    expect(element?.[0]).toMatch(/\bholderEmployeeId=\{toDepartment \? '' : employeeId\}/u);
+    expect(element?.[0]).toMatch(/\bholderLocationId=\{toDepartment \? state\.locationId : ''\}/u);
+    expect(element?.[0]).toMatch(/\bholderLabel=\{custodianLabel\}/u);
+    expect(element?.[0]).not.toMatch(/responsibleEmployeeId/u);
     expect(element?.[0]).toMatch(/\ballowOther\b/u);
   });
 });
@@ -545,15 +555,64 @@ describe('«جهاز آخر» — the whole register from a person’s box', () 
 
   it('the switch: «جهاز آخر» opens it for the person shown, «أجهزة الموظف فقط» closes it', () => {
     const code = flat(source('components/AssetPicker.tsx'));
+    // Opened for the holder shown — the person, or (2026-11-19) the department at its place.
     expect(code).toMatch(
-      /data-asset-picker-toggle="other" onClick=\{\(\) => setOtherFor\(holderEmployeeId\)\}/u,
+      /data-asset-picker-toggle="other" onClick=\{\(\) => setOtherFor\(holder\)\}/u,
     );
     expect(code).toMatch(
       /data-asset-picker-toggle="holder" onClick=\{\(\) => setOtherFor\(null\)\}/u,
     );
     expect(code).toMatch(
-      /pickerRequest\(\{ holderEmployeeId, allowOther, otherFor, search, status \}\)/u,
+      /const holder = pickerHolderKey\(\{ holderEmployeeId, holderDepartmentId, holderLocationId \}\);/u,
     );
+    expect(code).toMatch(
+      /pickerRequest\(\{ holderEmployeeId, holderDepartmentId, holderLocationId, branchId, allowOther, otherFor, search, status, \}\)/u,
+    );
+  });
+
+  // 2026-11-19 — a department's devices at its place, and a box narrowed to one branch.
+  it('a department’s box: its devices at its place, listed at once; another place is another box', () => {
+    const own = ask({ holderEmployeeId: '', holderDepartmentId: 'd-it', holderLocationId: 'l-1' });
+    expect(own.mode).toBe('holder');
+    expect(own.untyped).toBe(true);
+    expect(own.params).toEqual({ holderDepartmentId: 'd-it', locationId: 'l-1', pageSize: 50 });
+    const other = ask({
+      holderEmployeeId: '',
+      holderDepartmentId: 'd-it',
+      holderLocationId: 'l-2',
+    });
+    expect(other.queryKey).not.toEqual(own.queryKey);
+    // «جهاز آخر» is opened for the department at that place.
+    expect(
+      ask({
+        holderEmployeeId: '',
+        holderDepartmentId: 'd-it',
+        holderLocationId: 'l-1',
+        otherFor: pickerHolderKey({
+          holderEmployeeId: '',
+          holderDepartmentId: 'd-it',
+          holderLocationId: 'l-1',
+        }),
+      }).mode,
+    ).toBe('other');
+    // A person wins over a department passed beside them.
+    expect(ask({ holderDepartmentId: 'd-it', holderLocationId: 'l-1' }).params).toEqual({
+      holderEmployeeId: WALEED,
+      pageSize: 50,
+    });
+  });
+
+  it('a box narrowed to a branch asks for that branch, in every mode', () => {
+    expect(ask({ holderEmployeeId: '', branchId: 'b-asyut', search: 'Dell' }).params).toEqual({
+      search: 'Dell',
+      pageSize: 8,
+      branchId: 'b-asyut',
+    });
+    expect(ask({ branchId: 'b-asyut' }).params).toMatchObject({ branchId: 'b-asyut' });
+    expect(ask({ holderEmployeeId: '', search: 'Dell' }).params).toEqual({
+      search: 'Dell',
+      pageSize: 8,
+    });
   });
 
   it('only a box that allows it offers it — and only with a person', async () => {
@@ -622,6 +681,109 @@ describe('a failed request is not an empty answer (review fix 1)', () => {
     // A refresh that failed over an answer already held: that answer stands.
     expect(shows({ isError: true, data: 0 })).toBe('holderNone');
     expect(shows({ isError: true, data: 3 })).toBe('rows');
+  });
+});
+
+// 2026-11-19 — a department's box (the issue's «مركّب على» in «إدارة», the installed-on dialog of a
+// department's issue) speaks of the department, never of «الموظف».
+describe('a department’s box says «الإدارة», not «الموظف»', () => {
+  const heldByDepartment = listKey('it', 'assets', {
+    picker: '',
+    status: undefined,
+    holderDepartmentId: 'd-it',
+    holderLocationId: 'l-1',
+  });
+  const departmentBox = (
+    <AssetPicker
+      value=""
+      holderEmployeeId=""
+      holderDepartmentId="d-it"
+      holderLocationId="l-1"
+      showHolder
+      allowOther
+      onChange={() => {}}
+    />
+  );
+  const EMPLOYEE_WORDS = [
+    'it.assets.pickerHolderHintAnon',
+    'it.assets.pickerHolderNoneAnon',
+    'it.assets.pickerHolderErrorAnon',
+    'it.assets.pickerHolderOnly',
+  ];
+
+  it('its words, and the way back from «جهاز آخر»: «أجهزة الإدارة فقط»', () => {
+    const words = pickerHolderWords(ar, { holderEmployeeId: '', holderDepartmentId: 'd-it' });
+    expect(words).toEqual({
+      hint: 'الأجهزة التي في عهدة الإدارة المختارة الآن',
+      none: ar('it.assets.pickerDepartmentNoneAnon'),
+      error: ar('it.assets.pickerDepartmentErrorAnon'),
+      only: 'أجهزة الإدارة فقط',
+    });
+    for (const key of EMPLOYEE_WORDS) expect(Object.values(words)).not.toContain(ar(key));
+    // Named, it is named — the department at its place.
+    const named = 'إدارة تقنية المعلومات — غرفة السيرفرات';
+    expect(
+      pickerHolderWords(ar, {
+        holderEmployeeId: '',
+        holderDepartmentId: 'd-it',
+        holderLabel: named,
+      }),
+    ).toEqual({
+      hint: ar('it.assets.pickerHolderHint', { name: named }),
+      none: ar('it.assets.pickerHolderNone', { name: named }),
+      error: ar('it.assets.pickerHolderError', { name: named }),
+      only: 'أجهزة الإدارة فقط',
+    });
+  });
+
+  it('a person’s box keeps the employee’s words — and a person wins over a department beside them', () => {
+    const person = {
+      hint: ar('it.assets.pickerHolderHintAnon'),
+      none: ar('it.assets.pickerHolderNoneAnon'),
+      error: ar('it.assets.pickerHolderErrorAnon'),
+      only: ar('it.assets.pickerHolderOnly'),
+    };
+    expect(pickerHolderWords(ar, { holderEmployeeId: WALEED })).toEqual(person);
+    expect(pickerHolderWords(ar, { holderEmployeeId: WALEED, holderDepartmentId: 'd-it' })).toEqual(
+      person,
+    );
+  });
+
+  it('renders them: the hint and the empty answer', async () => {
+    listAssets.mockResolvedValue(page([]));
+    const qc = client();
+    render(qc, departmentBox);
+    await answer(qc, heldByDepartment);
+    const html = render(qc, departmentBox);
+    expect(html).toContain(ar('it.assets.pickerDepartmentHintAnon'));
+    expect(html).toContain(ar('it.assets.pickerDepartmentNoneAnon'));
+    for (const key of EMPLOYEE_WORDS) expect(html).not.toContain(ar(key));
+  });
+
+  it('renders them: a list that failed', async () => {
+    listAssets.mockRejectedValue(new Error('offline'));
+    const qc = client(false);
+    render(qc, departmentBox);
+    await answer(qc, heldByDepartment).catch(() => undefined);
+    const html = render(qc, departmentBox);
+    expect(dataAttr(html, 'data-asset-picker-error')).toEqual(['holderError']);
+    expect(html).toContain(ar('it.assets.pickerDepartmentErrorAnon'));
+    for (const key of EMPLOYEE_WORDS) expect(html).not.toContain(ar(key));
+  });
+
+  it('the box says what the helper words — the way back included', () => {
+    const code = flat(source('components/AssetPicker.tsx'));
+    expect(code).toContain(
+      'const words = pickerHolderWords(t, { holderEmployeeId, holderDepartmentId, holderLabel });',
+    );
+    expect(code).toContain("{other ? t('it.assets.pickerOtherHint') : words.hint}");
+    expect(code).toContain(
+      "{shows === 'searchError' ? t('it.assets.pickerSearchError') : words.error}",
+    );
+    expect(code).toMatch(
+      /data-asset-picker-toggle="holder" onClick=\{\(\) => setOtherFor\(null\)\} > \{words\.only\}/u,
+    );
+    expect(code).toMatch(/shows === 'holderNone' \? \( <p [^>]*> \{words\.none\} <\/p>/u);
   });
 });
 

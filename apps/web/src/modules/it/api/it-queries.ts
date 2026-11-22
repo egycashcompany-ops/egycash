@@ -56,6 +56,8 @@ import {
   type TransferItConsumables,
   type UpdateItConsumable,
   type ItCatalogKind,
+  type CreateItLocation,
+  type UpdateItLocation,
   type ReturnItAsset,
   type TransferItAsset,
   type UpdateItAsset,
@@ -74,6 +76,11 @@ const MODULE = 'it';
 const itKeys = {
   assets: featureKey(MODULE, 'assets'),
   catalogs: featureKey(MODULE, 'catalogs'),
+  /**
+   * «المواقع» — each branch's places: the catalogs tab, the pickers' options and the create
+   * dialog's branches. Apart from the catalogs: a place is a branch's, not a catalog kind.
+   */
+  locations: featureKey(MODULE, 'locations'),
   vendors: featureKey(MODULE, 'vendors'),
   /** Custody intervals and the asset history — both move on every custody action. */
   custody: featureKey(MODULE, 'custody'),
@@ -168,11 +175,12 @@ export const useItUser = (id: string, enabled = true) =>
 // ── Catalog items ───────────────────────────────────────────────────────────
 
 /** Admin list for the catalogs screen — same subtree as the selects' cached lists. */
-export const useItCatalogItems = (params: ItListParams) =>
+export const useItCatalogItems = (params: ItListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'catalogs', params),
     queryFn: () => api.listCatalogItems(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 /**
@@ -204,6 +212,57 @@ export const useCreateItCatalogItem = () =>
 export const useUpdateItCatalogItem = () =>
   useCatalogMutation(({ id, body }: { id: string; body: UpdateItCatalogItem }) =>
     api.updateCatalogItem(id, body),
+  );
+
+// ── Places — «المواقع» ─────────────────────────────────────────────────────
+
+/** The catalogs page's «المواقع» tab — `enabled` mirrors `itCatalog.manage`. */
+export const useItLocations = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'locations', params),
+    queryFn: () => api.listLocations(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * Every branch's places, retired ones too, as names — ONE read the pickers filter by branch (to the
+ * active ones) and the readers name old rows with. A short list that rarely changes: a minute.
+ */
+export const useItLocationOptions = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'locations', { options: true }),
+    queryFn: api.listLocationOptions,
+    staleTime: 60_000,
+    enabled,
+  });
+
+/** The branches the create dialog may file a place in — asked only while it is open. */
+export const useItLocationBranchTargets = (enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'locations', { branchTargets: true }),
+    queryFn: api.locationBranchTargets,
+    enabled,
+  });
+
+const useLocationMutation = <TInput>(mutationFn: (input: TInput) => Promise<unknown>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.locations });
+      // A renamed place is what every holder cell and filter chip names.
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+    },
+  });
+};
+
+export const useCreateItLocation = () =>
+  useLocationMutation((body: CreateItLocation) => api.createLocation(body));
+export const useUpdateItLocation = () =>
+  useLocationMutation(({ id, body }: { id: string; body: UpdateItLocation }) =>
+    api.updateLocation(id, body),
   );
 
 // ── Vendors ─────────────────────────────────────────────────────────────────

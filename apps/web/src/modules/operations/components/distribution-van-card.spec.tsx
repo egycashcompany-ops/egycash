@@ -647,7 +647,10 @@ describe('Round 31 — «العدد والكلام على صف واحد مش ص�
       [3, 'محصنات'],
       [11, 'محصنة'],
     ] as const) {
-      expect(parts(card(VAN, { count }), `data-van-count="${count}"`)).toEqual([String(count), word]);
+      expect(parts(card(VAN, { count }), `data-van-count="${count}"`)).toEqual([
+        String(count),
+        word,
+      ]);
     }
     const html = card(VAN, { packages: { cartons: 1, bags: 2, boxes: 11 } });
     expect(parts(html, 'data-van-package="cartons"')).toEqual(['1', 'كرتونة']);

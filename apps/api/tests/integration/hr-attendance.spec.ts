@@ -1264,7 +1264,11 @@ describe('the daily sheet, and «لم يحضر بعد» resolved when it is read
     // every attended day would report half the real figure.
     const emp = await inBranch();
     const full = recentWorkday();
-    const openEnded = addDays(full, 1);
+    // The next WORKDAY, not simply the next day: a Friday or a holiday there is no day at work.
+    let openEnded = addDays(full, 1);
+    while ([5, 6].includes(isoWeekday(openEnded)) || HOLIDAY_ISO.has(dateOnlyIso(openEnded))) {
+      openEnded = addDays(openEnded, 1);
+    }
     await switchPatternOn();
     for (const [day, at, direction] of [
       [full, '09:00', 'in'],

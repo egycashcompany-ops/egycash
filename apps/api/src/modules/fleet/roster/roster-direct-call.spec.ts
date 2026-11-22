@@ -75,9 +75,19 @@ const doc = (vehicleId: string, driver1: string | null = null) => ({
   notes: null,
 });
 
+/**
+ * A day the roster still plans: `plan()` refuses a day before today (UTC), so a fixed date (it was
+ * 2026-11-20) turned every case here into that refusal the day it passed. A week ahead, at midnight.
+ */
+const PLAN_DAY = ((): Date => {
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() + 7);
+  return day;
+})();
+
 /** The payload an internal caller builds by hand — never parsed, and spelled in UPPER hex. */
-const shouting = (rows: Record<string, unknown>[]) =>
-  ({ date: new Date('2026-11-20T00:00:00.000Z'), rows }) as never;
+const shouting = (rows: Record<string, unknown>[]) => ({ date: PLAN_DAY, rows }) as never;
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -158,7 +158,6 @@ const NOW_SECTIONS: readonly FleetDashboardNowSection[] = [
 ];
 const PERIOD_SECTIONS: readonly FleetDashboardPeriodSection[] = [
   'km',
-  'visits',
   'exits',
   'accidents',
   'accidentList',
@@ -584,7 +583,10 @@ describe('the doors — real roles (R-28, §5.5)', () => {
     expect(present(now, NOW_SECTIONS)).toEqual(['workshop']);
     expect(now).not.toHaveProperty('recentWorkshop');
     expect(now.alerts.map((a) => a.id)).not.toContain('maintenanceRed');
-    expect(present(await periodOf(clerk.token), PERIOD_SECTIONS)).toEqual(['visits', 'exits']);
+    // R2: the exit-day breakdown alone — the check-in count (`visits`) left with the `period` tab.
+    const period = await periodOf(clerk.token);
+    expect(present(period, PERIOD_SECTIONS)).toEqual(['exits']);
+    expect(period).not.toHaveProperty('visits');
   });
 
   it('the cards reader gets the expired cards; the balances need the charging screen too', async () => {
@@ -694,7 +696,7 @@ describe('the doors — real roles (R-28, §5.5)', () => {
     expect(period.km?.total).toBe(60);
     // One branch in scope: «حسب النوع» is drawn (D10).
     expect(period.km?.byType?.map((t) => t.km)).toEqual([60]);
-    expect(period.visits).toEqual({ count: 0, closed: 0, open: 0 });
+    expect(period).not.toHaveProperty('visits');
     expect(period.exits).toEqual(NO_EXITS_UNDER_A_SET);
     // A home branch is not a switch: the whole company.
     const homed = await reader(['fleetVehicle.view'], 'organization', B1);
@@ -800,8 +802,8 @@ describe('the old book’s rows — counted as on the unfiltered screens (R-13, 
     expect(
       (dto.km?.byBranch ?? []).reduce((a, b) => a + b.km, 0) + (dto.km?.unregistered ?? 0),
     ).toBe(dto.km?.total);
-    // «أرقام الفترة» by CHECK-IN day: car2's (still open) and the book's (closed).
-    expect(dto.visits).toEqual({ count: 2, closed: 1, open: 1 });
+    // No count by CHECK-IN day any more (the retired `period` tab's `visits`).
+    expect(dto).not.toHaveProperty('visits');
     // By EXIT day: only the book's visit left the workshop in October (car2's is still open). It
     // counts in the bars and as «غير مسجّلة», never in the car ranking; in 12 Oct, out 13 Oct.
     expect(dto.exits).toMatchObject({
@@ -829,7 +831,7 @@ describe('the old book’s rows — counted as on the unfiltered screens (R-13, 
     expect(dto.vehicleScope).toMatchObject({ typeIds: [T1], count: 2 });
     expect(dto.km?.total).toBe(150);
     expect(dto.km?.unregistered).toBeNull();
-    expect(dto.visits).toEqual({ count: 1, closed: 0, open: 1 });
+    expect(dto).not.toHaveProperty('visits');
     expect(dto.exits).toEqual(NO_EXITS_UNDER_A_SET);
     expect(dto.accidents?.undated).toBeNull();
   });

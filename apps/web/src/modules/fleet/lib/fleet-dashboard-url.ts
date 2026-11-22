@@ -3,9 +3,9 @@
 //   /fleet?tab=<tab>&period=<preset>&from&to&type=<id,…>&operation=<id,…>&vehicleCodes=<code,…>
 //
 // `tab` names the panel and is never remembered (a link names its tab). The rest is ONE filter state
-// shared by «أرقام الفترة» and the period parts of «الصيانة والورش», «العدادات والكيلومترات»,
-// «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات», «الوقود والمصروفات», «العهدة» and
-// «التراخيص والتجديدات» (each draws the filter bar — «التراخيص والتجديدات» its period choices only):
+// shared by the period parts of «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات
+// التأمين», «المخالفات المرورية والتسويات», «الوقود والمصروفات», «العهدة» and «التراخيص والتجديدات»
+// (each draws the filter bar — «التراخيص والتجديدات» its period choices only):
 // switching tabs keeps it (it stays in the address bar), the R1 tabs ignore it, and only R2's query
 // key carries it. Of it, only type / operation / codes are remembered across visits; the period
 // opens on «هذا الشهر» on every visit (DECISIONS §0c). The overview and «توزيع السيارات» read «هذا
@@ -121,7 +121,11 @@ export const LEGACY_TABS: ReadonlyMap<string, FleetDashboardTab> = new Map<
   ['ranking', 'km'],
 ]);
 
-/** The panel to show: the asked one (an old key mapped first) when visible, else the first visible. */
+/**
+ * The panel to show: the asked one (an old key mapped first) when visible, else the first visible.
+ * A key that is no tab at all — an old link to the removed period-figures tab among them — opens
+ * the first visible tab, «نظرة عامة» for every reader who sees it.
+ */
 export const readTab = (
   raw: string | null,
   visible: readonly FleetDashboardTab[],

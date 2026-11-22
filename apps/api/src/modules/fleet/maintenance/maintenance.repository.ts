@@ -793,27 +793,6 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       })),
     };
   }
-
-  /**
-   * «أرقام الفترة» — how many visits the filter matches and how many of them are still open NOW,
-   * in ONE `$group` (the check-in figures need nothing else).
-   */
-  async stateCounts(
-    filter: FilterQuery<FleetMaintenanceVisitDoc>,
-  ): Promise<{ count: number; open: number }> {
-    const [row] = await this.model.aggregate<{ count: number; open: number }>([
-      { $match: this.baseFilter(undefined, filter) },
-      {
-        $group: {
-          _id: null,
-          count: { $sum: 1 },
-          // `$ifNull`: an old row with no `outDate` at all is open, as the list's filter reads it.
-          open: { $sum: { $cond: [{ $eq: [{ $ifNull: ['$outDate', null] }, null] }, 1, 0] } },
-        },
-      },
-    ]);
-    return { count: row?.count ?? 0, open: row?.open ?? 0 };
-  }
 }
 
 /** R-09's facts, before the service names the cars. */

@@ -1,15 +1,15 @@
 // The maintenance module's dashboard reads against a real database (P1-05, P1-06).
 //
-// The dashboard counts nothing itself: «زيارات الورشة» (T6.3/T6.4, tab 9), «في الورشة الآن» (T2.4)
-// and the recent workshop records (T4.8) are calls into the maintenance service with the query the
-// linked screen sends. This file proves the promise on real rows written through the real endpoints:
+// The dashboard counts nothing itself: «الصيانة والورش» by EXIT day, «في الورشة الآن» (T2.4) and
+// the recent workshop records (T4.8) are calls into the maintenance service with the query the
+// linked screen sends. (No dashboard read counts visits by the CHECK-IN day any more: that count
+// left with the retired `period` tab.) This file proves the promise on real rows written through
+// the real endpoints:
 //
-//   1. `visitStates` over [from, to] («أرقام الفترة», check-in day) counts exactly the visits
-//      `/fleet/maintenance?from&to` lists, and their state now, with and without the vehicle set —
-//      «النوع / التشغيل / الفرع» and codes — on a fixture WITH A DELETED CAR;
-//   1b. `exitBreakdown` over [outFrom, outTo] («الصيانة والورش», EXIT day) is the list over the
-//      exit day: the count, every bar and every ranked car link to a list that shows its figure,
-//      and the mean stay is the mean of the listed rows' whole days;
+//   1. `exitBreakdown` over [outFrom, outTo] («الصيانة والورش», EXIT day) is the list over the
+//      exit day, with and without the vehicle set — «النوع / التشغيل / الفرع» and codes — on a
+//      fixture WITH A DELETED CAR: the count, every bar and every ranked car link to a list that
+//      shows its figure, and the mean stay is the mean of the listed rows' whole days;
 //   2. `openNow` is `/fleet/maintenance?state=open&to=<today>` (`open=true`, checked in by the end
 //      of the day asked about) with the longest stays in days, split into four parts that add up;
 //   3. `recentWritten` keeps the window (a row the day before it is out) and the write order;
@@ -360,7 +360,7 @@ afterAll(async () => {
   if (replSet !== null) await replSet.stop();
 });
 
-// ── 1 · visitStates = the list over the CHECK-IN day ─────────────────────────────────────────
+// ── 1 · exitBreakdown = the list over the EXIT day ───────────────────────────────────────────
 
 const OCTOBER = { from: '2026-10-01', to: '2026-10-31' };
 /** The service's query, from the same plain object the page puts in its URL. */
@@ -372,77 +372,6 @@ const asQuery = (q: Record<string, unknown>): MaintenanceFilterQuery => ({
   ...(q['branchIds'] === undefined ? {} : { branchIds: q['branchIds'] as string[] }),
   ...(q['vehicleCodes'] === undefined ? {} : { vehicleCodes: q['vehicleCodes'] as string[] }),
 });
-
-interface Case {
-  name: string;
-  query: () => Record<string, unknown>;
-  count: number;
-}
-const CASES: Case[] = [
-  { name: 'the period alone (company view)', query: () => OCTOBER, count: 7 },
-  {
-    name: 'operation O1 ∩ branch B1 — the deleted car’s visit included',
-    query: () => ({ ...OCTOBER, operationIds: [O1], branchIds: [B1] }),
-    count: 4,
-  },
-  {
-    name: 'type T1 — the deleted car is a T1',
-    query: () => ({ ...OCTOBER, typeIds: [T1] }),
-    count: 4,
-  },
-  {
-    name: 'type T2 ∩ branch B2 — nobody visited in October',
-    query: () => ({ ...OCTOBER, typeIds: [T2], branchIds: [B2] }),
-    count: 0,
-  },
-  {
-    name: 'codes — the old book’s code matches its own visit',
-    query: () => ({ ...OCTOBER, vehicleCodes: [c1.code, 'B-90'] }),
-    count: 3,
-  },
-];
-
-describe('visitStates — «أرقام الفترة»: every figure is the list it links to (R-18, D9)', () => {
-  for (const c of CASES) {
-    it(c.name, async () => {
-      const q = c.query();
-      const out = await fleetMaintenanceService.visitStates(asQuery(q));
-      expect(out.count).toBe(c.count);
-      expect(out.count).toBe(await total(q));
-      // «خرجت X · ما زالت في الورشة Y (حتى الآن)» — the state now, each its own list.
-      expect(out.open).toBe(await total({ ...q, open: true }));
-      expect(out.closed).toBe(await total({ ...q, open: false }));
-      expect(out.open + out.closed).toBe(out.count);
-    });
-  }
-
-  it('the company view: the visits that CHECKED IN in October, and their state now', async () => {
-    expect(await fleetMaintenanceService.visitStates(asQuery(OCTOBER))).toEqual({
-      count: 7,
-      closed: 4,
-      open: 3,
-    });
-  });
-
-  it('the dashboard’s set (vehicleSet) gives the same count as the screen’s filter', async () => {
-    const set = await vehicleSet({ operationIds: [O1] }, [B1], { count: true, branchId: B1 });
-    expect([...(set.ids ?? [])].sort()).toEqual([c1.id, c5.id, gone.id].sort());
-    // The set keeps the deleted car (its visits still count); the display count is the registry's.
-    expect(set.scope).toEqual({
-      count: 2,
-      typeIds: [],
-      operationIds: [O1],
-      vehicleCodes: [],
-      branchId: B1,
-    });
-    const out = await fleetMaintenanceService.visitStates(
-      asQuery({ ...OCTOBER, operationIds: [O1], branchIds: [B1] }),
-    );
-    expect(out.count).toBe(await total({ ...OCTOBER, operationIds: [O1], branchIds: [B1] }));
-  });
-});
-
-// ── 1b · exitBreakdown = the list over the EXIT day ───────────────────────────────────────────
 
 describe('exitBreakdown — «الصيانة والورش» by EXIT day is the list’s outFrom/outTo (D6)', () => {
   const OCTOBER_OUT = { outFrom: '2026-10-01', outTo: '2026-10-31' };
@@ -479,6 +408,16 @@ describe('exitBreakdown — «الصيانة والورش» by EXIT day is the l
       narrowed: true,
     },
     {
+      name: 'type T1 — the deleted car is a T1',
+      query: () => ({ ...OCTOBER_OUT, typeIds: [T1] }),
+      narrowed: true,
+    },
+    {
+      name: 'type T2 ∩ branch B2',
+      query: () => ({ ...OCTOBER_OUT, typeIds: [T2], branchIds: [B2] }),
+      narrowed: true,
+    },
+    {
       name: 'codes',
       query: () => ({ ...OCTOBER_OUT, vehicleCodes: [c1.code, 'B-90'] }),
       narrowed: true,
@@ -512,6 +451,23 @@ describe('exitBreakdown — «الصيانة والورش» by EXIT day is the l
       if (c.narrowed) expect(out.unregistered).toBeNull();
     });
   }
+
+  it('the dashboard’s set (vehicleSet) gives the same count as the screen’s filter', async () => {
+    const set = await vehicleSet({ operationIds: [O1] }, [B1], { count: true, branchId: B1 });
+    expect([...(set.ids ?? [])].sort()).toEqual([c1.id, c5.id, gone.id].sort());
+    // The set keeps the deleted car (its visits still count); the display count is the registry's.
+    expect(set.scope).toEqual({
+      count: 2,
+      typeIds: [],
+      operationIds: [O1],
+      vehicleCodes: [],
+      branchId: B1,
+    });
+    const q = { ...OCTOBER_OUT, operationIds: [O1], branchIds: [B1] };
+    const out = await fleetMaintenanceService.exitBreakdown(asExitQuery(q));
+    expect(out.count).toBeGreaterThan(0);
+    expect(out.count).toBe(await total(q));
+  });
 
   it('the company view, figure by figure', async () => {
     const out = await fleetMaintenanceService.exitBreakdown(asExitQuery(OCTOBER_OUT));
@@ -747,14 +703,6 @@ describe('explain() — the period read is an index scan', () => {
       await FleetMaintenanceVisitModel.aggregate(pipeline).explain('queryPlanner'),
     );
   };
-
-  it('visitStates over [from, to], with and without the set', async () => {
-    for (const q of [OCTOBER, { ...OCTOBER, typeIds: [T1], branchIds: [B1] }]) {
-      const plan = await planOf(() => fleetMaintenanceService.visitStates(asQuery(q)));
-      expect(plan).toContain('IXSCAN');
-      expect(plan).not.toContain('COLLSCAN');
-    }
-  });
 
   it('exitBreakdown over [outFrom, outTo] (`ix_out_date`), with and without the set', async () => {
     const out = (q: Record<string, unknown>): MaintenanceFilterQuery => ({

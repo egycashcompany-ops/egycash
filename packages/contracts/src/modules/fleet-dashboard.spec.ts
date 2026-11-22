@@ -26,9 +26,9 @@ import {
   FLEET_DASHBOARD_PART_SECTIONS,
   FLEET_DASHBOARD_PERIOD_KEYS,
   FLEET_DASHBOARD_PERIOD_SECTIONS,
-  FLEET_DASHBOARD_PERIOD_TABS,
   FLEET_DASHBOARD_PRESETS,
   FLEET_DASHBOARD_RANK_ROWS,
+  FLEET_DASHBOARD_SCOPE_KEYS,
   FLEET_DASHBOARD_TABS,
   FLEET_DASHBOARD_TAB_PARTS,
   FLEET_DASHBOARD_TAB_READS,
@@ -70,11 +70,12 @@ import {
   type FleetDashboardPeriodLicenceSpendDto,
   type FleetDashboardPeriodViolationRowDto,
   type FleetDashboardPeriodViolationsDto,
-  type FleetDashboardPeriodVisitsDto,
   type FleetDashboardRead,
   type FleetDashboardSection,
   type FleetDashboardTab,
 } from './fleet-dashboard.js';
+import * as fleetDashboard from './fleet-dashboard.js';
+import * as contracts from '../index.js';
 import {
   FLEET_CUSTODY_MEMO_STATES,
   FLEET_CUSTODY_MEMO_STATE_OF_STATUS,
@@ -484,7 +485,6 @@ const TABLE: Record<
   violationsYear: ['now', 'fleetViolation.view', 'fleetViolation.view', '/fleet/violations'],
   violationsOpen: ['now', 'fleetViolation.view', 'fleetViolation.view', '/fleet/violations'],
   km: ['period', 'fleetOdometer.view', 'fleetOdometer.view', '/fleet/odometer'],
-  visits: ['period', 'fleetMaintenance.view', 'fleetMaintenance.view', '/fleet/maintenance'],
   exits: ['period', 'fleetMaintenance.view', 'fleetMaintenance.view', '/fleet/maintenance'],
   accidents: ['period', 'fleetAccident.view', 'fleetAccident.view', '/fleet/accidents'],
   accidentList: ['period', 'fleetAccident.view', 'fleetAccident.view', '/fleet/accidents'],
@@ -537,6 +537,69 @@ const NOW_KEYS_BEFORE = [
   'fleetViolation.view',
 ];
 const PAGE_KEYS_BEFORE = [...NOW_KEYS_BEFORE, 'fleetReceipt.view', 'fleetCustody.view'];
+
+/**
+ * The four key unions as they stood just before the `period` tab was retired (the owner,
+ * 2026-11-22), read from the built contracts, in their first-seen order. Retiring the tab (and its `visits`
+ * section, gated like `exits`) changes none of them: no permission key, no order.
+ */
+const KEYS_BEFORE_PERIOD_TAB_RETIRED = {
+  now: [
+    'fleetVehicle.view',
+    'fleetRoster.view',
+    'fleetMaintenance.view',
+    'fleetOdometer.view',
+    'fleetDriver.view',
+    'fleetLicensing.view',
+    'fleetFuelCard.view',
+    'fleetFuelCharge.view',
+    'fleetNotice.view',
+    'fleetDealership.view',
+    'fleetAccident.view',
+    'fleetViolation.view',
+  ],
+  period: [
+    'fleetOdometer.view',
+    'fleetMaintenance.view',
+    'fleetAccident.view',
+    'fleetViolation.view',
+    'fleetReceipt.view',
+    'fleetCustody.view',
+    'fleetDealership.view',
+    'fleetLicenseExpense.view',
+  ],
+  page: [
+    'fleetVehicle.view',
+    'fleetRoster.view',
+    'fleetMaintenance.view',
+    'fleetOdometer.view',
+    'fleetDriver.view',
+    'fleetLicensing.view',
+    'fleetFuelCard.view',
+    'fleetFuelCharge.view',
+    'fleetNotice.view',
+    'fleetDealership.view',
+    'fleetAccident.view',
+    'fleetViolation.view',
+    'fleetReceipt.view',
+    'fleetCustody.view',
+  ],
+  scope: [
+    'fleetVehicle.view',
+    'fleetRoster.view',
+    'fleetMaintenance.view',
+    'fleetOdometer.view',
+    'fleetDriver.view',
+    'fleetLicensing.view',
+    'fleetFuelCard.view',
+    'fleetFuelCharge.view',
+    'fleetNotice.view',
+    'fleetDealership.view',
+    'fleetAccident.view',
+    'fleetViolation.view',
+    'fleetReceipt.view',
+  ],
+} as const;
 
 describe('the gate table', () => {
   it('gives every section exactly the gate the plan names, and nothing more', () => {
@@ -648,14 +711,18 @@ describe('the gate table', () => {
   });
 
   it('the new sections reuse keys already gating a section: only the R2 union grew, by `fleetCustody.view` and `fleetLicenseExpense.view`', () => {
-    // `violationsOpen` sits beside `violationsYear`, `exits` beside `visits`; `fuelCardList` and
-    // `fuelSheets` beside `fuelCharging`; `opexSeries` beside `opex`, `dealershipList` beside
-    // `dealership` — the same keys. `violations` / `violationList` brought `fleetViolation.view` to
+    // `violationsOpen` sits beside `violationsYear`, `exits` (R2) beside `workshop` (R1);
+    // `fuelCardList` and `fuelSheets` beside `fuelCharging`; `opexSeries` beside `opex`,
+    // `dealershipList` beside `dealership` — the same keys. `violations` / `violationList` brought `fleetViolation.view` to
     // the R2 union (#728). «العهدة»'s `custodyStates` brings `fleetCustody.view` (it already opened
     // the page through `custodyFund`); «التراخيص والتجديدات»'s `licenceSpend` brings
     // `fleetLicenseExpense.view` (PAGELESS — never the page).
     expect(FLEET_DASHBOARD_GATES.violationsOpen).toEqual(FLEET_DASHBOARD_GATES.violationsYear);
-    expect(FLEET_DASHBOARD_GATES.exits).toEqual(FLEET_DASHBOARD_GATES.visits);
+    expect(FLEET_DASHBOARD_GATES.exits).toEqual({
+      ...FLEET_DASHBOARD_GATES.workshop,
+      read: 'period',
+    });
+    expect(fleetDashboardGateKeys('exits')).toEqual(['fleetMaintenance.view']);
     expect(FLEET_DASHBOARD_GATES.fuelCardList).toEqual(FLEET_DASHBOARD_GATES.fuelCharging);
     expect(FLEET_DASHBOARD_GATES.opexSeries).toEqual(FLEET_DASHBOARD_GATES.opex);
     expect(FLEET_DASHBOARD_GATES.dealershipList).toEqual(FLEET_DASHBOARD_GATES.dealership);
@@ -709,6 +776,23 @@ describe('the gate table', () => {
     );
   });
 
+  it('retiring the `period` tab moved no key: the four unions equal the arrays recorded before, in order', () => {
+    expect([...FLEET_DASHBOARD_NOW_KEYS]).toEqual(KEYS_BEFORE_PERIOD_TAB_RETIRED.now);
+    expect([...FLEET_DASHBOARD_PERIOD_KEYS]).toEqual(KEYS_BEFORE_PERIOD_TAB_RETIRED.period);
+    expect([...FLEET_DASHBOARD_PAGE_KEYS]).toEqual(KEYS_BEFORE_PERIOD_TAB_RETIRED.page);
+    expect([...FLEET_DASHBOARD_SCOPE_KEYS]).toEqual(KEYS_BEFORE_PERIOD_TAB_RETIRED.scope);
+    // Its `visits` section (check-in day) is gone, gate and all; `exits` keeps the same key, and
+    // the R2 union still admits a maintenance-only reader.
+    expect(Object.keys(FLEET_DASHBOARD_GATES)).not.toContain('visits');
+    expect(FLEET_DASHBOARD_PERIOD_SECTIONS as readonly string[]).not.toContain('visits');
+    expect(FLEET_DASHBOARD_PERIOD_KEYS).toContain('fleetMaintenance.view');
+    expect(
+      FLEET_DASHBOARD_PERIOD_SECTIONS.filter((section) =>
+        fleetDashboardGateKeys(section).includes('fleetMaintenance.view'),
+      ),
+    ).toEqual(['exits']);
+  });
+
   it('is frozen: nothing at runtime can widen a gate', () => {
     expect(Object.isFrozen(FLEET_DASHBOARD_GATES)).toBe(true);
     expect(Object.isFrozen(FLEET_DASHBOARD_GATES.roster)).toBe(true);
@@ -717,7 +801,7 @@ describe('the gate table', () => {
 });
 
 describe('tabs and their sections', () => {
-  it('twelve tabs in the strip’s order: the six rebuilt ones, the three new ones, the rebuilt licences, then the two old ones', () => {
+  it('eleven tabs in the strip’s order: the six rebuilt ones, the three new ones, the rebuilt licences, then «ملخصات», the one old tab kept', () => {
     expect(FLEET_DASHBOARD_TABS).toEqual([
       'overview',
       'today',
@@ -729,11 +813,11 @@ describe('tabs and their sections', () => {
       'fuel',
       'custody',
       'licences',
-      'period',
       'summaries',
     ]);
+    expect(FLEET_DASHBOARD_TABS).toHaveLength(11);
     // The new tabs stand right after «الحوادث ومطالبات التأمين»; «العهدة» right after «الوقود
-    // والمصروفات», then «التراخيص والتجديدات» (the old «التراخيص» key, rebuilt), then the old two.
+    // والمصروفات», then «التراخيص والتجديدات» (the old «التراخيص» key, rebuilt), then «ملخصات».
     expect(FLEET_DASHBOARD_TABS.indexOf('violations')).toBe(
       FLEET_DASHBOARD_TABS.indexOf('accidents') + 1,
     );
@@ -741,16 +825,21 @@ describe('tabs and their sections', () => {
     expect(FLEET_DASHBOARD_TABS.indexOf('licences')).toBe(
       FLEET_DASHBOARD_TABS.indexOf('custody') + 1,
     );
-    expect(FLEET_DASHBOARD_TABS.slice(-2)).toEqual(['period', 'summaries']);
+    expect(FLEET_DASHBOARD_TABS.slice(-2)).toEqual(['licences', 'summaries']);
     // The retired `alerts` and `now` keys are gone (the web maps a link to them onto overview / today),
     // and so is `ranking`: «ترتيب السيارات» lives inside «العدادات والكيلومترات» (a link opens `km`).
     expect(FLEET_DASHBOARD_TABS).not.toContain('alerts');
     expect(FLEET_DASHBOARD_TABS).not.toContain('now');
     expect(FLEET_DASHBOARD_TABS).not.toContain('ranking');
     expect(Object.keys(FLEET_DASHBOARD_TAB_SECTIONS)).not.toContain('ranking');
+    // The old `period` tab is retired (the owner, 2026-11-22): no tab, no read, no sections.
+    expect(FLEET_DASHBOARD_TABS as readonly string[]).not.toContain('period');
+    expect(Object.keys(FLEET_DASHBOARD_TAB_READS)).not.toContain('period');
+    expect(Object.keys(FLEET_DASHBOARD_TAB_SECTIONS)).not.toContain('period');
+    expect(Object.keys(FLEET_DASHBOARD_TAB_PARTS)).not.toContain('period');
   });
 
-  it('names the read(s) of every tab, and «أرقام الفترة» alone is drawn under the old filter-bar wrapper', () => {
+  it('names the read(s) of every tab; every tab under the page filters is a mixed tab (no old filter-bar wrapper left)', () => {
     expect(Object.keys(FLEET_DASHBOARD_TAB_READS)).toEqual([...FLEET_DASHBOARD_TABS]);
     expect(Object.isFrozen(FLEET_DASHBOARD_TAB_READS)).toBe(true);
     expect(FLEET_DASHBOARD_TAB_READS).toEqual({
@@ -764,29 +853,29 @@ describe('tabs and their sections', () => {
       fuel: ['now', 'period'],
       custody: ['web', 'period'],
       licences: ['now', 'period'],
-      period: ['period'],
       summaries: ['now', 'web'],
     });
-    expect(FLEET_DASHBOARD_PERIOD_TABS).toEqual(['period']);
-    for (const tab of FLEET_DASHBOARD_PERIOD_TABS) {
-      expect(FLEET_DASHBOARD_TABS, tab).toContain(tab);
-      expect(FLEET_DASHBOARD_TAB_READS[tab], tab).toEqual(['period']);
+    // The old wrapper's list (its one tab was `period`) is gone from the module and the index.
+    expect('FLEET_DASHBOARD_PERIOD_TABS' in fleetDashboard).toBe(false);
+    expect('FLEET_DASHBOARD_PERIOD_TABS' in contracts).toBe(false);
+    // No tab reads R2 alone any more.
+    for (const tab of FLEET_DASHBOARD_TABS) {
+      expect(FLEET_DASHBOARD_TAB_READS[tab], tab).not.toEqual(['period']);
     }
     // The seven MIXED tabs: a «الآن» part + R2 parts under the page filters. Six read R1 for «الآن»…
     const mixed = ['maintenance', 'km', 'accidents', 'violations', 'fuel', 'licences'] as const;
     for (const tab of mixed) {
-      expect(FLEET_DASHBOARD_PERIOD_TABS, tab).not.toContain(tab);
       expect(FLEET_DASHBOARD_TAB_READS[tab], tab).toEqual(['now', 'period']);
     }
     // …«العهدة» reads the custody screen's own hooks for it, never R1.
     expect(FLEET_DASHBOARD_TAB_READS.custody).toEqual(['web', 'period']);
     expect(FLEET_DASHBOARD_TAB_READS.custody).not.toContain('now');
-    // …so the tabs drawn under the page filters are «أرقام الفترة», plus the seven mixed tabs.
+    // …so the tabs drawn under the page filters are exactly the seven mixed tabs.
     expect(
       sorted(
         FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_READS[tab].includes('period')),
       ),
-    ).toEqual(sorted([...FLEET_DASHBOARD_PERIOD_TABS, ...mixed, 'custody']));
+    ).toEqual(sorted([...mixed, 'custody']));
     // «توزيع السيارات» reads «هذا الشهر» on its own, never the page filters.
     expect(FLEET_DASHBOARD_TAB_READS.distribution).not.toContain('period');
   });
@@ -829,7 +918,7 @@ describe('tabs and their sections', () => {
     expect(FLEET_DASHBOARD_TAB_READS.overview).not.toContain('period');
   });
 
-  it('pins the plan’s mapping (the old two unchanged)', () => {
+  it('pins the plan’s mapping («ملخصات», the old tab kept, unchanged)', () => {
     expect(FLEET_DASHBOARD_TAB_SECTIONS).toEqual({
       overview: [
         'vehicles',
@@ -856,7 +945,6 @@ describe('tabs and their sections', () => {
       licences: ['licenceVehicles', 'licenceDrivers', 'papers'],
       custody: ['custodyFund'],
       summaries: ['fuelCharging', 'custodyFund', 'accidentsOpen', 'violationsYear'],
-      period: ['km', 'visits', 'accidents', 'opex', 'dealership'],
       km: ['km', 'noReading'],
       maintenance: ['maintenanceAlarm', 'workshop', 'dealershipPending', 'exits'],
       accidents: ['accidentsOpen', 'notices', 'accidents', 'accidentList'],
@@ -897,18 +985,17 @@ describe('tabs and their sections', () => {
     ]);
   });
 
-  it('the old tabs keep their sections; visits (check-in day) is «أرقام الفترة»’s alone, exits (exit day) the rebuilt tabs’', () => {
+  it('«ملخصات» keeps its sections; no tab counts visits by check-in day any more, exits (exit day) are the rebuilt tabs’', () => {
     expect(FLEET_DASHBOARD_TAB_SECTIONS.summaries).toContain('violationsYear');
     expect(FLEET_DASHBOARD_TAB_SECTIONS.summaries).not.toContain('violationsOpen');
-    expect(
-      FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_SECTIONS[tab].includes('visits')),
-    ).toEqual(['period']);
+    // `visits` (check-in day) was the `period` tab's alone: retired with it — no section, no gate.
+    expect(ALL_SECTIONS as string[]).not.toContain('visits');
+    for (const tab of FLEET_DASHBOARD_TABS) {
+      expect(FLEET_DASHBOARD_TAB_SECTIONS[tab] as readonly string[], tab).not.toContain('visits');
+    }
     expect(
       FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_SECTIONS[tab].includes('exits')),
     ).toEqual(['overview', 'maintenance']);
-    // «الصيانة والورش» counts every period figure by EXIT day, never by check-in.
-    expect(FLEET_DASHBOARD_TAB_SECTIONS.maintenance).not.toContain('visits');
-    expect(FLEET_DASHBOARD_TAB_SECTIONS.period).not.toContain('exits');
     for (const section of ['violationsOpen', 'exits'] as const) {
       expect(FLEET_DASHBOARD_TAB_SECTIONS.overview, section).toContain(section);
     }
@@ -1012,12 +1099,18 @@ describe('tabs and their sections', () => {
     expect(visibleTo(['fleetReceipt.view'])).toEqual(['opex', 'opexSeries']);
     expect(visibleTo(['fleetDealership.view'])).toEqual(['dealership', 'dealershipList']);
     expect(visibleTo(['fleetFuelCard.view'])).toEqual(['fuelCards']);
-    // The old tabs keep their reads of the same fields: «أرقام الفترة» the spend and the invoices,
-    // «ملخصات» the charging summary; the overview all of them. The cards' expiry left «التراخيص»
-    // with its old body: it is this tab's and the overview's (§11 Q1).
-    expect(FLEET_DASHBOARD_TAB_SECTIONS.period).toEqual(
-      expect.arrayContaining(['opex', 'dealership']),
-    );
+    // «ملخصات» keeps its read of the charging summary; the overview the spend. The spend and the
+    // invoices of the retired `period` tab live here (and the spend on the overview's month card).
+    // The cards' expiry left «التراخيص» with its old body: it is this tab's and the overview's
+    // (§11 Q1).
+    expect(
+      FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_SECTIONS[tab].includes('opex')),
+    ).toEqual(['overview', 'fuel']);
+    expect(
+      FLEET_DASHBOARD_TABS.filter((tab) =>
+        FLEET_DASHBOARD_TAB_SECTIONS[tab].includes('dealership'),
+      ),
+    ).toEqual(['fuel']);
     expect(FLEET_DASHBOARD_TAB_SECTIONS.summaries).toContain('fuelCharging');
     expect(
       FLEET_DASHBOARD_TABS.filter((tab) => FLEET_DASHBOARD_TAB_SECTIONS[tab].includes('fuelCards')),
@@ -1031,7 +1124,7 @@ describe('tabs and their sections', () => {
     }
   });
 
-  it('lists the sections in DTO order: «آخر ما سُجّل» retired from R1, «العهدة» and «التراخيص والتجديدات» add one R2 section each', () => {
+  it('lists the sections in DTO order: «آخر ما سُجّل» retired from R1, «العهدة» and «التراخيص والتجديدات» add one R2 section each, the `period` tab’s `visits` retired from R2', () => {
     expect([...FLEET_DASHBOARD_NOW_SECTIONS]).toEqual([
       'vehicles',
       'roster',
@@ -1055,7 +1148,6 @@ describe('tabs and their sections', () => {
     ]);
     expect([...FLEET_DASHBOARD_PERIOD_SECTIONS]).toEqual([
       'km',
-      'visits',
       'exits',
       'accidents',
       'accidentList',
@@ -1094,10 +1186,9 @@ describe('tabs and their sections', () => {
         fleetDashboardGateKeys(section).every((key) => held.includes(key)),
       );
     expect(showsFor(['fleetCustody.view'])).toBe(true);
-    // A receipts-only reader gets no «العهدة» (they keep the custody spend on «أرقام الفترة» and the
-    // fuel tab's bars — the same `opex` fields).
+    // A receipts-only reader gets no «العهدة» (they keep the custody spend on the fuel tab's bars —
+    // the same `opex` fields).
     expect(showsFor(['fleetReceipt.view'])).toBe(false);
-    expect(FLEET_DASHBOARD_TAB_SECTIONS.period).toContain('opex');
     expect(FLEET_DASHBOARD_TAB_SECTIONS.fuel).toContain('opex');
     // «منها حتى الآن» needs both keys: the receipts, and the memos they stand on.
     const permitted = (held: readonly string[]): FleetDashboardSection[] =>
@@ -1352,7 +1443,7 @@ describe('the shapes of «توزيع السيارات» and «الصيانة و�
     expect(parts.reduce((sum, part) => sum + Number(workshop[part]), 0)).toBe(workshop.open);
   });
 
-  it('maintenance period: exits by EXIT day carry the breakdown; visits (check-in) only their state', () => {
+  it('maintenance period: exits by EXIT day carry the breakdown; R2 holds no check-in section', () => {
     const exits: FleetDashboardPeriodExitsDto = {
       count: 3,
       avgStayDays: 1.7,
@@ -1381,9 +1472,13 @@ describe('the shapes of «توزيع السيارات» and «الصيانة و�
       topVehicles: [],
       unregistered: null,
     };
-    const visits: FleetDashboardPeriodVisitsDto = { count: 4, closed: 3, open: 1 };
-    const period: Pick<FleetDashboardPeriodDto, 'visits' | 'exits'> = { visits, exits };
-    expect(Object.keys(visits).sort()).toEqual(['closed', 'count', 'open']);
+    const period: Pick<FleetDashboardPeriodDto, 'exits'> = { exits };
+    // The `period` tab's `visits` (by check-in day) is no field of R2 any more.
+    const noVisits: Partial<FleetDashboardPeriodDto> = {
+      // @ts-expect-error — R2 has no `visits` section (retired with the `period` tab)
+      visits: { count: 4, closed: 3, open: 1 },
+    };
+    expect(Object.keys(noVisits)).toEqual(['visits']);
     expect(period.exits?.byWorkType.reduce((sum, bar) => sum + bar.count, 0)).toBe(exits.count);
     expect(period.exits?.byWorkshop.reduce((sum, bar) => sum + bar.count, 0)).toBe(exits.count);
     expect(empty.avgStayDays).toBeNull();
@@ -1548,7 +1643,6 @@ describe('the shapes of «العدادات والكيلومترات» and «ال
     const accidents: NonNullable<FleetDashboardPeriodDto['accidents']> = {
       count: 4,
       open: 2,
-      openRemaining: 1500,
       undated: 1,
       totals: {
         amountCollected: 12000,
@@ -1559,6 +1653,14 @@ describe('the shapes of «العدادات والكيلومترات» and «ال
         remaining: 5500,
       },
     };
+    // The open files' own remaining (the `period` tab's `openRemaining`) is no field any more: the
+    // period's money is `totals`, open AND closed files.
+    expect(Object.keys(accidents).sort()).toEqual(['count', 'open', 'totals', 'undated']);
+    const noOpenRemaining: Partial<NonNullable<FleetDashboardPeriodDto['accidents']>> = {
+      // @ts-expect-error — retired with the `period` tab
+      openRemaining: 1500,
+    };
+    expect(Object.keys(noOpenRemaining)).toEqual(['openRemaining']);
     const { totals } = accidents;
     expect(Object.keys(totals).sort()).toEqual([
       'amountCollected',

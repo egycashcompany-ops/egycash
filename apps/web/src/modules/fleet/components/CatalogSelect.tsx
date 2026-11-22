@@ -16,6 +16,7 @@ export const CatalogSelect = ({
   allLabel,
   id,
   ariaLabel,
+  title = ariaLabel,
   className = 'w-auto',
   density,
   disabled = false,
@@ -43,6 +44,11 @@ export const CatalogSelect = ({
   requireChoice?: boolean;
   id?: string;
   ariaLabel?: string;
+  /**
+   * The hover text — the aria label by default. A box that cuts a long chosen name with «…» passes
+   * that whole name, so hovering the box reads what it cannot show; `undefined` keeps the default.
+   */
+  title?: string | undefined;
   /**
    * How wide the control is. `w-auto` — the default, and what every existing caller gets — sizes
    * the `<select>` to its longest option, which is right for a form field with room around it.
@@ -73,7 +79,7 @@ export const CatalogSelect = ({
       aria-label={ariaLabel}
       // The filter bars that size this control can make it narrower than its own label; the
       // tooltip is what the reader falls back on when the text is truncated.
-      {...(ariaLabel === undefined ? {} : { title: ariaLabel })}
+      {...(title === undefined ? {} : { title })}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}

@@ -1,10 +1,10 @@
 // «لوحة تحكم الحركة» — the fleet module's home (/fleet).
 //
-// Twelve tabs on ONE sticky pill strip, and NO page head (owner-decisions #3), in the order the
+// Eleven tabs on ONE sticky pill strip, and NO page head (owner-decisions #3), in the order the
 // finished dashboard will keep (plan D2):
 //   نظرة عامة · الحركة اليوم · توزيع السيارات · الصيانة والورش · العدادات والكيلومترات ·
 //   الحوادث ومطالبات التأمين · المخالفات المرورية والتسويات · الوقود والمصروفات · العهدة ·
-//   التراخيص والتجديدات · أرقام الفترة · ملخصات
+//   التراخيص والتجديدات · ملخصات
 // The first ten are the redesigned screens: «نظرة عامة» and «الحركة اليوم» took the content of the
 // retired «التنبيهات» and «الحركة الآن» (an old `?tab=alerts` / `?tab=now` opens them);
 // «توزيع السيارات», «الصيانة والورش», «العدادات والكيلومترات» (key `km`), «الحوادث ومطالبات
@@ -12,11 +12,14 @@
 // keys (an old link opens the new body); «العدادات والكيلومترات» also holds the old «ترتيب السيارات»
 // (an old `?tab=ranking` opens it); «المخالفات المرورية والتسويات» (key `violations`), «الوقود
 // والمصروفات» (key `fuel`) and «العهدة» (key `custody`) are NEW tabs with no old tab of their own.
-// The last two are the old tabs, unchanged:
+// The last one, «ملخصات», is the one old tab kept, unchanged; the old period-figures tab was removed
+// at the owner's word (22 November) — an old link to it opens the first visible tab (`readTab`), and
+// its figures live on the mixed panels. The reads:
 //   · R1 `GET /fleet/dashboard/now` (Cairo today, untouched by the filters) — overview, today,
 //     distribution, summaries; the overview and «توزيع السيارات» (its km, with the km key) also read
 //     R2 over «هذا الشهر» with no page filter;
-//   · R2 `GET /fleet/dashboard/period` — «أرقام الفترة» alone under `PeriodTab`;
+//   · R2 `GET /fleet/dashboard/period` under the page's filters — the period parts of the seven
+//     MIXED panels below (no tab reads R2 alone any more);
 //   · the seven MIXED panels — «الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات
 //     التأمين», «المخالفات المرورية والتسويات», «الوقود والمصروفات», «العهدة», «التراخيص
 //     والتجديدات»: a «الآن» part and a period part over the page's R2, under the same filter bar
@@ -43,7 +46,6 @@ import {
   FLEET_DASHBOARD_PAGELESS_SECTIONS,
   FLEET_DASHBOARD_PERIOD_SECTIONS,
   cairoYmd,
-  FLEET_DASHBOARD_PERIOD_TABS,
   FLEET_DASHBOARD_TABS,
   FLEET_DASHBOARD_TAB_PARTS,
   FLEET_DASHBOARD_TAB_READS,
@@ -85,7 +87,6 @@ import {
   type NowTabProps,
   type PageRead,
 } from '../components/fleet-dashboard/dash-shell';
-import { PeriodTab } from '../components/fleet-dashboard/period-tabs';
 import { MONTH_SECTIONS, OverviewTab } from '../components/fleet-dashboard/tab-overview';
 import { TodayTab } from '../components/fleet-dashboard/tab-today';
 import { DistributionTab } from '../components/fleet-dashboard/tab-distribution';
@@ -154,11 +155,6 @@ export const dashboardReads = (
   custody: sectionPermitted('custodyFund', can),
 });
 
-type PeriodTabKey = (typeof FLEET_DASHBOARD_PERIOD_TABS)[number];
-
-const isPeriodTab = (tab: FleetDashboardTab): tab is PeriodTabKey =>
-  (FLEET_DASHBOARD_PERIOD_TABS as readonly string[]).includes(tab);
-
 /**
  * The panels of a «الآن» read and R2 both, each part with its own read's face (plan D3): R1's, or —
  * «العهدة» — the custody screen's own reads.
@@ -194,7 +190,7 @@ const isMixedTab = (tab: FleetDashboardTab): tab is MixedTabKey =>
   (Object.keys(MIXED_PANELS) as readonly string[]).includes(tab);
 
 const NOW_PANELS: Record<
-  Exclude<FleetDashboardTab, PeriodTabKey | MixedTabKey>,
+  Exclude<FleetDashboardTab, MixedTabKey>,
   (props: NowTabProps) => JSX.Element
 > = {
   overview: OverviewTab,
@@ -361,22 +357,6 @@ const Dashboard = ({ custody }: { custody: CustodyFigures | null }): JSX.Element
         tabLink={toTab}
         period={pageRead}
         {...(nowPending === undefined || web ? {} : { nowPending })}
-      />
-    );
-  } else if (isPeriodTab(active)) {
-    panel = (
-      <PeriodTab
-        tab={active}
-        data={periodQ.data}
-        loading={reads.period && periodQ.isPending}
-        error={periodQ.isError}
-        onRetry={refreshPeriod}
-        filters={filters}
-        onFilters={onFilters}
-        updatedAt={periodQ.dataUpdatedAt}
-        refreshing={periodQ.isFetching}
-        onRefresh={refreshPeriod}
-        can={can}
       />
     );
   } else if (reads.now && dashboardView(nowQ) !== 'ready' && active !== 'overview') {

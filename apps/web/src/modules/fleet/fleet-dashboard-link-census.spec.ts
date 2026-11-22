@@ -2,10 +2,10 @@
 //
 // A figure on the dashboard opens the screen that shows the same number. The server half of that
 // promise is A-DASH's parity spec (every figure = its screen's endpoint called with the link's
-// parameters). This is the browser half: render all twelve tabs from the fixtures — the company, a
+// parameters). This is the browser half: render all eleven tabs from the fixtures — the company, a
 // chosen branch, a reader of several branches («كل فروعي»), and period filters that narrow by type,
-// operation, codes and branch («أرقام الفترة» and the period parts of the seven mixed panels), for a
-// reader of every key the gates name (the PAGELESS licence expenses' too) — collect
+// operation, codes and branch (the period parts of the seven mixed panels), for a reader of every
+// key the gates name (the PAGELESS licence expenses' too) — collect
 // EVERY figure link the page draws (the overview's links to other tabs of the page included), and
 // hold each to the screen it opens:
 //   · its path is a route of the fleet module, and the page that route mounts is known;
@@ -36,7 +36,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   FLEET_DASHBOARD_GATES,
-  FLEET_DASHBOARD_PERIOD_TABS,
   FLEET_DASHBOARD_TABS,
   FLEET_DASHBOARD_TAB_READS,
   formatFleetSort,
@@ -158,10 +157,13 @@ const anchors = (html: string): Anchor[] =>
 const NOW_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('now'),
 );
+/** The key of the removed period-figures tab: no tab, and no link opens it. */
+const REMOVED_TAB = 'period';
 /**
- * The tabs drawn over the PAGE's R2: «أرقام الفترة» under the filter bar, and the seven mixed
- * panels («الصيانة والورش», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية
- * والتسويات», «الوقود والمصروفات», «العهدة», «التراخيص والتجديدات»).
+ * The tabs drawn over the PAGE's R2: the seven mixed panels («الصيانة والورش», «العدادات
+ * والكيلومترات», «الحوادث ومطالبات التأمين», «المخالفات المرورية والتسويات», «الوقود والمصروفات»,
+ * «العهدة», «التراخيص والتجديدات») — the removed period-figures tab was the only one that read R2
+ * alone.
  */
 const PAGE_PERIOD_TABS = FLEET_DASHBOARD_TABS.filter((tab) =>
   FLEET_DASHBOARD_TAB_READS[tab].includes('period'),
@@ -423,10 +425,8 @@ const built = (): Anchor[] => {
     all.push(
       P.exits(),
       P.opexFuel(),
-      P.opexCustody(),
       P.opex('opex.custody', 'custody'),
       P.dealership('dealership.pending', 'pending'),
-      P.visits('visits.closed', { state: 'closed' }),
       P.exits('exits.byWorkType', { workTypes: ['w1'] }),
       P.exits('exits.byWorkshop', { workshops: ['s1'] }),
       P.exits('exits.topVehicle', { vehicleCodes: ['133'] }),
@@ -467,19 +467,11 @@ const parse = (href: string): { pathname: string; params: URLSearchParams } => {
 };
 
 describe('the link census — every figure link against the screen it opens', () => {
-  it('collects the page’s links from all twelve tabs (the census is not empty by accident)', () => {
-    expect(FLEET_DASHBOARD_TABS).toHaveLength(12);
+  it('collects the page’s links from all eleven tabs (the census is not empty by accident)', () => {
+    expect(FLEET_DASHBOARD_TABS).toHaveLength(11);
+    expect(FLEET_DASHBOARD_TABS).not.toContain(REMOVED_TAB);
     expect([...PAGE_PERIOD_TABS].sort()).toEqual(
-      [
-        ...FLEET_DASHBOARD_PERIOD_TABS,
-        'maintenance',
-        'km',
-        'accidents',
-        'violations',
-        'fuel',
-        'custody',
-        'licences',
-      ].sort(),
+      ['maintenance', 'km', 'accidents', 'violations', 'fuel', 'custody', 'licences'].sort(),
     );
     expect(LINKS.length).toBeGreaterThan(150);
     const metrics = new Set(LINKS.map((l) => l.metric.split('.')[0]));
@@ -489,7 +481,6 @@ describe('the link census — every figure link against the screen it opens', ()
       'distributionVehicles',
       'km',
       'noReading',
-      'visits',
       'exits',
       'workshop',
       'supplyContracts',
@@ -515,6 +506,12 @@ describe('the link census — every figure link against the screen it opens', ()
     ]) {
       expect(metrics.has(section), section).toBe(true);
     }
+    // The period-figures tab is gone (22 November): no figure counts the visits by their check-in
+    // day any more, and no link anywhere opens the removed tab.
+    expect(metrics.has('visits')).toBe(false);
+    expect(LINKS.filter((l) => l.metric.startsWith('visits.')).map((l) => l.metric)).toEqual([]);
+    const removedTab = new RegExp(`[?&]tab=${REMOVED_TAB}(?:&|$)`, 'u');
+    expect(LINKS.filter((l) => removedTab.test(l.href)).map((l) => l.href)).toEqual([]);
     // «العهدة» and «التراخيص والتجديدات» are drawn and linked from the fixtures, not only built.
     const drawn = new Set(RENDERED.map((l) => l.metric));
     for (const metric of [
@@ -941,7 +938,6 @@ describe('the two rebuilt tabs’ own reads (plan D3, D4, D7)', () => {
         /^fuelCardList\.(expiry|chargingStates)/u,
         /^dealershipPending\.rows$/u,
         /^exits\./u,
-        /^visits\./u,
         /^km\.(total|top5|bottom5)$/u,
         /^accidents\./u,
         /^violations\./u,

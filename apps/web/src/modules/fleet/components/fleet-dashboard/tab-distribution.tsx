@@ -42,6 +42,7 @@ import {
   type NowLinks,
 } from '../../lib/fleet-dashboard-links';
 import {
+  kmText,
   leadIndex,
   ratioText,
   sectionPermitted,
@@ -105,7 +106,6 @@ import {
   type MonthRead,
   type NowTabProps,
 } from './dash-shell';
-import { kmText } from './tab-period';
 
 type Vehicles = NonNullable<FleetDashboardNowDto['distributionVehicles']>;
 type Drivers = NonNullable<FleetDashboardNowDto['distributionDrivers']>;

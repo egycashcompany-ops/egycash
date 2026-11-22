@@ -593,7 +593,7 @@ const TAB_SCOPED: readonly (readonly [string, string])[] = [
 const TAB_SHARED: readonly (readonly [string, string])[] = [
   [
     'modules/fleet/pages/FleetDashboardPage.tsx',
-    '«أرقام الفترة» and the seven mixed panels («الصيانة والورش»، «العدادات والكيلومترات»، «الحوادث ومطالبات التأمين»، «المخالفات المرورية والتسويات»، «الوقود والمصروفات»، «العهدة»، «التراخيص والتجديدات» — the last with its period choices only) draw one filter bar over one read, R2 — «الفلاتر ثابتة بين التبويبات»; type, operation and codes are remembered, the period is not (it stays in the address bar between tabs)',
+    'the seven mixed panels («الصيانة والورش»، «العدادات والكيلومترات»، «الحوادث ومطالبات التأمين»، «المخالفات المرورية والتسويات»، «الوقود والمصروفات»، «العهدة»، «التراخيص والتجديدات» — the last with its period choices only) draw one filter bar over one read, R2 — «الفلاتر ثابتة بين التبويبات»; type, operation and codes are remembered, the period is not (it stays in the address bar between tabs)',
   ],
 ];
 

@@ -136,7 +136,6 @@ const NOW: FleetDashboardNowDto = {
 const ACCIDENTS: Accidents = {
   count: 8,
   open: 3,
-  openRemaining: 9800,
   undated: 25,
   totals: {
     amountCollected: 16_700,
@@ -673,7 +672,7 @@ describe('«إخطارات ينقصها مرفق» — the server’s rows, the 
 // ── 4 · «خلال الفترة» ─────────────────────────────────────────────────────────────────────────
 
 describe('«خلال الفترة» — the period’s files by accident day, their money, their list', () => {
-  it('«حوادث الفترة»: the count and the still-open, each opening the register over the same days (= «أرقام الفترة»)', () => {
+  it('«حوادث الفترة»: the count and the still-open, each opening the register over the same days', () => {
     const card = kpi(DEFAULT, 'period');
     const words = text(card);
     expect(words).toContain(ar('fleet.dash.accidents.title'));
@@ -686,6 +685,8 @@ describe('«خلال الفترة» — the period’s files by accident day, th
   });
 
   it('never draws the open files’ remaining of the period: every «المتبقي» names its basis', () => {
+    // The server sends no open-files-only remaining any more (it went with the period-figures
+    // tab, 22 November); nothing on this tab ever drew one.
     expect(text(DEFAULT)).not.toContain('9,800.00');
     expect(hrefs(DEFAULT, 'accidents.openRemaining')).toEqual([]);
   });

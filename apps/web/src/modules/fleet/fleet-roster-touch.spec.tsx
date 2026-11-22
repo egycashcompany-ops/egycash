@@ -7,7 +7,8 @@
 //
 // The web suite has no window, so the shell is rendered with the layout handed in
 // (`RosterScreen layout=…`); what a finger does is verified in a browser against the approved shots.
-import { describe, expect, it } from 'vitest';
+import { type ReactNode } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -23,6 +24,32 @@ import { matchesVehicleCode } from './lib/vehicle-code-match';
 import { touchCars } from './lib/roster-board';
 import { visibleRows } from './lib/roster-view';
 import { rosterSource } from './roster-spec-sources';
+import { NotesSheet } from './components/roster/roster-touch-parts';
+import { ROSTER_NOTE_MAX } from './components/roster/roster-parts';
+
+// An OPEN sheet drawn in place: the real one portals to `document.body`, which a static render in
+// node has none of. Closed, both draw nothing — so the boards' own renders here are unchanged.
+vi.mock('./components/roster/RosterBottomSheet', () => ({
+  BottomSheet: ({
+    name,
+    open,
+    title,
+    children,
+    footer,
+  }: {
+    name: string;
+    open: boolean;
+    title: string;
+    children: ReactNode;
+    footer?: ReactNode;
+  }): JSX.Element | null =>
+    open ? (
+      <section data-sheet={name} data-title={title}>
+        {children}
+        {footer}
+      </section>
+    ) : null,
+}));
 
 const V1 = '650000000000000000000001';
 const V2 = '650000000000000000000002';
@@ -509,5 +536,35 @@ describe('a seat on a touch card clears with ✕', () => {
     const card = rosterSource(['touch']);
     const clear = card.slice(card.indexOf('data-clear-slot='));
     expect(clear.slice(0, 600)).toContain('<CloseIcon');
+  });
+});
+
+// The owner's 22 November «صلحهم» (e): the day's note had no cap on the phone either, while the API
+// refuses a note past 500 letters — so a longer one was typed, and only refused at «حفظ».
+describe('the day’s note on a touch card takes at most 500 letters', () => {
+  it('hands the notes sheet the day’s cap — the API’s 500', () => {
+    expect(ROSTER_NOTE_MAX).toBe(500);
+    const at = TOUCH.indexOf('<NotesSheet');
+    expect(at, 'the touch board draws the notes sheet').toBeGreaterThan(-1);
+    expect(TOUCH.slice(at, TOUCH.indexOf('/>', at))).toContain('maxLength={ROSTER_NOTE_MAX}');
+    expect(TOUCH, 'one notes sheet on the daily touch board').not.toMatch(
+      /<NotesSheet[\s\S]*<NotesSheet/u,
+    );
+  });
+
+  it('draws the sheet’s note box with maxlength="500"', () => {
+    const html = renderToStaticMarkup(
+      <Provider store={store(PLANNER)}>
+        <QueryClientProvider client={client(day(1))}>
+          <NotesSheet
+            row={row(V1, '150')}
+            maxLength={ROSTER_NOTE_MAX}
+            onSave={() => undefined}
+            onClose={() => undefined}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+    expect(tagOf(html, 'data-notes-input="true"')).toMatch(/maxlength="500"/iu);
   });
 });

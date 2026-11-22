@@ -33,12 +33,11 @@ import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { periodLinks } from '../../lib/fleet-dashboard-links';
 import { axisLabel, kmChart, type KmColumn } from '../../lib/fleet-dashboard-km-chart';
-import { slashDay } from '../../lib/fleet-dashboard-tabs';
+import { kmText, slashDay } from '../../lib/fleet-dashboard-tabs';
 import { custodyCountForm, useSeparator } from '../custody-dashboard-parts';
 import { FOCUS, Fig, MUTED, N, NOTE, NUM, STRONG, TONE, cn } from './dash-kit';
 import { Sep } from './dash-blocks';
 import { Phrase, count, useNoun } from './dash-shell';
-import { kmText } from './tab-period';
 
 // ── The brand family (DECISIONS §5) ───────────────────────────────────────────────────────────
 

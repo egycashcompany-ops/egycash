@@ -17,7 +17,12 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { type FleetRosterDayDto, type Locale, type MeDto } from '@ecms/contracts';
+import {
+  PlanFleetRosterRowSchema,
+  type FleetRosterDayDto,
+  type Locale,
+  type MeDto,
+} from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
@@ -25,6 +30,35 @@ import { RosterPage } from './pages/RosterPage';
 import { filterDrivers } from './lib/driver-search';
 import { rosterDraftKey } from './lib/draft-storage';
 import { rosterSource } from './roster-spec-sources';
+import { RosterAssignDialog } from './components/RosterAssignDialog';
+import { EmployeeName } from './components/EmployeeName';
+import { MISSION_BOX, missionTitle } from './components/roster/RosterDeskBoard';
+import { ROSTER_NOTE_MAX } from './components/roster/roster-parts';
+
+// The edit dialog drawn in place: the real `Dialog` portals to `document.body`, which a static
+// render has no use for. Closed, both draw nothing — so the board's own renders are unchanged.
+vi.mock('../../shared/ui/Dialog', async () => {
+  const { createElement } = await import('react');
+  return {
+    Dialog: (props: {
+      open: boolean;
+      title: string;
+      description?: string;
+      footer?: unknown;
+      children?: unknown;
+    }) =>
+      props.open
+        ? createElement(
+            'div',
+            { role: 'dialog', 'data-dialog-title': props.title },
+            createElement('h2', null, props.title),
+            props.description === undefined ? null : createElement('p', null, props.description),
+            props.children as never,
+            createElement('footer', null, props.footer as never),
+          )
+        : null,
+  };
+});
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /**
@@ -129,11 +163,11 @@ const client = (board: FleetRosterDayDto = BOARD, date = day(1)): QueryClient =>
   return qc;
 };
 
-const store = (permissions: string[]) =>
+const store = (permissions: string[], locale: Locale = 'ar') =>
   configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer },
     preloadedState: {
-      locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+      locale: { locale, dir: locale === 'ar' ? ('rtl' as const) : ('ltr' as const) },
       auth: {
         me: {
           id: 'u1',
@@ -2259,5 +2293,158 @@ describe('the picked code opens exactly its car', () => {
 
   it('no pick shows the whole day', () => {
     expect(rows(at('', MODELS))).toHaveLength(4);
+  });
+});
+
+// ── the owner's 22 November items (d, e, f): the dialog's gap, the note's cap, a long mission ──
+
+describe('«تعديل»: the driver’s name and code keep a gap', () => {
+  // The dialog seeds its four facts in an effect when it opens, and a static render runs none:
+  // drawn here, its seats are the empty «اختيار سائق». So the seat is pinned as the dialog writes
+  // it, and the name renderer it writes is drawn in the seat's own box (measured in Chrome too).
+  const DIALOG = readFileSync(join(HERE, 'components/RosterAssignDialog.tsx'), 'utf8');
+  const seat = (locale: Locale, card: boolean): string =>
+    renderToStaticMarkup(
+      <Provider store={store(['fleetRoster.view', 'fleetRoster.plan', 'fleetDriver.view'], locale)}>
+        <QueryClientProvider client={client()}>
+          <span className="text-sm">
+            <EmployeeName employeeId={E1} card={card} />
+          </span>
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+  it('draws the picked seat and the pool’s options through the shared name renderer', () => {
+    expect(DIALOG).toContain(
+      '<span className="text-sm">\n            <EmployeeName employeeId={value} />',
+    );
+    expect(DIALOG).toContain('<EmployeeName employeeId={driver.employeeId} card={false} />');
+  });
+
+  for (const locale of ['ar', 'en'] as const) {
+    it(`which keeps the gap on the page's side of the code, in ${locale}`, () => {
+      for (const card of [true, false]) {
+        const markup = seat(locale, card);
+        expect(markup).toContain(
+          'أحمد محمد<span class="ms-2 font-figures text-xs text-slate-500"><bdi dir="ltr">HR-1</bdi></span>',
+        );
+        expect(markup, 'not the margin on the code’s own left').not.toContain(
+          'text-slate-500" dir="ltr">HR-1',
+        );
+      }
+    });
+  }
+});
+
+describe('the day’s note takes at most 500 letters, as the API does', () => {
+  const dialog = (): string =>
+    renderToStaticMarkup(
+      <Provider store={store(['fleetRoster.view', 'fleetRoster.plan', 'fleetDriver.view'])}>
+        <QueryClientProvider client={client()}>
+          <RosterAssignDialog
+            open
+            onClose={() => undefined}
+            onSave={() => undefined}
+            row={BOARD.rows[0]!}
+            board={BOARD}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+  /** The opening tag of the dialog's note box. */
+  const notesBox = (markup: string): string => {
+    const at = markup.indexOf('<textarea');
+    expect(at, 'the dialog draws its note box').toBeGreaterThan(-1);
+    return markup.slice(at, markup.indexOf('>', at) + 1);
+  };
+
+  it('is the API’s cap — 500 is taken, 501 refused', () => {
+    expect(ROSTER_NOTE_MAX).toBe(500);
+    const note = (length: number) =>
+      PlanFleetRosterRowSchema.safeParse({ vehicleId: V1, notes: 'م'.repeat(length) }).success;
+    expect(note(ROSTER_NOTE_MAX), '500 letters').toBe(true);
+    expect(note(ROSTER_NOTE_MAX + 1), '501 letters').toBe(false);
+  });
+
+  it('caps the computer’s «تعديل» dialog', () => {
+    const markup = dialog();
+    expect(markup).toContain(
+      `data-dialog-title="${translate('ar', 'fleet.roster.assignTitle', { code: '150' })}"`,
+    );
+    expect(notesBox(markup)).toMatch(/maxlength="500"/iu);
+    expect(readFileSync(join(HERE, 'components/RosterAssignDialog.tsx'), 'utf8')).toContain(
+      'maxLength={ROSTER_NOTE_MAX}',
+    );
+  });
+
+  it('leaves the dialog’s mission select hovering its own label', () => {
+    const markup = dialog();
+    const at = markup.indexOf('<select');
+    expect(markup.slice(at, markup.indexOf('>', at))).toContain(
+      `title="${t('fleet.roster.fields.mission')}"`,
+    );
+  });
+});
+
+describe('a long mission name ends in «…» and hovers whole', () => {
+  const LONG = 'نقل أموال (يومي) بين الفروع والبنوك';
+  /** The opening tag of one row's mission select, found by its aria-label. '' when absent. */
+  const selectTag = (markup: string, code: string): string => {
+    const at = markup.indexOf(`aria-label="${code} · ${t('fleet.roster.fields.mission')}"`);
+    if (at === -1) return '';
+    return markup.slice(markup.lastIndexOf('<select', at), markup.indexOf('>', at) + 1);
+  };
+  const withLong = (): QueryClient => {
+    const qc = client();
+    qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'missionType' }], {
+      items: [{ id: MT, kind: 'missionType', name: { ar: LONG, en: 'Cash run' }, isActive: true }],
+      meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+    });
+    return qc;
+  };
+
+  it('cuts with an ellipsis in the box, at the widths the laptop fit was measured with', () => {
+    const classes = MISSION_BOX.split(' ');
+    expect(MISSION_BOX.startsWith('mx-auto w-[9.5rem] max-[1535px]:w-36 ')).toBe(true);
+    expect(classes).toContain('[&_select]:!truncate');
+    expect(
+      classes.filter((rule) => /(^|:)!?(min-|max-)?w-/u.test(rule)),
+      'no width added or moved',
+    ).toEqual(['w-[9.5rem]', 'max-[1535px]:w-36']);
+    const markup = render({ qc: withLong() });
+    const tag = selectTag(markup, '150');
+    expect(tag).not.toBe('');
+    const box = markup.slice(0, markup.indexOf(tag));
+    expect(
+      box.slice(box.lastIndexOf('<div class="mx-auto')).replaceAll('&amp;', '&'),
+      'the box drawn on the row',
+    ).toContain('[&_select]:!truncate');
+  });
+
+  it('hovers the chosen mission’s whole name; with none, what the box is for', () => {
+    for (const [qc, name] of [
+      [client(), 'نقل أموال (يومي)'],
+      [withLong(), LONG],
+    ] as const) {
+      const markup = render({ qc });
+      expect(selectTag(markup, '150')).toContain(`title="${name}"`);
+      expect(selectTag(markup, '150')).not.toContain(
+        `title="150 · ${t('fleet.roster.fields.mission')}"`,
+      );
+      // 151 carries no mission (and the workshop holds it): its box hovers its own label.
+      expect(selectTag(markup, '151')).toContain(
+        `title="151 · ${t('fleet.roster.fields.mission')}"`,
+      );
+    }
+    expect(DESK).toContain('title={missionTitle(m.missionName, row.missionTypeId)}');
+  });
+
+  it('never hovers «—»: no mission, or one the catalog does not name yet, keeps the label', () => {
+    expect(missionTitle(() => LONG, null)).toBeUndefined();
+    expect(
+      missionTitle(() => '—', MT),
+      'the catalog still on its way',
+    ).toBeUndefined();
+    expect(missionTitle((id) => (id === MT ? LONG : '—'), MT)).toBe(LONG);
   });
 });

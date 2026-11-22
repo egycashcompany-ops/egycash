@@ -14,7 +14,6 @@ import {
   type CheckOutFleetMaintenance,
   type FleetDashboardNowWorkshopDto,
   type FleetDashboardPeriodExitsDto,
-  type FleetDashboardPeriodVisitsDto,
   type FleetDashboardRecentVisitDto,
   type ListFleetMaintenanceQuery,
   type LocalizedString,
@@ -939,17 +938,6 @@ class FleetMaintenanceService {
       topVehicles,
       unregistered: narrowed ? null : facts.unregistered - folded,
     };
-  }
-
-  /**
-   * T6.3/T6.4, R-18 — «أرقام الفترة»: the visits the list's filter matches (asked with `from`/`to`:
-   * those that CHECKED IN in the period) and the state each is in NOW («حتى الآن», R-22), in one
-   * `$group`. `/fleet/maintenance?from&to[&state=…]&<set>` lists exactly these rows.
-   */
-  async visitStates(query: MaintenanceFilterQuery): Promise<FleetDashboardPeriodVisitsDto> {
-    const { filter } = await this.scopedFilter(query);
-    const { count, open } = await fleetMaintenanceRepository.stateCounts(filter);
-    return { count, closed: count - open, open };
   }
 
   async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {

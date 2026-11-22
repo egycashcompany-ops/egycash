@@ -15,6 +15,7 @@ import {
   type LocalizedString,
 } from '@ecms/contracts';
 import { FleetMaintenanceVisitModel } from './maintenance.model';
+import { fleetMaintenanceRepository } from './maintenance.repository';
 import { fleetMaintenanceService, type MaintenanceFilterQuery } from './maintenance.service';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
@@ -183,7 +184,7 @@ const EXIT_QUERIES: Record<string, Record<string, unknown>> = {
 
 const EMPTY_BREAKDOWN = [{ state: [], byWorkType: [], byWorkshop: [], byVehicle: [] }];
 
-describe('exitBreakdown / visitStates — the list’s own filter (R-18)', () => {
+describe('exitBreakdown — the list’s own filter (R-18)', () => {
   beforeEach(() => {
     vi.spyOn(fleetVehicleTypeRepository, 'listAll').mockResolvedValue([]);
   });
@@ -198,17 +199,6 @@ describe('exitBreakdown / visitStates — the list’s own filter (R-18)', () =>
       // One `$facet` over that match — one round trip for the whole breakdown.
       expect(aggregates[0]).toHaveLength(2);
       expect(aggregates[0]?.[1]).toHaveProperty('$facet');
-    });
-
-    it(`visitStates matches exactly the rows /fleet/maintenance counts — ${name}`, async () => {
-      facets = [];
-      const listed = await listCountFilter(raw);
-      await fleetMaintenanceService.visitStates(filterPart(parse(raw)));
-      expect(aggregates).toHaveLength(1);
-      expect(matchOf(aggregates[0])).toEqual(listed);
-      // ONE `$group` — the check-in figures need no facet, no names, no cars.
-      expect(aggregates[0]).toHaveLength(2);
-      expect(aggregates[0]?.[1]).toHaveProperty('$group');
     });
   }
 
@@ -242,24 +232,12 @@ describe('exitBreakdown / visitStates — the list’s own filter (R-18)', () =>
   });
 });
 
-describe('visitStates — «أرقام الفترة» (check-in day)', () => {
-  it('count, and the state NOW: closed + open = count', async () => {
-    facets = [{ count: 12, open: 3 }];
-    const out = await fleetMaintenanceService.visitStates(
-      filterPart(parse({ from: '2026-10-01', to: '2026-10-31' })),
-    );
-    expect(out).toEqual({ count: 12, closed: 9, open: 3 });
-  });
-
-  it('an empty period is zeros; an old row with no `outDate` at all is open', async () => {
-    facets = [];
-    expect(await fleetMaintenanceService.visitStates(filterPart(parse({})))).toEqual({
-      count: 0,
-      closed: 0,
-      open: 0,
-    });
-    const group = JSON.stringify(aggregates[0]?.[1]);
-    expect(group).toContain('{"$eq":[{"$ifNull":["$outDate",null]},null]}');
+describe('the check-in day count is retired (the dashboard’s `period` tab)', () => {
+  it('the module serves no visits-by-check-in read any more: no `visitStates`, no `stateCounts`', () => {
+    expect('visitStates' in fleetMaintenanceService).toBe(false);
+    expect('stateCounts' in fleetMaintenanceRepository).toBe(false);
+    // The exit-day breakdown «الصيانة والورش» and the overview read stays.
+    expect(typeof fleetMaintenanceService.exitBreakdown).toBe('function');
   });
 });
 

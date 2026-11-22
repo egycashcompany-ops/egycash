@@ -37,6 +37,7 @@ import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { translate } from '../../../platform/localization/i18n';
+import { errorMessage } from '../../../shared/lib/errors';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
 import {
   __deletedShipmentsKey,
@@ -583,7 +584,9 @@ describe('the figure tiles — off the grand total, in the custody dashboard’s
         });
     }, false);
     expect(html).toContain('data-vault-held-error="true"');
-    expect(html).toContain('the vault did not answer');
+    // Said in Arabic: the thrown English sentence gives way to the general line.
+    expect(html).toContain(errorMessage(undefined, 'ar'));
+    expect(html).not.toContain('the vault did not answer');
     expect(html).not.toContain('data-vault-held-tile=');
     expect(html).not.toContain('data-report-table');
   });

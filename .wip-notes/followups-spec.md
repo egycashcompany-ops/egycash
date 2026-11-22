@@ -49,3 +49,14 @@ Answered (2026-11-22):
 
 Tell him before a PR (summary + dark pictures). Egyptian Arabic, Arabic script only, no English. Never print PINs;
 mask card numbers. Squash-merge on green unless he objects; then unsubscribe, delete the check-in, restart the branch.
+
+## Added 2026-11-22 ~10:40 — owner, with a screenshot of the «الطقم الثابت» header
+
+«الجزء اللى فوق دا شيله بتاع العنوان واللى فوقه» — the screenshot shows the breadcrumbs «الحركة › الطقم الثابت», the
+title «الطقم الثابت» and the line under them, above the row «220 سيارة» + «تصدير Excel».
+→ On /fleet/fixed-roster REMOVE the PageHeader (breadcrumbs + title + its divider) at EVERY width (this reverses
+answer 2 (ج)). KEEP the toolbar row with the car count and the Excel pill (desk) and the touch first row with the
+search and the Excel button. A visually hidden h1 («الطقم الثابت», sr-only) may stay for screen readers — nothing
+visible. Update the fixed screen specs (one title per width → no visible title), the told list (item 25 header cost
+is gone: the table gains the rows back), and shoot the new top in dark.
+Done AFTER the follow-ups workflow (wa02x1kuq) finishes, in the same PR.

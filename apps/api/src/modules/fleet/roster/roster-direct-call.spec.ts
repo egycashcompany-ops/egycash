@@ -75,9 +75,20 @@ const doc = (vehicleId: string, driver1: string | null = null) => ({
   notes: null,
 });
 
+/**
+ * The day these plans are for: TOMORROW, read off the clock in the roster's own zone — `plan()`
+ * floors the date at `utcDay(new Date())` and refuses anything earlier (PAST_DATE). A fixed
+ * calendar date expired the day it passed (2026-11-20 did, and took all five cases with it), and
+ * today itself would race the UTC midnight between this line and the guard; tomorrow is a plan on
+ * any day the suite runs.
+ */
+const planDay = (): Date => {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+};
+
 /** The payload an internal caller builds by hand — never parsed, and spelled in UPPER hex. */
-const shouting = (rows: Record<string, unknown>[]) =>
-  ({ date: new Date('2026-11-20T00:00:00.000Z'), rows }) as never;
+const shouting = (rows: Record<string, unknown>[]) => ({ date: planDay(), rows }) as never;
 
 beforeEach(() => {
   vi.clearAllMocks();

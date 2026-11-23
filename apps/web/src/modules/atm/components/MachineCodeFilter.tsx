@@ -35,6 +35,7 @@ import {
   machineCodeOptions,
   machineCodeSearchTerm,
   readMachineCodeInput,
+  readPastedMachineCodes,
 } from '../lib/machine-directory';
 
 /** The pause after the last keystroke before the picker asks the server. */
@@ -116,6 +117,15 @@ export const MachineCodeFilter = ({
         const { chosen, typing } = readMachineCodeInput(search, asciiDigits(raw));
         add(chosen);
         setSearch(typing);
+      }}
+      // A paste, read with its line breaks before the one-line box flattens them into spaces.
+      onPasteSearch={(raw) => {
+        const codes = readPastedMachineCodes(asciiDigits(raw));
+        if (codes === null) return false;
+        setOpened(true);
+        add(codes);
+        setSearch('');
+        return true;
       }}
       searching={found.isFetching}
       // Enter takes whatever is left in the box — the last code of a list needs no separator.

@@ -20,6 +20,7 @@ import {
   machinesCsv,
   pageBeyondEnd,
   readMachineCodeInput,
+  readPastedMachineCodes,
   readTypedMachineCodes,
 } from './machine-directory';
 
@@ -124,6 +125,41 @@ describe('a typed or pasted ID list', () => {
       chosen: ['HDB-ATM 9501'],
       typing: '',
     });
+  });
+
+  // Review of the fix: the browser turns a paste's line breaks into spaces, so a line ending in a
+  // word ran into the code below it as one code written with a space — and that machine was lost.
+  it('reads a paste with its line breaks — a word on one line never runs into the code below', () => {
+    expect(readPastedMachineCodes('NBE\n- 1056\n- 1112\nCIB\n- 2001')).toEqual([
+      'NBE',
+      '-',
+      '1056',
+      '1112',
+      'CIB',
+      '2001',
+    ]);
+    expect(readPastedMachineCodes('ATM-ID\r\n1056\r\n1112\r\n')).toEqual([
+      'ATM-ID',
+      '1056',
+      '1112',
+    ]);
+    expect(readPastedMachineCodes('1056\tEl-Rehab\r\n1112\tNasr City')).toEqual([
+      '1056',
+      'El-Rehab',
+      '1112',
+      'Nasr',
+      'City',
+    ]);
+    // A code written with a space, pasted alone or in a list, stays whole.
+    expect(readPastedMachineCodes('HDB-ATM 9501')).toEqual(['HDB-ATM 9501']);
+    expect(readPastedMachineCodes('HDB-ATM 9501\nHDB - 1234\n0077')).toEqual([
+      'HDB-ATM 9501',
+      'HDB - 1234',
+      '77',
+    ]);
+    // One code and nothing else — a trailing line break included — is a search, as typed.
+    expect(readPastedMachineCodes('1003')).toBeNull();
+    expect(readPastedMachineCodes('1003\n')).toBeNull();
   });
 
   it('still reads one keystroke at a time as typing — the code in progress stays the search', () => {

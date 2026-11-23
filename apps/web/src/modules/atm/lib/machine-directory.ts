@@ -67,6 +67,17 @@ const CODE_SEPARATOR = /[\s,،;؛]/u;
 export const readTypedMachineCodes = readTypedAtmMachineCodes;
 
 /**
+ * A paste into the ID picker's box, read as it was COPIED (`onPasteSearch`): the codes it names —
+ * or null for one code and nothing else, which stays in the box as a search, as a typed one does.
+ * The browser turns a paste's line breaks into spaces before the box holds it, and a line ending
+ * in a word — «NBE» above «- 1056», a column's «ATM-ID» header above its first code — would then
+ * run into the code below it as one of the codes written with a space (`splitAtmMachineCodeList`).
+ * Read here, a line break ends a code, as it does everywhere else.
+ */
+export const readPastedMachineCodes = (raw: string): string[] | null =>
+  CODE_SEPARATOR.test(raw.trim()) ? splitAtmMachineCodeList(raw) : null;
+
+/**
  * What the ID picker's box now holds, read against what it held a moment ago. TYPED — one
  * character at a time — it is `readTypedMachineCodes`: a code is taken once its separator follows.
  * PASTED — more than one character at once, a separator among them — it is a list, and EVERY code

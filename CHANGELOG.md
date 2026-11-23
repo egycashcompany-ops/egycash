@@ -22,7 +22,9 @@ its entry here in the same PR.
   — each code is taken as before. A comma, a semicolon, a tab or a line break always ends a code.
   The same rule reads the page's address and the API's `codes` parameter
   (`splitAtmMachineCodeList`), and the picker searches a code typed with two spaces as written with
-  one.
+  one. A paste is read as it was copied, its line breaks kept (`MultiSelect`'s new opt-in
+  `onPasteSearch`): the one-line box turns them into spaces, and a line ending in a bank's name
+  («NBE» above «- 1056») would otherwise run into the code below it.
 
 ### Changed
 

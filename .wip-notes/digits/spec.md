@@ -41,3 +41,5 @@ Survey workflow: run wf_e3ea191c-e5c (read-only; copy of the script beside this 
 ## Owner 2026-11-23: «انا عاوزك تعدل حاجات الحركة فقط» => FLEET ONLY. Other modules (HR Form 1, gold, ATM, ops, shared defaults) untouched.
 
 Fleet-only Latin survey: run wf_ee99103d-d7c (task wg2p99bee); script copy fleet-survey-workflow.js; journal /root/.claude/projects/-home-user/85f289ec-521b-5944-9b89-a0120b22d71a/subagents/workflows/wf_ee99103d-d7c/journal.jsonl
+
+BUILD workflow: run wf_ef70aa41-c58 (task w10l021t9), BASE 783c4dae; script copy build-workflow.js; journal /root/.claude/projects/-home-user/85f289ec-521b-5944-9b89-a0120b22d71a/subagents/workflows/wf_ef70aa41-c58/journal.jsonl. Resume with resumeFromRunId. Do not touch the tree while gate.sh runs (pgrep -f gate.sh).

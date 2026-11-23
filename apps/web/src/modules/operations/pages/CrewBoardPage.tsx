@@ -83,6 +83,18 @@
 // a step of «تراجع»); a row is drawn in the colour picked on it, else its type's («تلقائي ويتغيّر
 // يدوي»), a deep tint with a solid bar at its start edge.
 //
+// ROUND 32 — «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار فقط»: a PAST day opens as
+// its RECORD, view only for everyone (`lib/crew-record.ts`): every act asks `canPlan`, which a record
+// shuts — no drag, no list, no van, no row, no box, no «الطاقم الثابت», no «تراجع», no «حفظ». A calm
+// notice says so, and «العودة إلى اليوم» stands where the acts were; the filters and the hover cards
+// still work. The server refuses the day's save whatever is sent (422 `OPERATIONS_CREW_DAY_IN_PAST`).
+//
+// ROUND 32 C — «انا عاوز بقى اقدر اعمل اسوابنج بين عربيتين واقدر احدد هنقل ايه بالظبط للعربيه
+// التانيه»: a row's «⇄» opens «تبديل بين سيارتين» (`CrewSwapDialog`) — the two vans' cards side by
+// side, every person and field ticked to cross or not, «تبديل المحدد ⇄» or «نقل المحدد» one way, and
+// the two cards after the change before «تطبيق». The board's rules hold (`lib/crew-swap.ts`); it is
+// ONE operation on the draft for «تراجع», saved by «حفظ» like any other. Not on a record.
+//
 // `?date=` is the only thing in the URL: empty means TOMORROW, resolved by the server — crews are
 // planned a day ahead (the legacy default).
 import { useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttributes } from 'react';
@@ -158,9 +170,10 @@ import {
 import { CrewPlanPool } from '../components/CrewPlanPools';
 import { CrewRosterNotice } from '../components/CrewRosterNotice';
 import { CrewSlotPicker } from '../components/CrewSlotPicker';
-import { CrewVehiclePicker } from '../components/CrewVehiclePicker';
+import { CrewSwapDialog } from '../components/CrewSwapDialog';
+import { CrewVehiclePicker, NoCodeTag } from '../components/CrewVehiclePicker';
 import { PLAN_ICON } from '../components/crew-plan-icons';
-import { DayBox } from '../components/SecuredDistributionParts';
+import { DayBox, RecordNotice, dayText } from '../components/SecuredDistributionParts';
 import { ADD_BUTTON, BRAND_BUTTON } from '../components/ShipmentsBoard';
 import { SHIPMENT_PATH } from '../components/shipment-icons';
 import { ON_TINT, ShiftTypeDot, rowTint, shiftTypeName } from '../components/shift-type-look';
@@ -239,6 +252,7 @@ import {
 } from '../lib/crew-plan-filter';
 import {
   changedRowKeys,
+  isBoardUndoKey,
   mergeKeyOf,
   rebaseHistory,
   record,
@@ -251,7 +265,16 @@ import {
   type UndoHistory,
   type UndoWhat,
 } from '../lib/crew-undo';
-import { giveVehicle, vehicleChoices, type VehicleChoice } from '../lib/crew-vehicles';
+import { giveVehicle, vanName, vehicleChoices, type VehicleChoice } from '../lib/crew-vehicles';
+import {
+  applySwapToDraft,
+  swapOperation,
+  type SwapMode,
+  type SwapPicks,
+  type SwapRules,
+} from '../lib/crew-swap';
+import { isCrewRecord } from '../lib/crew-record';
+import { useCairoToday } from '../lib/use-cairo-today';
 import {
   catalogStateOf,
   colourWearers,
@@ -292,12 +315,21 @@ export const CrewBoardPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   const date = resolveCrewDate(sp.get('date'));
-  const canPlan = can('operationsCrew.plan');
+  const mayPlan = can('operationsCrew.plan');
   // Round 24b — «ألوان الأنواع» writes the catalog, under the catalog's own grant (no new one).
   const canColourTypes = can('operationsCatalog.manage');
 
   const board = useOperationsCrewBoard(date);
   const day = date ?? (board.data?.date ?? '').slice(0, 10);
+  // Round 32 — a past day is its RECORD: read only, for everyone (`isCrewRecord` — the server's
+  // `past` once the read is in, and midnight passing on this screen). Every act below asks this.
+  const liveToday = useCairoToday();
+  const isRecord = isCrewRecord(
+    day,
+    liveToday,
+    board.data === undefined ? null : { board: board.data, arrivedAt: board.dataUpdatedAt },
+  );
+  const canPlan = mayPlan && !isRecord;
   // The pool is read for the BOARD'S day, never for «no day». With no `?date=` the board is
   // TOMORROW (the server's planning default), but the roster asked without a date answers for
   // TODAY — and since Round 22 it says who is absent or on leave, a fact about one day: read for
@@ -328,7 +360,9 @@ export const CrewBoardPage = (): JSX.Element => {
   const [history, setHistory] = useState<UndoHistory<CrewDraft>>(() =>
     startHistory({ rows: [], standingKeys: null }),
   );
-  const rows = history.now.rows;
+  // A record shows what the SERVER holds, never a draft (work left unsaved when the day ended is
+  // said — `lostOnRecord` — not drawn, counted or sent).
+  const rows = isRecord ? serverRows : history.now.rows;
   const standingKeys = history.now.standingKeys;
   const [seen, setSeen] = useState<{ rows: readonly PlanRow[]; day: string | null } | null>(null);
   /** The last save's refusal, on the row and the box it names — until that box is changed. */
@@ -357,7 +391,11 @@ export const CrewBoardPage = (): JSX.Element => {
    * changed (a refused drop, a type picked again) records nothing. `merge` makes a run of keys in
    * one box one operation (the notes), until the box is left (`sealHistory`).
    */
-  const apply = (what: UndoWhat, change: (draft: CrewDraft) => CrewDraft, merge?: string): void =>
+  const apply = (what: UndoWhat, change: (draft: CrewDraft) => CrewDraft, merge?: string): void => {
+    // Round 32 critic — the ONE gate of every change to the draft: a list left open as midnight
+    // turned the day into its record picked into the draft the record hides — nothing showed, and
+    // «انتهى اليوم قبل الحفظ» was said again.
+    if (!canPlan) return;
     setHistory((current) =>
       record(
         current,
@@ -366,6 +404,7 @@ export const CrewBoardPage = (): JSX.Element => {
         merge === undefined ? { same: sameCrewDraft } : { same: sameCrewDraft, merge },
       ),
     );
+  };
   /** An operation on the rows alone. */
   const applyRows = (
     what: UndoWhat,
@@ -377,6 +416,17 @@ export const CrewBoardPage = (): JSX.Element => {
   const pending = changeCount(changes);
   const dirty = pending > 0;
   const guard = useUnsavedGuard({ dirty });
+  // Round 32 — the board left open past midnight with work not saved: the record no longer draws it
+  // and the leave guard lets go, so it is SAID, once as it happens and on the notice while it stands.
+  const lostOnRecord = isRecord ? changeCount(planChanges(history.now.rows, serverRows)) : 0;
+  useEffect(() => {
+    if (lostOnRecord === 0) return;
+    toast.warning(
+      t('operations.crewPlan.record.unsavedTitle'),
+      t('operations.crewPlan.record.unsaved', { count: formatNumber(lostOnRecord, locale) }),
+    );
+    // Once per count the record drops — not on every render (`t` and `locale` are not the news).
+  }, [lostOnRecord]);
 
   // ── The people ───────────────────────────────────────────────────────────────────────────────
   const members = useMemo(() => directory.data?.members ?? [], [directory.data]);
@@ -436,9 +486,12 @@ export const CrewBoardPage = (): JSX.Element => {
     setRowFilter(EMPTY_ROW_FILTER);
   };
   const strip = shiftTypeStrip(shiftTypes, rows);
-  /** A row's name: its van's code, or «بدون سيارة (n)» by its place among `among` (the draft). */
+  /**
+   * A row's name: its van's code — its plate when the code names nothing (Round 32 critic,
+   * `vanName`) — or «بدون سيارة (n)» by its place among `among` (the draft).
+   */
   const rowName = (row: PlanRow, among: readonly PlanRow[] = rows): string =>
-    row.vehicleCode ??
+    vanName(row) ??
     t('operations.crewPlan.looseRow', {
       n: formatNumber(looseRowNumber(among, row.key) ?? 0, locale),
     });
@@ -572,6 +625,13 @@ export const CrewBoardPage = (): JSX.Element => {
   // The row was given a van meanwhile (another desk, «تراجع»), or went: nothing left to offer.
   if (vanPicker !== null && !rows.some((row) => row.key === vanPicker && row.vehicleId === null)) {
     setVanPicker(null);
+  }
+  // Round 32 critic — midnight turning the day into its record under an open list (a slot's, a
+  // row's «بدون سيارة») or a picked-up chip shuts them, as it shuts «تبديل بين سيارتين».
+  if (!canPlan && (picker !== null || vanPicker !== null || selected !== null)) {
+    setPicker(null);
+    setVanPicker(null);
+    setSelected(null);
   }
   const workshopIds = useMemo(
     () => new Set((board.data?.workshopVehicles ?? []).map((van) => van.vehicleId)),
@@ -844,17 +904,11 @@ export const CrewBoardPage = (): JSX.Element => {
   });
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return;
-      if (event.code !== 'KeyZ' && event.key.toLowerCase() !== 'z') return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        (target.isContentEditable ||
-          target.closest('input, textarea, select, [contenteditable="true"]') !== null)
-      ) {
-        return;
-      }
-      if (leaveOpenRef.current) return;
+      // Round 32 critic — never under a window over the board («تبديل بين سيارتين», «ألوان
+      // الأنواع», the leave dialog): the press took back the board's last operation behind it.
+      const overBoard =
+        leaveOpenRef.current || document.querySelector('[data-dialog-root]') !== null;
+      if (!isBoardUndoKey(event, overBoard)) return;
       event.preventDefault();
       undoRef.current();
     };
@@ -998,7 +1052,7 @@ export const CrewBoardPage = (): JSX.Element => {
       return;
     }
     applyRows(
-      { kind: 'giveVan', vars: { code: choice.vehicleCode, row: rowName(row) } },
+      { kind: 'giveVan', vars: { code: vanName(choice) ?? choice.vehicleCode, row: rowName(row) } },
       (current) => giveVehicle(current, row.key, choice),
     );
     setRefusal((current) => (current?.key === row.key ? null : current));
@@ -1027,7 +1081,7 @@ export const CrewBoardPage = (): JSX.Element => {
         : row.key;
     const back = after.find((candidate) => candidate.key === landed);
     const named = back === undefined ? rowName(row) : rowName(back, after);
-    applyRows({ kind: 'dropVan', vars: { code: row.vehicleCode ?? '', row: named } }, (current) =>
+    applyRows({ kind: 'dropVan', vars: { code: vanName(row) ?? '', row: named } }, (current) =>
       releaseVan(current, serverRows, row.key),
     );
     setRefusal((current) => (current?.key === row.key ? null : current));
@@ -1035,6 +1089,55 @@ export const CrewBoardPage = (): JSX.Element => {
       document
         .querySelector(`[data-plan-row="${landed}"]`)
         ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }),
+    );
+  };
+
+  // ── «تبديل بين سيارتين» (Round 32 C) ────────────────────────────────────────────────────────
+  // «اقدر اعمل اسوابنج بين عربيتين واقدر احدد هنقل ايه بالظبط للعربيه التانيه»: opened on a row, the
+  // second picked inside. What it may move is the board's own rules (`lib/crew-swap.ts`); «تطبيق» is
+  // ONE operation on the draft, which «تراجع» takes back whole and «حفظ» saves.
+  const [swapFrom, setSwapFrom] = useState<string | null>(null);
+  // Shut on a record (midnight passing under it), and with its row gone.
+  if (swapFrom !== null && (!canPlan || !rows.some((row) => row.key === swapFrom))) {
+    setSwapFrom(null);
+  }
+  const swapRules: SwapRules = {
+    // Somebody the roster no longer names is judged by the save, as when a van is given.
+    roleOf: (employeeId) => (byId.has(employeeId) ? roleOf(employeeId) : null),
+    awayOf: (employeeId) => awayOf(memberOf(employeeId)),
+    // A type archived since its row took it stays there: the save takes only an ACTIVE type newly
+    // given to a row — or one the receiving row's saved row holds already. A catalog not read yet
+    // judges nothing (the save does).
+    typeMayGo: (shiftTypeId, toKey) => {
+      const type = shiftTypes.find((candidate) => candidate.id === shiftTypeId);
+      return (
+        type === undefined ||
+        type.isActive ||
+        serverRows.some((row) => row.key === toKey && row.shiftTypeId === shiftTypeId)
+      );
+    },
+  };
+  const openSwap = (key: string): void => {
+    setSelected(null);
+    setPicker(null);
+    setVanPicker(null);
+    setSwapFrom(key);
+  };
+  const swapRows = (bKey: string, picks: SwapPicks, mode: SwapMode): void => {
+    if (!canPlan || swapFrom === null) return;
+    const aKey = swapFrom;
+    // Round 32 critic — a one-way move is said as one («نقل المحدد من 213 إلى 255»), never as a
+    // swap; and the standing crew's toggle lets go of the two rows (`applySwapToDraft`).
+    const what = swapOperation(mode, { a: nameOfRow(aKey), b: nameOfRow(bKey) });
+    apply(what, (draft) => applySwapToDraft(draft, aKey, bKey, picks, mode, swapRules));
+    setSwapFrom(null);
+    // What the last save said about either row no longer describes it.
+    setRefusal((current) => (current?.key === aKey || current?.key === bKey ? null : current));
+    toast.success(
+      t(what.kind === 'swap' ? 'operations.crewPlan.swap.done' : 'operations.crewPlan.swap.moved', {
+        ...what.vars,
+      }),
+      t('operations.crewPlan.swap.doneHint'),
     );
   };
 
@@ -1093,10 +1196,15 @@ export const CrewBoardPage = (): JSX.Element => {
       // Somebody away that day (Round 22), or in a slot not his role's (Round 23): who, by name —
       // his chip on that row is ringed too.
       const aboutPerson = placed.field === 'crew' || placed.field === 'slot';
-      const vehicleCode = (vehicleId: string): string =>
-        rows.find((row) => row.vehicleId === vehicleId)?.vehicleCode ??
-        board.data?.freeVehicles.find((van) => van.vehicleId === vehicleId)?.vehicleCode ??
-        '—';
+      const vehicleCode = (vehicleId: string): string => {
+        const onRow = rows.find((row) => row.vehicleId === vehicleId);
+        const free = board.data?.freeVehicles.find((van) => van.vehicleId === vehicleId);
+        return (
+          (onRow === undefined ? null : vanName(onRow)) ??
+          (free === undefined ? null : vanName(free)) ??
+          '—'
+        );
+      };
       const message =
         placed.field === 'vehicle' && placed.vehicle !== undefined
           ? t(`operations.crewPlan.refused.vehicle.${placed.vehicle.reason}`, {
@@ -1336,6 +1444,35 @@ export const CrewBoardPage = (): JSX.Element => {
       .join(' · ');
   };
 
+  /**
+   * Round 32 C — the row's «⇄» («تبديل مع سيارة أخرى…»), on the code's second line: beside the
+   * row's colour and bin it took 24px the table does not have at 1440 (and at 1920), pushing the bin
+   * out of the frame — the Round-24 trouble the «إضافية» tag was moved under the code for. Not on a
+   * record (`canPlan`).
+   */
+  const swapPill = (row: PlanRow): JSX.Element | null =>
+    canPlan ? (
+      <button
+        type="button"
+        // Its own size, not the boards' 28px icon square (`CREW_PLAN_TABLE`).
+        data-cell-control="swap"
+        data-row-swap={row.key}
+        aria-haspopup="dialog"
+        aria-expanded={swapFrom === row.key}
+        aria-label={t('operations.crewPlan.swap.openRow', { row: rowName(row) })}
+        title={t('operations.crewPlan.swap.open')}
+        onClick={() => openSwap(row.key)}
+        className={cn(
+          'inline-flex shrink-0 items-center justify-center rounded border px-1.5 py-px transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50',
+          swapFrom === row.key
+            ? 'border-brand-500 bg-brand-500 text-white'
+            : 'border-brand-300 bg-white text-brand-700 hover:bg-brand-50 dark:border-brand-500/50 dark:bg-[#0a1233] dark:text-brand-200 dark:hover:bg-brand-500/15',
+        )}
+      >
+        <BoardIcon d={PLAN_ICON.swap} className="h-3 w-3" width={2.25} />
+      </button>
+    ) : null;
+
   const columns: Column<PlanRow>[] = [
     {
       key: 'vehicle',
@@ -1380,50 +1517,71 @@ export const CrewBoardPage = (): JSX.Element => {
                 frame at 1440 and pushed the row's bin and colour out of sight. */}
             <span className="flex flex-col items-start gap-0.5" data-van-code-stack="true">
               <CrewVehicleHoverCode
-                className={cn(NUM, 'cursor-default text-[14px] font-black')}
-                code={row.vehicleCode ?? '…'}
+                // 18px a line: the code and the second line's 16px keep the cell at its 36px.
+                // Round 32 critic — a code that names nothing: the PLATE, as the list named it
+                // (smaller, and free to wrap between its letters and its digits — a plate is longer
+                // than a code, and the column has no width to spare at 1440: on one line it ran the
+                // bins out of the frame).
+                className={cn(
+                  NUM,
+                  'cursor-default font-black',
+                  row.uncoded == null
+                    ? 'text-[14px] leading-[18px]'
+                    : 'whitespace-normal text-[12.5px] leading-[16px]',
+                )}
+                code={vanName(row) ?? '…'}
                 vehicleCrew={planRowCard(row, memberOf)}
               />
-              {/* A refused van given here: «إزالة» takes the tag's line (one short line, the
+              <span className="flex flex-wrap items-center gap-0.5" data-van-second-line="true">
+                {/* A refused van given here: «إزالة» takes the tag's line (one short line, the
                   column keeps its width) — what the planner can do now matters more than that the
                   van is off the roster. */}
-              {releasable ? (
-                <button
-                  type="button"
-                  data-van-release={row.key}
-                  title={t('operations.crewPlan.releaseVan', { code: row.vehicleCode ?? '' })}
-                  aria-label={t('operations.crewPlan.releaseVan', { code: row.vehicleCode ?? '' })}
-                  onClick={() => dropVan(row)}
-                  className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded border border-rose-400 bg-rose-500/10 px-0.5 text-[9.5px] font-black leading-none text-rose-700 transition hover:bg-rose-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 dark:border-rose-500/70 dark:text-rose-300"
-                >
-                  <BoardIcon d={PLAN_ICON.noVan} className="h-2.5 w-2.5 shrink-0" />
-                  {t('operations.crewPlan.releaseVanName')}
-                </button>
-              ) : (
-                !row.onRoster && (
-                  <span
-                    role="img"
-                    data-off-roster="true"
-                    aria-label={t('operations.crewPlan.offRoster')}
-                    title={t('operations.crewPlan.offRosterHint')}
-                    className="inline-flex h-4 shrink-0 items-center rounded border border-dashed border-sky-400 px-0.5 text-[9.5px] font-black leading-none text-sky-700 dark:border-sky-500/70 dark:text-sky-300"
+                {releasable ? (
+                  <button
+                    type="button"
+                    data-van-release={row.key}
+                    title={t('operations.crewPlan.releaseVan', { code: vanName(row) ?? '' })}
+                    aria-label={t('operations.crewPlan.releaseVan', {
+                      code: vanName(row) ?? '',
+                    })}
+                    onClick={() => dropVan(row)}
+                    className="inline-flex h-4 shrink-0 items-center gap-0.5 rounded border border-rose-400 bg-rose-500/10 px-0.5 text-[9.5px] font-black leading-none text-rose-700 transition hover:bg-rose-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40 dark:border-rose-500/70 dark:text-rose-300"
                   >
-                    {t('operations.crewPlan.offRosterTag')}
-                  </span>
-                )
-              )}
+                    <BoardIcon d={PLAN_ICON.noVan} className="h-2.5 w-2.5 shrink-0" />
+                    {t('operations.crewPlan.releaseVanName')}
+                  </button>
+                ) : (
+                  !row.onRoster && (
+                    <span
+                      role="img"
+                      data-off-roster="true"
+                      aria-label={t('operations.crewPlan.offRoster')}
+                      title={t('operations.crewPlan.offRosterHint')}
+                      className="inline-flex h-4 shrink-0 items-center rounded border border-dashed border-sky-400 px-0.5 text-[9.5px] font-black leading-none text-sky-700 dark:border-sky-500/70 dark:text-sky-300"
+                    >
+                      {t('operations.crewPlan.offRosterTag')}
+                    </span>
+                  )
+                )}
+                {/* Round 32 critic — the plate stands where a code would: «بلا كود», as in the list. */}
+                {row.uncoded != null && <NoCodeTag className="!px-0.5 !text-[9.5px]" />}
+                {swapPill(row)}
+              </span>
             </span>
             {warn}
           </div>
         ) : (
           <div className="flex min-h-[2.25rem] items-center gap-1" data-vehicleless="true">
-            <VanPicker
-              rowKey={row.key}
-              open={vanPicker === row.key}
-              disabled={!canPlan}
-              refused={vanRefused}
-              onOpen={(from) => openVanPicker(row.key, from)}
-            />
+            <span className="flex flex-col items-start gap-0.5">
+              <VanPicker
+                rowKey={row.key}
+                open={vanPicker === row.key}
+                disabled={!canPlan}
+                refused={vanRefused}
+                onOpen={(from) => openVanPicker(row.key, from)}
+              />
+              {swapPill(row)}
+            </span>
             {warn}
           </div>
         );
@@ -1600,9 +1758,40 @@ export const CrewBoardPage = (): JSX.Element => {
           <CrewPlanHand
             pickedName={pickedName}
             onCancel={() => setSelected(null)}
-            hint={canPlan ? t('operations.crewPlan.hint') : t('operations.crewPlan.viewOnly')}
+            hint={
+              isRecord
+                ? null
+                : canPlan
+                  ? t('operations.crewPlan.hint')
+                  : t('operations.crewPlan.viewOnly')
+            }
           />
           <span className="ms-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-1 sm:gap-2">
+            {/* Round 32 — a record has no acts: the day says it is one, and the way back to today (a
+                move between days, not a change — for every reader). */}
+            {isRecord && (
+              <>
+                <span
+                  data-crew-record-mark="true"
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-black text-sky-800 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200"
+                >
+                  <BoardIcon d={[...PATH.lock]} className="h-3.5 w-3.5" />
+                  {t('operations.crewPlan.record.mark')}
+                </span>
+                <button
+                  type="button"
+                  data-crew-record-today="true"
+                  onClick={() => setDay(liveToday)}
+                  title={t('operations.crewPlan.record.todayHint', {
+                    day: dayText(`${liveToday}T00:00:00.000Z`),
+                  })}
+                  className={BRAND_BUTTON}
+                >
+                  <BoardIcon d={[...SHIPMENT_PATH.calendar]} className="h-3.5 w-3.5" />
+                  {t('operations.crewPlan.record.today')}
+                </button>
+              </>
+            )}
             {canPlan && (
               <button
                 type="button"
@@ -1723,6 +1912,7 @@ export const CrewBoardPage = (): JSX.Element => {
         {/* The day, the van, the person, the direction (Round 24), the type, and the strip counting
             the rows by type. */}
         <div className={CREW_PLAN_BAR} data-crew-plan-bar="true">
+          {/* Any day, a past one too — it opens as its record (Round 32). */}
           <DayBox label={t('operations.crewPlan.day')} value={day} min="" onChange={setDay} />
           {/* «يفلتر ب كود عربيه»: the board's vans by code, and «بدون سيارة». */}
           <FilterWithIcon
@@ -1866,6 +2056,24 @@ export const CrewBoardPage = (): JSX.Element => {
           </div>
         </div>
 
+        {/* Round 32 — a past day: the record's notice, calm, under the bar. */}
+        {isRecord && (
+          <RecordNotice
+            data-crew-record={day}
+            title={t('operations.crewPlan.record.title', {
+              day: dayText(`${day}T00:00:00.000Z`),
+            })}
+            body={t('operations.crewPlan.record.body')}
+            unsaved={
+              lostOnRecord === 0
+                ? null
+                : t('operations.crewPlan.record.unsaved', {
+                    count: formatNumber(lostOnRecord, locale),
+                  })
+            }
+          />
+        )}
+
         <CrewRosterNotice rosterIsDerived={directory.data?.rosterIsDerived} />
 
         {/* The table at the START, the pools at the END — in Arabic, the vans on the right and the
@@ -2000,6 +2208,7 @@ export const CrewBoardPage = (): JSX.Element => {
             vanPicker,
             workshopIds,
           )}
+          unidentified={board.data?.unidentifiedVehicles ?? 0}
           onPick={(choice) => {
             const row = rows.find((candidate) => candidate.key === vanPicker);
             closeVanPicker(false);
@@ -2009,13 +2218,31 @@ export const CrewBoardPage = (): JSX.Element => {
         />
       )}
 
+      {/* «تبديل بين سيارتين» (Round 32 C) — one for the board, opened on the row pressed. */}
+      {swapFrom !== null && canPlan && (
+        <CrewSwapDialog
+          key={swapFrom}
+          aKey={swapFrom}
+          rows={rows}
+          rowName={(row) => rowName(row)}
+          member={shownMember}
+          rules={swapRules}
+          shiftTypes={shiftTypes}
+          colourName={colourName}
+          locale={locale}
+          onApply={swapRows}
+          onClose={() => setSwapFrom(null)}
+        />
+      )}
+
       {/* «ألوان الأنواع» (Round 24b) — a catalog save per press, never a step of the draft. */}
       <TypeColoursCard
         open={typeColoursOpen}
         onClose={() => setTypeColoursOpen(false)}
         types={shiftTypes}
         listed={strip.chips.map(({ type }) => type)}
-        canEdit={canColourTypes}
+        // A record reads the type colours, never writes them (Round 32).
+        canEdit={canColourTypes && !isRecord}
         sheet={phone}
         catalog={typesCatalog}
         reread={rereadTypes}

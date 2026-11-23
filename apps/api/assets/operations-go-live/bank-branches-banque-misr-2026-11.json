@@ -1,0 +1,5383 @@
+{
+  "source": "«فروع بنك مصر - جاهز للاستيراد.xlsx» — بنك مصر: the owner's branch list (Round 29), read by the import's own reader (read-branch-sheet.ts), its first visible tab «الفروع», header on row 1",
+  "bank": "banque-misr",
+  "rowsRead": 672,
+  "leftOut": [
+    {
+      "row": 409,
+      "problem": "nameIsDate",
+      "nameAsRead": "2020-05-15 00:00:00",
+      "code": "701",
+      "why": "Excel turned the branch name into a date: the name as typed is lost, so the row is not loaded (add it by hand)"
+    },
+    {
+      "row": 456,
+      "problem": "nameIsDate",
+      "nameAsRead": "2019-07-26 00:00:00",
+      "code": "125",
+      "why": "Excel turned the branch name into a date: the name as typed is lost, so the row is not loaded (add it by hand)"
+    }
+  ],
+  "rows": [
+    {
+      "row": 2,
+      "name": "النزهة",
+      "code": "116",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 3,
+      "name": "حلمية الزيتون",
+      "code": "117",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 4,
+      "name": "روكسى",
+      "code": "119",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 5,
+      "name": "حدائق القبة",
+      "code": "130",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 6,
+      "name": "هليوبليس",
+      "code": "139",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 7,
+      "name": "جامعة عين شمس",
+      "code": "149",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 8,
+      "name": "الخلفاء الراشدين",
+      "code": "161",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 9,
+      "name": "نادى ضباط الجلاء",
+      "code": "164",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 10,
+      "name": "العروبة",
+      "code": "173",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 11,
+      "name": "منشية البكرى",
+      "code": "179",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 12,
+      "name": "صلاح سالم",
+      "code": "181",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 13,
+      "name": "مدينة السلام",
+      "code": "182",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 14,
+      "name": "سراى القبة",
+      "code": "183",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 15,
+      "name": "شارع بيروت",
+      "code": "378",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 16,
+      "name": "مصر الجديدة",
+      "code": "464",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 17,
+      "name": "الشمس",
+      "code": "484",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 18,
+      "name": "معهدالدراسات العلياللطفولةوالامومة",
+      "code": "487",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 19,
+      "name": "كلية التجارة جامعة عين شمس",
+      "code": "502",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 20,
+      "name": "عمار بن ياسر",
+      "code": "503",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 21,
+      "name": "مصر والسودان",
+      "code": "514",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 22,
+      "name": "النزهة الجديدة",
+      "code": "541",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 23,
+      "name": "إسماعيل رمزى",
+      "code": "547",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 24,
+      "name": "المطار الجديد - مبنى الركاب 3",
+      "code": "601",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 25,
+      "name": "مريديان هليوبليس",
+      "code": "605",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 26,
+      "name": "منفذ التاشيرة صالة وصول 1",
+      "code": "606",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 27,
+      "name": "منفذ الشراء صالة وصول 1",
+      "code": "607",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 28,
+      "name": "المطار الجديد - صالة السفر 3",
+      "code": "608",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 29,
+      "name": "صالة رقم 4 المطار القديم",
+      "code": "609",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 30,
+      "name": "مكتب فندق نوفوتيل",
+      "code": "613",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 31,
+      "name": "مكتب فندق سونستا القاهرة",
+      "code": "644",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 32,
+      "name": "هيلتون كايرو هليوبليس",
+      "code": "645",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 33,
+      "name": "فندق ميريديان المطار",
+      "code": "656",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 34,
+      "name": "المطار المصرفى",
+      "code": "667",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 35,
+      "name": "مكتب بمبنى رقم 2 مطار القاهره الجوى",
+      "code": "674",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 36,
+      "name": "المكتب الامامى بصالة الوصول رقم 3",
+      "code": "693",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 37,
+      "name": "راديسون بلو",
+      "code": "697",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 38,
+      "name": "مكتب الوصول منطقة الجمرك",
+      "code": "702",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 39,
+      "name": "مكتب الوصول خارج المنطقة الجمركية",
+      "code": "703",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 40,
+      "name": "جسر السويس",
+      "code": "761",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 41,
+      "name": "فريد سميكة",
+      "code": "762",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 42,
+      "name": "احمد عرابى",
+      "code": "372",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 43,
+      "name": "كرموز",
+      "code": "407",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 44,
+      "name": "مرسى مطروح",
+      "code": "411",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 45,
+      "name": "القبارى",
+      "code": "421",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 46,
+      "name": "المنطقة الحرة الاسكندرية",
+      "code": "426",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 47,
+      "name": "ابو العباس الاسلامى",
+      "code": "431",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 48,
+      "name": "الدخيلة",
+      "code": "432",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 49,
+      "name": "العامرية",
+      "code": "438",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 50,
+      "name": "العجمى",
+      "code": "439",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 51,
+      "name": "الجمرك",
+      "code": "446",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 52,
+      "name": "برج العرب",
+      "code": "449",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 53,
+      "name": "برج السلسلة",
+      "code": "469",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 54,
+      "name": "كينج مريوط",
+      "code": "537",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 55,
+      "name": "البيطاش",
+      "code": "538",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 56,
+      "name": "مكتب صالة سفر مطار برج العرب الجديد",
+      "code": "685",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 57,
+      "name": "مكتب صالة وصول مطار برج العرب الجديد",
+      "code": "686",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 58,
+      "name": "ايثيدكو",
+      "code": "549",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 59,
+      "name": "بنى سويف",
+      "code": "301",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 60,
+      "name": "الفشن",
+      "code": "302",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 61,
+      "name": "الفنت",
+      "code": "735",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 62,
+      "name": "ببا",
+      "code": "303",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 63,
+      "name": "سنورس",
+      "code": "304",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 64,
+      "name": "المنيا",
+      "code": "305",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 65,
+      "name": "سمالوط",
+      "code": "306",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 66,
+      "name": "مغاغة",
+      "code": "307",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 67,
+      "name": "بنى مزار",
+      "code": "308",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 68,
+      "name": "مطاى",
+      "code": "309",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 69,
+      "name": "ابو قرقاص",
+      "code": "310",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 70,
+      "name": "ملوى",
+      "code": "311",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 71,
+      "name": "ابشواى",
+      "code": "314",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 72,
+      "name": "دير مواس",
+      "code": "318",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 73,
+      "name": "الفيوم",
+      "code": "329",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 74,
+      "name": "الواسطى",
+      "code": "337",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 75,
+      "name": "هرم ميدوم",
+      "code": "743",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 76,
+      "name": "المنيا الاسلامى",
+      "code": "345",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 77,
+      "name": "بنى سويف الاسلامى",
+      "code": "348",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 78,
+      "name": "الفيوم الاسلامى",
+      "code": "349",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 79,
+      "name": "ملوى الاسلامى",
+      "code": "356",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 80,
+      "name": "المنيا الجديدة",
+      "code": "363",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 81,
+      "name": "اطسا",
+      "code": "385",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 82,
+      "name": "طه حسين المنيا",
+      "code": "396",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 83,
+      "name": "البحر الاعظم بالفشن",
+      "code": "398",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 84,
+      "name": "اسطال",
+      "code": "745",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 85,
+      "name": "مدينة ناصر",
+      "code": "399",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 86,
+      "name": "اهناسيا",
+      "code": "576",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 87,
+      "name": "المدينة بنى سويف",
+      "code": "577",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 88,
+      "name": "ميدان المسلة",
+      "code": "581",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 89,
+      "name": "العدوة",
+      "code": "595",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 90,
+      "name": "سمسطا",
+      "code": "740",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 91,
+      "name": "بنى سويف الجديدة",
+      "code": "594",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 92,
+      "name": "سوهاج",
+      "code": "317",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 93,
+      "name": "طهطا",
+      "code": "320",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 94,
+      "name": "المراغة",
+      "code": "321",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 95,
+      "name": "شارع عرابى المراغة",
+      "code": "714",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 96,
+      "name": "جرجا",
+      "code": "322",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 97,
+      "name": "طما",
+      "code": "326",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 98,
+      "name": "المنشأة",
+      "code": "338",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 99,
+      "name": "اخميم",
+      "code": "343",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 100,
+      "name": "البلينا",
+      "code": "344",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 101,
+      "name": "سوهاج الاسلامى",
+      "code": "353",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 102,
+      "name": "طهطا الاسلامى",
+      "code": "357",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 103,
+      "name": "الكوثر",
+      "code": "360",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 104,
+      "name": "ساقلتة",
+      "code": "362",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 105,
+      "name": "وكالة المنشاة",
+      "code": "367",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 106,
+      "name": "جهينة",
+      "code": "579",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 107,
+      "name": "النيل سوهاج",
+      "code": "587",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 108,
+      "name": "امون",
+      "code": "580",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 109,
+      "name": "البحر",
+      "code": "583",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 110,
+      "name": "دار السلام سوهاج",
+      "code": "589",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 111,
+      "name": "برديس",
+      "code": "588",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 112,
+      "name": "اسوان",
+      "code": "319",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 113,
+      "name": "بلاد الذهب اسوان",
+      "code": "725",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 114,
+      "name": "اصفون",
+      "code": "598",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 115,
+      "name": "قنا",
+      "code": "323",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 116,
+      "name": "قنا الاسلامى",
+      "code": "727",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 117,
+      "name": "الاقصر",
+      "code": "324",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 118,
+      "name": "طيبة الجديدة",
+      "code": "728",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 119,
+      "name": "نصر النوبة",
+      "code": "325",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 120,
+      "name": "دراو",
+      "code": "327",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 121,
+      "name": "نجع حمادى",
+      "code": "328",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 122,
+      "name": "قوص",
+      "code": "331",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 123,
+      "name": "ادفو",
+      "code": "333",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 124,
+      "name": "دشنا",
+      "code": "334",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 125,
+      "name": "اخناتون دشنا",
+      "code": "729",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 126,
+      "name": "اسنا",
+      "code": "335",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 127,
+      "name": "ارمنت",
+      "code": "339",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 128,
+      "name": "كوم امبو",
+      "code": "341",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 129,
+      "name": "ابو الحسن الشاذلى",
+      "code": "347",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 130,
+      "name": "الاقصر الاسلامى",
+      "code": "350",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 131,
+      "name": "قفط",
+      "code": "352",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 132,
+      "name": "ابو سمبل",
+      "code": "361",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 133,
+      "name": "السد العالى",
+      "code": "365",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 134,
+      "name": "اتون",
+      "code": "395",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 135,
+      "name": "بهجورة",
+      "code": "584",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 136,
+      "name": "مطار الاقصر الدولى",
+      "code": "653",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 137,
+      "name": "مطار اسوان",
+      "code": "663",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 138,
+      "name": "مكتب صالة السفر ميناء قسطل",
+      "code": "695",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 139,
+      "name": "مكتب صالة الوصول ميناء قسطل",
+      "code": "696",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 140,
+      "name": "صالة سفر ميناء ارقين البرى",
+      "code": "705",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 141,
+      "name": "صالة وصول ميناء ارقين البرى",
+      "code": "706",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 142,
+      "name": "حورس",
+      "code": "592",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 143,
+      "name": "حتشبسوت القرنة",
+      "code": "593",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 144,
+      "name": "كورنيش النيل ادفو",
+      "code": "590",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 145,
+      "name": "اسوان الجديدة",
+      "code": "591",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 146,
+      "name": "قوص الاسلامى",
+      "code": "585",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 147,
+      "name": "الغردقة",
+      "code": "330",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 148,
+      "name": "الجونة",
+      "code": "332",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 149,
+      "name": "رأس غارب",
+      "code": "346",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 150,
+      "name": "سفاجا",
+      "code": "351",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 151,
+      "name": "الغردقة الاسلامى",
+      "code": "358",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 152,
+      "name": "القصير",
+      "code": "359",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 153,
+      "name": "مرسى علم",
+      "code": "366",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 154,
+      "name": "حى البنوك الغردقة",
+      "code": "394",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 155,
+      "name": "شيراتون الغردقة",
+      "code": "582",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 156,
+      "name": "الشلاتين",
+      "code": "586",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 157,
+      "name": "مكتب قرية السندباد الغردقة",
+      "code": "618",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 158,
+      "name": "ميناء الغردقة",
+      "code": "646",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 159,
+      "name": "الغردقة سنتر السياحى",
+      "code": "657",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 160,
+      "name": "منتجع هلتون الغردقة",
+      "code": "658",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 161,
+      "name": "رجينا هلنان الغردقة",
+      "code": "659",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 162,
+      "name": "ميناء سفاجا البحرى - سفر",
+      "code": "662",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 163,
+      "name": "فندق الاليزيه الغردقه",
+      "code": "680",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 164,
+      "name": "مكتب صن رايز مملوك",
+      "code": "691",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 165,
+      "name": "الفيروز",
+      "code": "599",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 166,
+      "name": "مطار الغردقة الجديد",
+      "code": "699",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 167,
+      "name": "شارع الجمهورية",
+      "code": "373",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 168,
+      "name": "السويس",
+      "code": "412",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 169,
+      "name": "السلطان حسين بورسعيد",
+      "code": "413",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 170,
+      "name": "الاسماعيلية",
+      "code": "414",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 171,
+      "name": "فيصل السويس",
+      "code": "415",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 172,
+      "name": "بورفؤاد",
+      "code": "417",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 173,
+      "name": "القنطرة شرق",
+      "code": "418",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 174,
+      "name": "اكتوبر بورسعيد",
+      "code": "419",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 175,
+      "name": "العريش",
+      "code": "420",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 176,
+      "name": "بئر العبد",
+      "code": "424",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 177,
+      "name": "مكة المكرمة بورسعيد",
+      "code": "429",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 178,
+      "name": "العريش الاسلامى",
+      "code": "433",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 179,
+      "name": "المدينة المنورة",
+      "code": "434",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 180,
+      "name": "التل الكبير",
+      "code": "437",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 181,
+      "name": "مدينة المستقبل",
+      "code": "441",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 182,
+      "name": "القنطرة غرب",
+      "code": "448",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 183,
+      "name": "فايد",
+      "code": "450",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 184,
+      "name": "بورتو السخنة",
+      "code": "455",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 185,
+      "name": "خليج السويس",
+      "code": "490",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 186,
+      "name": "جامعة قناة السويس",
+      "code": "493",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 187,
+      "name": "السلام السويس",
+      "code": "533",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 188,
+      "name": "المنطقة الحرة الاسماعيلية",
+      "code": "534",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 189,
+      "name": "القناة",
+      "code": "535",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 190,
+      "name": "الصالحية الجديدة",
+      "code": "536",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 191,
+      "name": "جمرك ميناء السويس",
+      "code": "650",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 192,
+      "name": "ميناء الاديبية بالسويس",
+      "code": "544",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 193,
+      "name": "المنطقة الصناعية بورسعيد",
+      "code": "563",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 194,
+      "name": "ميناء بورسعيد",
+      "code": "650",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 195,
+      "name": "شرق بورسعيد",
+      "code": "564",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 196,
+      "name": "رأس سدر",
+      "code": "416",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 197,
+      "name": "أبورديس",
+      "code": "435",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 198,
+      "name": "طور سيناء",
+      "code": "436",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 199,
+      "name": "مندوبية سانت كاترين",
+      "code": "440",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 200,
+      "name": "نويبع",
+      "code": "443",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 201,
+      "name": "شرم الشيخ",
+      "code": "444",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 202,
+      "name": "وكاله خليج نعمه",
+      "code": "453",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 203,
+      "name": "دهب",
+      "code": "459",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 204,
+      "name": "سوهو سكوير",
+      "code": "531",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 205,
+      "name": "السوق القديم بشرم الشيخ",
+      "code": "542",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 206,
+      "name": "هلتون طابا",
+      "code": "624",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 207,
+      "name": "شركس باى",
+      "code": "625",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 208,
+      "name": "هيليتون الفيروز",
+      "code": "627",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 209,
+      "name": "سوفيتيل طابا",
+      "code": "629",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 210,
+      "name": "فندق الوكالة",
+      "code": "634",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 211,
+      "name": "موفمبيك طابا",
+      "code": "635",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 212,
+      "name": "مكتب طابا البرى",
+      "code": "643",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 213,
+      "name": "سى كلوب",
+      "code": "648",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 214,
+      "name": "ميناء نويبع البحرى وصول",
+      "code": "649",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 215,
+      "name": "مكتب سى لايف السياحى",
+      "code": "664",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 216,
+      "name": "طابا المصرفي",
+      "code": "666",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 217,
+      "name": "جراند روتانا شارم",
+      "code": "668",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 218,
+      "name": "ريجنسى بلازا",
+      "code": "675",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 219,
+      "name": "فندق ساندز طابا",
+      "code": "682",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 220,
+      "name": "مكتب مطار شرم الشيخ",
+      "code": "683",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 221,
+      "name": "خليج نبق شرم الشيخ",
+      "code": "687",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 222,
+      "name": "ريتز كارلتون",
+      "code": "690",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 223,
+      "name": "خليج نعمة",
+      "code": "713",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 224,
+      "name": "دمياط",
+      "code": "201",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 225,
+      "name": "الزرقا",
+      "code": "205",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 226,
+      "name": "المنزلة",
+      "code": "211",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 227,
+      "name": "الجمالية",
+      "code": "213",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 228,
+      "name": "المطرية",
+      "code": "240",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 229,
+      "name": "فارسكور",
+      "code": "245",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 230,
+      "name": "راس البر",
+      "code": "255",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 231,
+      "name": "دمياط الجديدة",
+      "code": "263",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 232,
+      "name": "ميناء دمياط",
+      "code": "265",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 233,
+      "name": "كفر سعد",
+      "code": "270",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 234,
+      "name": "المنزله الإسلامى",
+      "code": "278",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 235,
+      "name": "سعد زغلول دمياط",
+      "code": "287",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 236,
+      "name": "بركة السبع",
+      "code": "221",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 237,
+      "name": "شبين الكوم",
+      "code": "229",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 238,
+      "name": "منوف",
+      "code": "230",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 239,
+      "name": "بنها",
+      "code": "235",
+      "areaAr": "القليوبية",
+      "areaEn": "Qalyubia",
+      "address": null
+    },
+    {
+      "row": 240,
+      "name": "قليوب",
+      "code": "294",
+      "areaAr": "القليوبية",
+      "areaEn": "Qalyubia",
+      "address": null
+    },
+    {
+      "row": 241,
+      "name": "شبين القناطر",
+      "code": "236",
+      "areaAr": "القليوبية",
+      "areaEn": "Qalyubia",
+      "address": null
+    },
+    {
+      "row": 242,
+      "name": "طوخ",
+      "code": "238",
+      "areaAr": "القليوبية",
+      "areaEn": "Qalyubia",
+      "address": null
+    },
+    {
+      "row": 243,
+      "name": "تلا",
+      "code": "242",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 244,
+      "name": "الشهداء",
+      "code": "243",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 245,
+      "name": "قويسنا",
+      "code": "248",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 246,
+      "name": "اشمون",
+      "code": "254",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 247,
+      "name": "ابن الفارض الاسلامى",
+      "code": "268",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 248,
+      "name": "طوخ الاسلامى",
+      "code": "273",
+      "areaAr": "القليوبية",
+      "areaEn": "Qalyubia",
+      "address": null
+    },
+    {
+      "row": 249,
+      "name": "منوف الاسلامى",
+      "code": "275",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 250,
+      "name": "السادات",
+      "code": "277",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 251,
+      "name": "قويسنا الصناعية",
+      "code": "281",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 252,
+      "name": "السادات الاسلامى",
+      "code": "284",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 253,
+      "name": "مول العابد",
+      "code": "289",
+      "areaAr": "القليوبية",
+      "areaEn": "Qalyubia",
+      "address": null
+    },
+    {
+      "row": 254,
+      "name": "سرس الليان",
+      "code": "290",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 255,
+      "name": "العاشر من رمضان",
+      "code": "174",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 256,
+      "name": "الزقازيق",
+      "code": "223",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 257,
+      "name": "منيا القمح",
+      "code": "225",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 258,
+      "name": "فاقوس",
+      "code": "226",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 259,
+      "name": "بلبيس",
+      "code": "227",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 260,
+      "name": "كفر صقر",
+      "code": "244",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 261,
+      "name": "ابو كبير",
+      "code": "250",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 262,
+      "name": "ابو حماد",
+      "code": "252",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 263,
+      "name": "ديرب نجم",
+      "code": "253",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 264,
+      "name": "الزقازيق الاسلامى",
+      "code": "261",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 265,
+      "name": "ههيا",
+      "code": "266",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 266,
+      "name": "القرين",
+      "code": "274",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 267,
+      "name": "جامعة الزقازيق",
+      "code": "282",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 268,
+      "name": "اولاد صقر",
+      "code": "286",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 269,
+      "name": "الحسينية",
+      "code": "291",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 270,
+      "name": "العاشر الاسلامى",
+      "code": "504",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 271,
+      "name": "مشتول السوق",
+      "code": "283",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 272,
+      "name": "باب اللوق",
+      "code": "108",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 273,
+      "name": "طلعت حرب القاهرة",
+      "code": "113",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 274,
+      "name": "جاردن سيتى",
+      "code": "122",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 275,
+      "name": "نقابة المهن الطبية",
+      "code": "150",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 276,
+      "name": "الساحة",
+      "code": "154",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 277,
+      "name": "الزمالك",
+      "code": "155",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 278,
+      "name": "مجلس النواب",
+      "code": "156",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 279,
+      "name": "ابو الفدا الزمالك",
+      "code": "165",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 280,
+      "name": "النادى الأهلى الجزيرة",
+      "code": "197",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 281,
+      "name": "محمد رشدى",
+      "code": "371",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 282,
+      "name": "الجزيرة",
+      "code": "374",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 283,
+      "name": "القصر العينى",
+      "code": "381",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 284,
+      "name": "المنصور محمد",
+      "code": "465",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 285,
+      "name": "جامعة الدول العربية",
+      "code": "473",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 286,
+      "name": "ريتز كارلتون النيل",
+      "code": "694",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 287,
+      "name": "شيراتون القاهرة",
+      "code": "707",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 288,
+      "name": "دمنهور",
+      "code": "202",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 289,
+      "name": "رشيد",
+      "code": "203",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 290,
+      "name": "المحمودية",
+      "code": "204",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 291,
+      "name": "ابو المطامير",
+      "code": "206",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 292,
+      "name": "كفر الدوار",
+      "code": "207",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 293,
+      "name": "محمد كريم",
+      "code": "295",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 294,
+      "name": "التحرير بدر",
+      "code": "247",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 295,
+      "name": "ايتاى البارود",
+      "code": "258",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 296,
+      "name": "ابو حمص",
+      "code": "259",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 297,
+      "name": "كوم حمادة",
+      "code": "264",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 298,
+      "name": "دمنهور الاسلامى",
+      "code": "267",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 299,
+      "name": "شبراخيت",
+      "code": "276",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 300,
+      "name": "حوش عيسي",
+      "code": "285",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 301,
+      "name": "الجمهورية حوش عيسى",
+      "code": "292",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 302,
+      "name": "النوبارية",
+      "code": "442",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 303,
+      "name": "طنطا",
+      "code": "216",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 304,
+      "name": "السنطة",
+      "code": "293",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 305,
+      "name": "كفر الزيات",
+      "code": "217",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 306,
+      "name": "المحلة الكبرى",
+      "code": "218",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 307,
+      "name": "سمنود",
+      "code": "219",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 308,
+      "name": "زفتى",
+      "code": "220",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 309,
+      "name": "المحلة 23 يوليو",
+      "code": "224",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 310,
+      "name": "سيدى سالم",
+      "code": "228",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 311,
+      "name": "كفر الشيخ",
+      "code": "231",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 312,
+      "name": "دسوق",
+      "code": "232",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 313,
+      "name": "قلين",
+      "code": "233",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 314,
+      "name": "الرحمانية",
+      "code": "234",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 315,
+      "name": "مطوبس",
+      "code": "237",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 316,
+      "name": "على مبارك",
+      "code": "239",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 317,
+      "name": "فوه",
+      "code": "241",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 318,
+      "name": "بلطيم",
+      "code": "249",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 319,
+      "name": "بيلا",
+      "code": "251",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 320,
+      "name": "قطور",
+      "code": "256",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 321,
+      "name": "بسيون",
+      "code": "257",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 322,
+      "name": "المحلة الاسلامى",
+      "code": "260",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 323,
+      "name": "طنطا الاسلامى",
+      "code": "262",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 324,
+      "name": "دسوق الاسلامى",
+      "code": "269",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 325,
+      "name": "زفتى الاسلامى",
+      "code": "272",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 326,
+      "name": "محمد فريد طنطا",
+      "code": "389",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 327,
+      "name": "احمد زويل",
+      "code": "556",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 328,
+      "name": "الخزينة الرئيسية",
+      "code": "100",
+      "areaAr": "الفروع الرئيسية",
+      "areaEn": "Main Branches",
+      "address": null
+    },
+    {
+      "row": 329,
+      "name": "القاهرة",
+      "code": "101",
+      "areaAr": "الفروع الرئيسية",
+      "areaEn": "Main Branches",
+      "address": null
+    },
+    {
+      "row": 330,
+      "name": "مصطفى كامل",
+      "code": "105",
+      "areaAr": "الفروع الرئيسية",
+      "areaEn": "Main Branches",
+      "address": null
+    },
+    {
+      "row": 331,
+      "name": "قصر النيل",
+      "code": "107",
+      "areaAr": "الفروع الرئيسية",
+      "areaEn": "Main Branches",
+      "address": null
+    },
+    {
+      "row": 332,
+      "name": "المعاملات الدولية",
+      "code": "140",
+      "areaAr": "الفروع الرئيسية",
+      "areaEn": "Main Branches",
+      "address": null
+    },
+    {
+      "row": 333,
+      "name": "طلعت حرب الاسكندرية",
+      "code": "401",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 334,
+      "name": "المنصورة",
+      "code": "208",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 335,
+      "name": "دكرنس",
+      "code": "209",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 336,
+      "name": "شربين",
+      "code": "210",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 337,
+      "name": "شربين الاسلامى",
+      "code": "561",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 338,
+      "name": "بلقاس",
+      "code": "212",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 339,
+      "name": "السنبلاوين",
+      "code": "214",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 340,
+      "name": "ميت غمر",
+      "code": "215",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 341,
+      "name": "اجا",
+      "code": "246",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 342,
+      "name": "المنصورة الاسلامى",
+      "code": "271",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 343,
+      "name": "شارع المديرية",
+      "code": "279",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 344,
+      "name": "منية النصر",
+      "code": "280",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 345,
+      "name": "طلخا",
+      "code": "288",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 346,
+      "name": "جمصة",
+      "code": "297",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 347,
+      "name": "شارع قناة السويس",
+      "code": "546",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 348,
+      "name": "الخارجة",
+      "code": "312",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 349,
+      "name": "الداخلة",
+      "code": "313",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 350,
+      "name": "اسيوط",
+      "code": "315",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 351,
+      "name": "ديروط",
+      "code": "316",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 352,
+      "name": "الفاتح",
+      "code": "734",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 353,
+      "name": "القوصية",
+      "code": "336",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 354,
+      "name": "منفلوط",
+      "code": "340",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 355,
+      "name": "منفلوط الاسلامى",
+      "code": "742",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 356,
+      "name": "ابو تيج",
+      "code": "342",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 357,
+      "name": "صدفا",
+      "code": "355",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 358,
+      "name": "جامعة اسيوط",
+      "code": "364",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 359,
+      "name": "الفرافرة",
+      "code": "368",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 360,
+      "name": "وكالة اسيوط لتكرير البترول",
+      "code": "370",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 361,
+      "name": "وكالة ميدان المحطة",
+      "code": "379",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 362,
+      "name": "ميدان البنوك اسيوط",
+      "code": "387",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 363,
+      "name": "مطار اسيوط",
+      "code": "739",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 364,
+      "name": "اسيوط الجديدة",
+      "code": "393",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 365,
+      "name": "اسيوط الاسلامى",
+      "code": "736",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 366,
+      "name": "ساحل سليم",
+      "code": "397",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 367,
+      "name": "ابنوب",
+      "code": "578",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 368,
+      "name": "الوادى الجديد",
+      "code": "597",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 369,
+      "name": "بلاط",
+      "code": "596",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 370,
+      "name": "وكالة اسمنت أسيوط",
+      "code": "369",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 371,
+      "name": "اوسيم",
+      "code": "147",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 372,
+      "name": "مدينة 6 اكتوبر",
+      "code": "176",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 373,
+      "name": "نادى 6 اكتوبر",
+      "code": "574",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 374,
+      "name": "سوق الجملة 6 اكتوبر",
+      "code": "186",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 375,
+      "name": "اكتوبر الصناعية",
+      "code": "187",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 376,
+      "name": "القرية الذكية",
+      "code": "188",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 377,
+      "name": "الشيخ زايد",
+      "code": "472",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 378,
+      "name": "جامعة مصر للعلوم",
+      "code": "485",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 379,
+      "name": "الحى المالى",
+      "code": "489",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 380,
+      "name": "غرب سوميد",
+      "code": "509",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 381,
+      "name": "بيفرلى هيلز",
+      "code": "512",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 382,
+      "name": "مول مصر",
+      "code": "515",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 383,
+      "name": "اكتوبر الإسلامى",
+      "code": "518",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 384,
+      "name": "الحصرى",
+      "code": "519",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 385,
+      "name": "الواحات البحرية",
+      "code": "524",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 386,
+      "name": "هيلتون دريم السياحى",
+      "code": "642",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 387,
+      "name": "مطار سفنكس الدولى",
+      "code": "712",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 388,
+      "name": "كونكورديا بلازا",
+      "code": "568",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 389,
+      "name": "القلعة",
+      "code": "104",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 390,
+      "name": "حلوان",
+      "code": "111",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 391,
+      "name": "أثر النبى",
+      "code": "112",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 392,
+      "name": "السيدة زينب",
+      "code": "123",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 393,
+      "name": "المعادى",
+      "code": "127",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 394,
+      "name": "دار الهلال",
+      "code": "767",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 395,
+      "name": "ابراج القادة - دجلة المعادى",
+      "code": "554",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 396,
+      "name": "كورت يارد",
+      "code": "551",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 397,
+      "name": "الروضة",
+      "code": "129",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 398,
+      "name": "الصف",
+      "code": "132",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 399,
+      "name": "المنيل الجامعى",
+      "code": "143",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 400,
+      "name": "دار السلام",
+      "code": "152",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 401,
+      "name": "المعادى الاسلامى",
+      "code": "162",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 402,
+      "name": "سرايات المعادى",
+      "code": "557",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 403,
+      "name": "المعادى الجديدة",
+      "code": "169",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 404,
+      "name": "كورنيش المعادى",
+      "code": "468",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 405,
+      "name": "جامعة حلوان",
+      "code": "474",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 406,
+      "name": "حلوان الاسلامى",
+      "code": "575",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 407,
+      "name": "زهراء المعادى",
+      "code": "496",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 408,
+      "name": "سنترال المعادى",
+      "code": "545",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 410,
+      "name": "وكالة الهيئة العامة للبترول",
+      "code": "471",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 411,
+      "name": "اوتوستراد المعادى",
+      "code": "553",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 412,
+      "name": "نايل تاور - المعادى",
+      "code": "552",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 413,
+      "name": "الشروق",
+      "code": "167",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 414,
+      "name": "سوق العبور",
+      "code": "178",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 415,
+      "name": "الرحاب",
+      "code": "191",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 416,
+      "name": "بدر",
+      "code": "194",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 417,
+      "name": "فيوتشر مول",
+      "code": "195",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 418,
+      "name": "التجمع الخامس",
+      "code": "476",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 419,
+      "name": "المقطم",
+      "code": "488",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 420,
+      "name": "شارع 9 المقطم",
+      "code": "570",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 421,
+      "name": "الهضبة الوسطى المقطم",
+      "code": "766",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 422,
+      "name": "كايروفيستيفال",
+      "code": "501",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 423,
+      "name": "مدينتى",
+      "code": "505",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 424,
+      "name": "واتر واى",
+      "code": "507",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 425,
+      "name": "مجمع النيابات",
+      "code": "508",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 426,
+      "name": "نادى الزهور",
+      "code": "510",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 427,
+      "name": "ذا كورنر",
+      "code": "520",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 428,
+      "name": "التسعين",
+      "code": "523",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 429,
+      "name": "الروبيكى",
+      "code": "528",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 430,
+      "name": "الهايكستب",
+      "code": "529",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 431,
+      "name": "تاون ستار",
+      "code": "530",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 432,
+      "name": "اميرالد",
+      "code": "555",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 433,
+      "name": "مكتب استبدال بمطار ع.الادارية",
+      "code": "711",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 434,
+      "name": "ميراج ريزيدنس",
+      "code": "569",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 435,
+      "name": "روض الفرج",
+      "code": "109",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 436,
+      "name": "شبرا الخيمة",
+      "code": "110",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 437,
+      "name": "رمسيس",
+      "code": "118",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 438,
+      "name": "العباسية",
+      "code": "120",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 439,
+      "name": "شبرا",
+      "code": "121",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 440,
+      "name": "أحمد بدوى",
+      "code": "124",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 441,
+      "name": "خلوصى",
+      "code": "128",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 442,
+      "name": "القناطر الخيرية",
+      "code": "142",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 443,
+      "name": "دوران شبرا",
+      "code": "163",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 444,
+      "name": "اغاخان",
+      "code": "175",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 445,
+      "name": "النيل",
+      "code": "461",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 446,
+      "name": "الظاهر للمعاملات الاسلامية",
+      "code": "506",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 447,
+      "name": "شبرا الخيمة الاسلامى",
+      "code": "543",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 448,
+      "name": "هيلتون رمسيس",
+      "code": "621",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 449,
+      "name": "كونراد",
+      "code": "622",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 450,
+      "name": "وكالة كورنيش القناطر",
+      "code": "0",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 451,
+      "name": "منشاة القناطر الاسلامى",
+      "code": "794",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 452,
+      "name": "وكالة حجازى",
+      "code": "110",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 453,
+      "name": "الموسكى",
+      "code": "103",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 454,
+      "name": "محمد فريد",
+      "code": "114",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 455,
+      "name": "الدواوين",
+      "code": "115",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 457,
+      "name": "بين الصورين",
+      "code": "126",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 458,
+      "name": "العتبة",
+      "code": "131",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 459,
+      "name": "عبدالخالق ثروت",
+      "code": "138",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 460,
+      "name": "الحسين الاسلامى",
+      "code": "141",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 461,
+      "name": "خان الخليلى",
+      "code": "0",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 462,
+      "name": "طلعت حرب الاسلامى",
+      "code": "168",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 463,
+      "name": "مجمع الشرطه",
+      "code": "184",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 464,
+      "name": "دار القضاء",
+      "code": "375",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 465,
+      "name": "الدراسة",
+      "code": "380",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 466,
+      "name": "شريف",
+      "code": "383",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 467,
+      "name": "التوفيقية",
+      "code": "388",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 468,
+      "name": "الازبكية",
+      "code": "462",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 469,
+      "name": "وكاله مشيخه الازهر",
+      "code": "475",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 470,
+      "name": "مؤسسة الاهرام",
+      "code": "548",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 471,
+      "name": "دار الافتاء للمعاملات الاسلامية",
+      "code": "491",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 472,
+      "name": "مدينة نصر",
+      "code": "159",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 473,
+      "name": "الثورة",
+      "code": "160",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 474,
+      "name": "مدينة نصر للمعاملات الاسلامية",
+      "code": "170",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 475,
+      "name": "يوسف عباس",
+      "code": "185",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 476,
+      "name": "ستى ستارز",
+      "code": "193",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 477,
+      "name": "النادى الاهلى مدينة نصر",
+      "code": "198",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 478,
+      "name": "الجهاز المركزى للمحاسبات",
+      "code": "199",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 479,
+      "name": "أحمد فؤاد",
+      "code": "392",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 480,
+      "name": "صندوق الاسكان",
+      "code": "159",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 481,
+      "name": "عباس العقاد",
+      "code": "466",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 482,
+      "name": "وكالة جامعة الازهر",
+      "code": "491",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 483,
+      "name": "النصر",
+      "code": "521",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 484,
+      "name": "هيئة الاستثمار",
+      "code": "522",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 485,
+      "name": "الماظه",
+      "code": "525",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 486,
+      "name": "الميثاق",
+      "code": "526",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 487,
+      "name": "مكرم عبيد",
+      "code": "550",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 488,
+      "name": "الدقى",
+      "code": "135",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 489,
+      "name": "امبابة",
+      "code": "136",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 490,
+      "name": "الأعلام",
+      "code": "146",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 491,
+      "name": "الوراق",
+      "code": "148",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 492,
+      "name": "المهندسين",
+      "code": "157",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 493,
+      "name": "الدقى الاسلامى",
+      "code": "171",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 494,
+      "name": "شارع السودان",
+      "code": "180",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 495,
+      "name": "جامعة القاهرة",
+      "code": "196",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 496,
+      "name": "الاورمان",
+      "code": "376",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 497,
+      "name": "محمد حافظ",
+      "code": "391",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 498,
+      "name": "المساحة",
+      "code": "463",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 499,
+      "name": "وادى النيل",
+      "code": "467",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 500,
+      "name": "منشأة القناطر",
+      "code": "478",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 501,
+      "name": "نادى الزمالك",
+      "code": "511",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 502,
+      "name": "سوريا",
+      "code": "516",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 503,
+      "name": "شارع نوال",
+      "code": "562",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 504,
+      "name": "وكالة مدينة العمال",
+      "code": "0",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 505,
+      "name": "الجيزة",
+      "code": "133",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 506,
+      "name": "ام المصريين",
+      "code": "134",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 507,
+      "name": "الهرم",
+      "code": "137",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 508,
+      "name": "العياط",
+      "code": "145",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 509,
+      "name": "البدرشين",
+      "code": "153",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 510,
+      "name": "سعد زغلول",
+      "code": "158",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 511,
+      "name": "قصر الهرم",
+      "code": "166",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 512,
+      "name": "الملك فيصل",
+      "code": "189",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 513,
+      "name": "العمرانية الغربية",
+      "code": "190",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 514,
+      "name": "الصوت والضوء",
+      "code": "454",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 515,
+      "name": "المريوطية",
+      "code": "513",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 516,
+      "name": "فيصل الجديد",
+      "code": "517",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 517,
+      "name": "مينا هاوس السياحى",
+      "code": "636",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 518,
+      "name": "سوفيتيل الهرم السياحى",
+      "code": "639",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 519,
+      "name": "فندق جراند بيراميدز",
+      "code": "641",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 520,
+      "name": "فندق بيراميدز بارك",
+      "code": "654",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 521,
+      "name": "فندق الواحة",
+      "code": "709",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 522,
+      "name": "منيل شيحة",
+      "code": "763",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 523,
+      "name": "صفية زغلول",
+      "code": "377",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 524,
+      "name": "المنتزة",
+      "code": "559",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 525,
+      "name": "رشدى",
+      "code": "386",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 526,
+      "name": "باكوس",
+      "code": "405",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 527,
+      "name": "ميناء الاسكندرية",
+      "code": "406",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 528,
+      "name": "سيزوستريس",
+      "code": "409",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 529,
+      "name": "ايزيس",
+      "code": "410",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 530,
+      "name": "ابو قير",
+      "code": "423",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 531,
+      "name": "لوران",
+      "code": "425",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 532,
+      "name": "سيدى بشر",
+      "code": "430",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 533,
+      "name": "الابراهيمية",
+      "code": "445",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 534,
+      "name": "محرم بك",
+      "code": "447",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 535,
+      "name": "السيوف",
+      "code": "451",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 536,
+      "name": "المعمورة",
+      "code": "452",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 537,
+      "name": "سموحة",
+      "code": "457",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 538,
+      "name": "الحرية",
+      "code": "470",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 539,
+      "name": "صلاح سالم للمعاملات الاسلامية",
+      "code": "492",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 540,
+      "name": "سيدى جابر",
+      "code": "532",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 541,
+      "name": "سابا باشا",
+      "code": "539",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 542,
+      "name": "فندق فلسطين",
+      "code": "655",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 543,
+      "name": "فندق توليب الاسكندرية",
+      "code": "698",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 544,
+      "name": "فندق الفورسيزون",
+      "code": "710",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 545,
+      "name": "كامب شيزار",
+      "code": "558",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 546,
+      "name": "التعليم العالى",
+      "code": "466",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 547,
+      "name": "مكتب جوازات الجيزة",
+      "code": "133",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 548,
+      "name": "مكتب تصاريح العمل الجيزة",
+      "code": "133",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 549,
+      "name": "مكتب جوازات الدراسة",
+      "code": "380",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 550,
+      "name": "مكتب جوازات حدائق القبة",
+      "code": "130",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 551,
+      "name": "مكتب جوازات العجوزة",
+      "code": "376",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 552,
+      "name": "مكتب جوازات النزهة",
+      "code": "116",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 553,
+      "name": "مكتب جوازات الاميرية",
+      "code": "183",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 554,
+      "name": "مكتب جوازات اكتوبر",
+      "code": "187",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 555,
+      "name": "مكتب جوازات محرم بك",
+      "code": "447",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 556,
+      "name": "مكتب جوازات العطارين",
+      "code": "401",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 557,
+      "name": "مكتب جوازات القبارى",
+      "code": "421",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 558,
+      "name": "مكتب جوازات سيدى بشر",
+      "code": "430",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 559,
+      "name": "مكتب جوازات طلعت حرب",
+      "code": "401",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 560,
+      "name": "مكتب جوازات المنتزة",
+      "code": "430",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 561,
+      "name": "مكتب جوازات دمنهور",
+      "code": "202",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 562,
+      "name": "مكتب جوازات كفرالدوار",
+      "code": "207",
+      "areaAr": "غرب الدلتا",
+      "areaEn": "West Delta",
+      "address": null
+    },
+    {
+      "row": 563,
+      "name": "مكتب جوازات طنطا",
+      "code": "216",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 564,
+      "name": "مكتب جوازات المنزلة",
+      "code": "211",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 565,
+      "name": "مكتب جوازات المنصورة",
+      "code": "208",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 566,
+      "name": "مكتب تصاريح العمل المنصورة",
+      "code": "208",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 567,
+      "name": "مكتب جوازات دكرنس",
+      "code": "209",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 568,
+      "name": "مكتب تصاريح العمل دكرنس",
+      "code": "209",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 569,
+      "name": "مكتب جوازات بيلا",
+      "code": "251",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 570,
+      "name": "مكتب جوازات المحلة الكبرى",
+      "code": "218",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 571,
+      "name": "مكتب تصاريح العمل المحلة الكبرى",
+      "code": "218",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 572,
+      "name": "مكتب جوازات اسيوط",
+      "code": "315",
+      "areaAr": "أسيوط",
+      "areaEn": "Assiut",
+      "address": null
+    },
+    {
+      "row": 573,
+      "name": "مكتب جوازات طهطا",
+      "code": "320",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 574,
+      "name": "مكتب جوازات سوهاج",
+      "code": "317",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 575,
+      "name": "مكتب تصاريح العمل سوهاج",
+      "code": "317",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 576,
+      "name": "مكتب جوازات جرجا",
+      "code": "322",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 577,
+      "name": "مكتب تصاريح العمل جرجا",
+      "code": "322",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 578,
+      "name": "مكتب جوازات المنيا",
+      "code": "305",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 579,
+      "name": "مكتب جوازات العاشر من رمضان",
+      "code": "174",
+      "areaAr": "شرق الدلتا",
+      "areaEn": "East Delta",
+      "address": null
+    },
+    {
+      "row": 580,
+      "name": "مكتب جوازات بنى سويف",
+      "code": "301",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 581,
+      "name": "مكتب تصاريح العمل المنيا",
+      "code": "305",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 582,
+      "name": "مكتب جوازات قنا",
+      "code": "323",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 583,
+      "name": "مكتب تصاريح العمل قنا",
+      "code": "323",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 584,
+      "name": "مكتب جوازات الاقصر",
+      "code": "324",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 585,
+      "name": "مكتب تصاريح العمل الاقصر",
+      "code": "324",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 586,
+      "name": "مكتب جوازات اسوان",
+      "code": "319",
+      "areaAr": "اسوان",
+      "areaEn": "Aswan",
+      "address": null
+    },
+    {
+      "row": 587,
+      "name": "مكتب جوازات نجع حمادى",
+      "code": "328",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 588,
+      "name": "مكتب جوازات الغردقة",
+      "code": "330",
+      "areaAr": "البحر الأحمر",
+      "areaEn": "Red Sea",
+      "address": null
+    },
+    {
+      "row": 589,
+      "name": "مكتب جوازات دمياط",
+      "code": "201",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 590,
+      "name": "مكتب تصاريح العمل دمياط",
+      "code": "201",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 591,
+      "name": "مكتب جوازات المطرية",
+      "code": "240",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 592,
+      "name": "مكتب جوازات شبين الكوم",
+      "code": "229",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 593,
+      "name": "مكتب تصاريح العمل شبين الكوم",
+      "code": "229",
+      "areaAr": "جنوب الدلتا",
+      "areaEn": "South Delta",
+      "address": null
+    },
+    {
+      "row": 594,
+      "name": "مكتب جوازات السلطان حسين",
+      "code": "413",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 595,
+      "name": "مكتب تصاريح العمل السلطان حسين",
+      "code": "413",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 596,
+      "name": "سك العملة",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 597,
+      "name": "مركزى الجمهورية",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 598,
+      "name": "مركزى المهندسين",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 599,
+      "name": "مستشفى عين شمس",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 600,
+      "name": "مركزى بورسعيد",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 601,
+      "name": "مركزى الاسكندرية",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 602,
+      "name": "ATM",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 603,
+      "name": "غمرة",
+      "code": "756",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 604,
+      "name": "دمياط الاسلامى",
+      "code": "721",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 605,
+      "name": "شها",
+      "code": "803",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 606,
+      "name": "البحوث الاسلامية",
+      "code": "184",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 607,
+      "name": "الفرز",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 608,
+      "name": "مصنع السكر",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 609,
+      "name": "مطبعة الهرم",
+      "code": "0",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 610,
+      "name": "الرياض",
+      "code": "716",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 611,
+      "name": "العطارين",
+      "code": "408",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 612,
+      "name": "ماربيلا الساحل الشمالى",
+      "code": "0",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 613,
+      "name": "محمد نجيب",
+      "code": "787",
+      "areaAr": "شرق الاسكندرية",
+      "areaEn": "East Alexandria",
+      "address": null
+    },
+    {
+      "row": 614,
+      "name": "الورديان",
+      "code": "786",
+      "areaAr": "غرب الاسكندرية",
+      "areaEn": "West Alexandria",
+      "address": null
+    },
+    {
+      "row": 615,
+      "name": "دار نادى حرس الحدود",
+      "code": "750",
+      "areaAr": "غرب القاهرة",
+      "areaEn": "West Cairo",
+      "address": null
+    },
+    {
+      "row": 616,
+      "name": "ترعة الجبل",
+      "code": "783",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 617,
+      "name": "جهاز الامن الحربى",
+      "code": "704",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 618,
+      "name": "ستى سنتر الماظة",
+      "code": "752",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 619,
+      "name": "شمال التحرير",
+      "code": "0",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 620,
+      "name": "ميامى",
+      "code": "572",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 621,
+      "name": "مراقيا",
+      "code": "0",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 622,
+      "name": "وكالة سوق الخضار والفاكهة",
+      "code": "566",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 623,
+      "name": "داون تاون طنطا",
+      "code": "777",
+      "areaAr": "وسط الدلتا",
+      "areaEn": "Central Delta",
+      "address": null
+    },
+    {
+      "row": 624,
+      "name": "ارابيلا بلازا",
+      "code": "775",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 625,
+      "name": "لوروا",
+      "code": "751",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 626,
+      "name": "بنى عبيد",
+      "code": "778",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 627,
+      "name": "ميدان المنشية",
+      "code": "772",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 628,
+      "name": "امبابة جاردنز",
+      "code": "753",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 629,
+      "name": "البطل احمد عبدالعزيز",
+      "code": "755",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 630,
+      "name": "المتحف المصرى الكبير",
+      "code": "769",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 631,
+      "name": "نادى شيراتون",
+      "code": "789",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 632,
+      "name": "الماظة افينيو",
+      "code": "795",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 633,
+      "name": "الحديقة اليابانية",
+      "code": "779",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 634,
+      "name": "الفيوم الجديدة",
+      "code": "741",
+      "areaAr": "شمال الصعيد",
+      "areaEn": "North Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 635,
+      "name": "سيتى هايتس العبور",
+      "code": "776",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 636,
+      "name": "السبعين",
+      "code": "476",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 637,
+      "name": "التسعين الاسلامى",
+      "code": "802",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 638,
+      "name": "القطامية هايتس",
+      "code": "760",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 639,
+      "name": "القطامية",
+      "code": "782",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 640,
+      "name": "اوبن اير",
+      "code": "771",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 641,
+      "name": "سندوب",
+      "code": "565",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 642,
+      "name": "دكرنس الاسلامى",
+      "code": "784",
+      "areaAr": "الدقهلية",
+      "areaEn": "Dakahlia",
+      "address": null
+    },
+    {
+      "row": 643,
+      "name": "العياط الجديدة",
+      "code": "768",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 644,
+      "name": "حدائق الاهرام",
+      "code": "798",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 645,
+      "name": "قها",
+      "code": "298",
+      "areaAr": "القليوبية",
+      "areaEn": "Qalyubia",
+      "address": null
+    },
+    {
+      "row": 646,
+      "name": "مدينة الاثاث",
+      "code": "299",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 647,
+      "name": "كفر البطيخ",
+      "code": "722",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 648,
+      "name": "السرو",
+      "code": "720",
+      "areaAr": "دمياط",
+      "areaEn": "Damietta",
+      "address": null
+    },
+    {
+      "row": 649,
+      "name": "مطوبس الصناعية",
+      "code": "715",
+      "areaAr": "كفر الشيخ",
+      "areaEn": "Kafr El Sheikh",
+      "address": null
+    },
+    {
+      "row": 650,
+      "name": "سوهاج الجديدة",
+      "code": "738",
+      "areaAr": "سوهاج",
+      "areaEn": "Sohag",
+      "address": null
+    },
+    {
+      "row": 651,
+      "name": "البارون مول",
+      "code": "781",
+      "areaAr": "المدن الجديدة",
+      "areaEn": "New Cities",
+      "address": null
+    },
+    {
+      "row": 652,
+      "name": "الديار مول",
+      "code": "792",
+      "areaAr": "القاهرة الجديدة",
+      "areaEn": "New Cairo",
+      "address": null
+    },
+    {
+      "row": 653,
+      "name": "ميدان شبين القناطر",
+      "code": "785",
+      "areaAr": "القليوبية",
+      "areaEn": "Qalyubia",
+      "address": null
+    },
+    {
+      "row": 654,
+      "name": "هيئة قناة السويس",
+      "code": "748",
+      "areaAr": "القناة",
+      "areaEn": "Canal",
+      "address": null
+    },
+    {
+      "row": 655,
+      "name": "مسرة",
+      "code": "757",
+      "areaAr": "شمال القاهرة",
+      "areaEn": "North Cairo",
+      "address": null
+    },
+    {
+      "row": 656,
+      "name": "صن سيتى النهضة",
+      "code": "793",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 657,
+      "name": "اهالينا",
+      "code": "754",
+      "areaAr": "شرق القاهرة",
+      "areaEn": "East Cairo",
+      "address": null
+    },
+    {
+      "row": 658,
+      "name": "زوسر",
+      "code": "731",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 659,
+      "name": "حدائق حلوان",
+      "code": "746",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 660,
+      "name": "قنا الجديدة",
+      "code": "726",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 661,
+      "name": "فرشوط",
+      "code": "732",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 662,
+      "name": "نقادة",
+      "code": "730",
+      "areaAr": "جنوب الصعيد",
+      "areaEn": "South Upper Egypt",
+      "address": null
+    },
+    {
+      "row": 663,
+      "name": "وكالة خان الخليلى",
+      "code": "0",
+      "areaAr": "وسط القاهرة",
+      "areaEn": "Central Cairo",
+      "address": null
+    },
+    {
+      "row": 664,
+      "name": "المماليك",
+      "code": "797",
+      "areaAr": "جنوب القاهرة",
+      "areaEn": "South Cairo",
+      "address": null
+    },
+    {
+      "row": 665,
+      "name": "مصطفى النحاس",
+      "code": "758",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 666,
+      "name": "ميدان سفنكس",
+      "code": "723",
+      "areaAr": "شمال الجيزة",
+      "areaEn": "North Giza",
+      "address": null
+    },
+    {
+      "row": 667,
+      "name": "الحوامدية",
+      "code": "573",
+      "areaAr": "جنوب الجيزة",
+      "areaEn": "South Giza",
+      "address": null
+    },
+    {
+      "row": 668,
+      "name": "بوليفارد",
+      "code": "759",
+      "areaAr": "مدينة نصر",
+      "areaEn": "Nasr City",
+      "address": null
+    },
+    {
+      "row": 669,
+      "name": "النادى الاهلى الشيخ زايد",
+      "code": "780",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 670,
+      "name": "walk of cairo",
+      "code": "799",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 671,
+      "name": "اركان مول",
+      "code": "770",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 672,
+      "name": "وادى التكنولوجيا",
+      "code": "764",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    },
+    {
+      "row": 673,
+      "name": "سان ستيفانو",
+      "code": "0",
+      "areaAr": "الاسكندرية",
+      "areaEn": "Alexandria",
+      "address": null
+    }
+  ]
+}

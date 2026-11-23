@@ -51,6 +51,7 @@ import {
   type OperationsDayBoardPersonDto,
   type OperationsDayBoardVehicleCrewDto,
   type OperationsShiftTypeDto,
+  type OperationsUncodedVehicleDto,
   type PlanOperationsCrew,
 } from '@ecms/contracts';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -120,6 +121,17 @@ export interface PlanRow {
   shiftTypeId: string | null;
   rowColour: CrewRowColour | null;
   notes: string | null;
+  /**
+   * Round 32 critic — what names the van when its Fleet code names nothing («0», «00» …): its plate
+   * and its make, as the «بدون سيارة» list named it when it was picked (`vanName`). Null — or absent
+   * — for a van with a code and a row without one. A Fleet fact, like the drivers: never a change.
+   */
+  uncoded?: OperationsUncodedVehicleDto | null;
+  /**
+   * Round 32 critic — how many محصنات ride the SAVED crew row (`crewId`) — the server's count; 0
+   * for a row added here. They follow the crew row, so they stay on its van in «تبديل بين سيارتين».
+   */
+  shipments?: number;
 }
 
 /** The row's crew limits: 1–2 captains, 2–4 specialists («من 1 ل 2 قادة و من 2 ل 4 اخصائيين»). */
@@ -165,6 +177,8 @@ export const toPlanRows = (board: OperationsCrewBoardDto | undefined): PlanRow[]
           crewId: row.crew?.id ?? null,
           drivers: row.drivers,
           ...crewFields(row.crew),
+          uncoded: row.uncoded ?? null,
+          shipments: row.crew?.shipments ?? 0,
         })),
         ...board.vehiclelessRows.map((crew): PlanRow => ({
           key: `loose:${crew.id}`,
@@ -174,6 +188,8 @@ export const toPlanRows = (board: OperationsCrewBoardDto | undefined): PlanRow[]
           crewId: crew.id,
           drivers: [],
           ...crewFields(crew),
+          uncoded: null,
+          shipments: crew.shipments ?? 0,
         })),
       ];
 
@@ -277,6 +293,8 @@ export const vehiclelessRow = (sequence: number): PlanRow => ({
   shiftTypeId: null,
   rowColour: null,
   notes: null,
+  uncoded: null,
+  shipments: 0,
 });
 
 /** Nothing on it yet — no crew, and none of its own fields filled. */
@@ -349,6 +367,8 @@ export const attachVan = (
       {
         ...van,
         crewId: loose.crewId ?? van.crewId,
+        // The محصنات ride the crew row whose id the van's row now carries.
+        shipments: (loose.crewId === null ? van.shipments : loose.shipments) ?? 0,
         slots: loose.slots,
         direction: loose.direction,
         plannedTime: loose.plannedTime,
@@ -366,6 +386,8 @@ export interface TakenVehicle {
   vehicleCode: string;
   onRoster: boolean;
   drivers: OperationsDayBoardDriverDto[];
+  /** Round 32 critic — what names it when its code names nothing (its plate and make). */
+  uncoded?: OperationsUncodedVehicleDto | null;
 }
 
 /**
@@ -392,6 +414,7 @@ export const takeVehicle = (
           vehicleCode: vehicle.vehicleCode,
           onRoster: vehicle.onRoster,
           drivers: vehicle.drivers,
+          uncoded: vehicle.uncoded ?? null,
         }
       : candidate,
   );
@@ -822,7 +845,11 @@ export const planRowCard = (
   return {
     crewAssignmentId: row.crewId ?? row.key,
     vehicleId: row.vehicleId,
-    vehicleCode: row.vehicleCode,
+    // Round 32 critic — the card names a van whose code names nothing by its plate.
+    vehicleCode:
+      row.uncoded != null && row.uncoded.plateNumber.trim() !== ''
+        ? row.uncoded.plateNumber
+        : row.vehicleCode,
     drivers: row.drivers,
     captains: row.slots.captain.map(person),
     specialist1: row.slots.specialist1.map(person),
@@ -934,9 +961,15 @@ const refreshFacts = (local: PlanRow, was: PlanRow | undefined, answer: PlanRow)
   return {
     ...local,
     ...(sameVan
-      ? { vehicleCode: answer.vehicleCode, drivers: answer.drivers, onRoster: answer.onRoster }
+      ? {
+          vehicleCode: answer.vehicleCode,
+          drivers: answer.drivers,
+          onRoster: answer.onRoster,
+          uncoded: answer.uncoded ?? null,
+        }
       : {}),
     crewId: ownCrew ? answer.crewId : local.crewId,
+    shipments: (ownCrew ? answer.shipments : local.shipments) ?? 0,
   };
 };
 
@@ -1187,7 +1220,14 @@ export const releaseVan = (
   if (row.key !== vanKey) {
     return rows.map((candidate) =>
       candidate.key === key
-        ? { ...candidate, vehicleId: null, vehicleCode: null, onRoster: false, drivers: [] }
+        ? {
+            ...candidate,
+            vehicleId: null,
+            vehicleCode: null,
+            onRoster: false,
+            drivers: [],
+            uncoded: null,
+          }
         : candidate,
     );
   }

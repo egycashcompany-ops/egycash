@@ -255,6 +255,30 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * `codesByIds` with what else NAMES a car: its plate and its type — for a screen that lists a car
+   * whose code names nothing («0», «00» … typed by hand for a car with no code yet) by its plate.
+   * One lookup a page, like `codesByIds`; a deleted car still answers.
+   */
+  async namesByIds(
+    ids: readonly string[],
+  ): Promise<Map<string, { code: string; plateNumber: string; typeId: string }>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select({ code: 1, plateNumber: 1, typeId: 1 })
+      .lean<
+        { _id: Types.ObjectId; code: string; plateNumber?: string; typeId?: Types.ObjectId }[]
+      >()
+      .exec();
+    return new Map(
+      rows.map((row) => [
+        String(row._id),
+        { code: row.code, plateNumber: row.plateNumber ?? '', typeId: String(row.typeId ?? '') },
+      ]),
+    );
+  }
+
+  /**
    * `codesByIds` for the LIVE cars only (not soft-deleted, any status) — for a list that offers
    * cars to act on, where a deleted car would be offered and then refused (its `getById` is 404).
    * History keeps reading `codesByIds`, which a deleted car still answers.

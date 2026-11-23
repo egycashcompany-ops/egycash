@@ -12744,6 +12744,16 @@ const en: Record<string, string> = {
   'operations.crewPlan.hint':
     'Press «+ Choose» in a slot, or drag a name onto a vehicle’s row or a slot. Drag it back onto a list to free it.',
   'operations.crewPlan.viewOnly': 'You can view the plan; planning needs the crew-planning permission.',
+  // Round 32 — a past day opens as its record, view only.
+  'operations.crewPlan.record.title': 'Record of {{day}} — view only, it cannot be changed',
+  'operations.crewPlan.record.body':
+    'The crews, vehicles, directions and times as they were saved for that day. Nothing can be dragged, picked, typed or saved.',
+  'operations.crewPlan.record.mark': 'Record · view only',
+  'operations.crewPlan.record.today': 'Back to today',
+  'operations.crewPlan.record.todayHint': 'Open today’s board ({{day}})',
+  'operations.crewPlan.record.unsavedTitle': 'The day ended before Save',
+  'operations.crewPlan.record.unsaved':
+    'Unsaved changes: {{count}} — the day ended before Save, so they can no longer be saved.',
   'operations.crewPlan.picked': '{{name}} is picked up — choose a slot, or press Esc',
   'operations.crewPlan.cancelPick': 'Cancel',
   'operations.crewPlan.placeHere': 'Place here',
@@ -12976,6 +12986,79 @@ const en: Record<string, string> = {
   'operations.crewPlan.undo.kind.standingLoad': 'loading the standing crew',
   'operations.crewPlan.undo.kind.standingClear': 'taking the standing crew off',
   'operations.crewPlan.undo.kind.restoreRow': 'putting row {{row}} back',
+  // Round 32 C — «تبديل بين سيارتين»: two vans' cards side by side, what crosses ticked item by item.
+  'operations.crewPlan.undo.kind.swap': 'the swap between {{a}} and {{b}}',
+  // Round 32 critic — a one-way move is said as one, never as a swap.
+  'operations.crewPlan.undo.kind.move': 'moving the selected from {{from}} to {{to}}',
+  'operations.crewPlan.swap.moved': 'Moved the selected from {{from}} to {{to}}',
+  'operations.crewPlan.swap.itemExchange': 'Exchange {{item}} with {{to}}',
+  'operations.crewPlan.swap.reason.archivedPair':
+    'the type on {{row}} is archived and stays there — so the two types are not exchanged',
+  'operations.crewPlan.swap.shipments': 'Secured: {{count}}',
+  'operations.crewPlan.swap.shipmentsStay':
+    'The {{count}} secured shipments placed on {{row}} stay on it — they were placed before its captain or direction changed. Review them on «Secured distribution» after saving.',
+  'operations.crewPlan.swap.open': 'Swap with another vehicle…',
+  'operations.crewPlan.swap.openRow': 'Swap {{row}} with another vehicle…',
+  'operations.crewPlan.swap.title': 'Swap between two vehicles',
+  'operations.crewPlan.swap.subtitle':
+    'Tick what goes from each vehicle to the other — nothing is saved before «Save»',
+  'operations.crewPlan.swap.first': 'First vehicle',
+  'operations.crewPlan.swap.second': 'Second vehicle',
+  'operations.crewPlan.swap.after': 'After applying',
+  'operations.crewPlan.swap.drivers': 'Drivers (stay with the vehicle): {{names}}',
+  'operations.crewPlan.swap.pickSecond': 'Choose the second vehicle',
+  'operations.crewPlan.swap.pickSecondHint':
+    'Any other row of the board, rows without a vehicle included.',
+  'operations.crewPlan.swap.pickSecondFirst': 'Choose the second vehicle first',
+  'operations.crewPlan.swap.search': 'Search by vehicle code, name or direction',
+  'operations.crewPlan.swap.noMatch': 'No row matches the search',
+  'operations.crewPlan.swap.noCaptain': 'No captain',
+  'operations.crewPlan.swap.people': 'People: {{count}}',
+  'operations.crewPlan.swap.change': 'Change',
+  'operations.crewPlan.swap.changeLabel': 'Change the second vehicle',
+  'operations.crewPlan.swap.quickLabel': 'Quick pick — {{row}}',
+  'operations.crewPlan.swap.quick.all': 'All',
+  'operations.crewPlan.swap.quick.crew': 'Crew only',
+  'operations.crewPlan.swap.quick.none': 'None',
+  'operations.crewPlan.swap.colour': 'Row colour',
+  'operations.crewPlan.swap.archived': 'Archived',
+  'operations.crewPlan.swap.item': 'Move {{item}} to {{to}}',
+  'operations.crewPlan.swap.mode.group': 'How the ticked items go',
+  'operations.crewPlan.swap.mode.swap': 'Swap selected ⇄',
+  'operations.crewPlan.swap.mode.aToB': 'Move selected →',
+  'operations.crewPlan.swap.mode.bToA': 'Move selected ←',
+  'operations.crewPlan.swap.mode.swapShort': 'both ways',
+  'operations.crewPlan.swap.mode.aToBShort': 'from {{a}} to {{b}}',
+  'operations.crewPlan.swap.mode.bToAShort': 'from {{b}} to {{a}}',
+  'operations.crewPlan.swap.mode.swapHint':
+    'The ticked items of both vehicles cross, each to the other vehicle',
+  'operations.crewPlan.swap.mode.aToBHint': 'Only the items ticked on {{a}} go, to {{b}}',
+  'operations.crewPlan.swap.mode.bToAHint': 'Only the items ticked on {{b}} go, to {{a}}',
+  'operations.crewPlan.swap.receiving': 'Receives',
+  'operations.crewPlan.swap.receivingHint':
+    'In a one-way move the receiving vehicle’s ticks are not read',
+  'operations.crewPlan.swap.preview': 'After applying — preview',
+  'operations.crewPlan.swap.previewHint':
+    'The board changes only on «Apply»; the secured shipments placed on a vehicle stay on it',
+  'operations.crewPlan.swap.from': 'from {{row}}',
+  'operations.crewPlan.swap.was': 'replaces',
+  'operations.crewPlan.swap.left': 'Goes to {{row}}: {{items}}',
+  'operations.crewPlan.swap.kept': 'Stays',
+  'operations.crewPlan.swap.reason.absent': 'absent on this day',
+  'operations.crewPlan.swap.reason.onLeave': 'on leave on this day',
+  'operations.crewPlan.swap.reason.notCaptain':
+    'not a captain — the captain’s slot takes captains only',
+  'operations.crewPlan.swap.reason.notSpecialist':
+    'not a specialist — the specialists’ slots take specialists only',
+  'operations.crewPlan.swap.reason.captainFull': 'the captain’s slot on {{row}} is full',
+  'operations.crewPlan.swap.reason.specialistsFull': 'both specialist slots on {{row}} are full',
+  'operations.crewPlan.swap.reason.archivedType':
+    'an archived type — it is not given to another vehicle',
+  'operations.crewPlan.swap.summary': 'Crossing: {{moved}} · Staying: {{kept}}',
+  'operations.crewPlan.swap.nothing': 'Tick at least one item',
+  'operations.crewPlan.swap.apply': 'Apply',
+  'operations.crewPlan.swap.done': 'Swapped between {{a}} and {{b}}',
+  'operations.crewPlan.swap.doneHint': 'Press «Save» to keep it, or «Undo» to take it back.',
   'operations.crewPlan.vehicles.title': 'Vehicles with no crew',
   'operations.crewPlan.vehicles.search': 'Search by vehicle code or driver',
   'operations.crewPlan.vehicles.noMatch': 'No vehicle matches the search',
@@ -12986,6 +13069,15 @@ const en: Record<string, string> = {
   'operations.crewPlan.vehicles.group.cashTransfer': 'Cash-transfer vehicles',
   'operations.crewPlan.vehicles.group.standing': 'Standing-crew vehicles',
   'operations.crewPlan.vehicles.group.other': 'Other vehicles',
+  // Round 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى»: a car whose Fleet code is only zeros.
+  'operations.crewPlan.vehicles.group.uncoded': 'Vehicles with no code in Fleet',
+  'operations.crewPlan.vehicles.noCode': 'no code',
+  'operations.crewPlan.vehicles.noCodeHint':
+    'Its vehicle code in Fleet is only zeros — it is named here by its plate. Correct the code in «Fleet» → «Vehicles».',
+  'operations.crewPlan.vehicles.uncodedLabel':
+    'Plate {{plate}} — {{make}} — no vehicle code in Fleet',
+  'operations.crewPlan.vehicles.unidentified':
+    'Vehicles with neither a code nor a plate in Fleet: {{count}} — not listed here. Correct them in «Fleet» → «Vehicles».',
   'operations.crewPlan.offRoster': 'Not on the vehicle roster of this day',
   'operations.crewPlan.offRosterHint':
     'Given on this board — not on the vehicle roster of this day. Deleting its row frees the vehicle.',
@@ -28387,6 +28479,16 @@ const ar: Record<string, string> = {
   'operations.crewPlan.hint':
     'اضغط «+ اختيار» في الخانة، أو اسحب الاسم إلى صف السيارة أو إلى الخانة. أعِده إلى القائمة لإخلائه.',
   'operations.crewPlan.viewOnly': 'يمكنك الاطلاع على التشغيلة؛ أما التوزيع فيحتاج صلاحية تخطيط الطاقم.',
+  // Round 32 — «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار فقط».
+  'operations.crewPlan.record.title': 'سجل يوم {{day}} — للعرض فقط، لا يمكن التعديل',
+  'operations.crewPlan.record.body':
+    'الأطقم والسيارات والاتجاهات والمواعيد كما حُفظت لذلك اليوم. لا يمكن السحب ولا الاختيار ولا الكتابة ولا الحفظ.',
+  'operations.crewPlan.record.mark': 'سجل · للعرض فقط',
+  'operations.crewPlan.record.today': 'العودة إلى اليوم',
+  'operations.crewPlan.record.todayHint': 'فتح لوحة اليوم ({{day}})',
+  'operations.crewPlan.record.unsavedTitle': 'انتهى اليوم قبل «حفظ»',
+  'operations.crewPlan.record.unsaved':
+    'التغييرات غير المحفوظة: {{count}} — انتهى اليوم قبل «حفظ»، فلا يمكن حفظها الآن.',
   'operations.crewPlan.picked': 'تم اختيار {{name}} — اختر الخانة، أو اضغط Esc للإلغاء',
   'operations.crewPlan.cancelPick': 'إلغاء',
   'operations.crewPlan.placeHere': 'ضع هنا',
@@ -28612,6 +28714,75 @@ const ar: Record<string, string> = {
   'operations.crewPlan.undo.kind.standingLoad': 'تحميل الطاقم الثابت',
   'operations.crewPlan.undo.kind.standingClear': 'إزالة الطاقم الثابت',
   'operations.crewPlan.undo.kind.restoreRow': 'إعادة الصف {{row}}',
+  // Round 32 C — «تبديل بين سيارتين».
+  'operations.crewPlan.undo.kind.swap': 'التبديل بين {{a}} و{{b}}',
+  // Round 32 critic — النقل باتجاه واحد يُسمّى نقلًا، لا تبديلًا.
+  'operations.crewPlan.undo.kind.move': 'نقل المحدد من {{from}} إلى {{to}}',
+  'operations.crewPlan.swap.moved': 'تم نقل المحدد من {{from}} إلى {{to}}',
+  'operations.crewPlan.swap.itemExchange': 'تبديل {{item}} مع {{to}}',
+  'operations.crewPlan.swap.reason.archivedPair':
+    'نوع {{row}} مؤرشف ويبقى عليها — فلا يُبادَل النوعان',
+  'operations.crewPlan.swap.shipments': 'محصنات: {{count}}',
+  'operations.crewPlan.swap.shipmentsStay':
+    'تبقى على {{row}} المحصنات الموزَّعة عليها ({{count}})، وقد وُزِّعت قبل تغيير القائد أو الاتجاه. راجِعها في «توزيع المحصنات» بعد الحفظ.',
+  'operations.crewPlan.swap.open': 'تبديل مع سيارة أخرى…',
+  'operations.crewPlan.swap.openRow': 'تبديل {{row}} مع سيارة أخرى…',
+  'operations.crewPlan.swap.title': 'تبديل بين سيارتين',
+  'operations.crewPlan.swap.subtitle':
+    'حدّد ما يُنقل من كل سيارة إلى الأخرى — لا يُحفظ شيء قبل «حفظ»',
+  'operations.crewPlan.swap.first': 'السيارة الأولى',
+  'operations.crewPlan.swap.second': 'السيارة الثانية',
+  'operations.crewPlan.swap.after': 'بعد التطبيق',
+  'operations.crewPlan.swap.drivers': 'السائقون (يبقون مع السيارة): {{names}}',
+  'operations.crewPlan.swap.pickSecond': 'اختر السيارة الثانية',
+  'operations.crewPlan.swap.pickSecondHint': 'أي صف آخر في اللوحة، ومنها الصفوف بدون سيارة.',
+  'operations.crewPlan.swap.pickSecondFirst': 'اختر السيارة الثانية أولًا',
+  'operations.crewPlan.swap.search': 'بحث بكود السيارة أو الاسم أو الاتجاه',
+  'operations.crewPlan.swap.noMatch': 'لا يوجد صف يطابق البحث',
+  'operations.crewPlan.swap.noCaptain': 'بلا قائد',
+  'operations.crewPlan.swap.people': 'الأفراد: {{count}}',
+  'operations.crewPlan.swap.change': 'تغيير',
+  'operations.crewPlan.swap.changeLabel': 'تغيير السيارة الثانية',
+  'operations.crewPlan.swap.quickLabel': 'تحديد سريع — {{row}}',
+  'operations.crewPlan.swap.quick.all': 'الكل',
+  'operations.crewPlan.swap.quick.crew': 'الطاقم فقط',
+  'operations.crewPlan.swap.quick.none': 'لا شيء',
+  'operations.crewPlan.swap.colour': 'لون الصف',
+  'operations.crewPlan.swap.archived': 'مؤرشف',
+  'operations.crewPlan.swap.item': 'نقل {{item}} إلى {{to}}',
+  'operations.crewPlan.swap.mode.group': 'طريقة نقل المحدد',
+  'operations.crewPlan.swap.mode.swap': 'تبديل المحدد ⇄',
+  'operations.crewPlan.swap.mode.aToB': 'نقل المحدد ←',
+  'operations.crewPlan.swap.mode.bToA': 'نقل المحدد →',
+  'operations.crewPlan.swap.mode.swapShort': 'في الاتجاهين',
+  'operations.crewPlan.swap.mode.aToBShort': 'من {{a}} إلى {{b}}',
+  'operations.crewPlan.swap.mode.bToAShort': 'من {{b}} إلى {{a}}',
+  'operations.crewPlan.swap.mode.swapHint':
+    'تنتقل العناصر المحددة في السيارتين، كلٌّ إلى السيارة الأخرى',
+  'operations.crewPlan.swap.mode.aToBHint': 'تنتقل العناصر المحددة في {{a}} فقط، إلى {{b}}',
+  'operations.crewPlan.swap.mode.bToAHint': 'تنتقل العناصر المحددة في {{b}} فقط، إلى {{a}}',
+  'operations.crewPlan.swap.receiving': 'تستقبل',
+  'operations.crewPlan.swap.receivingHint':
+    'في النقل باتجاه واحد لا تُقرأ تحديدات السيارة المستقبِلة',
+  'operations.crewPlan.swap.preview': 'بعد التطبيق — معاينة',
+  'operations.crewPlan.swap.previewHint':
+    'لا تتغير اللوحة إلا عند «تطبيق»، والمحصنات الموزَّعة على سيارة تبقى عليها',
+  'operations.crewPlan.swap.from': 'من {{row}}',
+  'operations.crewPlan.swap.was': 'بدلًا من',
+  'operations.crewPlan.swap.left': 'ينتقل إلى {{row}}: {{items}}',
+  'operations.crewPlan.swap.kept': 'لا يُنقل',
+  'operations.crewPlan.swap.reason.absent': 'غائب في هذا اليوم',
+  'operations.crewPlan.swap.reason.onLeave': 'في إجازة في هذا اليوم',
+  'operations.crewPlan.swap.reason.notCaptain': 'ليس قائدًا — خانة القائد للقادة فقط',
+  'operations.crewPlan.swap.reason.notSpecialist': 'ليس أخصائيًا — خانتا الأخصائيين للأخصائيين فقط',
+  'operations.crewPlan.swap.reason.captainFull': 'خانة القائد في {{row}} ممتلئة',
+  'operations.crewPlan.swap.reason.specialistsFull': 'خانتا الأخصائيين في {{row}} ممتلئتان',
+  'operations.crewPlan.swap.reason.archivedType': 'نوع مؤرشف — لا يُعطى لسيارة أخرى',
+  'operations.crewPlan.swap.summary': 'يُنقل: {{moved}} · لا يُنقل: {{kept}}',
+  'operations.crewPlan.swap.nothing': 'حدّد عنصرًا واحدًا على الأقل',
+  'operations.crewPlan.swap.apply': 'تطبيق',
+  'operations.crewPlan.swap.done': 'تم التبديل بين {{a}} و{{b}}',
+  'operations.crewPlan.swap.doneHint': 'اضغط «حفظ» لحفظه، أو «تراجع» لإلغائه.',
   'operations.crewPlan.vehicles.title': 'سيارات ليس عليها طاقم',
   'operations.crewPlan.vehicles.search': 'بحث بكود السيارة أو اسم السائق',
   'operations.crewPlan.vehicles.noMatch': 'لا توجد سيارة تطابق البحث',
@@ -28622,6 +28793,15 @@ const ar: Record<string, string> = {
   'operations.crewPlan.vehicles.group.cashTransfer': 'سيارات نقل الأموال',
   'operations.crewPlan.vehicles.group.standing': 'سيارات الطاقم الثابت',
   'operations.crewPlan.vehicles.group.other': 'باقي السيارات',
+  // Round 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى».
+  'operations.crewPlan.vehicles.group.uncoded': 'سيارات بلا كود في الأسطول',
+  'operations.crewPlan.vehicles.noCode': 'بلا كود',
+  'operations.crewPlan.vehicles.noCodeHint':
+    'كود السيارة في «الحركة» أصفار فقط — تُسمّى هنا بلوحتها، ويُصحَّح الكود في «الحركة» ← «السيارات».',
+  'operations.crewPlan.vehicles.uncodedLabel':
+    'اللوحة {{plate}} — {{make}} — بلا كود سيارة في الأسطول',
+  'operations.crewPlan.vehicles.unidentified':
+    'سيارات بلا كود ولا لوحة في «الحركة»: {{count}} — لا تُعرض هنا، وتُصحَّح في «الحركة» ← «السيارات».',
   'operations.crewPlan.offRoster': 'ليست على تعيين السيارات لهذا اليوم',
   'operations.crewPlan.offRosterHint':
     'أُعطيت من هذه اللوحة وليست على تعيين السيارات لهذا اليوم — حذف صفها يعيد السيارة متاحة.',

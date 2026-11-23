@@ -70,6 +70,7 @@ export * from './modules/fleet-vehicle-contracts.js';
 export * from './modules/it.js';
 export * from './modules/operations.js';
 export * from './modules/operations-branch-import.js';
+export * from './modules/operations-vehicle-codes.js';
 export * from './modules/gold.js';
 export * from './modules/gold-portal.js';
 export * from './modules/atm.js';

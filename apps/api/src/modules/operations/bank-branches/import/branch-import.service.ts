@@ -12,8 +12,13 @@
 // version just read, so an edit landing in between aborts it all (409 `STALE_DOCUMENT`).
 // After the commit each row is audited as the catalog's own add and edit audit it (no events — the
 // reference data emits none).
+//
+// THE WRITE PATH IS SHARED (Round 29b). `writeBranchImport` and `branchImportAudits` are the apply's
+// transaction body and its trail, exported as they are: the deploy's one-time load of the owner's
+// four banks (`../../go-live/bank-branches.ts`) plans with the same planner and writes through them,
+// inside a transaction of its own that also writes its run row.
 import { createHash } from 'node:crypto';
-import { Types } from 'mongoose';
+import { Types, type ClientSession } from 'mongoose';
 import {
   ErrorCodes,
   type OperationsBranchImportAppliedDto,
@@ -30,7 +35,13 @@ import { areaEntityRef, areaSnapshot } from '../../areas/area.service';
 import { type OperationsBankBranchDoc } from '../bank-branch.model';
 import { operationsBankBranchRepository } from '../bank-branch.repository';
 import { bankBranchEntityRef, bankBranchSnapshot } from '../bank-branch.service';
-import { planBranchImport, type BranchImportPlan, type BranchUpdate } from './plan-branch-import';
+import {
+  planBranchImport,
+  type BranchImportPlan,
+  type BranchUpdate,
+  type HeldArea,
+  type HeldBranch,
+} from './plan-branch-import';
 import { readBranchSheet, type BranchSheetRead } from './read-branch-sheet';
 
 export interface BranchImportUpload {
@@ -92,6 +103,152 @@ const changed = (reason: 'FILE_CHANGED' | 'PLAN_CHANGED'): AppError =>
     },
   );
 
+/** A held branch as the planner reads it. */
+export const heldBranchOf = (doc: OperationsBankBranchDoc): HeldBranch => ({
+  id: String(doc._id),
+  name: doc.name,
+  code: doc.code,
+  opsAreaName: doc.opsAreaName,
+  financeAreaName: doc.financeAreaName,
+  location: doc.location,
+  isActive: doc.isActive,
+});
+
+/** A held area as the planner reads it. */
+export const heldAreaOf = (doc: OperationsAreaDoc): HeldArea => ({
+  id: String(doc._id),
+  name: doc.name,
+  nameEn: doc.nameEn,
+});
+
+/** The rows a plan was made against — each update and fill is written at the version read. */
+export interface BranchImportHeld {
+  branches: ReadonlyMap<string, OperationsBankBranchDoc>;
+  areas: ReadonlyMap<string, OperationsAreaDoc>;
+}
+
+/** What one import wrote: the rows its trail records. */
+export interface BranchImportWritten {
+  areasCreated: OperationsAreaDoc[];
+  areasFilled: { before: OperationsAreaDoc; after: OperationsAreaDoc }[];
+  branchesCreated: OperationsBankBranchDoc[];
+  branchesUpdated: { before: OperationsBankBranchDoc; after: OperationsBankBranchDoc }[];
+}
+
+/**
+ * Write a plan, inside the caller's transaction: the new areas, the English names filled, the
+ * edits, then the new branches — each held row at the version `held` read, so an edit landing in
+ * between aborts it all (409 `STALE_DOCUMENT`). `by` is the person, or null for the deploy's own
+ * load (the platform's system actor, as every boot step writes). Called afresh on a retried
+ * transaction, so its lists start empty each time.
+ */
+export const writeBranchImport = async (
+  bankId: string,
+  plan: BranchImportPlan,
+  held: BranchImportHeld,
+  { by, session }: { by: string | null; session: ClientSession },
+): Promise<BranchImportWritten> => {
+  const meta = { by, session };
+  const areasCreated: OperationsAreaDoc[] = [];
+  const areasFilled: { before: OperationsAreaDoc; after: OperationsAreaDoc }[] = [];
+  const branchesUpdated: { before: OperationsBankBranchDoc; after: OperationsBankBranchDoc }[] = [];
+  // Areas first: a branch names its area by the name the area is created with.
+  for (const area of plan.areaCreates) {
+    areasCreated.push(
+      await operationsAreaRepository.create(
+        { name: area.name, nameEn: area.nameEn, governorate: null, isActive: true },
+        meta,
+      ),
+    );
+  }
+  for (const fill of plan.filledAreas) {
+    const before = held.areas.get(fill.id) as OperationsAreaDoc;
+    const after = await operationsAreaRepository.updateById(
+      fill.id,
+      { nameEn: fill.nameEn },
+      { ...meta, version: before.__v },
+    );
+    areasFilled.push({ before, after });
+  }
+  // The edits before the new branches: a code an edited branch leaves may be a new one's. An
+  // edit taking a code another edited branch leaves passes through a code of its own first.
+  const versions = new Map(
+    plan.branchUpdates.map((update) => [
+      update.branchId,
+      (held.branches.get(update.branchId) as OperationsBankBranchDoc).__v,
+    ]),
+  );
+  const write = async (branchId: string, set: BranchUpdate['set']) => {
+    const version = versions.get(branchId) as number;
+    const after = await operationsBankBranchRepository.updateById(branchId, set, {
+      ...meta,
+      version,
+    });
+    versions.set(branchId, version + 1);
+    return after;
+  };
+  const passing = plan.branchUpdates.filter((update) => update.viaTemp);
+  for (const update of passing) {
+    await write(update.branchId, { code: `${TEMP_CODE_PREFIX}${update.branchId}` });
+  }
+  for (const update of [...plan.branchUpdates.filter((u) => !u.viaTemp), ...passing]) {
+    const before = held.branches.get(update.branchId) as OperationsBankBranchDoc;
+    branchesUpdated.push({ before, after: await write(update.branchId, update.set) });
+  }
+  const bank = new Types.ObjectId(bankId);
+  const created = await operationsBankBranchRepository.createManyUnordered(
+    plan.branchCreates.map((branch) => ({
+      bankId: bank,
+      name: branch.name,
+      code: branch.code,
+      // Both areas: «ضيفها ل منطقة العمليات و منطقة الحسابات».
+      opsAreaName: branch.areaName,
+      financeAreaName: branch.areaName,
+      location: branch.address === null ? null : { addressLine: branch.address, coordinates: null },
+      isActive: true,
+    })),
+    meta,
+  );
+  // The plan never writes a name or a code the bank holds; a duplicate here is a branch added
+  // between the plan and the write — the whole import is refused, nothing kept.
+  if (created.duplicateIndexes.length > 0) {
+    throw new ConflictError(
+      'a branch of this bank was added while the import was written — compare again',
+      ErrorCodes.OPERATIONS_BRANCH_IMPORT_CHANGED,
+    );
+  }
+  return {
+    areasCreated,
+    areasFilled,
+    branchesCreated: created.inserted.map(({ doc }) => doc),
+    branchesUpdated,
+  };
+};
+
+/** The trail of what `writeBranchImport` wrote — the catalog's own add and edit entries. */
+export const branchImportAudits = (written: BranchImportWritten): AuditEntry[] => [
+  ...written.areasCreated.map((doc) => ({
+    entityRef: areaEntityRef(String(doc._id)),
+    action: 'create' as const,
+    changes: diffChanges({}, areaSnapshot(doc)),
+  })),
+  ...written.areasFilled.map(({ before, after }) => ({
+    entityRef: areaEntityRef(String(after._id)),
+    action: 'update' as const,
+    changes: diffChanges(areaSnapshot(before), areaSnapshot(after)),
+  })),
+  ...written.branchesCreated.map((doc) => ({
+    entityRef: bankBranchEntityRef(String(doc._id)),
+    action: 'create' as const,
+    changes: diffChanges({}, bankBranchSnapshot(doc)),
+  })),
+  ...written.branchesUpdated.map(({ before, after }) => ({
+    entityRef: bankBranchEntityRef(String(after._id)),
+    action: 'update' as const,
+    changes: diffChanges(bankBranchSnapshot(before), bankBranchSnapshot(after)),
+  })),
+];
+
 interface Planned {
   bankName: string;
   fileSha256: string;
@@ -117,16 +274,8 @@ class OperationsBranchImportService {
     ]);
     const plan = planBranchImport(
       sheet.rows,
-      branchDocs.map((doc) => ({
-        id: String(doc._id),
-        name: doc.name,
-        code: doc.code,
-        opsAreaName: doc.opsAreaName,
-        financeAreaName: doc.financeAreaName,
-        location: doc.location,
-        isActive: doc.isActive,
-      })),
-      areaDocs.map((doc) => ({ id: String(doc._id), name: doc.name, nameEn: doc.nameEn })),
+      branchDocs.map(heldBranchOf),
+      areaDocs.map(heldAreaOf),
     );
     return {
       bankName: bank.opsName,
@@ -165,111 +314,12 @@ class OperationsBranchImportService {
     const planned = await this.planOf(input);
     if (planned.planDigest !== input.planDigest) throw changed('PLAN_CHANGED');
     const { plan } = planned;
-    const bankId = new Types.ObjectId(input.bankId);
 
-    const written = await unitOfWork(async (session) => {
-      const meta = { by, session };
-      // A retried transaction starts its lists afresh.
-      const areasCreated: OperationsAreaDoc[] = [];
-      const areasFilled: { before: OperationsAreaDoc; after: OperationsAreaDoc }[] = [];
-      const branchesUpdated: { before: OperationsBankBranchDoc; after: OperationsBankBranchDoc }[] =
-        [];
-      // Areas first: a branch names its area by the name the area is created with.
-      for (const area of plan.areaCreates) {
-        areasCreated.push(
-          await operationsAreaRepository.create(
-            { name: area.name, nameEn: area.nameEn, governorate: null, isActive: true },
-            meta,
-          ),
-        );
-      }
-      for (const fill of plan.filledAreas) {
-        const before = planned.areas.get(fill.id) as OperationsAreaDoc;
-        const after = await operationsAreaRepository.updateById(
-          fill.id,
-          { nameEn: fill.nameEn },
-          { ...meta, version: before.__v },
-        );
-        areasFilled.push({ before, after });
-      }
-      // The edits before the new branches: a code an edited branch leaves may be a new one's. An
-      // edit taking a code another edited branch leaves passes through a code of its own first.
-      const versions = new Map(
-        plan.branchUpdates.map((update) => [
-          update.branchId,
-          (planned.branches.get(update.branchId) as OperationsBankBranchDoc).__v,
-        ]),
-      );
-      const write = async (branchId: string, set: BranchUpdate['set']) => {
-        const version = versions.get(branchId) as number;
-        const after = await operationsBankBranchRepository.updateById(branchId, set, {
-          ...meta,
-          version,
-        });
-        versions.set(branchId, version + 1);
-        return after;
-      };
-      const passing = plan.branchUpdates.filter((update) => update.viaTemp);
-      for (const update of passing) {
-        await write(update.branchId, { code: `${TEMP_CODE_PREFIX}${update.branchId}` });
-      }
-      for (const update of [...plan.branchUpdates.filter((u) => !u.viaTemp), ...passing]) {
-        const before = planned.branches.get(update.branchId) as OperationsBankBranchDoc;
-        branchesUpdated.push({ before, after: await write(update.branchId, update.set) });
-      }
-      const created = await operationsBankBranchRepository.createManyUnordered(
-        plan.branchCreates.map((branch) => ({
-          bankId,
-          name: branch.name,
-          code: branch.code,
-          // Both areas: «ضيفها ل منطقة العمليات و منطقة الحسابات».
-          opsAreaName: branch.areaName,
-          financeAreaName: branch.areaName,
-          location:
-            branch.address === null ? null : { addressLine: branch.address, coordinates: null },
-          isActive: true,
-        })),
-        meta,
-      );
-      // The plan never writes a name or a code the bank holds; a duplicate here is a branch added
-      // between the plan and the write — the whole import is refused, nothing kept.
-      if (created.duplicateIndexes.length > 0) {
-        throw new ConflictError(
-          'a branch of this bank was added while the import was written — compare again',
-          ErrorCodes.OPERATIONS_BRANCH_IMPORT_CHANGED,
-        );
-      }
-      return {
-        areasCreated,
-        areasFilled,
-        branchesCreated: created.inserted.map(({ doc }) => doc),
-        branchesUpdated,
-      };
-    });
-
-    const audits: AuditEntry[] = [
-      ...written.areasCreated.map((doc) => ({
-        entityRef: areaEntityRef(String(doc._id)),
-        action: 'create' as const,
-        changes: diffChanges({}, areaSnapshot(doc)),
-      })),
-      ...written.areasFilled.map(({ before, after }) => ({
-        entityRef: areaEntityRef(String(after._id)),
-        action: 'update' as const,
-        changes: diffChanges(areaSnapshot(before), areaSnapshot(after)),
-      })),
-      ...written.branchesCreated.map((doc) => ({
-        entityRef: bankBranchEntityRef(String(doc._id)),
-        action: 'create' as const,
-        changes: diffChanges({}, bankBranchSnapshot(doc)),
-      })),
-      ...written.branchesUpdated.map(({ before, after }) => ({
-        entityRef: bankBranchEntityRef(String(after._id)),
-        action: 'update' as const,
-        changes: diffChanges(bankBranchSnapshot(before), bankBranchSnapshot(after)),
-      })),
-    ];
-    await auditService.recordMany(audits);
+    // ONE transaction — the write path the deploy's load shares; the trail after the commit.
+    const written = await unitOfWork((session) =>
+      writeBranchImport(input.bankId, plan, planned, { by, session }),
+    );
+    await auditService.recordMany(branchImportAudits(written));
 
     return {
       bankId: input.bankId,

@@ -22,6 +22,7 @@ import {
   objectId,
 } from '../common/index.js';
 import { MoneyAmountSchema } from './hr-payroll-money.js';
+import { type OperationsUncodedVehicleDto } from './operations-vehicle-codes.js';
 
 // ── Shipment type ───────────────────────────────────────────────────────────────────────────────
 
@@ -2022,6 +2023,12 @@ export interface OperationsCrewBoardCrewDto {
   /** «النوع» — a type of the `أنواع التشغيل` catalog (`GET /operations/shift-types`), or null. */
   shiftTypeId: string | null;
   rowColour: OperationsCrewRowColour | null;
+  /**
+   * Round 32 critic — how many محصنات «توزيع المحصنات» placed on this crew row (its LIVE legs). They
+   * ride the row, so they stay with its van whatever crosses in «تبديل بين سيارتين»; the board's
+   * window says how many before a captain or a direction leaves a row that holds some.
+   */
+  shipments: number;
 }
 
 /**
@@ -2056,6 +2063,12 @@ export interface OperationsCrewBoardRowDto {
   drivers: OperationsDayBoardDriverDto[];
   missionTypeId: string | null;
   crew: OperationsCrewBoardCrewDto | null;
+  /**
+   * Round 32 critic — set when the van's Fleet code names nothing (`vehicleCodeNamesNothing` —
+   * «0», «00», «0000» …): the board names the van by its plate and its make, as its «بدون سيارة»
+   * list did when it was picked, never by the bare zeros. Null for every van with a code.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
 }
 
 /** Round 20 — a van Fleet's workshop holds on the board's day («صيانة» on the legacy strip). */
@@ -2071,14 +2084,17 @@ export interface OperationsCrewBoardWorkshopVehicleDto {
  *   · `cashTransfer` — a vehicle of the Fleet operations the setting
  *                      `OperationsSettingKeys.CashTransferOperationIds` names (none when unset);
  *   · `standing`     — a vehicle of «الطاقم الثابت» (the standing crew);
- *   · `other`        — every other active vehicle of the fleet.
- * A vehicle in more than one is listed once, in the first.
+ *   · `other`        — every other active vehicle of the fleet;
+ *   · `uncoded`      — Round 32: a vehicle OFF the roster whose Fleet code names nothing («0», «00»,
+ *                      «0000» — `vehicleCodeNamesNothing`), listed last, by its plate (`uncoded`).
+ * A vehicle in more than one is listed once, in the first (an uncoded one only in `uncoded`).
  */
 export const OPERATIONS_CREW_FREE_VEHICLE_GROUPS = [
   'roster',
   'cashTransfer',
   'standing',
   'other',
+  'uncoded',
 ] as const;
 export type OperationsCrewFreeVehicleGroup = (typeof OPERATIONS_CREW_FREE_VEHICLE_GROUPS)[number];
 
@@ -2101,11 +2117,25 @@ export interface OperationsCrewBoardFreeVehicleDto {
   inWorkshop: boolean;
   /** Its drivers by name when the roster has it (`onRoster`), else empty — Fleet's round-5 rule. */
   drivers: OperationsDayBoardDriverDto[];
+  /**
+   * Round 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى»: set when its Fleet code names nothing
+   * (`vehicleCodeNamesNothing` — «0», «00», «0000» …), so the list names it by its plate and its make
+   * instead of a bare «0000». Null for every car with a code.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
 }
 
 export interface OperationsCrewBoardDto {
   /** The resolved board date — tomorrow when the caller sent none (legacy parity, :2239-2247). */
   date: string;
+  /** Round 32 — TODAY on the Cairo calendar when the server answered (ISO, midnight UTC). */
+  today: string;
+  /**
+   * Round 32 — «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار فقط»: the board's day is
+   * before `today` — the day's RECORD, view only. Its save is refused (422
+   * `OPERATIONS_CREW_DAY_IN_PAST`) whatever a client sends.
+   */
+  past: boolean;
   day: OperationsDayDto | null;
   /**
    * The VANS of the day — Fleet's duty rows, each with its crew row or null, in the roster's order;
@@ -2141,8 +2171,19 @@ export interface OperationsCrewBoardDto {
    * Order: the four `group`s in `OPERATIONS_CREW_FREE_VEHICLE_GROUPS` order (on the roster, then the
    * cash-transfer operations' vehicles, then the standing crew's, then the rest), each by code with
    * numbers in number order («9» before «150»).
+   *
+   * Round 32 — a car off the roster whose code names nothing is in `uncoded`, last, named by its
+   * plate; one whose plate names nothing either is LEFT OUT (nothing would tell it from the next) and
+   * counted in `unidentifiedVehicles`. A roster van is never left out. Codes are compared naturally,
+   * a code that names nothing after every one that does, two of those by their plate
+   * (`compareVehiclesForPicker`).
    */
   freeVehicles: OperationsCrewBoardFreeVehicleDto[];
+  /**
+   * Round 32 — how many active cars with no crew that day `freeVehicles` leaves out: their code and
+   * their plate both name nothing. They are put right in «الحركة» → «السيارات».
+   */
+  unidentifiedVehicles: number;
 }
 
 const crewEmployeeSlots = [
@@ -2497,6 +2538,11 @@ export interface OperationsStandingCrewRowDto {
   id: string;
   vehicleId: string;
   vehicleCode: string;
+  /**
+   * Round 32 critic — set when the van's Fleet code names nothing («0», «00» …): the row is named by
+   * its plate and its make, as «إضافة سيارة» named it — see `OperationsCrewBoardFreeVehicleDto`.
+   */
+  uncoded: OperationsUncodedVehicleDto | null;
   /** Same shape and same ceiling as a day's crew — this is the template that day is seeded from. */
   captainEmployeeIds: string[];
   specialist1EmployeeIds: string[];
@@ -2508,7 +2554,20 @@ export interface OperationsStandingCrewRowDto {
   updatedAt: string;
 }
 
+/**
+ * One vehicle «إضافة سيارة» offers on «الطاقم الثابت». Round 32: in natural code order, a vehicle
+ * whose code names nothing last and named by its plate (`uncoded`); one whose plate names nothing
+ * either is left out and counted (`unidentifiedVehicles`).
+ */
+export interface OperationsStandingAvailableVehicleDto {
+  vehicleId: string;
+  vehicleCode: string;
+  /** Set when its Fleet code names nothing («0», «00» …) — see `OperationsCrewBoardFreeVehicleDto`. */
+  uncoded: OperationsUncodedVehicleDto | null;
+}
+
 export interface OperationsStandingCrewBoardDto {
+  /** Round 32 — by code, NATURALLY (61, 101, 150 …), a code that names nothing last. */
   rows: OperationsStandingCrewRowDto[];
   /**
    * Fleet vehicles that are NOT in the standing crew yet — what the "add a vehicle" picker offers.
@@ -2517,7 +2576,12 @@ export interface OperationsStandingCrewBoardDto {
    * app forbids cross-module imports and the §9.4 boundary puts every Fleet read on the server
    * side of `fleet-boundary.ts`. One request, one boundary, no second module on the client.
    */
-  available: { vehicleId: string; vehicleCode: string }[];
+  available: OperationsStandingAvailableVehicleDto[];
+  /**
+   * Round 32 — how many vehicles `available` leaves out because neither their code nor their plate
+   * names them (`vehicleCodeNamesNothing`); put right in «الحركة» → «السيارات».
+   */
+  unidentifiedVehicles: number;
   /**
    * Whether `available` was narrowed to the Fleet-designated cash-transfer vehicles.
    *

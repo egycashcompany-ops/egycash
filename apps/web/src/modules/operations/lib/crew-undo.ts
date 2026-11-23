@@ -211,3 +211,36 @@ export const changedRowKeys = (from: readonly PlanRow[], to: readonly PlanRow[])
     return a === undefined || b === undefined || !sameRow(a, b);
   });
 };
+
+/**
+ * Is this key press the board's «تراجع»? Ctrl+Z (⌘Z on a Mac) — never with Shift or Alt; never in
+ * a text box, which keeps its own undo; and (Round 32 critic) never while a window stands over the
+ * board (`overBoard` — «تبديل بين سيارتين», «ألوان الأنواع», the leave dialog): pressed on a box or a
+ * button of «تبديل بين سيارتين», it took back the board's last operation BEHIND the window — a row
+ * just placed vanished from the card being ticked.
+ */
+export const isBoardUndoKey = (
+  event: Pick<KeyboardEvent, 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey' | 'code' | 'key'> & {
+    target: EventTarget | null;
+  },
+  overBoard: boolean,
+): boolean => {
+  if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey) return false;
+  if (event.code !== 'KeyZ' && event.key.toLowerCase() !== 'z') return false;
+  if (overBoard) return false;
+  const target = event.target as
+    | (EventTarget & {
+        isContentEditable?: boolean;
+        closest?: (selector: string) => unknown;
+      })
+    | null;
+  if (
+    target !== null &&
+    (target.isContentEditable === true ||
+      (typeof target.closest === 'function' &&
+        target.closest('input, textarea, select, [contenteditable="true"]') !== null))
+  ) {
+    return false;
+  }
+  return true;
+};

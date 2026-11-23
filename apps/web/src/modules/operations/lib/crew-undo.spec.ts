@@ -11,6 +11,7 @@ import { translate } from '../../../platform/localization/i18n';
 import {
   UNDO_LIMIT,
   changedRowKeys,
+  isBoardUndoKey,
   lastStep,
   mergeKeyOf,
   rebaseHistory,
@@ -377,9 +378,52 @@ describe('the page — the owner’s «تراجع»', () => {
   });
 
   it('Ctrl+Z / ⌘Z does the same outside a text box', () => {
-    expect(page).toContain("event.code !== 'KeyZ'");
-    expect(page).toContain('target.closest(\'input, textarea, select, [contenteditable="true"]\')');
+    // Round 32 critic — the press is decided by `isBoardUndoKey` (below), which the page asks with
+    // whether a window stands over the board.
+    expect(page).toContain('if (!isBoardUndoKey(event, overBoard)) return;');
+    expect(page).toContain("document.querySelector('[data-dialog-root]') !== null");
     expect(page).toContain('aria-keyshortcuts="Control+Z Meta+Z"');
+  });
+
+  describe('isBoardUndoKey — the key press that is «تراجع»', () => {
+    const button = { isContentEditable: false, closest: () => null };
+    const box = { isContentEditable: false, closest: () => ({}) };
+    const press = (over: Partial<Parameters<typeof isBoardUndoKey>[0]> = {}) => ({
+      ctrlKey: true,
+      metaKey: false,
+      shiftKey: false,
+      altKey: false,
+      code: 'KeyZ',
+      key: 'z',
+      target: button as unknown as EventTarget,
+      ...over,
+    });
+
+    it('Ctrl+Z and ⌘Z on the board — an Arabic keyboard’s «ئ» too (by the key’s place)', () => {
+      expect(isBoardUndoKey(press(), false)).toBe(true);
+      expect(isBoardUndoKey(press({ ctrlKey: false, metaKey: true }), false)).toBe(true);
+      expect(isBoardUndoKey(press({ key: 'ئ' }), false)).toBe(true);
+    });
+
+    it('never with Shift or Alt, never another key, never in a text box (it keeps its own undo)', () => {
+      expect(isBoardUndoKey(press({ shiftKey: true }), false)).toBe(false);
+      expect(isBoardUndoKey(press({ altKey: true }), false)).toBe(false);
+      expect(isBoardUndoKey(press({ code: 'KeyY', key: 'y' }), false)).toBe(false);
+      expect(isBoardUndoKey(press({ ctrlKey: false }), false)).toBe(false);
+      expect(isBoardUndoKey(press({ target: box as unknown as EventTarget }), false)).toBe(false);
+      expect(
+        isBoardUndoKey(
+          press({ target: { isContentEditable: true } as unknown as EventTarget }),
+          false,
+        ),
+      ).toBe(false);
+    });
+
+    it('Round 32 critic — never while a window stands over the board («تبديل بين سيارتين» …)', () => {
+      // On «تطبيق», a mode, «الكل» or a box of the open window, the press took back the board's
+      // last operation behind it.
+      expect(isBoardUndoKey(press(), true)).toBe(false);
+    });
   });
 
   it('a save clears the history; the notes box seals its typing on leaving, the time its panel on closing', () => {

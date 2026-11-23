@@ -1,0 +1,1848 @@
+{
+  "source": "«فروع بنك القاهرة - جاهز للاستيراد.xlsx» — بنك القاهرة: the owner's branch list (Round 29), read by the import's own reader (read-branch-sheet.ts), its first visible tab «الفروع», header on row 1",
+  "bank": "banque-du-caire",
+  "rowsRead": 230,
+  "leftOut": [],
+  "rows": [
+    {
+      "row": 2,
+      "name": "الخزينة المركزية سونيستا",
+      "code": "001",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "6ش د. مصطفى ابو زهرة متفرع من ش الطيران"
+    },
+    {
+      "row": 3,
+      "name": "العاشر من رمضان",
+      "code": "590",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مجمع البنوك الوطنية باللاردنية م العاشر من رمضان"
+    },
+    {
+      "row": 4,
+      "name": "الشروق",
+      "code": "580",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "الشروق الحى الثانى مجاورة (أ2)ش عبدالقادر حلمى امام ش الكهرباء"
+    },
+    {
+      "row": 5,
+      "name": "العبور",
+      "code": "585",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "المنطقة الصناعيه مدينة العبور طريق مصر الاسماعيلية"
+    },
+    {
+      "row": 6,
+      "name": "جولف سيتى مول",
+      "code": "404",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "الحى السابع - مدينة العبور - جولف سيتى مول"
+    },
+    {
+      "row": 7,
+      "name": "مجمع العاشر",
+      "code": "595",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة العاشر من رمضان مبنى شركة مصر للطيران"
+    },
+    {
+      "row": 8,
+      "name": "مدينتى",
+      "code": "66",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "الوحدة ec02Lec03المبنى e/مدخل 2 بجوار المبنى الادارى - مدينتى"
+    },
+    {
+      "row": 9,
+      "name": "التجمع الخامس",
+      "code": "77",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "القاهرة الجديدة / التجمع الخامس مول مون فالى أخر ش التسعين"
+    },
+    {
+      "row": 10,
+      "name": "ميد تاون",
+      "code": "98",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مول ميد تاون -منطقة المستثمرين الجنوبية -امام الجامعة الامريكية"
+    },
+    {
+      "row": 11,
+      "name": "ميراج مول",
+      "code": "67",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "منتجع ميراج ريدنس التجمع الاول القاهرة الجديدة"
+    },
+    {
+      "row": 12,
+      "name": "أميرالد مول",
+      "code": "194",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "المركز التجارى توين بلازا التجمع الاول القاهرة الجديدة"
+    },
+    {
+      "row": 13,
+      "name": "العروبة",
+      "code": "151",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "18ش عمار بن ياسر-مصر الجديدة"
+    },
+    {
+      "row": 14,
+      "name": "سانت فاتيما",
+      "code": "79",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "78 ش عبدالعزيز فهمى النزهة مصر الجديدة"
+    },
+    {
+      "row": 15,
+      "name": "الفتح",
+      "code": "76",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مصر الجديدة - النزهة 81- ش المنتزة"
+    },
+    {
+      "row": 16,
+      "name": "العباسية",
+      "code": "35",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "3شارع دانش العباسية"
+    },
+    {
+      "row": 17,
+      "name": "النزهة الجديدة",
+      "code": "74",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "6 ش محور طه حسين النزهة الجديدة"
+    },
+    {
+      "row": 18,
+      "name": "المطار",
+      "code": "150",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "المبنى الخدمى الجديد بمطار القاهرة"
+    },
+    {
+      "row": 19,
+      "name": "قرية البضائع",
+      "code": "156",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مبنى الخدمة المطورة للجمارك والجهات الرقابية بمجمع بضائع مصر للطيران"
+    },
+    {
+      "row": 20,
+      "name": "المصرية للمطارات",
+      "code": "155",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "طريق مطار القاهرة مبنى الشركه المصرية للمطارات"
+    },
+    {
+      "row": 21,
+      "name": "وحدة ش مصر للطيران",
+      "code": "150",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مبنى ش مصر للطيران طريق المطار"
+    },
+    {
+      "row": 22,
+      "name": "وحدة مركز التصدير الدولى",
+      "code": "150",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مطار القاهرة - مركز التصدير الدولى"
+    },
+    {
+      "row": 23,
+      "name": "وحدة الملاحة الجوية",
+      "code": "150",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش الملاحة الجوية - طريق المطار"
+    },
+    {
+      "row": 24,
+      "name": "وحدة وزارة الطيران",
+      "code": "150",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مبنى وزارة الطيران - طريق المطار"
+    },
+    {
+      "row": 25,
+      "name": "وحدة مبنى الركاب 3",
+      "code": "150",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مبنى ركاب 3 مطار القاهرة"
+    },
+    {
+      "row": 26,
+      "name": "مدينة نصر",
+      "code": "190",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ناصية شارعى سمير فرحات وعبدالحميد لطفى الحى الثامن"
+    },
+    {
+      "row": 27,
+      "name": "السنهورى",
+      "code": "192",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "44شارع عبدالرازق السنهورى-مدينة نصر-القاهرة"
+    },
+    {
+      "row": 28,
+      "name": "يوسف عباس",
+      "code": "195",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "6 ش د مصطفى ابوزهرة المنطقة الثانية م نصر"
+    },
+    {
+      "row": 29,
+      "name": "الطيران",
+      "code": "191",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "4ش اسماعيل القبانى من الطيران مدينة نصر"
+    },
+    {
+      "row": 30,
+      "name": "مدينة التوفيق",
+      "code": "78",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "12أ منطقة التوفيق بشارع يوسف عباس مدينة نصر"
+    },
+    {
+      "row": 31,
+      "name": "سيتى ستارز مول",
+      "code": "193",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "سيتى ستارز مول -2 ش راشد مدينة نصر"
+    },
+    {
+      "row": 32,
+      "name": "مكرم عبيد - سيتى لايت",
+      "code": "197",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "1 تقاطع شارع مكرم عبيد مع طريق النصر ( سيتى لايت ) - مدينة نصر"
+    },
+    {
+      "row": 33,
+      "name": "الأميرية",
+      "code": "120",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "6شارع عزت بدوى حافظ السواح"
+    },
+    {
+      "row": 34,
+      "name": "السباق",
+      "code": "140",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "محل رقم 2 بالعقار 6أ شارع السباق - مصر الجديدة"
+    },
+    {
+      "row": 35,
+      "name": "مصر الجديدة",
+      "code": "70",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "56شارع نزيه خليفة"
+    },
+    {
+      "row": 36,
+      "name": "الحرية",
+      "code": "72",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "13شارع ابراهيم اللقانى مصر الجديدة"
+    },
+    {
+      "row": 37,
+      "name": "اللقانى",
+      "code": "73",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "26شارع ابراهيم اللقانى"
+    },
+    {
+      "row": 38,
+      "name": "الكوربة",
+      "code": "75",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش بغداد الكوربة م الجديدة"
+    },
+    {
+      "row": 39,
+      "name": "السبتية",
+      "code": "160",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "112ش السبتية"
+    },
+    {
+      "row": 40,
+      "name": "رمسيس",
+      "code": "90",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "44شارع رمسيس"
+    },
+    {
+      "row": 41,
+      "name": "شبرا",
+      "code": "100",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "76شارع شبرا"
+    },
+    {
+      "row": 42,
+      "name": "خلوصى",
+      "code": "101",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "يمارس النشاط من مقر فرع شبرا 76شارع شبرا"
+    },
+    {
+      "row": 43,
+      "name": "قليوب",
+      "code": "401",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع العاشر من رمضان قليوب البلد"
+    },
+    {
+      "row": 44,
+      "name": "قليوب المحطة",
+      "code": "405",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "34ش الخديوى اسماعيل -قليوب المحطة قليوب"
+    },
+    {
+      "row": 45,
+      "name": "26 يوليو",
+      "code": "95",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "37 شارع 26 يوليو مبنى الاسعاف القاهره"
+    },
+    {
+      "row": 46,
+      "name": "الاذاعة والتليفزيون",
+      "code": "31",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مبنى ماسبيرو كورنيش النيل"
+    },
+    {
+      "row": 47,
+      "name": "عدلي",
+      "code": "30",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "19ش عدلى القاهرة"
+    },
+    {
+      "row": 48,
+      "name": "ثروت",
+      "code": "45",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "34ش عبدالخالق ثروت"
+    },
+    {
+      "row": 49,
+      "name": "الألفى",
+      "code": "40",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "6ش بستان الدكه الالفى"
+    },
+    {
+      "row": 50,
+      "name": "الظاهر",
+      "code": "130",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "17 أ ميدان الظاهر"
+    },
+    {
+      "row": 51,
+      "name": "الأزهر",
+      "code": "60",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "70ش الازهر"
+    },
+    {
+      "row": 52,
+      "name": "طلعت حرب",
+      "code": "55",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "20شارع طلعت حرب"
+    },
+    {
+      "row": 53,
+      "name": "قصر النيل",
+      "code": "20",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "47 ش قصر النيل"
+    },
+    {
+      "row": 54,
+      "name": "نوبار",
+      "code": "170",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "41ش نوبار ناصية شارعى نوبار مع ريحان"
+    },
+    {
+      "row": 55,
+      "name": "السيدة زينب",
+      "code": "80",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "271 ش بورسعيد السيدة زينب"
+    },
+    {
+      "row": 56,
+      "name": "ميدان السيدة زينب",
+      "code": "85",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "35 ميدان السيدة زينب"
+    },
+    {
+      "row": 57,
+      "name": "جراند حياة",
+      "code": "65",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "يمارس الاعمال من فرع المهندسين"
+    },
+    {
+      "row": 58,
+      "name": "المنيل",
+      "code": "603",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "60 ش الملك الصالح تقاطع ش المظفر المنيل"
+    },
+    {
+      "row": 59,
+      "name": "حلوان",
+      "code": "180",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "31شارع حيدر -حلوان"
+    },
+    {
+      "row": 60,
+      "name": "المعادى",
+      "code": "111",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "3شارع 79 المعادى"
+    },
+    {
+      "row": 61,
+      "name": "المعادى الجديدة",
+      "code": "112",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ناصية شارعى فلسطين و269المنفرع من شارع النصر"
+    },
+    {
+      "row": 62,
+      "name": "مصر القديمة",
+      "code": "110",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ناصية شارعى كورنيش النيل والمرحومى مصر القديمة"
+    },
+    {
+      "row": 63,
+      "name": "الدقى",
+      "code": "34",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "19 شارع وزارة الزراعة الدقى"
+    },
+    {
+      "row": 64,
+      "name": "الأوقاف",
+      "code": "33",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "15 ش الحسن ناصية يثرب الاوقاف الدقى"
+    },
+    {
+      "row": 65,
+      "name": "المهندسين",
+      "code": "602",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "72شارع جامعة الدول العربية المهندسين"
+    },
+    {
+      "row": 66,
+      "name": "سوريا",
+      "code": "188",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "73 شارع سوريا المهندسين"
+    },
+    {
+      "row": 67,
+      "name": "احمد عرابى",
+      "code": "36",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "42شارع الرشيد - ناصية العلمين - المهندسين - الجيزة"
+    },
+    {
+      "row": 68,
+      "name": "الهرم",
+      "code": "607",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "5 ش حسن محمد من ش الهرم"
+    },
+    {
+      "row": 69,
+      "name": "الفيصلية",
+      "code": "609",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "عماره (1) تقاطع شارعى الملك فيصل مع المريوطية"
+    },
+    {
+      "row": 70,
+      "name": "الجيزة",
+      "code": "600",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "9شارع همدان من ش مراد الجيزة"
+    },
+    {
+      "row": 71,
+      "name": "ميدان الجيزة",
+      "code": "605",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "1شارع مراد-ميدان الجيزه"
+    },
+    {
+      "row": 72,
+      "name": "داندى مول",
+      "code": "183",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "داندى ميجا مول الكيلو28 طريق مصر اسكندرية الصحراوى"
+    },
+    {
+      "row": 73,
+      "name": "مدينة الشيخ زايد",
+      "code": "186",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينىنة الشيخ زايد EXIT MALL14 امام كباوند جرينز"
+    },
+    {
+      "row": 74,
+      "name": "بيفرلى هيلز",
+      "code": "187",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة الشيخ زايد - مشروع The Strip بيفرلى هيلز قطعة A5"
+    },
+    {
+      "row": 75,
+      "name": "6أكتوبر",
+      "code": "606",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "منطقة تجمع البنوك المنطقه الصناعية الرابعة"
+    },
+    {
+      "row": 76,
+      "name": "مجمع ماجدة",
+      "code": "608",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مجمع فنون ماجدة المحور المركزى قطعة-3 م 6 اكتوبر"
+    },
+    {
+      "row": 77,
+      "name": "المتميز- 6اكتوبر",
+      "code": "604",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "عماره17المجاورة الرابعة الحى المتمميز"
+    },
+    {
+      "row": 78,
+      "name": "مجمع الاستوديوهات العالمي",
+      "code": "601",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة الانتاج الاعلامى ب6اكتوبر ص ب 4"
+    },
+    {
+      "row": 79,
+      "name": "سوق الجملة - 6 أكتوبر",
+      "code": "185",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة 6 أكتوبر سوق الجملة مجمع البنوك"
+    },
+    {
+      "row": 80,
+      "name": "نادى الجزيرة - 6أكتوبر",
+      "code": "182",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "نادى الجزيرة- فرع 6 أكتوبر- محافظة الجيزة"
+    },
+    {
+      "row": 81,
+      "name": "صلاح سالم",
+      "code": "210",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "5شارع صلاح سالم الاسكندريه"
+    },
+    {
+      "row": 82,
+      "name": "سيزوستريس",
+      "code": "200",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "16شارع سيزوستريس"
+    },
+    {
+      "row": 83,
+      "name": "سموحة",
+      "code": "270",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "67شارع فيكتوريا عما نويل سموحه"
+    },
+    {
+      "row": 84,
+      "name": "باب سدرة",
+      "code": "285",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "109شارع الخديوى باب سدره"
+    },
+    {
+      "row": 85,
+      "name": "طريق الحرية",
+      "code": "265",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "طريق الحرية 293- سبورتنج -الاسكندرية"
+    },
+    {
+      "row": 86,
+      "name": "الابراهيمية",
+      "code": "231",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "49شارع عمر لطفى -كامب شيزار الاسكندريه"
+    },
+    {
+      "row": 87,
+      "name": "الاقبال",
+      "code": "290",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "16شارع الاقبال -فيكتوريا"
+    },
+    {
+      "row": 88,
+      "name": "باكوس",
+      "code": "220",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "اش حجر النواتية رمل اسكندرية"
+    },
+    {
+      "row": 89,
+      "name": "المنتزة",
+      "code": "280",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع ملك حفنى طريق ابى قير المنتزة"
+    },
+    {
+      "row": 90,
+      "name": "جليم",
+      "code": "260",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "78 شارع عبدالسلام عارف"
+    },
+    {
+      "row": 91,
+      "name": "الاكاديمية العربية للعلوم والتكنولوجيا",
+      "code": "205",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "الاكاديمية العربية للعلوم والتكنولوجيا /ابى قير /الاسكندرية"
+    },
+    {
+      "row": 92,
+      "name": "سبورتنج",
+      "code": "230",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "226شارع بورسعيدبالقرب من ميدان سبورتنج"
+    },
+    {
+      "row": 93,
+      "name": "سيدى بشر",
+      "code": "215",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "سيدى بشر بحرى 554 طريق الجيش (الكورنيش )"
+    },
+    {
+      "row": 94,
+      "name": "السيوف",
+      "code": "216",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "برج سرايا السيوف – تقاطع شارع محمد امين حسونة مع شارع عادل مصطفى – السيوف - الإسكندرية"
+    },
+    {
+      "row": 95,
+      "name": "الورديان",
+      "code": "201",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "51شارع ابن سهلان -محطة الجلاء بالورديان"
+    },
+    {
+      "row": 96,
+      "name": "برج العرب",
+      "code": "255",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "منطقة البنوك المجاوره الخامسه م برج العرب الجديده"
+    },
+    {
+      "row": 97,
+      "name": "العجمى",
+      "code": "250",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "اول شارع البيطاش طريق مرسى مطروح"
+    },
+    {
+      "row": 98,
+      "name": "الدخيلة",
+      "code": "245",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "يمارس النشاط المصرفى من فرع العجمى"
+    },
+    {
+      "row": 99,
+      "name": "مدينة الحمام",
+      "code": "501",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة الحمام –شارع الاسكندرية الرئيسى أمام شارع أمن الدولة مباشرةّ"
+    },
+    {
+      "row": 100,
+      "name": "مرسى مطروح",
+      "code": "500",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "10شارع الشهيد صلاح ابوزدير مرسى مطروح"
+    },
+    {
+      "row": 101,
+      "name": "سيوة",
+      "code": "505",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "واحة سيوة مشروع التكية بمدينة سيوه"
+    },
+    {
+      "row": 102,
+      "name": "دمنهور",
+      "code": "480",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الجمهوريه دمنهور"
+    },
+    {
+      "row": 103,
+      "name": "الدلنجات",
+      "code": "483",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الجلاء الدلنجات"
+    },
+    {
+      "row": 104,
+      "name": "ابو المطامير",
+      "code": "570",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع مصطفى كامل ابوالمطامير"
+    },
+    {
+      "row": 105,
+      "name": "حوش عيسى",
+      "code": "481",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الجمهوريه حوش عيسى"
+    },
+    {
+      "row": 106,
+      "name": "كفر الدوار",
+      "code": "485",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "4 ش المحكمة برج الرضوان مدينة كفر الدوار"
+    },
+    {
+      "row": 107,
+      "name": "المنصورة",
+      "code": "420",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "79شارع الجيش"
+    },
+    {
+      "row": 108,
+      "name": "الجمهورية",
+      "code": "593",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "221شارع الجمهورية -المنصورة"
+    },
+    {
+      "row": 109,
+      "name": "أجا",
+      "code": "425",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الثورة رياح المنصورة مدينة أجا دقهلية"
+    },
+    {
+      "row": 110,
+      "name": "طلخا",
+      "code": "422",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "12ش صلاح مصطفى امام نادى المعلمين"
+    },
+    {
+      "row": 111,
+      "name": "بلقاس",
+      "code": "423",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "3ش الثورة بلقاس"
+    },
+    {
+      "row": 112,
+      "name": "شربين",
+      "code": "421",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الجيش"
+    },
+    {
+      "row": 113,
+      "name": "ميت غمر",
+      "code": "430",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع احمد عرابى ميت غمر"
+    },
+    {
+      "row": 114,
+      "name": "المنزلة",
+      "code": "520",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع وسط البندر-برج فاروق سماحة-المنزلة-الدقهلية"
+    },
+    {
+      "row": 115,
+      "name": "كفر الشيخ",
+      "code": "490",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "11شارع الخلفاء الراشدين كفر الشيخ"
+    },
+    {
+      "row": 116,
+      "name": "الخلفاء الراشدين",
+      "code": "492",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "1شارع الخلفاء الراشدين"
+    },
+    {
+      "row": 117,
+      "name": "بيلا",
+      "code": "494",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الشهيد عبدالمنعم رياض-مدينة بيلا"
+    },
+    {
+      "row": 118,
+      "name": "الحامول",
+      "code": "495",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع المركز الجديد - أمام مركز شرطة الحامول - كفر الشيخ"
+    },
+    {
+      "row": 119,
+      "name": "دسوق",
+      "code": "491",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "دسوق شارع كورنيش النيل خلف بنك مصر"
+    },
+    {
+      "row": 120,
+      "name": "فوة",
+      "code": "530",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة فوه شارع جمال عبدالناصر(26 يوليو)"
+    },
+    {
+      "row": 121,
+      "name": "شبين الكوم",
+      "code": "470",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع المدارس وبنك مصر"
+    },
+    {
+      "row": 122,
+      "name": "منوف",
+      "code": "510",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الجيش"
+    },
+    {
+      "row": 123,
+      "name": "الباجور",
+      "code": "591",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الجيش -مدينة الباجور"
+    },
+    {
+      "row": 124,
+      "name": "بركة السبع",
+      "code": "471",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "البر الغربى شارع الكورنيش بركة السبع"
+    },
+    {
+      "row": 125,
+      "name": "تلا",
+      "code": "472",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع النادى الرياضى بجوار بنك الائتمان الزراعى - تلا"
+    },
+    {
+      "row": 126,
+      "name": "السادات",
+      "code": "594",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "محور الحى الثالث مدينة السادات"
+    },
+    {
+      "row": 127,
+      "name": "وكالة أشمون",
+      "code": "473",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "17ش صلاح الدين الشرقى-اشمون - المنوفية"
+    },
+    {
+      "row": 128,
+      "name": "فاقوس",
+      "code": "414",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الساحة الشعبية-فاقوس-الشرقية"
+    },
+    {
+      "row": 129,
+      "name": "السنبلاوين",
+      "code": "424",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع صلاح سالم"
+    },
+    {
+      "row": 130,
+      "name": "ديرب نجم",
+      "code": "550",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع العروبة-ديرب نجم"
+    },
+    {
+      "row": 131,
+      "name": "الحسينية",
+      "code": "411",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع المركز -الحسينيه الشرقية"
+    },
+    {
+      "row": 132,
+      "name": "ابوكبير",
+      "code": "413",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "31شارع مصطفى كامل-ابوكبير-الشرقية"
+    },
+    {
+      "row": 133,
+      "name": "وكالة أبو كبير",
+      "code": "413",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش مصطفى كامل - ابوكبير"
+    },
+    {
+      "row": 134,
+      "name": "بلبيس",
+      "code": "412",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش بور سعيد-مبنى مجمع المصالح الحكومية"
+    },
+    {
+      "row": 135,
+      "name": "الزقازيق",
+      "code": "410",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "8شارع طلعت حرب الزقازيق-الشرقية"
+    },
+    {
+      "row": 136,
+      "name": "بنها",
+      "code": "400",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "1شارع جميل ببنها"
+    },
+    {
+      "row": 137,
+      "name": "اللواء",
+      "code": "415",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش اللواء عبدالعزيز على عماره 15 مبنى المديرين-الزقازيق"
+    },
+    {
+      "row": 138,
+      "name": "منيا القمح",
+      "code": "592",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع سعد زغلول منيا القمح"
+    },
+    {
+      "row": 139,
+      "name": "23 يوليو",
+      "code": "403",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "يمارس نشاطة من خلال فرع كفر شكر"
+    },
+    {
+      "row": 140,
+      "name": "كفر شكر",
+      "code": "402",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع جمال عبد الناصر -كفر شكر"
+    },
+    {
+      "row": 141,
+      "name": "المحلة الكبرى",
+      "code": "460",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "12شارع 23يوليو"
+    },
+    {
+      "row": 142,
+      "name": "طنطا",
+      "code": "450",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "53شارع الجيش"
+    },
+    {
+      "row": 143,
+      "name": "سوق ناصر",
+      "code": "452",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الخان سوق ناصر طنطا"
+    },
+    {
+      "row": 144,
+      "name": "كفرالزيات",
+      "code": "451",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ميدان المحطة كفر الزيات"
+    },
+    {
+      "row": 145,
+      "name": "زفتى",
+      "code": "540",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ناصية شارعى الجمهورية والصاغة"
+    },
+    {
+      "row": 146,
+      "name": "شرم الشيخ",
+      "code": "360",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "هضبة ام السيد قطعه 9 شرم الشيخ"
+    },
+    {
+      "row": 147,
+      "name": "هورايزون",
+      "code": "365",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "الفرع يمارس نشاطة المصرفى من مقر فرع شرم الشيخ"
+    },
+    {
+      "row": 148,
+      "name": "نويبع",
+      "code": "340",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "عماره46 منطقة الميناء امام مدخل م نوبيع"
+    },
+    {
+      "row": 149,
+      "name": "العريش",
+      "code": "350",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ناصية ش 23 يوليو والشباب والرياضة"
+    },
+    {
+      "row": 150,
+      "name": "دهب",
+      "code": "355",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة دهب /المشربة محافظة جنوب سيناء"
+    },
+    {
+      "row": 151,
+      "name": "سيتى شارم",
+      "code": "370",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "الملحق التجارى لفندق سيتى شارم- السوق التجارى القديم-شرم الشيخ"
+    },
+    {
+      "row": 152,
+      "name": "بورسعيد",
+      "code": "300",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "31شارع الجمهورية"
+    },
+    {
+      "row": 153,
+      "name": "بورفؤاد",
+      "code": "330",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "17شارع الجمهورية بور فؤاد"
+    },
+    {
+      "row": 154,
+      "name": "حافظ ابراهيم",
+      "code": "305",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "11ش الجمهورية تقاطع ش حافظ ابراهيم بورسعيد"
+    },
+    {
+      "row": 155,
+      "name": "دمياط",
+      "code": "440",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الجلاء مدينة دمياط"
+    },
+    {
+      "row": 156,
+      "name": "دمياط الجديدة",
+      "code": "445",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "القطعة رقم 23المنطقة المركزية-دمياط الجديدة"
+    },
+    {
+      "row": 157,
+      "name": "التحرير",
+      "code": "442",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع التحرير - قسم اول - دمياط"
+    },
+    {
+      "row": 158,
+      "name": "وكالة كفر سعد",
+      "code": "446",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "كفر سعد بجوار الإارة التعليمية"
+    },
+    {
+      "row": 159,
+      "name": "الاسماعيلية",
+      "code": "320",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "7ش الشهيد فريد ندا قسم اول"
+    },
+    {
+      "row": 160,
+      "name": "الجيش الاسماعلية",
+      "code": "325",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "72 شارع الجيش الاسماعلية"
+    },
+    {
+      "row": 161,
+      "name": "السويس",
+      "code": "310",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "1شارع التحرير والنهضة"
+    },
+    {
+      "row": 162,
+      "name": "الشهداء السويس",
+      "code": "315",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "33 شارع الشهداء السويس"
+    },
+    {
+      "row": 163,
+      "name": "الصالحية الجديدة",
+      "code": "560",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "السوق التجارى -مجاورة رقم 12"
+    },
+    {
+      "row": 164,
+      "name": "الفيوم",
+      "code": "610",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "7مكرر ش الحرية بالفيوم"
+    },
+    {
+      "row": 165,
+      "name": "اطسا",
+      "code": "611",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش ابوبكر الصديق اطسا الفيوم"
+    },
+    {
+      "row": 166,
+      "name": "سنورس",
+      "code": "612",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "1ش بور سعيد الفيوم-سنورس"
+    },
+    {
+      "row": 167,
+      "name": "السواقى",
+      "code": "617",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة الفيوم - 55 ش الحرية"
+    },
+    {
+      "row": 168,
+      "name": "الواسطى",
+      "code": "615",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "50شارع طراد النيل /الواسطى"
+    },
+    {
+      "row": 169,
+      "name": "وكالة ابشواى",
+      "code": "614",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "طراد مدينة ابشواى الفيوم"
+    },
+    {
+      "row": 170,
+      "name": "بنى سويف",
+      "code": "620",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "45ش 23 يوليو"
+    },
+    {
+      "row": 171,
+      "name": "اهناسيا",
+      "code": "621",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "4ش الشهيد ممدوح مصطفى اهناسيا"
+    },
+    {
+      "row": 172,
+      "name": "سمسطا",
+      "code": "740",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش بور سعيد - سمسطا"
+    },
+    {
+      "row": 173,
+      "name": "بنى سويف الجديدة/ ش النيل",
+      "code": "619",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة بنى سويف الجديدة الحى الأول / شرق النيل"
+    },
+    {
+      "row": 174,
+      "name": "مقبل",
+      "code": "618",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع 23 يوليو - مدينة بنى سويف"
+    },
+    {
+      "row": 175,
+      "name": "وكالة الفشن",
+      "code": "626",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة الفشن بنى سويف"
+    },
+    {
+      "row": 176,
+      "name": "وكالة ناصر",
+      "code": "616",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "6ش ابو بكر الصديق - ناصر - بنى سويف"
+    },
+    {
+      "row": 177,
+      "name": "ببا",
+      "code": "625",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "17ش الابراهيمية بجوار محطة مياة ببا"
+    },
+    {
+      "row": 178,
+      "name": "المنيا",
+      "code": "630",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "2ش سعد زغلول بجوار فندق لوتس السياحى"
+    },
+    {
+      "row": 179,
+      "name": "ملوى",
+      "code": "635",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش الجلاء مبنى المهن الزراعية"
+    },
+    {
+      "row": 180,
+      "name": "مغاغة",
+      "code": "629",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "9ش الوحدة - مغاغة"
+    },
+    {
+      "row": 181,
+      "name": "وحدة الجمهورية",
+      "code": "630",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة المنيا"
+    },
+    {
+      "row": 182,
+      "name": "وكالة بنى مزار",
+      "code": "627",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "بنى مزار - المنيا"
+    },
+    {
+      "row": 183,
+      "name": "وكالة سمالوط",
+      "code": "628",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "سمالوط - المنيا"
+    },
+    {
+      "row": 184,
+      "name": "وكالة أبو قرقاص",
+      "code": "633",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "أبو قرقاص - المنيا"
+    },
+    {
+      "row": 185,
+      "name": "وكالة ديرمواس",
+      "code": "636",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "دير مواس - المنيا"
+    },
+    {
+      "row": 186,
+      "name": "أسيوط",
+      "code": "640",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "27ش الجمهورية برج الفردوس"
+    },
+    {
+      "row": 187,
+      "name": "القوصية",
+      "code": "637",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "القوصية شارع الجلاء"
+    },
+    {
+      "row": 188,
+      "name": "ابو تيج",
+      "code": "760",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش اسيوط/سوهاج البحرى مدينة ابوتيج"
+    },
+    {
+      "row": 189,
+      "name": "الخارجة",
+      "code": "641",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ش الزهور من جمال عبد الناصر الخارجة"
+    },
+    {
+      "row": 190,
+      "name": "منفلوط",
+      "code": "645",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع جمال عبدالناصر - بجوار مجلس المدينة - منفلوط - أسيوط"
+    },
+    {
+      "row": 191,
+      "name": "سوهاج",
+      "code": "650",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "26شارع النيل سوهاج"
+    },
+    {
+      "row": 192,
+      "name": "الكوثر",
+      "code": "656",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "حى الكوثر - مجمع البنوك -سوهاج"
+    },
+    {
+      "row": 193,
+      "name": "جرجا",
+      "code": "720",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ناصية شارعى المحطة والسيدة خديجة"
+    },
+    {
+      "row": 194,
+      "name": "المنشاة",
+      "code": "657",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع السكة الحديد بجوار المزلقان البحرى -غرب محطة السكة الحديد-مدينة المنشاة-سوهاج"
+    },
+    {
+      "row": 195,
+      "name": "وحدة الجامعة",
+      "code": "650",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "جامعة جنوب الوادى سوهاج"
+    },
+    {
+      "row": 196,
+      "name": "وكالة طما",
+      "code": "654",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "طما - سوهاج"
+    },
+    {
+      "row": 197,
+      "name": "وكالة طهطا",
+      "code": "655",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "طهطا - سوهاج"
+    },
+    {
+      "row": 198,
+      "name": "البلينا",
+      "code": "653",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "طريق مصر اسوان بحرى مرور البلينا - سوهاج"
+    },
+    {
+      "row": 199,
+      "name": "قنا",
+      "code": "670",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "قنا ش 23 يوليو"
+    },
+    {
+      "row": 200,
+      "name": "نجع حمادى",
+      "code": "680",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع حسنى مبارك نجع حمادى"
+    },
+    {
+      "row": 201,
+      "name": "قوص",
+      "code": "700",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع الميدان المحطة قوص"
+    },
+    {
+      "row": 202,
+      "name": "الاقصر",
+      "code": "690",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع كورنيش النيل الاقصر"
+    },
+    {
+      "row": 203,
+      "name": "صلاح الدين",
+      "code": "695",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "ميدان صلاح الدين المنشية مدينة الاقصر"
+    },
+    {
+      "row": 204,
+      "name": "أسنا",
+      "code": "705",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "كورنيش النيل - مدينة أسنا - محافظة الاقصر"
+    },
+    {
+      "row": 205,
+      "name": "سفاجا",
+      "code": "672",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "منطقة الميناء بجوار مبنى السنترال الجديد"
+    },
+    {
+      "row": 206,
+      "name": "الغردقة",
+      "code": "730",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "طريق الشيراتون المطار"
+    },
+    {
+      "row": 207,
+      "name": "اسوان",
+      "code": "660",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "95شارع كورنيش النيل اسوان"
+    },
+    {
+      "row": 208,
+      "name": "ادفو",
+      "code": "710",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "شارع معبد ادفو ادفو"
+    },
+    {
+      "row": 209,
+      "name": "ابو سمبل",
+      "code": "750",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "حى العاشر من رمضان مدينة ابو سمبل"
+    },
+    {
+      "row": 210,
+      "name": "وكالة كوم أمبو",
+      "code": "770",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "مدينة كوم أمبو - أسوان"
+    },
+    {
+      "row": 211,
+      "name": "الرحاب",
+      "code": "88",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 212,
+      "name": "عمارات العبور",
+      "code": "93",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 213,
+      "name": "النادى الاهلى الشيخ زايد",
+      "code": "71",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 214,
+      "name": "المقطم",
+      "code": "115",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 215,
+      "name": "الجلاء",
+      "code": "94",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 216,
+      "name": "القطامية هايتس",
+      "code": "68",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 217,
+      "name": "البنك التجارى الدولى المبتديان",
+      "code": "002",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 218,
+      "name": "البنك المركزى المصرى الجمهورية",
+      "code": "003",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 219,
+      "name": "البنك الاهلى المصرى شريف",
+      "code": "004",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 220,
+      "name": "بنك الاسكان والتعمير فرع الزمالك",
+      "code": "005",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 221,
+      "name": "الكويتى الوطنى التجمع الخامس",
+      "code": "006",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 222,
+      "name": "بنك الاستثمار العربى",
+      "code": "007",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 223,
+      "name": "saip الدقى",
+      "code": "008",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 224,
+      "name": "فيصل الاسلامى",
+      "code": "009",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 225,
+      "name": "بافاريا تاون",
+      "code": "113",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 226,
+      "name": "المصرف العربى ثروت",
+      "code": "010",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 227,
+      "name": "البنك المصري الخليجي EG",
+      "code": "011",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "الجيزة"
+    },
+    {
+      "row": 228,
+      "name": "الجزيرة مول",
+      "code": "189",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 229,
+      "name": "البنك المركزي المصري العاصمة الادارية",
+      "code": "012",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 230,
+      "name": "الزمالك",
+      "code": "96",
+      "areaAr": null,
+      "areaEn": null,
+      "address": null
+    },
+    {
+      "row": 231,
+      "name": "مطار سفنكس",
+      "code": "135",
+      "areaAr": null,
+      "areaEn": null,
+      "address": "اكتوبر"
+    }
+  ]
+}

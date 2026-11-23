@@ -42,6 +42,7 @@ import {
   OperationsSettingKeys,
   type OperationsStandingCrewBoardDto,
   type OperationsStandingCrewRowDto,
+  type OperationsUncodedVehicleDto,
   type SetOperationsStandingCrew,
   type SetOperationsStandingCrewRow,
 } from '@ecms/contracts';
@@ -55,8 +56,9 @@ import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 // §9.4 (frozen fleet design): Operations reads the Fleet registry and never writes it.
 import { settingsService } from '../../../platform/settings';
-import { fleetVehicleRepository } from '../fleet-boundary';
+import { fleetVehicleRepository, fleetVehicleTypeNames } from '../fleet-boundary';
 import { slotIds } from '../crew/crew-slots';
+import { byCarForPicker, isUnidentified, uncodedOf } from '../crew/uncoded-vehicles';
 import { CREW_SLOT_FIELD, crewRolesOf, refuseWrongSlots } from '../crew/crew-roles';
 import { directionResolver } from '../crew/crew-direction';
 import { operationsStandingCrewRepository } from './standing-crew.repository';
@@ -97,15 +99,27 @@ const storedCrew = (doc: OperationsStandingCrewDoc): string[] => [
 const toDto = (
   doc: OperationsStandingCrewDoc,
   vehicleCode: string,
+  uncoded: OperationsUncodedVehicleDto | null,
 ): OperationsStandingCrewRowDto => ({
   id: String(doc._id),
   vehicleId: String(doc.vehicleId),
   vehicleCode,
+  uncoded,
   ...snapshot(doc),
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),
 });
+
+/** What the standing crew reads of a Fleet car — Round 32: its plate and type too. */
+interface RegistryVehicle {
+  _id: unknown;
+  code: string;
+  plateNumber: string;
+  typeId: Types.ObjectId;
+  operationId: Types.ObjectId | null;
+  status: string;
+}
 
 class OperationsStandingCrewService {
   /**
@@ -122,15 +136,8 @@ class OperationsStandingCrewService {
    * is organization-wide, and a branch-scoped read would hide half the fleet from the person
    * maintaining it.
    */
-  private async allVehicles(): Promise<
-    { _id: unknown; code: string; operationId: Types.ObjectId | null; status: string }[]
-  > {
-    const vehicles: {
-      _id: unknown;
-      code: string;
-      operationId: Types.ObjectId | null;
-      status: string;
-    }[] = [];
+  private async allVehicles(): Promise<RegistryVehicle[]> {
+    const vehicles: RegistryVehicle[] = [];
     // A hard ceiling so a runaway page count cannot hang a request. Ten pages is 1,000 vehicles —
     // an order of magnitude past any cash-transfer fleet, and the log says so if it is ever hit.
     const MAX_PAGES = 10;
@@ -150,26 +157,42 @@ class OperationsStandingCrewService {
 
   /** The standing crew, plus the Fleet vehicles that could still join it. */
   async board(): Promise<OperationsStandingCrewBoardDto> {
-    const [stored, vehicles, cashTransferOperationIds] = await Promise.all([
+    const [stored, vehicles, cashTransferOperationIds, typeNames] = await Promise.all([
       operationsStandingCrewRepository.findAll(),
       this.allVehicles(),
       settingsService.resolve<string[]>(
         OperationsSettingKeys.CashTransferOperationIds,
         ORG_SUBJECT,
       ),
+      fleetVehicleTypeNames(),
     ]);
 
-    const codeOf = new Map(vehicles.map((vehicle) => [String(vehicle._id), vehicle.code]));
+    const byId = new Map(vehicles.map((vehicle) => [String(vehicle._id), vehicle]));
     const inCrew = new Set(stored.map((row) => String(row.vehicleId)));
     const cashOperations = new Set(cashTransferOperationIds);
+    const named = (vehicle: RegistryVehicle) => ({
+      vehicleCode: vehicle.code,
+      plateNumber: vehicle.plateNumber,
+      typeId: String(vehicle.typeId),
+    });
 
     const rows = stored
       // A stored row whose vehicle no longer resolves keeps its id as its label rather than
       // vanishing: a crew nobody can see is a crew nobody can fix.
-      .map((row) => toDto(row, codeOf.get(String(row.vehicleId)) ?? String(row.vehicleId)))
+      // Round 32 critic — a van whose code names nothing is named by its plate (`uncoded`), as
+      // «إضافة سيارة» named it when it joined.
+      .map((row) => {
+        const vehicle = byId.get(String(row.vehicleId));
+        return vehicle === undefined
+          ? toDto(row, String(row.vehicleId), null)
+          : toDto(row, vehicle.code, uncodedOf(named(vehicle), typeNames));
+      })
       // Vehicle code, not insertion order: it is the identifier operators actually say out loud,
       // and it keeps the board stable across saves without storing a hand-maintained order.
-      .sort((a, b) => a.vehicleCode.localeCompare(b.vehicleCode, 'ar'));
+      // Round 32 — NATURALLY (61, 101, 150 …; it was text: «101» before «61»), a code that names
+      // nothing last. Such a van stays on the board as it is — it is Operations' own row (two of
+      // them by their plate, the Round 32 critic).
+      .sort(byCarForPicker);
 
     // WHICH VEHICLES MAY JOIN — the Fleet designation, read from Fleet's own field.
     //
@@ -190,19 +213,35 @@ class OperationsStandingCrewService {
     // configuration — the statuses are a closed vocabulary, and only one of them means "in use".
     const running = (vehicle: { status: string }): boolean => vehicle.status === 'active';
 
-    const available = vehicles
+    // Round 32 — «دى مشكلة بيظهر عربيات ايه الاصفار دى»: a car whose code names nothing («0», «00» …)
+    // is offered LAST, named by its plate (`uncoded`); one whose plate names nothing either cannot be
+    // told from the next — left out, and counted (`unidentifiedVehicles`). Codes naturally.
+    const candidates = vehicles
       .filter((vehicle) => !inCrew.has(String(vehicle._id)))
       .filter(designated)
-      .filter(running)
-      .map((vehicle) => ({ vehicleId: String(vehicle._id), vehicleCode: vehicle.code }))
-      .sort((a, b) => a.vehicleCode.localeCompare(b.vehicleCode, 'ar'));
+      .filter(running);
+    const unidentified = candidates.filter((vehicle) => isUnidentified(named(vehicle)));
+    const available = candidates
+      .filter((vehicle) => !unidentified.includes(vehicle))
+      .map((vehicle) => ({
+        vehicleId: String(vehicle._id),
+        vehicleCode: vehicle.code,
+        uncoded: uncodedOf(named(vehicle), typeNames),
+      }))
+      // Round 32 critic — two uncoded cars by their PLATE (their zeros say nothing).
+      .sort(byCarForPicker);
 
     // A vehicle ALREADY in the standing crew is never removed from `rows` by either filter. Fleet
     // re-classifying or retiring a van does not un-crew it behind Operations' back — the row is
     // Operations' own statement, and taking it out is Operations' own act. What it DOES mean is
     // that a van sold last week keeps showing its crew until somebody removes it, which is the
     // visible prompt to do so rather than a silent disappearance.
-    return { rows, available, availableIsFiltered: cashOperations.size > 0 };
+    return {
+      rows,
+      available,
+      unidentifiedVehicles: unidentified.length,
+      availableIsFiltered: cashOperations.size > 0,
+    };
   }
 
   async save(input: SetOperationsStandingCrew, by: string): Promise<{ changedCount: number }> {

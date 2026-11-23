@@ -155,6 +155,7 @@ describe('«صرف الخزينة» — the assign dialog and the release', () =
     driver2EmployeeId: null,
     drivers: [],
     missionTypeId: null,
+    uncoded: null,
     crew: {
       id: crewId,
       captainEmployeeIds: captains,
@@ -165,6 +166,7 @@ describe('«صرف الخزينة» — the assign dialog and the release', () =
       notes: null,
       shiftTypeId: null,
       rowColour: null,
+      shipments: 0,
     },
   });
   const loose = (id: string, captains: string[]): OperationsCrewBoardCrewDto => ({
@@ -177,6 +179,7 @@ describe('«صرف الخزينة» — the assign dialog and the release', () =
     notes: null,
     shiftTypeId: null,
     rowColour: null,
+    shipments: 0,
   });
 
   it('offers each row without a van as its own vehicle — never merged under a missing van', () => {

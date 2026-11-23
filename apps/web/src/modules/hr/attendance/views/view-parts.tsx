@@ -85,6 +85,19 @@ const STATUS_TONE: Record<ViewStatus, Tone> = {
   noSchedule: 'muted',
   noRecord: 'muted',
 };
+/**
+ * «انصراف مبكر» — not a `Tone`, deliberately.
+ *
+ * The tones are the STATUS palette: every one of them names a family a whole day can belong to,
+ * and `Record<Tone, …>` is spread across the views on that understanding. Early leave is a figure
+ * ABOUT a day, like the late minutes, not a family of its own — a `lateAndEarly` day is amber as a
+ * status and carries a red chip and this one. Widening the union for a chip would have put a
+ * seventh column in every status map that can never be a status.
+ */
+export const EARLY_SOFT = 'bg-[var(--att-early-soft)] text-[color:var(--att-early)]';
+/** The same colour as plain text — the daily sheet's status column, under the pill. */
+export const EARLY_INK = 'text-[color:var(--att-early)]';
+
 export const statusTone = (s: ViewStatus): Tone => STATUS_TONE[s];
 
 /** Status as a dot and a word. */

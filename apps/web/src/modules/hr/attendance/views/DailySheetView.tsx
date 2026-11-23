@@ -8,7 +8,7 @@ import { useState, type ReactNode } from 'react';
 import { cn } from '../../../../shared/lib/cn';
 import { type ArrivalSlot } from './view-charts';
 import { SheetHero } from './sheet-hero';
-import { AttendanceCanvas, DayStepper, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, RowMenu, Sheet, StatusPill, type Tone } from './view-parts';
+import { AttendanceCanvas, DayStepper, EARLY_INK, FIG, INK, INK2, INK3, PageHeader, PersonAvatar, RowMenu, Sheet, StatusPill, type Tone } from './view-parts';
 import { clock, num, shortDuration, timeSpan } from './view-format';
 import { useViewLabels } from './view-labels';
 import { SortMenu, StatusSegments } from './toolbar';
@@ -178,6 +178,13 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
             <tbody>
               {p.rows.map((r) => {
                 const late = (r.lateMinutes ?? 0) > 0 ? (r.lateMinutes ?? 0) : null;
+                // The engine's status decides, as it does on the timeline: the flexible-hours rule
+                // means a departure before the hour costs nothing once the hours are complete.
+                const early =
+                  (r.status === 'earlyLeave' || r.status === 'lateAndEarly') &&
+                  (r.earlyLeaveMinutes ?? 0) > 0
+                    ? (r.earlyLeaveMinutes ?? 0)
+                    : null;
                 const short = (r.shortfallMinutes ?? 0) > 0 ? (r.shortfallMinutes ?? 0) : null;
                 const open = (): void => p.onOpenEmployee?.(r.id);
                 return (
@@ -241,11 +248,18 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
                     </td>
                     <td className="whitespace-nowrap">
                       <StatusPill status={r.status} label={status(r.status)} />
-                      {(late !== null || r.tags.length > 0) && (
+                      {(late !== null || early !== null || r.tags.length > 0) && (
                         <span className="mt-1 flex flex-wrap gap-1 text-[11.5px]">
+                          {/* `+` arrived late, `−` left early. The titles are what make the pair
+                              readable side by side on a «تأخير وانصراف مبكر» row. */}
                           {late !== null && (
-                            <span className="text-[color:var(--att-warn)]">
+                            <span className="text-[color:var(--att-warn)]" title={t('lateCol')}>
                               +<bdi className={FIG}>{shortDuration(late)}</bdi>
+                            </span>
+                          )}
+                          {early !== null && (
+                            <span className={EARLY_INK} title={t('earlyLeaveCol')}>
+                              −<bdi className={FIG}>{shortDuration(early)}</bdi>
                             </span>
                           )}
                           {r.tags.map((tag) => (

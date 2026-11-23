@@ -160,6 +160,7 @@ export const toSheetRow = (
     // unmeasured and the CSV decided separately. One rule now, applied once, on the server.
     worked: row.figures.workedMinutes,
     lateMinutes: row.figures.lateMinutes,
+    earlyLeaveMinutes: row.figures.earlyLeaveMinutes,
     shortfallMinutes: row.figures.shortfallMinutes,
     overtimeApproved: day?.approvedOvertimeMinutes ?? 0,
     overtimeDerived: row.figures.overtimeMinutes ?? 0,
@@ -196,6 +197,7 @@ export const toEmployeeDay = (
     // Hours that were measured, or null — never a confident zero against a day with no check-out.
     worked: day?.figures.workedMinutes ?? null,
     lateMinutes: day?.figures.lateMinutes ?? null,
+    earlyLeave: day?.figures.earlyLeaveMinutes ?? null,
     shortfall: day?.figures.shortfallMinutes ?? null,
     // A provisional day is one the engine has not concluded: the punches are real and the status is
     // a reading of them. Marked so a reader knows which, and so «لا يوجد تسجيل» is not the only

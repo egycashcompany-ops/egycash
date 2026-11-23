@@ -93,6 +93,8 @@ export const VIEW_LABEL_KEYS = [
   // The sortable sheet, and the two figures the flexible-hours rule added.
   'codeCol',
   'shortfallCol',
+  // «انصراف مبكر» — the chip, the legend key and the daily sheet's status column.
+  'earlyLeaveCol',
   'shortfallTotal',
   'sortAscending',
   'sortDescending',

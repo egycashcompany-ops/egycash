@@ -2,9 +2,12 @@
 // the pool the crew board drags from.
 //
 // THE ONE RULE THAT IS NOT HERE. Requirements gate nothing (approved decision, carried since PR 1):
-// no method below refuses an assignment, and the crew service consults none of these flags. They
-// are metadata, indicators and filters, which is precisely what they were in legacy — only
-// `leader`/`isCaptain` was ever read by a server query, and even that only narrowed a picker.
+// no method below refuses an assignment. They are metadata, indicators and filters, which is
+// precisely what they were in legacy — only `leader`/`isCaptain` was ever read by a server query,
+// and even that only narrowed a picker.
+// ROUND 23 — except the two ROLE flags, for the crew saves: «ممنوع ان اعين قائد مكان اخصائى والعكس
+// الا فى حالة انه قائد اخصائى». `crew-roles.ts` reads «قائد» and «أخصائي» to refuse a new seat the
+// role does not fit; this service still refuses nothing, and the other eight flags gate nothing.
 //
 // WHAT IS ENFORCED is reference integrity: an employee must exist and not have left, resolved
 // through the platform directory seam. That is the same check the crew service makes on a slot,
@@ -16,6 +19,7 @@ import {
   type ListOperationsCrewRequirementsQuery,
   type OperationsCrewAttendanceDayDto,
   type OperationsCrewAttendanceDto,
+  type OperationsCrewAvailability,
   type OperationsCrewDirectoryDto,
   type OperationsCrewMemberDto,
   type SetOperationsCrewRequirements,
@@ -24,15 +28,19 @@ import { Types } from 'mongoose';
 import { ConflictError, ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import {
+  approvedLeaveEmployeeIds,
   getDirectoryAttendanceDay,
   getDirectoryEmployee,
   listDirectoryEmployeesByDepartment,
 } from '../../../platform/directory';
+import { jobTitleRepository } from '../../../platform/organization';
 import { settingsService } from '../../../platform/settings';
 import { diffChanges } from '../../../shared/utils/diff';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsCrewAssignmentRepository } from './crew-assignment.repository';
+import { crewMembers } from './crew-slots';
 import { operationsCrewRequirementsRepository } from './crew-requirements.repository';
+import { resolveCrewDepartmentIds } from './crew-departments';
 import { type OperationsCrewRequirementsDoc } from './crew-requirements.model';
 
 /**
@@ -53,13 +61,65 @@ export const attendanceBucket = (
       return 'absent';
     case 'onLeave':
       return 'onLeave';
+    // `noSchedule` sits with these deliberately. An employee with no shift and no default pattern
+    // derives it where they used to derive `dayOff`, and the board's question — can I count on
+    // this person today — has the same answer either way. Letting it fall through to `default`
+    // would quietly move every unscheduled employee into `unknown`.
     case 'weekend':
     case 'holiday':
     case 'dayOff':
+    case 'noSchedule':
       return 'notScheduled';
     default:
       return 'unknown';
   }
+};
+
+/**
+ * ROUND 22 — is this member AWAY on the day? «وعاوز لو القائد غايب يظهر تحت الكل بقى فى الاخر يبقى
+ * باللون الباهت ومقدرش احطه على العربيه و كذلك الاخصائيين».
+ *
+ * HR's day record answers when HR has one, bucketed exactly as the attendance page counts it, so
+ * the two screens cannot call one person two things. When HR has NOT computed the day — the nightly
+ * sweep computes yesterday, so that is every future day, the board's own tomorrow included — the
+ * only fact HR already holds about it is an approved or active leave, and that answers 'onLeave'.
+ * Nothing else is «away»: a weekend, «incomplete» and no record are null, because an unknown is not
+ * an absence and must never keep somebody off a van.
+ */
+export const crewAvailabilityFrom = (
+  record: { status: AttendanceDayStatus } | undefined,
+  onApprovedLeave: boolean,
+): OperationsCrewAvailability | null => {
+  if (record !== undefined) {
+    const bucket = attendanceBucket(record.status);
+    return bucket === 'absent' || bucket === 'onLeave' ? bucket : null;
+  }
+  return onApprovedLeave ? 'onLeave' : null;
+};
+
+/**
+ * Who of these people is away on the day — only the away ones are keys. ONE attendance read and ONE
+ * leave read for the whole list, both batched through the directory seam, never a read per person.
+ *
+ * The pool (`directory`) and the save (`operationsCrewService.plan`) both ask HERE, so the board can
+ * never show someone placeable whom the save then refuses, or the other way round.
+ */
+export const crewAvailabilityOn = async (
+  employeeIds: readonly string[],
+  day: Date,
+): Promise<Map<string, OperationsCrewAvailability>> => {
+  const ids = [...new Set(employeeIds)];
+  const away = new Map<string, OperationsCrewAvailability>();
+  if (ids.length === 0) return away;
+  const [records, onLeave] = await Promise.all([
+    getDirectoryAttendanceDay(ids, day),
+    approvedLeaveEmployeeIds(ids, day),
+  ]);
+  for (const employeeId of ids) {
+    const availability = crewAvailabilityFrom(records.get(employeeId), onLeave.has(employeeId));
+    if (availability !== null) away.set(employeeId, availability);
+  }
+  return away;
 };
 
 /** Organization scope: who works in Operations is one fact about the company. */
@@ -175,14 +235,17 @@ class OperationsCrewRequirementsService {
     // The requirements row is no longer MEMBERSHIP. It is what Operations knows ABOUT a member —
     // the flags — created the first time somebody sets one. A member with no row yet is a real
     // member with nothing recorded, which is why `requirements` is nullable in the DTO.
-    const departmentIds = await settingsService.resolve<string[]>(
+    const configuredIds = await settingsService.resolve<string[]>(
       OperationsSettingKeys.CrewDepartmentIds,
       ORG_SUBJECT,
     );
+    // A saved id is a COMPANY department, not one branch's copy of it: «نقل الأموال» ticked once is
+    // «نقل الأموال» in every branch that has it, a branch opened later included (crew-departments.ts).
+    const departmentIds = await resolveCrewDepartmentIds(configuredIds);
     const byEmployee = new Map(rows.map((row) => [String(row.employeeId), row]));
 
     const roster =
-      departmentIds.length > 0
+      configuredIds.length > 0
         ? await listDirectoryEmployeesByDepartment(departmentIds)
         : // UNCONFIGURED: fall back to whoever already holds a row — the behaviour before this
           // setting existed. Adding by hand is gone, so an empty roster would be unfillable.
@@ -190,29 +253,63 @@ class OperationsCrewRequirementsService {
             await Promise.all(rows.map((row) => getDirectoryEmployee(String(row.employeeId))))
           ).filter((employee): employee is NonNullable<typeof employee> => employee !== null);
 
-    const search = query?.search?.trim().toLowerCase() ?? '';
-    const members: OperationsCrewMemberDto[] = [];
-    for (const employee of roster) {
-      // Somebody who has left is not offered, whichever way they were found.
-      if (employee.status === 'exited') continue;
-      if (
-        search !== '' &&
-        !employee.fullNameAr.toLowerCase().includes(search) &&
-        !employee.code.toLowerCase().includes(search)
-      ) {
-        continue;
-      }
+    // «الوظيفة» (Round 19): the seats travel with the roster as ids; their names are the
+    // organization catalogue's, read once for the whole roster rather than once per member. A seat
+    // the catalogue no longer has is shown as none, never as an id.
+    const jobTitleIds = [
+      ...new Set(
+        roster
+          .map((employee) => employee.jobTitleId ?? null)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const jobTitleNames = new Map(
+      (await jobTitleRepository.findByIdsSystem(jobTitleIds)).map((title) => [
+        String(title._id),
+        { ar: title.name.ar, en: title.name.en },
+      ]),
+    );
+    const jobTitleOf = (id: string | null | undefined): OperationsCrewMemberDto['jobTitle'] => {
+      const name = id == null ? undefined : jobTitleNames.get(id);
+      return id == null || name === undefined ? null : { id, name };
+    };
 
+    const search = query?.search?.trim().toLowerCase() ?? '';
+    const offered = roster.filter(
+      (employee) =>
+        // Somebody who has left is not offered, whichever way they were found.
+        employee.status !== 'exited' &&
+        (search === '' ||
+          employee.fullNameAr.toLowerCase().includes(search) ||
+          employee.code.toLowerCase().includes(search)),
+    );
+    // Round 22: who is away that day — read once for everyone offered (`crewAvailabilityOn`).
+    const away = await crewAvailabilityOn(
+      offered.map((employee) => employee.employeeId),
+      day,
+    );
+
+    const members: OperationsCrewMemberDto[] = [];
+    for (const employee of offered) {
       const row = byEmployee.get(employee.employeeId);
       members.push({
         employeeId: employee.employeeId,
         code: employee.code,
         fullNameAr: employee.fullNameAr,
         status: employee.status,
+        jobTitle: jobTitleOf(employee.jobTitleId),
+        // The member's card on «كشف طاقم العمليات» (Round 19b): the Fleet driver card's phone and
+        // branch, as the seam already answers them for every entry — nothing extra is read.
+        phone: employee.phone,
+        branchId: employee.branchId,
         // Null means "nothing recorded yet", NOT "carries nothing" — the card says so, and the
         // first flag anybody sets creates the row.
         requirements: row === undefined ? null : toRequirementsDto(row),
         assignedVehicleId: taken.get(employee.employeeId) ?? null,
+        // Only the bucket, under the roster's own grant like the name — never HR's punches or the
+        // leave itself. Who sees what is deferred by the owner («موضوع مين يشوف ايه ومين يعمل ايه دا
+        // مش دلوقتي»), so this is the least the board needs to fade a name and refuse a drop.
+        availability: away.get(employee.employeeId) ?? null,
       });
     }
 
@@ -224,7 +321,7 @@ class OperationsCrewRequirementsService {
         a.code.localeCompare(b.code),
     );
 
-    return { date: day.toISOString(), members, rosterIsDerived: departmentIds.length > 0 };
+    return { date: day.toISOString(), members, rosterIsDerived: configuredIds.length > 0 };
   }
 
   /**
@@ -241,6 +338,9 @@ class OperationsCrewRequirementsService {
   async attendance(date: Date): Promise<OperationsCrewAttendanceDayDto> {
     const day = utcDay(date);
     const { members: roster } = await this.directory(day);
+    // Everybody on ANY of the day's rows, a row without a van included (Round 20): the pool's
+    // `assignedVehicleId` names only a vehicle, and this page asks whether the person is crewed.
+    const crewed = await this.crewedOn(day);
     const attendance = await getDirectoryAttendanceDay(
       roster.map((m) => m.employeeId),
       day,
@@ -254,6 +354,7 @@ class OperationsCrewRequirementsService {
         fullNameAr: member.fullNameAr,
         attendance: row === undefined ? null : { status: row.status, onLeave: row.onLeave },
         assignedVehicleId: member.assignedVehicleId,
+        isCrewed: crewed.has(member.employeeId),
       };
     });
 
@@ -273,6 +374,17 @@ class OperationsCrewRequirementsService {
     }
 
     return { date: day.toISOString(), members, summary };
+  }
+
+  /** Every employee holding a slot on one of the day's live crew rows, with a van or without. */
+  private async crewedOn(day: Date): Promise<Set<string>> {
+    const crewed = new Set<string>();
+    const dayDoc = await operationsDayService.findByDate(day);
+    if (dayDoc === null) return crewed;
+    for (const row of await operationsCrewAssignmentRepository.findForDay(dayDoc._id)) {
+      for (const employeeId of crewMembers(row)) crewed.add(employeeId);
+    }
+    return crewed;
   }
 
   async list(query: ListOperationsCrewRequirementsQuery) {

@@ -97,6 +97,7 @@ import {
   type FleetVehicleLatestReadingDto,
   type FleetVehicleTypeDto,
   type FleetViolationDto,
+  type FleetViolationsListMeta,
   type FleetViolationRollupDto,
   type FleetViolationRollupQuery,
   type Paginated,
@@ -389,8 +390,21 @@ export const setAccidentStatus = (
 export const deleteAccident = (id: string): Promise<void> => del<void>(`/fleet/accidents/${id}`);
 
 // ── Violations + grievances (§4.7, FR-9 — amounts and rollups are server-derived) ─
-export const listViolations = (params: FleetListParams): Promise<Paginated<FleetViolationDto>> =>
-  getPage<FleetViolationDto>(`/fleet/violations${buildQuery(params)}`);
+/**
+ * One page of the register — and, on EVERY page alike, what is still owed over the WHOLE filter
+ * (`meta.outstandingAmount`, D03): every row the filter finds, all pages, never only the rows a
+ * reader has loaded. The drivers' footer «إجمالي السائقين» prints it, so it names the dashboard's
+ * «قائمة على السائقين» figure that opens this list.
+ */
+export interface FleetViolationsPage {
+  items: FleetViolationDto[];
+  meta: FleetViolationsListMeta;
+}
+export const listViolations = async (params: FleetListParams): Promise<FleetViolationsPage> => {
+  // `getPage` hands the envelope's `meta` through whole; this endpoint's carries the owed sum.
+  const page = await getPage<FleetViolationDto>(`/fleet/violations${buildQuery(params)}`);
+  return page as FleetViolationsPage;
+};
 export const violationRollup = (
   /** SEVERAL years, ORed — one comma-separated `year` parameter, which is what the API parses. */
   years: readonly number[] | undefined,

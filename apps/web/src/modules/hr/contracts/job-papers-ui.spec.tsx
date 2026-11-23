@@ -15,6 +15,9 @@ const code = (path: string): string =>
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 const READY = code('../employee-management/employees/pages/EmployeesReadyPage.tsx');
+const HIRED = code('../employee-management/employees/pages/HiredEmployeesPage.tsx');
+const HEAD = code('../employee-management/employees/components/ReadyHeaderActions.tsx');
+const ROUTES = code('../employee-management/routes.tsx');
 const DIALOG = code('components/JobPapersDialog.tsx');
 
 const paper = (key: string, kind: 'contract' | 'form' = 'form') => ({ key, name: { ar: key, en: key }, kind });
@@ -65,10 +68,18 @@ describe('«حفظ»', () => {
 });
 
 describe('«جاهزون للتعيين»', () => {
+  /**
+   * «عاوز نرجع ال زرار بتاع مستندات الوظائف لوحده زي مكان»: the button in the page's head again, under
+   * the small toggle, opening its popup — on «جاهزون للتعيين» and on «المعينون».
+   */
   it('opens «مستندات الوظائف» from a button at the top, for who may change the templates', () => {
-    expect(READY).toContain('<Can permission="contractTemplate.manage">');
-    expect(READY).toContain('onClick={() => setJobPapers(true)} data-job-papers-open');
-    expect(READY).toContain('<JobPapersDialog open={jobPapers} onClose={() => setJobPapers(false)} />');
+    expect(HEAD).toContain('<Can permission="contractTemplate.manage">');
+    expect(HEAD).toContain('onClick={() => setJobPapers(true)} data-job-papers-open');
+    expect(HEAD).toContain('<JobPapersDialog open={jobPapers} onClose={() => setJobPapers(false)} />');
+    expect(READY).toContain('actions={<ReadyHeaderActions />}');
+    expect(HIRED).toContain('actions={<ReadyHeaderActions />}');
+    // Its address of one day leads back to the list.
+    expect(ROUTES).toContain('<Route path="job-papers" element={<Navigate to="/employees/ready" replace />} />');
     expect(translate('ar', 'employees.ready.jobPapers')).toBe('مستندات الوظائف');
   });
 

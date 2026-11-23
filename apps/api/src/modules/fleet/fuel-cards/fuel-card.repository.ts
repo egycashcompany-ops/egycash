@@ -89,9 +89,26 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
       .exec();
   }
 
-  async totals(filter: FilterQuery<FleetFuelCardDoc>, now: Date): Promise<FleetFuelCardTotalsDto> {
+  /**
+   * The cards' totals over `filter` — one `$group` — and «شُحن اليوم» beside them.
+   *
+   * «شُحن اليوم» is the CAIRO day (his «اليوم»), from its midnight; a charge the company's sheet
+   * cancelled («أُلغي بشيت الشركة») is in the card's log only, and not counted. It follows the cards
+   * `chargedOver` names (`filter` when none is given; the service passes the query's card-identity
+   * part — company, cars, branch, number — never its state filter): under a non-empty one only the
+   * charges of the matched cards count, a card deleted since included (its charge stays in the
+   * day, as the company view counts it) — one `distinct` more; with none, every charge of the day,
+   * as it always was. `charged: false` skips it (0) for a caller that reads only the counts — the
+   * fleet dashboard asks it once, of the summary that shows it.
+   */
+  async totals(
+    filter: FilterQuery<FleetFuelCardDoc>,
+    now: Date,
+    opts: { charged?: boolean; chargedOver?: FilterQuery<FleetFuelCardDoc> } = {},
+  ): Promise<FleetFuelCardTotalsDto> {
+    const match = this.baseFilter(undefined, filter);
     const pipeline: PipelineStage[] = [
-      { $match: this.baseFilter(undefined, filter) },
+      { $match: match },
       {
         $group: {
           _id: null,
@@ -104,6 +121,18 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
           },
           requestedCount: { $sum: { $cond: [{ $ne: ['$requestedAmount', null] }, 1, 0] } },
           requestedAmount: { $sum: { $ifNull: ['$requestedAmount', 0] } },
+          // The cards of each company, and the cards on no car («سفر»، «اسبير») with their balance —
+          // in the same pass, never a second read.
+          wataniyaCards: { $sum: { $cond: [{ $eq: ['$company', 'wataniya'] }, 1, 0] } },
+          chilloutCards: { $sum: { $cond: [{ $eq: ['$company', 'chillout'] }, 1, 0] } },
+          noCarCards: {
+            $sum: { $cond: [{ $eq: [{ $ifNull: ['$vehicleId', null] }, null] }, 1, 0] },
+          },
+          noCarBalance: {
+            $sum: {
+              $cond: [{ $eq: [{ $ifNull: ['$vehicleId', null] }, null] }, '$balance', 0],
+            },
+          },
         },
       },
     ];
@@ -114,22 +143,12 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
         chilloutBalance: number;
         requestedCount: number;
         requestedAmount: number;
+        wataniyaCards: number;
+        chilloutCards: number;
+        noCarCards: number;
+        noCarBalance: number;
       }>(pipeline)
       .exec();
-    // «شُحن اليوم» — the CAIRO day (his «اليوم»), from its midnight; a charge the company's sheet
-    // cancelled («أُلغي بشيت الشركة») is in the card's log only, and not counted here.
-    const today = cairoDayRange(cairoDayOf(now));
-    const [charged] = await FleetFuelCardMovementModel.aggregate<{ amount: number }>([
-      {
-        $match: {
-          kind: 'charge',
-          at: { $gte: today.start, $lt: today.end },
-          isDeleted: false,
-          cancelledBySheet: null,
-        },
-      },
-      { $group: { _id: null, amount: { $sum: '$amount' } } },
-    ]).exec();
     const round = (value: number): number => Math.round(value * 100) / 100;
     return {
       cardCount: row?.cardCount ?? 0,
@@ -137,8 +156,86 @@ class FleetFuelCardRepository extends BaseRepository<FleetFuelCardDoc> {
       chilloutBalance: round(row?.chilloutBalance ?? 0),
       requestedCount: row?.requestedCount ?? 0,
       requestedAmount: round(row?.requestedAmount ?? 0),
-      chargedTodayAmount: round(charged?.amount ?? 0),
+      chargedTodayAmount:
+        opts.charged === false ? 0 : await this.chargedToday(opts.chargedOver ?? filter, now),
+      wataniyaCards: row?.wataniyaCards ?? 0,
+      chilloutCards: row?.chilloutCards ?? 0,
+      noCarCards: row?.noCarCards ?? 0,
+      noCarBalance: round(row?.noCarBalance ?? 0),
     };
+  }
+
+  /** «شُحن اليوم» over the cards `filter` matches (every card when it is empty) — see `totals`. */
+  private async chargedToday(filter: FilterQuery<FleetFuelCardDoc>, now: Date): Promise<number> {
+    const today = cairoDayRange(cairoDayOf(now));
+    const narrowed = Object.keys(filter).length > 0;
+    const cardIds = narrowed ? await this.idsOfAny(filter) : null;
+    if (cardIds !== null && cardIds.length === 0) return 0;
+    const [charged] = await FleetFuelCardMovementModel.aggregate<{ amount: number }>([
+      {
+        $match: {
+          kind: 'charge',
+          at: { $gte: today.start, $lt: today.end },
+          isDeleted: false,
+          cancelledBySheet: null,
+          ...(cardIds === null ? {} : { cardId: { $in: cardIds } }),
+        },
+      },
+      { $group: { _id: null, amount: { $sum: '$amount' } } },
+    ]).exec();
+    return Math.round((charged?.amount ?? 0) * 100) / 100;
+  }
+
+  /**
+   * Every card `filter` matches, by id — a DELETED card too (no soft-delete clause): what a card
+   * left behind (today's charges, a stored sheet's lines) is history and still counts by its car.
+   */
+  async idsOfAny(filter: FilterQuery<FleetFuelCardDoc>): Promise<Types.ObjectId[]> {
+    return this.model.distinct('_id', filter).exec() as Promise<Types.ObjectId[]>;
+  }
+
+  /**
+   * «أقربها» — the live card `filter` matches with the EARLIEST expiry (the window is the caller's
+   * `expiresFrom` / `expiresBefore`), through `ix_fuel_card_expires`; `null` when none.
+   */
+  async nearestExpiry(filter: FilterQuery<FleetFuelCardDoc>): Promise<Date | null> {
+    const card = await this.model
+      .findOne(this.baseFilter(undefined, filter))
+      .sort({ expiresAt: 1, _id: 1 })
+      .select({ expiresAt: 1 })
+      .lean<{ expiresAt: Date | null }>()
+      .exec();
+    return card?.expiresAt ?? null;
+  }
+
+  /**
+   * «كروت تحتاج متابعة» — every live card `filter` matches that is flagged ANY way: expired (on or
+   * before `expiredBefore`), expiring (in `expiringFrom` … `expiringBefore`), a balance below the
+   * red or the yellow line, or a «طلب رصيد» waiting. The states and the order are the service's;
+   * this only reads the flagged set (a fleet holds some 150 cards).
+   */
+  async flagged(
+    filter: FilterQuery<FleetFuelCardDoc>,
+    rules: {
+      expiredBefore: Date;
+      expiringFrom: Date;
+      expiringBefore: Date;
+      yellowAt: number;
+      redAt: number;
+    },
+  ): Promise<FleetFuelCardDoc[]> {
+    const flaggedAnyWay: FilterQuery<FleetFuelCardDoc> = {
+      $or: [
+        { expiresAt: { $lte: rules.expiredBefore } },
+        { expiresAt: { $gte: rules.expiringFrom, $lte: rules.expiringBefore } },
+        { balance: { $lt: Math.max(rules.yellowAt, rules.redAt) } },
+        { requestedAmount: { $ne: null } },
+      ],
+    };
+    return this.model
+      .find(this.baseFilter(undefined, { $and: [filter, flaggedAnyWay] }))
+      .lean<FleetFuelCardDoc[]>()
+      .exec();
   }
 }
 

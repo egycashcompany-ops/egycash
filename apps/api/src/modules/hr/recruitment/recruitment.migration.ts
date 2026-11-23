@@ -19,6 +19,7 @@
 //    `null` and its applicant never enters the queue. Rebuilt to the declared shape, and only
 //    when no two live offers share a code (`job-offers/code-index-migration.ts`).
 import { type Model, type Types } from 'mongoose';
+import { type LocalizedString } from '@ecms/contracts';
 import { logger } from '../../../infrastructure/logging/logger';
 import { decideCodeIndexRebuild } from './job-offers/code-index-migration';
 import { ApplicantModel } from './applicants/applicant.model';
@@ -564,6 +565,92 @@ export const migrateRecruitmentLegacy = async (): Promise<void> => {
     { $set: { metadata: {} } },
   ).exec();
 
+  // ⑤ Which round or phase each history entry was about.
+  await backfillTimelineStageIdentity();
+
   // ④ Workflow refactor.
   await migrateRecruitmentWorkflow();
+};
+
+/**
+ * ⑤ WHICH round or phase each history entry was about.
+ *
+ * The projection never recorded it, so every entry on every existing database has `stageKind: null`
+ * and the timeline cannot say «المقابلة الأولى» or «الفحص الأمني». That absence is what made two
+ * real events — the security check and the medical check opening together — read as one event
+ * written twice, and what put «تم تحديد موعد المقابلة» on a round nobody had scheduled. The engine
+ * carries the identity on every event now (`stageIdentityOf`), which fixes the future; this is the
+ * past, and the past is what HR is looking at.
+ *
+ * IT ADDS, IT DOES NOT REWRITE. The entry always belonged to this round — the fact is read back off
+ * the stage row the entry already names in `entityId`, not inferred, not guessed from a timestamp.
+ * The filter is `stageKind: null`, so an entry that has an identity is never touched and a second
+ * run matches nothing. Neither `eventId` nor `sourceKey` is in the update, so the entry's public
+ * identity and its idempotency key are exactly as they were (I9) and reconciliation keeps agreeing
+ * with it.
+ */
+const TIMELINE_STAGE_SOURCES = [
+  { entityType: 'screening', kind: 'screening' as const, model: ScreeningModel, refField: null, nameField: null },
+  { entityType: 'interview', kind: 'interview' as const, model: InterviewModel, refField: 'stageId', nameField: 'stageName' },
+  { entityType: 'evaluation', kind: 'evaluation' as const, model: EvaluationModel, refField: 'phaseId', nameField: 'phaseName' },
+  { entityType: 'jobOffer', kind: 'jobOffer' as const, model: JobOfferModel, refField: null, nameField: null },
+];
+
+const STAGE_BACKFILL_BATCH = 500;
+
+export const backfillTimelineStageIdentity = async (): Promise<void> => {
+  let named = 0;
+  for (const source of TIMELINE_STAGE_SOURCES) {
+    // The singleton stages have no round or phase of their own, so the kind is the whole identity
+    // and one statement does every row.
+    if (source.refField === null) {
+      const res = await RecruitmentTimelineModel.updateMany(
+        { entityType: source.entityType, stageKind: null },
+        { $set: { stageKind: source.kind } },
+      ).exec();
+      named += res.modifiedCount;
+      continue;
+    }
+    // The rounds and the phases need their own row read, so this walks in batches: a production
+    // history is long, and a boot step must not load all of it to name part of it.
+    for (;;) {
+      const batch = await RecruitmentTimelineModel.find(
+        { entityType: source.entityType, stageKind: null, entityId: { $ne: null } },
+        { _id: 1, entityId: 1 },
+      )
+        .limit(STAGE_BACKFILL_BATCH)
+        .lean<{ _id: Types.ObjectId; entityId: Types.ObjectId }[]>()
+        .exec();
+      if (batch.length === 0) break;
+      const rows = await (source.model as unknown as Model<Record<string, unknown>>)
+        .find({ _id: { $in: batch.map((b) => b.entityId) } }, { _id: 1, [source.refField]: 1, [source.nameField as string]: 1 })
+        .lean<Record<string, unknown>[]>()
+        .exec();
+      const byId = new Map(rows.map((r) => [String(r['_id']), r]));
+      let wrote = 0;
+      for (const entry of batch) {
+        const row = byId.get(String(entry.entityId));
+        const refId = row?.[source.refField] ?? null;
+        const name = row?.[source.nameField as string] ?? null;
+        await RecruitmentTimelineModel.updateOne(
+          { _id: entry._id },
+          {
+            $set: {
+              stageKind: source.kind,
+              stageRefId: refId === null ? null : (refId as Types.ObjectId),
+              stageName: name === null ? null : (name as LocalizedString),
+            },
+          },
+        ).exec();
+        wrote += 1;
+      }
+      named += wrote;
+      // Every row in the batch now carries a `stageKind`, so the next query cannot return them
+      // again; a batch that wrote nothing would loop forever, so stop on it.
+      if (wrote === 0) break;
+    }
+  }
+  if (named > 0) {
+    logger.info({ entries: named }, 'recruitment: named the stage on timeline entries that had none');
+  }
 };

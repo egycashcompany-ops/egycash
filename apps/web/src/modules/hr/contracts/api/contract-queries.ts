@@ -13,12 +13,14 @@ import {
   type DecideContractApproval,
   type PreviewContract,
   type RenderCandidateBulk,
+  type RenderEmployeeBulk,
   type UpdateJobPapers,
-  type UpdateInsuranceJobTitles,
+  type UpdateInsuranceJobTitle,
   type RenderCandidatePapers,
   type SignContractBlock,
   type TerminateContract,
   type UpdateCandidateDraft,
+  type UpdateEmployeePaperValues,
   type UpdateContractBranding,
   type UpdateContractDraft,
   type UpdateContractTemplate,
@@ -153,6 +155,19 @@ export const useEmployeePapers = (employeeId: string) =>
     queryFn: () => api.employeePapers(employeeId),
   });
 
+/** «تعديل» on the employee's tab — keep what was typed in; the tab is drawn from what comes back. */
+export const useSaveEmployeePaperValues = (employeeId: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateEmployeePaperValues) => api.saveEmployeePaperValues(employeeId, body),
+    onSuccess: (papers) => client.setQueryData(['hr', 'contracts', 'employeePapers', employeeId], papers),
+  });
+};
+
+/** One of the employee's papers as it would print now — «تعديل»'s side. */
+export const usePreviewEmployeePaper = (employeeId: string) =>
+  useMutation({ mutationFn: (key: string) => api.previewEmployeePaper(employeeId, key) });
+
 /** Print the chosen papers of an employee — the contract made first if they hold none. */
 export const usePrintEmployeePapers = () => {
   const invalidate = useContractsInvalidation();
@@ -204,14 +219,28 @@ export const useBulkRenderCandidates = () => {
   });
 };
 
+/** «المعينون» — each ticked employee with their job's papers, as their own tab lists them. */
+export const useBulkOpenEmployees = () => useMutation({ mutationFn: (employeeIds: string[]) => api.bulkOpenEmployees(employeeIds) });
+
+/** Print the chosen papers for every ticked employee; a contract made for one shows on their page. */
+export const useBulkRenderEmployees = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RenderEmployeeBulk) => api.bulkRenderEmployees(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['hr', 'contracts'] }),
+  });
+};
+
 /** «مسميات الوظائف لدى التأمينات» — each job's title at the insurance authority. */
 export const useInsuranceJobTitles = () =>
   useQuery({ queryKey: ['hr', 'contracts', 'insuranceJobTitles'], queryFn: api.getInsuranceJobTitles });
 
-export const useSaveInsuranceJobTitles = () => {
+/** «تعديل» on one job: its insurance title and occupation code. */
+export const useSaveInsuranceJobTitle = () => {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: UpdateInsuranceJobTitles) => api.saveInsuranceJobTitles(body),
+    mutationFn: ({ jobTitleId, body }: { jobTitleId: string; body: UpdateInsuranceJobTitle }) =>
+      api.saveInsuranceJobTitle(jobTitleId, body),
     onSuccess: (saved) => client.setQueryData(['hr', 'contracts', 'insuranceJobTitles'], saved),
   });
 };

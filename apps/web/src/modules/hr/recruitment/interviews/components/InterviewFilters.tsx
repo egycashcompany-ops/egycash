@@ -20,6 +20,7 @@ import {
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Input } from '../../../../../shared/ui/form';
 import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
@@ -102,13 +103,12 @@ export const InterviewFilters = ({
 
   return (
     <FilterBar onClear={() => onChange(cleared)} hasActiveFilters={active}>
-      <div className="w-full sm:w-72">
-        <SearchInput
-          value={value.search}
-          onChange={(v) => set({ search: v })}
-          placeholder={t('interviews.filters.search')}
-        />
-      </div>
+      <SearchInput
+        value={value.search}
+        onChange={(v) => set({ search: v })}
+        placeholder={t('interviews.filters.search')}
+        className={SEARCH_FITS_TEXT}
+      />
 
       {shows('status') && (
         <MultiSelect
@@ -137,6 +137,7 @@ export const InterviewFilters = ({
 
       {value.applicantId === '' ? (
         <ApplicantPicker
+          className={SEARCH_FITS_TEXT}
           onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })}
           useSearch={useApplicantSearch}
           placeholder={t('interviews.filters.applicantSearch')}
@@ -166,6 +167,7 @@ export const InterviewFilters = ({
         clearLabel={t('common.clear')}
         noAccessLabel={t('offers.form.needDirectory')}
         emptyLabel={t('offers.form.noUsers')}
+        className={SEARCH_FITS_TEXT}
       />
 
       <BranchFilterSelect value={value.branchId} onChange={(branchId) => set({ branchId })} />

@@ -18,6 +18,8 @@ import {
   type OperationsBankDto,
   type OperationsCurrencyDto,
   type OperationsLocation,
+  type OperationsShiftTypeColour,
+  type OperationsShiftTypeDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -42,17 +44,22 @@ import { DesignField, LOOK, MONO, Stroke, boxTone } from '../../fleet/components
 import { FILTER_ICON } from '../../fleet/components/FilterWithIcon';
 import { SHIPMENT_PATH } from './shipment-icons';
 import { errorMessage } from '../../../shared/lib/errors';
+import { ApiError } from '../../../shared/lib/api-client';
 import { useAppSelector } from '../../../store';
+import { SHIFT_TYPE_TONE, ShiftTypeTag } from './shift-type-look';
+import { freeColourFor, paletteFor } from '../lib/type-colours';
 import { branchSaveErrorKey } from '../lib/shipment-form';
 import {
   useCreateOperationsArea,
   useCreateOperationsBank,
   useCreateOperationsBankBranch,
   useCreateOperationsCurrency,
+  useCreateOperationsShiftType,
   useUpdateOperationsArea,
   useUpdateOperationsBank,
   useUpdateOperationsBankBranch,
   useUpdateOperationsCurrency,
+  useUpdateOperationsShiftType,
 } from '../api/operations-queries';
 
 /** Blank → null, so an untouched optional field is absent rather than an empty string. */
@@ -691,6 +698,192 @@ export const AreaDialog = ({
           hint={t('operations.catalogs.area.governorateHint')}
         >
           <Input value={governorate} onChange={(e) => setGovernorate(e.target.value)} />
+        </Field>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" disabled={busy}>
+            {t('common.save')}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  );
+};
+
+/**
+ * The first colour of the palette SHOWN to a new type no ACTIVE type wears yet — a new type starts
+ * told apart from the others on the board's strip, and the planner can still pick any of the shown
+ * colours. All worn: the palette's first (`freeColourFor`, Round 24b).
+ */
+export const freeShiftTypeColour = (
+  types: readonly OperationsShiftTypeDto[],
+): OperationsShiftTypeColour => freeColourFor(types);
+
+/**
+ * The swatches the type's form offers — Round 24b, «عاوز pallett الالوان يكون على عدد الالوان يكون نفس
+ * عدد النوع»: the board's palette (`paletteFor` — every colour a live type wears, then the first
+ * unworn ones), as many colours as there are live types — counting the one being added — and an
+ * archived type's own colour at the end when it is not among them (kept, and shown as its). A live
+ * type's own colour is always among them.
+ */
+export const shiftTypeFormPalette = (
+  types: readonly OperationsShiftTypeDto[],
+  shiftType: OperationsShiftTypeDto | null,
+): OperationsShiftTypeColour[] => {
+  const palette = paletteFor(types, shiftType === null ? 1 : 0);
+  return shiftType !== null && !palette.includes(shiftType.colour)
+    ? [...palette, shiftType.colour]
+    : palette;
+};
+
+/**
+ * «أنواع التشغيل» — one type of the crew board's «النوع» (Round 20): «انا عاوز النوع يكون بيضاف من
+ * البيانات المرجعيه». The areas' form (an Arabic name, an optional English one) and a colour from
+ * the contract's palette, chosen by swatch, with the type drawn as the board will draw it. Archiving
+ * is not here: the tab's own button says it in one click (`isActive`), as the server takes it.
+ */
+export const ShiftTypeDialog = ({
+  open,
+  shiftType,
+  types,
+  onClose,
+}: {
+  open: boolean;
+  shiftType: OperationsShiftTypeDto | null;
+  /** The catalog — the palette it shows (one swatch a live type) and a new type's free colour. */
+  types: readonly OperationsShiftTypeDto[];
+  onClose: () => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state) => state.locale.locale);
+  const create = useCreateOperationsShiftType();
+  const update = useUpdateOperationsShiftType();
+
+  const [name, setName] = useState('');
+  const [nameEn, setNameEn] = useState('');
+  const [colour, setColour] = useState<OperationsShiftTypeColour>('rose');
+  /** A name another type holds (409) — said on the name's own box. */
+  const [taken, setTaken] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(shiftType?.name ?? '');
+    setNameEn(shiftType?.nameEn ?? '');
+    setColour(shiftType?.colour ?? freeShiftTypeColour(types));
+    setTaken(false);
+    // `types` is left out on purpose: the catalog is read once per opening, so a refetch behind
+    // an open form never moves the colour the planner is looking at.
+  }, [open, shiftType]);
+
+  const submit = async (event: FormEvent): Promise<void> => {
+    event.preventDefault();
+    const core = { name: name.trim(), nameEn: orNull(nameEn), colour };
+    try {
+      if (shiftType === null) await create.mutateAsync(core);
+      else
+        await update.mutateAsync({
+          id: shiftType.id,
+          body: { ...core, version: shiftType.version },
+        });
+      toast.success(t('operations.catalogs.saved'));
+      onClose();
+    } catch (failure) {
+      // The catalog's unique name (a live type's Arabic name) — the one 409 that is about a field.
+      if (failure instanceof ApiError && failure.code === 'DUPLICATE') {
+        setTaken(true);
+        toast.error(t('operations.catalogs.shiftType.nameTaken'));
+        return;
+      }
+      toast.error(errorMessage(failure, locale));
+    }
+  };
+
+  // The type as the board will draw it — the name typed, in the colour picked.
+  const preview: OperationsShiftTypeDto = {
+    id: shiftType?.id ?? 'preview',
+    name: name.trim() === '' ? t('operations.catalogs.shiftType.name') : name.trim(),
+    nameEn: orNull(nameEn),
+    colour,
+    sortOrder: null,
+    isActive: true,
+    version: 0,
+    createdAt: '',
+    updatedAt: '',
+  };
+
+  const busy = create.isPending || update.isPending;
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={t(
+        shiftType === null
+          ? 'operations.catalogs.shiftType.add'
+          : 'operations.catalogs.shiftType.edit',
+      )}
+    >
+      <form onSubmit={submit} className="space-y-4" data-shift-type-form="true">
+        <Field
+          label={t('operations.catalogs.shiftType.name')}
+          required
+          error={taken ? t('operations.catalogs.shiftType.nameTaken') : undefined}
+        >
+          <Input
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setTaken(false);
+            }}
+            required
+            maxLength={60}
+            error={taken}
+          />
+        </Field>
+        <Field label={t('operations.catalogs.shiftType.nameEn')}>
+          <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} maxLength={60} />
+        </Field>
+        <Field
+          label={t('operations.catalogs.shiftType.colour')}
+          hint={t('operations.catalogs.shiftType.colourHint')}
+        >
+          <div className="space-y-3">
+            <div
+              role="radiogroup"
+              aria-label={t('operations.catalogs.shiftType.colour')}
+              className="flex flex-wrap gap-2"
+              data-shift-type-palette="true"
+            >
+              {shiftTypeFormPalette(types, shiftType).map((option) => {
+                const label = t(`operations.catalogs.shiftType.colours.${option}`);
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    role="radio"
+                    data-colour={option}
+                    aria-checked={option === colour}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => setColour(option)}
+                    className={cn(
+                      'h-8 w-8 rounded-full transition hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900',
+                      SHIFT_TYPE_TONE[option].dot,
+                      option === colour &&
+                        'ring-2 ring-slate-900 ring-offset-2 dark:ring-white dark:ring-offset-slate-900',
+                    )}
+                  />
+                );
+              })}
+            </div>
+            <div
+              className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 dark:border-slate-700"
+              data-shift-type-preview="true"
+            >
+              <ShiftTypeTag type={preview} locale={locale} size="md" />
+            </div>
+          </div>
         </Field>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>

@@ -8,6 +8,7 @@ import {
 } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { RECEIPT_PIASTRES } from '../custody/custody-memo-totals';
 import { FleetReceiptModel, type FleetReceiptDoc } from './receipt.model';
 
 const escapeRegex = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -32,6 +33,23 @@ interface TotalsRow {
   count: number;
   amount: number;
   litres: number;
+  /** The rows with no litres — a fuel receipt with no litre price. */
+  unpriced: number;
+}
+
+/** The receipts of one custody memo — or of none (`memoId: null`) — among a filter's rows. */
+export interface ReceiptMemoGroup {
+  memoId: string | null;
+  count: number;
+  /** Whole piastres, summed in the database — exact however many receipts add up. */
+  piastres: number;
+}
+
+/** One slot of a receipts series: the paper day ('YYYY-MM-DD') or month ('YYYY-MM'). */
+export interface ReceiptSeriesRow {
+  key: string;
+  amount: number;
+  count: number;
 }
 
 export interface ReceiptFilterInput {
@@ -126,6 +144,9 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
           count: { $sum: 1 },
           amount: { $sum: '$amount' },
           litres: { $sum: { $ifNull: ['$litres', 0] } },
+          // A fuel receipt is saved with no litres when it has no litre price — it is in the money
+          // and never in the litres; counted so the screens can say so.
+          unpriced: { $sum: { $cond: [{ $eq: [{ $ifNull: ['$litres', null] }, null] }, 1, 0] } },
         },
       },
     ];
@@ -162,7 +183,75 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
         (row) => row._id.kind === 'maintenance',
         (row) => row.amount,
       ),
+      // «وقود من العهدة» — the fuel receipts the custody paid (card receipts are fuel only, so
+      // fuel = card + this), and the fuel receipts with no litre price.
+      fuelCustodyTotal: sum(
+        (row) => row._id.kind === 'fuel' && row._id.source === 'custody',
+        (row) => row.amount,
+      ),
+      fuelUnpriced: rows
+        .filter((row) => row._id.kind === 'fuel')
+        .reduce((total, row) => total + row.unpriced, 0),
+      // «N إيصالًا» on «مصروفات العهدة» — the custody-paid receipts, from the same `$group`.
+      custodyCount: rows
+        .filter((row) => row._id.source === 'custody')
+        .reduce((total, row) => total + row.count, 0),
     };
+  }
+
+  /**
+   * The rows `filter` matches, per custody memo they are a line of (`null`: on none) — ONE
+   * aggregate, in the database, through `ix_receipt_source_date` when the filter names the custody
+   * source and a day. The fleet dashboard's `custodyStates` puts each group where its memo stands.
+   */
+  async custodyByMemo(filter: FilterQuery<FleetReceiptDoc>): Promise<ReceiptMemoGroup[]> {
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId | null; count: number; piastres: number }>([
+        { $match: this.baseFilter(undefined, filter) },
+        {
+          $group: {
+            _id: { $ifNull: ['$memoId', null] },
+            count: { $sum: 1 },
+            piastres: { $sum: RECEIPT_PIASTRES },
+          },
+        },
+      ])
+      .exec();
+    return rows.map((row) => ({
+      memoId: row._id == null ? null : String(row._id),
+      count: row.count,
+      piastres: Math.round(row.piastres),
+    }));
+  }
+
+  /**
+   * The same rows as `totals`, by the receipt's PAPER day — or month — in UTC, the way `date` is
+   * stored (date-only): the slots that hold a receipt, through `ix_receipt_date`. The caller fills
+   * the empty slots in.
+   */
+  async series(
+    filter: FilterQuery<FleetReceiptDoc>,
+    unit: 'day' | 'month',
+  ): Promise<ReceiptSeriesRow[]> {
+    const rows = await this.model
+      .aggregate<{ _id: string; amount: number; count: number }>([
+        { $match: this.baseFilter(undefined, filter) },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: unit === 'day' ? '%Y-%m-%d' : '%Y-%m',
+                date: '$date',
+                timezone: 'UTC',
+              },
+            },
+            amount: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .exec();
+    return rows.map((row) => ({ key: row._id, amount: round(row.amount), count: row.count }));
   }
 }
 

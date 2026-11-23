@@ -21,44 +21,80 @@
 // no inter-vault transfer. Those are treasury concerns and none of them exist in the legacy
 // behaviour being ported. The port is the hand-off, nothing more.
 
-/** What the treasury records when it takes a secured shipment in. */
+import {
+  type OperationsVaultBagSealsPerBag,
+  type OperationsVaultDenomination,
+} from '@ecms/contracts';
+
+/** The notes of one denomination a receipt counted (Round 18 — «عدد الورق من كل فئة»). */
+export interface VaultDenominationCount {
+  value: OperationsVaultDenomination;
+  count: number;
+}
+
+/**
+ * What the treasury records when it takes a secured shipment in.
+ *
+ * Round 18 — the legacy «إستلام محصنة» form, every field optional («كله اختيارى»): no receipt number
+ * is null, and NO NAMES travel here any more («انا مش عاوز اى اسماء»). The receiver is the `by` of
+ * `receive` — the signed-in user the route read from the token — and the provider records it as
+ * `receivedById`. Q2's two treasurers (`receivedByPrimaryId` / `receivedBySecondaryId`, which had to
+ * differ) are gone from the input; the rows that carry them stay readable (`VaultCustodyView`).
+ */
 export interface VaultReceiptInput {
   shipmentId: string;
-  receiptNumber: string;
+  receiptNumber: string | null;
   bagCount: number;
   cartonCount: number;
   boxCount: number;
+  /** «2×» / «3×» — the seals on each bag. */
+  bagSealsPerBag: OperationsVaultBagSealsPerBag;
+  /** As typed, already trimmed with the blank ones dropped (the contract's rule). */
   bagSeals: string[];
   boxSeals: string[];
-  /** Dual control (Q2 NORMALIZE) — two DIFFERENT treasurers, enforced by the provider. */
-  receivedByPrimaryId: string;
-  receivedBySecondaryId: string;
+  /** Any order, counts of 0 allowed — the provider stores only those above zero, smallest first. */
+  denominations: VaultDenominationCount[];
 }
 
 /**
  * The custody facts Operations is allowed to see.
  *
- * Thin by default, and widened ONCE, deliberately (B4/B5): the packaging counts and the two
- * receiving treasurers are here because Operations genuinely reports on them — the legacy vault
- * screen listed bags, boxes and cartons per bank (contad_app.js:1437-1447) and the captain and
- * bank reports totalled them (:5006-5023). Dual control is also only meaningful if BOTH names can
- * be shown, which is the point of having required two of them (Q2).
+ * Thin by default, and widened deliberately, each time for something Operations genuinely shows:
+ *   · B4/B5 — the packaging counts and who received it, because the legacy vault screen listed
+ *     bags, boxes and cartons per bank (contad_app.js:1437-1447) and the captain and bank reports
+ *     totalled them (:5006-5023);
+ *   · Round 18 — the note counts of each denomination and the seals-per-bag choice of the legacy
+ *     receive form, which the receipt print («إيصال») and the vault inventory show.
+ *
+ * WHO RECEIVED IT changed in Round 18. A receipt now records ONE person, the signed-in user
+ * (`receivedById`) — the owner: «انا مش عاوز اى اسماء». A receipt taken before named two treasurers
+ * (Q2's dual control); those two stay readable as they were stored, and are null on every newer
+ * receipt, as `receivedById` is null on every older one.
  *
  * What stays out remains out: seal barcodes are the treasury's own record and no Operations screen
- * or report reads them, so they are not exposed here.
+ * or report reads them, so they are not exposed here. Round 21b's `heldSeals` keeps it so: it
+ * answers only about seals the caller already typed, never with a held custody's own list.
  */
 export interface VaultCustodyView {
   id: string;
   shipmentId: string;
   state: 'held' | 'released';
-  receiptNumber: string;
+  /** Null when the vault typed none (optional since Round 18). */
+  receiptNumber: string | null;
   receivedAt: Date;
   releasedAt: Date | null;
   bagCount: number;
   cartonCount: number;
   boxCount: number;
-  receivedByPrimaryId: string;
-  receivedBySecondaryId: string;
+  /** Null on a receipt taken before Round 18, when the form did not ask. */
+  bagSealsPerBag: OperationsVaultBagSealsPerBag | null;
+  /** Only those above zero, smallest first; empty on a receipt taken before Round 18. */
+  denominations: VaultDenominationCount[];
+  /** The user who received it (Round 18); null on a receipt taken before. */
+  receivedById: string | null;
+  /** The two treasurers a receipt taken before Round 18 named; null on every newer receipt. */
+  receivedByPrimaryId: string | null;
+  receivedBySecondaryId: string | null;
   /**
    * Round 10 — when the receipt was CANCELLED, or null. Only `history` ever hands back a cancelled
    * custody: every other read is about what the treasury holds or took, and a cancelled receipt is
@@ -67,9 +103,24 @@ export interface VaultCustodyView {
   cancelledAt: Date | null;
 }
 
+/**
+ * Round 21b — one of the caller's seals that the treasury HOLDS now, on another shipment's custody.
+ * The port hands back only seals the caller already gave it, and where each is held: the seals of
+ * the custody themselves stay behind the port, as on every other read.
+ */
+export interface VaultHeldSeal {
+  /** The caller's seal, as given. */
+  seal: string;
+  /** Its position in the caller's list. */
+  index: number;
+  /** The shipment whose held custody carries the same seal. */
+  shipmentId: string;
+}
+
 export interface VaultCustodyProvider {
   /**
-   * Take a shipment into custody. Rejects a shipment already held. Joins the caller's transaction
+   * Take a shipment into custody, received by `by` — the signed-in user (Round 18). Rejects a
+   * shipment already held. Joins the caller's transaction
    * when given a session (Round 10: the vault's ✓ and the shipment's move to `inVault` are ONE
    * write, so a receive refused half-way — a stale version, a pickup ✓ taken back a moment before
    * — can no longer leave a held custody on a shipment still in draft); the caller announces it
@@ -87,6 +138,18 @@ export interface VaultCustodyProvider {
   findMany(shipmentIds: string[]): Promise<Map<string, VaultCustodyView>>;
   /** Everything the treasury is holding right now — the legacy /vault1 inventory question. */
   listHeld(page: number, pageSize: number): Promise<{ items: VaultCustodyView[]; total: number }>;
+  /**
+   * Round 21b — which of `seals` are seals of a custody the treasury HOLDS now: «لو موجوده عندنا
+   * لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى». The same set `listHeld` lists — a custody
+   * released to its van, or a cancelled receipt, holds nothing — and the same seal by the contract's
+   * `vaultSealKey`. `excludeShipmentId` leaves one shipment's custody out; blank seals are skipped.
+   * Joins the caller's transaction when given a session, so a receipt decides on the snapshot it
+   * writes in. In the caller's order; a seal given twice is answered at each place.
+   */
+  heldSeals(
+    seals: readonly string[],
+    options?: { excludeShipmentId?: string; session?: unknown },
+  ): Promise<VaultHeldSeal[]>;
   /**
    * Every custody the treasury TOOK in the half-open window [from, toExclusive) — held or since
    * released — newest received first. A CANCELLED receipt is not one: the treasury took nothing

@@ -39,6 +39,7 @@ import { MoneyInput } from '../../../../../shared/ui/MoneyInput';
 import { Button } from '../../../../../shared/ui/Button';
 import { Combobox } from '../../../../../shared/ui/Combobox';
 import { Field, Input, Select, Checkbox, Form, FormActions } from '../../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../../shared/ui/SearchableSelect';
 import {
   BadgeIcon,
   BriefcaseIcon,
@@ -234,9 +235,9 @@ export const placeInAddressLine = (line: string): { governorate: string } | unde
   return best === undefined ? undefined : { governorate: best.governorate };
 };
 
+// A partial address is kept — none of its parts is required (only name, phone, National ID are).
 const buildAddress = (a: AddressForm): Address | undefined => {
-  if (a.line1.trim() === '' || a.city.trim() === '' || a.governorate.trim() === '')
-    return undefined;
+  if ([a.line1, a.city, a.governorate, a.line2].every((v) => v.trim() === '')) return undefined;
   return {
     line1: a.line1.trim(),
     city: a.city.trim(),
@@ -749,16 +750,18 @@ export const ApplicantForm = ({
                 />
               </Field>
               <Field label={t('applicants.form.nationality')}>
-                <Select
+                <SearchableSelect
                   value={f.nationality}
-                  onChange={(e) => set({ nationality: e.target.value })}
-                >
-                  {Object.entries(NATIONALITY_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {locale === 'ar' ? label.ar : label.en}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={(nationality) => {
+                    // The box can be emptied; a nationality is always held, so emptying keeps it.
+                    if (nationality !== '') set({ nationality });
+                  }}
+                  options={Object.entries(NATIONALITY_LABELS).map(([value, label]) => ({
+                    value,
+                    label: locale === 'ar' ? label.ar : label.en,
+                  }))}
+                  ariaLabel={t('applicants.form.nationality')}
+                />
               </Field>
               <Field label={t('applicants.form.maritalStatus')}>
                 <Select

@@ -5,7 +5,7 @@
 // detail cache, because the server derives `status` and allocates `assetCode` — a client that
 // kept its own copy would show a stale truth the moment either changed.
 import { useCallback } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignItAsset,
   type AssignItTicket,
@@ -52,9 +52,12 @@ import {
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
+  type SetItConsumableInstalledOn,
   type TransferItConsumables,
   type UpdateItConsumable,
   type ItCatalogKind,
+  type CreateItLocation,
+  type UpdateItLocation,
   type ReturnItAsset,
   type TransferItAsset,
   type UpdateItAsset,
@@ -73,6 +76,11 @@ const MODULE = 'it';
 const itKeys = {
   assets: featureKey(MODULE, 'assets'),
   catalogs: featureKey(MODULE, 'catalogs'),
+  /**
+   * «المواقع» — each branch's places: the catalogs tab, the pickers' options and the create
+   * dialog's branches. Apart from the catalogs: a place is a branch's, not a catalog kind.
+   */
+  locations: featureKey(MODULE, 'locations'),
   vendors: featureKey(MODULE, 'vendors'),
   /** Custody intervals and the asset history — both move on every custody action. */
   custody: featureKey(MODULE, 'custody'),
@@ -125,15 +133,29 @@ export const useItBranchOptions = () =>
   });
 
 /**
- * The branches «نقل إلى فرع» and «تحويل إلى فرع» may go to, as the server judges the caller's
- * `itAsset.assign` (`GET /it/assets/move-targets`). Asked only while a dialog is OPEN: both
- * dialogs stay mounted on pages anyone with `itAsset.view` opens, and the route answers 403 to
- * whoever lacks the grant. Its own subtree: no asset or item write changes a grant's reach.
+ * The branches «نقل إلى فرع» may take assets to, as the server judges the caller's
+ * `itAsset.assign` (`GET /it/assets/move-targets`). Asked only while the dialog is OPEN: it stays
+ * mounted on pages anyone with `itAsset.view` opens, and the route answers 403 to whoever lacks
+ * the grant. Its own subtree: no asset write changes a grant's reach.
  */
 export const useItMoveTargets = (enabled: boolean) =>
   useQuery({
     queryKey: listKey(MODULE, 'moveTargets'),
     queryFn: api.moveTargets,
+    enabled,
+  });
+
+/**
+ * The branches «تحويل إلى فرع» may send consumables to, as the server judges the caller's
+ * `itConsumable.assign` (`GET /it/consumables/transfer-targets`) — the store's own grant, not the
+ * assets'. Asked only while the dialog is OPEN, for the same reason as the assets' list. Its own
+ * subtree, apart from the assets' (two grants, two reaches) and from the consumables' (no item
+ * write changes a grant's reach, so none refetches it).
+ */
+export const useItConsumableTransferTargets = (enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'consumableTransferTargets'),
+    queryFn: api.consumableTransferTargets,
     enabled,
   });
 
@@ -153,11 +175,12 @@ export const useItUser = (id: string, enabled = true) =>
 // ── Catalog items ───────────────────────────────────────────────────────────
 
 /** Admin list for the catalogs screen — same subtree as the selects' cached lists. */
-export const useItCatalogItems = (params: ItListParams) =>
+export const useItCatalogItems = (params: ItListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'catalogs', params),
     queryFn: () => api.listCatalogItems(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 /**
@@ -189,6 +212,57 @@ export const useCreateItCatalogItem = () =>
 export const useUpdateItCatalogItem = () =>
   useCatalogMutation(({ id, body }: { id: string; body: UpdateItCatalogItem }) =>
     api.updateCatalogItem(id, body),
+  );
+
+// ── Places — «المواقع» ─────────────────────────────────────────────────────
+
+/** The catalogs page's «المواقع» tab — `enabled` mirrors `itCatalog.manage`. */
+export const useItLocations = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'locations', params),
+    queryFn: () => api.listLocations(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * Every branch's places, retired ones too, as names — ONE read the pickers filter by branch (to the
+ * active ones) and the readers name old rows with. A short list that rarely changes: a minute.
+ */
+export const useItLocationOptions = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'locations', { options: true }),
+    queryFn: api.listLocationOptions,
+    staleTime: 60_000,
+    enabled,
+  });
+
+/** The branches the create dialog may file a place in — asked only while it is open. */
+export const useItLocationBranchTargets = (enabled: boolean) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'locations', { branchTargets: true }),
+    queryFn: api.locationBranchTargets,
+    enabled,
+  });
+
+const useLocationMutation = <TInput>(mutationFn: (input: TInput) => Promise<unknown>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.locations });
+      // A renamed place is what every holder cell and filter chip names.
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+    },
+  });
+};
+
+export const useCreateItLocation = () =>
+  useLocationMutation((body: CreateItLocation) => api.createLocation(body));
+export const useUpdateItLocation = () =>
+  useLocationMutation(({ id, body }: { id: string; body: UpdateItLocation }) =>
+    api.updateLocation(id, body),
   );
 
 // ── Vendors ─────────────────────────────────────────────────────────────────
@@ -413,6 +487,58 @@ export const useMoveItAssetsToBranch = () => {
   });
 };
 
+// ── «رفع جماعي» — the register's bulk upload ────────────────────────────────
+// Both declare `onError`, which keeps the global toast (the server's English sentence) away: the
+// upload screen words every refusal itself, and a 409 is not even a failure there — it reads the
+// preview again.
+const reportedByScreen = (): void => undefined;
+
+/**
+ * The branches the upload may register in, as the server judges the caller's `itAsset.create`
+ * (`GET /it/assets/import/branches`). Asked only on the upload's page, which rides that grant.
+ * Its own subtree, like «نقل إلى فرع»'s: no asset write changes a grant's reach.
+ */
+export const useItAssetImportBranches = () =>
+  useQuery({
+    queryKey: listKey(MODULE, 'assetImportBranches'),
+    queryFn: api.assetImportBranches,
+  });
+
+/** The preview writes nothing, so it invalidates nothing. */
+export const usePreviewItAssetImport = () =>
+  useMutation({
+    mutationFn: ({
+      file,
+      request,
+    }: {
+      file: File;
+      request: Parameters<typeof api.previewAssetImport>[1];
+    }) => api.previewAssetImport(file, request),
+    onError: reportedByScreen,
+  });
+
+/**
+ * The apply registers, fills and moves assets and writes their history — so the register (its
+ * dashboard and every asset's cached detail inside it) and the history go, as a move's do.
+ */
+export const useApplyItAssetImport = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      file,
+      request,
+    }: {
+      file: File;
+      request: Parameters<typeof api.applyAssetImport>[1];
+    }) => api.applyAssetImport(file, request),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+    },
+    onError: reportedByScreen,
+  });
+};
+
 // ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
 
 /** A stored receipt — what «طباعة الإيصال» prints again, and what the signed copy hangs off. */
@@ -606,6 +732,45 @@ export const useItConsumableMovements = (params: ItListParams, enabled = true) =
     enabled,
   });
 
+/**
+ * «عداد الطابعة» — one printer's readings. Under the consumables subtree on purpose, though it is
+ * read under `itAsset.view`: an issue and «تعديل الجهاز» move it, and both invalidate that subtree,
+ * as the realtime `it.consumable` signal does — so the card and the last reading «صرف» shows are
+ * never staler than the ledger. (A reader of the assets alone gets no such signal: theirs refetches
+ * on mount.)
+ */
+const printerCounterKey = (assetId: string) =>
+  listKey(MODULE, 'consumables', { counter: 'printer', assetId });
+
+export const useItPrinterCounter = (assetId: string, enabled = true) =>
+  useQuery({
+    queryKey: printerCounterKey(assetId),
+    queryFn: () => api.getPrinterCounter(assetId),
+    enabled: enabled && assetId !== '',
+  });
+
+/**
+ * The same read for several printers at once — the issue dialog's counted lines, each on its own
+ * printer, whose last readings decide whether the memo may be sent. One cache entry per printer,
+ * shared with `useItPrinterCounter`. Answered in the order asked.
+ */
+export const useItPrinterCounters = (assetIds: readonly string[]) =>
+  useQueries({
+    queries: assetIds.map((assetId) => ({
+      queryKey: printerCounterKey(assetId),
+      queryFn: () => api.getPrinterCounter(assetId),
+      enabled: assetId !== '',
+    })),
+  });
+
+/** One toner item's cartridges and their average — one item's movements dialog. */
+export const useItConsumableCartridges = (consumableId: string, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'consumables', { counter: 'item', consumableId }),
+    queryFn: () => api.getConsumableCartridges(consumableId),
+    enabled: enabled && consumableId !== '',
+  });
+
 /** A stored memo — what its signed copy hangs off. */
 export const useItConsumableMemo = (id: string | null) =>
   useQuery({
@@ -620,6 +785,11 @@ export const useItConsumableMemo = (id: string | null) =>
  */
 const useConsumableMutation = <TInput, TResult>(
   mutationFn: (input: TInput) => Promise<TResult>,
+  /**
+   * The dialog says every refusal itself (its alert, and the printer's toast), so the app's global
+   * error toast would say it a second time — without the figures a counter refusal carries.
+   */
+  { saysItsOwnErrors = false }: { saysItsOwnErrors?: boolean } = {},
 ) => {
   const qc = useQueryClient();
   return useMutation({
@@ -627,6 +797,7 @@ const useConsumableMutation = <TInput, TResult>(
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: itKeys.consumables });
     },
+    ...(saysItsOwnErrors ? { onError: () => undefined } : {}),
   });
 };
 
@@ -649,7 +820,9 @@ export const useReturnItConsumable = () =>
     api.returnConsumable(id, body),
   );
 export const useIssueItConsumables = () =>
-  useConsumableMutation((body: IssueItConsumables) => api.issueConsumables(body));
+  useConsumableMutation((body: IssueItConsumables) => api.issueConsumables(body), {
+    saysItsOwnErrors: true,
+  });
 /** «تحويل إلى فرع» — both stores' figures and the two movements of every line, in the one subtree. */
 export const useTransferItConsumables = () =>
   useConsumableMutation((body: TransferItConsumables) => api.transferConsumables(body));
@@ -659,6 +832,27 @@ export const useUploadConsumableMemoSignedCopy = () =>
   );
 export const useDeleteConsumableMemoSignedCopy = () =>
   useConsumableMutation((id: string) => api.deleteConsumableMemoSignedCopy(id));
+
+/**
+ * «تعديل الجهاز» — the device an issued unit sits in, corrected after the issue. The one subtree
+ * again: the ledger's row wherever it is read (the movements screen, the item's movements, the
+ * person's card, and BOTH assets' cards — the one it left and the one it went to, each a read of the
+ * ledger by `assetId`), and the memo whose line now names the new device. Read again on a refusal
+ * too: a 409 is somebody's change first, and the dialog then shows the row — its device, its
+ * version — as it now stands. A refusal is the dialog's to say, once: the declared `onError` keeps
+ * the global handler's second toast away.
+ */
+export const useSetItConsumableInstalledOn = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: SetItConsumableInstalledOn }) =>
+      api.setConsumableInstalledOn(id, body),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.consumables });
+    },
+    onError: () => undefined,
+  });
+};
 
 // ── Vehicle device checks — فحص أجهزة السيارة (FR-21) ───────────────────────
 

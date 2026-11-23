@@ -15,6 +15,7 @@ import {
   type FleetFuelCardDto,
   type FleetFuelCardMovementDto,
   type FleetFuelCardTotalsDto,
+  type FleetReceiptTotalsDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
@@ -86,6 +87,12 @@ const totals: FleetFuelCardTotalsDto = {
   requestedAmount: 500,
   chargedTodayAmount: 300,
   cardCount: 4,
+  // The cards per company and the cards on no car (the dashboard's «الوقود والمصروفات» reads them;
+  // these screens count their own rows): two of each company, none on no car.
+  wataniyaCards: 2,
+  chilloutCards: 2,
+  noCarCards: 0,
+  noCarBalance: 0,
 };
 
 const ALL = [
@@ -107,12 +114,15 @@ const render = (
     cards = [card()],
     filters,
     search = '',
+    receipts,
   }: {
     permissions?: string[];
     cards?: FleetFuelCardDto[];
     filters?: Record<string, unknown>;
     /** The URL's query — what the screen reads its filters from. */
     search?: string;
+    /** The receipts summary, seeded ONLY under `{ summary: true, ...query }`. */
+    receipts?: { query: Record<string, unknown>; totals: FleetReceiptTotalsDto };
   } = {},
 ): string => {
   const store = configureStore({
@@ -141,6 +151,12 @@ const render = (
     meta: { page: 1, pageSize: 100, totalItems: cards.length, totalPages: 1 },
   });
   qc.setQueryData(listKey('fleet', 'fuelCards', { summary: true, ...params }), totals);
+  if (receipts !== undefined) {
+    qc.setQueryData(
+      listKey('fleet', 'receipts', { summary: true, ...receipts.query }),
+      receipts.totals,
+    );
+  }
   qc.setQueryData(
     ['settings', 'me'],
     [
@@ -366,6 +382,14 @@ describe('charging', () => {
     expect(filters).toBeGreaterThan(strip);
     expect(tile).toBeGreaterThan(filters);
     expect(html).toContain(ar('fleet.fuelCards.totals.wataniya'));
+    // To the piastre, as the rows and the dashboard write money (audit-10 D09): «2,400.00»,
+    // «6,350.00», «500.00» waiting, «300.00» charged today — never the whole pound alone.
+    expect(html).toContain('>2,400.00<');
+    expect(html).toContain('>6,350.00<');
+    expect(html).toContain('>300.00<');
+    expect(html).toContain(
+      translate('ar', 'fleet.fuelCards.board.charge.requestedNote', { amount: '500.00' }),
+    );
   });
 
   it('colours a row with a request waiting and shows its ✓ ✕; a charged one reads green for a day', () => {
@@ -608,6 +632,60 @@ describe('charging', () => {
       expect(openingTagOf(html, 'early')).toContain('bg-emerald-500/15');
       expect(openingTagOf(html, 'late')).not.toBe('');
       expect(openingTagOf(html, 'late')).not.toContain('bg-emerald-500/15');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('«استهلاك الوقود الحالي (الشهر)» — the dashboard’s «الوقود كله» for «هذا الشهر» (audit-10 D04)', () => {
+  const MONTH_FUEL = {
+    count: 3,
+    custodyTotal: 220.39,
+    cardTotal: 300.15,
+    fuelTotal: 520.54,
+    fuelLitres: 32.93,
+    tyresTotal: 0,
+    washTotal: 0,
+    maintenanceTotal: 0,
+    fuelCustodyTotal: 220.39,
+    fuelUnpriced: 0,
+    custodyCount: 2,
+  } satisfies FleetReceiptTotalsDto;
+  const READER = [...ALL, 'fleetReceipt.view'];
+
+  it('asks the receipts summary { summary, kind, from, to } — the Cairo month’s 1st to Cairo today', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      // 01:30 on 1 November in Cairo; still 31 October in UTC.
+      vi.setSystemTime(new Date('2026-10-31T23:30:00.000Z'));
+      const html = render('cards', {
+        permissions: READER,
+        receipts: {
+          query: { kind: 'fuel', from: '2026-11-01', to: '2026-11-01' },
+          totals: MONTH_FUEL,
+        },
+      });
+      expect(html).toContain('data-fuel-kpi="consumption"');
+      expect(html).toContain('>520.54<');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('is never answered from the old key { summary, kind, from } — no `to`, no branch', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-31T23:30:00.000Z'));
+      const html = render('cards', {
+        permissions: READER,
+        receipts: {
+          query: { kind: 'fuel', from: '2026-11-01' },
+          totals: { ...MONTH_FUEL, fuelTotal: 595.54 },
+        },
+      });
+      expect(html).not.toContain('data-fuel-kpi="consumption"');
+      expect(html).not.toContain('595.54');
     } finally {
       vi.useRealTimers();
     }

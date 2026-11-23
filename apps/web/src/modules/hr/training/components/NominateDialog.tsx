@@ -15,7 +15,8 @@ import { useAppSelector } from '../../../../store';
 import { buildQuery, getPage } from '../../../../shared/lib/api-client';
 import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
-import { Field, Input, Select, Textarea } from '../../../../shared/ui/form';
+import { Field, Input, Textarea } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { formatDate } from '../../../../shared/lib/format';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useCreateTrainingNomination, useTrainingSessions } from '../api/training-queries';
@@ -133,14 +134,11 @@ export const NominateDialog = ({ onClose }: { onClose: () => void }): JSX.Elemen
         </Field>
 
         <Field label={t('training.session.title')} required>
-          <Select value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
-            <option value="">{t('common.select')}</option>
-            {options.map((session) => (
-              <option key={session.id} value={session.id}>
-                {`${session.courseName[locale]} · ${formatDate(session.startsAt, locale)}`}
-              </option>
-            ))}
-          </Select>
+          <SearchableSelect
+            value={sessionId}
+            onChange={setSessionId}
+            options={options.map((session) => ({ value: session.id, label: `${session.courseName[locale]} · ${formatDate(session.startsAt, locale)}` }))}
+          />
         </Field>
 
         <Field label={t('training.nomination.reason')} required hint={t('training.nomination.reasonHint')}>

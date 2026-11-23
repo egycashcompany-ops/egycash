@@ -25,7 +25,8 @@ import { useAppSelector } from '../../../../store';
 import { Badge, Button, DataTable, EmptyState, type Column } from '../../../../shared/ui';
 import { MoneyInput } from '../../../../shared/ui/MoneyInput';
 import { Dialog } from '../../../../shared/ui/Dialog';
-import { Field, Input, Select } from '../../../../shared/ui/form';
+import { Field, Input } from '../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../shared/ui/SearchableSelect';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatDate, formatMoney, localized } from '../../../../shared/lib/format';
 import {
@@ -237,18 +238,13 @@ const AddPayItemDialog = ({
           </p>
         )}
         <Field label={t('payroll.employeeItems.item')}>
-          <Select
+          <SearchableSelect
             value={payItemId}
-            onChange={(e) => setPayItemId(e.target.value)}
-            aria-label={t('payroll.employeeItems.item')}
-          >
-            <option value="">{t('payroll.employeeItems.pickItem')}</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {`${localized(item.name, locale)} — ${item.code}`}
-              </option>
-            ))}
-          </Select>
+            onChange={setPayItemId}
+            ariaLabel={t('payroll.employeeItems.item')}
+            options={items.map((item) => ({ value: item.id, label: `${localized(item.name, locale)} — ${item.code}` }))}
+            placeholder={t('payroll.employeeItems.pickItem')}
+          />
         </Field>
         <Field label={t('payroll.employeeItems.amount')} hint={t('payroll.employeeItems.amountHint')}>
           <MoneyInput

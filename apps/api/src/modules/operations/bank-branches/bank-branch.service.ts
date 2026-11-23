@@ -18,13 +18,16 @@ import { operationsBankBranchRepository } from './bank-branch.repository';
 import { type OperationsBankBranchDoc } from './bank-branch.model';
 import { containsText } from '../catalog-search';
 
-const entityRef = (id: string) => ({
+/** The audit trail's reference — exported for the sheet import (Round 29), which audits the same. */
+export const bankBranchEntityRef = (id: string) => ({
   moduleId: 'operations',
   entityType: 'bankBranch',
   entityId: id,
 });
+const entityRef = bankBranchEntityRef;
 
-const snapshot = (doc: OperationsBankBranchDoc) => ({
+/** What the audit diff compares — exported for the sheet import, as above. */
+export const bankBranchSnapshot = (doc: OperationsBankBranchDoc) => ({
   bankId: String(doc.bankId),
   name: doc.name,
   code: doc.code,
@@ -59,7 +62,7 @@ class OperationsBankBranchService {
     await auditService.record({
       entityRef: entityRef(String(doc._id)),
       action: 'create',
-      changes: diffChanges({}, snapshot(doc)),
+      changes: diffChanges({}, bankBranchSnapshot(doc)),
     });
     return doc;
   }
@@ -113,7 +116,7 @@ class OperationsBankBranchService {
     await auditService.record({
       entityRef: entityRef(id),
       action: 'update',
-      changes: diffChanges(snapshot(before), snapshot(updated)),
+      changes: diffChanges(bankBranchSnapshot(before), bankBranchSnapshot(updated)),
     });
     return updated;
   }

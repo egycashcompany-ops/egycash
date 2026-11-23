@@ -28,6 +28,7 @@ import {
   buildSectionCatalogRouter,
   buildCostCentersRouter,
   buildJobTitlesRouter,
+  buildOrgChartRouter,
   buildOrganizationRouter,
   buildSectionsRouter,
 } from './platform/organization';
@@ -234,6 +235,8 @@ export const buildApp = (): Express => {
   api.use('/platform/departments/:departmentId/applications', buildDepartmentApplicationsRouter());
   api.use('/platform/sections', buildSectionsRouter());
   api.use('/platform/job-titles', buildJobTitlesRouter());
+  // P-ORG-3 — the company org chart (ADR-038).
+  api.use('/platform/org-chart', buildOrgChartRouter());
   api.use('/platform/cost-centers', buildCostCentersRouter());
   api.use('/platform/application-categories', buildApplicationCategoriesRouter());
   api.use('/platform/application-sections', buildApplicationSectionsRouter());

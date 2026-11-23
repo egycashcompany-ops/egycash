@@ -103,6 +103,7 @@ Rules:
 |---|---|
 | Transfer (branch) | employee `code` prefix (ADR-017) · **linked user's placement** (branch/department/section on the user drive data-scope) · Employee File `branchId` **and** `employeeCode` |
 | Transfer (dept/section) | linked user's placement |
+| Transfer (job title — optional `jobTitleId`) | linked user's `organization.jobTitleId` · salary follows the new job's default only when it was following one (P-HR-22, as on a promotion); a transfer states no salary of its own |
 | Exit | user → `suspended` (D3) · direct-reports decision (bulk reassign to a named manager, or explicit unassigned + "no active manager" badge) · close employment period |
 | Rehire | reopen period · reactivate prior user account (offered) or create fresh · **append** new hiring-document copies to the EXISTING file |
 | Suspend / Reinstate | user suspend (default on, D6) / re-activate |
@@ -191,6 +192,49 @@ New sidebar app **Employees** (dynamic-nav application, peer of Recruitment):
   "Disable login" checked by default (D6). Exit: no login checkbox (D3 — automatic), shows
   direct-report count + reassignment decision, `eligibleForRehire` explicit.
 - **Direct registration** — gated multi-step form reusing applicant form sections + OCR.
+- **Photos in bulk** (2026-11-19) — «رفع صور الموظفين» on the employees list (`employee.editPersonal`),
+  for «عندى صور الموظفين كلهم عايز أرفعهم دفع واحده متسمى كل صورة بالكود + أسم الموظف».
+  - **The code decides.** Each file's name is read for a code: every run of digits, longest first,
+    with Arabic-Indic digits read as ASCII; a word of letters and digits (an external person's
+    `EX-2900`) is tried first. A run one or two digits shorter than a code (7 digits) is also tried
+    with the leading zeros a spreadsheet drops — unless the name already holds a full-length number
+    (a camera's `20231105_101845` is no `0101845`); a shorter one (a copy's «(2)») is not padded, and
+    a run longer than any code (20) is not asked about.
+  - **Never a guess.** A name whose codes match two different people is held («الاسم فيه أكواد
+    لأكثر من شخص») and not sent. A match made only by putting zeros back is sent only when the name in
+    the file confirms it; otherwise it is held too. Both ask for the file to be renamed — the owner
+    replaces every photo, so a photo on the wrong person is the one mistake that must not happen. `POST /hr/employees/codes/lookup` answers which employees
+    hold the codes, within the photo write's own scope; a code nobody in reach holds is simply absent.
+    Files join the table only once their lookup has answered, so a failed lookup leaves nothing
+    claiming «no employee», and the same files can be picked again.
+  - **The name only warns.** It is compared with the matched employee's names after folding the
+    letters people mix up and dropping spaces, against the start of the full name as well as the
+    whole of it. A file whose name does not look like the employee is flagged, never re-matched.
+  - **Before anything is sent,** a table says per file: ready (and whether it replaces a photo; the
+    owner chose to replace every one), no code, no employee, several files for one employee (untick
+    all but one), or not a JPG / PNG / WebP.
+  - **Sending:** two at a time. Each photo is first cut around its face in the browser, exactly as the
+    profile's own photo dialog cuts it (`face-crop/a4-face.ts`, 600 x 760). One with no face found
+    goes uncropped, shrunk when over 5 MB, and its row says so. Each goes through `POST /:id/photo`,
+    one request per photo, under the same rules and audit as the profile. The face search is loaded
+    before the run, and a run that cannot cut starts nothing (it would replace good photos with
+    uncropped ones). A picture the browser cannot open fails its row and is not sent. A failure is
+    said on its row and the next «رفع» sends it again with the rest, unless it was unticked; a photo
+    already sent competes with no later one, so a corrected photo can follow it. «إيقاف», closing, or
+    leaving the page stops after the ones under way. While the run works, the person's session is
+    kept active; closing asks first.
+  - **Duplicates and a second pass** (2026-11-22) — after the first run of 2,552 photos: «عايز المكرر
+    تختار منه أنت تلقائي واحده وترفعها… مش عايز أرفع اللى اترفعوا».
+    - «اختيار صورة واحدة لكل مكرر تلقائيًا» keeps one file per employee who has several and leaves
+      the others out: the file whose name fits the employee best, then the newest, then the largest,
+      then by name — the same choice whatever order the files came in. The rows say what was chosen
+      and can still be ticked by hand. «عرض: المكرر فقط» shows every row of such employees.
+    - The lookup returns when each employee's current photo was uploaded (`photoUploadedAt`, the
+      photo file's own `uploadedAt`). By default the dialog skips the people whose photo went up in
+      the last 7 days («تخطي الصور المرفوعة: آخر 7 أيام»; also today, the last 30 days, or nothing),
+      so picking the same folder again after a reload — the next day too — sends only what is still
+      missing. A file that already failed is the last one the automatic choice keeps. Within one dialog a photo
+      already sent is never offered again whatever the choice.
 - **Employee Files** pages move under this app unchanged. Recruitment app loses its Employees entry.
 - Future-proof (F6): Attendance/Leave/Payroll/Performance each become an additive tab + action
   group + timeline source; manual leave actions hide when the Leave module exists; compensation is

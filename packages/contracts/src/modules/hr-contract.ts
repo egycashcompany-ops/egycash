@@ -5,7 +5,7 @@
 // immutability (A4), Workflow-compatible approval (A7) and an e-signature-ready signer
 // model (A5). Consumers integrate through the module's query seam + events only (A22).
 import { z } from 'zod';
-import { objectId, PaginationQuerySchema } from '../common/index.js';
+import { listQuery, objectId, PaginationQuerySchema } from '../common/index.js';
 import { LocalizedStringSchema } from '../common/localized.js';
 
 // ── Contract types catalog (D4a) ─────────────────────────────────────────────
@@ -481,8 +481,9 @@ export const ListContractsQuerySchema = PaginationQuerySchema.extend({
   /** Free text over contract number, employee name/code, reference number. */
   search: z.string().max(200).optional(),
   employeeId: objectId().optional(),
-  typeId: objectId().optional(),
-  status: ContractStatusSchema.optional(),
+  /** Type and status are LISTS — «هنخلي كل الفلترز multi» — each ORed; one value still parses. */
+  typeId: listQuery(objectId()),
+  status: listQuery(ContractStatusSchema),
   startFrom: isoDate().optional(),
   startTo: isoDate().optional(),
   endFrom: isoDate().optional(),
@@ -666,7 +667,7 @@ export type HiringPackRequest = z.infer<typeof HiringPackRequestSchema>;
  * the contract they hold now, to print again or renew.
  */
 export interface EmployeePapersDto {
-  papers: JobPaperDto[];
+  papers: EmployeePaperDto[];
   contract: {
     id: string;
     code: string;
@@ -675,6 +676,48 @@ export interface EmployeePapersDto {
     endDate: string | null;
     version: number;
   } | null;
+  /**
+   * «تعديل» on the employee's tab — «زي معملنا قبل كدا»: every value the papers print for this
+   * employee, as they would print now, the values typed in for them applied. The contract they hold
+   * is not among them: its values are its own (`contractValues`).
+   */
+  values: CandidateValueDto[];
+  /** The values the contract the employee holds carries — shown, never changed here. */
+  contractValues: CandidateValueDto[];
+  /** The version of the values typed in for this employee, for the next save; 0 before the first. */
+  valuesVersion: number;
+  valuesUpdatedAt: string | null;
+}
+
+/** One of the employee's papers on their tab: what «تعديل» opens. */
+export interface EmployeePaperDto extends JobPaperDto {
+  /** The values it prints. */
+  placeholders: string[];
+  /**
+   * The contract the employee holds: printed as it was issued, its values changed only by renewing or
+   * amending it — what the verification code checks must be what is printed.
+   */
+  locked: boolean;
+}
+
+/**
+ * Save the values typed in for an employee's papers — the whole list each time; a blank value gives
+ * the record's own back. The employee's file does not change.
+ */
+export const UpdateEmployeePaperValuesSchema = z
+  .object({
+    overrides: overridesField(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateEmployeePaperValues = z.infer<typeof UpdateEmployeePaperValuesSchema>;
+
+/** One of the employee's papers as it would print now — nothing is made, printed or recorded. */
+export const PreviewEmployeePaperSchema = z.object({ key: z.string().min(1).max(100) }).strict();
+export type PreviewEmployeePaper = z.infer<typeof PreviewEmployeePaperSchema>;
+
+export interface PreviewEmployeePaperDto {
+  html: string;
 }
 
 /**
@@ -840,6 +883,53 @@ export interface RenderCandidateBulkDto {
 }
 
 /**
+ * A28 — «المعينون» on «جاهزون للتعيين»: «هتجبلي كل اللي موجودين من موظفين فالشركه و بردو checkbox عشان
+ * لو هطبع لناس كتير فنفس الوقت». The same «طباعة لكل المحدد» as for candidates, for people already
+ * employed: each on a line of their own with their job's papers (their contract first), ONE document.
+ */
+export const EMPLOYEE_BULK_MAX = CANDIDATE_BULK_MAX;
+
+export const EmployeeBulkSchema = z
+  .object({ employeeIds: z.array(objectId()).min(1).max(EMPLOYEE_BULK_MAX) })
+  .strict();
+export type EmployeeBulk = z.infer<typeof EmployeeBulkSchema>;
+
+export interface EmployeeBulkPersonDto {
+  employeeId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  /** The employee's papers, in print order — as their «طباعة العقد والمستندات» tab lists them. */
+  papers: JobPaperDto[];
+  /** Why the employee cannot be printed for (out of the caller's reach…), else null. */
+  error: string | null;
+}
+
+export const RenderEmployeeBulkSchema = z
+  .object({
+    /** Each employee with the papers chosen for them — of their own job's papers. */
+    people: z
+      .array(
+        z
+          .object({
+            employeeId: objectId(),
+            keys: z.array(z.string().min(1).max(100)).min(1).max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(EMPLOYEE_BULK_MAX),
+  })
+  .strict();
+export type RenderEmployeeBulk = z.infer<typeof RenderEmployeeBulkSchema>;
+
+export interface RenderEmployeeBulkDto {
+  html: string;
+  /** Per employee: printed (and how many papers), or why not. */
+  results: { employeeId: string; printed: number; error: string | null }[];
+}
+
+/**
  * A28 — «مستندات الوظائف» on «جاهزون للتعيين», by department and job — «علي حسب الاداره و الوظيفه»:
  * every department, the jobs in it, and beside each job every paper — ticked, what a person of that
  * job in that department prints. What is ticked here is what «عقد جديد», «طباعة لكل المحدد» and the
@@ -881,49 +971,39 @@ export const UpdateJobPapersSchema = z
 export type UpdateJobPapers = z.infer<typeof UpdateJobPapersSchema>;
 
 /**
- * A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات»: a table HR fills by hand, one row per job — the
- * company's job title, its title at the social-insurance authority, and its occupation code
- * («كود المهنه … كله هيتحط manual»). Once saved, «نموذج رقم (1)» prints, for a person whose job carries
- * a row's title, that row's insurance title and occupation code («لما اجي احط المسمي الوظيفي بتاعنا
- * هيترمي في نموزج 1 علي اساس المسمي الوظيفي لدي التامينات و كود المهنه»).
+ * A28 — «مسميات الوظائف لدى التأمينات» in «الإعدادات»: every job of the company, each beside its title at
+ * the social-insurance authority and its occupation code («كود المهنه»). The jobs are the data — none
+ * is added or taken off here («هنحط كل الظائف بتاعتنا ك data اساسيه»); «تعديل» beside a job edits its
+ * insurance title and code only («مثبت فيه المسمي الوظيفي عندنا و التعديل … ف مسمي الوظيفي لدي التامينات
+ * و كود المهنه بس»). «نموذج رقم (1)» prints them for a person of that job («لما اجي احط المسمي الوظيفي
+ * بتاعنا هيترمي في نموزج 1 علي اساس المسمي الوظيفي لدي التامينات و كود المهنه»).
  */
 export const INSURANCE_JOB_TITLE_MAX = 150;
 /** An occupation code: up to six digits, or two groups of up to three — «123/456» — as form 1 boxes it. */
 export const OCCUPATION_CODE_PATTERN = /^(\d{1,6}|\d{1,3}\/\d{1,3})?$/;
 
 export interface InsuranceJobTitleRowDto {
-  id: string;
-  /** The company's job title, as typed. */
+  jobTitleId: string;
+  /** The job as the company names it — fixed here. */
   jobTitle: string;
+  /** Its title at the authority; empty: form 1 prints the company's. */
   insuranceTitle: string;
   occupationCode: string;
-  /** A job of the company carries this title — the row reaches form 1. */
-  matched: boolean;
 }
 
 export interface InsuranceJobTitlesDto {
+  /** Every active job of the company, by name. */
   rows: InsuranceJobTitleRowDto[];
-  /** The company's active job titles — offered while a title is typed. */
-  jobNames: string[];
 }
 
-export const UpdateInsuranceJobTitlesSchema = z
+/** «تعديل» on one job: its insurance title and occupation code. Both empty: nothing kept for it. */
+export const UpdateInsuranceJobTitleSchema = z
   .object({
-    /** The whole table as it now stands: a row left out is taken off. */
-    rows: z
-      .array(
-        z
-          .object({
-            jobTitle: z.string().trim().min(1).max(INSURANCE_JOB_TITLE_MAX),
-            insuranceTitle: z.string().trim().max(INSURANCE_JOB_TITLE_MAX),
-            occupationCode: z.string().trim().regex(OCCUPATION_CODE_PATTERN, 'up to six digits, or 123/456'),
-          })
-          .strict(),
-      )
-      .max(1000),
+    insuranceTitle: z.string().trim().max(INSURANCE_JOB_TITLE_MAX),
+    occupationCode: z.string().trim().regex(OCCUPATION_CODE_PATTERN, 'up to six digits, or 123/456'),
   })
   .strict();
-export type UpdateInsuranceJobTitles = z.infer<typeof UpdateInsuranceJobTitlesSchema>;
+export type UpdateInsuranceJobTitle = z.infer<typeof UpdateInsuranceJobTitleSchema>;
 
 export const HrContractTemplates = {
   ExpiringSoon: 'hr.contract.expiringSoon',

@@ -12,12 +12,15 @@ import { itMobileLineReceiptService } from './line-receipt.service';
 
 type IdParam = { id: string };
 
-/** Custody writes are gated on `itAsset.assign`; the SCOPE still comes from the read grant. */
-const custodyScope = (req: Request) => scopeSelector(authContext(req), 'itAsset.view');
+/** Custody writes are gated on `itMobileLine.assign`; the SCOPE still comes from the read grant. */
+const custodyScope = (req: Request) => scopeSelector(authContext(req), 'itMobileLine.view');
 
-/** The holder's national ID in full only behind its own grant (Security Architecture §3). */
+/**
+ * The holder's national ID in full only behind its own grant (Security Architecture §3) — the
+ * lines' own, `itMobileLine.viewNationalId`; the device receipt keeps the assets' one.
+ */
 const revealsNationalId = (req: Request): boolean =>
-  hasPermission(authContext(req), 'itAsset.viewNationalId');
+  hasPermission(authContext(req), 'itMobileLine.viewNationalId');
 
 export const previewItMobileLineReceipt = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<PreviewItMobileLineReceipt>(req);

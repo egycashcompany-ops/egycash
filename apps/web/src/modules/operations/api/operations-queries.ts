@@ -9,7 +9,7 @@
 //     does not change the bank;
 //   · a bank mutation invalidates BOTH — the branch rows carry their bank's operational name, so
 //     renaming a bank changes what every branch row displays.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
@@ -20,21 +20,30 @@ import {
   type CreateOperationsBankBranch,
   type CreateOperationsCurrency,
   type CreateOperationsShipment,
+  type CreateOperationsShiftType,
   type DispatchSecuredShipments,
   type ListOperationsCrewRequirementsQuery,
   type ListSecuredBacklogQuery,
+  type OperationsAreaDto,
+  type OperationsBankBranchReportSide,
   type OperationsExecutionResultDto,
   type OperationsShipmentType,
+  type OperationsShiftTypeColour,
+  type OperationsShiftTypeDto,
+  type OperationsVaultSealCheckDto,
+  type Paginated,
   type OrderOperationsCurrencies,
+  type OrderOperationsShiftTypes,
   type PlanOperationsCrew,
   type SetOperationsStandingCrew,
-  type ReceiveIntoVault,
+  type ReceiveIntoVaultInput,
   type SetOperationsCrewRequirements,
   type UpdateOperationsArea,
   type UpdateOperationsBank,
   type UpdateOperationsBankBranch,
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
+  type UpdateOperationsShiftType,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
 import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
@@ -44,6 +53,7 @@ import { store } from '../../../store';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { executionErrorMessage, isStateConflict } from '../mobile/execution-errors';
 import { isLockedRefusal } from '../lib/shipment-form';
+import { saveRowsInTurn } from '../lib/requirements';
 import * as api from './operations-api';
 import { type OperationsListParams } from './operations-api';
 
@@ -82,10 +92,18 @@ const operationsKeys = {
   // B6. The area list is reference data like the other three catalogs; the vault ROLL-UP is a
   // view of the vault's receipts, so it stales with every secured act as the inventory does — a
   // receipt adds a shipment to this month's roll-up, a cancelled receipt takes it off again.
+  //
+  // Round 14: that roll-up IS «تقرير البنوك» now (`useBankReport`), and it keeps this subtree on
+  // purpose — the name is the family of reads over the vault's custody («تقرير الخزينة» sits in it
+  // too), which is what every vault act and the vault's realtime topic sweep. The completed-per-bank
+  // report's own subtree went with that report.
   areas: featureKey(MODULE, 'areas'),
+  // Round 20 — «أنواع التشغيل», reference data like the currencies. The crew board holds a type by
+  // id only and names it from THIS list, so a renamed or recoloured type re-reads one list and
+  // nothing of the board's.
+  shiftTypes: featureKey(MODULE, 'shiftTypes'),
   vaultReport: featureKey(MODULE, 'vaultReport'),
   reportCaptains: featureKey(MODULE, 'reportCaptains'),
-  reportBanks: featureKey(MODULE, 'reportBanks'),
   crewAttendance: featureKey(MODULE, 'crewAttendance'),
 };
 
@@ -543,7 +561,23 @@ export const useOperationsCrewRequirements = (
     enabled,
   });
 
-/** Planning changes who is taken, so the POOL is staled alongside the board. */
+/** Every day's «توزيع المحصنات» / «تسليم المحصنات» read (`securedDistributionKey` below). */
+const securedDistributionPrefix: readonly unknown[] = [
+  ...featureKey(MODULE, 'dayBoard'),
+  'securedDistribution',
+];
+
+/**
+ * Planning changes who is taken, so the POOL is staled alongside the board.
+ *
+ * Round 25 — «لازم اكون دايس حفظ»: «توزيع المحصنات» lists the SAVED «محصنة» rows, so a save is what
+ * puts a row there (or takes it off); its read is staled with the board's, on this desk too, rather
+ * than waiting for the crew topic to come back over the socket.
+ *
+ * The board owns the refusal (Round 20): it words it and marks the row the server named — a type
+ * archived on another desk (a direction is not refused since Round 28) — so the global notifier
+ * stays quiet, one refusal, one message (see `formOwnsTheError`).
+ */
 export const usePlanOperationsCrew = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -551,7 +585,9 @@ export const usePlanOperationsCrew = () => {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
       await qc.invalidateQueries({ queryKey: operationsKeys.crewDirectory });
+      await qc.invalidateQueries({ queryKey: securedDistributionPrefix });
     },
+    onError: formOwnsTheError,
   });
 };
 
@@ -586,6 +622,10 @@ export const useSetOperationsStandingCrew = () => {
   return useMutation({
     mutationFn: (body: SetOperationsStandingCrew) => api.setStandingCrew(body),
     onSuccess: invalidate,
+    // «الطاقم الثابت»'s «حفظ» owns this one's errors too (Round 27 review), as the board owns its
+    // own: it words the clash, rings the person a WRONG_SLOT names, and says which vehicles its
+    // DELETEs already took out — the global notifier toasted the same refusal a second time beside it.
+    onError: formOwnsTheError,
   });
 };
 
@@ -594,6 +634,10 @@ export const useRemoveOperationsStandingCrew = () => {
   return useMutation({
     mutationFn: (vehicleId: string) => api.removeStandingCrew(vehicleId),
     onSuccess: invalidate,
+    // «الطاقم الثابت»'s «حفظ» owns this one's errors (Round 27): a vehicle another desk already took
+    // out answers 404 and is DONE there (`sendStandingSave`) — the global notifier would toast «not
+    // found» over a save that succeeded; any other refusal the page words, with the server's reason.
+    onError: formOwnsTheError,
   });
 };
 
@@ -617,6 +661,29 @@ export const useSetCrewRequirements = () => {
       body: SetOperationsCrewRequirements;
     }) => api.setCrewRequirements(employeeId, body),
     onSuccess: invalidate,
+  });
+};
+
+/**
+ * Round 19 — «حفظ (n)» on «كشف طاقم العمليات»: every member with a tick waiting, one whole-row
+ * upsert each, one after the other (`saveRowsInTurn`), through the same `PUT` the screen always
+ * used.
+ *
+ * Not a batch endpoint, on purpose. Each row is its own decision on the server — the employee must
+ * exist and must not have left, and each write is audited as that employee's — so a batch would
+ * have to answer, row by row, exactly what these answers already say; and refusing all of them for
+ * one member who left in the meantime would throw away every other tick.
+ *
+ * It never throws for a row: a refused row comes back in `failed` (the page marks it and keeps its
+ * ticks), so the global error toast does not speak once per row — the page says it once. The
+ * roster is re-read ONCE, after the last row, rather than after each.
+ */
+export const useSaveCrewRequirementsBatch = () => {
+  const invalidate = useRosterInvalidation();
+  return useMutation({
+    mutationFn: (requests: readonly { employeeId: string; body: SetOperationsCrewRequirements }[]) =>
+      saveRowsInTurn(requests, api.setCrewRequirements),
+    onSettled: invalidate,
   });
 };
 
@@ -651,6 +718,63 @@ export const useSecuredDue = (date: string, enabled = true) =>
     queryKey: listKey(MODULE, 'securedDue', { date }),
     queryFn: () => api.listSecuredDue(date),
     enabled: enabled && date !== '',
+  });
+
+/**
+ * Round 21b — the receive form's live check: which of its seals the vault still holds on another
+ * محصنة («لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»).
+ *
+ *   · Keyed by the seals themselves (distinct and sorted — `sealsToCheck`), under the vault's
+ *     subtree: every secured act re-reads it (a receipt taken, a release, a cancelled receipt each
+ *     change what the vault holds), the refused receipt's included — its `onSettled` stales the
+ *     subtree, so a 409 the check had not foreseen is followed by a fresh answer naming the محصنة.
+ *   · A key the form has typed past is a query nobody watches: TanStack aborts it through the
+ *     signal `checkVaultSeals` hands to `fetch`, so only the latest seals are ever answered.
+ *   · ADVICE, NEVER A GATE. A check that fails answers `null` — no mark, no toast, no error state,
+ *     no retry — and «استلام» stays open: the receipt decides on the server either way.
+ *     `keepPreviousData` holds the last answer's marks while the next one is asked.
+ */
+const vaultSealCheckKey = (
+  seals: readonly string[],
+  excludeShipmentId: string | null,
+): readonly unknown[] => [...operationsKeys.vault, 'sealCheck', excludeShipmentId, seals];
+
+/** Test seam — pins the key under the vault's subtree. */
+export const __vaultSealCheckKey = vaultSealCheckKey;
+
+/** The check, asked: the vault's answer, or null when it could not be had — never a thrown error. */
+const askVaultSeals = async (
+  seals: readonly string[],
+  excludeShipmentId: string | null,
+  signal: AbortSignal,
+): Promise<OperationsVaultSealCheckDto | null> => {
+  try {
+    return await api.checkVaultSeals(
+      { seals: [...seals], ...(excludeShipmentId === null ? {} : { excludeShipmentId }) },
+      { signal },
+    );
+  } catch (error) {
+    // A check the form moved past is TanStack's to cancel; any other failure is "not known".
+    if (signal.aborted) throw error;
+    return null;
+  }
+};
+
+/** Test seam — what a failed or overtaken check answers. */
+export const __askVaultSeals = askVaultSeals;
+
+export const useVaultSealCheck = (
+  seals: readonly string[],
+  excludeShipmentId: string | null,
+  enabled: boolean,
+) =>
+  useQuery({
+    queryKey: vaultSealCheckKey(seals, excludeShipmentId),
+    queryFn: ({ signal }) => askVaultSeals(seals, excludeShipmentId, signal),
+    enabled: enabled && seals.length > 0,
+    retry: false,
+    staleTime: 0,
+    placeholderData: keepPreviousData,
   });
 
 export const useVaultInventory = (params: OperationsListParams, enabled = true) =>
@@ -754,12 +878,20 @@ const useSecuredInvalidation = () => {
   };
 };
 
+/**
+ * The vault's ✓ — Round 18's «إستلام محصنة» form. The FORM owns the refusal's words: it says a
+ * refused branch, bank, currency or date under its own box (`receiveRefusal`), so the global
+ * notifier stays quiet (declaring `onError`), and the message is said once. A refusal re-reads as
+ * well as a success (`onSettled`): a stale row, or one received by someone else meanwhile, is a row
+ * the screen is still showing as it was.
+ */
 export const useReceiveIntoVault = () => {
   const invalidate = useSecuredInvalidation();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: ReceiveIntoVault }) =>
+    mutationFn: ({ id, body }: { id: string; body: ReceiveIntoVaultInput }) =>
       api.receiveIntoVault(id, body),
-    onSuccess: invalidate,
+    onSettled: invalidate,
+    onError: formOwnsTheError,
   });
 };
 
@@ -938,13 +1070,6 @@ export const useCaptainReport = (range: { from: string; to: string }, enabled = 
     enabled: enabled && range.from !== '' && range.to !== '',
   });
 
-export const useBankReport = (range: { from: string; to: string }, enabled = true) =>
-  useQuery({
-    queryKey: listKey(MODULE, 'reportBanks', range),
-    queryFn: () => api.getBankReport(range),
-    enabled: enabled && range.from !== '' && range.to !== '',
-  });
-
 export const useCrewAttendance = (date: string, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'crewAttendance', { date }),
@@ -960,6 +1085,126 @@ export const useOperationsAreas = (params: OperationsListParams, enabled = true)
     queryFn: () => api.listOperationsAreas(params),
     enabled,
   });
+
+/**
+ * Every ACTIVE area's name, however many pages it takes — «لوحة التشغيلة»'s direction (Round 20).
+ * The save respells a new direction naming any active area in the area's spelling (Round 28: and
+ * takes anything else as typed) — all of them, not a page of them. A list cut at the server's page
+ * cap (100) would leave an area past it off the list, and title a saved direction that names it as
+ * hand-typed. Under the areas' key, so every area write and the areas' realtime topic stale it.
+ */
+export const useActiveOperationsAreaNames = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'areas', { whole: true, isActive: true }),
+    queryFn: () => activeAreaNames(api.listOperationsAreas),
+    enabled,
+  });
+
+/** The read behind `useActiveOperationsAreaNames`, its list call a seam a spec can stub. */
+export const activeAreaNames = async (
+  listAreas: (params: OperationsListParams) => Promise<Paginated<OperationsAreaDto>>,
+): Promise<string[]> => {
+  const all = await fetchWholeCatalog((page, pageSize) =>
+    listAreas({ page, pageSize, sortBy: 'name', isActive: true }),
+  );
+  return all.items.filter((area) => area.isActive).map((area) => area.name);
+};
+
+// ── «أنواع التشغيل» (Round 20) ────────────────────────────────────────────────────────────────
+
+/**
+ * The types, archived ones included — the board names a row's archived type from this list, and
+ * the reference tab lists them to restore. The tab and the board ask with the SAME params (the
+ * whole list, the catalog's order), so they share one cache entry.
+ */
+export const useOperationsShiftTypes = (params: OperationsListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'shiftTypes', params),
+    queryFn: () => api.listOperationsShiftTypes(params),
+    enabled,
+  });
+
+/** The form words its own refusal (a name already taken → 409), so the global notifier is quiet. */
+export const useCreateOperationsShiftType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateOperationsShiftType) => api.createOperationsShiftType(body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes });
+    },
+    onError: formOwnsTheError,
+  });
+};
+
+/** An edit, and the tab's archive / restore (`isActive`), which says its own outcome too. */
+export const useUpdateOperationsShiftType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateOperationsShiftType }) =>
+      api.updateOperationsShiftType(id, body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes });
+    },
+    onError: formOwnsTheError,
+  });
+};
+
+/**
+ * Round 24b — «ألوان الأنواع» on «لوحة التشغيلة»: one type given one colour of the palette, through
+ * the catalog's own update (`PATCH /operations/shift-types/:id`, `operationsCatalog.manage`) — the
+ * version the card read, nothing else. A CATALOG save, not a board operation: nothing of the board's
+ * draft (nor its «تراجع») is touched.
+ *
+ * The board draws a row from the type's colour it reads in the catalog (`lib/type-colours.ts`), so
+ * the answer is written straight into every cached list of types — the board recolours the moment
+ * the server says yes — and then both are re-read: the types, and the crew board (its rows carry no
+ * colour of a type, so its re-read is one the cache answers unchanged; it is invalidated so no screen
+ * keeps a board read under the old catalog). The card words its own refusals (a stale version: 409).
+ */
+export const useRecolourOperationsShiftType = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      type,
+      colour,
+    }: {
+      type: Pick<OperationsShiftTypeDto, 'id' | 'version'>;
+      colour: OperationsShiftTypeColour;
+    }) => api.updateOperationsShiftType(type.id, { colour, version: type.version }),
+    onSuccess: (updated) => {
+      qc.setQueriesData<Paginated<OperationsShiftTypeDto>>(
+        { queryKey: operationsKeys.shiftTypes },
+        (list) =>
+          list === undefined || !Array.isArray(list.items)
+            ? list
+            : {
+                ...list,
+                items: list.items.map((item) => (item.id === updated.id ? updated : item)),
+              },
+      );
+    },
+    onSettled: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes }),
+        qc.invalidateQueries({ queryKey: operationsKeys.crewBoard }),
+      ]);
+    },
+    onError: formOwnsTheError,
+  });
+};
+
+/**
+ * The types' dragged order — `useOrderOperationsCurrencies` exactly: refreshed whatever the answer,
+ * the refresh RETURNED so the tab lets go of the order it shows only once there is a newer one.
+ */
+export const useOrderOperationsShiftTypes = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrderOperationsShiftTypes) => api.orderOperationsShiftTypes(body),
+    onSettled: () => qc.invalidateQueries({ queryKey: operationsKeys.shiftTypes }),
+    onError: formOwnsTheError,
+  });
+};
 
 export const useCreateOperationsArea = () => {
   const qc = useQueryClient();
@@ -987,19 +1232,40 @@ export const useUpdateOperationsArea = () => {
 };
 
 /**
- * The vault roll-up over a period — every محصنة received into the vault in it, delivered since or
- * not («يجيب اللى اتسلم واللى متسلمش»). Keyed by its range, as the captain and bank reports are, so
- * switching months is a cache hit on the way back; unlike theirs, it is in the secured fan-out
- * above, because a receipt today changes this month's figures.
+ * «تقرير البنوك» (Round 14 — the vault roll-up that shipped as «تجميع الخزينة») over a period: every
+ * محصنة received into the vault in it, delivered since or not («يجيب اللى اتسلم واللى متسلمش»).
+ * Keyed by its range, as the captain report is, so switching months is a cache hit on the way back;
+ * unlike his, it is in the secured fan-out above (under the vault roll-up's subtree), because a
+ * receipt today changes this month's figures.
  */
-export const useVaultReport = (range: { from: string; to: string }, enabled = true) =>
+export const useBankReport = (range: { from: string; to: string }, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'vaultReport', range),
-    queryFn: () => api.getVaultReport(range),
+    queryFn: () => api.getBankReport(range),
     enabled: enabled && range.from !== '' && range.to !== '',
   });
 
-/** «تقرير الخزينة»'s cache entry — inside the vault roll-up's subtree, beside its periods' entries. */
+/**
+ * Round 25 — «لوحة البنك بفروعه»: one bank of the bank report by its branches, over the page's
+ * period. In the vault roll-up's subtree beside the report it opens from, so every secured act and
+ * the vault's custody topic refresh the two together — the dashboard never says something the row
+ * under it no longer does. Read only while the dashboard is up (`enabled`).
+ */
+export const useBankBranchReport = (
+  bankId: string,
+  params: { from: string; to: string; side: OperationsBankBranchReportSide },
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vaultReport', { bankId, ...params }),
+    queryFn: () => api.getBankBranchReport(bankId, params),
+    enabled: enabled && bankId !== '' && params.from !== '' && params.to !== '',
+    // «من فرع» ↔ «إلى فرع» holds the last answer (dimmed) until the other lands, rather than
+    // blanking the window between two figures of the same bank.
+    placeholderData: (previous) => previous,
+  });
+
+/** «تقرير الخزينة»'s cache entry — inside the vault roll-up's subtree, beside the bank report's. */
 const vaultHeldReportKey = (): readonly unknown[] => listKey(MODULE, 'vaultReport', { held: true });
 
 /**

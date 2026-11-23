@@ -42,6 +42,10 @@ import {
   retireLegacyWorkTypes,
 } from '../../src/modules/fleet/fixed-roster/legacy-work-type-retirement';
 import { fleetRosterService } from '../../src/modules/fleet/roster/roster.service';
+import {
+  FIXED_CREW_REFUSAL,
+  fleetFixedRosterService,
+} from '../../src/modules/fleet/fixed-roster/fixed-roster.service';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
@@ -53,6 +57,7 @@ import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/
 import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
 import { FleetDealershipInvoiceModel } from '../../src/modules/fleet/dealership/dealership.model';
 import { FleetFuelCardMovementModel } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
+import { FleetViolationModel } from '../../src/modules/fleet/violations/violation.model';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { driverAvailabilityOn } from '../../src/modules/fleet/availability/driver-availability';
@@ -64,6 +69,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { AppError } from '../../src/shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -6255,6 +6261,323 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       (await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }])).status,
     ).toBe(200);
   });
+
+  // ── the refusal says WHICH driver and WHICH car — as facts, never as words ──
+  //
+  // «الطقم الثابت» turns a refused save into one Arabic sentence naming the driver and the car that
+  // holds them. The server cannot write that sentence (its English message is for the logs and is
+  // never shown), so it hands the screen the FACTS in `details`: the employee id — the screen
+  // already holds the names it is allowed to show — and the holding car's CODE, but only when that
+  // car reads in the caller's own scope. Status, error code and message are exactly what they were;
+  // no rule moved. The codes are literals pinned here AND in the web's refusal line
+  // (apps/web/src/modules/fleet/lib/fixed-save-refusal.ts), so a rename on one side fails a spec.
+  //
+  // LAST in this describe on purpose: these cases make drivers, and the AUDIT tests above read
+  // the drivers registry as ONE page (MAX_PAGE_SIZE) to compare the population — drivers made
+  // before them would push their own drivers off that page.
+
+  interface RefusalDetail {
+    field?: string;
+    code: string;
+    message: string;
+  }
+  const refusalOf = (res: request.Response) =>
+    (res.body as { error: { code: string; message: string; details?: RefusalDetail[] } }).error;
+  /** The selector the HTTP path builds for a caller whose grant reaches the whole company. */
+  const orgScope = (): ScopeSelector => ({
+    scope: 'organization',
+    userId: adminUserId,
+    branchId: null,
+    departmentId: null,
+    sectionId: null,
+  });
+  /** The same caller narrowed to ONE branch — what a branch-scoped planner's request carries. */
+  const branchScope = (branchId: string): ScopeSelector => ({
+    scope: 'branch',
+    userId: adminUserId,
+    branchId,
+    departmentId: null,
+    sectionId: null,
+  });
+  /** Run the service and hand back what it threw (or fail the test if it did not throw). */
+  const refusedBy = async (attempt: Promise<unknown>): Promise<AppError> => {
+    const outcome = await attempt.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(outcome, 'the save was refused').toBeInstanceOf(AppError);
+    return outcome as AppError;
+  };
+
+  it('REFUSAL DETAILS — the six codes are these literals (the web pins the same ones)', () => {
+    expect(FIXED_CREW_REFUSAL).toEqual({
+      held: 'FIXED_CREW_DRIVER_HELD',
+      holder: 'FIXED_CREW_HOLDER',
+      vehicleNotActive: 'FIXED_CREW_VEHICLE_NOT_ACTIVE',
+      profileInactive: 'FIXED_CREW_PROFILE_INACTIVE',
+      notADriver: 'FIXED_CREW_NOT_A_DRIVER',
+      missionInactive: 'FIXED_CREW_MISSION_INACTIVE',
+    });
+  });
+
+  it('REFUSAL DETAILS — a held driver: the 409 carries the driver’s id and the holding car’s code', async () => {
+    const [holding, receiving] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const held = await mkEmployee({ fullNameAr: 'سائق محتجز على سيارة' });
+    await mkDriverProfile(held);
+    expect((await saveCrews([{ vehicleId: holding.id, driver1EmployeeId: held }])).status).toBe(
+      200,
+    );
+
+    // Only the receiving row — the releasing one was forgotten.
+    const res = await saveCrews([{ vehicleId: receiving.id, driver1EmployeeId: held }]);
+    expect(res.status, 'the same status').toBe(409);
+    const error = refusalOf(res);
+    expect(error.code, 'the same error code').toBe('DUPLICATE');
+    expect(error.message, 'the same English message, for the logs').toBe(
+      `driver ${held} already belongs to the fixed crew of vehicle ${holding.code}; include that vehicle's row to release them`,
+    );
+    expect(error.details, 'the facts the screen needs, in this order').toEqual([
+      { field: 'driverEmployeeId', code: 'FIXED_CREW_DRIVER_HELD', message: held },
+      { field: 'vehicleCode', code: 'FIXED_CREW_HOLDER', message: holding.code },
+    ]);
+    expect(JSON.stringify(error.details), 'no vehicle id').not.toContain(holding.id);
+    expect(JSON.stringify(res.body), 'and no name — the screen resolves it').not.toContain(
+      'سائق محتجز على سيارة',
+    );
+
+    // The refusal wrote nothing: the holding row still holds, the receiving row is still empty.
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, holding.id)?.driver1EmployeeId).toBe(held);
+    expect(rowFor(board, receiving.id)?.driver1EmployeeId).toBeNull();
+  });
+
+  it('REFUSAL DETAILS — a driver held in SEAT TWO is named the same way', async () => {
+    const [holding, receiving] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const [first, second] = [await mkDriver(), await mkDriver()];
+    await saveCrews([
+      { vehicleId: holding.id, driver1EmployeeId: first, driver2EmployeeId: second },
+    ]);
+    const res = await saveCrews([{ vehicleId: receiving.id, driver1EmployeeId: second }]);
+    expect(res.status).toBe(409);
+    expect(refusalOf(res).details).toEqual([
+      { field: 'driverEmployeeId', code: 'FIXED_CREW_DRIVER_HELD', message: second },
+      { field: 'vehicleCode', code: 'FIXED_CREW_HOLDER', message: holding.code },
+    ]);
+  });
+
+  it('REFUSAL DETAILS — a driver held by a car OUT OF SERVICE still names that car', async () => {
+    // The board lists active cars only, so a crew left on a car that has since gone out of
+    // service is invisible on it — the screen shows that driver as «سيارة أخرى». The car still
+    // reads in the caller's scope, so its code travels and the refusal can say which one.
+    const [holding, receiving] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const d = await mkDriver();
+    await saveCrews([{ vehicleId: holding.id, driver1EmployeeId: d }]);
+    const out = await request(app)
+      .post(`/api/v1/fleet/vehicles/${holding.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'outOfService', reason: 'عطل في المحرك', version: holding.version });
+    expect(out.status).toBe(200);
+    expect(
+      rowFor(data<FixedBoardDto>(await getCrews()), holding.id),
+      'the car has left the board',
+    ).toBeUndefined();
+
+    const res = await saveCrews([{ vehicleId: receiving.id, driver1EmployeeId: d }]);
+    expect(res.status).toBe(409);
+    expect(refusalOf(res).details).toEqual([
+      { field: 'driverEmployeeId', code: 'FIXED_CREW_DRIVER_HELD', message: d },
+      { field: 'vehicleCode', code: 'FIXED_CREW_HOLDER', message: holding.code },
+    ]);
+  });
+
+  it('REFUSAL DETAILS — a holder OUTSIDE the caller’s scope is not named, by code or by id', async () => {
+    // A car of another branch is not this caller's to read, so the refusal says only that the
+    // driver is held — the screen then says «سيارة أخرى ليست في هذه الشاشة». The control call
+    // with the company-wide selector proves it is the SCOPE that withholds the code.
+    const theirs = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
+    const mine = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d = await mkDriver();
+    await saveCrews([{ vehicleId: theirs.id, driver1EmployeeId: d }]);
+    const input = { rows: [{ vehicleId: mine.id, driver1EmployeeId: d }] };
+
+    const scoped = await refusedBy(
+      fleetFixedRosterService.save(input, adminUserId, branchScope(branchAId)),
+    );
+    expect(scoped.httpStatus).toBe(409);
+    expect(scoped.code).toBe('DUPLICATE');
+    expect(scoped.details, 'the driver only — no holder').toEqual([
+      { field: 'driverEmployeeId', code: 'FIXED_CREW_DRIVER_HELD', message: d },
+    ]);
+    const said = JSON.stringify(scoped.details);
+    expect(said, 'no vehicle id anywhere in the details').not.toContain(theirs.id);
+    expect(said, 'and not the other branch’s code either').not.toContain(theirs.code);
+    // The message travels in the same HTTP body (`error.message`): it names neither (review F2).
+    expect(scoped.message).toBe(
+      `driver ${d} already belongs to the fixed crew of a vehicle outside your scope; that vehicle's row must release them first`,
+    );
+    expect(scoped.message, 'no vehicle id in the message').not.toContain(theirs.id);
+    expect(scoped.message, 'nor the other branch’s code').not.toContain(theirs.code);
+
+    const company = await refusedBy(fleetFixedRosterService.save(input, adminUserId, orgScope()));
+    expect(company.details, 'the same refusal, read company-wide, names the car').toEqual([
+      { field: 'driverEmployeeId', code: 'FIXED_CREW_DRIVER_HELD', message: d },
+      { field: 'vehicleCode', code: 'FIXED_CREW_HOLDER', message: theirs.code },
+    ]);
+    expect(company.message, 'and its message is word for word as it was').toBe(
+      `driver ${d} already belongs to the fixed crew of vehicle ${theirs.code}; include that vehicle's row to release them`,
+    );
+
+    // Nothing moved on either branch.
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, theirs.id)?.driver1EmployeeId).toBe(d);
+    expect(rowFor(board, mine.id)?.driver1EmployeeId).toBeNull();
+  });
+
+  it('REFUSAL DETAILS — a crewed car that is not active: the 409 carries its code', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const out = await request(app)
+      .post(`/api/v1/fleet/vehicles/${v.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'outOfService', reason: 'حادث', version: v.version });
+    expect(out.status).toBe(200);
+
+    const res = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    expect(res.status, 'the same status').toBe(409);
+    const error = refusalOf(res);
+    expect(error.code).toBe('DUPLICATE');
+    expect(error.message).toBe(`vehicle ${v.code} is outOfService and cannot be crewed (§4.1)`);
+    expect(error.details).toEqual([
+      { field: 'vehicleCode', code: 'FIXED_CREW_VEHICLE_NOT_ACTIVE', message: v.code },
+    ]);
+    expect(JSON.stringify(error.details), 'no vehicle id').not.toContain(v.id);
+  });
+
+  it('REFUSAL DETAILS — a switched-off profile keeps its old detail first and adds the id', async () => {
+    // The case told to the owner: editing a car whose crew holds a driver whose profile has since
+    // been switched off — the save is refused for THAT driver, and the screen names them.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const employeeId = await mkEmployee({ fullNameAr: 'سائق موقوف الملف' });
+    const profile = await mkDriverProfile(employeeId);
+    expect((await saveCrews([{ vehicleId: v.id, driver1EmployeeId: employeeId }])).status).toBe(
+      200,
+    );
+    const patched = await request(app)
+      .patch(`/api/v1/fleet/drivers/${profile.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: profile.version });
+    expect(patched.status).toBe(200);
+
+    const res = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: employeeId, notes: 'تعديل' },
+    ]);
+    expect(res.status).toBe(400);
+    const error = refusalOf(res);
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.details).toEqual([
+      {
+        field: 'body.rows.driverEmployeeId',
+        code: 'UNKNOWN',
+        message: 'this driver’s fleet profile is inactive',
+      },
+      { field: 'driverEmployeeId', code: 'FIXED_CREW_PROFILE_INACTIVE', message: employeeId },
+    ]);
+    expect(JSON.stringify(res.body), 'no name').not.toContain('سائق موقوف الملف');
+    expect(
+      rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.notes,
+      'nothing written',
+    ).toBeNull();
+  });
+
+  it('REFUSAL DETAILS — somebody in no driving seat keeps the old detail and adds the id', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const clerk = await mkOfficeEmployee('موظف مكتب في طقم');
+    const res = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: clerk }]);
+    expect(res.status).toBe(400);
+    const error = refusalOf(res);
+    expect(error.code).toBe('VALIDATION_FAILED');
+    expect(error.details).toEqual([
+      {
+        field: 'body.rows.driverEmployeeId',
+        code: 'UNKNOWN',
+        message: 'this employee does not hold a driving seat',
+      },
+      { field: 'driverEmployeeId', code: 'FIXED_CREW_NOT_A_DRIVER', message: clerk },
+    ]);
+    expect(JSON.stringify(res.body), 'no name').not.toContain('موظف مكتب في طقم');
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver1EmployeeId).toBeNull();
+  });
+
+  it('REFUSAL DETAILS — an archived or wrong-kind mission type keeps the old detail and adds the id', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const archived = await mkDriverCatalogItem('missionType', 'مهمة أُرشفت');
+    const off = await request(app)
+      .patch(`/api/v1/fleet/catalog-items/${archived.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: archived.version });
+    expect(off.status).toBe(200);
+    const workType = await mkDriverCatalogItem('workType', 'صيانة ليست مهمة');
+
+    for (const missionTypeId of [archived.id, workType.id]) {
+      const res = await saveCrews([{ vehicleId: v.id, missionTypeId }]);
+      expect(res.status, missionTypeId).toBe(400);
+      const error = refusalOf(res);
+      expect(error.code).toBe('VALIDATION_FAILED');
+      expect(error.details).toEqual([
+        {
+          field: 'body.rows.missionTypeId',
+          code: 'UNKNOWN',
+          message: 'mission type not found or inactive',
+        },
+        { field: 'missionTypeId', code: 'FIXED_CREW_MISSION_INACTIVE', message: missionTypeId },
+      ]);
+    }
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.missionTypeId).toBeNull();
+  });
+
+  it('REFUSAL DETAILS — seat two without seat one is unchanged, and the contract’s refusals carry no FIXED_CREW code', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d = await mkDriver();
+
+    // Straight at the service (the contract stops it first over HTTP): its one detail, as before.
+    const direct = await refusedBy(
+      fleetFixedRosterService.save(
+        { rows: [{ vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: d }] },
+        adminUserId,
+        orgScope(),
+      ),
+    );
+    expect(direct.httpStatus).toBe(400);
+    expect(direct.details).toEqual([
+      {
+        field: 'body.rows.driver2EmployeeId',
+        code: 'DRIVER2_WITHOUT_DRIVER1',
+        message: 'a second driver needs a first — assign driver 1 before driver 2',
+      },
+    ]);
+
+    // Over HTTP the CONTRACT refuses it, and the other two contract rules, in its own words.
+    for (const rows of [
+      [{ vehicleId: v.id, driver2EmployeeId: d }],
+      [{ vehicleId: v.id, driver1EmployeeId: d, driver2EmployeeId: d }],
+    ]) {
+      const res = await saveCrews(rows);
+      expect(res.status).toBe(400);
+      expect(refusalOf(res).code).toBe('VALIDATION_FAILED');
+      expect(
+        (refusalOf(res).details ?? []).some((x) => x.code.startsWith('FIXED_CREW_')),
+        'the service never ran',
+      ).toBe(false);
+    }
+  });
 });
 
 describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)', () => {
@@ -6619,6 +6942,71 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       driverEmployeeId: null,
       driverName: 'مجهول',
     });
+  });
+
+  it('«من / إلى» — the fine’s day, whole days; a statement (a year, no day) never matches', async () => {
+    // The fleet dashboard's «مخالفات السائقين في الفترة» opens the register with `from`/`to` (the
+    // web's dfrom/dto): its count must be the list's.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const speed = await violationTypeIdByName('حزام');
+    const fees = await violationTypeIdByName('رسوم خدمة');
+    const statement = await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2026, violationTypeId: fees, count: 1, unitValue: 90 });
+    expect(statement.status, statement.text).toBe(201);
+    const batch = await request(app)
+      .post('/api/v1/fleet/violations/driver/batch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        rows: ['2026-04-30', '2026-05-01', '2026-05-15', '2026-05-31', '2026-06-01'].map(
+          (date) => ({ date, driverEmployeeId: null, violationTypeId: speed, amount: 10 }),
+        ),
+      });
+    expect(batch.status, batch.text).toBe(201);
+    const ids = data<{ id: string }[]>(batch).map((row) => row.id);
+    // An old-book row stored off midnight on the LAST day — 21:00Z on 31 May — is still that day's.
+    await FleetViolationModel.updateOne(
+      { _id: new Types.ObjectId(ids[3]) },
+      { date: new Date('2026-05-31T21:00:00.000Z') },
+    ).exec();
+    const list = async (query: Record<string, string>) => {
+      const res = await request(app)
+        .get('/api/v1/fleet/violations')
+        .query({ vehicleCodes: v.code, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, res.text).toBe(200);
+      return {
+        ids: data<{ id: string }[]>(res).map((row) => row.id),
+        total: (res.body as { meta: { totalItems: number } }).meta.totalItems,
+      };
+    };
+    const may = await list({ kind: 'driver', from: '2026-05-01', to: '2026-05-31' });
+    expect(may.ids.sort()).toEqual([ids[1], ids[2], ids[3]].sort());
+    expect(may.total).toBe(3);
+    // Without `kind` the bounded question still names the drivers' shape — never the statement.
+    expect((await list({ from: '2026-05-01', to: '2026-05-31' })).total).toBe(3);
+    // One end only; beside the other filters (owed, a type).
+    expect((await list({ kind: 'driver', from: '2026-05-31' })).total).toBe(2);
+    expect((await list({ kind: 'driver', to: '2026-04-30' })).ids).toEqual([ids[0]]);
+    expect(
+      (
+        await list({
+          kind: 'driver',
+          from: '2026-05-01',
+          to: '2026-05-31',
+          collected: 'false',
+          violationTypeId: speed,
+        })
+      ).total,
+    ).toBe(3);
+    // The register refuses a word it does not know (the web's own `dfrom` never reaches it).
+    const refused = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ dfrom: '2026-05-01' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(refused.status).toBe(400);
   });
 
   it('the grievance is ONE figure per (vehicle, year), and the rollup merges everything', async () => {

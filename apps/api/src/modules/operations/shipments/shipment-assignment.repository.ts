@@ -5,6 +5,7 @@ import {
   OperationsShipmentAssignmentModel,
   type OperationsShipmentAssignmentDoc,
 } from './shipment-assignment.model';
+import { OperationsShipmentModel } from './shipment.model';
 
 class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsShipmentAssignmentDoc> {
   constructor() {
@@ -37,6 +38,37 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
       .session(session ?? null)
       .lean<OperationsShipmentAssignmentDoc[]>()
       .exec();
+  }
+
+  /**
+   * Round 30 critic — the SECURED shipments whose LIVE delivery leg rides a crew row of one day:
+   * what a past day's record lists beside the ones due on it (distribution.service.ts `view`). Ids
+   * only, the day's delivery legs alone (`ix_day_captain`'s day prefix), joined to the shipments
+   * here so a day's daily legs — pickup and delivery, as many as the day carries — never come back,
+   * nor reach the record's `$in`.
+   */
+  async securedDeliveryShipmentIdsOfDay(operationsDayId: Types.ObjectId): Promise<string[]> {
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId }>([
+        { $match: { operationsDayId, leg: 'delivery', isDeleted: false } },
+        { $group: { _id: '$shipmentId' } },
+        {
+          $lookup: {
+            from: OperationsShipmentModel.collection.collectionName,
+            localField: '_id',
+            foreignField: '_id',
+            pipeline: [
+              { $match: { shipmentType: 'secured', isDeleted: false } },
+              { $project: { _id: 1 } },
+            ],
+            as: 'secured',
+          },
+        },
+        { $match: { 'secured.0': { $exists: true } } },
+        { $project: { _id: 1 } },
+      ])
+      .exec();
+    return rows.map((row) => String(row._id));
   }
 
   /**
@@ -120,6 +152,45 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
       .sort({ leg: 1, createdAt: 1, _id: 1 })
       .lean<OperationsShipmentAssignmentDoc[]>()
       .exec();
+  }
+
+  /**
+   * Round 24 — every LIVE leg riding one crew row: what follows the row when it is given a van
+   * (crew.service.ts `plan`). Delivered or not — a leg copies its row's van, whatever its state.
+   */
+  async findLiveByCrew(
+    crewAssignmentId: string,
+    session?: ClientSession,
+  ): Promise<OperationsShipmentAssignmentDoc[]> {
+    return this.model
+      .find({ crewAssignmentId: new Types.ObjectId(crewAssignmentId), isDeleted: false })
+      .session(session ?? null)
+      .lean<OperationsShipmentAssignmentDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Round 24 — how many LIVE legs ride each of these crew rows: a row that holds any is not
+   * removed from the board (crew.service.ts `plan`). Rows holding none are absent from the map.
+   */
+  async countLiveByCrew(
+    crewAssignmentIds: readonly string[],
+    session?: ClientSession,
+  ): Promise<Map<string, number>> {
+    if (crewAssignmentIds.length === 0) return new Map();
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; count: number }>([
+        {
+          $match: {
+            crewAssignmentId: { $in: crewAssignmentIds.map((id) => new Types.ObjectId(id)) },
+            isDeleted: false,
+          },
+        },
+        { $group: { _id: '$crewAssignmentId', count: { $sum: 1 } } },
+      ])
+      .session(session ?? null)
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.count]));
   }
 
   async findByShipmentAndLeg(

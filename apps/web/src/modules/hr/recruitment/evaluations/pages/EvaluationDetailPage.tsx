@@ -26,6 +26,8 @@ import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
+import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
+import { useStageAuthority } from '../../shared/useStageAuthority';
 import {
   useDecideEvaluation,
   useEvaluation,
@@ -41,6 +43,10 @@ export const EvaluationDetailPage = (): JSX.Element => {
   // RW5 — suggesting a placement is an ordinary reassignment, so it needs the
   // candidate's own record (its version and current placement).
   const { data: candidate } = useApplicant(ev?.applicantId ?? '');
+  // May this check still move the candidate? Phases are parallel by design — the security check
+  // and the medical check are open together — so this asks the server about THIS record rather
+  // than about «the current stage», which would have to pick one of them arbitrarily.
+  const authority = useStageAuthority(ev?.applicantId ?? '');
   const decide = useDecideEvaluation(id);
   const uploadFile = useUploadEvaluationFile(id);
   const removeFile = useRemoveEvaluationFile(id);
@@ -51,6 +57,14 @@ export const EvaluationDetailPage = (): JSX.Element => {
 
   if (isLoading) return <LoadingState />;
   if (isError || ev === undefined) return <ErrorState error={error} onRetry={() => void refetch()} />;
+
+  // Past this check: the result, the reason and the attached papers stay, and the decision closes.
+  // One endpoint serves the first decision and every correction of it, so hiding the card is the
+  // whole of it — and the route refuses the same case for a stale tab.
+  const readOnly = authority.isPassed(ev.id);
+  // The card serves the first decision AND every correction of it, so it is drawn while either is
+  // still allowed: the candidate is at the phase, or nothing has been built on its decision (D7).
+  const canDecide = ev.status === 'waiting' ? !readOnly : authority.isCorrectable(ev.id);
 
   const onPickFile = async (file: File | undefined): Promise<void> => {
     if (file === undefined) return;
@@ -103,7 +117,15 @@ export const EvaluationDetailPage = (): JSX.Element => {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <MoveToOfferButton applicantId={ev.applicantId} />
+            <PurgeApplicantAction applicantId={ev.applicantId} applicantCode={ev.applicantCode} applicantName={ev.applicantName} />
+            {/* Starting the offer is still HR's call wherever the candidate stands — but not from a
+                stage they have left, which is where it used to offer to skip them forward. */}
+            {readOnly ? null : <MoveToOfferButton applicantId={ev.applicantId} />}
+            {readOnly ? (
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {t('recruitment.stage.readOnly')}
+              </span>
+            ) : null}
             <EvaluationStatusBadge status={ev.status} />
           </div>
         }
@@ -170,7 +192,8 @@ export const EvaluationDetailPage = (): JSX.Element => {
             </CardBody>
           </Card>
 
-          {/* Decision (editable — re-deciding is audited) */}
+          {/* Decision (editable — re-deciding is audited — while the candidate is still here) */}
+          {canDecide ? (
           <Can permission="evaluation.manage">
             <Card>
               <CardHeader title={ev.status === 'waiting' ? t('evaluations.decide.title') : t('evaluations.decide.editTitle')} />
@@ -198,6 +221,7 @@ export const EvaluationDetailPage = (): JSX.Element => {
               </CardBody>
             </Card>
           </Can>
+          ) : null}
         </div>
 
         {/* Sidebar: summary + decision history */}

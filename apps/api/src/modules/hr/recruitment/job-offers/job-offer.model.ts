@@ -33,6 +33,8 @@ export interface OfferTerms {
   sectionId: Types.ObjectId | null;
   /** Reporting manager — OPTIONAL (may be null). */
   managerId: Types.ObjectId | null;
+  /** The manager typed by name when they have no account (null when `managerId` is set). */
+  managerName: string | null;
   employmentType: EmploymentType;
   /** Compensation — OPTIONAL (may be null). */
   salary: OfferMoney | null;
@@ -101,6 +103,7 @@ const termsSchema = new Schema<OfferTerms>(
     branchId: { type: Schema.Types.ObjectId, required: true },
     sectionId: { type: Schema.Types.ObjectId, default: null },
     managerId: { type: Schema.Types.ObjectId, default: null },
+    managerName: { type: String, default: null, trim: true },
     employmentType: { type: String, enum: EMPLOYMENT_TYPES, required: true },
     salary: { type: moneySchema, default: null },
     allowances: {

@@ -40,16 +40,21 @@ import {
   HoverCardMissing as Missing,
   useHoverCard,
 } from '../../fleet/components/HoverCardLayer';
+import { showsDayFacts, useCrewPlanScope } from './crew-plan-scope';
 
-/** A code, a phone or a time: a figure, read left to right in the figures' face. */
-const Figure = ({ children }: { children: ReactNode }): JSX.Element => (
+/**
+ * A code, a phone or a time: a figure, read left to right in the figures' face. Shared with the
+ * member card on «كشف طاقم العمليات» (`RosterMemberCard`), as are the head, its drawing and the
+ * branch's name below — one look for every Operations person card.
+ */
+export const Figure = ({ children }: { children: ReactNode }): JSX.Element => (
   <span dir="ltr" className="font-figures">
     {children}
   </span>
 );
 
 /** The person drawing at the head of the captain card — the Fleet driver card's. */
-const PersonIcon = (): JSX.Element => (
+export const PersonIcon = (): JSX.Element => (
   <svg
     viewBox="0 0 24 24"
     className="h-3.5 w-3.5"
@@ -65,7 +70,7 @@ const PersonIcon = (): JSX.Element => (
 );
 
 /** The card's head line: its drawing, then the line the card is about. */
-const CardHead = ({
+export const CardHead = ({
   icon,
   children,
   sub,
@@ -88,7 +93,7 @@ const CardHead = ({
 );
 
 /** The branch's name, from the one shared list — «…» while it loads, «—» for none. */
-const useBranchName = (branchId: string | null): string | 'loading' | null => {
+export const useBranchName = (branchId: string | null): string | 'loading' | null => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branches = useBranchNames(branchId !== null);
   if (branchId === null) return null;
@@ -129,7 +134,13 @@ export const CaptainCardBody = ({
         )}
         {/* The van of THIS shipment's leg — the board may be any day, so not «today's car». */}
         <Fact label={t('operations.board.vehicle')}>
-          {crew.vehicleCode === null ? <Missing /> : <Figure>{crew.vehicleCode}</Figure>}
+          {crew.vehicleId === null ? (
+            t('operations.crewPlan.noVehicle')
+          ) : crew.vehicleCode === null ? (
+            <Missing />
+          ) : (
+            <Figure>{crew.vehicleCode}</Figure>
+          )}
         </Fact>
         <Fact label={t('fleet.drivers.columns.branch')}>
           {branch === null || branch === 'loading' ? (
@@ -234,6 +245,7 @@ export const VehicleCrewCardBody = ({
   crew: OperationsDayBoardVehicleCrewDto;
 }): JSX.Element => {
   const t = useT();
+  const dayFacts = showsDayFacts(useCrewPlanScope());
   return (
     <div data-crew-card={crew.crewAssignmentId}>
       <CardHead
@@ -244,12 +256,21 @@ export const VehicleCrewCardBody = ({
           </p>
         }
       >
-        {crew.vehicleCode === null ? <Missing /> : <Figure>{crew.vehicleCode}</Figure>}
+        {crew.vehicleId === null ? (
+          t('operations.crewPlan.noVehicle')
+        ) : crew.vehicleCode === null ? (
+          <Missing />
+        ) : (
+          <Figure>{crew.vehicleCode}</Figure>
+        )}
       </CardHead>
       <dl className={HOVER_CARD_FACTS}>
-        <Fact label={t('operations.board.card.drivers')}>
-          <DriverNames drivers={crew.drivers} />
-        </Fact>
+        {/* The drivers are the Fleet roster's for ONE day: «الطاقم الثابت» has none (Round 27). */}
+        {dayFacts && (
+          <Fact label={t('operations.board.card.drivers')}>
+            <DriverNames drivers={crew.drivers} />
+          </Fact>
+        )}
         <Fact label={t('operations.crew.slot.captain')}>
           <People people={crew.captains} slot="captain" />
         </Fact>

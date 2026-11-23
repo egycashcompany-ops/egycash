@@ -2,11 +2,13 @@
 // screen never re-fetches to learn what its own action did; the issue answers the memo to print at
 // once, and every item on it.
 //
-// Scopes follow the asset register and the lines exactly: reads under `itAsset.view`; adding an
-// item checks that `itAsset.create` reaches its branch; editing, receiving and scrapping are scoped
-// by `itAsset.edit`; and the custody-like writes — issuing to a person, taking back from one — are
-// gated on `itAsset.assign` but scoped by the READ grant, as a line's hand-over is: whoever may
-// hand things out may reach every store they can see.
+// Scopes follow the asset register's and the lines' shape, under the store's own grants: reads
+// under `itConsumable.view`; adding an item checks that `itConsumable.create` reaches its branch;
+// editing, receiving and scrapping are scoped by `itConsumable.edit`; and the custody-like writes —
+// issuing to a person, taking back from one — are gated on `itConsumable.assign` but scoped by the
+// READ grant, as a line's hand-over is: whoever may hand things out may reach every store they can
+// see — the issue's later «تعديل الجهاز» too. The one asset grant left here is the device those two
+// name (`assetScope` below).
 import { type Request, type Response } from 'express';
 import {
   type CreateItConsumable,
@@ -16,22 +18,39 @@ import {
   type ReceiveItConsumable,
   type ReturnItConsumable,
   type ScrapItConsumable,
+  type SetItConsumableInstalledOn,
   type TransferItConsumables,
   type UpdateItConsumable,
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
-import { scopeSelector } from '../../../shared/types';
+import {
+  hasPermission,
+  scopeSelector,
+  type AuthContext,
+  type ScopeSelector,
+} from '../../../shared/types';
 import { toItConsumableDto, toItConsumableMemoDto, toItConsumableMovementDto } from '../it.mappers';
 import { itConsumableService } from './consumable.service';
 import { itConsumableIssueService } from './consumable-issue.service';
+import { itConsumableInstalledOnService } from './consumable-installed-on.service';
+import { itConsumableCounterService } from './consumable-counter.service';
 import { itConsumableTransferService } from './consumable-transfer.service';
 import { type ItConsumableMovementDoc } from './consumable-movement.model';
 
 type IdParam = { id: string };
 
-const viewScope = (req: Request) => scopeSelector(authContext(req), 'itAsset.view');
-const editScope = (req: Request) => scopeSelector(authContext(req), 'itAsset.edit');
+const viewScope = (req: Request) => scopeSelector(authContext(req), 'itConsumable.view');
+const editScope = (req: Request) => scopeSelector(authContext(req), 'itConsumable.edit');
+
+/**
+ * Where an issue's «installed on» may point — at the issue, and when it is changed afterwards: the
+ * assets the caller's OWN `itAsset.view` shows them — or none at all without that grant (null), so
+ * a store keeper who cannot read the register cannot probe it through the store either. Every
+ * asset id is then «not found».
+ */
+const assetScope = (ctx: AuthContext): ScopeSelector | null =>
+  hasPermission(ctx, 'itAsset.view') ? scopeSelector(ctx, 'itAsset.view') : null;
 
 /** A page of the ledger, labelled in one pass — the items, people, assets and memos it names. */
 const movementPage = async (
@@ -98,6 +117,17 @@ export const listItConsumableMovementsOf = async (req: Request, res: Response): 
   );
 };
 
+/**
+ * «عداد الطابعة» — one toner item's cartridges and the average per cartridge, read once the item
+ * itself is, under the same scope (404 otherwise). One object over the whole of it, not a page.
+ */
+export const getItConsumableCartridges = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const scope = viewScope(req);
+  const item = await itConsumableService.get(params.id, scope);
+  ok(res, await itConsumableCounterService.cartridges(item, scope));
+};
+
 /** The ledger across items — the movements page, the asset's card and the employee's card. */
 export const listItConsumableMovements = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListItConsumableMovementsQuery>(req);
@@ -105,27 +135,63 @@ export const listItConsumableMovements = async (req: Request, res: Response): Pr
 };
 
 /**
+ * «تعديل الجهاز» — the device an issued unit sits in, set or cleared after the issue. Answered with
+ * the movement as the ledger shows it, labelled as a page of it is.
+ */
+export const setItConsumableInstalledOn = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<SetItConsumableInstalledOn, never, IdParam>(req);
+  const ctx = authContext(req);
+  const scope = viewScope(req);
+  const movement = await itConsumableInstalledOnService.setInstalledOn(
+    params.id,
+    body,
+    ctx,
+    scope,
+    assetScope(ctx),
+  );
+  const labels = await itConsumableService.movementLabels([movement], scope);
+  ok(res, toItConsumableMovementDto(movement, labels));
+};
+
+/**
  * «تحويل إلى فرع» — stock of one store's items to another branch's store, at once. Gated on
- * `itAsset.assign` and SCOPED by it: the items a caller may send are the ones their custody grant
- * covers, and the store they go to must be one that grant reaches. Answered with the transfer, line
- * by line — both stores' items, and which of them it made.
+ * `itConsumable.assign` and SCOPED by it: the items a caller may send are the ones their custody
+ * grant covers, and the store they go to must be one that grant reaches. Answered with the
+ * transfer, line by line — both stores' items, and which of them it made.
  */
 export const transferItConsumables = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<TransferItConsumables>(req);
   const ctx = authContext(req);
   created(
     res,
-    await itConsumableTransferService.transfer(body, ctx, scopeSelector(ctx, 'itAsset.assign')),
+    await itConsumableTransferService.transfer(
+      body,
+      ctx,
+      scopeSelector(ctx, 'itConsumable.assign'),
+    ),
   );
+};
+
+/**
+ * The branches the caller may transfer stock to: the server's own reach of `itConsumable.assign`,
+ * so the dialog offers only branches the transfer would accept.
+ */
+export const listItConsumableTransferTargets = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  ok(res, await itConsumableTransferService.transferTargets(authContext(req)));
 };
 
 /** «صرف لموظف» — one action, one memo; answered with the memo to print and the items as they stand. */
 export const issueItConsumables = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<IssueItConsumables>(req);
+  const ctx = authContext(req);
   const { memo, consumables } = await itConsumableIssueService.issue(
     body,
-    authContext(req),
+    ctx,
     viewScope(req),
+    assetScope(ctx),
   );
   created(res, {
     memo: toItConsumableMemoDto(memo),

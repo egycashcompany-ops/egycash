@@ -27,6 +27,7 @@ const crew = (crewAssignmentId: string, captainEmployeeId: string, captainName: 
   crewAssignmentId,
   vehicleId: `v-${crewAssignmentId}`,
   vehicleCode: crewAssignmentId === 'ca-1' ? '150' : '210',
+  looseNumber: null,
   captainEmployeeId,
   captainName,
   captainCode: null,
@@ -138,7 +139,9 @@ describe('the delivery crew — from the row’s OWN delivery day, on its leg’
         fleetDutyAssignmentId: 'fd-1',
         driver1EmployeeId: null,
         driver2EmployeeId: null,
+        drivers: [],
         missionTypeId: null,
+        uncoded: null,
         crew: {
           id: 'ca-1',
           captainEmployeeIds: ['e-1', 'e-2'],
@@ -147,6 +150,9 @@ describe('the delivery crew — from the row’s OWN delivery day, on its leg’
           direction: null,
           plannedTime: null,
           notes: null,
+          shiftTypeId: null,
+          rowColour: null,
+          shipments: 0,
         },
       },
     ]);

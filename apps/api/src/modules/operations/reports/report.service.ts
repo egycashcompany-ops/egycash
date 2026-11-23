@@ -1,10 +1,15 @@
-// The Operations reports — the legacy /ops_report (by captain) and /ops_bank_report (by bank), and
-// the vault roll-up /vault1_reports (by bank, over the vault's receipts: see `vaultReport`).
+// The Operations reports — the legacy /ops_report (by captain), and «تقرير البنوك»: the legacy vault
+// roll-up /vault1_reports (by bank, over the vault's receipts: see `bankReport`).
 //
-// WHAT THE FIRST TWO REPORT, precisely (discovery §D): COMPLETED shipments in a date range, where
-// daily shipments are attributed by their COLLECTION date and secured ones by their DELIVERY date.
-// That two-date split is not a detail — it is the same distinction the day board turns on, and
-// getting it wrong moves money between months.
+// ROUND 14. «انا كنت قلت لك اعمل لي شاشه تقرير بنوك … انت فعلا عملتها بس حطيتها في شاشه تجميع خزينه»:
+// the bank report the owner asked for was the vault roll-up, so the roll-up is the bank report now,
+// and the legacy /ops_bank_report port (the captain report's completed shipments keyed on the bank
+// instead) is gone — nothing else read it.
+//
+// WHAT THE CAPTAIN REPORT COUNTS, precisely (discovery §D): COMPLETED shipments in a date range,
+// where daily shipments are attributed by their COLLECTION date and secured ones by their DELIVERY
+// date. That two-date split is not a detail — it is the same distinction the day board turns on,
+// and getting it wrong moves money between months.
 //
 // THE CAPTAIN COMES FROM THE ASSIGNMENT. Legacy read `leader1` for the daily facet and `leader2`
 // for the secured one (contad_app.js:4894/4935) — two fields on the shipment. The approved SPLIT
@@ -18,22 +23,26 @@
 // therefore contributes zero packages — exactly as in legacy, where those fields were null and
 // `$ifNull`'d to 0.
 import {
+  type OperationsBankBranchReportDto,
+  type OperationsBankBranchReportQuery,
   type OperationsBankReportDto,
   type OperationsCaptainReportDto,
   type OperationsReportQuery,
   type OperationsVaultHeldReportDto,
-  type OperationsVaultReportDto,
 } from '@ecms/contracts';
 import { fromMinorUnits, ymdToUtcDate } from '@ecms/contracts';
 import { getDirectoryEmployee } from '../../../platform/directory';
+import { NotFoundError } from '../../../shared/errors';
+import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsCurrencyRepository } from '../currencies/currency.repository';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { type OperationsShipmentLine } from '../shipments/shipment.model';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
-import { vaultCustody } from '../treasury-boundary';
+import { vaultCustody, type VaultCustodyView } from '../treasury-boundary';
 import {
   bankReportRows,
+  branchReportRows,
   captainReportRows,
   defaultReportRange,
   explicitReportRange,
@@ -45,6 +54,35 @@ const resolveRange = (query: OperationsReportQuery): { from: Date; toExclusive: 
   query.from !== undefined && query.to !== undefined
     ? explicitReportRange(query.from, query.to)
     : defaultReportRange(new Date());
+
+/**
+ * One vault receipt as a row of the bank roll-up — «تقرير البنوك» and, since Round 25, its bank's
+ * «لوحة البنك بفروعه». One builder for both, so a receipt cannot mean one thing in the bank's row and
+ * another in its branch's.
+ */
+const receivedRow = (
+  custody: VaultCustodyView,
+  lines: readonly OperationsShipmentLine[],
+  bankId: string,
+  bankName: string,
+  currencyName: ReadonlyMap<string, string>,
+): ReportInputRow => ({
+  shipmentId: custody.shipmentId,
+  // The bank report is not keyed on a captain; custody is the treasury's, not a route's.
+  captainEmployeeId: null,
+  captainName: '',
+  bankId,
+  bankName,
+  // Packages come from CUSTODY, counted once per shipment — the same fix as the reports.
+  bagCount: custody.bagCount,
+  cartonCount: custody.cartonCount,
+  boxCount: custody.boxCount,
+  lines: lines.map((line) => ({
+    currencyId: String(line.currencyId),
+    currencyName: currencyName.get(String(line.currencyId)) ?? '',
+    amount: fromMinorUnits(line.amountMinor),
+  })),
+});
 
 class OperationsReportService {
   /**
@@ -135,8 +173,11 @@ class OperationsReportService {
   }
 
   /**
-   * The legacy `/vault1_reports` + `/vault1` aggregations, rolled up by bank (B6) — over the
-   * period the owner gave the screen's dates: «يجيب اللى اتسلم واللى متسلمش ويجيب البداية كل اول شهر».
+   * «تقرير البنوك» (Round 14) — the legacy `/vault1_reports` + `/vault1` aggregations, rolled up by
+   * bank (B6, the screen that shipped as «تجميع الخزينة»: «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه
+   * تقرير بنوك») — over the period the owner gave the screen's dates: «يجيب اللى اتسلم واللى متسلمش
+   * ويجيب البداية كل اول شهر». Asked which shipments it counts once it became the bank report, he
+   * kept exactly this: secured shipments only, every one received into the vault in the period.
    *
    * WHICH SHIPMENTS. Every custody the vault TOOK in the period, judged on the receipt's Cairo day
    * (`vaultReceiptRange`), whatever happened to it since — still held, released on dispatch, the
@@ -147,15 +188,15 @@ class OperationsReportService {
    * receipt's packages. A deleted shipment is not in it either (`findByIds` reads live rows), as
    * in the other two reports.
    *
-   * It goes through the SAME `bankReportRows` the bank report uses. That is the point: the legacy
-   * pair computed package counts two different ways over overlapping sets — the vault screen per
-   * document, the bank report per currency line (Q26) — so the two screens disagreed about the
-   * same shipments. One code path cannot.
+   * It goes through the SAME roll-up as the captain report and «تقرير الخزينة»
+   * (report-aggregation.ts). That is the point: the legacy screens computed package counts two
+   * different ways over overlapping sets — the vault screen per document, its bank report per
+   * currency line (Q26) — so they disagreed about the same shipments. One code path cannot.
    */
-  async vaultReport(
+  async bankReport(
     query: OperationsReportQuery,
     now: Date = new Date(),
-  ): Promise<OperationsVaultReportDto> {
+  ): Promise<OperationsBankReportDto> {
     const range = vaultReceiptRange(query, now);
     // One custody per shipment at most: `ux_shipment` allows a single live custody, so a shipment
     // cannot appear twice however many times it was received and cancelled.
@@ -184,23 +225,9 @@ class OperationsReportService {
         bankNames.set(bankId, bank?.opsName ?? '');
       }
 
-      rows.push({
-        shipmentId: custody.shipmentId,
-        // The vault roll-up is not keyed on a captain; custody is the treasury's, not a route's.
-        captainEmployeeId: null,
-        captainName: '',
-        bankId,
-        bankName: bankNames.get(bankId) ?? '',
-        // Packages come from CUSTODY, counted once per shipment — the same fix as the reports.
-        bagCount: custody.bagCount,
-        cartonCount: custody.cartonCount,
-        boxCount: custody.boxCount,
-        lines: shipment.lines.map((line: OperationsShipmentLine) => ({
-          currencyId: String(line.currencyId),
-          currencyName: currencyName.get(String(line.currencyId)) ?? '',
-          amount: fromMinorUnits(line.amountMinor),
-        })),
-      });
+      rows.push(
+        receivedRow(custody, shipment.lines, bankId, bankNames.get(bankId) ?? '', currencyName),
+      );
     }
 
     const { rows: built, grandTotal } = bankReportRows(rows);
@@ -211,6 +238,106 @@ class OperationsReportService {
       to: ymdToUtcDate(range.to).toISOString(),
       rows: built,
       grandTotal,
+    };
+  }
+
+  /**
+   * «لوحة البنك بفروعه» (Round 25) — ONE bank of «تقرير البنوك», broken down by its branches: «عاوز فى
+   * الجدول عند البنك فى الاخر بعد الصناديق يكون فيه سهم ادوس عليه يفتح زى داش برود كدا للبنك بالفروع
+   * بتاعته».
+   *
+   * THE SAME SHIPMENTS AS THE BANK'S ROW of `bankReport`, read the same way: the period's vault
+   * receipts (`receivedBetween` — a cancelled receipt is not one), their live shipments, those billed
+   * to this bank. The database does the narrowing — the receipts by their indexed instant, the
+   * shipments by id, bank and `isDeleted`, with only the branch ids and the money projected
+   * (`findBankBranchFacts`) — so the answer carries this bank's محصنات and nothing else.
+   *
+   * WHY THE ROLL-UP ITSELF IS NOT A PIPELINE. The packages are the treasury's, behind the custody port
+   * (treasury-boundary.ts): a `$lookup` from the shipments into the custody collection would read
+   * another owner's collection behind its back. And the branches must add up to the bank's row figure
+   * for figure, which only ONE roll-up can promise: the rows go through `branchReportRows` — the same
+   * `groupBy` / `addRow` as `bankReportRows` — in the receipts' order, so `total` IS the bank row.
+   *
+   * WHICH BRANCH: `side` — «من فرع» (`origin`, the default: where the محصنة was collected, so where
+   * what the vault received came from) or «إلى فرع» (`destination`). A branch of another bank says
+   * which (`otherBankName`).
+   */
+  async bankBranchReport(
+    bankId: string,
+    query: OperationsBankBranchReportQuery,
+    now: Date = new Date(),
+  ): Promise<OperationsBankBranchReportDto> {
+    // Any bank the report can show a row for — a bank retired since keeps its history.
+    const [bank] = await operationsBankRepository.findByIdsSystem([bankId]);
+    if (bank === undefined) throw new NotFoundError('no such bank');
+
+    const range = vaultReceiptRange(query, now);
+    const received = await vaultCustody().receivedBetween(range.start, range.endExclusive);
+    const shipments = await operationsShipmentRepository.findBankBranchFacts(
+      received.map((custody) => custody.shipmentId),
+      bankId,
+    );
+    const byId = new Map(shipments.map((doc) => [String(doc._id), doc]));
+
+    const currencies = (
+      await operationsCurrencyRepository.list({ filter: {}, page: 1, pageSize: 500 })
+    ).items;
+    const currencyName = new Map(currencies.map((c) => [String(c._id), c.name]));
+
+    // The branches named in ONE read, retired ones included (the shipment still names them), and
+    // the banks of those that are another bank's in one more.
+    const branchIdOf = new Map(
+      shipments.map((doc) => [
+        String(doc._id),
+        String(query.side === 'destination' ? doc.destinationBranchId : doc.originBranchId),
+      ]),
+    );
+    const branches = await operationsBankBranchRepository.findByIdsSystem([
+      ...new Set(branchIdOf.values()),
+    ]);
+    const branchById = new Map(branches.map((b) => [String(b._id), b]));
+    const otherBankIds = [
+      ...new Set(branches.map((b) => String(b.bankId)).filter((id) => id !== bankId)),
+    ];
+    const otherBanks = await operationsBankRepository.findByIdsSystem(otherBankIds);
+    const otherBankName = new Map(otherBanks.map((b) => [String(b._id), b.opsName]));
+
+    const rows: ReportInputRow[] = [];
+    // In the receipts' order — the order `bankReport` adds this bank's receipts in.
+    for (const custody of received) {
+      const shipment = byId.get(custody.shipmentId);
+      if (shipment === undefined) continue; // another bank's, deleted, or a broken reference
+      rows.push(receivedRow(custody, shipment.lines, bankId, bank.opsName, currencyName));
+    }
+
+    const { rows: built, grandTotal } = branchReportRows(
+      rows,
+      (row) => {
+        const id = branchIdOf.get(row.shipmentId);
+        return id !== undefined && branchById.has(id) ? id : null;
+      },
+      (branchId) => {
+        const branch = branchId === null ? undefined : branchById.get(branchId);
+        if (branch === undefined) {
+          return { name: '', code: null, areaName: null, otherBankName: null };
+        }
+        const ownBank = String(branch.bankId);
+        return {
+          name: branch.name,
+          code: branch.code,
+          areaName: branch.opsAreaName,
+          otherBankName: ownBank === bankId ? null : (otherBankName.get(ownBank) ?? ''),
+        };
+      },
+    );
+    return {
+      from: ymdToUtcDate(range.from).toISOString(),
+      to: ymdToUtcDate(range.to).toISOString(),
+      side: query.side,
+      bankId,
+      bankName: bank.opsName,
+      rows: built,
+      total: grandTotal,
     };
   }
 
@@ -228,7 +355,7 @@ class OperationsReportService {
    * transaction (receive, dispatch, cancel), so the two sets are the same, and this one is the one the
    * neighbouring screen shows. The custody is read for the packages only, counted once per shipment.
    *
-   * Through `bankReportRows`, like the roll-up and the bank report: one code path, one answer.
+   * Through `bankReportRows`, like the bank report: one code path, one answer.
    */
   async vaultHeldReport(now: Date = new Date()): Promise<OperationsVaultHeldReportDto> {
     const shipments = await operationsShipmentRepository.securedInVault();
@@ -250,7 +377,7 @@ class OperationsReportService {
       const bankId = String(shipment.mainBankId);
       return {
         shipmentId,
-        // Like the roll-up, keyed on the bank: custody is the treasury's, not a route's.
+        // Like the bank report, keyed on the bank: custody is the treasury's, not a route's.
         captainEmployeeId: null,
         captainName: '',
         bankId,
@@ -270,17 +397,6 @@ class OperationsReportService {
     return { asOf: now.toISOString(), rows: built, grandTotal };
   }
 
-  /** The legacy `/ops_bank_report` — one row per bank. */
-  async bankReport(query: OperationsReportQuery): Promise<OperationsBankReportDto> {
-    const { rows, from, toExclusive } = await this.collect(query);
-    const { rows: built, grandTotal } = bankReportRows(rows);
-    return {
-      from: from.toISOString(),
-      to: new Date(toExclusive.getTime() - 86_400_000).toISOString(),
-      rows: built,
-      grandTotal,
-    };
-  }
 }
 
 export const operationsReportService = new OperationsReportService();

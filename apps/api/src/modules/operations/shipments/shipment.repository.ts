@@ -76,12 +76,31 @@ const openSecuredFilter: FilterQuery<OperationsShipmentDoc> = {
   status: { $in: OPEN_SECURED_STATUSES },
 };
 
-/** The secured shipments the vault has not received yet — status draft, not deleted. */
-const securedDraftFilter: FilterQuery<OperationsShipmentDoc> = {
+/**
+ * The secured shipments the vault has not received yet — status draft, not deleted — or, with
+ * `collectedBy` (a UTC midnight: the Cairo day "today" stored the date-only way), the receive
+ * queue's DEFAULT set (Round 13): the drafts whose collection day has come (on or before it), the
+ * ones with a pickup recorded whatever their day (yellow — somebody has it in hand), and the
+ * pre-Round-10 rows with no record at all (the service decides those by their pickup leg).
+ *
+ * `{ pickup: { $ne: null } }` is "a record is written": Mongo reads a missing field as null, so the
+ * rows without the field are the third branch's alone. Every branch rides `ix_type_status_created`'s
+ * `{shipmentType, status}` prefix, as the whole set did.
+ */
+const securedDraftFilter = (collectedBy?: Date): FilterQuery<OperationsShipmentDoc> => ({
   isDeleted: false,
   shipmentType: 'secured',
   status: 'draft',
-};
+  ...(collectedBy === undefined
+    ? {}
+    : {
+        $or: [
+          { collectionDate: { $lte: collectedBy } },
+          { pickup: { $ne: null } },
+          { pickup: { $exists: false } },
+        ],
+      }),
+});
 
 /**
  * «صرف الخزينة» (Round 10) — every secured shipment IN THE VAULT, or only those whose delivery date
@@ -111,6 +130,26 @@ const distributionFilter = (day: Date, today: Date): FilterQuery<OperationsShipm
   $or: [
     { deliveryDate: day, status: { $in: ['draft', 'inVault'] } },
     { deliveryDate: { $lt: today }, status: 'inVault' },
+  ],
+});
+
+/**
+ * Round 30 — «توزيع المحصنات» on a PAST day, read as its RECORD: the secured shipments due out on
+ * `day` (a UTC midnight), WHATEVER has become of them since — drafts that never reached the vault,
+ * ones still in it, ones handed over or delivered — plus `riding`: the shipments whose LIVE delivery
+ * leg rides a crew row of that day (an overdue one placed on that day's van has its delivery date
+ * moved to the day, so it is usually due on it too). The first branch rides
+ * `ix_type_delivery_date_status`, the second the `_id` index.
+ */
+const distributionRecordFilter = (
+  day: Date,
+  riding: readonly string[],
+): FilterQuery<OperationsShipmentDoc> => ({
+  isDeleted: false,
+  shipmentType: 'secured',
+  $or: [
+    { deliveryDate: day },
+    ...(riding.length === 0 ? [] : [{ _id: { $in: riding.map((id) => new Types.ObjectId(id)) } }]),
   ],
 });
 
@@ -207,20 +246,20 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   }
 
   /**
-   * Every secured shipment the vault has not received yet (status `draft`), newest created first —
-   * the vault's receive queue reads these and keeps the ones its stage asks for.
+   * The secured shipments the vault has not received yet (status `draft`), newest created first —
+   * every one, or with `collectedBy` the receive queue's default set (`securedDraftFilter`).
    */
-  async securedDrafts(): Promise<OperationsShipmentDoc[]> {
+  async securedDrafts(collectedBy?: Date): Promise<OperationsShipmentDoc[]> {
     return this.model
-      .find(securedDraftFilter)
+      .find(securedDraftFilter(collectedBy))
       .sort({ createdAt: -1 })
       .lean<OperationsShipmentDoc[]>()
       .exec();
   }
 
-  /** How many rows `securedDrafts` would return — counted before anything is loaded. */
-  async countSecuredDrafts(): Promise<number> {
-    return this.model.countDocuments(securedDraftFilter).exec();
+  /** How many rows `securedDrafts(collectedBy)` would return — counted before anything is loaded. */
+  async countSecuredDrafts(collectedBy?: Date): Promise<number> {
+    return this.model.countDocuments(securedDraftFilter(collectedBy)).exec();
   }
 
   /**
@@ -249,6 +288,26 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
   /** How many rows `securedForDistribution` would return — counted before anything is loaded. */
   async countSecuredForDistribution(day: Date, today: Date): Promise<number> {
     return this.model.countDocuments(distributionFilter(day, today)).exec();
+  }
+
+  /**
+   * Round 30 — a PAST distribution day's record (`distributionRecordFilter`): the shipments due on
+   * it, at any status, and those whose live delivery leg rides one of its crew rows (`riding`). In
+   * no particular order — the service orders them as it orders a day to come.
+   */
+  async securedDistributionRecord(
+    day: Date,
+    riding: readonly string[],
+  ): Promise<OperationsShipmentDoc[]> {
+    return this.model
+      .find(distributionRecordFilter(day, riding))
+      .lean<OperationsShipmentDoc[]>()
+      .exec();
+  }
+
+  /** How many rows `securedDistributionRecord` would return — counted before anything is loaded. */
+  async countSecuredDistributionRecord(day: Date, riding: readonly string[]): Promise<number> {
+    return this.model.countDocuments(distributionRecordFilter(day, riding)).exec();
   }
 
   /**
@@ -321,6 +380,28 @@ class OperationsShipmentRepository extends BaseRepository<OperationsShipmentDoc>
     return this.model
       .find({ _id: { $in: ids }, isDeleted: false })
       .lean<OperationsShipmentDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Round 25 — «لوحة البنك بفروعه»: of a set of shipments (the period's vault receipts), the LIVE
+   * ones billed to ONE bank, and only the fields its branch roll-up reads. The narrowing is the
+   * database's — `_id` in the set (the primary index), the bank and `isDeleted` on top — so a
+   * bank's dashboard carries that bank's محصنات of the period and nothing else across the wire.
+   */
+  async findBankBranchFacts(
+    ids: string[],
+    bankId: string,
+  ): Promise<
+    Pick<OperationsShipmentDoc, '_id' | 'originBranchId' | 'destinationBranchId' | 'lines'>[]
+  > {
+    if (ids.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: ids }, mainBankId: new Types.ObjectId(bankId), isDeleted: false })
+      .select({ originBranchId: 1, destinationBranchId: 1, lines: 1 })
+      .lean<
+        Pick<OperationsShipmentDoc, '_id' | 'originBranchId' | 'destinationBranchId' | 'lines'>[]
+      >()
       .exec();
   }
 

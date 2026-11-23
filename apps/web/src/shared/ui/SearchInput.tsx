@@ -60,8 +60,10 @@ export const SearchInput = ({
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={placeholder ?? t('common.search')}
+        // The browser's own ✕ on a search box hidden (the roster's touch search does the same):
+        // this box draws its own clear button, and Chromium drew a second one beside it.
         className={cn(
-          'w-full rounded-lg border border-slate-200 bg-white py-2 pe-9 ps-9 text-slate-800 placeholder:text-slate-400 focus:border-brand-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100',
+          'w-full rounded-lg border border-slate-200 bg-white py-2 pe-9 ps-9 text-slate-800 placeholder:text-slate-400 focus:border-brand-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 [&::-webkit-search-cancel-button]:appearance-none',
           textScale === 'comfortable' ? 'text-base' : 'text-sm',
         )}
       />

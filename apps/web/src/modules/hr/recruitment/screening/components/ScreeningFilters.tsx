@@ -8,6 +8,7 @@
 import { EDUCATION_LEVELS, SCREENING_STATUSES, type EducationLevel, type ScreeningStatus } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { MultiSelect } from '../../../../../shared/ui/MultiSelect';
 import { Input } from '../../../../../shared/ui/form';
 import { CloseIcon } from '../../../../../shared/ui/icons';
@@ -67,6 +68,7 @@ export const ScreeningFilters = ({
 
       {value.applicantId === '' ? (
         <ApplicantPicker
+          className={SEARCH_FITS_TEXT}
           onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })}
           useSearch={useApplicantSearch}
           placeholder={t('screening.filters.applicantSearch')}

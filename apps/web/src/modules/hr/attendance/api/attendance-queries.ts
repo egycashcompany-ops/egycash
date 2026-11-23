@@ -6,9 +6,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ApproveOvertime,
   type CreateAttendanceRegularization,
+  type CreateAttendanceDecision,
   type CreateShift,
   type CreateShiftAssignment,
+  type DecideAttendanceDecision,
   type DecideAttendanceRegularization,
+  type RevokeAttendanceDecision,
+  type RetryAttendanceQuarantine,
+  type DiscardAttendanceQuarantine,
+  type CreateAttendanceEnrollment,
   type UpdateShift,
 } from '@ecms/contracts';
 import { listKey } from '../../../../shared/lib/query-keys';
@@ -18,10 +24,20 @@ const MODULE = 'hr';
 const SHIFTS = 'attendanceShifts';
 const ASSIGNMENTS = 'attendanceAssignments';
 const DAYS = 'attendanceDays';
+const SHEET = 'attendanceSheet';
+const SHEET_SUMMARY = 'attendanceSheetSummary';
+const DECISIONS = 'attendanceDecisions';
+const DECISION_SIGNALS = 'attendanceDecisionSignals';
+const EMPLOYEE_SUMMARY = 'attendanceEmployeeSummary';
+const EMPLOYEE_PERIOD = 'attendanceEmployeePeriod';
 const MY_DAYS = 'attendanceMyDays';
 const REGULARIZATIONS = 'attendanceRegularizations';
 const MY_REGULARIZATIONS = 'attendanceMyRegularizations';
 const PENDING = 'attendancePendingRegularizations';
+const UNMATCHED = 'attendanceUnmatchedIds';
+const QUARANTINE = 'attendanceQuarantine';
+const BACKFILLS = 'attendanceBackfills';
+const DEVICES = 'attendanceDevices';
 
 export const useShifts = () =>
   useQuery({
@@ -71,7 +87,8 @@ export const useRemoveShiftAssignment = () => {
 
 // ── AT-6 ────────────────────────────────────────────────────────────────────
 
-type Params = Record<string, string | number>;
+/** A list filter (the daily sheet's branches and sections, the queue's statuses) is an array. */
+type Params = Record<string, string | number | readonly string[]>;
 
 /** The daily sheet and the employee month read the same scoped endpoint, different filters. */
 export const useAttendanceDays = (params: Params, enabled = true) =>
@@ -80,6 +97,128 @@ export const useAttendanceDays = (params: Params, enabled = true) =>
     queryFn: () => api.listAttendanceDays(params),
     placeholderData: (prev) => prev,
     enabled,
+  });
+
+/**
+ * The daily sheet — one date, starting from the employees. Its own cache key, because its rows are
+ * a different shape from the day list's and a no-show has no day row at all.
+ */
+export const useAttendanceSheet = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, SHEET, params),
+    queryFn: () => api.listAttendanceSheet(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * Manager day decisions (stage 3). Every mutation invalidates BOTH the decision lists and the day
+ * caches, because deciding a day is what rewrites it: the sheet behind the dialog must not keep
+ * showing the status the decision just replaced.
+ */
+const invalidateDecisions = (client: ReturnType<typeof useQueryClient>): void => {
+  void client.invalidateQueries({ queryKey: [MODULE, DECISIONS] });
+  void client.invalidateQueries({ queryKey: [MODULE, DECISION_SIGNALS] });
+  void client.invalidateQueries({ queryKey: [MODULE, DAYS] });
+  void client.invalidateQueries({ queryKey: [MODULE, SHEET] });
+  void client.invalidateQueries({ queryKey: [MODULE, SHEET_SUMMARY] });
+  void client.invalidateQueries({ queryKey: [MODULE, MY_DAYS] });
+  // The figures above the record are a reading of the same rows: deciding a day moves them.
+  void client.invalidateQueries({ queryKey: [MODULE, EMPLOYEE_SUMMARY] });
+};
+
+export const useAttendanceDecisions = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, DECISIONS, params),
+    queryFn: () => api.listAttendanceDecisions(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useAttendanceDecisionSignals = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, DECISION_SIGNALS, params),
+    queryFn: () => api.attendanceDecisionSignals(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useCreateAttendanceDecision = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAttendanceDecision) => api.createAttendanceDecision(body),
+    onSuccess: () => invalidateDecisions(client),
+  });
+};
+
+export const useDecideAttendanceDecision = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: DecideAttendanceDecision }) =>
+      api.decideAttendanceDecision(id, body),
+    onSuccess: () => invalidateDecisions(client),
+  });
+};
+
+export const useRevokeAttendanceDecision = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: RevokeAttendanceDecision }) =>
+      api.revokeAttendanceDecision(id, body),
+    onSuccess: () => invalidateDecisions(client),
+  });
+};
+
+/**
+ * The band above the sheet. Its own query so the counts survive a page change — paging the table
+ * must not blank the five numbers above it and then redraw them a moment later.
+ */
+export const useAttendanceSheetSummary = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, SHEET_SUMMARY, params),
+    queryFn: () => api.attendanceSheetSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * One employee's period figures. Its own cache key, because it answers a different question from
+ * the day list beside it and must survive that list being re-fetched.
+ */
+export const useAttendanceEmployeeSummary = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, EMPLOYEE_SUMMARY, params),
+    queryFn: () => api.attendanceEmployeeSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useMyAttendanceSummary = (params: Params) =>
+  useQuery({
+    queryKey: listKey(MODULE, EMPLOYEE_SUMMARY, { ...params, me: 1 }),
+    queryFn: () => api.myAttendanceSummary(params),
+    placeholderData: (prev) => prev,
+  });
+
+/**
+ * One employee's resolved period. Keyed apart from the summary because the two are read at
+ * different rates — the figures are one small object the header draws, this is up to a year of
+ * days the table and the calendar page through — and both come from the same resolution, so they
+ * cannot disagree.
+ */
+export const useAttendanceEmployeePeriod = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, EMPLOYEE_PERIOD, params),
+    queryFn: () => api.attendanceEmployeePeriod(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useMyAttendancePeriod = (params: Params) =>
+  useQuery({
+    queryKey: listKey(MODULE, EMPLOYEE_PERIOD, { ...params, me: 1 }),
+    queryFn: () => api.myAttendancePeriod(params),
+    placeholderData: (prev) => prev,
   });
 
 export const useMyAttendanceDays = (params: Params) =>
@@ -112,7 +251,7 @@ export const usePendingRegularizations = () =>
 
 /** Everything a regularization write can move: the queues, my list, and the day rows. */
 const invalidateAttendance = (client: ReturnType<typeof useQueryClient>): void => {
-  for (const key of [REGULARIZATIONS, MY_REGULARIZATIONS, PENDING, DAYS, MY_DAYS]) {
+  for (const key of [REGULARIZATIONS, MY_REGULARIZATIONS, PENDING, DAYS, MY_DAYS, EMPLOYEE_SUMMARY]) {
     void client.invalidateQueries({ queryKey: [MODULE, key] });
   }
 };
@@ -151,6 +290,143 @@ export const useApproveOvertime = () => {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: [MODULE, DAYS] });
       void client.invalidateQueries({ queryKey: [MODULE, MY_DAYS] });
+      void client.invalidateQueries({ queryKey: [MODULE, EMPLOYEE_SUMMARY] });
+    },
+  });
+};
+
+// ── AT-D4: device health ──────────────────────────────────────────────────────
+
+export const useAttendanceUnmatchedIds = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, UNMATCHED, params),
+    queryFn: () => api.attendanceUnmatchedIds(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useAttendanceQuarantine = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, QUARANTINE, params),
+    queryFn: () => api.attendanceQuarantine(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * The backfill runs. Polled while one is running, because progress is the question the card
+ * answers — and NOT polled otherwise, so a finished run costs nothing to look at. The established
+ * pattern (`refetchIntervalInBackground: false`): a tab nobody is looking at asks for nothing.
+ */
+export const useAttendanceBackfills = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, BACKFILLS, params),
+    queryFn: () => api.attendanceBackfills(params),
+    placeholderData: (prev) => prev,
+    enabled,
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((run) => run.status === 'running') ? 5_000 : false,
+    refetchIntervalInBackground: false,
+  });
+
+export const useAttendanceDevices = (params: Params, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, DEVICES, params),
+    queryFn: () => api.attendanceDevices(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * Linking a machine id, then retrying its held scans.
+ *
+ * Both caches are invalidated, and so are the DAY caches: a retry turns held rows into punches,
+ * which rewrites those days — a screen still showing the pre-link numbers would be telling the
+ * person who just did the linking that nothing happened.
+ */
+export const useLinkAttendanceEnrollment = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateAttendanceEnrollment) => api.createAttendanceEnrollment(body),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: [MODULE, UNMATCHED] }),
+        qc.invalidateQueries({ queryKey: [MODULE, QUARANTINE] }),
+        qc.invalidateQueries({ queryKey: [MODULE, DAYS] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET_SUMMARY] }),
+        qc.invalidateQueries({ queryKey: [MODULE, EMPLOYEE_PERIOD] }),
+      ]);
+    },
+  });
+};
+
+export const useRetryAttendanceQuarantine = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RetryAttendanceQuarantine) => api.retryAttendanceQuarantine(body),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: [MODULE, UNMATCHED] }),
+        qc.invalidateQueries({ queryKey: [MODULE, QUARANTINE] }),
+        qc.invalidateQueries({ queryKey: [MODULE, DAYS] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET_SUMMARY] }),
+        qc.invalidateQueries({ queryKey: [MODULE, EMPLOYEE_PERIOD] }),
+      ]);
+    },
+  });
+};
+
+export const useDiscardAttendanceQuarantine = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DiscardAttendanceQuarantine) => api.discardAttendanceQuarantine(body),
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: [MODULE, UNMATCHED] }),
+        qc.invalidateQueries({ queryKey: [MODULE, QUARANTINE] }),
+        qc.invalidateQueries({ queryKey: [MODULE, SHEET_SUMMARY] }),
+      ]);
+    },
+  });
+};
+
+export const useCancelAttendanceBackfill = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.cancelAttendanceBackfill(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: [MODULE, BACKFILLS] });
+    },
+  });
+};
+
+export const useResumeAttendanceBackfill = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.resumeAttendanceBackfill(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: [MODULE, BACKFILLS] });
+    },
+  });
+};
+
+export const useWorkingHours = () =>
+  useQuery({ queryKey: [MODULE, 'workingHours'], queryFn: api.getWorkingHours, staleTime: 30_000 });
+
+export const useWorkingHoursHistory = () =>
+  useQuery({ queryKey: [MODULE, 'workingHoursHistory'], queryFn: api.getWorkingHoursHistory, staleTime: 30_000 });
+
+export const useSaveWorkingHours = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (departments: Parameters<typeof api.saveWorkingHours>[0]) => api.saveWorkingHours(departments),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, 'workingHours'] });
+      void client.invalidateQueries({ queryKey: [MODULE] });
+      // The audit row behind the change log is written through a queue, a moment after the save.
+      setTimeout(() => void client.invalidateQueries({ queryKey: [MODULE, 'workingHoursHistory'] }), 1500);
     },
   });
 };

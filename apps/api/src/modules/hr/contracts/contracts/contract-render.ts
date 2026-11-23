@@ -5,6 +5,7 @@
 import { type ContractTemplateDoc } from '../contract-templates/contract-template.model';
 import { BASMALA_PNG } from './basmala';
 import { NOSI_EMBLEM_JPG } from './nosi-emblem';
+import { FORM_ONE_PAGE_1_PNG, FORM_ONE_PAGE_2_PNG, FORM_ONE_SCAN_CSS } from './form-one-scan';
 import { type ContractVariableValue } from './contract.model';
 
 /**
@@ -76,7 +77,28 @@ const pictureCss = (html: string): string =>
   (html.includes('class="nosi"')
     ? `.page p.nosi, .form-doc p.nosi { height: 20mm; margin: 0 auto; color: transparent; overflow: hidden;
                        background: url(${NOSI_EMBLEM_JPG}) center / contain no-repeat; }`
-    : '');
+    : '') +
+  (html.includes('class="scan f1p1"') ? scanCss() : '');
+
+/**
+ * «نموذج رقم (1)» on the authority's own pages (`form-one-scan.ts`): each page the scan, on a page
+ * of its own with no margin — the scan brings its own — and the values written on it where they go.
+ * Empty values write nothing: the form's own dots are the blank.
+ */
+const scanCss = (): string => `
+  @page scan { margin: 0; @top-center { content: none; } @bottom-center { content: none; } }
+  .doc-form.doc-scan { page: scan; }
+  .doc-scan .form-doc { display: block; min-height: 0; max-width: none; margin: 0; padding: 0; border: none; }
+  .form-doc .scan { position: relative; width: ${(1700 * 297) / 2800}mm; height: 297mm; margin: 0 auto;
+                    overflow: hidden; break-after: page; background: url(${FORM_ONE_PAGE_1_PNG}) center / 100% 100% no-repeat; }
+  .form-doc .scan.f1p2 { background-image: url(${FORM_ONE_PAGE_2_PNG}); break-after: auto; }
+  .form-doc .scan .at { position: absolute; white-space: nowrap; font-size: 10.5pt; line-height: 1.1; color: #000; }
+  .form-doc .scan .blank { display: none; }
+  .form-doc .scan .cells { height: 100%; border: none; }
+  .form-doc .scan .cells > i { height: 100%; border: none; }
+  .form-doc .scan .f1-cat { font-size: 14pt; }
+  @media screen { .doc-scan .form-doc .scan { margin-bottom: 8mm; box-shadow: 0 0 0 1px #ccc; } }
+${FORM_ONE_SCAN_CSS}`;
 
 /** A doc-control line in a template's footer (`table.foot`), cell by cell as text — or null. */
 export const pageFootCells = (footerHtml: string): string[] | null => {
@@ -295,16 +317,24 @@ const FORM_CSS = `
   @page form { @top-center { content: none; } @bottom-center { content: none; } }
 ${paperCss('.form-doc')}`;
 
-/** A form that brings its own head (class `ownhead`): no letterhead, and no frame round its pages. */
-const ownHead = (template: Pick<ContractTemplateDoc, 'sections'>): boolean =>
-  /class="[^"]*\bownhead\b/.test(template.sections.header);
+/** A form printed on the authority's own scanned pages (class `scan`, «نموذج رقم (1)»). */
+const onScan = (template: Pick<ContractTemplateDoc, 'sections'>): boolean =>
+  /class="scan\b/.test(template.sections.body);
 
-/** A form's section: framed on the `form` page, or on the bare page when it brings its own head. */
+/** A form that brings its own head (class `ownhead`, or its own pages): no letterhead, no frame. */
+const ownHead = (template: Pick<ContractTemplateDoc, 'sections'>): boolean =>
+  /class="[^"]*\bownhead\b/.test(template.sections.header) || onScan(template);
+
+/**
+ * A form's section: framed on the `form` page; on the bare page when it brings its own head; on
+ * the margin-less `scan` page when it is the authority's own pages.
+ */
 const formSection = (
   template: Pick<ContractTemplateDoc, 'sections' | 'signatures' | 'language'>,
   html: string,
   pageBreak = '',
-): string => `<section class="doc doc-form${ownHead(template) ? ' doc-bare' : ''}"${pageBreak}>${html}</section>`;
+): string =>
+  `<section class="doc doc-form${onScan(template) ? ' doc-scan' : ownHead(template) ? ' doc-bare' : ''}"${pageBreak}>${html}</section>`;
 
 /** Text safe inside HTML. */
 const escapeHtml = (text: string): string =>
@@ -313,21 +343,40 @@ const escapeHtml = (text: string): string =>
 /**
  * A row of digit boxes (`<span class="cells cN">…</span>`, «نموذج رقم (1)»): N boxes, one character
  * each from what the span holds once its placeholders are filled — the rest left empty for the hand.
+ * With `end` (`cells cN end`) the characters fill the LAST boxes, as an amount does: 9500 in five
+ * boxes of pounds is « 9500», not «9500 ».
  */
 const boxCells = (html: string, values: Map<string, string>): string =>
-  html.replace(/<span class="cells c(\d+)">([^<]*)<\/span>/g, (_m, n: string, inner: string) => {
+  html.replace(/<span class="cells c(\d+)( end)?">([^<]*)<\/span>/g, (_m, n: string, end: string | undefined, inner: string) => {
     const count = Number(n);
     const text = inner
       .replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_k, key: string) => values.get(key) ?? '')
       .replace(/&nbsp;/g, ' ')
       .replace(/\s+/g, '');
     const chars = [...text].slice(0, count);
+    const offset = end === undefined ? 0 : count - chars.length;
     const boxes = Array.from({ length: count }, (_x, i) => {
-      const char = chars[i];
+      const char = chars[i - offset];
       return `<i>${char === undefined ? '&nbsp;' : escapeHtml(char)}</i>`;
     });
-    return `<span class="cells c${count}">${boxes.join('')}</span>`;
+    return `<span class="cells c${count}${end ?? ''}">${boxes.join('')}</span>`;
   });
+
+const ARABIC_FIGURES = '٠١٢٣٤٥٦٧٨٩';
+
+/**
+ * The scanned «نموذج رقم (1)» filled in Arabic figures — «كل الارقام بالعربي»: the numbers, the
+ * dates, the wages, the codes, the telephone. Only the text changes, never a tag's classes (`c14`,
+ * `f1-occ1`) or an entity; an e-mail address (`f1-email`) keeps its own figures.
+ */
+export const arabicFigures = (html: string): string =>
+  html.replace(
+    /(<span class="at f1-email">[^<]*<\/span>)|>([^<]+)(?=<)/g,
+    (whole: string, email: string | undefined, text: string | undefined) =>
+      email !== undefined || text === undefined
+        ? whole
+        : `>${text.replace(/&#?\w+;|[0-9]/g, (m) => (m.length === 1 ? (ARABIC_FIGURES[Number(m)] ?? m) : m))}`,
+  );
 
 const formBody = (
   template: Pick<ContractTemplateDoc, 'sections' | 'signatures' | 'language'>,
@@ -336,10 +385,11 @@ const formBody = (
 ): string => {
   const map = new Map(values.map((v) => [v.key, v.value]));
   const fill = (html: string): string => {
-    return boxCells(html, map).replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_m, key: string) => {
+    const filled = boxCells(html, map).replace(/\{\{\s*([a-zA-Z0-9.]+)\s*\}\}/g, (_m, key: string) => {
       const value = map.get(key) ?? '';
       return value.trim() === '' ? BLANK : value;
     });
+    return onScan(template) ? arabicFigures(filled) : filled;
   };
   const signatures = template.signatures
     .map(

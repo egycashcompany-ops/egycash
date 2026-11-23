@@ -9,8 +9,10 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
 import {
+  EMPLOYEE_CODE_LOOKUP_MAX,
   platformPermissions,
   SettingKeys,
+  type EmployeeCodeMatchDto,
   type EmployeeDto,
   type EmployeeTimelineItemDto,
   type MyEmployeeSummaryDto,
@@ -624,5 +626,67 @@ describe('the personal-data edit never sets the photo', () => {
 
     // The other employee's own photo is untouched by any of it.
     expect((await getPhoto(viewerToken, photoPath(other.id))).status).toBe(200);
+  });
+});
+
+// ── The bulk upload's code lookup ───────────────────────────────────────────
+
+/**
+ * «عايز أرفعهم دفع واحده متسمى كل صورة بالكود»: the bulk photo upload reads a code out of each
+ * file's name and asks who holds it. It takes the photo write's own key and scope, so the screen
+ * offers exactly the people the photo upload may then change.
+ */
+describe('POST /hr/employees/codes/lookup', () => {
+  const lookup = (token: string, codes: unknown) =>
+    request(app)
+      .post('/api/v1/hr/employees/codes/lookup')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ codes });
+
+  it('answers the employees holding the codes, and leaves a code nobody holds out', async () => {
+    const other = await register('موظف للدفعة');
+    const res = await lookup(editorToken, [employee.code, other.code, '0999999', ` ${employee.code} `]);
+    expect(res.status).toBe(200);
+    const found = data<EmployeeCodeMatchDto[]>(res);
+    expect(found.map((m) => m.code).sort()).toEqual([employee.code, other.code].sort());
+    const mine = found.find((m) => m.code === employee.code);
+    expect(mine).toMatchObject({ id: employee.id, fullNameAr: 'موظف بصورة', status: employee.status });
+    const otherMatch = found.find((m) => m.code === other.code);
+    expect(otherMatch?.photoFileId).toBeNull();
+    expect(otherMatch?.photoUploadedAt).toBeNull();
+  });
+
+  it('says whether the employee already has a photo, and when it went up', async () => {
+    const before = Date.now();
+    await uploadPhoto(editorToken, employee.id, PNG, 'face.png', 'image/png');
+    const [match] = data<EmployeeCodeMatchDto[]>(await lookup(editorToken, [employee.code]));
+    expect(match?.photoFileId).not.toBeNull();
+    // The screen skips the people whose photo is already new: this is what it reads.
+    const at = Date.parse(match?.photoUploadedAt ?? '');
+    expect(at).toBeGreaterThanOrEqual(before - 1000);
+    expect(at).toBeLessThanOrEqual(Date.now() + 1000);
+  });
+
+  it('needs employee.editPersonal: a viewer may not ask', async () => {
+    expect((await lookup(viewerToken, [employee.code])).status).toBe(403);
+    expect((await lookup(outsiderToken, [employee.code])).status).toBe(403);
+  });
+
+  it('stays inside the caller\'s scope: a branch editor elsewhere finds nobody here', async () => {
+    const farEditor = await accountWith(
+      'photo-far-batch@ecms.local',
+      ['employee.view', 'employee.editPersonal'],
+      'branch',
+      OTHER_BRANCH_ID,
+    );
+    const res = await lookup(farEditor, [employee.code]);
+    expect(res.status).toBe(200);
+    expect(data<EmployeeCodeMatchDto[]>(res)).toEqual([]);
+  });
+
+  it('refuses an empty list, and one longer than the screen ever sends', async () => {
+    expect((await lookup(editorToken, [])).status).toBe(400);
+    const tooMany = Array.from({ length: EMPLOYEE_CODE_LOOKUP_MAX + 1 }, (_, i) => String(1000000 + i));
+    expect((await lookup(editorToken, tooMany)).status).toBe(400);
   });
 });

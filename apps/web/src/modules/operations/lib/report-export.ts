@@ -1,4 +1,5 @@
-// The reports as files — «وزود ان اعمل … و ان اكسيل او pdf», on «تقرير القادة» and «تجميع الخزينة».
+// The reports as files — «وزود ان اعمل … و ان اكسيل او pdf», on «تقرير القادة» and «تقرير البنوك»
+// (the vault roll-up, «تجميع الخزينة» until Round 14).
 //
 // EXACTLY WHAT IS SHOWN. A report is not paged and is already in the browser, so — unlike the Fleet
 // and IT registers, which ask the server again for every page their filters match — the file is
@@ -47,8 +48,11 @@ export const reportExportHeader = (
   t: Translate,
   keyHeader: string,
   countHeader: string,
+  /** Round 25 — a column after the name («المنطقة» on «لوحة البنك بفروعه»), when the table has one. */
+  detailHeader?: string,
 ): string[] => [
   keyHeader,
+  ...(detailHeader === undefined ? [] : [detailHeader]),
   countHeader,
   t('operations.reportBoard.pound'),
   t('operations.reportBoard.dollar'),
@@ -84,11 +88,15 @@ export const reportExportTable = (
   catalog: readonly OperationsCurrencyDto[],
   header: string[],
   nameOf: (line: ReportTableLine) => string,
+  /** Round 25 — the column after the name, as the screen prints it (empty for «الإجمالي»). */
+  detailOf?: (line: ReportTableLine) => string | null,
 ): ReportExportTable => {
   const rows: XlsxCell[][] = [];
   let total: XlsxCell[] | null = null;
   for (const line of lines) {
-    const cells = [nameOf(line), ...figuresOf(line.totals, catalog)];
+    const detail =
+      detailOf === undefined ? [] : [line.kind === 'total' ? '' : (detailOf(line) ?? '')];
+    const cells = [nameOf(line), ...detail, ...figuresOf(line.totals, catalog)];
     if (line.kind === 'total') total = cells;
     else rows.push(cells);
   }
@@ -208,6 +216,62 @@ export const reportPrintDoc = ({
   serialHeader: t('operations.reportBoard.serial'),
   emptyLabel: t('operations.reportExport.empty'),
 });
+
+/**
+ * A further table a screen's files carry after its own (Round 17 — «لوحة تحكم» on «محصنات الخزينة»:
+ * «تنبيهات التسليم», «جدول التسليم», «مدة البقاء في الخزينة»): a sheet of the workbook and a printed
+ * page each, in the order given, after the table and the vault's panel. A screen with none — every
+ * report — writes the files it always wrote.
+ */
+export interface ReportExtraSection {
+  /** The sheet's name and the printed page's title. */
+  name: string;
+  /** The column heads after «م». */
+  header: string[];
+  rows: XlsxCell[][];
+  /** «الإجمالي» under the rows — null for a list whose lines overlap (the alerts). */
+  total: XlsxCell[] | null;
+}
+
+/** Everything a screen's two files hold, in their order. */
+export interface ReportFiles {
+  /** The table's strip — its sheet's name. */
+  tableName: string;
+  /** The screen's name — the printed title. */
+  name: string;
+  /** The line under every printed title. */
+  subtitle: string;
+  table: ReportExportTable;
+  /** The vault's «إجمالي قيمة الشحنات», with its name — null on a report without one. */
+  panel: { name: string; list: PanelExport } | null;
+  extras: readonly ReportExtraSection[];
+}
+
+/** The workbook's sheets: the table, the vault's panel, then each further section. */
+export const reportFileSheets = (serialHeader: string, files: ReportFiles): XlsxSheet[] => [
+  reportSheet(files.tableName, serialHeader, files.table),
+  ...(files.panel === null ? [] : [reportSheet(files.panel.name, serialHeader, files.panel.list)]),
+  ...files.extras.map((extra) => reportSheet(extra.name, serialHeader, extra)),
+];
+
+/** The printed pages, in the same order — each on the company form, under the same subtitle. */
+export const reportFileDocs = (t: Translate, locale: Locale, files: ReportFiles): FleetReport[] => [
+  reportPrintDoc({ t, locale, title: files.name, subtitle: files.subtitle, table: files.table }),
+  ...(files.panel === null
+    ? []
+    : [
+        reportPrintDoc({
+          t,
+          locale,
+          title: files.panel.name,
+          subtitle: files.subtitle,
+          table: files.panel.list,
+        }),
+      ]),
+  ...files.extras.map((extra) =>
+    reportPrintDoc({ t, locale, title: extra.name, subtitle: files.subtitle, table: extra }),
+  ),
+];
 
 /** Write the workbook and hand it to the browser — named for the screen and the Cairo day. */
 export const saveReportWorkbook = (stem: string, sheets: readonly XlsxSheet[], day: string): void =>

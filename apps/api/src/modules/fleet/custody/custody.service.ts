@@ -28,9 +28,8 @@ import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetReceiptRepository } from '../receipts/receipt.repository';
 import { FleetReceiptModel } from '../receipts/receipt.model';
 import { sortCustodyMovements } from './custody-sort';
-import { custodyDashboard, custodyMemoStateOf, custodyMemoStatusOf } from './custody-dashboard';
+import { custodyDashboard, custodyMemoStateOf } from './custody-dashboard';
 import { readCustodyFundTerms, type CustodyFundTerms } from './custody-fund';
-import { FleetCustodyMemoModel } from './custody-memo.model';
 import { fleetCustodyMemoRepository } from './custody-memo.repository';
 
 const round = (value: number): number => Math.round(value * 100) / 100;
@@ -112,31 +111,14 @@ const withCodes = async (rows: Movement[]): Promise<Movement[]> => {
 /**
  * The status of each memo the movements name — where each movement stands against the memos
  * («تمت الاستعاضة» / «في مذكرات لم تُستعَض» / «خارج المذكرات»): ONE read of the live memos the
- * rows name, their replenishment only. The dashboard's alone: the figures and «كل الحركات» never
- * pay for it. It needs the rows' `memoId`s only, so it runs beside the cars' codes.
+ * rows name, their replenishment only (`statusesByIds`, the fleet dashboard's `custodyStates` reads
+ * the same). The dashboard's alone: the figures and «كل الحركات» never pay for it. It needs the
+ * rows' `memoId`s only, so it runs beside the cars' codes.
  */
-const memoStatuses = async (
-  rows: readonly Movement[],
-): Promise<Map<string, FleetCustodyMemoStatus>> => {
-  const ids = [...new Set(rows.flatMap((row) => (row.memoId === null ? [] : [row.memoId])))];
-  const memos =
-    ids.length === 0
-      ? []
-      : await FleetCustodyMemoModel.find({
-          _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
-          isDeleted: false,
-        })
-          .select({ replenishmentId: 1, replenishmentHeld: 1 })
-          .lean<
-            {
-              _id: Types.ObjectId;
-              replenishmentId?: Types.ObjectId | null;
-              replenishmentHeld?: boolean;
-            }[]
-          >()
-          .exec();
-  return new Map(memos.map((memo) => [String(memo._id), custodyMemoStatusOf(memo)]));
-};
+const memoStatuses = (rows: readonly Movement[]): Promise<Map<string, FleetCustodyMemoStatus>> =>
+  fleetCustodyMemoRepository.statusesByIds(
+    rows.flatMap((row) => (row.memoId === null ? [] : [row.memoId])),
+  );
 
 /**
  * «السجل» of one line of «ملخص لكل سيارة»: the registry's car by its id. A code from the old book

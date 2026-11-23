@@ -1,4 +1,5 @@
-// «الكيلومترات يومًا بيوم» — the R-15 drawing of tab 7, as pure data (plan R-15, Q-10, §8.7).
+// «الكيلومترات يومًا بيوم» — the R-15 drawing of «العدادات والكيلومترات», as pure data (plan R-15,
+// Q-10, §8.7; the approved odometer sample, approved/odo-dark.png).
 //
 // The server decides every number of a column (`FleetDashboardKmBucketDto`); this file only turns
 // them into heights on one axis and names what each part MEANS, so the picture can never say more
@@ -16,9 +17,17 @@
 //           column. A stale row does NOT hold its day open: the column stays solid.
 //   empty   no chain row at all (`hasRows: false`): an empty slot, NEVER a zero bar.
 //
+// A column's FIGURE (`total`, the readout's linked «X كم» and the column's name) is what the
+// odometer register totals over the column's days — every valid row dated in them, a span counted
+// on its start day: `confirmedKm + spanKm` (audit D02; the solid part alone is NOT on any screen).
+//
 // Days by default; months above 31 days (`range.granularity`, the server's `periodGranularity`).
 // The average line (closed km ÷ closed calendar days) is a per-DAY figure, so it is drawn only on
 // the daily axis; the monthly one names it in the legend instead.
+//
+// A day column also says whether its day is a FRIDAY (the week's rest day, dimmed in the drawing):
+// the calendar's weekday of the server's own day key, read in UTC — no clock, no setting. A month
+// column is never a Friday.
 import {
   addDaysYmd,
   type FleetDashboardKmBucketDto,
@@ -34,8 +43,16 @@ export interface KmColumn {
   to: string;
   /** No chain row: an empty slot. */
   empty: boolean;
+  /**
+   * The column's km as the odometer register totals them over `from`…`to` (its link): the
+   * single-day part and the spans that START in it — `confirmedKm + spanKm` (audit D02). 0 on an
+   * empty slot.
+   */
+  total: number;
   /** The column holds today (the day itself, or today's month). */
   current: boolean;
+  /** A daily column whose day is a Friday (dimmed); always `false` on the monthly axis. */
+  friday: boolean;
   /** Heights, in % of the axis top, stacked bottom-up: solid, span, hatch. */
   solid: number;
   span: number;
@@ -51,14 +68,18 @@ export interface KmDayCount {
 
 export interface KmChartModel {
   granularity: KmGranularity;
-  /** The axis top, in km (a round figure above the tallest column and the average). */
+  /** The axis top, in km (a round figure at or above the tallest column and the average). */
   max: number;
-  /** The axis' four gridlines, top first: max, ⅔, ⅓, 0. */
+  /** The axis' gridlines, from 0 up to `max` in equal round steps (`axisTicks`). */
   ticks: readonly number[];
   columns: readonly KmColumn[];
   /** The average line — daily axis only, and only when the server gave one. */
   average: { km: number; pct: number } | null;
-  /** The x-axis labels: the first column, every seventh day (not crowding the last), and the last. */
+  /**
+   * The x-axis labels: every day of a period of up to LABEL_EVERY_DAY days (the approved drawing
+   * names each day and its weekday); above that the first column, every seventh day (not crowding
+   * the last), and the last; every month on the monthly axis.
+   */
   labels: readonly { index: number; text: string }[];
   /** Columns still waiting for readings, today excepted («لم تُغلق القراءة بعد»). */
   pending: readonly KmDayCount[];
@@ -76,21 +97,30 @@ export interface KmChartModel {
 export const HATCH_LIFT = 6;
 /** The fewest days between two labels of the daily axis. */
 const LABEL_GAP = 3;
+/** Up to this many days, every day of the axis carries its label. */
+export const LABEL_EVERY_DAY = 16;
 /**
  * Head room above what a hatched cap reaches (an open column, or the average a cap climbs to), so a
  * cap always has room under the top. A closed column needs none: the axis is as tall as the round
- * top above it, as the approved drawing has it (10/18's 5,800 km under a 6,000 top).
+ * top above it, as the approved drawing has it (11/10's 34,480 km under a 40,000 top).
  */
 const HEADROOM = 1.12;
 const STEPS = [1, 2, 2.5, 5, 10] as const;
 
-/** A round axis top: three equal steps of 1, 2, 2.5 or 5 × 10ⁿ, reaching at least `value`. */
-export const axisTop = (value: number): number => {
-  if (!(value > 0)) return 0;
-  const raw = value / 3;
+/**
+ * The value axis: 0 and round steps of 1, 2, 2.5 or 5 × 10ⁿ — four or so of them, as the dashboard's
+ * other charts draw theirs — the top one at or above `value`. `[0]` when nothing moved.
+ */
+export const axisTicks = (value: number): number[] => {
+  if (!(value > 0)) return [0];
+  const raw = value / 4;
   const magnitude = 10 ** Math.floor(Math.log10(raw));
   const step = STEPS.map((s) => s * magnitude).find((s) => s >= raw) ?? 10 * magnitude;
-  return step * 3;
+  const ticks: number[] = [0];
+  while ((ticks[ticks.length - 1] ?? 0) < value) {
+    ticks.push(Math.round(ticks.length * step * 100) / 100);
+  }
+  return ticks;
 };
 
 const lastDayOfMonth = (month: string): string => {
@@ -116,6 +146,10 @@ export const bucketDays = (
 export const axisLabel = (key: string, granularity: KmGranularity): string =>
   granularity === 'day' ? key.slice(5).replace('-', '/') : key.replace('-', '/');
 
+/** A 'YYYY-MM-DD' day key falls on a Friday — the calendar's weekday, read in UTC (no clock). */
+export const isFriday = (key: string): boolean =>
+  new Date(`${key}T00:00:00.000Z`).getUTCDay() === 5;
+
 export const kmChart = (
   km: Pick<FleetDashboardPeriodKmDto, 'buckets' | 'average'>,
   range: { from: string; to: string; granularity: KmGranularity },
@@ -132,14 +166,16 @@ export const kmChart = (
     0,
     ...km.buckets.map((b) => (b.confirmedKm + b.spanKm) * (capped(b) ? HEADROOM : 1)),
   );
-  const max = axisTop(Math.max(tallest, (average ?? 0) * HEADROOM));
+  const ticks = axisTicks(Math.max(tallest, (average ?? 0) * HEADROOM));
+  const max = ticks[ticks.length - 1] ?? 0;
   const pct = (value: number): number => (max > 0 ? Math.min(100, (value / max) * 100) : 0);
   const averagePct = average === null ? 0 : pct(average);
 
   const columns = km.buckets.map((bucket): KmColumn => {
     const days = bucketDays(bucket.key, granularity, range);
     const current = holdsToday(bucket.key);
-    const base = { bucket, ...days, current };
+    const friday = granularity === 'day' && isFriday(bucket.key);
+    const base = { bucket, ...days, current, friday, total: bucket.confirmedKm + bucket.spanKm };
     if (!bucket.hasRows) {
       return { ...base, empty: true, solid: 0, span: 0, hatch: 0, marker: null };
     }
@@ -162,8 +198,9 @@ export const kmChart = (
   });
 
   const last = columns.length - 1;
+  const every = granularity === 'month' || columns.length <= LABEL_EVERY_DAY;
   const labels = columns.flatMap((column, index) =>
-    granularity === 'month' ||
+    every ||
     index === 0 ||
     index === last ||
     // Every seventh day, unless it would sit on the last day's label.
@@ -188,7 +225,7 @@ export const kmChart = (
   return {
     granularity,
     max,
-    ticks: [max, (max * 2) / 3, max / 3, 0],
+    ticks,
     columns,
     average: average === null ? null : { km: average, pct: averagePct },
     labels,

@@ -23,6 +23,7 @@ import {
   type BulkInterviews,
   type BulkScheduleInterviews,
   type BulkStartInterviews,
+  type QuickDecideInterviews,
   type ScheduleInterview,
   type SkipInterviewer,
   type StartInterview,
@@ -37,7 +38,14 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
 import { applicantService, resolvePlacement } from '../applicants';
 import { screeningService } from '../screening';
-import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBinding } from '../workflow';
+import {
+  assertStageCorrectable,
+  assertStageNotPassed,
+  recruitmentWorkflowEngine,
+  registerStageBinding,
+  runBulk,
+  type StageBinding,
+} from '../workflow';
 import { InterviewModel } from './interview.model';
 import { interviewRepository, type InterviewListFilter } from './interview.repository';
 import { interviewStageRepository } from './interview-stage.repository';
@@ -101,6 +109,11 @@ class InterviewService {
     }
 
     await this.assertStageEntry(input.applicantId, stage);
+    // ...and that the candidate has not already moved BEYOND this round. `assertStageEntry`
+    // only looks backwards, so opening the first round again for somebody now at the security
+    // check passed it — and because `completed` is terminal for a round, `ensureStageRecord`
+    // would have obliged with a fresh attempt and pulled them back down the pipeline.
+    await assertStageNotPassed(input.applicantId, 'interview', stage.order, 'interview');
 
     // One live interview per stage (a cancelled round may be replaced).
     const active = await interviewRepository.findActiveAtStage(input.applicantId, stage.order);
@@ -171,6 +184,11 @@ class InterviewService {
       ]);
     }
     await this.assertStageEntry(input.applicantId, stage);
+    // ...and that the candidate has not already moved BEYOND this round. `assertStageEntry`
+    // only looks backwards, so opening the first round again for somebody now at the security
+    // check passed it — and because `completed` is terminal for a round, `ensureStageRecord`
+    // would have obliged with a fresh attempt and pulled them back down the pipeline.
+    await assertStageNotPassed(input.applicantId, 'interview', stage.order, 'interview');
 
     const { record: waiting } = (await recruitmentWorkflowEngine.ensureStageRecord({
       binding: BINDING,
@@ -229,6 +247,12 @@ class InterviewService {
     scope: ScopeSelector,
   ): Promise<InterviewDoc> {
     const before = await interviewRepository.getById(id, scope);
+    await assertStageNotPassed(
+      String(before.applicantId),
+      'interview',
+      before.stageOrder,
+      'interview',
+    );
     const now = new Date();
     const onPanel = before.panel.some((p) => String(p.interviewerId) === ctx.userId);
     const { record: updated } = (await recruitmentWorkflowEngine.transition({
@@ -567,6 +591,16 @@ class InterviewService {
     if (before.outcome === input.outcome) {
       throw new BusinessRuleError('the interview already has this outcome');
     }
+    // Correctable while nothing has been built on the outcome: passing the round opens the next one
+    // (or the checks), and while those are untouched the outcome may be flipped — flipping it to
+    // `failed` closes them through the lifecycle (I14). Once anybody has acted on them, reversing
+    // the round would strand what they decided.
+    await assertStageCorrectable(
+      String(before.applicantId),
+      'interview',
+      before.stageOrder,
+      'interview',
+    );
     const { record: updated } = await recruitmentWorkflowEngine.transition({
       binding: BINDING,
       id,
@@ -695,6 +729,98 @@ class InterviewService {
       },
       { entityType: 'interview', action: 'schedule', actorUserId: ctx.userId },
     );
+  }
+
+  /**
+   * Approve or reject candidates at a `decisionOnly` stage in one step (one or many, RW17).
+   *
+   * Per candidate: the round is opened if it was still waiting (or begun if only scheduled), the
+   * caller's note is recorded as THEIR evaluation, any other interviewer still pending is marked
+   * skipped («decided directly»), and the round is closed with the outcome — through the same
+   * start / evaluate / skip / decide operations the full flow uses, so the timeline, audit trail
+   * and the move to the next stage are exactly what a full round produces.
+   */
+  async quickDecide(
+    ctx: AuthContext,
+    input: QuickDecideInterviews,
+    scope: ScopeSelector,
+  ): Promise<BulkActionResultDto> {
+    const stage = await interviewStageRepository.findActiveById(input.stageId);
+    if (stage === null) {
+      throw new ValidationError([
+        { field: 'stageId', code: 'INVALID', message: 'unknown or inactive interview stage' },
+      ]);
+    }
+    if (stage.mode !== 'decisionOnly') {
+      throw new BusinessRuleError('this interview stage is decided through its evaluation');
+    }
+    return runBulk(
+      input.applicantIds,
+      async (applicantId) => {
+        let doc = await interviewRepository.findActiveAtStage(applicantId, stage.order);
+        if (doc === null || doc.status === 'waiting') {
+          doc = await this.start(ctx, { applicantId, stageId: input.stageId, interviewerIds: [] }, scope);
+        } else if (doc.status === 'scheduled') {
+          doc = await this.startScheduled(ctx, String(doc._id), { version: doc.__v }, scope);
+        }
+        const id = String(doc._id);
+        if (doc.status !== 'inProgress' && doc.status !== 'scheduled') {
+          throw new BusinessRuleError('this candidate has already been decided at this stage');
+        }
+        if (!doc.panel.some((p) => String(p.interviewerId) === ctx.userId)) {
+          doc = await this.reassignPanelKeep(ctx, doc, scope);
+        }
+        doc = await this.submitEvaluation(
+          ctx,
+          id,
+          {
+            recommendation: input.outcome === 'passed' ? 'recommend' : 'notRecommend',
+            ...(input.notes === undefined ? {} : { notes: input.notes }),
+            version: doc.__v,
+          },
+          scope,
+        );
+        for (const p of doc.panel) {
+          if (p.state !== 'pending') continue;
+          doc = await this.skipInterviewer(
+            ctx,
+            id,
+            { interviewerId: String(p.interviewerId), reason: 'decided directly', version: doc.__v },
+            scope,
+          );
+        }
+        await this.decide(
+          ctx,
+          id,
+          {
+            outcome: input.outcome,
+            ...(input.notes === undefined ? {} : { notes: input.notes }),
+            version: doc.__v,
+          },
+          scope,
+        );
+      },
+      {
+        entityType: 'interview',
+        action: input.outcome === 'passed' ? 'pass' : 'fail',
+        actorUserId: ctx.userId,
+        reason: input.notes ?? null,
+      },
+    );
+  }
+
+  /** Add the caller to an open round's panel, keeping everyone already on it. */
+  private async reassignPanelKeep(
+    ctx: AuthContext,
+    doc: InterviewDoc,
+    scope: ScopeSelector,
+  ): Promise<InterviewDoc> {
+    const panel = [...doc.panel, newPanelist(ctx.userId)];
+    return interviewRepository.updateById(String(doc._id), { panel }, {
+      by: ctx.userId,
+      version: doc.__v,
+      scope,
+    });
   }
 
   /** Start rounds immediately for a selection of waiting applicants (RW12/RW17). */

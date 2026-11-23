@@ -50,7 +50,16 @@ const me = (permissions: string[]): MeDto =>
     external: null,
   }) as unknown as MeDto;
 
-const ALL = ['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.assign'];
+// The lines' own grants (2026-11-17) — and no asset key: «فى الـ IT ظبط صلاحيات الشاشات عشان أقدر
+// أتحكم فيها», so the screen is proven to work for a reader who holds only these.
+const ALL = [
+  'itMobileLine.view',
+  'itMobileLine.create',
+  'itMobileLine.edit',
+  'itMobileLine.assign',
+];
+/** Every asset key — none of which opens anything on the lines' screen any more. */
+const ASSET_KEYS = ['itAsset.view', 'itAsset.create', 'itAsset.edit', 'itAsset.assign'];
 
 const line = (over: Partial<ItMobileLineDto> = {}): ItMobileLineDto => ({
   id: 'l-1',
@@ -165,6 +174,7 @@ const render = ({
   search = '',
   query = { page: 1, pageSize: 25 },
   rows = [line()],
+  networks = summary,
 }: {
   permissions?: string[];
   /** The URL's query — what the screen reads its filters from. */
@@ -172,12 +182,14 @@ const render = ({
   /** The list request the screen is expected to make for that URL. */
   query?: Record<string, unknown>;
   rows?: ItMobileLineDto[];
+  /** The cards' figures. */
+  networks?: ItMobileLinesSummaryDto;
 } = {}): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
   qc.setQueryData(listKey('it', 'mobileLines', query), page(rows));
-  qc.setQueryData(listKey('it', 'mobileLines', { summary: true }), summary);
+  qc.setQueryData(listKey('it', 'mobileLines', { summary: true }), networks);
   qc.setQueryData(listKey('it', 'branchOptions'), [
     { id: 'b-hq', code: '01', name: { ar: 'المهندسين', en: 'HQ' }, parentId: null },
   ]);
@@ -266,6 +278,82 @@ describe('the network cards are the network filter', () => {
     expect(vodafone).toContain(ar('it.mobileLines.card.noAccount'));
   });
 
+  // The board frame leaves the table only the height the cards do not take («عايز فقط الجدول لكن
+  // الزراير والفلتر يبقوا ثابتين»): from `lg` each card is one compact block, the full card below
+  // `lg` only. And a pressed card's mark sits INSIDE it — the frame is a scroll container, and a
+  // mark sticking out of it is clipped in half and scrolls the frame sideways.
+  const classOf = (html: string, attribute: string): string[] => {
+    const tag = new RegExp(`<span ${attribute} class="([^"]*)"`, 'u').exec(html);
+    expect(tag, attribute).not.toBeNull();
+    return tag![1]!.split(/\s+/u);
+  };
+  const vodafoneCard = (html: string): string =>
+    html.slice(
+      html.indexOf('data-network-pick="vodafone"'),
+      html.indexOf('data-network-pick="etisalat"'),
+    );
+
+  it('on a computer each card is compact, with the same figures — the full card below `lg`', () => {
+    const card = vodafoneCard(render());
+    const compact = classOf(card, 'data-network-card="compact"');
+    expect(compact).toContain('hidden');
+    expect(compact).toContain('lg:flex');
+    const full = classOf(card, 'data-network-card="full"');
+    expect(full).toContain('lg:hidden');
+    expect(full).not.toContain('hidden');
+    // The compact block says what the full one does: the total, the three counts, the accounts.
+    const at = card.indexOf('data-network-card="compact"');
+    const compactHtml = card.slice(at, card.indexOf('data-network-card="full"', at));
+    expect(compactHtml).toContain('٣١٢');
+    for (const status of ['inStock', 'assigned', 'suspended']) {
+      expect(compactHtml).toContain(`data-network-count="${status}"`);
+      expect(compactHtml).toContain(ar(`it.mobileLines.status.${status}`));
+    }
+    expect(compactHtml).toContain('6.293541');
+    expect(compactHtml).toContain(ar('it.mobileLines.card.noAccount'));
+    expect(compactHtml).not.toContain('data-network-accounts-more');
+  });
+
+  it('names at most four accounts on a compact card — the rest are a «+N» that lists them', () => {
+    const many: ItMobileLinesSummaryDto = {
+      networks: summary.networks.map((entry) =>
+        entry.network !== 'vodafone'
+          ? entry
+          : {
+              ...entry,
+              accounts: ['1.1', '2.2', '3.3', '4.4', '5.5', '6.6'].map((value, i) => ({
+                value,
+                count: 10 + i,
+              })),
+            },
+      ),
+    };
+    const card = vodafoneCard(render({ networks: many }));
+    const at = card.indexOf('data-network-card="compact"');
+    const compactHtml = card.slice(at, card.indexOf('data-network-card="full"', at));
+    expect(compactHtml.match(/data-network-account="true"/gu)?.length).toBe(3);
+    const more = /<span data-network-accounts-more="3" title="([^"]*)"[^>]*>/u.exec(compactHtml);
+    expect(more, 'the «+N» chip').not.toBeNull();
+    expect(more![1]!.split('\n')).toEqual(['4.4 · ١٣', '5.5 · ١٤', '6.6 · ١٥']);
+    expect(compactHtml).toContain('+٣');
+    // The full card, below `lg`, still names every account.
+    const fullHtml = card.slice(card.indexOf('data-network-card="full"'));
+    for (const value of ['1.1', '2.2', '3.3', '4.4', '5.5', '6.6'])
+      expect(fullHtml).toContain(value);
+  });
+
+  it('marks a pressed card inside its own edges — never a negative offset', () => {
+    const html = render({
+      search: '?network=vodafone',
+      query: { page: 1, pageSize: 25, networks: 'vodafone' },
+      rows: [HELD],
+    });
+    expect(html.match(/data-network-pressed="true"/gu)?.length).toBe(1);
+    const mark = classOf(vodafoneCard(html), 'data-network-pressed="true"');
+    expect(mark).toEqual(expect.arrayContaining(['absolute', 'top-2', 'end-2']));
+    expect(mark.filter((c) => /^-|:-/u.test(c))).toEqual([]);
+  });
+
   it('sits above the other filters — the status and who holds the line', () => {
     const html = render();
     expect(html).toContain(ar('it.mobileLines.allStatuses'));
@@ -292,7 +380,8 @@ describe('the register’s rows', () => {
   });
 
   it('names an employee holder with a link to their history, and a car by its code and plate', () => {
-    const body = tableBody(render({ rows: [HELD, IN_CAR] }));
+    // A reader of the assets as well: the person's IT history is the assets' screen.
+    const body = tableBody(render({ permissions: [...ALL, 'itAsset.view'], rows: [HELD, IN_CAR] }));
     expect(body).toContain('href="/it/employees/e-1"');
     expect(body).toContain('محمد أحمد علي');
     expect(body).toContain('0100052');
@@ -321,7 +410,7 @@ describe('the register’s rows', () => {
   });
 
   it('a reader holding only the view grant may look at the history, and nothing else', () => {
-    const html = render({ permissions: ['itAsset.view'], rows: [line(), HELD, STOPPED] });
+    const html = render({ permissions: ['itMobileLine.view'], rows: [line(), HELD, STOPPED] });
     const body = tableBody(html);
     expect([...body.matchAll(/data-line-action="([^"]+)"/gu)].map((m) => m[1])).toEqual([
       'history',
@@ -329,5 +418,60 @@ describe('the register’s rows', () => {
       'history',
     ]);
     expect(html).not.toContain(ar('it.mobileLines.create'));
+  });
+
+  // The lines' actions ride the lines' keys alone: every asset key together gives none of them,
+  // and the acknowledgment's signed copy is filed on the lines' custody grant, not the assets'.
+  it('offers nothing on an asset key — every action and the paper’s upload ride the lines’ own', () => {
+    const actions = (html: string): string[] =>
+      [...tableBody(html).matchAll(/data-line-action="([^"]+)"/gu)].map((m) => m[1] ?? '');
+    const assetsOnly = render({
+      permissions: ['itMobileLine.view', ...ASSET_KEYS],
+      rows: [line(), HELD, STOPPED],
+    });
+    expect(actions(assetsOnly)).toEqual(['history', 'history', 'history']);
+    expect(assetsOnly).not.toContain(ar('it.mobileLines.create'));
+    expect(assetsOnly).not.toContain('data-receipt-upload');
+    const own = render({ rows: [HELD] });
+    expect(actions(own)).toEqual(['return', 'edit', 'history']);
+    expect(own).toContain('data-receipt-upload="r-1"');
+    expect(own).toContain(ar('it.mobileLines.create'));
+  });
+
+  it('gives each action to its own key: hand over and return on assign; suspend, reactivate and edit on edit', () => {
+    const actions = (permissions: string[]): string[] =>
+      [
+        ...tableBody(
+          render({
+            permissions: ['itMobileLine.view', ...permissions],
+            rows: [line(), HELD, STOPPED],
+          }),
+        ).matchAll(/data-line-action="([^"]+)"/gu),
+      ].map((m) => m[1] ?? '');
+    expect(actions(['itMobileLine.assign'])).toEqual([
+      'handOver',
+      'history',
+      'return',
+      'history',
+      'history',
+    ]);
+    expect(actions(['itMobileLine.edit'])).toEqual([
+      'suspend',
+      'edit',
+      'history',
+      'edit',
+      'history',
+      'reactivate',
+      'edit',
+      'history',
+    ]);
+  });
+
+  // The person's IT history is the assets' screen: a keeper of the lines alone reads the holder's
+  // name as text rather than a link to «no access».
+  it('names an employee holder as text to a reader who does not hold the assets', () => {
+    const body = tableBody(render({ rows: [HELD] }));
+    expect(body).toContain('محمد أحمد علي');
+    expect(body).not.toContain('href="/it/employees/');
   });
 });

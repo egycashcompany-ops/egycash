@@ -15,9 +15,17 @@ import {
 } from '../../shared/employee-code-sort';
 
 export interface EmployeeListFilter {
-  status?: string | undefined;
+  /**
+   * Named employees, ORed — and the reason it exists is SCOPE, not convenience. Asking this list
+   * for one id with the caller's scope attached is how a feature answers «may this reader see this
+   * person?» through the one authority that decides it (`BaseRepository.scopeFilter`), instead of
+   * spelling the hierarchy again beside its own query.
+   */
+  ids?: readonly string[] | undefined;
+  /** Lists, ORed within each — «هنخلي كل الفلترز multi». */
+  status?: readonly string[] | undefined;
   employed?: boolean | undefined;
-  origin?: string | undefined;
+  origin?: readonly string[] | undefined;
   applicantId?: string | undefined;
   jobOfferId?: string | undefined;
   branchId?: readonly string[] | undefined;
@@ -31,16 +39,16 @@ export interface EmployeeListFilter {
   governorate?: string | undefined;
   address?: string | undefined;
   phone?: string | undefined;
-  /** The company ID card: printed at least once, or never. */
-  idCard?: 'received' | 'never' | 'awaiting' | 'receipt' | undefined;
+  /** The company ID card's states asked about, ORed. */
+  idCard?: readonly ('received' | 'never' | 'awaiting' | 'receipt')[] | undefined;
 }
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** What a directory entry reads (`directory-seams.ts` `toDirectoryEmployee`) — and nothing more. */
 export const DIRECTORY_FIELDS =
-  'code status branchId departmentId hiredAt personal.fullNameAr personal.contact.primaryPhone ' +
-  'personal.officialAddress personal.currentAddress';
+  'code status branchId departmentId hiredAt employment.jobTitleId personal.fullNameAr ' +
+  'personal.contact.primaryPhone personal.officialAddress personal.currentAddress';
 
 class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   constructor() {
@@ -158,6 +166,25 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return res.modifiedCount;
   }
 
+  /**
+   * The employees holding any of these codes, within the caller's scope — the bulk photo upload's
+   * match (`EmployeeCodeMatchDto`). One query on `ux_code`; only what the match shows is read.
+   */
+  async findByCodesInScope(codes: readonly string[], scope: ScopeSelector): Promise<EmployeeDoc[]> {
+    if (codes.length === 0) return [];
+    return this.model
+      .find(this.baseFilter(scope, { code: { $in: [...codes] } }))
+      .select({
+        code: 1,
+        status: 1,
+        'personal.fullNameAr': 1,
+        'personal.fullNameEn': 1,
+        'personal.photoFileId': 1,
+      })
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
   /** Employee by CODE (auth design 4.3 — the employee-code login identifier). */
   async findByCodeSystem(code: string): Promise<EmployeeDoc | null> {
     return this.model.findOne({ code, isDeleted: false }).lean<EmployeeDoc>().exec();
@@ -183,7 +210,8 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   async findHighestNumberedCode(): Promise<string | null> {
     const [row] = await this.model
       .aggregate<{ code: string }>([
-        { $match: { code: { $regex: '^[0-9]{7,}$' } } },
+        // An external person's code is a name even when it is all digits: it is not the last code issued.
+        { $match: { code: { $regex: '^[0-9]{7,}$' }, origin: { $ne: 'external' } } },
         { $addFields: { _number: codeNumberExpression('code') } },
         { $match: { _number: { $ne: null } } },
         { $sort: { _number: -1, code: -1 } },
@@ -218,10 +246,16 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    * A record in any state already holding employee NUMBER `number`, under any branch prefix —
    * «مينفعش أكتب نفس الكود حتى لو لفرع تاني». Matched on the number inside the code AND on the
    * permanent `employeeNumber`, since a code changed by hand no longer carries the number issued.
+   *
+   * An external person holds NO company number — «المفروض لا يحجز هذه الأكواد». Their code is a name,
+   * not `<prefix><number>` (EXTERNAL_EMPLOYEE_CODE_PATTERN), so `EX-2900` holds no number 2900; and
+   * their `employeeNumber` is their code, not one drawn from the counter. So they are left out here
+   * altogether. Their exact code stays theirs (`ux_code`).
    */
   async findHoldingNumber(number: number): Promise<{ code: string } | null> {
     const [row] = await this.model
       .aggregate<{ code: string }>([
+        { $match: { origin: { $ne: 'external' } } },
         {
           $addFields: {
             _codeNumber: codeNumberExpression('code'),
@@ -307,11 +341,15 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return rows.map((r) => String(r._id));
   }
 
-  /** Ids of a section's employees — the daily sheet's section filter (day rows carry no section). */
-  async listIdsBySectionSystem(sectionId: string): Promise<string[]> {
-    if (!Types.ObjectId.isValid(sectionId)) return [];
+  /**
+   * Ids of the employees of the given sections (any of them) — the daily sheet's section filter,
+   * which takes several (day rows carry no section).
+   */
+  async listIdsBySectionSystem(sectionIds: readonly string[]): Promise<string[]> {
+    const valid = sectionIds.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return [];
     const rows = await this.model
-      .find({ sectionId: new Types.ObjectId(sectionId), isDeleted: false })
+      .find({ sectionId: { $in: valid.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
       .select({ _id: 1 })
       .lean()
       .exec();
@@ -370,6 +408,38 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .lean<{ _id: Types.ObjectId }[]>()
       .exec();
     return new Set(rows.map((row) => String(row._id)));
+  }
+
+  /**
+   * Where the company's people hold their jobs, down to the section — the facts the org chart's
+   * one-time fill places jobs by (P-ORG-3 §7). One row per distinct (department, section, job) among
+   * employees who have not exited. `jobsByDepartmentSystem` below stays as it is: «مستندات الوظائف»
+   * groups by department only, and a section in its key would split its lines.
+   */
+  async jobUnitsHeldSystem(): Promise<{ departmentId: string; sectionId: string | null; jobTitleId: string }[]> {
+    const rows = await this.model
+      .aggregate<{
+        _id: { departmentId: Types.ObjectId | null; sectionId: Types.ObjectId | null; jobTitleId: Types.ObjectId | null };
+      }>([
+        { $match: { isDeleted: false, status: { $ne: 'exited' } } },
+        {
+          $group: {
+            _id: {
+              departmentId: '$employment.departmentId',
+              sectionId: '$employment.sectionId',
+              jobTitleId: '$employment.jobTitleId',
+            },
+          },
+        },
+      ])
+      .exec();
+    return rows
+      .filter((row) => row._id.departmentId != null && row._id.jobTitleId != null)
+      .map((row) => ({
+        departmentId: String(row._id.departmentId),
+        sectionId: row._id.sectionId == null ? null : String(row._id.sectionId),
+        jobTitleId: String(row._id.jobTitleId),
+      }));
   }
 
   /**
@@ -606,10 +676,16 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
 
   private buildFilter(f: EmployeeListFilter): FilterQuery<EmployeeDoc> {
     const clauses: FilterQuery<EmployeeDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: f.status });
+    if (f.ids !== undefined) {
+      // An invalid id narrows to nothing rather than throwing: this is a filter, and a caller
+      // passing rubbish must get an empty answer, never somebody else's.
+      const valid = f.ids.filter((id) => Types.ObjectId.isValid(id));
+      clauses.push({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } });
+    }
+    if (f.status !== undefined && f.status.length > 0) clauses.push({ status: { $in: [...f.status] } });
     if (f.employed !== undefined)
       clauses.push(f.employed ? { status: { $in: [...EMPLOYED_STATUSES] } } : { status: 'exited' });
-    if (f.origin !== undefined) clauses.push({ origin: f.origin });
+    if (f.origin !== undefined && f.origin.length > 0) clauses.push({ origin: { $in: [...f.origin] } });
     if (f.applicantId !== undefined)
       clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.jobOfferId !== undefined) clauses.push({ jobOfferId: new Types.ObjectId(f.jobOfferId) });
@@ -663,23 +739,19 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         ],
       } as FilterQuery<EmployeeDoc>);
     }
-    // A card counts once HR confirms it was received — printing alone never does (see
-    // `employee-id-card.ts`). Never received is the counter absent as well as zero.
-    if (f.idCard === 'received') clauses.push({ 'idCard.receivedCount': { $gte: 1 } });
-    if (f.idCard === 'never') clauses.push({ 'idCard.receivedCount': { $not: { $gte: 1 } } });
-    // Waiting for its handover, split by whose turn it is: HR's (print the receipt) or the
-    // employee's (sign it and take the card).
-    if (f.idCard === 'awaiting') {
-      clauses.push({
-        'idCard.awaitingHandover': true,
-        'idCard.receiptPrintedAt': { $exists: false },
-      });
-    }
-    if (f.idCard === 'receipt') {
-      clauses.push({
-        'idCard.awaitingHandover': true,
-        'idCard.receiptPrintedAt': { $exists: true },
-      });
+    // The ID card states asked about, ORed. A card counts once HR confirms it was received —
+    // printing alone never does (see `employee-id-card.ts`). Never received is the counter absent as
+    // well as zero. Waiting for its handover is split by whose turn it is: HR's (print the receipt)
+    // or the employee's (sign it and take the card).
+    if (f.idCard !== undefined && f.idCard.length > 0) {
+      const states: Record<NonNullable<EmployeeListFilter['idCard']>[number], FilterQuery<EmployeeDoc>> = {
+        received: { 'idCard.receivedCount': { $gte: 1 } },
+        never: { 'idCard.receivedCount': { $not: { $gte: 1 } } },
+        awaiting: { 'idCard.awaitingHandover': true, 'idCard.receiptPrintedAt': { $exists: false } },
+        receipt: { 'idCard.awaitingHandover': true, 'idCard.receiptPrintedAt': { $exists: true } },
+      };
+      const asked = [...new Set(f.idCard)].map((state) => states[state]);
+      clauses.push(asked.length === 1 ? (asked[0] as FilterQuery<EmployeeDoc>) : { $or: asked });
     }
     if (f.phone !== undefined && f.phone.trim() !== '') {
       // The PRIMARY number only — the one every screen displays. Including the secondary would
@@ -702,10 +774,55 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /**
+   * EVERY employee a filter and a scope reach, UNPAGED — the daily sheet's register.
+   *
+   * WHY IT EXISTS, and it is a bug fix rather than a convenience. The sheet called `listEmployees`
+   * with `pageSize: SHEET_CAP` to mean "all of them", and `BaseRepository.list` clamps pageSize to
+   * `MAX_PAGE_SIZE`, which is 100. So the sheet resolved the first HUNDRED employees by code, on
+   * every date, and every count beneath it counted those hundred: a company of 1,755 read «100»
+   * and the thirty-nine people who had actually scanned were whichever four of them happened to
+   * sort into the first page. Silently — a clamp is not an error.
+   *
+   * The sheet cannot page before resolving, either, and that is not a shortcut: the display status
+   * is worked out from the clock and the calendar rather than read off a row, so "how many are
+   * absent" and "show me the absences" cannot be database questions. They can only be read off the
+   * whole resolved day. Paging first would give a card saying «3 غائب» that meant «3 on this page».
+   *
+   * `cap` is a guard against a filter nobody meant — every branch at once — not an expected limit,
+   * and it is applied as a `limit` so an enormous company degrades by truncating rather than by
+   * exhausting memory. The caller passes the sheet's own cap so the two cannot drift.
+   */
+  async listAllForSheet(
+    filter: EmployeeListFilter,
+    cap: number,
+    scope?: ScopeSelector,
+  ): Promise<EmployeeDoc[]> {
+    const clauses: FilterQuery<EmployeeDoc>[] = [
+      this.buildFilter(filter),
+      { isDeleted: false },
+      // The one authority for the hierarchy — the same filter every paged read is scoped by.
+      this.scopeFilter(scope),
+    ];
+    return this.model
+      .find({ $and: clauses })
+      // By code, which is the order the sheet shows and the order its pages are cut from.
+      // `numericOrdering` is what makes `0100099` sort before `0100100` on a plain `find`, without
+      // the derived numeric field the paged reads compute in an aggregation.
+      .sort({ code: 1 })
+      .collation({ locale: 'en', numericOrdering: true })
+      .limit(cap)
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
+  /**
    * The platform directory's register (`searchDirectoryEmployees`): HR's own match — the same
    * `search` over code, applicant code and normalised name that HR's list uses — one page at a
    * time, in the caller's scope when one is handed over and unscoped when the caller has already
-   * bounded who it is asking about.
+   * bounded who it is asking about. `anyOfScopes` finds a person ANY of several selectors reaches:
+   * each is this repository's own scope filter, and the filters are OR-ed — an exact union, which
+   * no single selector can say (an `own` grant beside a branch grant, two grants over different
+   * branches). One that narrows nothing (organization) narrows nothing; an empty list is nobody.
    */
   async searchDirectory(params: {
     search?: string | undefined;
@@ -716,6 +833,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     sortBy?: 'name' | 'code' | undefined;
     sortDir?: 'asc' | 'desc' | undefined;
     scope?: ScopeSelector | undefined;
+    anyOfScopes?: readonly ScopeSelector[] | undefined;
     page: number;
     pageSize: number;
   }): Promise<Paginated<EmployeeDoc>> {
@@ -729,8 +847,14 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       ?.filter((id) => Types.ObjectId.isValid(id))
       .map((id) => new Types.ObjectId(id));
     const sortField = params.sortBy === 'code' ? 'code' : 'personal.fullNameAr';
+    const clauses: FilterQuery<EmployeeDoc>[] = [matched];
+    if (ids !== undefined) clauses.push({ _id: { $in: ids } });
+    if (params.anyOfScopes !== undefined) {
+      const anyOf = this.anyOfScopesFilter(params.anyOfScopes);
+      if (Object.keys(anyOf).length > 0) clauses.push(anyOf);
+    }
     return this.list({
-      filter: ids === undefined ? matched : { $and: [matched, { _id: { $in: ids } }] },
+      filter: clauses.length === 1 ? matched : { $and: clauses },
       page: params.page,
       pageSize: params.pageSize,
       sortBy: sortField,
@@ -739,6 +863,14 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       ...employeeCodeSort('code', sortField, params.sortDir ?? 'asc'),
       ...(params.scope === undefined ? {} : { scope: params.scope }),
     });
+  }
+
+  /** The OR of each selector's own scope filter — see `searchDirectory`. */
+  private anyOfScopesFilter(selectors: readonly ScopeSelector[]): FilterQuery<EmployeeDoc> {
+    if (selectors.length === 0) return { _id: { $in: [] } };
+    const filters = selectors.map((selector) => this.scopeFilter(selector));
+    if (filters.some((filter) => Object.keys(filter).length === 0)) return {};
+    return filters.length === 1 ? (filters[0] as FilterQuery<EmployeeDoc>) : { $or: filters };
   }
 
   async listEmployees(params: {

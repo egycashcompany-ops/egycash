@@ -174,9 +174,17 @@ export const ReceiptSourceCell = ({ row }: { row: FleetReceiptDto }): JSX.Elemen
 };
 
 /**
- * The four sums behind «الإحصائيات» — the server's, over the whole filtered set, never the page:
- * the fund, the cards, fuel with its litres, and tyres, washing and maintenance together — the
- * three kinds the fund alone pays for.
+ * «الإجمالي» — every receipt of the filtered set, card and custody together, added in whole
+ * piastres: the figure the dashboard's «مصروف التشغيل» shows for the same period and cars (R2
+ * `opex.total` = card + custody), and so the figure its link opens on.
+ */
+export const receiptsGrandTotal = (totals: FleetReceiptTotalsDto): number =>
+  (Math.round(totals.cardTotal * 100) + Math.round(totals.custodyTotal * 100)) / 100;
+
+/**
+ * The sums behind «الإحصائيات» — the server's, over the whole filtered set, never the page: the
+ * total of them all, then the fund, the cards, fuel with its litres, and tyres, washing and
+ * maintenance together — the three kinds the fund alone pays for.
  */
 export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): JSX.Element => {
   const t = useT();
@@ -184,8 +192,19 @@ export const ReceiptFigures = ({ totals }: { totals: FleetReceiptTotalsDto }): J
   return (
     <section
       data-receipt-figures="true"
-      className="grid shrink-0 animate-drop-in grid-cols-2 gap-3 lg:grid-cols-4"
+      // The total over a row of its own, the four parts under it — on one row from `lg` — and all
+      // five on one row from `xl`, the sums a size down there (back to `text-2xl` from 1,800px).
+      // Should a sum still not fit, «ج.م.» goes under it rather than off the tile.
+      className="grid shrink-0 animate-drop-in grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-5 xl:[&_.text-2xl]:text-xl min-[1800px]:[&_.text-2xl]:text-2xl [&_.items-baseline]:flex-wrap"
     >
+      <div className="col-span-2 lg:col-span-4 xl:col-span-1" data-receipt-figure="all">
+        <FigureChip
+          icon={PATH.trend}
+          iconClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          label={t('fleet.receipts.totals.all')}
+          {...moneyChip(receiptsGrandTotal(totals), locale)}
+        />
+      </div>
       {/* A sum of money takes the whole row on a phone, so «ج.م.» stays on the tile. */}
       <div className="col-span-2 sm:col-span-1">
         <FigureChip

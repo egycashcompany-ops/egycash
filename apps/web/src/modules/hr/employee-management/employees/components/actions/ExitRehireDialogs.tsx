@@ -16,6 +16,7 @@ import { useT } from '../../../../../../platform/localization/useT';
 import { useCan } from '../../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../../store';
 import { Field, Checkbox, Input, Select, Textarea } from '../../../../../../shared/ui/form';
+import { SearchableSelect } from '../../../../../../shared/ui/SearchableSelect';
 import { MoneyInput } from '../../../../../../shared/ui/MoneyInput';
 import { SearchInput } from '../../../../../../shared/ui/SearchInput';
 import { toast } from '../../../../../../shared/ui/toast/toast-store';
@@ -291,48 +292,48 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label={t('offers.form.branch')} required>
-              <Select
+              <SearchableSelect
                 value={branchId}
-                onChange={(e) => {
-                  setBranchId(e.target.value);
+                onChange={(next) => {
+                  if (next === branchId) return;
+                  setBranchId(next);
                   setDepartmentId('');
                   setSectionId('');
                 }}
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>{localized(b.name, locale)}</option>
-                ))}
-              </Select>
+                options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+                ariaLabel={t('offers.form.branch')}
+              />
             </Field>
             <Field label={t('offers.form.department')} required>
-              <Select
+              <SearchableSelect
                 value={departmentId}
-                onChange={(e) => {
-                  setDepartmentId(e.target.value);
+                onChange={(next) => {
+                  if (next === departmentId) return;
+                  setDepartmentId(next);
                   setSectionId('');
                 }}
-              >
-                <option value="">{t('common.select')}</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{orgUnitLabel(d, locale)}</option>
-                ))}
-              </Select>
+                options={departments.map((d) => ({ value: d.id, label: orgUnitLabel(d, locale) }))}
+                disabled={branchId === ''}
+                ariaLabel={t('offers.form.department')}
+              />
             </Field>
             <Field label={t('employees.actions.transfer.section')} hint={t('offers.form.optional')}>
-              <Select value={sectionId} onChange={(e) => setSectionId(e.target.value)}>
-                <option value="">{t('employees.actions.transfer.noSection')}</option>
-                {sections.map((sec) => (
-                  <option key={sec.id} value={sec.id}>{orgUnitLabel(sec, locale)}</option>
-                ))}
-              </Select>
+              <SearchableSelect
+                value={sectionId}
+                onChange={setSectionId}
+                options={sections.map((sec) => ({ value: sec.id, label: orgUnitLabel(sec, locale) }))}
+                placeholder={t('employees.actions.transfer.noSection')}
+                disabled={departmentId === ''}
+                ariaLabel={t('employees.actions.transfer.section')}
+              />
             </Field>
             <Field label={t('offers.form.jobTitle')} required>
-              <Select value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
-                <option value="">{t('common.select')}</option>
-                {jobTitles.map((jt) => (
-                  <option key={jt.id} value={jt.id}>{localized(jt.name, locale)}</option>
-                ))}
-              </Select>
+              <SearchableSelect
+                value={jobTitleId}
+                onChange={setJobTitleId}
+                options={jobTitles.map((jt) => ({ value: jt.id, label: localized(jt.name, locale) }))}
+                ariaLabel={t('offers.form.jobTitle')}
+              />
             </Field>
             <Field label={t('offers.form.employmentType')} required>
               <Select value={employmentType} onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}>

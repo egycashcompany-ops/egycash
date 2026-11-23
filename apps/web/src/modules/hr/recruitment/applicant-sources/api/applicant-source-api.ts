@@ -20,7 +20,8 @@ export interface SourceListParams {
   /** Only `key` and `createdAt` are sortable server-side (`sortableFields` on the service). */
   sortBy?: 'key' | 'createdAt';
   sortDir?: 'asc' | 'desc';
-  kind?: string;
+  /** Several kinds, ORed — one comma list on the wire. */
+  kind?: readonly string[];
   active?: boolean;
   /**
    * Client-side. The endpoint has no text filter, so a search asks for the whole catalog and the
@@ -55,7 +56,7 @@ export const listApplicantSources = (
     sortBy: params.sortBy ?? 'key',
     sortDir: params.sortDir ?? 'asc',
   });
-  if (params.kind !== undefined && params.kind !== '') query.set('kind', params.kind);
+  if (params.kind !== undefined && params.kind.length > 0) query.set('kind', params.kind.join(','));
   if (params.active !== undefined) query.set('active', String(params.active));
   return getPage<ApplicantSourceDto>(`/hr/applicant-sources?${query.toString()}`);
 };

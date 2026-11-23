@@ -4,7 +4,8 @@
 //      at the next Cairo midnight — «today» turns over there, so every figure of the day must too.
 //   R2 (the period tabs): 5 minutes fresh, the previous answer kept on screen while a new filter
 //      loads. A range wholly in the past is a different key (`past`) from a live one, so the realtime
-//      registry can leave a closed month alone. Midnight moves the live ones and «الشهر الماضي»
+//      registry can leave a closed month alone — save a fine's signal: the period's fines carry
+//      their state as of now. Midnight moves the live ones and «الشهر الماضي»
 //      (the same key names another month from the 1st); the timer runs from R1, or from R2 for a
 //      reader who holds only R2.
 //

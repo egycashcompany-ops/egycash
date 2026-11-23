@@ -32,7 +32,8 @@ export interface ReceiptHolder {
   jobTitle: Name | null;
   /**
    * «بطاقة رقم قومي» — RAW. Kept on the receipt the paper prints from; who may SEE it is the
-   * receipt's egress rule (`itAsset.viewNationalId`), never this read's.
+   * receipt's egress rule (`itAsset.viewNationalId` on a device receipt,
+   * `itMobileLine.viewNationalId` on a line's), never this read's.
    */
   nationalId: string | null;
   /** «صادرة من قسم …» — the employee's section, when HR files them under one. */

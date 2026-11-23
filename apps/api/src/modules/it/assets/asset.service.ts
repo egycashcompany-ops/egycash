@@ -16,7 +16,6 @@ import {
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
-import { getDirectoryEmployees, type DirectoryEmployee } from '../../../platform/directory';
 import { diffChanges } from '../../../shared/utils/diff';
 import { emit } from '../../../platform/kernel/event-bus';
 import { pdfDriverEnabled, renderPdfFromHtml } from '../../../platform/pdf';
@@ -30,6 +29,8 @@ import { itConsumableMovementRepository } from '../consumables/consumable-moveme
 import { nextAssetCode } from './asset-sequence';
 import { warrantyEndingWithin } from './warranty-window';
 import { buildAssetLabelSheetHtml, renderLabelQrs } from './asset-labels';
+import { holderOfInterval, signerOf } from './custody-holder';
+import { custodianLabels, employeeLabels } from './custody-labels';
 import {
   type ItAssetDoc,
   type ItAssetPurchaseSub,
@@ -182,12 +183,30 @@ class ItAssetService {
     // The name filter commits the register's own names (`names()` below), so each is matched
     // EXACTLY — every asset by one of them, and no other whose name merely contains one.
     if (query.name !== undefined) filter.name = { $in: query.name };
-    if (query.holderEmployeeId !== undefined) {
+    const holderNamed =
+      query.holderEmployeeId !== undefined ||
+      query.holderDepartmentId !== undefined ||
+      query.locationId !== undefined;
+    if (holderNamed || query.holderKind === 'department') {
       // What they hold NOW: the open intervals, matched through the asset's own pointer to its
-      // current one — so an asset returned yesterday is not «held» by yesterday's holder. The
-      // scope still applies to the assets themselves, below.
-      const open = await itAssetAssignmentRepository.listOpenForEmployee(query.holderEmployeeId);
-      filter.currentAssignmentId = { $in: open.map((assignment) => assignment._id) };
+      // current one — so an asset returned yesterday is not «held» by yesterday's holder. ONE read
+      // for every holder filter at once (the employee, «الإدارة», «الموقع», «جهة الاستلام»), so
+      // they intersect rather than the last one overwriting the others. The scope still applies to
+      // the assets themselves, below.
+      const open = await itAssetAssignmentRepository.listOpenWhere({
+        employeeId: query.holderEmployeeId,
+        departmentId: query.holderDepartmentId,
+        locationId: query.locationId,
+        kind: query.holderKind,
+      });
+      filter.currentAssignmentId = { $in: open };
+    } else if (query.holderKind === 'employee') {
+      // «موظف» alone: held now, and not by a department — the departments' open intervals are the
+      // few, so they are the list read; every employee's would be the register.
+      const departmentHeld = await itAssetAssignmentRepository.listOpenWhere({
+        kind: 'department',
+      });
+      filter.currentAssignmentId = { $ne: null, $nin: departmentHeld };
     }
     if (query.warrantyEndsWithinDays !== undefined) {
       // The dashboard's warranty row opened as a list. Its own `$and` clause: the window carries a
@@ -237,7 +256,9 @@ class ItAssetService {
    * Who holds each asset on ONE response — «لو متسلم اسم الشخص اللى متسلمله الحاجة»: the intervals
    * the assets point at, read by id in one go, then their employees through the directory in one
    * batch. Two reads per response, never two per row — the mobile lines' `holderLabels`. Read by id
-   * without scope: the assets were already read under the caller's, and an interval is theirs.
+   * without scope: the assets were already read under the caller's, and an interval is theirs. A
+   * page with department custody reads two more — its departments and its places — and its
+   * responsible people ride the one directory batch (`custody-labels.ts`).
    *
    * Beside them, ONE read for the page's ids says which assets an order open or in progress holds
    * (`hasActiveMaintenance`) — the screen leaves those out of a move before it is refused.
@@ -254,22 +275,17 @@ class ItAssetService {
     const intervals = found.filter(
       (interval) => interval.returnedAt === null && !interval.isDeleted,
     );
-    const employeeIds = [
-      ...new Set(intervals.map((interval) => String(interval.assignedToEmployeeId))),
-    ];
-    // Nobody to name — an asset page that is all in stock asks the directory nothing.
-    const employees =
-      employeeIds.length === 0
-        ? new Map<string, DirectoryEmployee>()
-        : await getDirectoryEmployees(employeeIds);
+    const holders = intervals.map(holderOfInterval);
+    const [employees, custodians] = await Promise.all([
+      // The employee holders and the people who signed for a department, in ONE batch. Nobody to
+      // name — an asset page that is all in stock asks the directory nothing.
+      employeeLabels(holders.map(signerOf)),
+      custodianLabels(holders),
+    ]);
     return {
       intervals: new Map(intervals.map((interval) => [String(interval._id), interval])),
-      employees: new Map(
-        [...employees].map(([id, employee]) => [
-          id,
-          { code: employee.code, fullNameAr: employee.fullNameAr },
-        ]),
-      ),
+      employees,
+      ...custodians,
       activeMaintenance,
     };
   }
@@ -359,7 +375,8 @@ class ItAssetService {
     // Ordered cheapest-first, and each one is a different kind of "it was used": a history entry,
     // a custody interval (open OR closed), a maintenance order (an open one writes no event yet),
     // a consumable installed on it (FR-20 — the ledger and the signed memo name it; an issue
-    // writes no asset event).
+    // writes no asset event) — now, or before a «تعديل الجهاز» moved it to another device: the
+    // signed copy on file and the audit trail still name this one.
     if (await itAssetEventRepository.exists({ subjectId: assetId })) refuse('has history');
     if (await itAssetAssignmentRepository.exists({ assetId })) {
       refuse("has been in someone's custody");
@@ -367,7 +384,11 @@ class ItAssetService {
     if (await itMaintenanceOrderRepository.exists({ assetId })) {
       refuse('carries a maintenance order');
     }
-    if (await itConsumableMovementRepository.exists({ assetId })) {
+    if (
+      await itConsumableMovementRepository.exists({
+        $or: [{ assetId }, { installedOnBefore: assetId }],
+      })
+    ) {
       refuse('has consumables installed on it');
     }
   }

@@ -33,6 +33,7 @@ export const DriverSlotPicker = ({
   onSelect,
   slotKey,
   label,
+  emptyLabel,
 }: {
   /** Exactly the pool the board would let a drag carry — already free of anyone seated. */
   drivers: readonly DriverOption[];
@@ -43,6 +44,11 @@ export const DriverSlotPicker = ({
   slotKey: string;
   /** Read out to a screen reader: which car, which seat. */
   label: string;
+  /**
+   * The line for "nobody to offer" — the day's own sentence by default; a board with no day (the
+   * standing crew) says its own.
+   */
+  emptyLabel?: string | undefined;
 }): JSX.Element => {
   const t = useT();
   const [open, setOpen] = useState(false);
@@ -113,7 +119,7 @@ export const DriverSlotPicker = ({
               {/* Two different emptinesses, said differently: nobody is free today, versus
                   nobody matches what was typed. */}
               {drivers.length === 0
-                ? t('fleet.roster.availableEmpty')
+                ? (emptyLabel ?? t('fleet.roster.availableEmpty'))
                 : t('fleet.fixedRoster.driverSearchEmpty')}
             </p>
           ) : (

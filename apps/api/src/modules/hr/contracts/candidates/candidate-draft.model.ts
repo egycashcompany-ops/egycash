@@ -1,16 +1,21 @@
 // A28 — «عقد جديد» for a candidate: the page's state, kept on the server as it changes.
 //
 // «لو كنت بعمل عقد … و تلعط او جاهز قفل او سستم تايم اوت يتعملو ريكورد». One record per accepted
-// offer: which papers are chosen, the values typed in for this candidate, the contract's term, the
-// employee code kept at the first print, and whether — and when — the papers were printed. The hire
-// is allowed once they were, and is recorded here too.
+// offer: the papers ticked beyond the job's or taken off them, the values typed in for this
+// candidate, the contract's term, the employee code kept at the first print, and whether — and
+// when — the papers were printed. The hire is allowed once they were, and is recorded here too.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../../shared/base/base.model';
 
 export interface CandidateDraftDoc extends BaseDocFields {
   offerId: Types.ObjectId;
-  /** The papers chosen, by template key — null: every paper of the job (nothing chosen yet). */
-  selected: string[] | null;
+  /**
+   * What HR changed on the person's papers, by template key: ticked beyond what their job ticks, and
+   * unticked from it. Every other paper stays as the job has it — so a paper «مستندات الوظائف» adds
+   * to the job later starts ticked for the person too. Both empty: nothing changed.
+   */
+  added: string[];
+  removed: string[];
   /** Values typed in for this candidate, used by every paper that prints them. */
   overrides: { key: string; value: string }[];
   /** ISO dates. */
@@ -28,7 +33,8 @@ export interface CandidateDraftDoc extends BaseDocFields {
 const candidateDraftSchema = new Schema<CandidateDraftDoc>(
   {
     offerId: { type: Schema.Types.ObjectId, required: true },
-    selected: { type: [String], default: null },
+    added: { type: [String], default: [] },
+    removed: { type: [String], default: [] },
     overrides: {
       type: [{ _id: false, key: { type: String, required: true }, value: { type: String, default: '' } }],
       default: [],

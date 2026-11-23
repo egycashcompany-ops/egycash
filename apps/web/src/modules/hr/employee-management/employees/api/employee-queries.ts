@@ -21,6 +21,7 @@ import {
   type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
   type UpdateUser,
+  type PurgeEmployee,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../../shared/lib/query-keys';
 import { listJobOffers } from '../../../recruitment/job-offers/api/job-offer-api';
@@ -188,6 +189,23 @@ export const useChangeEmployeeCode = (id: string) => {
     mutationFn: (body: ChangeEmployeeCode) => api.changeEmployeeCode(id, body),
     onSuccess: ({ data }) => {
       qc.setQueryData(detailKey(MODULE, FEATURE, id), data);
+      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE] });
+    },
+    onError: () => undefined,
+  });
+};
+
+/**
+ * The permanent delete. On success the employee no longer exists, so the detail entry is REMOVED
+ * from the cache rather than replaced — leaving it would serve a profile for somebody the server
+ * will 404 on — and every list is invalidated, because the person was on an unknown number of them.
+ */
+export const usePurgeEmployee = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: PurgeEmployee) => api.purgeEmployee(id, body),
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: detailKey(MODULE, FEATURE, id) });
       void qc.invalidateQueries({ queryKey: [MODULE, FEATURE] });
     },
     onError: () => undefined,

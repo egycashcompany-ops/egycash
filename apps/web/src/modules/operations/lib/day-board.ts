@@ -16,7 +16,7 @@ import {
   type OperationsShipmentStatus,
   type OperationsShipmentType,
 } from '@ecms/contracts';
-import { fold } from '../../../shared/lib/fold';
+import { fold, foldIncludes } from '../../../shared/lib/fold';
 import { matchesVehicleCode } from '../../fleet/lib/vehicle-code-match';
 
 /**
@@ -54,6 +54,13 @@ export interface DayBoardFilters {
    * of «التسليم», whose two answers cannot tell its stages apart.
    */
   stage: OperationsSecuredStage | '';
+  /**
+   * Round 13 — the vault queue's «حالة الاستلام» (`vaultPickupOf`): who confirmed collecting the
+   * محصنة from the bank, or nobody. The vault's board offers it, with `vault`, in the stage's place.
+   */
+  pickup: VaultPickupColumn | '';
+  /** Round 13 — the vault queue's «حالة الخزينة» (`vaultHoldOf`): received yet, and where it is now. */
+  vault: VaultHoldColumn | '';
 }
 
 export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
@@ -66,8 +73,39 @@ export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
   type: '',
   received: '',
   stage: '',
+  pickup: '',
+  vault: '',
   notes: '',
 };
+
+/**
+ * THE VAULT QUEUE'S TWO STATUS COLUMNS (Round 13). «انا عايز الجدول بتاع استلام الخزينه يكون مكان
+ * الحاله عمودين. العمود الاولاني يبقى خاص يبين ان اللي حصل استلام من القائد او من العمليات، والعمود
+ * التاني بتاع الحاله برضو يبين استلام من الخزينه»: two facts, read from two fields, never from the one
+ * stage — because since the vault may receive a محصنة nobody handed over («والخزنه تستلم عادي»), a
+ * row can be in the vault AND never collected, and one stage cannot say both.
+ *
+ * «حالة الاستلام» — who confirmed collecting it from the bank: the shipment's ONE pickup record
+ * (`pickedUpBy`), the captain's ✓ in the app or the desk's on the secured screen; `none` while
+ * nobody has — and for good on a receipt nobody handed over (the vault never writes that record).
+ */
+export const VAULT_PICKUP_COLUMN = ['none', 'captain', 'operations'] as const;
+export type VaultPickupColumn = (typeof VAULT_PICKUP_COLUMN)[number];
+
+export const vaultPickupOf = (
+  row: Partial<Pick<OperationsDayBoardShipmentDto, 'pickedUpBy'>>,
+): VaultPickupColumn => row.pickedUpBy ?? 'none';
+
+/**
+ * «حالة الخزينة» — the vault's side, from the shipment's STATUS: `waiting` while it is a draft
+ * (receivable now — «لم تُستلم بعد»), then `inVault` («بالخزينة»), and for a receipt of today that
+ * has left the vault since, `dispatched` («خرجت للتسليم») or `completed` («تم التسليم»).
+ */
+export const VAULT_HOLD_COLUMN = ['waiting', 'inVault', 'dispatched', 'completed'] as const;
+export type VaultHoldColumn = (typeof VAULT_HOLD_COLUMN)[number];
+
+export const vaultHoldOf = (row: { status: OperationsShipmentStatus }): VaultHoldColumn =>
+  row.status === 'draft' ? 'waiting' : row.status;
 
 /** The URL params the board's filters live in — one per filter, by the filter's own name. */
 export const DAY_BOARD_FILTER_PARAMS = Object.keys(
@@ -81,14 +119,18 @@ export const DAY_BOARD_FILTER_PARAMS = Object.keys(
  *     telling them apart, and «التسليم» (`received`) as the status filter;
  *   · `secured` — the secured screen, where every row is a محصنة: no «النوع» (it would say «محصنة»
  *     on every row, and its filter could only empty the table), and the محصنة's stage (`stage`)
- *     as the status filter.
+ *     as the status filter;
+ *   · `vault` (Round 13) — the vault's receive queue: the secured board, with its «الحالة» split
+ *     into «حالة الاستلام» and «حالة الخزينة» («مكان الحاله عمودين»), each filtered by its own box
+ *     (`pickup`, `vault`) where the stage box stands on the secured screen.
  */
-export type BoardKind = 'shipments' | 'secured';
+export type BoardKind = 'shipments' | 'secured' | 'vault';
 
 /** The filter params a board offers no box for. */
 const UNOFFERED: Record<BoardKind, readonly (keyof DayBoardFilters)[]> = {
-  shipments: ['stage'],
-  secured: ['type', 'received'],
+  shipments: ['stage', 'pickup', 'vault'],
+  secured: ['type', 'received', 'pickup', 'vault'],
+  vault: ['type', 'received', 'stage'],
 };
 
 /**
@@ -101,9 +143,10 @@ export const boardFilterParams = (kind: BoardKind): readonly (keyof DayBoardFilt
 
 /**
  * The filters with every one the board offers no box for read as empty — and, given the stages
- * its «الحالة» box offers (`stages`), a stage it does not offer read as empty too: the vault queue
- * offers «لم يتم التسليم» only with «الكل», and an old `?stage=awaitingPickup` left behind once
- * «الكل» is off must not empty the table with nothing on screen to say why.
+ * its «الحالة» box offers (`stages`), a stage it does not offer read as empty too: «محصنات الخزينة»
+ * offers «بالخزينة» alone, and an old `?stage=awaitingPickup` carried over from the secured screen
+ * must not empty the table with nothing on screen to say why. (The vault's receive queue has no
+ * stage box at all since Round 13 — its two status columns' boxes stand there instead.)
  */
 export const offeredFilters = (
   filters: DayBoardFilters,
@@ -127,6 +170,8 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
   const type = params.get('type') ?? '';
   const received = params.get('received') ?? '';
   const stage = params.get('stage') ?? '';
+  const pickup = params.get('pickup') ?? '';
+  const vault = params.get('vault') ?? '';
   return {
     vehicle: params.get('vehicle') ?? '',
     bank: params.get('bank') ?? '',
@@ -138,6 +183,12 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
     received: received === 'yes' || received === 'no' ? received : '',
     stage: (OPERATIONS_SECURED_STAGES as readonly string[]).includes(stage)
       ? (stage as OperationsSecuredStage)
+      : '',
+    pickup: (VAULT_PICKUP_COLUMN as readonly string[]).includes(pickup)
+      ? (pickup as VaultPickupColumn)
+      : '',
+    vault: (VAULT_HOLD_COLUMN as readonly string[]).includes(vault)
+      ? (vault as VaultHoldColumn)
       : '',
     notes: params.get('notes') ?? '',
   };
@@ -244,12 +295,13 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
   cellTextOf: (shipment: T, side: BoardBranchSide) => string,
   captainNameOf: (shipment: T) => string = () => '',
   vehicleCodeOf: (shipment: T) => string = () => '',
+  noVan = '',
 ): T[] =>
   shipments.filter(
     (shipment) =>
       // A row with no van yet ("book now, crew later") has no code to match: it drops out of a van
       // filter rather than matching every code. A box holding no code narrows nothing.
-      matchesVehicleCode(vehicleCodeOf(shipment), filters.vehicle) &&
+      matchesBoardVan(vehicleCodeOf(shipment), filters.vehicle, noVan) &&
       matches(bankNameOf(shipment.mainBankId), filters.bank) &&
       matches(cellTextOf(shipment, 'origin'), filters.origin) &&
       matches(cellTextOf(shipment, 'destination'), filters.destination) &&
@@ -261,7 +313,12 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
       // there too, so it is found under «تم التسليم» here — and a محصنة only once it is delivered
       // (by the desk, or by its delivery captain from the app).
       (filters.received === '' || (filters.received === 'yes') === saysDelivered(shipment)) &&
-      (filters.stage === '' || readStage(shipment) === filters.stage),
+      (filters.stage === '' || readStage(shipment) === filters.stage) &&
+      // Round 13 — the vault queue's two columns, each on what its own cell says.
+      (filters.pickup === '' ||
+        vaultPickupOf(shipment as Partial<Pick<OperationsDayBoardShipmentDto, 'pickedUpBy'>>) ===
+          filters.pickup) &&
+      (filters.vault === '' || vaultHoldOf(shipment) === filters.vault),
   );
 
 export const legacyRowNumber = (index: number, total: number): number => total - index;
@@ -617,4 +674,60 @@ export const branchCellText = (
 ): string => {
   const cell = branchCell(row, side, bankNameOf);
   return [cell.bank, cell.branch].filter((line) => line !== null && line !== '').join('\n');
+};
+
+/**
+ * The «السيارة» box against what a row's cell prints. A van code as every vehicle-code box in the
+ * application matches it (`matchesVehicleCode`: Arabic-Indic digits folded, «150 - 151» naming
+ * both). Round 24 — a crew without a van's name, «بدون سيارة (n)» (`noVan` is the screen's
+ * «بدون سيارة»), is ONE name: a box that holds it is matched as a phrase, never split into words —
+ * split, «بدون» alone would answer every crew without a van, and choosing «(2)» from the list would
+ * find «(1)»'s rows too. With no `noVan`, exactly the van-code rule.
+ */
+export const matchesBoardVan = (cellText: string, term: string, noVan = ''): boolean =>
+  noVan !== '' && foldIncludes(term, noVan)
+    ? foldIncludes(cellText, term.trim())
+    : matchesVehicleCode(cellText, term);
+
+/**
+ * Round 24 — what the day board's van box offers as it is typed in: the day's van codes in number
+ * order, then each crew without a van that carries a leg by the text its «السيارة» cell prints —
+ * «بدون سيارة (n)» (`numbered`) by the number the server gave it (`looseNumber`), in number order,
+ * so choosing one finds exactly that crew's rows; plain «بدون سيارة» (`noVan`) for one the answer
+ * numbers not. A van Fleet cannot name is not offered (there is nothing to type for it).
+ */
+export const vanSuggestions = (
+  crews: readonly {
+    vehicleId: string | null;
+    vehicleCode: string | null;
+    looseNumber?: number | null;
+  }[],
+  noVan: string,
+  numbered?: (n: number) => string,
+): string[] => {
+  const codes = [
+    ...new Set(
+      crews.flatMap((crew) =>
+        crew.vehicleId !== null && crew.vehicleCode !== null ? [crew.vehicleCode] : [],
+      ),
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'ar', { numeric: true }));
+  const vanless = crews.filter((crew) => crew.vehicleId === null);
+  const numbers = [
+    ...new Set(
+      vanless.flatMap((crew) =>
+        numbered !== undefined && crew.looseNumber !== undefined && crew.looseNumber !== null
+          ? [crew.looseNumber]
+          : [],
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  const plain = vanless.some(
+    (crew) => numbered === undefined || crew.looseNumber === undefined || crew.looseNumber === null,
+  );
+  return [
+    ...codes,
+    ...(numbered === undefined ? [] : numbers.map(numbered)),
+    ...(plain ? [noVan] : []),
+  ];
 };

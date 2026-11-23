@@ -391,6 +391,15 @@ class FileService {
   }
 
   /**
+   * When each of these files was uploaded. Only the date crosses the boundary — no name, no
+   * content, no link — for an owning module that already holds the files' ids under its own
+   * authority (the bulk photo upload asks when each employee's current photo went up).
+   */
+  async uploadedAtOf(ids: readonly string[]): Promise<Map<string, Date>> {
+    return fileRepository.uploadedAtByIds(ids);
+  }
+
+  /**
    * Which of these entities still hold at least one live file.
    *
    * For a caller that needs to know whether a shelf is EMPTY without reading what is on it — the

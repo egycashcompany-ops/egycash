@@ -54,6 +54,27 @@ describe('errorMessage', () => {
     expect(errorMessage(boom, 'en')).not.toBe('Unexpected error');
   });
 
+  // Round 28c critic — «المناطق» refuses a name another area holds in any spelling, naming that
+  // area in its detail. The catalog's own dialog said the server's English sentence to an Arabic
+  // reader («the area «المعادي» already has this name»); it is worded, naming the area, now.
+  it('words a name «المناطق» already holds, naming the area — and saying when it is archived', () => {
+    const held = (code: string, area: string) =>
+      new ApiError(ErrorCodes.DUPLICATE, `the area «${area}» already has this name`, 409, [
+        { field: 'name', code, message: area },
+      ]);
+    expect(errorMessage(held('AREA_ACTIVE', 'المعادي'), 'ar')).toBe(
+      'في «المناطق» منطقة «المعادي» بهذا الاسم.',
+    );
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'ar')).toContain('«الدقي»');
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'ar')).toContain('موقوفة');
+    expect(errorMessage(held('AREA_ACTIVE', 'المعادي'), 'en')).toBe(
+      '«Areas» already has “المعادي” under this name.',
+    );
+    expect(errorMessage(held('AREA_ARCHIVED', 'الدقي'), 'en')).toContain('archived');
+    // Any other duplicate keeps the server's own words, as before.
+    expect(errorMessage(new ApiError(ErrorCodes.DUPLICATE, 'taken', 409), 'ar')).toBe('taken');
+  });
+
   it('still falls back to the server message for a code it does not know', () => {
     expect(errorMessage(new ApiError('SOME_NEW_CODE', 'very specific', 400), 'ar')).toBe(
       'very specific',
@@ -100,6 +121,41 @@ describe('errorMessage', () => {
       }
     }
     expect(new Set(words).size).toBe(words.length);
+  });
+
+  // «تسليم المحصنات» (Round 17) — the server now refuses a handover of any van but today's. The
+  // screen offers «تسليم» on today's vans only, so this reaches a page left open from another day;
+  // it must read as the screen's own rule, in the reader's language, never the server's English.
+  it('words the handover’s today-only refusal as the screen says it', () => {
+    const refused = new ApiError(ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY, 'server english', 422);
+    const ar = errorMessage(refused, 'ar');
+    const en = errorMessage(refused, 'en');
+    expect(ar).not.toBe('server english');
+    expect(en).not.toBe('server english');
+    // The handover screen's own words for the rule (`operations.handover.notToday`).
+    expect(ar).toContain('التسليم يتم يوم خروج السيارة فقط');
+    expect(en).toMatch(/only on the day it goes out/);
+  });
+
+  // «لوحة التشغيلة» (Round 20) — a save refused for a type archived since it was picked, or a
+  // direction no area answers. The board marks the row; these are the words said beside it. Round 28
+  // retired the direction's refusal: its words stay, harmless, for an older server only.
+  it('words the crew board’s two row refusals, each its own, never the server’s English', () => {
+    const words: string[] = [];
+    for (const code of [
+      ErrorCodes.OPERATIONS_UNKNOWN_SHIFT_TYPE,
+      ErrorCodes.OPERATIONS_DIRECTION_NOT_AN_AREA,
+    ]) {
+      const refused = new ApiError(code, 'server english', 422);
+      for (const locale of ['ar', 'en'] as const) {
+        const text = errorMessage(refused, locale);
+        expect(text, `${locale}: ${code}`).not.toBe('server english');
+        words.push(text);
+      }
+    }
+    expect(new Set(words).size).toBe(words.length);
+    expect(words[0]).toContain('البيانات المرجعية');
+    expect(words[2]).toContain('المناطق');
   });
 });
 

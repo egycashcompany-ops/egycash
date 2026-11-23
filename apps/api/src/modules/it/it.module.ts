@@ -7,15 +7,16 @@
 // software register — products, installations, licences and the expiry sweep (ADR-025). IT-6 adds
 // dashboards — extending THIS manifest, never adding a second one. FR-19 adds the mobile lines —
 // the company's SIM lines on their three networks, handed to an employee on the F-14 paper or to a
-// car, on the asset grants (no key and no page of their own). FR-20 adds the consumables — each
-// branch's store of inks, cables, adapters, mice and the like, issued to an employee on a memo of
-// its own series — on the same grants, again with no key and no page. FR-21 adds the vehicle
-// device checks («فحص أجهزة السيارة») — a phone form and IT's dashboard over its reports, three
-// grants and their own page, reading Fleet's car list through the one boundary file
-// (it-vehicle-checks-design.md §5).
+// car. FR-20 adds the consumables — each branch's store of inks, cables, adapters, mice and the
+// like, issued to an employee on a memo of its own series. Both rode the asset grants at first;
+// since 2026-11-17 each has its own key and its own page («فى الصلاحيات مش لاقى حاجة لـ
+// /consumables ولا /mobile-lines»). FR-21 adds the vehicle device checks («فحص أجهزة السيارة») —
+// a phone form and IT's dashboard over its reports, three grants and their own page, reading
+// Fleet's car list through the one boundary file (it-vehicle-checks-design.md §5).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
+import { buildItLocationsRouter } from './locations';
 import { buildItVendorsRouter } from './vendors';
 import {
   buildItAssetsRouter,
@@ -67,7 +68,9 @@ const assetPermissions = declarePermissions(
   { en: 'IT assets', ar: 'أصول تقنية المعلومات' },
   // No `print` grant by design (§7): a label shows nothing `view` cannot. `export` arrives with
   // IT-6, where the operation it gates exists — a grant is declared WITH its operation, never
-  // ahead of it.
+  // ahead of it. The devices, their custody and its papers — and nothing else: the mobile lines
+  // and the consumables rode these grants until 2026-11-17 and have their own now (below), so a
+  // role can be given either screen without the assets, or the assets without either.
   ['view', 'create', 'edit', 'delete'],
   [
     // IT-2 custody (§7). ONE grant for assign + return + transfer: they are a single operational
@@ -96,6 +99,66 @@ const assetPermissions = declarePermissions(
     },
   ],
   'it.assets',
+);
+
+// FR-19 — the mobile lines, on grants of their own since 2026-11-17: «فى الصلاحيات مش لاقى حاجة لـ
+// /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها». Until then
+// they rode `itAsset.*`, so the role matrix had no row for the screen and nobody could be given it
+// without the assets. Each action is exactly what the same route authorized under the asset key:
+// `view` reads the register, a line, its history, its intervals and its papers read back and
+// printed again; `create` registers a line; `edit` edits it (its branch included), suspends and
+// reactivates it.
+const mobileLinePermissions = declarePermissions(
+  'it',
+  'itMobileLine',
+  { en: 'Mobile lines', ar: 'خطوط المحمول' },
+  ['view', 'create', 'edit'],
+  [
+    // ONE grant for hand over + take back + the paper (printing it first, filing and withdrawing
+    // its signed copy): one operational surface — whoever hands a line out is who takes it back —
+    // the `itAsset.assign` argument, for the lines.
+    {
+      action: 'assign',
+      name: { en: 'Hand over and take back mobile lines', ar: 'تسليم واسترجاع خطوط المحمول' },
+    },
+    // The holder's national ID on the line acknowledgment (F-14). Its OWN grant, as the device
+    // receipt's is (Security Architecture §3): the paper is read and reprinted on `view`, and
+    // reading the lines must not be reading everyone's national ID. Without it the paper leaves
+    // the line for the pen. The device receipt keeps `itAsset.viewNationalId`.
+    {
+      action: 'viewNationalId',
+      name: {
+        en: "View the holder's national ID on line receipts",
+        ar: 'عرض الرقم القومي للمستلم في إقرار استلام الخط',
+      },
+    },
+  ],
+  'it.mobile-lines',
+);
+
+// FR-20 — the consumables, on grants of their own since the same day and for the same reason.
+// `view` reads each store, an item, the ledger (an item's, the movements page's, an asset's
+// «installed» card, an employee's history) and the memos read back and printed again; `create`
+// adds an item to a store; `edit` edits or retires it, receives stock and scraps it — the stock
+// movements that are the store's own, not a person's.
+const consumablePermissions = declarePermissions(
+  'it',
+  'itConsumable',
+  { en: 'IT consumables', ar: 'المستهلكات' },
+  ['view', 'create', 'edit'],
+  [
+    // ONE grant for issue (with its memo) + take back + filing or withdrawing the memo's signed
+    // copy + transfer to another branch's store: everything that moves stock to or from somebody
+    // else, the one custody surface — the `itAsset.assign` argument, for the stores.
+    {
+      action: 'assign',
+      name: {
+        en: 'Issue, take back and transfer consumables',
+        ar: 'صرف واسترجاع وتحويل المستهلكات',
+      },
+    },
+  ],
+  'it.consumables',
 );
 
 const catalogPermissions = declarePermissions(
@@ -263,6 +326,8 @@ const vehicleCheckPermissions = declarePermissions(
 
 export const itPermissions: PermissionDef[] = [
   ...assetPermissions,
+  ...mobileLinePermissions,
+  ...consumablePermissions,
   ...catalogPermissions,
   ...vendorPermissions,
   ...ticketPermissions,
@@ -288,6 +353,23 @@ export const itPages: PageDef[] = [
     name: { en: 'Assets', ar: 'الأصول' },
     route: '/it/assets',
     sortOrder: 10,
+  },
+  {
+    // FR-19 and FR-20, right after the assets and in the rail's order — the lines, then the
+    // consumables under them. Pages of their own since 2026-11-17, when the screens got their own
+    // keys; before that their rows hid inside «الأصول».
+    id: 'it.mobile-lines',
+    moduleId: 'it',
+    name: { en: 'Mobile lines', ar: 'خطوط المحمول' },
+    route: '/it/mobile-lines',
+    sortOrder: 13,
+  },
+  {
+    id: 'it.consumables',
+    moduleId: 'it',
+    name: { en: 'Consumables', ar: 'المستهلكات' },
+    route: '/it/consumables',
+    sortOrder: 16,
   },
   {
     id: 'it.help-desk',
@@ -380,6 +462,9 @@ export const itModule: ModuleManifest = {
     { prefix: '/it/consumable-movements', router: buildItConsumableMovementsRouter() },
     { prefix: '/it/consumable-memos', router: buildItConsumableMemosRouter() },
     { prefix: '/it/catalog-items', router: buildItCatalogRouter() },
+    // «المواقع» — each branch's places, where a department keeps what it holds («غرفة السيرفرات»):
+    // the catalogs page's fourth tab, and the place a department hand-over or issue names.
+    { prefix: '/it/locations', router: buildItLocationsRouter() },
     { prefix: '/it/vendors', router: buildItVendorsRouter() },
     { prefix: '/it/tickets', router: buildItTicketsRouter() },
     { prefix: '/it/ticket-priorities', router: buildItTicketPrioritiesRouter() },
@@ -414,6 +499,7 @@ export const itModule: ModuleManifest = {
     'it_consumable_memos',
     'it_vehicle_checks',
     'it_catalog_items',
+    'it_locations',
     'it_vendors',
     'it_sequences',
     'it_tickets',

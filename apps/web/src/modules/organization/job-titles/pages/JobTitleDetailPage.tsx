@@ -17,6 +17,7 @@ import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatMoney, localized } from '../../../../shared/lib/format';
 import { useDeleteJobTitle, useJobTitle } from '../job-title-queries';
+import { PlaceRows, placeRowOf } from '../components/JobPlacesField';
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }): JSX.Element => (
   <div>
@@ -151,6 +152,14 @@ export const JobTitleDetailPage = (): JSX.Element => {
                 {jt.requiredQualifications === null ? dash : localized(jt.requiredQualifications, locale)}
               </Row>
             </dl>
+          </CardBody>
+        </Card>
+
+        {/* Where the job sits in the structure (ADR-038) — the same rows the job form lists. */}
+        <Card>
+          <CardHeader title={t('organization.jobTitles.places.title')} />
+          <CardBody>
+            <PlaceRows rows={jt.places.map(placeRowOf)} locale={locale} />
           </CardBody>
         </Card>
       </div>

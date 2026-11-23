@@ -35,6 +35,7 @@ import {
   listEmployeeIdCardPrints,
   linkEmployeeUser,
   listEmployees,
+  lookupEmployeeCodes,
   listSubordinates,
   getEmployeeNationalIdCard,
   registerEmployeeDirect,
@@ -44,6 +45,7 @@ import {
   removeEmployeePhoto,
   unlinkEmployeeUser,
   changeEmployeeCode,
+  purgeEmployee,
   updateEmployeeInsurance,
   updateEmployeeOfficer,
   updateEmployeePersonal,
@@ -59,8 +61,10 @@ import {
   JobTitlePlacementQuerySchema,
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
+  LookupEmployeeCodesSchema,
   RehireCheckQuerySchema,
   ChangeEmployeeCodeSchema,
+  PurgeEmployeeSchema,
   UpdateEmployeeInsuranceSchema,
   UpdateEmployeeOfficerSchema,
   UpdateEmployeePersonalSchema,
@@ -166,6 +170,15 @@ export const buildEmployeesRouter = (): Router => {
    * staff across the whole registry, which is a different amount of authority from onboarding one
    * walk-in hire.
    */
+  // The bulk photo upload's match: which employees hold the codes read from the files' names. It
+  // takes the photo write's own key and scope; the photos themselves go through `/:id/photo`.
+  router.post(
+    '/codes/lookup',
+    authenticate,
+    authorize('employee.editPersonal'),
+    validate({ body: LookupEmployeeCodesSchema }),
+    asyncHandler(lookupEmployeeCodes),
+  );
   router.post(
     '/import',
     authenticate,
@@ -268,6 +281,17 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.changeCode'),
     validate({ body: ChangeEmployeeCodeSchema, params: EmployeeIdParamSchema }),
     asyncHandler(changeEmployeeCode),
+  );
+  // «مسح نهائي» — the only hard delete of a person in the product, behind its own break-glass key.
+  // DELETE, not PATCH: this is not a state change dressed as one. The typed code travels in the
+  // body and the controller checks it against the employee before anything is planned, so an id
+  // alone — copied from a URL, repeated by a script — cannot erase somebody.
+  router.delete(
+    '/:id/purge',
+    authenticate,
+    authorize('employee.purge'),
+    validate({ body: PurgeEmployeeSchema, params: EmployeeIdParamSchema }),
+    asyncHandler(purgeEmployee),
   );
   // The social-insurance file and the officer profile: each replaced whole, each behind its own
   // manage permission. Neither is a personnel action — the actions engine's vocabulary is closed,

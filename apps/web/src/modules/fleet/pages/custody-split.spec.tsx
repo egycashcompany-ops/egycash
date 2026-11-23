@@ -132,7 +132,7 @@ const FUND: FleetCustodyFundSummaryDto = {
   spent: { count: 126, amount: 97_794 },
   replenished: { count: 1, amount: 81_908, memos: 5 },
   settled: { count: 1, amount: 124_139.46, parts: 3 },
-  held: { count: 0, amount: 0, memos: 0, receipts: 0 },
+  held: { count: 0, amount: 0, memos: 0, receipts: 0, letters: [] },
   cancelled: { count: 0, amount: 0 },
   operations: 4,
   memos: { count: 5, pending: 0, pendingTotal: 0 },
@@ -241,7 +241,46 @@ describe('SCREEN 1’s head — the fund now, «استعاضة معلّقة», t
     expect(none).toContain('text-slate-500');
     expect(none).not.toContain('amber');
     // The amount is the fund summary's own `held`, not a figure of the screen's.
-    const waitingHtml = head(seeded({ held: { count: 1, amount: 12_500, memos: 2, receipts: 9 } }));
+    const waitingHtml = head(
+      seeded({
+        held: {
+          count: 1,
+          amount: 12_500,
+          memos: 2,
+          receipts: 9,
+          letters: [
+            {
+              id: 'op-h1',
+              date: '2026-10-19',
+              from: null,
+              to: null,
+              amount: 12_500,
+              receipts: 9,
+              memos: [
+                {
+                  id: 'm-h1',
+                  no: 21,
+                  kind: 'fuel',
+                  name: '',
+                  date: '2026-10-16',
+                  receipts: 4,
+                  total: 7_500,
+                },
+                {
+                  id: 'm-h2',
+                  no: 22,
+                  kind: 'wash',
+                  name: '',
+                  date: '2026-10-16',
+                  receipts: 5,
+                  total: 5_000,
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
     const waiting = tagOf(waitingHtml, 'data-custody-held=');
     expect(waiting).toContain('data-custody-held="12500"');
     expect(waiting).toContain(`title="${ar('fleet.custody.hold.heldTileNote')}"`);

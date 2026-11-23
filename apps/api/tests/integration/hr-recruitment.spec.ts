@@ -162,7 +162,11 @@ describe('module boot', () => {
 });
 
 describe('registration (intake pipeline)', () => {
-  it('registers a manual applicant with a National ID and derives identity fields (unverified)', async () => {
+  // VERIFIED AT THE DESK. HR registering someone has the person and their card in front of them
+  // and the National ID is mandatory on that form, so registration IS the verification and the
+  // separate «verify identity» step only repeated it. A PUBLIC application is not covered by this:
+  // it is verified only when the card photo was read and matched the number typed.
+  it('registers a manual applicant with a National ID, derives identity fields, and verifies by registering', async () => {
     const sourceId = await sourceIdByKey('internalHr');
     const res = await request(app)
       .post('/api/v1/hr/applicants')
@@ -173,7 +177,7 @@ describe('registration (intake pipeline)', () => {
     const dto = body.data;
     expect(dto.code).toMatch(/^APP-\d{4}-\d{6}$/);
     expect(dto.status).toBe('new');
-    expect(dto.identityVerification).toBe('unverified');
+    expect(dto.identityVerification).toBe('verified');
     expect(dto.gender).toBe('male');
     expect(dto.placeOfBirth).toBe('Kafr El Sheikh');
     expect(dto.birthDate?.startsWith('1990-01-01')).toBe(true);
@@ -373,11 +377,28 @@ describe('lifecycle: verify, update, withdraw', () => {
     expect(body.data.identityVerification).toBe('verified');
 
     // I6 — the identity check is not a stage transition, but it IS a workflow act on the candidate,
-    // so it answers with the same envelope and the entry it wrote (I5).
+    // so it answers with the same envelope.
     expect(body.workflow.applicantId).toBe(dto.id);
     expect(body.workflow.stage?.kind).toBe('screening');
-    expect(body.timeline.produced.map((e) => e.type)).toEqual(['identityVerified']);
     expect(counter(body.counters, 'screening')).toBeDefined();
+
+    // AND IT PRODUCES NO SECOND ENTRY. The National ID is mandatory at registration, so a desk
+    // registration establishes identity there — this call is a correction arriving afterwards, and
+    // it lands on the entry already written instead of adding one beside it.
+    //
+    // That is not cosmetic. The entry is discriminated by the verification instant while the
+    // applicant document holds exactly ONE `identityVerifiedAt`, so a second entry is one
+    // `reconcileRecruitmentTimeline` could never rebuild — it can only ever reproduce the instant
+    // the document still carries. One verification, one instant, one entry, always recoverable.
+    expect(body.timeline.produced.map((e) => e.type)).toEqual([]);
+    const timeline = await request(app)
+      .get(`/api/v1/hr/applicants/${dto.id}/timeline`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(timeline.status).toBe(200);
+    const verifications = (timeline.body as { data: { type: string }[] }).data.filter(
+      (e) => e.type === 'identityVerified',
+    );
+    expect(verifications).toHaveLength(1);
   });
 
   // I5 — the candidate's history starts at the application. Neither registration nor identity

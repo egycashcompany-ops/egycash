@@ -11,6 +11,7 @@ import { REALTIME_THROTTLE_MS, createRefetchThrottle } from './throttle';
 
 const NOW = ['fleet', 'dashboard', 'now'] as const;
 const LIVE = ['fleet', 'dashboard', 'period', 'live'] as const;
+const PAST = ['fleet', 'dashboard', 'period', 'past'] as const;
 
 const build = () => {
   const stale: string[] = [];
@@ -96,8 +97,8 @@ describe('the refetch throttle', () => {
 });
 
 describe('the throttled prefixes in the registry', () => {
-  it('are the fleet dashboard’s R1 and its LIVE period read — never a past period', () => {
-    expect(THROTTLED_KEY_PREFIXES).toEqual([NOW, LIVE]);
+  it('are the fleet dashboard’s R1 and its period reads, live and past', () => {
+    expect(THROTTLED_KEY_PREFIXES).toEqual([NOW, LIVE, PAST]);
   });
 
   it('ride the fleet rows whose writes move a dashboard figure, and no other module', () => {
@@ -122,20 +123,45 @@ describe('the throttled prefixes in the registry', () => {
         'fleet.receipt',
       ]),
     );
-    // The period tabs count km, visits, accidents, card/custody spend and dealership rows.
+    // The period tabs count km, visits, accidents, card/custody spend and dealership rows — and
+    // the drivers' fines of the period («المخالفات المرورية والتسويات»: a tick moves «قائمة»), the
+    // licence memos of the period and the custody spend's state now («العهدة»: a memo or an
+    // operation moves «منها حتى الآن»).
     expect(carrying(LIVE).sort()).toEqual(
       [
         'fleet.accident',
         'fleet.catalogItem',
+        'fleet.custodyMemo',
+        'fleet.custodyOperation',
         'fleet.dealershipInvoice',
+        'fleet.licenseExpense',
         'fleet.maintenanceVisit',
         'fleet.odometerLog',
         'fleet.receipt',
         'fleet.vehicle',
         'fleet.vehicleType',
+        'fleet.violation',
       ].sort(),
     );
-    // The custody rows reach tab 1's custody line through the custody hooks' own key, not R1.
+    // A grievance moves no counted figure: «الآن» only.
+    expect(carrying(LIVE)).not.toContain('fleet.violationGrievance');
+    // A closed range counts rows whose days are behind it, so only the figures read as of now reach
+    // it: the period's fines carry their state as of now («الشهر الماضي»'s «قائمة» turns «محصَّلة»
+    // on a tick), so do the period's accident files (their status, «منها N مفتوحة حتى الآن», the
+    // money totals and «المتبقي (حتى الآن)» — closing a file or a transfer moves a past month), and
+    // so does the custody spend's «منها حتى الآن» (a replenishment moves a past month's «تمت
+    // الاستعاضة»). Every other write — a back-dated licence memo too — leaves a past range alone
+    // until «تحديث» or a reload.
+    expect(carrying(PAST).sort()).toEqual(
+      ['fleet.accident', 'fleet.custodyMemo', 'fleet.custodyOperation', 'fleet.violation'].sort(),
+    );
+    expect(carrying(PAST)).not.toContain('fleet.licenseExpense');
+    expect(carrying(PAST)).not.toContain('fleet.odometerLog');
+    expect(carrying(PAST)).not.toContain('fleet.maintenanceVisit');
+    // The custody rows reach the custody «الآن» parts (tab 1's line, «العهدة»'s band) through the
+    // custody hooks' own key, not R1.
     expect(carrying(NOW)).not.toContain('fleet.custodyOperation');
+    expect(carrying(NOW)).not.toContain('fleet.custodyMemo');
+    expect(carrying(NOW)).not.toContain('fleet.licenseExpense');
   });
 });

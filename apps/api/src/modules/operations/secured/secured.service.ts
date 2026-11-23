@@ -6,13 +6,16 @@
 //                                            the captain's own ✓ is written by execution.service
 //                         undoPickup()       …taken back — the captain's or the desk's — until the
 //                                            vault receives (Round 10)
-//   «استلام الخزينة»     → vaultQueue()       what the vault receives: the yellow and today's green (Round 8)
-//   /receive_mohsana    → receiveIntoVault() draft → inVault, custody taken (:1220) — only once
-//                                            somebody picked it up (Round 10)
+//   «استلام الخزينة»     → vaultQueue()       what the vault receives: every draft collected by today,
+//                                            the yellow, and today's green (Rounds 8, 13)
+//   /receive_mohsana    → receiveIntoVault() draft → inVault, custody taken (:1220) — whether or not
+//                                            somebody recorded the pickup (Round 13 lifted Round 10's rule)
+//                         checkSeals()       …which of its seals the vault still holds (Round 21b)
 //   cancel the receipt  → cancelReceipt()    inVault → draft, custody voided — the special grant (Round 10)
 //   «صرف الخزينة»        → dispatchBoard()    every shipment in the vault, optional delivery day (Round 10)
 //   /tash4ela_mohasana  → assignDeliveryLeg() writes leader2 + car_num2 ONLY, no status change (:4491)
-//   /deliver_mohsana    → dispatch()         inVault → dispatched, custody released (:1737)
+//   /deliver_mohsana    → dispatch()         inVault → dispatched, custody released (:1737) — on a
+//                                            van of TODAY only (Round 17)
 //   /main_ops receive   → completion lives on the shipment service (:564), unchanged by this slice
 //
 // Round 10's lock («الشاشه بتاعت استلام الخزينة لما تعمل صح ميقدر حد … يعدل عليها») is enforced where
@@ -33,15 +36,19 @@ import {
   cairoCalendarDate,
   cairoDayStart,
   cairoYmd,
+  ymdOf,
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
+  type CheckVaultSeals,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
   type Paginated,
   type ReceiveIntoVault,
+  vaultSealKey,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import {
+  AppError,
   BusinessRuleError,
   ConflictError,
   NotFoundError,
@@ -51,15 +58,21 @@ import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
-import { vaultCustody } from '../treasury-boundary';
+import { vaultCustody, type VaultCustodyView, type VaultHeldSeal } from '../treasury-boundary';
+import { userDisplayNames } from '../user-names';
 import { operationsVaultCustodyService } from '../vault/vault-custody.service';
 import { nextSequence } from '../assignments/leg-sequence';
+import { operationsBankRepository } from '../banks/bank.repository';
+import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
+import { vehicleIdOf, type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { isCaptainOf } from '../crew/crew-slots';
+import { operationsDayRepository } from '../days/day.repository';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { canTransitionShipment } from '../shipments/shipment-status';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
 import { operationsShipmentAssignmentRepository } from '../shipments/shipment-assignment.repository';
+import { operationsShiftTypeRepository } from '../shift-types/shift-type.repository';
 import { type OperationsShipmentAssignmentDoc } from '../shipments/shipment-assignment.model';
 import { type OperationsShipmentDoc } from '../shipments/shipment.model';
 import { securedPickupOf, type SecuredPickup } from '../shipments/secured-stage';
@@ -69,6 +82,7 @@ import {
   operationsShipmentService,
   type DayBoardView,
 } from '../shipments/shipment.service';
+import { dayInPast, isSecuredRow, rowNotSecured } from './distribution.service';
 
 const shipmentRef = (id: string) => ({
   moduleId: 'operations',
@@ -85,13 +99,15 @@ const assignmentRef = (id: string) => ({
 const assignmentSnapshot = (doc: OperationsShipmentAssignmentDoc) => ({
   leg: doc.leg,
   captainEmployeeId: String(doc.captainEmployeeId),
-  vehicleId: String(doc.vehicleId),
+  // Null on a row without a van (Round 24) — never the string "null" in «السجل».
+  vehicleId: vehicleIdOf(doc),
   crewAssignmentId: String(doc.crewAssignmentId),
 });
 
 /**
  * The vault's receive queue before mapping: board rows, and — for the ones the vault already took
- * in today — when it did. `day` is the Cairo day "today" was read for (UTC midnight).
+ * in today — when it did. `day` is the Cairo day "today" was read for (UTC midnight): what
+ * "received today" and "collected by today" were both judged by.
  */
 export interface VaultQueueView extends DayBoardView {
   day: Date;
@@ -124,6 +140,28 @@ const assertSecured = (shipment: OperationsShipmentDoc): void => {
 };
 
 /**
+ * 422 `OPERATIONS_DISPATCH_NOT_TODAY` unless the van — the crew row — is on TODAY's operating day,
+ * Cairo calendar. «تسليم» hands a van over on its own day: «تسليم المحصنات» offers it on today's vans
+ * only, and this is the same rule where the release is written, because a screen cannot hold it
+ * alone — a page left open from yesterday, or a call made by hand, would otherwise send tomorrow's
+ * van out today, or reopen a past day's van that has already left. A crew row whose day cannot be
+ * found is refused the same way: nobody can say it is today's. A crew row WITHOUT A VAN (Round 24)
+ * is handed over by the same rule.
+ */
+const assertTodaysVan = async (crew: OperationsCrewAssignmentDoc, now: Date): Promise<void> => {
+  const today = cairoYmd(now);
+  const day = await operationsDayRepository.findById(String(crew.operationsDayId));
+  const vanDay = day === null ? null : ymdOf(day.date);
+  if (vanDay === today) return;
+  throw new AppError(
+    ErrorCodes.OPERATIONS_DISPATCH_NOT_TODAY,
+    422,
+    `the van's day (${vanDay ?? 'unknown'}) is not today (${today}) — a van is handed over on its own day`,
+    { details: [{ field: 'crewAssignmentId', code: 'TODAY_ONLY', message: today }] },
+  );
+};
+
+/**
  * The pickup this secured shipment has — its record (secured-stage.ts `securedPickupOf`). The
  * pickup LEG is read only for a row whose record was never written (a pre-Round-10 row), so the
  * usual answer costs no second read.
@@ -144,6 +182,102 @@ const pickupChanges = (from: SecuredPickup | null, to: SecuredPickup | null) => 
   { field: 'pickedUpBy', old: from?.by ?? null, new: to?.by ?? null },
   { field: 'pickedUpAt', old: from?.at?.toISOString() ?? null, new: to?.at?.toISOString() ?? null },
 ];
+
+/**
+ * Round 21b — the held محصنة a seal is on, as a treasurer tells it apart: the vault's receipt number
+ * and when it was taken in, the main bank and the two branches. What `POST /seal-check` answers and
+ * what the 409 of a receipt names.
+ */
+export interface VaultSealHolderView {
+  shipmentId: string;
+  receiptNumber: string | null;
+  mainBankName: string;
+  originBranchName: string;
+  destinationBranchName: string;
+  receivedAt: Date;
+}
+
+/**
+ * The holders of a set of held shipments, in four reads whatever their number: the custody (the
+ * receipt number and day, through the port), the shipments, their banks, their branches. Every id
+ * asked for is answered — a name that cannot be found reads '' rather than dropping the holder, so a
+ * held seal is never left unsaid because its محصنة's bank was renamed or archived.
+ */
+const sealHolders = async (
+  shipmentIds: readonly string[],
+): Promise<Map<string, VaultSealHolderView>> => {
+  const ids = [...new Set(shipmentIds)];
+  if (ids.length === 0) return new Map();
+  const [custody, shipments] = await Promise.all([
+    vaultCustody().findMany(ids),
+    operationsShipmentRepository.findByIdsSystem(ids),
+  ]);
+  const [banks, branches] = await Promise.all([
+    operationsBankRepository.findByIdsSystem(shipments.map((doc) => String(doc.mainBankId))),
+    operationsBankBranchRepository.findByIdsSystem(
+      shipments.flatMap((doc) => [String(doc.originBranchId), String(doc.destinationBranchId)]),
+    ),
+  ]);
+  const bankName = new Map(banks.map((bank) => [String(bank._id), bank.opsName] as const));
+  const branchName = new Map(branches.map((branch) => [String(branch._id), branch.name] as const));
+  const shipmentOf = new Map(shipments.map((doc) => [String(doc._id), doc] as const));
+  return new Map(
+    ids.map((id) => {
+      const doc = shipmentOf.get(id);
+      const held = custody.get(id);
+      return [
+        id,
+        {
+          shipmentId: id,
+          receiptNumber: held?.receiptNumber ?? doc?.receiptNumber ?? null,
+          mainBankName: doc === undefined ? '' : (bankName.get(String(doc.mainBankId)) ?? ''),
+          originBranchName:
+            doc === undefined ? '' : (branchName.get(String(doc.originBranchId)) ?? ''),
+          destinationBranchName:
+            doc === undefined ? '' : (branchName.get(String(doc.destinationBranchId)) ?? ''),
+          receivedAt: held?.receivedAt ?? new Date(0),
+        },
+      ] as const;
+    }),
+  );
+};
+
+/**
+ * 409 `OPERATIONS_SEAL_HELD_IN_VAULT` for the receipt's seals the vault still holds on another
+ * محصنة — one detail per seal (its place in THIS receipt as stored, and the held shipment's id), and
+ * a message that names each محصنة the way the vault screens do, for whoever reads a log line.
+ * `held` indexes the receipt's bags then its boxes, as one list (`bagCount` long for the bags).
+ */
+const sealsHeldError = async (
+  held: readonly VaultHeldSeal[],
+  bagCount: number,
+): Promise<AppError> => {
+  const holders = await sealHolders(held.map((h) => h.shipmentId));
+  const placeOf = (index: number): string =>
+    index < bagCount ? `bagSeals.${String(index)}` : `boxSeals.${String(index - bagCount)}`;
+  const said = held.map((h) => {
+    const holder = holders.get(h.shipmentId);
+    const named = [
+      holder?.mainBankName,
+      holder?.receiptNumber == null ? null : `receipt ${holder.receiptNumber}`,
+    ]
+      .filter((part) => part != null && part !== '')
+      .join(', ');
+    return `seal ${JSON.stringify(h.seal)} (${placeOf(h.index)}) is in the vault on shipment ${h.shipmentId}${named === '' ? '' : ` (${named})`}`;
+  });
+  return new AppError(
+    ErrorCodes.OPERATIONS_SEAL_HELD_IN_VAULT,
+    409,
+    `${said.join('; ')} — a seal still held in the vault cannot be received on another shipment`,
+    {
+      details: held.map((h) => ({
+        field: placeOf(h.index),
+        code: 'HELD_IN_VAULT',
+        message: h.shipmentId,
+      })),
+    },
+  );
+};
 
 class OperationsSecuredService {
   /**
@@ -186,28 +320,40 @@ class OperationsSecuredService {
 
   /**
    * THE VAULT'S RECEIVE QUEUE — «هيظهر للخزنة فى شاشة استلام الخزينه نفس المحصنة … وهتكون باللون
-   * الاصفر عشان تعرف ان المحصنة مع القائد ولما الخزنة تدوس صح ساعتها هتبقى اخضر»:
+   * الاصفر عشان تعرف ان المحصنة مع القائد ولما الخزنة تدوس صح ساعتها هتبقى اخضر عند الخزنة وعند العمليات».
    *
-   *   · the secured shipments SOMEBODY PICKED UP — still `draft`, their pickup confirmed by the
-   *     captain in the mobile app (`withCaptain`, yellow) or, since Round 10, by the Operations desk
-   *     (`withOperations`, yellow too): on their way to the vault;
+   * Round 13 — «واستلام الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان العمليات معملتش التسليم
+   * والخزنه تستلم عادي»: the vault may receive a محصنة whether or not anybody recorded collecting it,
+   * so by default the queue is what the vault can receive NOW:
+   *
+   *   · every secured `draft` whose COLLECTION day has come — today or earlier on the Cairo
+   *     calendar — white (`awaitingPickup`: nobody recorded the pickup) or yellow;
+   *   · every YELLOW `draft` whatever its collection day — the captain (`withCaptain`) or the desk
+   *     (`withOperations`) says it is in hand, so it is on its way to the vault now. A ✓ pressed
+   *     ahead of the booked day is rare, but hiding a shipment somebody holds behind «الكل» would
+   *     undo Round 8's one promise — the yellow rows are the vault's work;
    *   · the ones the vault RECEIVED TODAY on the Cairo calendar (the custody's `receivedAt`; green),
-   *     whatever has happened to them since — today's receipts stay on today's screen;
-   *   · with `all`, every `draft` one besides (`awaitingPickup`, white) — FOR VIEWING since Round 10:
-   *     the vault cannot receive it until the captain or the desk has pressed ✓ (a captain without
-   *     the app now has the desk's ✓ for that, «او العمليات»).
+   *     whatever has happened to them since — today's receipts stay on today's screen.
    *
-   * The stage is read off the pickup records BEFORE the rows are enriched, so the van cards beside the
-   * rows are only the vans of the rows shown. Counted before the shipments are read: the open drafts
-   * plus today's receipts, against the history's cap. Newest created first.
+   * With `all`, every other `draft` besides: the white ones booked for a LATER collection day.
+   *
+   * The day's cut is the database's (`securedDrafts(today)`), so a desk that books a month ahead
+   * does not load that month to show today. Only a pre-Round-10 row (no pickup record at all) is
+   * read whatever its day and decided here, by its pickup leg — the very rule its stage follows.
+   *
+   * Counted before the shipments are read — the drafts the read will load plus today's receipts —
+   * against the history's cap. Newest created first.
    */
   async vaultQueue(all: boolean, now: Date = new Date()): Promise<VaultQueueView> {
     const today = cairoYmd(now);
+    const day = cairoCalendarDate(now);
+    const collectedBy = all ? undefined : day;
     const received = await vaultCustody().receivedBetween(
       cairoDayStart(today),
       cairoDayStart(addDaysYmd(today, 1)),
     );
-    const count = (await operationsShipmentRepository.countSecuredDrafts()) + received.length;
+    const count =
+      (await operationsShipmentRepository.countSecuredDrafts(collectedBy)) + received.length;
     if (count > OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS) {
       throw historyTooLarge(
         count,
@@ -215,19 +361,22 @@ class OperationsSecuredService {
       );
     }
 
-    const drafts = await operationsShipmentRepository.securedDrafts();
+    const drafts = await operationsShipmentRepository.securedDrafts(collectedBy);
     let waiting = drafts;
-    if (!all) {
-      // Yellow either way — the captain's ✓ or the desk's, both on the shipment's pickup record.
-      // The legs are read only for the rows whose record was never written (pre-Round-10 rows).
-      const unrecorded = drafts.filter((d) => d.pickup === undefined).map((d) => String(d._id));
+    if (collectedBy !== undefined) {
+      // The database kept every draft collected by today, every one with a pickup recorded, and —
+      // whatever its day — every row with NO record at all (pre-Round-10). Of those last, a row
+      // booked for a later day stays only when its pickup leg says the captain has it (yellow).
+      const ahead = (d: OperationsShipmentDoc): boolean =>
+        d.pickup === undefined && d.collectionDate.getTime() > collectedBy.getTime();
+      const unrecorded = drafts.filter(ahead).map((d) => String(d._id));
       const pickupLegs = new Map(
         (await operationsShipmentAssignmentRepository.findByShipments(unrecorded))
           .filter((leg) => leg.leg === 'pickup')
           .map((leg) => [String(leg.shipmentId), leg] as const),
       );
       waiting = drafts.filter(
-        (d) => securedPickupOf(d.pickup, pickupLegs.get(String(d._id))) !== null,
+        (d) => !ahead(d) || securedPickupOf(d.pickup, pickupLegs.get(String(d._id))) !== null,
       );
     }
     // A receipt's shipment that was deleted since is not offered: `findByIds` reads live rows only.
@@ -243,7 +392,7 @@ class OperationsSecuredService {
     );
     return {
       ...(await operationsShipmentService.boardView(docs)),
-      day: cairoCalendarDate(now),
+      day,
       receivedAt: new Map(received.map((r) => [r.shipmentId, r.receivedAt])),
     };
   }
@@ -319,7 +468,8 @@ class OperationsSecuredService {
   /**
    * THE DESK'S PICKUP ✓ — «لو العمليات تم الاستلام من العمليات» (Round 10). The Operations desk
    * confirms it has collected a secured shipment: the shipment's pickup record is written as the
-   * desk's, the row turns yellow (`withOperations`) and the vault may receive it. Never on a leg —
+   * desk's, the row turns yellow (`withOperations`) and the vault's screen says who brought it in
+   * (since Round 13 the vault may receive a shipment without it). Never on a leg —
    * the captain's execution record is his own.
    *
    * Only while the vault has not received it (`assertSecuredUnlocked`), and only when no pickup is
@@ -368,6 +518,9 @@ class OperationsSecuredService {
    * is cleared to an explicit null — never removed — so the row turns white even though the
    * captain's leg still says picked up (his leg is his execution record and is not rewritten), and
    * the desk may then ✓ it again as Operations.
+   *
+   * `OPERATIONS_SECURED_NOT_PICKED_UP` is this method's alone since Round 13 — an undo with nothing
+   * to undo. The vault's ✓ no longer asks for a pickup.
    */
   async undoPickup(
     shipmentId: string,
@@ -401,12 +554,46 @@ class OperationsSecuredService {
     return updated;
   }
 
-  /** The `/receive_mohsana` save: custody taken, shipment draft → inVault (legacy status 2). */
+  /**
+   * The `/receive_mohsana` save: custody taken, shipment draft → inVault (legacy status 2).
+   *
+   * From ANY draft since Round 13 — «واستلام الخزينه ممكن تستلم يكون القائد معلمش التسليم، او ان
+   * العمليات معملتش التسليم والخزنه تستلم عادي». Round 10 refused a shipment nobody had picked up
+   * («مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»); the owner lifted that.
+   *
+   * The vault's ✓ does NOT write the pickup record. The vault's screen now tells two facts in two
+   * columns — who collected it from the bank, and whether the vault has it — and a receipt nobody
+   * handed over must keep saying «لم يتم الاستلام» in the first one for good. Stamping the vault as
+   * the collector would make the two columns say one thing twice, and lose the only trace that the
+   * captain and the desk never pressed ✓.
+   *
+   * ROUND 18 — the legacy «إستلام محصنة» form («عاوز اخلى الفورم دا لما اجى استلم محصنة»):
+   *   · every field optional, NO NAMES («انا مش عاوز اى اسماء ومش عاوز اى خانة من الخانات دى اجبارى
+   *     كله اختيارى») — the receiver is `by`, the signed-in user the route read from the token;
+   *   · the vault may CORRECT THE SHIPMENT'S DATA in the same form («تعدّلها عادي»): `input.shipment`
+   *     goes through the edit form's own rules (`operationsShipmentService.prepareEdit`) BEFORE the
+   *     transaction, and is written INSIDE it, first, under the version the screen read — then the
+   *     custody, then the move to `inVault` under the version the edit left. One transaction: an
+   *     edit the rules refuse writes nothing at all, and a receive that fails after the edit takes
+   *     the edit back with it — the vault never corrects a shipment it then did not receive.
+   *     Audited as an EDIT (`edited` in «السجل», what the vault changed, old → new) before the
+   *     receipt's own entry. The receive's grant (`operationsVault.receive`) covers it: the edits
+   *     are part of the vault's act, made on a draft (the only state a receive starts from) that the
+   *     very same act locks. `operationsShipment.edit` is not asked.
+   *   · «سيريال» — «بتتعرف عند الاستلام اذا كان سيريال او لا»: `serialTracked` is the receipt's own
+   *     field, written with the move to `inVault` and recorded on that row (so «السجل» shows it on
+   *     the `vaultReceived` entry, for every reader), not as an edit.
+   */
   async receiveIntoVault(
     shipmentId: string,
     input: ReceiveIntoVault,
     by: string,
-  ): Promise<OperationsShipmentDoc> {
+  ): Promise<{
+    shipment: OperationsShipmentDoc;
+    receipt: VaultCustodyView;
+    /** The receiver's name, for the «إيصال» print — `by`, named the way «السجل» names an actor. */
+    receivedByName: string | null;
+  }> {
     const before = await operationsShipmentRepository.getById(shipmentId);
     assertSecured(before);
     if (!canTransitionShipment(before.shipmentType, before.status, 'inVault')) {
@@ -415,26 +602,65 @@ class OperationsSecuredService {
         'OPERATIONS_INVALID_SHIPMENT_TRANSITION',
       );
     }
-    // Round 10 — «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»: the vault receives what
-    // somebody has collected — the captain in the app, or the desk. A white row is for viewing.
-    if ((await securedPickup(before)) === null) {
-      throw new ConflictError(
-        'nobody has picked this shipment up yet — the captain (in the app) or the Operations desk confirms the pickup before the vault receives it',
-        ErrorCodes.OPERATIONS_SECURED_NOT_PICKED_UP,
-      );
-    }
+    // A row from before Round 10 has no pickup record at all, and its stage reads its pickup LEG
+    // (`securedPickupOf`). Received while nobody had collected it, its "nobody" is written down as
+    // an explicit null in the same write — otherwise the captain finishing that leg later (still
+    // his to finish) would turn a direct receipt into «تم الاستلام من القائد» after the fact. A row
+    // whose leg already says he has it is left as it reads; every newer row already holds its record.
+    const freezeNobody =
+      before.pickup === undefined && (await securedPickup(before)) === null
+        ? { pickup: null }
+        : {};
 
     // The version is checked up front for the plain answer, and again by the shipment write.
     if (before.__v !== input.version) throw new StaleDocumentError();
 
-    // ONE transaction (Round 10). The treasury takes custody first — if it refuses (already held,
-    // dual control), no shipment status moves; its uniqueness index is the real double-receive
-    // guard — and the shipment moves to `inVault` under the version the screen read. Before Round 10
-    // the two writes stood apart, so a receive refused at the second one (stale, because something
-    // changed the shipment a moment earlier) left a HELD custody on a shipment still in draft —
-    // never receivable again. The pickup ✓ and its undo made that moment likelier (each moves the
-    // version), so the two writes now commit or roll back together.
-    const { custody, updated } = await unitOfWork(async (session) => {
+    // Round 18 — the corrections, checked by EVERY rule of the edit form before anything is written.
+    // An empty `shipment` corrects nothing, so it is no edit at all: «Send only what changed», and a
+    // write of nothing would only move the version twice and re-check references the vault never
+    // touched (a bank deactivated since booking would refuse a receipt that changed none of it).
+    const edit =
+      input.shipment === undefined || Object.keys(input.shipment).length === 0
+        ? null
+        : await operationsShipmentService.prepareEdit(before, input.shipment);
+
+    // ONE transaction (Round 10). The treasury takes custody — if it refuses (already held), no
+    // shipment status moves; its uniqueness index is the real double-receive guard — and the
+    // shipment moves to `inVault` under the version the screen read. Before Round 10 the two writes
+    // stood apart, so a receive refused at the second one (stale, because something changed the
+    // shipment a moment earlier) left a HELD custody on a shipment still in draft — never
+    // receivable again. The pickup ✓ and its undo made that moment likelier (each moves the
+    // version), so the writes now commit or roll back together — since Round 18 with the vault's
+    // corrections of the shipment first among them.
+    const { custody, edited, updated } = await unitOfWork(async (session) => {
+      // ROUND 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: a seal
+      // the vault STILL HOLDS on another محصنة refuses the receipt; one that came in and went out
+      // again (released to its van) or whose receipt was cancelled may come again. Asked first, in
+      // this transaction's snapshot, so a refusal writes nothing — not even the vault's corrections
+      // of the shipment, which come next. One read of the held seals (the port's `heldSeals`).
+      //
+      // THE RACE, and why it is left open: two treasurers pressing «استلام» on two محصنات carrying
+      // the same seal in the same instant each read the vault before the other commits, so both can
+      // be taken. Closing it would mean a lock document every receipt writes (the fleet fund's
+      // `lockFund`) — a new collection serialising every receipt for an event that needs two clerks
+      // to type the same wrong number within one transaction of each other. A seal is a physical
+      // object on one package: the clash this rule catches is a mistyped or misread number, which
+      // the form flags while it is typed (`/seal-check`) as soon as the first receipt is in. And if
+      // the instant does come, nothing is lost: both receipts are kept, and every later check and
+      // receipt names the محصنة that took the seal first.
+      const held = await vaultCustody().heldSeals([...input.bagSeals, ...input.boxSeals], {
+        excludeShipmentId: shipmentId,
+        session,
+      });
+      if (held.length > 0) throw await sealsHeldError(held, input.bagSeals.length);
+      const corrected =
+        edit === null
+          ? null
+          : await operationsShipmentService.applyEdit(edit, {
+              by,
+              version: input.version,
+              session,
+            });
       const taken = await vaultCustody().receive(
         {
           shipmentId,
@@ -442,10 +668,10 @@ class OperationsSecuredService {
           bagCount: input.bagCount,
           cartonCount: input.cartonCount,
           boxCount: input.boxCount,
+          bagSealsPerBag: input.bagSealsPerBag,
           bagSeals: input.bagSeals,
           boxSeals: input.boxSeals,
-          receivedByPrimaryId: input.receivedByPrimaryId,
-          receivedBySecondaryId: input.receivedBySecondaryId,
+          denominations: input.denominations,
         },
         by,
         session,
@@ -455,26 +681,82 @@ class OperationsSecuredService {
         {
           status: 'inVault',
           receiptNumber: input.receiptNumber,
+          ...freezeNobody,
           ...(input.serialTracked === undefined ? {} : { serialTracked: input.serialTracked }),
         },
-        { by, version: input.version, session },
+        { by, version: corrected?.__v ?? input.version, session },
       );
-      return { custody: taken, updated: moved };
+      return { custody: taken, edited: corrected, updated: moved };
     });
 
-    // Audit + events only after commit — the custody's first, as before.
+    // Audit + events only after commit: the vault's corrections first (so «السجل» reads them before
+    // the receipt), then the custody's, then the shipment's move — as before.
+    if (edit !== null && edited !== null) await operationsShipmentService.announceEdit(edit, edited);
+    const statusBefore = edited ?? before;
     await operationsVaultCustodyService.announceReceived(custody);
     await auditService.record({
       entityRef: shipmentRef(shipmentId),
       action: 'update',
-      changes: diffChanges({ status: before.status }, { status: updated.status }),
+      changes: diffChanges(
+        { status: statusBefore.status, serialTracked: statusBefore.serialTracked },
+        { status: updated.status, serialTracked: updated.serialTracked },
+      ),
     });
     await emit(OperationsEvents.ShipmentUpdated, {
       shipmentId,
       shipmentType: updated.shipmentType,
       status: updated.status,
     });
-    return updated;
+    const names = await userDisplayNames([by]);
+    return { shipment: updated, receipt: custody, receivedByName: names.get(by) ?? null };
+  }
+
+  /**
+   * Round 21b — `POST /operations/secured/seal-check`: which of these seals the vault still holds on
+   * another محصنة, and on which — the receive form asks as seals are typed («لو موجوده عندنا لا ك
+   * محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»). The receipt's own read (`heldSeals`), outside
+   * any transaction: advice for the form, never the decision — the receipt asks again when it is
+   * taken. Each held seal once (by `vaultSealKey`), at its first spelling, in the order sent.
+   */
+  async checkSeals(
+    input: CheckVaultSeals,
+  ): Promise<{ seal: string; holder: VaultSealHolderView }[]> {
+    const found = await vaultCustody().heldSeals(
+      input.seals,
+      input.excludeShipmentId === undefined ? {} : { excludeShipmentId: input.excludeShipmentId },
+    );
+    const said = new Set<string>();
+    const once = found.filter((h) => {
+      const key = vaultSealKey(h.seal) ?? h.seal;
+      if (said.has(key)) return false;
+      said.add(key);
+      return true;
+    });
+    const holders = await sealHolders(once.map((h) => h.shipmentId));
+    return once.flatMap((h) => {
+      const holder = holders.get(h.shipmentId);
+      return holder === undefined ? [] : [{ seal: h.seal, holder }];
+    });
+  }
+
+  /**
+   * The `/vault1` inventory — what the treasury holds now, through the port — with who received each
+   * one, by name (Round 18: the signed-in user; a receipt taken before names its two treasurers by
+   * id, as it always did). One directory read for the page.
+   */
+  async vaultInventory(
+    page: number,
+    pageSize: number,
+  ): Promise<{
+    items: VaultCustodyView[];
+    total: number;
+    receiverNames: Map<string, string | null>;
+  }> {
+    const { items, total } = await vaultCustody().listHeld(page, pageSize);
+    const receiverNames = await userDisplayNames(
+      items.flatMap((item) => (item.receivedById === null ? [] : [item.receivedById])),
+    );
+    return { items, total, receiverNames };
   }
 
   /**
@@ -484,9 +766,11 @@ class OperationsSecuredService {
    * Only from `inVault`: a shipment that has left the vault is past cancelling. In ONE transaction
    * (the dispatch precedent): the treasury VOIDS the custody (kept, stamped with why — never
    * erased) and the shipment returns to `draft` with its receipt number cleared and its pickup left
-   * exactly as it was — so the row is yellow again, editable again, and the vault can receive it
-   * afresh. This is the one move back down the secured ladder; it is not in shipment-status.ts,
-   * because no ordinary act may take it.
+   * exactly as it was — so the row is yellow again when somebody had collected it, WHITE again when
+   * the vault had received it directly (Round 13: nobody recorded a pickup, and the cancel does not
+   * invent one), editable again either way, and the vault can receive it afresh. This is the one
+   * move back down the secured ladder; it is not in shipment-status.ts, because no ordinary act may
+   * take it.
    *
    * A delivery crew assigned while it sat in the vault is LEFT as it is: the leg is the plan for
    * its delivery day, still true once the vault takes it in again, and `dispatch` refuses anything
@@ -546,11 +830,17 @@ class OperationsSecuredService {
    * The captain and vehicle are not free-typed: they must match a crew assignment on the
    * shipment's delivery day, which is what makes `day + vehicle + leg → crew` resolvable without
    * duplicating the specialists onto the shipment.
+   *
+   * Round 30 critic — and that day must not have PASSED (Cairo's calendar): a past day is its
+   * record on «توزيع المحصنات», read only, and this writes the very leg the record shows (422
+   * `OPERATIONS_DISTRIBUTION_DAY_IN_PAST`, the distribution save's own refusal). An overdue one
+   * reaches today's vans through the distribution save, which moves its date with it.
    */
   async assignDeliveryLeg(
     shipmentId: string,
     input: AssignSecuredDeliveryLeg,
     by: string,
+    now: Date = new Date(),
   ): Promise<OperationsShipmentAssignmentDoc> {
     const shipment = await operationsShipmentRepository.getById(shipmentId);
     assertSecured(shipment);
@@ -567,6 +857,8 @@ class OperationsSecuredService {
       );
     }
 
+    // Any live crew row of the «محصنة» type — a van's or (Round 24) one without a van: the same
+    // delivery leg «توزيع المحصنات» writes, so both doors take the same rows (Round 25, below).
     const crew = await operationsCrewAssignmentRepository.findById(input.crewAssignmentId);
     if (crew === null) throw new NotFoundError('crew assignment not found');
 
@@ -579,6 +871,23 @@ class OperationsSecuredService {
         'OPERATIONS_CREW_DAY_MISMATCH',
       );
     }
+    // Round 30 critic — «ميقدرش يعدل عليه او يعمل حاجه»: a past day's van is its record's.
+    const today = cairoYmd(now);
+    if (ymdOf(day.date) < today) throw dayInPast(ymdOf(day.date), today);
+    const existing = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
+      shipmentId,
+      'delivery',
+    );
+    // Round 25 — «انا عاوز اللى يظهر اللى نوعها محصنة بس»: the distribution save's own rule, checked
+    // where it checks it (after the day, before the captain): only a row of the «محصنة» type takes a
+    // محصنة; one whose delivery leg is ALREADY on that row keeps it (its captain switched there).
+    const securedType = await operationsShiftTypeRepository.findSecuredType();
+    if (
+      !isSecuredRow(crew, securedType === null ? null : String(securedType._id)) &&
+      (existing === null || String(existing.crewAssignmentId) !== input.crewAssignmentId)
+    ) {
+      throw rowNotSecured(shipmentId, input.crewAssignmentId);
+    }
     // The captain must be ONE OF that row's captains: legacy picked the leader from the row it
     // displayed, and a row may now display two.
     if (!isCaptainOf(crew, input.captainEmployeeId)) {
@@ -588,13 +897,9 @@ class OperationsSecuredService {
       );
     }
 
-    const existing = await operationsShipmentAssignmentRepository.findByShipmentAndLeg(
-      shipmentId,
-      'delivery',
-    );
     const set = {
       captainEmployeeId: new Types.ObjectId(input.captainEmployeeId),
-      vehicleId: crew.vehicleId,
+      vehicleId: crew.vehicleId ?? null,
       crewAssignmentId: crew._id,
     };
 
@@ -646,7 +951,7 @@ class OperationsSecuredService {
       shipmentId,
       leg: doc.leg,
       captainEmployeeId: String(doc.captainEmployeeId),
-      vehicleId: String(doc.vehicleId),
+      vehicleId: vehicleIdOf(doc),
     });
     return doc;
   }
@@ -659,10 +964,20 @@ class OperationsSecuredService {
    * NORMALIZE (Q30-adjacent, documented): a shipment may only be dispatched on the crew assignment
    * it was ASSIGNED to. Legacy checked nothing here, which is what let a mohsana reach the
    * terminal state with an empty `leader2` and land in the captain report under a blank captain.
+   *
+   * And only on the van's own day (Round 17, `assertTodaysVan`): checked first, before any
+   * shipment is read, so a van of another day is refused as a whole and nothing is written.
    */
-  async dispatch(input: DispatchSecuredShipments, by: string): Promise<{ dispatched: number }> {
+  async dispatch(
+    input: DispatchSecuredShipments,
+    by: string,
+    now: Date = new Date(),
+  ): Promise<{ dispatched: number }> {
+    // Any live crew row — since Round 24 a row WITHOUT A VAN carries محصنات too, and its load is
+    // handed over exactly like a van's. A missing or removed row answers 404.
     const crew = await operationsCrewAssignmentRepository.findById(input.crewAssignmentId);
     if (crew === null) throw new NotFoundError('crew assignment not found');
+    await assertTodaysVan(crew, now);
 
     const prepared: {
       shipment: OperationsShipmentDoc;

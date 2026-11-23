@@ -36,6 +36,7 @@ const paper = (
   employeeName: 'وليد صفوت جلال صفوت',
   employeeCode: '0100026',
   jobTitle: { ar: 'محاسب', en: 'Accountant' },
+  custodian: null,
   issuedByName: 'أحمد محمود سالم عبد الله',
   notes: null,
   lines: [
@@ -234,6 +235,7 @@ describe('the consumables memo (مذكرة صرف مستهلكات)', () => {
         nationalIdVisible: false,
         section: null,
         department: null,
+        custodian: null,
         lines: [
           {
             assetId: '000000000000000000000a12',
@@ -257,5 +259,50 @@ describe('the consumables memo (مذكرة صرف مستهلكات)', () => {
     expect(device).toContain(
       '<title>إقرار استلام EGYCASH-IT-F-14-0042 — وليد صفوت جلال صفوت</title>',
     );
+  });
+});
+
+// 2026-11-19 — «صرف لإدارة»: the items go to a department at a place, received for it by its
+// responsible person. The statement, the receiver's block and the title change; the undertaking,
+// the table and the number series do not.
+describe('a department memo', () => {
+  const html = buildConsumableMemoHtml(
+    paper({
+      employeeName: 'شريف ممدوح فاروق',
+      employeeCode: '0100077',
+      jobTitle: { ar: 'مهندس شبكات', en: 'Network engineer' },
+      custodian: {
+        departmentId: '000000000000000000000d01',
+        departmentName: { ar: 'تقنية المعلومات', en: 'Information Technology' },
+        locationId: '000000000000000000000f01',
+        locationName: { ar: 'غرفة السيرفرات', en: 'Server room' },
+      },
+    }),
+    LABELS,
+  );
+
+  it('receives for the department, at its place', () => {
+    expect(html).toContain(
+      'كود <span class="fill whole"><bdi>٠١٠٠٠٧٧</bdi></span> بصفتي المسؤول عن إدارة <span class="fill"><bdi>تقنية المعلومات</bdi></span> بأنني قد استلمت من قطاع تكنولوجيا المعلومات الأصناف الموضحة أدناه لصالح إدارة <span class="fill"><bdi>تقنية المعلومات</bdi></span> بموقع <span class="fill"><bdi>غرفة السيرفرات</bdi></span>:',
+    );
+  });
+
+  it('signs as «المستلم عن الإدارة», and keeps the undertaking', () => {
+    expect(html).toContain('<div class="by">المستلم عن الإدارة</div>');
+    expect(html).toContain('<div>عن إدارة: تقنية المعلومات</div>');
+    expect(html).toContain(CONSUMABLE_MEMO_UNDERTAKING);
+  });
+
+  it('is titled by the department, under the memo’s own number', () => {
+    expect(html).toContain(
+      '<title>مذكرة صرف مستهلكات EGYCASH-IT-CON-0007 — إدارة تقنية المعلومات</title>',
+    );
+  });
+
+  it('an employee’s memo says none of it', () => {
+    const own = buildConsumableMemoHtml(paper(), LABELS);
+    expect(own).toContain('<div class="by">المستلم</div>');
+    expect(own).not.toContain('بصفتي المسؤول');
+    expect(own).not.toContain('لصالح إدارة');
   });
 });

@@ -1,0 +1,220 @@
+// From what the API answers to what the views draw.
+//
+// The views are presentational and take minutes after Cairo midnight; the API answers instants and
+// the thirteen-value day vocabulary. This is the one place the two meet, so the daily sheet, the
+// employee page, the profile tab and My Attendance cannot drift into three different readings of
+// the same row.
+//
+// NOTHING IS INVENTED HERE. A time nobody recorded stays `null`, a day the engine has concluded
+// nothing about says so, and no figure is computed that the server did not send.
+import {
+  displayStatusOf,
+  type AttendanceDayDto,
+  type AttendanceEmployeeDayDto,
+  type AttendanceDayStatus,
+  type AttendanceSheetRowDto,
+  type Locale,
+} from '@ecms/contracts';
+import { type EmployeeDay, type ScanEntry, type SheetRow, type TimeSpan, type ViewStatus } from './views';
+// One `cairoToday` for the module, and it lives beside the period helpers that default to it.
+export { cairoToday } from './components/period';
+
+/** One formatter, made once. `h23` so midnight reads 00 and never 24. */
+const cairoSeconds = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Cairo',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+const cairoDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' });
+
+/** A scan as the scan log draws it: to the second, with its device, branch and counted role. */
+const toScan = (
+  workDate: string,
+  scan: AttendanceEmployeeDayDto['punches'][number],
+  locale: Locale,
+): ScanEntry => ({
+  time: cairoSeconds.format(new Date(scan.at)),
+  dayOffset: Math.round(
+    (Date.parse(`${cairoDate.format(new Date(scan.at))}T00:00:00Z`) - Date.parse(`${workDate}T00:00:00Z`)) /
+      86_400_000,
+  ),
+  direction: scan.direction,
+  role: scan.role,
+  source: scan.source,
+  device: scan.deviceName ?? scan.deviceId,
+  branch: scan.branchName === null ? null : scan.branchName[locale],
+});
+
+/**
+ * A check-out on the work date's clock: minutes past that date's midnight, PLUS a day for every
+ * calendar day it fell after the work date. Comparing clock times alone read a 24-hour guard's
+ * 08:07 next-morning check-out as twenty minutes after their 07:47 arrival.
+ */
+const outMinutes = (workDate: string, inAt: number | null, outIso: string): number => {
+  const days = Math.round(
+    (Date.parse(`${cairoDate.format(new Date(outIso))}T00:00:00Z`) - Date.parse(`${workDate}T00:00:00Z`)) / 86_400_000,
+  );
+  const base = cairoMinutes(outIso);
+  return days > 0 ? base + days * 1440 : after(inAt, base);
+};
+
+const cairoClock = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Cairo',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** Minutes past Cairo midnight for an instant — the business clock, never the browser's. */
+export const cairoMinutes = (iso: string): number => {
+  const parts = cairoClock.formatToParts(new Date(iso));
+  const part = (type: 'hour' | 'minute'): number =>
+    Number(parts.find((p) => p.type === type)?.value ?? '0');
+  return part('hour') * 60 + part('minute');
+};
+
+const MINUTES_IN_DAY = 1440;
+
+/**
+ * The second of two Cairo times, counted PAST midnight when it falls before the first.
+ *
+ * A night shift is keyed to the date it started (D3), so its check-out at one in the morning
+ * belongs to the previous day's line. Read plainly it would draw a bar running backwards across
+ * the whole morning; counted as 25:10 it draws forwards, and the views already understand
+ * "> 1440" as "after midnight".
+ */
+const after = (first: number | null, second: number): number =>
+  first !== null && second < first ? second + MINUTES_IN_DAY : second;
+
+/** Minutes after Cairo midnight, right now. */
+export const cairoNowMinutes = (now: Date = new Date()): number => cairoMinutes(now.toISOString());
+
+/**
+ * The day vocabulary as the views name it — which is now the CONTRACT'S vocabulary, not a second
+ * copy of it.
+ *
+ * It used to be a thirteen-case switch here, and it split `checkedIn` by the date: «في العمل» on
+ * today, «حضر فقط» once the day was over. The owner's ruling of 18 November collapsed that to one
+ * word, and more to the point the CSV needed the same mapping on the server, where this file
+ * cannot be imported. So the mapping moved to `@ecms/contracts` beside the statuses themselves and
+ * this delegates — the alternative being two switches that agree until one of them is edited.
+ */
+export const toViewStatus = (status: AttendanceDayStatus): ViewStatus => displayStatusOf(status);
+
+/** What was expected of somebody, in the views' minutes — null when nobody said. */
+const expectedSpan = (startAt: string | null, endAt: string | null): TimeSpan | null => {
+  if (startAt === null || endAt === null) return null;
+  const start = cairoMinutes(startAt);
+  const end = after(start, cairoMinutes(endAt));
+  // A 24-hour expectation (security) ends at the same wall time the next day.
+  return { start, end: end === start && Date.parse(endAt) > Date.parse(startAt) ? end + MINUTES_IN_DAY : end };
+};
+
+/** The row's own marks: the flags the engine raised, and the freeze. Already localized. */
+const marksOf = (day: AttendanceDayDto | null, label: (key: string) => string): string[] => {
+  if (day === null) return [];
+  return [
+    // Repeated presses are NEVER a mark on the sheet or the day lists (the owner's rule): they
+    // live only in the employee's scan log.
+    ...day.flags.filter((flag) => flag !== 'repeatedPunches').map((flag) => label(`attendance.flag.${flag}`)),
+    ...(day.frozenAt === null ? [] : [label('attendance.days.frozen')]),
+  ];
+};
+
+/** One line of the daily sheet. `actions` are the page's own buttons, passed through untouched. */
+export const toSheetRow = (
+  row: AttendanceSheetRowDto,
+  options: {
+    today: string;
+    locale: Locale;
+    label: (key: string) => string;
+    actions?: React.ReactNode;
+  },
+): SheetRow => {
+  const day = row.day;
+  // THE TIMES COME FROM EITHER, and the fallback is the point: a scan imported onto a date no
+  // recompute has reached has no stored row, and reading only `day` is what put thirty-nine people
+  // at the door and five sets of times on screen. `day` wins where it exists — it is the concluded
+  // record — and `provisionalDay` is the reading of the punches the server took when it answered.
+  const times = day ?? row.provisionalDay;
+  const inAt = times?.firstInAt == null ? null : cairoMinutes(times.firstInAt);
+  return {
+    id: row.employeeId,
+    name: row.employeeName,
+    code: row.employeeCode,
+    // The page draws the face from `photoFileId` (one cached request per face, once); initials
+    // stand in for everybody without a photo.
+    photoUrl: null,
+    photoFileId: row.employeePhotoFileId,
+    department: row.employeeDepartment === null ? null : row.employeeDepartment[options.locale],
+    jobTitle: row.employeeJobTitle === null ? null : row.employeeJobTitle[options.locale],
+    branch: row.employeeBranch === null ? null : row.employeeBranch[options.locale],
+    status: toViewStatus(row.status),
+    expected: expectedSpan(row.expectedStartAt, row.expectedEndAt),
+    inAt,
+    outAt: times?.lastOutAt == null ? null : outMinutes(row.date, inAt, times.lastOutAt),
+    // THE FIGURES ARE THE SERVER'S, nulls and all. This file used to coerce them — `?? 0` here and
+    // `workedMinutes === 0 ? null` below — which meant the screen decided what counted as
+    // unmeasured and the CSV decided separately. One rule now, applied once, on the server.
+    worked: row.figures.workedMinutes,
+    lateMinutes: row.figures.lateMinutes,
+    shortfallMinutes: row.figures.shortfallMinutes,
+    overtimeApproved: day?.approvedOvertimeMinutes ?? 0,
+    overtimeDerived: row.figures.overtimeMinutes ?? 0,
+    tags: marksOf(day, options.label),
+    ...(options.actions === undefined ? {} : { actions: options.actions }),
+  };
+};
+
+/**
+ * One day of an employee's period, from the SERVER'S RESOLUTION of that date.
+ *
+ * It used to be handed a day ROW or null, and null meant "the client found no row for this date" —
+ * which the client then had to interpret. That is where the two screens came apart: the sheet asked
+ * the server what a date WAS and the employee page guessed from what it had been sent. Now the
+ * server answers one entry per date, with the status it would store, and this only renders it.
+ *
+ * `day` is still nullable for the one case the server omits: a date outside the employment.
+ */
+export const toEmployeeDay = (
+  date: string,
+  day: AttendanceEmployeeDayDto | null,
+  options: { today: string; label: (key: string) => string; action?: React.ReactNode; locale?: Locale },
+): EmployeeDay => {
+  const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
+  return {
+    date,
+    status: day === null ? 'noRecord' : toViewStatus(day.status),
+    inAt,
+    outAt: day?.lastOutAt == null ? null : outMinutes(date, inAt, day.lastOutAt),
+    // THE EXPECTATION NOW ARRIVES, resolved per date by the server. The old comment here said the
+    // day list did not carry one and that inventing it would be a second derivation — true then,
+    // and the reason the period endpoint carries it.
+    expected: day === null ? null : expectedSpan(day.expectedStartAt, day.expectedEndAt),
+    // Hours that were measured, or null — never a confident zero against a day with no check-out.
+    worked: day?.figures.workedMinutes ?? null,
+    lateMinutes: day?.figures.lateMinutes ?? null,
+    shortfall: day?.figures.shortfallMinutes ?? null,
+    // A provisional day is one the engine has not concluded: the punches are real and the status is
+    // a reading of them. Marked so a reader knows which, and so «لا يوجد تسجيل» is not the only
+    // clue that the backfill still has work to do.
+    tags: day !== null && day.provisional && day.punches.length > 0
+      ? [options.label('attendanceView.provisional')]
+      : [],
+    ...(options.action === undefined ? {} : { action: options.action }),
+    scans: day === null ? [] : day.punches.map((scan) => toScan(date, scan, options.locale ?? 'ar')),
+    repeats: day?.repeatCount ?? 0,
+  };
+};
+
+/** Every date from `from` to `to` inclusive, oldest first — the calendar's contiguous run. */
+export const datesBetween = (from: string, to: string): string[] => {
+  const out: string[] = [];
+  const last = Date.parse(`${to}T00:00:00.000Z`);
+  for (let at = Date.parse(`${from}T00:00:00.000Z`); at <= last; at += MINUTES_IN_DAY * 60_000) {
+    out.push(new Date(at).toISOString().slice(0, 10));
+  }
+  return out;
+};

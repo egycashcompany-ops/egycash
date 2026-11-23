@@ -13,13 +13,23 @@ import { authContext } from '../../../platform/auth';
 import { ValidationError } from '../../../shared/errors';
 import { scopeSelector } from '../../../shared/types';
 import { toVehicleDto } from '../fleet.mappers';
+import { cairoTodayAsUtcDay } from '../fleet-cairo-day';
 import { fleetVehicleService } from './vehicle.service';
 import { type FleetVehicleDoc } from './vehicle.model';
 
 type IdParam = { id: string };
 
+/**
+ * FR-12's `inWorkshop` as the person in Cairo lives it TODAY (D07): only a visit already open by
+ * the end of Cairo today puts a car in the workshop — the roster's covering-day rule, and the
+ * dashboard's «في الورشة الآن» (`/fleet/maintenance?state=open&to=<today>`). A check-in recorded
+ * for a later day is still accepted; the car simply is not in the workshop before that day.
+ */
+const openToday = (vehicleIds: readonly string[]): Promise<ReadonlySet<string>> =>
+  fleetVehicleService.openVisitVehicleIds(vehicleIds, cairoTodayAsUtcDay());
+
 const respondOne = async (res: Response, doc: FleetVehicleDoc, status = 200): Promise<void> => {
-  const open = await fleetVehicleService.openVisitVehicleIds([String(doc._id)]);
+  const open = await openToday([String(doc._id)]);
   const dto = toVehicleDto(doc, open.has(String(doc._id)));
   if (status === 201) created(res, dto);
   else ok(res, dto);
@@ -29,9 +39,7 @@ export const listVehicles = async (req: Request, res: Response): Promise<void> =
   const { query } = validated<never, ListFleetVehiclesQuery>(req);
   const scope = scopeSelector(authContext(req), 'fleetVehicle.view');
   const page = await fleetVehicleService.list(query, scope);
-  const open = await fleetVehicleService.openVisitVehicleIds(
-    page.items.map((doc) => String(doc._id)),
-  );
+  const open = await openToday(page.items.map((doc) => String(doc._id)));
   okPage(res, page, (doc) => toVehicleDto(doc, open.has(String(doc._id))));
 };
 

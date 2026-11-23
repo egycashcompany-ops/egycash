@@ -33,6 +33,7 @@ import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { rbacService } from '../../src/platform/rbac';
 import { roleRepository } from '../../src/platform/rbac/rbac.repository';
+import { RoleModel } from '../../src/platform/rbac/role.model';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
@@ -981,6 +982,54 @@ describe('P7-C — the duplicate flow passes through createRole’s guards', () 
     expect(
       (await postRole({ name: roleName(), permissionKeys: ['user.view'] }, readerToken)).status,
     ).toBe(403);
+  });
+});
+
+// «لما بعدل صلاحيات دور بيظهر كدا ! Unknown permission keys: applicant.returnToStage» — the role
+// «الموارد البشرية Test» held a key that was retired after it was granted, and every save of the
+// role was refused for it. A key the registry no longer declares may not be ADDED; one the role
+// already holds must not make the role unsaveable.
+describe('a role holding a key the registry has since retired', () => {
+  const withRetiredKey = async (): Promise<{ id: string; version: number }> => {
+    const id = await seedRole('Holds a retired key', ['user.view']);
+    // As the database is after the key's retirement: the role still lists it.
+    await RoleModel.updateOne({ _id: id }, { $push: { permissionKeys: 'retired.view' } }).exec();
+    const role = await roleRepository.getById(id);
+    return { id, version: role.__v };
+  };
+
+  it('saves with the retired key re-sent, and keeps it', async () => {
+    const { id, version } = await withRetiredKey();
+    const res = await patchRole(id, {
+      name: roleName(),
+      permissionKeys: ['user.view', 'branch.view', 'retired.view'],
+      version,
+    });
+    expect(res.status).toBe(200);
+    expect(data<{ permissionKeys: string[] }>(res).permissionKeys.sort()).toEqual([
+      'branch.view',
+      'retired.view',
+      'user.view',
+    ]);
+  });
+
+  it('drops the retired key when the edit leaves it out', async () => {
+    const { id, version } = await withRetiredKey();
+    const res = await patchRole(id, { permissionKeys: ['user.view'], version });
+    expect(res.status).toBe(200);
+    expect(data<{ permissionKeys: string[] }>(res).permissionKeys).toEqual(['user.view']);
+  });
+
+  it('still refuses ADDING a key the registry does not declare', async () => {
+    const { id, version } = await withRetiredKey();
+    const res = await patchRole(id, {
+      permissionKeys: ['user.view', 'retired.view', 'never.existed'],
+      version,
+    });
+    expect(res.status).toBe(422);
+    expect(errorOf(res).code).toBe(ErrorCodes.PERMISSION_UNKNOWN);
+    expect(errorOf(res).message).toContain('never.existed');
+    expect(errorOf(res).message).not.toContain('retired.view');
   });
 });
 

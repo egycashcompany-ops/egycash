@@ -69,7 +69,26 @@ import {
   ItVehicleCheckDashboardQuerySchema,
   ItVehicleCheckPhotoParamSchema,
   ListItVehicleChecksQuerySchema,
+  IT_PRINTER_COUNTER_MAX,
+  IssueItConsumablesSchema,
+  SetItConsumableInstalledOnSchema,
+  UpdateItCatalogItemSchema,
+  AssignItAssetSchema,
+  CreateItLocationSchema,
+  IT_ASSET_HOLDER_KINDS,
+  ItAssetAssignedPayloadV1,
+  ItAssetReturnedPayloadV1,
+  ItAssetTransferredPayloadV1,
+  ItCustodianDepartmentInputSchema,
+  ItLocationOptionsQuerySchema,
+  ListItConsumableMovementsQuerySchema,
+  ListItLocationsQuerySchema,
+  TransferItAssetSchema,
+  UpdateItLocationSchema,
+  type ItCustodyReceiptDocumentDto,
+  type ItMobileLineReceiptDocumentDto,
 } from './it.js';
+import { ErrorCodes } from '../errors/index.js';
 
 const oid = (n: number): string => n.toString(16).padStart(24, '0');
 
@@ -965,5 +984,482 @@ describe('it vehicle checks dashboard contracts', () => {
     ]) {
       expect(ItVehicleCheckPhotoParamSchema.safeParse(params).success).toBe(false);
     }
+  });
+});
+
+// «عداد الطابعة» (2026-11-19): what the contract can hold without seeing the item's type. Whether a
+// line NEEDS a reading, and whether it is strictly above the printer's last one, are the server's
+// rules (it reads the type and the timeline); the shape and the cross-field rules are here.
+describe('it consumables: the printer counter', () => {
+  const name = { ar: 'حبارات', en: 'Toners' };
+  const issue = (lines: Record<string, unknown>[]) => ({ employeeId: oid(1), lines });
+  const line = (n: number, extra: Record<string, unknown> = {}) => ({
+    consumableId: oid(10 + n),
+    qty: 1,
+    ...extra,
+  });
+  const issueIssues = (lines: Record<string, unknown>[]) => {
+    const parsed = IssueItConsumablesSchema.safeParse(issue(lines));
+    return parsed.success ? [] : parsed.error.issues.map((i) => [i.path.join('.'), i.message]);
+  };
+
+  it('flags a type «يتطلب عداد الطباعة» — off by default, a consumableType only', () => {
+    expect(
+      CreateItCatalogItemSchema.parse({ kind: 'consumableType', name }).requiresCounterReading,
+    ).toBe(false);
+    expect(
+      CreateItCatalogItemSchema.parse({
+        kind: 'consumableType',
+        name,
+        requiresCounterReading: true,
+      }).requiresCounterReading,
+    ).toBe(true);
+    for (const kind of ['assetCategory', 'ticketCategory']) {
+      const refused = CreateItCatalogItemSchema.safeParse({
+        kind,
+        name,
+        requiresCounterReading: true,
+      });
+      expect(refused.success).toBe(false);
+      expect(refused.error?.issues[0]?.path).toEqual(['requiresCounterReading']);
+      expect(
+        CreateItCatalogItemSchema.safeParse({ kind, name, requiresCounterReading: false }).success,
+      ).toBe(true);
+    }
+    expect(
+      CreateItCatalogItemSchema.safeParse({
+        kind: 'consumableType',
+        name,
+        requiresCounterReading: 1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('edits the flag, and leaves it untouched when it is not sent', () => {
+    expect(UpdateItCatalogItemSchema.parse({ version: 0, requiresCounterReading: true })).toEqual({
+      version: 0,
+      requiresCounterReading: true,
+    });
+    expect(UpdateItCatalogItemSchema.parse({ version: 0 })).not.toHaveProperty(
+      'requiresCounterReading',
+    );
+    expect(
+      UpdateItCatalogItemSchema.safeParse({ version: 0, requiresCounterReading: null }).success,
+    ).toBe(false);
+  });
+
+  it('takes a reading and a reset on an issue line, onto its printer', () => {
+    const parsed = IssueItConsumablesSchema.parse(
+      issue([line(1, { assetId: oid(2), counterReading: 15_230, counterReset: true })]),
+    );
+    expect(parsed.lines[0]).toEqual({
+      consumableId: oid(11),
+      qty: 1,
+      reason: 'new',
+      assetId: oid(2),
+      counterReading: 15_230,
+      counterReset: true,
+    });
+    // A line with no reading is what it always was — the server says whether its type needs one.
+    expect(IssueItConsumablesSchema.parse(issue([line(1)])).lines[0]).toEqual({
+      consumableId: oid(11),
+      qty: 1,
+      reason: 'new',
+    });
+    expect(issueIssues([line(1, { assetId: oid(2), counterReading: 0 })])).toEqual([]);
+  });
+
+  it('bounds the reading: a whole number from 0 to the max', () => {
+    for (const counterReading of [IT_PRINTER_COUNTER_MAX, 0, 1]) {
+      expect(issueIssues([line(1, { assetId: oid(2), counterReading })])).toEqual([]);
+    }
+    for (const counterReading of [-1, 12.5, IT_PRINTER_COUNTER_MAX + 1, '15230', null]) {
+      expect(issueIssues([line(1, { assetId: oid(2), counterReading })])).not.toEqual([]);
+    }
+    expect(
+      issueIssues([line(1, { assetId: oid(2), counterReading: 5, counterReset: 'yes' })]),
+    ).not.toEqual([]);
+  });
+
+  it('refuses a reset with no reading, and a reading with no printer', () => {
+    expect(issueIssues([line(1, { assetId: oid(2), counterReset: true })])).toEqual([
+      ['lines.0.counterReset', 'a reset names the reading it starts from'],
+    ]);
+    expect(issueIssues([line(1, { counterReading: 100 })])).toEqual([
+      ['lines.0.assetId', 'a counter reading belongs to the printer the item is installed on'],
+    ]);
+    // `counterReset: false` says nothing, so it needs no reading.
+    expect(issueIssues([line(1, { assetId: oid(2), counterReset: false })])).toEqual([]);
+  });
+
+  it('holds two lines on one printer to one reading — one memo, one display', () => {
+    const p = oid(2);
+    // The same reading and reset: two colours fitted at once.
+    expect(
+      issueIssues([
+        line(1, { assetId: p, counterReading: 500 }),
+        line(2, { assetId: p, counterReading: 500 }),
+      ]),
+    ).toEqual([]);
+    expect(
+      issueIssues([
+        line(1, { assetId: p, counterReading: 500 }),
+        line(2, { assetId: p, counterReading: 501 }),
+        line(3, { assetId: p, counterReading: 500, counterReset: true }),
+      ]),
+    ).toEqual([
+      ['lines.1.counterReading', 'two lines on one printer carry one counter reading'],
+      ['lines.2.counterReading', 'two lines on one printer carry one counter reading'],
+    ]);
+    // Another printer, or a line on the same printer with no reading (a cable), is not compared.
+    expect(
+      issueIssues([
+        line(1, { assetId: p, counterReading: 500 }),
+        line(2, { assetId: oid(3), counterReading: 20 }),
+        line(3, { assetId: p }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('carries the reading through «تعديل الجهاز», and never onto «بدون جهاز»', () => {
+    expect(
+      SetItConsumableInstalledOnSchema.parse({
+        assetId: oid(2),
+        counterReading: 900,
+        counterReset: true,
+        version: 3,
+      }),
+    ).toEqual({ assetId: oid(2), counterReading: 900, counterReset: true, version: 3 });
+    expect(SetItConsumableInstalledOnSchema.parse({ assetId: null, version: 0 })).toEqual({
+      assetId: null,
+      version: 0,
+    });
+    const refused = (body: Record<string, unknown>) => {
+      const parsed = SetItConsumableInstalledOnSchema.safeParse(body);
+      return parsed.success ? [] : parsed.error.issues.map((i) => [i.path.join('.'), i.message]);
+    };
+    expect(refused({ assetId: null, counterReading: 900, version: 0 })).toEqual([
+      ['counterReading', 'a counter reading belongs to a device; «بدون جهاز» takes none'],
+    ]);
+    expect(refused({ assetId: oid(2), counterReset: true, version: 0 })).toEqual([
+      ['counterReset', 'a reset names the reading it starts from'],
+    ]);
+    expect(refused({ assetId: oid(2), counterReading: -1, version: 0 })).not.toEqual([]);
+    expect(refused({ assetId: oid(2), counterReading: 9, version: 0, pages: 4 })).not.toEqual([]);
+  });
+
+  it('names the three refusals in the error catalog', () => {
+    expect(ErrorCodes.IT_CONSUMABLE_COUNTER_REQUIRED).toBe('IT_CONSUMABLE_COUNTER_REQUIRED');
+    expect(ErrorCodes.IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS).toBe(
+      'IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS',
+    );
+    expect(ErrorCodes.IT_CONSUMABLE_COUNTER_ABOVE_NEXT).toBe('IT_CONSUMABLE_COUNTER_ABOVE_NEXT');
+  });
+});
+
+// «أعينها فى مكان بس تبقى على عهده الإدارة .. زى السيرفرات والكاميرات والسويتشات» (2026-11-19): a
+// hand-over, an assignment, a transfer and an issue each name exactly ONE holder — an employee, or
+// a department at a place signed for by its responsible person — and every body sent before still
+// parses as it did.
+describe('it department custody («في عهدة إدارة … — الموقع …»)', () => {
+  const department = { departmentId: oid(41), locationId: oid(42), responsibleEmployeeId: oid(43) };
+  const line = (n: number) => ({ assetId: oid(n) });
+  const issuesOf = (parsed: {
+    success: boolean;
+    error?: { issues: { path: (string | number)[]; message: string }[] };
+  }) =>
+    parsed.success ? [] : (parsed.error?.issues ?? []).map((i) => [i.path.join('.'), i.message]);
+  const ONE_HOLDER = 'a hand-over names an employee or a department — exactly one';
+  const without = (key: keyof typeof department) =>
+    Object.fromEntries(Object.entries(department).filter(([k]) => k !== key));
+
+  it('declares the two holder kinds', () => {
+    expect(IT_ASSET_HOLDER_KINDS).toEqual(['employee', 'department']);
+  });
+
+  it('names a department by its three ids — the department, the place, the signer — and nothing else', () => {
+    expect(ItCustodianDepartmentInputSchema.parse(department)).toEqual(department);
+    for (const key of ['departmentId', 'locationId', 'responsibleEmployeeId'] as const) {
+      expect(ItCustodianDepartmentInputSchema.safeParse(without(key)).success, key).toBe(false);
+      expect(
+        ItCustodianDepartmentInputSchema.safeParse({ ...department, [key]: 'x' }).success,
+        key,
+      ).toBe(false);
+    }
+    // The branch is the place's own — never sent beside it.
+    expect(
+      ItCustodianDepartmentInputSchema.safeParse({ ...department, branchId: oid(9) }).success,
+    ).toBe(false);
+  });
+
+  it('hands over to an employee as before, or to a department — exactly one', () => {
+    expect(
+      issuesOf(HandOverItAssetsSchema.safeParse({ employeeId: oid(1), lines: [line(2)] })),
+    ).toEqual([]);
+    const toDepartment = HandOverItAssetsSchema.parse({ department, lines: [line(2), line(3)] });
+    expect(toDepartment.department).toEqual(department);
+    expect(toDepartment.employeeId).toBeUndefined();
+    expect(
+      issuesOf(
+        HandOverItAssetsSchema.safeParse({ employeeId: oid(1), department, lines: [line(2)] }),
+      ),
+    ).toEqual([['employeeId', ONE_HOLDER]]);
+    expect(issuesOf(HandOverItAssetsSchema.safeParse({ lines: [line(2)] }))).toEqual([
+      ['employeeId', ONE_HOLDER],
+    ]);
+    // A department missing its signer is not a department holder.
+    expect(
+      HandOverItAssetsSchema.safeParse({
+        department: without('responsibleEmployeeId'),
+        lines: [line(2)],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('previews a department paper, a transfer’s one-line paper too, under the same rule', () => {
+    expect(
+      PreviewItCustodyReceiptSchema.parse({ department, lines: [line(2)] }).department,
+    ).toEqual(department);
+    expect(
+      issuesOf(
+        PreviewItCustodyReceiptSchema.safeParse({ kind: 'transfer', department, lines: [line(2)] }),
+      ),
+    ).toEqual([]);
+    expect(
+      issuesOf(
+        PreviewItCustodyReceiptSchema.safeParse({
+          employeeId: oid(1),
+          department,
+          lines: [line(2)],
+        }),
+      ),
+    ).toEqual([['employeeId', ONE_HOLDER]]);
+    expect(issuesOf(PreviewItCustodyReceiptSchema.safeParse({ lines: [line(2)] }))).toEqual([
+      ['employeeId', ONE_HOLDER],
+    ]);
+  });
+
+  it('assigns one asset to an employee or a department — exactly one', () => {
+    expect(issuesOf(AssignItAssetSchema.safeParse({ employeeId: oid(1) }))).toEqual([]);
+    expect(AssignItAssetSchema.parse({ department }).department).toEqual(department);
+    expect(issuesOf(AssignItAssetSchema.safeParse({ employeeId: oid(1), department }))).toEqual([
+      ['employeeId', ONE_HOLDER],
+    ]);
+    expect(issuesOf(AssignItAssetSchema.safeParse({}))).toEqual([['employeeId', ONE_HOLDER]]);
+  });
+
+  it('transfers to a department, from one, or between places — never to two holders at once', () => {
+    for (const body of [
+      { toDepartment: department },
+      { toDepartment: department, toBranchId: oid(5) },
+      { toEmployeeId: oid(1) },
+      { toBranchId: oid(5) },
+    ]) {
+      expect(issuesOf(TransferItAssetSchema.safeParse(body)), JSON.stringify(body)).toEqual([]);
+    }
+    expect(
+      issuesOf(TransferItAssetSchema.safeParse({ toEmployeeId: oid(1), toDepartment: department })),
+    ).toEqual([
+      ['toEmployeeId', 'a transfer names one new holder — an employee or a department, not both'],
+    ]);
+    expect(issuesOf(TransferItAssetSchema.safeParse({ notes: 'x' }))).toEqual([
+      [
+        'toEmployeeId',
+        'a transfer needs a new holder (employee or department), a new branch, or both',
+      ],
+    ]);
+    expect(TransferItAssetSchema.safeParse({ toDepartment: without('locationId') }).success).toBe(
+      false,
+    );
+  });
+
+  it('issues consumables to an employee or a department — exactly one — the counter rules unchanged', () => {
+    const consumable = { consumableId: oid(11), qty: 1 };
+    const ONE_MEMO = 'a memo is issued to an employee or to a department — exactly one';
+    expect(IssueItConsumablesSchema.parse({ department, lines: [consumable] }).department).toEqual(
+      department,
+    );
+    expect(
+      issuesOf(
+        IssueItConsumablesSchema.safeParse({ employeeId: oid(1), department, lines: [consumable] }),
+      ),
+    ).toEqual([['employeeId', ONE_MEMO]]);
+    expect(issuesOf(IssueItConsumablesSchema.safeParse({ lines: [consumable] }))).toEqual([
+      ['employeeId', ONE_MEMO],
+    ]);
+    // A toner onto a department-held printer takes its reading like any other.
+    expect(
+      issuesOf(
+        IssueItConsumablesSchema.safeParse({
+          department,
+          lines: [{ ...consumable, assetId: oid(2), counterReading: 1200 }],
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      issuesOf(
+        IssueItConsumablesSchema.safeParse({
+          department,
+          lines: [{ ...consumable, counterReading: 1200 }],
+        }),
+      ),
+    ).toEqual([
+      ['lines.0.assetId', 'a counter reading belongs to the printer the item is installed on'],
+    ]);
+  });
+
+  it('filters the registers by holder kind, department, place and signer', () => {
+    expect(
+      ListItAssetsQuerySchema.parse({
+        holderKind: 'department',
+        holderDepartmentId: oid(41),
+        locationId: oid(42),
+      }),
+    ).toMatchObject({ holderKind: 'department', holderDepartmentId: oid(41), locationId: oid(42) });
+    expect(ListItAssetsQuerySchema.safeParse({ holderKind: 'vehicle' }).success).toBe(false);
+    expect(ListItAssetsQuerySchema.safeParse({ locationId: 'x' }).success).toBe(false);
+
+    expect(
+      ListItAssignmentsQuerySchema.parse({
+        holderKind: 'employee',
+        departmentId: oid(41),
+        locationId: oid(42),
+        responsibleEmployeeId: oid(43),
+      }),
+    ).toMatchObject({
+      holderKind: 'employee',
+      departmentId: oid(41),
+      locationId: oid(42),
+      responsibleEmployeeId: oid(43),
+    });
+    expect(ListItAssignmentsQuerySchema.safeParse({ responsibleEmployeeId: 'x' }).success).toBe(
+      false,
+    );
+
+    expect(
+      ListItConsumableMovementsQuerySchema.parse({
+        departmentId: oid(41),
+        locationId: oid(42),
+        responsibleEmployeeId: oid(43),
+      }),
+    ).toMatchObject({ departmentId: oid(41), locationId: oid(42), responsibleEmployeeId: oid(43) });
+    // The ledger has no holder-kind filter: a row names a department or it does not.
+    expect(
+      ListItConsumableMovementsQuerySchema.safeParse({ holderKind: 'department' }).success,
+    ).toBe(false);
+  });
+
+  it('keeps the department off a mobile line’s paper — a line is never held by a department', () => {
+    type Has<T, K extends PropertyKey> = K extends keyof T ? true : false;
+    const device: Has<ItCustodyReceiptDocumentDto, 'custodian'> = true;
+    const mobileLine: Has<ItMobileLineReceiptDocumentDto, 'custodian'> = false;
+    expect([device, mobileLine]).toEqual([true, false]);
+  });
+
+  it('publishes the department on the custody events, and an employee’s event parses as before', () => {
+    const asset = { assetId: oid(1), assetCode: 'AST-00001' };
+    expect(
+      ItAssetAssignedPayloadV1.safeParse({ ...asset, employeeId: oid(2), assignmentId: oid(3) })
+        .success,
+    ).toBe(true);
+    expect(
+      ItAssetAssignedPayloadV1.safeParse({
+        ...asset,
+        employeeId: null,
+        assignmentId: oid(3),
+        holderKind: 'department',
+        ...department,
+      }).success,
+    ).toBe(true);
+    expect(
+      ItAssetReturnedPayloadV1.safeParse({ ...asset, employeeId: oid(2), condition: null }).success,
+    ).toBe(true);
+    expect(
+      ItAssetReturnedPayloadV1.safeParse({
+        ...asset,
+        employeeId: null,
+        condition: 'N',
+        holderKind: 'department',
+        ...department,
+      }).success,
+    ).toBe(true);
+    const moved = {
+      ...asset,
+      fromEmployeeId: oid(2),
+      toEmployeeId: null,
+      fromBranchId: null,
+      toBranchId: null,
+    };
+    expect(ItAssetTransferredPayloadV1.safeParse(moved).success).toBe(true);
+    expect(
+      ItAssetTransferredPayloadV1.safeParse({
+        ...moved,
+        fromDepartmentId: null,
+        toDepartmentId: oid(41),
+        fromLocationId: null,
+        toLocationId: oid(42),
+      }).success,
+    ).toBe(true);
+  });
+});
+
+// «المواقع» — the per-branch list of places a department keeps what it holds at.
+describe('it locations («المواقع»)', () => {
+  const name = { ar: 'غرفة السيرفرات', en: 'Server room' };
+
+  it('creates a place in a branch, ordered 0 unless told, active by nature', () => {
+    expect(CreateItLocationSchema.parse({ branchId: oid(1), name })).toEqual({
+      branchId: oid(1),
+      name,
+      sortOrder: 0,
+    });
+    expect(
+      CreateItLocationSchema.parse({
+        branchId: oid(1),
+        name,
+        code: ' SRV-1 ',
+        description: 'الدور الثالث',
+        sortOrder: 2,
+      }),
+    ).toMatchObject({ code: 'SRV-1', description: 'الدور الثالث', sortOrder: 2 });
+    expect(CreateItLocationSchema.safeParse({ name }).success).toBe(false);
+    expect(CreateItLocationSchema.safeParse({ branchId: oid(1) }).success).toBe(false);
+    expect(
+      CreateItLocationSchema.safeParse({ branchId: oid(1), name: { ar: '', en: 'x' } }).success,
+    ).toBe(false);
+    // Created active: the switch is the edit's.
+    expect(
+      CreateItLocationSchema.safeParse({ branchId: oid(1), name, isActive: false }).success,
+    ).toBe(false);
+  });
+
+  it('edits a place — retiring it included — but never moves it to another branch', () => {
+    expect(UpdateItLocationSchema.parse({ version: 3, isActive: false })).toEqual({
+      version: 3,
+      isActive: false,
+    });
+    expect(
+      UpdateItLocationSchema.parse({ version: 0, code: null, description: null, name }),
+    ).toEqual({ version: 0, code: null, description: null, name });
+    expect(UpdateItLocationSchema.safeParse({ version: 0, branchId: oid(2) }).success).toBe(false);
+    expect(UpdateItLocationSchema.safeParse({ isActive: false }).success).toBe(false);
+  });
+
+  it('lists by branch, status and text; offers one branch or all, the retired ones when asked', () => {
+    expect(
+      ListItLocationsQuerySchema.parse({
+        branchId: oid(1),
+        isActive: 'false',
+        search: 'السيرفرات',
+      }),
+    ).toMatchObject({ branchId: oid(1), isActive: false, search: 'السيرفرات', page: 1 });
+    expect(ListItLocationsQuerySchema.safeParse({ kind: 'location' }).success).toBe(false);
+
+    expect(ItLocationOptionsQuerySchema.parse({})).toEqual({});
+    expect(
+      ItLocationOptionsQuerySchema.parse({ branchId: oid(1), includeInactive: 'true' }),
+    ).toEqual({ branchId: oid(1), includeInactive: true });
+    // Names only, whole — not a page.
+    expect(ItLocationOptionsQuerySchema.safeParse({ page: '2' }).success).toBe(false);
   });
 });

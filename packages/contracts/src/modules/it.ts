@@ -37,6 +37,12 @@ export interface ItCatalogItemDto {
   description: string | null;
   sortOrder: number;
   isActive: boolean;
+  /**
+   * `consumableType` only — «يتطلب عداد الطباعة»: an item of this type is issued onto a printer, one
+   * cartridge a line, with that printer's counter reading (design §2.11 «عداد الطابعة»). Ticked on
+   * «حبارات» (`ink`). False on every other row, and on a row written before the flag existed.
+   */
+  requiresCounterReading: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -49,10 +55,24 @@ export const CreateItCatalogItemSchema = z
     name: LocalizedStringSchema,
     description: z.string().trim().max(500).optional(),
     sortOrder: z.number().int().min(0).default(0),
+    requiresCounterReading: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.requiresCounterReading && value.kind !== 'consumableType') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['requiresCounterReading'],
+        message: 'only a consumableType takes the printer counter',
+      });
+    }
+  });
 export type CreateItCatalogItem = z.infer<typeof CreateItCatalogItemSchema>;
 
+/**
+ * The kind is not sent on an update, so ticking `requiresCounterReading` on a row that is not a
+ * `consumableType` is the SERVER's refusal (422), not the schema's. Unticking is always allowed.
+ */
 export const UpdateItCatalogItemSchema = z
   .object({
     code: z.string().trim().min(1).max(30).nullable().optional(),
@@ -60,6 +80,7 @@ export const UpdateItCatalogItemSchema = z
     description: z.string().trim().max(500).nullable().optional(),
     sortOrder: z.number().int().min(0).optional(),
     isActive: z.boolean().optional(),
+    requiresCounterReading: z.boolean().optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -70,6 +91,89 @@ export const ListItCatalogQuerySchema = PaginationQuerySchema.extend({
   isActive: booleanQuery().optional(),
 }).strict();
 export type ListItCatalogQuery = z.infer<typeof ListItCatalogQuerySchema>;
+
+// ── Places — «المواقع» (per branch, 2026-11-19) ─────────────────────────────
+//
+// Where a department keeps what it holds — «غرفة السيرفرات», «غرفة الكاميرات» — one list PER BRANCH
+// on the catalogs page (`/it/locations`). Its own collection, not a catalog kind: the catalog is
+// org-wide with one name per kind, and a place is a branch's (two branches may each have «غرفة
+// السيرفرات»). Managed under `itCatalog.manage` within the caller's branch reach. A place never
+// changes branch — a new one is made — and is retired (`isActive: false`), never deleted: retiring
+// is refused (409) while assets are held there, and a retired place still names the rows written
+// with it.
+
+export interface ItLocationDto {
+  id: string;
+  /** The branch the place is in — the scope it is read and written under. Never changes. */
+  branchId: string;
+  /** Unique by its Arabic name within the branch. */
+  name: { ar: string; en: string };
+  code: string | null;
+  description: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  /**
+   * «في عهدته الآن» — the assets held at this place right now (OPEN department intervals), counted
+   * within the reader's `itAsset.view`; null when the reader does not hold it.
+   */
+  heldAssets: number | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A picker's row — names only, readable on any IT read grant (as the department options). */
+export interface ItLocationOptionDto {
+  id: string;
+  branchId: string;
+  name: { ar: string; en: string };
+  isActive: boolean;
+}
+
+const locationCore = {
+  name: LocalizedStringSchema,
+  code: z.string().trim().min(1).max(30).optional(),
+  description: z.string().trim().max(500).optional(),
+  sortOrder: z.number().int().min(0).default(0),
+};
+
+/** A new place, in a branch the caller's `itCatalog.manage` reaches (the server's 403). */
+export const CreateItLocationSchema = z.object({ branchId: objectId(), ...locationCore }).strict();
+export type CreateItLocation = z.infer<typeof CreateItLocationSchema>;
+
+/** No `branchId`: a place does not move to another branch. `isActive: false` retires it. */
+export const UpdateItLocationSchema = z
+  .object({
+    name: LocalizedStringSchema.optional(),
+    code: locationCore.code.nullable().optional(),
+    description: locationCore.description.nullable().optional(),
+    sortOrder: z.number().int().min(0).optional(),
+    isActive: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateItLocation = z.infer<typeof UpdateItLocationSchema>;
+
+/** The catalogs page's tab: by branch, by status, by name or code. */
+export const ListItLocationsQuerySchema = PaginationQuerySchema.extend({
+  branchId: objectId().optional(),
+  isActive: booleanQuery().optional(),
+  /** The Arabic or English name, or the code. */
+  search: z.string().trim().max(200).optional(),
+}).strict();
+export type ListItLocationsQuery = z.infer<typeof ListItLocationsQuerySchema>;
+
+/**
+ * `GET /it/locations/options` — every branch's places, or one branch's; the active ones unless
+ * `includeInactive` (to name the place of an old row).
+ */
+export const ItLocationOptionsQuerySchema = z
+  .object({
+    branchId: objectId().optional(),
+    includeInactive: booleanQuery().optional(),
+  })
+  .strict();
+export type ItLocationOptionsQuery = z.infer<typeof ItLocationOptionsQuerySchema>;
 
 // ── Vendors (design §2.9 — IT-owned until Procurement exists, §13-Q6) ───────
 
@@ -211,8 +315,9 @@ export interface ItAssetDto {
   accessories: string[];
   /**
    * Who holds it right now — «لو متسلم اسم الشخص اللى متسلمله الحاجة». The OPEN custody
-   * interval's employee, read at response time through the platform directory like every
-   * holder label IT prints; null while nobody holds it (or the interval cannot be read).
+   * interval's holder — an employee, or a department at a place — read at response time through
+   * the platform directory like every holder label IT prints; null while nobody holds it (or the
+   * interval cannot be read).
    */
   holder: ItAssetHolderDto | null;
   /**
@@ -226,12 +331,85 @@ export interface ItAssetDto {
   updatedAt: string;
 }
 
-/** The holder an asset row names: the open interval's employee and when they received it. */
+// ── Custody holders: an employee, or a department at a place (2026-11-19) ────
+//
+// «عند تسليم الأصول والمستهلكات يكون فى إمكانية إنى مأسلمش لموظف ولكن أعينها فى مكان بس تبقى على
+// عهده الإدارة .. زى السيرفرات والكاميرات والسويتشات». A server, a camera or a switch is held by a
+// DEPARTMENT (any active department, in any branch), kept at a PLACE of the branch's «المواقع» list
+// (`/it/locations`), and signed for by the department's RESPONSIBLE PERSON — a current employee
+// chosen at the hand-over. The holder is the department, never the signer: the signer's own
+// custody, the leavers' panels and the «already held» checks all stay personal custody. An asset
+// interval, a receipt or a movement written before this reads `employee`.
+
+export const IT_ASSET_HOLDER_KINDS = ['employee', 'department'] as const;
+export const ItAssetHolderKindSchema = z.enum(IT_ASSET_HOLDER_KINDS);
+export type ItAssetHolderKind = z.infer<typeof ItAssetHolderKindSchema>;
+
+/**
+ * «في عهدة إدارة … — الموقع …»: the department that holds it, the place it is kept at, and who
+ * signs for the department. The place must be in the asset's branch (the store's, for
+ * consumables) and every id must name an ACTIVE row — the SERVER's refusals (422 on
+ * `department.departmentId`, `department.locationId` or `department.responsibleEmployeeId`), since
+ * the contract sees ids only.
+ */
+export const ItCustodianDepartmentInputSchema = z
+  .object({
+    departmentId: objectId(),
+    locationId: objectId(),
+    responsibleEmployeeId: objectId(),
+  })
+  .strict();
+export type ItCustodianDepartmentInput = z.infer<typeof ItCustodianDepartmentInputSchema>;
+
+/**
+ * The department and the place a paper (a receipt, a memo) was written for — a snapshot, like the
+ * rest of the paper. The signer is the paper's own `employeeId` and its name fields.
+ */
+export interface ItCustodianDepartmentDto {
+  departmentId: string;
+  /** Null when the department could not be read when the paper was written. */
+  departmentName: { ar: string; en: string } | null;
+  locationId: string;
+  locationName: { ar: string; en: string } | null;
+}
+
+/**
+ * Exactly one holder on a hand-over: an employee (`employeeId`) or a department (`department`).
+ * Additive — a body naming only `employeeId` is what it always was.
+ */
+const refineOneHolder = (
+  value: { employeeId?: string | undefined; department?: ItCustodianDepartmentInput | undefined },
+  ctx: z.RefinementCtx,
+  message: string,
+): void => {
+  if ((value.employeeId === undefined) === (value.department === undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['employeeId'], message });
+  }
+};
+
+const HAND_OVER_ONE_HOLDER = 'a hand-over names an employee or a department — exactly one';
+
+/**
+ * The holder an asset row names: the open interval's holder and when it was received. Flat, as a
+ * mobile line's (`ItMobileLineHolderDto`): the fields of the other kind are null. Every label is
+ * read at response time and is null when it cannot be read — the screen falls back to the id.
+ */
 export interface ItAssetHolderDto {
-  employeeId: string;
-  /** Null when the directory cannot name the employee — the screen falls back to the id. */
+  /** `employee` on every interval written before department custody. */
+  kind: ItAssetHolderKind;
+  /** The employee who holds it; null for a department. */
+  employeeId: string | null;
   employeeCode: string | null;
   employeeName: string | null;
+  /** The department that holds it, and the place it is kept at; null for an employee. */
+  departmentId: string | null;
+  departmentName: { ar: string; en: string } | null;
+  locationId: string | null;
+  locationName: { ar: string; en: string } | null;
+  /** Who signed for the department; null for an employee. */
+  responsibleEmployeeId: string | null;
+  responsibleEmployeeCode: string | null;
+  responsibleEmployeeName: string | null;
   assignedAt: string;
 }
 
@@ -356,6 +534,10 @@ const assetCore = {
   /** A pre-existing printed tag/barcode number — legacy labels keep working (design §2.2). */
   externalTag: z.string().trim().min(1).max(120).optional(),
   branchId: objectId(),
+  /**
+   * «وصف المكان» — free text, kept as it was. The place a department holds a device at is the
+   * custody interval's `locationId` (the «المواقع» list), not this.
+   */
   location: z.string().trim().max(200).optional(),
   purchase: ItAssetPurchaseSchema.optional(),
   warranty: ItAssetWarrantySchema.optional(),
@@ -401,6 +583,18 @@ export const ListItAssetsQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
   /** The assets this employee holds right now — an OPEN custody interval, not a past one. */
   holderEmployeeId: objectId().optional(),
+  /**
+   * «جهة الاستلام» — the assets held right now by an employee, or by a department. Like every
+   * holder filter, it means the OPEN interval; it intersects with the others.
+   */
+  holderKind: ItAssetHolderKindSchema.optional(),
+  /** «الإدارة» — the assets this department holds right now (an OPEN interval). */
+  holderDepartmentId: objectId().optional(),
+  /**
+   * «الموقع» — the assets held at this place right now (an OPEN interval) — «إيه اللي في غرفة
+   * السيرفرات». Not the free-text `location` («وصف المكان»).
+   */
+  locationId: objectId().optional(),
   /**
    * «الاسم» — one or more of the register's own names (`GET /it/assets/names`), each matched
    * EXACTLY, so a pick means every asset by that name. A name may hold a comma, so the list is a
@@ -449,7 +643,10 @@ export type ItAssetLabels = z.infer<typeof ItAssetLabelsSchema>;
 export interface ItAssetAssignmentDto {
   id: string;
   assetId: string;
-  assignedToEmployeeId: string;
+  /** Who holds the asset over this interval — `employee` on every interval before 2026-11-19. */
+  holderKind: ItAssetHolderKind;
+  /** The employee holder; null for a department interval. */
+  assignedToEmployeeId: string | null;
   /**
    * The holder's code and name, read through the platform directory at RESPONSE time (IT-6).
    *
@@ -461,6 +658,18 @@ export interface ItAssetAssignmentDto {
    */
   assignedToEmployeeCode: string | null;
   assignedToEmployeeName: string | null;
+  /**
+   * A department interval: the department, the place it is kept at, and who signed for it — all
+   * null for an employee. Labelled at response time under the same rule as the employee's (never
+   * denormalized onto the interval); a name is null when it cannot be read.
+   */
+  departmentId: string | null;
+  departmentName: { ar: string; en: string } | null;
+  locationId: string | null;
+  locationName: { ar: string; en: string } | null;
+  responsibleEmployeeId: string | null;
+  responsibleEmployeeCode: string | null;
+  responsibleEmployeeName: string | null;
   /**
    * WHAT was received — the register's own subject, which it did not name until IT-6.
    *
@@ -511,7 +720,9 @@ export interface ItAssetAssignmentDto {
  */
 export const AssignItAssetSchema = z
   .object({
-    employeeId: objectId(),
+    /** The holder: an employee, or a department at a place — exactly one. */
+    employeeId: objectId().optional(),
+    department: ItCustodianDepartmentInputSchema.optional(),
     assignedAt: z.coerce.date().optional(),
     conditionOnIssue: z.string().trim().max(500).optional(),
     expectedReturnAt: z.coerce.date().optional(),
@@ -519,6 +730,7 @@ export const AssignItAssetSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
+    refineOneHolder(value, ctx, HAND_OVER_ONE_HOLDER);
     if (
       value.expectedReturnAt !== undefined &&
       value.assignedAt !== undefined &&
@@ -546,10 +758,16 @@ export type ReturnItAsset = z.infer<typeof ReturnItAssetSchema>;
  * Transfer moves custody in ONE fact (design §2.5): person→person, branch→branch, or both. It is
  * never expressed as return + assign, because the history must show intent rather than mechanics.
  * At least one destination is required — a transfer to nowhere is not a transfer.
+ *
+ * The new holder is an employee (`toEmployeeId`) or a department at a place (`toDepartment`), never
+ * both. A change of the department, the place or the responsible person is a new holder — a room
+ * change and a re-signing after the responsible person left are transfers too. The SERVER refuses
+ * moving a department-held asset to another branch without a new holder: a place does not travel.
  */
 export const TransferItAssetSchema = z
   .object({
     toEmployeeId: objectId().optional(),
+    toDepartment: ItCustodianDepartmentInputSchema.optional(),
     toBranchId: objectId().optional(),
     at: z.coerce.date().optional(),
     conditionOnReturn: z.string().trim().max(500).optional(),
@@ -564,11 +782,22 @@ export const TransferItAssetSchema = z
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.toEmployeeId === undefined && value.toBranchId === undefined) {
+    if (value.toEmployeeId !== undefined && value.toDepartment !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['toEmployeeId'],
-        message: 'a transfer needs a new holder, a new branch, or both',
+        message: 'a transfer names one new holder — an employee or a department, not both',
+      });
+    }
+    if (
+      value.toEmployeeId === undefined &&
+      value.toDepartment === undefined &&
+      value.toBranchId === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['toEmployeeId'],
+        message: 'a transfer needs a new holder (employee or department), a new branch, or both',
       });
     }
   });
@@ -632,10 +861,199 @@ export interface ItAssetsBranchMoveResultDto {
   moved: ItAssetBranchMoveDto[];
 }
 
+// ── Assets: bulk upload («رفع جماعي») ───────────────────────────────────────
+//
+// «في الأصول عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول للى هيتضاف
+// ويوضح لو فى تكرار أو تضارب مع بيانات موجوده» (2026-11-16). The sheet is the branches' custody
+// sheet («عهدة الأفرع», reviewed into the 2026-11 go-live): one branch per file, chosen on the
+// screen (the sheet's name «عهدة فرع X» suggests it). Every line is decided against the live
+// register exactly as that go-live decided its own — a device it does not hold is registered in
+// stock, one it holds gets only what it lacks («أكمّل الناقص بس»), one in stock in another branch
+// moves to the chosen one («يتنقل لفرع الملف»), one somebody holds elsewhere stays — and nothing is
+// written until the preview has been seen and confirmed, line by line.
+
+/** A file is one branch's register page, not the whole register. */
+export const IT_ASSET_IMPORT_MAX_ROWS = 500;
+export const IT_ASSET_IMPORT_MAX_MB = 5;
+
 /**
- * The branches the caller may move assets — and send consumables — to: every active branch their
- * `itAsset.assign` reaches, judged by the server's own rule, so the pickers never offer a branch
- * the move would refuse (the account's `branchIds` are the reach of ALL its grants, not this one).
+ * The sheet's header row, column A onward — the branches' custody sheets', word for word. The
+ * accessories take two columns (L and M), the header naming the first only.
+ */
+export const IT_ASSET_IMPORT_COLUMNS = [
+  'النوع',
+  'اسم الصنف',
+  'سيريال (Serial)',
+  'الشركة المُصنعة',
+  'الموديل',
+  'الملصق المطبوع (Tag)',
+  'المعالج',
+  'إجمالي ذاكرة النظام',
+  'نوع النظام',
+  'إجمالي سعة الأقراص الصلبة',
+  'كارت الشاشة',
+  'المشتملات',
+] as const;
+
+/** What a line comes to — one of these, decided against the live register. */
+export const IT_ASSET_IMPORT_DECISIONS = [
+  /** Not on the register: registered in the chosen branch, in stock. */
+  'new',
+  /** On the register in the chosen branch: what it lacks is filled. */
+  'fill',
+  /** On the register in stock in another branch: moved to the chosen one (and filled). */
+  'move',
+  /** On the register in the chosen branch with nothing to fill: left as it is. */
+  'complete',
+  /** On the register, held (or in maintenance) in another branch: not moved; filled if it lacks. */
+  'heldElsewhere',
+  /** On the register where the caller may not write — reported, never touched. */
+  'outOfScope',
+  /** Its serial or tag is an earlier line's: the first line wins. */
+  'duplicateInFile',
+  /** Two devices or more answer to its identifiers: neither is guessed at. */
+  'ambiguous',
+  /** Neither serial nor tag («لو مفيش تاجات فخلاص متضيفهمش»). */
+  'noIdentifier',
+  /** A new line whose «النوع» has no category yet — one is chosen on the screen. */
+  'unknownKind',
+  /** A cell the line cannot be written with (no name, a value too long …) — `message` says which. */
+  'invalid',
+] as const;
+export const ItAssetImportDecisionSchema = z.enum(IT_ASSET_IMPORT_DECISIONS);
+export type ItAssetImportDecision = z.infer<typeof ItAssetImportDecisionSchema>;
+
+/** Doubts that leave a line OFF by default (the reviewer may still tick it). */
+export const IT_ASSET_IMPORT_WARNINGS = [
+  /** A new line one or two characters off a device of the chosen branch the file does not list. */
+  'nearSerial',
+  /** Its only label is a maker's product number (HP's «…AV»), not a serial. */
+  'productNumber',
+] as const;
+export const ItAssetImportWarningSchema = z.enum(IT_ASSET_IMPORT_WARNINGS);
+export type ItAssetImportWarning = z.infer<typeof ItAssetImportWarningSchema>;
+
+/**
+ * The text fields of the upload (multipart, beside the file `file`). Without `apply` it is a
+ * preview: nothing is written. With `apply`, the same file again, the preview's two hashes and the
+ * lines kept — refused if the file or the plan changed since (somebody registered a device in
+ * between): the reviewer confirms what they saw, never something else.
+ */
+export const ItAssetImportFieldsSchema = z
+  .object({
+    /** The branch the file is for; omitted on a first preview, the sheet's name suggests it. */
+    branchId: objectId().optional(),
+    /** JSON `{ "<النوع>": "<categoryId>" }` — the category each kind is filed under. */
+    kindCategories: z.string().max(20_000).optional(),
+    apply: z
+      .string()
+      .optional()
+      .transform((v) => v === 'true'),
+    fileSha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    planHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    /** JSON `number[]` — the sheet rows to write. */
+    rows: z.string().max(10_000).optional(),
+  })
+  .strict()
+  .superRefine((fields, ctx) => {
+    if (!fields.apply) return;
+    for (const path of ['branchId', 'fileSha256', 'planHash', 'rows'] as const) {
+      if (fields[path] === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [path],
+          message: `${path} is required to apply`,
+        });
+      }
+    }
+  });
+export type ItAssetImportFields = z.infer<typeof ItAssetImportFieldsSchema>;
+
+/** `kindCategories`, once parsed. */
+export const ItAssetImportKindCategoriesSchema = z.record(
+  z.string().trim().min(1).max(100),
+  objectId(),
+);
+/** `rows`, once parsed. */
+export const ItAssetImportRowsSchema = z
+  .array(z.number().int().min(2))
+  .max(IT_ASSET_IMPORT_MAX_ROWS);
+
+/** One line of the preview — what the sheet says and what would happen to it. */
+export interface ItAssetImportRowDto {
+  /** The sheet's row number (the header is row 1). */
+  row: number;
+  kind: string | null;
+  name: string | null;
+  serial: string | null;
+  tag: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  decision: ItAssetImportDecision;
+  warnings: ItAssetImportWarning[];
+  /** The register's device it answers to — only one the caller may see. */
+  asset: { id: string; assetCode: string; branchId: string; status: ItAssetStatus } | null;
+  /** `new`: what it is registered with. */
+  serialNumber: string | null;
+  externalTag: string | null;
+  categoryId: string | null;
+  /** The fields filled (`specs.processor`, `accessories`, `externalTag`, `manufacturer`, `model`). */
+  fills: string[];
+  /** Values the register already has that the sheet disagrees with — kept. */
+  kept: { field: string; register: string; sheet: string }[];
+  /** `move` / `heldElsewhere`: the branch it is registered in. */
+  fromBranchId: string | null;
+  /** `duplicateInFile`: the earlier row that takes the device. */
+  firstRow: number | null;
+  /** `nearSerial`: the device it is close to. */
+  near: { assetCode: string; serialNumber: string } | null;
+  /** `invalid` / `outOfScope` / `ambiguous`: why, in a few words. */
+  message: string | null;
+  /** Whether it can be written at all, and whether it is ticked when the preview opens. */
+  selectable: boolean;
+  selected: boolean;
+}
+
+export interface ItAssetImportPreviewDto {
+  fileSha256: string;
+  /** The plan the rows describe — sent back with `apply` so the write is the plan that was seen. */
+  planHash: string;
+  sheetName: string;
+  /** The branch planned for, and the one the sheet's name points to (null when none matches). */
+  branchId: string;
+  suggestedBranchId: string | null;
+  /** Each «النوع» of the file, the category it is filed under (null until chosen), its lines. */
+  kinds: { kind: string; categoryId: string | null; rows: number }[];
+  rows: ItAssetImportRowDto[];
+  counts: Record<ItAssetImportDecision, number>;
+}
+
+export interface ItAssetImportResultDto {
+  created: number;
+  filled: number;
+  moved: number;
+  /** Lines kept on the screen but written as nothing (complete, or decided otherwise). */
+  unchanged: number;
+  assets: {
+    row: number;
+    assetId: string;
+    assetCode: string;
+    action: 'created' | 'filled' | 'moved';
+  }[];
+}
+
+/**
+ * The branches the caller may move assets — or send consumables — to: every active branch the
+ * action's own grant reaches (`itAsset.assign` at `GET /it/assets/move-targets`,
+ * `itConsumable.assign` at `GET /it/consumables/transfer-targets`), judged by the server's own
+ * rule, so the pickers never offer a branch the action would refuse (the account's `branchIds` are
+ * the reach of ALL its grants, not this one).
  */
 export interface ItMoveTargetsDto {
   branchIds: string[];
@@ -650,8 +1068,20 @@ export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   /** `true` → only the open interval; `false` → only closed ones. Omitted → both. */
   open: booleanQuery().optional(),
   assetId: objectId().optional(),
+  /** The employee holder — never who signed for a department (that is `responsibleEmployeeId`). */
   employeeId: objectId().optional(),
   branchId: objectId().optional(),
+  /** «جهة الاستلام» — the intervals held by an employee, or by a department. */
+  holderKind: ItAssetHolderKindSchema.optional(),
+  /** The department intervals of this department. */
+  departmentId: objectId().optional(),
+  /** The department intervals at this place. */
+  locationId: objectId().optional(),
+  /**
+   * The department intervals this person signed for — «عهد إدارات وقّع عليها» on their page. Not
+   * their own custody, which is `employeeId`.
+   */
+  responsibleEmployeeId: objectId().optional(),
   // «زود الفلتر بتاع الجدول ببيانات الجدول» — a filter for each of the register's columns.
   /** The asset — its code, name or serial, matched as typed. */
   search: z.string().trim().max(200).optional(),
@@ -674,7 +1104,9 @@ export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   receipt: ItAssignmentReceiptStateSchema.optional(),
   /**
    * `true` → the intervals whose holder HR shows as having left (FR-13's «assets held by exited
-   * employees», the dashboard's panel opened as a list); `false` → the others.
+   * employees», the dashboard's panel opened as a list); `false` → the others. EMPLOYEE custody
+   * either way: a department interval is in neither answer (its responsible person leaving is
+   * flagged in the audit, and the custody stands).
    */
   holderExited: booleanQuery().optional(),
 }).strict();
@@ -735,7 +1167,14 @@ export type ItHandOverLine = z.infer<typeof ItHandOverLineSchema>;
 export const IT_HAND_OVER_MAX_LINES = 20;
 
 const handOverShape = {
-  employeeId: objectId(),
+  /**
+   * The holder — exactly one of the two. `employeeId`: the employee who holds and signs.
+   * `department`: «في عهدة إدارة …» at a place, signed by its responsible person; every line must
+   * then be in the place's branch (the SERVER's refusal, `department.locationId` `OTHER_BRANCH`),
+   * so a department paper lists one branch's assets.
+   */
+  employeeId: objectId().optional(),
+  department: ItCustodianDepartmentInputSchema.optional(),
   lines: z.array(ItHandOverLineSchema).min(1).max(IT_HAND_OVER_MAX_LINES),
   assignedAt: z.coerce.date().optional(),
   expectedReturnAt: z.coerce.date().optional(),
@@ -743,12 +1182,15 @@ const handOverShape = {
 
 const refineHandOver = (
   value: {
+    employeeId?: string | undefined;
+    department?: ItCustodianDepartmentInput | undefined;
     lines: { assetId: string }[];
     assignedAt?: Date | undefined;
     expectedReturnAt?: Date | undefined;
   },
   ctx: z.RefinementCtx,
 ): void => {
+  refineOneHolder(value, ctx, HAND_OVER_ONE_HOLDER);
   const seen = new Set<string>();
   value.lines.forEach((line, index) => {
     if (seen.has(line.assetId)) {
@@ -774,8 +1216,9 @@ const refineHandOver = (
 };
 
 /**
- * Hand-over: one employee, one or more in-stock assets, ONE receipt — in one transaction (FR-3),
- * so a paper never lists an asset the system did not hand over, nor the reverse.
+ * Hand-over: one employee — or one department at one place — one or more in-stock assets, ONE
+ * receipt — in one transaction (FR-3), so a paper never lists an asset the system did not hand
+ * over, nor the reverse.
  */
 export const HandOverItAssetsSchema = z
   .object({
@@ -793,9 +1236,10 @@ export type HandOverItAssets = z.infer<typeof HandOverItAssetsSchema>;
 
 /**
  * What to print BEFORE anything is recorded. `handOver` checks exactly what the hand-over will
- * (current employee, assets in stock), so the paper is never printed for a hand-over the system
- * would then refuse; `transfer` is the one-line paper of a transfer to a new holder, whose asset
- * is out (with somebody else) rather than in stock.
+ * (a current employee — or an active department, an active place in the lines' branch and a
+ * current responsible person — and assets in stock), so the paper is never printed for a
+ * hand-over the system would then refuse; `transfer` is the one-line paper of a transfer to a new
+ * holder, whose asset is out (with somebody else) rather than in stock.
  */
 export const PreviewItCustodyReceiptSchema = z
   .object({ ...handOverShape, kind: z.enum(['handOver', 'transfer']).default('handOver') })
@@ -851,6 +1295,11 @@ export interface ItCustodyReceiptDocumentDto {
   formNumber: number | null;
   /** «التاريخ» — the hand-over's own date. */
   issuedAt: string;
+  /**
+   * The SIGNER — the employee who holds the devices, or, on a department paper, the department's
+   * responsible person who signs for it. Every field below (name, code, job, national ID, section,
+   * department) is the signer's.
+   */
   employeeId: string;
   /** «أقر أنا /» and «الاسم:». Null when the directory could not name the employee. */
   employeeName: string | null;
@@ -858,10 +1307,11 @@ export interface ItCustodyReceiptDocumentDto {
   /** «بوظيفة». */
   jobTitle: { ar: string; en: string } | null;
   /**
-   * «بطاقة رقم قومي» — the FULL number, for a caller holding `itAsset.viewNationalId` (Security
-   * Architecture §3: a national ID is shown in full only behind a sensitive-data grant). Null
-   * otherwise, or when HR has none — `nationalIdVisible` tells the two apart, and either way the
-   * paper leaves the line for the pen.
+   * «بطاقة رقم قومي» — the FULL number, for a caller holding the paper's own grant —
+   * `itAsset.viewNationalId` on a device receipt, `itMobileLine.viewNationalId` on a line's
+   * (Security Architecture §3: a national ID is shown in full only behind a sensitive-data grant).
+   * Null otherwise, or when HR has none — `nationalIdVisible` tells the two apart, and either way
+   * the paper leaves the line for the pen.
    */
   nationalId: string | null;
   nationalIdVisible: boolean;
@@ -869,6 +1319,12 @@ export interface ItCustodyReceiptDocumentDto {
   section: { ar: string; en: string } | null;
   /** «– …» — the employee's department («الإدارة»). */
   department: { ar: string; en: string } | null;
+  /**
+   * A DEPARTMENT CUSTODY paper — «ليكون في عهدة إدارة … بموقع …»: the department that holds the
+   * devices and the place they are kept at, as they were named when the paper was written. Null on
+   * an employee's paper, and on every receipt written before department custody.
+   */
+  custodian: ItCustodianDepartmentDto | null;
   lines: ItCustodyReceiptLineDto[];
 }
 
@@ -905,11 +1361,13 @@ export const ItCustodyReceiptIdParamSchema = z.object({ id: objectId() }).strict
 // ونفس الموضوع فى الفلاتر فى كل الشاشات لكن فى حاله اضافه اى حاجه لازم يكون المواظفيين يكونوا
 // موجودين».
 //
-// Custody references employees (§9.1), and any employee in the company may hold an asset — so IT
-// names people it does not own. It used to ask HR's employee endpoint under HR's `employee.view`,
-// which is the whole HR file: letting a technician see who holds a laptop meant handing them
-// «الموظفون». IT now answers under its OWN grant, through the platform directory, with exactly what
-// its screens print — a name, a code, a placement, a status — and nothing a register does not.
+// Custody references employees (§9.1), and any employee in the company may hold an asset, a line or
+// a consumable — so IT names people it does not own. It used to ask HR's employee endpoint under
+// HR's `employee.view`, which is the whole HR file: letting a technician see who holds a laptop
+// meant handing them «الموظفون». IT now answers under its OWN grants — any of the three registers'
+// read grants (`itAsset.view`, `itMobileLine.view`, `itConsumable.view`) — through the platform
+// directory, with exactly what its screens print — a name, a code, a placement, a status — and
+// nothing a register does not.
 //
 // IT still owns none of it (§9.1): nothing here is stored or written by IT, and every fact is
 // HR's, read fresh. What changed is which grant a reader needs to see the names IT already showed.
@@ -952,7 +1410,12 @@ export interface ItPersonDto {
    * have custody but no tickets.
    */
   userId: string | null;
-  /** Assets this person holds right now — open custody intervals the reader may see. */
+  /**
+   * Assets this person holds right now — open custody intervals the reader may see, counted within
+   * the reader's `itAsset.view`. A reader without it (one who opened the list on the lines' or the
+   * consumables' grant) may see none, so every person reads 0 for them: the list does not tell
+   * them how many devices anybody holds.
+   */
   openCustodyCount: number;
 }
 
@@ -986,6 +1449,35 @@ export interface ItTechnicianDto {
 export interface ItTechniciansPageDto {
   configured: boolean;
   items: ItTechnicianDto[];
+}
+
+// ── Recipients: who a hand-over may name, in every branch ──────────────────────
+//
+// «لما حد فى فرع بيسلم جهاز لحد فى فرع تاني مش بيعرف يشوف اسمه سواء فى الأصول أو المستهلكات .. أسمح
+// إنه يعرف يسلم لحد فى فرع تاني» (owner, 2026-11-18). The person search above is the registers' own
+// and reaches only the people the reader's read grants reach — a branch keeper's own branch. A
+// HAND-OVER's box asks this instead: anybody who works here today, in any branch, opened by the act's
+// own grant (`itAsset.assign`, `itMobileLine.assign` or `itConsumable.assign` — the owner's choice:
+// «صاحب صلاحية التسليم»), with only what the box prints — a name, a code, the branch — so the
+// company's staff list is not opened beyond the box. Searched always, a few at a time: it answers
+// a name or a code typed, never a page to scroll through.
+
+export const ListItRecipientsQuerySchema = z
+  .object({
+    /** The code or the name — required: the box answers what is typed, and lists nobody unasked. */
+    search: z.string().trim().min(1).max(100),
+    pageSize: z.coerce.number().int().min(1).max(20).default(8),
+  })
+  .strict();
+export type ListItRecipientsQuery = z.infer<typeof ListItRecipientsQuerySchema>;
+
+/** One person a hand-over may name: who, and where HR places them — nothing else. */
+export interface ItRecipientDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  /** HR's placement — the box says the branch, so two people of one name are told apart. */
+  branchId: string | null;
 }
 
 // ── Custody: the asset's business history (design §2.3) ─────────────────────
@@ -1074,19 +1566,33 @@ export const ItAssetEventPayloadV1 = z.object({
 });
 export type ItAssetEventPayload = z.infer<typeof ItAssetEventPayloadV1>;
 
+/**
+ * The department holder's fields on a custody event (2026-11-19). Optional — an event published
+ * before department custody has none of them — and null on an employee's. `employeeId` is null on
+ * a department's: the event names the holder, and the department is the holder, not its signer.
+ */
+const departmentHolderEventFields = {
+  holderKind: ItAssetHolderKindSchema.nullable().optional(),
+  departmentId: objectId().nullable().optional(),
+  locationId: objectId().nullable().optional(),
+  responsibleEmployeeId: objectId().nullable().optional(),
+};
+
 export const ItAssetAssignedPayloadV1 = z.object({
   assetId: objectId(),
   assetCode: z.string(),
-  employeeId: objectId(),
+  employeeId: objectId().nullable(),
   assignmentId: objectId(),
+  ...departmentHolderEventFields,
 });
 export type ItAssetAssignedPayload = z.infer<typeof ItAssetAssignedPayloadV1>;
 
 export const ItAssetReturnedPayloadV1 = z.object({
   assetId: objectId(),
   assetCode: z.string(),
-  employeeId: objectId(),
+  employeeId: objectId().nullable(),
   condition: z.string().nullable(),
+  ...departmentHolderEventFields,
 });
 export type ItAssetReturnedPayload = z.infer<typeof ItAssetReturnedPayloadV1>;
 
@@ -1097,6 +1603,11 @@ export const ItAssetTransferredPayloadV1 = z.object({
   toEmployeeId: objectId().nullable(),
   fromBranchId: objectId().nullable(),
   toBranchId: objectId().nullable(),
+  /** A department holder before / after — absent on an event from before department custody. */
+  fromDepartmentId: objectId().nullable().optional(),
+  toDepartmentId: objectId().nullable().optional(),
+  fromLocationId: objectId().nullable().optional(),
+  toLocationId: objectId().nullable().optional(),
 });
 export type ItAssetTransferredPayload = z.infer<typeof ItAssetTransferredPayloadV1>;
 
@@ -1967,9 +2478,10 @@ export type ItAssetWarrantyExpiredPayload = z.infer<typeof ItAssetWarrantyExpire
 // The company's SIM lines on its three networks' business accounts: a register of its own, beside
 // the assets rather than inside them — a line is a number on a network's account, not a device
 // with a serial, a category and a specifications table. It is handed over and returned the way a
-// device is, on the same grants (`itAsset.*`, page «الأصول»), and an employee signs the same
-// department form for it («إقرار استلام», the F-14 series); a tracker SIM is held by a CAR instead,
-// written as the car's code and plate the way the network's sheet names it.
+// device is — on grants of its own since 2026-11-17 (`itMobileLine.*`, page «خطوط المحمول»; the
+// asset grants carried it before) — and an employee signs the same department form for it («إقرار
+// استلام», the F-14 series); a tracker SIM is held by a CAR instead, written as the car's code and
+// plate the way the network's sheet names it.
 //
 // As with assets, `status` and `currentAssignmentId` are on no write schema: they follow from the
 // named actions (hand over / return / suspend / reactivate) and nothing else.
@@ -2283,8 +2795,14 @@ export interface ItMobileLineReceiptLineDto {
   accountNumber: string | null;
 }
 
-/** The paper: the device acknowledgment's header, and the one line it is for. */
-export interface ItMobileLineReceiptDocumentDto extends Omit<ItCustodyReceiptDocumentDto, 'lines'> {
+/**
+ * The paper: the device acknowledgment's header, and the one line it is for. A line is held by an
+ * employee or a car, never by a department, so the device paper's `custodian` is not carried.
+ */
+export interface ItMobileLineReceiptDocumentDto extends Omit<
+  ItCustodyReceiptDocumentDto,
+  'lines' | 'custodian'
+> {
   line: ItMobileLineReceiptLineDto;
 }
 
@@ -2345,7 +2863,8 @@ export type ListItMobileLineHistoryQuery = z.infer<typeof ListItMobileLineHistor
 // only through a maintenance order (FR-9), a consumable is handed to a person — on a memo they sign
 // — and may be named as installed on one of the register's assets. Each branch keeps its own stock,
 // so an item is a row PER BRANCH; its quantities are derived from an append-only ledger and moved
-// atomically with it, and are on no write schema. Same grants as the assets (`itAsset.*`).
+// atomically with it, and are on no write schema. Its own grants since 2026-11-17
+// (`itConsumable.*`, page «المستهلكات»); the asset grants carried it before.
 
 /**
  * Every way stock moves: in from a delivery, out to a person, out as scrap, back from a person — and
@@ -2472,6 +2991,13 @@ export const ReturnItConsumableSchema = z
   .strict();
 export type ReturnItConsumable = z.infer<typeof ReturnItConsumableSchema>;
 
+/**
+ * «قراءة عداد الطابعة» — a printer's counter as its display shows it: whole pages, cumulative
+ * (2026-11-19, «عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها الحبارة»).
+ */
+export const IT_PRINTER_COUNTER_MAX = 999_999_999;
+const printerCounterReading = z.number().int().min(0).max(IT_PRINTER_COUNTER_MAX);
+
 /** One item of an issue — one row of the memo. */
 export const ItConsumableIssueLineSchema = z
   .object({
@@ -2480,6 +3006,19 @@ export const ItConsumableIssueLineSchema = z
     reason: ItConsumableIssueReasonSchema.default('new'),
     /** «الجهاز اللى أتركب عليه» — the register's asset it was installed on, if any. */
     assetId: objectId().optional(),
+    /**
+     * The counter of the printer named in `assetId` as this toner goes in. Required by the SERVER
+     * when the item's type `requiresCounterReading` (with `assetId`, and `qty` 1 — one cartridge a
+     * line), and refused on any other item: the contract cannot see the type. The server also holds
+     * it STRICTLY above the printer's last reading, and strictly below a later one when the issue is
+     * backdated (`IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS` / `…_ABOVE_NEXT`).
+     */
+    counterReading: printerCounterReading.optional(),
+    /**
+     * «تم تصفير عداد الطابعة» — the printer's counter was reset: this reading may be at or below the
+     * printer's last one, and starts its count again (the pages across it are unknown). Absent = false.
+     */
+    counterReset: z.boolean().optional(),
   })
   .strict();
 export type ItConsumableIssueLine = z.infer<typeof ItConsumableIssueLineSchema>;
@@ -2488,19 +3027,31 @@ export type ItConsumableIssueLine = z.infer<typeof ItConsumableIssueLineSchema>;
 export const IT_CONSUMABLE_ISSUE_MAX_LINES = 20;
 
 /**
- * «صرف لموظف»: one employee, one or more items from ONE branch's store, ONE memo — in one
- * transaction, so the paper never lists what the store did not give, nor the reverse.
+ * «صرف لموظف»: one employee — or one department at one place, signed for by its responsible person
+ * («صرف لإدارة») — one or more items from ONE branch's store, ONE memo — in one transaction, so the
+ * paper never lists what the store did not give, nor the reverse. A department's place must be in
+ * the store's branch (the SERVER's refusal, `department.locationId` `OTHER_BRANCH`).
+ *
+ * The printer counter's own cross-field rules: a reset names the reading it starts from; a reading
+ * belongs to the printer the line names; and two lines on ONE printer carry ONE reading — one memo
+ * has one `at`, and a printer has one display, so its lines are one placement on its counter. They
+ * hold whoever the memo is for: a toner onto a department-held printer takes its reading too.
  */
 export const IssueItConsumablesSchema = z
   .object({
-    employeeId: objectId(),
+    /** Who it goes to — exactly one of the two. */
+    employeeId: objectId().optional(),
+    department: ItCustodianDepartmentInputSchema.optional(),
     issuedAt: z.coerce.date().optional(),
     notes: z.string().trim().max(2000).optional(),
     lines: z.array(ItConsumableIssueLineSchema).min(1).max(IT_CONSUMABLE_ISSUE_MAX_LINES),
   })
   .strict()
   .superRefine((value, ctx) => {
+    refineOneHolder(value, ctx, 'a memo is issued to an employee or to a department — exactly one');
     const seen = new Set<string>();
+    /** The first reading line of each printer — what every later line on it must repeat. */
+    const readingOf = new Map<string, { reading: number; reset: boolean }>();
     value.lines.forEach((line, index) => {
       if (seen.has(line.consumableId)) {
         ctx.addIssue({
@@ -2510,6 +3061,34 @@ export const IssueItConsumablesSchema = z
         });
       }
       seen.add(line.consumableId);
+
+      if (line.counterReset === true && line.counterReading === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'counterReset'],
+          message: 'a reset names the reading it starts from',
+        });
+      }
+      if (line.counterReading === undefined) return;
+      if (line.assetId === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'assetId'],
+          message: 'a counter reading belongs to the printer the item is installed on',
+        });
+        return;
+      }
+      const reading = { reading: line.counterReading, reset: line.counterReset === true };
+      const first = readingOf.get(line.assetId);
+      if (first === undefined) {
+        readingOf.set(line.assetId, reading);
+      } else if (first.reading !== reading.reading || first.reset !== reading.reset) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['lines', index, 'counterReading'],
+          message: 'two lines on one printer carry one counter reading',
+        });
+      }
     });
   });
 export type IssueItConsumables = z.infer<typeof IssueItConsumablesSchema>;
@@ -2588,14 +3167,33 @@ export interface ItConsumableMovementDto {
   consumableCode: string | null;
   consumableName: string | null;
   typeId: string | null;
-  /** The person an issue went to, or a return came from. */
+  /** The person an issue went to, or a return came from. Null on an issue to a department. */
   employeeId: string | null;
   employeeCode: string | null;
   employeeName: string | null;
+  /**
+   * An issue to a department: the department, the place, and who signed the memo for it — labelled
+   * at response time (a name is null when it cannot be read). All null on every other row.
+   */
+  departmentId: string | null;
+  departmentName: { ar: string; en: string } | null;
+  locationId: string | null;
+  locationName: { ar: string; en: string } | null;
+  responsibleEmployeeId: string | null;
+  responsibleEmployeeCode: string | null;
+  responsibleEmployeeName: string | null;
   /** The asset an issued item was installed on. */
   assetId: string | null;
   assetCode: string | null;
   assetName: string | null;
+  /**
+   * `issued`, of a type that takes the printer's counter: the reading of the printer (`assetId`)
+   * when it went in — as typed, or as «تعديل الجهاز» last corrected it. Null on every other row, and
+   * on a toner issued before the counter was asked (2026-11-19).
+   */
+  counterReading: number | null;
+  /** «تم تصفير عداد الطابعة» — that reading started the printer's counter again. False otherwise. */
+  counterReset: boolean;
   /** Issued: `new` | `replacement`; scrapped: why. Null otherwise. */
   reason: string | null;
   memoId: string | null;
@@ -2611,14 +3209,73 @@ export interface ItConsumableMovementDto {
   counterpartConsumableCode: string | null;
   byUserId: string | null;
   notes: string | null;
+  /**
+   * The row's `__v` — what «تعديل الجهاز» sends back, so a change somebody else made first is a
+   * conflict rather than overwritten. It moves only when that one correctable fact does.
+   */
+  version: number;
   createdAt: string;
 }
+
+/**
+ * «تعديل الجهاز» — «وضيف إمكانية تعديل الجهاز اللى عليه المستهلك بعد التسليم» (2026-11-17): the device an
+ * ISSUED unit sits in, corrected after the issue — the ledger's one correctable fact, because it
+ * describes the unit and moves no quantity. `null` is «بدون جهاز». The memo's line follows it, so a
+ * reprint prints the new device; the signed copy already filed stays as it is.
+ *
+ * On a COUNTED issue (its row carries a `counterReading`) the reading taken on the device is part of
+ * that one fact (2026-11-19): it moves with the device and is checked again on the printer it lands
+ * on; the same device with a new reading corrects it; «بدون جهاز» takes it off with the device. The
+ * rule follows the ROW, never the type's flag as it stands now — an issue recorded without a reading
+ * takes none afterwards.
+ */
+export const SetItConsumableInstalledOnSchema = z
+  .object({
+    assetId: objectId().nullable(),
+    /**
+     * A counted issue only: the reading on the device named — required by the server whenever the
+     * row carries a reading and `assetId` names a device (the same device included: that corrects
+     * it), and refused on a row recorded without one.
+     */
+    counterReading: printerCounterReading.optional(),
+    /** «تم تصفير عداد الطابعة» on that reading. Absent = false. */
+    counterReset: z.boolean().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      value.assetId === null &&
+      (value.counterReading !== undefined || value.counterReset === true)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['counterReading'],
+        message: 'a counter reading belongs to a device; «بدون جهاز» takes none',
+      });
+    }
+    if (value.counterReset === true && value.counterReading === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['counterReset'],
+        message: 'a reset names the reading it starts from',
+      });
+    }
+  });
+export type SetItConsumableInstalledOn = z.infer<typeof SetItConsumableInstalledOnSchema>;
 
 export const ListItConsumableMovementsQuerySchema = PaginationQuerySchema.extend({
   kind: ItConsumableMovementKindSchema.optional(),
   consumableId: objectId().optional(),
   typeId: objectId().optional(),
+  /** The person an issue went to (or a return came from) — never a department's signer. */
   employeeId: objectId().optional(),
+  /** Issues to this department. */
+  departmentId: objectId().optional(),
+  /** Issues to a department at this place. */
+  locationId: objectId().optional(),
+  /** Issues to a department this person signed the memo for. */
+  responsibleEmployeeId: objectId().optional(),
   assetId: objectId().optional(),
   branchId: objectId().optional(),
   from: z.coerce.date().optional(),
@@ -2627,6 +3284,76 @@ export const ListItConsumableMovementsQuerySchema = PaginationQuerySchema.extend
   search: z.string().trim().max(200).optional(),
 }).strict();
 export type ListItConsumableMovementsQuery = z.infer<typeof ListItConsumableMovementsQuerySchema>;
+
+// ── Consumables: the printer counter («عداد الطابعة», 2026-11-19) ─────────────
+//
+// A printer's readings are the `counterReading`s of the counted issues onto it, ordered by `at`
+// then id, across every store. The pages a cartridge printed are never stored: they are the next
+// reading of the SAME item (by name) on that printer, less its own, computed when read — so a
+// device change, a correction or a rename is always reflected. A reset starts the count again, and
+// every pair across it is of unknown pages. Each answer is one object over the whole timeline, not
+// a page: the pairing needs every row, and a printer has dozens a year.
+
+/** One reading of a printer's counter — `GET /it/assets/:id/counter-readings`. */
+export interface ItPrinterCounterReadingDto {
+  movementId: string;
+  at: string;
+  reading: number;
+  /** The counter started again here: every cartridge it replaced is of unknown pages. */
+  reset: boolean;
+  /** The toner the reading was taken with. */
+  consumableId: string;
+  consumableCode: string | null;
+  consumableName: string | null;
+  /**
+   * The previous cartridge of the SAME item on this printer, and what it printed (this reading less
+   * its own). `pages` is null when a reset lies between them. The whole field is null when this is
+   * that item's first on the printer (a new model or colour).
+   */
+  replaced: { movementId: string; at: string; reading: number; pages: number | null } | null;
+}
+
+export interface ItPrinterCounterDto {
+  assetId: string;
+  /**
+   * The newest reading — `readings[0]` without its pairing, with the toner it was taken with: what
+   * «صرف» shows under the reading field («آخر قراءة مسجّلة لهذه الطابعة»). An issue dated at or after
+   * it must read strictly above it unless it ticks «تم تصفير عداد الطابعة» (a backdated one is judged
+   * by the server against the readings around its date). Null: no reading yet.
+   */
+  latest: Omit<ItPrinterCounterReadingDto, 'replaced'> | null;
+  /** Newest first. */
+  readings: ItPrinterCounterReadingDto[];
+}
+
+/** One cartridge of a toner item, on the printer it went into. */
+export interface ItConsumableCartridgeDto {
+  movementId: string;
+  at: string;
+  assetId: string;
+  assetCode: string | null;
+  assetName: string | null;
+  installReading: number;
+  /**
+   * The next cartridge of the same item (by name, from any store) on that printer. Null: none yet —
+   * this is still the latest of its item there.
+   */
+  removedAt: string | null;
+  removedReading: number | null;
+  /** removedReading − installReading. Null while not replaced, or when a reset lies between. */
+  pages: number | null;
+}
+
+/** A toner item's cartridge life — `GET /it/consumables/:id/cartridges`. */
+export interface ItConsumableCartridgesDto {
+  consumableId: string;
+  /** The mean of the known `pages`, rounded. Null when none is known. */
+  averagePages: number | null;
+  /** How many cartridges that mean is over. */
+  counted: number;
+  /** Newest first. */
+  cartridges: ItConsumableCartridgeDto[];
+}
 
 // ── Consumables: the memo (مذكرة صرف مستهلكات) ─────────────────────────────
 
@@ -2658,10 +3385,19 @@ export interface ItConsumableMemoLineDto {
 export interface ItConsumableMemoDocumentDto {
   memoNumber: number;
   issuedAt: string;
+  /**
+   * The SIGNER — the employee it went to, or, on a department memo, the responsible person who
+   * received it for the department («المستلم عن الإدارة»). The name, code and job are the signer's.
+   */
   employeeId: string;
   employeeName: string | null;
   employeeCode: string | null;
   jobTitle: { ar: string; en: string } | null;
+  /**
+   * A department memo — «لصالح إدارة … بموقع …»: the department and the place, as named when the
+   * memo was written. Null on an employee's memo, and on every memo written before 2026-11-19.
+   */
+  custodian: ItCustodianDepartmentDto | null;
   /** Who issued it — the IT signature block's name. */
   issuedByName: string | null;
   notes: string | null;
@@ -2757,6 +3493,13 @@ export interface ItDashboardActivityItemDto {
   employeeId: string | null;
   employeeCode: string | null;
   employeeName: string | null;
+  /**
+   * The department handed to (assigned, transferred to) or returned from, and its place — when the
+   * holder was a department («إدارة …»); null otherwise.
+   */
+  departmentId: string | null;
+  departmentName: { ar: string; en: string } | null;
+  locationName: { ar: string; en: string } | null;
   /** A move between branches. */
   fromBranchId: string | null;
   toBranchId: string | null;

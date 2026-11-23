@@ -43,6 +43,7 @@ const OPTION_HOOKS = [
   'useBranchNames',
   'useDepartmentOptions',
   'useDepartmentReferenceOptions',
+  'useDepartmentNames',
   'useSectionOptions',
   'useSectionReferenceOptions',
   'useJobTitleReferenceOptions',

@@ -68,12 +68,24 @@ export type InterviewEvaluationState = z.infer<typeof InterviewEvaluationStateSc
 
 // ── Interview stages (admin-configurable reference catalog, OQ-31) ──────────
 
+/**
+ * How a round of this stage is run.
+ *  • `evaluation` — the full interview: start it, read the candidate's file, write the evaluation
+ *    (recommendation, rating, notes) and approve or reject inside it.
+ *  • `decisionOnly` — no evaluation form: the candidate is simply approved or rejected, with a
+ *    note, one at a time or in bulk. The shipped second interview works this way.
+ */
+export const INTERVIEW_STAGE_MODES = ['evaluation', 'decisionOnly'] as const;
+export const InterviewStageModeSchema = z.enum(INTERVIEW_STAGE_MODES);
+export type InterviewStageMode = z.infer<typeof InterviewStageModeSchema>;
+
 export const CreateInterviewStageSchema = z
   .object({
     key: z.string().regex(/^[a-z][a-zA-Z0-9.]{1,49}$/),
     name: LocalizedStringSchema,
     /** 1-based position in the interview sequence; must be unique among active stages. */
     order: z.number().int().min(1).max(20),
+    mode: InterviewStageModeSchema.optional(),
   })
   .strict();
 export type CreateInterviewStage = z.infer<typeof CreateInterviewStageSchema>;
@@ -83,6 +95,7 @@ export const UpdateInterviewStageSchema = z
     name: LocalizedStringSchema.optional(),
     order: z.number().int().min(1).max(20).optional(),
     active: z.boolean().optional(),
+    mode: InterviewStageModeSchema.optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -99,6 +112,7 @@ export interface InterviewStageDto {
   name: LocalizedString;
   order: number;
   active: boolean;
+  mode: InterviewStageMode;
   version: number;
 }
 
@@ -283,6 +297,21 @@ export const BulkScheduleInterviewsSchema = z
   })
   .strict();
 export type BulkScheduleInterviews = z.infer<typeof BulkScheduleInterviewsSchema>;
+
+/**
+ * Approve or reject candidates at a `decisionOnly` stage in one step — one candidate or a whole
+ * selection. Each candidate's round is opened if it was not yet, the caller's note is recorded as
+ * their evaluation, and the round is closed with the outcome. Per item, partial success (RW17).
+ */
+export const QuickDecideInterviewsSchema = z
+  .object({
+    applicantIds: z.array(objectId()).min(1).max(200),
+    stageId: objectId(),
+    outcome: InterviewDecisionSchema,
+    notes: z.string().max(2000).optional(),
+  })
+  .strict();
+export type QuickDecideInterviews = z.infer<typeof QuickDecideInterviewsSchema>;
 
 /** Start rounds immediately for a selection of WAITING applicants (RW12 semantics, per item). */
 export const BulkStartInterviewsSchema = z

@@ -1,5 +1,6 @@
 // The licensing-expenses board's arrows and «الإحصائيات», as the repository sends them: the keys the
-// table may order by, the figures computed rather than stored, and a sum that no page can narrow.
+// table may order by, the figures computed rather than stored (over the MATCHED memos under «النوع» /
+// «التسوية», D05), and a sum that no page can narrow, in whole piastres (D51).
 // The orders and sums themselves run against a real mongo in the integration suite.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetLicenseExpenseModel } from './license-expense.model';
@@ -91,28 +92,70 @@ describe('«الإحصائيات» of the licensing-expenses board', () => {
     // `baseFilter`: a deleted memo is no more in the figures than in the table.
     expect(JSON.stringify(stages[0]?.$match)).toContain('isDeleted');
     expect(JSON.stringify(stages[0]?.$match)).toContain('"kind":"renewal"');
-    expect(stages[1]?.$group).toEqual({
-      _id: null,
-      count: { $sum: 1 },
-      cars: { $sum: CARS_COUNT_EXPRESSION },
-      visaTotal: { $sum: linesTotalExpression('visa') },
-      cashTotal: { $sum: linesTotalExpression('cash') },
-    });
+    const group = stages[1]?.$group ?? {};
+    expect(Object.keys(group)).toEqual(['_id', 'count', 'cars', 'visa', 'cash']);
+    // Unfiltered, the cars are every memo's — the column's own expression.
+    expect(group['cars']).toEqual({ $sum: CARS_COUNT_EXPRESSION });
   });
 
-  it('reads nothing matched as zeros, and rounds the money to the piastre', async () => {
+  it('counts MEMOS, not records — a record holding both is two (D05)', async () => {
+    const { stages } = await totalsFor(null);
+    const count = JSON.stringify(stages[1]?.$group?.['count']);
+    expect(count).not.toBe(JSON.stringify({ $sum: 1 }));
+    expect(count).toContain('"$renewal"');
+    expect(count).toContain('"$extension"');
+  });
+
+  it('sums the money line by line in whole piastres — `spendDigest`’s arithmetic (D51)', async () => {
+    const { stages } = await totalsFor(null);
+    const visa = JSON.stringify(stages[1]?.$group?.['visa']);
+    expect(visa).toContain('{"$round":[{"$multiply":[{"$ifNull":["$$this.amount",0]},100]},0]}');
+    expect(visa).toContain('["$$this.paidBy","visa"]');
+    expect(JSON.stringify(stages[1]?.$group?.['cash'])).toContain('["$$this.paidBy","cash"]');
+  });
+
+  it('reads nothing matched as zeros, and the piastres back as pounds', async () => {
     expect((await totalsFor(null)).result).toEqual({
       count: 0,
       cars: 0,
       visaTotal: 0,
       cashTotal: 0,
     });
-    const { result } = await totalsFor({
-      count: 2,
-      cars: 3,
-      visaTotal: 0.1 + 0.2,
-      cashTotal: 1037.1000000001,
-    });
+    const { result } = await totalsFor({ count: 2, cars: 3, visa: 30, cash: 103710 });
     expect(result).toEqual({ count: 2, cars: 3, visaTotal: 0.3, cashTotal: 1037.1 });
+  });
+
+  it('under «النوع» / «التسوية» reads the MATCHED memos only (D05)', async () => {
+    let stages: Stage[] = [];
+    vi.spyOn(FleetLicenseExpenseModel, 'aggregate').mockImplementation(((sent: Stage[]) => {
+      stages = sent;
+      return { exec: async () => [] };
+    }) as unknown as typeof FleetLicenseExpenseModel.aggregate);
+    await fleetLicenseExpenseRepository.totals({}, { kind: 'renewal', status: 'waiting' });
+    const group = JSON.stringify(stages[1]?.$group);
+    // The renewal memo alone, and only while it waits for its settlement.
+    expect(group).toContain('$renewalSettlement');
+    expect(group).not.toContain('$extension.items');
+    expect(group).not.toContain('$extensionSettlement');
+  });
+
+  it('orders the money and cars arrows by the matched memos too', async () => {
+    const list = vi.spyOn(fleetLicenseExpenseRepository, 'list').mockResolvedValue({
+      items: [],
+      meta: { page: 1, pageSize: 25, totalItems: 0, totalPages: 1 },
+    });
+    await fleetLicenseExpenseRepository.listExpenses({ page: 1, pageSize: 25 }, {});
+    expect(list.mock.calls[0]![0].sortDerived).toBe(LICENSE_EXPENSE_SORTS);
+    await fleetLicenseExpenseRepository.listExpenses(
+      { page: 1, pageSize: 25 },
+      { status: 'settled' },
+    );
+    const sorts = list.mock.calls[1]![0].sortDerived ?? [];
+    expect(sorts.map((field) => field.key)).toEqual(LICENSE_EXPENSE_SORTS.map((f) => f.key));
+    const byKey = new Map(sorts.map((field) => [field.key, JSON.stringify(field.expression)]));
+    for (const key of ['carsCount', 'visaTotal', 'cashTotal', 'total']) {
+      expect(byKey.get(key), key).toContain('Settlement');
+    }
+    expect(byKey.get('kindOrder')).toBe(JSON.stringify(KIND_ORDER_EXPRESSION));
   });
 });

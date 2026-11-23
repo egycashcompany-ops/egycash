@@ -11,8 +11,25 @@ import {
   type FleetViolationDoc,
 } from './violation.model';
 
-/** «مجهول» with any spacing round it, or an empty name — `isUnknownFleetDriver`'s rule, in Mongo. */
-const UNKNOWN_DRIVER_NAME_PATTERN = new RegExp(`^\\s*(${FLEET_UNKNOWN_DRIVER_NAME})?\\s*$`, 'u');
+/**
+ * A space as `isUnknownFleetDriver` reads one — its `trim()` strips every Unicode space, the
+ * no-break space among them — in the database too, whose `\s` is ASCII only. The class
+ * `vehicles/vehicle-code-match.ts` spells for the same reason, copied rather than shared (it is
+ * that file's own): `\s` for ASCII; `\v` for the line and paragraph separators U+2028 / U+2029
+ * (the database refuses them written as `\u` escapes, and in JavaScript `\v` is the vertical tab,
+ * already in `\s`); every other Unicode space as the character itself.
+ */
+const SPACE = '[\\s\\v\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000\ufeff]';
+
+/**
+ * «مجهول» with any spacing round it, or an empty name — `isUnknownFleetDriver`'s rule, in Mongo:
+ * « مجهول» written with a no-break space is «مجهول» to the register's filter as it is to the
+ * dashboard (D42).
+ */
+const UNKNOWN_DRIVER_NAME_PATTERN = new RegExp(
+  `^${SPACE}*(${FLEET_UNKNOWN_DRIVER_NAME})?${SPACE}*$`,
+  'u',
+);
 
 /** Per-vehicle sums for one year — the aggregate half of the FR-9 rollup. */
 export interface ViolationYearSums {
@@ -168,6 +185,29 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     });
   }
 
+  /**
+   * The OWED amount (`collected !== true`) over EVERY live row `filter` finds — `GET
+   * /fleet/violations`' `meta.outstandingAmount` (D03): every page, never the one in hand, under
+   * the very filter the list was asked (its `kind` half, dates, cars, drivers, …); with no `kind`,
+   * both halves. A statement row's `amount` is already its count × unit value, so a row adds its
+   * amount as the rollup's `outstanding*Amount` does. Unrounded — the caller rounds to the piastre.
+   */
+  async outstandingAmount(filter: FilterQuery<FleetViolationDoc>): Promise<number> {
+    const owed: FilterQuery<FleetViolationDoc> = { collected: { $ne: true } };
+    const [row] = await this.model
+      .aggregate<{ amount: number }>([
+        {
+          $match: this.baseFilter(
+            undefined,
+            Object.keys(filter).length === 0 ? owed : { $and: [filter, owed] },
+          ),
+        },
+        { $group: { _id: null, amount: { $sum: '$amount' } } },
+      ])
+      .exec();
+    return row?.amount ?? 0;
+  }
+
   violationFilter(query: {
     kind?: string | undefined;
     vehicleId?: string | undefined;
@@ -190,6 +230,14 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     /** Settled or not. `false` is a real answer, so this is checked against `undefined`. */
     collected?: boolean | undefined;
     year?: number | undefined;
+    /**
+     * The FINE's day from this instant on (`$gte`) — the first instant of a calendar day, so a whole
+     * day: an old-book row may be stored off midnight. A statement row has no day (`date: null`), so
+     * a bounded question lists driver rows only — `$gte`/`$lte` never match null.
+     */
+    dateFrom?: Date | undefined;
+    /** …up to this instant (`$lte`) — the LAST instant of a calendar day, the whole day again. */
+    dateBefore?: Date | undefined;
   }): FilterQuery<FleetViolationDoc> {
     const clauses: FilterQuery<FleetViolationDoc>[] = [];
     if (query.kind !== undefined) clauses.push({ kind: query.kind });
@@ -235,6 +283,16 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       // driver rows carry it as the year of their event date (§2.9 — no synthesized dates).
       clauses.push(FleetViolationRepository.yearClause(query.year));
     }
+    // The fine's DAY — the register's «من / إلى» and the dashboard's period. Its own date, never
+    // `filedYear`: a fine carried onto another year's statement still happened on the day it did,
+    // and the drivers' board lists it there. A day is the DRIVERS' shape's alone: a statement row
+    // carries a year, so a bounded question names the shape too rather than trusting every
+    // statement's `date` to be null.
+    if (query.dateFrom !== undefined || query.dateBefore !== undefined) {
+      clauses.push({ kind: 'driver' });
+    }
+    if (query.dateFrom !== undefined) clauses.push({ date: { $gte: query.dateFrom } });
+    if (query.dateBefore !== undefined) clauses.push({ date: { $lte: query.dateBefore } });
     return clauses.length === 0 ? {} : { $and: clauses };
   }
 
@@ -401,9 +459,13 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
    * So the groups add up to the drivers' outstanding total of the rollup, to the piastre.
    *
    * Money and count together, as the rollup keeps them: «مجهول ٣ · ٤٥٠ ج.م» is one statement.
+   *
+   * `year: undefined` is EVERY year — `yearSums(undefined, …)`'s own answer, the board's whole
+   * history — which is what the dashboard's «مخالفات قائمة» splits. The attributed group also says
+   * how many DIFFERENT employees its fines are on («سائقون معروفون»: a count, no names, no order).
    */
   async driverFineGroups(
-    year: number,
+    year: number | undefined,
     scope?: {
       vehicleIds?: readonly string[] | undefined;
       vehicleCodes?: readonly string[] | undefined;
@@ -414,8 +476,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       // `$ne: true` and not `false`: the rollup's `$not: ['$collected']` counts a row whose flag
       // is missing as owed, and so must this.
       { collected: { $ne: true } },
-      FleetViolationRepository.yearsClause([year]),
     ];
+    if (year !== undefined) clauses.push(FleetViolationRepository.yearsClause([year]));
     if (scope?.vehicleIds !== undefined) {
       clauses.push(byVehicleOrBookCode(scope.vehicleIds, scope.vehicleCodes));
     }
@@ -425,6 +487,7 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
         _id: { attributed: boolean; driverName: string | null };
         amount: number;
         count: number;
+        drivers: unknown[];
       }>([
         { $match: { isDeleted: false, $and: clauses } },
         {
@@ -435,6 +498,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
             },
             amount: { $sum: '$amount' },
             count: { $sum: 1 },
+            // The distinct employees — `null` on every unattributed group, counted there as none.
+            drivers: { $addToSet: '$driverEmployeeId' },
           },
         },
       ])
@@ -444,7 +509,74 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       driverName: row._id.driverName ?? null,
       amount: row.amount,
       count: row.count,
+      drivers: row._id.attributed ? (row.drivers ?? []).filter((id) => id != null).length : 0,
     }));
+  }
+
+  /**
+   * «مخالفات السائقين في الفترة» — ONE aggregate over the drivers' fines `filter` names (the
+   * register's own `violationFilter`, bounded by the fine's day): how many and how much, of them
+   * the ones still OWED (`collected` not true — a missing tick is owed, as everywhere) and the ones
+   * collected, as they stand now, and the same two figures per catalog type.
+   *
+   * `kind: 'driver'` is asked here as well as by the caller: a company statement carries a year and
+   * no day, and is never a period's — even under «هذه السنة».
+   */
+  async periodDigest(filter: FilterQuery<FleetViolationDoc>): Promise<ViolationPeriodSums> {
+    const owed = { $ne: ['$collected', true] };
+    const [facets] = await this.model
+      .aggregate<{
+        totals: {
+          count: number;
+          amount: number;
+          owedCount: number;
+          owedAmount: number;
+          collectedCount: number;
+          collectedAmount: number;
+        }[];
+        byType: { _id: Types.ObjectId; count: number; amount: number }[];
+      }>([
+        { $match: { isDeleted: false, $and: [{ kind: 'driver' }, filter] } },
+        {
+          $facet: {
+            totals: [
+              {
+                $group: {
+                  _id: null,
+                  count: { $sum: 1 },
+                  amount: { $sum: '$amount' },
+                  owedCount: { $sum: { $cond: [owed, 1, 0] } },
+                  owedAmount: { $sum: { $cond: [owed, '$amount', 0] } },
+                  collectedCount: { $sum: { $cond: [owed, 0, 1] } },
+                  collectedAmount: { $sum: { $cond: [owed, 0, '$amount'] } },
+                },
+              },
+            ],
+            byType: [
+              {
+                $group: {
+                  _id: '$violationTypeId',
+                  count: { $sum: 1 },
+                  amount: { $sum: '$amount' },
+                },
+              },
+            ],
+          },
+        },
+      ])
+      .exec();
+    const totals = facets?.totals[0];
+    return {
+      count: totals?.count ?? 0,
+      amount: totals?.amount ?? 0,
+      owed: { count: totals?.owedCount ?? 0, amount: totals?.owedAmount ?? 0 },
+      collected: { count: totals?.collectedCount ?? 0, amount: totals?.collectedAmount ?? 0 },
+      byType: (facets?.byType ?? []).map((row) => ({
+        violationTypeId: String(row._id),
+        count: row.count,
+        amount: row.amount,
+      })),
+    };
   }
 
   async yearSums(
@@ -635,6 +767,17 @@ export interface DriverFineGroup {
   driverName: string | null;
   amount: number;
   count: number;
+  /** The distinct employees the attributed group's fines are on; 0 on an unattributed group. */
+  drivers: number;
+}
+
+/** The period's drivers' fines as the aggregate sums them — money unrounded, names unread. */
+export interface ViolationPeriodSums {
+  count: number;
+  amount: number;
+  owed: { count: number; amount: number };
+  collected: { count: number; amount: number };
+  byType: { violationTypeId: string; count: number; amount: number }[];
 }
 
 class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {

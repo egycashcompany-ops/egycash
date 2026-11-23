@@ -11,12 +11,14 @@
 //
 // A mobile line handed to an employee is signed for on the same form (FR-19), and its paper offers
 // exactly the same: print it again, file the signed copy, look at it. So the controls take a
-// `ReceiptStore` — where a kind of paper is kept — and a printer; the device receipts' are the
-// default, and `MobileLineReceipt.tsx` passes the line acknowledgments'.
+// `ReceiptStore` — where a kind of paper is kept, and the custody grant that files or withdraws
+// its signed copy — and a printer; the device receipts' are the default, and
+// `MobileLineReceipt.tsx` and `ConsumableMemo.tsx` pass the line acknowledgments' and the memos'.
 import { useEffect, useState } from 'react';
 import {
   type ItAssetAssignmentDto,
   type ItCustodyReceiptDocumentDto,
+  type ItCustodyReceiptDto,
   type ItCustodyReceiptSignedCopyDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -33,7 +35,32 @@ import {
   useItCustodyReceipt,
   useUploadReceiptSignedCopy,
 } from '../api/it-queries';
-import { printCustodyReceipt, type ReceiptWindowLabels } from '../lib/custody-receipt-print';
+import {
+  paperCustodian,
+  printCustodyReceipt,
+  type ReceiptWindowLabels,
+} from '../lib/custody-receipt-print';
+
+/**
+ * The signed copy's dialog says whose paper it is: the signer — and on a department's paper
+ * (2026-11-19), the department and the place he signed for.
+ */
+const signedCopyDescription = (
+  t: (key: string, params?: Record<string, string | number>) => string,
+  paper: { employeeName: string | null; custodian?: ItCustodyReceiptDto['custodian'] } | undefined,
+): string => {
+  if (paper === undefined) return '';
+  const custodian = paperCustodian(paper);
+  const signer = paper.employeeName ?? '';
+  if (custodian === null) return signer;
+  const place = t('it.custody.department.heldAt', {
+    department: custodian.department ?? '—',
+    location: custodian.location ?? '—',
+  });
+  return signer === ''
+    ? place
+    : `${place} — ${t('it.custody.department.signedBy', { name: signer })}`;
+};
 
 /** What the signed copy may be: a phone photo of the paper, or the office scanner's PDF. */
 export const RECEIPT_COPY_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
@@ -49,7 +76,13 @@ const iconButton =
 export interface ReceiptStore {
   useReceipt: (id: string | null) => {
     data:
-      { employeeName: string | null; signedCopy: ItCustodyReceiptSignedCopyDto | null } | undefined;
+      | {
+          employeeName: string | null;
+          signedCopy: ItCustodyReceiptSignedCopyDto | null;
+          /** A department's paper (2026-11-19): the department and the place it is for. */
+          custodian?: ItCustodyReceiptDto['custodian'];
+        }
+      | undefined;
     isPending: boolean;
   };
   useUploadSignedCopy: () => {
@@ -61,6 +94,11 @@ export interface ReceiptStore {
     isPending: boolean;
   };
   fetchSignedCopy: (id: string) => Promise<Blob>;
+  /**
+   * The custody grant that files, replaces and withdraws this kind of paper's signed copy — the
+   * one its register hands things over under, and the one the server checks on those writes.
+   */
+  assignGrant: string;
 }
 
 /** The device receipts (`/it/custody-receipts`) — every control's default. */
@@ -69,6 +107,7 @@ export const DEVICE_RECEIPTS: ReceiptStore = {
   useUploadSignedCopy: useUploadReceiptSignedCopy,
   useDeleteSignedCopy: useDeleteReceiptSignedCopy,
   fetchSignedCopy: api.fetchReceiptSignedCopy,
+  assignGrant: 'itAsset.assign',
 };
 
 /**
@@ -221,7 +260,7 @@ export const SignedCopyDialog = ({
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
-  const mayEdit = can('itAsset.assign');
+  const mayEdit = can(store.assignGrant);
   const receipt = store.useReceipt(open ? receiptId : null);
   const copy = receipt.data?.signedCopy ?? null;
   const { url, loading, failed } = useSignedCopyUrl(
@@ -250,7 +289,7 @@ export const SignedCopyDialog = ({
         onClose={onClose}
         size="xl"
         title={t('it.custody.receipt.signedTitle')}
-        description={receipt.data?.employeeName ?? ''}
+        description={signedCopyDescription(t, receipt.data)}
         footer={
           <>
             <Button variant="secondary" onClick={onClose}>
@@ -354,7 +393,7 @@ export const ReceiptPaperActions = ({
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
-  const mayAssign = can('itAsset.assign');
+  const mayAssign = can(store.assignGrant);
   const [viewing, setViewing] = useState(false);
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">

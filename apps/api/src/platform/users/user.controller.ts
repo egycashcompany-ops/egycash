@@ -8,20 +8,36 @@ import {
   type AdminResetPassword,
   type TotpRequire,
 } from '@ecms/contracts';
-import { created, noContent, ok, okPage } from '../../infrastructure/http/respond';
+import { created, noContent, ok } from '../../infrastructure/http/respond';
 import { validated } from '../../infrastructure/http/validate';
-import { scopeSelector } from '../../shared/types';
+import { ForbiddenError } from '../../shared/errors';
+import { hasPermission, scopeSelector } from '../../shared/types';
 import { authContext, authService, passkeyStore } from '../auth';
 import { rbacService } from '../rbac';
 import { userService } from './user.service';
 
 type IdParam = { id: string };
 
+/**
+ * The System Users list. Roles are part of each row — and a filter — only for a caller who may see
+ * roles (`role.view`); for anyone else `roles` is null, and a role filter is refused rather than
+ * ignored, since rows that merely look filtered are worse than an error.
+ */
 export const listUsers = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListUsersQuery>(req);
-  const page = await userService.list(query, scopeSelector(ctx, 'user.view'));
-  okPage(res, page, (doc) => userService.toDto(doc));
+  const seesRoles = hasPermission(ctx, 'role.view');
+  if (query.roleId !== undefined && !seesRoles) {
+    throw new ForbiddenError('Filtering accounts by role needs role.view');
+  }
+  const holderIds =
+    query.roleId === undefined ? undefined : await rbacService.userIdsHoldingRoles(query.roleId);
+  const page = await userService.list(query, scopeSelector(ctx, 'user.view'), holderIds);
+  const rolesByUser = seesRoles
+    ? await rbacService.rolesInForceFor(page.items.map((doc) => String(doc._id)))
+    : null;
+  const items = await userService.toListItems(page.items, rolesByUser);
+  ok(res, items, page.meta);
 };
 
 export const getUser = async (req: Request, res: Response): Promise<void> => {

@@ -24,6 +24,7 @@ import { AssetsListPage } from './AssetsListPage';
 import { MobileLinesPage } from './MobileLinesPage';
 import { ConsumablesPage } from './ConsumablesPage';
 import { ConsumableMovementsPage } from './ConsumableMovementsPage';
+import { EMPLOYEE_INTERVAL } from '../custody-holder-fixtures';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -62,6 +63,7 @@ const me = (permissions: string[]): MeDto =>
 const interval: ItAssetAssignmentDto = {
   id: 'a-1',
   assetId: 'asset-1',
+  ...EMPLOYEE_INTERVAL,
   assignedToEmployeeId: 'e-1',
   assignedToEmployeeCode: '0100052',
   assignedToEmployeeName: 'محمد أحمد علي',
@@ -198,11 +200,13 @@ const buttonText = (html: string, attribute: string): string => {
   return inner.replace(/<[^>]*>/gu, '').trim();
 };
 
+// Each register on its own read grant — the lines and the consumables on theirs since 2026-11-17.
 describe.each([
   {
     screen: 'custody' as const,
     name: 'it-custody',
     action: 'it.custody.receipt.title',
+    viewPermission: 'itAsset.view',
     actionPermission: 'itAsset.assign',
     filter: 'it.custody.filterOpen',
     source: PAGE,
@@ -212,6 +216,7 @@ describe.each([
     screen: 'assets' as const,
     name: 'it-assets',
     action: 'it.assets.create',
+    viewPermission: 'itAsset.view',
     actionPermission: 'itAsset.create',
     filter: 'it.assets.allStatuses',
     source: ASSETS,
@@ -221,7 +226,8 @@ describe.each([
     screen: 'lines' as const,
     name: 'it-mobile-lines',
     action: 'it.mobileLines.create',
-    actionPermission: 'itAsset.create',
+    viewPermission: 'itMobileLine.view',
+    actionPermission: 'itMobileLine.create',
     filter: 'it.mobileLines.allStatuses',
     source: LINES,
     list: 'gatherRegister(params, api.listMobileLines)',
@@ -231,16 +237,17 @@ describe.each([
     screen: 'consumables' as const,
     name: 'it-consumables',
     action: 'it.consumables.create',
-    actionPermission: 'itAsset.create',
+    viewPermission: 'itConsumable.view',
+    actionPermission: 'itConsumable.create',
     filter: 'it.consumables.allTypes',
     source: CONSUMABLES,
     list: 'gatherRegister(params, api.listConsumables)',
   },
 ])(
   'the $screen screen’s Excel and PDF',
-  ({ screen, name, action, actionPermission, filter, source, list }) => {
+  ({ screen, name, action, viewPermission, actionPermission, filter, source, list }) => {
     it('come BEFORE the form’s action, in the page’s header, above the filters', () => {
-      const html = render(screen, ['itAsset.view', actionPermission]);
+      const html = render(screen, [viewPermission, actionPermission]);
       const excel = html.indexOf(`data-export="${name}"`);
       const pdf = html.indexOf(`data-print="${name}"`);
       const formAction = html.indexOf(ar(action));
@@ -252,14 +259,14 @@ describe.each([
     });
 
     it('say just «Excel» and «PDF» — no «تصدير»', () => {
-      const html = render(screen, ['itAsset.view', actionPermission]);
+      const html = render(screen, [viewPermission, actionPermission]);
       expect(buttonText(html, `data-export="${name}"`)).toBe('Excel');
       expect(buttonText(html, `data-print="${name}"`)).toBe('PDF');
       expect(html).not.toContain('تصدير');
     });
 
     it('are offered to whoever can read the list, though only some may use its action', () => {
-      const html = render(screen, ['itAsset.view']);
+      const html = render(screen, [viewPermission]);
       expect(html).not.toContain(ar(action));
       expect(html).toContain(`data-export="${name}"`);
       expect(html).toContain(`data-print="${name}"`);
@@ -330,7 +337,7 @@ describe('the consumables ledger’s Excel and PDF', () => {
   const name = 'it-consumable-movements';
 
   it('are in the page’s header, before the way back to the store and above the filters', () => {
-    const html = render('consumableMovements', ['itAsset.view']);
+    const html = render('consumableMovements', ['itConsumable.view']);
     const excel = html.indexOf(`data-export="${name}"`);
     const pdf = html.indexOf(`data-print="${name}"`);
     expect(excel).toBeGreaterThan(-1);
@@ -340,7 +347,7 @@ describe('the consumables ledger’s Excel and PDF', () => {
   });
 
   it('say just «Excel» and «PDF» — no «تصدير»', () => {
-    const html = render('consumableMovements', ['itAsset.view']);
+    const html = render('consumableMovements', ['itConsumable.view']);
     expect(buttonText(html, `data-export="${name}"`)).toBe('Excel');
     expect(buttonText(html, `data-print="${name}"`)).toBe('PDF');
     expect(html).not.toContain('تصدير');

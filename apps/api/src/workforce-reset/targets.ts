@@ -135,7 +135,15 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_attendance_days: { action: 'purge', why: 'a day worked by somebody' },
   hr_attendance_punches: { action: 'purge', why: 'a punch by somebody' },
   hr_attendance_regularizations: { action: 'purge', why: 'a correction to somebody’s attendance' },
+  hr_attendance_day_decisions: { action: 'purge', why: 'a decision about somebody’s day' },
   hr_attendance_enrollments: { action: 'purge', why: 'somebody’s device enrolment' },
+  // Task 2 — the backfill's bookkeeping. A chunk says «recompute this person's days», which is
+  // meaningless once the person is gone; the run document beside it names nobody and is left
+  // alone, so a finished backfill still reads as having happened.
+  hr_attendance_backfill_chunks: {
+    action: 'purge',
+    why: 'work queued against somebody’s days',
+  },
   hr_shift_assignments: { action: 'purge', why: 'somebody’s shift' },
   hr_leave_requests: { action: 'purge', why: 'somebody’s leave request' },
   hr_leave_balances: { action: 'purge', why: 'somebody’s leave balance' },
@@ -146,6 +154,7 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   hr_employee_pay_items: { action: 'purge', why: 'somebody’s recurring pay item' },
   hr_contracts: { action: 'purge', why: 'somebody’s employment contract' },
   hr_candidate_drafts: { action: 'purge', why: 'the papers somebody was printed and hired with' },
+  hr_employee_paper_values: { action: 'purge', why: 'the values typed in for somebody\'s papers' },
   hr_employee_loans: { action: 'purge', why: 'somebody’s loan' },
   hr_loan_installments: { action: 'purge', why: 'an installment of somebody’s loan' },
   hr_loan_repayments: { action: 'purge', why: 'a repayment of somebody’s loan' },
@@ -172,7 +181,10 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   operations_crew_requirements: { action: 'purge', why: 'somebody’s place in a crew requirement' },
   operations_standing_crews: { action: 'purge', why: 'a standing crew made of specific people' },
   operations_shipment_assignments: { action: 'purge', why: 'a shipment captained by somebody' },
-  it_asset_assignments: { action: 'purge', why: 'an asset held by somebody — the ASSET survives' },
+  it_asset_assignments: {
+    action: 'purge',
+    why: 'an asset held by somebody, or by a department on somebody’s signature — the ASSET survives',
+  },
   it_custody_receipts: { action: 'purge', why: 'the paper somebody signed for what they hold' },
   it_mobile_line_receipts: {
     action: 'purge',

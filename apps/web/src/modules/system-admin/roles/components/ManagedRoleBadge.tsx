@@ -14,13 +14,24 @@ const TONE: Record<RoleManagement, Tone> = {
   none: 'neutral',
 };
 
-export const ManagedRoleBadge = ({ managed }: { managed: RoleManagement }): JSX.Element | null =>
-  managed === 'none' ? null : <ManagedChip managed={managed} />;
+interface ManagedRoleBadgeProps {
+  managed: RoleManagement;
+  /** Passed to the chip — e.g. `shrink-0`, so a row that wraps a long name never squeezes the chip. */
+  className?: string;
+}
 
-const ManagedChip = ({ managed }: { managed: RoleManagement }): JSX.Element => {
+export const ManagedRoleBadge = ({
+  managed,
+  className,
+}: ManagedRoleBadgeProps): JSX.Element | null =>
+  managed === 'none' ? null : (
+    <ManagedChip managed={managed} {...(className === undefined ? {} : { className })} />
+  );
+
+const ManagedChip = ({ managed, className }: ManagedRoleBadgeProps): JSX.Element => {
   const t = useT();
   return (
-    <Badge size="sm" tone={TONE[managed]}>
+    <Badge size="sm" tone={TONE[managed]} {...(className === undefined ? {} : { className })}>
       {t(`systemAdmin.roles.managed.${managed}`)}
     </Badge>
   );

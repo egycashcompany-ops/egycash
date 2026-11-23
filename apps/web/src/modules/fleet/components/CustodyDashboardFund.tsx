@@ -1049,13 +1049,15 @@ const NOW_LABEL_GAP = 14;
 export const custodyNowLabelPlace = (
   pointY: number,
   beforeY: number,
+  /** The plot's height — this board's own unless a caller draws it taller (the fleet dashboard). */
+  chartH: number = CHART_H,
 ): { top: number; beside: boolean } => {
   const rise = beforeY > pointY;
   const below = pointY + NOW_LABEL_GAP;
   const above = pointY - NOW_LABEL_GAP - NOW_LABEL_H;
-  if (!rise && below + NOW_LABEL_H <= CHART_H - PAD.bottom) return { top: below, beside: false };
+  if (!rise && below + NOW_LABEL_H <= chartH - PAD.bottom) return { top: below, beside: false };
   if (rise && above >= 0) return { top: above, beside: false };
-  const top = Math.min(Math.max(0, pointY - NOW_LABEL_H / 2), CHART_H - NOW_LABEL_H);
+  const top = Math.min(Math.max(0, pointY - NOW_LABEL_H / 2), chartH - NOW_LABEL_H);
   return { top, beside: true };
 };
 

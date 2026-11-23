@@ -18,18 +18,48 @@ import {
 } from './hr-attendance.js';
 
 describe('closed vocabularies', () => {
-  it('pins the ten day statuses of §2 — one enum, one value per day', () => {
+  it('pins the thirteen day statuses of §2 — one enum, one value per day', () => {
+    // `checkedIn` is a deliberate contract change (owner ruling, 2026-11-17). The branch devices
+    // show 70–90% of employees scan on arrival and never scan out, so a check-in with no
+    // check-out is the ordinary working day here; it used to derive as `incomplete`, which is
+    // toned as a fault and priced at nothing. It counts as an attended day.
+    //
+    // `incomplete` STAYS in the vocabulary although nothing derives it any more: rows written
+    // before that ruling carry it, and a value that exists in the database must stay nameable by
+    // the enum that reads it. Payroll deliberately leaves it out of the attended statuses so no
+    // frozen month is restated — see `attendance-quantities.ts`.
+    //
+    // `noSchedule` is the thirteenth: nobody has said when this person works. It was reported as
+    // `dayOff` until production showed a whole branch marked «يوم راحة» on a Tuesday — a claim
+    // that the company owed them no work, which nobody had made. `dayOff` stays in the enum for
+    // the rows already carrying it, and nothing derives it any more.
+    //
+    // `pending` is the twelfth (stage 2): the day that is still being lived. It is written only
+    // for a date in progress and is payroll-neutral by construction, and once the date is past the
+    // read paths resolve it to `absent` — so it is a status that can be stored but can never be a
+    // date's final answer.
+    //
+    // `noRecord` is the fourteenth: ECMS has nothing for this employee on this date. It is the one
+    // value here that the ENGINE NEVER PRODUCES — only the read-time resolution does, for an
+    // employed person whose past date was never concluded. It replaced answering `null` and having
+    // the caller drop the line, which is what made a sheet for any past date list four or five
+    // names out of a hundred. It is not an absence: an absence is a conclusion, and this is the
+    // absence of one, so it is payroll-neutral and never stored.
     expect([...ATTENDANCE_DAY_STATUSES]).toEqual([
       'present',
+      'checkedIn',
       'late',
       'earlyLeave',
       'lateAndEarly',
+      'pending',
       'absent',
       'onLeave',
       'weekend',
       'holiday',
       'incomplete',
       'dayOff',
+      'noSchedule',
+      'noRecord',
     ]);
   });
 
@@ -40,10 +70,18 @@ describe('closed vocabularies', () => {
     // day flag, so a reviewer could not tell a decision from a keystroke.
     expect([...ATTENDANCE_PUNCH_SOURCES]).toEqual(['device', 'manual', 'regularization', 'web']);
     expect([...ATTENDANCE_PUNCH_DIRECTIONS]).toEqual(['in', 'out', 'unknown']);
+    // Stage 3 added `overriddenByManager`: a day whose status a manager DECIDED rather than the
+    // engine derived. It is a flag and not a status because the status is still a real answer
+    // about the day — the flag says where that answer came from, and that the device's punches
+    // are still standing underneath it.
     expect([...ATTENDANCE_DAY_FLAGS]).toEqual([
       'crossBranchPunch',
       'manualPunch',
       'regularizedPunch',
+      'overriddenByManager',
+      // The person pressed Check-in or Check-out more than once that day. A FILTER, never a
+      // warning: only the employee's scan log shows it, and the day tags and CSV notes drop it.
+      'repeatedPunches',
     ]);
   });
 
@@ -63,6 +101,35 @@ describe('closed vocabularies', () => {
       'hr.attendance.autoComputeHour',
       'hr.attendance.overtimeRequiresApproval',
       'hr.attendance.absenceNotify',
+      // The default working pattern (stage 1b) — six scalars rather than one object, because the
+      // settings screen can only edit boolean, number and string, and HR owns these hours. All
+      // six take a per-branch override; `enabled` ships false so the pattern is inert.
+      'hr.attendance.defaultPattern.enabled',
+      'hr.attendance.defaultPattern.startTime',
+      'hr.attendance.defaultPattern.endTime',
+      'hr.attendance.defaultPattern.breakMinutes',
+      'hr.attendance.defaultPattern.graceInMinutes',
+      'hr.attendance.defaultPattern.graceOutMinutes',
+      // Stage 3: how far back a manager decides alone before HR has to approve.
+      'hr.attendance.decisionApprovalAfterDays',
+      // Stage 4: the volume above which the review screen flags a manager for a LOOK. It blocks
+      // nothing — a broken reader produces many legitimate changes — so it is a prompt, not a cap.
+      'hr.attendance.decisionWeeklyReviewThreshold',
+      // Task 2: how old a scan may be and still be imported, 0 meaning no limit. It replaces the
+      // 90-day constant that was keeping two years of the branch machines' history out of ECMS.
+      'hr.attendance.importMaxAgeDays',
+      // How close two scans must be to count as ONE visit to the reader. It answers the owner's
+      // five «حاضر with zero worked minutes» rows of 18 November: a finger that read poorly and was
+      // presented again seconds later became an arrival AND a departure, because the K40 Pro logs
+      // no direction and the pairing is positional.
+      'hr.attendance.minPunchGapMinutes',
+      // Whether a working day with no scan is an ACCUSATION. Off by the owner's ruling of the same
+      // day («lateness only for now»), so such a day reads «لا يوجد تسجيل» rather than «غائب» and
+      // nothing new reaches payroll's absent-day count while two years of history are re-derived.
+      'hr.attendance.countAbsence',
+      // Hours per department: `{ [departmentId]: { hours, startTime } }`. An employee with no shift
+      // assignment is measured against their department before the company pattern.
+      'hr.attendance.departmentHours',
     ]);
     // §9 names five notification templates; these are the module's own five.
     expect(Object.values(HrAttendanceTemplates)).toEqual([

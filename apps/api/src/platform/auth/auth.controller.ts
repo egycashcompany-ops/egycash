@@ -12,6 +12,7 @@ import {
   type PasskeyListMetaDto,
   type PasskeyRegistrationOptions,
   type PasskeyRegistrationVerify,
+  type RefreshSession,
   type RenamePasskey,
   type TotpChallenge,
   type TotpVerify,
@@ -142,11 +143,14 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
   if (presented === undefined) {
     throw new UnauthenticatedError(ErrorCodes.AUTH_TOKEN_INVALID, 'No refresh token');
   }
-  const tokens = await authService.refresh(presented);
+  // `presence: false` marks a renewal a background request asked for (`RefreshSessionSchema`).
+  const { body } = validated<RefreshSession>(req);
+  const tokens = await authService.refresh(presented, { presence: body.presence ?? true });
   setRefreshCookie(res, tokens);
-  // The inactivity window rides along with every renewal, so the countdown the browser shows and
-  // the rule this server enforces cannot drift apart.
-  ok(res, { accessToken: tokens.accessToken, idleMinutes: authService.idleMinutes() });
+  // The inactivity window rides along with every renewal: the number this session is judged by
+  // from this renewal on (`refresh`, ADR-039), so the countdown the browser shows and the rule this
+  // server enforces cannot drift apart.
+  ok(res, { accessToken: tokens.accessToken, idleMinutes: tokens.idleMinutes });
 };
 
 export const logout = async (req: Request, res: Response): Promise<void> => {

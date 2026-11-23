@@ -20,7 +20,9 @@ import { translate } from '../../../platform/localization/i18n';
 import { SLOT_POSITIONS, type BoardRow } from '../lib/crew-board';
 import { CrewPools, EMPTY_POOL_QUERIES, POOL_FILTERS } from './CrewPools';
 
-const requirements = (over: Partial<OperationsCrewRequirementsDto>): OperationsCrewRequirementsDto =>
+const requirements = (
+  over: Partial<OperationsCrewRequirementsDto>,
+): OperationsCrewRequirementsDto =>
   ({
     id: 'r',
     employeeId: 'e',
@@ -46,6 +48,9 @@ const member = (
   code: `BR${id}`,
   fullNameAr: name,
   status: 'active',
+  jobTitle: null,
+  phone: null,
+  branchId: null,
   requirements: req === null ? null : requirements(req),
   assignedVehicleId: null,
 });
@@ -139,7 +144,9 @@ describe('CrewPools — two pools, captains and specialists', () => {
   // board drew the leaders.
   it('draws the captains before the specialists', () => {
     const html = render(ALL);
-    expect(html.indexOf('data-pool="captains"')).toBeLessThan(html.indexOf('data-pool="specialists"'));
+    expect(html.indexOf('data-pool="captains"')).toBeLessThan(
+      html.indexOf('data-pool="specialists"'),
+    );
   });
 
   it('lists each available member in exactly one pool', () => {
@@ -190,9 +197,9 @@ describe('CrewPools — two pools, captains and specialists', () => {
   it('no longer offers the captain flag as a filter', () => {
     expect(POOL_FILTERS).not.toContain('isCaptain');
     // The filter BUTTONS only — the member card still carries a captain badge, as it should.
-    const filterLabels = [...render(ALL).matchAll(/aria-pressed="(?:true|false)"[^>]*>([^<]*)</g)].map(
-      (match) => match[1],
-    );
+    const filterLabels = [
+      ...render(ALL).matchAll(/aria-pressed="(?:true|false)"[^>]*>([^<]*)</g),
+    ].map((match) => match[1]);
     expect(filterLabels).toHaveLength(POOL_FILTERS.length * 2);
     expect(filterLabels).not.toContain(translate('ar', 'operations.crew.flag.isCaptain'));
   });
@@ -221,7 +228,9 @@ describe('CrewPools — two pools, captains and specialists', () => {
   it('says plainly when a pool has nobody left', () => {
     const html = render([CAPTAIN_ON_BOARD, SPECIALIST]);
     expect(ids(column(html, 'captains'))).toEqual([]);
-    expect(column(html, 'captains')).toContain(translate('ar', 'operations.crew.pools.empty.captains'));
+    expect(column(html, 'captains')).toContain(
+      translate('ar', 'operations.crew.pools.empty.captains'),
+    );
   });
 });
 
@@ -280,14 +289,22 @@ describe('CrewPools — nobody marked as a captain', () => {
 // The pages decide what "not answered yet" means, and `isLoading` is the wrong question: offline, a
 // first fetch is PAUSED — pending but not loading — and an `isLoading` gate read that empty roster
 // as "nobody left to assign". The component cannot see which flag it was given, so the choice is
-// pinned where it is made.
+// pinned where it is made. (Round 20: «لوحة التشغيلة» hands its pools `ready`, read off the same
+// flag — `!directory.isPending && !directory.isError` — rather than `loading`.)
 describe('the crew screens wait for the roster with isPending', () => {
   const PAGES = fileURLToPath(new URL('../pages/', import.meta.url));
-  for (const page of ['CrewBoardPage.tsx', 'StandingCrewPage.tsx']) {
+  // Each page's own spelling of the same flag, pinned whole: a bare `directory.isPending` anywhere
+  // in the file would not prove the roster gate reads it.
+  const GATE: Record<string, string> = {
+    'CrewBoardPage.tsx': 'const rosterReady = !directory.isPending && !directory.isError;',
+    // Round 27 — the board's twin, with the board's own gate.
+    'StandingCrewPage.tsx': 'const rosterReady = !directory.isPending && !directory.isError;',
+  };
+  for (const [page, gate] of Object.entries(GATE)) {
     it(page, () => {
       const src = readFileSync(`${PAGES}${page}`, 'utf8');
-      expect(src).toContain('loading={directory.isPending}');
-      expect(src).not.toContain('loading={directory.isLoading}');
+      expect(src).toContain(gate);
+      expect(src).not.toContain('directory.isLoading');
     });
   }
 });

@@ -69,15 +69,21 @@ import {
   registerHrWorkCalendarSettings,
 } from './work-calendar';
 import {
+  attendanceBackfillJobHandlers,
+  attendanceQuarantineJobHandlers,
   buildAttendanceAssignmentsRouter,
+  buildAttendanceBackfillsRouter,
   buildAttendanceDaysRouter,
+  buildAttendanceDecisionsRouter,
   buildAttendanceExportRouter,
   buildAttendanceOvertimeRouter,
   buildAttendanceDevicesRouter,
   buildAttendanceEnrollmentsRouter,
   buildAttendancePunchesRouter,
+  buildAttendanceQuarantineRouter,
   buildAttendanceRegularizationsRouter,
   buildAttendanceShiftsRouter,
+  buildAttendanceWorkingHoursRouter,
   attendanceSweepService,
   dayRecordService,
   registerHrAttendanceSettings,
@@ -195,8 +201,6 @@ const applicantPermissions = declarePermissions(
       action: 'moveToOffer',
       name: { en: 'Move applicant to job offer', ar: 'نقل المتقدم لمرحلة عرض العمل' },
     },
-    // RW13 — send a candidate back to an earlier stage. Nothing is deleted; forward records are
-    // superseded and the target re-opens on a new attempt.
     // RW2 — Position/Branch stay editable until the offer is accepted, but only through this
     // explicit grant: an `applicant.edit` holder can correct data, not move a candidate.
     {
@@ -204,8 +208,57 @@ const applicantPermissions = declarePermissions(
       name: { en: 'Reassign applicant position or branch', ar: 'إعادة تعيين وظيفة أو فرع المتقدم' },
     },
     {
-      action: 'returnToStage',
-      name: { en: 'Return applicant to an earlier stage', ar: 'إعادة المتقدم لمرحلة سابقة' },
+      /**
+       * «مسح نهائي» — the candidate leaves the recruitment cycle entirely, with no undo.
+       *
+       * ITS OWN KEY, beside `applicant.delete` rather than inside it, and the distance between
+       * them is the point: `delete` sets `isDeleted` and the candidate can be brought back, which
+       * is what HR means by removing somebody from a list. This erases the record, the screening,
+       * both interview rounds, the evaluations, the offer, the portal login and the photographs of
+       * their ID card. One of those is reversible and one is not.
+       *
+       * Break-glass, and implied by nothing: holding every other applicant authority moves a
+       * candidate through the pipeline and off it. None of them makes the candidate never have
+       * applied.
+       */
+      action: 'purge',
+      name: { en: 'Permanently delete an applicant', ar: 'مسح نهائي للمتقدم' },
+      breakGlass: true,
+    },
+  ],
+  'hr.applicants',
+);
+
+/**
+ * «إرجاع إلى مرحلة سابقة» — send a candidate back to an earlier stage (RW13).
+ *
+ * ITS OWN RESOURCE, AND A NEW KEY. It used to be `applicant.returnToStage`, sitting among the
+ * ordinary applicant authorities, and it was offered as a button on the candidate's own page beside
+ * «تعديل» — which is how it came to be pressed. It is not an ordinary authority: it supersedes every
+ * record made after the target stage, re-opens that stage on a fresh attempt, and withdraws a live
+ * offer on the way. Everything it retires stays readable, so nothing is lost; but the pipeline the
+ * rest of the system reasons about is rewound, and a recruiter correcting a typo has no business
+ * next to it.
+ *
+ * A NEW KEY rather than a rename, deliberately: retiring the old one means whatever roles hold it
+ * today stop holding this, so the capability starts from nobody rather than from whoever happened
+ * to be granted the old name. The button is gone from every screen, the route still works, and the
+ * mechanism waits behind a key an administrator has to hand out on purpose.
+ *
+ * Break-glass for the same reason `applicant.purge` is: the act is not undoable by another act of
+ * the same kind. Note that the Super Admin role holds every registered key by design — the boot
+ * registry sync keeps it equal to the catalog — so «no role holds it» means no role BELOW that one.
+ */
+const applicantReturnPermissions = declarePermissions(
+  'hr',
+  'applicantReturn',
+  { en: 'return to an earlier stage', ar: 'الإرجاع لمرحلة سابقة' },
+  [],
+  [
+    {
+      action: 'execute',
+      name: { en: 'Return a candidate to an earlier stage', ar: 'إرجاع المتقدم لمرحلة سابقة' },
+      breakGlass: true,
     },
   ],
   'hr.applicants',
@@ -223,6 +276,35 @@ const recruitmentFormPermissions = declarePermissions(
     },
   ],
   'hr.application-form',
+);
+
+/**
+ * «مستندات مطلوبة للتعيين» — the documents a hire must bring.
+ *
+ * ITS OWN KEY, for a screen that is still a placeholder, and the reason is the platform's own rule
+ * rather than ambition: a hub tab needs a page, and `validatePageRegistry` refuses a page that no
+ * permission administers (`empty-page`). Borrowing `recruitmentForm.manage` would have left the
+ * role matrix saying this screen is administered by the key that administers the application form,
+ * which is not true and would stop being harmless the moment the screen does something.
+ *
+ * Nobody holds it yet, so the tab shows to nobody yet — which is the right default for a screen
+ * with nothing on it. Granting this key is what reveals it, deliberately.
+ */
+const hiringRequirementPermissions = declarePermissions(
+  'hr',
+  'hiringRequirement',
+  { en: 'hiring requirements', ar: 'مستندات التعيين' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: {
+        en: 'Manage the documents required for hiring',
+        ar: 'إدارة المستندات المطلوبة للتعيين',
+      },
+    },
+  ],
+  'hr.hiring-requirements',
 );
 
 const applicantSourcePermissions = declarePermissions(
@@ -539,6 +621,24 @@ const employeePermissions = declarePermissions(
         ar: 'تغيير حالة الموظف (مسار قديم)',
       },
     },
+    {
+      /**
+       * «مسح نهائي» — the person leaves the system, everywhere, with no undo.
+       *
+       * BREAK-GLASS, and the only hard delete of a person the product has. Everything else that
+       * ends an employment is a STATE: terminated, resigned. This is for the record that should
+       * never have existed — somebody entered twice, a test row, a wrong person — and it takes
+       * their pay and contract history with them, which is exactly why it is not `employee.delete`
+       * sitting quietly beside `edit`.
+       *
+       * It is deliberately NOT implied by any other key. Holding every other employee authority
+       * grants the power to hire, pay, transfer and dismiss; none of them grants the power to make
+       * somebody never have been.
+       */
+      action: 'purge',
+      name: { en: 'Permanently delete an employee', ar: 'مسح نهائي للموظف' },
+      breakGlass: true,
+    },
   ],
   'hr.employees',
 );
@@ -681,6 +781,39 @@ const attendanceShiftAdminPermissions = declarePermissions(
   'hr.attendance-shifts',
 );
 
+/**
+ * «ساعات العمل» — the hours each department owes, and the log of who changed them.
+ *
+ * ITS OWN KEY, on the `hiringRequirement` precedent: a hub tab needs a page, and
+ * `validatePageRegistry` refuses a page that no permission administers (`empty-page`). Borrowing
+ * `attendance.manageShifts` would have left the role matrix saying the company's working hours are
+ * administered by the key that administers the shift catalog — and they are not the same power.
+ * The hours are an input to the derivation: saving them re-prices every unfrozen day of the month
+ * for a whole department, and payroll reads what that writes. The catalog does nothing of the kind.
+ *
+ * A NEW KEY IS HELD BY NOBODY, so the deploy hands it out once rather than leaving the screen
+ * dark. «ساعات العمل» replaces what HR set through the shift catalog until now (a shift carries the
+ * start, the end and the break), so every role and delegated grant holding `attendance.manageShifts`
+ * is given this key by `go-live/working-hours-grants.ts` — the `grantAlongside` mechanism, which
+ * widens nobody because a holder gains it only beside the key it already exercised the same power
+ * under, in the same grant and the same scope. `super-admin` is widened separately by
+ * `attendance.migration.ts`, since a seeded system role is frozen at its first seed. From then on
+ * the two screens are given and taken separately on the roles screen.
+ */
+const attendanceWorkingHoursPermissions = declarePermissions(
+  'hr',
+  'attendance',
+  { en: 'attendance', ar: 'الحضور والانصراف' },
+  [],
+  [
+    {
+      action: 'manageWorkingHours',
+      name: { en: 'Manage working hours', ar: 'إدارة ساعات العمل' },
+    },
+  ],
+  'hr.working-hours',
+);
+
 const attendanceAssignPermissions = declarePermissions(
   'hr',
   'attendance',
@@ -706,7 +839,17 @@ const attendanceDailyPermissions = declarePermissions(
   'hr.attendance-daily',
 );
 
-// The regularization queue's own screen (AT-6): the decision grant lives there.
+// The regularization queue's own screen (AT-6): the decision grant lives there, and stage 3's two
+// day-decision grants join it, because the same screen now carries both queues.
+//
+// `decide` and `decideApprove` ARE DELIBERATELY SEPARATE, and the split is a separation of duty
+// rather than a habit. Deciding a recent day is a manager's ordinary authority; clearing the
+// OLD-day queue exists precisely so that somebody other than the deciding manager looks at it, and
+// one grant covering both would let a single person do the whole thing. The service enforces the
+// rest — nobody decides their own attendance, and nobody approves their own decision.
+//
+// NEITHER IS BREAK-GLASS, and neither ever goes on the `svc.attendance` integration role: the
+// branch servers import punches and recompute, they do not judge anybody's day.
 const attendanceQueuePermissions = declarePermissions(
   'hr',
   'attendance',
@@ -716,6 +859,14 @@ const attendanceQueuePermissions = declarePermissions(
     {
       action: 'decideRegularization',
       name: { en: 'Decide attendance regularizations', ar: 'البت في تسويات الحضور' },
+    },
+    {
+      action: 'decide',
+      name: { en: 'Decide an attendance day', ar: 'البت في يوم حضور' },
+    },
+    {
+      action: 'decideApprove',
+      name: { en: 'Approve an old-day attendance decision', ar: 'اعتماد قرار يوم حضور قديم' },
     },
   ],
   'hr.attendance-regularizations',
@@ -1109,12 +1260,17 @@ const medicalInsurancePermissions = declarePermissions(
 );
 
 /**
- * The punch-device registry (design v1.3 §17.2, D12.5). API-only in AT-D1.
+ * The punch-device registry (design v1.3 §17.2, D12.5).
  *
- * DELIBERATELY UNASSIGNED TO A PAGE, and the reason is the same one the punch, import and
- * recompute keys beside them already carry: the screen these belong on is the device HEALTH
- * screen, and health is AT-D4. Assigning them to an unrelated page to make a counter look tidy
- * would make the permission matrix say something untrue about where the key is used.
+ * THESE WERE DELIBERATELY PAGE-LESS, and the note here said why: the screen they belong on is the
+ * device health screen, and assigning them to an unrelated page to make a counter look tidy would
+ * have made the permission matrix say something untrue about where the key is used.
+ *
+ * `hr.attendance-devices` is that screen, built because production needed it: 17 machine ids on
+ * the المهندسين wall answer to no employee and hold 353 scans, 306 enrolments point at people who
+ * have left, and nothing in the product showed HR either fact. It lists the unmatched ids with
+ * their row counts and first/last scan, offers «ربط» and «تجاهل» per id, and carries the backfill's
+ * progress — so the two keys now name the page they govern.
  */
 const attendanceDevicePermissions = declarePermissions(
   'hr',
@@ -1128,10 +1284,12 @@ const attendanceDevicePermissions = declarePermissions(
       name: { en: 'Register and edit punch devices', ar: 'تسجيل أجهزة البصمة وتعديلها' },
     },
   ],
+  'hr.attendance-devices',
 );
 
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
+  ...attendanceWorkingHoursPermissions,
   ...attendanceDevicePermissions,
   ...attendanceAssignPermissions,
   ...attendanceDailyPermissions,
@@ -1201,8 +1359,10 @@ export const hrPermissions: PermissionDef[] = [
   ...contractTypePermissions,
   ...insuranceJobTitlePermissions,
   ...applicantPermissions,
+  ...applicantReturnPermissions,
   ...applicantSourcePermissions,
   ...recruitmentFormPermissions,
+  ...hiringRequirementPermissions,
   ...screeningPermissions,
   ...interviewPermissions,
   ...interviewStagePermissions,
@@ -1267,6 +1427,13 @@ export const hrPages: PageDef[] = [
     sortOrder: 6,
   },
   {
+    id: 'hr.working-hours',
+    moduleId: 'hr',
+    name: { en: 'Working hours', ar: 'ساعات العمل' },
+    route: '/hr-settings/working-hours',
+    sortOrder: 7,
+  },
+  {
     id: 'hr.applicants',
     moduleId: 'hr',
     name: { en: 'Applicants', ar: 'المتقدمون' },
@@ -1328,6 +1495,17 @@ export const hrPages: PageDef[] = [
     name: { en: 'Evaluation phases', ar: 'مراحل التقييم' },
     route: '/hr-settings/evaluation-phases',
     sortOrder: 80,
+  },
+  {
+    // The tab is reserved and the screen behind it is still a placeholder, but the page is
+    // declared all the same: the role matrix administers authority PER SCREEN, so a tab missing
+    // from here is a tab nobody can be granted or refused deliberately — and `seed-navigation`
+    // refuses to let a hub tab exist without one.
+    id: 'hr.hiring-requirements',
+    moduleId: 'hr',
+    name: { en: 'Documents required for hiring', ar: 'مستندات مطلوبة للتعيين' },
+    route: '/hr-settings/hiring-requirements',
+    sortOrder: 85,
   },
   {
     id: 'hr.job-offers',
@@ -1428,6 +1606,13 @@ export const hrPages: PageDef[] = [
     name: { en: 'Attendance regularizations', ar: 'تسويات الحضور' },
     route: '/attendance/regularizations',
     sortOrder: 200,
+  },
+  {
+    id: 'hr.attendance-devices',
+    moduleId: 'hr',
+    name: { en: 'Punch devices', ar: 'أجهزة البصمة' },
+    route: '/attendance/devices',
+    sortOrder: 205,
   },
   {
     id: 'hr.pay-items',
@@ -1593,6 +1778,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/contract-templates', router: buildContractTemplatesRouter() },
     { prefix: '/hr/contract-types', router: buildContractTypesRouter() },
     { prefix: '/hr/attendance/shifts', router: buildAttendanceShiftsRouter() },
+    { prefix: '/hr/attendance/working-hours', router: buildAttendanceWorkingHoursRouter() },
     { prefix: '/hr/attendance/assignments', router: buildAttendanceAssignmentsRouter() },
     { prefix: '/hr/attendance/devices', router: buildAttendanceDevicesRouter() },
     { prefix: '/hr/attendance/enrollments', router: buildAttendanceEnrollmentsRouter() },
@@ -1600,6 +1786,9 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/attendance/days', router: buildAttendanceDaysRouter() },
     { prefix: '/hr/attendance/regularizations', router: buildAttendanceRegularizationsRouter() },
     { prefix: '/hr/attendance/overtime', router: buildAttendanceOvertimeRouter() },
+    { prefix: '/hr/attendance/decisions', router: buildAttendanceDecisionsRouter() },
+    { prefix: '/hr/attendance/backfills', router: buildAttendanceBackfillsRouter() },
+    { prefix: '/hr/attendance/quarantine', router: buildAttendanceQuarantineRouter() },
     { prefix: '/hr/attendance/export', router: buildAttendanceExportRouter() },
     { prefix: '/hr/payroll/pay-items', router: buildPayItemsRouter() },
     { prefix: '/hr/payroll/runs', router: buildPayrollRunsRouter() },
@@ -1666,11 +1855,15 @@ export const hrModule: ModuleManifest = {
     'hr_contract_types',
     'hr_contract_branding',
     'hr_candidate_drafts',
+    'hr_employee_paper_values',
     'hr_shifts',
     'hr_shift_assignments',
     'hr_attendance_punches',
     'hr_attendance_days',
     'hr_attendance_regularizations',
+    'hr_attendance_backfills',
+    'hr_attendance_backfill_chunks',
+    'hr_attendance_quarantine',
     'hr_pay_items',
     'hr_employee_pay_items',
     'hr_payroll_runs',
@@ -1685,6 +1878,9 @@ export const hrModule: ModuleManifest = {
     'hr_training_nominations',
     'hr_training_enrollments',
     'hr_training_records',
+    // Operational bookkeeping, not business data (ADR-025) — the owner's one-off changes to the
+    // live data, each done once (go-live/go-live-run.model.ts).
+    'hr_go_live_runs',
   ],
   // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
   // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no
@@ -2129,5 +2325,9 @@ export const hrModule: ModuleManifest = {
       },
     },
   ],
+  // Task 2 — the history backfill's chunk worker. Declared here rather than registered from the
+  // service, like every other piece of wiring this module owns, so the work the worker process can
+  // be asked to do is readable in one place.
+  jobHandlers: [...attendanceBackfillJobHandlers, ...attendanceQuarantineJobHandlers],
   seed: seedHrRecruitment,
 };

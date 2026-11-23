@@ -53,7 +53,7 @@ const group = (
   driverName: string | null,
   amount: number,
   count: number,
-): DriverFineGroup => ({ attributed, driverName, amount, count });
+): DriverFineGroup => ({ attributed, driverName, amount, count, drivers: 0 });
 
 describe('assembleYearDigest — the pure half', () => {
   it('sums the rollup’s outstanding halves and splits the drivers’ total exactly', () => {

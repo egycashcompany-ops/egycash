@@ -23,7 +23,12 @@ import {
   SecuredStageBadge,
   ShipmentStatusBadge,
   ShipmentTypeBadge,
+  VAULT_HOLD_LABEL,
+  VAULT_PICKUP_LABEL,
+  VaultHoldStatus,
+  VaultPickupStatus,
 } from './ShipmentBadges';
+import { VAULT_HOLD_COLUMN, VAULT_PICKUP_COLUMN } from '../lib/day-board';
 
 const withLocale = (locale: Locale, node: JSX.Element): string => {
   const store = configureStore({
@@ -165,5 +170,148 @@ describe('SecuredStageBadge — where a محصنة stands', () => {
         .replace(/>[^<]*</g, '><');
     });
     expect(new Set(glyphs).size).toBe(OPERATIONS_SECURED_STAGES.length);
+  });
+});
+
+// Round 13 — «انا عايز الجدول بتاع استلام الخزينه يكون مكان الحاله عمودين. العمود الاولاني يبقى خاص
+// يبين ان اللي حصل استلام من القائد او من العمليات، والعمود التاني بتاع الحاله برضو يبين استلام من
+// الخزينه»: the vault queue's two columns, in the stage badge's own family.
+describe('VaultPickupStatus — «حالة الاستلام»', () => {
+  const AT = '2026-11-11T07:30:00.000Z';
+  const pickup = (by: 'captain' | 'operations' | null) => (
+    <VaultPickupStatus row={{ pickedUpBy: by, pickedUpAt: by === null ? null : AT }} />
+  );
+
+  for (const locale of ['en', 'ar'] as Locale[]) {
+    for (const by of VAULT_PICKUP_COLUMN) {
+      it(`says ${by} in ${locale}, with its sentence on hover and for a screen reader`, () => {
+        const labelKey = VAULT_PICKUP_LABEL[by];
+        const hintKey = `operations.vault.queue.pickupHint.${by}`;
+        expect(translate(locale, labelKey)).not.toBe(labelKey);
+        expect(translate(locale, hintKey)).not.toBe(hintKey);
+        const html = withLocale(locale, pickup(by === 'none' ? null : by));
+        expect(html).toContain(`data-vault-pickup="${by}"`);
+        expect(html).toContain(translate(locale, labelKey));
+        expect(html).toContain(`title="${translate(locale, hintKey)}"`);
+        expect(html).toContain('sr-only');
+      });
+    }
+  }
+
+  it('speaks the owner’s words: who collected it — or «لم يتم الاستلام»', () => {
+    expect(withLocale('ar', pickup('captain'))).toContain('تم الاستلام من القائد');
+    expect(withLocale('ar', pickup('operations'))).toContain('تم الاستلام من العمليات');
+    expect(withLocale('ar', pickup(null))).toContain('لم يتم الاستلام');
+  });
+
+  // The boards' yellow for a pickup, with the van or the office; nobody is an absence, muted.
+  it('wears the boards’ yellow for a pickup and a muted face for nobody', () => {
+    expect(withLocale('ar', pickup('captain'))).toContain('bg-amber-100');
+    expect(withLocale('ar', pickup('operations'))).toContain('bg-amber-100');
+    const none = withLocale('ar', pickup(null));
+    expect(none).toContain('!bg-transparent');
+    expect(none).not.toContain('bg-amber-100');
+    // The van and the office tell the two yellows apart without colour, as on the stage badge.
+    const glyph = (html: string): string =>
+      html.replace(/data-vault-pickup="[^"]*"/, '').replace(/title="[^"]*"/, '').replace(/>[^<]*</g, '><');
+    expect(glyph(withLocale('ar', pickup('captain')))).not.toBe(
+      glyph(withLocale('ar', pickup('operations'))),
+    );
+  });
+
+  it('says when, under the badge — and no time for nobody', () => {
+    expect(withLocale('ar', pickup('captain'))).toContain(`<time dateTime="${AT}"`);
+    expect(withLocale('ar', pickup(null))).not.toContain('<time');
+  });
+});
+
+describe('VaultHoldStatus — «حالة الخزينة»', () => {
+  const AT = '2026-11-11T09:15:00.000Z';
+  const hold = (status: OperationsShipmentStatus) => (
+    <VaultHoldStatus row={{ status, vaultReceivedAt: status === 'draft' ? null : AT }} />
+  );
+  const STATUS_OF = {
+    waiting: 'draft',
+    inVault: 'inVault',
+    dispatched: 'dispatched',
+    completed: 'completed',
+  } as const;
+
+  for (const locale of ['en', 'ar'] as Locale[]) {
+    for (const column of VAULT_HOLD_COLUMN) {
+      it(`says ${column} in ${locale}`, () => {
+        const labelKey = VAULT_HOLD_LABEL[column];
+        expect(translate(locale, labelKey)).not.toBe(labelKey);
+        const html = withLocale(locale, hold(STATUS_OF[column]));
+        expect(html).toContain(`data-vault-hold="${column}"`);
+        expect(html).toContain(translate(locale, labelKey));
+        expect(html).not.toMatch(/operations\.(vault|board)\./);
+      });
+    }
+  }
+
+  it('speaks the owner’s words — «لم تُستلم بعد», «بالخزينة», «خرجت للتسليم», «تم التسليم»', () => {
+    expect(withLocale('ar', hold('draft'))).toContain('لم تُستلم بعد');
+    expect(withLocale('ar', hold('inVault'))).toContain('بالخزينة');
+    expect(withLocale('ar', hold('dispatched'))).toContain('خرجت للتسليم');
+    expect(withLocale('ar', hold('completed'))).toContain('تم التسليم');
+  });
+
+  it('wears the boards’ tones — green in the vault, blue on the road, green delivered', () => {
+    expect(withLocale('ar', hold('inVault'))).toContain('bg-emerald-100');
+    expect(withLocale('ar', hold('dispatched'))).toContain('bg-sky-100');
+    expect(withLocale('ar', hold('completed'))).toContain('bg-emerald-100');
+    expect(withLocale('ar', hold('draft'))).toContain('bg-slate-100');
+  });
+
+  // Every received row carries the vault's own time — on one gone out too, worded so it is not
+  // read as the time it left.
+  it('says when the vault received it, in words, on every received row — none on a draft', () => {
+    for (const status of ['inVault', 'dispatched', 'completed'] as const) {
+      const html = withLocale('ar', hold(status));
+      expect(html).toContain(`<time dateTime="${AT}"`);
+      expect(html).toContain(translate('ar', 'operations.vault.queue.receivedAt', { at: '' }).trim());
+    }
+    expect(withLocale('ar', hold('draft'))).not.toContain('<time');
+  });
+});
+
+// Round 17 — wrapped, «تم الاستلام من العمليات» stacked over itself and «لم تُستلم بعد» left «بعد»
+// alone on a second line at 1440. The vault queue's two columns keep each badge's words on ONE
+// line (the board makes the room in its other columns — shipment-screens.spec pins that); every
+// other board's stage badge still wraps from its floor, as it did.
+describe('the vault queue’s badges read on one line', () => {
+  const words = (html: string): string | undefined =>
+    /<span class="([^"]*)">[^<]+<\/span><span class="sr-only">/.exec(html)?.[1];
+
+  it('keeps «حالة الاستلام» and «حالة الخزينة» each on one line, the time under it', () => {
+    const AT = '2026-11-11T07:30:00.000Z';
+    for (const by of ['captain', 'operations', null] as const) {
+      const html = withLocale(
+        'ar',
+        <VaultPickupStatus row={{ pickedUpBy: by, pickedUpAt: by === null ? null : AT }} />,
+      );
+      expect(words(html), String(by)).toBe('whitespace-nowrap');
+    }
+    for (const status of ['draft', 'inVault', 'dispatched', 'completed'] as const) {
+      const html = withLocale(
+        'ar',
+        <VaultHoldStatus row={{ status, vaultReceivedAt: status === 'draft' ? null : AT }} />,
+      );
+      expect(words(html), status).toBe('whitespace-nowrap');
+      // The time is a line of its own, under the badge — not beside it.
+      if (status !== 'draft') expect(html).toMatch(/<\/span><time [^>]*class="block /);
+    }
+    expect(
+      withLocale('ar', <VaultPickupStatus row={{ pickedUpBy: 'operations', pickedUpAt: AT }} />),
+    ).toContain('<span class="whitespace-nowrap">تم الاستلام من العمليات</span>');
+    expect(
+      withLocale('ar', <VaultHoldStatus row={{ status: 'draft', vaultReceivedAt: null }} />),
+    ).toContain('<span class="whitespace-nowrap">لم تُستلم بعد</span>');
+  });
+
+  it('leaves every other board’s stage badge wrapping from its floor', () => {
+    const html = withLocale('ar', <SecuredStageBadge stage="withOperations" />);
+    expect(words(html)).toBe('min-w-[4.75rem] whitespace-normal');
   });
 });

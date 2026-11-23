@@ -45,6 +45,19 @@ export interface DirectoryEmployee {
    * column is a registry whose reader needs that module's grant. See `FleetPersonDto`.
    */
   address: string | null;
+  /**
+   * The seat — the job title HR placed the person in, by id (its NAME is the organization
+   * catalogue's, which a consumer reads through the platform).
+   *
+   * Round 19: «كشف طاقم العمليات» prints «الوظيفة» beside the name and filters by it, as the legacy
+   * roster did, and that roster is built from `listDirectoryEmployeesByDepartment` — so the seat
+   * has to travel with it, as the name and the code do, rather than be asked of a second lookup
+   * per member. The register listing already carried it (`DirectoryEmployeeListing`).
+   *
+   * Optional ONLY so a source that cannot answer — a test double built before this field — reads
+   * as "no seat on file"; HR's registration always answers it.
+   */
+  jobTitleId?: string | null;
 }
 
 /**
@@ -253,9 +266,11 @@ export const findDirectoryEmployeesByNames = async (
  * placement: what a register prints, and nothing a register does not.
  *
  * A PAGE, never the company (ADR-019 rule 5). Scoped when the caller hands a scope — the reader's
- * own grant, so a branch-scoped technician finds their branch — and unscoped when the caller has
- * already bounded the population itself (IT's technicians are the IT departments' people, whoever
- * is asking). Fail-closed like every lookup here: no HR, an empty page.
+ * own grant, so a branch-scoped technician finds their branch — except a hand-over's box — and
+ * unscoped when the caller has already bounded the population itself (IT's technicians are the IT
+ * departments' people, whoever is asking; IT's hand-over recipients are the employed of every
+ * branch, for whoever may hand something over, searched a few at a time). Fail-closed like every
+ * lookup here: no HR, an empty page.
  */
 export interface DirectoryEmployeeQuery {
   /** Free text over the code and the name, matched the way HR's own register matches it. */
@@ -270,6 +285,14 @@ export interface DirectoryEmployeeQuery {
   sortBy?: 'name' | 'code' | undefined;
   sortDir?: 'asc' | 'desc' | undefined;
   scope?: ScopeSelector | undefined;
+  /**
+   * A person ANY of these selectors reaches — for a register several grants open, each with its
+   * own reach (IT's people: the assets', the lines' or the consumables' read grant). The union is
+   * exact: each selector is applied as the repository applies one, and their filters are OR-ed, so
+   * no grant's reach is traded for another's. EMPTY is nobody, never everybody. Applied together
+   * with `scope` when both are given.
+   */
+  anyOfScopes?: readonly ScopeSelector[] | undefined;
   page: number;
   pageSize: number;
 }
@@ -278,6 +301,7 @@ export interface DirectoryEmployeeQuery {
 export interface DirectoryEmployeeListing extends DirectoryEmployee {
   /** The linked login (ADR-017) — what a ticket names a person by. Null until one is created. */
   userId: string | null;
+  /** Always answered on a listing (the lookups' shape leaves it optional). */
   jobTitleId: string | null;
   /** When the current employment ended — null while employed. */
   exitedAt: Date | null;
@@ -295,7 +319,12 @@ export const searchDirectoryEmployees = async (
   query: DirectoryEmployeeQuery,
 ): Promise<Paginated<DirectoryEmployeeListing>> => {
   const lookup = employeeSearchLookup;
-  if (lookup === null || query.departmentIds?.length === 0 || query.employeeIds?.length === 0) {
+  if (
+    lookup === null ||
+    query.departmentIds?.length === 0 ||
+    query.employeeIds?.length === 0 ||
+    query.anyOfScopes?.length === 0
+  ) {
     return {
       items: [],
       meta: { page: query.page, pageSize: query.pageSize, totalItems: 0, totalPages: 1 },

@@ -4,6 +4,7 @@ import {
   ymdOf,
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
+  type CheckVaultSeals,
   type ConfirmSecuredPickup,
   type DispatchSecuredShipments,
   type ListSecuredBacklogQuery,
@@ -18,6 +19,8 @@ import {
   type OperationsSecuredDispatchBoardQuery,
   type OperationsVaultQueueDto,
   type OperationsVaultQueueQuery,
+  type OperationsVaultReceiveResultDto,
+  type OperationsVaultSealCheckDto,
   type ReceiveIntoVault,
 } from '@ecms/contracts';
 import { ok, okPage, validated } from '../../../platform/web';
@@ -27,11 +30,13 @@ import {
   toShipmentAssignmentDto,
   toShipmentDto,
   toVaultInventoryRowDto,
+  toVaultReceiptDto,
+  toVaultSealHolderDto,
 } from '../operations.mappers';
 import { boardForReader, utcDayIso } from '../shipments/board-for-reader';
-import { vaultCustody } from '../treasury-boundary';
 import { operationsSecuredService } from './secured.service';
 import { operationsDistributionService } from './distribution.service';
+import { vehicleIdOf } from '../crew/crew-assignment.model';
 
 type IdParam = { id: string };
 
@@ -49,7 +54,11 @@ export const getSecuredBoard = async (req: Request, res: Response): Promise<void
   ok<OperationsSecuredBoardDto>(res, boardForReader(req, view));
 };
 
-/** The vault's receive queue — the yellow rows, today's green ones, and with `all` the white ones. */
+/**
+ * The vault's receive queue — what it can receive now (every draft collected by today, white or
+ * yellow, and the yellow ones of any day) and today's green ones; with `all`, the white ones booked
+ * for a later day too (Round 13).
+ */
 export const getVaultQueue = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsVaultQueueQuery>(req);
   const all = query.all ?? false;
@@ -138,7 +147,10 @@ export const listDue = async (req: Request, res: Response): Promise<void> => {
 
 export const listVaultInventory = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListVaultInventoryQuery>(req);
-  const { items, total } = await vaultCustody().listHeld(query.page, query.pageSize);
+  const { items, total, receiverNames } = await operationsSecuredService.vaultInventory(
+    query.page,
+    query.pageSize,
+  );
   // The standard paginated envelope, like every other list in the system — the port answers with
   // a flat count, and the HTTP layer is where that becomes `meta`.
   okPage(
@@ -152,18 +164,40 @@ export const listVaultInventory = async (req: Request, res: Response): Promise<v
         totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
       },
     },
-    toVaultInventoryRowDto,
+    (view) =>
+      toVaultInventoryRowDto(
+        view,
+        view.receivedById === null ? null : (receiverNames.get(view.receivedById) ?? null),
+      ),
   );
 };
 
+/**
+ * The vault's ✓ (Round 18: the legacy «إستلام محصنة» form). Answers the shipment, as before, plus
+ * the receipt just taken — what the «إيصال» print needs beyond the form: when, the stored values,
+ * and who received it by name. The receiver is the token's user; the body never says.
+ */
 export const receiveIntoVault = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<ReceiveIntoVault, never, IdParam>(req);
-  const doc = await operationsSecuredService.receiveIntoVault(
+  const { userId } = authContext(req);
+  const { shipment, receipt, receivedByName } = await operationsSecuredService.receiveIntoVault(
     params.id,
     body,
-    authContext(req).userId,
+    userId,
   );
-  ok(res, toShipmentDto(doc));
+  ok<OperationsVaultReceiveResultDto>(res, {
+    ...toShipmentDto(shipment),
+    receipt: toVaultReceiptDto(receipt, { id: userId, name: receivedByName }),
+  });
+};
+
+/** Round 21b — which of the receipt's seals the vault still holds on another محصنة, and on which. */
+export const checkVaultSeals = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<CheckVaultSeals>(req);
+  const held = await operationsSecuredService.checkSeals(body);
+  ok<OperationsVaultSealCheckDto>(res, {
+    held: held.map(({ seal, holder }) => ({ seal, holder: toVaultSealHolderDto(holder) })),
+  });
 };
 
 export const assignDeliveryLeg = async (req: Request, res: Response): Promise<void> => {
@@ -199,6 +233,17 @@ export const getSecuredDistribution = async (req: Request, res: Response): Promi
   ok<OperationsSecuredDistributionDto>(res, {
     date: utcDayIso(view.day),
     today: utcDayIso(view.today),
+    // Round 30 — a past day is its record, read only (the save refuses it).
+    past: view.past,
+    // …and its packages as the vault counted them, held or handed over — the vault's own figures,
+    // so only to a reader of the vault (the grant the screen's own packaging read rides).
+    recordPackages:
+      view.past && hasPermission(authContext(req), 'operationsVault.view')
+        ? board.shipments.flatMap((row) => {
+            const counted = view.packages.get(row.id);
+            return counted === undefined ? [] : [{ shipmentId: row.id, ...counted }];
+          })
+        : null,
     crewPlanVisible,
     crews: crewPlanVisible
       ? view.vans
@@ -225,7 +270,7 @@ export const getSecuredDistribution = async (req: Request, res: Response): Promi
             : {
                 crewAssignmentId: String(leg.crewAssignmentId),
                 captainEmployeeId: String(leg.captainEmployeeId),
-                vehicleId: String(leg.vehicleId),
+                vehicleId: vehicleIdOf(leg),
                 executionStatus: leg.executionStatus ?? 'pending',
               },
         deliveryLegVersion: leg === undefined ? null : leg.__v,

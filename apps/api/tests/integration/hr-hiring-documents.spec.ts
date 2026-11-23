@@ -3,6 +3,7 @@
 // type catalog, opening the set, PDF uploads (with non-PDF rejection), the required-completion
 // gate, replacement with version history (original preserved), immutability after completion
 // except through the versioning workflow, the completion notification, and audit.
+import { Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -39,6 +40,11 @@ import { bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-env
 import { nextNationalId } from './helpers/national-id';
 import { syncHiringTemplates } from '../../src/modules/hr/contracts/hiring-templates';
 import { seedHrRecruitment } from '../../src/modules/hr/hr.seed';
+import { migrateCandidateDrafts } from '../../src/modules/hr/contracts/candidates';
+import { CandidateDraftModel } from '../../src/modules/hr/contracts/candidates/candidate-draft.model';
+import { JobPapersModel } from '../../src/modules/hr/contracts/job-papers/job-papers.model';
+import { jobPapersRepository } from '../../src/modules/hr/contracts/job-papers/job-papers.repository';
+import { departmentKeyOf } from '../../src/modules/hr/contracts/job-papers/person-papers';
 
 const PASSWORD = 'Str0ng#Pass!';
 const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
@@ -629,6 +635,60 @@ describe('«عقد جديد» for a candidate — print, then hire (A28)', () =>
     const after = (await call('post', `${base(offer.id)}/open`, {})).body.data as CandidateDraftDto;
     expect(after.employeeId).toBe(done.employeeId);
     expect((await call('post', `${base(offer.id)}/hire`, { version: after.version })).status).toBe(409);
+  });
+
+  it('ticks the candidate\'s papers as their job does, but for what HR changed — also for papers the job is given later', async () => {
+    const offer = await acceptedOffer();
+    const ticked = (d: CandidateDraftDto): string[] => d.papers.filter((p) => p.selected).map((p) => p.key);
+    const JOB_TICKS = [
+      PAPER('contract'),
+      PAPER('insurance-form-1'),
+      PAPER('data-sheet'),
+      PAPER('work-receipt'),
+      PAPER('relatives'),
+      PAPER('bank-letter'),
+    ];
+    let draft = (await call('post', `${base(offer.id)}/open`, {})).body.data as CandidateDraftDto;
+    expect(ticked(draft)).toEqual(JOB_TICKS);
+
+    // HR takes the bank letter off for this candidate.
+    draft = (
+      await call('patch', base(offer.id), {
+        selected: JOB_TICKS.filter((key) => key !== PAPER('bank-letter')),
+        version: draft.version,
+      })
+    ).body.data as CandidateDraftDto;
+    expect(ticked(draft)).not.toContain(PAPER('bank-letter'));
+
+    // «مستندات الوظائف» then ticks the weapon declaration for the job in the candidate's department:
+    // it is ticked for the candidate too, and the bank letter stays off.
+    const line = await jobPapersRepository.create(
+      {
+        departmentId: new Types.ObjectId((await departmentKeyOf(DEPARTMENT_ID)) ?? DEPARTMENT_ID),
+        jobTitleId: new Types.ObjectId(JOB_TITLE_ID),
+        added: [PAPER('weapon')],
+        removed: [],
+      },
+      { by: adminUserId },
+    );
+    try {
+      draft = (await call('post', `${base(offer.id)}/open`, {})).body.data as CandidateDraftDto;
+      expect(ticked(draft)).toEqual([...JOB_TICKS.filter((key) => key !== PAPER('bank-letter')), PAPER('weapon')]);
+    } finally {
+      await JobPapersModel.deleteOne({ _id: line._id });
+    }
+
+    // A draft saved before — a whole list kept as `selected` — follows its job again at the next boot.
+    await CandidateDraftModel.collection.updateOne(
+      { _id: new Types.ObjectId(draft.id) },
+      { $set: { selected: [PAPER('contract')] }, $unset: { added: '', removed: '' } },
+    );
+    await migrateCandidateDrafts();
+    draft = (await call('post', `${base(offer.id)}/open`, {})).body.data as CandidateDraftDto;
+    expect(ticked(draft)).toEqual(JOB_TICKS);
+    const stored = await CandidateDraftModel.collection.findOne({ _id: new Types.ObjectId(draft.id) });
+    expect(stored).toMatchObject({ added: [], removed: [] });
+    expect(stored).not.toHaveProperty('selected');
   });
 });
 

@@ -97,11 +97,12 @@ const WIRED: readonly Wired[] = [
     ],
   },
   {
-    file: 'pages/FixedRosterPage.tsx',
-    screen: '«الطاقم الثابت» — the coloured code, hover only',
+    // The standing roster's computer board, drawn like the daily one — its page
+    // (`FixedRosterPage.tsx`) is a shell that only picks the board.
+    file: 'components/roster/FixedDeskBoard.tsx',
+    screen: '«الطاقم الثابت» — the code column, hover only',
     pins: [
-      /useVehicleHoverCard\(\s*\{ vehicleId: row\.vehicleId, code: row\.code \},\s*\{ focusable: false \},?\s*\)/u,
-      /render: \(row\) => <CrewCarCode row=\{row\} \/>/u,
+      /<VehicleHoverCode\s+vehicleId=\{row\.vehicleId\}\s+code=\{row\.code\}\s+focusable=\{false\}/u,
     ],
   },
   {
@@ -178,22 +179,43 @@ const WIRED: readonly Wired[] = [
     ],
   },
   {
-    file: 'components/fleet-dashboard/tab-licences.tsx',
-    screen: 'the dashboard’s licences tab — each licence row’s code box (by id)',
+    file: 'components/fleet-dashboard/tab-licences-now.tsx',
+    screen: 'the dashboard’s «التراخيص والتجديدات» — the expired cars named on their KPI (by id)',
     pins: [
-      /<VehicleHoverCode\s+vehicleId=\{vehicleId\}\s+code=\{code\}\s+focusable=\{link === null\}/u,
-      /<CodeBox\s+vehicleId=\{row\.vehicleId\}/u,
-      // A chip inside the visit line's own link hovers; Tab reaches the link.
-      /<CarChip code=\{row\.code\} focusable=\{false\} \/>/u,
+      /<CarChip\s+code=\{row\.code\}\s+link=\{links\.vehicle\(row\.vehicleId, 'licenceVehicles\.expiredCar'\)\}/u,
     ],
+  },
+  {
+    file: 'components/fleet-dashboard/tab-licences-tables.tsx',
+    screen: 'the dashboard’s «التراخيص والتجديدات» — each row of «أقرب تراخيص السيارات» (by id)',
+    pins: [
+      /<CarChip code=\{row\.code\} link=\{links\.vehicle\(row\.vehicleId, 'licenceVehicles\.row'\)\} \/>/u,
+    ],
+  },
+  {
+    file: 'components/fleet-dashboard/tab-custody-now.tsx',
+    screen:
+      'the dashboard’s «العهدة» — the cars of each licence part waiting for its settlement (by code)',
+    pins: [/<CarChip key=\{`\$\{code\}:\$\{i\}`\} code=\{code\} \/>/u],
   },
   ...(
     [
+      // «الحوادث ومطالبات التأمين»: the notices missing an attachment and the period's accidents.
       ['tab-accidents.tsx', 'accidents'],
-      ['tab-alerts.tsx', 'alerts'],
+      ['tab-overview.tsx', 'overview'],
+      ['tab-overview-actions.tsx', 'overview action centre'],
+      // «الصيانة والورش»: the oldest car's line, and the alarm, top and longest-stay tables.
       ['tab-maintenance.tsx', 'maintenance'],
-      ['tab-now.tsx', 'now'],
-      ['tab-ranking.tsx', 'ranking'],
+      ['tab-today.tsx', 'today'],
+      // «العدادات والكيلومترات» (it holds the old «ترتيب السيارات»): the longest gap, the top and
+      // bottom five, the cars that cannot be ranked and the exceptions.
+      ['tab-km.tsx', 'km'],
+      // «المخالفات المرورية والتسويات»: the period's fines — the car chip, linked to its record for
+      // a registry reader.
+      ['tab-violations.tsx', 'violations'],
+      // «الوقود والمصروفات»: the cards that need follow-up, and the period's dealership invoices.
+      ['tab-fuel-now.tsx', 'fuel (cards that need follow-up)'],
+      ['tab-fuel-period.tsx', 'fuel (dealership invoices of the period)'],
     ] as const
   ).map(([file, tab]) => ({
     file: `components/fleet-dashboard/${file}`,
@@ -363,7 +385,7 @@ describe('the wired screens: the code cell is the card’s trigger', () => {
   it('hover only where the code sits in something that takes clicks or drags', () => {
     for (const file of [
       'components/roster/RosterDeskBoard.tsx',
-      'pages/FixedRosterPage.tsx',
+      'components/roster/FixedDeskBoard.tsx',
       'pages/CustodyPage.tsx',
       'components/FuelCarGroup.tsx',
       'components/CustodyDashboardCharts.tsx',
@@ -474,20 +496,49 @@ describe('the shared chips carry the card', () => {
 });
 
 describe('the dashboard draws its cars’ codes with the card', () => {
-  it.each(['alerts', 'now', 'licences'])('the %s tab', (tab) => {
+  it.each(['overview', 'today', 'maintenance', 'licences', 'custody'])('the %s tab', (tab) => {
     expect(renderDashboard({ url: `/fleet?tab=${tab}` })).toContain(MARK);
   });
 
-  it('every licence row’s code box', () => {
+  it('«توزيع السيارات» draws no car’s code at all — its figures are counts by type and branch', () => {
+    expect(DRAWS_A_CODE.test(read('components/fleet-dashboard/tab-distribution.tsx'))).toBe(false);
+    const html = renderDashboard({ url: '/fleet?tab=distribution' });
+    const body = html.slice(html.indexOf('data-dash-tab-body="distribution"'));
+    expect(body).not.toContain(MARK);
+  });
+
+  it('every row of «الصيانة والورش» names its car with the card', () => {
+    const html = renderDashboard({ url: '/fleet?tab=maintenance' });
+    for (const marker of ['data-alarm-row="', 'data-top-vehicle="', 'data-longest-row="']) {
+      const rows = html.split(marker).slice(1);
+      expect(rows.length, marker).toBeGreaterThan(0);
+      for (const row of rows) expect(row.slice(0, row.indexOf('</tr>')), marker).toContain(MARK);
+    }
+  });
+
+  it('every licence row’s code box — the table’s rows and their phone blocks, and the expired cars named on the KPI', () => {
     const html = renderDashboard({ url: '/fleet?tab=licences' });
-    const rows = html.split('data-licence-row="').slice(1);
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) expect(row.slice(0, row.indexOf('</li>'))).toContain(MARK);
+    for (const [marker, end] of [
+      ['data-lic-car="', '</tr>'],
+      ['data-lic-car-block="', '</li>'],
+      ['data-lic-expired-car="', '</span></span>'],
+    ] as const) {
+      const rows = html.split(marker).slice(1);
+      expect(rows.length, marker).toBeGreaterThan(0);
+      for (const row of rows) expect(row.slice(0, row.indexOf(end)), marker).toContain(MARK);
+    }
+  });
+
+  it('every car of a licence part waiting for its settlement on «العهدة»', () => {
+    const html = renderDashboard({ url: '/fleet?tab=custody' });
+    const parts = html.split('data-cust-settle="').slice(1);
+    expect(parts.length).toBeGreaterThan(0);
+    for (const part of parts) expect(part.slice(0, part.indexOf('</li>'))).toContain(MARK);
   });
 
   it('none for a reader who may not see the registry', () => {
     const permissions = ALL_KEYS.filter((key) => key !== 'fleetVehicle.view');
-    for (const tab of ['alerts', 'now', 'licences']) {
+    for (const tab of ['overview', 'today', 'maintenance', 'licences', 'custody']) {
       expect(renderDashboard({ url: `/fleet?tab=${tab}`, permissions }), tab).not.toContain(MARK);
     }
   });

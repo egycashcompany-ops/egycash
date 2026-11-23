@@ -2,30 +2,11 @@
 // design («عدل الـ ui بتاع الفورم … زى الحركة»: `DesignDialog`, the shape every Fleet entry form
 // takes).
 //
-// THE THREE BANKS, as the owner described them and as legacy drew them (main_ops.ejs:405-433):
-//   · البنك الرئيسي — the bank BILLED for the shipment (`mainBankId`). Every per-bank roll-up keys
-//     on it, in legacy and here.
-//   · «من فرع» — a bank chooser above the branch box: the bank the money is collected FROM. Not a
-//     stored field (legacy never posted it, :420); the origin branch carries its own bank.
-//   · «إلى فرع» — the same, for where the money goes; stored as `secondaryBankId` when it is not
-//     the main bank (legacy `sec_bank`).
-// Both sides start on the main bank and follow it while untouched (`followMainBank`).
-//
-// «المنطقة» is filled from the TO branch's operations area when that branch is picked, and stays
-// editable — legacy main_ops.ejs:520-531.
-//
-// «مينفعش لما يجى يضيف شحنه يختار تاريخ فات»: a new shipment opens on today and cannot be dated
-// earlier; an edit cannot move a date earlier than the day it was on (`shipmentDateProblem`) — the
-// collection date, and a secured shipment's delivery date, as the server holds them. The date boxes
-// offer no earlier day, and one typed earlier is said in words on the box, and again if saved —
-// before anything is sent.
-//
-// A محصنة's TWO DATES — «تاريخ المحصنة اجبارى … وتاريخ التسليم تانى يوم الاستلام افتراضى وممكن
-// يغير»: the collection date («تاريخ الاستلام» on a محصنة) is required, as on every shipment; the
-// delivery date opens on the day after it and FOLLOWS it while the person has not picked another
-// (`followCollectionDate`), may be moved, is required of a new one, and never falls before the
-// collection date (`deliveryDateProblem` — the server refuses the same,
-// `OPERATIONS_SHIPMENT_DELIVERY_BEFORE_COLLECTION`).
+// The shipment's data — the three banks, the branches, the area, the money lines, the dates and
+// their floors — is held and boxed by `ShipmentDraftFields` (`useShipmentDraft`), which Round 18's
+// receive form («إستلام محصنة») shares, so the two forms keep ONE set of rules. What is this form's
+// own: its three-column layout, the required-field banner, the collection crew of a new shipment,
+// and the save.
 //
 // «تتبّع أرقام الأوراق النقدية» is gone from the form — «ومحتاج اشيل دا». The API keeps the field:
 // a new shipment is sent `false` (its default), and an edit leaves whatever is stored untouched.
@@ -34,48 +15,30 @@
 // Picking a vehicle names the captain on it; picking a captain names his vehicle. Only on CREATE:
 // re-crewing a saved shipment moves a stop between captains' ordered days, which is not an edit.
 //
-// WHAT THE LEGACY FORM WAS (discovery §E, contad_app.js:306-569): one handler with four
-// non-exclusive branches — create/edit × single/multi currency — where the multi-currency path
-// walked SEVENTEEN fixed field pairs (quirk Q7). Here there is ONE shape: a list of
-// {currency, amount} lines. The 17 remains only as the contract's max.
 import { useEffect, useId, useMemo, useState } from 'react';
 import {
-  type OperationsBankBranchDto,
   type OperationsBankDto,
   type OperationsCurrencyDto,
   type OperationsDayBoardShipmentDto,
   type OperationsShipmentDto,
   type OperationsShipmentType,
-  MAX_PAGE_SIZE,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
-import { cn } from '../../../shared/lib/cn';
 import { Combobox } from '../../../shared/ui/Combobox';
-import { MoneyInput } from '../../../shared/ui/MoneyInput';
-import { Input, Select, Textarea } from '../../../shared/ui/form';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useAppSelector } from '../../../store';
-import { TrashIcon, PlusIcon } from '../../../shared/ui/icons';
 import {
   DesignCancel,
   DesignDialog,
   DesignSave,
   DesignSection,
 } from '../../fleet/components/DesignDialog';
+import { DesignField, carBoxClass } from '../../fleet/components/FuelCardDialog';
 import {
-  DesignField,
-  LOOK,
-  MONO,
-  boxTone,
-  carBoxClass,
-} from '../../fleet/components/FuelCardDialog';
-import {
-  useBankBranch,
   useCreateOperationsShipment,
-  useOperationsAreas,
   useOperationsCrewBoard,
   useOperationsCrewDirectory,
   useUpdateOperationsShipment,
@@ -88,74 +51,39 @@ import {
 } from '../lib/dispatch-crew';
 import {
   SHIPMENT_DATE_PROBLEM_KEY,
-  areaOfDestination,
-  defaultDeliveryDate,
-  deliveryDateMin,
-  deliveryDateProblem,
-  deliveryDateRequired,
-  earliestShipmentDate,
-  followCollectionDate,
-  followMainBank,
   secondaryBankFor,
-  shipmentDateProblem,
   isLockedRefusal,
   shipmentSaveErrorKey,
-  type ShipmentDateProblem,
 } from '../lib/shipment-form';
 import { cairoToday } from '../lib/shipment-history';
-import { compareCurrencies, currencyOfKind } from '../lib/day-board';
-import { BankBranchDialog } from './CatalogDialogs';
-import { ShipmentBranchSide } from './ShipmentBranchSide';
+import {
+  AddLineButton,
+  AreaBox,
+  CollectionDateField,
+  DeliveryDateField,
+  DraftBranchCreate,
+  DraftBranchSide,
+  MainBankField,
+  MoneyLines,
+  NotesField,
+  deliveryDateFor,
+  hasUsableLine,
+  toShipmentLines,
+  useShipmentDraft,
+} from './ShipmentDraftFields';
 import { SHIPMENT_PATH } from './shipment-icons';
 
-/** The contract's ceiling, inherited from the legacy form's 17 fixed currency slots (Q7). */
-export const MAX_SHIPMENT_LINES = 17;
-
-export interface DraftLine {
-  currencyId: string;
-  amount: string;
-}
-
-export const EMPTY_LINE: DraftLine = { currencyId: '', amount: '' };
-
-/**
- * Only complete lines are sent. A blank row the operator added and never filled is not an error —
- * legacy compacted exactly this way, keeping the index pairs whose value was non-empty
- * (contad_app.js:386-398) — so it is dropped rather than rejected.
- */
-export const toShipmentLines = (
-  draft: readonly DraftLine[],
-): { currencyId: string; amount: number }[] =>
-  draft
-    .filter((line) => line.currencyId !== '' && line.amount.trim() !== '')
-    .map((line) => ({ currencyId: line.currencyId, amount: Number(line.amount) }));
-
-/** A shipment needs at least one real line — the legacy server guard (contad_app.js:313). */
-export const hasUsableLine = (draft: readonly DraftLine[]): boolean =>
-  toShipmentLines(draft).length > 0;
-
-/**
- * `deliveryDate` belongs to secured shipments only: legacy wrote `del_date: ""` for daily
- * (contad_app.js:353) and the contract rejects a daily shipment carrying one.
- */
-export const deliveryDateFor = (shipmentType: OperationsShipmentType, raw: string): Date | null =>
-  shipmentType === 'daily' || raw === '' ? null : new Date(raw);
-
-/**
- * The currency a new line starts on: the domestic one — legacy's form opened on «مصري»
- * (main_ops.ejs:376-387). Found the way the board's figures find it (`currencyKind`): by its code,
- * its name or a legacy alias, so a catalog whose pound is coded «1» still opens on it.
- */
-export const defaultCurrencyId = (currencies: readonly OperationsCurrencyDto[]): string =>
-  currencyOfKind(currencies, 'pound')?.id ?? '';
-
-const dateOnly = (iso: string | null): string => (iso === null ? '' : iso.slice(0, 10));
-
-/** A board row carries its branches and crew resolved; a plain shipment does not. */
-const boardRow = (
-  shipment: OperationsShipmentDto | OperationsDayBoardShipmentDto | null,
-): OperationsDayBoardShipmentDto | null =>
-  shipment !== null && 'origin' in shipment ? shipment : null;
+// The line helpers live with the shared draft; the shipment form's specs (and any caller) still
+// find them here, where they were first written.
+export {
+  EMPTY_LINE,
+  MAX_SHIPMENT_LINES,
+  defaultCurrencyId,
+  deliveryDateFor,
+  hasUsableLine,
+  toShipmentLines,
+  type DraftLine,
+} from './ShipmentDraftFields';
 
 export const ShipmentFormDialog = ({
   open,
@@ -187,124 +115,35 @@ export const ShipmentFormDialog = ({
   const can = useCan();
   const create = useCreateOperationsShipment();
   const update = useUpdateOperationsShipment();
-  const editing = shipment !== null;
-  const row = boardRow(shipment);
-  const shipmentType: OperationsShipmentType = shipment?.shipmentType ?? createType;
-
-  const [mainBankId, setMainBankId] = useState('');
-  const [fromBankId, setFromBankId] = useState('');
-  const [toBankId, setToBankId] = useState('');
-  const [originBranchId, setOriginBranchId] = useState('');
-  const [destinationBranchId, setDestinationBranchId] = useState('');
-  const [areaName, setAreaName] = useState('');
-  const [collectionDate, setCollectionDate] = useState('');
-  const [deliveryDate, setDeliveryDate] = useState('');
-  const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<DraftLine[]>([EMPTY_LINE]);
+  const draft = useShipmentDraft({ open, shipment, createType, banks, currencies });
+  const {
+    editing,
+    row,
+    shipmentType,
+    mainBankId,
+    toBankId,
+    originBranchId,
+    destinationBranchId,
+    areaName,
+    collectionDate,
+    deliveryDate,
+    notes,
+    lines,
+    adding,
+    dateProblems,
+    needsDeliveryDate,
+    collectionLabel,
+  } = draft;
   const [crewKey, setCrewKey] = useState('');
-  /** The catalogs' branch form, opened over this one for a branch that is not there yet. */
-  const [adding, setAdding] = useState<{
-    side: 'origin' | 'destination';
-    bankId: string;
-    name: string;
-  } | null>(null);
-
-  const activeBanks = useMemo(() => banks.filter((bank) => bank.isActive), [banks]);
-  // «ترتيب العملات … على حسب ترتيبها ف شاشة البيانات المرجعية»: the pickers list the currencies in
-  // the catalog's dragged order, whatever order the caller's list came in (`compareCurrencies`).
-  const activeCurrencies = useMemo(
-    () => currencies.filter((c) => c.isActive).sort(compareCurrencies),
-    [currencies],
-  );
-
   useEffect(() => {
-    if (!open) return;
-    setMainBankId(shipment?.mainBankId ?? '');
-    // The from-bank is the origin branch's own; a board row has it, a plain shipment is read below.
-    setFromBankId(row?.origin?.bankId ?? '');
-    setToBankId(shipment === null ? '' : (shipment.secondaryBankId ?? shipment.mainBankId));
-    setOriginBranchId(shipment?.originBranchId ?? '');
-    setDestinationBranchId(shipment?.destinationBranchId ?? '');
-    setAreaName(shipment?.areaName ?? '');
-    const openedOn = cairoToday();
-    setCollectionDate(shipment === null ? openedOn : dateOnly(shipment.collectionDate));
-    // A new محصنة opens on the day after its collection — «تانى يوم الاستلام افتراضى».
-    setDeliveryDate(
-      shipment === null
-        ? createType === 'secured'
-          ? defaultDeliveryDate(openedOn)
-          : ''
-        : dateOnly(shipment.deliveryDate),
-    );
-    setNotes(shipment?.notes ?? '');
-    setLines(
-      shipment === null || shipment.lines.length === 0
-        ? [{ currencyId: defaultCurrencyId(activeCurrencies), amount: '' }]
-        : shipment.lines.map((line) => ({
-            currencyId: line.currencyId,
-            amount: String(line.amount),
-          })),
-    );
-    setCrewKey('');
-    setAdding(null);
-    // `row` and the currencies are read on OPEN only — the form is the operator's from then on.
+    if (open) setCrewKey('');
   }, [open, shipment]);
-
-  // Editing a plain shipment (the secured backlog's): its origin branch names the from-bank.
-  const heldOrigin = useBankBranch(open && editing && row === null ? originBranchId : '');
-  useEffect(() => {
-    if (fromBankId === '' && heldOrigin.data !== undefined) setFromBankId(heldOrigin.data.bankId);
-  }, [heldOrigin.data, fromBankId]);
-
-  // ── The three banks ────────────────────────────────────────────────────────────────────────────
-  const changeMainBank = (next: string): void => {
-    const nextFrom = followMainBank(fromBankId, mainBankId, next);
-    const nextTo = followMainBank(toBankId, mainBankId, next);
-    if (nextFrom !== fromBankId) setOriginBranchId('');
-    if (nextTo !== toBankId) {
-      // The area is the destination branch's: no branch, no area.
-      setDestinationBranchId('');
-      setAreaName('');
-    }
-    setFromBankId(nextFrom);
-    setToBankId(nextTo);
-    setMainBankId(next);
-  };
-  const changeSideBank = (side: 'origin' | 'destination', next: string): void => {
-    if (side === 'origin') {
-      if (next !== fromBankId) setOriginBranchId('');
-      setFromBankId(next);
-    } else {
-      if (next !== toBankId) {
-        setDestinationBranchId('');
-        setAreaName('');
-      }
-      setToBankId(next);
-    }
-  };
-  const pickBranch = (
-    side: 'origin' | 'destination',
-    branch: OperationsBankBranchDto | null,
-  ): void => {
-    if (side === 'origin') {
-      setOriginBranchId(branch?.id ?? '');
-      return;
-    }
-    setDestinationBranchId(branch?.id ?? '');
-    setAreaName(areaOfDestination(branch));
-  };
-
-  // The area catalog — the branch form opened from here offers it for the new branch's area.
-  const areas = useOperationsAreas({ page: 1, pageSize: MAX_PAGE_SIZE, sortBy: 'name' }, open);
-  const canAddBranch = can('operationsCatalog.manage');
-
-  const setLine = (index: number, patch: Partial<DraftLine>): void =>
-    setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
 
   // ── The collection crew (legacy leader1 + car_num1, written at creation) ──────────────────────
   //
   // Read from the collection date's crew plan; both boxes edit the SAME choice (`crewKey`, one
-  // crew row and one of its captains), so they cannot disagree.
+  // crew row and one of its captains), so they cannot disagree. Only on CREATE: re-crewing a saved
+  // shipment moves a stop between captains' ordered days, which is not an edit.
   const canSeeCrew = can('operationsCrew.view');
   const crewHintId = useId();
   const crewOn = open && !editing && canSeeCrew && collectionDate !== '';
@@ -328,56 +167,9 @@ export const ShipmentFormDialog = ({
     const twice =
       crewOptions.filter((o) => o.captainEmployeeId === option.captainEmployeeId).length > 1;
     const name = captainName(option.captainEmployeeId);
-    return twice ? `${name} — ${option.vehicleCode}` : name;
+    return twice ? `${name} — ${option.vehicleCode ?? '…'}` : name;
   };
   const vehicles = vehiclesOf(crewOptions);
-
-  // ── The dates' floor ───────────────────────────────────────────────────────────────────────────
-  //
-  // Today for a new date, the day it was on for an edit — a delivery date never set before is a new
-  // one. Today is read per render (cheap), so a form left open over midnight moves its floor with
-  // the clock.
-  const heldDate = shipment === null ? null : dateOnly(shipment.collectionDate);
-  const heldDeliveryDate = shipment?.deliveryDate == null ? null : dateOnly(shipment.deliveryDate);
-  const today = cairoToday();
-  const earliestDate = earliestShipmentDate(heldDate, today);
-  // A delivery date's calendar starts at the later of its own floor and the collection date.
-  const earliestDeliveryDate = deliveryDateMin(
-    earliestShipmentDate(heldDeliveryDate, today),
-    collectionDate,
-  );
-  /** The two dates as stored on the shipment being edited — null for a new one. */
-  const heldDates = heldDate === null ? null : { delivery: heldDeliveryDate, collection: heldDate };
-  /** Both dates' problems as of `day` — the delivery date only where the form has one. */
-  const dateProblems = (
-    day: string,
-  ): { collection: ShipmentDateProblem | null; delivery: ShipmentDateProblem | null } => ({
-    collection: shipmentDateProblem(collectionDate, heldDate, day),
-    delivery:
-      shipmentType === 'secured'
-        ? deliveryDateProblem(deliveryDate, collectionDate, heldDates, day)
-        : null,
-  });
-  const dateProblem = dateProblems(today);
-  const problemText = (problem: ShipmentDateProblem | null): string | undefined =>
-    problem === null ? undefined : t(SHIPMENT_DATE_PROBLEM_KEY[problem]);
-
-  /**
-   * A new محصنة's delivery date follows its collection date until the person picks one
-   * (`followCollectionDate`); an edit's dates are the person's from the start.
-   */
-  const changeCollectionDate = (next: string): void => {
-    if (!editing && shipmentType === 'secured') {
-      setDeliveryDate((current) => followCollectionDate(current, collectionDate, next));
-    }
-    setCollectionDate(next);
-  };
-  const needsDeliveryDate = deliveryDateRequired(shipmentType, heldDeliveryDate, !editing);
-  // On a محصنة the collection date is named for what it is — the day it is collected from the bank —
-  // beside «تاريخ التسليم»; a daily shipment has the one date, «تاريخ الشحنة».
-  const collectionLabel = t(
-    shipmentType === 'secured' ? 'operations.board.collectedOn' : 'operations.shipment.form.date',
-  );
 
   // ── Required fields ────────────────────────────────────────────────────────────────────────────
   const required = useRequiredFields(
@@ -471,14 +263,6 @@ export const ShipmentFormDialog = ({
 
   const busy = create.isPending || update.isPending;
 
-  // The design's boxes.
-  const box = boxTone(LOOK.add);
-  const selectBox = cn(
-    '!h-auto !rounded-xl !py-3 !ps-4 !text-[15px] !font-medium !text-slate-900 dark:!text-white focus:!border-indigo-500 focus:!ring-1 focus:!ring-indigo-500',
-    '!border-slate-200 !bg-slate-50 dark:!border-[#2b3b6b] dark:!bg-[#0a1233]',
-  );
-  const mainMissing = required.isMissing('mainBank');
-
   return (
     <>
       <DesignDialog
@@ -529,81 +313,12 @@ export const ShipmentFormDialog = ({
           >
             {/* What «الرئيسي» means is the form's subtitle («البنك المُحاسب…»); a hint here too
                 would cost the line that keeps the form on a laptop screen without a scroll. */}
-            <DesignField
-              label={t('operations.shipment.form.mainBank')}
-              required
-              missing={mainMissing}
-            >
-              <div
-                className={cn(
-                  carBoxClass(false),
-                  mainMissing &&
-                    '[&_input]:!border-rose-500/70 [&_input]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] [&_input]:!pe-28 [&_.end-2]:!end-10',
-                )}
-              >
-                <Combobox
-                  value={mainBankId}
-                  options={activeBanks.map((bank) => bank.id)}
-                  optionLabel={(id) => banks.find((bank) => bank.id === id)?.opsName ?? id}
-                  onChange={changeMainBank}
-                  placeholder={t('operations.shipment.form.pickBank')}
-                  emptyText={t('common.noResults')}
-                  clearLabel={t('common.clear')}
-                  ariaLabel={t('operations.shipment.form.mainBank')}
-                  testId="main-bank"
-                />
-              </div>
-            </DesignField>
-            <DesignField
-              label={collectionLabel}
-              required
-              missing={required.isMissing('collectionDate')}
-              error={problemText(dateProblem.collection)}
-              datePicker
-            >
-              <Input
-                type="date"
-                dir="ltr"
-                // The calendar offers no earlier day; one typed earlier is named under the box.
-                min={earliestDate}
-                value={collectionDate}
-                onChange={(e) => changeCollectionDate(e.target.value)}
-                tone={cn(box, MONO)}
-                data-shipment-date="true"
-              />
-            </DesignField>
+            <MainBankField draft={draft} missing={required.isMissing('mainBank')} />
+            <CollectionDateField draft={draft} missing={required.isMissing('collectionDate')} />
             {shipmentType === 'secured' && (
-              <DesignField
-                label={t('operations.shipment.deliveryDate')}
-                hint={t('operations.shipment.deliveryDateHint')}
-                required={needsDeliveryDate}
-                missing={required.isMissing('deliveryDate')}
-                error={problemText(dateProblem.delivery)}
-                datePicker
-              >
-                <Input
-                  type="date"
-                  dir="ltr"
-                  // Not before its floor, nor before the collection date.
-                  min={earliestDeliveryDate}
-                  value={deliveryDate}
-                  onChange={(e) => setDeliveryDate(e.target.value)}
-                  tone={cn(box, MONO)}
-                  data-shipment-delivery-date="true"
-                />
-              </DesignField>
+              <DeliveryDateField draft={draft} missing={required.isMissing('deliveryDate')} />
             )}
-            <DesignField label={t('operations.shipment.notes')}>
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={1}
-                aria-label={t('operations.shipment.notes')}
-                // The select's tone, not `box`: a Textarea has no `tone` slot, and only `!`-classes
-                // beat its own background (the Accident form's notes box does the same).
-                className={cn(selectBox, '!pe-4')}
-              />
-            </DesignField>
+            <NotesField draft={draft} />
           </DesignSection>
 
           <DesignSection
@@ -611,64 +326,15 @@ export const ShipmentFormDialog = ({
             icon={SHIPMENT_PATH.route}
           >
             <div className="space-y-4">
-              <ShipmentBranchSide
-                side="origin"
-                title={t('operations.shipment.origin')}
-                banks={banks}
-                bankId={fromBankId}
-                onBankChange={(next) => changeSideBank('origin', next)}
-                branchId={originBranchId}
-                onBranchChange={(branch) => pickBranch('origin', branch)}
-                known={row?.origin ?? null}
-                canCreate={canAddBranch}
-                onRequestCreate={(bankId, name) => setAdding({ side: 'origin', bankId, name })}
-                branchMissing={required.isMissing('origin')}
-              />
-              <ShipmentBranchSide
+              <DraftBranchSide draft={draft} side="origin" missing={required.isMissing('origin')} />
+              <DraftBranchSide
+                draft={draft}
                 side="destination"
-                title={t('operations.shipment.destination')}
-                banks={banks}
-                bankId={toBankId}
-                onBankChange={(next) => changeSideBank('destination', next)}
-                branchId={destinationBranchId}
-                onBranchChange={(branch) => pickBranch('destination', branch)}
-                known={row?.destination ?? null}
-                canCreate={canAddBranch}
-                onRequestCreate={(bankId, name) => setAdding({ side: 'destination', bankId, name })}
-                branchMissing={required.isMissing('destination')}
+                missing={required.isMissing('destination')}
               >
-                {/* «المنطقة … تحت الفرع اللى الى»: under the TO branch, read only — it is that
-                    branch's, so typing it would only let the two disagree. */}
-                <div
-                  className="flex items-center gap-3"
-                  title={t('operations.shipment.form.areaHint')}
-                >
-                  <span className="shrink-0 text-[15px] font-bold text-slate-900 dark:text-white">
-                    {t('operations.shipment.area')}
-                  </span>
-                  <div
-                    role="textbox"
-                    aria-readonly="true"
-                    // A read-only textbox stays in the Tab order, so a keyboard reader meets it.
-                    tabIndex={0}
-                    aria-label={t('operations.shipment.area')}
-                    aria-description={t('operations.shipment.form.areaHint')}
-                    data-shipment-area="true"
-                    className={cn(
-                      'flex min-h-[2.5rem] flex-1 items-center rounded-xl border px-4 text-[15px] font-medium',
-                      'border-dashed border-slate-300 bg-slate-100/70 text-slate-900 dark:border-[#2b3b6b] dark:bg-[#0a1233]/50 dark:text-white',
-                    )}
-                  >
-                    {areaName === '' ? (
-                      <span className="text-sm text-slate-400 dark:text-slate-500">
-                        {t('operations.shipment.form.areaEmpty')}
-                      </span>
-                    ) : (
-                      areaName
-                    )}
-                  </div>
-                </div>
-              </ShipmentBranchSide>
+                {/* «المنطقة … تحت الفرع اللى الى»: under the TO branch, read only. */}
+                <AreaBox areaName={areaName} />
+              </DraftBranchSide>
             </div>
           </DesignSection>
 
@@ -681,84 +347,9 @@ export const ShipmentFormDialog = ({
                 title={t('operations.shipment.form.sections.money')}
                 icon={SHIPMENT_PATH.money}
               >
-                <div className="space-y-2">
-                  {lines.map((line, index) => {
-                    const currencyBox = (
-                      <Select
-                        value={line.currencyId}
-                        onChange={(e) => setLine(index, { currencyId: e.target.value })}
-                        className={selectBox}
-                        aria-label={`${t('operations.shipment.currency')} ${index + 1}`}
-                      >
-                        <option value="">{t('common.select')}</option>
-                        {activeCurrencies.map((currency) => (
-                          <option key={currency.id} value={currency.id}>
-                            {currency.name}
-                          </option>
-                        ))}
-                      </Select>
-                    );
-                    const amountBox = (
-                      <MoneyInput
-                        value={line.amount}
-                        onChange={(amount) => setLine(index, { amount })}
-                        tone={cn(box, MONO, 'text-right')}
-                        aria-label={`${t('operations.shipment.form.amount')} ${index + 1}`}
-                        data-shipment-amount={String(index)}
-                      />
-                    );
-                    return (
-                      // Lines have no identity of their own until saved; the index IS the slot.
-                      <div
-                        key={index}
-                        className="grid grid-cols-[minmax(0,5fr)_minmax(0,7fr)_auto] items-end gap-2"
-                      >
-                        {index === 0 ? (
-                          <>
-                            <DesignField
-                              label={t('operations.shipment.currency')}
-                              missing={required.isMissing('amount')}
-                            >
-                              {currencyBox}
-                            </DesignField>
-                            <DesignField
-                              label={t('operations.shipment.form.amount')}
-                              required
-                              missing={required.isMissing('amount')}
-                            >
-                              {amountBox}
-                            </DesignField>
-                          </>
-                        ) : (
-                          <>
-                            {currencyBox}
-                            <div className="relative">{amountBox}</div>
-                          </>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
-                          disabled={lines.length === 1}
-                          aria-label={`${t('common.remove')} ${index + 1}`}
-                          className="mb-1 rounded-xl border border-slate-200 p-3 text-slate-500 transition-colors hover:border-rose-300 hover:text-rose-500 disabled:opacity-40 dark:border-[#2b3b6b] dark:text-slate-400"
-                        >
-                          <TrashIcon className="h-4 w-4" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                <MoneyLines draft={draft} missing={required.isMissing('amount')} />
               </DesignSection>
-              <button
-                type="button"
-                onClick={() => setLines((prev) => [...prev, EMPTY_LINE])}
-                disabled={lines.length >= MAX_SHIPMENT_LINES}
-                data-shipment-add-line="true"
-                className="absolute end-0 top-0 inline-flex items-center gap-1 rounded-lg border border-dashed border-indigo-300 px-2.5 py-1 text-xs font-bold text-indigo-600 transition-colors hover:bg-indigo-50 disabled:opacity-40 dark:border-indigo-500/50 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
-              >
-                <PlusIcon className="h-3.5 w-3.5" />
-                {t('operations.shipment.addLine')}
-              </button>
+              <AddLineButton draft={draft} className="absolute end-0 top-0" />
             </div>
 
             <DesignSection
@@ -772,7 +363,10 @@ export const ShipmentFormDialog = ({
                   {row?.crew != null
                     ? t('operations.shipment.form.crewHeld', {
                         captain: row.crew.captainName ?? '—',
-                        vehicle: row.crew.vehicleCode ?? '—',
+                        vehicle:
+                          row.crew.vehicleId === null
+                            ? t('operations.crewPlan.noVehicle')
+                            : (row.crew.vehicleCode ?? '—'),
                       })
                     : // «No crew yet» is said plainly only of a daily row, whose one leg the row
                       // reports. A secured row reports the leg it is ON — the pickup on its way to the
@@ -819,10 +413,12 @@ export const ShipmentFormDialog = ({
                     <DesignField label={t('operations.shipment.form.vehicle')}>
                       <div className={carBoxClass(false)}>
                         <Combobox
-                          value={chosenCrew?.vehicleId ?? ''}
-                          options={vehicles.map((vehicle) => vehicle.vehicleId)}
-                          optionLabel={(id) =>
-                            vehicles.find((vehicle) => vehicle.vehicleId === id)?.vehicleCode ?? id
+                          // The PICKUP leg rides a van's row only (no row without a van is offered
+                          // here), so a row's `vanKey` is its van's id.
+                          value={chosenCrew?.vanKey ?? ''}
+                          options={vehicles.map((vehicle) => vehicle.vanKey)}
+                          optionLabel={(key) =>
+                            vehicles.find((vehicle) => vehicle.vanKey === key)?.vehicleCode ?? key
                           }
                           onChange={(vehicleId) =>
                             setCrewKey(
@@ -859,25 +455,8 @@ export const ShipmentFormDialog = ({
         </div>
       </DesignDialog>
 
-      {/* «يظهر موديل كدا انه يضيف باقى البيانات»: the catalogs screen's own branch form, opened with
-          the bank and the typed name; the branch it saves is picked on the side that asked. */}
-      <BankBranchDialog
-        open={adding !== null}
-        branch={null}
-        banks={activeBanks}
-        areas={areas.data?.items ?? []}
-        {...(adding === null ? {} : { initial: { bankId: adding.bankId, name: adding.name } })}
-        onSaved={(saved) => {
-          if (adding === null) return;
-          if (adding.side === 'origin') {
-            setFromBankId(saved.bankId);
-          } else {
-            setToBankId(saved.bankId);
-          }
-          pickBranch(adding.side, saved);
-        }}
-        onClose={() => setAdding(null)}
-      />
+      {/* «يظهر موديل كدا انه يضيف باقى البيانات»: the catalogs screen's own branch form. */}
+      <DraftBranchCreate draft={draft} />
     </>
   );
 };

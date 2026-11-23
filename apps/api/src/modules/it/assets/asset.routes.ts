@@ -26,11 +26,17 @@ import {
   deleteItAsset,
   getItAsset,
   getItAssetByCode,
+  getItAssetCounterReadings,
   listItAssetNames,
   listItAssets,
   renderItAssetLabels,
   updateItAsset,
 } from './asset.controller';
+import {
+  assetWorkbookUpload,
+  importItAssets,
+  listItAssetImportBranches,
+} from './asset-import.controller';
 import {
   assignItAsset,
   disposeItAsset,
@@ -89,14 +95,35 @@ export const buildItAssetsRouter = (): Router => {
     validate({ body: MoveItAssetsToBranchSchema }),
     asyncHandler(moveItAssetsToBranch),
   );
-  // Where that move — and the consumables' transfer, the same grant — may go: the branches
-  // `itAsset.assign` reaches as the server judges it, not the account's reach over all its grants.
-  // Before '/:id' like every literal segment here.
+  // Where that move may go: the branches `itAsset.assign` reaches as the server judges it, not the
+  // account's reach over all its grants (the consumables' transfer asks its own grant, at
+  // `/it/consumables/transfer-targets`). Before '/:id' like every literal segment here.
   router.get(
     '/move-targets',
     authenticate,
     authorize('itAsset.assign'),
     asyncHandler(listItMoveTargets),
+  );
+  // «رفع جماعي» — «عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول»: the
+  // branches' custody sheet, previewed (200) and then applied (201), under the registration grant.
+  // A line that fills or moves a device the register holds needs `itAsset.edit` / `itAsset.assign`
+  // over it as well — the service reports it out of reach otherwise. The workbook is held in
+  // memory. Before '/:id' like every literal segment here.
+  router.post(
+    '/import',
+    authenticate,
+    authorize('itAsset.create'),
+    assetWorkbookUpload(),
+    asyncHandler(importItAssets),
+  );
+  // Where that upload may register — the active branches `itAsset.create` reaches as the server
+  // judges it (the move-targets' answer, asked of the registration grant), so the screen's branch
+  // picker offers nothing the upload would refuse. Before '/:id' like every literal segment here.
+  router.get(
+    '/import/branches',
+    authenticate,
+    authorize('itAsset.create'),
+    asyncHandler(listItAssetImportBranches),
   );
   router.get(
     '/:id',
@@ -175,6 +202,17 @@ export const buildItAssetsRouter = (): Router => {
     authorize('itAsset.view'),
     validate({ query: ListItAssignmentsQuerySchema, params: IdParamSchema }),
     asyncHandler(listItAssetAssignments),
+  );
+  // «عداد الطابعة» (2026-11-19) — the printer's counter readings, each with the toner it was taken
+  // with and the cartridge of the same item it replaced. A fact of the printer: on the register's
+  // read grant (naming a printer at «صرف» needs it already), and read across every store's toners.
+  // On this router, not the consumables': no consumables route authorizes on `itAsset`.
+  router.get(
+    '/:id/counter-readings',
+    authenticate,
+    authorize('itAsset.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getItAssetCounterReadings),
   );
   return router;
 };

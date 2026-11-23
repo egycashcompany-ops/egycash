@@ -6,6 +6,7 @@ import { z } from 'zod';
 import {
   AssignSecuredDeliveryLegSchema,
   CancelVaultReceiptSchema,
+  CheckVaultSealsSchema,
   ConfirmSecuredPickupSchema,
   DispatchSecuredShipmentsSchema,
   ListSecuredBacklogQuerySchema,
@@ -26,6 +27,7 @@ import { asyncHandler, validate } from '../../../platform/web';
 import {
   assignDeliveryLeg,
   cancelVaultReceipt,
+  checkVaultSeals,
   confirmSecuredPickup,
   dispatchSecured,
   getSecuredBoard,
@@ -142,6 +144,17 @@ export const buildOperationsSecuredRouter = (): Router => {
     authorize('operationsVault.receive'),
     validate({ body: ReceiveIntoVaultSchema, params: IdParamSchema }),
     asyncHandler(receiveIntoVault),
+  );
+  // Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: which of the
+  // seals being typed into a receipt the vault still holds on another محصنة. The receive's own
+  // grant: it answers the person about to receive, about the seals they typed — and it is advice;
+  // the receipt above decides, with 409 `OPERATIONS_SEAL_HELD_IN_VAULT`.
+  router.post(
+    '/seal-check',
+    authenticate,
+    authorize('operationsVault.receive'),
+    validate({ body: CheckVaultSealsSchema }),
+    asyncHandler(checkVaultSeals),
   );
   // Cancel the vault's receipt (Round 10) — «صلاحية خاصة تقدر تلغى استلام الخزينة»: a grant of its
   // own, held by no role by default, so neither receiving nor dispatching implies it.

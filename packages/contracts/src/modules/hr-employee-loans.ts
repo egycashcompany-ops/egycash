@@ -18,7 +18,7 @@
 //
 // The frozen decisions (D1–D10) are in docs/12-planning/employee-loans-design.md.
 import { z } from 'zod';
-import { PaginationQuerySchema, objectId } from '../common/index.js';
+import { PaginationQuerySchema, listQuery, objectId } from '../common/index.js';
 import { MoneyAmountSchema, MoneyCurrencySchema } from './hr-payroll-money.js';
 
 /**
@@ -219,8 +219,12 @@ export const AccelerateEmployeeLoanSchema = z
 export type AccelerateEmployeeLoan = z.infer<typeof AccelerateEmployeeLoanSchema>;
 
 export const ListEmployeeLoansQuerySchema = PaginationQuerySchema.extend({
-  type: EmployeeLoanTypeSchema.optional(),
-  status: EmployeeLoanStatusSchema.optional(),
+  /**
+   * Type and status are LISTS — «هنخلي كل الفلترز multi» — each ORed. A worklist tab still sends
+   * its one status, which parses as a list of one.
+   */
+  type: listQuery(EmployeeLoanTypeSchema),
+  status: listQuery(EmployeeLoanStatusSchema),
   employeeId: objectId().optional(),
 }).strict();
 export type ListEmployeeLoansQuery = z.infer<typeof ListEmployeeLoansQuerySchema>;

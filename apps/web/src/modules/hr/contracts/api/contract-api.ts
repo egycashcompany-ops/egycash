@@ -4,12 +4,15 @@
 import {
   type AddContractAttachment,
   type CandidateBulkPersonDto,
+  type EmployeeBulkPersonDto,
+  type RenderEmployeeBulk,
+  type RenderEmployeeBulkDto,
   type CandidateDraftDto,
   type HireCandidateDto,
   type JobPapersDto,
   type UpdateJobPapers,
   type InsuranceJobTitlesDto,
-  type UpdateInsuranceJobTitles,
+  type UpdateInsuranceJobTitle,
   type RenderCandidateBulk,
   type RenderCandidateBulkDto,
   type RenderCandidatePapers,
@@ -29,6 +32,8 @@ import {
   type DecideContractApproval,
   type DownloadTicketDto,
   type EmployeePapersDto,
+  type PreviewEmployeePaperDto,
+  type UpdateEmployeePaperValues,
   type HiringPackDto,
   type Paginated,
   type PreviewContract,
@@ -110,6 +115,12 @@ export const hiringPack = (employeeId: string, keys?: string[]): Promise<HiringP
 /** A28 — the employee's «طباعة العقد والمستندات» tab: their job's papers and their contract. */
 export const employeePapers = (employeeId: string): Promise<EmployeePapersDto> =>
   get<EmployeePapersDto>(`/hr/contracts/employee-papers/${employeeId}`);
+/** «تعديل» — the values typed in for the employee's papers, the whole list each time. */
+export const saveEmployeePaperValues = (employeeId: string, body: UpdateEmployeePaperValues): Promise<EmployeePapersDto> =>
+  patch<EmployeePapersDto>(`/hr/contracts/employee-papers/${employeeId}/values`, body);
+/** One of the employee's papers as it would print now. */
+export const previewEmployeePaper = (employeeId: string, key: string): Promise<PreviewEmployeePaperDto> =>
+  post<PreviewEmployeePaperDto>(`/hr/contracts/employee-papers/${employeeId}/preview`, { key });
 
 // ── A28 — «عقد جديد» for a candidate, before the hire ─────────────────────────
 export const openCandidate = (offerId: string): Promise<CandidateDraftDto> =>
@@ -122,10 +133,15 @@ export const bulkOpenCandidates = (offerIds: string[]): Promise<CandidateBulkPer
   post<CandidateBulkPersonDto[]>('/hr/contracts/candidates/bulk/open', { offerIds });
 export const bulkRenderCandidates = (body: RenderCandidateBulk): Promise<RenderCandidateBulkDto> =>
   post<RenderCandidateBulkDto>('/hr/contracts/candidates/bulk/render', body);
+/** «المعينون» — the same «طباعة لكل المحدد», for people already employed. */
+export const bulkOpenEmployees = (employeeIds: string[]): Promise<EmployeeBulkPersonDto[]> =>
+  post<EmployeeBulkPersonDto[]>('/hr/contracts/employees/bulk/open', { employeeIds });
+export const bulkRenderEmployees = (body: RenderEmployeeBulk): Promise<RenderEmployeeBulkDto> =>
+  post<RenderEmployeeBulkDto>('/hr/contracts/employees/bulk/render', body);
 export const getInsuranceJobTitles = (): Promise<InsuranceJobTitlesDto> =>
   get<InsuranceJobTitlesDto>('/hr/contracts/insurance-job-titles');
-export const saveInsuranceJobTitles = (body: UpdateInsuranceJobTitles): Promise<InsuranceJobTitlesDto> =>
-  patch<InsuranceJobTitlesDto>('/hr/contracts/insurance-job-titles', body);
+export const saveInsuranceJobTitle = (jobTitleId: string, body: UpdateInsuranceJobTitle): Promise<InsuranceJobTitlesDto> =>
+  patch<InsuranceJobTitlesDto>(`/hr/contracts/insurance-job-titles/${jobTitleId}`, body);
 export const getJobPapers = (): Promise<JobPapersDto> => get<JobPapersDto>('/hr/contracts/job-papers');
 export const saveJobPapers = (body: UpdateJobPapers): Promise<JobPapersDto> =>
   patch<JobPapersDto>('/hr/contracts/job-papers', body);

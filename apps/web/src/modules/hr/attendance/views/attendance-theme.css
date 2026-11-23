@@ -1,0 +1,176 @@
+/* Attendance — its own visual system, scoped to .att so nothing else in ECMS changes.
+   Direction: ECMS palette on a slate canvas, white sheets with hairline borders, Cairo
+   for words, Azeret Mono for every figure (a plain zero, steady widths), one indigo accent for the
+   thing you act on, colour elsewhere only where it means something (status). Dark mode follows
+   ECMS's `dark` class on <html>. */
+
+.att {
+  /* ECMS's own palette: the brand indigo scale (runtime variables from styles.css), slate
+     neutrals, and Tailwind's emerald / amber / red / sky for status. */
+  --att-canvas: #f1f5f9; /* slate-100 */
+  --att-sheet: #ffffff;
+  --att-sheet-2: #f8fafc; /* slate-50 */
+  --att-line: #e2e8f0; /* slate-200 */
+  --att-line-strong: #cbd5e1; /* slate-300 */
+  --att-ink: #0f172a; /* slate-900 */
+  --att-ink-2: #475569; /* slate-600 */
+  --att-ink-3: #64748b; /* slate-500 */
+  --att-accent: rgb(var(--brand-600));
+  --att-accent-soft: rgb(var(--brand-50));
+  --att-brand: rgb(var(--brand-600));
+  --att-brand-strong: rgb(var(--brand-900));
+  --att-brand-soft: rgb(var(--brand-100));
+  --att-brand-edge: rgb(var(--brand-300));
+  --att-brand-tint: rgb(var(--brand-50) / 0.6);
+  --att-ok: #059669; /* emerald-600 */
+  --att-ok-soft: #ecfdf5;
+  --att-warn: #d97706; /* amber-600 */
+  --att-warn-soft: #fffbeb;
+  --att-bad: #dc2626; /* red-600 */
+  --att-bad-soft: #fef2f2;
+  --att-info: #0284c7; /* sky-600 */
+  --att-info-soft: #f0f9ff;
+  --att-muted: #94a3b8; /* slate-400 */
+  --att-muted-soft: #f1f5f9;
+  --att-bar: rgb(var(--brand-600));
+  --att-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  font-family: 'Cairo', system-ui, sans-serif;
+  color: var(--att-ink);
+}
+.dark .att {
+  --att-canvas: #020617; /* slate-950 */
+  --att-sheet: #0f172a; /* slate-900 */
+  --att-sheet-2: #1e293b; /* slate-800 */
+  --att-line: #1e293b;
+  --att-line-strong: #334155; /* slate-700 */
+  --att-ink: #f1f5f9;
+  --att-ink-2: #cbd5e1;
+  --att-ink-3: #94a3b8;
+  --att-accent: rgb(var(--brand-400));
+  --att-accent-soft: rgb(var(--brand-950));
+  --att-brand: rgb(var(--brand-500));
+  --att-brand-strong: rgb(var(--brand-300));
+  --att-brand-soft: rgb(var(--brand-950));
+  --att-brand-edge: rgb(var(--brand-800));
+  --att-brand-tint: rgb(var(--brand-950) / 0.35);
+  --att-ok: #34d399;
+  --att-ok-soft: rgb(6 78 59 / 0.35);
+  --att-warn: #fbbf24;
+  --att-warn-soft: rgb(120 53 15 / 0.35);
+  --att-bad: #f87171;
+  --att-bad-soft: rgb(127 29 29 / 0.35);
+  --att-info: #38bdf8;
+  --att-info-soft: rgb(12 74 110 / 0.35);
+  --att-muted: #475569;
+  --att-muted-soft: #1e293b;
+  --att-bar: rgb(var(--brand-500));
+  --att-shadow: none;
+}
+
+.att-fig { font-family: 'Azeret Mono', 'Cairo', ui-monospace, monospace; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+.att-sheet {
+  background: var(--att-sheet);
+  border: 1px solid var(--att-line);
+  border-radius: 14px;
+  box-shadow: var(--att-shadow);
+}
+
+.att-input {
+  height: 2.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--att-line);
+  background: var(--att-sheet);
+  padding-inline: 0.85rem;
+  font-size: 0.875rem;
+  color: var(--att-ink);
+  outline: none;
+  transition: border-color 120ms, box-shadow 120ms;
+}
+select.att-input {
+  appearance: none;
+  padding-inline-end: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: 14px;
+  background-position: left 0.7rem center;
+}
+[dir='ltr'] select.att-input { background-position: right 0.7rem center; }
+.att-input::placeholder { color: var(--att-ink-3); }
+.att-input:hover { border-color: var(--att-line-strong); }
+.att-input:focus { border-color: var(--att-accent); box-shadow: 0 0 0 3px var(--att-accent-soft); }
+
+.att-btn {
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  border-radius: 10px;
+  border: 1px solid var(--att-line);
+  background: var(--att-sheet);
+  padding-inline: 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--att-ink);
+  transition: background 120ms, border-color 120ms;
+}
+.att-btn:hover { background: var(--att-sheet-2); border-color: var(--att-line-strong); }
+.att-btn:focus-visible, .att button:focus-visible { outline: 2px solid var(--att-accent); outline-offset: 2px; }
+.att-btn-accent { background: var(--att-accent); border-color: var(--att-accent); color: #fff; }
+.att-btn-accent:hover { background: var(--att-ink); border-color: var(--att-ink); }
+
+@keyframes att-pulse { 50% { opacity: 0.3; } }
+.att-live { animation: att-pulse 1.6s ease-in-out infinite; }
+@keyframes att-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.att-rise { transform-origin: bottom; animation: att-rise 520ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .att-live, .att-rise { animation: none; }
+}
+
+/* Days nobody was due (weekend, holiday, no schedule, no record): a quiet hatch, so the working
+   days carry the colour and the rest recede. */
+.att-hatch {
+  background-color: var(--att-sheet-2);
+  background-image: repeating-linear-gradient(135deg, transparent 0 6px, var(--att-line) 6px 7px);
+}
+.att-kpi {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--att-line);
+  background: var(--att-sheet);
+  box-shadow: var(--att-shadow);
+  transition: border-color 140ms, transform 140ms, box-shadow 140ms;
+}
+button.att-kpi:hover { border-color: var(--att-line-strong); transform: translateY(-1px); }
+.att-kpi[aria-pressed='true'] { border-color: var(--att-accent); box-shadow: 0 0 0 1px var(--att-accent), var(--att-shadow); }
+@keyframes att-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.att-open { animation: att-open 180ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  button.att-kpi:hover { transform: none; }
+  .att-open { animation: none; }
+}
+@keyframes att-pulse-soft { 50% { opacity: 0.65; } }
+.att-live-soft { animation: att-pulse-soft 2.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .att-live-soft { animation: none; } }
+.att-sheet { border-radius: 16px; }
+.att-noscroll { scrollbar-width: none; }
+.att-noscroll::-webkit-scrollbar { display: none; }
+
+/* The late part of a day's bar: shift start to arrival, a soft red stripe rather than a solid block. */
+.att-late-stripe {
+  background: repeating-linear-gradient(135deg, var(--att-bad) 0 3px, color-mix(in srgb, var(--att-bad) 35%, transparent) 3px 6px);
+}
+
+/* The daily dashboard's top card: a soft brand glow in one corner, nothing louder. */
+.att-hero {
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--att-brand) 10%, transparent) 0%, transparent 55%),
+    var(--att-sheet);
+}
+[dir='rtl'] .att-hero {
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--att-brand) 10%, transparent) 0%, transparent 55%),
+    var(--att-sheet);
+}

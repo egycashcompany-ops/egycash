@@ -94,6 +94,10 @@ violationSchema.index(
   { name: 'ix_filed_year', partialFilterExpression: { filedYear: { $type: 'number' } } },
 );
 violationSchema.index({ driverEmployeeId: 1, date: -1 }, { name: 'ix_driver_date' });
+// The drivers' fines of a PERIOD across every car — the fleet dashboard's «مخالفات السائقين في
+// الفترة» and the register's «من / إلى» — read by kind and day, newest first. Declared here; the
+// fleet index step builds it beside the others (no data changes).
+violationSchema.index({ kind: 1, date: -1 }, { name: 'ix_kind_date' });
 
 export const FleetViolationModel = model<FleetViolationDoc>(
   'FleetViolation',

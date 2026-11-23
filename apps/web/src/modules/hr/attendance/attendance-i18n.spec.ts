@@ -15,6 +15,24 @@ import {
   type Locale,
 } from '@ecms/contracts';
 import { translate } from '../../../platform/localization/i18n';
+import { VIEW_LABEL_KEYS } from './views/view-labels';
+import { type ViewStatus } from './views/view-types';
+
+/** Every word the views can put in the status column — the type's own values, spelled out. */
+const VIEW_STATUSES: ViewStatus[] = [
+  'present',
+  'late',
+  'earlyLeave',
+  'lateAndEarly',
+  'incomplete',
+  'notYetIn',
+  'absent',
+  'onLeave',
+  'dayOff',
+  'holiday',
+  'noSchedule',
+  'noRecord',
+];
 
 const LOCALES: Locale[] = ['en', 'ar'];
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +68,28 @@ const usedKeys = (): string[] => {
   }
   return [...found].sort();
 };
+
+describe('the attendance views ask for labels that exist', () => {
+  // The views call `t('dailyAttendance')` through their own typed door, so the source scan below
+  // cannot see those keys — and `translate()` falls back to returning the key, which means a
+  // missing one survives typecheck, lint and every render test and reaches the user as
+  // `attendanceView.usualArrival`. Driven off the list the views are compiled against instead.
+  for (const locale of LOCALES) {
+    it(`every label — ${locale}`, () => {
+      for (const key of VIEW_LABEL_KEYS) {
+        const full = `attendanceView.${key}`;
+        expect(translate(locale, full), full).not.toBe(full);
+      }
+    });
+
+    it(`every status word — ${locale}`, () => {
+      for (const status of VIEW_STATUSES) {
+        const full = `attendanceView.status.${status}`;
+        expect(translate(locale, full), full).not.toBe(full);
+      }
+    });
+  }
+});
 
 describe('Attendance vocabularies are translated in every locale', () => {
   for (const locale of LOCALES) {

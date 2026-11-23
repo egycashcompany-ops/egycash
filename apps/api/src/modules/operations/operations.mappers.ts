@@ -9,16 +9,22 @@ import {
   type OperationsDayDto,
   type OperationsShipmentAssignmentDto,
   type OperationsShipmentDto,
+  type OperationsShiftTypeDto,
   type OperationsVaultInventoryRowDto,
+  type OperationsVaultReceiptDto,
+  type OperationsVaultSealHolderDto,
 } from '@ecms/contracts';
 import { type OperationsDayDoc } from './days/day.model';
 import { type OperationsShipmentAssignmentDoc } from './shipments/shipment-assignment.model';
+import { vehicleIdOf } from './crew/crew-assignment.model';
 import { type OperationsBankDoc } from './banks/bank.model';
 import { type OperationsBankBranchDoc } from './bank-branches/bank-branch.model';
 import { type OperationsCurrencyDoc } from './currencies/currency.model';
 import { type OperationsAreaDoc } from './areas/area.model';
+import { type OperationsShiftTypeDoc } from './shift-types/shift-type.model';
 import { type OperationsShipmentDoc } from './shipments/shipment.model';
 import { type VaultCustodyView } from './treasury-boundary';
+import { type VaultSealHolderView } from './secured/secured.service';
 
 const iso = (d: Date): string => d.toISOString();
 
@@ -69,6 +75,18 @@ export const toCurrencyDto = (doc: OperationsCurrencyDoc): OperationsCurrencyDto
   name: doc.name,
   legacyAliases: doc.legacyAliases,
   // `?? null`: a row written before the catalog could be ordered has no such field at all.
+  sortOrder: doc.sortOrder ?? null,
+  isActive: doc.isActive,
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
+
+export const toShiftTypeDto = (doc: OperationsShiftTypeDoc): OperationsShiftTypeDto => ({
+  id: String(doc._id),
+  name: doc.name,
+  nameEn: doc.nameEn ?? null,
+  colour: doc.colour,
   sortOrder: doc.sortOrder ?? null,
   isActive: doc.isActive,
   version: doc.__v,
@@ -135,7 +153,8 @@ export const toShipmentAssignmentDto = (
   leg: doc.leg,
   operationsDayId: String(doc.operationsDayId),
   captainEmployeeId: String(doc.captainEmployeeId),
-  vehicleId: String(doc.vehicleId),
+  // Null for a leg on a crew row without a van (Round 24) — never the string "null".
+  vehicleId: vehicleIdOf(doc),
   crewAssignmentId: String(doc.crewAssignmentId),
   sequence: doc.sequence,
   version: doc.__v,
@@ -148,7 +167,10 @@ export const toShipmentAssignmentDto = (
  * mapper takes `VaultCustodyView`, not `OperationsVaultCustodyDoc`, so an Operations controller
  * physically cannot serialize a custody field the port did not hand it.
  */
-export const toVaultInventoryRowDto = (view: VaultCustodyView): OperationsVaultInventoryRowDto => ({
+export const toVaultInventoryRowDto = (
+  view: VaultCustodyView,
+  receivedByName: string | null,
+): OperationsVaultInventoryRowDto => ({
   id: view.id,
   shipmentId: view.shipmentId,
   state: view.state,
@@ -156,8 +178,45 @@ export const toVaultInventoryRowDto = (view: VaultCustodyView): OperationsVaultI
   bagCount: view.bagCount,
   cartonCount: view.cartonCount,
   boxCount: view.boxCount,
+  bagSealsPerBag: view.bagSealsPerBag,
+  denominations: view.denominations.map((line) => ({ value: line.value, count: line.count })),
+  receivedById: view.receivedById,
+  receivedByName,
+  // A receipt taken before Round 18 named two treasurers; mapped as they always were.
   receivedByPrimaryId: view.receivedByPrimaryId,
   receivedBySecondaryId: view.receivedBySecondaryId,
   receivedAt: iso(view.receivedAt),
   releasedAt: view.releasedAt === null ? null : iso(view.releasedAt),
+});
+
+/** Round 21b — the held محصنة a seal is on, as `POST /operations/secured/seal-check` names it. */
+export const toVaultSealHolderDto = (view: VaultSealHolderView): OperationsVaultSealHolderDto => ({
+  shipmentId: view.shipmentId,
+  receiptNumber: view.receiptNumber,
+  mainBankName: view.mainBankName,
+  originBranchName: view.originBranchName,
+  destinationBranchName: view.destinationBranchName,
+  receivedAt: iso(view.receivedAt),
+});
+
+/**
+ * Round 18 — the receipt the vault's ✓ just took, from the port's view (never the custody doc, for
+ * the reason above: the seals stay behind the port), with its receiver: the user who received it —
+ * the request's own, whom the custody recorded. A receipt taken now always has a seals-per-bag
+ * choice; the fallback only satisfies the view's wider type, which also reads older rows.
+ */
+export const toVaultReceiptDto = (
+  view: VaultCustodyView,
+  receiver: { id: string; name: string | null },
+): OperationsVaultReceiptDto => ({
+  custodyId: view.id,
+  receiptNumber: view.receiptNumber,
+  receivedAt: iso(view.receivedAt),
+  receivedById: receiver.id,
+  receivedByName: receiver.name,
+  bagCount: view.bagCount,
+  cartonCount: view.cartonCount,
+  boxCount: view.boxCount,
+  bagSealsPerBag: view.bagSealsPerBag ?? 2,
+  denominations: view.denominations.map((line) => ({ value: line.value, count: line.count })),
 });

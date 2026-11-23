@@ -31,6 +31,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { SearchInput } from '../../../shared/ui/SearchInput';
@@ -70,6 +71,15 @@ import {
 import { gatherRegister, printItRegister } from '../lib/register-export';
 import { categoryQuery, namesQuery } from '../lib/category-name-filter';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { SearchableSelect } from '../../../shared/ui/SearchableSelect';
+import { useCustodianFilterOptions } from '../components/useCustodianFilters';
+import {
+  holderMain,
+  holderOfAssignment,
+  locationText,
+  responsibleText,
+  type CustodyHolderFacts,
+} from '../lib/custody-holder';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -78,12 +88,16 @@ const REMEMBERED_FILTERS = [
   'assignedTo',
   'branch',
   'category',
+  'department',
   'employee',
   'holderExited',
+  'holderKind',
+  'location',
   'open',
   'overdue',
   'q',
   'receipt',
+  'responsible',
   'returnedFrom',
   'returnedTo',
   'size',
@@ -150,6 +164,29 @@ const DayBound = ({
   </div>
 );
 
+/**
+ * A department's interval in the holder column (2026-11-19): «إدارة …», «الموقع …» and «المسؤول: …»
+ * — the department holds it, at its place, on its responsible person's signature.
+ */
+const DepartmentHolderCell = ({ holder }: { holder: CustodyHolderFacts }): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const signer = responsibleText(holder);
+  return (
+    <span className="flex flex-col leading-tight" data-holder-department={holder.departmentId}>
+      <span>{holderMain(holder, locale, t)}</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        {t('it.custody.department.atLocation', { location: locationText(holder, locale) })}
+      </span>
+      {signer !== '' && (
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {t('it.custody.department.responsibleIs', { name: signer })}
+        </span>
+      )}
+    </span>
+  );
+};
+
 export const CustodyPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -166,6 +203,14 @@ export const CustodyPage = (): JSX.Element => {
   const employeeId = sp.get('employee') ?? '';
   // «حالة المستلِم»: left (true), still employed (false), or either (null).
   const holderExited = holderExitedOf(sp.get('holderExited'));
+  // Department custody (2026-11-19): «جهة الاستلام», «الإدارة», «الموقع» — and `responsible`, the
+  // intervals one person signed for a department (their page's link), remembered as the holder is.
+  const holderKindParam = sp.get('holderKind') ?? '';
+  const holderKind =
+    holderKindParam === 'employee' || holderKindParam === 'department' ? holderKindParam : '';
+  const departmentId = sp.get('department') ?? '';
+  const locationId = sp.get('location') ?? '';
+  const responsibleId = sp.get('responsible') ?? '';
   // «بحث»: the asset's code, name or serial, matched as typed.
   const search = sp.get('q') ?? '';
   // Days as the date boxes write them, `YYYY-MM-DD` — what the request sends, and the server
@@ -218,6 +263,10 @@ export const CustodyPage = (): JSX.Element => {
       branchId: branchId || undefined,
       employeeId: employeeId || undefined,
       holderExited: holderExited ?? undefined,
+      holderKind: holderKind || undefined,
+      departmentId: departmentId || undefined,
+      locationId: locationId || undefined,
+      responsibleEmployeeId: responsibleId || undefined,
       search: search.trim() || undefined,
       categoryId: categoryQuery(categoryIds),
       assetName: namesQuery(assetNames),
@@ -268,11 +317,27 @@ export const CustodyPage = (): JSX.Element => {
     return map;
   }, [categories.data, locale]);
 
+  const custodianFilters = useCustodianFilterOptions(branchId);
+  // The person a `responsible` link names — the rows say it, else HR by id.
+  const rowResponsibleName =
+    (data?.items ?? []).find((a) => a.responsibleEmployeeId === responsibleId)
+      ?.responsibleEmployeeName ?? null;
+  const responsiblePerson = useItPerson(responsibleId, rowResponsibleName === null);
+  const responsibleLabel =
+    rowResponsibleName ??
+    (responsiblePerson.data === undefined
+      ? ''
+      : `${responsiblePerson.data.fullNameAr} (${responsiblePerson.data.code})`);
+
   const hasActiveFilters =
     openParam !== 'true' ||
     branchId !== '' ||
     employeeId !== '' ||
     holderExited !== null ||
+    holderKind !== '' ||
+    departmentId !== '' ||
+    locationId !== '' ||
+    responsibleId !== '' ||
     search !== '' ||
     categoryIds.length > 0 ||
     assetNames.length > 0 ||
@@ -308,6 +373,13 @@ export const CustodyPage = (): JSX.Element => {
           employeeId,
           holderLabel,
           holderExited,
+          holderKind,
+          departmentId,
+          departmentName: custodianFilters.departmentName,
+          locationId,
+          locationName: custodianFilters.locationName,
+          responsibleId,
+          responsibleLabel,
           search,
           categoryIds,
           categoryName,
@@ -394,9 +466,12 @@ export const CustodyPage = (): JSX.Element => {
       header: t('it.custody.holder'),
       // IT-6 joined the directory, so this reads as a person. When the lookup returns nothing —
       // no HR source, or a record since gone — it falls back to the id rather than inventing a
-      // name: a reference the user can copy beats a guess.
+      // name: a reference the user can copy beats a guess. A department's interval (2026-11-19):
+      // «إدارة …», its place, and who signed for it.
       render: (a) =>
-        a.assignedToEmployeeName === null ? (
+        a.holderKind === 'department' ? (
+          <DepartmentHolderCell holder={holderOfAssignment(a)} />
+        ) : a.assignedToEmployeeName === null ? (
           <span className="font-mono text-xs" dir="ltr">
             {a.assignedToEmployeeId}
           </span>
@@ -478,33 +553,36 @@ export const CustodyPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.custody')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.custody') }]}
-        actions={
-          <>
-            {/* «عايز الزرارين قبل مش بعد زرار الـ Action بتاع الفورم» — the files first, the
-                hand-over after them. Not offered when the list failed: the file behind them
-                would be empty or short. */}
-            {!isError && (
-              <RegisterExportButtons name="it-custody" onExcel={exportSheet} onPdf={exportPdf} />
-            )}
-            {can('itAsset.assign') && (
-              <Button
-                size="sm"
-                leftIcon={<UsersIcon className="h-4 w-4" />}
-                onClick={() => setHandingOver(true)}
-              >
-                {t('it.custody.receipt.title')}
-              </Button>
-            )}
-          </>
-        }
-      />
-      <AssignAssetDialog open={handingOver} onClose={() => setHandingOver(false)} asset={null} />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; for IT «مش عايز كل الصفحة تعمل Scroll !! عايز
+          فقط الجدول لكن الزراير والفلتر يبقوا ثابتين», 2026-11-17): on a computer the title and its
+          buttons and the column filters keep their place, the pager keeps its place below, and
+          only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.custody')}
+          breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.custody') }]}
+          actions={
+            <>
+              {/* «عايز الزرارين قبل مش بعد زرار الـ Action بتاع الفورم» — the files first, the
+                  hand-over after them. Not offered when the list failed: the file behind them
+                  would be empty or short. */}
+              {!isError && (
+                <RegisterExportButtons name="it-custody" onExcel={exportSheet} onPdf={exportPdf} />
+              )}
+              {can('itAsset.assign') && (
+                <Button
+                  size="sm"
+                  leftIcon={<UsersIcon className="h-4 w-4" />}
+                  onClick={() => setHandingOver(true)}
+                >
+                  {t('it.custody.receipt.title')}
+                </Button>
+              )}
+            </>
+          }
+        />
 
-      <div className="space-y-4">
         {/* The table's columns, in the table's order, each under the column's name — except that
             the search comes first and «الصنف» follows its category («الصنف يبقي بعد الفئة»). The
             search, the category and «الصنف» are facts of the asset, the rest of the interval; the
@@ -518,6 +596,10 @@ export const CustodyPage = (): JSX.Element => {
               branch: null,
               employee: null,
               holderExited: null,
+              holderKind: null,
+              department: null,
+              location: null,
+              responsible: null,
               q: null,
               category: null,
               asset: null,
@@ -616,6 +698,73 @@ export const CustodyPage = (): JSX.Element => {
               <option value="false">{t('it.custody.filters.holderEmployed')}</option>
             </Select>
           </FilterField>
+          {/* Department custody (2026-11-19): who holds it — an employee or a department — and
+              which department, at which place. */}
+          <FilterField
+            label={t('it.custody.department.receiverKind')}
+            active={holderKind !== ''}
+            className={cn(FIELD, 'sm:w-40')}
+          >
+            <Select
+              aria-label={t('it.custody.department.receiverKind')}
+              data-filter-holder-kind
+              value={holderKind}
+              onChange={(e) => patch({ holderKind: e.target.value || null })}
+            >
+              <option value="">{t('it.custody.filterAll')}</option>
+              <option value="employee">{t('it.custody.department.kind.employee')}</option>
+              <option value="department">{t('it.custody.department.kind.department')}</option>
+            </Select>
+          </FilterField>
+          <FilterField
+            label={t('it.custody.department.department')}
+            active={departmentId !== ''}
+            className={cn(FIELD, 'sm:w-56')}
+          >
+            <SearchableSelect
+              value={departmentId}
+              options={custodianFilters.departments}
+              placeholder={t('it.custody.filterAll')}
+              ariaLabel={t('it.custody.department.department')}
+              testId="filter-department"
+              onChange={(next) => patch({ department: next || null })}
+            />
+          </FilterField>
+          <FilterField
+            label={t('it.custody.department.location')}
+            active={locationId !== ''}
+            className={cn(FIELD, 'sm:w-56')}
+          >
+            <SearchableSelect
+              value={locationId}
+              options={custodianFilters.places}
+              placeholder={t('it.custody.filterAll')}
+              ariaLabel={t('it.custody.department.location')}
+              testId="filter-location"
+              onChange={(next) => patch({ location: next || null })}
+            />
+          </FilterField>
+          {responsibleId !== '' && (
+            <FilterField
+              label={t('it.custody.department.responsible')}
+              active
+              className={cn(FIELD, 'sm:w-56')}
+            >
+              <span
+                data-filter-responsible={responsibleId}
+                className="flex items-center justify-between gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-800 dark:border-brand-900 dark:bg-brand-950/40 dark:text-brand-200"
+              >
+                {responsibleLabel || responsibleId}
+                <button
+                  type="button"
+                  className="text-xs underline"
+                  onClick={() => patch({ responsible: null })}
+                >
+                  {t('it.custody.clearPick')}
+                </button>
+              </span>
+            </FilterField>
+          )}
           <FilterField
             label={t('it.assets.columns.branch')}
             active={branchId !== ''}
@@ -692,16 +841,19 @@ export const CustodyPage = (): JSX.Element => {
           </FilterField>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={data?.items ?? []}
-          rowKey={(a) => a.id}
-          loading={isLoading || nameFilter.settling}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            rowKey={(a) => a.id}
+            loading={isLoading || nameFilter.settling}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
@@ -710,6 +862,7 @@ export const CustodyPage = (): JSX.Element => {
           />
         )}
       </div>
+      <AssignAssetDialog open={handingOver} onClose={() => setHandingOver(false)} asset={null} />
     </PageContainer>
   );
 };

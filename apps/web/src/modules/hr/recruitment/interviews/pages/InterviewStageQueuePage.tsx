@@ -7,7 +7,7 @@
 // never disagree.
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { type InterviewDto, type InterviewStatus, type Locale } from '@ecms/contracts';
+import { type InterviewDecision, type InterviewDto, type InterviewStatus, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
@@ -26,7 +26,8 @@ import { formatBusinessDateTime, localized } from '../../../../../shared/lib/for
 import { StageBuckets } from '../../shared/StageBuckets';
 import { useRecruitmentStageCounts } from '../../counters/stage-counts-queries';
 import { InterviewStatusBadge } from '../components/InterviewStatusBadge';
-import { BulkScheduleDialog } from '../components/BulkScheduleDialog';
+import { QuickDecideDialog } from '../components/QuickDecide';
+import { CheckIcon, CloseIcon } from '../../../../../shared/ui/icons';
 import {
   useBulkInterviews,
   useBulkStartInterviews,
@@ -56,6 +57,9 @@ const DEFAULT_PAGE_SIZE = 25;
 
 /** The buckets this stage's page offers, in workflow order. `waiting` is the queue itself. */
 const BUCKETS: InterviewStatus[] = ['waiting', 'scheduled', 'inProgress', 'completed', 'cancelled'];
+/** A decision-only stage (the second interview) has nothing to schedule or run: waiting → decided. */
+const DECISION_BUCKETS: InterviewStatus[] = ['waiting', 'completed'];
+const OPEN: InterviewStatus[] = ['waiting', 'scheduled', 'inProgress'];
 
 export const InterviewStageQueuePage = (): JSX.Element => {
   const t = useT();
@@ -96,6 +100,8 @@ export const InterviewStageQueuePage = (): JSX.Element => {
 
   const { data: stages } = useInterviewStages();
   const stage = (stages ?? []).find((s) => s.id === stageId);
+  const decisionOnly = stage?.mode === 'decisionOnly';
+  const [quick, setQuick] = useState<{ outcome: InterviewDecision; rows: InterviewDto[] } | null>(null);
 
   const { data: counts } = useRecruitmentStageCounts();
   const buckets =
@@ -141,7 +147,6 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const rowIds = useMemo(() => rows.map((i) => i.id), [rows]);
   const selection = useTableSelection(rowIds);
   const [cancelOpen, setCancelOpen] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [reason, setReason] = useState('');
   const bulkStart = useBulkStartInterviews(() => selection.clear());
   const bulk = useBulkInterviews(() => {
@@ -157,10 +162,8 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const startable = rows
     .filter((i) => selection.selectedIds.has(i.id) && (i.status === 'waiting' || i.status === 'scheduled'))
     .map((i) => i.applicantId);
-  // Scheduling addresses candidates too: a waiting row has no round to move yet.
-  const schedulable = rows
-    .filter((i) => selection.selectedIds.has(i.id) && i.status === 'waiting')
-    .map((i) => i.applicantId);
+
+  const decidableRows = rows.filter((i) => selection.selectedIds.has(i.id) && OPEN.includes(i.status));
 
   // RW12 — a single row's "Start now". A waiting row has no scheduled round yet, so it starts
   // through the candidate; a scheduled one just begins. Both are server-stamped with the actor
@@ -168,9 +171,8 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const startNow = useStartInterview();
   const startScheduled = useStartScheduledInterviewRow();
   const [startingId, setStartingId] = useState<string | null>(null);
-  // Starting a round and recording its outcome were two separate errands: start here, then find
-  // the same candidate again to write down what happened. The interviewer is in the room for both,
-  // so starting now lands on the round's own page with the evaluation form already open.
+  // Starting lands on the round's own page, where the candidate's file is and where the evaluation
+  // is written once the interview is over. Nothing opens by itself: the interview has only begun.
   const startRow = async (row: InterviewDto): Promise<void> => {
     setStartingId(row.id);
     try {
@@ -178,7 +180,7 @@ export const InterviewStageQueuePage = (): JSX.Element => {
         row.status === 'scheduled'
           ? await startScheduled.mutateAsync({ id: row.id, version: row.version })
           : await startNow.mutateAsync({ applicantId: row.applicantId, stageId, interviewerIds: [] });
-      navigate(`/interviews/${started.id}?evaluate=1`);
+      navigate(`/interviews/${started.id}`);
     } catch {
       // surfaced globally
     } finally {
@@ -212,7 +214,45 @@ export const InterviewStageQueuePage = (): JSX.Element => {
       header: '',
       align: 'end',
       render: (i) =>
-        i.status === 'waiting' || i.status === 'scheduled' ? (
+        decisionOnly ? (
+          OPEN.includes(i.status) ? (
+            <Can permission="interview.decide">
+              <span className="inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setQuick({ outcome: 'failed', rows: [i] });
+                  }}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border-2 border-rose-500 px-3.5 text-sm font-extrabold text-rose-600 transition hover:bg-rose-500 hover:text-white dark:text-rose-400 dark:hover:text-white"
+                >
+                  <CloseIcon className="h-4 w-4" /> {t('interviews.eval.reject')}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setQuick({ outcome: 'passed', rows: [i] });
+                  }}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-sm font-extrabold text-white shadow-sm transition hover:bg-emerald-700"
+                >
+                  <CheckIcon className="h-4 w-4" /> {t('interviews.eval.approve')}
+                </button>
+              </span>
+            </Can>
+          ) : i.outcome === 'passed' || i.outcome === 'failed' ? (
+            <span
+              className={
+                i.outcome === 'passed'
+                  ? 'inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-sm font-extrabold text-white'
+                  : 'inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 py-1.5 text-sm font-extrabold text-white'
+              }
+            >
+              {i.outcome === 'passed' ? <CheckIcon className="h-4 w-4" /> : <CloseIcon className="h-4 w-4" />}
+              {i.outcome === 'passed' ? t('interviews.eval.approved') : t('interviews.eval.rejected')}
+            </span>
+          ) : null
+        ) : i.status === 'waiting' || i.status === 'scheduled' ? (
           <Can permission="interview.create">
             <Button
               size="sm"
@@ -251,25 +291,41 @@ export const InterviewStageQueuePage = (): JSX.Element => {
 
       <div className="space-y-4">
         <StageBuckets
-          buckets={BUCKETS.map((b) => ({ key: b, label: t(`interviews.status.${b}`), count: buckets[b] ?? 0 }))}
+          // Rounds are started, not scheduled: the «scheduled» tab only appears while older
+          // scheduled rounds still exist, so they can be found and started.
+          buckets={(decisionOnly ? DECISION_BUCKETS : BUCKETS)
+            .filter((b) => b !== 'scheduled' || (buckets[b] ?? 0) > 0 || status === 'scheduled')
+            .map((b) => ({ key: b, label: t(`interviews.status.${b}`), count: buckets[b] ?? 0 }))}
           active={status}
           onPick={(key) => patch({ status: key })}
         />
 
         <InterviewFilters value={filters} onChange={changeFilters} omit={['status', 'stage']} />
 
+
         <BulkActionBar count={selection.count} onClear={selection.clear}>
-          {/* RW17 — one date across the selection, through the shared bulk executor. */}
-          <Can permission="interview.create">
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={schedulable.length === 0}
-              onClick={() => setScheduleOpen(true)}
-            >
-              {t('interviews.bulk.schedule')}
-            </Button>
-          </Can>
+          {decisionOnly && (
+            <Can permission="interview.decide">
+              <Button
+                size="sm"
+                variant="danger"
+                leftIcon={<CloseIcon className="h-4 w-4" />}
+                disabled={decidableRows.length === 0}
+                onClick={() => setQuick({ outcome: 'failed', rows: decidableRows })}
+              >
+                {t('interviews.quick.rejectSelected', { n: decidableRows.length })}
+              </Button>
+              <Button
+                size="sm"
+                leftIcon={<CheckIcon className="h-4 w-4" />}
+                disabled={decidableRows.length === 0}
+                onClick={() => setQuick({ outcome: 'passed', rows: decidableRows })}
+              >
+                {t('interviews.quick.approveSelected', { n: decidableRows.length })}
+              </Button>
+            </Can>
+          )}
+          {!decisionOnly && (<>
           {/* RW12 — start the round NOW for everyone still waiting at this stage. */}
           <Can permission="interview.create">
             <Button
@@ -293,7 +349,14 @@ export const InterviewStageQueuePage = (): JSX.Element => {
               {t('interviews.actions.cancelSelected')}
             </Button>
           </Can>
+          </>)}
         </BulkActionBar>
+
+        {decisionOnly && (
+          <div className="rounded-2xl border border-brand-100 bg-gradient-to-r from-brand-50 to-white px-4 py-3 text-sm text-slate-600 dark:border-brand-900 dark:from-brand-950/40 dark:to-slate-900 dark:text-slate-300">
+            {t('interviews.quick.queueHint')}
+          </div>
+        )}
 
         <DataTable
           selection={selection}
@@ -303,7 +366,8 @@ export const InterviewStageQueuePage = (): JSX.Element => {
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
-          onRowClick={(i) => navigate(`/interviews/${i.id}`)}
+          // The second interview is decided right here in the row — it has no page to open.
+          {...(decisionOnly ? {} : { onRowClick: (i: InterviewDto) => navigate(`/interviews/${i.id}`) })}
         />
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
@@ -314,14 +378,17 @@ export const InterviewStageQueuePage = (): JSX.Element => {
         )}
       </div>
 
-      {scheduleOpen && (
-        <BulkScheduleDialog
-          applicantIds={schedulable}
+      {quick !== null && (
+        <QuickDecideDialog
+          outcome={quick.outcome}
+          applicantIds={quick.rows.map((r) => r.applicantId)}
           stageId={stageId}
-          onClose={() => setScheduleOpen(false)}
+          names={quick.rows.map((r) => r.applicantName)}
+          onClose={() => setQuick(null)}
           onDone={() => selection.clear()}
         />
       )}
+
 
       <Dialog
         open={cancelOpen}

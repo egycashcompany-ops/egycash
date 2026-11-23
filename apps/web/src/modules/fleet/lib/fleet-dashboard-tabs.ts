@@ -1,5 +1,6 @@
 // «لوحة تحكم الحركة» — which tabs a reader sees, what each tab's badge says, the order of the alert
-// lines, and the few display sums the tabs draw. Pure functions over the server's answers.
+// lines (the overview's action centre), and the few display sums the tabs draw. Pure functions over
+// the server's answers.
 //
 // WHO SEES WHAT (R-28, §5.5). A section exists for a reader only with EVERY key of its gate (the
 // data's API key and the linked screen's guard, `FLEET_DASHBOARD_GATES`). A tab is visible while one
@@ -43,8 +44,10 @@ export const sectionState = (
   answers: DashboardAnswers,
 ): SectionState => {
   if (!sectionPermitted(section, answers.can)) return 'hidden';
-  if (section === 'custodyFund') return 'shown';
   const gate = FLEET_DASHBOARD_GATES[section];
+  // A screen's own hooks in the browser (the custody board, the supply contracts' summary): shown
+  // once permitted — the part draws its own loading and error.
+  if (gate.read === 'web') return 'shown';
   if (gate.read === 'now') {
     const dto = answers.now;
     if (dto === undefined) return 'pending';
@@ -65,31 +68,14 @@ export const visibleTabs = (answers: DashboardAnswers): FleetDashboardTab[] =>
     ),
   );
 
-// ── The alert lines (tab 1) ───────────────────────────────────────────────────────────────────
+// ── The alert lines (the overview's action centre) ────────────────────────────────────────────
 
-export type AlertCategory = 'cars' | 'drivers' | 'fuel';
 export type AlertLineId = FleetDashboardAlertId | 'custody';
 export interface AlertLine {
   id: AlertLineId;
   level: 'red' | 'orange';
   count: number;
-  category: AlertCategory;
 }
-
-/** The filter chips' three families, as the approved sample groups the lines. */
-export const ALERT_CATEGORY: Readonly<Record<AlertLineId, AlertCategory>> = {
-  maintenanceRed: 'cars',
-  vehicleLicenceExpired: 'cars',
-  driverLicenceExpired: 'drivers',
-  fuelCardExpired: 'fuel',
-  crewAbsent: 'drivers',
-  fuelRequests: 'fuel',
-  fuelLow: 'fuel',
-  dealershipPending: 'fuel',
-  noticesMissing: 'cars',
-  custody: 'fuel',
-  noReading: 'cars',
-};
 
 /** Display order: the contracts' order, with the custody line after the notices (T1.11). */
 const ORDER: readonly AlertLineId[] = FLEET_DASHBOARD_ALERTS.flatMap((alert): AlertLineId[] =>
@@ -106,9 +92,9 @@ export const alertLines = (
 ): AlertLine[] => {
   const lines: AlertLine[] = alerts
     .filter((alert) => alert.count > 0)
-    .map((alert) => ({ ...alert, category: ALERT_CATEGORY[alert.id] }));
+    .map((alert) => ({ id: alert.id, level: alert.level, count: alert.count }));
   if (custodyLines !== null && custodyLines > 0) {
-    lines.push({ id: 'custody', level: 'orange', count: custodyLines, category: 'fuel' });
+    lines.push({ id: 'custody', level: 'orange', count: custodyLines });
   }
   return lines.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
 };
@@ -117,21 +103,14 @@ export interface AlertSummary {
   total: number;
   red: number;
   orange: number;
-  byCategory: Record<AlertCategory, number>;
 }
 
-/** How many LINES fired — the badge, the «إجمالي التنبيهات الآن» chip and the filter chips. */
+/** How many LINES fired — the overview's «تنبيهات عاجلة» card and its «عاجل · للمتابعة» tallies. */
 export const alertSummary = (lines: readonly AlertLine[]): AlertSummary => {
-  const summary: AlertSummary = {
-    total: 0,
-    red: 0,
-    orange: 0,
-    byCategory: { cars: 0, drivers: 0, fuel: 0 },
-  };
+  const summary: AlertSummary = { total: 0, red: 0, orange: 0 };
   for (const line of lines) {
     summary.total += 1;
     summary[line.level] += 1;
-    summary.byCategory[line.category] += 1;
   }
   return summary;
 };
@@ -143,29 +122,29 @@ export interface TabBadge {
   tone: 'red' | 'amber' | 'plain';
 }
 
+/**
+ * «الحركة اليوم» carries the ready cars without a driver today (amber, plain at 0); «الصيانة والورش»
+ * the cars that reached the service limit (red, and only when there are some — it hides at 0 and
+ * with its section); «التراخيص والتجديدات» the expired car licences plus the expired driver licences
+ * (red — its two red KPIs — and only when there are some; a reader with one of the two sections gets
+ * that part). «نظرة عامة», «توزيع السيارات», «العدادات والكيلومترات», «الحوادث ومطالبات التأمين»,
+ * «المخالفات المرورية والتسويات», «الوقود والمصروفات» and «العهدة» have no count (the approved bar
+ * draws none).
+ */
 export const tabBadges = (
   answers: DashboardAnswers,
-  alerts: AlertSummary | null,
 ): Partial<Record<FleetDashboardTab, TabBadge>> => {
-  const { now, period } = answers;
+  const { now } = answers;
   const badges: Partial<Record<FleetDashboardTab, TabBadge>> = {};
-  if (alerts !== null && alerts.total > 0) {
-    badges.alerts = { n: alerts.total, tone: alerts.red > 0 ? 'red' : 'amber' };
-  }
   if (now?.roster != null) {
-    badges.now = { n: now.roster.unmanned, tone: now.roster.unmanned > 0 ? 'amber' : 'plain' };
-  }
-  if (now?.distributionVehicles != null) {
-    badges.distribution = { n: now.distributionVehicles.totals.total, tone: 'plain' };
+    badges.today = { n: now.roster.unmanned, tone: now.roster.unmanned > 0 ? 'amber' : 'plain' };
   }
   const vehicles = now?.licenceVehicles?.expired;
   const drivers = now?.licenceDrivers?.expired;
-  if (vehicles !== undefined || drivers !== undefined) {
-    const n = (vehicles ?? 0) + (drivers ?? 0);
-    badges.licences = { n, tone: n > 0 ? 'red' : 'plain' };
-  }
-  if (period?.visits != null) badges.maintenance = { n: period.visits.count, tone: 'plain' };
-  if (period?.accidents != null) badges.accidents = { n: period.accidents.count, tone: 'plain' };
+  const expired = (vehicles ?? 0) + (drivers ?? 0);
+  if (expired > 0) badges.licences = { n: expired, tone: 'red' };
+  const red = now?.maintenanceAlarm?.red;
+  if (red !== undefined && red > 0) badges.maintenance = { n: red, tone: 'red' };
   return badges;
 };
 
@@ -173,6 +152,10 @@ export const tabBadges = (
 
 const ONE_DECIMAL = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 const TWO_DECIMALS = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+const KM = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+
+/** Kilometres as the boards write them: whole, comma-grouped («12,345»). */
+export const kmText = (value: number): string => KM.format(value);
 
 /** A part's share of a whole, 0–100; `null` when there is no whole to share. */
 export const share = (part: number, whole: number): number | null =>

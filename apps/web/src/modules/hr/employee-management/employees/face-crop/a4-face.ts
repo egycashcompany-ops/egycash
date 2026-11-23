@@ -290,6 +290,11 @@ const faceDetector = (): Promise<Detector> => {
   return detector;
 };
 
+/** Load the face search now, and fail now if it cannot load — before a run that depends on it. */
+export const readyFaceSearch = async (): Promise<void> => {
+  await faceDetector();
+};
+
 /** How finely a sheet is cut: the whole, then squares of 1/2 … 1/8 of its width. */
 const LEVELS = [1, 2, 3, 4, 6, 8] as const;
 
@@ -335,7 +340,15 @@ export const findFace = async (sheet: HTMLCanvasElement): Promise<FoundFace | nu
       tile.width = Math.round(area.w * scale);
       tile.height = Math.round(area.h * scale);
       ctx.drawImage(sheet, area.x, area.y, area.w, area.h, 0, 0, tile.width, tile.height);
-      for (const d of model.detect(tile).detections) {
+      let found: ReturnType<Detector['detect']>;
+      try {
+        found = model.detect(tile);
+      } catch (error) {
+        // A detector that broke (its WASM aborted) is made again on the next search, not kept.
+        detector = null;
+        throw error;
+      }
+      for (const d of found.detections) {
         const box = d.boundingBox;
         const score = d.categories[0]?.score ?? 0;
         if (box === undefined || (best !== null && score <= best.score)) continue;

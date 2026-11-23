@@ -7,6 +7,15 @@ import { ApiError } from './api-client';
 
 const FRIENDLY: Record<Locale, Record<string, string>> = {
   en: {
+    // P-ORG-3 — the org chart and job places (org-chart-design.md §5.5).
+    ORG_UNIT_NOT_EDITABLE:
+      'This unit cannot be edited here: it is not linked to the company list, or is stopped in it.',
+    ORG_SECTION_NAME_TAKEN: 'This department already has a section with this name.',
+    BRANCH_WITHOUT_DEPARTMENT:
+      'In one of the ticked branches the department does not exist, or is not linked to the company list.',
+    JOB_PLACE_NOT_ALLOWED:
+      'The job cannot be placed here: the job or the section is stopped, or the section is not in this department.',
+    ORG_CATALOG_ENTRY_IN_USE: 'Jobs are placed in this entry, so it cannot be deleted.',
     VALIDATION_FAILED: 'Some fields need your attention.',
     FORBIDDEN: 'You do not have permission to do that.',
     NOT_FOUND: 'That item could not be found.',
@@ -44,15 +53,20 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // reader whose screen was read before the vault's ✓ (or a colleague's ✓, for the pickup).
     OPERATIONS_SECURED_LOCKED:
       'The vault has received this secured shipment — it can no longer be changed.',
-    // «مش هيقدر يعمل صح الا لما القائد او العمليات تبقى عامله صح»: the vault's ✓ before any pickup ✓,
-    // or a pickup undo with no ✓ left to take back.
+    // Since Round 13 the vault receives without a pickup («والخزنه تستلم عادي»), so this reaches only
+    // the desk's undo of a pickup ✓ that is no longer there — a colleague's undo got there first.
     OPERATIONS_SECURED_NOT_PICKED_UP:
-      'Nobody has confirmed collecting this secured shipment from the bank yet — the captain or Operations confirms it first.',
+      'There is no confirmed pickup on this secured shipment to take back — nobody has confirmed collecting it from the bank.',
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'The pickup of this secured shipment is already confirmed — by its captain or by Operations.',
     // A cancelled receipt asked for a shipment no longer in the vault (dispatched since, or never in).
     OPERATIONS_SECURED_NOT_IN_VAULT:
       'This secured shipment is not in the vault — its receipt can no longer be cancelled.',
+    // Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: a seal the
+    // vault still holds on another محصنة. The receive form marks the seal and names that محصنة
+    // itself; these are the same refusal wherever else it surfaces.
+    OPERATIONS_SEAL_HELD_IN_VAULT:
+      'A seal in this receipt is still in the vault on another secured shipment — it can be received again only once that shipment has left the vault.',
     // «صرف الخزينة» (Round 10): a delivery crew is planned on the shipment's own delivery day, and a
     // release takes the shipments a vehicle was assigned. The screen offers only what fits; these
     // reach a reader whose crew plan or list changed under the open dialog.
@@ -65,15 +79,62 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // (the screen marks its card). These reach a desk whose screen was read before a colleague, the
     // vault or the captain acted — or that was left open past midnight.
     OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
-      'That day has passed — its vans have left. Distribute today or a later day.',
+      'That day has passed — its vans have left, and its record is view only. Distribute today or a later day.',
     OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
       'A secured shipment on this screen has already left the vault — it can no longer be placed on a van.',
     OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
       'A secured shipment is not due on this day — it cannot be placed on this day’s vans.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'Its captain has already started this delivery in the app — it can no longer be moved or taken off his van.',
+    // Round 25 — only a row of the «محصنة» type takes a محصنة.
+    OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED:
+      'That row is not of the secured type — it takes no new secured shipment. Choose a secured row.',
+    // «تسليم المحصنات» (Round 17): the server refuses a handover of any van but today's. The screen
+    // offers «تسليم» on today's vans only, so this reaches a page left open from another day — or
+    // past midnight — and says the same rule the screen does.
+    OPERATIONS_DISPATCH_NOT_TODAY:
+      'A van is handed over only on the day it goes out — this van is not one of today’s.',
+    // «لوحة التشغيلة» (Round 20): a save gave a row a type archived on the reference screen since it
+    // was picked, or a direction no area answers («لازم اختار من الاتجاهات اللى موجوده»). The board
+    // marks the row the refusal names (`planRefusal`); these are the words said with it. Round 28
+    // retired the direction's refusal («عاوز الاتجاه اقدر اكتبه بايدى»): no server sends it now, and
+    // its words stay only for an older server, said without marking a row.
+    OPERATIONS_UNKNOWN_SHIFT_TYPE:
+      'A row was given a shift type that is no longer active on the reference screen — choose another type on the marked row.',
+    OPERATIONS_DIRECTION_NOT_AN_AREA:
+      'A direction is not one of the areas on the reference screen — this server still refuses a direction typed by hand.',
+    // Round 22 — «لو القائد غايب … مقدرش احطه على العربيه»: somebody attendance has absent or on
+    // leave that day was put on a row. The board names him on the marked row (`planRefusal`).
+    OPERATIONS_CREW_MEMBER_ABSENT: 'Somebody on a row is absent or on leave on this day.',
+    // Round 23 — «ممنوع ان اعين قائد مكان اخصائى والعكس الا فى حالة انه قائد اخصائى»: somebody was
+    // newly put in a slot his role does not fit. The board names him on the marked row.
+    OPERATIONS_CREW_MEMBER_WRONG_SLOT:
+      'Somebody is in a slot that is not their role’s — a captain in a specialist’s slot, or a specialist in the captain’s.',
+    // Round 24 — «مكان بدون سيارة … يجيب كل السيارات اللى مش عليها طاقم واقدر اختار منهم»: a row was
+    // given a vehicle the save cannot take, or a row holding محصنات was deleted.
+    OPERATIONS_CREW_VEHICLE_NOT_ACTIVE:
+      'The vehicle given to the marked row is not in service in Fleet — choose another.',
+    OPERATIONS_CREW_VEHICLE_IN_WORKSHOP:
+      'The vehicle given to the marked row is in the workshop on this day — choose another.',
+    OPERATIONS_CREW_VEHICLE_TAKEN:
+      'The vehicle given to the marked row already has another crew on this day — choose another.',
+    OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
+      'A deleted row carries secured shipments. While they are in the vault, take them off it on «Secured distribution» first; once they have left the vault the row stays — it can be emptied, or given a vehicle.',
+    // Round 32 — a past day is the board's record, view only: its save is refused. The board draws
+    // no act on one; this reaches a board left open past midnight, or an older screen.
+    OPERATIONS_CREW_DAY_IN_PAST:
+      'That day has passed — its board is a record, view only. Plan today or a later day.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
+    // «عداد الطابعة» (IT consumables, 2026-11-19): a toner goes onto a printer with its counter. The
+    // issue and «تعديل الجهاز» word each on the line's own field, with the figures (`details`);
+    // these are the same refusals without them, wherever else they surface.
+    IT_CONSUMABLE_COUNTER_REQUIRED:
+      'This item takes the printer’s counter: name the printer it goes into and its counter reading, one cartridge a line.',
+    IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS:
+      'The counter reading must be higher than the last reading recorded for this printer — if its counter was reset, tick «The printer’s counter was reset».',
+    IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
+      'This reading is dated before a later reading of the same printer, so it must be lower than that one.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
     PAYLOAD_TOO_LARGE: 'What was sent is too large to save at once.',
@@ -90,6 +151,14 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     UNKNOWN: 'Something went wrong. Please try again.',
   },
   ar: {
+    // P-ORG-3 — شجرة الهيكل التنظيمي ومكان الوظيفة.
+    ORG_UNIT_NOT_EDITABLE:
+      'لا يمكن تعديل هذه الإدارة أو هذا القسم من هنا: غير مربوط بقائمة الشركة أو موقوف فيها.',
+    ORG_SECTION_NAME_TAKEN: 'يوجد قسم بهذا الاسم في هذه الإدارة.',
+    BRANCH_WITHOUT_DEPARTMENT: 'الإدارة غير موجودة أو غير مربوطة بقائمة الشركة في أحد الفروع المحددة.',
+    JOB_PLACE_NOT_ALLOWED:
+      'لا يمكن وضع الوظيفة في هذا المكان: الوظيفة أو القسم موقوف، أو القسم لا يتبع هذه الإدارة.',
+    ORG_CATALOG_ENTRY_IN_USE: 'توجد وظائف موضوعة في هذا البند، فلا يمكن حذفه.',
     VALIDATION_FAILED: 'بعض الحقول تحتاج إلى مراجعة.',
     FORBIDDEN: 'ليس لديك صلاحية للقيام بذلك.',
     NOT_FOUND: 'تعذّر العثور على هذا العنصر.',
@@ -110,23 +179,52 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_SHIPMENT_NOT_DELETED: 'هذه الشحنة لم تعد محذوفة — فقد عادت إلى يومها بالفعل.',
     OPERATIONS_SECURED_LOCKED: 'استلمت الخزينة هذه المحصنة، فلم يعد تغييرها ممكنًا.',
     OPERATIONS_SECURED_NOT_PICKED_UP:
-      'لم يُؤكَّد استلام هذه المحصنة من البنك بعد — يؤكده القائد أو العمليات أولًا.',
+      'لا يوجد تأكيد استلام لهذه المحصنة لإلغائه — لم يؤكد أحد استلامها من البنك.',
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'استلام هذه المحصنة مؤكَّد بالفعل — من قائدها أو من العمليات.',
     OPERATIONS_SECURED_NOT_IN_VAULT: 'هذه المحصنة ليست بالخزينة، فلم يعد إلغاء استلامها ممكنًا.',
+    OPERATIONS_SEAL_HELD_IN_VAULT:
+      'أحد أختام هذا الاستلام ما زال في الخزينة على محصنة أخرى، ولا يُستلم مجددًا إلا بعد خروجها منها.',
     OPERATIONS_CREW_DAY_MISMATCH:
       'هذا الطاقم ليس مخططًا في يوم تسليم هذه الشحنة — اختر أحد أطقم ذلك اليوم.',
     OPERATIONS_CREW_CAPTAIN_MISMATCH: 'لم يعد هذا القائد ضمن طاقم المركبة المختارة.',
     OPERATIONS_DELIVERY_LEG_REQUIRED: 'إحدى الشحنات بلا طاقم تسليم بعد — عيّن طاقمها قبل صرفها.',
     OPERATIONS_DISTRIBUTION_DAY_IN_PAST:
-      'هذا اليوم قد مضى وغادرت سياراته — وزّع على اليوم أو على يوم بعده.',
+      'هذا اليوم قد مضى وغادرت سياراته، وسجله للعرض فقط — وزّع على اليوم أو على يوم بعده.',
     OPERATIONS_DISTRIBUTION_ALREADY_DISPATCHED:
       'إحدى المحصنات في هذه الشاشة غادرت الخزينة بالفعل، فلم يعد وضعها على سيارة ممكنًا.',
     OPERATIONS_DISTRIBUTION_NOT_ON_DAY:
       'إحدى المحصنات ليست مستحقة التسليم في هذا اليوم، فلا يمكن وضعها على سيارات هذا اليوم.',
     OPERATIONS_DISTRIBUTION_LEG_STARTED:
       'بدأ قائدها هذا التسليم من التطبيق، فلم يعد نقلها أو إزالتها من سيارته ممكنًا.',
+    OPERATIONS_DISTRIBUTION_ROW_NOT_SECURED:
+      'هذا الصف ليس من نوع محصنة، فلا يأخذ محصنات جديدة — اختر صفًا من نوع محصنة.',
+    OPERATIONS_DISPATCH_NOT_TODAY:
+      'التسليم يتم يوم خروج السيارة فقط — هذه السيارة ليست من سيارات اليوم.',
+    OPERATIONS_UNKNOWN_SHIFT_TYPE:
+      'أُعطي أحد الصفوف نوعًا لم يعد مفعّلًا في البيانات المرجعية — اختر نوعًا آخر في الصف المُعلَّم.',
+    OPERATIONS_DIRECTION_NOT_AN_AREA:
+      'أحد الاتجاهات ليس من المناطق المسجلة في البيانات المرجعية — ما زال الخادم يرفض الاتجاه المكتوب يدويًا.',
+    OPERATIONS_CREW_MEMBER_ABSENT: 'على أحد الصفوف غائب أو من في إجازة في هذا اليوم.',
+    OPERATIONS_CREW_MEMBER_WRONG_SLOT:
+      'عُيِّن أحدهم في خانة لا تناسبه — قائد في خانة أخصائي، أو أخصائي في خانة القائد.',
+    OPERATIONS_CREW_VEHICLE_NOT_ACTIVE:
+      'السيارة المعطاة للصف المُعلَّم ليست في الخدمة في الأسطول — اختر سيارة أخرى.',
+    OPERATIONS_CREW_VEHICLE_IN_WORKSHOP:
+      'السيارة المعطاة للصف المُعلَّم في الصيانة في هذا اليوم — اختر سيارة أخرى.',
+    OPERATIONS_CREW_VEHICLE_TAKEN:
+      'السيارة المعطاة للصف المُعلَّم عليها طاقم آخر في هذا اليوم — اختر سيارة أخرى.',
+    OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
+      'على صف محذوف محصنات. ما دامت في الخزينة فأزِلها عنه في «توزيع المحصنات» أولًا؛ وإن كانت قد خرجت من الخزينة فيبقى الصف، ويمكن تفريغه أو إعطاؤه سيارة.',
+    OPERATIONS_CREW_DAY_IN_PAST:
+      'هذا اليوم قد مضى — لوحته سجل للعرض فقط. خطِّط لليوم أو ليوم لاحق.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
+    IT_CONSUMABLE_COUNTER_REQUIRED:
+      'هذا الصنف يتطلب عداد الطابعة: حدِّد الطابعة التي يُركَّب عليها وقراءة عدادها، حبارة واحدة في كل سطر.',
+    IT_CONSUMABLE_COUNTER_BELOW_PREVIOUS:
+      'قراءة العداد يجب أن تكون أكبر من آخر قراءة مسجّلة لهذه الطابعة — وإذا صُفِّر عدادها فحدِّد «تم تصفير عداد الطابعة».',
+    IT_CONSUMABLE_COUNTER_ABOVE_NEXT:
+      'تاريخ هذه القراءة سابق لقراءة لاحقة مسجّلة للطابعة نفسها، فيجب أن تكون أقل منها.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
     PAYLOAD_TOO_LARGE: 'حجم البيانات المُرسَلة أكبر من أن تُحفظ دفعة واحدة.',
@@ -157,9 +255,39 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
  */
 export const hasError = (error: unknown): boolean => error !== undefined && error !== null;
 
+/**
+ * Round 28c critic — «المناطق» refuses a name another area already holds in any spelling (folded:
+ * «المعادى» beside «المعادي», an archived one too), and names that area in its detail
+ * (`AREA_ACTIVE` / `AREA_ARCHIVED`). Wherever it surfaces — the catalog's own dialog among them —
+ * it is said in the reader's language, naming the area, not as the server's English sentence.
+ */
+const AREA_HELD: Record<Locale, { active: string; archived: string }> = {
+  en: {
+    active: '«Areas» already has “{area}” under this name.',
+    archived:
+      '«Areas» has “{area}” under this name, but archived — restore it instead of adding it again.',
+  },
+  ar: {
+    active: 'في «المناطق» منطقة «{area}» بهذا الاسم.',
+    archived: 'في «المناطق» منطقة «{area}» بهذا الاسم لكنها موقوفة — فعّلها بدل إضافتها مرة أخرى.',
+  },
+};
+
+const areaHeldMessage = (error: ApiError, locale: Locale): string | null => {
+  if (error.code !== 'DUPLICATE') return null;
+  const held = error.details?.find(
+    (detail) => detail.code === 'AREA_ACTIVE' || detail.code === 'AREA_ARCHIVED',
+  );
+  if (held === undefined || held.message === '') return null;
+  const words = AREA_HELD[locale][held.code === 'AREA_ARCHIVED' ? 'archived' : 'active'];
+  return words.replace('{area}', held.message);
+};
+
 export const errorMessage = (error: unknown, locale: Locale): string => {
   const table = FRIENDLY[locale];
   if (error instanceof ApiError) {
+    const held = areaHeldMessage(error, locale);
+    if (held !== null) return held;
     return table[error.code] ?? (error.message !== '' ? error.message : (table.UNKNOWN ?? 'Error'));
   }
   if (error instanceof TypeError) return table.NETWORK ?? 'Network error';

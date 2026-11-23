@@ -18,7 +18,7 @@
 // «تحويل إلى فرع» (2026-11-11) — «لو مثلاً فى 10 ماوس .. فممكن أنقل 5 لفرع تاني»: one or more items
 // of one store, each with how many, to another branch's store, at once and with no paper. Its rules
 // are `lib/consumable-transfer.ts`.
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import {
   IT_CONSUMABLE_ISSUE_MAX_LINES,
   IT_CONSUMABLE_ISSUE_REASONS,
@@ -32,6 +32,7 @@ import {
 } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable } from '../../../shared/ui/DataTable';
@@ -45,8 +46,13 @@ import {
   useCreateItConsumable,
   useIssueItConsumables,
   useItBranchOptions,
+  useItCatalog,
   useItConsumableMovements,
-  useItMoveTargets,
+  useItConsumableTransferTargets,
+  useItDepartmentOptions,
+  useItLocationOptions,
+  useItPerson,
+  useItPrinterCounters,
   useReceiveItConsumable,
   useReturnItConsumable,
   useScrapItConsumable,
@@ -61,10 +67,44 @@ import {
   type ConsumableTransferDraftLine,
 } from '../lib/consumable-transfer';
 import { branchMoveTargets } from '../lib/branch-move-targets';
+import {
+  clearedLineNumbers,
+  custodianKey,
+  custodianReady,
+  heldByOther,
+  holderAnswer,
+  holderName,
+  issueCustodianBody,
+  issueHolderReducer,
+  issueHolderStart,
+  lineNumber,
+  type IssueDeviceLine,
+  type IssueHolderEvent,
+  type IssueHolderState,
+} from '../lib/consumable-issue-holder';
+import { bareDepartmentName } from '../lib/custody-holder';
+import { CustodianKindSwitch, DepartmentCustodianFields } from './DepartmentCustodianFields';
+import {
+  backdatedAgainst,
+  clearMovedReadings,
+  counterBody,
+  counterFailures,
+  counterLineCheck,
+  counterProblemWords,
+  countingTypes,
+  countsLine,
+  refusalAlertWords,
+  sentCounterFailures,
+  standingFailure,
+  type CounterProblem,
+  type LatestReading,
+  type SentCounterFailure,
+} from '../lib/consumable-counter';
 import { AssetPicker } from './AssetPicker';
+import { ConsumableCartridges, LastReadingNote } from './PrinterCounterCard';
 import { ConsumablePicker } from './ConsumablePicker';
 import { useConsumableMemoPrinter } from './ConsumableMemo';
-import { useConsumableMovementColumns } from './ConsumableMovements';
+import { useConsumableMovementLedger } from './ConsumableMovements';
 import { EmployeePicker } from './EmployeePicker';
 import { ItCatalogSelect } from './ItCatalogSelect';
 
@@ -685,6 +725,7 @@ export const ReturnConsumableDialog = ({
             setEmployeeLabel(label);
           }}
           ariaLabel={t('it.consumables.returnFrom')}
+          handOver
         />
       </Field>
       <Field label={t('it.consumables.fields.at')}>
@@ -707,14 +748,29 @@ export const ReturnConsumableDialog = ({
 //
 // Each line may name the register's asset the item was installed on («مركّب على»), and why it was
 // issued: new, or in place of a damaged one — and then the damaged unit counts as scrap.
+//
+// The person and the devices find each other (2026-11-17, `lib/consumable-issue-holder.ts`): a
+// person chosen first lists what they hold now in every line's «مركّب على», with «جهاز آخر» under
+// it for any other device of the register; a device picked first fills the person with whoever
+// holds it — when they still work here. Changing the person takes only the previous person's
+// devices off the lines.
+//
+// «عداد الطابعة» (2026-11-19, `lib/consumable-counter.ts`): an item whose type takes the printer's
+// counter («حبارات») is one cartridge a line, on the printer it goes into — «مركّب على» is then
+// required — with that printer's counter reading, typed under the box once the printer is picked,
+// above the printer's last reading (shown there), unless «تم تصفير عداد الطابعة» is ticked. A line
+// whose printer changes loses its reading: it was read on the other one.
 
-interface IssueLine {
+interface IssueLine extends IssueDeviceLine {
   /** A stable key for the row, so a removed line does not hand its boxes to the next. */
   key: number;
   consumable: ItConsumableDto | null;
   qty: string;
   reason: ItConsumableIssueReason;
-  assetId: string;
+  /** «قراءة عداد الطابعة» as typed — sent only when the item counts. */
+  counterReading: string;
+  /** «تم تصفير عداد الطابعة». */
+  counterReset: boolean;
 }
 
 const blankLine = (key: number, consumable: ItConsumableDto | null = null): IssueLine => ({
@@ -723,7 +779,93 @@ const blankLine = (key: number, consumable: ItConsumableDto | null = null): Issu
   qty: '1',
   reason: 'new',
   assetId: '',
+  asset: null,
+  counterReading: '',
+  counterReset: false,
 });
+
+/**
+ * The person-and-device reducer, and then one rule of the counter's: every line whose device it
+ * changed — a device picked again or cleared, or taken off by a change of person — loses its
+ * reading. One place covers every way a device changes.
+ */
+const issueReducer = (
+  state: IssueHolderState<IssueLine>,
+  event: IssueHolderEvent<IssueLine>,
+): IssueHolderState<IssueLine> => {
+  const next = issueHolderReducer(state, event);
+  const lines = clearMovedReadings(state.lines, next.lines);
+  return lines === next.lines ? next : { ...next, lines };
+};
+
+/**
+ * «قراءة عداد الطابعة» on one counted line, once its printer is picked: the reading, the reset, and
+ * the printer's last reading under them. Its own component so each line reads its own words.
+ */
+const IssueCounterField = ({
+  line,
+  latest,
+  unavailable,
+  backdated,
+  problem,
+  onChange,
+}: {
+  line: IssueLine;
+  /** The printer's newest reading — null for none yet, undefined while it is not read. */
+  latest: LatestReading | undefined;
+  unavailable: boolean;
+  backdated: boolean;
+  problem: CounterProblem | null;
+  onChange: (update: Pick<IssueLine, 'counterReading' | 'counterReset'>) => void;
+}): JSX.Element => {
+  const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  return (
+    <div data-issue-counter={line.key} className="space-y-2">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field
+          label={t('it.consumables.counter.reading')}
+          required
+          {...(problem === null ? {} : { error: counterProblemWords(t, problem, locale) })}
+        >
+          <Input
+            type="number"
+            min="0"
+            step="1"
+            dir="ltr"
+            inputMode="numeric"
+            data-issue-counter-reading={line.key}
+            value={line.counterReading}
+            onChange={(e) =>
+              onChange({ counterReading: e.target.value, counterReset: line.counterReset })
+            }
+            error={problem !== null}
+          />
+        </Field>
+        <div className="space-y-1 sm:pt-7">
+          <Checkbox
+            data-issue-counter-reset={line.key}
+            label={t('it.consumables.counter.reset')}
+            checked={line.counterReset}
+            onChange={(e) =>
+              onChange({ counterReading: line.counterReading, counterReset: e.target.checked })
+            }
+          />
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t('it.consumables.counter.resetHint')}
+          </p>
+        </div>
+      </div>
+      <LastReadingNote latest={latest} unavailable={unavailable} backdated={backdated} />
+    </div>
+  );
+};
+
+/** «٢ و٣» — the lines a message is about, as the dialog numbers them. */
+const lineList = (numbers: readonly number[], locale: Locale): string =>
+  new Intl.ListFormat(locale, { type: 'conjunction' }).format(
+    numbers.map((n) => formatNumber(n, locale)),
+  );
 
 export const IssueConsumablesDialog = ({
   open,
@@ -736,38 +878,79 @@ export const IssueConsumablesDialog = ({
   item: ItConsumableDto | null;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branches = useItBranchOptions();
   const issue = useIssueItConsumables();
   const printer = useConsumableMemoPrinter();
-  const [employeeId, setEmployeeId] = useState('');
-  const [employeeLabel, setEmployeeLabel] = useState('');
+  // «مركّب على» names one of the register's ASSETS, and its search reads `/it/assets`: offered
+  // only to a reader of the assets. The store's own grants issue an item; they do not open the
+  // register of devices (the server refuses an asset outside `itAsset.view` too).
+  const canAssets = can('itAsset.view');
+  // Who receives and the lines, in one reducer: choosing a person and a line's device each change
+  // the other (`lib/consumable-issue-holder.ts`).
+  const [state, dispatch] = useReducer(issueReducer, [blankLine(0, item)], issueHolderStart);
+  const { employeeId, employeeLabel, lines } = state;
+  // «صرف لإدارة» (2026-11-19): the memo goes to a department at a place of the store's branch,
+  // signed by its responsible person. The custodian is the department at its place — its devices
+  // are what «مركّب على» lists — never the signer.
+  const toDepartment = state.mode === 'department';
+  const departments = useItDepartmentOptions(toDepartment);
+  const places = useItLocationOptions(toDepartment);
+  const departmentName = departments.data?.find((each) => each.id === state.departmentId)?.name;
+  const placeName = (places.data ?? []).find((each) => each.id === state.locationId)?.name;
+  const custodianLabel = toDepartment
+    ? departmentName === undefined || placeName === undefined
+      ? ''
+      : t('it.custody.department.heldAt', {
+          department: bareDepartmentName(localized(departmentName, locale)),
+          location: localized(placeName, locale),
+        })
+    : employeeLabel;
   const [issuedAt, setIssuedAt] = useState('');
   const [notes, setNotes] = useState('');
-  const [lines, setLines] = useState<IssueLine[]>([blankLine(0, item)]);
   const [nextKey, setNextKey] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  // The server's counter refusals, each on the line and field it named — said while that line is
+  // still exactly as it was sent, and a refused reading while the memo is still dated as it was
+  // sent (the date places the reading among the printer's).
+  const [counterRefusals, setCounterRefusals] = useState<SentCounterFailure[]>([]);
 
   useEffect(() => {
     if (open) {
-      setEmployeeId('');
-      setEmployeeLabel('');
+      dispatch({ type: 'reset', lines: [blankLine(0, item)] });
       setIssuedAt(nowLocal());
       setNotes('');
-      setLines([blankLine(0, item)]);
       setNextKey(1);
       setError(null);
+      setCounterRefusals([]);
     }
   }, [open, item]);
 
-  const patchLine = (key: number, update: Partial<IssueLine>): void =>
-    setLines((prev) => prev.map((line) => (line.key === key ? { ...line, ...update } : line)));
+  // A device picked with nobody chosen: its holder is read before the person is filled, so a
+  // leaver is never filled in (the employee box offers none either). The answer is handed to the
+  // reducer, which drops it if the user has moved on meanwhile. What to hand it is `holderAnswer`.
+  const asking = state.asking;
+  const holderRead = useItPerson(asking?.employeeId ?? '', canAssets);
+  useEffect(() => {
+    const answer = holderAnswer<IssueLine>(asking, {
+      data: holderRead.data,
+      isError: holderRead.isError,
+    });
+    if (answer !== null) dispatch(answer);
+  }, [asking, holderRead.data, holderRead.isError]);
+
+  const patchLine = (
+    key: number,
+    update: Partial<Omit<IssueLine, 'key' | 'assetId' | 'asset'>>,
+  ): void => dispatch({ type: 'patch', key, update });
   const addLine = (): void => {
-    setLines((prev) => [...prev, blankLine(nextKey)]);
+    dispatch({ type: 'add', line: blankLine(nextKey) });
     setNextKey((k) => k + 1);
   };
-  const removeLine = (key: number): void =>
-    setLines((prev) => (prev.length === 1 ? prev : prev.filter((line) => line.key !== key)));
+  const removeLine = (key: number): void => dispatch({ type: 'remove', key });
+  const cleared = clearedLineNumbers(state);
+  const noteLine = state.note === null ? null : lineNumber(state, state.note.lineKey);
 
   // One memo is one branch's store: the first item chosen decides it, and the other lines search
   // that branch only.
@@ -775,27 +958,57 @@ export const IssueConsumablesDialog = ({
   const branchName = (branches.data ?? []).find((branch) => branch.id === memoBranch)?.name;
   const chosen = lines.flatMap((line) => (line.consumable === null ? [] : [line.consumable.id]));
 
+  // «عداد الطابعة»: which lines' items take the printer's counter (a catalog that could not be read
+  // counts none — the server reads the type itself), and each counted printer's last reading.
+  const types = useItCatalog('consumableType');
+  const counting = countingTypes(types.data?.items);
+  const counted = lines.map((line) => ({ ...line, counts: countsLine(line, counting) }));
+  const printers = [
+    ...new Set(
+      counted.flatMap((line) => (line.counts && line.assetId !== '' ? [line.assetId] : [])),
+    ),
+  ];
+  const printerReads = useItPrinterCounters(canAssets ? printers : []);
+  const printerRead = (assetId: string) => printerReads[printers.indexOf(assetId)];
+  const latestOf = (assetId: string): LatestReading | undefined =>
+    printerRead(assetId)?.data?.latest;
+  // The memo's moment: what it is dated, or now when the box is emptied (the server stamps it).
+  const issuedOn = issuedAt === '' ? new Date() : new Date(issuedAt);
+  const counterCheck = (line: (typeof counted)[number]) =>
+    counterLineCheck(line, {
+      counts: line.counts,
+      canAssets,
+      latest: latestOf(line.assetId),
+      issuedAt: issuedOn,
+      lines: counted,
+    });
+
   const lineQty = (line: IssueLine): number => wholeNumber(line.qty);
-  const lineOk = (line: IssueLine): boolean =>
+  const lineOk = (line: (typeof counted)[number]): boolean =>
     line.consumable !== null &&
     line.consumable.active &&
     line.consumable.branchId === memoBranch &&
-    qtyOk(lineQty(line), line.consumable.onHandQty);
-  const ready = employeeId !== '' && lines.length > 0 && lines.every(lineOk);
+    qtyOk(lineQty(line), line.consumable.onHandQty) &&
+    counterCheck(line).ok;
+  const ready = custodianReady(state) && lines.length > 0 && counted.every(lineOk);
   const replacing = lines.some((line) => line.reason === 'replacement');
 
   const submit = async (): Promise<void> => {
     if (!ready) return;
     setError(null);
+    setCounterRefusals([]);
+    const sent = lines;
+    const sentIssuedAt = issuedAt;
     const body: IssueItConsumables = {
-      employeeId,
+      ...issueCustodianBody(state),
       ...(issuedAt === '' ? {} : { issuedAt: new Date(issuedAt) }),
       ...(notes.trim() === '' ? {} : { notes: notes.trim() }),
-      lines: lines.map((line) => ({
+      lines: counted.map((line) => ({
         consumableId: line.consumable?.id ?? '',
         qty: lineQty(line),
         reason: line.reason,
         ...(line.assetId === '' ? {} : { assetId: line.assetId }),
+        ...counterBody(line, line.counts),
       })),
     };
     // The tab first, inside the click; the issue is recorded only once there is a tab to print in.
@@ -804,12 +1017,18 @@ export const IssueConsumablesDialog = ({
         const result = await issue.mutateAsync(body);
         return result.memo;
       } catch (err) {
-        setError(message(err, t('common.error')));
+        // A counter refusal is said on its line's field, with the figures; above, in the same words
+        // — and the printer's toast says the figure too, in the reader's words, not the server's.
+        const refusals = sentCounterFailures(counterFailures(err), sent, sentIssuedAt);
+        setCounterRefusals(refusals);
+        setError(refusalAlertWords(t, refusals, err, locale) ?? message(err, t('common.error')));
+        const [first] = refusals;
+        if (first !== undefined) throw new Error(counterProblemWords(t, first.problem, locale));
         throw err;
       }
     });
     if (memo !== null) {
-      toast.success(t('it.consumables.issued'));
+      toast.success(t(toDepartment ? 'it.consumables.issuedDepartment' : 'it.consumables.issued'));
       onClose();
     }
   };
@@ -819,8 +1038,14 @@ export const IssueConsumablesDialog = ({
       open={open}
       onClose={onClose}
       size="xl"
-      title={t('it.consumables.issue.title')}
-      description={t('it.consumables.issue.printsMemo')}
+      title={t(
+        toDepartment ? 'it.consumables.issue.titleDepartment' : 'it.consumables.issue.title',
+      )}
+      description={t(
+        toDepartment
+          ? 'it.consumables.issue.printsMemoDepartment'
+          : 'it.consumables.issue.printsMemo',
+      )}
       error={error}
       busy={issue.isPending || printer.isPrinting}
       canSubmit={ready}
@@ -828,19 +1053,95 @@ export const IssueConsumablesDialog = ({
       submitIcon={<PrinterIcon className="h-4 w-4" />}
       onSubmit={() => void submit()}
     >
+      <CustodianKindSwitch
+        value={state.mode}
+        onChange={(mode) => dispatch({ type: 'mode', mode })}
+      />
+      {toDepartment && (
+        <DepartmentCustodianFields
+          value={{
+            departmentId: state.departmentId,
+            locationId: state.locationId,
+            responsibleEmployeeId: state.responsibleEmployeeId,
+            responsibleLabel: state.responsibleLabel,
+          }}
+          onChange={(next) => {
+            if (next.departmentId !== state.departmentId || next.locationId !== state.locationId) {
+              dispatch({
+                type: 'department',
+                departmentId: next.departmentId,
+                locationId: next.locationId,
+              });
+            }
+            if (next.responsibleEmployeeId !== state.responsibleEmployeeId) {
+              dispatch({
+                type: 'responsible',
+                employeeId: next.responsibleEmployeeId,
+                label: next.responsibleLabel,
+              });
+            }
+          }}
+          branchId={memoBranch}
+          branchMissingHint={t('it.custody.department.locationAfterItem')}
+          filledFromDevice={
+            state.filledDepartmentId !== '' && state.filledDepartmentId === state.departmentId
+          }
+        />
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
-        {/* A hand-over: the people who work here today, and nobody else. */}
-        <Field label={t('it.consumables.issue.employee')} required>
-          <EmployeePicker
-            value={employeeId}
-            valueLabel={employeeLabel}
-            onChange={(id, label) => {
-              setEmployeeId(id);
-              setEmployeeLabel(label);
-            }}
-            ariaLabel={t('it.consumables.issue.employee')}
-          />
-        </Field>
+        {/* A hand-over: the people who work here today, in every branch, and nobody else. */}
+        {toDepartment ? (
+          // Whether a picked device filled the department and its place — no empty cell otherwise.
+          state.note?.kind === 'filledDepartment' && noteLine !== null ? (
+            <p
+              role="note"
+              aria-live="polite"
+              data-issue-holder-note={state.note.kind}
+              className="self-end text-xs text-slate-500 dark:text-slate-400"
+            >
+              {t('it.consumables.issue.departmentFilled', { n: formatNumber(noteLine, locale) })}
+            </p>
+          ) : null
+        ) : (
+          <Field label={t('it.consumables.issue.employee')} required>
+            <EmployeePicker
+              value={employeeId}
+              valueLabel={employeeLabel}
+              onChange={(id, label) => dispatch({ type: 'person', employeeId: id, label })}
+              ariaLabel={t('it.consumables.issue.employee')}
+              handOver
+            />
+            {/* Whether a picked device filled the person — or why it could not. */}
+            <div aria-live="polite">
+              {state.note !== null && noteLine !== null && (
+                <p
+                  role="note"
+                  data-issue-holder-note={state.note.kind}
+                  className={
+                    state.note.kind === 'filled' || state.note.kind === 'filledDepartment'
+                      ? 'text-xs text-slate-500 dark:text-slate-400'
+                      : 'rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+                  }
+                >
+                  {state.note.kind === 'filled'
+                    ? t('it.consumables.issue.holderFilled', { n: formatNumber(noteLine, locale) })
+                    : state.note.kind === 'filledDepartment'
+                      ? t('it.consumables.issue.departmentFilled', {
+                          n: formatNumber(noteLine, locale),
+                        })
+                      : state.note.kind === 'exited'
+                        ? t('it.consumables.issue.holderExited', {
+                            n: formatNumber(noteLine, locale),
+                            name: state.note.name,
+                          })
+                        : t('it.consumables.issue.holderUnreadable', {
+                            n: formatNumber(noteLine, locale),
+                          })}
+                </p>
+              )}
+            </div>
+          </Field>
+        )}
         <Field label={t('it.consumables.fields.at')}>
           <Input
             type="datetime-local"
@@ -862,10 +1163,21 @@ export const IssueConsumablesDialog = ({
           </p>
         </div>
         <ol className="space-y-3">
-          {lines.map((line, index) => {
+          {counted.map((line, index) => {
             const qty = lineQty(line);
             const tooMany =
               line.consumable !== null && Number.isInteger(qty) && qty > line.consumable.onHandQty;
+            // A device somebody else holds, picked through «جهاز آخر»: the custodian stays.
+            const otherHolder = heldByOther(line, custodianKey(state));
+            // «عداد الطابعة» — what the dialog finds wrong first, then what the server said.
+            const check = counterCheck(line);
+            const words = (problem: CounterProblem | null): string | undefined =>
+              problem === null ? undefined : counterProblemWords(t, problem, locale);
+            const qtyProblem = check.qty ?? standingFailure(counterRefusals, line, 'qty', issuedAt);
+            const printerProblem = standingFailure(counterRefusals, line, 'assetId', issuedAt);
+            const readingProblem =
+              check.reading ?? standingFailure(counterRefusals, line, 'counterReading', issuedAt);
+            const read = line.counts ? printerRead(line.assetId) : undefined;
             return (
               <li
                 key={line.key}
@@ -894,14 +1206,28 @@ export const IssueConsumablesDialog = ({
                       value={line.consumable?.id ?? ''}
                       branchId={memoBranch}
                       exclude={chosen.filter((id) => id !== line.consumable?.id)}
-                      onChange={(_id, consumable) => patchLine(line.key, { consumable })}
+                      // A toner is one cartridge a line: its quantity is one, and stays so.
+                      onChange={(_id, consumable) =>
+                        patchLine(line.key, {
+                          consumable,
+                          ...(consumable !== null && countsLine({ consumable }, counting)
+                            ? { qty: '1' }
+                            : {}),
+                        })
+                      }
                     />
                   </Field>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field
                       label={t('it.consumables.fields.qty')}
                       required
-                      {...(line.consumable === null ? {} : { hint: line.consumable.unit })}
+                      {...(line.consumable === null
+                        ? {}
+                        : {
+                            hint: line.counts
+                              ? t('it.consumables.counter.oneCartridge')
+                              : line.consumable.unit,
+                          })}
                       error={
                         tooMany && line.consumable !== null
                           ? t('it.consumables.errors.moreThanOnHand', {
@@ -909,7 +1235,7 @@ export const IssueConsumablesDialog = ({
                             })
                           : line.qty.trim() !== '' && !qtyOk(qty)
                             ? t('it.consumables.errors.wholeNumber')
-                            : undefined
+                            : words(qtyProblem)
                       }
                     >
                       <Input
@@ -918,7 +1244,8 @@ export const IssueConsumablesDialog = ({
                         dir="ltr"
                         value={line.qty}
                         onChange={(e) => patchLine(line.key, { qty: e.target.value })}
-                        error={tooMany}
+                        disabled={line.counts && line.qty.trim() === '1'}
+                        error={tooMany || qtyProblem !== null}
                       />
                     </Field>
                     <Field label={t('it.consumables.issue.reason')}>
@@ -939,21 +1266,96 @@ export const IssueConsumablesDialog = ({
                     </Field>
                   </div>
                 </div>
-                <Field
-                  label={t('it.consumables.issue.installedOn')}
-                  hint={t('it.consumables.issue.installedOnHint')}
-                >
-                  <AssetPicker
-                    value={line.assetId}
-                    withoutStatus="disposed"
-                    onChange={(assetId) => patchLine(line.key, { assetId })}
-                    ariaLabel={t('it.consumables.issue.installedOn')}
+                {/* A toner goes onto a printer of the register, which this reader cannot open. */}
+                {check.printer !== null && (
+                  <p
+                    role="note"
+                    data-issue-counter-blocked={line.key}
+                    className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                  >
+                    {words(check.printer)}
+                  </p>
+                )}
+                {canAssets && (
+                  <Field
+                    label={t('it.consumables.issue.installedOn')}
+                    required={line.counts}
+                    hint={
+                      line.counts
+                        ? t('it.consumables.counter.printerRequired')
+                        : t('it.consumables.issue.installedOnHint')
+                    }
+                    error={words(printerProblem)}
+                  >
+                    <AssetPicker
+                      value={line.assetId}
+                      withoutStatus="disposed"
+                      holderEmployeeId={toDepartment ? '' : employeeId}
+                      holderDepartmentId={
+                        toDepartment && state.locationId !== '' ? state.departmentId : ''
+                      }
+                      holderLocationId={toDepartment ? state.locationId : ''}
+                      holderLabel={custodianLabel}
+                      showHolder
+                      allowOther
+                      onChange={(assetId, asset) =>
+                        dispatch({ type: 'device', key: line.key, assetId, asset: asset ?? null })
+                      }
+                      ariaLabel={t('it.consumables.issue.installedOn')}
+                    />
+                    <div aria-live="polite">
+                      {otherHolder !== null && (
+                        <p
+                          role="note"
+                          data-issue-line-holder={
+                            otherHolder.employeeId ?? otherHolder.departmentId ?? ''
+                          }
+                          className="text-xs text-slate-500 dark:text-slate-400"
+                        >
+                          {t('it.consumables.issue.deviceHeldByOther', {
+                            name: holderName(otherHolder, t, locale),
+                          })}
+                        </p>
+                      )}
+                    </div>
+                  </Field>
+                )}
+                {canAssets && line.counts && line.assetId !== '' && (
+                  <IssueCounterField
+                    line={line}
+                    latest={read?.data?.latest}
+                    unavailable={read?.isError ?? false}
+                    backdated={backdatedAgainst(read?.data?.latest, issuedOn)}
+                    problem={readingProblem}
+                    onChange={(update) => patchLine(line.key, update)}
                   />
-                </Field>
+                )}
               </li>
             );
           })}
         </ol>
+        {/* Said once, for every line a change of person emptied. */}
+        <div aria-live="polite">
+          {cleared.length > 0 && (
+            <p
+              role="note"
+              data-issue-devices-cleared={cleared.join(',')}
+              className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              {state.clearedFrom === 'department'
+                ? cleared.length === 1
+                  ? t('it.consumables.issue.deviceClearedDepartment', {
+                      lines: lineList(cleared, locale),
+                    })
+                  : t('it.consumables.issue.devicesClearedDepartment', {
+                      lines: lineList(cleared, locale),
+                    })
+                : cleared.length === 1
+                  ? t('it.consumables.issue.deviceCleared', { lines: lineList(cleared, locale) })
+                  : t('it.consumables.issue.devicesCleared', { lines: lineList(cleared, locale) })}
+            </p>
+          )}
+        </div>
         {lines.length < IT_CONSUMABLE_ISSUE_MAX_LINES && (
           <Button
             size="sm"
@@ -988,8 +1390,8 @@ export const IssueConsumablesDialog = ({
 // many» is answered, never assumed. An item with nothing on hand is listed and left out. The other
 // store's item of the same name receives it, and is made there when it has none — the toast says
 // which, from the server's answer. The branches offered are the ones the SERVER says the caller's
-// `itAsset.assign` reaches (`GET /it/assets/move-targets` — the consumables ride the assets'
-// grants, §2.11); it answers 403 for any other.
+// `itConsumable.assign` reaches (`GET /it/consumables/transfer-targets` — the store's own custody
+// grant since 2026-11-17, §2.11, not the assets' `move-targets`); it answers 403 for any other.
 
 export const TransferConsumablesDialog = ({
   open,
@@ -1007,7 +1409,7 @@ export const TransferConsumablesDialog = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const branches = useItBranchOptions();
-  const reach = useItMoveTargets(open);
+  const reach = useItConsumableTransferTargets(open);
   const transfer = useTransferItConsumables();
   const [toBranchId, setToBranchId] = useState('');
   const [at, setAt] = useState('');
@@ -1236,11 +1638,17 @@ export const ConsumableMovementsDialog = ({
 }): JSX.Element => {
   const t = useT();
   const [page, setPage] = useState(1);
-  const columns = useConsumableMovementColumns({ item: false });
   const movements = useItConsumableMovements(
     { consumableId: item.id, page, pageSize: MOVEMENTS_PAGE_SIZE },
     open,
   );
+  const rows = movements.data?.items ?? [];
+  // «قراءة العداد» — on a toner's movements (its type takes the counter, or a row carries a
+  // reading from when it did); every other item's would be a column of dashes.
+  const counting = countingTypes(useItCatalog('consumableType').data?.items);
+  const counter =
+    countsLine({ consumable: item }, counting) || rows.some((m) => m.counterReading !== null);
+  const { columns, editor } = useConsumableMovementLedger(rows, { item: false, counter });
 
   return (
     // Its rows open a memo's signed copy in a viewer of its own, a second dialog beside this one:
@@ -1260,19 +1668,26 @@ export const ConsumableMovementsDialog = ({
     >
       <div className="space-y-3">
         <OnHand item={item} />
+        {/* A toner's cartridges, the pages each printed and their average (`GET …/cartridges`). */}
+        {counter && <ConsumableCartridges consumableId={item.id} open={open} />}
         <DataTable
           embedded
           columns={columns}
-          rows={movements.data?.items ?? []}
+          rows={rows}
           rowKey={(m) => m.id}
           loading={movements.isLoading}
           error={movements.isError ? movements.error : undefined}
           onRetry={() => void movements.refetch()}
           empty={t('it.consumables.noMovements')}
+          // Nine columns with «تعديل الجهاز» in a 64rem panel — ten on a toner, with «قراءة العداد»:
+          // a 6.5rem floor (6rem for ten) keeps the row's action in view instead of past the
+          // table's left edge.
+          minColumnWidth={counter ? 6 : 6.5}
         />
         {movements.data !== undefined && movements.data.meta.totalPages > 1 && (
           <Pagination meta={movements.data.meta} onPageChange={setPage} />
         )}
+        {editor}
       </div>
     </Dialog>
   );

@@ -31,6 +31,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { ApiError } from '../../../shared/lib/api-client';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
+import { formatNumber } from '../../../shared/lib/format';
 import { Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAppSelector } from '../../../store';
@@ -47,7 +48,9 @@ import {
   dispatchCrewOptions,
   findDispatchOption,
   vehiclesOf,
+  type DispatchCrewOption,
 } from '../lib/dispatch-crew';
+import { vanCodeText } from '../lib/van-name';
 import { deliveryAssignVersion, deliveryDayOf, heldCrewKey } from '../lib/secured-dispatch';
 import { ltrIsolate } from '../lib/shipment-log';
 import { SHIPMENT_PATH } from './shipment-icons';
@@ -93,7 +96,11 @@ export const AssignDeliveryCrewDialog = ({
   const crewOn = day !== null && canSeeCrew;
   const crewBoard = useOperationsCrewBoard(day, crewOn);
   const directory = useOperationsCrewDirectory(day, crewOn);
-  const options = useMemo(() => dispatchCrewOptions(crewBoard.data?.rows ?? []), [crewBoard.data]);
+  // Round 24 — the rows without a van too: the delivery leg may ride one.
+  const options = useMemo(
+    () => dispatchCrewOptions(crewBoard.data?.rows ?? [], crewBoard.data?.vehiclelessRows ?? []),
+    [crewBoard.data],
+  );
 
   // Opens on the crew already assigned, when it is one of that day's (a change of crew). Reset per
   // row opened — not per render of the same row: a refetch behind the open dialog keeps the pick.
@@ -112,6 +119,15 @@ export const AssignDeliveryCrewDialog = ({
 
   if (target === null || row === null || day === null) return null;
 
+  /** A van's code; a row without a van «بدون سيارة (n)» (Round 24), «…» for a van Fleet cannot name. */
+  const vehicleName = (
+    option: Pick<DispatchCrewOption, 'vehicleId' | 'vehicleCode' | 'looseNumber'>,
+  ): string =>
+    vanCodeText(
+      t,
+      option,
+      option.looseNumber === null ? null : formatNumber(option.looseNumber, locale),
+    );
   const captainName = (employeeId: string): string =>
     directory.data?.members.find((m) => m.employeeId === employeeId)?.fullNameAr ?? '…';
   // A captain named twice (on two vans — the plan forbids it, a stale plan could) says which van.
@@ -121,7 +137,7 @@ export const AssignDeliveryCrewDialog = ({
     const twice =
       options.filter((o) => o.captainEmployeeId === option.captainEmployeeId).length > 1;
     const name = captainName(option.captainEmployeeId);
-    return twice ? `${name} — ${option.vehicleCode}` : name;
+    return twice ? `${name} — ${vehicleName(option)}` : name;
   };
 
   const busy = waiting || assign.isPending;
@@ -209,10 +225,15 @@ export const AssignDeliveryCrewDialog = ({
           data-assign-delivery-held="true"
           className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-[#2b3b6b] dark:bg-[#0a1233] dark:text-slate-200"
         >
-          {t('operations.secured.dispatch.assignHeld', {
-            captain: row.crew.captainName ?? '—',
-            vehicle: row.crew.vehicleCode ?? '—',
-          })}
+          {/* Round 24 — a crew without a van: «… — بدون سيارة», never «المركبة بدون سيارة». */}
+          {row.crew.vehicleId === null
+            ? t('operations.secured.dispatch.assignHeldLoose', {
+                captain: row.crew.captainName ?? '—',
+              })
+            : t('operations.secured.dispatch.assignHeld', {
+                captain: row.crew.captainName ?? '—',
+                vehicle: row.crew.vehicleCode ?? '—',
+              })}
         </p>
       )}
 
@@ -254,7 +275,7 @@ export const AssignDeliveryCrewDialog = ({
             </DesignField>
             <DesignField label={t('operations.shipment.form.vehicle')} required>
               <Select
-                value={chosen?.vehicleId ?? ''}
+                value={chosen?.vanKey ?? ''}
                 onChange={(e) =>
                   setCrewKey(
                     e.target.value === ''
@@ -272,8 +293,8 @@ export const AssignDeliveryCrewDialog = ({
                   {t(crewBoard.isLoading ? 'common.loading' : 'common.select')}
                 </option>
                 {vehicles.map((vehicle) => (
-                  <option key={vehicle.vehicleId} value={vehicle.vehicleId}>
-                    {vehicle.vehicleCode}
+                  <option key={vehicle.vanKey} value={vehicle.vanKey}>
+                    {vehicleName(vehicle)}
                   </option>
                 ))}
               </Select>

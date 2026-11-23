@@ -15,6 +15,7 @@ import {
   objectId,
   type Address,
   type LocalizedString,
+  booleanQuery,
   listQuery,
 } from '../common/index.js';
 import {
@@ -47,6 +48,28 @@ export type Gender = z.infer<typeof GenderSchema>;
  * looking for an Employee row elsewhere — exactly the inference I11 removes. The boot migration
  * backfills candidates who already have an Employee.
  */
+/**
+ * «مسح نهائي» — permanently delete one applicant, from anywhere in the recruitment cycle.
+ *
+ * The CODE is typed back, and that is the whole body: a permanent delete has no undo, so the one
+ * thing the request carries is proof that whoever sent it knew WHICH candidate it was for. An id
+ * alone — copied from a URL, left in a tab, repeated by a script — is not enough to erase somebody.
+ */
+export const PurgeApplicantSchema = z
+  .object({ confirmCode: z.string().trim().min(1).max(32) })
+  .strict();
+export type PurgeApplicant = z.infer<typeof PurgeApplicantSchema>;
+
+/** What the erasure took, said back once. */
+export interface ApplicantPurgeReportDto {
+  code: string;
+  fullNameAr: string;
+  rowsDeleted: number;
+  filesRemoved: number;
+  /** Files whose bytes could not be removed; each needs a hand. Empty on a clean run. */
+  fileFailures: { id: string; reason: string }[];
+}
+
 export const APPLICANT_STATUSES = ['new', 'hired', 'rejected', 'withdrawn'] as const;
 export const ApplicantStatusSchema = z.enum(APPLICANT_STATUSES);
 export type ApplicantStatus = z.infer<typeof ApplicantStatusSchema>;
@@ -131,8 +154,13 @@ export const UpdateApplicantSourceSchema = z
 export type UpdateApplicantSource = z.infer<typeof UpdateApplicantSourceSchema>;
 
 export const ListApplicantSourcesQuerySchema = PaginationQuerySchema.extend({
-  active: z.coerce.boolean().optional(),
-  kind: ApplicantSourceKindSchema.optional(),
+  /**
+   * `booleanQuery`, not `z.coerce.boolean`: the screen sends the text «false» for «غير نشط», which a
+   * coercion reads as true — the inactive filter answered with the active sources.
+   */
+  active: booleanQuery().optional(),
+  /** The kinds asked about, ORed — «هنخلي كل الفلترز multi». One value still parses. */
+  kind: listQuery(ApplicantSourceKindSchema),
 }).strict();
 export type ListApplicantSourcesQuery = z.infer<typeof ListApplicantSourcesQuerySchema>;
 
@@ -272,7 +300,15 @@ export const ContactInputSchema = z
  * three records. Only the postal code is refined here: the catalog is a UI affordance, and a
  * legacy record whose city predates the catalog must still be updatable.
  */
+/**
+ * An applicant's address is never REQUIRED, in whole or in part: registering someone needs only
+ * their name, phone and National ID. Whatever part of the address was typed (or read off the
+ * card) is kept, and a missing part is stored as ''.
+ */
 export const ApplicantAddressSchema = AddressSchema.extend({
+  line1: z.string().trim().max(500).default(''),
+  city: z.string().trim().max(200).default(''),
+  governorate: z.string().trim().max(200).default(''),
   postalCode: PostalCodeSchema.optional(),
 });
 

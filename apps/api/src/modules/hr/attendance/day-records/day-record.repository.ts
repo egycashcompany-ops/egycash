@@ -1,5 +1,6 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type ListAttendanceDaysQuery, type Paginated } from '@ecms/contracts';
+import { toDateOnly } from '../../shared/business-date';
 import { BaseRepository } from '../../../../shared/base/base.repository';
 import { BusinessRuleError } from '../../../../shared/errors';
 import { type ScopeSelector } from '../../../../shared/types';
@@ -33,10 +34,17 @@ class DayRecordRepository extends BaseRepository<AttendanceDayDoc> {
     options: { employeeIds?: string[] | undefined; scope?: ScopeSelector | undefined } = {},
   ): Promise<Paginated<AttendanceDayDoc>> {
     const filter: FilterQuery<AttendanceDayDoc> = {
-      workDate: { $gte: query.from, $lte: query.to },
+      // DATE-ONLY AT BOTH ENDS. `workDate` is a UTC-midnight date-only field, so a `from` carrying
+      // any time at all excludes its own day — the kind of off-by-one that answers «لا يوجد» for a
+      // date whose rows are right there. Normalised here so every caller of this read is safe,
+      // rather than in each of them.
+      workDate: { $gte: toDateOnly(query.from), $lte: toDateOnly(query.to) },
     };
     if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
-    if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
+    // Several branches, ORed (the daily sheet's filter takes several).
+    if (query.branchId !== undefined && query.branchId.length > 0) {
+      filter.branchId = { $in: query.branchId.map((id) => new Types.ObjectId(id)) };
+    }
     if (query.status !== undefined) filter.status = query.status;
     // The section filter arrives pre-resolved to employee ids (day rows carry only the branch).
     // An explicit employeeId — including the own-scope forcing — always wins: the section can

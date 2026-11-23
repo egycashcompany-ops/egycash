@@ -1,4 +1,4 @@
-// Tab 1 «التنبيهات» — the alert lines, DERIVED LAST from the section values (plan §5.2).
+// The overview's action centre — the alert lines, DERIVED LAST from the section values (plan §5.2).
 //
 // No alert has a query of its own: each line is one figure a section already computed, so the line
 // and the tab that shows the same figure cannot disagree, and a section the reader may not see (or
@@ -48,7 +48,7 @@ const FIGURE: Record<FleetDashboardAlertId, (s: AlertSources) => number | null> 
   noticesMissing: (s) => s.notices?.missingAny ?? null,
   // T1.12 — active cars with no reading for N days. The never-read cars are its own sub-line and
   // are never mixed into the count (R-07).
-  noReading: (s) => (s.noReading === null ? null : s.noReading.stale.length),
+  noReading: (s) => s.noReading?.staleCount ?? null,
 };
 
 export const deriveNowAlerts = (sources: AlertSources): FleetDashboardAlertDto[] =>

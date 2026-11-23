@@ -18,6 +18,7 @@ import { Breadcrumbs, type Crumb } from './Breadcrumbs';
 export const PageContainer = ({
   children,
   fullHeight = false,
+  fill = false,
 }: {
   children: ReactNode;
   /**
@@ -31,6 +32,20 @@ export const PageContainer = ({
    * container caps the height and nothing below it has been told where the give is.
    */
   fullHeight?: boolean;
+  /**
+   * GROW to the shell's height when the page is shorter than it, and grow past it when it is not.
+   *
+   * The difference from `fullHeight` is the one that matters: `fullHeight` CAPS the page at the
+   * viewport (`min-h-0`) and hands the scrolling to a region inside it, which is right for a board
+   * read across but wrong for a page read down — on a short laptop it would squeeze the table into
+   * whatever the cards above it left. This mode sets `flex-1` and leaves `min-height` at `auto`, so
+   * a flex item grows into spare room and never shrinks below its own content: a tall page scrolls
+   * exactly as it did, and a short one fills the shell instead of ending in dead space.
+   *
+   * A caller that opts in owes a `flex-1` on whichever child should absorb the spare height —
+   * without one the container grows and its children do not, which just moves the gap inside.
+   */
+  fill?: boolean;
 }): JSX.Element => (
   <div
     className={cn(
@@ -38,7 +53,10 @@ export const PageContainer = ({
       // `shrink-0` is what keeps every OTHER page exactly as it was: `main` is a flex column now,
       // and without it a page taller than the viewport would be squashed to fit instead of
       // scrolling. Only a page that asks takes the give.
-      fullHeight ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0',
+      fullHeight && 'flex min-h-0 flex-1 flex-col',
+      // `flex-1` with `min-height: auto` — grows into spare room, never below its own content.
+      fill && !fullHeight && 'flex flex-1 flex-col',
+      !fullHeight && !fill && 'shrink-0',
     )}
   >
     {children}

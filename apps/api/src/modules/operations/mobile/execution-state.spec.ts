@@ -88,15 +88,68 @@ describe('captain execution state machine (OP-7)', () => {
       }
     });
 
+    const secured = (status: 'draft' | 'inVault' | 'dispatched' | 'completed') =>
+      ({ shipmentType: 'secured', status }) as const;
+    const daily = (status: 'draft' | 'completed') => ({ shipmentType: 'daily', status }) as const;
+
     it('treats a back-office completed shipment as settled, so a route cannot deadlock', () => {
-      expect(isStopSettled('pending', 'completed')).toBe(true);
-      expect(isStopSettled('active', 'completed')).toBe(true);
+      for (const leg of ['pickup', 'delivery'] as const) {
+        expect(isStopSettled({ leg, executionStatus: 'pending' }, secured('completed'))).toBe(true);
+        expect(isStopSettled({ leg, executionStatus: 'active' }, secured('completed'))).toBe(true);
+      }
+      expect(isStopSettled({ leg: 'pickup', executionStatus: 'pending' }, daily('completed'))).toBe(
+        true,
+      );
     });
 
-    it('does not settle an unfinished stop on an unfinished shipment', () => {
+    // Round 13 — «والخزنه تستلم عادي»: the vault may receive a محصنة nobody recorded collecting. A
+    // pickup leg the captain never started must not stand in front of his later stops then.
+    it('settles an UNSTARTED secured pickup leg once the vault holds the shipment', () => {
+      for (const status of ['inVault', 'dispatched'] as const) {
+        expect(isStopSettled({ leg: 'pickup', executionStatus: 'pending' }, secured(status))).toBe(
+          true,
+        );
+      }
+      // Still in draft — the vault has not got it: he still has to fetch it.
+      expect(isStopSettled({ leg: 'pickup', executionStatus: 'pending' }, secured('draft'))).toBe(
+        false,
+      );
+      // The delivery leg is not the vault's to settle — it leaves the vault on it.
+      for (const status of ['inVault', 'dispatched'] as const) {
+        expect(
+          isStopSettled({ leg: 'delivery', executionStatus: 'pending' }, secured(status)),
+        ).toBe(false);
+      }
+      // A daily shipment never goes to the vault.
+      expect(isStopSettled({ leg: 'pickup', executionStatus: 'pending' }, daily('draft'))).toBe(
+        false,
+      );
+    });
+
+    // …but a stop he has BEGUN stays his to finish: the usual path is his ✓ at the bank, the
+    // vault's ✓, then his «تم التسليم» at the vault's door.
+    it('keeps a STARTED secured pickup leg his to finish, wherever the shipment stands', () => {
+      for (const executionStatus of ['active', 'pickedUp', 'delivered'] as const) {
+        for (const status of ['draft', 'inVault', 'dispatched'] as const) {
+          expect(isStopSettled({ leg: 'pickup', executionStatus }, secured(status))).toBe(false);
+        }
+      }
+    });
+
+    it('does not settle an unfinished stop on an unfinished shipment otherwise', () => {
       for (const s of ['pending', 'active', 'pickedUp', 'delivered'] as const) {
         for (const ship of ['draft', 'inVault', 'dispatched'] as const) {
-          expect(isStopSettled(s, ship)).toBe(false);
+          expect(isStopSettled({ leg: 'delivery', executionStatus: s }, secured(ship))).toBe(false);
+        }
+        expect(isStopSettled({ leg: 'pickup', executionStatus: s }, secured('draft'))).toBe(false);
+        expect(isStopSettled({ leg: 'pickup', executionStatus: s }, daily('draft'))).toBe(false);
+      }
+    });
+
+    it('settles a finished stop whatever the shipment says', () => {
+      for (const s of ['completed', 'cancelled'] as const) {
+        for (const leg of ['pickup', 'delivery'] as const) {
+          expect(isStopSettled({ leg, executionStatus: s }, secured('draft'))).toBe(true);
         }
       }
     });

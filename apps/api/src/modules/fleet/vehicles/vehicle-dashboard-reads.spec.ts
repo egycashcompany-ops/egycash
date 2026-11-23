@@ -159,15 +159,44 @@ describe('nearestLicences — T4.4', () => {
   it('reads active cars up to the LAST instant of the day, the longest-expired first', async () => {
     const expires = new Date('2026-10-09T00:00:00.000Z');
     const id = new Types.ObjectId();
-    const { seen } = findChain([{ _id: id, code: '249', licenseExpiresAt: expires }]);
+    const type = new Types.ObjectId();
+    const licenceClass = new Types.ObjectId();
+    const { seen } = findChain([
+      {
+        _id: id,
+        code: '249',
+        licenseExpiresAt: expires,
+        typeId: type,
+        licenseClassId: licenceClass,
+      },
+      // A car from before «فئة الرخصة»: no class at all.
+      { _id: id, code: '250', licenseExpiresAt: expires, typeId: type },
+    ]);
     vi.spyOn(FleetVehicleModel, 'countDocuments').mockImplementation((() => ({
       exec: async () => 8,
     })) as unknown as typeof FleetVehicleModel.countDocuments);
     const out = await fleetVehicleRepository.nearestLicences(branchScope, '2026-12-31', 6);
     expect(out).toEqual({
-      rows: [{ vehicleId: String(id), code: '249', expiresAt: expires.toISOString() }],
+      rows: [
+        {
+          vehicleId: String(id),
+          code: '249',
+          expiresAt: expires.toISOString(),
+          typeId: String(type),
+          licenseClassId: String(licenceClass),
+        },
+        {
+          vehicleId: String(id),
+          code: '250',
+          expiresAt: expires.toISOString(),
+          typeId: String(type),
+          licenseClassId: null,
+        },
+      ],
       total: 8,
     });
+    // The make and the class ride on the same read (the dashboard names them).
+    expect(seen.select).toEqual({ code: 1, licenseExpiresAt: 1, typeId: 1, licenseClassId: 1 });
     const filter = json(seen.filter);
     expect(filter).toContain('"status":"active"');
     expect(filter).toContain('"$lte":"2026-12-31T23:59:59.999Z"');
@@ -189,28 +218,131 @@ describe('nearestLicences — T4.4', () => {
   });
 });
 
+describe('idsOfClassesInScope — «أوراق الترخيص» beside the listed licence rows', () => {
+  it('asks the listed cars on these classes under the reader’s scope, live only — ids alone', async () => {
+    const id = new Types.ObjectId();
+    const klass = new Types.ObjectId().toString();
+    const { seen } = findChain([{ _id: id }]);
+    const out = await fleetVehicleRepository.idsOfClassesInScope(
+      branchScope,
+      [String(id)],
+      [klass],
+    );
+    expect([...out]).toEqual([String(id)]);
+    const filter = json(seen.filter);
+    expect(filter).toContain('"isDeleted":false');
+    expect(filter).toContain(BRANCH);
+    expect(filter).toContain(String(id));
+    expect(filter).toContain(klass);
+    expect(seen.select).toEqual({ _id: 1 });
+  });
+
+  it('asks nothing for no cars or no class', async () => {
+    const { spy } = findChain([]);
+    expect((await fleetVehicleRepository.idsOfClassesInScope(orgScope, [], ['x'])).size).toBe(0);
+    expect(
+      (
+        await fleetVehicleRepository.idsOfClassesInScope(
+          orgScope,
+          [String(new Types.ObjectId())],
+          [],
+        )
+      ).size,
+    ).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('licenceMonthCounts — «التراخيص المستحقة للتجديد — 12 شهرًا», the cars', () => {
+  const record = (rows: { _id: string; count: number }[]) => {
+    let pipeline: Record<string, unknown>[] = [];
+    vi.spyOn(FleetVehicleModel, 'aggregate').mockImplementation(((sent: never[]) => {
+      pipeline = sent;
+      return { exec: async () => rows };
+    }) as unknown as typeof FleetVehicleModel.aggregate);
+    return () => pipeline;
+  };
+
+  it('groups the ACTIVE cars of the reader’s scope by the UTC month of the expiry, in one pass', async () => {
+    const sent = record([
+      { _id: '2026-11', count: 3 },
+      { _id: '2027-02', count: 1 },
+    ]);
+    const out = await fleetVehicleRepository.licenceMonthCounts(branchScope, '2026-11', '2027-10');
+    expect([...out.entries()]).toEqual([
+      ['2026-11', 3],
+      ['2027-02', 1],
+    ]);
+    expect(sent()).toHaveLength(2);
+    const match = json(sent()[0]?.['$match']);
+    expect(match).toContain('"status":"active"');
+    expect(match).toContain(BRANCH);
+    // The first instant of the first month, the last of the last — `fleetMonthWindow`'s bounds.
+    expect(match).toContain('"$gte":"2026-11-01T00:00:00.000Z"');
+    expect(match).toContain('"$lte":"2027-10-31T23:59:59.999Z"');
+    expect(json(sent()[1])).toContain('"format":"%Y-%m"');
+    expect(json(sent()[1])).toContain('"timezone":"UTC"');
+  });
+
+  it('a month’s count is the registry list’s for `licenseExpiryMonths` of that month', async () => {
+    const sent = record([]);
+    await fleetVehicleRepository.licenceMonthCounts(orgScope, '2027-01', '2027-01');
+    const listed = json(
+      await listCountFilter({ status: ['active'], licenseExpiryMonths: ['2027-01'] }, orgScope),
+    );
+    // The same window, the same status, the same base filter.
+    expect(listed).toContain('"$gte":"2027-01-01T00:00:00.000Z","$lte":"2027-01-31T23:59:59.999Z"');
+    expect(json(sent()[0]?.['$match'])).toContain(
+      '"$gte":"2027-01-01T00:00:00.000Z","$lte":"2027-01-31T23:59:59.999Z"',
+    );
+    expect(json(sent()[0]?.['$match'])).toContain('"isDeleted":false');
+  });
+
+  it('asks nothing for a range that ends before it starts', async () => {
+    const spy = vi.spyOn(FleetVehicleModel, 'aggregate');
+    expect(
+      (await fleetVehicleRepository.licenceMonthCounts(orgScope, '2027-02', '2027-01')).size,
+    ).toBe(0);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
 describe('activeByTypeAndBranch — T3.1, moved from the old dashboard repository', () => {
-  it('groups the ACTIVE cars of the reader scope, a car with no branch under null', async () => {
+  it('groups the ACTIVE cars of the reader scope by type, branch and operation; none → null', async () => {
     const type = new Types.ObjectId();
     const branch = new Types.ObjectId();
+    const operation = new Types.ObjectId();
     let pipeline: Record<string, unknown>[] = [];
     vi.spyOn(FleetVehicleModel, 'aggregate').mockImplementation(((sent: never[]) => {
       pipeline = sent;
       return {
         exec: async () => [
-          { _id: { typeId: type, branchId: branch }, count: 4 },
-          { _id: { typeId: type, branchId: null }, count: 1 },
+          { _id: { typeId: type, branchId: branch, operationId: operation }, count: 3 },
+          { _id: { typeId: type, branchId: branch, operationId: null }, count: 1 },
+          { _id: { typeId: type, branchId: null, operationId: null }, count: 1 },
         ],
       };
     }) as unknown as typeof FleetVehicleModel.aggregate);
     expect(await fleetVehicleRepository.activeByTypeAndBranch(branchScope)).toEqual([
-      { typeId: String(type), branchId: String(branch), count: 4 },
-      { typeId: String(type), branchId: null, count: 1 },
+      { typeId: String(type), branchId: String(branch), operationId: String(operation), count: 3 },
+      { typeId: String(type), branchId: String(branch), operationId: null, count: 1 },
+      { typeId: String(type), branchId: null, operationId: null, count: 1 },
     ]);
+    expect(pipeline, 'one $match and one $group: the same single pass as before').toHaveLength(2);
     const match = json(pipeline[0]?.['$match']);
     expect(match).toContain('"status":"active"');
     expect(match).toContain('"isDeleted":false');
     expect(match).toContain(BRANCH);
+    expect(json(pipeline[1]?.['$group'])).toBe(
+      json({
+        _id: {
+          typeId: '$typeId',
+          branchId: { $ifNull: ['$branchId', null] },
+          operationId: { $ifNull: ['$operationId', null] },
+        },
+        count: { $sum: 1 },
+      }),
+    );
   });
 });
 

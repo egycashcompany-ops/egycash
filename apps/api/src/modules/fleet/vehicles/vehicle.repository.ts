@@ -195,6 +195,30 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * `idsOfClasses` under a reader's scope: which of these vehicles the reader's `scope` reaches
+   * (the registry's base filter — live cars, the grant's branches) AND point at one of these licence
+   * classes. ONE `find` of the ids, for a known handful (the fleet dashboard's ≤ 6 licence rows).
+   */
+  async idsOfClassesInScope(
+    scope: ScopeSelector,
+    vehicleIds: readonly string[],
+    classIds: readonly string[],
+  ): Promise<Set<string>> {
+    if (vehicleIds.length === 0 || classIds.length === 0) return new Set();
+    const rows = await this.model
+      .find(
+        this.baseFilter(scope, {
+          _id: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
+          licenseClassId: { $in: classIds.map((id) => new Types.ObjectId(id)) },
+        }),
+      )
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((row) => String(row._id)));
+  }
+
+  /**
    * Codes for a KNOWN set of ids, in one query — for the screens that print a code beside a row
    * whose vehicle they hold only by id.
    *
@@ -228,6 +252,30 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
       .lean<{ _id: Types.ObjectId; code: string }[]>()
       .exec();
     return new Map(rows.map((row) => [String(row._id), row.code]));
+  }
+
+  /**
+   * `codesByIds` with what else NAMES a car: its plate and its type — for a screen that lists a car
+   * whose code names nothing («0», «00» … typed by hand for a car with no code yet) by its plate.
+   * One lookup a page, like `codesByIds`; a deleted car still answers.
+   */
+  async namesByIds(
+    ids: readonly string[],
+  ): Promise<Map<string, { code: string; plateNumber: string; typeId: string }>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select({ code: 1, plateNumber: 1, typeId: 1 })
+      .lean<
+        { _id: Types.ObjectId; code: string; plateNumber?: string; typeId?: Types.ObjectId }[]
+      >()
+      .exec();
+    return new Map(
+      rows.map((row) => [
+        String(row._id),
+        { code: row.code, plateNumber: row.plateNumber ?? '', typeId: String(row.typeId ?? '') },
+      ]),
+    );
   }
 
   /**
@@ -408,7 +456,15 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
     toYmd: string,
     limit: number,
   ): Promise<{
-    rows: { vehicleId: string; code: string; expiresAt: string }[];
+    rows: {
+      vehicleId: string;
+      code: string;
+      expiresAt: string;
+      /** The car's make («مرسيدس اسيليو 915»), by id — the caller names it. */
+      typeId: string | null;
+      /** «فئة الرخصة», by id — the caller names it; `null` when none was entered. */
+      licenseClassId: string | null;
+    }[];
     total: number;
   }> {
     const filter = this.baseFilter(scope, {
@@ -421,10 +477,18 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
         ? Promise.resolve([])
         : this.model
             .find(filter)
-            .select({ code: 1, licenseExpiresAt: 1 })
+            .select({ code: 1, licenseExpiresAt: 1, typeId: 1, licenseClassId: 1 })
             .sort({ licenseExpiresAt: 1, _id: 1 })
             .limit(limit)
-            .lean<{ _id: Types.ObjectId; code: string; licenseExpiresAt: Date }[]>()
+            .lean<
+              {
+                _id: Types.ObjectId;
+                code: string;
+                licenseExpiresAt: Date;
+                typeId?: Types.ObjectId | null;
+                licenseClassId?: Types.ObjectId | null;
+              }[]
+            >()
             .exec(),
       this.model.countDocuments(filter).exec(),
     ]);
@@ -433,9 +497,45 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
         vehicleId: String(row._id),
         code: row.code,
         expiresAt: row.licenseExpiresAt.toISOString(),
+        typeId: row.typeId == null ? null : String(row.typeId),
+        licenseClassId: row.licenseClassId == null ? null : String(row.licenseClassId),
       })),
       total,
     };
+  }
+
+  /**
+   * «التراخيص المستحقة للتجديد — 12 شهرًا», the cars' columns: the ACTIVE cars `scope` reads whose
+   * licence runs out in each month from `fromMonth` to `toMonth` ('YYYY-MM', both included) — ONE
+   * aggregate through `ix_license_sweep`, grouped by the expiry's UTC month, the very window the
+   * registry's `licenseExpiryMonths` asks for (`fleetMonthWindow`), so a column's count is its link's
+   * `totalItems`. Only the months that hold a car come back; the caller fills the rest with zeros.
+   */
+  async licenceMonthCounts(
+    scope: ScopeSelector,
+    fromMonth: string,
+    toMonth: string,
+  ): Promise<Map<string, number>> {
+    const first = fleetMonthWindow(fromMonth);
+    const last = fleetMonthWindow(toMonth);
+    if (first === null || last === null || first.from > last.before) return new Map();
+    const rows = await this.model
+      .aggregate<{ _id: string; count: number }>([
+        {
+          $match: this.baseFilter(scope, {
+            status: 'active',
+            licenseExpiresAt: { $gte: first.from, $lte: last.before },
+          }),
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m', date: '$licenseExpiresAt', timezone: 'UTC' } },
+            count: { $sum: 1 },
+          },
+        },
+      ])
+      .exec();
+    return new Map(rows.map((row) => [row._id, row.count]));
   }
 
   /**
@@ -443,20 +543,35 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
    * old dashboard repository, now through the registry's base filter: a branch-scoped reader sees
    * the cells the list shows them, and an `own` grant means what it means on the list. A car with
    * no branch (a legacy row) comes back under `branchId: null` — the «بلا فرع» column — rather
-   * than vanishing from its row's total.
+   * than vanishing from its row's total. The cells are split by the car's OPERATION too (`null` = a
+   * car with none), so the same pass also gives each branch its cars by operation kind («نقل
+   * الأموال» / «ATM» / «أخرى»); Σ over the operations of one (type, branch) is that cell.
    */
-  async activeByTypeAndBranch(
-    scope: ScopeSelector,
-  ): Promise<{ typeId: string; branchId: string | null; count: number }[]> {
+  async activeByTypeAndBranch(scope: ScopeSelector): Promise<
+    {
+      typeId: string;
+      branchId: string | null;
+      operationId: string | null;
+      count: number;
+    }[]
+  > {
     const rows = await this.model
       .aggregate<{
-        _id: { typeId: Types.ObjectId; branchId: Types.ObjectId | null };
+        _id: {
+          typeId: Types.ObjectId;
+          branchId: Types.ObjectId | null;
+          operationId: Types.ObjectId | null;
+        };
         count: number;
       }>([
         { $match: this.baseFilter(scope, { status: 'active' }) },
         {
           $group: {
-            _id: { typeId: '$typeId', branchId: { $ifNull: ['$branchId', null] } },
+            _id: {
+              typeId: '$typeId',
+              branchId: { $ifNull: ['$branchId', null] },
+              operationId: { $ifNull: ['$operationId', null] },
+            },
             count: { $sum: 1 },
           },
         },
@@ -465,6 +580,7 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
     return rows.map((row) => ({
       typeId: String(row._id.typeId),
       branchId: row._id.branchId === null ? null : String(row._id.branchId),
+      operationId: row._id.operationId === null ? null : String(row._id.operationId),
       count: row.count,
     }));
   }

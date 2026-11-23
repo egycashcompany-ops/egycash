@@ -3,6 +3,8 @@ export { buildItConsumableMovementsRouter } from './consumable-movement.routes';
 export { buildItConsumableMemosRouter } from './consumable-memo.routes';
 export { itConsumableService } from './consumable.service';
 export { itConsumableIssueService, type ItConsumableIssueResult } from './consumable-issue.service';
+export { itConsumableInstalledOnService } from './consumable-installed-on.service';
+export { itConsumableCounterService } from './consumable-counter.service';
 export { itConsumableTransferService } from './consumable-transfer.service';
 export { itConsumableMemoService } from './consumable-memo.service';
 export {

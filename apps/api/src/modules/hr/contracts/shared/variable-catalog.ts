@@ -31,6 +31,10 @@ export const CONTRACT_VARIABLE_CATALOG: ContractVariableDto[] = [
   { key: 'employment.startDate', label: { en: 'Start date', ar: 'تاريخ المباشرة' }, source: 'employment', sample: '15/11/2026', required: false },
   { key: 'employment.startDayName', label: { en: 'Start day', ar: 'يوم المباشرة' }, source: 'employment', sample: 'الأحد', required: false },
   { key: 'contract.currentDayName', label: { en: "Today's day", ar: 'يوم اليوم' }, source: 'contract', sample: 'الأحد', required: false },
+  // Today in its three parts — «تحريراً في:  /  /» on «نموذج رقم (1)», each between the form's strokes.
+  { key: 'contract.currentDay', label: { en: "Today's date — day", ar: 'تاريخ اليوم — اليوم' }, source: 'contract', sample: '16', required: false },
+  { key: 'contract.currentMonth', label: { en: "Today's date — month", ar: 'تاريخ اليوم — الشهر' }, source: 'contract', sample: '11', required: false },
+  { key: 'contract.currentYear', label: { en: "Today's date — year", ar: 'تاريخ اليوم — السنة' }, source: 'contract', sample: '2026', required: false },
   { key: 'salary.gross', label: { en: 'Gross salary', ar: 'الراتب الشامل' }, source: 'employment', sample: '10,000', required: false },
   { key: 'salary.fixed', label: { en: 'Basic pay (70%)', ar: 'الأجر الأساسي (70%)' }, source: 'employment', sample: '7,000', required: false },
   { key: 'salary.attendanceBonus', label: { en: 'Attendance allowance (30%)', ar: 'بدل الانتظام (30%)' }, source: 'employment', sample: '3,000', required: false },
@@ -44,6 +48,9 @@ export const CONTRACT_VARIABLE_CATALOG: ContractVariableDto[] = [
   // own) and its occupation code, in the two groups form 1 boxes it in.
   { key: 'job.insuranceTitle', label: { en: 'Job title at social insurance', ar: 'المسمى الوظيفي لدى التأمينات' }, source: 'employment', sample: 'مندوب تحصيل', required: false },
   { key: 'job.occupationCode1', label: { en: 'Occupation code — first part', ar: 'كود المهنة — الجزء الأول' }, source: 'employment', sample: '123', required: false },
+  // The job's «الراتب الثابت» (الهيكل التنظيمي ← المسميات الوظيفية), in form 1's boxes of pounds and piasters.
+  { key: 'job.fixedSalaryPounds', label: { en: "Job's fixed salary — pounds", ar: 'الراتب الثابت للوظيفة — جنيه' }, source: 'employment', sample: '9500', required: false },
+  { key: 'job.fixedSalaryPiasters', label: { en: "Job's fixed salary — piasters", ar: 'الراتب الثابت للوظيفة — قرش' }, source: 'employment', sample: '00', required: false },
   { key: 'job.occupationCode2', label: { en: 'Occupation code — second part', ar: 'كود المهنة — الجزء الثاني' }, source: 'employment', sample: '456', required: false },
   { key: 'employment.startDay', label: { en: 'Start date — day', ar: 'تاريخ المباشرة — اليوم' }, source: 'employment', sample: '15', required: false },
   { key: 'employment.startMonth', label: { en: 'Start date — month', ar: 'تاريخ المباشرة — الشهر' }, source: 'employment', sample: '11', required: false },

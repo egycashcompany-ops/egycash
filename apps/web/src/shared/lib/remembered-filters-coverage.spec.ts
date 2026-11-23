@@ -73,9 +73,12 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/AttendancePage.tsx', ['date']],
   ['modules/fleet/pages/CatalogsPage.tsx', ['kind']],
   ['modules/fleet/pages/DealershipPage.tsx', []],
-  // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period filters are ONE
-  // state for the five period tabs (TAB_SHARED below).
-  ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab']],
+  ['modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx', []],
+  // «لوحة تحكم الحركة»: `tab` is a view, and a link names its own tab. The period opens on «هذا
+  // الشهر» on every visit — a chosen period stays in the address bar between tabs, for the rest of
+  // the visit only (DECISIONS §0c); type, operation and codes are remembered, ONE state for «أرقام
+  // الفترة» and the period parts of the seven mixed panels (TAB_SHARED below).
+  ['modules/fleet/pages/FleetDashboardPage.tsx', ['tab', 'period', 'from', 'to']],
   ['modules/fleet/pages/FuelCardsPage.tsx', []],
   ['modules/fleet/pages/FuelChargingPage.tsx', []],
   ['modules/fleet/pages/ReceiptsPage.tsx', []],
@@ -119,6 +122,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/hr/employee-management/employee-files/pages/EmployeeFilesListPage.tsx', []],
   ['modules/hr/employee-management/employees/pages/EmployeesListPage.tsx', []],
   ['modules/hr/employee-management/employees/pages/EmployeesReadyPage.tsx', []],
+  ['modules/hr/employee-management/employees/pages/HiredEmployeesPage.tsx', []],
   ['modules/hr/leave-management/pages/AllRequestsPage.tsx', []],
   ['modules/hr/medical/pages/InsuranceCardsPage.tsx', []],
   ['modules/hr/medical/pages/MedicalProfilesPage.tsx', []],
@@ -179,10 +183,17 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   // at once is not where the next visit starts.
   ['modules/operations/pages/SecuredDispatchPage.tsx', ['date']],
   ['modules/operations/pages/StandingCrewPage.tsx', []],
+  // Round 19 — «كشف طاقم العمليات» in the boards' look: its four filters remembered as the boards'
+  // are. It reads no `date` any more — the roster is the same every day. Round 19b: `code` and
+  // `name`, the two boxes before «الاسم أو الكود» (`q`), are read only to fold an old link or a
+  // remembered view into `q`, and are taken off the address at once.
+  ['modules/operations/pages/RequirementsPage.tsx', ['code', 'name']],
   // Round 12 — both reports gained «اسم القائد» / «اسم البنك» (`name`), remembered as the boards'
   // filters are; `from`/`to` are not — they open on the current month, the period the report IS.
   ['modules/operations/pages/CaptainReportPage.tsx', ['from', 'to']],
-  ['modules/operations/pages/VaultReportPage.tsx', ['from', 'to']],
+  // Round 14 — «تقرير البنوك» is the vault roll-up that was «تجميع الخزينة» (`VaultReportPage`), moved
+  // with its filters: `name` remembered, the period not.
+  ['modules/operations/pages/BankReportPage.tsx', ['from', 'to']],
   // Round 12 — «سجل الخزينة» is «سجل الشحنات» for the محصنات: the secured board's filters remembered
   // alike; `from`/`to` open on this month to date, as the history's.
   ['modules/operations/pages/VaultInventoryPage.tsx', ['from', 'to']],
@@ -236,7 +247,6 @@ const EXCLUDED: readonly (readonly [string, string])[] = [
     'modules/operations/pages/CrewBoardPage.tsx',
     '`date` resolves server-side to tomorrow \u2014 the day the board IS',
   ],
-  ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
   // Round 12 — «توزيع المحصنات» and «تسليم المحصنات»: the day IS the screen (its vans and its
   // محصنات); nothing else is read from the URL.
   [
@@ -267,6 +277,15 @@ const MIGRATION_PENDING: readonly string[] = [];
  */
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
+  // AT-D4 has no filters to remember, and the detector does not flag it — so no note either, which
+  // this file's own rule calls a stale look. It is the WHOLE list of machine ids nothing in ECMS
+  // answers to, short by nature and shorter every time one is linked or ignored, beside the
+  // backfill's progress. Narrowing it would only hide the thing it exists to show.
+  ['modules/hr/attendance/pages/DeviceHealthPage.tsx'],
+  // «ساعات العمل» is an EDITOR, not a list: one row per department, each with its own hours, and a
+  // Save. Its search box narrows what is on screen while somebody edits, so there is no chosen view
+  // of stored data to carry between visits — remembering it would restore a filter over a form.
+  ['modules/hr/attendance/pages/WorkingHoursPage.tsx'],
   ['modules/atm/pages/AtmSettingsPage.tsx'],
   [
     'modules/atm/pages/LayoutImportPage.tsx',
@@ -317,7 +336,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
     'modules/hr/contracts/pages/ContractDetailPage.tsx',
     'the select assigns a category to this contract',
   ],
-  ['modules/hr/contracts/pages/InsuranceJobTitlesPage.tsx'],
   ['modules/hr/contracts/pages/TemplateEditorPage.tsx'],
   [
     'modules/hr/contracts/pages/TemplatesListPage.tsx',
@@ -365,22 +383,28 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/hr/recruitment/job-offers/pages/JobOfferDetailPage.tsx'],
   ['modules/hr/recruitment/job-offers/pages/JobOfferFormPage.tsx'],
   ['modules/hr/recruitment/job-requisitions/pages/JobRequisitionDetailPage.tsx'],
-  ['modules/hr/recruitment/job-requisitions/pages/JobRequisitionsListPage.tsx'],
+  [
+    'modules/hr/recruitment/job-requisitions/pages/JobRequisitionsListPage.tsx',
+    'its search, status and priority live in the page\u2019s own state, never the query string \u2014 nothing there to remember',
+  ],
   ['modules/hr/recruitment/recruitment-form/pages/PublicApplyPage.tsx'],
   ['modules/hr/recruitment/recruitment-form/pages/RecruitmentFormPage.tsx'],
   ['modules/hr/recruitment/screening/pages/ScreeningDetailPage.tsx'],
+  ['modules/hr/settings/HiringRequirementsPage.tsx'],
   ['modules/it/mobile/VehicleCheckPage.tsx'],
   ['modules/it/pages/AssetDetailPage.tsx'],
   ['modules/it/pages/AssetScanPage.tsx'],
+  ['modules/it/pages/AssetsImportPage.tsx'],
   ['modules/it/pages/ItEmployeeHistoryPage.tsx'],
   ['modules/it/pages/LicenseDetailPage.tsx'],
   ['modules/it/pages/MaintenanceOrderDetailPage.tsx'],
   ['modules/it/pages/TicketDetailPage.tsx'],
   ['modules/operations/mobile/StopDetailPage.tsx'],
-  [
-    'modules/operations/pages/BankReportPage.tsx',
-    '`from`/`to` arrive from the link; the page renders no control for them',
-  ],
+  // Round 14 — «إدارات العمليات»: one setting edited in place; its search narrows the tiles in
+  // memory and is not a filter of a stored list.
+  ['modules/operations/pages/CrewDepartmentsPage.tsx'],
+  // P-ORG-3: `?dept` is which department is open, not a filter; the tile search is local.
+  ['modules/organization/org-chart/pages/OrgChartPage.tsx'],
   ['modules/operations/pages/OperationsOverviewPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
   ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],
@@ -573,7 +597,7 @@ const TAB_SCOPED: readonly (readonly [string, string])[] = [
 const TAB_SHARED: readonly (readonly [string, string])[] = [
   [
     'modules/fleet/pages/FleetDashboardPage.tsx',
-    'the five period tabs draw one filter bar (period, type, operation, codes) over one read, R2 — «الفلاتر ثابتة بين التبويبات»',
+    'the seven mixed panels («الصيانة والورش»، «العدادات والكيلومترات»، «الحوادث ومطالبات التأمين»، «المخالفات المرورية والتسويات»، «الوقود والمصروفات»، «العهدة»، «التراخيص والتجديدات» — the last with its period choices only) draw one filter bar over one read, R2 — «الفلاتر ثابتة بين التبويبات»; type, operation and codes are remembered, the period is not (it stays in the address bar between tabs)',
   ],
 ];
 

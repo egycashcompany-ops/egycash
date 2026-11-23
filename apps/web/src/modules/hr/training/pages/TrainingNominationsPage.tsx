@@ -21,6 +21,8 @@ import { Button } from '../../../../shared/ui/Button';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { SearchInput } from '../../../../shared/ui';
 import { Field, Select, Textarea } from '../../../../shared/ui/form';
+import { FilterBar } from '../../../../shared/ui/FilterBar';
+import { SEARCH_FITS_TEXT } from '../../recruitment/job-offers/components/OfferFilters';
 import { formatDate } from '../../../../shared/lib/format';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { NominationStatusBadge } from '../components/NominationStatusBadge';
@@ -210,21 +212,28 @@ export const TrainingNominationsPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        {/* The shared filter bar: the search as wide as its hint, the view as the view shown
+            («العرض بتاع الفلتر … يكون مظبوط ع كلام بظبط»). */}
+        <FilterBar
+          onClear={() => patch({ q: null, view: null, page: null })}
+          hasActiveFilters={search !== '' || view !== 'pending'}
+        >
           <SearchInput
             value={search}
             onChange={(value) => patch({ q: value === '' ? null : value, page: null })}
             placeholder={t('training.nomination.searchPlaceholder')}
+            className={SEARCH_FITS_TEXT}
           />
+          {/* A VIEW, not a filter: the queue or everything — one answer at a time. */}
           <Select
             value={view}
             onChange={(e) => patch({ view: e.target.value, page: null })}
-            className="w-full sm:w-48"
+            className="[field-sizing:content]"
           >
             <option value="pending">{t('training.nomination.viewPending')}</option>
             <option value="all">{t('training.nomination.viewAll')}</option>
           </Select>
-        </div>
+        </FilterBar>
         <DataTable
           columns={columns}
           rows={data?.items ?? []}

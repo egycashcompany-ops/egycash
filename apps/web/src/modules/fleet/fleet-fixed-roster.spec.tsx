@@ -1,18 +1,24 @@
-// The fixed-crew screen (الطقم الثابت), and the three things it must NOT have.
+// «الطقم الثابت» — the screen and its computer board, in the look of «تعيين السيارات» («واعمل ديزاين
+// شاشة الطاقم الثابت زى التعيين اليومى»), minus the day.
 //
-// This screen is a sibling of the daily roster, so most of the risk is in the difference rather
-// than the likeness: a date that crept back in, an unavailable bucket copied along with the
-// layout, or a save that quietly writes without being asked. Each is asserted directly, and the
-// daily roster is asserted to still have all three — a regression there would be invisible from
-// this file otherwise.
+// The risk of a twin is in the difference: a day that crept back in (a stepper, «يوم سابق», an
+// availability word), a page header that came back or a second Excel control (the owner had the
+// header removed at every width on 22 November, reversing answer 2 ج; ONE Excel per width), a flag
+// on a standing member who can no longer drive (answer 1 ب: none), a workshop lock copied from the
+// day, a save that writes without being asked. Each is
+// asserted directly. The phone and tablet board has its own spec (`fleet-fixed-roster-touch.spec`);
+// the board model's behaviour (undo, swap, transfer, counters, the payload) is
+// `lib/fixed-roster-model.spec.ts`, the refusal line `lib/fixed-save-refusal.spec.ts`, the rules
+// `lib/fixed-roster-board.spec.ts`.
 //
-// The web suite runs with `environment: 'node'` and no jsdom, so nothing drags: what a drop
-// MEANS is tested in `lib/fixed-roster-board.spec.ts`, the drag ATTRIBUTES are read out of the
-// markup here, and the interaction itself is verified in a browser.
+// The web suite runs with `environment: 'node'` and no DOM, so nothing is clicked or dragged here:
+// the page is rendered with `renderToStaticMarkup` (no window → the computer's board), a restored
+// draft comes from a stubbed `sessionStorage`, and the wiring between a control and the model is
+// read out of the source (`fixedSource`, comments stripped).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -22,6 +28,7 @@ import {
   SaveFleetFixedRosterSchema,
   type FleetFixedCrewRowDto,
   type FleetFixedRosterDto,
+  type FleetPersonDto,
   type Locale,
   type MeDto,
 } from '@ecms/contracts';
@@ -29,35 +36,77 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { resolveNavIcon } from '../../platform/navigation/app-icon';
+import { pluralKey } from '../../shared/lib/plural';
 import { FixedRosterPage } from './pages/FixedRosterPage';
+import { CrewCandidates, FixedCrewDialog } from './components/roster/FixedCrewDialog';
 import { applyEdit, changedRows } from './lib/fixed-roster-board';
+import { FIXED_ROSTER_DRAFT_KEY } from './lib/draft-storage';
+import { KNOWN_REASONS } from './lib/roster-board';
+import { COUNTER_TONES } from './lib/roster-view';
+import { fixedSource } from './fixed-roster-spec-sources';
 import { rosterSource } from './roster-spec-sources';
+
+// The shared `Dialog` draws through a portal, which a static render cannot. Here it draws in
+// place, and only while open — exactly what the pen dialog's markup claims need.
+vi.mock('../../shared/ui/Dialog', async () => {
+  const { createElement } = await import('react');
+  return {
+    Dialog: (props: {
+      open: boolean;
+      title: string;
+      description?: string;
+      footer?: unknown;
+      children?: unknown;
+    }) =>
+      props.open
+        ? createElement(
+            'div',
+            { role: 'dialog', 'data-dialog-title': props.title },
+            createElement('h2', null, props.title),
+            props.description === undefined ? null : createElement('p', null, props.description),
+            props.children as never,
+            createElement('footer', null, props.footer as never),
+          )
+        : null,
+  };
+});
 
 /** Real 24-hex ids: the save payload is parsed with the REAL schema, which demands ObjectIds. */
 const V1 = '650000000000000000000001';
 const V2 = '650000000000000000000002';
+const V3 = '650000000000000000000003';
+/** A car of another branch (or out of service): not on this board. */
+const AWAY = '650000000000000000000099';
 const E1 = '650000000000000000000011';
 const E2 = '650000000000000000000012';
+const E3 = '650000000000000000000013';
+const E4 = '650000000000000000000014';
+const E5 = '650000000000000000000015';
+const E6 = '650000000000000000000016';
 const MT = '650000000000000000000021';
+const OLD_MT = '650000000000000000000022';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const RAW = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8');
-/**
- * The page's CODE, with comments removed.
- *
- * The claims below are about what the screen DOES — no date reaches the server, no availability
- * verdict is read. The file's header discusses both at length, precisely to explain why they are
- * absent, so matching raw source would fail on its own explanation.
- */
-const SOURCE = RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-/** The daily roster as written — its page shell, its model, both boards and their parts. */
-const ROSTER = rosterSource(['shell', 'model', 'desk', 'shared', 'touch'], { raw: true });
+const read = (path: string): string => readFileSync(join(HERE, path), 'utf8');
+const strip = (text: string): string =>
+  text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+/** The whole screen as CODE: the shell, the model, the computer's board, the touch board. */
+const SCREEN = fixedSource(['shell', 'model', 'desk', 'touch']);
+const SHELL = fixedSource(['shell']);
+const MODEL = fixedSource(['model']);
+const DESK = fixedSource(['desk']);
+const BOARD_FILE = strip(read('components/roster/FixedDeskBoard.tsx'));
+const DIALOG = strip(read('components/roster/FixedCrewDialog.tsx'));
+const PANEL = strip(read('components/roster/FixedDriversPanel.tsx'));
+const CELLS = strip(read('components/roster/fixed-desk-cells.tsx'));
+/** The daily board on a computer, as code — what must still be there. */
+const DAILY_DESK = rosterSource(['desk']);
 
 const row = (
   vehicleId: string,
   code: string,
-  d1: string | null = null,
-  d2: string | null = null,
+  over: Partial<FleetFixedCrewRowDto> = {},
 ): FleetFixedCrewRowDto => ({
   vehicleId,
   code,
@@ -65,54 +114,82 @@ const row = (
   typeId: 'vt1',
   inMaintenance: false,
   missionTypeId: null,
-  driver1EmployeeId: d1,
-  driver2EmployeeId: d2,
+  driver1EmployeeId: null,
+  driver2EmployeeId: null,
   notes: null,
+  ...over,
 });
 
+const NOTE = 'تُسلَّم المفاتيح لمشرف الوردية قبل الثامنة صباحًا، ولا تخرج السيارة إلا بإذن مكتوب.';
+
+/**
+ * 150: a full crew, a mission, a note. 151: nobody. 152: the WORKSHOP holds it — and it still
+ * has its standing crew, both seats. E4 is fixed to a car that is not on this board; E6 is free.
+ */
 const BOARD: FleetFixedRosterDto = {
-  rows: [row(V1, '150'), row(V2, '151')],
+  rows: [
+    row(V1, '150', {
+      driver1EmployeeId: E1,
+      driver2EmployeeId: E2,
+      missionTypeId: MT,
+      notes: NOTE,
+    }),
+    row(V2, '151'),
+    row(V3, '152', { inMaintenance: true, driver1EmployeeId: E3, driver2EmployeeId: E5 }),
+  ],
   drivers: [
-    { employeeId: E1, assignedVehicleId: null },
-    { employeeId: E2, assignedVehicleId: null },
+    { employeeId: E1, assignedVehicleId: V1 },
+    { employeeId: E2, assignedVehicleId: V1 },
+    { employeeId: E3, assignedVehicleId: V3 },
+    { employeeId: E5, assignedVehicleId: V3 },
+    { employeeId: E4, assignedVehicleId: AWAY },
+    { employeeId: E6, assignedVehicleId: null },
   ],
 };
 
-const ALL = ['fleetRoster.view', 'fleetRoster.plan'];
+const PEOPLE: readonly (readonly [string, string, string])[] = [
+  [E1, 'HR-1', 'أحمد محمد'],
+  [E2, 'HR-2', 'محمد محمود'],
+  [E3, 'HR-3', 'خالد علي'],
+  [E4, 'HR-4', 'سعيد حسن'],
+  [E5, 'HR-5', 'عمرو حسين'],
+  [E6, 'HR-6', 'ياسر فتحي'],
+];
+const person = (employeeId: string, code: string, fullNameAr: string): FleetPersonDto => ({
+  employeeId,
+  code,
+  fullNameAr,
+  status: 'active',
+  branchId: null,
+  address: null,
+  governorate: null,
+  phone: null,
+  hiredAt: null,
+});
+const PERSONS = new Map(PEOPLE.map(([id, code, name]) => [id, person(id, code, name)]));
+
+const ALL = ['fleetRoster.view', 'fleetRoster.plan', 'fleetDriver.view'];
+const VIEWER = ['fleetRoster.view', 'fleetDriver.view'];
 
 const client = (board: FleetFixedRosterDto = BOARD): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(['fleet', 'fixed-roster'], board);
-  // The REAL `missionType` catalog key, in the shape `useFleetCatalog('missionType')` reads —
-  // the same catalog and the same key the DAILY roster's mission column reads.
+  // The REAL `missionType` catalog key, in the shape `useFleetCatalog('missionType')` reads — the
+  // same catalog the daily roster's mission column reads. One live mission, one archived.
   qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'missionType' }], {
     items: [
       { id: MT, kind: 'missionType', name: { ar: 'نقل نقدية', en: 'Cash run' }, isActive: true },
+      {
+        id: OLD_MT,
+        kind: 'missionType',
+        name: { ar: 'مهمة قديمة', en: 'Old run' },
+        isActive: false,
+      },
     ],
-    meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+    meta: { page: 1, pageSize: 100, total: 2, totalPages: 1 },
   });
-  // FLEET's own people list — one key for the whole roster, read by every driver cell on every
-  // Fleet screen. It replaces the per-employee HR detail entries: these names no longer come from
-  // HR's directory and no longer need HR's grant.
-  qc.setQueryData(
-    ['fleet', 'people'],
-    (
-      [
-        [E1, 'HR-1', 'أحمد محمد'],
-        [E2, 'HR-2', 'محمد محمود'],
-      ] as const
-    ).map(([employeeId, code, fullNameAr]) => ({
-      employeeId,
-      code,
-      fullNameAr,
-      status: 'active' as const,
-      branchId: null,
-      address: null,
-      governorate: null,
-      phone: null,
-      hiredAt: null,
-    })),
-  );
+  // FLEET's own people list — one key for the whole roster, every name on the screen.
+  qc.setQueryData(['fleet', 'people'], [...PERSONS.values()]);
   return qc;
 };
 
@@ -131,7 +208,11 @@ const store = (permissions: string[]) =>
     },
   });
 
-const render = ({ permissions = ALL, route = '/fleet/fixed-roster', qc = client() } = {}): string =>
+const render = ({
+  permissions = ALL,
+  route = '/fleet/fixed-roster',
+  qc = client(),
+}: { permissions?: string[]; route?: string; qc?: QueryClient } = {}): string =>
   renderToStaticMarkup(
     <Provider store={store(permissions)}>
       <QueryClientProvider client={qc}>
@@ -142,47 +223,350 @@ const render = ({ permissions = ALL, route = '/fleet/fixed-roster', qc = client(
     </Provider>,
   );
 
-const t = (key: string): string => translate('ar', key);
-/** The table body — where the vehicles and their crews live. */
+/** The screen with a draft left in the tab's storage by an earlier visit (a reload). */
+const renderRestored = (
+  stored: FleetFixedCrewRowDto[],
+  options: { permissions?: string[]; route?: string } = {},
+): string => {
+  const box = new Map([[FIXED_ROSTER_DRAFT_KEY, JSON.stringify(stored)]]);
+  vi.stubGlobal('window', {
+    sessionStorage: {
+      getItem: (k: string) => box.get(k) ?? null,
+      setItem: (k: string, v: string) => void box.set(k, v),
+      removeItem: (k: string) => void box.delete(k),
+    },
+  });
+  try {
+    return render(options);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+};
+
+const t = (key: string, params?: Record<string, string | number>): string =>
+  translate('ar', key, params);
+
+/** The table body — where the cars and their crews live. */
 const tbody = (markup: string): string =>
   markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
-/** The header cells, in document order — the column contract. */
+/** The header cells, in document order. */
 const headers = (markup: string): string[] =>
   [
     ...markup
       .slice(markup.indexOf('<thead'), markup.indexOf('</thead>'))
       .matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g),
   ].map((m) => (m[1] as string).replace(/<[^>]*>/g, '').trim());
+/** One car's row. */
+const carRow = (markup: string, code: string): string => {
+  const at = markup.indexOf(`data-car="${code}"`);
+  if (at === -1) return '';
+  return markup.slice(markup.lastIndexOf('<tr', at), markup.indexOf('</tr>', at));
+};
+/** The opening tag of a car's row. */
+const rowTag = (markup: string, code: string): string => {
+  const at = markup.indexOf(`data-car="${code}"`);
+  return markup.slice(markup.lastIndexOf('<tr', at), markup.indexOf('>', at) + 1);
+};
+/** The codes of the rows drawn, in order. */
+const drawnCodes = (markup: string): string[] =>
+  [...tbody(markup).matchAll(/<tr[^>]*data-car="([^"]*)"/g)].map((m) => m[1] as string);
+/** Every value of a data attribute, in document order. */
+const all = (markup: string, attribute: string): string[] =>
+  [...markup.matchAll(new RegExp(`${attribute}="([^"]*)"`, 'g'))].map((m) => m[1] as string);
+/** One seat's zone, up to the seat's end. */
+const seatOf = (markup: string, vehicleId: string, slot: 1 | 2): string => {
+  const at = markup.indexOf(`data-drop-zone="${vehicleId}:driver${String(slot)}EmployeeId"`);
+  if (at === -1) return '';
+  return markup.slice(at, markup.indexOf('</div></div>', at));
+};
+/** The drivers panel. */
+const panel = (markup: string): string => {
+  const at = markup.indexOf('data-fixed-drivers="true"');
+  return markup.slice(at, markup.indexOf('</aside>', at));
+};
+/** Whether the button carrying `marker` is disabled. */
+const buttonDisabled = (markup: string, marker: string): boolean => {
+  const at = markup.indexOf(marker);
+  if (at === -1) throw new Error(`no button marked ${marker}`);
+  const tag = markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('>', at) + 1);
+  return / disabled=""/.test(tag) || / disabled>/.test(tag);
+};
+/** A counter chip's opening tag. */
+const chip = (markup: string, key: string): string => {
+  const at = markup.indexOf(`data-counter="${key}"`);
+  return markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('>', at) + 1);
+};
+const count = (markup: string, needle: string): number => markup.split(needle).length - 1;
 
-/** Every element that declares itself a drop zone, by the vehicle:slot it stands for. */
-const dropZones = (markup: string): string[] =>
-  [...markup.matchAll(/data-drop-zone="([^"]*)"/g)].map((m) => m[1] as string);
-const driverCards = (markup: string): string[] =>
-  [...markup.matchAll(/data-driver-card="([^"]*)"/g)].map((m) => m[1] as string);
+// ── 1. No page header, one Excel, no day ─────────────────────────────────────────────────────────
 
-// ── 1. What the screen IS ───────────────────────────────────────────────────
-
-describe('the fixed-crew screen', () => {
-  it('is titled «الطقم الثابت»', () => {
-    expect(t('fleet.nav.fixedRoster')).toBe('الطقم الثابت');
-    expect(render()).toContain('الطقم الثابت');
-  });
-
-  it('gives every vehicle exactly two slots, first driver and second', () => {
+describe('the screen: no page header, one Excel, no day (owner, 22 November)', () => {
+  it('draws NO page header — no breadcrumbs, no visible title, no divider', () => {
     const markup = render();
-    expect(dropZones(markup)).toEqual([
-      `${V1}:driver1EmployeeId`,
-      `${V1}:driver2EmployeeId`,
-      `${V2}:driver1EmployeeId`,
-      `${V2}:driver2EmployeeId`,
-    ]);
-    expect(markup).toContain(t('fleet.odometer.fields.driver1'));
-    expect(markup).toContain(t('fleet.odometer.fields.driver2'));
+    expect(SHELL, 'the shell draws no PageHeader').not.toContain('PageHeader');
+    expect(markup, 'no breadcrumbs: no link to «الحركة»').not.toContain('href="/fleet"');
+    expect(markup, 'nor its trail').not.toContain('aria-label="breadcrumb"');
+    expect(markup, 'nor the word «الحركة»').not.toContain(`>${t('fleet.module.title')}<`);
+    // The one title left is for a screen reader: «الطقم الثابت», visually hidden.
+    expect(count(markup, '<h1'), 'one h1 on the page').toBe(1);
+    const h1 = markup.slice(markup.indexOf('<h1'), markup.indexOf('</h1>'));
+    expect(h1, 'visually hidden').toContain('class="sr-only"');
+    expect(h1).toContain(t('fleet.nav.fixedRoster'));
+    expect(count(markup, t('fleet.nav.fixedRoster')), 'and nowhere else on the page').toBe(1);
   });
 
-  it('is a TABLE with the seven roster columns, in this order', () => {
-    // The screen reads as another Fleet roster board, so the column list is the daily board's
-    // own — minus its date, which this one does not have.
+  it('opens on the toolbar row — the car count and the Excel pill are the first thing drawn', () => {
+    const markup = render();
+    const board = markup.indexOf('data-fixed-desk="true"');
+    expect(board, 'the board').toBeGreaterThan(-1);
+    expect(markup.indexOf('</h1>'), 'the hidden title before the board').toBeLessThan(board);
+    const before = markup.slice(markup.indexOf('</h1>') + '</h1>'.length, board);
+    expect(before, 'nothing visible between the hidden title and the board').not.toMatch(
+      />[^<\s]/u,
+    );
+    const first = markup.slice(board);
+    expect(
+      first.indexOf('data-fixed-toolbar="true"'),
+      'the toolbar row opens the board',
+    ).toBeLessThan(first.indexOf('data-fixed-filters="true"'));
+    expect(SHELL).toContain('<PageContainer fullHeight>');
+  });
+
+  it('keeps the Excel pill in the toolbar row — the screen’s one Excel control', () => {
+    expect(SCREEN, 'the old header button is gone').not.toContain('ExportSheetButton');
+    const markup = render();
+    expect(all(markup, 'data-export'), 'ONE Excel control, the screen’s own hook').toEqual([
+      'fixed-roster',
+    ]);
+    const toolbar = markup.slice(
+      markup.indexOf('data-fixed-toolbar="true"'),
+      markup.indexOf('data-fixed-filters="true"'),
+    );
+    expect(toolbar, 'beside the car count').toContain('data-export="fixed-roster"');
+    expect(toolbar).toContain('data-filtered-count');
+    expect(toolbar, '«تصدير» and the word Excel, as the daily pill').toContain(
+      t('fleet.fuelCards.board.excel'),
+    );
+  });
+
+  it('exports the table as drawn — the rows on screen, in their order', () => {
+    expect(BOARD_FILE).toContain(
+      '<ExcelPill name="fixed-roster" onExport={() => m.actions.exportSheet(rows)} />',
+    );
+  });
+
+  it('has NO day — no stepper, no date box, no «يوم سابق», no day word', () => {
+    const markup = render();
+    expect(markup).not.toContain('data-day-stepper="');
+    expect(markup).not.toContain('type="date"');
+    expect(markup).not.toContain('data-readonly-day="');
+    for (const key of [
+      'fleet.roster.date',
+      'fleet.roster.prevDay',
+      'fleet.roster.nextDay',
+      'fleet.roster.pastDayTitle',
+      'fleet.dash.common.today',
+    ]) {
+      expect(markup, key).not.toContain(t(key));
+    }
+    // …and nothing in any of the screen's files reaches for one.
+    for (const word of [
+      'DeskDayStepper',
+      'PastDayBanner',
+      'weekdayOf',
+      'slashDate',
+      'shiftDay',
+      'useRosterDay',
+      'rosterDraftKey',
+      'type="date"',
+    ]) {
+      expect(SCREEN, word).not.toContain(word);
+    }
+  });
+
+  it('borrows the daily board’s pieces rather than copying it — and leaves the day’s behind', () => {
+    for (const piece of [
+      'SeatCell',
+      'DeskCounters',
+      'ExcelPill',
+      'EditsBar',
+      'ROSTER_TABLE',
+      'MISSION_BOX',
+      'useOverflowing',
+      'AvailableList',
+      'DriverSearch',
+      'DriversHeading',
+    ]) {
+      expect(DESK, piece).toContain(piece);
+    }
+    for (const day of [
+      'RosterAssignDialog',
+      'DriverTabs',
+      'UnavailableList',
+      'CatalogMultiSelect',
+      'DriverChip',
+      'vehicleColour',
+    ]) {
+      expect(DESK, day).not.toContain(day);
+    }
+    expect(DESK, 'the daily board is not drawn').not.toMatch(/<RosterDeskBoard\b/);
+    expect(DESK, 'nor its two-tab panel').not.toMatch(/\bDriversPanel\b/);
+    expect(DESK, 'no page container of its own — the shell draws it').not.toContain(
+      'PageContainer',
+    );
+  });
+});
+
+describe('the states — loading, no car at all, filtered to nothing', () => {
+  it('says nothing while the board loads: no count, no empty line in the panel', () => {
+    const qc = client();
+    qc.removeQueries({ queryKey: ['fleet', 'fixed-roster'] });
+    const markup = render({ qc });
+    const at = markup.indexOf('data-filtered-count');
+    expect(markup.slice(markup.indexOf('>', at) + 1, markup.indexOf('</span>', at))).toBe('');
+    expect(panel(markup)).not.toContain(t('fleet.fixedRoster.poolEmpty'));
+    expect(markup).not.toContain('data-car="');
+    expect(markup, 'and no unsaved bar').not.toContain('data-edits-bar="');
+  });
+
+  it('says «لا توجد سيارات» for a board with no car', () => {
+    const markup = render({ qc: client({ rows: [], drivers: [] }) });
+    expect(tbody(markup)).toContain(t('fleet.fixedRoster.noVehicles'));
+  });
+
+  it('leaves the table’s own empty line when the filters hide every car', () => {
+    const markup = render({ route: '/fleet/fixed-roster?q=999' });
+    expect(drawnCodes(markup)).toEqual([]);
+    expect(tbody(markup)).not.toContain(t('fleet.fixedRoster.noVehicles'));
+    expect(tbody(markup)).toContain(t('common.empty.title'));
+  });
+});
+
+// ── 2. The toolbar's count ──────────────────────────────────────────────────────────────────────
+
+describe('the car count under the title — Arabic’s own plural', () => {
+  const sized = (n: number): FleetFixedRosterDto => ({
+    rows: Array.from({ length: n }, (_, i) =>
+      row(`6500000000000000000001${String(i).padStart(2, '0')}`, String(200 + i)),
+    ),
+    drivers: [],
+  });
+  const filteredCount = (markup: string): string => {
+    const at = markup.indexOf('data-filtered-count');
+    return markup.slice(markup.indexOf('>', at) + 1, markup.indexOf('</span>', at));
+  };
+
+  it.each([1, 2, 3, 10, 11, 100])('%i cars read as their own form', (n) => {
+    const markup = render({ qc: client(sized(n)) });
+    expect(filteredCount(markup)).toBe(
+      t(pluralKey('fleet.fixedRoster.carCount', 'ar', n), { count: String(n) }),
+    );
+  });
+
+  it('counts what the filters leave, and says so on hover', () => {
+    const markup = render({ route: '/fleet/fixed-roster?q=150' });
+    expect(filteredCount(markup)).toBe(t(pluralKey('fleet.fixedRoster.carCount', 'ar', 1)));
+    const at = markup.indexOf('data-filtered-count');
+    const tag = markup.slice(markup.lastIndexOf('<span', at), markup.indexOf('>', at));
+    expect(tag).toContain('role="status"');
+    expect(tag).toContain(`title="${t('fleet.fixedRoster.matchedRows')}"`);
+  });
+
+  it('is this screen’s own words — the daily board keeps «20 سيارة» as it was', () => {
+    expect(BOARD_FILE).toContain("pluralKey('fleet.fixedRoster.carCount', locale, rows.length)");
+    expect(BOARD_FILE).toContain("t('fleet.fixedRoster.matchedRows')");
+    expect(BOARD_FILE).not.toContain('fleet.vehicles.count');
+    expect(DAILY_DESK, 'the daily count is untouched').toContain(
+      "t('fleet.vehicles.count', { count: num(rows.length) })",
+    );
+  });
+
+  it('reads as approved in Arabic — the five forms, no Latin letter (green after the i18n merge)', () => {
+    expect(t('fleet.fixedRoster.carCount.one')).toBe('سيارة واحدة');
+    expect(t('fleet.fixedRoster.carCount.two')).toBe('سيارتان');
+    expect(t('fleet.fixedRoster.carCount.few', { count: 3 })).toBe('3 سيارات');
+    expect(t('fleet.fixedRoster.carCount.many', { count: 11 })).toBe('11 سيارة');
+    expect(t('fleet.fixedRoster.carCount.other', { count: 100 })).toBe('100 سيارة');
+    expect(t('fleet.fixedRoster.matchedRows')).toBe('عدد الصفوف بعد عوامل التصفية');
+    for (const form of ['one', 'two', 'few', 'many', 'other']) {
+      // As a reader sees it — the placeholder filled (its own name is not a word on screen).
+      expect(t(`fleet.fixedRoster.carCount.${form}`, { count: 7 })).not.toMatch(/[A-Za-z{}]/);
+      expect(translate('en', `fleet.fixedRoster.carCount.${form}`)).not.toBe(
+        `fleet.fixedRoster.carCount.${form}`,
+      );
+    }
+  });
+});
+
+// ── 3. The filter bar ───────────────────────────────────────────────────────────────────────────
+
+describe('the filter bar — «كود السيارة», the counters, the reset; no «كل المهمات»', () => {
+  it('has no «كل المهمات» dropdown — the mission chips are its control', () => {
+    const markup = render();
+    expect(markup).not.toContain(t('fleet.roster.allMissions'));
+    expect(DESK).not.toContain('CatalogMultiSelect');
+    expect(BOARD_FILE, 'the code filter in its icon box, the daily width').toContain(
+      'className="w-48 shrink-0 lg:[&&]:!w-48 lg:[&&]:!flex-none"',
+    );
+    expect(BOARD_FILE).toContain('<VehicleCodeFilter');
+    expect(BOARD_FILE).toContain('<DeskCounters counters={m.counters} onApply={patch} />');
+  });
+
+  it('counts the whole board in the daily chips — «بلا طقم» yellow, rose for the workshop alone', () => {
+    const markup = render();
+    expect(all(markup, 'data-counter')).toEqual(['total', 'workshop', 'crewed', 'uncrewed', MT]);
+    expect(chip(markup, 'uncrewed'), '«بلا طقم» wears the daily «بلا سائق» yellow').toContain(
+      COUNTER_TONES.unmanned,
+    );
+    expect(chip(markup, 'uncrewed')).not.toContain('rose');
+    expect(chip(markup, 'workshop')).toContain(COUNTER_TONES.workshop);
+    expect(chip(markup, 'crewed')).toContain(COUNTER_TONES.assigned);
+    expect(chip(markup, 'total'), 'nothing narrows: «إجمالي» is the one applied').toContain(
+      'aria-pressed="true"',
+    );
+    const figures = (key: string): string => {
+      const at = markup.indexOf(`data-counter="${key}"`);
+      return markup.slice(at, markup.indexOf('</button>', at)).replace(/<[^>]*>/g, '');
+    };
+    expect(figures('total')).toContain('3');
+    expect(figures('workshop')).toContain('1');
+    expect(figures('crewed')).toContain('2');
+    expect(figures('uncrewed')).toContain('1');
+    expect(figures(MT)).toContain('1');
+  });
+
+  it('narrows by the picked code, the view and the mission — and the counters never move', () => {
+    expect(drawnCodes(render())).toEqual(['150', '151', '152']);
+    expect(drawnCodes(render({ route: '/fleet/fixed-roster?q=150' }))).toEqual(['150']);
+    expect(drawnCodes(render({ route: '/fleet/fixed-roster?view=uncrewed' }))).toEqual(['151']);
+    expect(drawnCodes(render({ route: '/fleet/fixed-roster?view=workshop' }))).toEqual(['152']);
+    expect(drawnCodes(render({ route: '/fleet/fixed-roster?view=crewed' }))).toEqual([
+      '150',
+      '152',
+    ]);
+    expect(drawnCodes(render({ route: `/fleet/fixed-roster?mission=${MT}` }))).toEqual(['150']);
+    const narrowed = render({ route: '/fleet/fixed-roster?q=150' });
+    const at = narrowed.indexOf('data-counter="total"');
+    expect(narrowed.slice(at, narrowed.indexOf('</button>', at))).toContain('3');
+  });
+
+  it('offers the red reset only while something narrows the board', () => {
+    const reset = `aria-label="${t('common.filters.clear')}"`;
+    const clean = render();
+    expect(!clean.includes(reset) || buttonDisabled(clean, reset), 'nothing to reset').toBe(true);
+    const filtered = render({ route: '/fleet/fixed-roster?view=uncrewed' });
+    expect(buttonDisabled(filtered, reset)).toBe(false);
+    expect(BOARD_FILE).toContain(
+      '<FilterBar hasActiveFilters={m.filtered} onClear={resetFilters}>',
+    );
+    expect(SHELL).toContain('patch({ q: null, mission: null, view: null })');
+  });
+});
+
+// ── 4. The table ────────────────────────────────────────────────────────────────────────────────
+
+describe('the table — the daily board’s seven columns, the standing crew’s facts', () => {
+  it('reads السيارة · الحالة · نوع المهمة · the two seats · ملاحظات · إجراءات', () => {
     expect(headers(render())).toEqual([
       t('fleet.odometer.columns.vehicle'),
       t('fleet.vehicles.columns.status'),
@@ -194,340 +578,441 @@ describe('the fixed-crew screen', () => {
     ]);
   });
 
-  it('names each vehicle by its CODE, and prints no plate under it', () => {
-    // The plate used to sit under the code as a second line. It is gone from this board: a fixed
-    // crew belongs to the vehicle, and the vehicle is identified here by its code, so the second
-    // line spent a row's height on a fact this screen never asks. The plate is untouched on the
-    // record and on the screens that are ABOUT the vehicle — this is a presentation change only.
-    const body = tbody(render());
-    expect(body, 'the code names the vehicle').toContain('150');
-    expect(body, 'and the plate is not printed').not.toContain('س ص 150');
-    expect(render(), 'nowhere else on the screen either').not.toContain('س ص 150');
-  });
-
-  it('FINDS a vehicle by its code, and by nothing else', () => {
-    // This asserted the plate until every car box in the application was made to ask by code.
-    // Removing the plate from the cell while still searching it was the worst of both: a plate
-    // typed above returned a row identified only by a code the reader had not written, with
-    // nothing on it to explain the match. The box now says «ابحث بكود السيارة» and means it.
-    //
-    // Through the shared matcher, so this board reads `150 - 151` the way the filter bars do.
-    expect(SOURCE, 'the shared rule module, not a comparison of its own').toContain(
-      'visibleFixedRows(draft, { term: search, missions, view })',
+  it('names each car by its code in bold, with no colour of its own and the car card on hover', () => {
+    expect(BOARD_FILE).toMatch(
+      /<VehicleHoverCode\s+vehicleId=\{row\.vehicleId\}\s+code=\{row\.code\}\s+focusable=\{false\}/u,
     );
-    expect(SOURCE, 'and no plate is read to decide what to show').not.toContain('plateNumber');
-    const byCode = tbody(render({ route: '/fleet/fixed-roster?q=150' }));
-    expect(byCode, 'the car whose code was typed is there').toContain('150');
-    expect(byCode, 'and the other one is filtered out').not.toContain('151');
-    const byPlate = tbody(
-      render({ route: '/fleet/fixed-roster?q=' + encodeURIComponent('س ص 999') }),
+    expect(BOARD_FILE).toContain("className={cn('text-sm font-bold', FIGURE)}");
+    expect(SCREEN, 'the per-car colour is retired').not.toMatch(/vehicleColour|vehicle-colour/);
+    const vehicle = BOARD_FILE.slice(
+      BOARD_FILE.indexOf("key: 'vehicle',"),
+      BOARD_FILE.indexOf("key: 'state',"),
     );
-    expect(byPlate, 'a plate number matches no row at all').not.toContain('150');
-  });
-
-  it('shows the mission type and the note as REAL values, dashed only when empty', () => {
-    // These were permanent placeholders until the crew gained the two fields. The dash is now
-    // what "this row holds nothing" looks like, not what the column always looks like — so a
-    // populated row must actually print its values.
-    const filled: FleetFixedRosterDto = {
-      ...BOARD,
-      rows: [{ ...row(V1, '150'), missionTypeId: MT, notes: 'يبدأ من المخزن' }, row(V2, '151')],
-    };
-    const body = tbody(render({ qc: client(filled) }));
-    expect(body, 'the catalog item name, not its id').toContain('نقل نقدية');
-    // The id may appear in an `<option value>` — that is how a select carries its reference —
-    // but it must never be a thing the reader is shown. So the claim is about the VISIBLE text,
-    // which is what it always meant; matching raw markup only happened to say the same thing
-    // back when the cell was a bare `<span>`.
-    const visible = body.replace(/<[^>]*>/g, ' ');
-    expect(visible, 'no ObjectId is ever displayed').not.toContain(MT);
-    expect(visible, 'the name is').toContain('نقل نقدية');
-    expect(body).toContain('يبدأ من المخزن');
-    // …and the untouched row still reads as empty.
-    expect(body).toContain('—');
-  });
-
-  it('renders the mission type by NAME, resolved from the catalog, never the raw id', () => {
-    // Persisting the id and displaying the label is the project's catalog convention; printing
-    // the ObjectId would be unreadable and would leak a key the reader cannot act on.
-    expect(SOURCE, 'the id is resolved through the catalog').toContain(
-      'missionTypeName(row.missionTypeId)',
-    );
-    expect(SOURCE).toContain("useFleetCatalog('missionType')");
-  });
-
-  it('contains its own horizontal overflow — the page never scrolls sideways for it', () => {
-    // `DataTable` wraps itself in `overflow-x-auto`; using it is what keeps 390px honest.
-    expect(SOURCE, 'the board is the shared table').toContain('<DataTable');
-    expect(readFileSync(join(HERE, '../../shared/ui/DataTable.tsx'), 'utf8')).toContain(
-      'overflow-x-auto',
-    );
-  });
-
-  it('asks for a driver in an empty slot instead of showing a blank box', () => {
-    // An empty slot that CAN take a driver now offers the pick-and-type control in place of the
-    // drag hint — one gesture more, not one fewer: the cell is still a drop target, and the drag
-    // itself is unchanged. A slot that cannot take one still says why (see «الأول قبل الثاني»).
-    const markup = render();
-    expect(markup, 'the empty slot invites a choice').toContain(t('fleet.roster.pickDriver'));
-    expect(markup, 'and names the cell it belongs to').toContain('data-driver-picker=');
-    expect(markup, 'it is still a drop target').toContain('data-drop-zone=');
-  });
-
-  it('shows a filled slot as the person, not the id', () => {
-    const markup = render({ qc: client({ ...BOARD, rows: [row(V1, '150', E1), row(V2, '151')] }) });
-    expect(markup).toContain('أحمد محمد');
-    expect(markup).not.toContain(`>${E1}<`);
-  });
-
-  it('lists every driver as a draggable card', () => {
-    const markup = render();
-    expect(driverCards(markup)).toEqual([E1, E2]);
-    // Each card declares itself draggable — without the attribute a dragstart never fires.
-    for (const card of [E1, E2]) {
-      const at = markup.indexOf(`data-driver-card="${card}"`);
-      expect(markup.slice(at, at + 200), `${card} is draggable`).toContain('draggable="true"');
-    }
-  });
-
-  it('leaves no placeholder unsubstituted — the catalogue interpolates {{name}}, not {name}', () => {
-    // A single-brace placeholder is silently passed through by `translate`, so the screen would
-    // print the template at the reader. Nothing about that is visible from a typecheck.
-    const markup = render();
-    expect(markup).not.toMatch(/\{\{?\w+\}?\}/);
-    expect(markup, 'the summary really did count').toMatch(/٢|2/);
-  });
-
-  it('names both drivers in the pool', () => {
-    const markup = render();
-    expect(markup).toContain('أحمد محمد');
-    expect(markup).toContain('محمد محمود');
-  });
-});
-
-// ── 2. What the screen must NOT have ────────────────────────────────────────
-
-describe('what the fixed crew is not', () => {
-  it('has NO date — not a picker, not a parameter, not a word', () => {
-    const markup = render();
-    expect(markup, 'no date input').not.toContain('type="date"');
-    expect(markup).not.toContain(t('fleet.roster.date'));
-    expect(markup).not.toContain(t('fleet.roster.prevDay'));
-    expect(markup).not.toContain(t('fleet.roster.nextDay'));
-    // And nothing in the source reaches for one, so no date can travel to the server either.
-    expect(SOURCE).not.toContain('toISOString');
-    expect(SOURCE).not.toMatch(/\bdate\b/i);
-  });
-
-  it('has NO unavailable half — the pool is one list', () => {
-    const markup = render();
-    expect(markup).not.toContain(t('fleet.roster.unavailableTitle'));
-    expect(markup).not.toContain(t('fleet.roster.unavailableHint'));
-    expect(SOURCE, 'the screen never reads an availability verdict').not.toContain('unavailable');
-    expect(SOURCE).not.toContain('reason');
-  });
-
-  it('shows every driver the board sent, undivided', () => {
-    const many: FleetFixedRosterDto = {
-      rows: BOARD.rows,
-      drivers: [E1, E2].map((employeeId) => ({ employeeId, assignedVehicleId: null })),
-    };
-    expect(driverCards(render({ qc: client(many) }))).toHaveLength(many.drivers.length);
-  });
-});
-
-// ── 2b. The pool is the drivers you can still place ─────────────────────────
-
-describe('the available-driver pool', () => {
-  // The pool answers "who can I still put somewhere", so a driver the board already seats leaves
-  // it — immediately, from the DRAFT, with no round trip. That is a UI list, and leaving it is
-  // not disappearing: the driver keeps their profile, keeps their row on the board, and comes
-  // back the moment a slot is cleared. The tests below hold both halves of that.
-  const CREWED: FleetFixedRosterDto = {
-    rows: [row(V1, '150', E1), row(V2, '151')],
-    drivers: [
-      { employeeId: E1, assignedVehicleId: V1 },
-      { employeeId: E2, assignedVehicleId: null },
-    ],
-  };
-
-  it('drops an assigned driver OUT of the pool, and keeps them on the board', () => {
-    const markup = render({ qc: client(CREWED) });
-    expect(driverCards(markup), 'only the unseated one is offered').toEqual([E2]);
-    // Left the list, not the screen: they are in their slot, by name.
-    expect(tbody(markup)).toContain('أحمد محمد');
-  });
-
-  it('returns a driver to the pool when the board seats them nowhere', () => {
-    const free: FleetFixedRosterDto = {
-      rows: [row(V1, '150'), row(V2, '151')],
-      drivers: CREWED.drivers,
-    };
-    expect(driverCards(render({ qc: client(free) }))).toEqual([E1, E2]);
-  });
-
-  it('derives the pool from the DRAFT, so a drag changes it with no round trip', () => {
-    // Rendering the server's list raw would leave an assigned driver sitting in the pool until
-    // the next fetch; adjusting the list step by step would drift. It is computed from the seats.
-    expect(SOURCE).toContain('availableDrivers(boardQuery.data?.drivers ?? [], draft)');
-    // The chain is server list -> pool (derived from the draft) -> shownDrivers (the search's
-    // view of the pool). The list rendered is the LAST of those, and the search must sit on top
-    // of the derived pool rather than beside it, or a driver seated by a drag could still be
-    // offered while a term is typed.
-    expect(SOURCE, 'the search filters the derived pool').toContain(
-      'filterDrivers(pool, searchIndex, driverSearch)',
-    );
-    expect(SOURCE, 'and the list renders that').toContain('shownDrivers.map((driver)');
-    expect(SOURCE, 'never the raw server array').not.toContain('boardQuery.data.drivers.map');
-  });
-
-  it('says «سيارة أخرى» for a driver fixed to a car outside this reader’s scope', () => {
-    // The board carries only the vehicles the reader may see. Calling such a driver free would
-    // be false, and it would invite a drag the server then refuses — the releasing row is one
-    // this client cannot even send.
-    const OUT_OF_SCOPE = '650000000000000000000099';
-    const markup = render({
-      qc: client({
-        rows: [row(V1, '150'), row(V2, '151')],
-        drivers: [
-          { employeeId: E1, assignedVehicleId: OUT_OF_SCOPE },
-          { employeeId: E2, assignedVehicleId: null },
-        ],
-      }),
-    });
-    const at = markup.indexOf(`data-driver-card="${E1}"`);
-    const card = markup.slice(at, markup.indexOf('</li>', at));
-    expect(card, 'held elsewhere, and said so').toContain(t('fleet.roster.otherVehicle'));
-
-    // ...while a driver the board really does show as free carries NO badge at all. Free is what
-    // every other row in this list already means, so the badge marks the exception only — and
-    // that is what keeps the row narrow enough for the name.
-    const free = markup.indexOf(`data-driver-card="${E2}"`);
-    const freeCard = markup.slice(free, markup.indexOf('</li>', free));
-    expect(freeCard, 'no «سيارة أخرى» on a free driver').not.toContain(
-      t('fleet.roster.otherVehicle'),
-    );
-    expect(freeCard, 'and no redundant «بلا طقم» either').not.toContain(
-      t('fleet.fixedRoster.unassigned'),
-    );
-  });
-
-  it('shrinks as the board fills', () => {
-    expect(driverCards(render())).toHaveLength(2);
-    expect(driverCards(render({ qc: client(CREWED) })), 'one is now seated').toHaveLength(1);
-  });
-
-  it('reaches the server through exactly two functions — read the board, save the board', () => {
-    // Named precisely rather than by keyword: `patch()` legitimately calls
-    // URLSearchParams.delete, and a keyword match would either miss the real thing or trip on
-    // that. What matters is the SURFACE the page imports from the api layer.
-    const imports = /import \{([^}]*)\} from '\.\.\/api\/fleet-queries';/.exec(SOURCE)?.[1] ?? '';
+    expect(vehicle).toContain('sortable: true');
+    expect(vehicle).toContain("sortKey: 'code'");
     expect(
-      imports
-        .split(',')
-        .map((x) => x.trim())
-        .filter((x) => x !== '')
-        .sort(),
-      // Three now, and the third is a READ of an existing catalog the maintenance screen already
-      // uses. The list is exact on purpose: it is what stops a fourth — a driver-profile write,
-      // a vehicle patch — from arriving unremarked.
-    ).toEqual(['useFixedRoster', 'useFleetCatalog', 'useSaveFixedRoster']);
-    // No other api module is reached at all — not the drivers api, not HR.
-    expect(SOURCE, 'no second api import').not.toMatch(/from '\.\.\/api\/fleet-api'/);
-    expect(SOURCE).not.toMatch(/hr\/|employee-api|driver-api/);
-
-    // And the two functions it does use touch one endpoint each, neither of them a DELETE.
-    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
-    // Bounded to THIS feature's two declarations — the rest of the file serves other screens
-    // and legitimately has delete verbs of its own.
-    const from = api.indexOf('export const getFixedRoster');
-    const fixed = api.slice(from, api.indexOf('\n\n', from));
-    expect(fixed).toContain("get<FleetFixedRosterDto>('/fleet/fixed-roster')");
-    expect(fixed).toContain(
-      "post<FleetFixedRosterDto & { changedCount: number }>('/fleet/fixed-roster'",
-    );
-    expect(fixed, 'no delete verb in this feature’s client').not.toMatch(/\bdel</);
-  });
-});
-
-// ── 2c. The same person is on a crew once ───────────────────────────────────
-
-describe('the same-driver rule', () => {
-  // The rule itself — one person per crew, one seat per person — is arithmetic over rows, and
-  // `fixed-roster-board.spec.ts` exercises every shape of it. What belongs HERE is that the page
-  // still defers to that arithmetic instead of keeping a second, drifting copy of the rule.
-  const drop = (): string =>
-    SOURCE.slice(SOURCE.indexOf('const drop = ('), SOURCE.indexOf('const commit'));
-
-  it('hands every drop to the board and writes whatever comes back', () => {
-    expect(drop(), 'the board decides').toContain(
-      'assignDriver(draft, vehicleId, slot, employeeId)',
-    );
-    expect(drop(), 'and the answer is kept').toContain('setDraft(');
+      BOARD_FILE.slice(BOARD_FILE.indexOf("key: 'state',"), BOARD_FILE.indexOf("key: 'mission',")),
+    ).toContain('sortable: true');
   });
 
-  it('turns no drop away — a slot change is a move, not an error to explain', () => {
-    // The screen used to refuse a drop onto the other slot of the same car, forcing the user to
-    // clear the slot and drag again. Nothing in the handler may reject a drop any more.
-    expect(drop(), 'no refusal branch').not.toMatch(/=== null/);
-    expect(drop(), 'no early return').not.toMatch(/\breturn;/);
-    expect(drop(), 'nothing to apologise for').not.toContain('toast.error');
-  });
-
-  it('left no orphan message behind in either catalogue', () => {
-    // A key nothing sends is a key that rots. Both spellings go when the refusal goes.
-    for (const locale of ['ar', 'en'] as const) {
-      const key = 'fleet.fixedRoster.alreadyOnThisVehicle';
-      expect(translate(locale, key), `${locale} still carries the dead key`).toBe(key);
-    }
-  });
-});
-
-// ── 2e. The «تعديل» dialog ──────────────────────────────────────────────────
-//
-// The dialog is a form, and forms are where a screen most easily grows a SECOND copy of a rule.
-// The claims here are that it does not: the driver rules it obeys are the board's, reached
-// through `applyEdit`, and cancelling reaches nothing at all. The node suite cannot click, so
-// the behaviour of `applyEdit` itself lives in `lib/fixed-roster-board.spec.ts` and the click is
-// verified in a browser; what is asserted here is the wiring between them.
-
-describe('the edit dialog', () => {
-  // The dialog's form is now two declarations, not one: `DriverSelect` was lifted out of the
-  // dialog body (a component declared during render is rebuilt on every keystroke — the same
-  // root cause that made a seated driver undraggable). They are read together, because together
-  // is what the reader sees.
-  const DIALOG = SOURCE.slice(
-    SOURCE.indexOf('const DriverSelect'),
-    SOURCE.indexOf('const zoneKey'),
-  );
-
-  it('offers «تعديل» on EVERY row, crewed or not', () => {
-    // A car with no crew is exactly the one that needs a work type or a note put on it.
+  it('says the state in badges — «في الورشة» over «معيّنة» / «بلا طقم»', () => {
     const markup = render();
-    const buttons = [...markup.matchAll(/data-edit-row="([^"]*)"/g)].map((m) => m[1]);
-    expect(buttons).toEqual([V1, V2]);
-    expect(markup).toContain(t('common.edit'));
-    expect(t('common.edit')).toBe('تعديل');
+    const state = (code: string): string => {
+      const at = carRow(markup, code).indexOf('data-status-cell');
+      const cell = carRow(markup, code).slice(at);
+      return cell.slice(0, cell.indexOf('</td>')).replace(/<[^>]*>/g, '|');
+    };
+    expect(state('150')).toContain(t('fleet.roster.assigned'));
+    expect(state('150')).not.toContain(t('fleet.vehicles.inWorkshop'));
+    expect(state('151')).toContain(t('fleet.fixedRoster.unassigned'));
+    expect(state('152')).toContain(t('fleet.vehicles.inWorkshop'));
+    expect(state('152')).toContain(t('fleet.roster.assigned'));
+    expect(state('152').indexOf(t('fleet.vehicles.inWorkshop')), 'the workshop first').toBeLessThan(
+      state('152').indexOf(t('fleet.roster.assigned')),
+    );
   });
 
-  it('hides the action from a reader who may not plan', () => {
-    expect(render({ permissions: ['fleetRoster.view'] })).not.toContain('data-edit-row');
+  it('tints the workshop row rose — and keeps its standing crew editable', () => {
+    const markup = render();
+    expect(rowTag(markup, '152')).toContain('data-tint="workshop"');
+    expect(rowTag(markup, '150')).not.toContain('data-tint');
+    const workshop = carRow(markup, '152');
+    // The mission select: offered and NOT disabled — the day's lock is not a standing crew's.
+    const select = workshop.slice(
+      workshop.indexOf('<select'),
+      workshop.indexOf('>', workshop.indexOf('<select')),
+    );
+    expect(select).toContain(`152 · ${t('fleet.roster.fields.mission')}`);
+    expect(select).not.toMatch(/ disabled=""/);
+    // The seats are ordinary seats: no «في الورشة — غير قابلة للتعيين», nothing refused.
+    expect(workshop).not.toContain(t('fleet.roster.inWorkshopNoDrop'));
+    expect(workshop).not.toContain('data-seat-state="workshop"');
+    expect(workshop).not.toContain('data-drop-disabled="maintenance"');
+    expect(seatOf(markup, V3, 1)).toContain('data-seat-state="filled"');
+    expect(seatOf(markup, V3, 1)).toContain('data-seat-bin');
+    // …and the row's actions are all there: the pen, the swap, the bin.
+    expect(workshop).toContain('data-edit-row="152"');
+    expect(workshop).toContain(`data-swap-drivers="${V3}"`);
+    expect(workshop).toContain('data-clear-crew="152"');
+    expect(BOARD_FILE, 'no workshop guard on the mission').not.toContain(
+      'disabled={row.inMaintenance}',
+    );
   });
 
-  it('edits exactly the four fields, and never the workshop status', () => {
-    for (const field of [
-      "t('fleet.roster.fields.mission')",
-      "t('fleet.odometer.fields.driver1')",
-      "t('fleet.odometer.fields.driver2')",
-      "t('fleet.attendance.fields.notes')",
-    ]) {
-      expect(DIALOG, `${field} is editable`).toContain(field);
+  it('edits the mission in the cell, on the missionType catalog — never workType', () => {
+    const markup = render();
+    expect(carRow(markup, '150')).toContain(`150 · ${t('fleet.roster.fields.mission')}`);
+    expect(carRow(markup, '150')).toContain('نقل نقدية');
+    const mission = BOARD_FILE.slice(
+      BOARD_FILE.indexOf("key: 'mission',"),
+      BOARD_FILE.indexOf("key: 'driver1',"),
+    );
+    expect(mission).toContain('kind="missionType"');
+    expect(SCREEN).not.toContain('workType');
+    expect(mission, 'cleared is null').toContain(
+      "m.actions.mission(row.vehicleId, id === '' ? null : id)",
+    );
+    expect(mission, 'the row’s drag handling never sees the select').toContain(
+      'onMouseDown={(event) => event.stopPropagation()}',
+    );
+    expect(mission).toContain("allLabel={t('fleet.fixedRoster.noMissionType')}");
+  });
+
+  it('cuts a long mission with «…» and hovers its whole name — the box’s width unchanged', () => {
+    const LONG = 'نقل أموال (يومي) بين الفروع والبنوك';
+    const qc = client();
+    qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'missionType' }], {
+      items: [{ id: MT, kind: 'missionType', name: { ar: LONG, en: 'Cash run' }, isActive: true }],
+      meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+    });
+    const select = (markup: string, code: string): string => {
+      const row_ = carRow(markup, code);
+      const at = row_.indexOf('<select');
+      return row_.slice(at, row_.indexOf('>', at) + 1);
+    };
+    for (const [markup, name] of [
+      [render(), 'نقل نقدية'],
+      [render({ qc }), LONG],
+    ] as const) {
+      expect(select(markup, '150'), 'the hover is the chosen mission’s name').toContain(
+        `title="${name}"`,
+      );
+      expect(select(markup, '150'), 'and still says what the box is for').toContain(
+        `aria-label="150 · ${t('fleet.roster.fields.mission')}"`,
+      );
+      expect(select(markup, '150')).not.toContain(
+        `title="150 · ${t('fleet.roster.fields.mission')}"`,
+      );
+      // No mission chosen: nothing to hover but what the box is for.
+      expect(select(markup, '151')).toContain(`title="151 · ${t('fleet.roster.fields.mission')}"`);
+      const box = carRow(markup, '150').slice(0, carRow(markup, '150').indexOf('<select'));
+      const boxClass = box.slice(box.lastIndexOf('<div class="mx-auto')).replaceAll('&amp;', '&');
+      expect(boxClass, 'the shared box, cutting with «…»').toContain('[&_select]:!truncate');
+      expect(boxClass, 'at the widths it had').toContain('mx-auto w-[9.5rem] max-[1535px]:w-36 ');
     }
-    expect(DIALOG, 'the workshop badge is not in the form').not.toContain('InWorkshopBadge');
-    expect(DIALOG, 'and nothing sets inMaintenance').not.toContain('inMaintenance');
+    expect(BOARD_FILE).toContain('title={missionTitle(m.missionName, row.missionTypeId)}');
   });
 
-  it('opens with the row’s CURRENT values, not empty ones', () => {
+  it('draws each seat as the daily seat — the name, the code under it', () => {
+    const markup = render();
+    const seat = seatOf(markup, V1, 1);
+    expect(seat).toContain('أحمد محمد');
+    expect(seat).toContain('HR-1');
+    expect(seat.indexOf('أحمد محمد'), 'the code under the name').toBeLessThan(seat.indexOf('HR-1'));
+    expect(seat).toContain('data-seat-bin="true"');
+    expect(seat, 'draggable for a planner').toContain('draggable="true"');
+    // An empty first seat: the dashed drop zone and «+ اختيار سائق» over the free drivers.
+    expect(seatOf(markup, V2, 1)).toContain('data-seat-state="empty"');
+    expect(seatOf(markup, V2, 1)).toContain(`data-driver-picker="${V2}:driver1EmployeeId"`);
+    // A second seat with no first: not a target, and it says why.
+    expect(seatOf(markup, V2, 2)).not.toContain('data-driver-picker');
+    expect(seatOf(markup, V2, 2)).toContain(t('fleet.fixedRoster.needsFirstDriver'));
+    expect(BOARD_FILE, 'the seat is the daily SeatCell over the standing row').toContain(
+      'row={toSeatRow(row)}',
+    );
+    expect(BOARD_FILE, 'it offers the FREE drivers').toContain('pool={m.pool}');
+    expect(BOARD_FILE, 'and says the fixed empty line').toContain('emptyLabel={poolEmpty}');
+  });
+
+  it('lets a seat’s name take a second line under 1366px — the whole table fits a 1280 screen (told 21)', () => {
+    // Measured in the browser at 1280×800 with two 24-letter names in one row: 899px of table in
+    // an 858px frame before, 858 in 858 with this (review L2). The daily seat is unchanged.
+    expect(BOARD_FILE).toContain('nameClassName={FIXED_SEAT_NAME}');
+    expect(CELLS).toContain(
+      "FIXED_SEAT_NAME =\n  'max-[1365px]:whitespace-normal max-[1365px]:break-words max-[1365px]:[text-wrap:balance]';",
+    );
+    expect(tbody(render()), 'drawn on the seat’s name').toContain('max-[1365px]:whitespace-normal');
+    expect(DAILY_DESK, 'the daily seat says nothing of it').not.toContain('max-[1365px]:');
+  });
+
+  it('promises the move in place — «سيُنقل من السيارة 150 عند الحفظ»', () => {
+    // E1 moved from 150 to 151 in a draft left by an earlier visit.
+    const markup = renderRestored([
+      { ...BOARD.rows[0]!, driver1EmployeeId: E2, driver2EmployeeId: null },
+      { ...BOARD.rows[1]!, driver1EmployeeId: E1 },
+      BOARD.rows[2]!,
+    ]);
+    const seat = seatOf(markup, V2, 1);
+    expect(seat).toContain('أحمد محمد');
+    expect(seat).toContain('data-transfer-hint="150"');
+    expect(seat).toContain(t('fleet.roster.transferHint', { code: '150' }));
+    expect(seatOf(markup, V1, 1), 'the seat he stays in promises nothing').not.toContain(
+      'data-transfer-hint',
+    );
+  });
+
+  it('shows a note in three lines at most, the whole of it on hover', () => {
+    const markup = render();
+    const at = carRow(markup, '150').indexOf('data-fixed-note');
+    const tag = carRow(markup, '150').slice(
+      carRow(markup, '150').lastIndexOf('<span', at),
+      carRow(markup, '150').indexOf('>', at),
+    );
+    expect(tag).toContain('line-clamp-3');
+    expect(tag).toContain(`title="${NOTE}"`);
+    expect(tag, 'the clamp is not undone by a display class').not.toMatch(/\bblock\b/);
+    expect(tag).not.toContain('truncate');
+    expect(CELLS).toContain('max-w-[8rem]');
+  });
+
+  it('offers the pen on EVERY row, the swap only on a pair, the bin only with a driver', () => {
+    const markup = render();
+    expect(all(markup, 'data-edit-row')).toEqual(['150', '151', '152']);
+    expect(all(markup, 'data-swap-drivers'), 'both seats filled — the workshop too').toEqual([
+      V1,
+      V3,
+    ]);
+    expect(all(markup, 'data-clear-crew')).toEqual(['150', '152']);
+    expect(markup).toContain(`aria-label="${t('fleet.roster.swapDrivers')}"`);
+    expect(markup).toContain(`aria-label="${t('fleet.fixedRoster.clearCrew')}"`);
+    expect(BOARD_FILE).toContain('data-row-actions="fixed-roster"');
+    expect(BOARD_FILE, 'pinned, as the daily column').toContain(
+      'className: cn(PINNED_CELL, overflowing && PINNED_EDGE)',
+    );
+  });
+
+  it('swaps and empties through the model — «إفراغ الطقم» at once, with no question', () => {
+    expect(BOARD_FILE).toContain('onClick={() => m.actions.swap(row.vehicleId)}');
+    expect(BOARD_FILE).toContain('onClick={() => m.actions.clearCrew(row.vehicleId)}');
+    expect(BOARD_FILE, 'no clear confirm').not.toContain('data-confirm="clear"');
+    expect(DESK).not.toContain('clearBody');
+    expect(DESK).not.toContain('clearAll');
+    expect(BOARD_FILE, 'a drop is the model’s assign').toContain(
+      'm.actions.assign({ vehicleId, slot }, employeeId)',
+    );
+    expect(BOARD_FILE).toContain(
+      'onClear={(target, which) => m.actions.clear(target.vehicleId, which)}',
+    );
+  });
+});
+
+// ── 5. Answer 1 (ب): no flag on a standing member ───────────────────────────────────────────────
+
+describe('no flag on a standing member who can no longer drive (answer 1 ب)', () => {
+  it('draws no availability, licence or profile flag anywhere on the screen', () => {
+    for (const markup of [render(), render({ permissions: VIEWER })]) {
+      for (const hook of [
+        'data-problem',
+        'data-driver-out',
+        'data-driver-licence',
+        'data-roster-flag',
+        'data-licence-footer',
+        'data-licence-expired-panel',
+        'data-unavailable-driver',
+      ]) {
+        // As an attribute: the table's classes name some of these hooks to style them.
+        expect(markup, hook).not.toContain(`${hook}="`);
+      }
+      expect(markup, 'no «متاح» beside a driver').not.toContain(`>${t('fleet.roster.free')}<`);
+      expect(markup).not.toContain(t('fleet.roster.licenceExpired'));
+      expect(markup).not.toContain(t('fleet.roster.availableTitle'));
+      expect(markup).not.toContain(t('fleet.roster.unavailableTitle'));
+      for (const reason of KNOWN_REASONS) {
+        expect(markup, reason).not.toContain(t(`fleet.roster.reason.${reason}`));
+      }
+    }
+  });
+
+  it('tells every seat that nobody is flagged', () => {
+    expect(CELLS).toContain('expired: NO_FLAGS');
+    expect(CELLS).toContain('unavailable: NO_REASONS');
+    expect(BOARD_FILE).toContain('const facts = fixedSeatFacts(m);');
+    expect(SCREEN, 'no new server fact is read').not.toMatch(
+      /\.licenceExpired|profileActive|unavailableDrivers|unavailableReason/,
+    );
+  });
+});
+
+// ── 6. The drivers panel ────────────────────────────────────────────────────────────────────────
+
+describe('the drivers panel — one list under «السائقون (n)»', () => {
+  it('heads the list in the tabs’ place, n = the drivers with no standing crew', () => {
+    const markup = panel(render());
+    expect(markup).toContain('data-drivers-heading');
+    const heading = markup.slice(markup.indexOf('data-drivers-heading'), markup.indexOf('</h2>'));
+    expect(heading).toContain(t('fleet.fixedRoster.driversTitle'));
+    // E6 alone: E4 is held on a car off the board and is listed apart, not counted.
+    expect(heading.replace(/<[^>]*>/g, '')).toContain('(1)');
+    expect(markup, 'nothing to switch to').not.toContain('role="tablist"');
+    expect(markup).not.toContain('role="tab"');
+    expect(PANEL).toContain('count={m.pool.length}');
+  });
+
+  it('lists the free drivers first, draggable, with no word beside them', () => {
+    const markup = panel(render());
+    expect(all(markup, 'data-driver-card'), 'the free driver, and him alone').toEqual([E6]);
+    const at = markup.indexOf(`data-driver-card="${E6}"`);
+    const free = markup.slice(markup.lastIndexOf('<', at), markup.indexOf('</li>', at));
+    expect(free).toContain('ياسر فتحي');
+    expect(free).toContain('HR-6');
+    expect(free).toContain('draggable="true"');
+    expect(free, 'no badge on a free driver').not.toContain(
+      'inline-flex items-center rounded-full',
+    );
+  });
+
+  it('lists a driver held on a car off this board under «معيّنون على سيارات أخرى», blue «سيارة أخرى»', () => {
+    const markup = panel(render());
+    const other = markup.slice(markup.indexOf('data-on-other-vehicles'));
+    expect(other).toContain(t('fleet.roster.onOtherVehicles'));
+    expect(all(other, 'data-seated-driver')).toEqual([E4]);
+    const at = other.indexOf(`data-seated-driver="${E4}"`);
+    const held = other.slice(at, other.indexOf('</li>', at));
+    expect(held).toContain('سعيد حسن');
+    expect(held).toContain(t('fleet.roster.otherVehicle'));
+    expect(held, 'the daily blue, not the old amber').toContain('bg-sky-100');
+    expect(held).not.toContain('bg-amber');
+    expect(held, 'the daily seated-row rule: not a drag source').not.toContain('draggable');
+    // The drivers this board seats are on their seats, not in the panel.
+    for (const seated of [E1, E2, E3, E5]) expect(markup).not.toContain(seated);
+  });
+
+  it('says «لا يوجد سائقون بلا طقم ثابت» when every driver has a standing crew', () => {
+    const crewed: FleetFixedRosterDto = {
+      rows: [row(V1, '150', { driver1EmployeeId: E1 })],
+      drivers: [{ employeeId: E1, assignedVehicleId: V1 }],
+    };
+    const markup = panel(render({ qc: client(crewed) }));
+    expect(markup).toContain(t('fleet.fixedRoster.poolEmpty'));
+    expect(markup).not.toContain(t('fleet.roster.availableEmpty'));
+    const none = panel(render({ qc: client({ rows: [row(V1, '150')], drivers: [] }) }));
+    expect(none).toContain(t('fleet.fixedRoster.poolEmpty'));
+    expect(PANEL).toContain("emptyLabel={t('fleet.fixedRoster.poolEmpty')}");
+    expect(PANEL).toContain('freeBadge={false}');
+  });
+
+  it('searches by name or code in its own box, and offers the driver card on a name', () => {
+    const markup = panel(render());
+    expect(markup).toContain(`placeholder="${t('fleet.fixedRoster.driverSearchPlaceholder')}`);
+    expect(PANEL).toContain('options={m.availableFor(term, null)}');
+    expect(PANEL).toContain('hoverCard');
+    expect(PANEL).toContain('part="list"');
+    expect(PANEL).toContain('licence={null}');
+  });
+
+  it('sits beside the table at the daily widths', () => {
+    expect(BOARD_FILE).toContain(
+      'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_20rem] gap-3 max-[1535px]:grid-cols-[minmax(0,1fr)_18.25rem] max-[1439px]:gap-2 min-[1750px]:grid-cols-[minmax(0,1fr)_24rem] min-[1750px]:gap-4',
+    );
+  });
+});
+
+// ── 7. The unsaved bar ──────────────────────────────────────────────────────────────────────────
+
+describe('the unsaved bar — «حفظ» / «إلغاء» at the foot, only while there is something to save', () => {
+  /** 151 given a note and 152 a mission, in a draft left by an earlier visit. */
+  const EDITED = [
+    BOARD.rows[0]!,
+    { ...BOARD.rows[1]!, notes: 'تغيير' },
+    { ...BOARD.rows[2]!, missionTypeId: MT },
+  ];
+
+  it('is not there on a board nobody has touched', () => {
+    const markup = render();
+    expect(markup).not.toContain('data-edits-bar="');
+    expect(markup).not.toContain('data-save-roster="');
+    expect(markup, 'no tint either').not.toContain('data-tint="unsaved"');
+  });
+
+  it('comes back with a restored draft: the edited codes, «تراجع» off, «إلغاء» and «حفظ» live', () => {
+    const markup = renderRestored(EDITED);
+    expect(markup).toContain('data-edits-bar="true"');
+    expect(markup).toContain('data-edits-count="2"');
+    const bar = markup.slice(markup.indexOf('data-edits-bar'));
+    expect(bar).toContain(t('fleet.roster.editedCars'));
+    expect(bar).toContain('151');
+    expect(bar).toContain('152');
+    expect(buttonDisabled(markup, 'data-undo-edit'), 'a reload starts the steps again').toBe(true);
+    expect(buttonDisabled(markup, 'data-discard-edits')).toBe(false);
+    expect(buttonDisabled(markup, 'data-save-roster')).toBe(false);
+    // The edited rows are amber — over the workshop's rose on 152.
+    expect(rowTag(markup, '151')).toContain('data-tint="unsaved"');
+    expect(rowTag(markup, '152')).toContain('data-tint="unsaved"');
+    expect(rowTag(markup, '150')).not.toContain('data-tint="unsaved"');
+  });
+
+  it('is never shown to a reader who may not plan', () => {
+    const markup = renderRestored(EDITED, { permissions: VIEWER });
+    expect(markup).not.toContain('data-edits-bar="');
+    // The draft in the tab is still drawn, as the daily board draws it — and says it is unsaved.
+    expect(rowTag(markup, '151')).toContain('data-tint="unsaved"');
+  });
+
+  it('is wired to the model — undo, discard (asking first for more than one car), save', () => {
+    expect(BOARD_FILE).toContain('mayPlan && m.dirty && (');
+    expect(BOARD_FILE).toContain('undoable={m.undoDepth > 0}');
+    expect(BOARD_FILE).toContain('onUndo={m.actions.undo}');
+    expect(BOARD_FILE).toContain('shape="floating"');
+    expect(BOARD_FILE).toContain('if (m.changed.length > 1) setAskDiscard(true);');
+    expect(BOARD_FILE).toContain("title={t('fleet.roster.discardAll')}");
+    expect(BOARD_FILE).toContain('<CodeList');
+    expect(BOARD_FILE).toContain('void m.actions.save();');
+    // A code in the bar brings its car back: only the filters that hide it are lifted.
+    expect(BOARD_FILE).toContain(
+      'patch(fixedFiltersHiding(row, { search: query.search, missions, view }));',
+    );
+    expect(BOARD_FILE).toContain('tr[data-car="${CSS.escape(code)}"]');
+  });
+});
+
+// ── 8. Permissions ──────────────────────────────────────────────────────────────────────────────
+
+describe('a reader without fleetRoster.plan reads the board and changes nothing', () => {
+  it('gets no «إجراءات», no picker, nothing to drag, no bin, the mission as text', () => {
+    const markup = render({ permissions: VIEWER });
+    expect(headers(markup)).not.toContain(t('fleet.vehicles.columns.actions'));
+    expect(markup).not.toContain('data-row-actions="');
+    expect(markup).not.toContain('data-driver-picker="');
+    expect(markup).not.toContain('draggable="true"');
+    expect(markup).not.toContain('data-seat-bin="');
+    expect(tbody(markup), 'no control in the rows').not.toContain('<select');
+    expect(carRow(markup, '150'), 'the mission by name').toContain('نقل نقدية');
+    expect(seatOf(markup, V2, 1), 'an empty seat says so').toContain(
+      t('fleet.fixedRoster.noDriver'),
+    );
+    expect(seatOf(markup, V1, 1), 'a filled seat still names its driver').toContain('أحمد محمد');
+  });
+
+  it('reuses the daily roster’s grant — one flag every affordance reads', () => {
+    expect(SHELL).toContain("const mayPlan = can('fleetRoster.plan');");
+    expect(SCREEN).not.toContain('fleetFixedRoster');
+  });
+});
+
+// ── 9. The pen dialog ───────────────────────────────────────────────────────────────────────────
+
+describe('the pen dialog — «تعديل · 150», the four facts together', () => {
+  const MODEL_STUB = {
+    person: (id: string) => PERSONS.get(id),
+    transferFrom: (_employeeId: string, _vehicleId: string): string | null => null,
+    dialogCandidates: (_vehicleId: string): string[] => [E6, E1, E2],
+  };
+  const renderDialog = (
+    target: FleetFixedCrewRowDto,
+    model: Partial<typeof MODEL_STUB> = {},
+  ): string =>
+    renderToStaticMarkup(
+      <Provider store={store(ALL)}>
+        <QueryClientProvider client={client()}>
+          <FixedCrewDialog
+            row={target}
+            m={{ ...MODEL_STUB, ...model }}
+            onClose={() => undefined}
+            onSave={() => undefined}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+  it('opens on the car’s CURRENT facts, titled «تعديل · code»', () => {
+    const markup = renderDialog(BOARD.rows[0]!);
+    expect(markup).toContain(`data-dialog-title="${t('common.edit')} · 150"`);
+    expect(markup).toContain(t('fleet.fixedRoster.editHint'));
+    expect(markup).toContain(`<option value="${MT}" selected="">`);
+    expect(markup).toContain(t('fleet.fixedRoster.noMissionType'));
+    expect(markup, 'an archived mission is not offered').not.toContain('مهمة قديمة');
+    expect(markup).toMatch(/maxlength="500"/i);
+    expect(markup).toContain(NOTE);
     for (const seed of [
       'useState<string | null>(row.missionTypeId)',
       'useState<string | null>(row.driver1EmployeeId)',
@@ -538,517 +1023,151 @@ describe('the edit dialog', () => {
     }
   });
 
-  it('fills the mission-type select from the REAL catalog, never a hardcoded list', () => {
-    expect(SOURCE).toContain("useFleetCatalog('missionType')");
-    expect(DIALOG, 'options come from the query').toContain('missionTypes.data?.items ?? []');
-    expect(DIALOG, 'and the id is what is stored').toContain('value={item.id}');
-    expect(DIALOG, 'the label is the localized catalog name').toContain(
-      'localized(item.name, locale)',
+  it('keeps an archived mission already on the car legible', () => {
+    const markup = renderDialog({ ...BOARD.rows[1]!, missionTypeId: OLD_MT });
+    expect(markup).toContain(`<option value="${OLD_MT}" selected="">`);
+    expect(markup).toContain('مهمة قديمة');
+  });
+
+  it('draws a chosen seat as the daily dialog: the name, the code beside it with a gap, and ✕', () => {
+    const markup = renderDialog(BOARD.rows[0]!);
+    expect(count(markup, 'data-crew-seat="filled"')).toBe(2);
+    const seat = markup.slice(markup.indexOf('data-crew-seat="filled"'));
+    expect(seat).toContain('أحمد محمد');
+    expect(seat).toContain('HR-1');
+    expect(seat, 'a real gap between name and code').toContain('gap-x-2');
+    expect(seat).toContain(`aria-label="${t('common.clear')}"`);
+    expect(DIALOG, 'its own face, as approved — not the shared EmployeeName').not.toContain(
+      'EmployeeName',
+    );
+    // The shared renderer keeps a gap of its own now (the owner's 22 November «صلحهم»): the margin
+    // on an element in the page's direction, the code isolated inside it — no longer `ms-2` on
+    // the left-to-right code, which in Arabic put the gap on the far side.
+    const shared = read('components/EmployeeName.tsx');
+    expect(shared, 'the shared gap').toContain(
+      '<span className="ms-2 font-figures text-xs text-slate-500">\n          <bdi dir="ltr">{person.code}</bdi>',
+    );
+    expect(shared, 'the old margin on the code is gone').not.toContain(
+      '<span className="ms-2 font-figures text-xs text-slate-500" dir="ltr">',
     );
   });
 
-  it('is a SINGLE select — one mission type per vehicle', () => {
-    expect(DIALOG, 'a <select>, not a multi-select').toContain('<Select');
+  it('offers «اختيار سائق» on an empty seat — the second waits for the first', () => {
+    const markup = renderDialog(BOARD.rows[1]!);
+    expect(count(markup, 'data-crew-seat="empty"')).toBe(2);
+    expect(markup).toContain(t('fleet.roster.pickDriver'));
+    const second = markup.slice(
+      markup.lastIndexOf('<button', markup.lastIndexOf('data-crew-seat="empty"')),
+    );
+    expect(second.slice(0, second.indexOf('>'))).toMatch(/ disabled=""/);
+    expect(markup).toContain(t('fleet.fixedRoster.needsFirstDriver'));
+    const first = markup.slice(
+      markup.lastIndexOf('<button', markup.indexOf('data-crew-seat="empty"')),
+    );
+    expect(first.slice(0, first.indexOf('>'))).not.toMatch(/ disabled=""/);
+    expect(DIALOG).toContain('disabled={driver1 === null}');
+  });
+
+  it('promises the move under the seat', () => {
+    const markup = renderDialog(BOARD.rows[0]!, {
+      transferFrom: (id: string) => (id === E1 ? '214' : null),
+    });
+    expect(markup).toContain('data-transfer-hint="214"');
+    expect(markup).toContain(t('fleet.roster.transferHint', { code: '214' }));
+  });
+
+  it('lists the candidates minus the other seat’s pick — a name and a code, no word beside them', () => {
+    const markup = renderToStaticMarkup(
+      <Provider store={store(ALL)}>
+        <CrewCandidates
+          model={MODEL_STUB}
+          candidates={[E6, E3, E1]}
+          exclude={E1}
+          onPick={() => undefined}
+        />
+      </Provider>,
+    );
+    expect(all(markup, 'data-crew-candidate')).toEqual([E6, E3]);
+    expect(markup).not.toContain(t('fleet.roster.otherVehicle'));
+    expect(markup, 'no badge at all').not.toContain('rounded-full');
+    expect(markup).not.toContain(`>${t('fleet.roster.free')}<`);
+    const empty = renderToStaticMarkup(
+      <Provider store={store(ALL)}>
+        <CrewCandidates
+          model={MODEL_STUB}
+          candidates={[E1]}
+          exclude={E1}
+          onPick={() => undefined}
+        />
+      </Provider>,
+    );
+    expect(empty).toContain(t('fleet.fixedRoster.poolEmpty'));
+    expect(DIALOG).toContain('const candidates = m.dialogCandidates(row.vehicleId);');
+    expect(DIALOG).toContain('exclude={driver2}');
+    expect(DIALOG).toContain('exclude={driver1}');
+  });
+
+  it('keeps today’s rules: the same person twice is refused, clearing seat 1 promotes seat 2', () => {
+    expect(DIALOG).toContain('const sameTwice = driver1 !== null && driver1 === driver2;');
+    expect(DIALOG).toContain('disabled={sameTwice}');
+    expect(DIALOG).toContain("t('fleet.fixedRoster.sameDriverTwice')");
+    expect(DIALOG).toMatch(
+      /if \(id === null && driver2 !== null\) \{\s*setDriver1\(driver2\);\s*setDriver2\(null\);/,
+    );
+    expect(DIALOG).toContain("notes: notes.trim() === '' ? null : notes.trim()");
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V1, notes: '' }] }).success,
+      'the contract refuses an empty note',
+    ).toBe(false);
+  });
+
+  it('fills the mission from the REAL catalog in ONE select, with its loading, empty and failed lines', () => {
+    expect(DIALOG).toContain("useFleetCatalog('missionType')");
+    expect(DIALOG).toContain('missionTypes.data?.items ?? []');
+    expect(DIALOG).toContain('value={item.id}');
+    expect(DIALOG).toContain('localized(item.name, locale)');
+    expect(DIALOG).toContain('<Select');
     expect(DIALOG).not.toContain('MultiSelect');
-    expect(DIALOG, 'no multiple attribute').not.toMatch(/\bmultiple\b/);
-  });
-
-  it('handles the catalog’s loading, empty and failed states', () => {
-    expect(DIALOG, 'loading').toContain('missionTypes.isPending');
-    expect(DIALOG, 'error').toContain('missionTypes.isError');
-    expect(DIALOG, 'empty').toContain('noMissionTypesYet');
-  });
-
-  it('lets a vehicle have NO mission type, and no driver', () => {
-    expect(DIALOG).toContain("t('fleet.fixedRoster.noMissionType')");
-    expect(DIALOG).toContain("t('fleet.fixedRoster.noDriver')");
-    // '' is the empty option's value and must come back as null, not as an empty string.
+    expect(DIALOG).not.toMatch(/\bmultiple\b/);
+    expect(DIALOG).toContain('missionTypes.isPending');
+    expect(DIALOG).toContain('missionTypes.isError');
+    expect(DIALOG).toContain('noMissionTypesYet');
     expect(DIALOG).toContain('e.target.value || null');
   });
 
-  it('offers the pool PLUS this vehicle’s own crew, so they stay selectable', () => {
-    expect(DIALOG).toMatch(/candidates[\s\S]{0,300}pool\.map/);
-    expect(DIALOG, 'the row’s own drivers are added back').toMatch(
-      /row\.driver1EmployeeId, row\.driver2EmployeeId\]/,
+  it('CANCEL touches nothing; «حفظ» hands back and the board writes ONE step, only on a change', () => {
+    expect(DIALOG, 'no draft of its own to write').not.toContain('setDraft');
+    expect(DIALOG).not.toContain('mutate');
+    expect(DIALOG, 'it hands back, the board applies').not.toContain('applyEdit(');
+    expect(DIALOG).not.toContain('m.actions');
+    expect(BOARD_FILE).toContain('onClose={() => setEditing(null)}');
+    expect(BOARD_FILE).toContain('if (!same) m.actions.apply(row.vehicleId, values);');
+    expect(BOARD_FILE, 'the dialog opens on the draft’s row').toContain(
+      'm.draft.find((row) => row.vehicleId === editing)',
     );
+    expect(MODEL, 'through the board’s rule').toContain('applyEdit(rows, vehicleId, { ...values');
   });
 
-  it('does not OFFER the other slot’s driver, so one person cannot fill both', () => {
-    // The structural half, and the one that actually fires: each select drops the other slot's
-    // current driver from its options, so the illegal pair cannot be chosen in the first place.
-    // `|| id === value` is what keeps a slot's OWN driver listed — without it the dialog would
-    // open showing a selected value that is not among its options, which browsers render blank.
-    expect(DIALOG).toContain('.filter((id) => id !== exclude || id === value)');
-    expect(DIALOG, 'slot 1 excludes slot 2').toContain('exclude={driver2}');
-    expect(DIALOG, 'slot 2 excludes slot 1').toContain('exclude={driver1}');
-  });
-
-  it('and refuses the pair anyway, if it is ever reached', () => {
-    // Defence in depth behind the filtering above: `applyEdit` would silently displace the
-    // first driver with the second, which is a worse outcome than a blocked button.
-    expect(DIALOG).toContain('const sameTwice = driver1 !== null && driver1 === driver2');
-    expect(DIALOG, 'and the save is blocked while it holds').toContain('disabled={sameTwice}');
-  });
-
-  it('commits through applyEdit — the board’s rules, not a second copy', () => {
-    // This is the whole reason the dialog cannot become a way around exclusivity.
-    expect(SOURCE).toContain('applyEdit(rows, editingRow.vehicleId, edit)');
-    expect(DIALOG, 'the dialog itself writes no row').not.toContain('setDraft');
-  });
-
-  it('normalizes an empty note to null, the way the contract demands', () => {
-    expect(DIALOG).toContain("notes: notes.trim() === '' ? null : notes.trim()");
-    // The schema refuses '' outright, so sending it would 400 the whole save.
-    expect(
-      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V1, notes: '' }] }).success,
-    ).toBe(false);
-    expect(
-      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V1, notes: null }] }).success,
-    ).toBe(true);
-  });
-
-  it('CANCEL touches nothing — not the draft, not the server', () => {
-    // The dialog holds its own state and hands it back only via onSave, so closing discards it.
-    // The handler is asserted WHOLE: closing sets the open-state and does nothing else, so a
-    // future edit that also reset or committed the draft would not match this string.
-    expect(SOURCE).toContain('onClose={() => setEditing(null)}');
-    expect(DIALOG, 'the dialog writes no draft of its own').not.toContain('setDraft');
-    expect(DIALOG, 'and never calls the mutation').not.toContain('mutate');
-    // The only path from the DIALOG to the board is its save handler — it never edits the draft
-    // itself. `applyEdit` now has two callers, because the mission type is editable in the cell
-    // as well; that is two entry points into ONE rule, which is the point of the function. What
-    // must stay impossible is a THIRD way that writes the row without it.
-    expect(DIALOG, 'the dialog does not commit, it hands back').not.toContain('applyEdit(');
-    const callers = SOURCE.match(/applyEdit\(/g) ?? [];
-    expect(callers, 'the dialog save and the mission cell — no others').toHaveLength(2);
-    // Neither entry point may assemble the row by hand: that would be the second persistence
-    // mechanism, agreeing with `applyEdit` only until somebody changed one of them.
-    expect(SOURCE, 'no row is spread into a new one outside the board lib').not.toMatch(
-      /\{\s*\.\.\.row,\s*(missionTypeId|driver[12]EmployeeId|notes)/,
-    );
-  });
-});
-
-// ── 2e-bis. «نوع المهمة», editable where it is read ─────────────────────────
-//
-// The mission type changes as often as the crew does, and it used to cost four interactions:
-// open «تعديل», pick, save, close. It is a select in the cell now. The dialog still edits it —
-// two entry points into ONE rule (`applyEdit`), which is the same shape the drag and the dialog
-// already share for drivers.
-//
-// The node suite cannot open a native select. What it pins is that the control IS in the table,
-// that it is the app's own catalog select on the `missionType` kind, and that the change goes
-// through the authoritative path; the interaction itself is measured in a browser.
-
-describe('the mission type, edited in the cell', () => {
-  const MISSION_CELL = SOURCE.slice(
-    SOURCE.indexOf("key: 'mission'"),
-    SOURCE.indexOf("key: 'driver1'"),
-  );
-
-  it('renders a real select in the table, not only inside the dialog', () => {
-    const body = tbody(render());
-    expect(body, 'the cell holds a control').toContain('<select');
-    expect(MISSION_CELL, 'and it is the app’s own catalog select').toContain('<CatalogSelect');
-    // Reachable without «تعديل»: the select is in the row, the dialog is not rendered at all
-    // until a row is being edited.
-    expect(body, 'no dialog is open').not.toContain('role="dialog"');
-  });
-
-  it('offers the missionType catalog — never workType', () => {
-    expect(MISSION_CELL, 'the mission vocabulary').toContain('kind="missionType"');
-    expect(MISSION_CELL, 'not the workshop’s').not.toContain('workType');
-    expect(SOURCE, 'nowhere on this screen').not.toContain("useFleetCatalog('workType')");
-    // …and it costs no new request: `CatalogSelect` reads the same cached hook the page does.
-    const select = readFileSync(join(HERE, 'components/CatalogSelect.tsx'), 'utf8');
-    // The kind is passed THROUGH rather than hardcoded — that is the claim. The call gained a
-    // `violationSide` argument for the violations screen, which does not change it.
-    expect(select, 'the shared hook').toContain('useFleetCatalog(kind');
-    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
-    expect(api, 'no endpoint was added for this').not.toMatch(/mission-type|missionTypes\(/);
-  });
-
-  it('shows each option by its localized NAME and stores the id', () => {
-    const body = tbody(render());
-    expect(body, 'the catalog name is the option label').toContain('نقل نقدية');
-    const select = readFileSync(join(HERE, 'components/CatalogSelect.tsx'), 'utf8');
-    expect(select, 'label localized the project’s way').toContain('localized(item.name, locale)');
-    expect(select, 'value is the id').toContain('value={item.id}');
-  });
-
-  it('sends the change through `applyEdit` as missionTypeId — the dialog’s own path', () => {
-    expect(MISSION_CELL, 'the cell delegates').toContain('setMission(row,');
-    const setter = SOURCE.slice(
-      SOURCE.indexOf('const setMission ='),
-      SOURCE.indexOf("key: 'vehicle'"),
-    );
-    expect(setter, 'through the authoritative rule').toContain('applyEdit(rows, row.vehicleId');
-    expect(setter, 'as missionTypeId').toContain('missionTypeId,');
-    expect(setter, 'editing the draft, as a drag does').toContain('setDraft(');
-    expect(setter, 'and it never calls the mutation itself').not.toContain('mutate');
-    // The drivers and the note ride along unchanged — the cell edits ONE field.
-    for (const carried of ['driver1EmployeeId: row.driver1EmployeeId', 'notes: row.notes']) {
-      expect(setter, carried).toContain(carried);
-    }
-  });
-
-  it('clears to null, which is how this module spells "nothing"', () => {
-    expect(MISSION_CELL, 'the empty option means cleared').toContain("id === '' ? null : id");
-    expect(MISSION_CELL, 'and it is labelled as such').toContain(
-      "t('fleet.fixedRoster.noMissionType')",
-    );
-    expect(translate('ar', 'fleet.fixedRoster.noMissionType')).toBe('بدون نوع مهمة');
-    // `null` survives the real contract, which is what makes "cleared" storable.
-    const cleared = applyEdit([row(V1, '150')], V1, {
-      missionTypeId: null,
-      driver1EmployeeId: null,
-      driver2EmployeeId: null,
-      notes: null,
-    });
-    expect(cleared[0]?.missionTypeId).toBeNull();
-    const rows = changedRows([{ ...row(V1, '150'), missionTypeId: MT }], cleared);
-    expect(rows[0]?.missionTypeId).toBeNull();
-    expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success).toBe(true);
-  });
-
-  it('keeps its interaction out of the row’s drag handling', () => {
-    // The row's other cells are drag sources and drop targets. A pointer landing in this select
-    // must not reach them — `DataTable` isolates its own selection cell exactly this way.
-    expect(MISSION_CELL, 'the click stops here').toContain('e.stopPropagation()');
-    expect(MISSION_CELL, 'and so does the press that would begin a drag').toContain('onMouseDown');
-    // The cell is not itself draggable, and declares no drop zone.
-    expect(MISSION_CELL, 'not a drag source').not.toContain('draggable');
-    expect(MISSION_CELL, 'not a drop target').not.toContain('data-drop-zone');
-    const table = readFileSync(join(HERE, '../../shared/ui/DataTable.tsx'), 'utf8');
-    expect(table, 'the idiom is the table’s own').toContain('onClick={(e) => e.stopPropagation()}');
-  });
-
-  it('gives the label room the chevron does not already take', () => {
-    // A `<select>` clips its label internally and reports `scrollWidth === clientWidth`, so
-    // nothing about the DOM says it is cut — it has to be measured as rendered text against the
-    // inner width. At `min-w-[9rem]` the shared `Select`'s `pe-9` chevron gutter (36px) plus the
-    // 12px start padding left 94px, and «نقل أموال (يومي)» needs 104px: clipped in the column
-    // whose whole job is to show it. 11rem leaves 126px.
-    expect(MISSION_CELL, 'wide enough for a real mission name').toContain('min-w-[11rem]');
-    expect(MISSION_CELL, 'the too-narrow box is gone').not.toContain('min-w-[9rem]');
-    const form = readFileSync(join(HERE, '../../shared/ui/form.tsx'), 'utf8');
-    expect(form, 'the chevron gutter this budgets for').toContain('pe-9');
-  });
-
-  it('shows a reader who may not plan the NAME, with nothing to change', () => {
-    const filled: FleetFixedRosterDto = {
-      ...BOARD,
-      rows: [{ ...row(V1, '150'), missionTypeId: MT }, row(V2, '151')],
-    };
-    const body = tbody(render({ permissions: ['fleetRoster.view'], qc: client(filled) }));
-    expect(body, 'the value is readable').toContain('نقل نقدية');
-    expect(body, 'but not editable').not.toContain('<select');
-  });
-});
-
-// ── 2d. The screen is reachable from the sidebar ────────────────────────────
-
-describe('navigation', () => {
-  // The sidebar is data-driven: it renders the applications `GET /platform/me/applications`
-  // returns, and `seed-navigation.ts` is the catalog that boot syncs. A screen missing from it
-  // is reachable only by typing the URL.
-  const NAV = readFileSync(join(HERE, '../../../../api/src/seed-navigation.ts'), 'utf8');
-
-  it('registers «الطقم الثابت» as a Fleet application on its real route', () => {
-    const at = NAV.indexOf("route: '/fleet/fixed-roster'");
-    expect(at, 'the row exists').toBeGreaterThan(-1);
-    const row = NAV.slice(NAV.lastIndexOf('{', at), NAV.indexOf('}', at));
-    expect(row).toContain("ar: 'الطقم الثابت'");
-    // AN ICON THIS CLIENT CAN DRAW — asked of the registry itself rather than of a list of names
-    // somebody wrote down once. A name nobody registered does not fail: it falls back silently,
-    // and the row renders the neutral page glyph as though that had been chosen.
-    const name = /(?<!previous)[Ii]con: '([a-z]+)'/.exec(row)?.[1] ?? '';
-    const SENTINEL = (() => null) as unknown as ReturnType<typeof resolveNavIcon>;
-    expect(resolveNavIcon(name, SENTINEL), `icon '${name}'`).not.toBe(SENTINEL);
-    // …and NOT the drivers' glyph. This row wore `users` beside السائقون, which told a reader at
-    // a glance that the two screens held the same thing. `pin` is the distinction: this crew is
-    // fixed to its car, where the board above it is planned a day at a time.
-    const driversAt = NAV.indexOf("route: '/fleet/drivers'");
-    const driversRow = NAV.slice(NAV.lastIndexOf('{', driversAt), NAV.indexOf('}', driversAt));
-    expect(driversRow, 'the drivers row still has its own').toContain("icon: 'users'");
-    expect(name, 'and this one does not share it').not.toBe('users');
-  });
-
-  it('reuses the roster grant rather than inventing a permission', () => {
-    const at = NAV.indexOf("route: '/fleet/fixed-roster'");
-    const row = NAV.slice(NAV.lastIndexOf('{', at), NAV.indexOf('}', at));
-    expect(row).toContain("permission: 'fleetRoster.view'");
-    expect(NAV, 'no fixed-crew permission was added').not.toContain('fleetFixedRoster');
-  });
-
-  it('sits beside the daily roster, inside the Fleet category', () => {
-    const daily = NAV.indexOf("route: '/fleet/roster'");
-    const fixed = NAV.indexOf("route: '/fleet/fixed-roster'");
-    expect(fixed).toBeGreaterThan(daily);
-    expect(fixed - daily, 'adjacent rows').toBeLessThan(400);
-  });
-});
-
-// ── 2f. The driver panel: a chip, a search, and less of the width ───────────
-//
-// The panel sits beside the board and competes with it for room. These pin the three things that
-// keeps it useful while it is narrow: the name is the whole chip (the code moved into the search
-// instead of the row), the search reaches every identifier the record carries, and the panel
-// takes a quarter of the grid rather than a third.
-
-describe('the driver panel', () => {
-  const POOL_LIST = SOURCE.slice(
-    SOURCE.indexOf('shownDrivers.map((driver)'),
-    SOURCE.indexOf('</ul>'),
-  );
-
-  it('shows the driver by NAME, with no code beside it', () => {
+  it('is offered on every row and opens nothing until the pen is pressed', () => {
     const markup = render();
-    expect(markup, 'the name is there').toContain('أحمد محمد');
-    // `EmployeeName` prints name + code; the pool uses the chip, which prints the name alone.
-    expect(POOL_LIST, 'the pool row is a chip').toContain('<DriverChip');
-    expect(POOL_LIST, 'and not the name+code component').not.toContain('<EmployeeName');
-    // Comments stripped: the chip's header explains at length WHY the code is not shown, and
-    // matching raw source would fail on its own explanation.
-    const chip = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/[^\n]*/g, '');
-    // The chip reads the person's record — for the driver card it opens on hover — and prints
-    // only the name from it.
-    expect(chip, 'the chip prints only the name of the record').toContain(
-      'const name = person?.fullNameAr ?? null',
-    );
-    expect(chip, 'and never reads the code').not.toMatch(/\bcode\b/);
-  });
-
-  it('uses the same chip on the vehicle row, so a drag does not change what it looks like', () => {
-    const slot = SOURCE.slice(
-      SOURCE.indexOf('const CrewSlotCell = ('),
-      SOURCE.indexOf('export const FixedRosterPage'),
-    );
-    expect(slot).toContain('<DriverChip');
-    expect(slot).not.toContain('<EmployeeName');
-    // Both places render the same element, so the markup carries a chip per seated driver too.
-    const seated = render({
-      qc: client({ ...BOARD, rows: [row(V1, '150', E1), row(V2, '151')] }),
-    });
-    expect([...seated.matchAll(/data-driver-chip="([^"]*)"/g)].map((m) => m[1])).toContain(E1);
-  });
-
-  it('offers a search beside the title, not buried under the list', () => {
-    const markup = render();
-    expect(markup).toContain(t('fleet.fixedRoster.driversTitle'));
-    expect(markup, 'the input is rendered').toContain(
-      t('fleet.fixedRoster.driverSearchPlaceholder'),
-    );
-    // The panel header holds title then search, and the list comes after both.
-    const titleAt = SOURCE.indexOf("t('fleet.fixedRoster.driversTitle')");
-    const searchAt = SOURCE.indexOf("t('fleet.fixedRoster.driverSearchPlaceholder')");
-    const listAt = SOURCE.indexOf('shownDrivers.map((driver)');
-    expect(titleAt).toBeLessThan(searchAt);
-    expect(searchAt, 'search above the list').toBeLessThan(listAt);
-  });
-
-  it('searches the identifiers the roster carries — and adds no search endpoint', () => {
-    // The two a driver chip is ever typed with. The English name and the employee NUMBER were HR
-    // record fields that came along for free while this read HR's directory; Fleet's own roster
-    // publishes one name and one code, which is what the panel now searches.
-    for (const field of ['fullNameAr', 'person.code']) {
-      expect(SOURCE, `${field} is searchable`).toContain(field);
-    }
-    expect(SOURCE, 'resolved through the shared roster').toContain('useEmployeeRecords(');
-    const employee = readFileSync(join(HERE, 'components/EmployeeName.tsx'), 'utf8');
-    expect(employee, 'and the roster is Fleet’s own, not HR’s directory').toContain(
-      'useFleetPeople(',
-    );
-    expect(employee, 'nothing here asks HR any more').not.toContain("detailKey('hr', 'employees'");
-    // Still no per-search endpoint: the list is already in hand.
-    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
-    expect(api, 'no driver-search endpoint').not.toMatch(/drivers\/search|driver-search/);
-  });
-
-  it('says so when a search matches nobody, distinctly from an empty pool', () => {
-    // "Nobody matches what you typed" and "every driver is already crewed" are different facts,
-    // and a reader who cannot tell them apart will go looking for a bug in the wrong place.
-    expect(SOURCE).toContain("t('fleet.fixedRoster.driverSearchEmpty')");
-    expect(SOURCE).toContain("t('fleet.roster.availableEmpty')");
-    expect(translate('ar', 'fleet.fixedRoster.driverSearchEmpty')).toBe('لا يوجد سائق مطابق للبحث');
-    expect(translate('en', 'fleet.fixedRoster.driverSearchEmpty')).not.toBe(
-      'fleet.fixedRoster.driverSearchEmpty',
-    );
-  });
-
-  it('badges only the EXCEPTION, so the row spends its width on the name', () => {
-    // Every row in this list is free — that is what being in the pool means. Saying it on each
-    // one costs the width the name needs and tells the reader nothing.
-    expect(POOL_LIST, 'the out-of-scope case is still flagged').toContain(
-      "t('fleet.roster.otherVehicle')",
-    );
-    expect(POOL_LIST, 'the redundant one is gone').not.toContain(
-      "t('fleet.fixedRoster.unassigned')",
-    );
-  });
-
-  it('gives the board more of the width than it used to — a fifth for the panel now', () => {
-    // A quarter became a fifth. The panel was still the widest thing on the page that is not the
-    // board, and the column that was actually short of room is «ملاحظات» — so the width moves
-    // there rather than being left as slack. `min-w-0` on both halves is what lets the table keep
-    // its own overflow rather than pushing the page sideways.
-    expect(SOURCE, 'five columns').toContain('xl:grid-cols-5');
-    expect(SOURCE, 'four of them are the board').toContain('xl:col-span-4');
-    expect(SOURCE, 'so the panel is one').not.toContain('xl:col-span-3');
-    // `min-w-0` on both halves is what lets the table keep its own overflow rather than pushing
-    // the page sideways; `min-h-0` is the same rule in the other axis, and is what lets the panel
-    // be exactly the screen instead of demanding its content's height.
-    //
-    // Asserted on the POOL PANEL's own class, not on a shape both columns share: the board column
-    // is `flex min-h-0 min-w-0 flex-col` too, so a bare `toContain` of that would go on passing
-    // with the pool column reverted to its old rigid `min-w-0 space-y-6`. It did, once.
-    expect(SOURCE, 'the pool fills the height its column was given').toContain(
-      'flex min-h-0 flex-1 flex-col rounded-lg border border-green-200',
-    );
-    expect(SOURCE, 'and no rigid stack is left in the column').not.toContain('min-w-0 space-y-6');
-    // The note's ceiling rises with it. Measured in a browser: panel 326px → 256px, notes cell
-    // 256px → 384px at 1440px wide.
-    expect(SOURCE, 'the note may run wider before it truncates').toContain('max-w-[22rem]');
-    expect(SOURCE, 'and the old ceiling is gone').not.toContain('max-w-[14rem]');
-    expect(SOURCE, 'it still truncates rather than setting the column width').toContain(
-      'truncate text-sm',
-    );
-  });
-
-  it('keeps the rows readable while compact — the chip IS the row now', () => {
-    // The row used to pad a content-width pill; the chip fills the row instead, and the space
-    // that padding took is what the reference gives back to the board. A gapped stack replaces
-    // the divider rules, so nothing is drawn between two things that are already separated.
-    expect(POOL_LIST, 'the chip fills the row').toContain('flex-1');
-    expect(POOL_LIST, 'no padding around a pill any more').not.toContain('px-3 py-1.5');
-    // Narrow is fine; clipped is not. The chip may use the full row width and truncates when it
-    // runs out, rather than being pinned to a fixed width a longer name would spill out of.
-    const chip = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8');
-    expect(chip, 'grows to the row').toContain('max-w-full');
-    expect(chip, 'and truncates instead of overflowing').toContain('truncate');
-    expect(chip, 'no fixed width').not.toMatch(/\sw-\[?\d/);
-  });
-
-  it('tints the panel with its own surface — a Card would have swallowed the colour', () => {
-    // The reference stands the pool on a green field, and the first attempt at it passed that
-    // green to `<Card>`. It drew white. `cn` joins class names without resolving Tailwind
-    // conflicts (CardBody's own note says so), so the Card's `bg-white` and the incoming
-    // `bg-green-50` both landed on the element and the winner was stylesheet order — which emits
-    // `white` after `green`. Nothing failed; the tint simply never appeared. This pins the shape
-    // that works and refuses the one that looks identical in a diff and loses the colour.
-    const PANEL = SOURCE.slice(
-      SOURCE.indexOf('flex min-h-0 flex-1 flex-col rounded-lg'),
-      SOURCE.indexOf('shownDrivers.map((driver)'),
-    );
-    expect(PANEL, 'the surface carries the tint itself').toContain('bg-green-50');
-    expect(PANEL, 'not handed to a Card that ignores it').not.toContain('<Card');
-    expect(SOURCE, 'and the import went with it').not.toContain('shared/ui/Card');
-    // The hue is Tailwind `green`, deliberately NOT the `emerald` this project spends on success
-    // — see DriverChip's header. A tidy-up that unifies the two changes what the chip means.
-    const chip = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/[^\n]*/g, '');
-    expect(chip, "the reference's green").toContain('bg-green-700');
-    expect(chip, 'never the success emerald').not.toContain('emerald');
+    expect(markup).not.toContain('role="dialog"');
+    expect(markup).toContain(`aria-label="${t('common.edit')}"`);
+    expect(t('common.edit')).toBe('تعديل');
   });
 });
 
-// ── 2g. Picking a driver up — one gesture, not two ──────────────────────────
-//
-// A seated driver could not be dragged in a single motion: the reader had to click the chip
-// first, and only then would a drag take. That was not a missing handler — the handlers were
-// there and fired. It was that `Slot` was declared INSIDE the page component, so every render
-// produced a new element type and React unmounted the whole cell instead of updating it.
-// `onDragStart` sets the dragging id, that render threw away the very node the browser had just
-// picked up, and the browser cancelled the drag. The same remount discarded the DROP TARGET
-// between `dragover` and `drop`, so the second half of the gesture was lost too.
-//
-// The node suite cannot drag. What it CAN pin is the structural cause, which is the thing that
-// would quietly come back — the interaction itself is measured in a browser, where a real
-// CDP-level drag now reports `dragIntercepted` for a seated chip and did not before.
+// ── 10. Saving and the draft ────────────────────────────────────────────────────────────────────
 
-describe('picking a seated driver up', () => {
-  it('declares no component inside another component — the whole bug, in one rule', () => {
-    // A capitalised arrow const at an indent is a component being rebuilt on every render of its
-    // parent. At column zero it is a module-level component whose element type is stable, which
-    // is what lets React keep the DOM node — and a drag in flight belongs to a DOM node.
-    const inner = [...RAW.matchAll(/\n[ \t]+const ([A-Z]\w*) = \(/g)].map((m) => m[1]);
-    expect(inner, `these are rebuilt every render: ${inner.join(', ')}`).toEqual([]);
-    expect(SOURCE, 'the slot cell is one of them').toContain('\nconst CrewSlotCell = (');
-    expect(SOURCE, 'and so is the dialog’s driver select').toContain('\nconst DriverSelect = (');
-  });
-
-  it('makes the seated chip draggable on exactly the same terms as a pool row', () => {
-    // Same contract on both ends of the move, so "drag a driver" is one thing the reader learns
-    // once. If the seated chip needed a different gesture, that would be two things.
-    const markup = render({ qc: client({ ...BOARD, rows: [row(V1, '150', E1), row(V2, '151')] }) });
-    const seated = markup.slice(markup.indexOf('data-drop-zone'), markup.indexOf('</tbody>'));
-    expect(seated, 'the seated chip is draggable').toContain('draggable="true"');
-    expect(markup, 'and so is the pool row').toContain('data-driver-card');
-    const cell = SOURCE.slice(
-      SOURCE.indexOf('const CrewSlotCell = ('),
-      SOURCE.indexOf('export const FixedRosterPage'),
-    );
-    expect(cell, 'the seated chip carries the same payload').toContain('setData(DRAG_TYPE');
-    expect(cell, 'and the same effect').toContain("effectAllowed = 'move'");
-  });
-
-  it('asks for no click, double-click or handle before the drag', () => {
-    // The reported workaround was "double-click first". Nothing may make that a prerequisite:
-    // no click handler on the chip, no armed/selected state a drag waits for.
-    const cell = SOURCE.slice(
-      SOURCE.indexOf('const CrewSlotCell = ('),
-      SOURCE.indexOf('export const FixedRosterPage'),
-    );
-    // Anchor the end AFTER the start: the first `</span>` in the cell closes the empty-slot
-    // placeholder, which sits above the chip — slicing to it ran backwards and searched ''.
-    const from = cell.indexOf('draggable={mayPlan}');
-    expect(from, 'the draggable chip is in the cell').toBeGreaterThan(-1);
-    const chip = cell.slice(from, cell.indexOf('</span>', from));
-    expect(chip.length, 'and the slice actually holds it').toBeGreaterThan(40);
-    expect(chip, 'no click to arm the drag').not.toContain('onClick');
-    expect(chip, 'and no double-click either').not.toContain('onDoubleClick');
-    expect(chip, 'nor a mousedown standing in for one').not.toContain('onMouseDown');
-    expect(cell, 'draggable is gated by permission only').toContain('draggable={mayPlan}');
-  });
-
-  it('moves a seated driver through the SAME rule the pool drag uses', () => {
-    // One `assignDriver` call in the page, reached by every drop — from the pool or from a seat.
-    // A second call site would be a second set of rules that could drift from this one.
-    expect(SOURCE.match(/assignDriver\(/g) ?? [], 'exactly one call site').toHaveLength(1);
-    const drop = SOURCE.slice(SOURCE.indexOf('const drop = ('), SOURCE.indexOf('const commit'));
-    expect(drop, 'the drop delegates rather than deciding').toContain('assignDriver(draft');
-    expect(drop, 'and knows nothing about where the drag started').not.toContain('pool');
-  });
-});
-
-// ── 3. Saving — explicit, and only what moved ───────────────────────────────
-
-describe('saving', () => {
-  it('offers nothing to save on a board nobody has touched', () => {
-    const markup = render();
-    expect(markup).toContain(t('common.save'));
-    expect(markup, 'the save button is disabled').toMatch(/disabled[^>]*>[^<]*حفظ|حفظ/);
-    expect(markup, 'and there is no unsaved banner').not.toContain(t('fleet.fixedRoster.unsaved'));
-  });
-
-  it('sends only the rows whose crew moved, and in the shape the contract accepts', () => {
-    // The payload the page builds is `changedRows`; parsing it with the real schema is what
-    // proves the screen and the API agree.
-    const saved = [row(V1, '150', E1), row(V2, '151')];
-    const draft = [row(V1, '150'), row(V2, '151', E1)];
+describe('saving — only «حفظ» writes, a refusal keeps the work', () => {
+  it('sends only the cars whose facts changed, in the shape the contract accepts', () => {
+    const saved = [row(V1, '150', { driver1EmployeeId: E1 }), row(V2, '151')];
+    const draft = [row(V1, '150'), row(V2, '151', { driver1EmployeeId: E1 })];
     const rows = changedRows(saved, draft);
     expect(rows).toHaveLength(2);
     expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success).toBe(true);
   });
 
-  it('carries the chosen mission type through as the catalog ID, and null when cleared', () => {
-    // The dialog hands `applyEdit` the id it read off the catalog `<option value={item.id}>`;
-    // the row keeps it; `changedRows` sends it; the real schema accepts it. Every link in that
-    // chain is here, because a break in any one of them looks the same to the reader: the
-    // mission type they picked is simply not there when the screen comes back.
+  it('carries the mission as the catalog ID, and null when cleared', () => {
     const saved = [row(V1, '150'), row(V2, '151')];
     const picked = applyEdit(saved, V1, {
       missionTypeId: MT,
@@ -1056,834 +1175,121 @@ describe('saving', () => {
       driver2EmployeeId: null,
       notes: null,
     });
-    expect(picked[0]?.missionTypeId, 'the id, not the name').toBe(MT);
     const rows = changedRows(saved, picked);
     expect(rows[0]?.missionTypeId).toBe(MT);
-    expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success, 'the contract takes it').toBe(
-      true,
-    );
-
-    // …and clearing it is a real value, not a missing key: `null` is how this module spells
-    // "no mission type", and the contract accepts that too.
+    expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success).toBe(true);
     const cleared = applyEdit(picked, V1, {
       missionTypeId: null,
       driver1EmployeeId: null,
       driver2EmployeeId: null,
       notes: null,
     });
-    expect(cleared[0]?.missionTypeId).toBeNull();
     const back = changedRows(picked, cleared);
     expect(back[0]?.missionTypeId).toBeNull();
     expect(SaveFleetFixedRosterSchema.safeParse({ rows: back }).success).toBe(true);
   });
 
-  it('refuses a payload that would seat one person twice on a car', () => {
-    const bad = { rows: [{ vehicleId: V1, driver1EmployeeId: E1, driver2EmployeeId: E1 }] };
-    const parsed = SaveFleetFixedRosterSchema.safeParse(bad);
-    expect(parsed.success).toBe(false);
-  });
-
-  it('refuses a payload that would put one driver in two crews', () => {
-    const bad = {
-      rows: [
-        { vehicleId: V1, driver1EmployeeId: E1 },
-        { vehicleId: V2, driver1EmployeeId: E1 },
-      ],
-    };
-    expect(SaveFleetFixedRosterSchema.safeParse(bad).success).toBe(false);
-  });
-
-  it('writes only when asked — a drag edits a draft, never the server', () => {
-    // The mutation has exactly one caller, and it is the save handler.
-    expect(SOURCE.match(/save\.mutateAsync/g) ?? []).toHaveLength(1);
-    expect(SOURCE).toMatch(/const commit = async[\s\S]{0,400}save\.mutateAsync/);
-    // The drop handler edits local state and nothing else.
-    expect(SOURCE).toMatch(/const drop = \([\s\S]{0,300}setDraft/);
+  it('refuses a payload with one person in both seats, or one driver in two crews', () => {
     expect(
-      SOURCE.slice(SOURCE.indexOf('const drop = ('), SOURCE.indexOf('const commit')),
-    ).not.toContain('mutate');
+      SaveFleetFixedRosterSchema.safeParse({
+        rows: [{ vehicleId: V1, driver1EmployeeId: E1, driver2EmployeeId: E1 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({
+        rows: [
+          { vehicleId: V1, driver1EmployeeId: E1 },
+          { vehicleId: V2, driver1EmployeeId: E1 },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
-  it('never lets a refused save fail in silence', () => {
-    // Defining `onError` on the mutation opts it OUT of the global error toast
-    // (query-client.ts: `if (mutation.options.onError === undefined) notify(error)`), and this
-    // hook defines one — so the page's own catch is the single message the reader gets. Without
-    // that catch the refusal would be invisible: the button stops spinning and nothing is said.
-    // The commonest refusal here is a driver another row still holds.
-    const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const dash'));
-    expect(commit, 'the save is guarded').toContain('try {');
-    expect(commit, 'and a failure is shown').toMatch(/catch[\s\S]*toast\.error/);
-    expect(commit).toContain('errorMessage(');
+  it('writes in one place — the model’s save — and drops the draft only once the server took it', () => {
+    expect(SCREEN.match(/mutateAsync/g) ?? [], 'one caller').toHaveLength(1);
+    const commit = MODEL.slice(MODEL.indexOf('const commit'), MODEL.indexOf('const exportSheet'));
+    expect(commit.indexOf('mutateAsync')).toBeLessThan(commit.indexOf('acceptDraft()'));
+    const refusal = commit.slice(commit.indexOf('catch'));
+    expect(refusal, 'a refusal keeps the draft').not.toContain('acceptDraft');
+    expect(refusal).not.toContain('discard(');
+    expect(refusal, 'and says why, in Arabic').toContain('toast.error(');
+    expect(refusal).toContain('fixedSaveRefusal(');
   });
-
-  // ── a refused save must not throw the reader's work away ──────────────────
-  //
-  // This is the requirement with the most ways to lose it by accident, and the fewest visible
-  // symptoms when it goes: the drags simply are not there any more, and the board looks like it
-  // was never edited. Two independent mechanisms hold it up, so both are pinned here.
 
   it('does NOT re-read the board when the save is refused', () => {
-    // An invalidate would answer with a fresh `rows` array; the page keys its draft to the saved
-    // board's IDENTITY, so a new array resets the draft — wiping the very drags the reader now
-    // has to fix. The handler still has to EXIST, because that is what keeps this mutation off
-    // the global toast and leaves `commit`'s catch as the one message shown.
-    const QUERIES = readFileSync(join(HERE, 'api/fleet-queries.ts'), 'utf8');
+    const QUERIES = read('api/fleet-queries.ts');
     const at = QUERIES.indexOf('export const useSaveFixedRoster');
     const hook = QUERIES.slice(at, QUERIES.indexOf('\n};', at));
-    expect(at, 'the hook exists').toBeGreaterThan(-1);
-    expect(hook, 'a handler is defined — no global toast on top of ours').toMatch(/onError:/);
-
+    expect(hook).toMatch(/onError:/);
     const onError = hook.slice(hook.indexOf('onError:'));
     for (const reread of ['invalidateQueries', 'setQueryData', 'refetch', 'resetQueries']) {
-      expect(onError, `a refusal must not ${reread}`).not.toContain(reread);
+      expect(onError, reread).not.toContain(reread);
     }
   });
 
-  it('keys the draft to the saved board, so an unchanged board leaves the drags standing', () => {
-    // The other half. Derived DURING RENDER, not seeded by an effect: an effect runs after the
-    // first paint, so the board would flash empty on arrival — and never runs at all under
-    // `renderToStaticMarkup`, which is how this whole file tests the screen. Keying on identity
-    // is what makes "the server refused, nothing changed" mean "your draft is still here".
-    // The rule now lives in `useDraftBoard`, shared with the daily board. UNCHANGED: keying on
-    // identity is still what makes "the server refused, nothing changed" mean "your draft is
-    // still here".
-    expect(readFileSync(join(HERE, 'lib/useDraftBoard.ts'), 'utf8')).toContain(
-      'edit.base === saved ? edit.rows',
-    );
-    expect(SOURCE, 'and this page uses it').toContain('useDraftBoard(');
-    expect(SOURCE, 'the saved board is a stable reference').toMatch(
-      /const saved = useMemo\(\(\) => boardQuery\.data\?\.rows \?\? \[\], \[boardQuery\.data\]\)/,
-    );
-    expect(SOURCE, 'no effect seeds the draft').not.toContain('useEffect');
-  });
-
-  it('hides the whole editing surface from a reader who may not plan', () => {
-    const markup = render({ permissions: ['fleetRoster.view'] });
-    expect(markup).not.toContain(t('common.save'));
-    expect(markup, 'and the cards are inert').not.toContain('draggable="true"');
-  });
-});
-
-// ── 4. The DAILY roster still has everything this screen dropped ────────────
-
-describe('the daily roster is untouched', () => {
-  it('still has its date picker and its day arrows', () => {
-    expect(ROSTER).toContain('type="date"');
-    expect(ROSTER).toContain('fleet.roster.prevDay');
-    expect(ROSTER).toContain('fleet.roster.nextDay');
-    expect(ROSTER).toContain('shiftDay');
-  });
-
-  it('still has its unavailable section, reasons and all', () => {
-    expect(ROSTER).toContain('unavailableDrivers');
-    expect(ROSTER).toContain('fleet.roster.unavailableTitle');
-    expect(ROSTER).toContain('reasonLabel');
-  });
-
-  it('still plans by date', () => {
-    expect(ROSTER).toContain('usePlanRoster');
-    expect(ROSTER).toMatch(/dateKey: date/);
-  });
-});
-
-// ── a second driver needs a first, in the SCREEN ───────────────────────────
-//
-// The rule itself lives in three places and each is tested where it belongs: the arithmetic in
-// `fixed-roster-board.spec.ts`, the boundary in the contracts spec, the stored record in the
-// integration suite. What is left is the part a user meets — the slot that will not take a drop
-// and the select that will not offer a name — and that is here.
-
-describe('driver 2 depends on driver 1', () => {
-  it('makes slot 2 a NON-target while slot 1 is empty', () => {
-    const markup = render();
-    // Both slots exist for an empty crew; only slot 1 accepts anything.
-    const zone = (slot: string): string => {
-      const at = markup.indexOf(`data-drop-zone="${V1}:${slot}"`);
-      return at === -1 ? '' : markup.slice(at, markup.indexOf('>', at));
-    };
-    expect(zone('driver1EmployeeId'), 'the first seat is open').not.toContain('data-drop-disabled');
-    expect(zone('driver2EmployeeId'), 'the second is not, and says why').toContain(
-      'data-drop-disabled="needsFirstDriver"',
-    );
-  });
-
-  it('refuses the drop in code, not only in the styling', () => {
-    // A `data-` attribute is a label. This is the gate: `onDragOver` never prevents the default,
-    // so the browser does not treat the slot as a drop target at all.
-    expect(SOURCE, 'the gate exists').toContain(
-      "const needsFirst = slot === 'driver2EmployeeId' && row.driver1EmployeeId === null",
-    );
-    expect(SOURCE, 'and both handlers ride it').toContain(
-      'const droppable = mayPlan && !needsFirst',
-    );
-    const cell = SOURCE.slice(
-      SOURCE.indexOf('const CrewSlotCell'),
-      SOURCE.indexOf('export const FixedRosterPage'),
-    );
-    const overAt = cell.indexOf('onDragOver');
-    const dropAt = cell.indexOf('onDrop=');
-    expect(cell.slice(overAt, overAt + 120), 'dragover is gated').toContain(
-      'if (!droppable) return',
-    );
-    expect(cell.slice(dropAt, dropAt + 120), 'and so is drop').toContain('if (!droppable) return');
-  });
-
-  it('OPENS slot 2 as soon as slot 1 holds somebody', () => {
-    const seated = { ...BOARD, rows: [row(V1, '150', E1), row(V2, '151')] };
-    const markup = render({ qc: client(seated) });
-    const at = markup.indexOf(`data-drop-zone="${V1}:driver2EmployeeId"`);
-    expect(at, 'the slot is rendered').toBeGreaterThan(-1);
-    expect(markup.slice(at, markup.indexOf('>', at)), 'and it is now a target').not.toContain(
-      'data-drop-disabled',
-    );
-  });
-
-  it('tells the reader what is missing instead of ignoring the gesture', () => {
-    const markup = render();
-    const at = markup.indexOf(`data-drop-zone="${V1}:driver2EmployeeId"`);
-    const cell = markup.slice(at, markup.indexOf('</div>', at));
-    expect(cell, 'the empty second slot explains itself').toContain(
-      translate('ar', 'fleet.fixedRoster.needsFirstDriver'),
-    );
-  });
-
-  it('disables the dialog’s second-driver select while the first is empty', () => {
-    expect(SOURCE, 'the select is disabled').toContain('disabled={driver1 === null}');
-    expect(SOURCE, 'with the reason beside it').toContain(
-      "hint={driver1 === null ? t('fleet.fixedRoster.needsFirstDriver') : undefined}",
-    );
-  });
-
-  it('PROMOTES rather than stranding when the dialog clears driver 1', () => {
-    // «بدون سائق» on the first slot of a two-man crew leaves one person on the car, and the seat
-    // a lone driver holds is slot 1 — so the dialog shows exactly the crew the save will write.
-    const handler = SOURCE.slice(SOURCE.indexOf('onChange={(id) => {'));
-    expect(handler.slice(0, 260)).toContain('if (id === null && driver2 !== null)');
-    expect(handler.slice(0, 260)).toContain('setDriver1(driver2)');
-    expect(handler.slice(0, 260)).toContain('setDriver2(null)');
-  });
-});
-
-// ── each vehicle wears its own colour ──────────────────────────────────────
-//
-// A hundred rows of three-digit codes that differ by one glyph are hard to keep your place in.
-// The colour is hashed from the vehicle's ID — not its row index — so it survives filtering,
-// sorting and new vehicles arriving. The rules themselves are in `vehicle-colour.spec.ts`; these
-// assert the BOARD actually wears them.
-
-describe('the vehicle code carries the vehicle’s colour', () => {
-  const chipFor = (markup: string, vehicleId: string): string => {
-    const at = markup.indexOf(`data-vehicle-colour="${vehicleId}"`);
-    return at === -1 ? '' : markup.slice(markup.lastIndexOf('<span', at), markup.indexOf('>', at));
-  };
-
-  it('gives each vehicle a palette class', () => {
-    const markup = render();
-    for (const id of [V1, V2]) {
-      const chip = chipFor(markup, id);
-      expect(chip, `${id} has no colour chip`).not.toBe('');
-      expect(chip, 'and it is a palette entry').toMatch(/bg-[a-z]+-(100|200)/);
-    }
-  });
-
-  it('gives the two vehicles DIFFERENT colours', () => {
-    const markup = render();
-    expect(chipFor(markup, V1)).not.toBe(chipFor(markup, V2));
-  });
-
-  it('keeps a vehicle’s colour when the board is FILTERED to a different set', () => {
-    // The search narrows `rows`, so a colour taken from an array index would repaint the fleet
-    // on every keystroke. This is the regression that would catch it.
-    const all = render();
-    const filtered = render({ route: '/fleet/fixed-roster?q=151' });
-    expect(filtered, 'the filter really did narrow the board').not.toContain(
-      `data-vehicle-colour="${V1}"`,
-    );
-    expect(chipFor(filtered, V2), 'and 151 still wears its own colour').toBe(chipFor(all, V2));
-  });
-
-  it('keeps each colour when the board arrives in a DIFFERENT ORDER', () => {
-    const forward = render();
-    const reversed = render({ qc: client({ ...BOARD, rows: [...BOARD.rows].reverse() }) });
-    expect(chipFor(reversed, V1)).toBe(chipFor(forward, V1));
-    expect(chipFor(reversed, V2)).toBe(chipFor(forward, V2));
-  });
-
-  it('does not repaint the existing vehicles when a new one arrives', () => {
-    const before = render();
-    const withExtra = render({
-      qc: client({
-        ...BOARD,
-        rows: [row('64b1f0abcdefabcdefab7777', '99'), ...BOARD.rows],
-      }),
-    });
-    expect(chipFor(withExtra, V1)).toBe(chipFor(before, V1));
-    expect(chipFor(withExtra, V2)).toBe(chipFor(before, V2));
-  });
-
-  it('is a label, not a status — the code stays the readable thing', () => {
-    const markup = render();
-    const chip = chipFor(markup, V1);
-    expect(chip, 'dark text on a light fill').toMatch(/text-[a-z]+-800/);
-    expect(chip, 'and the inverse in dark mode').toMatch(/dark:text-[a-z]+-(100|200)/);
-  });
-});
-
-// ── a refused save says WHICH row it refused ───────────────────────────────
-//
-// The server answers a bad save with code `VALIDATION_FAILED`, a constant top-level message
-// (`Validation failed`) and `details: [{ field, code, message }]` naming the row and the rule.
-// On a hundred-vehicle board the top-level message is unactionable — it is the same sentence
-// whatever went wrong — so this screen reads the detail.
-//
-// It reads it HERE rather than in `errorMessage`, and that placement is the tested claim: the
-// server's detail strings are English-only, so preferring them in the shared helper would put
-// English in front of an Arabic reader on all twelve screens that call it.
-describe('a refused save names the row it refused', () => {
-  const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const dash'));
-
-  it('reads the server’s detail instead of the generic message', () => {
-    expect(commit, 'the save handler asks for the details').toContain('validationDetails(error)');
-    expect(commit, 'and shows the rule the server applied').toContain('detail.message');
-  });
-
-  it('names the field alongside the rule', () => {
-    expect(commit).toContain('detail.field');
-  });
-
-  it('still falls back to the localised copy when there is no detail', () => {
-    // A refusal with no details — or any other error code — must keep its Arabic sentence.
-    expect(commit, 'the localised path is still there').toContain('errorMessage(error, locale)');
-    expect(commit, 'and it is what an empty detail list gets').toMatch(
-      /detail === undefined[\s\S]{0,40}errorMessage\(error, locale\)/,
-    );
-  });
-
-  it('does NOT push the English detail into the shared helper', () => {
-    // The guard on the whole app: `errorMessage` stays generic-and-localised. Its own spec
-    // asserts the same rule from the other side.
-    const shared = readFileSync(join(HERE, '../../shared/lib/errors.ts'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/[^\n]*/g, '');
-    const helper = shared.slice(shared.indexOf('export const errorMessage'));
-    expect(helper.slice(0, helper.indexOf('};')), 'errorMessage reads no details').not.toContain(
-      'details',
-    );
-  });
-});
-
-// ── the standing board's unsaved work survives a reload ────────────────────
-//
-// The draft lived in `useState` alone and the query cache is in-memory, so a browser refresh
-// took a morning's crew changes with it. Nothing was "cleared" — nothing was ever written down.
-describe('the fixed draft is persisted', () => {
-  const HOOK = readFileSync(join(HERE, 'lib/useDraftBoard.ts'), 'utf8');
-
-  it('keys the draft with NO DATE — this board is not a day', () => {
-    // `fleet_fixed_crews` is one standing row per vehicle, with no date, weekday or effective
-    // range anywhere in it. A date key here would split one board's draft across a key per day,
-    // so a reader would lose their work by doing nothing but waiting past midnight.
-    expect(SOURCE).toContain(
-      'useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, ROSTER_EDITABLE_FIELDS)',
-    );
-    const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
+  it('keys the draft with NO DATE — one standing board, one draft', () => {
+    expect(MODEL).toContain('useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, ROSTER_EDITABLE_FIELDS)');
+    const storage = read('lib/draft-storage.ts');
     expect(storage).toContain("FIXED_ROSTER_DRAFT_KEY = 'ecms.fleet.fixedRoster.draft'");
-    expect(storage, 'and the constant carries no date').not.toMatch(
-      /FIXED_ROSTER_DRAFT_KEY = [^\n]*\$\{/,
+    expect(storage).not.toMatch(/FIXED_ROSTER_DRAFT_KEY = [^\n]*\$\{/);
+    expect(MODEL, 'no effect seeds the draft').not.toContain('useEffect');
+  });
+
+  it('reaches the server through exactly two functions — read the board, save it — and one catalog', () => {
+    const imports = [
+      ...SCREEN.matchAll(/import \{([^}]*)\} from '(?:\.\.\/)+api\/fleet-queries';/g),
+    ].flatMap((m) =>
+      (m[1] as string)
+        .split(',')
+        .map((name) => name.trim())
+        .filter((name) => name !== ''),
     );
-  });
-
-  it('keeps the render-time draft rule intact', () => {
-    // Moved, not changed: still derived during render (an effect never runs under
-    // `renderToStaticMarkup`, and would flash the board in a browser).
-    expect(HOOK).toContain('edit.base === saved ? edit.rows');
-    expect(HOOK, 'no effect seeds or persists the draft').not.toContain('useEffect');
-  });
-
-  it('writes the draft on every edit, so a reload finds it', () => {
-    expect(HOOK).toMatch(/setDraft[\s\S]{0,300}writeDraft\(key, rows\)/);
-  });
-
-  it('CANCEL clears storage as well as state', () => {
-    // Discarding in memory alone would put the work back on screen at the next reload, which is
-    // the opposite of what the button says.
-    expect(HOOK).toMatch(/discard[\s\S]{0,200}forget\(\)/);
-  });
-
-  it('a successful save drops the draft; a REFUSED save keeps it', () => {
-    const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const dash'));
-    expect(commit).toContain('acceptDraft()');
-    expect(
-      commit.indexOf('save.mutateAsync'),
-      'cleared only after the server accepted it',
-    ).toBeLessThan(commit.indexOf('acceptDraft()'));
-    expect(
-      commit.slice(commit.indexOf('catch')),
-      'a refusal is the moment the reader most needs their work',
-    ).not.toContain('acceptDraft()');
-  });
-
-  it('restores only the fields a reader edits, never facts about the world', () => {
-    // A stale `inMaintenance: false` restored over the server's `true` would offer a drop that
-    // FR-5 then refuses. The set is now shared by both boards and carries the SHAPE each field's
-    // values must have, so a stored value the server would refuse cannot be restored either —
-    // `draft-storage.spec.ts` holds that behaviour.
-    const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
-    expect(storage).toContain("missionTypeId: 'id'");
-    expect(storage).toContain("driver1EmployeeId: 'id'");
-    expect(storage).toContain("driver2EmployeeId: 'id'");
-    expect(storage).toContain("notes: 'text'");
-    expect(storage, 'the board’s own shape is not editable').not.toContain("inMaintenance: '");
-  });
-
-  it('persisting is not saving — nothing here reaches the API', () => {
-    const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/[^\n]*/g, '');
-    expect(storage).not.toMatch(/\bfetch\(|saveFixedRoster|planRoster|\bapi\./);
-    expect(storage, 'session-scoped: a draft must not outlive the tab').toContain('sessionStorage');
-    expect(storage).not.toContain('localStorage');
+    expect([...new Set(imports)].sort()).toEqual([
+      'useFixedRoster',
+      'useFleetCatalog',
+      'useSaveFixedRoster',
+    ]);
+    expect(SCREEN, 'no second api module').not.toMatch(/from '(?:\.\.\/)+api\/fleet-api'/);
+    expect(SCREEN).not.toMatch(/hr\/|employee-api|driver-api/);
+    const api = read('api/fleet-api.ts');
+    const from = api.indexOf('export const getFixedRoster');
+    const fixed = api.slice(from, api.indexOf('\n\n', from));
+    expect(fixed).toContain("get<FleetFixedRosterDto>('/fleet/fixed-roster')");
+    expect(fixed).toContain(
+      "post<FleetFixedRosterDto & { changedCount: number }>('/fleet/fixed-roster'",
+    );
+    expect(fixed).not.toMatch(/\bdel</);
   });
 });
 
-describe('a car edited and not yet saved is tinted here too', () => {
-  const CODE = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '');
+// ── 11. Navigation ──────────────────────────────────────────────────────────────────────────────
 
-  it('paints the row with the SAME colour the daily board uses', () => {
-    // One state, one colour, across two screens meant to be twins — which is why it is a shared
-    // constant rather than a class list written out on each page.
-    expect(CODE).toContain('UNSAVED_ROW');
-    expect(CODE).toContain("from '../lib/roster-view'");
-    expect(CODE, 'never spelled out again').not.toContain('bg-amber-50 text-amber-950');
-  });
-
-  it('tints exactly the rows «حفظ» would send', () => {
-    // `pending` on this board already IS the reader's edits, so the tint and the Save button
-    // answer the same question and cannot disagree about it.
-    const at = CODE.indexOf('const unsavedIds');
-    expect(at, 'the set exists').toBeGreaterThan(-1);
-    expect(CODE.slice(at, at + 200)).toContain('pending.map');
-    expect(CODE).toContain('unsavedIds.has(row.vehicleId)');
-  });
-
-  it('nothing clears the tint by hand — the draft reset is what clears it', () => {
-    expect(CODE).not.toMatch(/setUnsaved|clearTint|setUnsavedIds/);
-  });
-});
-
-/**
- * THE TWO ROSTER SCREENS ARE ONE PAIR — «شاشه fleet/fixed-roster تكون زى /fleet/roster و تظبط
- * ابعاد الفلاتر».
- *
- * They were built two different ways: the daily board hand-rolls a strip holding its picker, its
- * tally as coloured chips, its reset and its Save; this one used the shared `FilterBar` with a
- * plain sentence for a tally and its Save up in the page header. Both are defensible on their
- * own and together they read as two unrelated screens.
- */
-describe('the standing board wears the daily board’s bar', () => {
-  const SOURCE = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8');
-  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-  /**
-   * The DAILY board on a computer, as code. Since «شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده
-   * ك ui و شيل الفلتر بتاع كل المهمات اللى جمب كود السيارة بس وسيب الباقى» it wears the new Fleet
-   * boards' dark FilterBar, so the strip claims below are the STANDING board's own; what the pair
-   * still shares is asserted on both.
-   */
-  const DAILY = rosterSource(['shell', 'model', 'desk', 'shared']);
-
-  it('drops the shared FilterBar for the daily board’s own strip', () => {
-    expect(CODE, 'no FilterBar left').not.toContain('<FilterBar');
-    expect(CODE, 'nor its import').not.toContain("from '../../../shared/ui/FilterBar'");
-    expect(CODE, 'the strip the daily board used').toContain(
-      'className="mb-4 flex flex-wrap items-center gap-1.5"',
-    );
-    // The daily board has moved on to the new boards' bar (the owner's request, above).
-    expect(DAILY, 'the daily board wears the new boards’ bar').toContain('<FilterBar');
-  });
-
-  it('gives the strip the WHOLE PAGE, above the grid — the daily board’s bar is above its grid too', () => {
-    // «فلاتر الطقم الثابت زى تعيين السيارات ... على نفس الصف كله». Having the daily board's
-    // controls was never the whole of that: they sat inside the board's own grid column, four
-    // fifths of the page, so the row the daily board fits on one line wrapped onto two or three
-    // here. Same controls, less room, different screen.
-    //
-    // Proved by POSITION in the source, which is the only thing a suite with no layout engine can
-    // read honestly: the strip must open before the grid does, not inside the column the grid
-    // opens. The daily board's bar (the new boards' FilterBar) is above its grid too — asserted on
-    // the daily board's markup in fleet-daily-roster.spec («sits in the same top strip…»).
-    for (const [name, source] of [['fixed', CODE]] as const) {
-      const strip = source.indexOf('mb-4 flex flex-wrap items-center gap-1.5');
-      // The board grid's opening, whatever its gutter: the daily board's is `gap-3` since the
-      // pools took a fixed width so «ملاحظات» and «إجراءات» fit beside them.
-      const grid = source.indexOf('grid min-h-0 flex-1 gap-');
-      expect(strip, `${name}: the strip is there`).toBeGreaterThan(-1);
-      expect(grid, `${name}: the grid is there`).toBeGreaterThan(-1);
-      expect(strip, `${name}: the strip is ABOVE the grid`).toBeLessThan(grid);
-    }
-    expect(
-      CODE.indexOf('xl:col-span-4'),
-      'and the board’s own column opens after it, not around it',
-    ).toBeGreaterThan(CODE.indexOf('mb-4 flex flex-wrap items-center gap-1.5'));
-  });
-
-  it('says its tally in the daily board’s chips, not in a sentence', () => {
-    expect(CODE, 'chips').toContain('data-counter=');
-    expect(CODE, 'from the shared tones, never a literal').toContain('COUNTER_TONES');
-    expect(CODE, 'the sentence is gone').not.toContain("t('fleet.fixedRoster.summary'");
-  });
-
-  it('counts off the DRAFT, so the numbers move as cars are crewed', () => {
-    const at = CODE.indexOf('const counters');
-    expect(at, 'the tally exists').toBeGreaterThan(-1);
-    const decl = CODE.slice(at, CODE.indexOf('}, [', at));
-    expect(decl, 'the draft, not the server’s last answer').toContain('draft.filter(');
-    expect(decl, 'and its total too').toContain('draft.length');
-  });
-
-  /**
-   * The chips were read-outs here for one release, on the argument that this board had no axis
-   * for them to filter. «عاوز الطاقم الثابت الفلاتر بتاعته تكون زى تعيين السيارات»: it has two —
-   * a car with a crew and one without — and the mission vocabulary, and the chips now filter on
-   * them exactly as the daily board's do. The behaviour is proved below, in «the counters filter
-   * the standing board»; this pins the shape.
-   */
-  it('renders the chips as the daily board’s buttons, announcing whether they are applied', () => {
-    const at = CODE.indexOf('data-counter=');
-    // The opening tag, up to its class list — `onClick={() => …}` carries a `>` of its own, so
-    // the tag cannot be cut at the first one.
-    const chip = CODE.slice(CODE.lastIndexOf('<', at), CODE.indexOf('className=', at));
-    expect(chip, 'a button, not a span').toContain('<button');
-    expect(chip, 'that says whether it is the one applied').toContain(
-      'aria-pressed={counter.active}',
-    );
-    expect(chip, 'and applies its own target').toContain('onClick={() => patch(counter.apply)}');
-  });
-
-  it('carries the daily board’s mission select, on the same catalog, at the same width', () => {
-    const strip = CODE.slice(
-      CODE.indexOf('className="mb-4 flex flex-wrap items-center gap-1.5"'),
-      CODE.indexOf('<DataTable'),
-    );
-    expect(strip, 'the mission vocabulary, never workType').toContain('kind="missionType"');
-    expect(strip, 'the daily board’s «all missions» label').toContain(
-      "label={t('fleet.roster.allMissions')}",
-    );
-    // SEVERAL missions at once, as on the daily board — one parameter carrying a list, written
-    // through the shared `writeList` so the chips beside it and this control cannot disagree.
-    expect(strip, 'writes the one mission parameter').toContain(
-      'patch({ mission: writeList(ids) })',
-    );
-    const width = (code: string): string | undefined =>
-      /<div className="(w-\d+)">\s*<CatalogMultiSelect\s+kind="missionType"/.exec(code)?.[1];
-    // The daily board no longer has this select beside its code — «شيل الفلتر بتاع كل المهمات
-    // اللى جمب كود السيارة بس» — so the width is the standing board's own.
-    expect(DAILY, 'gone from the daily computer board').not.toContain('<CatalogMultiSelect');
-    // Narrowed from `w-44` so the sixteen chips fit beside it on ONE line — «حتى لو هتصغر كود
-    // السيارة شويه». 144px still holds «كل المهمات» with room to spare.
-    expect(width(CODE)).toBe('w-36');
-  });
-
-  it('moves Save out of the page header and onto the end of the strip — on the FIRST line', () => {
-    expect(CODE, 'the header carries no actions now').not.toMatch(/actions=\{\s*mayPlan/);
-    const stripOf = (code: string): string => {
-      const from = code.slice(code.indexOf('className="mb-4 flex flex-wrap items-center gap-1.5"'));
-      return from.slice(0, from.indexOf('<DataTable'));
-    };
-    expect(stripOf(CODE), 'and it saves').toContain("t('common.save')");
-
-    // «عاوز شكل الفلاتر بتوع الطاقم الثابت بزراير حفظ والغاء يكونوا زى شاشه تعيين السيارات»,
-    // then «خلى كله على سطر واحد ... المهم يكونوا كلهم على صف واحد».
-    //
-    // The pair is held at the far edge by the CHIPS' own `flex-1` box, not by `ms-auto` on the
-    // pair itself: `ms-auto` pushes to the end of the LAST line, so a strip that overflows drops
-    // the pair onto a row of its own — which is what this board did, carrying one counter more
-    // than the daily one. And the box does not wrap either, or one chip still costs the strip a
-    // second line. The daily board's save is in its floating unsaved bar now («اعتمد» on D1), so
-    // this is the standing board's own.
-    for (const [name, body] of [['fixed', stripOf(CODE)]] as const) {
-      expect(body, `${name}: the chips live in a box of their own, and it does not wrap`).toContain(
-        '-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1 pr-1',
-      );
-      expect(body, `${name}: and a chip gives up no width of its own`).toContain(
-        'min-w-[3rem] shrink-0',
-      );
-      expect(body, `${name}: nothing in the strip pushes itself to the last line`).not.toContain(
-        'className="ms-auto',
-      );
-    }
-  });
-
-  it('carries the daily board’s reset, offered only when there is something to undo', () => {
-    expect(CODE).toContain('data-reset-filters="true"');
-    // The daily board's reset is the new boards' own now — the FilterBar's, told what is filtered.
-    expect(DAILY, 'the twin keeps a reset on the same rule').toContain(
-      '<FilterBar hasActiveFilters={m.filtered} onClear={resetFilters}>',
-    );
-    const at = CODE.indexOf('data-reset-filters');
-    expect(CODE.slice(Math.max(0, at - 400), at), 'gated on an active filter').toContain(
-      'filtered &&',
-    );
-    // …and «an active filter» is any of the three, not the code search alone.
-    expect(CODE).toContain(
-      "const filtered = search !== '' || missions.length > 0 || view !== null;",
-    );
-  });
-
-  it('keeps the standing board’s own 160px car picker — the daily one sits in the new boards’ icon box', () => {
-    // «تظبط ابعاد الفلاتر» — one width for one control across the pair, narrowed from `w-56` so
-    // the whole strip holds one line: «حتى لو هتصغر كود السيارة شويه». The pair has parted since:
-    const width = (code: string): string | undefined =>
-      code.slice(code.indexOf('<VehicleCodeFilter')).match(/className="([^"]+)"/)?.[1];
-    // the daily board's picker sits in the new boards' icon box (`FilterWithIcon`), as on
-    // Accidents — «شاشه الكبيوتر اعملها زى باقى شاشات الحركة الجديده ك ui» — so the 160px box is
-    // the standing board's own, and this screen is unchanged.
-    expect(DAILY).toContain('<FilterWithIcon');
-    expect(width(CODE)).toContain('w-40');
-  });
-
-  /**
-   * AND THE PICKER FILLS THE WIDTH IT RESERVES — «راعى الابعاد والمسافات».
-   *
-   * The wrapper is `w-40` (160px, narrowed from 224px) and `MultiSelect`'s trigger sizes to its
-   * own content — 116px,
-   * measured — so 108px inside the box was dead. On the daily board the mission select stood
-   * next to it and hid that; here nothing does, and the reader saw 114px of nothing between the
-   * box and the first chip while every other pair on the row sat 6px apart. `fullWidth` spends
-   * the width the wrapper had already reserved: measured after, dead space 0 on both boards and
-   * the gap to the first chip 6px, the same as every other gap.
-   */
-  it('makes the picker fill its box, on BOTH boards', () => {
-    for (const [name, code] of [
-      ['standing', CODE],
-      ['daily', DAILY],
-    ] as const) {
-      const mount = code.slice(
-        code.indexOf('<VehicleCodeFilter'),
-        code.indexOf('/>', code.indexOf('<VehicleCodeFilter')),
-      );
-      expect(mount, `${name} board`).toContain('fullWidth');
-    }
-  });
-});
-
-// ── the counters are FILTERS, as on the daily board ─────────────────────────
-//
-// «عاوز الطاقم الثابت الفلاتر بتاعته تكون زى تعيين السيارات». This suite has no DOM, so a click
-// cannot be dispatched. What it can prove is both halves of the mechanism, the way the daily
-// board's spec proves them: that each chip is a real control carrying the right target
-// (`data-counter` plus the `aria-pressed` state), and that arriving at that target actually
-// narrows the board. The rule itself is exercised as a function in `lib/roster-view.spec.ts`.
-
-/** Render the board at a URL, so a chip's destination can be visited the way a click reaches it. */
-const at = (query: string, board: FleetFixedRosterDto = FILTERS_BOARD): string =>
-  render({ route: `/fleet/fixed-roster${query}`, qc: client(board) });
-
-/** Is this chip drawn as the one being applied? */
-const chipActive = (markup: string, key: string): boolean => {
-  const at_ = markup.indexOf(`data-counter="${key}"`);
-  if (at_ === -1) throw new Error(`no counter ${key}`);
-  const tag = markup.slice(markup.lastIndexOf('<button', at_), markup.indexOf('>', at_) + 1);
-  return tag.includes('aria-pressed="true"');
-};
-
-/**
- * A board with every shape at once, so every chip has something to include AND something to
- * exclude. A fixture where a filter happens to keep everything proves nothing.
- *   150 — a driver in seat one, mission MT   → بطقم, MT
- *   151 — nothing at all                     → بدون طقم
- *   152 — mission MT, nobody in either seat  → بدون طقم, MT   (a mission is not a crew)
- *   153 — a driver in seat TWO only          → بطقم           (either seat counts)
- */
-const V3 = '650000000000000000000003';
-const V4 = '650000000000000000000004';
-const FILTERS_BOARD: FleetFixedRosterDto = {
-  rows: [
-    // 150 is also the car the workshop is holding — crewed AND in the workshop, which is exactly
-    // the combination «صيانة» must not be allowed to confuse with «بدون طقم».
-    { ...row(V1, '150', E1), missionTypeId: MT, inMaintenance: true },
-    row(V2, '151'),
-    { ...row(V3, '152'), missionTypeId: MT },
-    row(V4, '153', null, E2),
-  ],
-  drivers: [
-    { employeeId: E1, assignedVehicleId: V1 },
-    { employeeId: E2, assignedVehicleId: V4 },
-  ],
-};
-
-describe('the counters filter the standing board', () => {
-  it('renders each chip as a real button that says whether it is applied', () => {
-    // A tinted span with an onClick is not reachable by keyboard and announces nothing.
-    const markup = at('');
-    for (const key of ['total', 'workshop', 'crewed', 'uncrewed', MT]) {
-      const idx = markup.indexOf(`data-counter="${key}"`);
-      expect(idx, key).toBeGreaterThan(-1);
-      expect(markup.lastIndexOf('<button', idx), `${key} is a button`).toBeGreaterThan(
-        markup.lastIndexOf('<span', idx),
-      );
-    }
-  });
-
-  it('«إجمالي» shows every row, and is the state with no filter on', () => {
-    const body = tbody(at(''));
-    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
-    expect(chipActive(at(''), 'total'), 'إجمالي is the default').toBe(true);
-  });
-
-  it('«بطقم» shows only the cars somebody is on — in EITHER seat', () => {
-    const body = tbody(at('?view=crewed'));
-    expect(body).toContain('150');
-    expect(body, 'a second driver alone is a crew').toContain('153');
-    expect(body, 'nobody').not.toContain('151');
-    expect(body, 'a mission with nobody on it is not a crew').not.toContain('152');
-  });
-
-  it('«بدون طقم» shows only the cars nobody is on', () => {
-    const body = tbody(at('?view=uncrewed'));
-    expect(body).toContain('151');
-    expect(body, 'a mission is not a crew').toContain('152');
-    expect(body).not.toContain('150');
-    expect(body).not.toContain('153');
-  });
-
-  it('a MISSION chip narrows to that mission — through the dropdown’s own parameter', () => {
-    const body = tbody(at(`?mission=${MT}`));
-    expect(body).toContain('150');
-    expect(body).toContain('152');
-    expect(body).not.toContain('151');
-    expect(body).not.toContain('153');
-    // One axis, one parameter: the chip writes `mission`, so the select follows it.
-    expect(SOURCE, 'no second copy of mission filtering').not.toContain('view: item.id');
-  });
-
-  it('«صيانة» shows the cars the workshop is holding — the daily board’s own chip', () => {
-    // A REVERSAL, at the owner's word: «خلى الفلاتر بتاعت الطقم الثابت زى تعيين السيارات». This
-    // chip used to be deliberately absent, on the reasoning that the daily «صيانة» is a fact
-    // about a DAY and this board has none. What that missed is that the board already DRAWS the
-    // badge on every row it applies to — it could say a car was in the workshop and could not be
-    // asked to show them, which is the one filter the two screens did not share.
-    //
-    // It still means something narrower here: the workshop refuses an assignment on the daily
-    // board, while a car in the workshop keeps its standing crew. So this narrows the view, and
-    // «بطقم» below still counts that car — the two questions are about different things.
-    const body = tbody(at('?view=workshop'));
-    expect(body, 'the car the workshop holds').toContain('150');
-    for (const code of ['151', '152', '153']) expect(body, code).not.toContain(code);
-    expect(chipActive(at('?view=workshop'), 'workshop')).toBe(true);
-  });
-
-  it('does NOT borrow the daily board’s «تشغيل» — that one counts a mission as a plan', () => {
-    // «تشغيل» is «a mission OR a driver», which is not a crew. This board's own «بطقم» asks the
-    // narrower question and is the right one here.
-    expect(at('')).not.toContain('data-counter="assigned"');
-  });
-
-  it('marks the applied chip and only that one', () => {
-    const crewed = at('?view=crewed');
-    expect(chipActive(crewed, 'crewed')).toBe(true);
-    expect(chipActive(crewed, 'total'), 'إجمالي steps aside').toBe(false);
-    expect(chipActive(crewed, 'uncrewed')).toBe(false);
-    expect(chipActive(crewed, MT)).toBe(false);
-
-    const mission = at(`?mission=${MT}`);
-    expect(chipActive(mission, MT)).toBe(true);
-    expect(chipActive(mission, 'total')).toBe(false);
-  });
-
-  it('keeps every chip’s own colour whether or not it is applied', () => {
-    const idle = at('');
-    const applied = at('?view=crewed');
-    const tone = (markup: string, key: string): string => {
-      const idx = markup.indexOf(`data-counter="${key}"`);
-      const tag = markup.slice(markup.lastIndexOf('<button', idx), markup.indexOf('>', idx) + 1);
-      return (/class="([^"]*)"/.exec(tag)?.[1] ?? '')
-        .replace(/ring-2 ring-offset-1|ring-0|dark:ring-offset-slate-900/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    };
-    for (const key of ['total', 'workshop', 'crewed', 'uncrewed', MT]) {
-      expect(tone(idle, key), key).toBe(tone(applied, key));
-    }
-    const tones = ['total', 'crewed', 'uncrewed', MT].map((k) => tone(idle, k));
-    expect(new Set(tones).size, 'the four do not share a colour').toBe(tones.length);
-  });
-
-  it('combines with the code search and the mission — AND, never instead-of', () => {
-    // Uncrewed ∩ mission = 152 alone; adding a search that excludes it empties the board.
-    const both = tbody(at(`?view=uncrewed&mission=${MT}`));
-    expect(both).toContain('152');
-    expect(both, 'uncrewed without the mission').not.toContain('151');
-    expect(both, 'the mission with a crew').not.toContain('150');
-    expect(
-      tbody(at(`?view=uncrewed&mission=${MT}&q=151`)),
-      'a contradiction shows nothing',
-    ).not.toContain('152');
-  });
-
-  it('ignores a view it does not know instead of emptying the board', () => {
-    const body = tbody(at('?view=nonsense'));
-    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
-    // …and «تشغيل», which this board does not have, is one of the ones it does not know.
-    for (const code of ['150', '151', '152', '153']) {
-      expect(tbody(at('?view=assigned')), code).toContain(code);
-    }
-  });
-});
-
-describe('the counters count the BOARD, never the filtered rows', () => {
-  const shown = (markup: string, key: string): string => {
-    const idx = markup.indexOf(`data-counter="${key}"`);
-    const tag = markup.slice(idx, markup.indexOf('</button>', idx));
-    return tag.slice(tag.lastIndexOf('<span'), tag.lastIndexOf('</span>'));
+describe('navigation', () => {
+  const NAV = readFileSync(join(HERE, '../../../../api/src/seed-navigation.ts'), 'utf8');
+  const navRow = (route: string): string => {
+    const at = NAV.indexOf(`route: '${route}'`);
+    return NAV.slice(NAV.lastIndexOf('{', at), NAV.indexOf('}', at));
   };
 
-  it('reads the same under every filter', () => {
-    const unfiltered = at('');
-    const totals = ['total', 'crewed', 'uncrewed', MT].map((k) => shown(unfiltered, k));
-    for (const query of ['?view=crewed', '?view=uncrewed', `?mission=${MT}`, '?q=150']) {
-      expect(
-        ['total', 'crewed', 'uncrewed', MT].map((k) => shown(at(query), k)),
-        query,
-      ).toEqual(totals);
-    }
+  it('registers «الطقم الثابت» as a Fleet application on its real route, with its own icon', () => {
+    const fixed = navRow('/fleet/fixed-roster');
+    expect(fixed).toContain("ar: 'الطقم الثابت'");
+    const name = /(?<!previous)[Ii]con: '([a-z]+)'/.exec(fixed)?.[1] ?? '';
+    const SENTINEL = (() => null) as unknown as ReturnType<typeof resolveNavIcon>;
+    expect(resolveNavIcon(name, SENTINEL), `icon '${name}'`).not.toBe(SENTINEL);
+    expect(navRow('/fleet/drivers')).toContain("icon: 'users'");
+    expect(name).not.toBe('users');
   });
 
-  it('counts the whole board even when the table shows one row', () => {
-    const markup = at('?q=153');
-    expect(tbody(markup), 'the table is narrowed').not.toContain('151');
-    expect(shown(markup, 'total'), 'إجمالي still counts four').toContain('٤');
-    expect(shown(markup, 'crewed'), 'بطقم still counts two').toContain('٢');
-    expect(shown(markup, 'uncrewed'), 'بدون طقم still counts two').toContain('٢');
-    expect(shown(markup, MT), 'the mission still counts two').toContain('٢');
-  });
-});
-
-describe('Reset, on the standing board', () => {
-  it('is offered for any of the three filters, and not otherwise', () => {
-    expect(at(''), 'nothing to undo').not.toContain('data-reset-filters');
-    for (const query of ['?q=150', `?mission=${MT}`, '?view=crewed', '?view=uncrewed']) {
-      expect(at(query), query).toContain('data-reset-filters');
-    }
+  it('reuses the roster grant rather than inventing a permission', () => {
+    expect(navRow('/fleet/fixed-roster')).toContain("permission: 'fleetRoster.view'");
+    expect(NAV).not.toContain('fleetFixedRoster');
   });
 
-  it('clears q, mission and view together', () => {
-    expect(SOURCE).toContain('patch({ q: null, mission: null, view: null })');
-  });
-
-  it('brings every row back and returns «إجمالي» to the applied state', () => {
-    const cleared = at('');
-    for (const code of ['150', '151', '152', '153']) expect(tbody(cleared), code).toContain(code);
-    expect(chipActive(cleared, 'total')).toBe(true);
-    for (const key of ['crewed', 'uncrewed', MT]) expect(chipActive(cleared, key), key).toBe(false);
-  });
-
-  it('remembers all three, and the order the board is read in', () => {
-    // The fourth is `sort`: a reader who ordered this board by «الحالة» and came back to it is
-    // asking the same question they asked last time, exactly as their filters are.
-    expect(SOURCE).toContain(
-      "const REMEMBERED_FILTERS = ['mission', 'q', 'sort', 'view'] as const;",
-    );
+  it('sits beside the daily roster, inside the Fleet category', () => {
+    const daily = NAV.indexOf("route: '/fleet/roster'");
+    const fixed = NAV.indexOf("route: '/fleet/fixed-roster'");
+    expect(fixed).toBeGreaterThan(daily);
+    expect(fixed - daily).toBeLessThan(400);
   });
 });

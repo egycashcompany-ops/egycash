@@ -3,7 +3,6 @@
 // manager references are resolved via existing platform endpoints (branches / departments /
 // job-titles / users) — no new API is introduced.
 import {
-  type AwaitingOfferCandidateDto,
   type AcceptJobOffer,
   type CreateJobOffer,
   type JobOfferDto,
@@ -17,6 +16,7 @@ import {
   type BulkJobOffers,
   type BulkWorkflowResultDto,
   type WorkflowEnvelopeDto,
+  type OfferDefaultsDto,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -36,6 +36,10 @@ export const listJobOffers = (params: JobOfferListParams): Promise<Paginated<Job
   getPage<JobOfferDto>(`/hr/job-offers${buildQuery(params)}`);
 
 export const getJobOffer = (id: string): Promise<JobOfferDto> => get<JobOfferDto>(`/hr/job-offers/${id}`);
+
+/** What «اكتب العرض» starts from for a candidate (A28). */
+export const getOfferDefaults = (applicantId: string): Promise<OfferDefaultsDto> =>
+  get<OfferDefaultsDto>(`/hr/job-offers/defaults${buildQuery({ applicantId })}`);
 
 export const createJobOffer = (body: CreateJobOffer): OfferEnvelope =>
   postWorkflow<JobOfferDto>('/hr/job-offers', body);
@@ -87,14 +91,3 @@ export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform
 export const bulkJobOffers = (body: BulkJobOffers): Promise<BulkWorkflowResultDto> =>
   post<BulkWorkflowResultDto>('/hr/job-offers/bulk', body);
 
-/**
- * The queue: candidates who have finished their checks and have nothing written for them yet.
- *
- * A read, and only a read. The two ACTS the screen offers beside each row — the explicit move to
- * the Job Offer stage, and creating the offer — are the existing endpoints for exactly those
- * things, unchanged and still permission-gated where they live.
- */
-export const fetchAwaitingOffer = (
-  params: { page: number; pageSize: number; search?: string },
-): Promise<Paginated<AwaitingOfferCandidateDto>> =>
-  getPage(`/hr/job-offers/awaiting${buildQuery(params)}`);

@@ -15,6 +15,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   EMPLOYEE_STATUSES,
+  IT_ASSET_HOLDER_KINDS,
+  IT_ASSET_IMPORT_DECISIONS,
+  IT_ASSET_IMPORT_WARNINGS,
   IT_ASSET_STATUSES,
   IT_CATALOG_KINDS,
   IT_CONSUMABLE_ISSUE_REASONS,
@@ -37,6 +40,7 @@ import {
 import { translate } from '../../platform/localization/i18n';
 import { CUSTODY_COUNT_FORMS } from '../fleet/lib/custody-words';
 import { ASSET_MOVE_REFUSALS } from './lib/asset-branch-move';
+import { HELD_ELSEWHERE_WORDINGS, IMPORT_RESULT_COUNTS } from './lib/asset-import';
 import { VEHICLE_CHECK_PERIODS } from './lib/vehicle-check-dashboard';
 
 const LOCALES: Locale[] = ['en', 'ar'];
@@ -150,6 +154,13 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   // what moved — and what the other store did not have — in Arabic's five forms, all through
   // TEMPLATE keys the source scan below cannot see.
   { name: 'asset move refusal', prefix: 'it.assets.move.refused', values: ASSET_MOVE_REFUSALS },
+  // Department custody (2026-11-19): «جهة الاستلام: موظف / إدارة» — the switch, the filters and
+  // the files' filter line name the holder kind through a TEMPLATE key.
+  {
+    name: 'custody holder kind',
+    prefix: 'it.custody.department.kind',
+    values: IT_ASSET_HOLDER_KINDS,
+  },
   { name: 'assets moved count', prefix: 'it.assets.move.moved', values: CUSTODY_COUNT_FORMS },
   {
     name: 'consumables transferred count',
@@ -160,6 +171,40 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
     name: 'consumables made in the other store count',
     prefix: 'it.consumables.transfer.created',
     values: CUSTODY_COUNT_FORMS,
+  },
+  // «رفع جماعي» (2026-11-16): each line's decision (with its particulars, and without them), the
+  // chips that count the decisions, the doubts, and what the apply did — all through TEMPLATE keys.
+  {
+    name: 'asset import decision',
+    prefix: 'it.assets.import.decision',
+    values: IT_ASSET_IMPORT_DECISIONS,
+  },
+  {
+    name: 'asset import decision without its branch or row',
+    prefix: 'it.assets.import.decisionNoBranch',
+    values: ['move', 'duplicateInFile', ...HELD_ELSEWHERE_WORDINGS],
+  },
+  // A device left in another branch says why — held, kept by maintenance, or disposed.
+  {
+    name: 'asset import device left in another branch',
+    prefix: 'it.assets.import.decision',
+    values: HELD_ELSEWHERE_WORDINGS,
+  },
+  {
+    name: 'asset import chip',
+    prefix: 'it.assets.import.count',
+    values: IT_ASSET_IMPORT_DECISIONS,
+  },
+  {
+    name: 'asset import warning',
+    prefix: 'it.assets.import.warning',
+    values: IT_ASSET_IMPORT_WARNINGS,
+  },
+  { name: 'asset import result', prefix: 'it.assets.import.result', values: IMPORT_RESULT_COUNTS },
+  {
+    name: 'asset import written as',
+    prefix: 'it.assets.import.resultAction',
+    values: ['created', 'filled', 'moved'] as const,
   },
 ];
 

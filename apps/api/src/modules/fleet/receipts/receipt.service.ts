@@ -11,12 +11,15 @@
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
   FLEET_FUEL_PRICE_KEY,
+  addDaysYmd,
+  ymdOf,
   type CreateFleetReceipt,
   type FleetFuelCardCompany,
   type FleetFuelType,
   type FleetReceiptDto,
   type FleetReceiptMemoLinkDto,
   type FleetReceiptSummaryQuery,
+  type FleetDashboardPeriodCustodyStatesDto,
   type FleetReceiptTotalsDto,
   type ListFleetReceiptsQuery,
   type Paginated,
@@ -41,6 +44,7 @@ import { fleetFuelCardRepository } from '../fuel-cards/fuel-card.repository';
 import { fleetFuelCardService } from '../fuel-cards/fuel-card.service';
 import { type FleetFuelCardDoc } from '../fuel-cards/fuel-card.model';
 import { fleetCustodyMemoRepository } from '../custody/custody-memo.repository';
+import { custodyMemoStateOf } from '../custody/custody-dashboard';
 import {
   assertReceiptChangeAllowed,
   assertReceiptRemovable,
@@ -140,6 +144,32 @@ interface ReceiptFacts {
   company: FleetFuelCardCompany | null;
 }
 
+/**
+ * Every slot key of `from` … `to` (both 'YYYY-MM-DD', inclusive), in order: each day, or each
+ * month ('YYYY-MM') the range touches. Exported for its spec.
+ */
+export const seriesKeys = (from: string, to: string, unit: 'day' | 'month'): string[] => {
+  const keys: string[] = [];
+  if (to < from) return keys;
+  if (unit === 'day') {
+    for (let day = from; day <= to; day = addDaysYmd(day, 1)) keys.push(day);
+    return keys;
+  }
+  let year = Number(from.slice(0, 4));
+  let month = Number(from.slice(5, 7));
+  const last = to.slice(0, 7);
+  for (;;) {
+    const key = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}`;
+    if (key > last) return keys;
+    keys.push(key);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+};
+
 class FleetReceiptService {
   // ── Reading ───────────────────────────────────────────────────────────────
 
@@ -190,6 +220,54 @@ class FleetReceiptService {
    */
   async summaryOver(query: FleetReceiptSummaryQuery): Promise<FleetReceiptTotalsDto> {
     return fleetReceiptRepository.totals(await this.filterFor(query));
+  }
+
+  /**
+   * «منها حتى الآن» on the fleet dashboard's «مصروفات العهدة» (R2 `custodyStates`): the custody-paid
+   * receipts the SAME query matches (`filterFor` — codes ∩ type / operation / branch, deleted cars
+   * included — with the custody source, whatever source was asked), each put where its memo stands
+   * NOW — «لوحة تحكم المصروفات»'s `memoStates` rule (`custodyMemoStateOf`): replenished; on a memo
+   * still waiting (a held replenishment's included — its money is not back yet); or on none (or on a
+   * memo since deleted). Summed in whole piastres, so Σ = `summaryOver(query).custodyTotal`.
+   */
+  async custodyStatesOver(
+    query: FleetReceiptSummaryQuery,
+  ): Promise<FleetDashboardPeriodCustodyStatesDto> {
+    const groups = await fleetReceiptRepository.custodyByMemo(
+      await this.filterFor({ ...query, source: 'custody' }),
+    );
+    const statuses = await fleetCustodyMemoRepository.statusesByIds(
+      groups.flatMap((group) => (group.memoId === null ? [] : [group.memoId])),
+    );
+    const piastres = { replenished: 0, pending: 0, outside: 0 };
+    for (const group of groups) {
+      piastres[custodyMemoStateOf(group.memoId, statuses)] += group.piastres;
+    }
+    const pounds = (value: number): number => (value === 0 ? 0 : value / 100);
+    return {
+      replenished: pounds(piastres.replenished),
+      pending: pounds(piastres.pending),
+      outside: pounds(piastres.outside),
+    };
+  }
+
+  /**
+   * «مصروف التشغيل يومًا بيوم» (or «شهرًا بشهر») — the same rows as `summaryOver` by the receipt's
+   * paper day or month, EVERY slot of `from` … `to` in order (inclusive), `hasRows: false` where no
+   * receipt is: Σ amount = the summary's card + custody, Σ count = its count.
+   */
+  async seriesOver(
+    query: FleetReceiptSummaryQuery & { from: Date; to: Date },
+    unit: 'day' | 'month',
+  ): Promise<{ key: string; hasRows: boolean; amount: number; count: number }[]> {
+    const rows = await fleetReceiptRepository.series(await this.filterFor(query), unit);
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    return seriesKeys(ymdOf(query.from), ymdOf(query.to), unit).map((key) => {
+      const row = byKey.get(key);
+      return row === undefined
+        ? { key, hasRows: false, amount: 0, count: 0 }
+        : { key, hasRows: row.count > 0, amount: row.amount, count: row.count };
+    });
   }
 
   /**

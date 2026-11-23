@@ -243,11 +243,13 @@ export const EMPLOYEE_CODE_PATTERN = /^\d{3}\d{4,9}$/;
  * typed one. Letting a letter into that shape would make both meaningless — `Number('EX01')` is
  * `NaN` — and would do it to all 2,699 real codes, not just to external people.
  *
- * So an external code is just a NAME, unique among employees and nothing more. The person still
- * draws an `employeeNumber` from the same counter (every employee has one); their code simply is
- * not composed from it. Nothing reads a branch or a number out of an external code, and nothing
- * should: `findHighestNumberedCode` already matches digits only, so these never reach the hint the
- * ordinary registration screen shows.
+ * So an external code is just a NAME, unique among employees and nothing more. The person draws
+ * NO number from the company's counter: their `employeeNumber` is the code itself. A drawn number
+ * was never shown, yet it held the company code with that number — «02002943 … مسجَّل بالفعل
+ * للموظف C2». Nothing reads a branch or a number out of an external code, and nothing should:
+ * `findHighestNumberedCode` and `findHoldingNumber` skip external people by `origin` — an
+ * all-digit external code included — so `EX-2900` neither reaches the hint the ordinary
+ * registration screen shows nor holds employee number 2900.
  */
 export const EXTERNAL_EMPLOYEE_CODE_PATTERN = /^[A-Za-z0-9-]{2,20}$/;
 
@@ -264,9 +266,26 @@ export const employeeCodeSerial = (code: string): number => Number(code.slice(3)
 /** A code with its branch hidden, the way the register screen states the last one: `xxx2862`. */
 export const maskEmployeeCodeBranch = (code: string): string => `xxx${code.slice(3)}`;
 
+/**
+ * The code an employee may be given by hand: the company's digits for everybody, and an external
+ * person's own name for an external person — «لما باجي أغير كود الموظف (تعيين خارجي) مش بيسمح
+ * بكتابه حروف … وخلى بالك دا للتعيين الخارجي فقط».
+ *
+ * Pure, so the change dialog and the service apply the same rule. The boundary below admits either
+ * shape because it cannot see whose code it is; the service, which can, holds each person to theirs.
+ */
+export const employeeCodePatternFor = (origin: EmployeeOrigin): RegExp =>
+  origin === 'external' ? EXTERNAL_EMPLOYEE_CODE_PATTERN : EMPLOYEE_CODE_PATTERN;
+
 export const ChangeEmployeeCodeSchema = z
   .object({
-    code: z.string().trim().regex(EMPLOYEE_CODE_PATTERN),
+    code: z
+      .string()
+      .trim()
+      .refine(
+        (code) => EMPLOYEE_CODE_PATTERN.test(code) || EXTERNAL_EMPLOYEE_CODE_PATTERN.test(code),
+        { message: 'an employee code is digits, or an external code of letters, digits and a hyphen' },
+      ),
     reason: z.string().trim().min(3).max(500),
     version: z.number().int().min(0),
   })
@@ -276,6 +295,38 @@ export type ChangeEmployeeCode = z.infer<typeof ChangeEmployeeCodeSchema>;
 /** Said back after a change: whether the employee's sign-in name followed the code. */
 export interface ChangeEmployeeCodeMeta {
   loginUsernameChanged: boolean;
+}
+
+/**
+ * «مسح نهائي» — permanently delete one employee.
+ *
+ * THE CODE IS TYPED BACK, and that is the whole body. A permanent delete has no undo, so the one
+ * thing the request carries is proof that whoever sent it knew WHICH person it was for: the server
+ * refuses unless `confirmCode` matches the employee's own code. An id alone — copied from a URL,
+ * left over in a tab, repeated by a script — is not enough to erase somebody.
+ */
+export const PurgeEmployeeSchema = z
+  .object({ confirmCode: z.string().trim().min(1).max(32) })
+  .strict();
+export type PurgeEmployee = z.infer<typeof PurgeEmployeeSchema>;
+
+/**
+ * What the erasure took, said back so it can be read once and never again.
+ *
+ * `namesScrubbed` and `keptCollections` are the half people do not expect: a gold receipt, a
+ * traffic violation and the consumables ledger are records in their own right and are NOT deleted
+ * with the person — their copy of the name is rewritten instead.
+ */
+export interface EmployeePurgeReportDto {
+  code: string;
+  fullNameAr: string;
+  rowsDeleted: number;
+  namesScrubbed: number;
+  filesRemoved: number;
+  /** Files whose bytes could not be removed; each needs a hand. Empty on a clean run. */
+  fileFailures: { id: string; reason: string }[];
+  /** Collections left standing on purpose, with the person's name rewritten on them. */
+  keptCollections: string[];
 }
 
 export const UpdateEmployeeInsuranceSchema = EmployeeInsuranceSchema.extend({
@@ -558,10 +609,14 @@ export const EMPLOYEE_ID_CARD_FILTERS = ['received', 'never', 'awaiting', 'recei
 export type EmployeeIdCardFilter = (typeof EMPLOYEE_ID_CARD_FILTERS)[number];
 
 export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
-  status: EmployeeStatusSchema.optional(),
+  /**
+   * Status, origin and the ID card are LISTS too — «هنخلي كل الفلترز multi». The picks of one are
+   * ORed. A single value still parses as a one-item list, so every existing caller is unchanged.
+   */
+  status: listQuery(EmployeeStatusSchema),
   /** true → only employed statuses (probation/active/onLeave/suspended); false → exited only. */
   employed: z.coerce.boolean().optional(),
-  origin: EmployeeOriginSchema.optional(),
+  origin: listQuery(EmployeeOriginSchema),
   applicantId: objectId().optional(),
   jobOfferId: objectId().optional(),
   branchId: listQuery(objectId()),
@@ -570,8 +625,12 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
    * eight ids — the screen folds them to one name and sends all eight. A single id still parses as
    * a one-item list, so every existing caller is unchanged.
    */
-  departmentId: listQuery(objectId()),
-  sectionId: listQuery(objectId()),
+  //
+  // Several picks of a company department expand to EVERY branch copy of each (eight per department
+  // here), so the cap is the job offers' own 500, not the default 50 — seven departments picked
+  // company-wide would otherwise be refused.
+  departmentId: listQuery(objectId(), 500),
+  sectionId: listQuery(objectId(), 500),
   /**
    * The seats asked about, ORed — like `branchId` above and for the same reason a consumer
    * eventually needs: a caller whose question is «people holding ANY of these titles» would
@@ -599,8 +658,8 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   address: z.string().trim().min(1).max(200).optional(),
   /** Partial match on the PRIMARY phone — the number every screen displays. */
   phone: z.string().trim().min(1).max(30).optional(),
-  /** The company ID card: printed at least once, or never. */
-  idCard: z.enum(EMPLOYEE_ID_CARD_FILTERS).optional(),
+  /** The company ID card's states asked about, ORed (`EMPLOYEE_ID_CARD_FILTERS`). */
+  idCard: listQuery(z.enum(EMPLOYEE_ID_CARD_FILTERS)),
 }).strict();
 export type ListEmployeesQuery = z.infer<typeof ListEmployeesQuerySchema>;
 
@@ -794,6 +853,39 @@ export const EMPLOYEE_PHOTO_FILE_CATEGORY = 'hr-employee-photo';
 export const EMPLOYEE_PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 /** …of at most this many megabytes. */
 export const EMPLOYEE_PHOTO_MAX_MB = 5;
+
+/**
+ * «عندى صور الموظفين كلهم عايز أرفعهم دفع واحده متسمى كل صورة بالكود + أسم الموظف»: the bulk photo
+ * upload reads an employee code out of each file's name and asks which employees hold those codes.
+ *
+ * `POST /hr/employees/codes/lookup` (`employee.editPersonal`, within its scope — the photo write's own
+ * authority). A code nobody in the caller's reach holds is simply absent from the answer, so it
+ * reads as «no such employee» rather than leaking that one exists elsewhere. Each photo is then sent
+ * through `POST /hr/employees/:id/photo`, one at a time, exactly as the profile sends one.
+ */
+export const EMPLOYEE_CODE_LOOKUP_MAX = 5000;
+export const LookupEmployeeCodesSchema = z
+  .object({
+    codes: z.array(z.string().trim().min(1).max(30)).min(1).max(EMPLOYEE_CODE_LOOKUP_MAX),
+  })
+  .strict();
+export type LookupEmployeeCodes = z.infer<typeof LookupEmployeeCodesSchema>;
+
+/** One employee a looked-up code belongs to: enough to show the match and whether a photo exists. */
+export interface EmployeeCodeMatchDto {
+  id: string;
+  code: string;
+  fullNameAr: string;
+  fullNameEn: string | null;
+  status: EmployeeStatus;
+  /** The current photo's file, or null — a new one replaces it (the owner's choice). */
+  photoFileId: string | null;
+  /**
+   * When the current photo was uploaded (ISO), or null with no photo. The bulk upload skips the
+   * people whose photo went up recently, so a second pick of the same folder sends nothing twice.
+   */
+  photoUploadedAt: string | null;
+}
 
 export interface EmployeeDto {
   id: string;

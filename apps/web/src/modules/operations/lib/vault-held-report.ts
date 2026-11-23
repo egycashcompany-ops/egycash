@@ -24,7 +24,7 @@ import {
 
 /**
  * The report's rows as the table draws them: the banks in the reference order (Q31), the
- * unattributed bucket last — exactly as «تجميع الخزينة» orders its own.
+ * unattributed bucket last — exactly as «تقرير البنوك» orders its own.
  */
 export const heldReportRows = (
   rows: OperationsVaultHeldReportDto['rows'],

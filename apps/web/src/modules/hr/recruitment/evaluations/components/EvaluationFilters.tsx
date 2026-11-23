@@ -15,6 +15,7 @@
 // pager and the tab counts would stop agreeing with the table.
 import { useT } from '../../../../../platform/localization/useT';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
+import { SEARCH_FITS_TEXT } from '../../job-offers/components/OfferFilters';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Input } from '../../../../../shared/ui/form';
 import { CloseIcon } from '../../../../../shared/ui/icons';
@@ -59,16 +60,16 @@ export const EvaluationFilters = ({
 
   return (
     <FilterBar onClear={() => onChange(EMPTY_EVALUATION_FILTERS)} hasActiveFilters={isActive(value)}>
-      <div className="w-full sm:w-72">
-        <SearchInput
-          value={value.search}
-          onChange={(v) => set({ search: v })}
-          placeholder={t('evaluations.filters.search')}
-        />
-      </div>
+      <SearchInput
+        value={value.search}
+        onChange={(v) => set({ search: v })}
+        placeholder={t('evaluations.filters.search')}
+        className={SEARCH_FITS_TEXT}
+      />
 
       {value.applicantId === '' ? (
         <ApplicantPicker
+          className={SEARCH_FITS_TEXT}
           onSelect={(a) => set({ applicantId: a.id, applicantLabel: a.fullNameAr })}
           useSearch={useApplicantSearch}
           placeholder={t('screening.filters.applicantSearch')}

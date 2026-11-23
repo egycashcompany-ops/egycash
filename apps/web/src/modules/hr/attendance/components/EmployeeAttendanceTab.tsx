@@ -2,87 +2,137 @@
 // profile hub exactly as the Leave and Contracts tabs are, so the employees chunk stays
 // attendance-free for everyone who never opens it.
 //
-// It shows the subject's month (quantities and classification only — no pay, ever), the
-// regularization history for the same employee, and, for a `decideRegularization` holder, the D7
-// direct edit. The timeline of what changed the day lives in the audit stream, not here.
+// It shows the subject's period (quantities and classification only — no pay, ever) through the
+// SAME `EmployeePeriodView` the month page and My Attendance use, so the three never drift apart,
+// plus the regularization history for the same employee and, for a `decideRegularization` holder,
+// the D7 direct edit.
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { type EmployeeDto } from '@ecms/contracts';
+import { type EmployeeDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
-import { Can } from '../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../platform/rbac/Can';
+import { useAppSelector } from '../../../../store';
 import { Button, EmptyState } from '../../../../shared/ui';
-import { Field, Input } from '../../../../shared/ui/form';
-import { MonthGrid } from './MonthGrid';
-import { DaysTable } from './DaysTable';
+import { EmployeePeriodView, type PeriodState } from './EmployeePeriodView';
 import { RegularizationsTable } from './RegularizationsTable';
 import { RegularizationDialog } from './RegularizationDialog';
-import { monthBounds, thisMonth } from './month';
-import { useAttendanceDays, useRegularizations } from '../api/attendance-queries';
+import { periodRange } from './period';
+import { downloadAttendanceExport } from '../api/attendance-api';
+import {
+  useAttendanceEmployeePeriod,
+  useAttendanceEmployeeSummary,
+  useRegularizations,
+} from '../api/attendance-queries';
+import { useEmployeePhotoUrl } from '../../employee-management/employees/api/employee-photo';
+import { exportFileName } from '../export-name';
+
+// No page size any more: `/days/employee-period` answers one entry per calendar DATE rather than a
+// page of stored rows, so there is no page to size and no tail to lose.
 
 const EmployeeAttendanceTab = ({ employee }: { employee: EmployeeDto }): JSX.Element => {
   const t = useT();
-  const [month, setMonth] = useState(thisMonth);
+  const can = useCan();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const [period, setPeriod] = useState<PeriodState>(() => ({
+    key: 'thisMonth',
+    ...periodRange('thisMonth'),
+  }));
   const [filing, setFiling] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
-  const dayFilters = useMemo(() => {
-    const { from, to } = monthBounds(month);
-    return { from, to, employeeId: employee.id, page: 1, pageSize: 62 };
-  }, [month, employee.id]);
-  const days = useAttendanceDays(dayFilters);
-  const regularizations = useRegularizations({
-    page: 1,
-    pageSize: 25,
+  const dayFilters = useMemo(
+    // One entry per calendar DATE, not a page of stored rows (see `/days/employee-period`).
+    () => ({
+      from: period.from,
+      to: period.to,
+      employeeId: employee.id,
+    }),
+    [period.from, period.to, employee.id],
+  );
+  const days = useAttendanceEmployeePeriod(dayFilters);
+  const summary = useAttendanceEmployeeSummary({
     employeeId: employee.id,
+    from: period.from,
+    to: period.to,
   });
-  const rows = days.data?.items ?? [];
+  const regularizations = useRegularizations({ page: 1, pageSize: 25, employeeId: employee.id });
+  const photo = useEmployeePhotoUrl(employee.id, employee.personal.photoFileId);
+
+  const runExport = (): void => {
+    if (exporting) return;
+    setExporting(true);
+    setExportError(null);
+    downloadAttendanceExport(
+      { from: period.from, to: period.to, employeeId: employee.id },
+      // The code rather than the name: a file name is read in a folder listing, where «0100052»
+      // identifies one person and a repeated Arabic given name does not.
+      exportFileName(period.from, period.to, employee.code),
+    )
+      .catch((error: unknown) => {
+        setExportError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => setExporting(false));
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div className="max-w-xs grow">
-          <Field label={t('attendance.month.month')}>
-            <Input
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              aria-label={t('attendance.month.month')}
-            />
-          </Field>
-        </div>
-        <div className="flex gap-2">
-          <Can permission="attendance.decideRegularization">
-            <Button size="sm" variant="secondary" onClick={() => setFiling(`${month}-01`)}>
-              {t('attendance.reg.directTitle')}
-            </Button>
-          </Can>
-          <Can permission="attendance.view">
-            <Link
-              to={`/attendance/employees/${employee.id}?month=${month}`}
-              className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              {t('attendance.month.open')}
-            </Link>
-          </Can>
-        </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Can permission="attendance.decideRegularization">
+          <Button size="sm" variant="secondary" onClick={() => setFiling(period.to)}>
+            {t('attendance.reg.directTitle')}
+          </Button>
+        </Can>
+        <Can permission="attendance.view">
+          <Link
+            to={`/attendance/employees/${employee.id}?from=${period.from}&to=${period.to}`}
+            className="rounded-full border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            {t('attendance.month.open')}
+          </Link>
+        </Can>
       </div>
 
-      <MonthGrid month={month} rows={rows} />
-      <DaysTable
-        rows={rows}
-        loading={days.isLoading}
-        error={days.isError ? days.error : undefined}
-        onRetry={() => void days.refetch()}
-        empty={<EmptyState title={t('attendance.month.empty')} />}
+      {exportError !== null && (
+        <p role="alert" className="text-sm text-red-600">
+          {exportError}
+        </p>
+      )}
+
+      <EmployeePeriodView
+        employeeId={employee.id}
+        header={{
+          name:
+            locale === 'en'
+              ? (employee.personal.fullNameEn ?? employee.personal.fullNameAr)
+              : employee.personal.fullNameAr,
+          code: employee.code,
+          photoUrl: photo.url,
+          department: employee.placement.department?.name[locale] ?? null,
+          branch: employee.placement.branch?.name[locale] ?? null,
+          jobTitle: employee.placement.jobTitle?.name[locale] ?? null,
+        }}
+        rows={days.data ?? []}
+        summary={summary.data}
+        loading={days.isLoading || summary.isLoading}
+        error={summary.isError ? summary.error : days.isError ? days.error : undefined}
+        period={period}
+        onPeriodChange={setPeriod}
+        canDecide={can('attendance.decide')}
+        compactHeader
+        {...(can('attendance.export') ? { onExport: runExport } : {})}
       />
 
-      <h3 className="text-sm font-semibold">{t('attendance.profile.requests')}</h3>
-      <RegularizationsTable
-        rows={regularizations.data?.items ?? []}
-        loading={regularizations.isLoading}
-        error={regularizations.isError ? regularizations.error : undefined}
-        onRetry={() => void regularizations.refetch()}
-        empty={<EmptyState title={t('attendance.profile.noRequests')} />}
-      />
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">{t('attendance.profile.requests')}</h3>
+        <RegularizationsTable
+          rows={regularizations.data?.items ?? []}
+          loading={regularizations.isLoading}
+          error={regularizations.isError ? regularizations.error : undefined}
+          onRetry={() => void regularizations.refetch()}
+          empty={<EmptyState title={t('attendance.profile.noRequests')} />}
+        />
+      </section>
 
       {filing !== null && (
         <RegularizationDialog

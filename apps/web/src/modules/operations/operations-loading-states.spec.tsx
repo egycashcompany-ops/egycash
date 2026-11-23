@@ -109,9 +109,15 @@ describe('DataTable — a successful query is not a failure', () => {
 
   it('still shows the error panel — and names the failure — when one really was thrown', () => {
     // Regression in the other direction: the fix must not have made the table swallow failures.
+    // An Arabic reader is told in Arabic: a thrown sentence with no Arabic letter gives way to the
+    // general line (owner, 2026-11-22: no English on an Arabic error panel); an Arabic one is shown.
     const html = table(new Error('the sky fell'));
     expect(html).toContain(ERROR_TITLE_AR);
-    expect(html).toContain('the sky fell');
+    expect(html).toContain(UNKNOWN_AR);
+    expect(html).not.toContain('the sky fell');
+    const worded = table(new Error('انقطع الاتصال بالخزينة'));
+    expect(worded).toContain(ERROR_TITLE_AR);
+    expect(worded).toContain('انقطع الاتصال بالخزينة');
   });
 });
 

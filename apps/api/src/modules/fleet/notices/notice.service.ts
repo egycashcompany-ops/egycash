@@ -2,7 +2,11 @@
 // set-up. Audited like every Fleet record.
 import { Types, type FilterQuery } from 'mongoose';
 import {
+  FLEET_DASHBOARD_NOTICE_ROWS,
+  MAX_PAGE_SIZE,
+  ymdOf,
   type CreateFleetNotice,
+  type FleetDashboardNoticeRowDto,
   type FleetLicenseImageDto,
   type FleetNoticeDto,
   type FleetNoticeImageKind,
@@ -12,6 +16,7 @@ import {
   type FleetNoticesSummaryQuery,
   type FleetNoticeTemplate,
   type ListFleetNoticesQuery,
+  type LocalizedString,
   type Paginated,
   type SaveFleetNoticeSettings,
   type SetFleetNoticeDone,
@@ -22,7 +27,9 @@ import { fileService, type FileDoc, type UploadedBinary } from '../../../platfor
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
 import { type AuthContext, hasPermission } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
-import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
+import { fleetVehicleRepository, intersectVehicleIds } from '../vehicles/vehicle.repository';
+import { resolveVehicleFilterIds } from '../vehicles/vehicle-set';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
 import { fleetNoticeRepository } from './notice.repository';
 import { fleetNoticeSettingsRepository } from './notice-settings.repository';
@@ -36,6 +43,8 @@ import { type FleetNoticeSettingsDoc } from './notice-settings.model';
  */
 export type FleetNoticeWithCode = FleetNoticeDoc & {
   vehicleCode: string | null;
+  /** The car's make id — internal (the dashboard names its rows by it); `toNoticeDto` never sends it. */
+  vehicleTypeId: string | null;
   vehicleLicense: FleetNoticeLicenceSource;
   driverLicense: FleetNoticeLicenceSource;
   vehicleLicenseOnFile: boolean;
@@ -60,7 +69,14 @@ const IMAGE_NAME: Record<FleetNoticeImageKind, string> = {
 /** The day after — a «to» date counts its whole day. */
 const dayAfter = (day: Date): Date => new Date(day.getTime() + 24 * 60 * 60 * 1000);
 
-/** The notices table's filters, as one database filter. */
+/**
+ * The notices table's filters, as one database filter.
+ *
+ * The car half: the codes the reader named intersected with the vehicle set — «النوع / التشغيل /
+ * الفرع», by the car's CURRENT registry facts (`resolveVehicleFilterIds`, deleted cars included,
+ * as every other register resolves it). A notice with no car has no type, operation or branch, so
+ * once a set is asked it drops out; `[]` (a reach with no branch) narrows to nothing.
+ */
 const noticeFilter = async (
   query: FleetNoticesSummaryQuery,
 ): Promise<FilterQuery<FleetNoticeDoc>> => {
@@ -70,9 +86,19 @@ const noticeFilter = async (
     ...(query.template === undefined ? [] : [query.template]),
   ];
   if (templates.length > 0) filter.template = { $in: templates };
-  if (query.vehicleCodes !== undefined) {
-    const ids = await fleetVehicleRepository.idsByCodes(query.vehicleCodes);
-    filter.vehicleId = { $in: ids.map((id) => new Types.ObjectId(id)) };
+  const [byCode, bySet] = await Promise.all([
+    query.vehicleCodes === undefined
+      ? Promise.resolve(undefined)
+      : fleetVehicleRepository.idsByCodes(query.vehicleCodes),
+    resolveVehicleFilterIds({
+      typeIds: query.typeIds,
+      operationIds: query.operationIds,
+      branchIds: query.branchIds,
+    }),
+  ]);
+  const vehicleIds = intersectVehicleIds(byCode, bySet);
+  if (vehicleIds !== undefined) {
+    filter.vehicleId = { $in: vehicleIds.map((id) => new Types.ObjectId(id)) };
   }
   if (query.noticeNumber !== undefined && query.noticeNumber !== '') {
     filter.noticeNumber = {
@@ -222,6 +248,7 @@ const withCodes = async (
       doc.driverLicenseImage != null ? 'notice' : driverLicenseOnFile ? 'registry' : null;
     return Object.assign(doc, {
       vehicleCode: vehicle?.code ?? null,
+      vehicleTypeId: vehicle?.typeId == null ? null : String(vehicle.typeId),
       vehicleLicense,
       driverLicense,
       vehicleLicenseOnFile,
@@ -230,20 +257,107 @@ const withCodes = async (
   });
 };
 
+/** Missing ANY attachment: a licence image (by its source rule) or the cheque image. */
+const missingAny = (doc: FleetNoticeWithCode): boolean =>
+  doc.vehicleLicense === null || doc.driverLicense === null || doc.checkImage == null;
+
+/** «إخطارات ينقصها مرفق»'s order: notice date asc (none last), then recorded asc, then the id. */
+const oldestNoticeFirst = (a: FleetNoticeWithCode, b: FleetNoticeWithCode): number => {
+  const dateA = a.noticeDate?.getTime() ?? null;
+  const dateB = b.noticeDate?.getTime() ?? null;
+  if (dateA !== dateB) {
+    if (dateA === null) return 1;
+    if (dateB === null) return -1;
+    return dateA - dateB;
+  }
+  const created = a.createdAt.getTime() - b.createdAt.getTime();
+  return created !== 0 ? created : String(a._id).localeCompare(String(b._id));
+};
+
+/** The notices table's arrows — the fields `list` may order by; any other asks for `createdAt`. */
+const NOTICE_SORTS = ['updatedAt', 'createdAt', 'noticeDate', 'noticeNumber'] as const;
+type NoticeSort = (typeof NOTICE_SORTS)[number];
+
+const sortFieldOf = (sortBy: string | undefined): NoticeSort =>
+  NOTICE_SORTS.find((field) => field === (sortBy ?? 'createdAt')) ?? 'createdAt';
+
+/**
+ * Two values of one sortable field as the database orders them: nothing (null, missing) before
+ * any value, dates by their instant, text by its characters — no collation, as the plain `find`
+ * the list pages through has none (code-unit order, the same as the stored bytes' for every
+ * character the register holds).
+ */
+const compareStored = (
+  a: Date | string | null | undefined,
+  b: Date | string | null | undefined,
+) => {
+  if (a == null || b == null) return a == null ? (b == null ? 0 : -1) : 1;
+  const left = a instanceof Date ? a.getTime() : a;
+  const right = b instanceof Date ? b.getTime() : b;
+  return left < right ? -1 : left > right ? 1 : 0;
+};
+
 class FleetNoticeService {
   async list(
     query: ListFleetNoticesQuery,
     ctx?: AuthContext,
   ): Promise<Paginated<FleetNoticeWithCode>> {
+    if (query.missing === 'any') return this.listMissingAny(query, ctx);
     const page = await fleetNoticeRepository.list({
       filter: await noticeFilter(query),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy ?? 'createdAt',
       sortDir: query.sortDir ?? 'desc',
-      sortableFields: ['updatedAt', 'createdAt', 'noticeDate', 'noticeNumber'],
+      sortableFields: [...NOTICE_SORTS],
     });
     return { ...page, items: await withCodes(page.items, ctx) };
+  }
+
+  /**
+   * «ينقصها مرفق» (`missing=any`, D10) — the notices the filters leave that `missingAny` keeps,
+   * under the same `withCodes(ctx)` source rule the dashboard's «إخطارات مفتوحة ينقصها مرفق»
+   * counts with (a licence the reader may not open is missing, as the screen shows it). A missing
+   * image is a fact of the registry as well as of the notice, so no database filter can ask it:
+   * the rows are kept in memory and paged there, in the order the database would have handed them
+   * — the same sort field and direction (`createdAt` desc unless asked), the id behind it in the
+   * same direction — and only the page's own notices are read whole (their form values too).
+   */
+  private async listMissingAny(
+    query: ListFleetNoticesQuery,
+    ctx: AuthContext | undefined,
+  ): Promise<Paginated<FleetNoticeWithCode>> {
+    const field = sortFieldOf(query.sortBy);
+    const dir = query.sortDir === 'asc' ? 1 : -1;
+    const kept = (await this.liveWithCodes(query, ctx))
+      .filter(missingAny)
+      .sort(
+        (a, b) =>
+          dir * compareStored(a[field], b[field]) ||
+          dir * compareStored(String(a._id), String(b._id)),
+      );
+    const pageSize = Math.min(query.pageSize, MAX_PAGE_SIZE);
+    const page = Math.max(1, query.page);
+    const ids = kept.slice((page - 1) * pageSize, page * pageSize).map((doc) => String(doc._id));
+    const whole = new Map(
+      (await fleetNoticeRepository.findByIdsSystem(ids)).map((doc) => [String(doc._id), doc]),
+    );
+    const items = await withCodes(
+      ids.flatMap((id) => {
+        const doc = whole.get(id);
+        return doc === undefined ? [] : [doc];
+      }),
+      ctx,
+    );
+    return {
+      items,
+      meta: {
+        page,
+        pageSize,
+        totalItems: kept.length,
+        totalPages: Math.max(1, Math.ceil(kept.length / pageSize)),
+      },
+    };
   }
 
   /** The notices the filters leave, each with where its licences come from — one read, shared. */
@@ -259,7 +373,10 @@ class FleetNoticeService {
     query: FleetNoticesSummaryQuery,
     ctx?: AuthContext,
   ): Promise<FleetNoticesSummaryDto> {
-    const docs = await this.liveWithCodes(query, ctx);
+    // «ينقصها مرفق» narrows the figures as it narrows the table (D10): the same `missingAny` over
+    // the same `withCodes(ctx)`.
+    const live = await this.liveWithCodes(query, ctx);
+    const docs = query.missing === 'any' ? live.filter(missingAny) : live;
     const byTemplate = new Map<FleetNoticeTemplate, number>();
     const byMonth = new Map<string, number>();
     for (const doc of docs) {
@@ -295,12 +412,66 @@ class FleetNoticeService {
    * missing both twice. Same `noticeFilter`, same `withCodes(ctx)` as `summary`, so a reader who may
    * not open a registry licence is counted as the screen shows it to them; `status` is always
    * `open` (the alert is about notices still to be completed), whatever else the query narrows.
+   *
+   * No production caller since the dashboard reads `dashboardDigest` (which shares `missingAny`):
+   * kept as the union rule on its own, the oracle the digest's parity spec and
+   * notice-missing-any.spec.ts check it against.
    */
   async missingAnyCount(query: FleetNoticesSummaryQuery, ctx?: AuthContext): Promise<number> {
     const docs = await this.liveWithCodes({ ...query, status: 'open' }, ctx);
-    return docs.filter(
-      (doc) => doc.vehicleLicense === null || doc.driverLicense === null || doc.checkImage == null,
-    ).length;
+    return docs.filter(missingAny).length;
+  }
+
+  /**
+   * T1.10 and «إخطارات ينقصها مرفق» — the dashboard's notices in ONE read of the open notices the
+   * filters leave (`status` is always `open`): `summary`'s open count and two parts, and
+   * `missingAnyCount`'s union, by their own rules over the same `withCodes(ctx)` (a licence the
+   * reader may not open counts as missing, as the screen shows it), with at most
+   * FLEET_DASHBOARD_NOTICE_ROWS of the missing-any notices — the oldest notice date first, a notice
+   * with no date last (a database sort would put it first), then the oldest recorded, then the id.
+   * The rows' makes are one read of the few types their cars carry, none when no row has a car.
+   */
+  async dashboardDigest(
+    query: FleetNoticesSummaryQuery,
+    ctx?: AuthContext,
+  ): Promise<{
+    open: number;
+    missingAny: number;
+    missingLicences: number;
+    missingCheckImage: number;
+    rows: FleetDashboardNoticeRowDto[];
+  }> {
+    const docs = await this.liveWithCodes({ ...query, status: 'open' }, ctx);
+    const missing = docs.filter(missingAny);
+    const listed = [...missing].sort(oldestNoticeFirst).slice(0, FLEET_DASHBOARD_NOTICE_ROWS);
+    const typeIds = [
+      ...new Set(listed.flatMap((doc) => (doc.vehicleTypeId === null ? [] : [doc.vehicleTypeId]))),
+    ];
+    const types =
+      typeIds.length === 0 ? [] : await fleetVehicleTypeRepository.findByIdsSystem(typeIds);
+    const makes = new Map(types.map((type) => [String(type._id), type.name as LocalizedString]));
+    return {
+      open: docs.length,
+      missingAny: missing.length,
+      missingLicences: docs.filter(
+        (doc) => doc.vehicleLicense === null || doc.driverLicense === null,
+      ).length,
+      missingCheckImage: docs.filter((doc) => doc.checkImage == null).length,
+      rows: listed.map((doc) => ({
+        noticeId: String(doc._id),
+        template: doc.template,
+        vehicleId: stringOrNull(doc.vehicleId),
+        code: doc.vehicleCode,
+        typeName: doc.vehicleTypeId === null ? null : (makes.get(doc.vehicleTypeId) ?? null),
+        noticeNumber: doc.noticeNumber ?? null,
+        noticeDate: doc.noticeDate == null ? null : ymdOf(doc.noticeDate),
+        missing: {
+          vehicleLicense: doc.vehicleLicense === null,
+          driverLicense: doc.driverLicense === null,
+          checkImage: doc.checkImage == null,
+        },
+      })),
+    };
   }
 
   async get(id: string, ctx?: AuthContext): Promise<FleetNoticeWithCode> {

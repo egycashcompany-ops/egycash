@@ -55,6 +55,7 @@ const EXPECTED: Record<string, string[]> = {
     SettingKeys.PasswordRequireComplexity,
     SettingKeys.LockoutMaxAttempts,
     SettingKeys.LockoutMinutes,
+    SettingKeys.SessionIdleMinutes,
     SettingKeys.TotpEnforcedForPrivileged,
     SettingKeys.AuthLoginIdentifiers,
     SettingKeys.ActivationLinkTtlHours,
@@ -86,18 +87,26 @@ afterEach(() => {
 });
 
 describe('the settings inventory the screen renders', () => {
-  it('declares fifty-one settings, and no key twice', () => {
+  it('declares sixty-four settings, and no key twice', () => {
+    // Sixty-three since 18 November: `hr.attendance.minPunchGapMinutes`, which decides when two
+    // scans are one visit to the reader, and `hr.attendance.countAbsence`, which decides whether a
+    // working day with no scan is published as an absence. Both carry one of the owner's rulings,
+    // and the count is pinned so neither can arrive without the settings screen learning to name
+    // it — the failure this pin produces is the one that sends you to the i18n catalogue.
+    //
+    // Sixty-four since 22 November: `hr.attendance.departmentHours`, the hours each department
+    // owes. It is the first setting the generic screen does not edit — see the type pin below.
     registerAll();
     const keys = listSettingDeclarations().map((declaration) => declaration.key);
-    expect(keys).toHaveLength(51);
-    expect(new Set(keys).size).toBe(51);
+    expect(keys).toHaveLength(64);
+    expect(new Set(keys).size).toBe(64);
   });
 
   it('declares exactly the keys the contracts name — no more, no fewer', () => {
     registerAll();
     const declared = listSettingDeclarations().map((d) => d.key).sort();
     const expected = Object.values(EXPECTED).flat().sort();
-    expect(expected).toHaveLength(51);
+    expect(expected).toHaveLength(64);
     expect(declared).toEqual(expected);
   });
 
@@ -123,10 +132,18 @@ describe('the settings inventory the screen renders', () => {
   // The screen renders one of four editors from `type`, and falls back to read-only for anything
   // else. Nothing is broken by a fifth type arriving — but it becomes uneditable, so it is worth
   // knowing the day it happens rather than the day somebody tries to change the value.
-  it('reports only the four types the screen has editors for', () => {
+  //
+  // That day was 22 November, and `record` is here deliberately: `hr.attendance.departmentHours`
+  // is a map of department → hours, and a raw-JSON box on the generic screen would be both
+  // unusable and the one disabled control on a screen whose rule is that a holder of
+  // `setting.edit` can edit everything it shows. So it is NOT shown there at all — the web
+  // catalogue lists it under `MANAGED_ELSEWHERE`, which sends the reader to «ساعات العمل», the
+  // panel that edits it with department names and a computed end time. A SIXTH type still has to
+  // justify itself the same way: either an editor on the screen, or a panel of its own.
+  it('reports only the types the screen has editors for, plus the ones managed elsewhere', () => {
     registerAll();
     const types = new Set(settingsService.listDefinitions().map((d) => d.type));
-    expect([...types].sort()).toEqual(['array', 'boolean', 'number', 'string']);
+    expect([...types].sort()).toEqual(['array', 'boolean', 'number', 'record', 'string']);
   });
 
   it('carries a description for every setting, since the row prints it', () => {

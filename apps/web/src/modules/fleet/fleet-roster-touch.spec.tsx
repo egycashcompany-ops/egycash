@@ -7,7 +7,8 @@
 //
 // The web suite has no window, so the shell is rendered with the layout handed in
 // (`RosterScreen layout=…`); what a finger does is verified in a browser against the approved shots.
-import { describe, expect, it } from 'vitest';
+import { type ReactNode } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -21,7 +22,34 @@ import { RosterScreen } from './pages/RosterPage';
 import { type TouchLayout } from './lib/roster-layout';
 import { matchesVehicleCode } from './lib/vehicle-code-match';
 import { touchCars } from './lib/roster-board';
+import { visibleRows } from './lib/roster-view';
 import { rosterSource } from './roster-spec-sources';
+import { NotesSheet } from './components/roster/roster-touch-parts';
+import { ROSTER_NOTE_MAX } from './components/roster/roster-parts';
+
+// An OPEN sheet drawn in place: the real one portals to `document.body`, which a static render in
+// node has none of. Closed, both draw nothing — so the boards' own renders here are unchanged.
+vi.mock('./components/roster/RosterBottomSheet', () => ({
+  BottomSheet: ({
+    name,
+    open,
+    title,
+    children,
+    footer,
+  }: {
+    name: string;
+    open: boolean;
+    title: string;
+    children: ReactNode;
+    footer?: ReactNode;
+  }): JSX.Element | null =>
+    open ? (
+      <section data-sheet={name} data-title={title}>
+        {children}
+        {footer}
+      </section>
+    ) : null,
+}));
 
 const V1 = '650000000000000000000001';
 const V2 = '650000000000000000000002';
@@ -323,6 +351,31 @@ describe('the term is matched as the funnel’s codes are, and kept on the board
     expect(codes.filter((code) => matchesVehicleCode(code, term))).toEqual(found);
   });
 
+  it('stays a SEARCH, while a PICKED code is one car (D16)', () => {
+    // The picked codes (`?q=`) are matched whole — «كورولا 1» is that car alone, as on every other
+    // screen. The typed term on the cards is still a search: «كورولا 1» finds the 10 and the 11
+    // too, «41» finds 410.
+    const MODELS = [
+      row('vk1', 'كورولا 1'),
+      row('vk10', 'كورولا 10'),
+      row('vk11', 'كورولا 11'),
+      row('v410', '410'),
+    ];
+    const codes = (rows: readonly { code: string }[]): string[] => rows.map((r) => r.code);
+    expect(codes(touchCars(MODELS, MODELS, 'كورولا 1').onRoad)).toEqual([
+      'كورولا 1',
+      'كورولا 10',
+      'كورولا 11',
+    ]);
+    expect(codes(touchCars(MODELS, MODELS, '41').onRoad)).toEqual(['410']);
+    const picked = visibleRows(MODELS, { term: 'كورولا 1' });
+    expect(codes(touchCars(picked, MODELS, '').onRoad)).toEqual(['كورولا 1']);
+    expect(
+      codes(touchCars(picked, MODELS, 'كورولا').onRoad),
+      'a typed term narrows the picks, never widens them',
+    ).toEqual(['كورولا 1']);
+  });
+
   it('is never written to the URL nor remembered (a half-typed «1» must not come back)', () => {
     expect(TOUCH).toContain("const [carTerm, setCarTerm] = useState('')");
     expect(TOUCH).not.toMatch(/useSearchParams|useRememberedFilters|sp\.get\(/u);
@@ -483,5 +536,35 @@ describe('a seat on a touch card clears with ✕', () => {
     const card = rosterSource(['touch']);
     const clear = card.slice(card.indexOf('data-clear-slot='));
     expect(clear.slice(0, 600)).toContain('<CloseIcon');
+  });
+});
+
+// The owner's 22 November «صلحهم» (e): the day's note had no cap on the phone either, while the API
+// refuses a note past 500 letters — so a longer one was typed, and only refused at «حفظ».
+describe('the day’s note on a touch card takes at most 500 letters', () => {
+  it('hands the notes sheet the day’s cap — the API’s 500', () => {
+    expect(ROSTER_NOTE_MAX).toBe(500);
+    const at = TOUCH.indexOf('<NotesSheet');
+    expect(at, 'the touch board draws the notes sheet').toBeGreaterThan(-1);
+    expect(TOUCH.slice(at, TOUCH.indexOf('/>', at))).toContain('maxLength={ROSTER_NOTE_MAX}');
+    expect(TOUCH, 'one notes sheet on the daily touch board').not.toMatch(
+      /<NotesSheet[\s\S]*<NotesSheet/u,
+    );
+  });
+
+  it('draws the sheet’s note box with maxlength="500"', () => {
+    const html = renderToStaticMarkup(
+      <Provider store={store(PLANNER)}>
+        <QueryClientProvider client={client(day(1))}>
+          <NotesSheet
+            row={row(V1, '150')}
+            maxLength={ROSTER_NOTE_MAX}
+            onSave={() => undefined}
+            onClose={() => undefined}
+          />
+        </QueryClientProvider>
+      </Provider>,
+    );
+    expect(tagOf(html, 'data-notes-input="true"')).toMatch(/maxlength="500"/iu);
   });
 });

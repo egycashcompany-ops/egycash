@@ -7,8 +7,8 @@
 // Two answers, one family:
 // - `resolveVehicleFilterIds` — the set half (types ∩ operations ∩ branches) a screen intersects with
 //   its OWN code resolution; each screen keeps its own way of reading codes (D9).
-// - `vehicleSet` — the dashboard's set: codes (`idsByCodes`) ∩ types ∩ operations ∩ the switcher's
-//   branch, with the echo the links are built from.
+// - `vehicleSet` — the dashboard's set: codes (`idsByCodes`) ∩ types ∩ operations ∩ the reader's
+//   branches, with the echo the links are built from.
 //
 // `undefined` is «nothing narrows» — no vehicle clause at all, so rows without a car and the
 // history of deleted cars count exactly as on the unfiltered screen. `[]` is a real answer (no car
@@ -73,14 +73,19 @@ const liveCount = (ids: readonly string[] | undefined, asked: boolean): Promise<
   ids === undefined || !asked ? Promise.resolve(null) : fleetVehicleRepository.countLive(ids);
 
 /**
- * R-13 for the dashboard: codes (`idsByCodes`) ∩ types ∩ operations ∩ the switcher's branch.
+ * R-13 for the dashboard: codes (`idsByCodes`) ∩ types ∩ operations ∩ the reader's branches.
  *
- * The branch is `activeBranchId` — what the reader narrowed themselves to in the command bar — and
- * NEVER their home branch (`currentBranchId`): «الشركة كلها» with a home branch is the whole
- * company, so it adds no branch clause. `ids` is `undefined` when nothing narrows.
+ * `branchIds` is what the dashboard's figures cover (`DashboardContext.branchIds`): `null` = the
+ * whole company, so no branch clause at all; one id = a branch view (the switcher's branch, or the
+ * reader's only branch); several = «كل فروعي». `[]` — a branch reach with no branch — is a real
+ * answer and narrows to NOTHING. It is NEVER the bare home branch (`currentBranchId`) of an
+ * organization-wide reader: «الشركة كلها» with a home branch is the whole company. `ids` is
+ * `undefined` when nothing narrows.
  *
  * The echo carries the FILTERS, not the resolved ids, so every link opens its screen with the same
- * question and the screen resolves it itself (§5.7).
+ * question and the screen resolves it itself (§5.7). Its `branchId` is the caller's (the switcher's
+ * branch, honoured only inside the reader's branches — `opts.branchId`); the reader's branches by
+ * NAME (`scopeBranches`) are the dashboard services' to add, from the branch list they read once.
  *
  * `scope.count` is the DISPLAY count «المجموعة المختارة: N سيارة»: the set's cars that are in the
  * registry today (deleted ones left out, as /fleet/vehicles counts them), and only when the caller
@@ -92,15 +97,18 @@ export const vehicleSet = async (
     typeIds?: readonly string[] | undefined;
     operationIds?: readonly string[] | undefined;
   },
-  activeBranchId: string | null,
-  opts: { count?: boolean } = {},
-): Promise<{ ids: string[] | undefined; scope: FleetDashboardVehicleScopeDto }> => {
+  branchIds: readonly string[] | null,
+  opts: { count?: boolean; branchId?: string | null } = {},
+): Promise<{
+  ids: string[] | undefined;
+  scope: Omit<FleetDashboardVehicleScopeDto, 'scopeBranches'>;
+}> => {
   const [byCode, bySet] = await Promise.all([
     asked(f.vehicleCodes, (codes) => fleetVehicleRepository.idsByCodes(codes)),
     resolveVehicleFilterIds({
       typeIds: f.typeIds,
       operationIds: f.operationIds,
-      branchIds: activeBranchId === null ? undefined : [activeBranchId],
+      branchIds: branchIds ?? undefined,
     }),
   ]);
   const ids = intersectVehicleIds(byCode, bySet);
@@ -111,7 +119,7 @@ export const vehicleSet = async (
       typeIds: [...(f.typeIds ?? [])],
       operationIds: [...(f.operationIds ?? [])],
       vehicleCodes: [...(f.vehicleCodes ?? [])],
-      branchId: activeBranchId,
+      branchId: opts.branchId ?? null,
     },
   };
 };

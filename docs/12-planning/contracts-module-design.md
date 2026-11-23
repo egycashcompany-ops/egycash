@@ -590,6 +590,13 @@ which forms depends on the job.
   form, then the instructions and the declarations overleaf) is the fourteenth paper — every job,
   printed right after the contract (`egycash.hiring.insurance-form-1`, print order 5). His copy is a
   Legal-size scan; it prints on A4, tighter, in the same order.
+- **On his own pages (revision 3, 2026-11-16).** «انا عاوز النموزج بردو شبه منا بعتو بظبط مفهوش اي
+  تعديل خالص … بس الشكل اللي ادتولك بظبط». The form is no longer drawn again: its two pages ARE his
+  scan (`contracts/form-one-scan.ts`, 1700 × 2800 pixels each, four greys), on the margin-less page
+  `scan`, standing on the A4 page's full height. The values below are written on them, each at its
+  place (`at` and one class per place, measured on the scan in its pixels and set in millimetres).
+  An empty value writes nothing. «تحريراً في» takes today's day, month and year
+  (`contract.currentDay` / `currentMonth` / `currentYear`) between the form's strokes.
 - **Filled.** With the contract and the bank letter, the one form filled from the record: the
   category (عاملين لدى الغير, ticked), the company's name (twice), the employee's insurance number,
   national ID, name, nationality, qualification and job, the start date in its day / month / year
@@ -651,10 +658,17 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   overrides) and saved as its box is left. A value is kept on the record and used by every paper
   that prints it; no template changes. The employee code is shown, never typed — the server drops
   an override of it — because the hire gives exactly the code kept at the first print.
-- **The record** (`hr_candidate_drafts`, one per offer) holds the papers ticked, the typed-in
-  values, the term, the employee number kept, and the prints. Every change is saved as it is made,
-  in sequence with the version each save returns; a stale save is refused (409) and the page reloads
-  from the record.
+- **The record** (`hr_candidate_drafts`, one per offer) holds what HR ticked or unticked, the
+  typed-in values, the term, the employee number kept, and the prints. Every change is saved as it
+  is made, in sequence with the version each save returns; a stale save is refused (409) and the
+  page reloads from the record.
+- **The tiles start as the job ticks them** («مفروض تنور علي اساس الوظيفه اللي خاصه بيه فبينور علي
+  النمازج الخاصه بالوظيفه»). The page sends every paper ticked, but the record keeps only how that
+  differs from the job: the papers ticked beyond the job's (`added`) and those taken off them
+  (`removed`). Every paper HR did not touch follows the job as it now stands, so one «مستندات
+  الوظائف» gives the job later starts ticked for the candidate too. Drafts saved before kept the
+  whole list (`selected`), ticked against papers since changed; the boot migration
+  (`candidate-draft.migration.ts`) gives each the empty choice, so they follow their job again.
 - **The first print** takes the next employee number from the sequence and keeps it for the
   candidate, so the bank letter carries the code the hire gives. A candidate never hired leaves that
   number unused. Every print is counted and audited on the offer (`export`, `candidatePapers`).
@@ -697,18 +711,23 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
     is a job-wide line, as the first release of the popup saved them; a department's own line is
     read first.
 - **«مسميات الوظائف لدى التأمينات»** («فيه مسميات وظائف … عندنا مختلفه عن مسميات الوظائف عند
-  التامينات»; «انا عاوز انا اللي احط المسميات الوظيفه بتاعتنا و المسميات الوظيفيه بتاعت التامينات و
-  هنزود column … كود المهنه و كله هيتحط manual»). A tab of «الإعدادات» beside «نموذج التقديم»
-  (`insuranceJobTitle.manage`, its own page): a table HR types by hand — our job title (the company's
-  titles offered while typing, a note when none carries it), its title at the social-insurance
-  authority, its occupation code (up to six digits, or «123/456»). «حفظ» keeps the table as it stands:
-  a row left out is taken off (`hr_insurance_job_titles`, one row per title, keyed by the title folded
-  as job names are matched; each change audited, `hr.insuranceJobTitle`). A title listed twice, a code
-  form 1 cannot box and a row with no title are refused. «نموذج رقم (1)» prints, for a person whose job
-  carries a row's title, `job.insuranceTitle` (the row's title at the authority, else the job's own)
-  in «المسمى» and `job.occupationCode1`/`2` in «كود المهنة»'s two groups of boxes (revision 2, so the
-  boot rewrites the row it wrote). The contract keeps the company's own name for the job.
-  `GET`/`PATCH /hr/contracts/insurance-job-titles {rows: [{jobTitle, insuranceTitle, occupationCode}]}`.
+  التامينات»; «هنحط كل الظائف بتاعتنا ك data اساسيه و جمب كل واحده زي زرار صغير كدا اسمو تعديل … مثبت
+  فيه المسمي الوظيفي عندنا و التعديل عمتا هيكون ف مسمي الوظيفي لدي التامينات و كود المهنه بس»). A tab of
+  «الإعدادات» beside «نموذج التقديم» (`insuranceJobTitle.manage`, its own page).
+  - **Every active job of the company is a row**, by name, beside its title at the social-insurance
+    authority and its occupation code. No row is added or taken off here: the jobs are the data.
+  - **«تعديل»** beside a job opens a small popup with our job title fixed at its top. Only its
+    insurance title and its occupation code (up to six digits, or «123/456») are typed. Both left
+    empty, nothing is kept for the job.
+  - **How it is kept:** `hr_insurance_job_titles`, one row per job, keyed by the job's name folded as
+    job names are matched — so the rows the first release of the page saved by hand still reach their
+    jobs. Each change is audited (`hr.insuranceJobTitle`).
+  - **Form 1.** «نموذج رقم (1)» prints, for a person of the job, `job.insuranceTitle` (its title at the
+    authority, else the job's own) in «المسمى», and `job.occupationCode1`/`2` in «كود المهنة»'s two
+    groups of boxes (revision 2, so the boot rewrites the row it wrote). The contract keeps the
+    company's own name for the job.
+  - **Endpoints:** `GET /hr/contracts/insurance-job-titles` (every job) and
+    `PATCH /hr/contracts/insurance-job-titles/:jobTitleId {insuranceTitle, occupationCode}`.
 - **The employee's tab** («لما ادخل علي موظف … و عاوز اجدد عقد او اطبع نمازج … امكانيه سريعه ان
   اطبعلو»). «طباعة العقد والمستندات» beside «العقود» on the employee's profile (`contract.print`):
   the contract they hold (a generated one still theirs, else one on its way) with «تجديد العقد» —
@@ -716,10 +735,40 @@ buttoms للنمازج … و بعد ميختار هيبقا فيه 2 زرار �
   their job's papers as the same tiles: tick, print one alone, or «طباعة المحدد». The set takes the
   chosen `keys`: a print that does not ask for the contract never makes one; one that does prints
   the contract held, or makes one as «مستندات التعيين» does.
+- **«تعديل» on the employee's tab** («نخلي في امكانيه للتعديل زي معملنا قبل كدا تحت الtoggle تعديل و
+  طباعه و تحت يظهر البيانات عشان التعديل و النص التاني الفورم»). Every tile has «تعديل» and «طباعة»
+  under it, as on «عقد جديد». Below, side by side: the opened paper's values (the contract first),
+  and the paper as it prints (`POST …/employee-papers/:employeeId/preview {key}` — nothing made,
+  printed or recorded), redrawn with each change.
+  - **What is typed** is kept per employee (`hr_employee_paper_values`, one row, made at the first
+    change; `PATCH …/employee-papers/:employeeId/values {overrides, version}`, the whole list each
+    time, 409 when stale, each change audited on the employee as `paperValues.<key>`). It is used by
+    every paper of theirs that prints the value — on the tab and in «المعينون» — and by a contract
+    made from the tab. The employee's file never changes; a blank value gives the record's back.
+    Until something is typed, what was typed for them as a candidate on «عقد جديد» stands.
+  - **Never typed here:** the employee code, the contract's number and term (`contract.code`,
+    `contract.startDate`, `contract.endDate`) — the server drops them.
+  - **The contract they hold** (`locked`) shows the values it carries (`contractValues`: frozen at
+    generation, or those it would be generated with) and prints as issued — what its verification
+    code checks is what is printed. They change only by renewing or amending it.
+  - **«تاريخ بدء الاشتراك»** — form 1's start date, boxed in three rows — is one date in the form,
+    on the employee's tab and on «عقد جديد»: the start of work unless another is chosen («نسبها by
+    default التاريخ مع امكانيه التعديل»).
+- **«جاهزون للتعيين» | «المعينون», and «مستندات الوظائف».** A small sliding toggle (the HR
+  settings bar, compact) in the head of both lists (`/employees/ready`, `/employees/ready/hired`),
+  above the «مستندات الوظائف» button that opens its popup (`contractTemplate.manage`).
+  «المعينون» (`contract.print`) lists everybody employed now —
+  `employed=true`, `origin=recruitment,direct`: not an external person, not someone whose service
+  ended — with search and branch / department / job ticks; ticked people print through the same
+  popup as candidates, each on a line of their own with their tab's papers, ONE document, each print
+  audited on the employee. A paper not theirs is never printed for them; a contract is made for one
+  who holds none only when it is ticked, as their tab does.
 - **Endpoints.** `POST /hr/contracts/candidates/:offerId/open`, `PATCH …/:offerId`,
   `POST …/:offerId/render {keys, print}`, `POST …/:offerId/hire {version}`;
   `POST …/candidates/bulk/open {offerIds}`, `POST …/candidates/bulk/render {people: [{offerId, keys}]}`;
-  `GET /hr/contracts/employee-papers/:employeeId`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`;
+  `GET /hr/contracts/employee-papers/:employeeId`, `PATCH …/:employeeId/values {overrides, version}`,
+  `POST …/:employeeId/preview {key}`, `POST /hr/contracts/hiring-pack {employeeId, keys?}`;
+  `POST …/employees/bulk/open {employeeIds}`, `POST …/employees/bulk/render {people: [{employeeId, keys}]}`;
   `GET /hr/contracts/job-papers`, `PATCH /hr/contracts/job-papers {lines: [{departmentId, jobTitleId, keys}]}`.
 
 ## Review trail

@@ -33,6 +33,8 @@ describe('IT routes', () => {
         'assets',
         'assets/:id',
         'assets/scan',
+        // «رفع جماعي» (2026-11-16) — the bulk upload, previewed before it writes.
+        'assets/import',
         'catalogs',
         'custody',
         'employees',
@@ -43,9 +45,9 @@ describe('IT routes', () => {
         'maintenance',
         'maintenance-plans',
         'maintenance/:id',
-        // FR-19 — the SIM lines, on the assets' grants.
+        // FR-19 — the SIM lines, on their own grant since 2026-11-17.
         'mobile-lines',
-        // FR-20 — the consumables' store and its ledger, on the same grants.
+        // FR-20 — the consumables' store and its ledger, on theirs.
         'consumables',
         'consumables/movements',
         // FR-21 — the vehicle device check, a phone form on its own grant, outside AppShell, and
@@ -136,6 +138,36 @@ describe('IT routes', () => {
     expect(ROUTES.indexOf('path="assets/scan"')).toBeLessThan(ROUTES.indexOf('path="assets/:id"'));
   });
 
+  // «رفع جماعي» registers assets: it rides the create grant «تسجيل أصل» rides, not the view grant
+  // the register itself is read on — and «import» must never be read as an asset id.
+  it('puts the bulk upload before the :id matcher, on the create grant', () => {
+    const at = ROUTES.indexOf('path="assets/import"');
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(ROUTES.indexOf('path="assets/:id"'));
+    expect(ROUTES.slice(at, ROUTES.indexOf('</RequirePermission>', at))).toContain(
+      '<RequirePermission permission="itAsset.create">',
+    );
+  });
+
+  // «فى الصلاحيات مش لاقى حاجة لـ /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات
+  // عشان أقدر أتحكم فيها» (2026-11-17): each screen opens on its OWN view grant — the row the roles
+  // screen now shows for it — and an asset key opens neither.
+  it('opens the lines and the consumables on their own view grants, never an asset key', () => {
+    const guard = (path: string): string => {
+      const at = ROUTES.indexOf(`path="${path}"`);
+      expect(at, path).toBeGreaterThan(-1);
+      return ROUTES.slice(at, ROUTES.indexOf('</RequirePermission>', at));
+    };
+    expect(guard('mobile-lines')).toContain('<RequirePermission permission="itMobileLine.view">');
+    expect(guard('consumables')).toContain('<RequirePermission permission="itConsumable.view">');
+    expect(guard('consumables/movements')).toContain(
+      '<RequirePermission permission="itConsumable.view">',
+    );
+    for (const path of ['mobile-lines', 'consumables', 'consumables/movements']) {
+      expect(guard(path), path).not.toContain('itAsset');
+    }
+  });
+
   it('uses only permissions the IT module actually declares', () => {
     const used = new Set(
       [...ROUTES.matchAll(/<RequirePermission permission="([^"]+)">/g)].map((m) => m[1]),
@@ -162,5 +194,21 @@ describe('IT navigation matches the routes that exist', () => {
     declared.add('/it');
     const dangling = navRoutes.filter((route) => !declared.has(route));
     expect(dangling, 'navigation links to a route that does not exist').toEqual([]);
+  });
+
+  // A row shown on a grant the page refuses is a link to «no access»; a row hidden from a grant the
+  // page accepts is a screen nobody can find. The lines' and the consumables' rows ride the very
+  // grant their route does — corrected in place from the asset key they shipped on.
+  it('shows the lines’ and the consumables’ rows on the grant their route rides', () => {
+    const row = (route: string): string => {
+      const at = SEED.indexOf(`route: '${route}'`);
+      expect(at, route).toBeGreaterThan(-1);
+      return SEED.slice(at, SEED.indexOf('}', at));
+    };
+    expect(row('/it/mobile-lines')).toContain("permission: 'itMobileLine.view'");
+    expect(row('/it/consumables')).toContain("permission: 'itConsumable.view'");
+    for (const route of ['/it/mobile-lines', '/it/consumables']) {
+      expect(row(route), route).toContain("previousPermission: 'itAsset.view'");
+    }
   });
 });

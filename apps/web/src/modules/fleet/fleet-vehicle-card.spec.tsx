@@ -45,7 +45,7 @@ import {
 } from './components/VehicleHoverCard';
 import * as Layer from './components/HoverCardLayer';
 import * as Driver from './components/DriverHoverCard';
-import { LicenceTag } from './components/VehicleStatusBadge';
+import { LICENCE_STATE_KEY, LicenceTag } from './components/VehicleStatusBadge';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TODAY = cairoYmd(new Date());
@@ -177,7 +177,12 @@ const client = (seed: Seed = {}): QueryClient => {
   }
   if (on('readings')) {
     qc.setQueryData(KEYS.readings, [
-      { vehicleId: V120, latestReading: 154320, latestReadingAt: '2026-11-07' },
+      {
+        vehicleId: V120,
+        latestReading: 154320,
+        latestReadingAt: '2026-11-07',
+        newest: { reading: 154320, date: '2026-11-07' },
+      },
     ] satisfies FleetVehicleLatestReadingDto[]);
   }
   return qc;
@@ -317,7 +322,7 @@ describe('the card says its facts', () => {
     expect(markup).toContain('data-vehicle-card-drivers="2"');
     expect(markup).toContain(t('fleet.vehicles.columns.license'));
     expect(markup).toContain('2099/03/15');
-    expect(markup).toContain(t('fleet.fuelCards.expiry.valid'));
+    expect(markup).toContain(t(LICENCE_STATE_KEY.valid));
     expect(markup).toContain(t('fleet.vehicle.lastReading'));
     // «154,320 كم · 2026/11/07» — Latin digits, grouped, on one line.
     expect(markup).toContain('>154,320</span> كم');
@@ -331,7 +336,7 @@ describe('the card says its facts', () => {
     expect(markup).toContain(t('fleet.vehicles.inWorkshop'));
     expect(markup).not.toContain(t('fleet.vehicles.status.active'));
     expect(tagOf(markup, '2001/01/01')).toContain('text-red-600');
-    expect(markup).toContain(t('fleet.fuelCards.expiry.expired'));
+    expect(markup).toContain(t(LICENCE_STATE_KEY.expired));
   });
 
   it('nobody on today’s board, and no reading on file: dashes', () => {
@@ -394,8 +399,47 @@ describe('the card says its facts', () => {
     expect(english).toContain('Drivers today');
   });
 
-  it('the licence’s tag is the vehicles board’s own', () => {
-    expect(render(<LicenceTag state="soon" />)).toContain(t('fleet.fuelCards.expiry.soon'));
+  it('a chain that went backwards: «آخر قراءة عداد» is the NEWEST row, the highest named beside it', () => {
+    // Car 704 of the audit: 5,000 read on 15/10, then 4,980 on 16/10 — the register's first row
+    // and the dashboard's «آخر قراءة 16/10» are the 16th's. The card printed 5,000 · 15/10 under
+    // «آخر قراءة عداد».
+    const qc = client({ readings: false });
+    qc.setQueryData(KEYS.readings, [
+      {
+        vehicleId: V120,
+        latestReading: 5000,
+        latestReadingAt: '2026-10-15T00:00:00.000Z',
+        newest: { reading: 4980, date: '2026-10-16T00:00:00.000Z' },
+      },
+    ] satisfies FleetVehicleLatestReadingDto[]);
+    const markup = body({ qc });
+    const newest = markup.slice(markup.indexOf('data-vehicle-card-reading="true"'));
+    expect(newest).toMatch(/^[^]*?>4,980<\/span> كم[^]*?2026\/10\/16/u);
+    expect(markup).toContain(t('fleet.odometer.alarmReason.figure.highestReading'));
+    const highest = markup.slice(markup.indexOf('data-vehicle-card-highest="true"'));
+    expect(highest).toMatch(/^[^]*?>5,000<\/span> كم[^]*?2026\/10\/15/u);
+    // The newest comes first, under «آخر قراءة عداد».
+    expect(markup.indexOf('4,980')).toBeLessThan(markup.indexOf('5,000'));
+    expect(markup.indexOf(t('fleet.vehicle.lastReading'))).toBeLessThan(
+      markup.indexOf(t('fleet.odometer.alarmReason.figure.highestReading')),
+    );
+  });
+
+  it('a healthy chain: one reading line, no «أعلى قراءة»', () => {
+    const markup = body();
+    expect(markup).toContain('data-vehicle-card-reading="true"');
+    expect(markup).not.toContain('data-vehicle-card-highest');
+    expect(markup).not.toContain(t('fleet.odometer.alarmReason.figure.highestReading'));
+  });
+
+  it('the licence’s tag is the vehicles board’s own, in the licence words — not the fuel cards’', () => {
+    expect(render(<LicenceTag state="soon" />)).toContain(t(LICENCE_STATE_KEY.soon));
+    expect(render(<LicenceTag state="expired" />)).toContain(t(LICENCE_STATE_KEY.expired));
+    expect(render(<LicenceTag state="valid" />)).toContain(t(LICENCE_STATE_KEY.valid));
+    const badge = readFileSync(join(HERE, 'components/VehicleStatusBadge.tsx'), 'utf8');
+    expect(badge, 'the fuel cards keep their own words (T19)').not.toMatch(
+      /t\(\s*[`'"]fleet\.fuelCards\.expiry/u,
+    );
     expect(render(<LicenceTag state="unknown" />)).toBe('');
     const board = readFileSync(join(HERE, 'pages/VehiclesListPage.tsx'), 'utf8');
     expect(board).toMatch(
@@ -435,9 +479,16 @@ describe('one layer for both cards', () => {
   it('the same frame for both, in both themes', () => {
     expect(Layer.HOVER_CARD_FRAME).toContain('dark:bg-[#131d35]');
     expect(Layer.HOVER_CARD_FRAME).toContain('w-72');
-    expect(source('components/HoverCardLayer.tsx')).toContain(
-      "className={cn('pointer-events-none fixed z-[110] animate-menu-in', HOVER_CARD_FRAME)}",
+    // The frame is a prop since Round 22 (the operations board's icon tips) — the CARDS' default,
+    // which neither the driver card nor the car card overrides.
+    const layer = source('components/HoverCardLayer.tsx');
+    expect(layer).toContain('frame = HOVER_CARD_FRAME,');
+    expect(layer).toContain(
+      "className={cn('pointer-events-none fixed z-[110] animate-menu-in', frame)}",
     );
+    for (const file of ['components/DriverHoverCard.tsx', 'components/VehicleHoverCard.tsx']) {
+      expect(source(file), file).not.toMatch(/\bframe=/u);
+    }
   });
 });
 

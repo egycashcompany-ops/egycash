@@ -3,7 +3,7 @@
 import { Types } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import { type ContractTemplateDoc } from '../contract-templates/contract-template.model';
-import { isTickedForJob, overrideFor, papersOfJob, tickedKeys } from './job-papers.rules';
+import { choiceFor, isTickedForJob, isTickedForPerson, overrideFor, papersOfJob, tickedKeys } from './job-papers.rules';
 
 const LEADER = new Types.ObjectId();
 const GUARD = new Types.ObjectId();
@@ -102,5 +102,33 @@ describe('a line «مستندات الوظائف» saved', () => {
   it('ticks a paper until somebody ticks otherwise only when it is not just offered', () => {
     expect(isTickedForJob({ optional: false })).toBe(true);
     expect(isTickedForJob({ optional: true })).toBe(false);
+  });
+});
+
+describe('one person\'s papers ticked on «عقد جديد»', () => {
+  const ticked = (papers: ReturnType<typeof papersOfJob>, choice: { added: string[]; removed: string[] }) =>
+    papers.filter((paper) => isTickedForPerson(paper, choice)).map((paper) => paper.template.key);
+  const guard = papersOfJob(PUBLISHED, String(GUARD), GUARD_NAME);
+
+  it('start as their job ticks them — «مفروض تنور علي اساس الوظيفه اللي خاصه بيه»', () => {
+    expect(ticked(guard, { added: [], removed: [] })).toEqual(['contract', 'sheet', 'guard-card']);
+  });
+
+  it('keep what HR ticked and unticked, and give back exactly what was ticked', () => {
+    const choice = choiceFor(guard, [WEAPON, 'contract', 'guard-card', 'not-theirs']);
+    expect(choice).toEqual({ added: [WEAPON], removed: ['sheet'] });
+    expect(ticked(guard, choice)).toEqual(['contract', WEAPON, 'guard-card']);
+    // Nothing ticked: everything the job ticks is taken off.
+    expect(ticked(guard, choiceFor(guard, []))).toEqual([]);
+  });
+
+  it('tick a paper the job is given later, and keep what HR changed', () => {
+    const choice = choiceFor(guard, ['contract', 'guard-card']);
+    const later = papersOfJob(
+      [...PUBLISHED, template('later', { kind: 'form', allJobs: true, printOrder: 70 })],
+      String(GUARD),
+      GUARD_NAME,
+    );
+    expect(ticked(later, choice)).toEqual(['contract', 'guard-card', 'later']);
   });
 });

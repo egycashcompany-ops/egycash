@@ -20,8 +20,10 @@ import {
   type ContractTemplateDto,
   type ContractTypeDto,
   type EmployeeDto,
+  type EmployeeBulkPersonDto,
   type EmployeePapersDto,
   type HiringPackDto,
+  type RenderEmployeeBulkDto,
   type JobPapersDto,
   type InsuranceJobTitlesDto,
 } from '@ecms/contracts';
@@ -54,6 +56,8 @@ const FAR_END_DATE = '2028-07-31';
 let JOB_TITLE_ID = '';
 let BRANCH_ID = '';
 let DEPARTMENT_ID = '';
+/** «مستندات الوظائف» keys a department by its company entry; a new one is linked to an entry when created (D-ORG3-5). */
+let DEPARTMENT_KEY = '';
 let replSet: MongoMemoryReplSet | null = null;
 let app: Express;
 let adminId = '';
@@ -284,6 +288,7 @@ beforeAll(async () => {
     .send({ branchId: BRANCH_ID, code: 'DEP-OPS-1', name: { ar: 'العمليات', en: 'Ops' } });
   expect(depRes.status).toBe(201);
   DEPARTMENT_ID = (depRes.body as { data: { id: string } }).data.id;
+  DEPARTMENT_KEY = (depRes.body as { data: { catalogId: string | null } }).data.catalogId ?? DEPARTMENT_ID;
   const titleRes = await request(app)
     .post('/api/v1/platform/job-titles')
     .set('Authorization', `Bearer ${adminToken}`)
@@ -1150,6 +1155,136 @@ describe('«مستندات التعيين» — the printed hiring set (A27)', (
     expect(after.contract).toMatchObject({ code: withContract.contract?.code, status: 'active', endDate: '2027-11-14' });
   });
 
+  /**
+   * «تعديل» on the employee's tab (A28) — «نخلي في امكانيه للتعديل زي معملنا قبل كدا». What is typed in
+   * for the employee is kept for them, previewed and printed by their papers; the contract's own term
+   * is never typed; the contract they hold shows what it carries and prints as issued.
+   */
+  it('keeps what is typed in for an employee\'s papers, prints it, and shows the contract they hold as issued (A28)', async () => {
+    const employee = await employeeIn(jobId);
+    const papersOf = async (): Promise<EmployeePapersDto> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/contracts/employee-papers/${employee.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return res.body.data as EmployeePapersDto;
+    };
+    const save = (overrides: { key: string; value: string }[], version: number, token = adminToken) =>
+      request(app)
+        .patch(`/api/v1/hr/contracts/employee-papers/${employee.id}/values`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ overrides, version });
+    const preview = (key: string) =>
+      request(app)
+        .post(`/api/v1/hr/contracts/employee-papers/${employee.id}/preview`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ key });
+    const LICENSE = 'employee.weaponLicenseExpiry';
+
+    const before = await papersOf();
+    expect(before.valuesVersion).toBe(0);
+    expect(before.valuesUpdatedAt).toBeNull();
+    expect(before.papers[0]).toMatchObject({ key: contractTemplate.key, kind: 'contract', locked: false });
+    expect(before.papers.find((p) => p.key === jobForm.key)?.placeholders).toContain(LICENSE);
+    expect(before.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '', overridden: false });
+    expect(before.contractValues).toEqual([]);
+
+    // Typed in: kept and marked. The contract's own term is never typed.
+    const saved = await save([{ key: LICENSE, value: ' 31/12/2027 ' }, { key: 'contract.startDate', value: '01/01/2020' }], 0);
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    const after = saved.body.data as EmployeePapersDto;
+    expect(after.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '31/12/2027', overridden: true });
+    expect(after.values.find((v) => v.key === 'contract.startDate')).toMatchObject({ value: '15/11/2026', overridden: false });
+    expect(after.valuesUpdatedAt).not.toBeNull();
+
+    // Previewed and printed as typed; a preview records nothing, and a contract not held yet shows as
+    // it would be made.
+    const shown = await preview(jobForm.key);
+    expect(shown.status, JSON.stringify(shown.body)).toBe(200);
+    expect((shown.body.data as { html: string }).html).toContain('إقرار موظف المستندات — رخصة 31/12/2027');
+    const printed = (
+      await request(app)
+        .post('/api/v1/hr/contracts/hiring-pack')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ employeeId: employee.id, keys: [jobForm.key] })
+    ).body.data as HiringPackDto;
+    expect(printed.html).toContain('إقرار موظف المستندات — رخصة 31/12/2027');
+    expect(((await preview(contractTemplate.key)).body.data as { html: string }).html).toContain(
+      'عقد موظف المستندات من 15/11/2026 إلى 14/11/2027',
+    );
+    expect((await papersOf()).contract).toBeNull();
+
+    // A page out of date is refused; a blank value gives the record's own back.
+    expect((await save([], 7)).status).toBe(409);
+    const cleared = (await save([{ key: LICENSE, value: '' }], after.valuesVersion)).body.data as EmployeePapersDto;
+    expect(cleared.values.find((v) => v.key === LICENSE)).toMatchObject({ value: '', overridden: false });
+
+    // Once made, the contract is the one they hold: shown as issued, never typed into.
+    expect(((await pack(employee.id)).body.data as HiringPackDto).contract?.created).toBe(true);
+    const held = await papersOf();
+    expect(held.papers[0]).toMatchObject({ key: contractTemplate.key, locked: true });
+    expect(held.papers[0]?.placeholders).toContain('employee.fullName');
+    expect(held.contractValues.find((v) => v.key === 'contract.endDate')?.value).toBe('14/11/2027');
+    expect(((await preview(contractTemplate.key)).body.data as { html: string }).html).toContain(
+      'عقد موظف المستندات من 15/11/2026 إلى 14/11/2027',
+    );
+
+    // A paper not theirs is refused; so is somebody who may not print.
+    expect((await preview(otherJobForm.key)).status).toBe(400);
+    expect((await save([], held.valuesVersion, aliceToken)).status).toBe(403);
+  });
+
+  /**
+   * «المعينون» (A28) — «كل اللي موجودين من موظفين فالشركه و بردو checkbox عشان لو هطبع لناس كتير فنفس
+   * الوقت». Each ticked employee with their own papers, as their tab lists them; ONE document; a paper
+   * not theirs never printed for them; one who cannot be printed for reported, the others printed.
+   */
+  it('prints for several employees at once — each their own papers, in one document (A28)', async () => {
+    const first = await employeeIn(jobId);
+    const second = await employeeIn(jobId);
+    const nobody = new Types.ObjectId().toHexString();
+
+    const opened = await request(app)
+      .post('/api/v1/hr/contracts/employees/bulk/open')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeIds: [first.id, second.id, nobody] });
+    expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+    const people = opened.body.data as EmployeeBulkPersonDto[];
+    expect(people.map((p) => p.employeeId)).toEqual([first.id, second.id, nobody]);
+    expect(people[0]).toMatchObject({ employeeName: 'موظف المستندات', employeeCode: first.code, error: null });
+    expect(people[0]?.jobTitle).toEqual({ ar: 'قائد طاقم', en: 'Crew leader' });
+    expect(people[0]?.papers[0]).toMatchObject({ key: contractTemplate.key, kind: 'contract' });
+    expect(people[0]?.papers.map((p) => p.key)).toContain(jobForm.key);
+    expect(people[0]?.papers.map((p) => p.key)).not.toContain(otherJobForm.key);
+    expect(people[2]).toMatchObject({ employeeId: nobody, papers: [] });
+    expect(people[2]?.error).not.toBeNull();
+
+    const printed = await request(app)
+      .post('/api/v1/hr/contracts/employees/bulk/render')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        people: [
+          // Another job's paper asked for too: never printed for this employee.
+          { employeeId: first.id, keys: [jobForm.key, otherJobForm.key] },
+          { employeeId: second.id, keys: [otherJobForm.key] },
+        ],
+      });
+    expect(printed.status, JSON.stringify(printed.body)).toBe(200);
+    const out = printed.body.data as RenderEmployeeBulkDto;
+    expect(out.results[0]).toEqual({ employeeId: first.id, printed: 1, error: null });
+    expect(out.results[1]).toMatchObject({ employeeId: second.id, printed: 0 });
+    expect(out.results[1]?.error).not.toBeNull();
+    expect(out.html.match(/class="form-doc"/g)).toHaveLength(1);
+    expect(out.html).toContain('إقرار موظف المستندات');
+  });
+
+  it('refuses the employees\' bulk print to a reader who may not print', async () => {
+    const res = await request(app)
+      .post('/api/v1/hr/contracts/employees/bulk/open')
+      .send({ employeeIds: [new Types.ObjectId().toHexString()] });
+    expect(res.status).toBe(401);
+  });
+
   it('publishes a form without a contract type, but not one printed for no job at all', async () => {
     const draft = await form({ name: { ar: 'نموذج بلا وظائف', en: 'For nobody' }, allJobs: false, jobTitleIds: [] });
     const res = await request(app)
@@ -1330,10 +1465,10 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     const before = res.body.data as JobPapersDto;
     expect(before.papers[0]?.key).toBe(key('contract'));
     expect(before.papers.map((p) => p.key)).toEqual(expect.arrayContaining([...ALL_JOBS, key('weapon'), key('card.atm-specialist')]));
-    const ops = before.departments.find((d) => d.departmentId === DEPARTMENT_ID);
+    const ops = before.departments.find((d) => d.departmentId === DEPARTMENT_KEY);
     expect(ops?.name.ar).toBe('العمليات');
     // His papers as the templates tick them: the weapon declaration only offered, so not ticked.
-    expect(lineOf(before, DEPARTMENT_ID, specialistJob)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
+    expect(lineOf(before, DEPARTMENT_KEY, specialistJob)).toEqual([...ALL_JOBS, key('card.atm-specialist')]);
     // Every active job, to add one to a department.
     expect(before.jobs.find((j) => j.jobTitleId === crewLeaderJob)?.keys).toContain(key('weapon'));
 
@@ -1345,9 +1480,9 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
       key('card.atm-specialist'),
       key('card.atm-crew-leader'),
     ];
-    const saved = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys }] });
+    const saved = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys }] });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    expect(lineOf(saved.body.data as JobPapersDto, DEPARTMENT_ID, specialistJob)).toEqual(keys);
+    expect(lineOf(saved.body.data as JobPapersDto, DEPARTMENT_KEY, specialistJob)).toEqual(keys);
 
     // The employee's papers and their printed set follow what was saved for their department and job.
     const papers = (
@@ -1360,16 +1495,16 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect(((await pack(employee.id)).body.data as HiringPackDto).documents.map((d) => d.key)).toEqual(keys);
 
     // A job added to a department nobody holds it in yet is listed there from now on.
-    const added = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: crewLeaderJob, keys: [key('contract'), key('weapon')] }] });
-    expect(lineOf(added.body.data as JobPapersDto, DEPARTMENT_ID, crewLeaderJob)).toEqual([key('contract'), key('weapon')]);
+    const added = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: crewLeaderJob, keys: [key('contract'), key('weapon')] }] });
+    expect(lineOf(added.body.data as JobPapersDto, DEPARTMENT_KEY, crewLeaderJob)).toEqual([key('contract'), key('weapon')]);
 
     // Saved again as it was: back to its templates' papers.
-    const back = await save({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys: lineOf(before, DEPARTMENT_ID, specialistJob) }] });
-    expect(lineOf(back.body.data as JobPapersDto, DEPARTMENT_ID, specialistJob)).toEqual(lineOf(before, DEPARTMENT_ID, specialistJob));
+    const back = await save({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys: lineOf(before, DEPARTMENT_KEY, specialistJob) }] });
+    expect(lineOf(back.body.data as JobPapersDto, DEPARTMENT_KEY, specialistJob)).toEqual(lineOf(before, DEPARTMENT_KEY, specialistJob));
 
     // An unpublished paper, an unknown department, an empty request and a user without the permission
     // are refused.
-    const line = (over: object) => ({ lines: [{ departmentId: DEPARTMENT_ID, jobTitleId: specialistJob, keys, ...over }] });
+    const line = (over: object) => ({ lines: [{ departmentId: DEPARTMENT_KEY, jobTitleId: specialistJob, keys, ...over }] });
     expect((await save(line({ keys: ['not.a.paper'] }))).status).toBe(400);
     expect((await save(line({ departmentId: '64b1f0cccccccccccccccc0e' }))).status).toBe(404);
     expect((await save({ lines: [] })).status).toBe(400);
@@ -1377,50 +1512,127 @@ describe('the owner\'s papers — written into the templates on boot (A27, stage
     expect((await save(line({}), aliceToken)).status).toBe(403);
   });
 
-  it('«مسميات الوظائف لدى التأمينات»: rows typed by hand; form 1 prints the matching row\'s title and code (A28)', async () => {
+  it('«مسميات الوظائف لدى التأمينات»: every job is a row; «تعديل» sets its insurance title and code, which form 1 prints (A28)', async () => {
     const read = async (token = adminToken) =>
       request(app).get('/api/v1/hr/contracts/insurance-job-titles').set('Authorization', `Bearer ${token}`);
-    const save = async (body: object, token = adminToken) =>
-      request(app).patch('/api/v1/hr/contracts/insurance-job-titles').set('Authorization', `Bearer ${token}`).send(body);
-    const row = (jobTitle: string, insuranceTitle = '', occupationCode = '') => ({ jobTitle, insuranceTitle, occupationCode });
+    const save = async (jobTitleId: string, body: object, token = adminToken) =>
+      request(app)
+        .patch(`/api/v1/hr/contracts/insurance-job-titles/${jobTitleId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+    const rowOf = (table: InsuranceJobTitlesDto) => table.rows.find((r) => r.jobTitleId === specialistJob);
 
+    // Every active job is a row, by name, with nothing kept for it yet.
     const res = await read();
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const empty = res.body.data as InsuranceJobTitlesDto;
-    expect(empty.rows).toEqual([]);
-    // The company's job titles are offered while ours is typed.
-    expect(empty.jobNames).toContain('أخصائى صراف آلى');
+    const table = res.body.data as InsuranceJobTitlesDto;
+    expect(rowOf(table)).toEqual({ jobTitleId: specialistJob, jobTitle: 'أخصائى صراف آلى', insuranceTitle: '', occupationCode: '' });
+    expect(table.rows.map((r) => r.jobTitleId)).toContain(crewLeaderJob);
+    const names = table.rows.map((r) => r.jobTitle);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'ar')));
 
-    // Typed as HR spells it — folded, it meets the job «أخصائى صراف آلى».
-    const saved = await save({
-      rows: [row(' اخصائي صراف الي ', ' فني صيانة ماكينات ', '742/115'), row('مندوب مبيعات', 'مندوب مبيعات', '123456')],
-    });
+    // «تعديل»: the insurance title and the occupation code.
+    const saved = await save(specialistJob, { insuranceTitle: ' فني صيانة ماكينات ', occupationCode: '742/115' });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
-    const table = saved.body.data as InsuranceJobTitlesDto;
-    expect(table.rows.map((r) => [r.jobTitle, r.insuranceTitle, r.occupationCode, r.matched])).toEqual([
-      ['اخصائي صراف الي', 'فني صيانة ماكينات', '742/115', true],
-      ['مندوب مبيعات', 'مندوب مبيعات', '123456', false],
-    ]);
+    expect(rowOf(saved.body.data as InsuranceJobTitlesDto)).toMatchObject({
+      jobTitle: 'أخصائى صراف آلى',
+      insuranceTitle: 'فني صيانة ماكينات',
+      occupationCode: '742/115',
+    });
 
-    // Form 1 prints the row's title and its code in the code's boxes; the contract keeps ours.
+    // Form 1 prints the insurance title and the code in its boxes; the contract keeps ours.
     const employee = await employeeIn(specialistJob);
     const html = ((await pack(employee.id)).body.data as HiringPackDto).html;
     expect(html).toContain('فني صيانة ماكينات');
-    expect(html).toContain('<span class="cells c3"><i>7</i><i>4</i><i>2</i></span> / <span class="cells c3"><i>1</i><i>1</i><i>5</i></span>');
+    // Each group of the code at its own boxes on his scanned page, in Arabic figures.
+    expect(html).toContain(
+      '<span class="at f1-occ1"><span class="cells c3"><i>٧</i><i>٤</i><i>٢</i></span></span>' +
+        '<span class="at f1-occ2"><span class="cells c3"><i>١</i><i>١</i><i>٥</i></span></span>',
+    );
     expect(html).toContain('بوظيفة ( أخصائى صراف آلى )');
 
-    // Taken off (left out of the table): form 1 prints the job's own name and empty code boxes.
-    const cleared = await save({ rows: [row('مندوب مبيعات', 'مندوب مبيعات', '123456')] });
-    expect((cleared.body.data as InsuranceJobTitlesDto).rows.map((r) => r.jobTitle)).toEqual(['مندوب مبيعات']);
+    // Both emptied: nothing kept — form 1 prints the job's own name and empty code boxes.
+    const cleared = await save(specialistJob, { insuranceTitle: '', occupationCode: '' });
+    expect(rowOf(cleared.body.data as InsuranceJobTitlesDto)).toMatchObject({ insuranceTitle: '', occupationCode: '' });
     const later = await employeeIn(specialistJob);
     expect(((await pack(later.id)).body.data as HiringPackDto).html).not.toContain('فني صيانة ماكينات');
 
-    // A title listed twice, a code form 1 cannot box, a row with no title and a user without the
+    // A code form 1 cannot box, our title sent to be changed, an unknown job and a user without the
     // permission are refused.
-    expect((await save({ rows: [row('سائق'), row('ســائق ')] })).status).toBe(400);
-    expect((await save({ rows: [row('سائق', '', '12a')] })).status).toBe(400);
-    expect((await save({ rows: [row('', 'x')] })).status).toBe(400);
+    expect((await save(specialistJob, { insuranceTitle: 'x', occupationCode: '12a' })).status).toBe(400);
+    expect((await save(specialistJob, { jobTitle: 'سائق', insuranceTitle: 'x', occupationCode: '' })).status).toBe(400);
+    expect((await save('64b1f0cccccccccccccccc0e', { insuranceTitle: 'x', occupationCode: '' })).status).toBe(404);
     expect((await read(aliceToken)).status).toBe(403);
-    expect((await save({ rows: [] }, aliceToken)).status).toBe(403);
+    expect((await save(specialistJob, { insuranceTitle: 'x', occupationCode: '' }, aliceToken)).status).toBe(403);
+  });
+});
+
+// «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: the register's status and type
+// take several values, one comma list each, ORed; a single value still parses.
+describe('the contracts register filters take several', () => {
+  it('lists by several types and several statuses at once', async () => {
+    await setContractsSetting(HrContractSettingKeys.RequireApproval, false);
+    const [typeA, typeB, typeC] = [await mkType(), await mkType(), await mkType()];
+    const templateA = (await publishedTemplate(typeA.id)).id;
+    const templateB = (await publishedTemplate(typeB.id)).id;
+    const templateC = (await publishedTemplate(typeC.id)).id;
+    const draftA = await mkDraft((await mkEmployee()).id, typeA.id, templateA);
+    const activeA = await generated(typeA.id, templateA);
+    expect(activeA.status).toBe('active');
+    const draftB = await mkDraft((await mkEmployee()).id, typeB.id, templateB);
+    const draftC = await mkDraft((await mkEmployee()).id, typeC.id, templateC);
+
+    const ids = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/contracts')
+        .query({ pageSize: 100, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as ContractDto[]).map((c) => c.id);
+    };
+
+    const twoTypes = await ids({ typeId: `${typeA.id},${typeB.id}` });
+    expect(twoTypes).toEqual(expect.arrayContaining([draftA.id, activeA.id, draftB.id]));
+    expect(twoTypes).not.toContain(draftC.id);
+    const oneType = await ids({ typeId: typeA.id });
+    expect(oneType).toEqual(expect.arrayContaining([draftA.id, activeA.id]));
+    expect(oneType).not.toContain(draftB.id);
+
+    expect(await ids({ typeId: typeA.id, status: 'draft,active' })).toEqual(
+      expect.arrayContaining([draftA.id, activeA.id]),
+    );
+    const drafts = await ids({ typeId: typeA.id, status: 'draft' });
+    expect(drafts).toContain(draftA.id);
+    expect(drafts).not.toContain(activeA.id);
+
+    const bad = await request(app)
+      .get('/api/v1/hr/contracts')
+      .query({ status: 'draft,nonsense' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bad.status).toBe(400);
+  });
+
+  // «ينتهي خلال 30 يومًا» is about live contracts: it narrows the statuses picked to the live ones
+  // among them. It used to REPLACE the picks — «مسودة» ticked with it listed active contracts.
+  it('narrows the expiring tick to the live statuses picked, rather than replacing them', async () => {
+    await setContractsSetting(HrContractSettingKeys.RequireApproval, false);
+    const type = await mkType();
+    const template = (await publishedTemplate(type.id)).id;
+    const soon = new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10);
+    const ending = await generate(await mkDraft((await mkEmployee()).id, type.id, template, { endDate: soon }));
+    expect(ending.status).toBe('active');
+    const ids = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/contracts')
+        .query({ pageSize: 100, typeId: type.id, expiringWithinDays: '30', ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as ContractDto[]).map((c) => c.id);
+    };
+
+    expect(await ids({})).toContain(ending.id);
+    expect(await ids({ status: 'active,draft' })).toContain(ending.id);
+    expect(await ids({ status: 'draft' })).not.toContain(ending.id);
+    expect(await ids({ status: 'signed' })).not.toContain(ending.id);
   });
 });

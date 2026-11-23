@@ -55,6 +55,8 @@ import {
   type ItAssetAssignmentDto,
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
+  type ItAssetImportPreviewDto,
+  type ItAssetImportResultDto,
   type ItAssetNamesDto,
   type ItAssetsBranchMoveResultDto,
   type ItMoveTargetsDto,
@@ -62,8 +64,13 @@ import {
   type ItDashboardActivityDto,
   type ItDashboardAssetsDto,
   type ItCatalogItemDto,
+  type CreateItLocation,
+  type ItLocationDto,
+  type ItLocationOptionDto,
+  type UpdateItLocation,
   type ItVendorDto,
   type ItPersonDto,
+  type ItRecipientDto,
   type ItTechniciansPageDto,
   type HandOverItAssets,
   type ItCustodyReceiptDocumentDto,
@@ -85,11 +92,14 @@ import {
   type UpdateItMobileLine,
   type CreateItConsumable,
   type IssueItConsumables,
+  type ItConsumableCartridgesDto,
   type ItConsumableDto,
   type ItConsumableIssueResultDto,
+  type ItPrinterCounterDto,
   type ItConsumableMemoDto,
   type ItConsumableMovementDto,
   type ItConsumableTransferResultDto,
+  type SetItConsumableInstalledOn,
   type TransferItConsumables,
   type ReceiveItConsumable,
   type ReturnItConsumable,
@@ -121,6 +131,11 @@ import {
   type QueryParams,
 } from '../../../shared/lib/api-client';
 import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
+import {
+  assetImportFields,
+  type AssetImportApply,
+  type AssetImportRequest,
+} from '../lib/asset-import';
 
 export type ItListParams = QueryParams;
 
@@ -148,10 +163,12 @@ export const listJobTitleOptions = (): Promise<OrgUnitOptionDto[]> =>
 
 // ── People: the employees IT names ──────────────────────────────────────────
 //
-// HR's facts, read by IT's OWN endpoint under IT's own grant (`itAsset.view`) — never HR's own
-// employee list under `employee.view`, which is the whole HR file. «يظهرله اسم الموظف من الاتش
-// ار كل المواظفين سواء اللى مشى او اللى موجود»: a technician names the people they hand laptops
-// to without being handed «الموظفون».
+// HR's facts, read by IT's OWN endpoint under IT's own grants — the read grant of any register that
+// names a holder (`itAsset.view`, `itMobileLine.view` or `itConsumable.view`, `IT_PEOPLE_GRANTS`) —
+// never HR's own employee list under `employee.view`, which is the whole HR file. «يظهرله اسم
+// الموظف من الاتش ار كل المواظفين سواء اللى مشى او اللى موجود»: a technician names the people they
+// hand laptops, lines or a mouse to without being handed «الموظفون». What each person holds of the
+// ASSETS (`openCustodyCount`) is counted only for a reader of the assets — 0 for anyone else.
 
 /** The employees register and the people behind every holder / requester filter. */
 export const listPeople = (params: ItListParams): Promise<Paginated<ItPersonDto>> =>
@@ -171,6 +188,16 @@ export const searchPeople = (
   pageSize = 8,
 ): Promise<Paginated<ItPersonDto>> =>
   listPeople({ search, status: includeExited ? 'all' : 'employed', pageSize });
+
+/**
+ * A hand-over's box (2026-11-18 — «أسمح إنه يعرف يسلم لحد فى فرع تاني»): whoever works here today,
+ * in EVERY branch, opened by the act's own grant (`itAsset.assign`, `itMobileLine.assign` or
+ * `itConsumable.assign`) rather than the registers' reads. The server forces the employed and
+ * ignores the command-bar branch; a row is a name, a code and the branch HR places the person in —
+ * nothing else. The answer is the list itself: no paging, a few names for what was typed.
+ */
+export const searchRecipients = (search: string, pageSize = 8): Promise<ItRecipientDto[]> =>
+  get<ItRecipientDto[]>(`/it/people/recipients${buildQuery({ search, pageSize })}`);
 
 /**
  * The IT departments' people — who a ticket may be assigned to (`it.technicianDepartmentIds`).
@@ -195,6 +222,31 @@ export const updateCatalogItem = (
   id: string,
   body: UpdateItCatalogItem,
 ): Promise<ItCatalogItemDto> => patch<ItCatalogItemDto>(`/it/catalog-items/${id}`, body);
+
+// ── Places — «المواقع» (2026-11-19) ─────────────────────────────────────────
+// Each branch's own list of places a department keeps what it holds at — «غرفة السيرفرات». The
+// catalogs page's tab and its writes ride `itCatalog.manage`; the pickers read names only
+// (`/options`), on any IT read that opens one.
+
+/** The catalogs page's tab: by branch, by status, by name or code. */
+export const listLocations = (params: ItListParams): Promise<Paginated<ItLocationDto>> =>
+  getPage<ItLocationDto>(`/it/locations${buildQuery(params)}`);
+
+/**
+ * Every branch's places, the retired ones too — ONE read the pickers filter by branch (and to the
+ * active ones), and every reader uses to name the place of an old row.
+ */
+export const listLocationOptions = (): Promise<ItLocationOptionDto[]> =>
+  get<ItLocationOptionDto[]>(`/it/locations/options${buildQuery({ includeInactive: true })}`);
+
+/** Where the create dialog may file a place: the branches `itCatalog.manage` reaches. */
+export const locationBranchTargets = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/locations/branch-targets');
+export const createLocation = (body: CreateItLocation): Promise<ItLocationDto> =>
+  post<ItLocationDto>('/it/locations', body);
+/** `isActive: false` retires it — refused (409) while assets are held there. */
+export const updateLocation = (id: string, body: UpdateItLocation): Promise<ItLocationDto> =>
+  patch<ItLocationDto>(`/it/locations/${id}`, body);
 
 // ── Vendors (design §2.9) ───────────────────────────────────────────────────
 export const listVendors = (params: ItListParams): Promise<Paginated<ItVendorDto>> =>
@@ -262,13 +314,53 @@ export const moveAssetsToBranch = (
   post<ItAssetsBranchMoveResultDto>('/it/assets/move-branch', body);
 
 /**
- * Where «نقل إلى فرع» and «تحويل إلى فرع» may go: the active branches the caller's `itAsset.assign`
- * reaches WHOLE — the server's own test, the one both actions apply before they write. Only the
- * server can say it: `me` carries the reach of all the account's grants, not of this one key, so a
- * picker built from it offered branches the action then refused with 403.
+ * Where «نقل إلى فرع» may take assets: the active branches the caller's `itAsset.assign` reaches
+ * WHOLE — the server's own test, the one the move applies before it writes. Only the server can
+ * say it: `me` carries the reach of all the account's grants, not of this one key, so a picker
+ * built from it offered branches the action then refused with 403. The consumables' «تحويل إلى
+ * فرع» asks its own (`consumableTransferTargets`), under its own grant.
  */
 export const moveTargets = (): Promise<ItMoveTargetsDto> =>
   get<ItMoveTargetsDto>('/it/assets/move-targets');
+
+// ── «رفع جماعي» — the register's bulk upload ────────────────────────────────
+// «ويكون فى Preview الأول للى هيتضاف»: ONE endpoint, posted twice with the SAME `File` — without
+// `apply` it is the preview (nothing written); with it, the lines kept and the preview's two
+// hashes, refused (409) when the file or the plan changed since, so what is written is what was
+// seen. Nothing is held on the server in between.
+
+const assetImportForm = (file: File, request: AssetImportRequest): FormData => {
+  const form = new FormData();
+  // The text fields before the file part, so the server holds them when the file arrives.
+  for (const [name, value] of assetImportFields(request)) form.append(name, value);
+  form.append('file', file);
+  return form;
+};
+
+/** Read the sheet and plan every line against the register — writes nothing. */
+export const previewAssetImport = (
+  file: File,
+  request: Omit<AssetImportRequest, 'apply'>,
+): Promise<ItAssetImportPreviewDto> =>
+  upload<ItAssetImportPreviewDto>('/it/assets/import', assetImportForm(file, request));
+
+/**
+ * The branches the upload may register in: the active branches the caller's `itAsset.create`
+ * reaches, as the server judges it (the upload answers 403 for any other) — `me` carries the reach
+ * of all the account's grants, not of this one key.
+ */
+export const assetImportBranches = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/assets/import/branches');
+
+/** Write the lines kept — only if the file and the plan are still the ones previewed. */
+export const applyAssetImport = (
+  file: File,
+  request: Omit<AssetImportRequest, 'apply' | 'branchId'> & {
+    branchId: string;
+    apply: AssetImportApply;
+  },
+): Promise<ItAssetImportResultDto> =>
+  upload<ItAssetImportResultDto>('/it/assets/import', assetImportForm(file, request));
 
 // ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
 // Printed BEFORE the hand-over (`preview` writes nothing), recorded WITH it (`handOver` opens the
@@ -445,6 +537,15 @@ export const transferConsumables = (
   post<ItConsumableTransferResultDto>('/it/consumables/transfer', body);
 
 /**
+ * Where that transfer may go: the active branches the caller's `itConsumable.assign` reaches WHOLE,
+ * by the very test the transfer applies before it writes — the assets' `moveTargets` under the
+ * store's own custody grant (2026-11-17), so a keeper of the store who holds no asset grant is
+ * offered every branch they may send to, and nothing the transfer would refuse.
+ */
+export const consumableTransferTargets = (): Promise<ItMoveTargetsDto> =>
+  get<ItMoveTargetsDto>('/it/consumables/transfer-targets');
+
+/**
  * The ledger across items, newest first, each row labelled — the movements screen, one item's
  * movements (`consumableId`), what an asset had installed on it (`assetId`) and what a person was
  * handed or gave back (`employeeId`).
@@ -453,6 +554,40 @@ export const listConsumableMovements = (
   params: ItListParams,
 ): Promise<Paginated<ItConsumableMovementDto>> =>
   getPage<ItConsumableMovementDto>(`/it/consumable-movements${buildQuery(params)}`);
+
+/**
+ * «تعديل الجهاز» (2026-11-17) — the device an ISSUED unit sits in, corrected after the issue: the
+ * ledger's one correctable fact, because it moves no quantity. `assetId: null` is «بدون جهاز»; the
+ * row's `version` rides along, so a change somebody made first answers 409. The memo's line follows
+ * it — a reprint prints the new device — and its signed copy stays as filed. Answers the row as the
+ * ledger now shows it.
+ */
+export const setConsumableInstalledOn = (
+  id: string,
+  body: SetItConsumableInstalledOn,
+): Promise<ItConsumableMovementDto> =>
+  patch<ItConsumableMovementDto>(`/it/consumable-movements/${id}/installed-on`, body);
+
+// «عداد الطابعة» (2026-11-19) — «عايز يبقى فى Counter لعدد لورق المطبوع للطابعة اللى بيركب عليها
+// الحبارة»: the readings typed as each toner went in, and the pages each cartridge printed — both
+// computed by the server over the printer's whole timeline, every store's issues included, and
+// answered as one object rather than a page (the pairing needs every row).
+
+/**
+ * One printer's counter, newest first: each reading with the toner it was taken with and the
+ * cartridge of the same item it replaced. `latest` is what «صرف» shows under the reading box. Read
+ * under `itAsset.view` — a fact of the printer.
+ */
+export const getPrinterCounter = (assetId: string): Promise<ItPrinterCounterDto> =>
+  get<ItPrinterCounterDto>(`/it/assets/${assetId}/counter-readings`);
+
+/**
+ * One toner item's cartridges, newest first — each with the printer it went into, the reading it
+ * went in at, the reading it was replaced at and the pages between — and the average over those
+ * whose pages are known. Read under `itConsumable.view`.
+ */
+export const getConsumableCartridges = (id: string): Promise<ItConsumableCartridgesDto> =>
+  get<ItConsumableCartridgesDto>(`/it/consumables/${id}/cartridges`);
 
 // The memo (مذكرة صرف مستهلكات): recorded by the issue, printed again any time with the same
 // number, and the employee's signed copy filed against it — the line acknowledgment's steps.

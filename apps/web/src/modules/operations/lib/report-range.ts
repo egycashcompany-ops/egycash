@@ -16,7 +16,7 @@ export interface ReportRange {
 
 /**
  * The current month, both bounds inclusive — the legacy default, and the owner's for the vault
- * roll-up («ويجيب البداية كل اول شهر»).
+ * roll-up, «تقرير البنوك» («ويجيب البداية كل اول شهر»).
  *
  * The month is CAIRO's, not UTC's: the desk's calendar turns at Cairo's midnight, two or three
  * hours before UTC's, and the server judges the vault's receipts on Cairo days. Read off the UTC

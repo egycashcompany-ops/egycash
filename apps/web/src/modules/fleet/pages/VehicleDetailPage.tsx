@@ -1,6 +1,6 @@
 // Vehicle profile (FW-4, legacy /one_car): everything the platform knows about one car, all of
 // it live server facts — identity and license from the registry, the type's maintenance rule
-// from the catalog, the DERIVED workshop flag, the expected odometer reading, the FR-3 alarm
+// from the catalog, the DERIVED workshop flag, the last odometer reading, the FR-3 alarm
 // projection, and the last closed maintenance visit. Each indicator gates its own §7 permission
 // so nothing is fetched the caller may not see. Edit and status changes reuse the FW-3 dialogs
 // (version-aware against the freshly loaded document). The history links to odometer,
@@ -15,16 +15,16 @@ import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
-import { formatDate, formatDateTime, formatNumber, localized } from '../../../shared/lib/format';
+import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
-import { useBranchOptions } from '../../organization/shared/references';
+import { useBranchNames } from '../../organization/shared/references';
 import {
-  useExpectedReading,
   useFleetCatalog,
   useRosterDay,
   useCanReadAlarms,
   useMaintenanceAlarms,
   useAccidents,
+  useLatestReadings,
   useMaintenanceVisits,
   useOdometerLogs,
   useVehicle,
@@ -32,10 +32,16 @@ import {
   useViolations,
 } from '../api/fleet-queries';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
+import {
+  InWorkshopBadge,
+  LICENCE_STATE_KEY,
+  VehicleStatusBadge,
+} from '../components/VehicleStatusBadge';
 import { fetchVehicleLicenseImage } from '../api/fleet-api';
 import { printLicenceRecord } from '../components/vehicle-print';
 import { BoardIcon } from '../components/FuelCardBoard';
+import { cardReadingOf, licenceState } from '../lib/vehicle-card';
+import { useLicenceWarnDays } from '../lib/licence-warn-days';
 import {
   PROFILE_ICON,
   RecordRow,
@@ -103,14 +109,56 @@ const HISTORY_LINKS: {
     key: 'roster',
     icon: PROFILE_ICON.person,
     // The roster board is day-keyed and filtered in the browser, so the pre-filter is the car's
-    // code in the board's own car filter (`q`). Known difference, left as the board has it: that
-    // filter matches a code CONTAINING the one picked (`matchesVehicleCode`, the same as picking
-    // the car on the board itself), so a short code also shows longer ones — 21 shows 121 and 210.
+    // code in the board's own car filter (`q`), which matches each picked code WHOLE
+    // (`isAnyVehicleCode`, the server's rule) — 21 shows car 21 alone, not 121 and 210.
     to: (v) => `/fleet/roster?q=${encodeURIComponent(v.code)}`,
     permission: 'fleetRoster.view',
     shipped: true, // FW-7
   },
 ];
+
+/** The licence date and its tag in the state's colour — red run out, amber close, green valid. */
+const LICENCE_DATE_TONE: Record<keyof typeof LICENCE_STATE_KEY, string> = {
+  expired: 'text-red-500 dark:text-red-400',
+  soon: 'text-amber-600 dark:text-amber-400',
+  valid: 'text-slate-900 dark:text-white',
+};
+const LICENCE_TAG_TONE: Record<keyof typeof LICENCE_STATE_KEY, string> = {
+  expired: 'border-red-500/20 bg-red-500/10 text-red-500 dark:text-red-400',
+  soon: 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  valid: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+};
+
+/**
+ * The page's figures and dates in Latin digits — the whole page body, consistently.
+ *
+ * Owner, 2026-11-22 («صلحهم»): the car page wrote its kilometres «٥٠٬٠٠٠» and its dates
+ * «١٠‏/٠٨‏/٢٠٢٦» (the shared `formatNumber` / `formatDate` speak ar-EG), while the vehicles list
+ * beside it and the rest of the system write their figures in Latin digits. Page-local on purpose:
+ * the shared helpers keep their other readers. Dates keep `formatDate`'s and `formatDateTime`'s
+ * styles and the browser's clock, as they had — only the digits change (`-u-nu-latn`); a missing
+ * or unreadable date is «—», as theirs is. The printed sheet (`printReport`) is not the page body
+ * and keeps the shared `formatDate`, as the registry's own print does.
+ */
+const LATIN_NUMBER = new Intl.NumberFormat('en-US');
+const latinNumber = (value: number | null): string =>
+  value === null ? '—' : LATIN_NUMBER.format(value);
+const LATIN_DATE: Record<Locale, Intl.DateTimeFormat> = {
+  ar: new Intl.DateTimeFormat('ar-EG-u-nu-latn', { dateStyle: 'medium' }),
+  en: new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }),
+};
+const LATIN_DATE_TIME: Record<Locale, Intl.DateTimeFormat> = {
+  ar: new Intl.DateTimeFormat('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' }),
+  en: new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }),
+};
+const latinWhen = (format: Intl.DateTimeFormat, value: string | null): string => {
+  const date = value === null ? null : new Date(value);
+  return date === null || Number.isNaN(date.getTime()) ? '—' : format.format(date);
+};
+const latinDate = (value: string | null, locale: Locale): string =>
+  latinWhen(LATIN_DATE[locale], value);
+const latinDateTime = (value: string | null, locale: Locale): string =>
+  latinWhen(LATIN_DATE_TIME[locale], value);
 
 export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
   const t = useT();
@@ -123,7 +171,12 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
   // behind a log permission.
   const canAlarms = useCanReadAlarms();
 
-  const expected = useExpectedReading(vehicle.id, canOdometer);
+  // «آخر قراءة عداد» — the NEWEST reading on the car's chain, as the odometer register lists it
+  // first and the car card says it; the HIGHEST (the alarm's figure, and the floor the server
+  // expects the next reading above) is named under it only when it is another figure. The tile
+  // used to print the highest under «آخر قراءة عداد», so a chain that went backwards showed a
+  // reading the register's first row does not carry.
+  const latest = useLatestReadings(canOdometer);
   const alarms = useMaintenanceAlarms();
   const lastVisit = useMaintenanceVisits(
     { vehicleId: vehicle.id, open: false, pageSize: 1, sortBy: 'outDate', sortDir: 'desc' },
@@ -149,9 +202,9 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
         ? undefined
         : alarm.remainingKm < 0
           ? t('fleet.dashboard.overdueKm', {
-              km: formatNumber(Math.abs(alarm.remainingKm), locale),
+              km: latinNumber(Math.abs(alarm.remainingKm)),
             })
-          : t('fleet.dashboard.remainingKm', { km: formatNumber(alarm.remainingKm, locale) });
+          : t('fleet.dashboard.remainingKm', { km: latinNumber(alarm.remainingKm) });
   const visit = lastVisit.data?.items[0];
   /**
    * The service this tile names must be the one the countdown beside it is measured FROM.
@@ -180,12 +233,12 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
     alarm !== undefined
       ? alarm.lastServiceAt === null
         ? t('fleet.vehicle.noService')
-        : formatDate(alarm.lastServiceAt, locale)
+        : latinDate(alarm.lastServiceAt, locale)
       : alarms.data === undefined || lastVisit.data === undefined
         ? undefined
         : visit?.outDate == null
           ? t('fleet.vehicle.noService')
-          : formatDate(visit.outDate, locale);
+          : latinDate(visit.outDate, locale);
 
   // The caption under the alarm figure: amber when it names a reason or a coming service, red
   // once the service is overdue.
@@ -197,7 +250,10 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
         : alarm.noAlarmReason !== null || alarm.level !== 'none'
           ? 'text-amber-500/90'
           : undefined;
-  const reading = expected.data?.expectedReading;
+  const reading =
+    latest.data === undefined
+      ? undefined
+      : cardReadingOf(latest.data.find((row) => row.vehicleId === vehicle.id));
 
   return (
     <section
@@ -217,14 +273,20 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
           hoverTone="group-hover:border-blue-500/30 group-hover:text-blue-400"
           label={t('fleet.vehicle.lastReading')}
           value={
-            expected.data === undefined
+            reading === undefined
               ? undefined
-              : reading === null || reading === undefined
+              : reading.kind !== 'reading'
                 ? t('fleet.vehicle.noReadings')
-                : formatNumber(reading, locale)
+                : latinNumber(reading.km)
           }
-          unit={reading === null || reading === undefined ? undefined : t('fleet.vehicle.km')}
-          caption={t('fleet.vehicle.lastReadingHint')}
+          unit={reading?.kind === 'reading' ? t('fleet.vehicle.km') : undefined}
+          caption={
+            reading?.kind === 'reading' && reading.highest !== null
+              ? t('fleet.vehicle.highestReading', {
+                  km: latinNumber(reading.highest.km),
+                })
+              : t('fleet.vehicle.lastReadingHint')
+          }
         />
       )}
       {canAlarms && (
@@ -251,10 +313,7 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
                 // closed before that reading was collected carry `null` and fall back to the
                 // arrival reading, which is what those rows have always shown.
                 t('fleet.vehicle.lastServiceAt', {
-                  km: formatNumber(
-                    baselineVisit.exitOdometer ?? baselineVisit.odometerAtService,
-                    locale,
-                  ),
+                  km: latinNumber(baselineVisit.exitOdometer ?? baselineVisit.odometerAtService),
                 })
           }
         />
@@ -267,11 +326,13 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
  * How many records each history row leads to — the list's own total for this car, asked with a
  * one-row page so nothing but the count travels. Each is asked only under its own permission.
  *
- * The odometer's count asks with the very car filter its link sends — the CODE
- * (`vehicleCodes`), not the id. The screen matches a code against the registry car AND against
- * readings kept from the old book under that code with no car attached (`byVehicleOrBookCode`);
- * counted by id, a car that joined the registry after the book import would promise fewer
- * readings than «العدادات» then lists.
+ * The odometer's, the maintenance's and the accidents' counts ask with the very car filter their
+ * links send — the CODE (`vehicleCodes`), not the id. The three screens match a code against the
+ * registry car AND against rows kept from the old book under that code with no car attached
+ * (`byVehicleOrBookCode`; the accidents' `vehicleClause`); counted by id, a car that joined the
+ * registry after the book import would promise fewer readings, visits or accidents than
+ * «العدادات», «الصيانة» or «الحوادث» then lists (2 beside the screen's 3) — and a car whose only
+ * accident is an old-book file read «سجل نظيف» above a list holding it (owner, 2026-11-22).
  */
 const useHistoryCounts = (
   vehicleId: string,
@@ -283,8 +344,14 @@ const useHistoryCounts = (
     { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
     can('fleetOdometer.view') && vehicleCode !== '',
   );
-  const maintenance = useMaintenanceVisits(one, can('fleetMaintenance.view') && vehicleId !== '');
-  const accidents = useAccidents(one, can('fleetAccident.view') && vehicleId !== '');
+  const maintenance = useMaintenanceVisits(
+    { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
+    can('fleetMaintenance.view') && vehicleCode !== '',
+  );
+  const accidents = useAccidents(
+    { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
+    can('fleetAccident.view') && vehicleCode !== '',
+  );
   const violations = useViolations(one, can('fleetViolation.view') && vehicleId !== '');
   return {
     ...(odometer.data === undefined ? {} : { odometer: odometer.data.meta.totalItems }),
@@ -310,7 +377,12 @@ export const VehicleDetailPage = (): JSX.Element => {
   })();
   const rosterToday = useRosterDay(can('fleetRoster.view') ? today : '');
   const types = useVehicleTypes();
-  const { data: branches = [] } = useBranchOptions();
+  // The car's branch is named from every branch WITH the closed ones: a car keeps the branch it was
+  // given after that branch closes, and the dashboard and the vehicles list name it — the active
+  // list alone printed «—» here.
+  const { data: branches = [] } = useBranchNames();
+  // «ينتهي قريبًا» inside the warning days the admin set, as the vehicles list colours it.
+  const warnDays = useLicenceWarnDays().vehicle;
   // The three catalog references, resolved to names from the same cached per-kind lists the
   // registry's columns and the form's selects read — one request per kind for the whole app.
   const licenseClasses = useFleetCatalog('licenseClass');
@@ -349,7 +421,12 @@ export const VehicleDetailPage = (): JSX.Element => {
   const licenseClassName = catalogName(licenseClasses.data, vehicle.licenseClassId);
   const operationName = catalogName(operations.data, vehicle.operationId);
   const insurerName = catalogName(insurers.data, vehicle.insuranceCompanyId);
-  const licenseExpired = new Date(vehicle.licenseExpiresAt).getTime() < Date.now();
+  // Where the licence stands by the CAIRO day — expired ON its expiry day, «ينتهي قريبًا» inside the
+  // warning days — as the vehicles list, the car card and the dashboard say it. It compared the
+  // stored instant with the clock, and a licence running out today read «سارية» here while the
+  // dashboard row that opened this page said «منتهٍ اليوم».
+  const licence = licenceState(vehicle.licenseExpiresAt, warnDays);
+  const licenceTone = licence === 'unknown' ? 'valid' : licence;
   const historyLinks = HISTORY_LINKS.filter((link) => link.shipped && can(link.permission));
 
   const todayRow = rosterToday.data?.rows.find((row) => row.vehicleId === vehicle.id);
@@ -378,7 +455,8 @@ export const VehicleDetailPage = (): JSX.Element => {
           'border-emerald-500/20 bg-emerald-500/10 font-medium text-emerald-600 dark:text-emerald-400',
       };
     }
-    return { tag: t(`fleet.vehicle.count.${key}`, { count: String(n) }) };
+    // Grouped like every other figure on the page («1,234 قراءة»), in Latin digits.
+    return { tag: t(`fleet.vehicle.count.${key}`, { count: latinNumber(n) }) };
   };
   const make = type === undefined ? '—' : localized(type.name, locale);
   /** «طباعة التقرير»: the car's whole file, the same sheet the registry's print button opens. */
@@ -555,10 +633,10 @@ export const VehicleDetailPage = (): JSX.Element => {
             footer={
               <>
                 <span>
-                  {t('fleet.vehicle.createdAt')}: {formatDateTime(vehicle.createdAt, locale)}
+                  {t('fleet.vehicle.createdAt')}: {latinDateTime(vehicle.createdAt, locale)}
                 </span>
                 <span>
-                  {t('fleet.vehicle.updatedAt')}: {formatDateTime(vehicle.updatedAt, locale)}
+                  {t('fleet.vehicle.updatedAt')}: {latinDateTime(vehicle.updatedAt, locale)}
                 </span>
               </>
             }
@@ -571,30 +649,21 @@ export const VehicleDetailPage = (): JSX.Element => {
                 ? '—'
                 : type.maintenanceIntervalKm === 0
                   ? t('fleet.vehicle.noMaintenanceRule')
-                  : `${formatNumber(type.maintenanceIntervalKm, locale)} ${t('fleet.vehicle.km')}`}
+                  : `${latinNumber(type.maintenanceIntervalKm)} ${t('fleet.vehicle.km')}`}
             </VehicleItem>
             <VehicleItem label={t('fleet.vehicles.fields.licenseExpiresAt')}>
               <span className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    licenseExpired
-                      ? 'text-red-500 dark:text-red-400'
-                      : 'text-slate-900 dark:text-white',
-                  )}
-                >
-                  {formatDate(vehicle.licenseExpiresAt, locale)}
+                <span className={LICENCE_DATE_TONE[licenceTone]}>
+                  {latinDate(vehicle.licenseExpiresAt, locale)}
                 </span>
                 <span
+                  data-vehicle-licence-state={licenceTone}
                   className={cn(
                     'rounded border px-2 py-0.5 text-[11px] font-medium',
-                    licenseExpired
-                      ? 'border-red-500/20 bg-red-500/10 text-red-500 dark:text-red-400'
-                      : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                    LICENCE_TAG_TONE[licenceTone],
                   )}
                 >
-                  {licenseExpired
-                    ? t('fleet.dashboard.licenseExpired')
-                    : t('fleet.vehicle.licenseValid')}
+                  {t(LICENCE_STATE_KEY[licenceTone])}
                 </span>
               </span>
             </VehicleItem>
@@ -610,7 +679,7 @@ export const VehicleDetailPage = (): JSX.Element => {
               {vehicle.insuranceCompanyId === null ? '—' : (insurerName ?? '—')}
             </VehicleItem>
             <VehicleItem label={t('fleet.vehicles.fields.joinedAt')}>
-              {formatDate(vehicle.joinedAt, locale)}
+              {latinDate(vehicle.joinedAt, locale)}
             </VehicleItem>
             <VehicleItem label={t('fleet.vehicles.fields.branch')}>
               {vehicle.branchId === null

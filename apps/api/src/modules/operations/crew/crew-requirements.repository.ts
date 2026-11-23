@@ -22,6 +22,26 @@ class OperationsCrewRequirementsRepository extends BaseRepository<OperationsCrew
       .exec();
   }
 
+  /**
+   * The rows of these employees, in ONE read — the crew saves' slot rule (Round 23) asks about
+   * everybody a save puts on a row at once, never one person at a time. Somebody with no row is
+   * simply not in the answer.
+   */
+  async findByEmployees(
+    employeeIds: readonly string[],
+    session?: ClientSession,
+  ): Promise<OperationsCrewRequirementsDoc[]> {
+    if (employeeIds.length === 0) return [];
+    return this.model
+      .find({
+        employeeId: { $in: employeeIds.map((id) => new Types.ObjectId(id)) },
+        isDeleted: false,
+      })
+      .session(session ?? null)
+      .lean<OperationsCrewRequirementsDoc[]>()
+      .exec();
+  }
+
   /** The whole roster — the crew board's pool. Small by nature: one desk's operations staff. */
   async findAll(): Promise<OperationsCrewRequirementsDoc[]> {
     return this.model

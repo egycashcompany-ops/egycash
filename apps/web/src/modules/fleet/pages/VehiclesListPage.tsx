@@ -9,6 +9,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  cairoYmd,
   type FleetCatalogKind,
   type FleetVehicleDto,
   type Locale,
@@ -43,7 +44,7 @@ import { EyeIcon, PrinterIcon, WrenchIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
-import { useBranchOptions } from '../../organization/shared/references';
+import { useBranchNames } from '../../organization/shared/references';
 import {
   useAllVehicles,
   useDeleteVehicle,
@@ -76,6 +77,7 @@ import { fetchVehicleLicenseImage } from '../api/fleet-api';
 import { chosenSorts, clickChosenSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { licenceMonthOptions } from '../lib/licence-months';
+import { useLicenceWarnDays } from '../lib/licence-warn-days';
 import { expiryWindowLabel, expiryWindowQuery } from '../lib/vehicle-set-params';
 import { BreakdownCard, FigureChip } from '../components/FleetFigures';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
@@ -102,6 +104,44 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
+
+/** The registry's cars of the chosen statuses — every car when none is chosen, as the table. */
+export const ofStatuses = <V extends Pick<FleetVehicleDto, 'status'>>(
+  vehicles: readonly V[],
+  statuses: readonly string[],
+): V[] =>
+  statuses.length === 0
+    ? [...vehicles]
+    : vehicles.filter((vehicle) => statuses.includes(vehicle.status));
+
+/**
+ * «الإحصائيات» across the top — over the whole registry, whatever the filters narrow the table to.
+ *
+ * The licence counters say what the dashboard says, by its rule:
+ * - «تراخيص منتهية»: active cars whose licence has run out by the CAIRO day — expired ON its
+ *   expiry day (`expiryState`, the dashboard's «تراخيص سيارات منتهية» and its link's
+ *   `licExpBefore`). It compared the stored instant with the clock, and for the first hours of a
+ *   Cairo day missed every car whose licence ran out that day (3 beside the dashboard's 5).
+ * - «تراخيص تنتهي هذا الشهر»: ACTIVE cars, in the Cairo month — the dashboard's «هذا الشهر»
+ *   column and the `status=active` its link opens. It counted every status, and in the browser's
+ *   UTC month, which at 01:30 on the 1st in Cairo is still last month.
+ */
+export const registryFiguresOf = (
+  items: readonly Pick<FleetVehicleDto, 'status' | 'licenseExpiresAt' | 'inWorkshop'>[],
+  warnDays: number,
+  now = Date.now(),
+): { total: number; active: number; thisMonth: number; expired: number; workshop: number } => {
+  const thisMonth = cairoYmd(new Date(now)).slice(0, 7);
+  const active = items.filter((v) => v.status === 'active');
+  return {
+    total: items.length,
+    active: active.length,
+    thisMonth: active.filter((v) => v.licenseExpiresAt?.slice(0, 7) === thisMonth).length,
+    expired: active.filter((v) => expiryState(v.licenseExpiresAt, warnDays, now) === 'expired')
+      .length,
+    workshop: items.filter((v) => v.inWorkshop).length,
+  };
+};
 
 /** Build an id → localized-name map from a catalog list, for the table's reference columns. */
 const nameMap = (
@@ -189,27 +229,21 @@ export const VehiclesListPage = (): JSX.Element => {
   // The whole registry, for the months its licences run out in (cached with the code picker's).
   const wholeRegistry = useAllVehicles({ anyStatus: true });
   const signatories = useReportSignatories();
+  // «ينتهي قريبًا» inside the warning days the admin set in «إعدادات الحركة» — the days the
+  // dashboard counts «تنتهي خلال N يومًا» with, so a car it counts there is amber here too.
+  const warnDays = useLicenceWarnDays().vehicle;
   // The figures across the top — the whole registry, whatever the filters narrow the table to.
-  const registryFigures = useMemo(() => {
-    const items = wholeRegistry.data?.items ?? [];
-    const thisMonth = new Date().toISOString().slice(0, 7);
-    const now = Date.now();
-    return {
-      total: items.length,
-      active: items.filter((v) => v.status === 'active').length,
-      thisMonth: items.filter((v) => v.licenseExpiresAt?.slice(0, 7) === thisMonth).length,
-      expired: items.filter(
-        (v) =>
-          v.status === 'active' &&
-          v.licenseExpiresAt !== null &&
-          new Date(v.licenseExpiresAt).getTime() < now,
-      ).length,
-      workshop: items.filter((v) => v.inWorkshop).length,
-    };
-  }, [wholeRegistry.data]);
+  const registryFigures = useMemo(
+    () => registryFiguresOf(wholeRegistry.data?.items ?? [], warnDays),
+    [wholeRegistry.data, warnDays],
+  );
+  // «شهر انتهاء الترخيص» counts the cars of the statuses the bar has chosen — the cars the table
+  // lists for that month — not the whole registry: the dashboard's column «3» (active cars) opens
+  // this screen on `status=active`, and the option beside it said «(5)».
+  const statusesKey = statuses.join(',');
   const monthOptions = useMemo(
-    () => licenceMonthOptions(wholeRegistry.data?.items ?? [], locale),
-    [wholeRegistry.data, locale],
+    () => licenceMonthOptions(ofStatuses(wholeRegistry.data?.items ?? [], statuses), locale),
+    [wholeRegistry.data, statusesKey, locale],
   );
   const legacyNamesAVehicle = legacyCodeNamesAVehicle(legacyLookup.data?.items ?? [], legacyCode);
   useEffect(() => {
@@ -319,11 +353,14 @@ export const VehiclesListPage = (): JSX.Element => {
       insurance: tally(insurers.data?.items, (v) => v.insuranceCompanyId),
     };
   }, [wholeRegistry.data, licenseClasses.data, operations.data, insurers.data, locale, t]);
-  // Branch NAMES come from `/platform/branches/options`, which is authenticated but NOT gated on
-  // `branch.view`. Naming the branch a vehicle already shows is not browsing the directory — and
-  // reading it from the gated list is what printed a dash in the column, the export and the print
-  // for a reader whose fleet grants reach the whole company.
-  const { data: branches = [] } = useBranchOptions();
+  // Branch NAMES come from the branch names WITH the closed ones (`useBranchNames`), which is
+  // authenticated but NOT gated on `branch.view`. Naming the branch a vehicle already shows is not
+  // browsing the directory — and reading it from the gated list is what printed a dash in the
+  // column, the export and the print for a reader whose fleet grants reach the whole company. Not
+  // from the ACTIVE list either: a car keeps the branch it was given after that branch closes, and
+  // the dashboard names it («فرع هـ 1»), so the list its link opens must not print «—» for it. The
+  // branch PICKER keeps offering the active branches only (`BranchFilterSelect`).
+  const { data: branches = [] } = useBranchNames();
   const branchName = useMemo(() => nameMap(branches, locale), [branches, locale]);
 
   const [formOpen, setFormOpen] = useState(false);
@@ -678,7 +715,7 @@ export const VehiclesListPage = (): JSX.Element => {
       header: t('fleet.vehicles.columns.license'),
       sortable: true,
       render: (v) => {
-        const state = expiryState(v.licenseExpiresAt, 30);
+        const state = expiryState(v.licenseExpiresAt, warnDays);
         return (
           <span className="inline-flex items-center gap-1.5">
             <span
@@ -1262,7 +1299,7 @@ export const VehiclesListPage = (): JSX.Element => {
                   <span dir="ltr" className={cn('font-semibold text-slate-900 dark:text-slate-100', NUM)}>
                     {ymd(v.licenseExpiresAt)}
                   </span>
-                  <LicenceTag state={expiryState(v.licenseExpiresAt, 30)} />
+                  <LicenceTag state={expiryState(v.licenseExpiresAt, warnDays)} />
                 </span>
               }
               image={columns.find((c) => c.key === 'licenseImage')?.render(v, 0)}
@@ -1335,13 +1372,15 @@ const DARK_BAR = DARK_FILTER_BAR;
 
 /**
  * The one monospace these tables still meet: the shared error panel's request id (`ErrorState`
- * writes it `font-mono` — Consolas on Windows, a struck zero), drawn in a cell across the row when
- * a board's list fails. Set here in the figures' face («الارقام ال0 … ميكونش جوا شرطه») and at the
- * sizes it had when these tables sized `.font-mono` with their figures. The shared panel itself is
- * left as the other modules have it.
+ * writes it `font-mono` — Consolas on Windows, a struck zero — in English; Arabic draws only its
+ * name and the copy button), drawn in a cell across the row when a board's list fails. The id is
+ * set here in the figures' face («الارقام ال0 … ميكونش جوا شرطه»); the SIZE goes to the whole
+ * reference line (`data-error-reference`), so its name and the id are one size — and a quiet one,
+ * never above the 14px message over it: 13px from 1750px, the 12.5px the line had below. The
+ * shared panel itself is left as the other modules have it.
  */
 export const ERROR_ID_AS_FIGURES =
-  "[&_td_.font-mono]:[font-family:Azeret_Mono,'Cairo',ui-sans-serif,sans-serif] min-[1750px]:[&_td_.font-mono]:!text-base max-[1749px]:[&_td_.font-mono]:!text-[12.5px]";
+  "[&_td_.font-mono]:[font-family:Azeret_Mono,'Cairo',ui-sans-serif,sans-serif] min-[1750px]:[&_td_[data-error-reference]]:!text-[13px] max-[1749px]:[&_td_[data-error-reference]]:!text-[12.5px]";
 
 /** The fuel screens' dark table, laid over `DataTable` — the drivers screen's too. */
 export const DARK_TABLE = cn(
@@ -1383,7 +1422,6 @@ export const PLAIN_CELLS = '[&_tbody_td]:!font-normal [&_tbody_td_*]:!font-norma
  */
 const WRAPS_ON_LAPTOP = 'max-[1749px]:!whitespace-normal max-[1749px]:leading-snug';
 
-/** «ساري» / «ينتهي قريباً» / «منتهي» beside a licence date — the fuel screens' tag. */
 /** A wrench — the workshop. */
 const WRENCH = [
   'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',

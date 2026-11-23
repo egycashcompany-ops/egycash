@@ -9,6 +9,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  ApplyOperationsBranchImportSchema,
+  CompareOperationsBranchImportSchema,
   CreateOperationsBankBranchSchema,
   ListOperationsBankBranchesQuerySchema,
   UpdateOperationsBankBranchSchema,
@@ -23,6 +25,8 @@ import {
   listBankBranches,
   updateBankBranch,
 } from './bank-branch.controller';
+import { applyBranchImport, compareBranchImport } from './import/branch-import.controller';
+import { branchSheetUpload, noStore } from './import/branch-sheet-upload';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -51,6 +55,27 @@ export const buildOperationsBankBranchesRouter = (): Router => {
     authorize('operationsCatalog.manage'),
     validate({ body: CreateOperationsBankBranchSchema }),
     asyncHandler(createBankBranch),
+  );
+  // Round 29 — «وعاوز جمب اضافة فرع فوق يقدر يضيف شيت ويقارن زى بتاع كروت الشحن كدا»: a bank's
+  // branch sheet compared (nothing written), then applied (the same file, the compare's hashes).
+  // Both are the catalog's grant — the compare shows what only a writer of the catalog may write.
+  router.post(
+    '/import/compare',
+    noStore,
+    authenticate,
+    authorize('operationsCatalog.manage'),
+    branchSheetUpload(),
+    validate({ body: CompareOperationsBranchImportSchema }),
+    asyncHandler(compareBranchImport),
+  );
+  router.post(
+    '/import/apply',
+    noStore,
+    authenticate,
+    authorize('operationsCatalog.manage'),
+    branchSheetUpload(),
+    validate({ body: ApplyOperationsBranchImportSchema }),
+    asyncHandler(applyBranchImport),
   );
   router.patch(
     '/:id',

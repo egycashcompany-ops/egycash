@@ -1,9 +1,10 @@
 // Thin HTTP mapping only (ADR-003). Every write answers with the LINE in its new state, holder
 // resolved, so the screen never re-fetches to learn what its own action did.
 //
-// Scopes follow the asset register exactly: reads under `itAsset.view`, an edit under
-// `itAsset.edit`, and the custody writes (hand over, return) gated on `itAsset.assign` but scoped
-// by the READ grant — whoever may hand a line out may reach every line they can see.
+// Scopes follow the asset register's shape, under the lines' own grants: reads under
+// `itMobileLine.view`, an edit under `itMobileLine.edit`, and the custody writes (hand over, return)
+// gated on `itMobileLine.assign` but scoped by the READ grant — whoever may hand a line out may
+// reach every line they can see.
 import { type Request, type Response } from 'express';
 import {
   type AssignItMobileLine,
@@ -31,7 +32,7 @@ import { type ItMobileLineDoc } from './mobile-line.model';
 
 type IdParam = { id: string };
 
-const viewScope = (req: Request) => scopeSelector(authContext(req), 'itAsset.view');
+const viewScope = (req: Request) => scopeSelector(authContext(req), 'itMobileLine.view');
 
 /** One line, as every write answers it — its holder read the way a page of the register is. */
 const lineDto = async (line: ItMobileLineDoc) =>
@@ -67,7 +68,7 @@ export const updateItMobileLine = async (req: Request, res: Response): Promise<v
     params.id,
     body,
     ctx,
-    scopeSelector(ctx, 'itAsset.edit'),
+    scopeSelector(ctx, 'itMobileLine.edit'),
   );
   ok(res, await lineDto(line));
 };
@@ -92,7 +93,7 @@ export const assignItMobileLine = async (req: Request, res: Response): Promise<v
     receipt:
       receipt === null
         ? null
-        : toItMobileLineReceiptDto(receipt, hasPermission(ctx, 'itAsset.viewNationalId')),
+        : toItMobileLineReceiptDto(receipt, hasPermission(ctx, 'itMobileLine.viewNationalId')),
   });
 };
 
@@ -107,7 +108,10 @@ export const returnItMobileLine = async (req: Request, res: Response): Promise<v
   ok(res, await lineDto(line));
 };
 
-/** Suspend and reactivate change the register's state, not its custody: `itAsset.edit`'s scope. */
+/**
+ * Suspend and reactivate change the register's state, not its custody: `itMobileLine.edit`'s
+ * scope.
+ */
 export const suspendItMobileLine = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<ItMobileLineStatusAction, never, IdParam>(req);
   const ctx = authContext(req);
@@ -115,7 +119,7 @@ export const suspendItMobileLine = async (req: Request, res: Response): Promise<
     params.id,
     body,
     ctx,
-    scopeSelector(ctx, 'itAsset.edit'),
+    scopeSelector(ctx, 'itMobileLine.edit'),
   );
   ok(res, await lineDto(line));
 };
@@ -127,7 +131,7 @@ export const reactivateItMobileLine = async (req: Request, res: Response): Promi
     params.id,
     body,
     ctx,
-    scopeSelector(ctx, 'itAsset.edit'),
+    scopeSelector(ctx, 'itMobileLine.edit'),
   );
   ok(res, await lineDto(line));
 };

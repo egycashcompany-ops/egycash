@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FleetSettingKeys,
+  cairoYmd,
+  periodOf,
   type FleetFuelCardCompany,
   type FleetFuelCardDto,
   type Locale,
@@ -20,8 +22,11 @@ import { Input } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
-import { formatDate } from '../../../shared/lib/format';
+import { formatDate, formatMoneyParts } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { getActiveBranch } from '../../../shared/lib/api-client';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import {
   useAllFuelCards,
   useAllVehicles,
@@ -55,6 +60,7 @@ import { saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { expiryWindowQuery } from '../lib/vehicle-set-params';
+import { registryBranchesOf } from '../lib/reader-branches';
 
 const REMEMBERED_FILTERS = [
   'vehicleCodes',
@@ -62,6 +68,7 @@ const REMEMBERED_FILTERS = [
   'number',
   'expiresBefore',
   'expiresFrom',
+  'branch',
 ] as const;
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 
@@ -80,6 +87,10 @@ export const FuelCardsPage = (): JSX.Element => {
   // The other side of the window: the dashboard's «expiring» figure starts TOMORROW, so the cards
   // already expired (its own red line) are not counted twice.
   const expiresFrom = sp.get('expiresFrom') ?? '';
+  // «الفرع» a dashboard figure was counted over: the branch of each card's CURRENT car (a car
+  // deleted since by its last branch). The server narrows; a card on no car is in no branch, so the
+  // stock below is empty under it.
+  const branchIds = readList(sp, 'branch');
   const paramsKey = sp.toString();
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -104,6 +115,7 @@ export const FuelCardsPage = (): JSX.Element => {
       number: number || undefined,
       expiresFrom: bounds.from,
       expiresBefore: bounds.before,
+      branchIds: branchIds.length > 0 ? branchIds : undefined,
     };
   }, [paramsKey]);
   const { data, isLoading, isError, error, refetch } = useAllFuelCards(filters);
@@ -111,7 +123,7 @@ export const FuelCardsPage = (): JSX.Element => {
   const noCarCards = useMemo(() => cards.filter((card) => card.vehicleId === null), [cards]);
   // Every active car of the registry has its block — one with no card says so and offers the
   // stock. A filter on the card shows only the cars whose cards answer it; a filter on the car,
-  // the cars chosen, with or without cards.
+  // the cars chosen, with or without cards; a branch, the cars of that branch only.
   const vehicles = useAllVehicles({ anyStatus: true });
   const carGroups = useMemo(() => {
     const byCar = new Map<
@@ -135,11 +147,15 @@ export const FuelCardsPage = (): JSX.Element => {
     if (!cardFiltered) {
       for (const vehicle of vehicles.data?.items ?? []) {
         if (byCar.has(vehicle.id)) continue;
+        const inBranch =
+          branchIds.length === 0 ||
+          (vehicle.branchId !== null && branchIds.includes(vehicle.branchId));
         const chosen =
-          vehicleCodes.length === 0
+          inBranch &&
+          (vehicleCodes.length === 0
             ? vehicle.status === 'active'
             : // Whitespace and Latin case aside: «فورتشنر 2» is the stored «فورتشنر 2 ».
-              vehicleCodes.some((code) => sameVehicleCode(code, vehicle.code));
+              vehicleCodes.some((code) => sameVehicleCode(code, vehicle.code)));
         if (chosen) byCar.set(vehicle.id, { vehicleId: vehicle.id, code: vehicle.code, cards: {} });
       }
     }
@@ -151,7 +167,7 @@ export const FuelCardsPage = (): JSX.Element => {
         numbered(a.code) - numbered(b.code) ||
         a.code.localeCompare(b.code, 'en', { numeric: true }),
     );
-  }, [cards, vehicles.data, cardFiltered, vehicleCodes.join(',')]);
+  }, [cards, vehicles.data, cardFiltered, vehicleCodes.join(','), branchIds.join(',')]);
 
   // «المعاد اللى عاوز احطه قبل انتهاء الفيزا عشان الانذار» — from Fleet settings.
   const settings = useMySettings();
@@ -169,14 +185,42 @@ export const FuelCardsPage = (): JSX.Element => {
   const cardsOnCars = cards.length - noCarCards.length;
   const cardRate =
     carsWithCards === 0 ? '0' : String(Math.round((cardsOnCars / carsWithCards) * 10) / 10);
-  // «استهلاك الوقود الحالي (الشهر)»: the fuel receipts written this month, for a reader who may
-  // see receipts; anyone else sees the cards' balances in its place.
-  const monthStart = useMemo(() => {
-    const now = new Date();
-    return new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)).toISOString().slice(0, 10);
-  }, []);
+  // «استهلاك الوقود الحالي (الشهر)»: the fuel receipts of THIS Cairo month up to Cairo today, for
+  // a reader who may see receipts; anyone else sees the cards' balances in its place. It asks what
+  // the dashboard's «الوقود كله» asks for «هذا الشهر» (R2 `opex.fuel`, the receipts screen's
+  // `kind=fuel` total): the 1st of the Cairo month to Cairo today — never a later paper day, never
+  // the browser's month — and, when the screen is narrowed, the same branch (the receipt's car's)
+  // and the same cars.
+  //
+  // With no «الفرع» in the address the tile still answers for the branches the tiles beside it do:
+  // the cards and the cars are scoped by the server under the command bar's branch (X-Active-Branch)
+  // and the reader's grant, while the receipts' summary takes no scope of its own — so the same
+  // fold is sent as `branchIds` (the switcher's branch, the reader's reach, or nothing for the whole
+  // company), never the company's month beside one branch's cards.
+  const month = periodOf('thisMonth', cairoYmd(new Date()));
   const mayReceipts = can('fleetReceipt.view');
-  const receipts = useReceiptSummary({ kind: 'fuel', from: monthStart }, mayReceipts);
+  const me = useAppSelector((state) => state.auth.me);
+  const receiptBranches =
+    branchIds.length > 0
+      ? branchIds
+      : registryBranchesOf({
+          scope: me?.permissions['fleetFuelCard.view'],
+          active: getActiveBranch(),
+          home: me?.branchId ?? null,
+          reach: me?.branchIds ?? [],
+        });
+  // A reach of no branch has no month to answer (an empty `branchIds` would be no filter at all).
+  const noReach = receiptBranches !== null && receiptBranches.length === 0;
+  const receipts = useReceiptSummary(
+    {
+      kind: 'fuel',
+      from: month.from,
+      to: month.to,
+      ...(receiptBranches === null || noReach ? {} : { branchIds: [...receiptBranches] }),
+      ...(vehicleCodes.length > 0 ? { vehicleCodes } : {}),
+    },
+    mayReceipts && !noReach,
+  );
   const consumption = mayReceipts && receipts.data !== undefined ? receipts.data : null;
 
   // «تصفية بالتاريخ»: a ready window from today, or a date of the reader's own.
@@ -359,7 +403,7 @@ export const FuelCardsPage = (): JSX.Element => {
               tone="cyan"
               icon={PATH.trend}
               label={t('fleet.fuelCards.board.kpi.consumption')}
-              value={latinMoney(consumption.fuelTotal)}
+              value={latinMoney(consumption.fuelTotal, locale)}
               unit={t('fleet.fuelCards.board.kpi.currency')}
               unitClass="font-bold text-cyan-600 dark:text-cyan-400"
               note={
@@ -376,14 +420,14 @@ export const FuelCardsPage = (): JSX.Element => {
               tone="cyan"
               icon={PATH.trend}
               label={t('fleet.fuelCards.board.kpi.balance')}
-              value={latinMoney(balanceOf(cards))}
+              value={latinMoney(balanceOf(cards), locale)}
               unit={t('fleet.fuelCards.board.kpi.currency')}
               unitClass="font-bold text-cyan-600 dark:text-cyan-400"
               note={
                 <span className="text-slate-500 dark:text-slate-400">
                   {t('fleet.fuelCards.board.kpi.balanceNote', {
-                    wataniya: latinMoney(balanceOf(cards, 'wataniya')),
-                    chillout: latinMoney(balanceOf(cards, 'chillout')),
+                    wataniya: latinMoney(balanceOf(cards, 'wataniya'), locale),
+                    chillout: latinMoney(balanceOf(cards, 'chillout'), locale),
                   })}
                 </span>
               }
@@ -436,7 +480,7 @@ export const FuelCardsPage = (): JSX.Element => {
         {/* «الفلاتر … تكون زى شاشه السيارات»: the same dark bar, one row on a computer. */}
         <div className={DARK_FILTER_BAR}>
           <FilterBar
-            hasActiveFilters={vehicleCodes.length > 0 || cardFiltered}
+            hasActiveFilters={vehicleCodes.length > 0 || cardFiltered || branchIds.length > 0}
             onClear={() => {
               setCustomDate(false);
               patch({
@@ -445,6 +489,7 @@ export const FuelCardsPage = (): JSX.Element => {
                 number: null,
                 expiresBefore: null,
                 expiresFrom: null,
+                branch: null,
               });
             }}
           >
@@ -564,6 +609,24 @@ export const FuelCardsPage = (): JSX.Element => {
                   className="[color-scheme:dark]"
                 />
               </FilterWithIcon>
+            )}
+            {/* «الفرع» a dashboard link narrowed the cards to — shown only while it does, so a
+                remembered one is never a filter with nothing on the bar saying so; it comes off
+                here or with «مسح». `BranchFilterSelect` takes no width of its own. */}
+            {branchIds.length > 0 && (
+              <div data-fuel-branch-filter={branchIds.join(',')} className="contents">
+                <FilterWithIcon
+                  icon={FILTER_ICON.branch}
+                  tone="text-violet-600 dark:text-violet-300"
+                  className="[&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between"
+                >
+                  <BranchFilterSelect
+                    clearable
+                    value={branchIds}
+                    onChange={(ids) => patch({ branch: writeList(ids) })}
+                  />
+                </FilterWithIcon>
+              </div>
             )}
           </FilterBar>
         </div>
@@ -728,9 +791,12 @@ export const FuelCardsPage = (): JSX.Element => {
   );
 };
 
-/** «245,890» — the design writes money in Latin digits with thousands commas. */
-const latinMoney = (value: number): string =>
-  Math.round(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
+/**
+ * «245,890.50» — money in Latin digits with thousands commas and its piastres, as this screen's own
+ * rows and the dashboard write it (`formatMoneyParts`, two decimals); the unit stands beside it.
+ */
+const latinMoney = (value: number, locale: Locale): string =>
+  formatMoneyParts(value, 'EGP', locale).figure;
 
 const balanceOf = (cards: readonly FleetFuelCardDto[], company?: FleetFuelCardCompany): number =>
   cards

@@ -23,9 +23,14 @@
 //     refused. «ترتيب العملات فى الجدول لما تظهر تكون على حسب ترتيبها ف شاشة البيانات المرجعية»: every
 //     screen that lists currencies follows this order (`compareCurrencies`, lib/day-board.ts). The
 //     tab shows the WHOLE list on one page — a list cannot be dragged into order across pages.
+//   · «أنواع التشغيل» (Round 20) — the crew board's «النوع», which the owner asked to be reference
+//     data: «انا عاوز النوع يكون بيضاف من البيانات المرجعيه». Built as the currencies are — the whole
+//     list, dragged into the order the board lists them in (`PUT /operations/shift-types/order`) —
+//     with a colour from the contract's palette, and archived (`isActive: false`) and restored from
+//     the row in one click: a type is never deleted, because a saved row may still carry it.
 //
 // URL-synced tabs, exactly like the fleet catalogs screen, so an operator can bookmark a kind.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type HTMLAttributes } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
@@ -33,6 +38,7 @@ import {
   type OperationsBankBranchDto,
   type OperationsBankDto,
   type OperationsCurrencyDto,
+  type OperationsShiftTypeDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -41,7 +47,16 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
-import { ChevronIcon, EditIcon, GripIcon, PinIcon, PlusIcon } from '../../../shared/ui/icons';
+import {
+  ChevronIcon,
+  EditIcon,
+  GripIcon,
+  PauseIcon,
+  PinIcon,
+  PlayIcon,
+  PlusIcon,
+  UploadIcon,
+} from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useAppSelector } from '../../../store';
@@ -54,18 +69,31 @@ import {
   useOperationsBankBranches,
   useOperationsBanks,
   useOperationsCurrencies,
+  useOperationsShiftTypes,
   useOrderOperationsCurrencies,
+  useOrderOperationsShiftTypes,
+  useUpdateOperationsShiftType,
 } from '../api/operations-queries';
 import {
   AreaDialog,
   BankBranchDialog,
   BankDialog,
   CurrencyDialog,
+  ShiftTypeDialog,
 } from '../components/CatalogDialogs';
+import { ShiftTypeTag } from '../components/shift-type-look';
+import { BranchImportPanel } from '../components/branch-import/BranchImportPanel';
+import { SHIFT_TYPE_LIST } from '../lib/crew-plan';
 
 const DEFAULT_PAGE_SIZE = 25;
 
-export const OPERATIONS_CATALOG_KINDS = ['banks', 'branches', 'currencies', 'areas'] as const;
+export const OPERATIONS_CATALOG_KINDS = [
+  'banks',
+  'branches',
+  'currencies',
+  'areas',
+  'shiftTypes',
+] as const;
 export type OperationsCatalogKind = (typeof OPERATIONS_CATALOG_KINDS)[number];
 
 /** Unknown or absent `?kind=` falls back to banks — the kind everything else references. */
@@ -80,6 +108,77 @@ export const resolveCatalogKind = (raw: string | null): OperationsCatalogKind =>
  * so a drag saved here re-orders a board's money lines from the same cache entry.
  */
 export const CURRENCY_TAB_PARAMS = { page: 1, pageSize: MAX_PAGE_SIZE } as const;
+
+/**
+ * A catalog DRAGGED INTO ORDER — Fleet's catalogs page, step for step: the currencies (Round 8) and
+ * «أنواع التشغيل» (Round 20) alike. The order just dropped is shown at once while the save and the
+ * refetch land; a refused save puts the rows back and SAYS so (a row that silently snaps back reads
+ * as a screen that will not let you move it); only THIS drop's order is let go of once the fresh
+ * list is in — a second drop made while the first was saving keeps showing until its own lands.
+ */
+const useDragOrder = <T extends { id: string }>(
+  items: readonly T[],
+  order: {
+    mutate: (
+      body: { ids: string[] },
+      options: { onSuccess: () => void; onError: (failure: Error) => void; onSettled: () => void },
+    ) => void;
+  },
+  savedMessage: string,
+) => {
+  const locale = useAppSelector((state) => state.locale.locale);
+  const [pending, setPending] = useState<string[] | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const rows = inPendingOrder(items, pending);
+  const ids = rows.map((row) => row.id);
+
+  const save = (next: string[] | null): void => {
+    if (next === null) return;
+    setPending(next);
+    order.mutate(
+      { ids: next },
+      {
+        onSuccess: () => toast.success(savedMessage),
+        onError: (failure) => toast.error(errorMessage(failure, locale)),
+        onSettled: () => setPending((current) => (current === next ? null : current)),
+      },
+    );
+  };
+
+  const rowClassName = (row: T): string | undefined =>
+    dragging === row.id
+      ? 'opacity-40'
+      : over === row.id && dragging !== null
+        ? 'bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-400 dark:bg-brand-950/40'
+        : undefined;
+
+  const rowProps = (row: T): HTMLAttributes<HTMLTableRowElement> => ({
+    draggable: true,
+    onDragStart: (e) => {
+      e.dataTransfer.setData('text/plain', row.id);
+      e.dataTransfer.effectAllowed = 'move';
+      setDragging(row.id);
+    },
+    onDragEnd: () => {
+      setDragging(null);
+      setOver(null);
+    },
+    onDragOver: (e) => {
+      e.preventDefault();
+      setOver(row.id);
+    },
+    onDrop: (e) => {
+      e.preventDefault();
+      const id = e.dataTransfer.getData('text/plain');
+      setDragging(null);
+      setOver(null);
+      if (id !== '') save(moveInOrder(ids, id, row.id));
+    },
+  });
+
+  return { rows, ids, save, rowClassName, rowProps };
+};
 
 export const CatalogsPage = (): JSX.Element => {
   const t = useT();
@@ -110,6 +209,9 @@ export const CatalogsPage = (): JSX.Element => {
   const branches = useOperationsBankBranches(params, kind === 'branches');
   const currencies = useOperationsCurrencies(CURRENCY_TAB_PARAMS, kind === 'currencies');
   const areas = useOperationsAreas(params, kind === 'areas');
+  // The board's own list (`SHIFT_TYPE_LIST` — whole, archived included, the catalog's order): one
+  // cache entry, so a type dragged or recoloured here is what the board shows next.
+  const shiftTypes = useOperationsShiftTypes(SHIFT_TYPE_LIST, kind === 'shiftTypes');
 
   // Branch rows name their bank, so the bank list is needed on the branches tab too.
   const bankOptions = useOperationsBanks({ page: 1, pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
@@ -123,35 +225,47 @@ export const CatalogsPage = (): JSX.Element => {
   const [editingBranch, setEditingBranch] = useState<OperationsBankBranchDto | null>(null);
   const [editingCurrency, setEditingCurrency] = useState<OperationsCurrencyDto | null>(null);
   const [editingArea, setEditingArea] = useState<OperationsAreaDto | null>(null);
+  const [editingShiftType, setEditingShiftType] = useState<OperationsShiftTypeDto | null>(null);
   const [creating, setCreating] = useState(false);
+  // Round 29 — «وعاوز جمب اضافة فرع فوق يقدر يضيف شيت ويقارن زى بتاع كروت الشحن كدا»: the branches
+  // tab shows the sheet import in place of its list while this is on.
+  const [importing, setImporting] = useState(false);
 
-  // ── The currencies' drag order — Fleet's catalogs page, step for step ─────────────────────────
+  // ── The drag orders — Fleet's catalogs page, step for step (`useDragOrder`) ────────────────────
   const mayOrder = can('operationsCatalog.manage');
-  const saveOrder = useOrderOperationsCurrencies();
-  /** The order just dropped, shown at once while the save and the refetch land. */
-  const [pending, setPending] = useState<string[] | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
-  const currencyRows = inPendingOrder(currencies.data?.items ?? [], pending);
+  const currencyOrder = useDragOrder(
+    currencies.data?.items ?? [],
+    useOrderOperationsCurrencies(),
+    t('operations.catalogs.currency.orderSaved'),
+  );
+  const currencyRows = currencyOrder.rows;
+  const saveCurrencyOrder = currencyOrder.save;
+  const currencyIds = currencyOrder.ids;
 
-  const saveCurrencyOrder = (ids: string[] | null): void => {
-    if (ids === null) return;
-    setPending(ids);
-    saveOrder.mutate(
-      { ids },
+  // ── «أنواع التشغيل» ───────────────────────────────────────────────────────────────────────────
+  const shiftTypeOrder = useDragOrder(
+    shiftTypes.data?.items ?? [],
+    useOrderOperationsShiftTypes(),
+    t('operations.catalogs.shiftType.orderSaved'),
+  );
+  const shiftTypeIds = shiftTypeOrder.ids;
+  const archive = useUpdateOperationsShiftType();
+  /** Archive or restore in one click — the server keeps the type on every row that holds it. */
+  const toggleActive = (type: OperationsShiftTypeDto): void =>
+    archive.mutate(
+      { id: type.id, body: { isActive: !type.isActive, version: type.version } },
       {
-        onSuccess: () => toast.success(t('operations.catalogs.currency.orderSaved')),
-        // A refused save puts the rows back and SAYS so — a row that silently snaps back reads as a
-        // screen that will not let you move it.
+        onSuccess: () =>
+          toast.success(
+            t(
+              type.isActive
+                ? 'operations.catalogs.shiftType.archived'
+                : 'operations.catalogs.shiftType.restored',
+            ),
+          ),
         onError: (failure) => toast.error(errorMessage(failure, locale)),
-        // After the refetch (the mutation's own `onSettled` returns it): the list now holds the
-        // saved order, or the one that still stands. Only THIS drop's order is let go of — a second
-        // drop made while this one was saving keeps showing until its own save lands.
-        onSettled: () => setPending((current) => (current === ids ? null : current)),
       },
     );
-  };
-  const currencyIds = currencyRows.map((row) => row.id);
 
   const bankName = (bankId: string): string =>
     bankOptions.data?.items.find((bank) => bank.id === bankId)?.opsName ?? '—';
@@ -374,12 +488,127 @@ export const CatalogsPage = (): JSX.Element => {
     },
   ];
 
+  const shiftTypeColumns: Column<OperationsShiftTypeDto>[] = [
+    ...(mayOrder
+      ? [
+          {
+            key: 'drag',
+            header: '',
+            render: (row: OperationsShiftTypeDto) => (
+              <span
+                data-drag-handle={row.id}
+                title={t('operations.catalogs.shiftType.dragToOrder')}
+                className="inline-flex cursor-grab rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              >
+                <GripIcon className="h-4 w-4" />
+              </span>
+            ),
+          } satisfies Column<OperationsShiftTypeDto>,
+        ]
+      : []),
+    {
+      // The type as the board draws it — its name in its colour.
+      key: 'name',
+      header: t('operations.catalogs.shiftType.name'),
+      render: (row) => (
+        <span data-shift-type-name={row.id}>
+          <ShiftTypeTag type={row} locale="ar" size="md" />
+        </span>
+      ),
+    },
+    {
+      key: 'nameEn',
+      header: t('operations.catalogs.shiftType.nameEn'),
+      render: (row) => row.nameEn ?? '—',
+    },
+    {
+      key: 'colour',
+      header: t('operations.catalogs.shiftType.colour'),
+      render: (row) => t(`operations.catalogs.shiftType.colours.${row.colour}`),
+    },
+    {
+      key: 'status',
+      header: t('operations.common.status'),
+      render: (row) => (
+        <StatusBadge
+          tone={row.isActive ? 'success' : 'neutral'}
+          label={t(row.isActive ? 'operations.common.active' : 'operations.common.inactive')}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (row) => {
+        const at = shiftTypeIds.indexOf(row.id);
+        const toggleLabel = t(
+          row.isActive
+            ? 'operations.catalogs.shiftType.archive'
+            : 'operations.catalogs.shiftType.restore',
+        );
+        return (
+          // The currencies' row: the pen first, then archive / restore, then the two arrows.
+          <div className={ACTION_GROUP} data-shift-type-actions={row.id}>
+            <button
+              type="button"
+              className={actionTone('edit')}
+              aria-label={t('common.edit')}
+              title={t('common.edit')}
+              onClick={() => setEditingShiftType(row)}
+            >
+              <SquarePenIcon className="h-4 w-4" />
+            </button>
+            {mayOrder && (
+              <>
+                <button
+                  type="button"
+                  className={actionTone('status')}
+                  data-shift-type-toggle={row.isActive ? 'archive' : 'restore'}
+                  aria-label={toggleLabel}
+                  title={toggleLabel}
+                  disabled={archive.isPending}
+                  onClick={() => toggleActive(row)}
+                >
+                  {row.isActive ? (
+                    <PauseIcon className="h-4 w-4" />
+                  ) : (
+                    <PlayIcon className="h-4 w-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className={actionTone('move')}
+                  aria-label={t('operations.catalogs.shiftType.moveUp')}
+                  title={t('operations.catalogs.shiftType.moveUp')}
+                  disabled={at <= 0}
+                  onClick={() => shiftTypeOrder.save(stepInOrder(shiftTypeIds, row.id, -1))}
+                >
+                  <ChevronIcon className="h-4 w-4 rotate-180" />
+                </button>
+                <button
+                  type="button"
+                  className={actionTone('move')}
+                  aria-label={t('operations.catalogs.shiftType.moveDown')}
+                  title={t('operations.catalogs.shiftType.moveDown')}
+                  disabled={at === shiftTypeIds.length - 1}
+                  onClick={() => shiftTypeOrder.save(stepInOrder(shiftTypeIds, row.id, 1))}
+                >
+                  <ChevronIcon className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
+
   const activeMeta =
     kind === 'banks'
       ? banks.data?.meta
       : kind === 'branches'
         ? branches.data?.meta
-        : kind === 'currencies'
+        : kind === 'currencies' || kind === 'shiftTypes'
           ? // The whole list on one page: nothing to page through, and a pager would suggest a
             // second page the drag could not reach.
             undefined
@@ -391,6 +620,7 @@ export const CatalogsPage = (): JSX.Element => {
     branches: 'operations.catalogs.branch.add',
     currencies: 'operations.catalogs.currency.add',
     areas: 'operations.catalogs.area.add',
+    shiftTypes: 'operations.catalogs.shiftType.add',
   };
 
   return (
@@ -398,10 +628,22 @@ export const CatalogsPage = (): JSX.Element => {
       <PageHeader
         title={t('operations.catalogs.title')}
         actions={
-          <Button onClick={() => setCreating(true)}>
-            <PlusIcon className="h-4 w-4" />
-            {t(addLabelKey[kind])}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {kind === 'branches' && !importing && can('operationsCatalog.manage') && (
+              <Button
+                variant="secondary"
+                onClick={() => setImporting(true)}
+                data-branch-import-open="true"
+              >
+                <UploadIcon className="h-4 w-4" />
+                {t('operations.catalogs.branchImport.open')}
+              </Button>
+            )}
+            <Button onClick={() => setCreating(true)}>
+              <PlusIcon className="h-4 w-4" />
+              {t(addLabelKey[kind])}
+            </Button>
+          </div>
         }
       />
 
@@ -410,7 +652,10 @@ export const CatalogsPage = (): JSX.Element => {
           <button
             key={option}
             type="button"
-            onClick={() => patchParams({ kind: option })}
+            onClick={() => {
+              setImporting(false);
+              patchParams({ kind: option });
+            }}
             className={
               option === kind
                 ? 'border-b-2 border-brand-500 px-4 py-2 text-sm font-medium text-brand-600 dark:text-brand-400'
@@ -434,7 +679,13 @@ export const CatalogsPage = (): JSX.Element => {
           empty={t('operations.catalogs.bank.empty')}
         />
       )}
-      {kind === 'branches' && (
+      {kind === 'branches' && importing && (
+        <BranchImportPanel
+          banks={(bankOptions.data?.items ?? []).filter((bank) => bank.isActive)}
+          onClose={() => setImporting(false)}
+        />
+      )}
+      {kind === 'branches' && !importing && (
         <DataTable
           columns={branchColumns}
           rows={branches.data?.items ?? []}
@@ -460,40 +711,8 @@ export const CatalogsPage = (): JSX.Element => {
             error={currencies.error}
             onRetry={() => void currencies.refetch()}
             empty={t('operations.catalogs.currency.empty')}
-            rowClassName={(row) =>
-              dragging === row.id
-                ? 'opacity-40'
-                : over === row.id && dragging !== null
-                  ? 'bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-400 dark:bg-brand-950/40'
-                  : undefined
-            }
-            rowProps={(row) =>
-              mayOrder
-                ? {
-                    draggable: true,
-                    onDragStart: (e) => {
-                      e.dataTransfer.setData('text/plain', row.id);
-                      e.dataTransfer.effectAllowed = 'move';
-                      setDragging(row.id);
-                    },
-                    onDragEnd: () => {
-                      setDragging(null);
-                      setOver(null);
-                    },
-                    onDragOver: (e) => {
-                      e.preventDefault();
-                      setOver(row.id);
-                    },
-                    onDrop: (e) => {
-                      e.preventDefault();
-                      const id = e.dataTransfer.getData('text/plain');
-                      setDragging(null);
-                      setOver(null);
-                      if (id !== '') saveCurrencyOrder(moveInOrder(currencyIds, id, row.id));
-                    },
-                  }
-                : undefined
-            }
+            rowClassName={currencyOrder.rowClassName}
+            rowProps={(row) => (mayOrder ? currencyOrder.rowProps(row) : undefined)}
           />
         </>
       )}
@@ -510,7 +729,30 @@ export const CatalogsPage = (): JSX.Element => {
         />
       )}
 
-      {activeMeta !== undefined && (
+      {kind === 'shiftTypes' && (
+        <>
+          {mayOrder && (
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400" data-shift-type-order-hint>
+              {t('operations.catalogs.shiftType.orderHint')}
+            </p>
+          )}
+          <DataTable
+            columns={shiftTypeColumns}
+            rows={shiftTypeOrder.rows}
+            rowKey={(row) => row.id}
+            loading={shiftTypes.isLoading}
+            error={shiftTypes.error}
+            onRetry={() => void shiftTypes.refetch()}
+            empty={t('operations.catalogs.shiftType.empty')}
+            rowClassName={(row) =>
+              shiftTypeOrder.rowClassName(row) ?? (row.isActive ? undefined : 'opacity-60')
+            }
+            rowProps={(row) => (mayOrder ? shiftTypeOrder.rowProps(row) : undefined)}
+          />
+        </>
+      )}
+
+      {activeMeta !== undefined && !(kind === 'branches' && importing) && (
         <Pagination
           meta={activeMeta}
           onPageChange={(next) => patchParams({ page: String(next) }, false)}
@@ -549,6 +791,15 @@ export const CatalogsPage = (): JSX.Element => {
         area={editingArea}
         onClose={() => {
           setEditingArea(null);
+          setCreating(false);
+        }}
+      />
+      <ShiftTypeDialog
+        open={editingShiftType !== null || (creating && kind === 'shiftTypes')}
+        shiftType={editingShiftType}
+        types={shiftTypes.data?.items ?? []}
+        onClose={() => {
+          setEditingShiftType(null);
           setCreating(false);
         }}
       />

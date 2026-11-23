@@ -41,7 +41,7 @@ import { getSelfDirectoryEmployee, type DirectoryEmployee } from '../../../platf
 import { operationsBankRepository } from '../banks/bank.repository';
 import { operationsBankBranchRepository } from '../bank-branches/bank-branch.repository';
 import { operationsCrewAssignmentRepository } from '../crew/crew-assignment.repository';
-import { type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
+import { vehicleIdOf, type OperationsCrewAssignmentDoc } from '../crew/crew-assignment.model';
 import { slotIds } from '../crew/crew-slots';
 import { operationsDayService, utcDay } from '../days/day.service';
 import { operationsShipmentRepository } from '../shipments/shipment.repository';
@@ -106,7 +106,8 @@ class OperationsMobileService {
     // Step 2 — CAPTAINCY. The (day, vehicle) crew rows this employee is the captain of. This is the
     // ANCHOR of the chain, asked directly rather than inferred from whichever shipments happen to
     // be assigned: an employee planned onto a vehicle IS a captain today even before dispatch has
-    // given him a single stop, and the surface must be able to say so.
+    // given him a single stop, and the surface must be able to say so. Since Round 24 a row
+    // WITHOUT A VAN is such a row too — «توزيع المحصنات» may load it like a van.
     const crewRows = await operationsCrewAssignmentRepository.findForCaptainDay(
       dayDoc._id,
       captain.employeeId,
@@ -150,10 +151,12 @@ class OperationsMobileService {
       // status, through the one predicate the execution lock also uses. The field keeps exactly the
       // meaning OP-6 gave it and gains precision, as that contract said it would — and because both
       // sides share `isStopSettled`, what this shows as `current` is precisely what the server will
-      // let the captain start.
+      // let the captain start. Round 13 adds the vault: a secured pickup leg he never started, on a
+      // shipment the vault already received, reads `completed` too — nothing is left for him at the
+      // bank — while his `executionStatus` below still says `pending`, never rewritten.
       const executionStatus = row.executionStatus ?? 'pending';
       let progress: OperationsStopProgress;
-      if (isStopSettled(executionStatus, shipment.status)) {
+      if (isStopSettled({ leg: row.leg, executionStatus }, shipment)) {
         progress = 'completed';
       } else if (currentAssignmentId === null) {
         progress = 'current';
@@ -168,7 +171,8 @@ class OperationsMobileService {
         operationsDayId: String(row.operationsDayId),
         sequence: row.sequence,
         leg: row.leg,
-        vehicleId: String(row.vehicleId),
+        // Null on a stop of a crew row without a van (Round 24).
+        vehicleId: vehicleIdOf(row),
         crewAssignmentId: String(row.crewAssignmentId),
         shipmentType: shipment.shipmentType,
         status: shipment.status,
@@ -201,7 +205,8 @@ class OperationsMobileService {
       seen.add(crewAssignmentId);
       assignments.push({
         crewAssignmentId,
-        vehicleId: String(crew.vehicleId),
+        // Null for a row without a van (Round 24) — a captaincy like a van's.
+        vehicleId: vehicleIdOf(crew),
         // BOTH captains, the reader included. A captain who cannot see his co-captain does not
         // know who is in the van with him, which is the same reason the specialists are here.
         captainEmployeeIds: slotIds(crew.captainEmployeeIds),

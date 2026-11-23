@@ -42,7 +42,11 @@ import { startItAioOctoberGoLive } from './modules/it/go-live/aio-october';
 import { startItAssetSpecsGoLive } from './modules/it/go-live/asset-specs';
 import { startItBranchCustodyGoLive } from './modules/it/go-live/branch-custody';
 import { startItConsumableTypesGoLive } from './modules/it/go-live/consumable-types';
+import { startItConsumableCounterTypesGoLive } from './modules/it/go-live/consumable-counter-types';
 import { startItConsumablesOpeningGoLive } from './modules/it/go-live/consumables-opening';
+import { startItScreenGrantsGoLive } from './modules/it/go-live/screen-grants';
+import { startOperationsBankBranchesGoLive } from './modules/operations/go-live/bank-branches';
+import { startHrWorkingHoursGrantsGoLive } from './modules/hr/go-live/working-hours-grants';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -138,7 +142,29 @@ const main = async (): Promise<void> => {
   // named, once; then his approved count («دخّل الأرصدة») entered in the head office's store, once,
   // after the types it is filed under — started second, so it waits for them (see each file).
   startItConsumableTypesGoLive();
+  // «عند صرف الصنف : حبارة أو النوع : حبارات .. عايز يبقى فى Counter لعدد لورق المطبوع للطابعة»
+  // — the live «حبارات» ticked «يتطلب عداد الطباعة», once, after the types it ticks (it waits for
+  // them, as the opening stock does; see the file).
+  startItConsumableCounterTypesGoLive();
   startItConsumablesOpeningGoLive();
+  // «فى الصلاحيات مش لاقى حاجة لـ /consumables ولا /mobile-lines !! فى الـ IT ظبط صلاحيات الشاشات
+  // عشان أقدر أتحكم فيها» — the two screens now have keys of their own; every role and delegated
+  // grant that ran them through the asset keys is given the matching new keys, once, so nobody
+  // loses a screen the moment this deploy lands (see the file). The api ONLY, unlike the steps
+  // above: the copy must land as close as it can to the new code serving the screens.
+  startItScreenGrantsGoLive();
+  // «انا عاوز الداتا اللى باعتهالك دى تتضاف … نفذها» — the owner's four banks' branch lists (بنك مصر،
+  // CIB، البنك الأهلي، بنك القاهرة) into «البيانات المرجعية» by the import's own rules, each bank
+  // once, the bank created where «البنوك» lacks it (see the file). The api ONLY: one process is
+  // enough for reference data, and the run rows settle a second one anyway.
+  startOperationsBankBranchesGoLive();
+
+  // «ساعات العمل» replaces what HR set through the shift catalog until now, so every role and
+  // delegated grant holding `attendance.manageShifts` is given `attendance.manageWorkingHours`,
+  // once, and nobody loses the working day the moment this deploy lands (see the file). The api
+  // ONLY, for the same reason as the step above: the copy must land as close as it can to the new
+  // code serving the screen.
+  startHrWorkingHoursGrantsGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

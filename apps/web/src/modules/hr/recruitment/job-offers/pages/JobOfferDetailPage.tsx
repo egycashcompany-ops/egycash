@@ -27,6 +27,8 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useJobOffer } from '../api/job-offer-queries';
 import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
+import { PurgeApplicantAction } from '../../shared/PurgeApplicantAction';
+import { useStageAuthority } from '../../shared/useStageAuthority';
 
 type ActionKind = 'send' | 'accept' | 'reject' | 'withdraw' | null;
 
@@ -39,6 +41,11 @@ export const JobOfferDetailPage = (): JSX.Element => {
   // The candidate carries the placement and its history. Above the guards below — a hook runs on
   // every render or on none.
   const { data: candidate } = useApplicant(o?.applicantId ?? '');
+  // Nothing comes after the offer, so this is only ever true for a SUPERSEDED attempt — a
+  // return to an earlier stage retires the offer and the record is read-only forever (I1).
+  // The rulebook's deliberate late moves on a live offer (withdraw an accepted one and
+  // re-offer, RW3/OQ-3) are untouched.
+  const authority = useStageAuthority(o?.applicantId ?? '');
   const [action, setAction] = useState<ActionKind>(null);
 
   if (isLoading) {
@@ -58,8 +65,9 @@ export const JobOfferDetailPage = (): JSX.Element => {
 
   // A `waiting` offer has no number and no package yet (I11).
   const code = o.code ?? t('offers.detail.notDrafted');
-  const isDraft = o.status === 'draft';
-  const isSent = o.status === 'sent';
+  const readOnly = authority.isPassed(o.id);
+  const isDraft = !readOnly && o.status === 'draft';
+  const isSent = !readOnly && o.status === 'sent';
   const canRevise = isDraft || isSent;
 
   return (
@@ -74,6 +82,7 @@ export const JobOfferDetailPage = (): JSX.Element => {
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <PurgeApplicantAction applicantId={o.applicantId} applicantCode={o.applicantCode} applicantName={o.applicantName} />
             {canRevise && (
               <Can permission="jobOffer.edit">
                 <Button size="sm" variant="ghost" onClick={() => navigate('edit')}>{t('offers.actions.revise')}</Button>

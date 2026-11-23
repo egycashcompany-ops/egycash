@@ -1,6 +1,10 @@
 // Thin HTTP mapping only (ADR-003).
 import { type Request, type Response } from 'express';
-import { type OperationsReportQuery } from '@ecms/contracts';
+import {
+  type OperationsBankBranchReportParams,
+  type OperationsBankBranchReportQuery,
+  type OperationsReportQuery,
+} from '@ecms/contracts';
 import { ok, validated } from '../../../platform/web';
 import { operationsReportService } from './report.service';
 
@@ -9,18 +13,25 @@ export const getCaptainReport = async (req: Request, res: Response): Promise<voi
   ok(res, await operationsReportService.captainReport(query));
 };
 
+/**
+ * «تقرير البنوك» (Round 14, the legacy `/vault1_reports`) — over the reports' period, which here
+ * means the days the vault RECEIVED the shipments (the owner's decision, report.service.ts).
+ */
 export const getBankReport = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, OperationsReportQuery>(req);
   ok(res, await operationsReportService.bankReport(query));
 };
 
 /**
- * The legacy `/vault1_reports` — over the reports' period, which here means the days the vault
- * RECEIVED the shipments (the owner's decision, report.service.ts).
+ * «لوحة البنك بفروعه» (Round 25) — one bank of «تقرير البنوك» by its branches, over the same period.
  */
-export const getVaultReport = async (req: Request, res: Response): Promise<void> => {
-  const { query } = validated<never, OperationsReportQuery>(req);
-  ok(res, await operationsReportService.vaultReport(query));
+export const getBankBranchReport = async (req: Request, res: Response): Promise<void> => {
+  const { params, query } = validated<
+    never,
+    OperationsBankBranchReportQuery,
+    OperationsBankBranchReportParams
+  >(req);
+  ok(res, await operationsReportService.bankBranchReport(params.bankId, query));
 };
 
 /**

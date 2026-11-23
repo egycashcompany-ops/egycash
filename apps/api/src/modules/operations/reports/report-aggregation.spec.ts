@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   bankReportRows,
+  branchReportRows,
   captainReportRows,
   defaultReportRange,
   explicitReportRange,
@@ -183,5 +184,70 @@ describe('date ranges', () => {
       new Date('2026-03-05T00:00:00Z'),
     );
     expect(toExclusive.getTime() - from.getTime()).toBe(24 * 60 * 60 * 1000);
+  });
+});
+
+describe('«لوحة البنك بفروعه» (Round 25) — one bank by its branches, through the same roll-up', () => {
+  const facts = (id: string | null) => ({
+    name: id === null ? '' : `فرع ${id}`,
+    code: id,
+    areaName: id === 'b2' ? 'الجيزة' : null,
+    otherBankName: id === 'b3' ? 'بنك مصر' : null,
+  });
+  const shipments = [
+    row({
+      shipmentId: 's1',
+      bagCount: 3,
+      lines: [{ currencyId: 'egp', currencyName: 'مصري', amount: 100 }],
+    }),
+    row({
+      shipmentId: 's2',
+      bagCount: 2,
+      boxCount: 1,
+      lines: [
+        { currencyId: 'egp', currencyName: 'مصري', amount: 50 },
+        { currencyId: 'usd', currencyName: 'دولار', amount: 20 },
+      ],
+    }),
+    row({ shipmentId: 's3', cartonCount: 4, lines: [] }),
+    row({
+      shipmentId: 's4',
+      bagCount: 1,
+      lines: [{ currencyId: 'usd', currencyName: 'دولار', amount: 5 }],
+    }),
+  ];
+  const branchOf = new Map<string, string | null>([
+    ['s1', 'b1'],
+    ['s2', 'b1'],
+    ['s3', 'b2'],
+    ['s4', null],
+  ]);
+  const built = branchReportRows(shipments, (r) => branchOf.get(r.shipmentId) ?? null, facts);
+
+  it('files each shipment under ONE branch, packages once, a moneyless one still counted', () => {
+    const b1 = built.rows.find((r) => r.branchId === 'b1');
+    expect(b1?.totals).toMatchObject({ shipmentCount: 2, bagCount: 5, boxCount: 1 });
+    expect(b1?.totals.currencies).toEqual([
+      { currencyId: 'usd', currencyName: 'دولار', amount: 20 },
+      { currencyId: 'egp', currencyName: 'مصري', amount: 150 },
+    ]);
+    const b2 = built.rows.find((r) => r.branchId === 'b2');
+    expect(b2).toMatchObject({ branchName: 'فرع b2', areaName: 'الجيزة', otherBankName: null });
+    expect(b2?.totals).toMatchObject({ shipmentCount: 1, cartonCount: 4, currencies: [] });
+  });
+
+  it('keeps a shipment whose branch no longer resolves — one null row, never dropped', () => {
+    const lost = built.rows.filter((r) => r.branchId === null);
+    expect(lost).toHaveLength(1);
+    expect(lost[0]?.totals.shipmentCount).toBe(1);
+  });
+
+  it('totals EXACTLY the bank row the bank report builds from the same shipments', () => {
+    const bank = bankReportRows(shipments).rows;
+    expect(bank).toHaveLength(1);
+    expect(built.grandTotal).toEqual(bank[0]?.totals);
+    // And the branches add up to it.
+    const sum = built.rows.reduce((n, r) => n + r.totals.shipmentCount, 0);
+    expect(sum).toBe(built.grandTotal.shipmentCount);
   });
 });

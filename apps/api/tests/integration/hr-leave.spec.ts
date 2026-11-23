@@ -445,23 +445,28 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
   });
 
   it('releases the reservation on rejection (§4)', async () => {
-    const before = await annualBalance(emp.id);
     const day = await countableOffset(emp.id, typeId('ANNUAL'), 45);
+    // The days are reserved in the leave year of the day asked — from mid-November on, today + 45
+    // is next year's, so the balance read is that year's, never the calendar's current one.
+    const year = Number(dayOffsetIso(day).slice(0, 4));
+    const before = await annualBalance(emp.id, year);
     const res = await submit(
       { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
     );
     expect(res.status).toBe(201);
     const created = res.body.data as LeaveRequestDto;
-    expect((await annualBalance(emp.id)).reserved).toBeGreaterThan(before.reserved);
+    expect((await annualBalance(emp.id, year)).reserved).toBeGreaterThan(before.reserved);
     const rejected = await decide(created.id, 'reject', created.version, managerAuth.token);
     expect(rejected.status).toBe(200);
-    expect((await annualBalance(emp.id)).reserved).toBe(before.reserved);
+    expect((await annualBalance(emp.id, year)).reserved).toBe(before.reserved);
   });
 
   it('lets the requester cancel a pending request, releasing days', async () => {
-    const before = await annualBalance(emp.id);
     const day = await countableOffset(emp.id, typeId('ANNUAL'), 60);
+    // As above: the balance of the leave year the day falls in.
+    const year = Number(dayOffsetIso(day).slice(0, 4));
+    const before = await annualBalance(emp.id, year);
     const res = await submit(
       { typeId: typeId('ANNUAL'), startDate: dayOffsetIso(day), endDate: dayOffsetIso(day) },
       ess.token,
@@ -474,7 +479,7 @@ describe('request lifecycle — self-service + relationship approvals (§3, R9, 
       .send({ version: created.version });
     expect(cancelled.status).toBe(200);
     expect((cancelled.body.data as LeaveRequestDto).status).toBe('cancelled');
-    expect((await annualBalance(emp.id)).reserved).toBe(before.reserved);
+    expect((await annualBalance(emp.id, year)).reserved).toBe(before.reserved);
   });
 
   it('scopes self-service reads to OWN requests and balances (C1-R)', async () => {
@@ -658,5 +663,59 @@ describe('status-affecting leave (L2/R5) + exit settlement (R12)', () => {
     expect((await rereadRequest(created.id)).status).toBe('cancelled');
     const rows = await balances(emp.id);
     for (const row of rows) expect(row.available).toBe(0);
+  });
+});
+
+// «هنخلي كل الفلترز multi زي checkbox كدا اقدر اختار اكتر من حاجه»: all requests' status and type
+// take several values, one comma list each, ORed; a single value still parses.
+describe('the all-requests list filters take several', () => {
+  it('lists by several statuses and several types at once', async () => {
+    const emp = await regEmployee({ managerId: managerAuth.userId });
+    const ess = await activateEssLogin(emp);
+    await grantNextYearHeadroom(emp.id);
+    const file = async (type: string, start: string, end: string): Promise<LeaveRequestDto> => {
+      const res = await submit({ typeId: typeId(type), startDate: start, endDate: end }, ess.token);
+      expect(res.status, JSON.stringify(res.body)).toBe(201);
+      return res.body.data as LeaveRequestDto;
+    };
+    const pendingDay = await countableOffset(emp.id, typeId('ANNUAL'), 14);
+    const pending = await file('ANNUAL', dayOffsetIso(pendingDay), dayOffsetIso(pendingDay));
+    const cancelDay = await countableOffset(emp.id, typeId('ANNUAL'), 30);
+    const toCancel = await file('ANNUAL', dayOffsetIso(cancelDay), dayOffsetIso(cancelDay));
+    const cancelled = await request(app)
+      .post(`/api/v1/hr/leave-requests/${toCancel.id}/cancel`)
+      .set('Authorization', `Bearer ${ess.token}`)
+      .send({ version: toCancel.version });
+    expect(cancelled.status).toBe(200);
+    const sick = await file('SICK', dayOffsetIso(-2), dayOffsetIso(-1));
+    expect([pending.status, sick.status]).toEqual(['pendingManager', 'pendingManager']);
+
+    const ids = async (query: Record<string, string>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/hr/leave-requests')
+        .query({ pageSize: 100, employeeId: emp.id, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return (res.body.data as LeaveRequestDto[]).map((r) => r.id);
+    };
+
+    expect(await ids({ typeId: `${typeId('ANNUAL')},${typeId('SICK')}` })).toEqual(
+      expect.arrayContaining([pending.id, toCancel.id, sick.id]),
+    );
+    const annual = await ids({ typeId: typeId('ANNUAL') });
+    expect(annual).toEqual(expect.arrayContaining([pending.id, toCancel.id]));
+    expect(annual).not.toContain(sick.id);
+
+    expect(await ids({ status: 'pendingManager,cancelled' })).toEqual(
+      expect.arrayContaining([pending.id, toCancel.id, sick.id]),
+    );
+    expect(await ids({ status: 'cancelled' })).toEqual([toCancel.id]);
+    expect(await ids({ status: 'pendingManager', typeId: typeId('ANNUAL') })).toEqual([pending.id]);
+
+    const bad = await request(app)
+      .get('/api/v1/hr/leave-requests')
+      .query({ status: 'cancelled,nonsense' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bad.status).toBe(400);
   });
 });

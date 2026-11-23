@@ -27,6 +27,7 @@ import {
   platformPermissions,
   type EmployeeDto,
   type UserDto,
+  type UserListItemDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
@@ -37,6 +38,7 @@ import { userService } from '../../src/platform/users';
 import { userRepository } from '../../src/platform/users/user.repository';
 import { settingsService } from '../../src/platform/settings';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
+import { RoleAssignmentModel } from '../../src/platform/rbac/role-assignment.model';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { type AuthContext } from '../../src/shared/types';
@@ -671,5 +673,103 @@ describe('the protections that were already there still hold', () => {
       .send({ name: { ar: 'x', en: 'x' }, version: 0 });
     // No `role.edit` grant: refused before the protection is even consulted.
     expect(res.status).toBe(403);
+  });
+});
+
+// ── 7. The list names each account's department, job title and roles ────────
+//
+// «زود أدوار كل واحد + الإدارة بتاعته + مسماه الوظيفي .. وطبعاً هتزودهم فى الفلتر».
+
+const listUsers = (query: Record<string, string>, token = adminToken): request.Test =>
+  request(app)
+    .get(`/api/v1/platform/users?${new URLSearchParams({ pageSize: '100', ...query }).toString()}`)
+    .set('Authorization', `Bearer ${token}`);
+
+const rowsOf = (res: request.Response): UserListItemDto[] => data<UserListItemDto[]>(res);
+
+describe('the users list names placement and roles, and filters by them', () => {
+  it('names the department, the job title and the roles held now — found by the employee code', async () => {
+    const employee = await registerEmployee();
+    expect(employee.userId).not.toBeNull();
+    // The sign-in name of an employee is the code; the search box promises username search.
+    const res = await listUsers({ search: employee.code });
+    expect(res.status).toBe(200);
+    const row = rowsOf(res).find((r) => r.id === employee.userId);
+    expect(row, 'the employee’s account is found by its code').toBeDefined();
+    expect(row?.department).toEqual({ id: DEPARTMENT_ID, name: { ar: 'العمليات', en: 'Operations' } });
+    expect(row?.jobTitle).toEqual({ id: JOB_TITLE_ID, name: { ar: 'صراف', en: 'Cashier' } });
+    expect(row?.roles?.map((r) => r.key)).toContain('employee-self-service');
+  });
+
+  it('names nothing for an account placed nowhere', async () => {
+    const user = data<UserDto>(await createUser({ ...names(), email: 'placed-nowhere@ecms.local' }));
+    const row = rowsOf(await listUsers({ search: 'placed-nowhere' })).find((r) => r.id === user.id);
+    expect(row?.department).toBeNull();
+    expect(row?.jobTitle).toBeNull();
+    expect(row?.roles).toEqual([]);
+  });
+
+  it('filters by department and by job title', async () => {
+    const employee = await registerEmployee();
+    const outside = data<UserDto>(await createUser({ ...names(), email: 'no-placement@ecms.local' }));
+
+    const byDepartment = rowsOf(await listUsers({ departmentId: DEPARTMENT_ID }));
+    expect(byDepartment.map((r) => r.id)).toContain(employee.userId);
+    expect(byDepartment.map((r) => r.id)).not.toContain(outside.id);
+    expect(byDepartment.every((r) => r.department?.id === DEPARTMENT_ID)).toBe(true);
+
+    const byJob = rowsOf(await listUsers({ jobTitleId: JOB_TITLE_ID }));
+    expect(byJob.map((r) => r.id)).toContain(employee.userId);
+    expect(byJob.map((r) => r.id)).not.toContain(outside.id);
+    expect(byJob.every((r) => r.jobTitle?.id === JOB_TITLE_ID)).toBe(true);
+  });
+
+  it('filters by a role held now, and not by a grant whose window has closed', async () => {
+    const role = await rbacService.createRole(
+      { name: { en: 'List filter role', ar: 'دور فلتر القائمة' }, permissionKeys: ['user.view'] },
+      adminId,
+    );
+    const roleId = String(role._id);
+    const holder = await seedUser('role-holder@ecms.local');
+    await rbacService.ensureAssignment(holder, roleId, 'organization');
+    const lapsed = await seedUser('role-lapsed@ecms.local');
+    await rbacService.ensureAssignment(lapsed, roleId, 'organization');
+    await RoleAssignmentModel.updateOne(
+      { userId: lapsed, roleId },
+      { $set: { validTo: new Date(Date.now() - 86_400_000) } },
+    ).exec();
+
+    const res = await listUsers({ roleId });
+    expect(res.status).toBe(200);
+    const ids = rowsOf(res).map((r) => r.id);
+    expect(ids).toEqual([holder]);
+    expect(rowsOf(res)[0]?.roles).toContainEqual({
+      id: roleId,
+      key: null,
+      name: { en: 'List filter role', ar: 'دور فلتر القائمة' },
+    });
+
+    // The lapsed grant names no role on its row either.
+    const lapsedRow = rowsOf(await listUsers({ search: 'role-lapsed' })).find((r) => r.id === lapsed);
+    expect(lapsedRow?.roles?.map((r) => r.id) ?? []).not.toContain(roleId);
+  });
+
+  it('leaves roles out for a reader who may not see roles, and refuses that reader a role filter', async () => {
+    const res = await listUsers({}, readerToken);
+    expect(res.status).toBe(200);
+    expect(rowsOf(res).length).toBeGreaterThan(0);
+    expect(rowsOf(res).every((r) => r.roles === null)).toBe(true);
+    // Placement is not withheld: it is on the account the reader may already open.
+    expect(rowsOf(res).some((r) => r.department !== null)).toBe(true);
+
+    const role = await rbacService.createRole(
+      { name: { en: 'Unseen role', ar: 'دور غير مرئي' }, permissionKeys: ['user.view'] },
+      adminId,
+    );
+    expect((await listUsers({ roleId: String(role._id) }, readerToken)).status).toBe(403);
+  });
+
+  it('refuses a filter value that is not an id', async () => {
+    expect((await listUsers({ departmentId: 'not-an-id' })).status).toBe(400);
   });
 });

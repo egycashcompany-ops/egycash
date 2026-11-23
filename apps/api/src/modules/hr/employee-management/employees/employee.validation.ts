@@ -2,6 +2,7 @@
 // route-local param schemas. The module validates every boundary (ADR-007).
 export {
   ChangeEmployeeCodeSchema,
+  PurgeEmployeeSchema,
   CreateEmployeeSchema,
   CreateEmployeeLoginSchema,
   DirectRegisterEmployeeSchema,
@@ -9,6 +10,7 @@ export {
   JobTitlePlacementQuerySchema,
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
+  LookupEmployeeCodesSchema,
   RegisterExternalEmployeeSchema,
   RehireCheckQuerySchema,
   UpdateEmployeeInsuranceSchema,

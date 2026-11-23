@@ -1,13 +1,18 @@
 /**
- * A list of months, each named and counted — «أكتوبر ٢٠٢٦ (٢)» — oldest first. What every month
+ * A list of months, each named and counted — «أكتوبر 2026 (2)» — oldest first. What every month
  * filter of the Fleet boards offers: only months something falls in, never a calendar of empty
  * choices.
+ *
+ * Arabic names the month in Arabic and writes the year and the count in Latin digits, as the rest
+ * of the system does (owner, 2026-11-22, «صلحهم» — the options read «أكتوبر ٢٠٢٦ (١٢)» beside
+ * screens that write every other figure «12»). `-u-nu-latn` changes the digits only; the month
+ * names and their order stay ar-EG's.
  */
 export const monthCountOptions = (
   months: readonly { month: string; count: number }[],
   locale: string,
 ): { value: string; label: string }[] => {
-  const tag = locale === 'ar' ? 'ar-EG' : 'en-GB';
+  const tag = locale === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB';
   const digits = new Intl.NumberFormat(tag);
   const name = new Intl.DateTimeFormat(tag, {
     month: 'long',

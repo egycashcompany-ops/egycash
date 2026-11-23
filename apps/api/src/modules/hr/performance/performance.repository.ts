@@ -145,7 +145,7 @@ class PerformanceReviewRepository extends BaseRepository<PerformanceReviewDoc> {
     if (f.employeeId !== undefined) clauses.push({ employeeId: new Types.ObjectId(f.employeeId) });
     if (f.evaluatorId !== undefined)
       clauses.push({ evaluatorId: new Types.ObjectId(f.evaluatorId) });
-    if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
+    if (f.status !== undefined && f.status.length > 0) clauses.push({ status: { $in: f.status } });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });
     if (f.departmentId !== undefined) {
       clauses.push({ departmentId: new Types.ObjectId(f.departmentId) });

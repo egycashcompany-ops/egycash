@@ -2,7 +2,7 @@
 // under RTL via the `rtl:-scale-x-100` utility. Default size is 1.25rem; pass className to resize.
 import { type SVGProps } from 'react';
 
-type IconProps = SVGProps<SVGSVGElement>;
+export type IconProps = SVGProps<SVGSVGElement>;
 
 const Base = ({ className, children, ...props }: IconProps): JSX.Element => (
   <svg

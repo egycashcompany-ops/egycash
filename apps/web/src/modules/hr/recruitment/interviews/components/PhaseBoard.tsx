@@ -8,7 +8,7 @@
 //
 // I7 — the board is a table in card clothing: it uses the SAME `useTableSelection` model and the
 // SAME `BulkActionBar` as every recruitment list, so a selection behaves identically here.
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { type EvaluationDto, type InterviewDto, type Locale } from '@ecms/contracts';
@@ -26,7 +26,6 @@ import { listApplicants } from '../../applicants/api/applicant-api';
 import { useBulkApplicants } from '../../applicants/api/applicant-queries';
 import { useEvaluationPhases, useEvaluations } from '../../evaluations/api/evaluation-queries';
 import { useInterviews, useInterviewStages } from '../api/interview-queries';
-import { BulkScheduleDialog } from './BulkScheduleDialog';
 
 interface BoardCard {
   applicantId: string;
@@ -75,7 +74,6 @@ export const PhaseBoard = (): JSX.Element => {
     staleTime: 30_000,
   });
 
-  const [bulkSchedule, setBulkSchedule] = useState(false);
   const bulk = useBulkApplicants();
 
   const columns = useMemo<BoardColumn[]>(() => {
@@ -200,18 +198,12 @@ export const PhaseBoard = (): JSX.Element => {
     }
   };
 
-  const canSchedule = can('interview.create');
   const canMove = can('applicant.moveToOffer');
 
   return (
     <div className="space-y-4">
-      {(canSchedule || canMove) && (
+      {canMove && (
         <BulkActionBar count={selection.count} onClear={selection.clear}>
-          {canSchedule && (
-            <Button size="sm" variant="secondary" onClick={() => setBulkSchedule(true)}>
-              {t('interviews.bulk.schedule')}
-            </Button>
-          )}
           {canMove && (
             <Button size="sm" variant="secondary" loading={bulk.isPending} onClick={() => void bulkMove()}>
               {t('interviews.bulk.moveToOffer')}
@@ -231,7 +223,7 @@ export const PhaseBoard = (): JSX.Element => {
                 {/* Select-all belongs per COLUMN, not per board: the bulk actions act on one stage
                     at a time, and "everything on screen" spans stages that cannot be acted on
                     together. */}
-                {col.selectable && (canSchedule || canMove) && col.cards.length > 0 && (
+                {col.selectable && canMove && col.cards.length > 0 && (
                   <input
                     type="checkbox"
                     className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
@@ -259,7 +251,7 @@ export const PhaseBoard = (): JSX.Element => {
                       key={card.applicantId}
                       className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-800"
                     >
-                      {col.selectable && (canSchedule || canMove) && (
+                      {col.selectable && canMove && (
                         <input
                           type="checkbox"
                           className="h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
@@ -288,13 +280,6 @@ export const PhaseBoard = (): JSX.Element => {
         </div>
       </div>
 
-      {bulkSchedule && (
-        <BulkScheduleDialog
-          applicantIds={selection.ids}
-          onClose={() => setBulkSchedule(false)}
-          onDone={selection.clear}
-        />
-      )}
     </div>
   );
 };

@@ -8,7 +8,8 @@ import { EmployeeFileModel, type EmployeeFileDoc } from './employee-file.model';
 import { codeNumberKey, employeeCodeSort } from '../../shared/employee-code-sort';
 
 export interface EmployeeFileListFilter {
-  status?: string | undefined;
+  /** Statuses asked about, ORed. */
+  status?: readonly string[] | undefined;
   employeeId?: string | undefined;
   applicantId?: string | undefined;
   branchId?: string | undefined;
@@ -33,7 +34,7 @@ class EmployeeFileRepository extends BaseRepository<EmployeeFileDoc> {
 
   private buildFilter(f: EmployeeFileListFilter): FilterQuery<EmployeeFileDoc> {
     const clauses: FilterQuery<EmployeeFileDoc>[] = [];
-    if (f.status !== undefined) clauses.push({ status: f.status });
+    if (f.status !== undefined && f.status.length > 0) clauses.push({ status: { $in: [...f.status] } });
     if (f.employeeId !== undefined) clauses.push({ employeeId: new Types.ObjectId(f.employeeId) });
     if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.branchId !== undefined) clauses.push({ branchId: new Types.ObjectId(f.branchId) });

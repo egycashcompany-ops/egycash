@@ -70,17 +70,21 @@ describe('the bar', () => {
       'applicant-sources',
       'interview-stages',
       'evaluation-phases',
+      'hiring-requirements',
       'announcements',
       'notification-rules',
+      // «الحضور» last: «ساعات العمل», the department working hours.
+      'working-hours',
     ]);
     for (const tab of HR_SETTINGS_HUB.tabs) {
       expect(html).toContain(`href="/hr-settings/${tab.key}"`);
       expect(html).toContain(translate('ar', `hr.settings.tab.${tab.key}`));
     }
-    // The two groups, named as the sidebar named them, with one divider between them.
+    // The three groups, with one divider between each.
+    expect(html).toContain('aria-label="الحضور"');
     expect(html).toContain('aria-label="إعدادات التوظيف"');
     expect(html).toContain('aria-label="التواصل"');
-    expect(html.match(/w-px/g)).toHaveLength(1);
+    expect(html.match(/w-px/g)).toHaveLength(2);
   });
 
   it('marks the open section — and paints it pressed until the pill is measured', () => {

@@ -19,7 +19,8 @@ class RegularizationRepository extends BaseRepository<AttendanceRegularizationDo
     query: ListAttendanceRegularizationsQuery,
   ): FilterQuery<AttendanceRegularizationDoc> {
     const filter: FilterQuery<AttendanceRegularizationDoc> = {};
-    if (query.status !== undefined) filter.status = query.status;
+    // Several statuses, ORed (the queue's filter takes several).
+    if (query.status !== undefined && query.status.length > 0) filter.status = { $in: query.status };
     if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
     if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
     // P-HR-08 — the corrections that landed after their month was closed. Exact match on purpose:

@@ -90,6 +90,7 @@ const crewOf = (crewAssignmentId: string, vehicleCode: string, captain: [string,
   crewAssignmentId,
   vehicleId: `v-${vehicleCode}`,
   vehicleCode,
+  looseNumber: null,
   captainEmployeeId: captain[0],
   captainName: captain[1],
   captainCode: null,
@@ -458,6 +459,8 @@ describe('a vault too full to list at once', () => {
 
 const crewBoard = (date: string): OperationsCrewBoardDto => ({
   date: `${date}T00:00:00.000Z`,
+  today: `${date}T00:00:00.000Z`,
+  past: false,
   day: null,
   rows: [
     {
@@ -466,7 +469,9 @@ const crewBoard = (date: string): OperationsCrewBoardDto => ({
       fleetDutyAssignmentId: 'fd-1',
       driver1EmployeeId: null,
       driver2EmployeeId: null,
+      drivers: [],
       missionTypeId: null,
+      uncoded: null,
       crew: {
         id: 'ca-1',
         captainEmployeeIds: ['e-1'],
@@ -475,9 +480,16 @@ const crewBoard = (date: string): OperationsCrewBoardDto => ({
         direction: null,
         plannedTime: null,
         notes: null,
+        shiftTypeId: null,
+        rowColour: null,
+        shipments: 0,
       },
     },
   ],
+  vehiclelessRows: [],
+  workshopVehicles: [],
+  freeVehicles: [],
+  unidentifiedVehicles: 0,
 });
 const directory = (date: string): OperationsCrewDirectoryDto => ({
   date: `${date}T00:00:00.000Z`,
@@ -603,6 +615,41 @@ describe('«صرف من الخزينة» — one load per vehicle, said before t
       ar('operations.secured.dispatch.release', { count: formatNumber(3, 'ar') }),
     );
     expect(html).toContain(`>${ar('operations.secured.dispatch.back')}<`);
+  });
+});
+
+// Round 24, the critic's round — two crews WITHOUT A VAN in one release were titled alike. Each is
+// named by the number «لوحة التشغيلة» gives it (`looseNumber`), whichever crews the release holds.
+describe('«صرف من الخزينة» — two crews without a van, never one name twice', () => {
+  const looseCrew = (crewAssignmentId: string, looseNumber: number, captain: [string, string]) => ({
+    ...crewOf(crewAssignmentId, 'x', captain),
+    vehicleId: null,
+    vehicleCode: null,
+    looseNumber,
+  });
+  const html = renderDialog(
+    <DispatchSecuredDialog
+      rows={[
+        inVault('s-l2', '2026-11-12', { crew: looseCrew('cl-2', 2, ['e-5', 'قائد ثان']) }),
+        inVault('s-l3', '2026-11-12', { crew: looseCrew('cl-3', 3, ['e-6', 'قائد ثالث']) }),
+      ]}
+      onClose={() => undefined}
+      onDispatched={() => undefined}
+    />,
+    FULL,
+  );
+
+  it('titles each load by its crew’s number on the board', () => {
+    const first = html.slice(
+      html.indexOf('data-dispatch-load="cl-2"'),
+      html.indexOf('data-dispatch-load="cl-3"'),
+    );
+    const second = html.slice(html.indexOf('data-dispatch-load="cl-3"'));
+    expect(first).toContain(ar('operations.distribution.looseLabel', { n: formatNumber(2, 'ar') }));
+    expect(second).toContain(
+      ar('operations.distribution.looseLabel', { n: formatNumber(3, 'ar') }),
+    );
+    expect(html).not.toContain('null');
   });
 });
 

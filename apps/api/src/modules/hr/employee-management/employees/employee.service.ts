@@ -11,6 +11,7 @@
 // file (not barrel) to keep the import graph acyclic (see employee.migration.ts).
 import { Types } from 'mongoose';
 import {
+  type EmployeeCodeMatchDto,
   HrEmployeeEvents,
   HrEmployeeTemplates,
   loginProfileNames,
@@ -32,13 +33,16 @@ import {
   type FileDto,
   type EmployeeLoginProvisionDto,
   type JobValueSource,
+  ErrorCodes,
   employeeCodeBranchPrefix,
+  employeeCodePatternFor,
   employeeCodeSerial,
   type EmployeeCodeCheckDto,
   type JobTitlePlacementDto,
   type LastEmployeeCodeDto,
 } from '@ecms/contracts';
 import {
+  AppError,
   BusinessRuleError,
   ConflictError,
   NotFoundError,
@@ -864,11 +868,12 @@ class EmployeeService {
 
     const registeredAt = employment.startDate;
     const doc = await unitOfWork(async (session) => {
-      // The number is still drawn — every employee has one, and the registry counts people — but
-      // the CODE is the one HR typed. For an external person the two are not related, which is the
-      // whole difference between a name the company gives somebody and an issued employee code.
-      const employeeNumber = await nextEmployeeNumber(session);
+      // No company number is drawn: the person's number IS the code HR typed. A number drawn from
+      // the company's sequence was never shown, yet it held the company's code with that number
+      // («02002943 … مسجَّل بالفعل للموظف C2») — a company code taken by somebody who is not on the
+      // company's books. `migrateExternalEmployeeNumbers` frees the numbers drawn before this.
       const code = input.code;
+      const employeeNumber = code;
       const entryEvent: EmployeeStatusEvent = {
         from: null,
         to: 'active',
@@ -1233,6 +1238,20 @@ class EmployeeService {
   ): Promise<{ doc: EmployeeDoc; loginUsernameChanged: boolean }> {
     const before = await employeeRepository.getById(id, scope);
     const code = input.code.trim();
+    // Each person is held to their own shape: an external person's code may carry letters, and
+    // nobody else's may — the company's code is a branch and a number, read back out of it.
+    if (!employeeCodePatternFor(before.origin).test(code)) {
+      throw new ValidationError([
+        {
+          field: 'code',
+          code: 'INVALID_FORMAT',
+          message:
+            before.origin === 'external'
+              ? 'an external code is letters, digits and a hyphen, 2 to 20 characters'
+              : 'an employee code is 3 branch digits then at least 4 digits of number',
+        },
+      ]);
+    }
     if (code === before.code)
       throw new BusinessRuleError('the new code is the same as the current one');
 
@@ -1249,7 +1268,12 @@ class EmployeeService {
     if (renameLogin) {
       const taken = await userService.findByUsernameOrEmail(code);
       if (taken !== null && String(taken._id) !== String(user._id)) {
-        throw new ConflictError(`the sign-in name ${code} is already used by another account`);
+        // Still a DUPLICATE, but of an ACCOUNT's sign-in name, not of a code: the detail is what
+        // lets the dialog say which, instead of telling HR another employee holds a code nobody does.
+        const message = `the sign-in name ${code} is already used by another account`;
+        throw new AppError(ErrorCodes.DUPLICATE, 409, message, {
+          details: [{ field: 'username', code: 'LOGIN_TAKEN', message }],
+        });
       }
     }
 
@@ -1463,6 +1487,36 @@ class EmployeeService {
    * makes one of the two fail with a 409 rather than silently undoing the other. If the link does
    * not land, the file just filed is referenced by nothing and is withdrawn.
    */
+  /**
+   * The employees holding these codes, for the bulk photo upload: each code once, within the scope
+   * the photo write itself needs, so the screen offers exactly the people it may then change.
+   */
+  async lookupCodes(codes: readonly string[], scope: ScopeSelector): Promise<EmployeeCodeMatchDto[]> {
+    const unique = [...new Set(codes.map((code) => code.trim()).filter((code) => code !== ''))];
+    const docs = await employeeRepository.findByCodesInScope(unique, scope);
+    const photoOf = (doc: EmployeeDoc): string | null =>
+      doc.personal.photoFileId === null || doc.personal.photoFileId === undefined
+        ? null
+        : String(doc.personal.photoFileId);
+    // When each current photo went up: the screen skips the people whose photo is already new.
+    const uploadedAt = await fileService.uploadedAtOf(
+      docs.map(photoOf).filter((id): id is string => id !== null),
+    );
+    return docs.map((doc) => {
+      const photoFileId = photoOf(doc);
+      const at = photoFileId === null ? undefined : uploadedAt.get(photoFileId);
+      return {
+        id: String(doc._id),
+        code: doc.code,
+        fullNameAr: doc.personal.fullNameAr,
+        fullNameEn: doc.personal.fullNameEn ?? null,
+        status: doc.status,
+        photoFileId,
+        photoUploadedAt: at === undefined ? null : at.toISOString(),
+      };
+    });
+  }
+
   async setPhoto(
     ctx: AuthContext,
     id: string,

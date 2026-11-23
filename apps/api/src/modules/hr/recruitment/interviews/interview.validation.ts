@@ -18,6 +18,7 @@ export {
   BulkInterviewsSchema,
   BulkScheduleInterviewsSchema,
   BulkStartInterviewsSchema,
+  QuickDecideInterviewsSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

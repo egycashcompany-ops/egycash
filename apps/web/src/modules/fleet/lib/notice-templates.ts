@@ -10,6 +10,7 @@
 //
 // «ومش عاوز اى داتا اجبارى» — no box is required. A box left empty stays empty on the page.
 import { type FleetNoticeTemplate } from '@ecms/contracts';
+import { NOTICE_INSURER } from './notice-insurers';
 
 /** The scanned page's size, in the units every position below is written in. */
 export const NOTICE_PAGE = { width: 744, height: 1053 } as const;
@@ -78,7 +79,7 @@ export interface NoticeCheck {
 
 export interface NoticeTemplate {
   key: FleetNoticeTemplate;
-  /** The insurer, as the chooser names it. */
+  /** The insurer, as the chooser names it (`NOTICE_INSURER`, the one source of the names). */
   insurer: string;
   /** The form's own title. */
   title: string;
@@ -93,7 +94,7 @@ const page = (file: string): string => `${import.meta.env.BASE_URL}fleet-notices
 export const NOTICE_TEMPLATES: readonly NoticeTemplate[] = [
   {
     key: 'misrInsurance',
-    insurer: 'مصر للتأمين',
+    insurer: NOTICE_INSURER.misrInsurance,
     title: 'إخطار بلاغ حادث تأمين سيارات',
     pages: [page('misr-insurance-1.jpg'), page('misr-insurance-2.jpg')],
     sections: [
@@ -502,7 +503,7 @@ export const NOTICE_TEMPLATES: readonly NoticeTemplate[] = [
   },
   {
     key: 'deltaInsurance',
-    insurer: 'الدلتا للتأمين',
+    insurer: NOTICE_INSURER.deltaInsurance,
     title: 'إخطار عن حادث سيارة (QF-112)',
     pages: [page('delta-insurance-1.jpg')],
     sections: [

@@ -71,18 +71,27 @@ Indexes: `ux_email`, `ix_companyId_branchId_status`.
 
 ### sessions  *(auth)*
 
-> **Out of date (drift check, 2026-11-05).** The session holds `currentTokenHash` (unique) and
-> `usedTokenHashes` for replay detection, not `refreshTokenHash`, and records how it was opened
-> (`method`: password, passkey, portal challenge). Read the model under `apps/api/src` until this
-> block is rewritten.
-
 ```jsonc
-{ "userId": "…", "refreshTokenHash": "…", "family": "uuid",   // rotation family (ADR-006)
+{ "userId": "…", "family": "uuid",                       // rotation family (ADR-006)
+  "currentTokenHash": "…",                               // unique; hashed refresh token
+  "usedTokenHashes": ["…"],                              // bounded; a replay of one revokes the family
   "device": { "userAgent": "…", "ip": "…" },
+  "method": "password | passkey | portalChallenge",      // how it was opened (ADR-035)
+  "createdAt": "…",
+  "lastUsedAt": "…",          // the inactivity clock: moved only by a renewal a PERSON made (ADR-039)
+  "idleMinutesTold": 30,      // the window this session's screen was last told (ADR-039)
   "expiresAt": "TTL index", "revokedAt": null, "revokedReason": null }
 ```
+Indexes: `ux_currentTokenHash`, `ix_usedTokenHashes`, `ix_userId`, `ttl_expiresAt`.
+
+A renewal is judged by the longer of `idleMinutesTold` and the current `auth.session.idleMinutes`.
+A renewal by a person moves `lastUsedAt` and writes the current value back. A renewal sent with
+`presence: false` (a request whose access token expired, not a person) rotates the token, leaves
+`lastUsedAt` alone and keeps the window it was judged by.
+
 Also `ix_live_lastUsedAt` — `{ lastUsedAt: -1 }`, partial on `revokedAt: null` — for the active users
-page, which reads every session renewed inside the idle window.
+page. It lists every session a renewal would still accept: `lastUsedAt` inside the longer of the
+current window and `idleMinutesTold`.
 
 ### user_activity_days  *(presence)*
 ```jsonc
@@ -140,6 +149,28 @@ Indexes: `ux_code` (partial on `isDeleted:false`), `ix_status`, and on sections
 unique, and partial on `{isDeleted:false, catalogId:{$type:"objectId"}}` so that rows naming no entry
 are outside the constraint. `departments._id` remains the department data scope; nothing moves.
 Existing data is linked by `npm run migrate:org-catalog` (dry run by default), never at boot.
+Since P-ORG-3 ([ADR-038](../03-decisions/ADR-038-job-titles-placed-in-the-structure.md)) a row
+created through the department or section service without a `catalogId` is linked when created: to the
+one active entry its name folds to, or to a new entry for a new name. It stays unlinked when that is
+ambiguous, when an unlinked row of that name already exists, or when the step fails. Existing rows are
+never linked by any write except the operator command.
+
+### job_title_places  *(organization-wide, ADR-038)*
+```jsonc
+// A job title's place in the company structure. Descriptive: no headcount, no seat.
+{ "jobTitleId": "…", "departmentCatalogId": "…",
+  "sectionCatalogId": "…" | null,         // null = directly under the department
+  "position": 0 | null }                  // where it stands in its column; null until ordered (org-chart §5.7)
+```
+Indexes: `ux_jobTitleId_departmentCatalogId_sectionCatalogId` (unique, partial on `isDeleted:false`),
+`ix_departmentCatalogId`, `ix_sectionCatalogId` — built at boot (`migrateJobPlaceIndexes`).
+
+### job_title_place_fills  *(organization-wide, ADR-038)*
+```jsonc
+// One row per company department filled once from where its holders sit.
+{ "departmentCatalogId": "…", "at": "<Date>", "placed": 0 }
+```
+Index: `ux_departmentCatalogId` (unique) — the fill's race guard, built at boot.
 
 ### settings_values
 ```jsonc

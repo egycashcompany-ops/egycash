@@ -1,5 +1,6 @@
-// «لوحة تحكم الحركة» — the frame: no page head, the sticky pill bar with its two groups and its counts,
-// the tabs a reader sees, the panel a link opens, and the reads a reader is allowed to send.
+// «لوحة تحكم الحركة» — the frame: no page head, the sticky pill bar with its ONE strip, its counts and
+// «الفرع: …» at its end, the tabs a reader sees, the panel a link opens (old links to the retired
+// tabs included), and the reads a reader is allowed to send.
 //
 // Rendered in the node environment over seeded caches (`renderToStaticMarkup`), the fleet-dashboard
 // way: React Query's server snapshot reads a seeded answer, so each case seeds what the server would
@@ -8,20 +9,51 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { FLEET_DASHBOARD_PAGE_KEYS, FLEET_DASHBOARD_TABS } from '@ecms/contracts';
+import { translate } from '../../platform/localization/i18n';
 import { custodyQueryKeys } from './api/fleet-queries';
 import {
   ALL_KEYS,
+  B1,
+  B2,
+  EVERY_KEY,
   NOW_DTO,
   PERIOD_DTO,
   ar,
   dashboardClient,
   renderDashboard,
 } from './fleet-dashboard-fixtures';
+import { KM_TOTAL, PERIOD_FULL } from './fleet-dashboard-period-fixtures';
 import { REMEMBERED_FILTERS, dashboardView } from './pages/FleetDashboardPage';
 import { alertLines, alertSummary, tabBadges, visibleTabs } from './lib/fleet-dashboard-tabs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGE = readFileSync(join(HERE, 'pages/FleetDashboardPage.tsx'), 'utf8');
+const SHELL = readFileSync(join(HERE, 'components/fleet-dashboard/dash-shell.tsx'), 'utf8');
+
+/** The whole element whose opening tag holds `marker` (its own tag name counted for depth). */
+const element = (html: string, marker: string): string => {
+  const at = html.indexOf(marker);
+  if (at < 0) return '';
+  const start = html.lastIndexOf('<', at);
+  const name = /^<([a-z]+)/u.exec(html.slice(start))?.[1] ?? 'div';
+  const tags = new RegExp(`<${name}\\b|</${name}>`, 'gu');
+  tags.lastIndex = start;
+  let depth = 0;
+  for (let m = tags.exec(html); m !== null; m = tags.exec(html)) {
+    depth += m[0].startsWith('</') ? -1 : 1;
+    if (depth === 0) return html.slice(start, m.index + m[0].length);
+  }
+  return html.slice(start);
+};
+const B1_NAMED = { id: B1, name: { ar: 'القاهرة', en: 'Cairo' } };
+/**
+ * The removed period-figures tab (22 November): its key and its Arabic name, spelled apart so a
+ * search of the code for leftovers finds only these absence checks.
+ */
+const REMOVED_TAB = 'period';
+const REMOVED_NAME = ['أرقام', 'الفترة'].join(' ');
+const B2_NAMED = { id: B2, name: { ar: 'الجيزة', en: 'Giza' } };
 
 /** The tabs the bar shows, in its order. */
 const barTabs = (html: string): string[] =>
@@ -42,71 +74,364 @@ describe('the frame', () => {
     expect(html).toContain('sticky top-0');
   });
 
-  it('draws the brand logo badge and the two groups «الآن» | «حسب الفلاتر»', () => {
+  it('draws the brand logo badge and ONE strip of tabs — no «الآن» | «حسب الفلاتر» groups', () => {
     expect(html).toContain('data-dash-nav="true"');
-    expect(html).toContain(
-      `aria-label="${ar('fleet.dash.shell.group.now')}" data-dash-group="now"`,
-    );
-    expect(html).toContain(
-      `aria-label="${ar('fleet.dash.shell.group.filters')}" data-dash-group="filters"`,
-    );
-    expect(html.indexOf('data-dash-group="now"')).toBeLessThan(
-      html.indexOf('data-dash-group="filters"'),
-    );
+    const strip = element(html, 'data-dash-strip="true"');
+    expect(strip).toContain('role="tablist"');
+    expect(strip).toContain(`aria-label="${ar('fleet.dash.shell.navLabel')}"`);
+    expect(barTabs(strip)).toEqual(barTabs(html));
+    expect(html).not.toContain('data-dash-group');
+    // One tab list on the page: the strip.
+    expect(html.match(/role="tablist"/gu)).toHaveLength(1);
   });
 
-  it('shows all ten tabs, in the bar’s order, to a reader with every key', () => {
+  it('shows all eleven tabs, in the bar’s order, to a reader with every key — «ملخصات» last, no period-figures tab', () => {
     expect(barTabs(html)).toEqual([
-      'alerts',
-      'now',
+      'overview',
+      'today',
       'distribution',
+      'maintenance',
+      'km',
+      'accidents',
+      'violations',
+      'fuel',
+      'custody',
       'licences',
       'summaries',
-      'period',
-      'km',
-      'ranking',
-      'maintenance',
-      'accidents',
     ]);
+    expect(FLEET_DASHBOARD_TABS).toEqual(barTabs(html));
+    // The owner removed the period-figures tab (22 November): no pill, no key, no word of it.
+    expect(FLEET_DASHBOARD_TABS).not.toContain(REMOVED_TAB);
+    expect(html).not.toContain(`data-dash-tab="${REMOVED_TAB}"`);
+    expect(html).not.toContain(REMOVED_NAME);
+    expect(ar('fleet.dash.shell.tab.summaries')).toBe('ملخصات');
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.summaries')}<`);
+    expect(ar('fleet.dash.shell.tab.km')).toBe('العدادات والكيلومترات');
+    expect(ar('fleet.dash.shell.tab.accidents')).toBe('الحوادث ومطالبات التأمين');
+    expect(ar('fleet.dash.shell.tab.violations')).toBe('المخالفات المرورية والتسويات');
+    expect(ar('fleet.dash.shell.tab.fuel')).toBe('الوقود والمصروفات');
+    // «العهدة» NEW right after «الوقود والمصروفات», then «التراخيص والتجديدات» under the old key —
+    // each pill with its full approved name (no short word, no tooltip); «ملخصات», the one old tab
+    // kept, last.
+    expect(ar('fleet.dash.shell.tab.custody')).toBe('العهدة');
+    expect(ar('fleet.dash.shell.tab.licences')).toBe('التراخيص والتجديدات');
+    for (const tab of ['km', 'accidents', 'violations', 'fuel', 'custody', 'licences'])
+      expect(html, tab).toContain(`>${ar(`fleet.dash.shell.tab.${tab}`)}<`);
+    expect(SHELL).not.toContain('tabShort');
   });
 
-  it('presses the first visible tab on a clean address, in the system’s indigo', () => {
-    expect(pressed(html)).toBe('alerts');
+  it('presses «نظرة عامة» on a clean address, in the system’s indigo', () => {
+    expect(pressed(html)).toBe('overview');
     expect(html).toMatch(/aria-selected="true"[^>]*class="[^"]*bg-brand-600/u);
-    expect(html).toContain('data-dash-panel="alerts"');
+    expect(html).toContain('data-dash-panel="overview"');
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.overview')}<`);
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.today')}<`);
+  });
+
+  it('draws the scroll cue only once an overflow was measured — never at rest', () => {
+    expect(html).not.toContain('data-dash-cue');
+    // The cue exists in the frame, behind the measured overflow of the strip.
+    expect(SHELL).toContain('data-dash-cue={side}');
+    expect(SHELL).toContain('{cue.start && <StripCue side="start"');
+    expect(SHELL).toContain('{cue.end && <StripCue side="end"');
   });
 
   it('opens the tab the link names, and keeps its words as the bar writes them', () => {
+    // An old `?tab=licences` link opens the rebuilt «التراخيص والتجديدات» (key kept); its pill reads
+    // the full name — the bar no longer shortens it, so it carries no tooltip either.
     const licences = renderDashboard({ url: '/fleet?tab=licences' });
     expect(pressed(licences)).toBe('licences');
-    expect(licences).toContain(`title="${ar('fleet.dash.shell.tab.licences')}"`);
-    expect(licences).toContain(`>${ar('fleet.dash.shell.tabShort.licences')}<`);
+    expect(licences).toContain('data-dash-panel="licences"');
+    const pill = /<button[^>]*data-dash-tab="licences"[^>]*>/u.exec(licences)?.[0] ?? '';
+    expect(pill).not.toBe('');
+    expect(pill).not.toContain('title=');
+    expect(licences).toContain(`>${ar('fleet.dash.shell.tab.licences')}<`);
+    const custody = renderDashboard({ url: '/fleet?tab=custody' });
+    expect(pressed(custody)).toBe('custody');
+    expect(custody).toContain('data-dash-panel="custody"');
   });
 
   it('falls back to the first visible tab for a hidden or an unknown tab', () => {
     const unknown = renderDashboard({ url: '/fleet?tab=nonsense' });
-    expect(pressed(unknown)).toBe('alerts');
+    expect(pressed(unknown)).toBe('overview');
     // A reader of the vehicles alone has no summaries tab: the link lands on the first visible one.
     const hidden = renderDashboard({
       url: '/fleet?tab=summaries',
       permissions: ['fleetVehicle.view'],
     });
     expect(barTabs(hidden)).not.toContain('summaries');
-    expect(pressed(hidden)).toBe('alerts');
+    expect(pressed(hidden)).toBe('overview');
   });
 
-  it('renders the period tabs through the period hand-over (H1)', () => {
-    const period = renderDashboard({ url: '/fleet?tab=maintenance' });
-    expect(period).toContain('data-period-tab="maintenance"');
-    expect(period).toContain(ar('fleet.dash.shell.tab.maintenance'));
+  it('opens an old link to a retired tab on the tab that took its content', () => {
+    // «التنبيهات» → «نظرة عامة», «الحركة الآن» → «الحركة اليوم» — no dead link.
+    const alerts = renderDashboard({ url: '/fleet?tab=alerts' });
+    expect(pressed(alerts)).toBe('overview');
+    expect(alerts).toContain('data-dash-panel="overview"');
+    const now = renderDashboard({ url: '/fleet?tab=now' });
+    expect(pressed(now)).toBe('today');
+    expect(now).toContain('data-dash-panel="today"');
+    expect(barTabs(now)).not.toContain('now');
+    expect(barTabs(alerts)).not.toContain('alerts');
+    // «ترتيب السيارات» → «العدادات والكيلومترات» (its top 5 and bottom 5 live there now).
+    const ranking = renderDashboard({ url: '/fleet?tab=ranking' });
+    expect(pressed(ranking)).toBe('km');
+    expect(ranking).toContain('data-dash-panel="km"');
+    expect(ranking).toContain('data-dash-tab-body="km"');
+    expect(ranking).toContain('data-km-kpi="total"');
+    expect(barTabs(ranking)).not.toContain('ranking');
+  });
+
+  it('opens an old link to the removed period-figures tab on «نظرة عامة» — no dead link', () => {
+    for (const url of [`/fleet?tab=${REMOVED_TAB}`, `/fleet?tab=${REMOVED_TAB}&period=last30`]) {
+      const html = renderDashboard({
+        url,
+        client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+      });
+      expect(pressed(html), url).toBe('overview');
+      expect(html, url).toContain('data-dash-panel="overview"');
+      expect(html, url).toContain('data-dash-tab-body="overview"');
+      expect(html, url).not.toContain('data-period-tab');
+      expect(html, url).not.toContain(`data-dash-panel="${REMOVED_TAB}"`);
+      expect(barTabs(html), url).not.toContain(REMOVED_TAB);
+      expect(html, url).not.toContain(REMOVED_NAME);
+    }
+    // The page mounts no period-only tab any more: every R2 figure is a mixed panel's.
+    expect(PAGE).not.toContain('PeriodTab');
+    expect(PAGE).not.toContain('FLEET_DASHBOARD_PERIOD_TABS');
+    expect(PAGE).not.toContain('period-tabs');
+  });
+
+  it('keeps the page’s period on a mixed tab: `?tab=km&period=last30` still reads «آخر 30 يومًا»', () => {
+    const url = '/fleet?tab=km&period=last30';
+    const html = renderDashboard({
+      url,
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(html)).toBe('km');
+    const body = html.slice(html.indexOf('data-dash-tab-body="km"'));
+    expect(body).toMatch(/<option value="last30" selected="">/u);
+    // The figure is the last-30-days answer's, read under the address bar's filters.
+    expect(body).toContain(new Intl.NumberFormat('en-US').format(KM_TOTAL));
+  });
+
+  it('still shows the old tab’s reader every home of its figures: the km, the workshop, the accidents, the spend', () => {
+    // Exactly the five keys the removed tab needed (km, visits, accidents, opex, dealership).
+    const permissions = [
+      'fleetOdometer.view',
+      'fleetMaintenance.view',
+      'fleetAccident.view',
+      'fleetReceipt.view',
+      'fleetDealership.view',
+    ];
+    const home = '/fleet?period=last30';
+    const bar = barTabs(
+      renderDashboard({
+        url: home,
+        permissions,
+        client: dashboardClient({ page: { url: home, dto: PERIOD_FULL } }),
+      }),
+    );
+    for (const tab of ['maintenance', 'km', 'accidents', 'fuel']) expect(bar, tab).toContain(tab);
+    expect(bar).not.toContain(REMOVED_TAB);
+    // Each tab draws its period figures under the page's filters for this reader.
+    for (const [tab, figure] of [
+      ['km', 'data-km-kpi="total"'],
+      ['maintenance', 'data-maint-kpi="exits"'],
+      ['accidents', 'data-acc-kpi="period"'],
+      ['fuel', 'data-fuel-opex="card"'],
+      ['fuel', 'data-fuel-dealer="card"'],
+    ] as const) {
+      const url = `/fleet?tab=${tab}&period=last30`;
+      const html = renderDashboard({
+        url,
+        permissions,
+        client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+      });
+      expect(pressed(html), tab).toBe(tab);
+      expect(html, `${tab}: ${figure}`).toContain(figure);
+    }
+  });
+
+  it('drops every word only the removed tab read — each key reads as itself in both languages', () => {
+    const removed = [
+      `fleet.dash.shell.tab.${REMOVED_TAB}`,
+      'fleet.dash.filters.rangeHead',
+      'fleet.dash.period.today',
+      ...[
+        'title',
+        'average',
+        'confirmedThrough',
+        'noneConfirmed',
+        'open',
+        'invalid',
+        'coverage',
+      ].map((k) => `fleet.dash.period.km.${k}`),
+      ...['title', 'split', 'note', 'bar'].map((k) => `fleet.dash.period.visits.${k}`),
+      ...['title', 'split', 'undated', 'bar'].map((k) => `fleet.dash.period.accidents.${k}`),
+      ...['title', 'split', 'note', 'bar'].map((k) => `fleet.dash.period.opex.${k}`),
+      ...['title', 'pending', 'note', 'bar'].map((k) => `fleet.dash.period.dealership.${k}`),
+    ];
+    expect(removed).toHaveLength(26);
+    for (const key of removed) {
+      expect(translate('ar', key), key).toBe(key);
+      expect(translate('en', key), key).toBe(key);
+    }
+    // The two the fuel and custody tabs still draw stay.
+    for (const key of ['fleet.dash.period.dataFrom', 'fleet.dash.period.notSummed']) {
+      expect(translate('ar', key), key).not.toBe(key);
+      expect(translate('en', key), key).not.toBe(key);
+    }
+  });
+
+  it('draws «الصيانة والورش» as a panel of R1 and R2 both, the page’s filter bar between its bands', () => {
+    const html = renderDashboard({ url: '/fleet?tab=maintenance' });
+    expect(pressed(html)).toBe('maintenance');
+    expect(ar('fleet.dash.shell.tab.maintenance')).toBe('الصيانة والورش');
+    expect(html).toContain(`>${ar('fleet.dash.shell.tab.maintenance')}<`);
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.maintenance')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="maintenance"'));
+    const now = body.indexOf('data-dash-band="now"');
+    const bar = body.indexOf('data-period-filters="true"');
+    const period = body.indexOf('data-dash-band="period"');
+    expect(now).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(now);
+    expect(bar).toBeGreaterThan(period);
+    expect(body.indexOf('data-maint-kpi="exits"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «العدادات والكيلومترات» as a panel of R1 and R2 both, the page’s filter bar at its top', () => {
+    const html = renderDashboard({ url: '/fleet?tab=km' });
+    expect(pressed(html)).toBe('km');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.km')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="km"'));
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(bar).toBeGreaterThan(-1);
+    expect(body.indexOf('data-km-kpi="total"')).toBeGreaterThan(bar);
+    // Its R1 card «بلا قراءة عداد منذ N أيام» stands among the period cards.
+    expect(body.indexOf('data-km-kpi="stale"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «الحوادث ومطالبات التأمين» as a panel of R1 and R2 both, the bar between its bands', () => {
+    const html = renderDashboard({ url: '/fleet?tab=accidents' });
+    expect(pressed(html)).toBe('accidents');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.accidents')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="accidents"'));
+    const now = body.indexOf('data-acc-band="now"');
+    const period = body.indexOf('data-acc-band="period"');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(now).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(now);
+    expect(bar).toBeGreaterThan(period);
+    expect(body.indexOf('data-acc-kpi="period"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «المخالفات المرورية والتسويات» as a panel of R1 and R2 both, the bar between its bands', () => {
+    const url = '/fleet?tab=violations&period=last30';
+    const html = renderDashboard({
+      url,
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(html)).toBe('violations');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.violations')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="violations"'));
+    const now = body.indexOf('data-viol-band="now"');
+    const period = body.indexOf('data-viol-band="period"');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(now).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(now);
+    expect(bar).toBeGreaterThan(period);
+    expect(body.indexOf('data-viol-kpi="period"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «الوقود والمصروفات» as a panel of R1 and R2 both, the bar between its bands', () => {
+    const url = '/fleet?tab=fuel&period=last30';
+    const html = renderDashboard({
+      url,
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(html)).toBe('fuel');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.fuel')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="fuel"'));
+    const now = body.indexOf('data-fuel-band="now"');
+    const period = body.indexOf('data-fuel-band="period"');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(now).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(now);
+    expect(bar).toBeGreaterThan(period);
+    expect(body.indexOf('data-fuel-opex="card"')).toBeGreaterThan(bar);
+    expect(body.indexOf('data-fuel-dealer="card"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «العهدة» as a panel of the custody screen’s reads and R2, the full page bar in its period band', () => {
+    const url = '/fleet?tab=custody&period=last30';
+    const html = renderDashboard({
+      url,
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(html)).toBe('custody');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.custody')}"`);
+    expect(html).not.toContain('data-period-tab=');
+    const body = html.slice(html.indexOf('data-dash-tab-body="custody"'));
+    const strip = body.indexOf('data-cust-block="strip"');
+    const period = body.indexOf('data-cust-band="period"');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(strip).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(strip);
+    expect(bar).toBeGreaterThan(period);
+    // Type / operation / codes narrow the custody spend (the receipt's car): the whole bar.
+    expect(body).not.toContain('data-period-only');
+    expect(body.indexOf('data-cust-period="spend"')).toBeGreaterThan(bar);
+  });
+
+  it('draws «التراخيص والتجديدات» as a panel of R1 and R2 both, the period choices alone in its period band', () => {
+    const url = '/fleet?tab=licences&period=last30';
+    const html = renderDashboard({
+      url,
+      permissions: EVERY_KEY,
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(html)).toBe('licences');
+    expect(html).toContain(`aria-label="${ar('fleet.dash.shell.tab.licences')}"`);
+    const body = html.slice(html.indexOf('data-dash-tab-body="licences"'));
+    const now = body.indexOf('data-lic-band="now"');
+    const period = body.indexOf('data-lic-band="period"');
+    const bar = body.indexOf('data-period-filters="true"');
+    expect(now).toBeGreaterThan(-1);
+    expect(period).toBeGreaterThan(now);
+    expect(bar).toBeGreaterThan(period);
+    // A licence memo has no branch, car type or operation: the period choices only (critic A3).
+    expect(body).toContain('data-period-only="true"');
+    expect(body.indexOf('data-lic-block="split"')).toBeGreaterThan(bar);
+  });
+
+  it('opens an old `?tab=distribution` / `?tab=maintenance` / `?tab=km` / `?tab=accidents` link on the rebuilt body (keys kept)', () => {
+    const distribution = renderDashboard({ url: '/fleet?tab=distribution' });
+    expect(pressed(distribution)).toBe('distribution');
+    expect(distribution).toContain('data-dash-tab-body="distribution"');
+    expect(distribution).toContain('data-dist-block="matrix"');
+    const maintenance = renderDashboard({ url: '/fleet?tab=maintenance' });
+    expect(maintenance).toContain('data-dash-tab-body="maintenance"');
+    expect(maintenance).toContain('data-maint-band="now"');
+    const km = renderDashboard({ url: '/fleet?tab=km' });
+    expect(km).toContain('data-dash-tab-body="km"');
+    expect(km).toContain('data-km-block="exceptions"');
+    const accidents = renderDashboard({ url: '/fleet?tab=accidents' });
+    expect(accidents).toContain('data-dash-tab-body="accidents"');
+    expect(accidents).toContain('data-acc-block="notices"');
   });
 });
 
 describe('the tabs a reader sees (R-28: permission first, then the server’s nulls)', () => {
   it('shows only the tabs a key opens', () => {
     const html = renderDashboard({ permissions: ['fleetVehicle.view'] });
-    expect(barTabs(html)).toEqual(['alerts', 'now', 'distribution', 'licences']);
-    expect(html).not.toContain('data-dash-group="filters"');
+    expect(barTabs(html)).toEqual(['overview', 'today', 'distribution', 'licences']);
+    expect(html).not.toContain('data-period-tab');
   });
 
   it('hides a tab once the server answered every one of its sections with null', () => {
@@ -124,19 +449,138 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
       workshop: null,
       unavailable: ['roster' as const],
     };
-    const html = renderDashboard({ url: '/fleet?tab=now', client: dashboardClient({ now }) });
-    expect(barTabs(html)).toContain('now');
+    const html = renderDashboard({ url: '/fleet?tab=today', client: dashboardClient({ now }) });
+    expect(barTabs(html)).toContain('today');
     expect(html).toContain('data-section-error="roster"');
     expect(html).toContain(ar('fleet.dash.common.retry'));
   });
 
-  it('shows the custody-only reader the two tabs custody feeds, and never asks R1 or R2', () => {
-    const html = renderDashboard({
+  it('shows the custody-only reader the three tabs custody feeds, and never asks R1 or R2', () => {
+    for (const url of ['/fleet', '/fleet?tab=custody']) {
+      const client = dashboardClient({ now: null, period: null });
+      const html = renderDashboard({ url, permissions: ['fleetCustody.view'], client });
+      expect(barTabs(html), url).toEqual(['overview', 'custody', 'summaries']);
+      // Neither read was sent: `fleetCustody.view` is in R2's union (`custodyStates` needs the
+      // receipts' key too) but answers no period section on its own (plan D5).
+      const asked = client
+        .getQueryCache()
+        .findAll({ queryKey: ['fleet', 'dashboard'] })
+        .filter((query) => !query.isDisabled());
+      expect(asked, url).toEqual([]);
+      // The chip states the custody figures' own scope, the whole company.
+      expect(html, url).toContain('data-dash-branch="company"');
+    }
+    const overview = renderDashboard({
       permissions: ['fleetCustody.view'],
       client: dashboardClient({ now: null, period: null }),
     });
-    expect(barTabs(html)).toEqual(['alerts', 'summaries']);
-    expect(html).toContain('data-alert="custody"');
+    expect(overview).toContain('data-dash-action="custody"');
+    // «العهدة»: its «الآن» band from the custody screen's own reads, no period band, no filter bar.
+    const custody = renderDashboard({
+      url: '/fleet?tab=custody',
+      permissions: ['fleetCustody.view'],
+      client: dashboardClient({ now: null, period: null }),
+    });
+    expect(custody).toContain('data-dash-tab-body="custody"');
+    expect(custody).toContain('data-cust-block="strip"');
+    expect(custody).not.toContain('data-cust-band="period"');
+    expect(custody).not.toContain('data-period-filters');
+    expect(custody).not.toContain('data-read-band="loading"');
+  });
+
+  it('sends no R2 (and no month read) for a custody clerk who also holds the licence expenses’ key', () => {
+    // `licenceSpend` is PAGELESS: drawn only beside «التراخيص والتجديدات», which this reader cannot
+    // see — so its key alone asks for nothing, and the overview shows no month card that never fills.
+    const permissions = ['fleetCustody.view', 'fleetLicenseExpense.view'];
+    for (const url of ['/fleet', '/fleet?tab=custody']) {
+      const client = dashboardClient({ now: null, period: null });
+      const html = renderDashboard({ url, permissions, client });
+      expect(barTabs(html), url).toEqual(['overview', 'custody', 'summaries']);
+      const asked = client
+        .getQueryCache()
+        .findAll({ queryKey: ['fleet', 'dashboard'] })
+        .filter((query) => !query.isDisabled());
+      expect(asked, url).toEqual([]);
+      expect(html, url).not.toContain('data-dash-month-loading');
+      expect(html, url).not.toContain('data-dash-block="month"');
+    }
+  });
+
+  it('draws no month skeleton for a reader of none of the month card’s four figures', () => {
+    // A violations-only reader reads R2 for its own tab; the overview's «هذا الشهر» could never
+    // fill for them (km, spend, exits, accidents), so it is not asked for — no grey card on the way.
+    const html = renderDashboard({
+      permissions: ['fleetViolation.view'],
+      client: dashboardClient({ now: NOW_DTO, period: null }),
+    });
+    expect(pressed(html)).toBe('overview');
+    expect(html).not.toContain('data-dash-month-loading');
+    expect(html).not.toContain('data-dash-block="month"');
+    // A reader of one of them still meets the card on its way.
+    const km = renderDashboard({
+      permissions: ['fleetViolation.view', 'fleetOdometer.view'],
+      client: dashboardClient({ now: NOW_DTO, period: null }),
+    });
+    expect(km).toContain('data-dash-month-loading');
+  });
+
+  it('keeps «العهدة» to the custody fund’s reader — the receipts alone never show it', () => {
+    const url = '/fleet?tab=custody&period=last30';
+    const client = dashboardClient({ now: null, period: null, page: { url, dto: PERIOD_FULL } });
+    const html = renderDashboard({ url, permissions: ['fleetReceipt.view'], client });
+    expect(barTabs(html)).not.toContain('custody');
+    // Custody AND receipts: both bands, R2 asked (the period card with «منها حتى الآن»).
+    const both = dashboardClient({ now: null, period: null, page: { url, dto: PERIOD_FULL } });
+    const full = renderDashboard({
+      url,
+      permissions: ['fleetCustody.view', 'fleetReceipt.view'],
+      client: both,
+    });
+    expect(barTabs(full)).toContain('custody');
+    expect(full).toContain('data-cust-block="strip"');
+    expect(full).toContain('data-cust-band="period"');
+    expect(full).toContain('data-cust-states="true"');
+  });
+
+  it('keeps a licensing-only reader on the page with «التراخيص والتجديدات» — the papers alone, no R2 (§11 A2)', () => {
+    const client = dashboardClient({ period: null });
+    const html = renderDashboard({
+      url: '/fleet?tab=licences',
+      permissions: ['fleetLicensing.view'],
+      client,
+    });
+    expect(FLEET_DASHBOARD_PAGE_KEYS).toContain('fleetLicensing.view');
+    expect(barTabs(html)).toContain('licences');
+    expect(pressed(html)).toBe('licences');
+    expect([...html.matchAll(/data-lic-kpi="([A-Za-z]+)"/gu)].map((m) => m[1])).toEqual(['papers']);
+    expect(html).not.toContain('data-lic-band="period"');
+    expect(html).not.toContain('data-period-filters');
+    const asked = client
+      .getQueryCache()
+      .findAll({ queryKey: ['fleet', 'dashboard', 'period'] })
+      .filter((query) => !query.isDisabled());
+    expect(asked).toEqual([]);
+  });
+
+  it('never opens the page on the licence expenses’ key alone — PAGELESS: it reads R2 beside the tab, it opens no page', () => {
+    expect(FLEET_DASHBOARD_PAGE_KEYS).not.toContain('fleetLicenseExpense.view');
+    // Rendered past the guard anyway, it shows no tab of its own: its period band sits beside
+    // the licences' «الآن» sections, never alone.
+    const html = renderDashboard({
+      url: '/fleet?tab=licences',
+      permissions: ['fleetLicenseExpense.view'],
+      client: dashboardClient({ now: null }),
+    });
+    expect(barTabs(html)).not.toContain('licences');
+    // Beside a licence section, the band is drawn.
+    const url = '/fleet?tab=licences&period=last30';
+    const both = renderDashboard({
+      url,
+      permissions: ['fleetVehicle.view', 'fleetLicenseExpense.view'],
+      client: dashboardClient({ page: { url, dto: PERIOD_FULL } }),
+    });
+    expect(pressed(both)).toBe('licences');
+    expect(both).toContain('data-lic-band="period"');
   });
 
   it('shows one honest empty state when nothing is left to show', () => {
@@ -152,28 +596,285 @@ describe('the tabs a reader sees (R-28: permission first, then the server’s nu
     expect(html).toContain(ar('fleet.dash.shell.nothingTitle'));
   });
 
+  it('shows a dealership-only and an odometer-only reader «الصيانة والورش» with their own part', () => {
+    const dealer = renderDashboard({ permissions: ['fleetDealership.view'] });
+    expect(barTabs(dealer)).toContain('maintenance');
+    const dealerTab = renderDashboard({
+      url: '/fleet?tab=maintenance',
+      permissions: ['fleetDealership.view'],
+    });
+    expect(dealerTab.match(/data-maint-kpi="([a-z]+)"/gu)).toEqual(['data-maint-kpi="dealer"']);
+    const odometer = renderDashboard({ permissions: ['fleetOdometer.view'] });
+    expect(barTabs(odometer)).toContain('maintenance');
+    const odometerTab = renderDashboard({
+      url: '/fleet?tab=maintenance',
+      permissions: ['fleetOdometer.view'],
+    });
+    expect(odometerTab.match(/data-maint-kpi="([a-z]+)"/gu)).toEqual([
+      'data-maint-kpi="red"',
+      'data-maint-kpi="yellow"',
+    ]);
+    // The period band is the workshop's (by exit day): not drawn for either.
+    expect(dealerTab).not.toContain('data-maint-band="period"');
+    expect(odometerTab).not.toContain('data-maint-band="period"');
+    // The odometer reader also sees «العدادات والكيلومترات», the whole of it.
+    expect(barTabs(odometer)).toContain('km');
+    expect(barTabs(odometer)).not.toContain('accidents');
+  });
+
+  it('shows a notices-only reader «الحوادث ومطالبات التأمين» with the notices alone — no R2 asked', () => {
+    const client = dashboardClient({ period: null });
+    const bar = renderDashboard({ permissions: ['fleetNotice.view'], client });
+    expect(barTabs(bar)).toContain('accidents');
+    const html = renderDashboard({
+      url: '/fleet?tab=accidents',
+      permissions: ['fleetNotice.view'],
+      client,
+    });
+    expect(html).toContain('data-dash-tab-body="accidents"');
+    expect(html).toContain('data-acc-kpi="notices"');
+    expect(html).not.toContain('data-acc-kpi="files"');
+    expect(html).not.toContain('data-acc-band="period"');
+    expect(html).not.toContain('data-period-filters');
+    // R2 is never sent for this reader: every period query the page holds is disabled.
+    const period = client.getQueryCache().findAll({ queryKey: ['fleet', 'dashboard', 'period'] });
+    expect(period.length).toBeGreaterThan(0);
+    for (const query of period) expect(query.isDisabled(), String(query.queryKey)).toBe(true);
+    // An accidents-only reader: the files and the period, no notices.
+    const accidents = renderDashboard({
+      url: '/fleet?tab=accidents',
+      permissions: ['fleetAccident.view'],
+    });
+    expect(accidents).toContain('data-acc-kpi="files"');
+    expect(accidents).toContain('data-acc-band="period"');
+    expect(accidents).not.toContain('data-acc-kpi="notices"');
+  });
+
+  it('shows a violations-only reader «المخالفات المرورية والتسويات» with both bands — and SENDS R2 for it', () => {
+    const url = '/fleet?tab=violations&period=last30';
+    const client = dashboardClient({ period: null, page: { url, dto: PERIOD_FULL } });
+    const html = renderDashboard({ url, permissions: ['fleetViolation.view'], client });
+    expect(barTabs(html)).toContain('violations');
+    expect(barTabs(html)).not.toContain('fuel');
+    expect(html).toContain('data-viol-band="now"');
+    expect(html).toContain('data-viol-band="period"');
+    expect(html).toContain('data-viol-kpi="period"');
+    // The page's R2 is asked for this reader (PERIOD_KEYS holds `fleetViolation.view`).
+    const asked = client
+      .getQueryCache()
+      .findAll({ queryKey: ['fleet', 'dashboard', 'period'] })
+      .filter((query) => !query.isDisabled());
+    expect(asked.length).toBeGreaterThan(0);
+  });
+
+  it('shows a receipts-only reader «الوقود والمصروفات» with its receipts part alone', () => {
+    const url = '/fleet?tab=fuel&period=last30';
+    const client = dashboardClient({ now: null, period: null, page: { url, dto: PERIOD_FULL } });
+    const html = renderDashboard({ url, permissions: ['fleetReceipt.view'], client });
+    // The overview's month card and the fuel tab: the two that draw the receipts.
+    expect(barTabs(html)).toEqual(['overview', 'fuel']);
+    expect(html).not.toContain('data-fuel-band="now"');
+    expect(html).toContain('data-fuel-band="period"');
+    expect(html).toContain('data-fuel-opex="card"');
+    expect(html).not.toContain('data-fuel-dealer="card"');
+  });
+
+  it('shows a fuel-card-only reader «الوقود والمصروفات» with the expiry card alone — no period band, and no «التراخيص والتجديدات»', () => {
+    const html = renderDashboard({
+      url: '/fleet?tab=fuel',
+      permissions: ['fleetFuelCard.view'],
+      client: dashboardClient({ period: null }),
+    });
+    // The cards' expiry left the licences body (DECISIONS §11 Q1): it is the fuel tab's alone.
+    expect(barTabs(html)).toEqual(['overview', 'fuel']);
+    expect([...html.matchAll(/data-fuel-kpi="([a-z]+)"/gu)].map((m) => m[1])).toEqual(['expiring']);
+    expect(html).not.toContain('data-fuel-band="period"');
+    expect(html).not.toContain('data-period-filters');
+  });
+
+  it('keeps each band of the two new tabs on its own read — R1 on its way never blanks R2, nor the other way', () => {
+    for (const [tab, now, period] of [
+      ['violations', 'data-viol-cards="now"', 'data-viol-kpi="period"'],
+      ['fuel', 'data-fuel-kpis', 'data-fuel-opex="card"'],
+    ] as const) {
+      const url = `/fleet?tab=${tab}&period=last30`;
+      const r1Pending = renderDashboard({
+        url,
+        client: dashboardClient({ now: null, page: { url, dto: PERIOD_FULL } }),
+      });
+      expect(r1Pending, tab).toContain(`data-dash-tab-body="${tab}"`);
+      expect(r1Pending, tab).toContain('data-read-band="loading"');
+      expect(r1Pending, tab).not.toContain(now);
+      expect(r1Pending, tab).toContain(period);
+      const r2Pending = renderDashboard({ url, client: dashboardClient({ period: null }) });
+      expect(r2Pending, tab).toContain(now);
+      expect(r2Pending, tab).not.toContain(period);
+      expect(r2Pending, tab).toContain('data-period-filters="true"');
+    }
+  });
+
+  it('keeps each band of «الصيانة والورش» on its own read — R1 on its way never blanks the period', () => {
+    const r1Pending = renderDashboard({
+      url: '/fleet?tab=maintenance',
+      client: dashboardClient({ now: null }),
+    });
+    expect(r1Pending).toContain('data-dash-tab-body="maintenance"');
+    expect(r1Pending).toContain('data-read-band="loading"');
+    expect(r1Pending).toContain('data-maint-kpi="exits"');
+    const r2Pending = renderDashboard({
+      url: '/fleet?tab=maintenance',
+      client: dashboardClient({ period: null }),
+    });
+    expect(r2Pending).toContain('data-maint-kpi="red"');
+    expect(r2Pending).not.toContain('data-maint-kpi="exits"');
+    expect(r2Pending).toContain('data-period-filters="true"');
+  });
+
+  it('keeps each part of «العدادات والكيلومترات» on its own read — R1 on its way never blanks R2', () => {
+    const r1Pending = renderDashboard({
+      url: '/fleet?tab=km',
+      client: dashboardClient({ now: null }),
+    });
+    expect(r1Pending).toContain('data-dash-tab-body="km"');
+    expect(r1Pending).toContain('data-km-loading="stale"');
+    expect(r1Pending).toContain('data-km-kpi="total"');
+    expect(r1Pending).toContain('data-km-block="chart"');
+    const r2Pending = renderDashboard({
+      url: '/fleet?tab=km',
+      client: dashboardClient({ period: null }),
+    });
+    expect(r2Pending).toContain('data-km-kpi="stale"');
+    expect(r2Pending).not.toContain('data-km-kpi="total"');
+    expect(r2Pending).toContain('data-period-filters="true"');
+  });
+
+  it('keeps each band of «الحوادث ومطالبات التأمين» on its own read — R1 on its way never blanks R2', () => {
+    const r1Pending = renderDashboard({
+      url: '/fleet?tab=accidents',
+      client: dashboardClient({ now: null }),
+    });
+    expect(r1Pending).toContain('data-dash-tab-body="accidents"');
+    expect(r1Pending).toContain('data-read-band="loading"');
+    expect(r1Pending).not.toContain('data-acc-kpi="files"');
+    expect(r1Pending).toContain('data-acc-kpi="period"');
+    const r2Pending = renderDashboard({
+      url: '/fleet?tab=accidents',
+      client: dashboardClient({ period: null }),
+    });
+    expect(r2Pending).toContain('data-acc-kpi="files"');
+    expect(r2Pending).toContain('data-acc-kpi="notices"');
+    expect(r2Pending).not.toContain('data-acc-kpi="period"');
+    expect(r2Pending).toContain('data-period-filters="true"');
+  });
+
   it('shows the skeleton of a tab while R1 is on its way — never zeroes pretending to be data', () => {
-    const html = renderDashboard({ url: '/fleet?tab=now', client: dashboardClient({ now: null }) });
+    const html = renderDashboard({
+      url: '/fleet?tab=today',
+      client: dashboardClient({ now: null }),
+    });
     expect(html).toContain('data-dash-loading="true"');
     expect(html).toContain('animate-pulse');
-    expect(html).not.toContain('data-now-card=');
+    expect(html).not.toContain('data-today-card=');
+  });
+});
+
+describe('«الفرع: …» at the bar’s end (what the figures cover, as the server answered it)', () => {
+  const chip = (html: string): string => element(html, 'data-dash-branch=');
+  const withScope = (scopeBranches: typeof NOW_DTO.scopeBranches): string =>
+    renderDashboard({ client: dashboardClient({ now: { ...NOW_DTO, scopeBranches } }) });
+
+  it('says «الشركة كلها» for the whole company, outside the tab list', () => {
+    const html = renderDashboard();
+    expect(chip(html)).toContain('data-dash-branch="company"');
+    expect(chip(html)).toContain(ar('fleet.dash.shell.branch'));
+    expect(chip(html)).toContain(ar('nav.branchSwitcher.all'));
+    expect(element(html, 'data-dash-strip="true"')).not.toContain('data-dash-branch');
+    expect(element(html, 'data-dash-nav="true"')).toContain('data-dash-branch="company"');
+    // A statement, not a picker: no link and no button.
+    expect(chip(html)).not.toMatch(/<a\b|<button\b/u);
+  });
+
+  it('names the one branch, and says «كل فروعي» for several', () => {
+    const one = chip(withScope([B1_NAMED]));
+    expect(one).toContain('data-dash-branch="one"');
+    expect(one).toContain('القاهرة');
+    const several = chip(withScope([B1_NAMED, B2_NAMED]));
+    expect(several).toContain('data-dash-branch="several"');
+    expect(several).toContain(ar('nav.branchSwitcher.mine'));
+    expect(several).not.toContain('القاهرة');
+  });
+
+  it('is not drawn while the reads are on their way, nor for a reach with no branch', () => {
+    const loading = renderDashboard({ client: dashboardClient({ now: null, period: null }) });
+    expect(loading).not.toContain('data-dash-branch');
+    expect(withScope([])).not.toContain('data-dash-branch');
+  });
+
+  it('takes R2’s echo for a reader of the period figures alone', () => {
+    const html = renderDashboard({
+      url: '/fleet?tab=maintenance',
+      permissions: ['fleetMaintenance.view'],
+      client: dashboardClient({
+        now: null,
+        period: {
+          ...PERIOD_DTO,
+          vehicleScope: { ...PERIOD_DTO.vehicleScope, scopeBranches: [B2_NAMED] },
+        },
+      }),
+    });
+    expect(chip(html)).toContain('data-dash-branch="one"');
+    expect(chip(html)).toContain('الجيزة');
+  });
+
+  it('stands above the bar on a phone, where the logo hides', () => {
+    const html = renderDashboard();
+    expect(html).toContain('data-dash-branch-phone="company"');
+    expect(html.indexOf('data-dash-branch-phone')).toBeLessThan(html.indexOf('data-dash-nav'));
   });
 });
 
 describe('the counts on the bar (plan §5.10)', () => {
   const html = renderDashboard();
 
-  it('counts the alert LINES that fired, the custody line included, red when one is red', () => {
-    expect(badge(html, 'alerts')).toBe('11');
-    expect(html).toMatch(/data-dash-badge="alerts"[^>]*class="[^"]*bg-red-500/u);
+  it('puts no count on «نظرة عامة» — the retired «التنبيهات» count went with its tab', () => {
+    expect(badge(html, 'overview')).toBeUndefined();
+    expect(html).not.toContain('data-dash-badge="alerts"');
+    expect(html).not.toContain('data-dash-badge="overview"');
   });
 
   it('equals the figure its tab shows', () => {
-    expect(badge(html, 'now')).toBe(String(NOW_DTO.roster?.unmanned));
-    expect(badge(html, 'distribution')).toBe(String(NOW_DTO.distributionVehicles?.totals.total));
+    expect(badge(html, 'today')).toBe(String(NOW_DTO.roster?.unmanned));
+    expect(html).toMatch(/data-dash-badge="today"[^>]*class="[^"]*bg-amber-100/u);
+    expect(html).toContain(
+      `title="${ar('fleet.dash.shell.badge.today', { count: NOW_DTO.roster?.unmanned ?? 0 })}"`,
+    );
+    // «توزيع السيارات» carries no count (the approved bar draws none).
+    expect(badge(html, 'distribution')).toBeUndefined();
+    // «التراخيص والتجديدات»: the expired car licences + the expired driver licences — its two red
+    // KPIs — in red; «العهدة» carries none (the approved bar draws none).
     expect(badge(html, 'licences')).toBe('3'); // 2 vehicle licences + 1 driver licence
-    expect(badge(html, 'maintenance')).toBe(String(PERIOD_DTO.visits?.count));
-    expect(badge(html, 'accidents')).toBe(String(PERIOD_DTO.accidents?.count));
+    expect(html).toMatch(/data-dash-badge="licences"[^>]*class="[^"]*bg-red-600/u);
+    expect(html).toContain(`title="${ar('fleet.dash.shell.badge.licences', { count: 3 })}"`);
+    expect(badge(html, 'custody')).toBeUndefined();
+    // «الصيانة والورش»: the cars that reached the service limit (its red card), in red.
+    expect(badge(html, 'maintenance')).toBe(String(NOW_DTO.maintenanceAlarm?.red));
+    expect(html).toMatch(/data-dash-badge="maintenance"[^>]*class="[^"]*bg-red-600/u);
+    expect(html).toContain(
+      `title="${ar('fleet.dash.shell.badge.maintenance', { count: NOW_DTO.maintenanceAlarm?.red ?? 0 })}"`,
+    );
+    // «العدادات والكيلومترات» and «الحوادث ومطالبات التأمين» carry none (the approved bar draws
+    // none): the old count of the period's accidents went with the old body.
+    expect(badge(html, 'km')).toBeUndefined();
+    expect(badge(html, 'accidents')).toBeUndefined();
+    // Nor do «المخالفات المرورية والتسويات» and «الوقود والمصروفات» (the approved bar draws none).
+    expect(badge(html, 'violations')).toBeUndefined();
+    expect(badge(html, 'fuel')).toBeUndefined();
+    const all = tabBadges({ can: () => true, now: NOW_DTO, period: PERIOD_FULL });
+    expect(all.violations).toBeUndefined();
+    expect(all.fuel).toBeUndefined();
+    expect(
+      tabBadges({ can: () => true, now: NOW_DTO, period: PERIOD_DTO }).accidents,
+    ).toBeUndefined();
     expect(badge(html, 'summaries')).toBeUndefined();
   });
 
@@ -183,18 +884,51 @@ describe('the counts on the bar (plan §5.10)', () => {
       client: dashboardClient({ now }),
       permissions: ALL_KEYS.filter((k) => k !== 'fleetRoster.view'),
     });
-    expect(badge(html2, 'now')).toBeUndefined();
+    expect(badge(html2, 'today')).toBeUndefined();
     const answers = {
       can: () => true,
       now: { ...NOW_DTO, licenceVehicles: null, licenceDrivers: null },
       period: undefined,
     };
-    expect(tabBadges(answers, null).licences).toBeUndefined();
+    expect(tabBadges(answers).licences).toBeUndefined();
+    // …and at 0: no plain «0» any more (the approved bar draws the red count only when there are some).
+    const vehicles = NOW_DTO.licenceVehicles as NonNullable<typeof NOW_DTO.licenceVehicles>;
+    const drivers = NOW_DTO.licenceDrivers as NonNullable<typeof NOW_DTO.licenceDrivers>;
+    const clean = {
+      ...NOW_DTO,
+      licenceVehicles: { ...vehicles, expired: 0 },
+      licenceDrivers: { ...drivers, expired: 0 },
+    };
+    expect(tabBadges({ ...answers, now: clean }).licences).toBeUndefined();
+    const cleanHtml = renderDashboard({ client: dashboardClient({ now: clean }) });
+    expect(barTabs(cleanHtml)).toContain('licences');
+    expect(badge(cleanHtml, 'licences')).toBeUndefined();
+    // A reader of one of the two sections gets that part alone.
+    expect(tabBadges({ ...answers, now: { ...NOW_DTO, licenceDrivers: null } }).licences).toEqual({
+      n: vehicles.expired,
+      tone: 'red',
+    });
+    // The red-alarm count hides at 0, and with its section (no `fleetOdometer.view` → null).
+    const alarm = NOW_DTO.maintenanceAlarm as NonNullable<typeof NOW_DTO.maintenanceAlarm>;
+    const calm = { ...answers, now: { ...NOW_DTO, maintenanceAlarm: { ...alarm, red: 0 } } };
+    expect(tabBadges(calm).maintenance).toBeUndefined();
+    expect(tabBadges({ ...answers, now: NOW_DTO }).maintenance).toEqual({ n: 3, tone: 'red' });
+    const blind = renderDashboard({
+      client: dashboardClient({ now: { ...NOW_DTO, maintenanceAlarm: null } }),
+      permissions: ALL_KEYS.filter((k) => k !== 'fleetOdometer.view'),
+    });
+    expect(barTabs(blind)).toContain('maintenance');
+    expect(badge(blind, 'maintenance')).toBeUndefined();
+    // The period's visits never feed it any more.
+    expect(
+      tabBadges({ can: () => true, now: undefined, period: PERIOD_DTO }).maintenance,
+    ).toBeUndefined();
   });
 
   it('is amber for the cars without a driver, plain once there are none', () => {
     const answers = { can: () => true, now: NOW_DTO, period: undefined };
-    expect(tabBadges(answers, null).now).toEqual({ n: 5, tone: 'amber' });
+    expect(tabBadges(answers).today).toEqual({ n: 5, tone: 'amber' });
+    expect(tabBadges(answers).overview).toBeUndefined();
     const none = {
       ...answers,
       now: {
@@ -202,10 +936,10 @@ describe('the counts on the bar (plan §5.10)', () => {
         roster: { ...(NOW_DTO.roster as NonNullable<typeof NOW_DTO.roster>), unmanned: 0 },
       },
     };
-    expect(tabBadges(none, null).now).toEqual({ n: 0, tone: 'plain' });
+    expect(tabBadges(none).today).toEqual({ n: 0, tone: 'plain' });
   });
 
-  it('orders the lines red first, the custody line after the notices', () => {
+  it('orders the overview’s action lines red first, the custody line after the notices', () => {
     const lines = alertLines(NOW_DTO.alerts, 1);
     expect(lines.map((l) => l.id)).toEqual([
       'maintenanceRed',
@@ -220,12 +954,7 @@ describe('the counts on the bar (plan §5.10)', () => {
       'custody',
       'noReading',
     ]);
-    expect(alertSummary(lines)).toEqual({
-      total: 11,
-      red: 4,
-      orange: 7,
-      byCategory: { cars: 4, drivers: 2, fuel: 5 },
-    });
+    expect(alertSummary(lines)).toEqual({ total: 11, red: 4, orange: 7 });
     expect(alertLines(NOW_DTO.alerts, 0)).toHaveLength(10);
     expect(alertLines(NOW_DTO.alerts, null)).toHaveLength(10);
   });
@@ -249,19 +978,29 @@ describe('the custody hooks are mounted only with `fleetCustody.view` (D3)', () 
 });
 
 describe('the address bar (D14)', () => {
-  it('remembers the six filters for the page, never `tab`', () => {
-    expect(REMEMBERED_FILTERS).toEqual([
-      'period',
-      'from',
-      'to',
-      'type',
-      'operation',
-      'vehicleCodes',
-    ]);
+  it('remembers the type, the operation and the codes — never the period, never `tab` (§0c)', () => {
+    expect(REMEMBERED_FILTERS).toEqual(['type', 'operation', 'vehicleCodes']);
     expect(PAGE).toContain('const REMEMBERED_FILTERS = [');
     expect(PAGE).toContain('useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);');
     expect(PAGE).toContain("sp.get('tab')");
-    for (const param of REMEMBERED_FILTERS) expect(PAGE).toContain(`sp.get('${param}')`);
+    // The page still reads the period from the address bar: a chosen period stays between tabs.
+    for (const param of [...REMEMBERED_FILTERS, 'period', 'from', 'to']) {
+      expect(PAGE).toContain(`sp.get('${param}')`);
+    }
+  });
+
+  it('keeps the page’s period on a tab switch, and reads «هذا الشهر» apart for the overview', () => {
+    expect(PAGE).toContain('const pick = (tab: FleetDashboardTab): void => write({ tab });');
+    expect(PAGE).toContain(
+      "const MONTH_QUERY: FleetDashboardPeriodQuery = { preset: 'thisMonth' };",
+    );
+    // Whitespace aside: the month read is asked by a reader of R2 only on the overview, and on
+    // «توزيع السيارات» for a reader of its km.
+    const flat = PAGE.replace(/\s+/gu, ' ');
+    expect(flat).toContain(
+      "const monthEnabled = reads.period && ((active === 'overview' && MONTH_SECTIONS.some((section) => sectionPermitted(section, can))) || (active === 'distribution' && sectionPermitted('km', can)));",
+    );
+    expect(flat).toContain("useFleetDashboardPeriod(MONTH_QUERY, 'live', monthEnabled)");
   });
 
   it('decides the read’s face: a skeleton on its way, an error with no answer, the answer otherwise', () => {

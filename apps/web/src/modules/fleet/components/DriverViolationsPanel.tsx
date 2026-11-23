@@ -12,7 +12,13 @@
 // is filed whole or not at all — five stored fines out of six is the outcome this shape exists to
 // make impossible.
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
-import { MAX_PAGE_SIZE, type FleetViolationDto, type Locale, type PageMeta } from '@ecms/contracts';
+import {
+  MAX_PAGE_SIZE,
+  isUnknownFleetDriver,
+  type FleetViolationDto,
+  type FleetViolationsListMeta,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -25,7 +31,7 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, PrinterIcon, ResetIcon, DownloadIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, PRESSED, actionTone } from './row-actions-look';
 import { SquarePenIcon, Trash2Icon } from './row-action-icons';
-import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
+import { formatMoney, formatNumber, localized } from '../../../shared/lib/format';
 import { violationsLoadState } from '../lib/violations-paging';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
@@ -104,6 +110,9 @@ export const DriverViolationsPanel = ({
   settled,
   year = null,
   onYearClear,
+  from = null,
+  to = null,
+  onPeriodClear,
   sorts,
   onSortChange,
   entryVehicleId,
@@ -140,6 +149,15 @@ export const DriverViolationsPanel = ({
    */
   year?: number | null;
   onYearClear?: () => void;
+  /**
+   * The drivers' fines of a PERIOD by the fine's day (`dfrom` / `dto`, 'YYYY-MM-DD'): what a
+   * dashboard figure counted («مخالفات السائقين في الفترة»), so its link lists the same rows — whole
+   * days, the server's rule. This half's own narrowing like the year; shown as ONE chip beside the
+   * year's and cleared with the others. `null` = no bound on that side.
+   */
+  from?: string | null;
+  to?: string | null;
+  onPeriodClear?: () => void;
   /**
    * THE CAR BOTH ENTRY BARS ARE FILING AGAINST — one pick, both halves. Held by the page; the
    * company's bar beside this one reads the same value. See `CompanyViolationsPanel` for why.
@@ -187,7 +205,19 @@ export const DriverViolationsPanel = ({
     typeIds.length > 0 ||
     amount !== '' ||
     settled !== '' ||
-    year !== null;
+    year !== null ||
+    from !== null ||
+    to !== null;
+  // The period chip's words: its days as the dashboard writes them («2026/11/01»), Latin digits.
+  const slashed = (ymd: string): string => ymd.replace(/-/gu, '/');
+  const periodWords =
+    from !== null && to !== null
+      ? t('fleet.violations.periodChip', { from: slashed(from), to: slashed(to) })
+      : from !== null
+        ? t('fleet.violations.periodFrom', { from: slashed(from) })
+        : to !== null
+          ? t('fleet.violations.periodTo', { to: slashed(to) })
+          : '';
 
   // The WHOLE registry: a car past the first hundred by code read as «—».
   const vehicles = useAllVehicles({ anyStatus: true });
@@ -200,6 +230,7 @@ export const DriverViolationsPanel = ({
   // The driver-side vocabulary, live. Its ORDER is the catalog's, so the bar reads the way the
   // admin screen lists it rather than the way this file happened to type it.
   const catalog = useFleetCatalog('violationType', 'driver');
+  // What the bar and the filter OFFER — the active types only: a retired type takes no new fine.
   const types: DriverEntryType[] = useMemo(
     () =>
       (catalog.data?.items ?? [])
@@ -207,11 +238,14 @@ export const DriverViolationsPanel = ({
         .map((item) => ({ id: item.id, name: localized(item.name, locale) })),
     [catalog.data, locale],
   );
+  // What a stored fine is CALLED — every type of the kind, archived ones too (D40). The catalog's
+  // own rule: a screen offers only the active items but still says what the others are, so a fine
+  // filed under a type since retired keeps its name on the chip, as the dashboard names it.
   const typeName = useMemo(() => {
     const map = new Map<string, string>();
-    for (const type of types) map.set(type.id, type.name);
+    for (const item of catalog.data?.items ?? []) map.set(item.id, localized(item.name, locale));
     return map;
-  }, [types]);
+  }, [catalog.data, locale]);
   /** Where each type sits in the catalog — what makes every colour on this board a different one. */
   const typeIndex = useMemo(() => {
     const map = new Map<string, number>();
@@ -327,6 +361,9 @@ export const DriverViolationsPanel = ({
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
       ...(year === null ? {} : { year }),
+      // The fine's day, whole days — the dashboard's period (the server reads the calendar days).
+      ...(from === null ? {} : { from }),
+      ...(to === null ? {} : { to }),
       // The page's vehicle set — only the lists that hold something, so an un-narrowed board
       // keeps exactly the key it always had.
       ...vehicleSet,
@@ -340,6 +377,8 @@ export const DriverViolationsPanel = ({
       amount,
       settled,
       year,
+      from,
+      to,
       writeSorts(sorts),
       vehicleSet,
     ],
@@ -350,8 +389,8 @@ export const DriverViolationsPanel = ({
   // is reachable without «السابق / التالي» ever coming back.
   const rows = (list.data?.pages ?? []).flatMap((p) => p.items);
   // The counts come from the FIRST page's meta — `totalItems` is the size of the whole answer, not
-  // of the chunk, and every page repeats it.
-  const meta: PageMeta | undefined = list.data?.pages[0]?.meta;
+  // of the chunk, and every page repeats it; so does `outstandingAmount`, the footer's figure.
+  const meta: FleetViolationsListMeta | undefined = list.data?.pages[0]?.meta;
   const loadState = violationsLoadState(meta, rows.length);
   const collect = useSetViolationCollected();
 
@@ -403,12 +442,6 @@ export const DriverViolationsPanel = ({
     }
   };
 
-  // WHAT IS STILL OWED on this page. A ticked fine is settled, and the owner reads «إجمالى
-  // السائقين» as the outstanding balance — the same rule the server now applies to the company
-  // half's four figures. Done in hand rather than by sending `collected: false`, because that
-  // would hide the rows themselves and this board is exactly where a clerk unticks a mistake.
-  const pageTotal = rows.filter((row) => !row.collected).reduce((sum, row) => sum + row.amount, 0);
-
   const columns: Column<FleetViolationDto>[] = [
     {
       key: 'date',
@@ -419,7 +452,15 @@ export const DriverViolationsPanel = ({
       // share of the row and the width it gives up goes to the two that can use it.
       className: 'w-px whitespace-nowrap',
       headerClassName: 'w-px',
-      render: (row) => <span className="whitespace-nowrap">{formatDate(row.date, locale)}</span>,
+      // THE STORED DAY, Latin digits (D41) — what the filter, the Excel, the print and the
+      // dashboard's row all read. Never re-read in the browser's zone: an old-book fine stored at
+      // 22:30Z on the 31st is the 31st's, and a reader in Cairo was shown the 1st. Written
+      // «2026/10/31», as the dashboard row it is opened from and the Fleet day columns write it.
+      render: (row) => (
+        <span dir="ltr" className="whitespace-nowrap tabular-nums" data-violation-day={row.id}>
+          {row.date === null ? '—' : row.date.slice(0, 10).replace(/-/gu, '/')}
+        </span>
+      ),
     },
     {
       key: 'vehicle',
@@ -457,9 +498,18 @@ export const DriverViolationsPanel = ({
       // token — therefore cannot set the width of the table, with or without a cap. `break-words`
       // would not do: it breaks only after layout, and min-content stays the whole token.
       className: 'w-full',
+      // A fine that names nobody — no employee, and no name or «مجهول» however it was spaced —
+      // reads «مجهول», muted (D43): the word the «مجهول» filter finds it by and the dashboard
+      // prints, never a «—» that looks like a missing value.
       render: (row) => (
         <span className="block [overflow-wrap:anywhere]">
-          <DriverName employeeId={row.driverEmployeeId} name={row.driverName} />
+          {isUnknownFleetDriver(row) ? (
+            <span data-driver-unknown={row.id} className="text-slate-500 dark:text-slate-400">
+              {t('fleet.violations.unknownDriver')}
+            </span>
+          ) : (
+            <DriverName employeeId={row.driverEmployeeId} name={row.driverName} />
+          )}
         </span>
       ),
     },
@@ -1144,6 +1194,25 @@ export const DriverViolationsPanel = ({
             </button>
           </FilterField>
         )}
+        {(from !== null || to !== null) && (
+          <FilterField
+            label={t('fleet.violations.fields.period')}
+            active
+            className="shrink-0"
+            density={TIGHT}
+          >
+            <button
+              type="button"
+              data-driver-period={`${from ?? ''}..${to ?? ''}`}
+              onClick={onPeriodClear}
+              aria-label={`${t('common.remove')} ${t('fleet.violations.fields.period')} ${periodWords}`}
+              className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-300 bg-brand-50 px-2 text-sm font-medium tabular-nums text-brand-700 hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900"
+            >
+              {periodWords}
+              <span aria-hidden="true">×</span>
+            </button>
+          </FilterField>
+        )}
         <FilterField
           label={t('fleet.vehicles.fields.code')}
           active={vehicleCodes.length > 0}
@@ -1341,11 +1410,16 @@ export const DriverViolationsPanel = ({
                 <td className="px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
                   {t('fleet.violations.lines.drivers')}
                 </td>
+                {/* WHAT IS STILL OWED over the WHOLE filter — every row it finds, all pages, from
+                    the server (`meta.outstandingAmount`, D03), never a sum of the rows loaded so
+                    far: past a hundred fines that sum was short of the dashboard's «قائمة على
+                    السائقين» that opens this list. A ticked fine is settled and leaves it; the
+                    rows themselves stay, because this board is where a clerk unticks a mistake. */}
                 <td
-                  data-driver-page-total
+                  data-driver-outstanding
                   className="px-3 py-2 text-end text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200"
                 >
-                  {formatMoney(pageTotal, 'EGP', locale)}
+                  {formatMoney(meta.outstandingAmount, 'EGP', locale)}
                 </td>
               </tr>
             </tbody>

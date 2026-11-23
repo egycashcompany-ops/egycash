@@ -1,9 +1,4 @@
-import {
-  widerScope,
-  type DataScope,
-  type ExternalSubjectDto,
-  type Locale,
-} from '@ecms/contracts';
+import { widerScope, type DataScope, type ExternalSubjectDto, type Locale } from '@ecms/contracts';
 import { type ActorIdentity } from '../../infrastructure/http/request-context';
 
 export { type ActorIdentity };
@@ -207,8 +202,11 @@ export const keyCoversDepartmentEverywhere = (
 };
 
 /** Whether the caller holds `permissionKey` over the WHOLE of `branchId`. */
-export const keyReachesBranch = (ctx: AuthContext, permissionKey: string, branchId: string): boolean =>
-  keyCoversUnit(ctx, permissionKey, branchId, null);
+export const keyReachesBranch = (
+  ctx: AuthContext,
+  permissionKey: string,
+  branchId: string,
+): boolean => keyCoversUnit(ctx, permissionKey, branchId, null);
 
 /**
  * The selector a repository applies for one permission — with the command bar's branch narrowing
@@ -237,7 +235,9 @@ export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSel
     // ignored, as before: the caller then sees everything their key covers.
     const narrow = active !== null && touchedBranches(reach).includes(active);
     const branchIds = narrow ? reach.branchIds.filter((id) => id === active) : reach.branchIds;
-    const departments = narrow ? reach.departments.filter((d) => d.branchId === active) : reach.departments;
+    const departments = narrow
+      ? reach.departments.filter((d) => d.branchId === active)
+      : reach.departments;
     return {
       scope,
       ...home,
@@ -271,8 +271,40 @@ export const widestScopeSelector = (ctx: AuthContext, keys: readonly string[]): 
     }
   }
   return winner === undefined
-    ? { scope: 'own', userId: ctx.userId, branchId: ctx.branchId, departmentId: ctx.departmentId, sectionId: ctx.sectionId }
+    ? {
+        scope: 'own',
+        userId: ctx.userId,
+        branchId: ctx.branchId,
+        departmentId: ctx.departmentId,
+        sectionId: ctx.sectionId,
+      }
     : scopeSelector(ctx, winner);
+};
+
+/**
+ * The branch ids a selector covers: 'all' for organization AND own (own is narrowed by its author,
+ * not by branch); a branch or department reach → the reach's branches (and the branches its
+ * department copies sit in); otherwise the home branch, or `[]` when there is none — a real answer
+ * that covers no branch at all.
+ *
+ * The rule of the ATM register's `registerScopeBranches` (register.repository.ts), here beside
+ * `scopeSelector` so a module that may not import the ATM one reads the same answer from the same
+ * selector lists `orgScopeMatch` reads.
+ */
+export const selectorBranches = (s: ScopeSelector): 'all' | string[] => {
+  if (s.scope === 'organization' || s.scope === 'own') return 'all';
+  if (s.scope !== 'section') {
+    const branchIds = s.branchIds ?? [];
+    const departmentIds = s.departmentIds ?? [];
+    const departmentBranchIds = s.departmentBranchIds ?? [];
+    // A department reach with no branch to narrow to is the one shape `orgScopeMatch` cannot
+    // place, and it answers `{}` for it; say the same here. `scopeSelector` never builds it.
+    if (departmentIds.length > 0 && departmentBranchIds.length === 0) return 'all';
+    if (branchIds.length > 0 || departmentIds.length > 0) {
+      return [...new Set([...branchIds, ...departmentBranchIds])];
+    }
+  }
+  return s.branchId === null ? [] : [s.branchId];
 };
 
 /** Whether `branchId` is one the caller's own placement or grants reach. */

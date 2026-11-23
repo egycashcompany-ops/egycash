@@ -12,8 +12,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   chooseInitialView,
+  declaredView,
   rememberedOnly,
   runFilterPass,
   scopedView,
@@ -208,6 +212,68 @@ describe('scopedView — a tab switch is not an arrival', () => {
 
   it('is a no-op on a screen with nothing remembered yet', () => {
     expect(scopedView(new URLSearchParams('tab=all'), KEEP, '')).toBe('tab=all');
+  });
+});
+
+describe('declaredView — what is restored is declared too', () => {
+  // The fleet dashboard stopped remembering its period (every visit opens on «هذا الشهر»), but a
+  // browser still holds the string it stored before: `period=lastMonth&type=x`. Its declaration is
+  // now the vehicle filters alone.
+  const DASHBOARD = ['type', 'operation', 'vehicleCodes'] as const;
+
+  it('gives back only the names the screen declares today', () => {
+    expect(declaredView('period=lastMonth&type=x', DASHBOARD)).toBe('type=x');
+    expect(declaredView('period=custom&from=2026-10-01&to=2026-10-31&type=x', DASHBOARD)).toBe(
+      'type=x',
+    );
+  });
+
+  it('restores `type=x` alone on a bare arrival — never the period it no longer declares', () => {
+    expect(
+      runFilterPass({
+        settled: false,
+        navigating: false,
+        current: '',
+        saved: declaredView('period=lastMonth&type=x', DASHBOARD),
+        fallback: '',
+      }),
+    ).toEqual({ restore: 'type=x', record: false });
+  });
+
+  it('leaves nothing to restore when a stored view held only dropped names, so the default opens', () => {
+    const saved = declaredView('period=lastMonth&from=2026-10-01', DASHBOARD);
+    expect(saved).toBe('');
+    // Nothing is navigated to, and the bare arrival is recorded — the stale string is overwritten.
+    expect(
+      runFilterPass({ settled: false, navigating: false, current: '', saved, fallback: '' }),
+    ).toEqual({ restore: '', record: true });
+    expect(
+      runFilterPass({ settled: false, navigating: false, current: '', saved, fallback: 'q=x' })
+        .restore,
+    ).toBe('q=x');
+  });
+
+  it('keeps a declared view whole and in declaration order, as it was written', () => {
+    expect(declaredView('vehicleCodes=1,2&type=x&operation=y', DASHBOARD)).toBe(
+      'type=x&operation=y&vehicleCodes=1%2C2',
+    );
+    expect(declaredView('', DASHBOARD)).toBe('');
+  });
+
+  it('puts back only declared names on a tab switch as well', () => {
+    const current = new URLSearchParams('tab=all&q=office');
+    expect(scopedView(current, KEEP, declaredView('q=printer&legacy=1', KEEP))).toBe(
+      'tab=all&q=printer',
+    );
+  });
+
+  it('is the hook’s only way into storage — both restores read through the declaration', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(here, 'useRememberedFilters.ts'), 'utf8');
+    // `read(` is called once, inside the helper that filters it; the hook calls the helper.
+    expect(src.match(/\bread\(pathname, scope\)/gu)).toHaveLength(1);
+    expect(src).toContain('declaredView(read(pathname, scope), remembered)');
+    expect(src.match(/readDeclared\(pathname, scope, remembered\)/gu)).toHaveLength(2);
   });
 });
 

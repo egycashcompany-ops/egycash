@@ -8,8 +8,9 @@
 // its own minimum is marked in the row: its figure in the warning colour AND a word beside it,
 // since a colour alone says nothing to a reader who cannot tell it apart.
 //
-// Every action is a named movement, offered where the reader's grant allows it — the assets'
-// grants (`itAsset.*`), no key of its own — and where the item allows it: an issue and a scrap
+// Every action is a named movement, offered where the reader's grant allows it — the store's own
+// grants since 2026-11-17 (`itConsumable.*`: «فى الـ IT ظبط صلاحيات الشاشات عشان أقدر أتحكم فيها»;
+// it shipped on the assets') — and where the item allows it: an issue and a scrap
 // need something on hand, and a retired item takes no new stock and is issued to nobody (a scrap
 // or a return it still takes: what was already out comes back, what breaks is written off). «صرف لموظف» in the header
 // starts an empty memo; the row's «صرف» starts it with that item. «سجل الحركات» is the ledger of
@@ -32,6 +33,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
@@ -321,7 +323,7 @@ export const ConsumablesPage = (): JSX.Element => {
       align: 'end',
       render: (item) => (
         <span className="flex flex-wrap items-center justify-end gap-1">
-          {can('itAsset.edit') &&
+          {can('itConsumable.edit') &&
             item.active &&
             action(
               item,
@@ -329,7 +331,7 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.actions.receive'),
               <DownloadIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.assign') &&
+          {can('itConsumable.assign') &&
             item.active &&
             item.onHandQty > 0 &&
             action(
@@ -338,7 +340,7 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.actions.issue'),
               <UsersIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.edit') &&
+          {can('itConsumable.edit') &&
             item.onHandQty > 0 &&
             action(
               item,
@@ -346,14 +348,14 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.actions.scrap'),
               <TrashIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.assign') &&
+          {can('itConsumable.assign') &&
             action(
               item,
               'return',
               t('it.consumables.actions.return'),
               <ResetIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.assign') &&
+          {can('itConsumable.assign') &&
             item.onHandQty > 0 &&
             action(
               item,
@@ -361,7 +363,7 @@ export const ConsumablesPage = (): JSX.Element => {
               t('it.consumables.transfer.title'),
               <SwapIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.edit') &&
+          {can('itConsumable.edit') &&
             action(item, 'edit', t('it.consumables.edit'), <EditIcon className="h-4 w-4" />)}
           {action(
             item,
@@ -375,52 +377,56 @@ export const ConsumablesPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.consumables')}
-        breadcrumbs={[
-          { label: t('it.module.title'), to: '/it' },
-          { label: t('it.nav.consumables') },
-        ]}
-        actions={
-          <>
-            {/* The files first, the screen's own actions after them, as on the other registers.
-                Not offered when the list failed: the file behind them would be short. */}
-            {!isError && (
-              <RegisterExportButtons name="it-consumables" onExcel={toExcel} onPdf={toPdf} />
-            )}
-            <Link
-              to="/it/consumables/movements"
-              data-consumables-movements
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-            >
-              <HistoryIcon className="h-4 w-4" />
-              {t('it.consumables.movementsLink')}
-            </Link>
-            <Can permission="itAsset.assign">
-              <Button
-                size="sm"
-                variant="secondary"
-                leftIcon={<UsersIcon className="h-4 w-4" />}
-                onClick={() => setDialog({ kind: 'issue', item: null })}
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; for IT «مش عايز كل الصفحة تعمل Scroll !! عايز
+          فقط الجدول لكن الزراير والفلتر يبقوا ثابتين», 2026-11-17): on a computer the title and its
+          buttons, the filters and the selection's bar keep their place, the pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.consumables')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.consumables') },
+          ]}
+          actions={
+            <>
+              {/* The files first, the screen's own actions after them, as on the other registers.
+                  Not offered when the list failed: the file behind them would be short. */}
+              {!isError && (
+                <RegisterExportButtons name="it-consumables" onExcel={toExcel} onPdf={toPdf} />
+              )}
+              <Link
+                to="/it/consumables/movements"
+                data-consumables-movements
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                {t('it.consumables.issueAction')}
-              </Button>
-            </Can>
-            <Can permission="itAsset.create">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setDialog({ kind: 'create' })}
-              >
-                {t('it.consumables.create')}
-              </Button>
-            </Can>
-          </>
-        }
-      />
+                <HistoryIcon className="h-4 w-4" />
+                {t('it.consumables.movementsLink')}
+              </Link>
+              <Can permission="itConsumable.assign">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<UsersIcon className="h-4 w-4" />}
+                  onClick={() => setDialog({ kind: 'issue', item: null })}
+                >
+                  {t('it.consumables.issueAction')}
+                </Button>
+              </Can>
+              <Can permission="itConsumable.create">
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  onClick={() => setDialog({ kind: 'create' })}
+                >
+                  {t('it.consumables.create')}
+                </Button>
+              </Can>
+            </>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() => patch({ q: null, type: null, branch: null, belowMin: null, active: null })}
@@ -471,7 +477,7 @@ export const ConsumablesPage = (): JSX.Element => {
         </FilterBar>
 
         <BulkActionBar count={selection.count} onClear={selection.clear}>
-          <Can permission="itAsset.assign">
+          <Can permission="itConsumable.assign">
             <Button
               size="sm"
               variant="secondary"
@@ -505,18 +511,21 @@ export const ConsumablesPage = (): JSX.Element => {
           </Can>
         </BulkActionBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(item) => item.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          {...(sort === null ? {} : { sort })}
-          onSortChange={changeSort}
-          empty={t('it.consumables.empty')}
-          selection={selection}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(item) => item.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            {...(sort === null ? {} : { sort })}
+            onSortChange={changeSort}
+            empty={t('it.consumables.empty')}
+            selection={selection}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

@@ -269,21 +269,23 @@ const Column = ({
   </Card>
 );
 
+/** A screen button across the column's foot; none without a list to open (`null`, D21). */
 const Wide = ({
   link,
   icon,
   children,
 }: {
-  link: DashLink;
+  link: DashLink | null;
   icon: IconPath;
   children: ReactNode;
-}): JSX.Element => (
-  <Fig link={link} linkedClassName="" className={cn(BTN.outline, 'w-full gap-2')}>
-    <Icon d={icon} className={cn('h-4 w-4', MUTED)} />
-    {children}
-    <Icon d={I.arrow} className="h-3.5 w-3.5 opacity-60" />
-  </Fig>
-);
+}): JSX.Element | null =>
+  link === null ? null : (
+    <Fig link={link} linkedClassName="" className={cn(BTN.outline, 'w-full gap-2')}>
+      <Icon d={icon} className={cn('h-4 w-4', MUTED)} />
+      {children}
+      <Icon d={I.arrow} className="h-3.5 w-3.5 opacity-60" />
+    </Fig>
+  );
 
 const ScreenTile = ({
   link,
@@ -314,15 +316,7 @@ type Fuel = NonNullable<FleetDashboardNowDto['fuelCharging']>;
 type Violations = NonNullable<FleetDashboardNowDto['violationsYear']>;
 type Accidents = NonNullable<FleetDashboardNowDto['accidentsOpen']>;
 
-const FuelKpi = ({
-  fuel,
-  links,
-  branch,
-}: {
-  fuel: Fuel;
-  links: NowLinks;
-  branch: boolean;
-}): JSX.Element => {
+const FuelKpi = ({ fuel, links }: { fuel: Fuel; links: NowLinks }): JSX.Element => {
   const t = useT();
   const total = fuel.wataniya + fuel.chillout;
   return (
@@ -330,12 +324,7 @@ const FuelKpi = ({
       data="fuel"
       tone="emerald"
       icon={I.card}
-      title={
-        <>
-          {t('fleet.dash.summaries.fuelTitle')}
-          <CompanyWide show={branch} />
-        </>
-      }
+      title={t('fleet.dash.summaries.fuelTitle')}
       figure={<Headline value={total} link={null} />}
     >
       <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -526,15 +515,7 @@ const OpenKpi = ({
 
 // ── (c) The three columns ─────────────────────────────────────────────────────────────────────
 
-const FuelColumn = ({
-  fuel,
-  links,
-  branch,
-}: {
-  fuel: Fuel;
-  links: NowLinks;
-  branch: boolean;
-}): JSX.Element => {
+const FuelColumn = ({ fuel, links }: { fuel: Fuel; links: NowLinks }): JSX.Element => {
   const t = useT();
   const noun = useNoun();
   const total = fuel.wataniya + fuel.chillout;
@@ -544,7 +525,6 @@ const FuelColumn = ({
       dot="emerald"
       title={t('fleet.dash.summaries.fuelNow')}
       sub={t('fleet.dash.summaries.fuelNowSub')}
-      end={<CompanyWide show={branch} />}
       foot={
         <Wide link={links.charging('requested')} icon={I.fuel}>
           {t('fleet.dash.summaries.chargingScreen')}
@@ -977,27 +957,36 @@ const QuickLinks = ({
 }): JSX.Element | null => {
   const t = useT();
   const items: { link: DashLink; icon: IconPath; label: string; n?: number }[] = [];
+  // A quick link with no list to open (`null`: a reader whose reach holds no branch, D21) is left out.
+  const push = (item: {
+    link: DashLink | null;
+    icon: IconPath;
+    label: string;
+    n?: number;
+  }): void => {
+    if (item.link !== null) items.push({ ...item, link: item.link });
+  };
   if (links !== null && now?.fuelCharging != null && can('fleetFuelCharge.view'))
-    items.push({
+    push({
       link: links.reconcile(),
       icon: I.card,
       label: t('fleet.dash.summaries.quickReconcile'),
     });
   if (custody !== null)
-    items.push({
+    push({
       link: custodyDashboardLink('custodyFund.quick'),
       icon: I.grid,
       label: t('fleet.dash.summaries.custodyDashboard'),
     });
   if (custody !== null && links !== null)
-    items.push({
+    push({
       link: links.custodyExpenses(),
       icon: I.cash,
       label: t('fleet.dash.summaries.custodyExpenses'),
     });
   const v = now?.violationsYear;
   if (links !== null && v != null)
-    items.push({
+    push({
       link: links.violationsUnknown(v.year),
       icon: I.userX,
       label: t('fleet.dash.summaries.quickUnknown'),
@@ -1005,7 +994,7 @@ const QuickLinks = ({
     });
   const a = now?.accidentsOpen;
   if (links !== null && a != null)
-    items.push({
+    push({
       link: links.accidentsOpen(),
       icon: I.warn,
       label: t('fleet.dash.summaries.openAccidentsTitle'),
@@ -1050,14 +1039,15 @@ export const SummariesTab = (props: NowTabProps): JSX.Element => {
   const t = useT();
   const { now, custody } = props;
   const links = now === null ? null : nowLinks(now);
-  const branch = now?.branchId != null;
+  // «الشركة كلها» on the custody parts whenever the figures are narrowed — one branch or «كل فروعي»
+  // (D11). The fuel parts follow the branch of each card's car (plan D10): no tag.
+  const branch = now?.scopeBranches != null;
   const fuel = now?.fuelCharging ?? null;
   const accidents = now?.accidentsOpen ?? null;
   const violations = now?.violationsYear ?? null;
   const failed = SUMMARY_SECTIONS.filter((section) => now?.unavailable.includes(section) ?? false);
   const tops: JSX.Element[] = [];
-  if (fuel !== null && links !== null)
-    tops.push(<FuelKpi key="fuel" fuel={fuel} links={links} branch={branch} />);
+  if (fuel !== null && links !== null) tops.push(<FuelKpi key="fuel" fuel={fuel} links={links} />);
   if (custody !== null) tops.push(<CustodyKpi key="custody" custody={custody} branch={branch} />);
   if ((accidents !== null || violations !== null) && links !== null)
     tops.push(<OpenKpi key="open" accidents={accidents} violations={violations} links={links} />);
@@ -1088,9 +1078,7 @@ export const SummariesTab = (props: NowTabProps): JSX.Element => {
       )}
       {tops.length > 0 && <div className="grid grid-cols-1 gap-5 md:grid-cols-3">{tops}</div>}
       <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {fuel !== null && links !== null && (
-          <FuelColumn fuel={fuel} links={links} branch={branch} />
-        )}
+        {fuel !== null && links !== null && <FuelColumn fuel={fuel} links={links} />}
         {custody !== null && <CustodyColumn custody={custody} links={links} branch={branch} />}
         {(accidents !== null || violations !== null) && links !== null && (
           <OpenColumn accidents={accidents} violations={violations} links={links} />

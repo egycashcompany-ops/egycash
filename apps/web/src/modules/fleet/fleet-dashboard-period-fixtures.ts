@@ -1,33 +1,29 @@
-// «لوحة تحكم الحركة» — the fixtures of the five period tabs' specs: one R2 answer with every section
+// «لوحة تحكم الحركة» — the fixtures of the period specs (the period parts of the seven mixed
+// panels): one R2 answer with every section
 // over «آخر 30 يومًا» (2026-10-03 … today 2026-11-01, by the day), the same over «هذه السنة» (by the
-// month), and the renderers that mount the real page (or one period tab alone) in the node test
-// environment over seeded caches — no DOM, no fetch.
+// month), and the renderer that mounts the real page in the node test environment over seeded
+// caches — no DOM, no fetch.
 //
 // The figures agree with each other the way the server's do (R-15, R-16, R-18, R-23):
 //   km.total = Σ confirmedKm + Σ spanKm = Σ byBranch + unregistered;
 //   the average = the closed km of 10/03 … 10/30 ÷ 28 closed calendar days;
-//   Σ byWorkType = Σ byWorkshop = visits.count = closed + open;
-//   opex.total = card + custody (and the dealership figure is never added to it).
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { Provider } from 'react-redux';
-import { configureStore } from '@reduxjs/toolkit';
-import { MemoryRouter } from 'react-router-dom';
-import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
+//   Σ exits.byWorkType = Σ exits.byWorkshop = exits.count (EXIT day, «الصيانة والورش»);
+//   opex.total = card + custody = card + fuelCustody + tyres + wash + maintenance, fuel = card +
+//   fuelCustody, Σ opexSeries = total and count (and the dealership figure is never added to it);
+//   violations.count = owed + collected = Σ byType («غير محدد» last), violationList.more = count − rows;
+//   dealershipList.more = dealership.rows − rows;
+//   km.coverage.of = active − inWorkshop − joinedAfter, noDistance.cars = of − withReadings;
+//   accidents.totals.remaining = collected + company − paid + in − out (= the open files' rest).
+import { type QueryClient } from '@tanstack/react-query';
 import {
   addDaysYmd,
   type FleetDashboardKmBucketDto,
+  type FleetDashboardOpexBucketDto,
+  type FleetDashboardPeriodDealershipRowDto,
   type FleetDashboardPeriodDto,
+  type FleetDashboardPeriodViolationRowDto,
   type Locale,
-  type MeDto,
 } from '@ecms/contracts';
-import { localeSlice } from '../../store/localeSlice';
-import { authSlice } from '../../store/authSlice';
-import { fleetDashboardKeys } from './api/fleet-dashboard-queries';
-import { periodLiveness } from './lib/fleet-dashboard-refresh';
-import { readPeriodFilters, toPeriodQuery } from './lib/fleet-dashboard-url';
-import { PeriodTab, type PeriodTabProps } from './components/fleet-dashboard/period-tabs';
-import { CLEARED } from './components/fleet-dashboard/period-filter-bar';
 import {
   ALL_KEYS,
   AS_OF,
@@ -40,6 +36,8 @@ import {
 } from './fleet-dashboard-fixtures';
 
 export const FROM_30 = '2026-10-03';
+const SPRINTER = { ar: 'سبرينتر', en: 'Sprinter' };
+const ATEGO = { ar: 'أتيجو', en: 'Atego' };
 export const WT_SERVICE = '650000000000000000000501';
 export const WT_BRAKES = '650000000000000000000502';
 export const WS_COMPANY = '650000000000000000000601';
@@ -101,16 +99,136 @@ const GIZA_KM = Math.round(KM_TOTAL * 0.35);
 const NO_BRANCH_KM = Math.round(KM_TOTAL * 0.12);
 export const UNREGISTERED_KM = KM_TOTAL - CAIRO_KM - GIZA_KM - NO_BRANCH_KM;
 
+// ── «مصروف التشغيل يومًا بيوم»: every day of the 30, two of them (Fridays) with no receipt ──────
+
+/** The receipts' amount and count of each day, 10/03 … 11/01; Σ = opex.total 112,450 and count 210. */
+const OPEX_DAYS = [
+  [4150, 7],
+  [4400, 6],
+  [3350, 10],
+  [3450, 8],
+  [5000, 6],
+  [4750, 7],
+  [0, 0],
+  [3250, 6],
+  [4500, 9],
+  [3350, 7],
+  [3400, 10],
+  [4500, 6],
+  [5750, 10],
+  [950, 1],
+  [5150, 10],
+  [3300, 10],
+  [5000, 9],
+  [3300, 7],
+  [3250, 10],
+  [5850, 7],
+  [0, 0],
+  [4050, 9],
+  [3600, 10],
+  [3500, 10],
+  [4100, 9],
+  [5750, 6],
+  [3450, 9],
+  [1450, 1],
+  [5000, 5],
+  [4900, 5],
+] as const;
+export const OPEX_BUCKETS: FleetDashboardOpexBucketDto[] = OPEX_DAYS.map(([amount, count], i) => ({
+  key: day(i),
+  hasRows: count > 0,
+  amount,
+  count,
+}));
+
+// ── «مخالفات السائقين في الفترة» ───────────────────────────────────────────────────────────────
+
+export const VT_SPEED = '650000000000000000000701';
+export const VT_WRONG_WAY = '650000000000000000000702';
+export const VT_PHONE = '650000000000000000000703';
+export const VT_BELT = '650000000000000000000704';
+export const VT_UNSPECIFIED = '650000000000000000000709';
+const SPEED = { ar: 'سرعة', en: 'Speeding' };
+const WRONG_WAY = { ar: 'سير عكس الاتجاه', en: 'Wrong way' };
+const PHONE = { ar: 'تليفون', en: 'Phone' };
+const BELT = { ar: 'حزام', en: 'Seatbelt' };
+const UNSPECIFIED = { ar: 'غير محدد (مخالفات السائقين)', en: 'Unspecified (drivers)' };
+
+const fine = (
+  over: Partial<FleetDashboardPeriodViolationRowDto> &
+    Pick<FleetDashboardPeriodViolationRowDto, 'violationId' | 'code' | 'date' | 'amount'>,
+): FleetDashboardPeriodViolationRowDto => ({
+  vehicleId: `v${over.code}`,
+  typeName: SPRINTER,
+  vehicleDeleted: false,
+  driverEmployeeId: null,
+  driverName: null,
+  violationTypeId: VT_SPEED,
+  violationType: SPEED,
+  unspecified: false,
+  collected: false,
+  ...over,
+});
+
+// ── «فواتير التوكيل في الفترة» ─────────────────────────────────────────────────────────────────
+
+const invoice = (
+  over: Partial<FleetDashboardPeriodDealershipRowDto> &
+    Pick<FleetDashboardPeriodDealershipRowDto, 'id' | 'code' | 'date'>,
+): FleetDashboardPeriodDealershipRowDto => ({
+  vehicleId: `v${over.code}`,
+  typeName: SPRINTER,
+  vehicleDeleted: false,
+  workKind: 'repair',
+  workTypeLabel: 'إصلاح',
+  invoiceNumber: null,
+  invoiceAmount: null,
+  ...over,
+});
+
 export const PERIOD_FULL: FleetDashboardPeriodDto = {
   today: TODAY,
   asOf: AS_OF,
   range: { preset: 'last30', from: FROM_30, to: TODAY, days: 30, granularity: 'day' },
-  vehicleScope: { count: null, typeIds: [], operationIds: [], vehicleCodes: [], branchId: null },
+  vehicleScope: {
+    count: null,
+    typeIds: [],
+    operationIds: [],
+    vehicleCodes: [],
+    branchId: null,
+    scopeBranches: null,
+  },
   km: {
     total: KM_TOTAL,
     invalidRows: 2,
     perVehicleAvg: KM_TOTAL / 38,
-    coverage: { withReadings: 38, of: 40 },
+    // 40 active cars count (none held in the workshop all period, none joined after it); 38 have a
+    // distance, the other two are 318 (no reading — never read at all) and 305 (only an open one).
+    coverage: { withReadings: 38, of: 40, active: 40, inWorkshop: 0, joinedAfter: 0 },
+    noDistance: { cars: 2, neverRead: 1, codes: ['305', '318'], neverReadCodes: ['318'] },
+    // The two rows to review, the oldest day first: to = from + km, km < 0.
+    invalidList: [
+      {
+        vehicleId: 'v154',
+        code: '154',
+        deleted: false,
+        typeName: ATEGO,
+        date: '2026-10-11',
+        from: 143_905,
+        to: 134_950,
+        km: -8_955,
+      },
+      {
+        vehicleId: 'v207',
+        code: '207',
+        deleted: false,
+        typeName: SPRINTER,
+        date: '2026-10-20',
+        from: 186_420,
+        to: 186_240,
+        km: -180,
+      },
+    ],
     confirmedThrough: '2026-10-30',
     closedDays: 28,
     average: CLOSED_KM / 28,
@@ -123,19 +241,21 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     ],
     byType: null,
     unregistered: UNREGISTERED_KM,
+    bookOnRegistered: 0,
+    // Each car's make (one with no make named: nothing under its chip).
     top5: [
-      { vehicleId: 'v182', code: '182', km: 5140 },
-      { vehicleId: 'v207', code: '207', km: 4890 },
-      { vehicleId: 'v150', code: '150', km: 4760 },
-      { vehicleId: 'v295', code: '295', km: 4610 },
-      { vehicleId: 'v154', code: '154', km: 4420 },
+      { vehicleId: 'v182', code: '182', km: 5140, typeName: SPRINTER },
+      { vehicleId: 'v207', code: '207', km: 4890, typeName: SPRINTER },
+      { vehicleId: 'v150', code: '150', km: 4760, typeName: ATEGO },
+      { vehicleId: 'v295', code: '295', km: 4610, typeName: SPRINTER },
+      { vehicleId: 'v154', code: '154', km: 4420, typeName: ATEGO },
     ],
     bottom5: [
-      { vehicleId: 'v141', code: '141', km: 980, inWorkshopSince: '2026-10-23' },
-      { vehicleId: 'v199', code: '199', km: 1240, inWorkshopSince: null },
-      { vehicleId: 'v133', code: '133', km: 1905, inWorkshopSince: null },
-      { vehicleId: 'v118', code: '118', km: 2310, inWorkshopSince: null },
-      { vehicleId: 'v304', code: '304', km: 2480, inWorkshopSince: null },
+      { vehicleId: 'v141', code: '141', km: 980, inWorkshopSince: '2026-10-23', typeName: ATEGO },
+      { vehicleId: 'v199', code: '199', km: 1240, inWorkshopSince: null, typeName: SPRINTER },
+      { vehicleId: 'v133', code: '133', km: 1905, inWorkshopSince: null, typeName: null },
+      { vehicleId: 'v118', code: '118', km: 2310, inWorkshopSince: null, typeName: SPRINTER },
+      { vehicleId: 'v304', code: '304', km: 2480, inWorkshopSince: null, typeName: ATEGO },
     ],
     withoutReadings: [
       { vehicleId: 'v318', code: '318', reason: 'noRow' },
@@ -143,44 +263,177 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       { vehicleId: 'v260', code: '260', reason: 'notActive' },
     ],
   },
-  visits: {
-    count: 27,
-    closed: 21,
-    open: 6,
+  // By EXIT day: the 18 visits that left in the 30 days; two of them old-book (counted, not ranked).
+  exits: {
+    count: 18,
+    avgStayDays: 2.4,
     byWorkType: [
-      { id: WT_SERVICE, name: { ar: 'صيانة دورية', en: 'Service' }, count: 11 },
-      { id: WT_BRAKES, name: { ar: 'فرامل', en: 'Brakes' }, count: 5 },
-      { id: '650000000000000000000503', name: { ar: 'كهرباء', en: 'Electrics' }, count: 4 },
-      { id: '650000000000000000000504', name: { ar: 'كاوتش', en: 'Tyres' }, count: 4 },
-      { id: '650000000000000000000505', name: null, count: 3 },
+      { id: WT_SERVICE, name: { ar: 'صيانة دورية', en: 'Service' }, count: 7 },
+      { id: WT_BRAKES, name: { ar: 'فرامل', en: 'Brakes' }, count: 4 },
+      { id: '650000000000000000000503', name: { ar: 'كهرباء', en: 'Electrics' }, count: 3 },
+      { id: '650000000000000000000504', name: { ar: 'كاوتش', en: 'Tyres' }, count: 2 },
+      { id: '650000000000000000000505', name: null, count: 2 },
     ],
     byWorkshop: [
-      { id: WS_COMPANY, name: { ar: 'ورشة الشركة — القاهرة', en: 'Company workshop' }, count: 12 },
-      { id: WS_TOYOTA, name: { ar: 'مركز خدمة تويوتا', en: 'Toyota service' }, count: 7 },
+      { id: WS_COMPANY, name: { ar: 'ورشة الشركة — القاهرة', en: 'Company workshop' }, count: 8 },
+      { id: WS_TOYOTA, name: { ar: 'مركز خدمة تويوتا', en: 'Toyota service' }, count: 5 },
       {
         id: '650000000000000000000603',
         name: { ar: 'ورشة النور للكهرباء', en: 'Al-Nour' },
-        count: 4,
+        count: 3,
       },
       {
         id: '650000000000000000000604',
         name: { ar: 'الحرمين للكاوتش', en: 'Al-Haramain' },
-        count: 4,
+        count: 2,
       },
     ],
     topVehicles: [
-      { vehicleId: 'v182', code: '182', visits: 3, lastInDate: TODAY },
-      { vehicleId: 'v295', code: '295', visits: 2, lastInDate: '2026-10-26' },
-      { vehicleId: 'v207', code: '207', visits: 2, lastInDate: '2026-10-19' },
-      { vehicleId: null, code: '150', visits: 1, lastInDate: '2026-10-26' },
+      {
+        vehicleId: 'v182',
+        code: '182',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        visits: 3,
+        lastInDate: '2026-10-28',
+        lastWorkType: { ar: 'صيانة دورية', en: 'Service' },
+      },
+      {
+        vehicleId: 'v295',
+        code: '295',
+        typeName: { ar: 'جيب', en: 'Jeep' },
+        visits: 2,
+        lastInDate: '2026-10-26',
+        lastWorkType: { ar: 'فرامل', en: 'Brakes' },
+      },
+      {
+        vehicleId: 'v207',
+        code: '207',
+        typeName: { ar: 'مصفحة', en: 'Armoured' },
+        visits: 2,
+        lastInDate: '2026-10-19',
+        lastWorkType: null,
+      },
     ],
     unregistered: 2,
   },
-  accidents: { count: 4, open: 2, openRemaining: 9800, undated: 25 },
+  accidents: {
+    count: 4,
+    open: 2,
+    undated: 25,
+    // The four files as their amounts stand now (open AND closed):
+    // 12,000 + 4,500 − 7,200 + 1,000 − 500 = 9,800 — the open files' 6,500 + 3,300 (closed owe 0).
+    totals: {
+      amountCollected: 12000,
+      companyCost: 4500,
+      paidAmount: 7200,
+      transferredIn: 1000,
+      transferredOut: 500,
+      remaining: 9800,
+    },
+  },
+  // The drivers' fines by the FINE's day: 17 still owed + 6 collected = 23; the types add up to them.
+  violations: {
+    count: 23,
+    amount: 9350,
+    owed: { count: 17, amount: 6900 },
+    collected: { count: 6, amount: 2450 },
+    byType: [
+      { violationTypeId: VT_SPEED, name: SPEED, unspecified: false, count: 9, amount: 3600 },
+      {
+        violationTypeId: VT_WRONG_WAY,
+        name: WRONG_WAY,
+        unspecified: false,
+        count: 6,
+        amount: 3000,
+      },
+      { violationTypeId: VT_PHONE, name: PHONE, unspecified: false, count: 4, amount: 1200 },
+      { violationTypeId: VT_BELT, name: BELT, unspecified: false, count: 2, amount: 400 },
+      // The catalog's «غير محدد» always last.
+      {
+        violationTypeId: VT_UNSPECIFIED,
+        name: UNSPECIFIED,
+        unspecified: true,
+        count: 2,
+        amount: 1150,
+      },
+    ],
+  },
+  // The register's first page of them, newest first: 6 of 23.
+  violationList: {
+    rows: [
+      fine({
+        violationId: 'f1',
+        code: '214',
+        date: '2026-10-31',
+        driverEmployeeId: DRIVER,
+        driverName: 'محمود عبد العزيز سالم',
+        amount: 400,
+      }),
+      fine({
+        violationId: 'f2',
+        code: '305',
+        typeName: ATEGO,
+        date: '2026-10-29',
+        driverName: 'مجهول',
+        violationTypeId: VT_PHONE,
+        violationType: PHONE,
+        amount: 300,
+      }),
+      // A car deleted from the registry since: its fine stays, with no record to open.
+      fine({
+        violationId: 'f3',
+        code: '144',
+        date: '2026-10-27',
+        vehicleDeleted: true,
+        driverEmployeeId: DRIVER_2,
+        driverName: 'كريم السيد إبراهيم',
+        violationTypeId: VT_WRONG_WAY,
+        violationType: WRONG_WAY,
+        amount: 500,
+        collected: true,
+      }),
+      // A name the old book wrote, linked to no HR record.
+      fine({
+        violationId: 'f4',
+        code: '167',
+        typeName: ATEGO,
+        date: '2026-10-22',
+        driverName: 'حسام الدين فاروق',
+        amount: 400,
+      }),
+      // An old-book code on a car the registry never had.
+      fine({
+        violationId: 'f5',
+        code: '295',
+        vehicleId: null,
+        typeName: null,
+        date: '2026-10-14',
+        violationTypeId: VT_UNSPECIFIED,
+        violationType: UNSPECIFIED,
+        unspecified: true,
+        amount: 575,
+      }),
+      fine({
+        violationId: 'f6',
+        code: '136',
+        date: '2026-10-05',
+        driverEmployeeId: DRIVER,
+        driverName: 'محمود عبد العزيز سالم',
+        violationTypeId: VT_BELT,
+        violationType: BELT,
+        amount: 200,
+        collected: true,
+      }),
+    ],
+    more: 17,
+  },
   accidentList: {
+    // Newest first; each with its «بيان» as recorded and its car's make (the old-book file has none).
     rows: [
       {
         accidentId: 'a1',
+        typeName: SPRINTER,
+        statement: 'اصطدام خلفي أثناء الوقوف في إشارة شارع الهرم',
         vehicleId: 'v207',
         code: '207',
         date: '2026-10-27',
@@ -191,6 +444,8 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       },
       {
         accidentId: 'a2',
+        typeName: ATEGO,
+        statement: 'احتكاك جانبي مع ميكروباص أجرة عند الدوران',
         vehicleId: 'v154',
         code: '154',
         date: '2026-10-27',
@@ -201,6 +456,8 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       },
       {
         accidentId: 'a3',
+        typeName: SPRINTER,
+        statement: 'كسر المرآة الجانبية اليمنى أثناء الدخول إلى الجراج',
         vehicleId: 'v182',
         code: '182',
         date: '2026-10-14',
@@ -211,6 +468,8 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
       },
       {
         accidentId: 'a4',
+        typeName: null,
+        statement: '',
         vehicleId: null,
         code: '295',
         date: '2026-10-06',
@@ -222,8 +481,92 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
     ],
     more: 0,
   },
-  opex: { card: 64600, custody: 47850, total: 112450, count: 210, dataFrom: '2026-09-14' },
+  // Of the 112,450: 71,300 is fuel (card + custody fuel), the rest maintenance, wash and the like.
+  opex: {
+    card: 64600,
+    custody: 47850,
+    fuel: 71300,
+    total: 112450,
+    count: 210,
+    dataFrom: '2026-09-14',
+    // By kind: 64,600 + 6,700 + 9,800 + 4,350 + 27,000 = 112,450; fuel = 64,600 + 6,700. About
+    // 3,905 litres at each receipt's day price; 2 fuel receipts with no litre price are outside them.
+    fuelCustody: 6700,
+    tyres: 9800,
+    wash: 4350,
+    maintenance: 27000,
+    litres: 3905,
+    unpricedFuel: 2,
+    // 88 of the 210 receipts were paid from the custody (47,850.00).
+    custodyCount: 88,
+  },
+  opexSeries: { buckets: OPEX_BUCKETS },
   dealership: { amount: 38900, rows: 9, pending: 3, dataFrom: '2026-09-01' },
+  // The dealership screen's first page (exit day newest first): 6 of 9, two of the 3 pending.
+  dealershipList: {
+    rows: [
+      invoice({ id: 'd1', code: '263', date: '2026-10-31' }),
+      invoice({
+        id: 'd2',
+        code: '142',
+        typeName: ATEGO,
+        date: '2026-10-30',
+        workTypeLabel: 'إصلاح (سمكرة)',
+        invoiceNumber: '60417',
+        invoiceAmount: 3850,
+      }),
+      // One visit's «صيانة» and «إصلاح»: two rows, as the register orders them.
+      invoice({
+        id: 'd3',
+        code: '221',
+        date: '2026-10-29',
+        invoiceNumber: '60389',
+        invoiceAmount: 1960,
+      }),
+      invoice({
+        id: 'd4',
+        code: '221',
+        date: '2026-10-29',
+        workKind: 'maintenance',
+        workTypeLabel: 'صيانة',
+        invoiceNumber: '60388',
+        invoiceAmount: 2780,
+      }),
+      // A car deleted from the registry since: no record link.
+      invoice({
+        id: 'd5',
+        code: '231',
+        date: '2026-10-22',
+        vehicleDeleted: true,
+        workKind: 'maintenance',
+        workTypeLabel: 'صيانة',
+      }),
+      // An old-book row on a car the registry never had: its code alone.
+      invoice({
+        id: 'd6',
+        code: '318 ق',
+        vehicleId: null,
+        typeName: null,
+        date: '2026-10-15',
+        workTypeLabel: 'إصلاح (تغيير زجاج)',
+        invoiceNumber: '60352',
+        invoiceAmount: 1640,
+      }),
+    ],
+    more: 3,
+  },
+  // Where the 47,850.00 of custody receipts stands now: 28,400 + 9,850 + 9,600.
+  custodyStates: { replenished: 28400, pending: 9850, outside: 9600 },
+  // The licence memos of the range, the whole company: renewal + extension = visa + cash = 12,400.
+  licenceSpend: {
+    count: 5,
+    cars: 14,
+    visa: 9300,
+    cash: 3100,
+    renewal: 10200,
+    extension: 2200,
+    total: 12400,
+  },
   unavailable: [],
 };
 
@@ -231,6 +574,61 @@ export const PERIOD_FULL: FleetDashboardPeriodDto = {
 export const PERIOD_YEAR: FleetDashboardPeriodDto = {
   ...PERIOD_FULL,
   range: { preset: 'thisYear', from: '2026-01-01', to: TODAY, days: 305, granularity: 'month' },
+  // The receipts start on 09/14 (`dataFrom`): January … August are empty slots, never zero
+  // columns. 51,600 + 115,700 + 4,900 = 172,200 = card + fuelCustody + tyres + wash + maintenance.
+  opex: {
+    card: 98900,
+    custody: 73300,
+    fuel: 109200,
+    total: 172200,
+    count: 314,
+    dataFrom: '2026-09-14',
+    fuelCustody: 10300,
+    tyres: 15100,
+    wash: 6700,
+    maintenance: 41200,
+    litres: 5980,
+    unpricedFuel: 3,
+    // 131 of the 314 receipts were paid from the custody (73,300.00).
+    custodyCount: 131,
+  },
+  // 52,100 + 11,600 + 9,600 = the year's 73,300.00 of custody receipts.
+  custodyStates: { replenished: 52100, pending: 11600, outside: 9600 },
+  // The year's licence memos: 81,350 + 15,400 = 72,600 + 24,150 = 96,750.
+  licenceSpend: {
+    count: 41,
+    cars: 118,
+    visa: 72600,
+    cash: 24150,
+    renewal: 81350,
+    extension: 15400,
+    total: 96750,
+  },
+  opexSeries: {
+    buckets: [
+      '2026-01',
+      '2026-02',
+      '2026-03',
+      '2026-04',
+      '2026-05',
+      '2026-06',
+      '2026-07',
+      '2026-08',
+      '2026-09',
+      '2026-10',
+      '2026-11',
+    ].map((key): FleetDashboardOpexBucketDto => {
+      const [amount, count] =
+        key === '2026-09'
+          ? [51600, 96]
+          : key === '2026-10'
+            ? [115700, 213]
+            : key === '2026-11'
+              ? [4900, 5]
+              : [0, 0];
+      return { key, hasRows: count > 0, amount, count };
+    }),
+  },
   km: {
     ...(PERIOD_FULL.km as NonNullable<FleetDashboardPeriodDto['km']>),
     buckets: [
@@ -262,13 +660,8 @@ export const PERIOD_YEAR: FleetDashboardPeriodDto = {
 // ── Mounting ──────────────────────────────────────────────────────────────────────────────────
 
 /** The client the page reads: R1, custody, and `dto` under the key the URL's filters make. */
-export const periodClient = (url: string, dto: FleetDashboardPeriodDto | null): QueryClient => {
-  const qc = dashboardClient({ period: null });
-  const query = toPeriodQuery(readPeriodFilters(new URL(url, 'http://x').searchParams));
-  if (dto !== null)
-    qc.setQueryData(fleetDashboardKeys.period(periodLiveness(query, TODAY), query), dto);
-  return qc;
-};
+export const periodClient = (url: string, dto: FleetDashboardPeriodDto | null): QueryClient =>
+  dashboardClient({ period: null, ...(dto === null ? {} : { page: { url, dto } }) });
 
 /** The real page at `url`, with `dto` as R2's answer for that URL's filters. */
 export const renderPeriod = ({
@@ -282,45 +675,3 @@ export const renderPeriod = ({
   permissions?: readonly string[];
   locale?: Locale;
 }): string => renderDashboard({ url, permissions, locale, client: periodClient(url, dto) });
-
-/** One period tab alone, with its props as given (the read's states: loading, failed). */
-export const renderPeriodTab = (
-  props: Partial<PeriodTabProps> & Pick<PeriodTabProps, 'tab'>,
-  permissions: readonly string[] = ALL_KEYS,
-): string => {
-  const store = configureStore({
-    reducer: { locale: localeSlice.reducer, auth: authSlice.reducer },
-    preloadedState: {
-      locale: { locale: 'ar' as const, dir: 'rtl' as const },
-      auth: {
-        me: {
-          id: 'u1',
-          permissions: Object.fromEntries(permissions.map((key) => [key, 'organization'])),
-        } as unknown as MeDto,
-        status: 'signedIn' as const,
-      },
-    },
-  });
-  const full: PeriodTabProps = {
-    data: undefined,
-    loading: false,
-    error: false,
-    onRetry: () => undefined,
-    filters: CLEARED,
-    onFilters: () => undefined,
-    updatedAt: 0,
-    onRefresh: () => undefined,
-    can: (key) => permissions.includes(key),
-    ...props,
-  };
-  return renderToStaticMarkup(
-    createElement(Provider, {
-      store,
-      children: createElement(
-        QueryClientProvider,
-        { client: dashboardClient({ period: null }) },
-        createElement(MemoryRouter, { initialEntries: ['/fleet'] }, createElement(PeriodTab, full)),
-      ),
-    }),
-  );
-};

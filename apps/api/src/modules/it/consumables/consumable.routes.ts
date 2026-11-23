@@ -1,8 +1,8 @@
-// The consumables store's routes (FR-20), on the assets' own grants — no key of its own: whoever
-// keeps the devices keeps the store («same permissions as assets», the plan the owner approved).
-// Reads ride `itAsset.view`; adding an item `itAsset.create`; editing it, receiving stock and
-// scrapping `itAsset.edit`; issuing to a person, taking back from one and transferring stock to
-// another branch's store `itAsset.assign`, the one custody grant.
+// The consumables store's routes (FR-20), on the store's own grants (2026-11-17 — «فى الـ IT ظبط
+// صلاحيات الشاشات عشان أقدر أتحكم فيها»; until then the assets' grants carried it). Reads ride
+// `itConsumable.view`; adding an item `itConsumable.create`; editing it, receiving stock and
+// scrapping `itConsumable.edit`; issuing to a person, taking back from one and transferring stock
+// to another branch's store `itConsumable.assign`, the one custody grant.
 import { Router } from 'express';
 import {
   CreateItConsumableSchema,
@@ -22,8 +22,10 @@ import { asyncHandler, validate } from '../../../platform/web';
 import {
   createItConsumable,
   getItConsumable,
+  getItConsumableCartridges,
   issueItConsumables,
   listItConsumableMovementsOf,
+  listItConsumableTransferTargets,
   listItConsumables,
   receiveItConsumable,
   returnItConsumable,
@@ -37,14 +39,14 @@ export const buildItConsumablesRouter = (): Router => {
   router.get(
     '/',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itConsumable.view'),
     validate({ query: ListItConsumablesQuerySchema }),
     asyncHandler(listItConsumables),
   );
   router.post(
     '/',
     authenticate,
-    authorize('itAsset.create'),
+    authorize('itConsumable.create'),
     validate({ body: CreateItConsumableSchema }),
     asyncHandler(createItConsumable),
   );
@@ -52,7 +54,7 @@ export const buildItConsumablesRouter = (): Router => {
   router.post(
     '/issue',
     authenticate,
-    authorize('itAsset.assign'),
+    authorize('itConsumable.assign'),
     validate({ body: IssueItConsumablesSchema }),
     asyncHandler(issueItConsumables),
   );
@@ -61,44 +63,63 @@ export const buildItConsumablesRouter = (): Router => {
   router.post(
     '/transfer',
     authenticate,
-    authorize('itAsset.assign'),
+    authorize('itConsumable.assign'),
     validate({ body: TransferItConsumablesSchema }),
     asyncHandler(transferItConsumables),
+  );
+  // Where that transfer may go: the active branches `itConsumable.assign` reaches as a whole, by the
+  // very test the transfer applies before it writes — so the dialog offers nothing it would refuse.
+  // The assets' own list (`/it/assets/move-targets`) stays on the assets' custody grant, for the
+  // assets. Before the id routes, so the literal segment is never read as an id.
+  router.get(
+    '/transfer-targets',
+    authenticate,
+    authorize('itConsumable.assign'),
+    asyncHandler(listItConsumableTransferTargets),
   );
   router.get(
     '/:id',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itConsumable.view'),
     validate({ params: ItConsumableIdParamSchema }),
     asyncHandler(getItConsumable),
   );
   router.patch(
     '/:id',
     authenticate,
-    authorize('itAsset.edit'),
+    authorize('itConsumable.edit'),
     validate({ body: UpdateItConsumableSchema, params: ItConsumableIdParamSchema }),
     asyncHandler(updateItConsumable),
   );
   router.get(
     '/:id/movements',
     authenticate,
-    authorize('itAsset.view'),
+    authorize('itConsumable.view'),
     validate({ query: ListItConsumableMovementsQuerySchema, params: ItConsumableIdParamSchema }),
     asyncHandler(listItConsumableMovementsOf),
+  );
+  // «عداد الطابعة» (2026-11-19) — a toner item's cartridges: the printer each went into, the
+  // reading then, and what it printed; and the average per cartridge. One object, not a page.
+  router.get(
+    '/:id/cartridges',
+    authenticate,
+    authorize('itConsumable.view'),
+    validate({ params: ItConsumableIdParamSchema }),
+    asyncHandler(getItConsumableCartridges),
   );
 
   // ── Stock — named movements, never a PATCH of a quantity (ADR-024) ──────
   router.post(
     '/:id/receive',
     authenticate,
-    authorize('itAsset.edit'),
+    authorize('itConsumable.edit'),
     validate({ body: ReceiveItConsumableSchema, params: ItConsumableIdParamSchema }),
     asyncHandler(receiveItConsumable),
   );
   router.post(
     '/:id/scrap',
     authenticate,
-    authorize('itAsset.edit'),
+    authorize('itConsumable.edit'),
     validate({ body: ScrapItConsumableSchema, params: ItConsumableIdParamSchema }),
     asyncHandler(scrapItConsumable),
   );
@@ -106,7 +127,7 @@ export const buildItConsumablesRouter = (): Router => {
   router.post(
     '/:id/return',
     authenticate,
-    authorize('itAsset.assign'),
+    authorize('itConsumable.assign'),
     validate({ body: ReturnItConsumableSchema, params: ItConsumableIdParamSchema }),
     asyncHandler(returnItConsumable),
   );

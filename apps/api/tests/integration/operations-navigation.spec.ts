@@ -16,7 +16,12 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Express } from 'express';
-import { SettingKeys, platformPermissions, type MyApplicationCategoryDto } from '@ecms/contracts';
+import {
+  OPERATIONS_BANK_REPORT_KEYS,
+  SettingKeys,
+  platformPermissions,
+  type MyApplicationCategoryDto,
+} from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
@@ -29,6 +34,8 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { ApplicationModel } from '../../src/platform/applications/application.model';
 import { ApplicationCategoryModel } from '../../src/platform/application-categories/application-category.model';
+import { applicationRepository, applicationService } from '../../src/platform/applications';
+import { applicationCategoryRepository } from '../../src/platform/application-categories';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 
@@ -111,6 +118,9 @@ const ALL_OPS_ROUTES = [
   // instead of every morning.
   '/operations/standing-crew',
   '/operations/requirements',
+  // Round 14 — «إدارات العمليات», a screen of its own beneath the roster: «شاشة لوحدها في القائمة».
+  // On the platform's `setting.edit` (the grant that writes its setting), not an Operations key.
+  '/operations/crew-departments',
   '/operations/attendance',
   '/operations/secured',
   // Round 12 — «توزيع المحصنات», the day's محصنات onto the day's vans, on the secured screen's grant.
@@ -120,7 +130,7 @@ const ALL_OPS_ROUTES = [
   '/operations/vault/handover',
   '/operations/vault/dispatch',
   '/operations/vault',
-  '/operations/reports/vault',
+  // Round 14 — «تجميع الخزينة» (`/operations/reports/vault`) is gone: «تقرير البنوك» shows it now.
   '/operations/reports/captains',
   '/operations/reports/banks',
   // C1 — the captain's phone surface, catalogued like any other app so it is reachable without
@@ -211,6 +221,7 @@ describe('the catalog reaches the database (B7)', () => {
     expect(byRoute.get('/operations/crew-board')).toBe('operationsCrew.view');
     expect(byRoute.get('/operations/standing-crew')).toBe('operationsCrew.view');
     expect(byRoute.get('/operations/requirements')).toBe('operationsCrew.view');
+    expect(byRoute.get('/operations/crew-departments')).toBe('setting.edit');
     expect(byRoute.get('/operations/attendance')).toBe('operationsCrew.view');
     expect(byRoute.get('/operations/secured')).toBe('operationsShipment.view');
     expect(byRoute.get('/operations/secured/distribution')).toBe('operationsShipment.view');
@@ -218,7 +229,6 @@ describe('the catalog reaches the database (B7)', () => {
     expect(byRoute.get('/operations/vault/handover')).toBe('operationsVault.view');
     expect(byRoute.get('/operations/vault/dispatch')).toBe('operationsVault.view');
     expect(byRoute.get('/operations/vault')).toBe('operationsVault.view');
-    expect(byRoute.get('/operations/reports/vault')).toBe('operationsVault.view');
     expect(byRoute.get('/operations/reports/captains')).toBe('operationsShipment.view');
     expect(byRoute.get('/operations/reports/banks')).toBe('operationsShipment.view');
     expect(byRoute.get('/operations/catalogs')).toBe('operationsCatalog.manage');
@@ -228,6 +238,11 @@ describe('the catalog reaches the database (B7)', () => {
     const declared = new Set(operationsPermissions.map((p) => p.key));
     const rows = await ApplicationModel.find({ route: { $regex: '^/operations' } }).lean();
     for (const row of rows) {
+      // «إدارات العمليات» edits a platform setting, on the platform's grant that writes it.
+      if (row.route === '/operations/crew-departments') {
+        expect(row.permissionKey).toBe('setting.edit');
+        continue;
+      }
       expect(declared.has(String(row.permissionKey)), `${row.route} → ${String(row.permissionKey)}`).toBe(
         true,
       );
@@ -237,7 +252,12 @@ describe('the catalog reaches the database (B7)', () => {
 
 describe('the sidebar follows the permissions, not the catalog (B7)', () => {
   it('5. shows the whole module to an account holding every Operations grant', async () => {
-    const token = await accountWith(operationsPermissions.map((p) => p.key));
+    // …and `setting.edit`, which «إدارات العمليات» rides; without it, every row but that one.
+    const without = await accountWith(operationsPermissions.map((p) => p.key));
+    expect((await opsRoutesOf(without)).sort()).toEqual(
+      ALL_OPS_ROUTES.filter((r) => r !== '/operations/crew-departments').sort(),
+    );
+    const token = await accountWith([...operationsPermissions.map((p) => p.key), 'setting.edit']);
     expect((await opsRoutesOf(token)).sort()).toEqual([...ALL_OPS_ROUTES].sort());
 
     const groups = await sidebarOf(token);
@@ -259,7 +279,7 @@ describe('the sidebar follows the permissions, not the catalog (B7)', () => {
     expect(await opsRoutesOf(token)).toEqual([]);
   });
 
-  it('8. gives a vault-only account exactly the five vault rows', async () => {
+  it('8. gives a vault-only account exactly the four vault rows and «تقرير البنوك»', async () => {
     const token = await accountWith(['operationsVault.view']);
     expect((await opsRoutesOf(token)).sort()).toEqual(
       [
@@ -268,9 +288,13 @@ describe('the sidebar follows the permissions, not the catalog (B7)', () => {
         // Round 12 — «تسليم المحصنات» is the vault's, like the receive screen above it.
         '/operations/vault/handover',
         '/operations/vault/receive',
-        '/operations/reports/vault',
+        // Round 14 — the screen «تجميع الخزينة» was, so the vault keeps it: its stored key is the
+        // shipments' read, and `SHARED_NAVIGATION_ROWS` opens it for the vault's.
+        '/operations/reports/banks',
       ].sort(),
     );
+    // …but not the captain report, which stays the shipments'.
+    expect(await opsRoutesOf(token)).not.toContain('/operations/reports/captains');
     // ...and not the module home, which rides the shipment grant it does not hold.
     expect(await opsRoutesOf(token)).not.toContain('/operations');
   });
@@ -305,6 +329,15 @@ describe('the sidebar follows the permissions, not the catalog (B7)', () => {
     );
   });
 
+  it('10b. gives a settings administrator «إدارات العمليات» and no other Operations row', async () => {
+    // Round 14 — the screen's guard is the setting's own write grant; it opens nothing else here.
+    const token = await accountWith(['setting.edit']);
+    expect(await opsRoutesOf(token)).toEqual(['/operations/crew-departments']);
+    // A crew planner without the grant does not get it: it would open onto a card he cannot save.
+    const planner = await accountWith(['operationsCrew.view', 'operationsCrew.plan']);
+    expect(await opsRoutesOf(planner)).not.toContain('/operations/crew-departments');
+  });
+
   it('11. does not let an HR attendance grant open an Operations row', async () => {
     // The attendance page chains `operationsCrew.view` AND `attendance.view`; the catalog declares
     // the OPERATIONS half deliberately, so HR staff never see an Operations category they have no
@@ -325,10 +358,11 @@ describe('the sidebar never contradicts the server (B7)', () => {
       .get('/api/v1/operations/secured/vault')
       .set('Authorization', `Bearer ${token}`);
     expect(inventory.status).toBe(200);
-    const rollUp = await request(app)
-      .get('/api/v1/operations/reports/vault')
+    // Round 14 — «تقرير البنوك», offered to the vault through the shared row, answers it too.
+    const banks = await request(app)
+      .get('/api/v1/operations/reports/banks')
       .set('Authorization', `Bearer ${token}`);
-    expect(rollUp.status).toBe(200);
+    expect(banks.status).toBe(200);
     // Round 12 — «سجل الخزينة»'s report on top, and «تسليم المحصنات»'s read: both the vault's.
     const held = await request(app)
       .get('/api/v1/operations/reports/vault/held')
@@ -425,5 +459,55 @@ describe('the sync is additive and idempotent (B7)', () => {
       { route: '/operations/vault' },
       { $set: { name: { ar: 'سجل الخزينة', en: 'Vault History' } } },
     );
+  });
+
+  it('16. retires «تجميع الخزينة» on a live installation, once (Round 14)', async () => {
+    // «تجميع خزينه كشاشه مفيش حاجه اسمها تجميع خزينه، شيلها خالص». An installation seeded before
+    // Round 14 still holds the row, and the sync never deletes — so the catalog retires it: inactive,
+    // ONCE, recorded on the module tile, and gone from the sidebar of everybody who had it.
+    const route = '/operations/reports/vault';
+    const operations = await applicationCategoryRepository.findOne({ 'name.en': 'Operations' });
+    expect(operations).not.toBeNull();
+    await applicationService.create(
+      {
+        name: { ar: 'تجميع الخزينة', en: 'Vault Roll-up' },
+        icon: 'chart',
+        route,
+        categoryId: String(operations?._id),
+        sortOrder: 995,
+        permissionKey: 'operationsVault.view',
+      },
+      adminId,
+    );
+    const tile = await applicationCategoryRepository.findOne({ 'name.en': 'Operations' });
+    await applicationCategoryRepository.updateById(
+      String(tile?._id),
+      { retiredRevision: 0 },
+      { by: adminId, version: tile?.__v ?? 0 },
+    );
+    const vault = await accountWith(['operationsVault.view']);
+    // Before the boot: the pre-Round-14 sidebar, which still offers it.
+    expect(await opsRoutesOf(vault)).toContain(route);
+
+    await syncNavigationCatalog();
+    expect((await applicationRepository.findOne({ route }))?.status).toBe('inactive');
+    expect(
+      (await applicationCategoryRepository.findOne({ 'name.en': 'Operations' }))?.retiredRevision,
+    ).toBe(1);
+    const after = await opsRoutesOf(vault);
+    expect(after).not.toContain(route);
+    // The vault's reader keeps the report itself, under its new name.
+    expect(after).toContain('/operations/reports/banks');
+    for (const key of OPERATIONS_BANK_REPORT_KEYS) {
+      expect(await opsRoutesOf(await accountWith([key])), key).toContain('/operations/reports/banks');
+    }
+
+    // An administrator who switches it back on is not overruled by the next boot.
+    const row = await applicationRepository.findOne({ route });
+    await applicationService.update(String(row?._id), { status: 'active', version: row?.__v ?? 0 }, adminId);
+    await syncNavigationCatalog();
+    expect((await applicationRepository.findOne({ route }))?.status).toBe('active');
+    // Leave the suite as the catalog seeds it: the stray row out of the way.
+    await ApplicationModel.deleteOne({ route });
   });
 });

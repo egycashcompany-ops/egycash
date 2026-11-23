@@ -17,12 +17,16 @@ import {
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
+  type OfferDefaultsDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { jobOfferService } from '../../src/modules/hr/recruitment/job-offers';
+import { JobOfferModel } from '../../src/modules/hr/recruitment/job-offers/job-offer.model';
+import { ApplicantModel } from '../../src/modules/hr/recruitment/applicants/applicant.model';
+import { evaluationService } from '../../src/modules/hr/recruitment/evaluations';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
@@ -616,6 +620,23 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
     }
   };
 
+  /**
+   * HR's hand move on a candidate whose cleared checks ALREADY moved them: the same act, already
+   * made — answered 200 with the move standing, and nothing new materialized.
+   */
+  const moveAgain = async (applicant: ApplicantDto): Promise<void> => {
+    const current = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((current.body.data as ApplicantDto).movedToOfferAt).not.toBeNull();
+    const again = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/move-to-offer`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: (current.body.data as ApplicantDto).version });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    expect(envelope<ApplicantDto>(again).data.movedToOfferAt).not.toBeNull();
+  };
+
   it('shows a candidate moved straight from registration — no earlier stage decided at all', async () => {
     // The extreme case, and the cleanest statement of the rule: nothing happened before the move.
     // There is no source stage to key off, so anything that needs one cannot show this candidate.
@@ -747,21 +768,23 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
 
   it('lists a candidate ONCE even when they qualify every way at the same time', async () => {
     // Cleared every check AND standing at the stage: two routes in, one person. The queue merges
-    // them by candidate, so the person working it sees one row to act on rather than two.
+    // them by candidate, so the person working it sees one row to act on rather than two. Clearing
+    // the checks already moved them, so HR's move after it is the same act, already made.
     const applicant = await registerApplicant();
     await acceptScreening(applicant.id);
     await passStage(applicant.id, 'firstInterview');
     await passStage(applicant.id, 'secondInterview');
     await approveEveryCheck(applicant.id);
-    await moveToOffer(applicant);
+    await moveAgain(applicant);
 
     const rows = await queueFor(applicant);
     expect(rows.length).toBe(1);
     expect(rows[0]?.movedToOffer).toBe(true);
   });
 
-  it('still shows somebody who cleared every check and has NOT been moved yet', async () => {
-    // The other route in, unchanged — this is the row whose button offers to move AND write.
+  it('moves somebody to the stage the moment they clear their last check — «جاهز لعرض العمل»', async () => {
+    // «اي حد يخلص كشف الطبي يظهر فيه الحاله ك جاهزون لعرض العمل»: clearing the last check IS the
+    // move. Nobody presses anything; «عروض العمل» lists them as `waiting` from then on.
     const applicant = await registerApplicant();
     await acceptScreening(applicant.id);
     await passStage(applicant.id, 'firstInterview');
@@ -770,6 +793,145 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
 
     const [row] = await queueFor(applicant);
     expect(row?.applicantId).toBe(applicant.id);
-    expect(row?.movedToOffer).toBe(false);
+    expect(row?.movedToOffer).toBe(true);
+    const offers = await request(app)
+      .get('/api/v1/hr/job-offers')
+      .query({ applicantId: applicant.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(offers.status).toBe(200);
+    expect((offers.body.data as JobOfferDto[]).map((o) => o.status)).toEqual(['waiting']);
+
+    // Moving them again by hand changes nothing — the move is the same act, already made.
+    await moveAgain(applicant);
+    expect((await queueFor(applicant)).length).toBe(1);
+  });
+
+  it('moves, at boot, somebody who cleared their checks before clearing them moved anybody', async () => {
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await passStage(applicant.id, 'firstInterview');
+    await passStage(applicant.id, 'secondInterview');
+    await approveEveryCheck(applicant.id);
+    // As such a candidate stood before this release: cleared, never moved, no offer row.
+    await ApplicantModel.updateOne({ _id: applicant.id }, { $set: { movedToOfferAt: null, movedToOfferBy: null } });
+    await JobOfferModel.deleteMany({ applicantId: applicant.id });
+
+    expect(await evaluationService.moveClearedApplicantsToOffer()).toBeGreaterThanOrEqual(1);
+    const offers = await request(app)
+      .get('/api/v1/hr/job-offers')
+      .query({ applicantId: applicant.id, status: 'waiting', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((offers.body.data as JobOfferDto[]).map((o) => o.applicantId)).toEqual([applicant.id]);
+    // Run again: nobody left to move.
+    expect(await evaluationService.moveClearedApplicantsToOffer()).toBe(0);
+  });
+});
+
+// ── «عروض العمل» filters — «واحده للاداره و واحده للوظيفه و واحده للفرع» ────────────────────────
+describe('the offers list filters by branch, department and job, and by «النشطة فقط»', () => {
+  const OTHER_JOB = '64b1f0cccccccccccccccc11';
+  const OTHER_DEPARTMENT = '64b1f0cccccccccccccccc12';
+  const OTHER_BRANCH = '64b1f0cccccccccccccccc13';
+  const list = async (query: Record<string, string>): Promise<string[]> => {
+    const res = await request(app)
+      .get('/api/v1/hr/job-offers')
+      .query({ pageSize: 100, ...query })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return (res.body.data as JobOfferDto[]).map((o) => o.id);
+  };
+
+  it('narrows to the offers for the chosen jobs, departments and branches — several at once', async () => {
+    const usual = await draftFor(await offerReadyApplicant());
+    const other = await draftFor(await offerReadyApplicant(), {
+      jobTitleId: OTHER_JOB,
+      departmentId: OTHER_DEPARTMENT,
+      branchId: OTHER_BRANCH,
+    });
+
+    for (const [key, value] of [
+      ['jobTitleId', OTHER_JOB],
+      ['departmentId', OTHER_DEPARTMENT],
+      ['branchId', OTHER_BRANCH],
+    ] as const) {
+      const ids = await list({ [key]: value });
+      expect(ids, key).toContain(other.id);
+      expect(ids, key).not.toContain(usual.id);
+    }
+    const both = await list({ jobTitleId: `${OTHER_JOB},${JOB_TITLE_ID}` });
+    expect(both).toEqual(expect.arrayContaining([other.id, usual.id]));
+    expect(await list({ jobTitleId: OTHER_JOB, branchId: BRANCH_ID })).not.toContain(other.id);
+  });
+
+  it('«النشطة فقط» keeps the offers still under way — ready, drafted, sent', async () => {
+    const drafted = await draftFor(await offerReadyApplicant());
+    const sent = await sentFor(await offerReadyApplicant());
+    const withdrawn = await draftFor(await offerReadyApplicant());
+    const pulled = await request(app)
+      .post(`/api/v1/hr/job-offers/${withdrawn.id}/withdraw`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'the vacancy closed', version: withdrawn.version });
+    expect(pulled.status, JSON.stringify(pulled.body)).toBe(200);
+
+    const active = await list({ active: 'true' });
+    expect(active).toEqual(expect.arrayContaining([drafted.id, sent.id]));
+    expect(active).not.toContain(withdrawn.id);
+  });
+});
+
+// ── «اكتب العرض» opens filled in (A28) ──────────────────────────────────────────────────────────
+describe('offer defaults — the placement, the manager, full-time, the job\'s fixed salary', () => {
+  const defaultsFor = (applicantId: string, token = adminToken) =>
+    request(app)
+      .get('/api/v1/hr/job-offers/defaults')
+      .query({ applicantId })
+      .set('Authorization', `Bearer ${token}`);
+
+  it('fills the job from the placement, full-time, and the job\'s «الراتب الثابت»', async () => {
+    const titleRes = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: 'JT-OFFER-DEF',
+        name: { ar: 'أخصائي نقل أموال', en: 'CIT specialist' },
+        jobGrade: 'G5',
+        fixedSalary: { amount: 11000, currency: 'EGP' },
+      });
+    expect(titleRes.status, JSON.stringify(titleRes.body)).toBe(201);
+    const jobTitleId = (titleRes.body as { data: { id: string } }).data.id;
+
+    const applicant = await registerApplicant();
+    const current = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const reassigned = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/reassign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ placement: { jobTitleId }, reason: 'a vacancy opened', version: (current.body.data as ApplicantDto).version });
+    expect(reassigned.status, JSON.stringify(reassigned.body)).toBe(200);
+
+    const res = await defaultsFor(applicant.id);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const defaults = res.body.data as OfferDefaultsDto;
+    expect(defaults).toMatchObject({
+      jobTitleId,
+      employmentType: 'fullTime',
+      salary: { amount: 11000, currency: 'EGP' },
+      // No department or branch on this placement names a manager.
+      manager: null,
+    });
+    expect(defaults.jobSalaries).toContainEqual({ jobTitleId, amount: 11000, currency: 'EGP' });
+
+    // An unplaced candidate starts empty but full-time; a reader who cannot write offers is refused.
+    const bare = (await defaultsFor((await registerApplicant()).id)).body.data as OfferDefaultsDto;
+    expect(bare).toMatchObject({ jobTitleId: null, salary: null, employmentType: 'fullTime' });
+    expect((await defaultsFor(applicant.id, aliceToken)).status).toBe(403);
+  });
+
+  it('keeps a manager typed by name when they have no account — and drops it beside a user', async () => {
+    const named = await draftFor(await offerReadyApplicant(), { managerId: null, managerName: '  سامح فؤاد ' });
+    expect(named.terms).toMatchObject({ managerId: null, managerName: 'سامح فؤاد' });
+    const both = await draftFor(await offerReadyApplicant(), { managerName: 'سامح فؤاد' });
+    expect(both.terms).toMatchObject({ managerId: interviewerId, managerName: null });
   });
 });

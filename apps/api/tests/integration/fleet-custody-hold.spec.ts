@@ -6,7 +6,10 @@
 //   2. «إلغاء الاستعاضة المعلّقة»: a status, never a delete — the letter stays as a row that counts
 //      nothing, its memos are free again (editable, offered, replenished anew), the fund never
 //      moves; and it moves once;
-//   3. its audit trail.
+//   3. its audit trail;
+//   4. «استعاضة معلّقة» on the fund's figures (`held.letters`): each held letter, the oldest first,
+//      with the memos «المذكرات» lists under «في انتظار التحويل» — and gone once transferred or
+//      cancelled.
 //
 // The races of the two moves are in `fleet-custody-hold-races.spec.ts`.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -17,6 +20,7 @@ import {
   ListFleetCustodyLedgerQuerySchema,
   ListFleetCustodyMemosQuerySchema,
   UpdateFleetCustodyMemoSchema,
+  type FleetCustodyFundSummaryDto,
   type FleetCustodyOperationDto,
 } from '@ecms/contracts';
 import { AuditLogModel } from '../../src/platform/audit/audit.model';
@@ -43,10 +47,12 @@ import {
 
 let app: Express;
 let writerToken: string;
+let readerToken: string;
 
 beforeAll(async () => {
   app = await bootCustody();
   writerToken = await tokenWith(['fleetCustody.view', 'fleetReceipt.create']);
+  readerToken = await tokenWith(['fleetCustody.view']);
 }, 120_000);
 
 afterAll(stopCustody);
@@ -365,5 +371,76 @@ describe('«إلغاء الاستعاضة المعلّقة»', () => {
       ],
       expect.any(Array),
     ]);
+  });
+});
+
+describe('«استعاضة معلّقة» on the fund’s figures — `held.letters`', () => {
+  const summary = async (): Promise<FleetCustodyFundSummaryDto> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/custody/fund/summary')
+      .set('Authorization', `Bearer ${readerToken}`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return data<FleetCustodyFundSummaryDto>(res);
+  };
+  const piastres = (n: number): number => Math.round(n * 100);
+  /** The letters ARE `held`, cut per letter; their memos ARE «المذكرات»'s `status=held`. */
+  const expectTies = async (fund: FleetCustodyFundSummaryDto): Promise<void> => {
+    const { held } = fund;
+    expect(held.letters).toHaveLength(held.count);
+    expect(held.letters.reduce((sum, letter) => sum + piastres(letter.amount), 0)).toBe(
+      piastres(held.amount),
+    );
+    expect(held.letters.reduce((sum, letter) => sum + letter.receipts, 0)).toBe(held.receipts);
+    expect(held.letters.reduce((sum, letter) => sum + letter.memos.length, 0)).toBe(held.memos);
+    expect(held.letters.flatMap((letter) => letter.memos.map((memo) => memo.id)).sort()).toEqual(
+      [...(await memosWith('held'))].sort(),
+    );
+    const days = held.letters.map((letter) => letter.date);
+    expect(days).toEqual([...days].sort());
+  };
+  let late: Awaited<ReturnType<typeof heldOne>>;
+  let early: Awaited<ReturnType<typeof heldOne>>;
+
+  it('lists each held letter, the oldest first, with its memos as «المذكرات» lists them', async () => {
+    late = await heldOne('2026-09-15', 120.25, 'wash');
+    early = await heldOne('2026-09-01', 80, 'maintenance');
+    const fund = await summary();
+    const ids = fund.held.letters.map((letter) => letter.id);
+    expect(ids).toContain(late.op.id);
+    expect(ids.indexOf(early.op.id)).toBeLessThan(ids.indexOf(late.op.id));
+    const memo = await fleetCustodyMemoService.get(late.memoId);
+    expect(fund.held.letters.find((letter) => letter.id === late.op.id)).toEqual({
+      id: late.op.id,
+      date: '2026-09-15',
+      from: late.op.from,
+      to: late.op.to,
+      amount: 120.25,
+      receipts: 1,
+      memos: [
+        {
+          id: late.memoId,
+          no: memo.no,
+          kind: 'wash',
+          name: '',
+          date: memo.date,
+          receipts: 1,
+          total: 120.25,
+        },
+      ],
+    });
+    await expectTies(fund);
+  });
+
+  it('a transferred letter leaves the list, and so does a cancelled one', async () => {
+    await confirm(late.op.id, { date: '2026-09-20' });
+    let fund = await summary();
+    expect(fund.held.letters.map((letter) => letter.id)).not.toContain(late.op.id);
+    expect(fund.held.letters.map((letter) => letter.id)).toContain(early.op.id);
+    await expectTies(fund);
+
+    await cancel(early.op.id, {});
+    fund = await summary();
+    expect(fund.held.letters.map((letter) => letter.id)).not.toContain(early.op.id);
+    await expectTies(fund);
   });
 });

@@ -13,7 +13,9 @@
 // URL-synced like every IT register — a filtered view is a link, and the filters are remembered
 // across visits. Everything on a row is a server fact: the status follows from the named actions
 // alone, and each action is offered only where the line's status allows it and the reader's grant
-// does — the same `itAsset.*` grants as the assets, which a line is handed over under.
+// does — the lines' own grants (`itMobileLine.*`) since 2026-11-17, «فى الـ IT ظبط صلاحيات الشاشات
+// عشان أقدر أتحكم فيها»; they shipped on the assets'. A holder's name opens their IT history, which
+// is the assets' screen, so it is a link for a reader of the assets and plain text for anyone else.
 //
 // Excel and PDF, before the screen's own action, as on the other registers: every line the filters
 // match, in the table's order (`lib/mobile-line-register-export.ts`).
@@ -36,6 +38,7 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { Badge } from '../../../shared/ui/Badge';
 import { Button } from '../../../shared/ui/Button';
 import { Select } from '../../../shared/ui/form';
@@ -110,8 +113,22 @@ type LineDialog =
     };
 
 /**
+ * On a computer a compact card names at most this many accounts: the first ones, or one fewer and
+ * a «+N» for the rest (a «+1» would take the room of the account it hides) — two lines at most.
+ */
+const COMPACT_ACCOUNTS = 4;
+
+/**
  * One network's card — its logo, name and figures — and the toggle that narrows the table to it.
  * A button, pressed or not (`aria-pressed`), because that is what it is.
+ *
+ * Two layouts of the same figures. Below `lg` the full card: the counts in three boxes and the
+ * accounts one per line. On a computer the compact one — the board frame leaves the table only the
+ * height the cards do not take («عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين», 2026-11-17),
+ * and three full cards (≈ 240 px) pushed the whole board into scrolling on a laptop: the logo, the
+ * name, the total and the three counts in one block, the accounts as a wrapping list of «ACC · ٢٠»
+ * items. The pressed mark sits INSIDE the card — the frame is a scroll container, and a mark
+ * sticking out of it would be clipped and scroll the frame sideways.
  */
 const NetworkCard = ({
   network,
@@ -128,6 +145,13 @@ const NetworkCard = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const name = t(`it.mobileLines.network.${network}`);
   const accounts = summary?.accounts ?? [];
+  const accountLabel = (account: { value: string | null; count: number }): string =>
+    `${account.value ?? t('it.mobileLines.card.noAccount')} · ${formatNumber(account.count, locale)}`;
+  const shownAccounts =
+    accounts.length <= COMPACT_ACCOUNTS ? accounts : accounts.slice(0, COMPACT_ACCOUNTS - 1);
+  const moreAccounts = accounts.slice(shownAccounts.length);
+  const chip =
+    'inline-flex max-w-full items-center gap-1 rounded-md bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-700 dark:bg-slate-800/60 dark:text-slate-200';
   return (
     <button
       type="button"
@@ -136,69 +160,133 @@ const NetworkCard = ({
       title={t('it.mobileLines.card.toggle', { network: name })}
       onClick={onToggle}
       className={cn(
-        'relative flex flex-col gap-3 rounded-2xl border p-4 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+        'relative flex flex-col rounded-2xl border p-4 text-start shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 lg:p-3',
         pressed
-          ? 'border-brand-500 bg-brand-50/70 ring-2 ring-brand-500/30 dark:border-brand-400 dark:bg-brand-950/30'
+          ? 'border-brand-500 bg-brand-50/70 ring-2 ring-inset ring-brand-500/30 dark:border-brand-400 dark:bg-brand-950/30'
           : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700',
       )}
     >
       {pressed && (
-        <span className="absolute -top-2 -end-2 rounded-full bg-brand-600 p-0.5 text-white shadow">
+        <span
+          data-network-pressed="true"
+          className="absolute top-2 end-2 rounded-full bg-brand-600 p-0.5 text-white shadow"
+        >
           <CheckIcon className="h-3.5 w-3.5" />
         </span>
       )}
-      <span className="flex items-center gap-3">
-        <MobileNetworkLogo network={network} size="lg" decorative />
-        <span className="flex min-w-0 flex-col">
-          <span className="text-base font-semibold text-slate-900 dark:text-white">{name}</span>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {t('it.mobileLines.card.total')}{' '}
-            <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
-              {formatNumber(summary?.total, locale)}
+      {/* The compact card, on a computer. */}
+      <span data-network-card="compact" className="hidden min-w-0 flex-col gap-2 lg:flex">
+        <span className="flex min-w-0 items-center gap-2.5 pe-6">
+          <MobileNetworkLogo network={network} size="md" decorative />
+          <span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+            <span className="text-sm font-semibold text-slate-900 dark:text-white">{name}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {t('it.mobileLines.card.total')}{' '}
+              <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                {formatNumber(summary?.total, locale)}
+              </span>
+            </span>
+            <span className="flex flex-wrap gap-x-2.5 text-[11px] text-slate-500 dark:text-slate-400">
+              {IT_MOBILE_LINE_STATUSES.map((status) => (
+                <span key={status} data-network-count={status} className="whitespace-nowrap">
+                  {t(`it.mobileLines.status.${status}`)}{' '}
+                  <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                    {formatNumber(summary?.[status], locale)}
+                  </span>
+                </span>
+              ))}
             </span>
           </span>
         </span>
+        {accounts.length > 0 && (
+          <span className="flex flex-wrap gap-1 border-t border-slate-100 pt-2 dark:border-slate-800">
+            <span className="sr-only">{t('it.mobileLines.card.accounts')}</span>
+            {shownAccounts.map((account) => (
+              <span key={account.value ?? ''} data-network-account="true" className={chip}>
+                {account.value === null ? (
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {t('it.mobileLines.card.noAccount')}
+                  </span>
+                ) : (
+                  <bdi className="min-w-0 truncate font-mono" dir="ltr" title={account.value}>
+                    {account.value}
+                  </bdi>
+                )}
+                <span aria-hidden="true" className="text-slate-400 dark:text-slate-500">
+                  ·
+                </span>
+                <span className="font-semibold tabular-nums">
+                  {formatNumber(account.count, locale)}
+                </span>
+              </span>
+            ))}
+            {moreAccounts.length > 0 && (
+              <span
+                data-network-accounts-more={moreAccounts.length}
+                title={moreAccounts.map(accountLabel).join('\n')}
+                className={cn(chip, 'font-semibold')}
+              >
+                <span dir="ltr">{`+${formatNumber(moreAccounts.length, locale)}`}</span>
+              </span>
+            )}
+          </span>
+        )}
       </span>
-      <span className="grid grid-cols-3 gap-2 text-center">
-        {IT_MOBILE_LINE_STATUSES.map((status) => (
-          <span
-            key={status}
-            data-network-count={status}
-            className="rounded-lg bg-slate-50 px-1 py-1.5 dark:bg-slate-800/60"
-          >
-            <span className="block text-base font-semibold tabular-nums text-slate-900 dark:text-white">
-              {formatNumber(summary?.[status], locale)}
-            </span>
-            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-              {t(`it.mobileLines.status.${status}`)}
+      {/* The full card, below `lg` — as it always was. */}
+      <span data-network-card="full" className="flex flex-col gap-3 lg:hidden">
+        <span className="flex items-center gap-3">
+          <MobileNetworkLogo network={network} size="lg" decorative />
+          <span className="flex min-w-0 flex-col">
+            <span className="text-base font-semibold text-slate-900 dark:text-white">{name}</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              {t('it.mobileLines.card.total')}{' '}
+              <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-100">
+                {formatNumber(summary?.total, locale)}
+              </span>
             </span>
           </span>
-        ))}
-      </span>
-      {accounts.length > 0 && (
-        <span className="flex flex-col gap-1 border-t border-slate-100 pt-2 dark:border-slate-800">
-          <span className="text-[11px] text-slate-500 dark:text-slate-400">
-            {t('it.mobileLines.card.accounts')}
-          </span>
-          {accounts.map((account) => (
+        </span>
+        <span className="grid grid-cols-3 gap-2 text-center">
+          {IT_MOBILE_LINE_STATUSES.map((status) => (
             <span
-              key={account.value ?? ''}
-              className="flex items-center justify-between gap-2 text-xs text-slate-700 dark:text-slate-200"
+              key={status}
+              data-network-count={status}
+              className="rounded-lg bg-slate-50 px-1 py-1.5 dark:bg-slate-800/60"
             >
-              {account.value === null ? (
-                <span className="text-slate-500 dark:text-slate-400">
-                  {t('it.mobileLines.card.noAccount')}
-                </span>
-              ) : (
-                <span className="font-mono" dir="ltr">
-                  {account.value}
-                </span>
-              )}
-              <span className="tabular-nums">{formatNumber(account.count, locale)}</span>
+              <span className="block text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                {formatNumber(summary?.[status], locale)}
+              </span>
+              <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                {t(`it.mobileLines.status.${status}`)}
+              </span>
             </span>
           ))}
         </span>
-      )}
+        {accounts.length > 0 && (
+          <span className="flex flex-col gap-1 border-t border-slate-100 pt-2 dark:border-slate-800">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              {t('it.mobileLines.card.accounts')}
+            </span>
+            {accounts.map((account) => (
+              <span
+                key={account.value ?? ''}
+                className="flex items-center justify-between gap-2 text-xs text-slate-700 dark:text-slate-200"
+              >
+                {account.value === null ? (
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {t('it.mobileLines.card.noAccount')}
+                  </span>
+                ) : (
+                  <span className="font-mono" dir="ltr">
+                    {account.value}
+                  </span>
+                )}
+                <span className="tabular-nums">{formatNumber(account.count, locale)}</span>
+              </span>
+            ))}
+          </span>
+        )}
+      </span>
     </button>
   );
 };
@@ -434,7 +522,7 @@ export const MobileLinesPage = (): JSX.Element => {
         const name = holder.employeeName ?? holder.employeeId ?? '—';
         return (
           <span className="flex flex-col leading-tight" data-line-holder="employee">
-            {holder.employeeId === null ? (
+            {holder.employeeId === null || !can('itAsset.view') ? (
               <span>{name}</span>
             ) : (
               <Link to={`/it/employees/${holder.employeeId}`} className="hover:underline">
@@ -479,7 +567,7 @@ export const MobileLinesPage = (): JSX.Element => {
             />
           )}
           {line.status === 'inStock' &&
-            can('itAsset.assign') &&
+            can('itMobileLine.assign') &&
             action(
               line,
               'handOver',
@@ -487,7 +575,7 @@ export const MobileLinesPage = (): JSX.Element => {
               <UsersIcon className="h-4 w-4" />,
             )}
           {line.status === 'inStock' &&
-            can('itAsset.edit') &&
+            can('itMobileLine.edit') &&
             action(
               line,
               'suspend',
@@ -495,7 +583,7 @@ export const MobileLinesPage = (): JSX.Element => {
               <PauseIcon className="h-4 w-4" />,
             )}
           {line.status === 'assigned' &&
-            can('itAsset.assign') &&
+            can('itMobileLine.assign') &&
             action(
               line,
               'return',
@@ -503,14 +591,14 @@ export const MobileLinesPage = (): JSX.Element => {
               <ResetIcon className="h-4 w-4" />,
             )}
           {line.status === 'suspended' &&
-            can('itAsset.edit') &&
+            can('itMobileLine.edit') &&
             action(
               line,
               'reactivate',
               t('it.mobileLines.actions.reactivate'),
               <PlayIcon className="h-4 w-4" />,
             )}
-          {can('itAsset.edit') &&
+          {can('itMobileLine.edit') &&
             action(line, 'edit', t('it.mobileLines.edit'), <EditIcon className="h-4 w-4" />)}
           {action(
             line,
@@ -528,34 +616,37 @@ export const MobileLinesPage = (): JSX.Element => {
   );
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.mobileLines')}
-        breadcrumbs={[
-          { label: t('it.module.title'), to: '/it' },
-          { label: t('it.nav.mobileLines') },
-        ]}
-        actions={
-          <>
-            {/* The files first, the form's action after them, as on the other registers. Not
-                offered when the list failed: the file behind them would be short. */}
-            {!isError && (
-              <RegisterExportButtons name="it-mobile-lines" onExcel={toExcel} onPdf={toPdf} />
-            )}
-            <Can permission="itAsset.create">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => setDialog({ kind: 'create' })}
-              >
-                {t('it.mobileLines.create')}
-              </Button>
-            </Can>
-          </>
-        }
-      />
-
-      <div className="space-y-4">
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; the IT screens, 2026-11-17 «مش عايز كل
+          الصفحة تعمل Scroll !! عايز فقط الجدول لكن الزراير والفلتر يبقوا ثابتين»): on a computer
+          the title and its actions, the network cards and the filter bar keep their place, the
+          pager keeps its place below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.mobileLines')}
+          breadcrumbs={[
+            { label: t('it.module.title'), to: '/it' },
+            { label: t('it.nav.mobileLines') },
+          ]}
+          actions={
+            <>
+              {/* The files first, the form's action after them, as on the other registers. Not
+                  offered when the list failed: the file behind them would be short. */}
+              {!isError && (
+                <RegisterExportButtons name="it-mobile-lines" onExcel={toExcel} onPdf={toPdf} />
+              )}
+              <Can permission="itMobileLine.create">
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  onClick={() => setDialog({ kind: 'create' })}
+                >
+                  {t('it.mobileLines.create')}
+                </Button>
+              </Can>
+            </>
+          }
+        />
         <div className="space-y-2">
           <div className="grid gap-3 sm:grid-cols-3">
             {IT_MOBILE_NETWORKS.map((network) => (
@@ -584,7 +675,11 @@ export const MobileLinesPage = (): JSX.Element => {
               </button>
             </p>
           ) : (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
+            // One line on a computer — the rows' height is the cards' and this line's leftover.
+            <p
+              className="text-xs text-slate-500 lg:truncate dark:text-slate-400"
+              title={t('it.mobileLines.networksHint')}
+            >
               {t('it.mobileLines.networksHint')}
             </p>
           )}
@@ -656,17 +751,20 @@ export const MobileLinesPage = (): JSX.Element => {
           />
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(line) => line.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          {...(sort === null ? {} : { sort })}
-          onSortChange={changeSort}
-          empty={t('it.mobileLines.empty')}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(line) => line.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            {...(sort === null ? {} : { sort })}
+            onSortChange={changeSort}
+            empty={t('it.mobileLines.empty')}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

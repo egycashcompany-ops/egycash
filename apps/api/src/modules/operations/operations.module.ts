@@ -17,6 +17,7 @@ import { buildOperationsBanksRouter } from './banks/bank.routes';
 import { buildOperationsBankBranchesRouter } from './bank-branches/bank-branch.routes';
 import { buildOperationsCurrenciesRouter } from './currencies/currency.routes';
 import { buildOperationsAreasRouter } from './areas/area.routes';
+import { buildOperationsShiftTypesRouter } from './shift-types/shift-type.routes';
 import { buildOperationsShipmentsRouter } from './shipments/shipment.routes';
 import { buildOperationsDaysRouter } from './days/day.routes';
 import { buildOperationsCrewRouter } from './crew/crew.routes';
@@ -190,9 +191,10 @@ export const operationsModule: ModuleManifest = {
   // and store nothing, so no permission or page was added.
   //
   // B6 completes the surface: the vault roll-up joins the reports prefix under the EXISTING
-  // `operationsVault.view` grant, and the legacy `/data_edit` city list arrives as
-  // `operations_areas` under the EXISTING catalog grants. One new prefix, one new collection, and
-  // still no new permission or page — the catalogs page already owns the reference surface.
+  // `operationsVault.view` grant (Round 14 made it «تقرير البنوك», below), and the legacy
+  // `/data_edit` city list arrives as `operations_areas` under the EXISTING catalog grants. One new
+  // prefix, one new collection, and still no new permission or page — the catalogs page already
+  // owns the reference surface.
   //
   // The standing crew (الطاقم الثابت) follows the same shape a third time: one new prefix, one new
   // collection, no new permission and no new page. It rides `operationsCrew.view` / `.plan`,
@@ -218,7 +220,21 @@ export const operationsModule: ModuleManifest = {
   // `operationsVault.view`, and «سجل الخزينة» is the shipments history with `type=secured`. One
   // assignment index (`ix_shipment_all_legs`, the action log's read of a retired leg) and one event
   // (`operations.shipmentAssignment.removed`).
-  version: '0.13.0',
+  //
+  // Round 14 adds NO permission, page, prefix or collection, and takes one route away. «تقرير
+  // البنوك» is the vault roll-up now — «خلي المحتوى بتاع تجميع خزينه ده يبقى اسمه تقرير بنوك» — served
+  // at `GET /operations/reports/banks` to holders of EITHER `operationsShipment.view` or
+  // `operationsVault.view` (the two screens' readers); `GET /operations/reports/vault` and the old
+  // completed-per-bank answer are gone. «إدارات العمليات» gets a screen of its own, on the platform's
+  // `setting.edit` — the grant that writes the setting it edits.
+  //
+  // Round 20 — «لوحة التشغيلة» for real — adds NO permission or page, ONE prefix and ONE collection:
+  // «أنواع التشغيل» (`/operations/shift-types`, `operations_shift_types`), the board's «النوع» as
+  // reference data («انا عاوز النوع يكون بيضاف من البيانات المرجعيه»), on the EXISTING catalog grant
+  // for its writes and read by the crew board's own `operationsCrew.view`. The legacy nine are seeded
+  // on boot, once. The crew row gains a type, a colour, and rows WITHOUT A VAN (`ux_day_vehicle`
+  // becomes partial on a present van — rebuilt on boot by the index-drift repair).
+  version: '0.15.0',
   requiresPlatform: '^2.2',
   permissions: operationsPermissions,
   pages: operationsPages,
@@ -228,6 +244,7 @@ export const operationsModule: ModuleManifest = {
     { prefix: '/operations/bank-branches', router: buildOperationsBankBranchesRouter() },
     { prefix: '/operations/currencies', router: buildOperationsCurrenciesRouter() },
     { prefix: '/operations/areas', router: buildOperationsAreasRouter() },
+    { prefix: '/operations/shift-types', router: buildOperationsShiftTypesRouter() },
     { prefix: '/operations/days', router: buildOperationsDaysRouter() },
     { prefix: '/operations/crew-board', router: buildOperationsCrewRouter() },
     { prefix: '/operations/standing-crew', router: buildOperationsStandingCrewRouter() },
@@ -242,12 +259,15 @@ export const operationsModule: ModuleManifest = {
     'operations_bank_branches',
     'operations_currencies',
     'operations_areas',
+    'operations_shift_types',
     'operations_days',
     'operations_crew_assignments',
     'operations_crew_requirements',
     'operations_standing_crews',
     'operations_vault_custody',
     'operations_shipment_assignments',
+    // The owner's data the deploy loads once (Round 29b, go-live/go-live-run.model.ts).
+    'operations_go_live_runs',
   ],
   // ADR-023 — the receipt photo on a shipment answers to the SHIPMENT's grants (view to see it,
   // edit to change it), so reaching it through the platform's own file endpoints is guarded

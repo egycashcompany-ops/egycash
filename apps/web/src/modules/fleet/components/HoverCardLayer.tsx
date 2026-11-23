@@ -74,12 +74,27 @@ const keyboardFocus = (el: HTMLElement): boolean => {
  */
 export const useHoverCard = (
   active: boolean,
-  { focusable = true }: { focusable?: boolean } = {},
+  {
+    focusable = true,
+    when,
+  }: {
+    focusable?: boolean;
+    /**
+     * Round 26 — a last word before the card opens, asked as the pointer (or the focus) comes AND
+     * again when the delay ends: «توزيع المحصنات»'s van card says no while a drag is on, while a
+     * «نقل إلى…» menu is open, or over a captain's own name. Left out: always yes.
+     */
+    when?: () => boolean;
+  } = {},
 ): {
   open: boolean;
   id: string;
   anchor: RefObject<HTMLElement | null>;
   triggerProps: HoverCardTriggerProps;
+  /** Round 26 — the hover's own delayed open, for a trigger that re-arms inside itself. */
+  arm: () => void;
+  /** Round 26 — the waiting open called off, and the card closed. */
+  dismiss: () => void;
 } => {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLElement | null>(null);
@@ -87,6 +102,11 @@ export const useHoverCard = (
   /** How it opened: a hover closes when the pointer leaves; a keyboard focus stays until blur. */
   const via = useRef<'hover' | 'focus'>('hover');
   const id = useId();
+  // The latest `when`, read when the delay ends — not the one of the render that armed it.
+  const allowed = useRef(when);
+  useEffect(() => {
+    allowed.current = when;
+  });
 
   const control = useMemo(() => {
     const clear = (): void => {
@@ -100,6 +120,7 @@ export const useHoverCard = (
     };
     const show = (): void => {
       clear();
+      if (allowed.current !== undefined && !allowed.current()) return;
       if (closeOpenCard !== null && closeOpenCard !== close) closeOpenCard();
       closeOpenCard = close;
       setOpen(true);
@@ -107,7 +128,13 @@ export const useHoverCard = (
     const setAnchor = (el: HTMLElement | null): void => {
       anchor.current = el;
     };
-    return { clear, close, show, setAnchor };
+    const arm = (): void => {
+      if (allowed.current !== undefined && !allowed.current()) return;
+      via.current = 'hover';
+      clear();
+      timer.current = window.setTimeout(show, OPEN_DELAY_MS);
+    };
+    return { clear, close, show, setAnchor, arm };
   }, []);
 
   // Gone with its trigger: no timer left to fire, no card left open.
@@ -128,15 +155,22 @@ export const useHoverCard = (
     };
   }, [open, control]);
 
-  if (!active) return { open: false, id, anchor, triggerProps: {} };
+  if (!active) {
+    return {
+      open: false,
+      id,
+      anchor,
+      triggerProps: {},
+      arm: () => undefined,
+      dismiss: () => undefined,
+    };
+  }
 
   const triggerProps: HoverCardTriggerProps = {
     ref: control.setAnchor,
     onMouseEnter: () => {
       if (open) return;
-      via.current = 'hover';
-      control.clear();
-      timer.current = window.setTimeout(control.show, OPEN_DELAY_MS);
+      control.arm();
     },
     onMouseLeave: () => {
       if (via.current === 'hover') control.close();
@@ -162,7 +196,16 @@ export const useHoverCard = (
     ...(focusable ? { tabIndex: 0 } : {}),
     ...(open ? { 'aria-describedby': id } : {}),
   };
-  return { open, id, anchor, triggerProps };
+  return {
+    open,
+    id,
+    anchor,
+    triggerProps,
+    arm: () => {
+      if (!open) control.arm();
+    },
+    dismiss: control.close,
+  };
 };
 
 /** A box on the screen, as `getBoundingClientRect` gives it. */
@@ -230,6 +273,21 @@ export const HOVER_CARD_FRAME =
   "w-72 max-w-[calc(100vw-16px)] rounded-xl border border-slate-200 bg-white p-3 text-start text-slate-900 shadow-2xl dark:border-[#2b3b6b] dark:bg-[#131d35] dark:text-white [font-family:'Cairo',sans-serif]";
 
 /**
+ * A TIP's frame: the cards' fill, border and shadow in both themes, sized to its words — the name of
+ * an icon, said in a box that reads as the app's own rather than the browser's grey `title`.
+ */
+export const HOVER_TIP_FRAME =
+  "w-max max-w-[16rem] rounded-lg border border-slate-200 bg-white px-2 py-1 text-start text-[12.5px] font-bold leading-5 text-slate-800 shadow-xl dark:border-[#2b3b6b] dark:bg-[#131d35] dark:text-slate-100 [font-family:'Cairo',sans-serif]";
+
+/**
+ * The point under a tip (`align="center"`), at its icon: a small square turned on its corner, in the
+ * tip's fill with the border on its two outer sides — so a tip over a column of chips says WHICH
+ * icon it names, not the chip it happens to lie on.
+ */
+const TIP_POINT =
+  'pointer-events-none absolute h-2 w-2 -translate-x-1/2 rotate-45 border-slate-200 bg-white dark:border-[#2b3b6b] dark:bg-[#131d35]';
+
+/**
  * Where the card is drawn: ABOVE its trigger, below it when there is no room above; its start edge
  * on the trigger's start edge, kept on the screen. Measured before it is painted, and again as the
  * page scrolls or the card's own lines land.
@@ -246,16 +304,47 @@ export const HoverCardLayer = ({
   id,
   anchor,
   mark,
+  frame = HOVER_CARD_FRAME,
+  align = 'start',
   children,
 }: {
   id: string;
   anchor: RefObject<HTMLElement | null>;
-  /** `captain` and `crew` are Operations' day-board cards (`BoardCrewCards`), on these mechanics. */
-  mark: 'driver' | 'vehicle' | 'captain' | 'crew';
+  /**
+   * `captain` and `crew` are Operations' day-board cards (`BoardCrewCards`), and `roster` the
+   * member card on «كشف طاقم العمليات» (`RosterMemberCard`), on these mechanics. On «لوحة التشغيلة»
+   * (Round 22): `crew-plan` the person card on a name, `crew-flag` the small tip that names a
+   * requirement icon (`crew-plan-icons`). On «توزيع المحصنات» (Round 25): `secured-shipment` the
+   * card of a محصنة's small chip; (Round 26) `secured-van` the van's card — everyone on it and what
+   * it carries — on its head and its captain's line, on «تسليم المحصنات» too.
+   */
+  mark:
+    | 'driver'
+    | 'vehicle'
+    | 'captain'
+    | 'crew'
+    | 'roster'
+    | 'crew-plan'
+    | 'crew-flag'
+    | 'secured-shipment'
+    | 'secured-van';
+  /**
+   * The look. Every card keeps the cards' frame; a TIP — a word or two for an icon — takes
+   * `HOVER_TIP_FRAME`, on the same mechanics.
+   */
+  frame?: string;
+  /** `start` hangs a card off its trigger's start edge; `center` sets a tip over its icon's middle. */
+  align?: 'start' | 'center';
   children: ReactNode;
 }): JSX.Element | null => {
   const panel = useRef<HTMLDivElement>(null);
-  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  /** Where it is drawn, which side of its trigger, and (a tip) where its point meets the trigger. */
+  const [at, setAt] = useState<{
+    top: number;
+    left: number;
+    side: 'above' | 'below';
+    point: number;
+  } | null>(null);
   useBrowserLayoutEffect(() => {
     const clips = anchor.current === null ? [] : clippingBoxes(anchor.current);
     const place = (): void => {
@@ -281,16 +370,26 @@ export const HoverCardLayer = ({
       }
       const width = box.offsetWidth;
       const height = box.offsetHeight;
-      const gap = 6;
-      const top =
-        rect.top - gap - height >= 8
-          ? rect.top - gap - height
-          : Math.min(rect.bottom + gap, window.innerHeight - height - 8);
+      // A tip leaves room for its point.
+      const gap = align === 'center' ? 9 : 6;
+      const above = rect.top - gap - height >= 8;
+      const top = above
+        ? rect.top - gap - height
+        : Math.min(rect.bottom + gap, window.innerHeight - height - 8);
       const rtl = getComputedStyle(box).direction === 'rtl';
-      const start = rtl ? rect.right - width : rect.left;
+      const start =
+        align === 'center'
+          ? rect.left + rect.width / 2 - width / 2
+          : rtl
+            ? rect.right - width
+            : rect.left;
+      const left = Math.min(window.innerWidth - width - 8, Math.max(8, start));
       setAt({
         top: Math.max(8, top),
-        left: Math.min(window.innerWidth - width - 8, Math.max(8, start)),
+        left,
+        side: above ? 'above' : 'below',
+        // Kept off the rounded corners when the tip is pushed in from the screen's edge.
+        point: Math.min(width - 10, Math.max(10, rect.left + rect.width / 2 - left)),
       });
     };
     place();
@@ -303,7 +402,7 @@ export const HoverCardLayer = ({
       window.removeEventListener('resize', place);
       watch?.disconnect();
     };
-  }, [anchor]);
+  }, [anchor, align]);
   if (typeof document === 'undefined') return null;
   return createPortal(
     <div
@@ -311,11 +410,27 @@ export const HoverCardLayer = ({
       id={id}
       role="tooltip"
       {...{ [`data-${mark}-hover-card`]: 'true' }}
+      data-side={at?.side}
       // Unseen until it has its place, so it never flashes at the corner of the screen.
-      style={at === null ? { top: 0, left: 0, visibility: 'hidden' } : at}
-      className={cn('pointer-events-none fixed z-[110] animate-menu-in', HOVER_CARD_FRAME)}
+      style={
+        at === null ? { top: 0, left: 0, visibility: 'hidden' } : { top: at.top, left: at.left }
+      }
+      className={cn('pointer-events-none fixed z-[110] animate-menu-in', frame)}
     >
       {children}
+      {align === 'center' && at !== null && (
+        <span
+          aria-hidden
+          data-tip-point="true"
+          style={{ left: at.point }}
+          className={cn(
+            TIP_POINT,
+            at.side === 'above'
+              ? '-bottom-[5px] border-b border-r'
+              : '-top-[5px] border-l border-t',
+          )}
+        />
+      )}
     </div>,
     document.body,
   );

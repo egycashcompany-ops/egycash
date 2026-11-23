@@ -4,12 +4,16 @@
 import { Types } from 'mongoose';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../platform/audit', () => ({ auditService: { record: vi.fn() } }));
-const { publishAuditedChange } = vi.hoisted(() => ({ publishAuditedChange: vi.fn() }));
+const { publishAuditedChange, record } = vi.hoisted(() => ({
+  publishAuditedChange: vi.fn(),
+  record: vi.fn(),
+}));
+vi.mock('../../../platform/audit', () => ({ auditService: { record } }));
 vi.mock('../../../platform/realtime', () => ({ publishAuditedChange }));
 
 const {
   MOVEMENT_AUDIT_ACTION,
+  auditConsumableMemoIssued,
   auditStockMovement,
   consumableEntityRef,
   consumableItemRow,
@@ -20,6 +24,7 @@ const {
 
 const TYPE = new Types.ObjectId();
 const STORE = new Types.ObjectId();
+const SIGNER = new Types.ObjectId();
 
 describe('a new item’s row', () => {
   it('starts empty, or holding exactly its opening delivery', () => {
@@ -95,6 +100,53 @@ describe('a ledger row', () => {
       counterpartConsumableId: otherItem,
     });
   });
+
+  // «صرف لإدارة» (2026-11-19).
+  it('names a department issue’s department, place and signer — and no employee', () => {
+    const item = { _id: new Types.ObjectId(), branchId: STORE };
+    const at = new Date('2026-11-19T09:00:00.000Z');
+    const department = new Types.ObjectId();
+    const place = new Types.ObjectId();
+    const signer = new Types.ObjectId();
+    expect(
+      consumableMovementRow({
+        item,
+        kind: 'issued',
+        qty: 2,
+        at,
+        byUserId: null,
+        employeeId: null,
+        department: {
+          departmentId: String(department),
+          locationId: String(place),
+          responsibleEmployeeId: String(signer),
+        },
+        reason: 'new',
+      }),
+    ).toMatchObject({
+      kind: 'issued',
+      employeeId: null,
+      departmentId: department,
+      locationId: place,
+      responsibleEmployeeId: signer,
+    });
+  });
+
+  it('carries no department key at all on any other row — an old row and a new one read alike', () => {
+    const item = { _id: new Types.ObjectId(), branchId: STORE };
+    const row = consumableMovementRow({
+      item,
+      kind: 'issued',
+      qty: 1,
+      at: new Date('2026-11-19T09:00:00.000Z'),
+      byUserId: null,
+      employeeId: String(new Types.ObjectId()),
+      department: null,
+    });
+    expect(row).not.toHaveProperty('departmentId');
+    expect(row).not.toHaveProperty('locationId');
+    expect(row).not.toHaveProperty('responsibleEmployeeId');
+  });
 });
 
 describe('the audit trail', () => {
@@ -140,6 +192,55 @@ describe('the audit trail', () => {
         { onHandQty: 6, issuedQty: 2, scrappedQty: 0 },
       ),
     ).toEqual([{ field: 'onHandQty', old: 5, new: 6 }]);
+  });
+
+  describe('a memo’s row', () => {
+    const memo = (custodian: unknown) =>
+      ({
+        _id: new Types.ObjectId(),
+        memoNumber: 42,
+        employeeId: SIGNER,
+        lines: [{ code: 'CON-00001', qty: 2, reason: 'new' }],
+        ...(custodian === undefined ? {} : { custodian }),
+      }) as never;
+    const changesOf = () =>
+      (record.mock.calls.at(-1)?.[0] as { changes: { field: string; new: unknown }[] }).changes;
+
+    it('names the signer — the employee it went to — on an employee’s memo', async () => {
+      await auditConsumableMemoIssued(memo(null));
+      expect(changesOf().map((entry) => entry.field)).toEqual([
+        'employeeId',
+        'memoNumber',
+        'items',
+      ]);
+      // A memo written before department memos: no key at all, read the same.
+      await auditConsumableMemoIssued(memo(undefined));
+      expect(changesOf().map((entry) => entry.field)).toEqual([
+        'employeeId',
+        'memoNumber',
+        'items',
+      ]);
+    });
+
+    it('names the department and the place beside the signer on a department memo', async () => {
+      const department = new Types.ObjectId();
+      const place = new Types.ObjectId();
+      await auditConsumableMemoIssued(
+        memo({
+          departmentId: department,
+          departmentName: null,
+          locationId: place,
+          locationName: null,
+        }),
+      );
+      expect(changesOf()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ field: 'employeeId', new: String(SIGNER) }),
+          expect.objectContaining({ field: 'departmentId', new: String(department) }),
+          expect.objectContaining({ field: 'locationId', new: String(place) }),
+        ]),
+      );
+    });
   });
 });
 

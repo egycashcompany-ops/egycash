@@ -4,9 +4,9 @@ import { StatusBadge, type Tone } from '../../../../../shared/ui/Badge';
 import { useT } from '../../../../../platform/localization/useT';
 
 const TONE: Record<OfferStatus, Tone> = {
-  waiting: 'warning',
+  waiting: 'info',
   draft: 'neutral',
-  sent: 'info',
+  sent: 'brand',
   accepted: 'success',
   rejected: 'danger',
   expired: 'warning',

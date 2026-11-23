@@ -28,7 +28,7 @@ import {
   ensureNationalIdCardCategory,
 } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
-import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
+import { ensureEvaluationCategory, evaluationPhaseService, evaluationService } from './recruitment/evaluations';
 import {
   registerExternalSurface,
   registerExternalWriteSurface,
@@ -54,10 +54,14 @@ import {
   ensureEmployeePhotoCategory,
   migrateEmployeeIndexes,
   migrateEmployeesToRegistry,
+  migrateExternalEmployeeNumbers,
 } from './employee-management/employees';
 import { migrateEmployeeFiles } from './employee-management/employee-file';
 import { env } from '../../infrastructure/config/env';
 import { logger } from '../../infrastructure/logging/logger';
+import { fillJobPlacesFromHolders } from '../../platform/organization';
+import { employeeRepository } from './employee-management/employees/employee.repository';
+import { jobOfferRepository } from './recruitment/job-offers/job-offer.repository';
 import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { ensureEmployeeActionAttachmentsCategory } from './employee-management/employee-actions';
@@ -65,6 +69,7 @@ import { ensureAdjustmentAttachmentsCategory } from './payroll/adjustments';
 import { ensureLoanAttachmentsCategory, grantEssLoanAccess } from './employee-loans';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 import { migrateAttendance } from './attendance/attendance.migration';
+import { migrateCandidateDrafts } from './contracts/candidates';
 import {
   backfillAdjustmentDepartments,
   backfillEmployeePayItemDepartments,
@@ -526,6 +531,7 @@ export const seedHrRecruitment = async (): Promise<void> => {
   for (const stage of INTERVIEW_STAGES) {
     await interviewStageService.ensure(stage);
   }
+  await interviewStageService.ensureModes();
   for (const phase of EVALUATION_PHASES) {
     await evaluationPhaseService.ensure(phase);
   }
@@ -545,13 +551,41 @@ export const seedHrRecruitment = async (): Promise<void> => {
   // Legacy recruitment documents: late-added applicant fields + denormalized applicantName
   // on the stage collections (idempotent, missing-field guarded).
   await migrateRecruitmentLegacy();
+  // «عروض العمل» lists whoever cleared their checks as «جاهز لعرض العمل»: those who cleared them
+  // before clearing moved them to the offer stage, and were never moved by hand, are moved now.
+  try {
+    const moved = await evaluationService.moveClearedApplicantsToOffer();
+    if (moved > 0) logger.info({ moved }, 'recruitment: cleared applicants moved to the offer stage');
+  } catch (error) {
+    logger.warn({ err: error }, 'recruitment: moving cleared applicants to the offer stage skipped');
+  }
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
   // ADR-017 — retire the unique index on the Global Employee Number (idempotent, guarded).
   await migrateEmployeeIndexes();
+  // An external person's number is their code, never one of the company's (see the function).
+  try {
+    const freed = await migrateExternalEmployeeNumbers();
+    if (freed > 0) logger.info({ freed }, 'employees: company numbers held by external people released');
+  } catch (error) {
+    logger.warn({ err: error }, 'employees: releasing external people\'s company numbers skipped');
+  }
   // I5 — drop the re-derived recruitment milestones from legacy Employee Files; the canonical
   // recruitment timeline is now the only history (idempotent).
   await migrateEmployeeFiles();
+  // P-ORG-3 §7 (D-ORG3-2): each company department gets the job places where its holders sit, ONCE.
+  // The platform owns the places and the marks; HR only hands over where people sit. Returns at once
+  // on every start where every department is already marked — no employee is read then.
+  try {
+    const filled = await fillJobPlacesFromHolders(async () => [
+      ...(await employeeRepository.jobUnitsHeldSystem()),
+      ...(await jobOfferRepository.jobUnitsAcceptedSystem()),
+    ]);
+    if (filled !== null) logger.info(filled, 'org chart: job places filled from where holders sit');
+  } catch (error) {
+    // Error, not warn: a fill that never commits leaves the org chart empty.
+    logger.error({ err: error }, 'org chart: the one-time job place fill failed; it will run again next start');
+  }
   // Auth design D2 — every employed employee gets an auto-provisioned login (idempotent).
   //
   // Each provisioning SENDS: a WhatsApp message and an email carrying a one-time setup link. That
@@ -594,6 +628,8 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await backfillAdjustmentDepartments();
   await backfillEmployeePayItemDepartments();
   await backfillEmployeeLoanDepartments();
+  // Contracts (A28): a «عقد جديد» draft keeps what HR changed on the job's papers, not a whole list.
+  await migrateCandidateDrafts();
   // Contracts (frozen contracts design D11): the expiring-soon notice template.
   await notificationTemplateService.ensure({
     key: HrContractTemplates.ExpiringSoon,

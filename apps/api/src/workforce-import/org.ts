@@ -11,6 +11,7 @@
 //     whose name has no code is reported rather than created.
 import {
   branchService,
+  nextFreeCode,
   departmentCatalogRepository,
   departmentCatalogService,
   departmentService,
@@ -509,11 +510,5 @@ export const matchBranch = (
   };
 };
 
-export const nextFreeCode = (prefix: string, existing: readonly string[]): string => {
-  const pattern = new RegExp(`^${prefix}-(\\d+)$`, 'u');
-  const highest = existing.reduce((max, code) => {
-    const m = pattern.exec(code);
-    return m === null ? max : Math.max(max, Number(m[1]));
-  }, 0);
-  return `${prefix}-${String(highest + 1).padStart(4, '0')}`;
-};
+/** Moved to the platform (P-ORG-3): the org chart mints by the same rule. Re-exported for this file's spec. */
+export { nextFreeCode };

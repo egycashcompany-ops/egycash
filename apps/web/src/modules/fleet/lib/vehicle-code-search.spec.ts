@@ -108,6 +108,20 @@ describe('the roster boards filter on the code', () => {
     expect(readTypedVehicleCodes('150 - ')).toEqual({ chosen: ['150'], typing: '' });
   });
 
+  it('shows the WHOLE code picked — «كورولا 1» is not «كورولا 10» (D16)', () => {
+    // The board's `q` is the picked codes, read as the server reads `?vehicleCodes=`: each code
+    // whole. A part of a code is the touch board's typed search, not this filter.
+    const models = [
+      row('كورولا 1', 'س ص 1'),
+      row('كورولا 10', 'س ص 10'),
+      row('كورولا 11', 'س ص 11'),
+    ];
+    const picked = (term: string): string[] => visibleRows(models, { term }).map((r) => r.code);
+    expect(picked('كورولا 1')).toEqual(['كورولا 1']);
+    expect(picked('كورولا 1 - كورولا 11')).toEqual(['كورولا 1', 'كورولا 11']);
+    expect(shown('15'), 'nor is 15 a part of 150').toEqual([]);
+  });
+
   it('shows the whole day for an empty box', () => {
     expect(shown('')).toHaveLength(4);
     expect(shown('  ')).toHaveLength(4);

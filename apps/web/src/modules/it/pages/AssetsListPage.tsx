@@ -25,6 +25,10 @@
 // the table go to ONE branch in one step, «نقل إلى فرع (n)» in the selection's bar, under the
 // custody grant (`itAsset.assign`) the transfer already rides. The dialog lists what moves and what
 // stays, and why (`components/AssetBranchMoveDialog.tsx`).
+//
+// «في الأصول عايز زرار Bulk Upload للأصول بنفس شكل عهدة الأفرع ويكون فى Preview الأول» (2026-11-16):
+// «رفع جماعي» beside «تسجيل أصل», on the same grant — a branch's custody sheet, previewed line by
+// line on its own page (`/it/assets/import`) before anything is written.
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { IT_ASSET_STATUSES, type ItAssetDto, type Locale } from '@ecms/contracts';
@@ -33,6 +37,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL_LOW } from '../../../shared/ui/board-scroll';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
@@ -49,6 +54,7 @@ import {
   PlusIcon,
   QrIcon,
   TrashIcon,
+  UploadIcon,
 } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import * as api from '../api/it-api';
@@ -80,6 +86,9 @@ import {
 import { gatherRegister, printItRegister } from '../lib/register-export';
 import { warrantyWindowOf, warrantyWindowOptions, warrantyWithin } from '../lib/warranty-window';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { SearchableSelect } from '../../../shared/ui/SearchableSelect';
+import { useCustodianFilterOptions } from '../components/useCustodianFilters';
+import { holderLink, holderMain, holderOfAsset, locationText } from '../lib/custody-holder';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 // `names` is the name list; `name` is where the single name filter kept its one name — still
@@ -87,7 +96,10 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 const REMEMBERED_FILTERS = [
   'branch',
   'category',
+  'department',
   'holder',
+  'holderKind',
+  'location',
   'name',
   'names',
   'q',
@@ -112,6 +124,14 @@ export const AssetsListPage = (): JSX.Element => {
   const branchId = sp.get('branch') ?? '';
   // Who holds it NOW — an employee id, so the filter survives a rename and can be linked.
   const holderId = sp.get('holder') ?? '';
+  // Department custody (2026-11-19): «جهة الاستلام», «الإدارة» and «الموقع» — each the OPEN
+  // interval's, like the holder. `location` is what «في عهدته الآن» and a holder cell link to:
+  // «إيه اللي في غرفة السيرفرات».
+  const holderKindParam = sp.get('holderKind') ?? '';
+  const holderKind =
+    holderKindParam === 'employee' || holderKindParam === 'department' ? holderKindParam : '';
+  const departmentId = sp.get('department') ?? '';
+  const locationId = sp.get('location') ?? '';
   // «الضمان»: ends within this many days from today — a window the API would refuse is none.
   const warrantyDays = warrantyWindowOf(sp.get('warrantyEndsWithinDays'));
   const warrantyLabel = warrantyDays === null ? '' : warrantyWithin(t, locale, warrantyDays);
@@ -149,6 +169,9 @@ export const AssetsListPage = (): JSX.Element => {
     categoryIds.length > 0 ||
     branchId !== '' ||
     holderId !== '' ||
+    holderKind !== '' ||
+    departmentId !== '' ||
+    locationId !== '' ||
     warrantyDays !== null;
 
   const params = useMemo(
@@ -163,10 +186,14 @@ export const AssetsListPage = (): JSX.Element => {
       categoryId: categoryQuery(categoryIds),
       branchId: branchId || undefined,
       holderEmployeeId: holderId || undefined,
+      holderKind: holderKind || undefined,
+      holderDepartmentId: departmentId || undefined,
+      locationId: locationId || undefined,
       warrantyEndsWithinDays: warrantyDays ?? undefined,
     }),
     [paramsKey],
   );
+  const custodianFilters = useCustodianFilterOptions(branchId);
   // Held while a category change settles its names — see `useCategoryNameFilter`.
   const { data, isLoading, isError, error, refetch } = useItAssets(params, !nameFilter.settling);
 
@@ -221,7 +248,7 @@ export const AssetsListPage = (): JSX.Element => {
   };
 
   // ── The register as a file: Excel and PDF, of everything the filters match ──────────────────
-  const exportContext = { t, categoryName, branchName };
+  const exportContext = { t, locale, categoryName, branchName };
   // Every asset the filters match, in the table's order — the table's own params, unpaged.
   const allRows = () => gatherRegister(params, api.listAssets);
   const exportSheet = async (): Promise<void> => {
@@ -247,6 +274,11 @@ export const AssetsListPage = (): JSX.Element => {
           branchName,
           holderId,
           holderLabel,
+          holderKind,
+          departmentId,
+          departmentName: custodianFilters.departmentName,
+          locationId,
+          locationName: custodianFilters.locationName,
           warranty: warrantyLabel,
           rows: all,
         }),
@@ -301,12 +333,35 @@ export const AssetsListPage = (): JSX.Element => {
     {
       // Right after the status that says it is out: who has it — their name, a link to everything
       // they hold, and their code under it, as the custody register shows a holder. An employee
-      // HR cannot name is shown by the id the row carries, never by a guess.
+      // HR cannot name is shown by the id the row carries, never by a guess. A department
+      // (2026-11-19): «إدارة …» with its place under it, linking to everything held there.
       key: 'holder',
       header: t('it.custody.holder'),
       render: (a) => {
+        if (a.holder === null) return '—';
+        const facts = holderOfAsset(a.holder);
+        if (facts.kind === 'department') {
+          const link = holderLink(facts);
+          const main = holderMain(facts, locale, t);
+          return (
+            <span
+              className="flex flex-col leading-tight"
+              data-holder-department={facts.departmentId}
+            >
+              {link === null ? (
+                <span>{main}</span>
+              ) : (
+                <Link to={link} className="hover:underline">
+                  {main}
+                </Link>
+              )}
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                {locationText(facts, locale)}
+              </span>
+            </span>
+          );
+        }
         const holder = a.holder;
-        if (holder === null) return '—';
         return (
           <span className="flex flex-col leading-tight">
             <Link to={`/it/employees/${holder.employeeId}`} className="hover:underline">
@@ -372,34 +427,47 @@ export const AssetsListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <PageHeader
-        title={t('it.nav.assets')}
-        breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.assets') }]}
-        actions={
-          <>
-            {/* The files first, the form's action after them — for every reader of the list, as
-                the labels are (§4.2). Not offered when the list failed: the file would be short. */}
-            {!isError && (
-              <RegisterExportButtons name="it-assets" onExcel={exportSheet} onPdf={exportPdf} />
-            )}
-            <Can permission="itAsset.create">
-              <Button
-                size="sm"
-                leftIcon={<PlusIcon className="h-4 w-4" />}
-                onClick={() => {
-                  setEditing(null);
-                  setFormOpen(true);
-                }}
-              >
-                {t('it.assets.create')}
-              </Button>
-            </Can>
-          </>
-        }
-      />
+    <PageContainer fullHeight>
+      {/* The board frame (`shared/ui/board-scroll.ts`; for IT «مش عايز كل الصفحة تعمل Scroll !! عايز
+          فقط الجدول لكن الزراير والفلتر يبقوا ثابتين», 2026-11-17): on a computer the title and its
+          buttons, the filters and the selection's bar keep their place, the pager keeps its place
+          below, and only the table's rows scroll, under a head that stays. */}
+      <div className={BOARD_FRAME}>
+        <PageHeader
+          title={t('it.nav.assets')}
+          breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.assets') }]}
+          actions={
+            <>
+              {/* The files first, the form's action after them — for every reader of the list, as
+                  the labels are (§4.2). Not offered when the list failed: the file would be short. */}
+              {!isError && (
+                <RegisterExportButtons name="it-assets" onExcel={exportSheet} onPdf={exportPdf} />
+              )}
+              <Can permission="itAsset.create">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  leftIcon={<UploadIcon className="h-4 w-4" />}
+                  onClick={() => navigate('/it/assets/import')}
+                  data-asset-import
+                >
+                  {t('it.assets.import.action')}
+                </Button>
+                <Button
+                  size="sm"
+                  leftIcon={<PlusIcon className="h-4 w-4" />}
+                  onClick={() => {
+                    setEditing(null);
+                    setFormOpen(true);
+                  }}
+                >
+                  {t('it.assets.create')}
+                </Button>
+              </Can>
+            </>
+          }
+        />
 
-      <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() => {
@@ -412,6 +480,9 @@ export const AssetsListPage = (): JSX.Element => {
               category: null,
               branch: null,
               holder: null,
+              holderKind: null,
+              department: null,
+              location: null,
               warrantyEndsWithinDays: null,
             });
           }}
@@ -476,6 +547,34 @@ export const AssetsListPage = (): JSX.Element => {
               patch({ holder: id || null });
             }}
           />
+          {/* «جهة الاستلام», «الإدارة», «الموقع» — department custody, each the open interval's. */}
+          <Select
+            aria-label={t('it.custody.department.receiverKind')}
+            data-filter-holder-kind
+            value={holderKind}
+            onChange={(e) => patch({ holderKind: e.target.value || null })}
+            className="w-auto"
+          >
+            <option value="">{t('it.custody.department.anyKind')}</option>
+            <option value="employee">{t('it.custody.department.kind.employee')}</option>
+            <option value="department">{t('it.custody.department.kind.department')}</option>
+          </Select>
+          <SearchableSelect
+            value={departmentId}
+            options={custodianFilters.departments}
+            placeholder={t('it.custody.department.anyDepartment')}
+            ariaLabel={t('it.custody.department.department')}
+            testId="filter-department"
+            onChange={(next) => patch({ department: next || null })}
+          />
+          <SearchableSelect
+            value={locationId}
+            options={custodianFilters.places}
+            placeholder={t('it.custody.department.anyLocation')}
+            ariaLabel={t('it.custody.department.location')}
+            testId="filter-location"
+            onChange={(next) => patch({ location: next || null })}
+          />
           {/* The two windows the bar always offers, and a linked one beside them (the dashboard's
               is the `it.warrantyWarnDays` setting), so a narrowed register never reads «الكل». */}
           <Select
@@ -516,17 +615,20 @@ export const AssetsListPage = (): JSX.Element => {
           </Can>
         </BulkActionBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(a) => a.id}
-          loading={isLoading || nameFilter.settling}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          selection={selection}
-        />
+        <div className={BOARD_TABLE_FILL_LOW}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(a) => a.id}
+            loading={isLoading || nameFilter.settling}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sort}
+            onSortChange={changeSort}
+            selection={selection}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

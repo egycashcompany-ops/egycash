@@ -91,6 +91,22 @@ describe('«صرف عهدة» — a charge (05/10, 200,000)', () => {
     expect(one({ ...SAMPLE_CHARGE, reason: '24 سياره تجديد' })).toBe(html);
   });
 
+  it('prints a typed figure’s Arabic decimal and thousands marks in Latin too — never «12٫5»', () => {
+    const typed = { ...SAMPLE_CHARGE, reason: 'نظير ١٢٫٥ طن و ١٬٢٠٠ لتر' };
+    expect(chargeLetterSentence(typed)).toBe(
+      'برجاء التكرم من صرف مبلغ ( 200,000) العهده و ذلك نظير 12.5 طن و 1,200 لتر .',
+    );
+    const html = one(typed);
+    expect(html).toContain('12.5 طن و 1,200 لتر .</div>');
+    expect(textOf(html)).not.toMatch(/[٠-٩۰-۹٫٬]/u);
+    // The same figure typed in Latin is the same letter.
+    expect(one({ ...SAMPLE_CHARGE, reason: '12.5 طن و 1,200 لتر' })).toBe(html);
+    // A mark that is not between two digits is his text, not a figure, and prints as typed.
+    expect(chargeLetterSentence({ ...SAMPLE_CHARGE, reason: 'تجديد ٫ مد مده' })).toContain(
+      'نظير تجديد ٫ مد مده .',
+    );
+  });
+
   it('escapes the typed reason', () => {
     const typed = one({ ...SAMPLE_CHARGE, reason: '<b>تجديد</b>' });
     expect(typed).toContain('&lt;b&gt;تجديد&lt;/b&gt;');

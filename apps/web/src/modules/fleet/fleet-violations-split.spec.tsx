@@ -189,6 +189,8 @@ const page = ({
   permissions,
   seedCatalogs = true,
   year,
+  codes,
+  client,
 }: {
   /** `null` = seed nothing, so the query is genuinely pending. `undefined` would fall
    *  through to the default and quietly seed a row. */
@@ -206,8 +208,15 @@ const page = ({
   permissions?: string[];
   seedCatalogs?: boolean;
   year?: string;
+  /**
+   * One car's code on BOTH halves — `?codes=<code>&dcodes=<code>`, the link the car record's
+   * «المخالفات» opens — seeded under the keys the two halves then ask with.
+   */
+  codes?: string;
+  /** The cache to render with, so a case can read back what the halves asked for. */
+  client?: QueryClient;
 } = {}): string => {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = client ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(
     listKey('fleet', 'vehicles', {
       pageSize: 200,
@@ -235,7 +244,7 @@ const page = ({
         // The YEARS and the CODES, as the one string each carries — several of either are one
         // question and one cache entry, and a fresh array each render would otherwise mint a new
         // key every time.
-        { year: year === undefined ? '' : year, vehicleCodes: '' },
+        { year: year === undefined ? '' : year, vehicleCodes: codes ?? '' },
       ],
       rollup,
     );
@@ -266,6 +275,7 @@ const page = ({
         sortBy: 'date',
         sortDir: 'desc',
         sort: 'date:desc',
+        ...(codes === undefined ? {} : { vehicleCodes: codes }),
         paged: 'infinite',
       }),
       {
@@ -287,7 +297,16 @@ const page = ({
     <Provider store={store(permissions)}>
       <QueryClientProvider client={qc}>
         <MemoryRouter
-          initialEntries={[`/fleet/violations${year === undefined ? '' : `?year=${year}`}`]}
+          initialEntries={[
+            `/fleet/violations${
+              year === undefined && codes === undefined
+                ? ''
+                : `?${new URLSearchParams({
+                    ...(year === undefined ? {} : { year }),
+                    ...(codes === undefined ? {} : { codes, dcodes: codes }),
+                  }).toString()}`
+            }`,
+          ]}
         >
           <ViolationsPage />
         </MemoryRouter>
@@ -2222,5 +2241,88 @@ describe('every figure on «المخالفات» is in Latin digits — the owne
   it('leaves no Arabic-Indic digit anywhere on the screen', () => {
     const markup = page({ rollup: [BIG_YEAR], drivers: [driverRow()], driverTotal: 1500 });
     expect(markup).not.toMatch(ARABIC_INDIC);
+  });
+});
+
+describe('the car record’s «المخالفات» is what its link opens — the two halves, side by side', () => {
+  // Owner, 2026-11-22 («أيوه صلحها»). The record counts Σ `totalCount` of the rollup on the car's
+  // code (`fleet-vehicle-history-links.spec.tsx`); its link opens this screen on that code for
+  // BOTH halves. This is the other side of that equality, on the same data: what the reader adds
+  // up here must come to the record's figure — the company half's «إجمالي السيارة» lines, which
+  // are its «إجمالي الشركة» lines plus the drivers' own count. It holds only while neither half
+  // narrows by default, so the drivers' question is read back and must carry nothing but the code.
+  const CODE = '200';
+  /** The record test's data: the car's 2026 statement «×3», the old book's 2025 «×1» and a fine. */
+  const ROLLUP = [
+    rollupRow({ vehicleId: V1, code: CODE, year: 2026, vehicleCount: 3, totalCount: 3 }),
+    rollupRow({
+      vehicleId: null,
+      code: CODE,
+      year: 2025,
+      vehicleCount: 1,
+      driverCount: 1,
+      totalCount: 2,
+    }),
+  ];
+  /** The drivers half's rows: the old book's one fine on the code (Σ `driverCount`). */
+  const DRIVERS = [driverRow({ vehicleId: null, vehicleCode: CODE, fromOldBook: true })];
+  /** What the record shows — its own sum over the same rollup. */
+  const RECORD = ROLLUP.reduce((sum, row) => sum + row.totalCount, 0);
+  const linesOf = (markup: string, line: string): number[] =>
+    [...markup.matchAll(new RegExp(`data-line-count="${line}"[^>]*>([^<]*)<`, 'gu'))].map((m) =>
+      Number((m[1] ?? '').replace(/,/gu, '')),
+    );
+  const sum = (values: readonly number[]): number => values.reduce((a, b) => a + b, 0);
+
+  it('adds up to the record’s figure — «إجمالي السيارة» = «إجمالي الشركة» + the drivers’ count', () => {
+    const markup = page({ rollup: ROLLUP, drivers: DRIVERS, codes: CODE });
+    expect(RECORD).toBe(5);
+    // Both of the car's (car, year) lines are drawn, the old book's among them.
+    expect(markup).toContain(`data-rollup-group="${CODE}:2026"`);
+    expect(markup).toContain(`data-rollup-group="${CODE}:2025"`);
+    expect(linesOf(markup, 'total'), '«إجمالي السيارة», line by line').toEqual([3, 2]);
+    expect(sum(linesOf(markup, 'total')), 'the record’s figure').toBe(RECORD);
+    const drivers = Number(countBadgeText(markup, 'data-driver-count-badge'));
+    expect(drivers, 'the drivers’ count is the rollup’s drivers').toBe(
+      sum(ROLLUP.map((row) => row.driverCount)),
+    );
+    expect(sum(linesOf(markup, 'company')) + drivers, '«إجمالي الشركة» + the drivers').toBe(RECORD);
+    // …and the drivers’ fines are not counted twice: they are inside «إجمالي السيارة» already.
+    expect(sum(linesOf(markup, 'total')) + drivers).not.toBe(RECORD);
+  });
+
+  it('asks both halves for the code and nothing else — no year, period or state by default', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    page({ rollup: ROLLUP, drivers: DRIVERS, codes: CODE, client });
+    const keys = client
+      .getQueryCache()
+      .getAll()
+      .map((query) => query.queryKey);
+    // The company half: the one rollup the record asked for, by the code alone.
+    const rollups = keys.filter((key) => key[2] === 'rollup');
+    expect(rollups).toEqual([['fleet', 'violations', 'rollup', { year: '', vehicleCodes: CODE }]]);
+    // The drivers half: one list, on the code, in its default order — no `dyear` (year), `dfrom`
+    // / `dto` (from / to), `dset` (collected), driver, amount, type or vehicle set.
+    const lists = keys
+      .filter((key) => key[2] === 'list')
+      .map((key) => key[3] as Record<string, unknown>)
+      .filter((params) => params.kind === 'driver');
+    expect(lists).toHaveLength(1);
+    expect(Object.keys(lists[0] ?? {}).sort()).toEqual([
+      'kind',
+      'pageSize',
+      'paged',
+      'sort',
+      'sortBy',
+      'sortDir',
+      'vehicleCodes',
+    ]);
+    expect(lists[0]?.vehicleCodes).toBe(CODE);
+    // It is the list seeded above, holding its rows — not a second question the board went off to.
+    const asked = client
+      .getQueryCache()
+      .getAll()
+      .find((query) => query.queryKey[3] === lists[0]);
+    expect(asked?.state.data).toBeDefined();
   });
 });

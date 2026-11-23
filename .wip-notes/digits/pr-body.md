@@ -24,16 +24,18 @@ counts' grammar). His earlier «كل الأرقام عربي ما عدا الف�
    `aiAmount`, `AR_ZERO` and `AR_DECIMAL`; amounts are `grouped()` («( 200,000)», «(81,908)»,
    «(124,139.46)»), serials `String(i + 1)`, dates their plain parts («التاريخ29/ 09 / 2026»,
    «5/10/2026»), the period still joined by the tatweel («01ـ09ـ2026»), and the typed reason is
-   folded with `asciiDigits` («نظير ٢٤ سياره تجديد» prints «24»). The letters never read the UI
+   folded with `asciiDigits` («نظير ٢٤ سياره تجديد» prints «24»), with its decimal and thousands
+   marks between two digits («١٢٫٥» prints «12.5», not «12٫5»). The letters never read the UI
    language, so an English-UI print changes too (intended), and a reprint re-formats the stored
    figure.
 4. **The car record's «المخالفات» counts what its link opens** (§3(a) of the plan). The link opens
    both halves of «مخالفات السيارات» on the car's code (`codes` + `dcodes`); the count is now
    Σ `totalCount` of `useViolationRollup(undefined, [code], …)` → `GET
    /fleet/violations/rollup?vehicleCodes=<code>`, by code with the old-book rows, a statement
-   «×5» counted five and a driver's fine one — the company half's «الإجمالي» lines plus the
-   drivers' badge. It was `useViolations({ vehicleId, pageSize: 1 }).meta.totalItems`: documents by
-   id, so a «×5» read 1 and the old book was missed. Same permission (`fleetViolation.view`); no
+   «×5» counted five and a driver's fine one — the sum of the company half's «إجمالي السيارة»
+   lines, which is its «إجمالي الشركة» lines plus the drivers' badge (each driver's fine is in
+   «إجمالي السيارة» already, so it is never added twice). It was
+   `useViolations({ vehicleId, pageSize: 1 }).meta.totalItems`: documents by id, so a «×5» read 1 and the old book was missed. Same permission (`fleetViolation.view`); no
    API change.
 5. **The record's counts agree with their number** (§3(b)): `fleet.vehicle.count.{odometer,
    maintenance,accidents,violations}` become five forms each through `pluralKey`, the
@@ -44,24 +46,34 @@ counts' grammar). His earlier «كل الأرقام عربي ما عدا الف�
    its one form in all five slots («1 readings» included, as today).
 6. **The catalogue:** every Arabic `fleet.*` value with an Arabic-Indic digit is written in Latin
    (17 values: «اعرض آخر 12 شهر», «فترة بـ 0 كم», «حتى 10 ميجابايت», «0 = لا قاعدة صيانة دورية»,
-   «(من 1 إلى 30)», «أعلى 5 / أقل 5 سيارات», the go-live notice's nine dates and car codes);
+   «(من 1 إلى 30)», «أعلى 5 / أقل 5 سيارات», the go-live notice's ten values — its dates and the two car codes);
    `fleet.licenseImage.zoomLevel` keeps «{{value}}٪» for Operations. No English value changed.
-7. **A module-wide guard**, `fleet-latin-figures.spec.ts` (plan §5.3 (a)-(g)): no shared digit
-   helper (one allowlisted import, ZoomableImage's default, asserted still needed), no `ar-EG`
-   without `-u-nu-latn` beyond five name-only formatters, no locale-default `toLocale*` / `Intl`,
-   no digit or «٫» built from a code point, no Arabic-Indic digit / «٫» / «٬» / «٪» in an Arabic
-   `fleet.*` value (no allowlist but the Operations readout), every `<ZoomableImage>` with
-   `latinFigures`; and (g) proves each rule bites and the shared helpers still give Arabic-Indic.
+7. **A module-wide guard**, `fleet-latin-figures.spec.ts` (plan §5.3 (a)-(g), widened in review
+   with (h) and (i)): no shared digit helper (one allowlisted import, ZoomableImage's default,
+   asserted still needed); no Arabic tag without `-u-nu-latn` (`ar-EG`, `ar-SA`, `ar-u-nu-arab`)
+   beyond five name-only formatters, and no numbering system but `latn`; every digit-writing
+   formatter (`Intl.NumberFormat` / `DateTimeFormat` / `RelativeTimeFormat` / `DurationFormat`,
+   `toLocale…String`) names its tag — a quoted tag, a choice of quoted tags, or a constant bound
+   to one — so never the reader's locale, none, or plain `'ar'`; no digit built from a code point
+   (hex, decimal or another character's); no Arabic-Indic digit / «٫» / «٬» / «٪» in an Arabic
+   `fleet.*` word or in any other word a Fleet source names (no allowlist but the Operations
+   readout); every `<ZoomableImage>` with `latinFigures`; (h) no Arabic-Indic figure written into
+   the code — literal, `\u0660` escape, `0x0660`, HTML entity — but six named lines that read typed
+   input; (i) no shared component that writes the reader's digits (`Pagination`, `ListView`,
+   `FileUploadList`, the `shared/ui` barrel — found by reading `shared/`), the fuel reconcile's
+   picker allowlisted because it unmounts on pick; and (g) proves each rule bites and the shared
+   helpers still give Arabic-Indic. The scans share one reader, `fleet-source-scan.ts`, with the
+   image viewers' spec.
 
 ## ما يجب أن يعرفه صاحب الطلب
 
 1. كل الأرقام في «الحركة» بقت أرقام إنجليزي حتى والسيستم عربي، زي ما قلت «اى ارقام خليها بالانجلش حتى لو عربى»: الأعداد اللي جنب الفلاتر، والتواريخ، وقراءات العداد والكيلومترات، والنسب، والفلوس، وورق الطباعة.
-2. عدد السيارات فوق جدول «السيارات»، والعدد في «التراخيص» و«الإخطارات» بقوا بالأرقام الإنجليزي، زي باقي الشاشات: «السائقون» و«التمامات» و«عدادات السيارات» و«صيانة السيارات» و«إنذارات الصيانة» و«التوكيل» و«خصم الإيصالات» و«مصروفات العهدة».
+2. عدد السيارات فوق جدول «السيارات»، والعدد في «التراخيص» و«الإخطارات» بقوا بالأرقام الإنجليزي، وكمان العدد اللي جنب الفلاتر في «السائقون» و«التمامات» و«عدادات السيارات» و«صيانة السيارات» و«إنذارات الصيانة» و«التوكيل» و«خصم الإيصالات» و«مصروفات العهدة».
 3. ورقة «طباعة التقرير» في سجل السيارة: «تاريخ الانضمام للأسطول» و«انتهاء الترخيص» بقوا بالأرقام الإنجليزي، وكمان تاريخ الرخصة في ورقة طباعة رخصة السواق.
-4. «المخالفات» في سجل السيارة بقت بتعدّ نفس اللي بيفتحه الرابط بالظبط: مخالفات الشركة ومخالفات السواقين على كود السيارة، ومعاهم مخالفات الدفتر القديم اللي على نفس الكود. والبيان اللي عليه «×5» بيتعد 5 مش 1. يعني الرقم بقى = سطور «الإجمالي» في جزء الشركة + عدد جزء السواقين.
+4. «المخالفات» في سجل السيارة بقت بتعدّ نفس اللي بيفتحه الرابط بالظبط: مخالفات الشركة ومخالفات السواقين على كود السيارة، ومعاهم مخالفات الدفتر القديم اللي على نفس الكود. والبيان اللي عليه «×5» بيتعد 5 مش 1. يعني الرقم بقى = مجموع سطور «إجمالي السيارة» في جزء الشركة، وهو نفسه مجموع سطور «إجمالي الشركة» + عدد جزء السواقين (مخالفة السواق محسوبة جوه «إجمالي السيارة» أصلًا، فما تتجمعش مرتين). والرقم الصغير اللي جنب زرار المسح في جزء الشركة بيعدّ السطور (سنة × سيارة) مش المخالفات.
 5. الأعداد في سجل السيارة بقت مظبوطة في العربي: «حادث واحد» و«حادثان» و«3 حوادث» و«11 حادثًا»، و«عملية واحدة» و«3 عمليات» و«14 عملية»، و«قراءة واحدة» و«3 قراءات» و«1,234 قراءة»، و«مخالفتان» و«3 مخالفات». «سجل نظيف» و«سائق نشط» زي ما هما.
 6. شاشة «عدادات السيارات»: العدد اللي جنب الفلاتر اتغير كلامه مع سجل السيارة («قراءة واحدة» و«قراءتان» و«3 قراءات» و«73 قراءة»)، عشان الاتنين يفضلوا يقولوا نفس الكلام.
-7. خطابات العهدة («صرف عهدة» و«استعاضه عهدة» و«تسويه عهدة») بقت بتطبع أرقام إنجليزي، يعني ما بقتش زي أرقام الوورد العربي بتاعتك: «( 200,000)» و«(81,908)» و«التاريخ29/ 09 / 2026». الشَرطة الطويلة بين أجزاء تاريخ الفترة («01ـ09ـ2026») زي ما هي. ولو كتبت السبب بأرقام عربي زي «نظير ٢٤ سياره تجديد» هيطلع في الخطاب «24».
+7. خطابات العهدة («صرف عهدة» و«استعاضه عهدة» و«تسويه عهدة») بقت بتطبع أرقام إنجليزي، يعني ما بقتش زي أرقام الوورد العربي بتاعتك: «( 200,000)» و«(81,908)» و«التاريخ29/ 09 / 2026». الشَرطة الطويلة بين أجزاء تاريخ الفترة («01ـ09ـ2026») زي ما هي. ولو كتبت السبب بأرقام عربي زي «نظير ٢٤ سياره تجديد» هيطلع في الخطاب «24»، ولو كتبت «١٢٫٥» هتطلع «12.5».
 8. الخطابات دي هتطلع بالأرقام الإنجليزي حتى لو الشاشة إنجليزي، ولو طبعت خطاب لعملية قديمة هيطلع هو كمان بالأرقام الإنجليزي.
 9. ملفات الإكسل: التواريخ اللي بتنزل كلام في الإكسل بقت أرقام إنجليزي بنفس الترتيب، اليوم الأول ثم الشهر ثم السنة («07/11/2026»). الخانات اللي فيها أرقام فضلت أرقام زي ما هي.
 10. خانات اختيار التاريخ اللي بيفتحها المتصفح بتكتب الأرقام على حسب لغة المتصفح نفسه، ودي مش في إيدينا.
@@ -74,8 +86,9 @@ counts' grammar). His earlier «كل الأرقام عربي ما عدا الف�
 
 - Type: feat (Fleet), the owner's digits answers of 22-23 November, Fleet only.
 - New: `apps/web/src/modules/fleet/lib/fleet-figures.ts` (+ `lib/fleet-figures.spec.ts`); the
-  guard `fleet-latin-figures.spec.ts`; `fleet-register-figures.spec.ts`,
-  `fleet-workshop-figures.spec.tsx`; the API contract spec
+  guard `fleet-latin-figures.spec.ts` and the module source reader it shares with the image
+  viewers' spec, `fleet-source-scan.ts` (not a spec, like `roster-spec-sources.ts`);
+  `fleet-register-figures.spec.ts`, `fleet-workshop-figures.spec.tsx`; the API contract spec
   `apps/api/tests/integration/fleet-vehicle-violation-count.spec.ts`.
 - Web, the figures (call-site swaps `formatNumber(x, locale)` → `latinNumber(x)`,
   `formatDate(x, locale)` → `latinDate(x, locale)`): pages `VehiclesListPage`, `LicensingPage`,
@@ -126,7 +139,10 @@ counts' grammar). His earlier «كل الأرقام عربي ما عدا الف�
 - [x] Tests: unit for rules, integration for endpoints (happy + authZ + validation) — the figures
       module, the guard, the letters and the count forms are unit-tested; the record's count is
       pinned against the API in `fleet-vehicle-violation-count.spec.ts` (rollup 7 = statements 5 +
-      drivers 2, the old figure 2; soft-deleted, neighbouring and `2000`/`20` old-book rows excluded).
+      drivers 2, the old figure 2; soft-deleted, neighbouring and `2000`/`20` old-book rows excluded),
+      and on the screen in `fleet-violations-split.spec.tsx`: the link's board, on the record's
+      data, adds up to the record's figure («إجمالي السيارة» = «إجمالي الشركة» + the drivers'
+      count) and asks the drivers half for the code alone.
 - [x] ar + en translations; RTL-safe layout — Arabic-only value edits; the plural forms in both
       languages; dates keep `ar-EG`'s RLM marks and no `latinDate` sits in an LTR span; formal
       Arabic check green.
@@ -182,9 +198,15 @@ Arabic-Indic money, untouched), `formal-arabic.spec.ts` and the guard pass.
   check (`latinNumber` already gives «—»); `AttendancePage` and `RecordOdometerDialog` lose their
   now-unused `locale` / `useAppSelector` (lint); `formal-arabic.spec.ts` gets a comment-only fix
   (outside Fleet, from the P5 hand-off); four Fleet comments that quoted the screen in
-  Arabic-Indic now quote it in Latin, and one spec title («اعرض آخر 12 شهر»).
-- **Known limit, unchanged:** the letter's typed reason folds digits only, so «٢٤٫٥» would print
-  «24٫5»; typed notes elsewhere show as typed.
+  Arabic-Indic now quote it in Latin, and one spec title («اعرض آخر 12 شهر»). From the review:
+  the guard gains rules (h) and (i) and wider (b), (c), (d) and (e) than §5.3; the letter's typed
+  reason also folds «٫» / «٬» between two digits (P5's optional fold, two regex lines named in
+  rule (h)); the image viewers' spec and the guard read tags through one shared reader; and the
+  «المخالفات» arithmetic is written with the board's own labels («إجمالي السيارة» = «إجمالي
+  الشركة» + the drivers' count) — the first draft said «الإجمالي» plus the drivers, which counted
+  a driver's fine twice.
+- **Typed text:** the letter's typed reason folds its digits and the «٫» / «٬» between two of
+  them («٢٤٫٥» prints «24.5»); typed notes elsewhere show as typed.
 - **prettier**: a few touched files (`VehiclesListPage`, `AttendancePage`, `VehicleLicenseImage`,
   `lib/image-zoom.ts`, `CompanyViolationsPanel`, `CompanyViolationsDetailLayer` and some specs)
   were already not prettier-clean at the base in lines this PR does not touch; only the new hunks

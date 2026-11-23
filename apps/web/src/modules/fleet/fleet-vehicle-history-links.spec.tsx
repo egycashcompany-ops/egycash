@@ -447,10 +447,10 @@ describe('«المخالفات» counts exactly what its link opens — both hal
   // Owner, 2026-11-22 («أيوه صلحها»). The link opens `/fleet/violations?codes=<code>&dcodes=<code>`:
   // the company half draws the rollup for the code (`GET /fleet/violations/rollup?vehicleCodes=`),
   // the drivers half lists the code's fines, and both match the old book's rows kept under the
-  // code with no car attached. The rollup's `totalCount` is the company lines' «الإجمالي» — the
-  // statement rows by their «×N» plus the drivers' fines — so its sum over the car's (car, year)
-  // lines is what the two halves show. The row used to count the LIST by id: documents, not fines,
-  // and none of the old book's.
+  // code with no car attached. The rollup's `totalCount` is the company half's «إجمالي السيارة»
+  // line — the statement rows by their «×N» («إجمالي الشركة») plus the drivers' fines — so its sum
+  // over the car's (car, year) lines is what the two halves show. The row used to count the LIST
+  // by id: documents, not fines, and none of the old book's.
   it('sums the rollup the link’s halves draw — the old book’s line included', () => {
     const markup = drawProfile(vehicleWith('200'), (qc) => {
       qc.setQueryData(rollupKey('200'), [

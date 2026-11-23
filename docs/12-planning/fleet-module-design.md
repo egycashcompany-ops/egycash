@@ -741,11 +741,20 @@ every other module keeps the shared helpers' digits.
   money helpers reads unambiguously. The shared helpers are not changed. Money keeps
   `formatMoney*` (already Latin); `translate()` writes a raw number in Latin.
 - **The guard:** `modules/fleet/fleet-latin-figures.spec.ts` reads every non-spec Fleet source,
-  comments stripped, and the Arabic `fleet.*` catalogue, and refuses (a) a shared digit helper,
-  (b) an `ar-EG` without `-u-nu-latn`, (c) formatting on the reader's locale or on none, (d) a digit
-  or «٫» built from its code point, (e) an Arabic-Indic digit, «٫», «٬» or «٪» in an Arabic
-  `fleet.*` value, and (f) an image viewer without `latinFigures`; (g) proves each rule bites and
-  that the shared helpers still write Arabic-Indic digits for the other modules.
+  comments stripped, the Arabic catalogue and `shared/`, and refuses (a) a shared digit helper,
+  (b) any Arabic tag without `-u-nu-latn` (`ar-EG`, `ar-SA`, `ar-u-nu-arab`) or a numbering system
+  other than `latn`, (c) a digit-writing formatter (`Intl.NumberFormat`, `DateTimeFormat`,
+  `RelativeTimeFormat`, `DurationFormat`, `toLocale…String`) whose tag is not a quoted tag, a
+  choice between quoted tags or a constant the file binds to one — so never the reader's locale,
+  none, or plain `'ar'`, (d) a digit built from its code point, (e) an Arabic-Indic digit, «٫»,
+  «٬» or «٪» in an Arabic `fleet.*` word or in any other word a Fleet source names, (f) an image
+  viewer without `latinFigures`, (h) an Arabic-Indic digit or mark written into the code (a
+  literal, a `\u0660` escape, a `0x0660` code point, an HTML entity) outside the lines that read
+  typed input, and (i) a shared component that writes the reader's digits (`Pagination`,
+  `ListView`, `FileUploadList` and the barrel that re-exports them — found by reading `shared/`
+  with rules (a) and (b)); (g) proves each rule bites and that the shared helpers still write
+  Arabic-Indic digits for the other modules. The scans share one reader,
+  `modules/fleet/fleet-source-scan.ts`, with the image viewers' spec.
 - **The exceptions, each named in the guard:**
   - `ZoomableImage`'s default readout — the shared `formatNumber` with
     `fleet.licenseImage.zoomLevel` «{{value}}٪» — is Operations' shipment receipt viewer and stays
@@ -755,7 +764,13 @@ every other module keeps the shared helpers' digits.
     dashboard blocks, the two dashboard charts, the roster's weekday, the custody memo's
     `monthOfDay`): a name has no digit, and the year beside it is Latin.
   - Identifiers (car codes, plates, employee codes, phones, card numbers) were Latin already, and
-    typed text shows as typed; only the custody letter's typed reason is folded (`asciiDigits`).
+    typed text shows as typed; only the custody letter's typed reason is folded (`asciiDigits`,
+    and «٫» / «٬» between two digits, so «١٢٫٥» prints «12.5»).
+  - The six code lines that READ a typed Arabic-Indic figure — the notice setup's fold, the plate's
+    own digits in the notice render, the letter's two typed marks — named word for word in rule (h).
+  - The fuel reconcile's file picker (`shared/ui/FileUpload`): its list of picked files writes
+    `ar-EG` sizes, but the card unmounts the picker the moment a file is picked and writes the
+    chosen file's size itself, in Latin.
   - The numeric cells of every Excel file stay numbers; its date columns are text cells and follow
     the screens.
   - The browser's own date boxes (`<input type="date">`) show the digits of the browser's language.

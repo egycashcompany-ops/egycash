@@ -320,7 +320,7 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
  * `GET /fleet/violations/rollup?vehicleCodes=<code>`, by CODE, old-book rows with no car included
  * — summed as the boards count it: a statement «×5» is five, a driver's fine one
  * (`totalCount = vehicleCount + driverCount`). The list's `totalItems` by id counted documents
- * and missed the old book: one statement «×5» read 1 above a board whose «الإجمالي» says 5.
+ * and missed the old book: one statement «×5» read 1 above a board whose «إجمالي السيارة» says 5.
  */
 const useHistoryCounts = (
   vehicleCode: string,

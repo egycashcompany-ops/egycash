@@ -176,11 +176,21 @@ const tableSheets = (
 
 const LEADING_REASON = new RegExp(`^${REASON_LEAD}\\s*`, 'u');
 
+/** The Arabic decimal mark typed between two digits («١٢٫٥») — it prints «.» («12.5»). */
+const TYPED_DECIMAL_MARK = /(?<=\d)٫(?=\d)/gu;
+/** The Arabic thousands mark typed between two digits («١٬٢٠٠») — it prints «,» («1,200»). */
+const TYPED_THOUSANDS_MARK = /(?<=\d)٬(?=\d)/gu;
+
 /**
  * The typed reason as the letter prints it: trimmed, a leading «نظير» dropped, any Arabic-Indic or
- * Persian digit he typed folded to Latin («٢٤» prints «24»).
+ * Persian digit he typed folded to Latin («٢٤» prints «24»), and the Arabic decimal and thousands
+ * marks between two of those digits with them, so a typed figure never prints half Arabic
+ * («١٢٫٥» prints «12.5», not «12٫5»). A mark that is not inside a figure is his text and stays.
  */
-const reasonOf = (reason: string): string => asciiDigits(reason.trim().replace(LEADING_REASON, ''));
+const reasonOf = (reason: string): string =>
+  asciiDigits(reason.trim().replace(LEADING_REASON, ''))
+    .replace(TYPED_DECIMAL_MARK, '.')
+    .replace(TYPED_THOUSANDS_MARK, ',');
 
 /**
  * «صرف عهدة»'s request as plain text — what the charge dialog shows under «نص الخطاب», and the

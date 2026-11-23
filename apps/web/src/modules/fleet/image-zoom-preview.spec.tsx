@@ -8,8 +8,8 @@
 // exist, that they say what they do in both catalogues, and that all THREE previews — the car's,
 // the driver's, and the file a driver is being enrolled with — got the same surface in the same
 // widened frame. A zoom on one of the three is the defect wearing a smaller hat.
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -20,6 +20,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { ZoomableImage } from './components/ZoomableImage';
+import { OPTS_IN_LATIN, fleetSources, zoomableTags } from './fleet-source-scan';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (path: string): string => readFileSync(join(HERE, path), 'utf8');
@@ -83,7 +84,9 @@ describe('the zoom surface', () => {
     // (`latinFigures`, below) precisely so that this stays as it was.
     expect(markup).toContain('١٠٠٪');
     expect(render('en'), 'and the English one says 100%').toContain('100%');
-    expect(markup, 'the transform is the identity at fit').toContain('translate(0px, 0px) scale(1)');
+    expect(markup, 'the transform is the identity at fit').toContain(
+      'translate(0px, 0px) scale(1)',
+    );
   });
 
   it('reads «100%» in Fleet — Latin in Arabic too, with the Latin percent sign', () => {
@@ -172,7 +175,10 @@ describe('all three previews were fixed, not one', () => {
   });
 
   it('leaves no plain 60vh <img> preview behind', () => {
-    for (const [name, source] of [['vehicle', VEHICLE], ['driver', DRIVER]] as const) {
+    for (const [name, source] of [
+      ['vehicle', VEHICLE],
+      ['driver', DRIVER],
+    ] as const) {
       expect(source, `${name}: the old fixed-height preview is gone`).not.toContain('max-h-[60vh]');
     }
   });
@@ -190,27 +196,27 @@ describe('all three previews were fixed, not one', () => {
 });
 
 describe('every Fleet viewer opts in to Latin figures, and Operations does not', () => {
-  /** Every non-spec .ts/.tsx under `modules/fleet`, relative to it. */
-  const fleetSources = (dir: string = HERE): string[] =>
-    readdirSync(dir).flatMap((name) => {
-      const path = join(dir, name);
-      if (statSync(path).isDirectory()) return fleetSources(path);
-      return /\.tsx?$/.test(name) && !/\.spec\.tsx?$/.test(name) ? [relative(HERE, path)] : [];
-    });
-  /** Each `<ZoomableImage … />` tag in a source, whole — props may wrap onto several lines. */
-  const tags = (source: string): string[] =>
-    source
-      .split('<ZoomableImage')
-      .slice(1)
-      .map((rest) => rest.slice(0, rest.indexOf('/>')));
-  const LATIN = /(^|\s)latinFigures(\s|$|=\{true\})/;
+  // The module's one source reader (`fleet-source-scan`), shared with the Latin figures guard: a
+  // tag runs to its first `>` outside `{…}`, so a prop holding an arrow function or an element
+  // (`fallback={<Icon />}`) neither ends it early nor lets it read the next tag's props.
+  const sites = fleetSources().flatMap((file) =>
+    zoomableTags(code(file)).map((tag) => ({ file, tag })),
+  );
 
-  const sites = fleetSources().flatMap((file) => tags(code(file)).map((tag) => ({ file, tag })));
+  it('reads a tag whole, however its props are written', () => {
+    const [first, second] = zoomableTags(
+      '<ZoomableImage src={url} fallback={<Icon />} onLoad={() => a > b} latinFigures />\n' +
+        '<ZoomableImage src={other} />',
+    );
+    expect(first).toContain('latinFigures');
+    expect(first).toMatch(OPTS_IN_LATIN);
+    expect(second, 'the next tag keeps its own props').not.toMatch(OPTS_IN_LATIN);
+  });
 
   it('finds the nine Fleet hosts', () => {
     // Not a ceiling — a new host is welcome — but the ones the owner sees today must all be here,
     // or the scan below would pass by finding nothing.
-    const files = sites.map((site) => site.file.replace(/\\/g, '/'));
+    const files = sites.map((site) => site.file);
     for (const file of [
       'components/NoticeImageCell.tsx',
       'components/ReceiptImageCell.tsx',
@@ -229,12 +235,12 @@ describe('every Fleet viewer opts in to Latin figures, and Operations does not',
 
   it('every <ZoomableImage in Fleet passes latinFigures', () => {
     for (const { file, tag } of sites) {
-      expect(tag, `${file}: <ZoomableImage${tag}/>`).toMatch(LATIN);
+      expect(tag, `${file}: <ZoomableImage${tag}>`).toMatch(OPTS_IN_LATIN);
     }
   });
 
   it('Operations keeps the default — its shipment receipt still reads «١٠٠٪»', () => {
-    const operations = tags(code('../operations/components/ShipmentReceiptImageCell.tsx'));
+    const operations = zoomableTags(code('../operations/components/ShipmentReceiptImageCell.tsx'));
     expect(operations).toHaveLength(1);
     expect(operations[0]).not.toContain('latinFigures');
   });

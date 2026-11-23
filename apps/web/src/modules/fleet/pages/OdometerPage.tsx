@@ -42,7 +42,8 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
-import { formatDate, formatNumber } from '../../../shared/lib/format';
+import { pluralKey } from '../../../shared/lib/plural';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { useDeleteOdometer, useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
 import { cn } from '../../../shared/lib/cn';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
@@ -121,9 +122,11 @@ const DEFAULT_SORT = 'date:desc';
 
 /**
  * «تحسين شكل البيانات فى جداول العدادات»: a figure in the table as the vehicles and drivers boards
- * write one — Latin digits grouped with a comma, «150,250», never the Arabic-Indic «١٥٠٬٢٥٠» whose
+ * write one — Latin digits grouped with a comma, «150,250», never the Arabic-Indic digits whose
  * light separator reads as one long number. A counter is read against the car's own dial, which
- * is written in Latin digits. The count over the table and the dialogs keep `formatNumber`.
+ * is written in Latin digits. The count over the table, the dialogs and the Excel dates are Latin
+ * too, through `lib/fleet-figures` — every figure in Fleet, in Arabic as in English (owner,
+ * 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى»).
  */
 const LATIN = new Intl.NumberFormat('en-US');
 
@@ -418,7 +421,7 @@ export const OdometerPage = (): JSX.Element => {
           newestOf,
         );
         return [
-          formatDate(log.date, locale),
+          latinDate(log.date, locale),
           log.vehicleCode ?? '',
           personCell(log.driver1EmployeeId, log.driver1Name, names),
           personCell(log.driver2EmployeeId, log.driver2Name, names),
@@ -754,7 +757,9 @@ export const OdometerPage = (): JSX.Element => {
         <div className="flex items-center justify-between gap-2" data-odometer-toolbar="true">
           {/* How many readings the filter matched, over the WHOLE set — `totalItems`, not the
               page's length, so turning a page never moves it. Nothing is written while the answer
-              is in flight: a 0 there would be a claim. */}
+              is in flight: a 0 there would be a claim. Said in the vehicle profile's own words for
+              its «العدادات» row — Arabic's five forms («قراءة واحدة · قراءتان · 3 قراءات ·
+              11 قراءة»), Latin digits — so the two read the same number the same way. */}
           <span
             role="status"
             data-filtered-count
@@ -763,8 +768,8 @@ export const OdometerPage = (): JSX.Element => {
           >
             {data?.meta.totalItems === undefined
               ? ''
-              : t('fleet.vehicle.count.odometer', {
-                  count: formatNumber(data.meta.totalItems, locale),
+              : t(pluralKey('fleet.vehicle.count.odometer', locale, data.meta.totalItems), {
+                  count: latinNumber(data.meta.totalItems),
                 })}
           </span>
           {/* The distance those rows record, and the closed rows left out of it — the server's
@@ -1074,9 +1079,8 @@ export const OdometerPage = (): JSX.Element => {
             <p className="font-medium text-slate-800 dark:text-slate-100">
               {t('fleet.odometer.deleteWhich', {
                 code: deleting.vehicleCode ?? '—',
-                date: formatDate(deleting.date, locale),
-                reading:
-                  deleting.outReading === null ? '—' : formatNumber(deleting.outReading, locale),
+                date: latinDate(deleting.date, locale),
+                reading: latinNumber(deleting.outReading),
               })}
             </p>
             <p>{t('fleet.odometer.deleteBody')}</p>

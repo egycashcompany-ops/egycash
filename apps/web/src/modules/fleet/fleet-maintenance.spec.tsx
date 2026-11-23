@@ -365,6 +365,19 @@ describe('the maintenance table', () => {
     );
   });
 
+  it('says how many visits the filter matched in Latin digits — the whole set, not the page', () => {
+    // Every figure in Fleet in Latin digits, in Arabic too (owner, 2026-11-23: «اى ارقام خليها
+    // بالانجلش حتى لو عربى») — «1,234 نتيجة», never the Arabic-Indic spelling.
+    const qc = client([visit()], {}, { totalItems: 1234, totalPages: 50 });
+    const html = render({ qc });
+    const at = html.lastIndexOf('<span', html.indexOf('data-filtered-count'));
+    const span = html.slice(at, html.indexOf('</span>', at));
+    expect(span.slice(span.lastIndexOf('>') + 1)).toBe(
+      translate('ar', 'common.list.count', { count: '1,234' }),
+    );
+    expect(span, 'no Arabic-Indic digit').not.toMatch(/[٠-٩]/u);
+  });
+
   it('drops «المستوى» and «آخر صيانة» — the level is the alarms board’s subject, not a visit’s', () => {
     // Requested straight off a screenshot of the two columns. A row here is a VISIT and one car
     // has several, so the level repeated down the column said the same thing several times; the
@@ -1154,7 +1167,14 @@ describe('the check-out dialog', () => {
   });
 
   it('shows the reading the car came in on, so the operator can see what it must exceed', () => {
-    expect(open()).toContain('١٢٠٬٠٠٠');
+    // In Latin digits, in Arabic too — every figure in Fleet (owner, 2026-11-23: «اى ارقام خليها
+    // بالانجلش حتى لو عربى»).
+    const markup = open();
+    expect(markup).toContain(
+      translate('ar', 'fleet.maintenance.exitOdometerHint', { km: '120,000' }),
+    );
+    expect(markup).toContain('دخلت على 120,000 كم');
+    expect(markup, 'not in Arabic-Indic digits').not.toContain('١٢٠٬٠٠٠');
   });
 
   it('opens the exit reading ON the reading the car came in on', () => {

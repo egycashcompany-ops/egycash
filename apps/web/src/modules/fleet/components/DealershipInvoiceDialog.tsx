@@ -23,7 +23,7 @@ import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
 import { CloseIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatDate } from '../../../shared/lib/format';
+import { latinDate } from '../lib/fleet-figures';
 import { cn } from '../../../shared/lib/cn';
 import { BoardIcon, NUM, PATH } from './FuelCardBoard';
 import { FILTER_ICON } from './FilterWithIcon';
@@ -243,7 +243,7 @@ export const DealershipInvoiceDialog = ({
               <Fact
                 icon={PATH.calendar}
                 label={t('fleet.dealership.columns.outDate')}
-                value={formatDate(row.outDate, locale)}
+                value={latinDate(row.outDate, locale)}
                 valueClass={NUM}
               />
               {/* «علامه ملاكى … فوق كود السياره»: the tick sits on the car code's own label line,

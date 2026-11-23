@@ -41,7 +41,8 @@ import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EyeIcon, PrinterIcon, WrenchIcon } from '../../../shared/ui/icons';
-import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
+import { localized } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import { useBranchNames } from '../../organization/shared/references';
@@ -447,11 +448,11 @@ export const VehiclesListPage = (): JSX.Element => {
           { label: t('fleet.vehicles.columns.motor'), value: vehicle.motorNumber },
           {
             label: t('fleet.vehicles.columns.joinedAt'),
-            value: formatDate(vehicle.joinedAt, locale),
+            value: latinDate(vehicle.joinedAt, locale),
           },
           {
             label: t('fleet.vehicles.columns.license'),
-            value: formatDate(vehicle.licenseExpiresAt, locale),
+            value: latinDate(vehicle.licenseExpiresAt, locale),
           },
           {
             label: t('fleet.vehicles.columns.licenseClass'),
@@ -546,8 +547,8 @@ export const VehiclesListPage = (): JSX.Element => {
         v.plateNumber,
         v.chassisNumber,
         v.motorNumber,
-        formatDate(v.joinedAt, locale),
-        formatDate(v.licenseExpiresAt, locale),
+        latinDate(v.joinedAt, locale),
+        latinDate(v.licenseExpiresAt, locale),
         (v.licenseClassId === null ? undefined : licenseClassName.get(v.licenseClassId)) ?? '',
         (v.branchId === null ? undefined : branchName.get(v.branchId)) ?? '',
         (v.operationId === null ? undefined : operationName.get(v.operationId)) ?? '',
@@ -850,7 +851,7 @@ export const VehiclesListPage = (): JSX.Element => {
           >
             {data === undefined
               ? ''
-              : t('fleet.vehicles.count', { count: formatNumber(data.meta.totalItems, locale) })}
+              : t('fleet.vehicles.count', { count: latinNumber(data.meta.totalItems) })}
           </span>
           {sortChosen && (
             <button
@@ -1390,7 +1391,7 @@ export const DARK_TABLE = cn(
   '[&_th]:!px-1.5 [&_th]:!whitespace-normal [&_th]:!leading-tight [&_th]:!text-[13px] [&_th]:!font-bold [&_td]:!px-1.5 [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-sm [&_td]:!font-semibold',
   '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
   // …a row's action icons only. The empty and error states are drawn in one cell across the row;
-  // their buttons («إعادة المحاولة», «اعرض آخر ١٢ شهر») keep their own size and their words wrap.
+  // their buttons («إعادة المحاولة», «اعرض آخر 12 شهر») keep their own size and their words wrap.
   '[&_td[colspan]_button]:!h-auto [&_td[colspan]_button]:!w-auto [&_td[colspan]]:!whitespace-normal',
   // «لما عملت المتصفح على 110 ف الميه الداتا ظاهره احسن»: a wide screen takes the type a size up,
   // from where the whole table still fits beside the menu.

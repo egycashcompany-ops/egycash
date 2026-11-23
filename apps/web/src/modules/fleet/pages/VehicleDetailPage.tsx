@@ -15,7 +15,8 @@ import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
-import { formatDate, localized } from '../../../shared/lib/format';
+import { localized } from '../../../shared/lib/format';
+import { pluralKey } from '../../../shared/lib/plural';
 import { cn } from '../../../shared/lib/cn';
 import { useBranchNames } from '../../organization/shared/references';
 import {
@@ -29,7 +30,7 @@ import {
   useOdometerLogs,
   useVehicle,
   useVehicleTypes,
-  useViolations,
+  useViolationRollup,
 } from '../api/fleet-queries';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -54,6 +55,7 @@ import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { LicenseImagePreviewDialog } from '../components/VehicleLicenseImage';
 import { WHOLE_HISTORY } from '../lib/odometer-range';
+import { latinDate, latinDateTime, latinNumber } from '../lib/fleet-figures';
 
 /**
  * The profile's history links, lit per slice as each page ships (owner navigation rule). Each
@@ -129,36 +131,15 @@ const LICENCE_TAG_TONE: Record<keyof typeof LICENCE_STATE_KEY, string> = {
   valid: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
 };
 
-/**
- * The page's figures and dates in Latin digits — the whole page body, consistently.
- *
- * Owner, 2026-11-22 («صلحهم»): the car page wrote its kilometres «٥٠٬٠٠٠» and its dates
- * «١٠‏/٠٨‏/٢٠٢٦» (the shared `formatNumber` / `formatDate` speak ar-EG), while the vehicles list
- * beside it and the rest of the system write their figures in Latin digits. Page-local on purpose:
- * the shared helpers keep their other readers. Dates keep `formatDate`'s and `formatDateTime`'s
- * styles and the browser's clock, as they had — only the digits change (`-u-nu-latn`); a missing
- * or unreadable date is «—», as theirs is. The printed sheet (`printReport`) is not the page body
- * and keeps the shared `formatDate`, as the registry's own print does.
- */
-const LATIN_NUMBER = new Intl.NumberFormat('en-US');
-const latinNumber = (value: number | null): string =>
-  value === null ? '—' : LATIN_NUMBER.format(value);
-const LATIN_DATE: Record<Locale, Intl.DateTimeFormat> = {
-  ar: new Intl.DateTimeFormat('ar-EG-u-nu-latn', { dateStyle: 'medium' }),
-  en: new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }),
-};
-const LATIN_DATE_TIME: Record<Locale, Intl.DateTimeFormat> = {
-  ar: new Intl.DateTimeFormat('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' }),
-  en: new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }),
-};
-const latinWhen = (format: Intl.DateTimeFormat, value: string | null): string => {
-  const date = value === null ? null : new Date(value);
-  return date === null || Number.isNaN(date.getTime()) ? '—' : format.format(date);
-};
-const latinDate = (value: string | null, locale: Locale): string =>
-  latinWhen(LATIN_DATE[locale], value);
-const latinDateTime = (value: string | null, locale: Locale): string =>
-  latinWhen(LATIN_DATE_TIME[locale], value);
+// The page's figures and dates in Latin digits — the body AND its print sheet, consistently.
+//
+// Owner, 2026-11-22 («صلحهم») put the car page's body in Latin; 2026-11-23 («اى ارقام خليها
+// بالانجلش حتى لو عربى» / «انا عاوزك تعدل حاجات الحركة فقط») made it the rule for every figure in
+// Fleet, so «طباعة التقرير» (`printReport`) now writes its two dates in Latin too, and the history
+// rows' counts read «3 حوادث», «14 عملية». The helpers are Fleet's own (`lib/fleet-figures`): the
+// shared `formatNumber` / `formatDate` keep ar-EG for every other module. Dates keep the shared
+// styles and the browser's clock — only the digits change (`-u-nu-latn`); a missing or unreadable
+// date is «—», as the shared one is.
 
 export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
   const t = useT();
@@ -333,13 +314,18 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
  * registry after the book import would promise fewer readings, visits or accidents than
  * «العدادات», «الصيانة» or «الحوادث» then lists (2 beside the screen's 3) — and a car whose only
  * accident is an old-book file read «سجل نظيف» above a list holding it (owner, 2026-11-22).
+ *
+ * «المخالفات» (owner, 2026-11-22: «أيوه صلحها»): its link opens BOTH halves of the violations
+ * screen on the car's code (`codes` + `dcodes`), so the count is the rollup those halves draw —
+ * `GET /fleet/violations/rollup?vehicleCodes=<code>`, by CODE, old-book rows with no car included
+ * — summed as the boards count it: a statement «×5» is five, a driver's fine one
+ * (`totalCount = vehicleCount + driverCount`). The list's `totalItems` by id counted documents
+ * and missed the old book: one statement «×5» read 1 above a board whose «إجمالي السيارة» says 5.
  */
 const useHistoryCounts = (
-  vehicleId: string,
   vehicleCode: string,
   can: (permission: string) => boolean,
 ): Partial<Record<(typeof HISTORY_LINKS)[number]['key'], number>> => {
-  const one = { vehicleId, page: 1, pageSize: 1 };
   const odometer = useOdometerLogs(
     { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
     can('fleetOdometer.view') && vehicleCode !== '',
@@ -352,12 +338,19 @@ const useHistoryCounts = (
     { vehicleCodes: [vehicleCode], page: 1, pageSize: 1 },
     can('fleetAccident.view') && vehicleCode !== '',
   );
-  const violations = useViolations(one, can('fleetViolation.view') && vehicleId !== '');
+  // The rollup's key is built from strings, so a fresh `[vehicleCode]` each render asks nothing new.
+  const violations = useViolationRollup(
+    undefined,
+    [vehicleCode],
+    can('fleetViolation.view') && vehicleCode !== '',
+  );
   return {
     ...(odometer.data === undefined ? {} : { odometer: odometer.data.meta.totalItems }),
     ...(maintenance.data === undefined ? {} : { maintenance: maintenance.data.meta.totalItems }),
     ...(accidents.data === undefined ? {} : { accidents: accidents.data.meta.totalItems }),
-    ...(violations.data === undefined ? {} : { violations: violations.data.meta.totalItems }),
+    ...(violations.data === undefined
+      ? {}
+      : { violations: violations.data.reduce((sum, row) => sum + row.totalCount, 0) }),
   };
 };
 
@@ -368,7 +361,7 @@ export const VehicleDetailPage = (): JSX.Element => {
   const { id = '' } = useParams();
 
   const { data: vehicle, isPending, isError, error, refetch } = useVehicle(id);
-  const counts = useHistoryCounts(vehicle?.id ?? '', vehicle?.code ?? '', can);
+  const counts = useHistoryCounts(vehicle?.code ?? '', can);
   // «تعيين السيارات — سائق نشط»: today's roster, when the reader may read it.
   const today = (() => {
     const now = new Date();
@@ -455,8 +448,12 @@ export const VehicleDetailPage = (): JSX.Element => {
           'border-emerald-500/20 bg-emerald-500/10 font-medium text-emerald-600 dark:text-emerald-400',
       };
     }
-    // Grouped like every other figure on the page («1,234 قراءة»), in Latin digits.
-    return { tag: t(`fleet.vehicle.count.${key}`, { count: latinNumber(n) }) };
+    // Grouped like every other figure on the page, in Latin digits, and in the form Arabic gives
+    // the noun for that count (owner, 2026-11-22: «اه») — «حادث واحد · حادثان · 3 حوادث · 11 حادثًا
+    // · 100 حادث», «1,234 قراءة». English keeps its one form.
+    return {
+      tag: t(pluralKey(`fleet.vehicle.count.${key}`, locale, n), { count: latinNumber(n) }),
+    };
   };
   const make = type === undefined ? '—' : localized(type.name, locale);
   /** «طباعة التقرير»: the car's whole file, the same sheet the registry's print button opens. */
@@ -474,11 +471,11 @@ export const VehicleDetailPage = (): JSX.Element => {
           { label: t('fleet.vehicles.columns.motor'), value: vehicle.motorNumber },
           {
             label: t('fleet.vehicles.columns.joinedAt'),
-            value: formatDate(vehicle.joinedAt, locale),
+            value: latinDate(vehicle.joinedAt, locale),
           },
           {
             label: t('fleet.vehicles.columns.license'),
-            value: formatDate(vehicle.licenseExpiresAt, locale),
+            value: latinDate(vehicle.licenseExpiresAt, locale),
           },
           { label: t('fleet.vehicles.columns.licenseClass'), value: licenseClassName ?? '—' },
           { label: t('fleet.vehicles.columns.operation'), value: operationName ?? '—' },

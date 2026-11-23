@@ -11,7 +11,8 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
-import { formatDate, localized } from '../../../shared/lib/format';
+import { localized } from '../../../shared/lib/format';
+import { latinDate } from '../lib/fleet-figures';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import * as api from '../api/vehicle-contract-api';
@@ -66,8 +67,8 @@ export const VehicleContractsExport = ({
   const cells = (row: FleetVehicleContractDto) =>
     [
       words.contractName(row).text,
-      formatDate(row.date, locale),
-      row.deadline === null ? '' : formatDate(row.deadline, locale),
+      latinDate(row.date, locale),
+      row.deadline === null ? '' : latinDate(row.deadline, locale),
       row.supplier,
       makesText(row),
       row.contracted,

@@ -12,9 +12,8 @@
 // the drivers board draws one (badge, name, code under it), an empty cell a grey dash.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetDriverUnavailabilityDto, type Locale } from '@ecms/contracts';
+import { type FleetDriverUnavailabilityDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
@@ -28,7 +27,7 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
 import { cn } from '../../../shared/lib/cn';
-import { formatNumber } from '../../../shared/lib/format';
+import { latinNumber } from '../lib/fleet-figures';
 import { useCancelUnavailability, useUnavailability } from '../api/fleet-queries';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
@@ -81,7 +80,6 @@ const ADD_BUTTON =
 export const AttendancePage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
@@ -220,7 +218,7 @@ export const AttendancePage = (): JSX.Element => {
           >
             {data === undefined
               ? ''
-              : t('common.list.count', { count: formatNumber(data.meta.totalItems, locale) })}
+              : t('common.list.count', { count: latinNumber(data.meta.totalItems) })}
           </span>
           <span className="flex shrink-0 items-center gap-1 sm:gap-2">
             <Can permission="fleetAvailability.record">

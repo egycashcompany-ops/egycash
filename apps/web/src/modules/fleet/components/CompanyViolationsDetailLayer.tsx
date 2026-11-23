@@ -35,7 +35,8 @@ import { ACTION_GROUP, PRESSED, actionTone } from './row-actions-look';
 import { SquarePenIcon, Trash2Icon } from './row-action-icons';
 import { DriverName } from './EmployeeName';
 import { FromOldBookLegend, violationRowTone } from './ViolationRowTone';
-import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
+import { formatMoney, localized } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useFleetCatalog, useSetViolationCollected, useViolations } from '../api/fleet-queries';
 
@@ -170,7 +171,7 @@ export const CompanyViolationsDetailLayer = ({
       key: 'count',
       header: t('fleet.violations.fields.count'),
       align: 'center',
-      render: (v) => formatNumber(v.count ?? 0, locale),
+      render: (v) => latinNumber(v.count ?? 0),
     },
     {
       key: 'amount',
@@ -192,7 +193,7 @@ export const CompanyViolationsDetailLayer = ({
     {
       key: 'date',
       header: t('fleet.violations.fields.date'),
-      render: (v) => (v.date === null ? '—' : formatDate(v.date, locale)),
+      render: (v) => (v.date === null ? '—' : latinDate(v.date, locale)),
     },
     {
       key: 'driver',

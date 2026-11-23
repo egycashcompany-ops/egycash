@@ -24,7 +24,7 @@ import { FleetPager } from '../components/FleetPager';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
-import { formatNumber } from '../../../shared/lib/format';
+import { latinNumber } from '../lib/fleet-figures';
 import { cn } from '../../../shared/lib/cn';
 import {
   CheckIcon,
@@ -462,7 +462,7 @@ export const NoticesPage = (): JSX.Element => {
           <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
             {data === undefined
               ? ''
-              : t('fleet.notices.count', { count: formatNumber(data.meta.totalItems, locale) })}
+              : t('fleet.notices.count', { count: latinNumber(data.meta.totalItems) })}
           </span>
           <span className="flex items-center gap-2">
             <button

@@ -318,7 +318,7 @@ describe('the preview: the latest saved paper of the kind, with these names — 
         qc.setQueryData(custodyQueryKeys.operation('o-3'), chargeDto);
       },
     });
-    expect(between(recorded, 'data-memos-setup-preview="charge"')).toContain('٧٥,٠٠٠');
+    expect(between(recorded, 'data-memos-setup-preview="charge"')).toContain('75,000');
     const empty = renderSetup('/fleet/custody/memos/setup/charge');
     expect(between(empty, 'data-memos-setup-preview="charge"')).toContain(
       'data-memos-setup-preview-of="empty"',
@@ -344,7 +344,7 @@ describe('the preview: the latest saved paper of the kind, with these names — 
       {},
       '2026-10-19',
     ).join('');
-    expect(sheets).toContain('التاريخ١٩/ ١٠ / ٢٠٢٦');
+    expect(sheets).toContain('التاريخ19/ 10 / 2026');
     expect(sheets).toContain('الاستاذ : اسم جديد');
   });
 });

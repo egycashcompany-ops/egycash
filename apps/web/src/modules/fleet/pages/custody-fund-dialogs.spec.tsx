@@ -883,8 +883,8 @@ describe('«طلب عهدة»', () => {
     expect(sentence).toContain(
       squash(chargeLetterSentence({ amount: 200000, reason: 'نظير 24 سياره تجديد' })),
     );
-    // His figure in his digits; the reason's «نظير» written once.
-    expect(sentence).toContain('٢٠٠,٠٠٠');
+    // His figure in Latin digits; the reason's «نظير» written once.
+    expect(sentence).toContain('200,000');
     expect(sentence.match(/نظير/gu)).toHaveLength(1);
     expect(text(element(html, 'data-fund-cell="after"'))).toContain(figure(217492));
   });

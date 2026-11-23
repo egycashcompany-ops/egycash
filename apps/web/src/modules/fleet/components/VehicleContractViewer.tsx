@@ -69,7 +69,7 @@ const Stage = ({ file, url }: { file: ShownFile; url: string }): JSX.Element =>
     />
   ) : (
     <div className="h-full [&>div]:h-full" data-contract-image="true">
-      <ZoomableImage src={url} alt={file.fileName} className="min-h-0 flex-1" />
+      <ZoomableImage src={url} alt={file.fileName} className="min-h-0 flex-1" latinFigures />
     </div>
   );
 

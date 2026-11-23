@@ -84,9 +84,9 @@ describe('the Arabic the product speaks is formal Arabic', () => {
 // papers («مستندات التعيين» — his contract, forms and job description cards) are his Word files
 // copied into templates. What keeps that
 // exemption from quietly growing is pinned here: exactly those four files; every other file of
-// either paper engine carries no Arabic letter at all (the Arabic-Indic digits, «٫» and the tatweel
-// are built from code points, and they are not letters); and the rule itself is untouched — his
-// words written anywhere else are still caught.
+// either paper engine carries no Arabic letter at all (the tatweel is built from its code point,
+// and it is not a letter; the custody letters print Latin digits since 2026-11-23); and the rule
+// itself is untouched — his words written anywhere else are still caught.
 describe('his printed papers — the one exemption, held narrow', () => {
   const PAPER_LIB = 'apps/web/src/modules/fleet/lib';
   /** His scenario's data for the papers' specs: scanned like any other file (and formal). */
@@ -124,7 +124,7 @@ describe('his printed papers — the one exemption, held narrow', () => {
       .map((name) => `${PAPER_LIB}/${name}`)
       .filter((file) => !VERBATIM_PAPERS.includes(file) && file !== SAMPLES);
     expect(files.length).toBeGreaterThanOrEqual(7);
-    // Arabic LETTERS (ء … ي): a digit, «٫» or the tatweel would be built from its code point.
+    // Arabic LETTERS (ء … ي): the tatweel would be built from its code point.
     const offenders = files.filter((file) => /[\u0621-\u064A]/u.test(code(file)));
     expect(offenders).toEqual([]);
   });

@@ -75,7 +75,8 @@ import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatDate, formatMoneyParts, formatNumber } from '../../../shared/lib/format';
+import { formatMoneyParts } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
@@ -559,7 +560,7 @@ export const CustodyPage = (): JSX.Element => {
       fleetApi.listCustodyMovements({ ...filtersOnly(params), page: pageNo, pageSize: size }),
     );
   const line = (row: FleetCustodyMovementDto, empty: string): (string | number)[] => [
-    formatDate(row.date, locale),
+    latinDate(row.date, locale),
     row.vehicleCode ?? empty,
     `${sourceLabel(row)} ${detailOf(row)}`.trim(),
     row.driverName ?? empty,
@@ -682,7 +683,7 @@ export const CustodyPage = (): JSX.Element => {
           >
             {data === undefined
               ? ''
-              : t('common.list.count', { count: formatNumber(data.meta.totalItems, locale) })}
+              : t('common.list.count', { count: latinNumber(data.meta.totalItems) })}
           </span>
           <span className="flex flex-wrap items-center justify-end gap-1 sm:gap-2">
             <button

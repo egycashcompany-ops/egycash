@@ -16,9 +16,15 @@
 // العمليات او الخزنه يعدل عليها»: once the vault has received a محصنة, its photo is part of what the
 // vault signed for — the server refuses an upload, a replace or a delete (`OPERATIONS_SECURED_LOCKED`,
 // and the platform's own file routes too), so the cell offers none of them, on every board; the eye
-// stays. The rule is the row's (`isLockedRow`), so no screen has to remember it.
+// stays. The rule is the row's (`isLockedRow`), so no screen has to remember it. Round 33 B opens it
+// once: a locked محصنة that has reached its bank takes a FIRST photo (`isOperationsReceiptPhotoAddable`).
+
 import { useEffect, useState } from 'react';
-import { type OperationsShipmentDto } from '@ecms/contracts';
+import {
+  isOperationsReceiptPhotoAddable,
+  type OperationsDayBoardShipmentDto,
+  type OperationsShipmentDto,
+} from '@ecms/contracts';
 import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -203,6 +209,20 @@ export const ShipmentReceiptImageCell = ({
   // The screen, the row and the reader, all three: a screen that only looks, a محصنة the vault has
   // received (locked — its photo is looked at, never changed) and a reader who may not edit.
   const mayEdit = !readOnly && !isLockedRow(row) && can('operationsShipment.edit');
+  // Round 33 B — the one opening in that lock: a FIRST photo of a محصنة that has reached its bank
+  // (the bank's receipt — «ويفضل الصورة تكون مرفوعه»), the server's own rule. Never a replace or a
+  // delete on a locked row.
+  const mayAddFirst =
+    !readOnly &&
+    can('operationsShipment.edit') &&
+    isOperationsReceiptPhotoAddable({
+      shipmentType: row.shipmentType,
+      status: row.status,
+      captainDeliveredAt:
+        (row as Partial<Pick<OperationsDayBoardShipmentDto, 'captainDeliveredAt'>>)
+          .captainDeliveredAt ?? null,
+      hasReceiptImage: row.receiptImage != null,
+    });
   // The bytes are read on the shipment grant (`GET …/receipt-image`).
   const mayView = can('operationsShipment.view');
   // `?? null`: a board row from before the column existed may not carry the field at all.
@@ -215,7 +235,7 @@ export const ShipmentReceiptImageCell = ({
   };
 
   if (image === null) {
-    if (!mayEdit) return <span className="text-slate-400">—</span>;
+    if (!mayAddFirst) return <span className="text-slate-400">—</span>;
     return (
       <PhotoPickButton
         accept={SHIPMENT_RECEIPT_IMAGE_ACCEPT}

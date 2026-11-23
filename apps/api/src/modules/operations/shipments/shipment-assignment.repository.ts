@@ -193,6 +193,23 @@ class OperationsShipmentAssignmentRepository extends BaseRepository<OperationsSh
     return new Map(rows.map((row) => [String(row._id), row.count]));
   }
 
+  /**
+   * Round 33 B — the live legs whose captain confirmed «تم التسليم» within `[from, before)` and that
+   * still say so (delivered, or completed after it). Which of them carried a shipment TO ITS BANK is
+   * the caller's to decide (`deliveryLegOf`: a daily's pickup leg, a محصنة's delivery leg — a secured
+   * pickup leg delivers to the vault). Through `ix_delivered_at_live`.
+   */
+  async deliveredBetween(from: Date, before: Date): Promise<OperationsShipmentAssignmentDoc[]> {
+    return this.model
+      .find({
+        isDeleted: false,
+        deliveredAt: { $gte: from, $lt: before },
+        executionStatus: { $in: ['delivered', 'completed'] },
+      })
+      .lean<OperationsShipmentAssignmentDoc[]>()
+      .exec();
+  }
+
   async findByShipmentAndLeg(
     shipmentId: string,
     leg: OperationsShipmentLeg,

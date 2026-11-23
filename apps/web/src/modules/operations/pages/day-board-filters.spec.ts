@@ -317,7 +317,9 @@ describe('every screen remembers the filters its board reads, and only those', (
   it('draws the vault’s two status boxes in the stage box’s place, and on no other board', () => {
     expect(BOARD).toContain("const splitStatus = kind === 'vault';");
     expect(BAR).toMatch(
-      /\{splitStatus \? \(\s*<>\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.pickupColumn'\)\}[\s\S]*?options=\{VAULT_PICKUP_COLUMN\.map[\s\S]*?<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.vaultColumn'\)\}[\s\S]*?options=\{VAULT_HOLD_COLUMN\.map[\s\S]*?<\/>\s*\) : secured \? \(/,
+      // Round 33 B — REWRITTEN: «الشحنات المسلَّمة»'s confirmation box (`delivered`) now stands
+      // between the vault's two and the secured screen's stage box in the one chain.
+      /\{splitStatus \? \(\s*<>\s*<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.pickupColumn'\)\}[\s\S]*?options=\{VAULT_PICKUP_COLUMN\.map[\s\S]*?<FilterWithIcon[^>]*>\s*<MultiSelect[\s\S]*?label=\{t\('operations\.vault\.queue\.vaultColumn'\)\}[\s\S]*?options=\{VAULT_HOLD_COLUMN\.map[\s\S]*?<\/>\s*\) : delivered \? \([\s\S]*?\) : secured \? \(/,
     );
     expect(BAR).toContain('setFilter({\n                        pickup:');
     expect(BAR).toContain('setFilter({\n                        vault:');

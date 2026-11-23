@@ -937,13 +937,15 @@ describe('the filters in the URL — «ارتب الفلاتر على حسب ع�
       'stage',
       'pickup',
       'vault',
+      // Round 33 B — «الشحنات المسلَّمة»'s «حالة التأكيد», at the status column's place.
+      'confirmed',
       'notes',
     ]);
   });
 
   it('reads every filter from its param', () => {
     const params = new URLSearchParams(
-      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&stage=inVault&pickup=captain&vault=waiting&notes=e&date=2026-11-01',
+      'vehicle=150&bank=أهل&origin=a&destination=b&area=c&captain=d&type=secured&received=no&stage=inVault&pickup=captain&vault=waiting&confirmed=yes&notes=e&date=2026-11-01',
     );
     expect(readDayBoardFilters(params)).toEqual({
       vehicle: '150',
@@ -957,6 +959,7 @@ describe('the filters in the URL — «ارتب الفلاتر على حسب ع�
       stage: 'inVault',
       pickup: 'captain',
       vault: 'waiting',
+      confirmed: 'yes',
       notes: 'e',
     });
     expect(readDayBoardFilters(new URLSearchParams())).toEqual(EMPTY_DAY_BOARD_FILTERS);

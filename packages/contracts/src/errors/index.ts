@@ -292,6 +292,41 @@ export const ErrorCodes = {
    * already dispatched or completed.
    */
   OPERATIONS_SECURED_NOT_IN_VAULT: 'OPERATIONS_SECURED_NOT_IN_VAULT',
+
+  // ── «الشحنات المسلَّمة» — the delivery confirmed with its receipt (Round 33 B) ───────────────
+  /**
+   * 409 — the ✓ of «الشحنات المسلَّمة» on a shipment that has not reached its bank
+   * (`isOperationsShipmentDeliveredToBank`): its captain has not confirmed delivering it to the
+   * destination in the app, or — a محصنة — it has not left the vault for it.
+   */
+  OPERATIONS_SHIPMENT_NOT_DELIVERED: 'OPERATIONS_SHIPMENT_NOT_DELIVERED',
+  /** 409 — the ✓ on a delivery already confirmed (a colleague pressed it first). */
+  OPERATIONS_DELIVERY_ALREADY_CONFIRMED: 'OPERATIONS_DELIVERY_ALREADY_CONFIRMED',
+  /** 409 — «إلغاء التأكيد» on a delivery that is not confirmed (taken back already). */
+  OPERATIONS_DELIVERY_NOT_CONFIRMED: 'OPERATIONS_DELIVERY_NOT_CONFIRMED',
+  /**
+   * 422 — the ✓ with no receipt number («لازم يكون فيه رقم الايصال»): empty once trimmed. One
+   * detail: `field` 'receiptNumber', `code` 'REQUIRED'.
+   */
+  OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED: 'OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED',
+  /**
+   * 422 — a receipt number longer than `OPERATIONS_DELIVERY_RECEIPT_NUMBER_MAX` once trimmed. One
+   * detail: `field` 'receiptNumber', `code` 'MAX_LENGTH', `message` the most allowed.
+   */
+  OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG: 'OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG',
+  /**
+   * 422 — the ✓ without choosing whose bank is billed («يحدد البنك من او الى»). One detail: `field`
+   * 'billedSide', `code` 'REQUIRED'.
+   */
+  OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED: 'OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED',
+  /**
+   * 409 — Round 33 critic: an edit that moves the shipment's «من فرع» or «إلى فرع» while its
+   * delivery is CONFIRMED with its receipt. The bank billed for moving it was chosen between those
+   * two branches' banks at the ✓ (`deliveryConfirmation.billedBranchId` / `billedBankId`); moving
+   * either one would leave that record naming a branch the shipment no longer has. «إلغاء التأكيد»
+   * first, then the edit, then the ✓ again. Every other field still edits as before.
+   */
+  OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED: 'OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED',
   /**
    * 409 — Round 21b: the vault's receipt (`POST /operations/secured/:id/receive`) names a seal the
    * vault STILL HOLDS on another محصنة. The owner: «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت

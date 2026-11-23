@@ -167,6 +167,8 @@ describe('the Operations navigation rows', () => {
         // Round 12 — the day's محصنات onto the day's vans, on the secured screen's grant.
         '/operations/secured/distribution',
         '/operations/shipments',
+        // Round 33 B — «الشحنات المسلَّمة», what reached its bank, on the board's own grant.
+        '/operations/shipments/delivered',
         // The day board over a range of days — the shipments history, on the board's own grant.
         '/operations/shipments/history',
         '/operations/standing-crew',

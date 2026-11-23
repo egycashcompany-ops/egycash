@@ -38,6 +38,18 @@
 // be ready ahead — but its «تسليم» is off, with why, and the day bar says so. The confirmation names
 // the day it hands over on.
 //
+// ROUND 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة توزيع
+// المحصنات». «يوم التسليم» takes a past day (it had a floor at today), and a past day opens as that
+// day's RECORD, view only, by «توزيع المحصنات»'s own rule (`isRecordScreen` — the URL's day before the
+// read is in, then the SERVER's `past`, plus midnight passing on a screen left open). A record has
+// ONE gate, `canHandOver = mayHandOver && !isRecord`: no «تسليم» on any van, no confirmation, nothing
+// sent (the server refuses a past day's van anyway, 422 `OPERATIONS_DISPATCH_NOT_TODAY`). What it
+// shows is each van with what rode it, and what became of each محصنة as the vault reads it back —
+// handed over (when, and by whom: `recordHandovers`), kept in the vault, or never received — the
+// calm notice «سجل يوم … — للعرض فقط، لا يمكن التعديل» under the top row, and «سجل · للعرض فقط» with
+// «العودة إلى اليوم» where the acts would stand. The filters of the day, the hover cards and «طباعة»
+// still work: reading and printing are not changing — the printed sheet says it is a record.
+//
 // WHO. The screen is `operationsVault.view`'s; «تسليم» is `operationsVault.dispatch`'s. A treasurer
 // holding only the vault's grants does not hear a placement Operations saves (the assignment
 // topics are the shipment grant's), so the screen re-reads itself once a minute and whenever the
@@ -47,6 +59,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
   OPERATIONS_SHIPMENT_HISTORY_MAX_ROWS,
+  cairoYmd,
   type Locale,
   type OperationsCurrencyDto,
   type OperationsDayBoardVehicleCrewDto,
@@ -86,6 +99,7 @@ import {
   DistributionColumn,
   EmptyLoad,
   MoneyLine,
+  RecordNotice,
   ShipmentCardBody,
   ShipmentChip,
   TOP_FIGURES,
@@ -100,15 +114,23 @@ import {
   EMPTY_DRAFT,
   captainOn,
   distributionColumns,
+  distributionDayChange,
   handoverBlock,
   handoverRequest,
   handoverShipments,
+  handoverWhen,
+  isRecordScreen,
   loadFigures,
   notYetInVault,
   packagingRead,
   personName,
-  readDistributionDate,
+  readDistributionDay,
+  recordHandoverState,
+  recordHandovers,
+  recordPackaging,
+  vanHandoverRecord,
   vanPackages,
+  type VanHandoverRecord,
 } from '../lib/secured-distribution';
 import { isHistoryTooLarge } from '../lib/shipment-history';
 import { useCairoToday } from '../lib/use-cairo-today';
@@ -123,8 +145,9 @@ export const VaultHandoverPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   const today = useCairoToday();
-  const date = readDistributionDate(sp.get('date'), today);
-  const canHandOver = can('operationsVault.dispatch');
+  // Round 33 — any real day, a past one too: it opens as its record.
+  const date = readDistributionDay(sp.get('date'));
+  const mayHandOver = can('operationsVault.dispatch');
 
   // A reader without the shipment grant hears no placement: the screen re-reads itself for them.
   const board = useOperationsSecuredDistribution(date, true, !can('operationsShipment.view'));
@@ -143,7 +166,22 @@ export const VaultHandoverPage = (): JSX.Element => {
   const rows = data?.shipments ?? [];
   const vans = data?.crews ?? [];
   const day = data?.date.slice(0, 10) ?? date ?? today;
-  const minDay = data?.today.slice(0, 10) ?? today;
+  // Round 33 — a past day is its RECORD, view only, by «توزيع المحصنات»'s rule: once the read is in,
+  // the SERVER's `past` (the PC's clock never overrides it) and midnight passing on a screen left
+  // open; before it, the URL's day against the live Cairo day (`isRecordScreen`).
+  const isRecord = isRecordScreen(
+    day,
+    today,
+    data === undefined
+      ? null
+      : {
+          today: data.today.slice(0, 10),
+          past: data.past,
+          readOn: cairoYmd(new Date(board.dataUpdatedAt)),
+        },
+  );
+  // Every act below asks this one: who may hand over, on a day that is not a record.
+  const canHandOver = mayHandOver && !isRecord;
   const loaded = data !== undefined;
   const failed = !tooLarge && hasError(board.error) && !loaded;
 
@@ -154,26 +192,46 @@ export const VaultHandoverPage = (): JSX.Element => {
   const sending = useRef(false);
 
   const setDay = (value: string): void => {
+    // Emptied, or today, the screen is on its default — today; any other day, a past one too (its
+    // record), is asked for by name. A URL left as it is (today picked on a screen with no `?date=`
+    // that midnight turned into yesterday's record) asks nothing by itself: the read is asked again.
+    const { date: asked, reread } = distributionDayChange(sp.get('date'), value, today);
     const next = new URLSearchParams(sp);
-    if (value === '' || value <= minDay) next.delete('date');
-    else next.set('date', value);
+    if (asked === null) next.delete('date');
+    else next.set('date', asked);
     setSp(next);
+    setConfirming(null);
+    if (reread) void board.refetch();
   };
+  /** Round 33 — «العودة إلى اليوم»: off a record, onto today (the distribution's own act). */
+  const backToToday = (): void => setDay('');
 
   const bankNameOf = (id: string): string =>
     banks.data?.items.find((bank) => bank.id === id)?.opsName ?? '';
   const currencyOf = (id: string): OperationsCurrencyDto | undefined =>
     currencies.data?.items.find((currency) => currency.id === id);
-  const packagingOf = (id: string) => packaging.data?.get(id);
+  // Round 33 — a record's packages are the read's own (held, or handed over since): the vault's
+  // holdings no longer carry what left on the day's vans. Every other day reads the holdings.
+  const recordCounts = isRecord ? recordPackaging(data?.recordPackages) : null;
+  const packagingOf = (id: string) =>
+    recordCounts === null ? packaging.data?.get(id) : recordCounts.get(id);
   // Round 25 critic — no 0 before the vault's counts are in (`vanPackages`).
-  const packagesRead = packagingRead(true, packaging);
+  const packagesRead = recordCounts === null ? packagingRead(true, packaging) : 'ready';
+  // Round 33 — what the vault handed over that day, when and by whom (a record's only).
+  const handovers = isRecord ? recordHandovers(data?.recordHandovers) : null;
 
   // The SAVED places — the vault moves nothing.
   const columns = distributionColumns(rows, vans, EMPTY_DRAFT);
-  /** Any محصنة on no van — the column's head and the page's figure wear the rose (Round 27). */
-  const waiting = loaded && columns.unplaced.length > 0;
+  /**
+   * Any محصنة on no van — the column's head and the page's figure wear the rose (Round 27). Round 33:
+   * not on a record — nothing there waits to be placed; the count stays, in its own cyan.
+   */
+  const waiting = loaded && !isRecord && columns.unplaced.length > 0;
+  // A record opens no confirmation: one left open when midnight passed closes with the day.
   const confirmVan =
-    confirming === null ? undefined : vans.find((van) => van.crewAssignmentId === confirming);
+    confirming === null || !canHandOver
+      ? undefined
+      : vans.find((van) => van.crewAssignmentId === confirming);
   // Round 24 — a crew without a van hands its load over like a van: «بدون سيارة (n)» on its card, on
   // the sheet and in every sentence (`lib/van-name.ts`), numbered as the board numbers it.
   // Round 25 — the server's number among ALL the day's rows without a van (`looseNumber`).
@@ -189,6 +247,25 @@ export const VaultHandoverPage = (): JSX.Element => {
   // The day's packages, as the vault counted them — the page's figures.
   const dayPackages = vanPackages(packagesRead, rows, packagingOf);
 
+  /**
+   * Round 33 — a record's van, in words: «سُلِّمت محصنتان · سلّمها … · 10:15» — how many left, who
+   * pressed «تسليم», and when (the day too when it was another); null when nothing on it left.
+   */
+  const handedPhrase = (handed: VanHandoverRecord): string | null =>
+    handed.handedOver === 0
+      ? null
+      : [
+          t(pluralKey('operations.handover.record.vanHanded', locale, handed.handedOver), {
+            count: countText(handed.handedOver, locale),
+          }),
+          handed.names.length === 0
+            ? null
+            : t('operations.handover.record.by', { name: handed.names.join('، ') }),
+          handed.at === null ? null : handoverWhen(handed.at, day),
+        ]
+          .filter((part): part is string => part !== null)
+          .join(' · ');
+
   const print = (
     van: OperationsDayBoardVehicleCrewDto,
     load: readonly OperationsSecuredDistributionRowDto[],
@@ -198,6 +275,10 @@ export const VaultHandoverPage = (): JSX.Element => {
         vanLoadSheet({
           t,
           day,
+          // Round 33 — a record's sheet says it is one, and what was handed over.
+          record: isRecord
+            ? { handedOver: handedPhrase(vanHandoverRecord(load, handovers)) }
+            : null,
           van,
           looseNumber: looseNumberOf(van.crewAssignmentId),
           crewPlanVisible: data?.crewPlanVisible ?? false,
@@ -216,13 +297,14 @@ export const VaultHandoverPage = (): JSX.Element => {
   };
 
   // «تسليم» is today's only: a future day is the plan. Against the LIVE Cairo day, so a screen left
-  // open past midnight on yesterday's read turns it off as well.
-  const handoverToday = day === today;
+  // open past midnight on yesterday's read turns it off as well. Round 33: never on a record.
+  const handoverToday = day === today && !isRecord;
 
   const handOver = async (van: OperationsDayBoardVehicleCrewDto): Promise<void> => {
     const body = handoverRequest(rows, van.crewAssignmentId);
-    // The button and the dialog are off on any other day; this is the last word before the request.
-    if (body === null || !handoverToday || sending.current) return;
+    // The button and the dialog are off on any other day and on a record; this is the last word
+    // before the request.
+    if (body === null || !handoverToday || !canHandOver || sending.current) return;
     sending.current = true;
     try {
       await dispatch.mutateAsync(body);
@@ -258,7 +340,11 @@ export const VaultHandoverPage = (): JSX.Element => {
     // The van card shows its first captain only: a محصنة with the other one says so.
     const otherCaptain =
       van !== undefined && captain !== null && van.captains[0]?.employeeId !== captain.employeeId;
-    const waiting = van !== undefined && row.status !== 'inVault';
+    // Round 33 — on a record's van, what became of it: left the vault, stayed in it, never received.
+    const state = isRecord && van !== undefined ? recordHandoverState(row) : null;
+    const handover = state === 'handedOver' ? handovers?.get(row.id) : undefined;
+    const handedWhen = handover === undefined ? null : handoverWhen(handover.at, day);
+    const waiting = !isRecord && van !== undefined && row.status !== 'inVault';
     return (
       <ShipmentChip
         key={row.id}
@@ -282,6 +368,36 @@ export const VaultHandoverPage = (): JSX.Element => {
                 data-mark="not-in-vault"
                 icon={SHIPMENT_PATH.info}
                 label={t('operations.handover.notInVault')}
+              />
+            )}
+            {state === 'handedOver' && (
+              <ChipMark
+                tone="handed"
+                data-mark="handed-over"
+                icon={SHIPMENT_PATH.checkCircle}
+                label={[
+                  t('operations.handover.record.handedMark'),
+                  handedWhen,
+                  handover?.byName ?? null,
+                ]
+                  .filter((part): part is string => part !== null && part !== '')
+                  .join(' · ')}
+              />
+            )}
+            {state === 'keptInVault' && (
+              <ChipMark
+                tone="waiting"
+                data-mark="kept-in-vault"
+                icon={SHIPMENT_PATH.info}
+                label={t('operations.handover.record.keptMark')}
+              />
+            )}
+            {state === 'notReceived' && (
+              <ChipMark
+                tone="waiting"
+                data-mark="not-received"
+                icon={SHIPMENT_PATH.info}
+                label={t('operations.handover.record.notReceivedMark')}
               />
             )}
             {otherCaptain && (
@@ -336,6 +452,27 @@ export const VaultHandoverPage = (): JSX.Element => {
                     },
                   ]
                 : []),
+              ...(state === null
+                ? []
+                : [
+                    {
+                      key: `record-${state}`,
+                      text:
+                        state === 'keptInVault'
+                          ? t('operations.handover.record.keptNote')
+                          : state === 'notReceived'
+                            ? t('operations.handover.record.notReceivedNote')
+                            : handedWhen === null
+                              ? t('operations.handover.record.handedMark')
+                              : handover?.byName === null || handover?.byName === undefined
+                                ? t('operations.handover.record.handedNoteAt', { when: handedWhen })
+                                : t('operations.handover.record.handedNote', {
+                                    when: handedWhen,
+                                    name: handover.byName,
+                                  }),
+                      tone: 'info' as const,
+                    },
+                  ]),
             ]}
           />
         }
@@ -363,6 +500,9 @@ export const VaultHandoverPage = (): JSX.Element => {
             const ready = handoverShipments(load, van.crewAssignmentId);
             const held = notYetInVault(load, van.crewAssignmentId);
             const block = handoverBlock(day, today, ready.length);
+            // Round 33 — a record's van, read back: what left, who handed it over and when.
+            const handed = isRecord ? vanHandoverRecord(load, handovers) : null;
+            const handedWords = handed === null ? null : handedPhrase(handed);
             return (
               <VanCard
                 key={van.crewAssignmentId}
@@ -372,6 +512,8 @@ export const VaultHandoverPage = (): JSX.Element => {
                 day={day}
                 count={load.length}
                 packages={vanPackages(packagesRead, load, packagingOf)}
+                // Round 33 — a record is read back: no placing alarm on a van.
+                calm={isRecord}
                 actions={
                   <>
                     {canHandOver && (
@@ -412,7 +554,43 @@ export const VaultHandoverPage = (): JSX.Element => {
                   </>
                 }
                 footer={
-                  held.length > 0 ? (
+                  handed !== null ? (
+                    load.length === 0 ? undefined : (
+                      <div
+                        data-handover-record-van={String(handed.handedOver)}
+                        className="space-y-0.5 rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-bold leading-5 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300"
+                      >
+                        <p className="flex items-start gap-1.5">
+                          <BoardIcon
+                            d={[
+                              ...(handedWords === null
+                                ? SHIPMENT_PATH.info
+                                : SHIPMENT_PATH.checkCircle),
+                            ]}
+                            className={cn(
+                              'mt-0.5 h-3.5 w-3.5 shrink-0',
+                              handedWords !== null && 'text-sky-600 dark:text-sky-300',
+                            )}
+                          />
+                          <span data-handover-record-handed="true">
+                            {handedWords ?? t('operations.handover.record.vanNone')}
+                          </span>
+                        </p>
+                        {handedWords !== null && handed.notHandedOver > 0 && (
+                          <p data-handover-record-kept={handed.notHandedOver} className="ps-5">
+                            {t(
+                              pluralKey(
+                                'operations.handover.record.vanKept',
+                                locale,
+                                handed.notHandedOver,
+                              ),
+                              { count: countText(handed.notHandedOver, locale) },
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  ) : held.length > 0 ? (
                     <p
                       data-handover-held={held.length}
                       className="flex items-start gap-1.5 rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-bold leading-5 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300"
@@ -461,7 +639,11 @@ export const VaultHandoverPage = (): JSX.Element => {
         : { collapse: { open: unplacedOpen, onToggle: () => setUnplacedOpen((v) => !v) } })}
       extra={
         <span className="ms-auto text-[11px] font-bold text-slate-500 dark:text-slate-400">
-          {t('operations.handover.unplacedHint')}
+          {t(
+            isRecord
+              ? 'operations.handover.record.unplacedHint'
+              : 'operations.handover.unplacedHint',
+          )}
         </span>
       }
     >
@@ -494,12 +676,8 @@ export const VaultHandoverPage = (): JSX.Element => {
         <TopRow
           data-handover-toolbar="true"
           day={
-            <DayBox
-              label={t('operations.distribution.day')}
-              value={day}
-              min={minDay}
-              onChange={setDay}
-            />
+            // Round 33 — no floor: a past day opens as its record.
+            <DayBox label={t('operations.distribution.day')} value={day} onChange={setDay} />
           }
           figures={
             <div role="status" data-handover-figures="true" className={TOP_FIGURES}>
@@ -512,23 +690,33 @@ export const VaultHandoverPage = (): JSX.Element => {
                 data-figure="vans"
               />
               {/* The counts in their own colours, as on every van. */}
+              {/* Round 33 — a record counts what was handed over; today, what is ready to be. */}
               <BoardFigurePill
                 compact
                 icon={COUNT_LOOK.shipments.icon}
                 tone={COUNT_LOOK.shipments.square}
-                label={t('operations.handover.ready')}
+                label={t(
+                  isRecord ? 'operations.handover.record.handedOver' : 'operations.handover.ready',
+                )}
                 value={
                   loaded
                     ? countText(
-                        vans.reduce(
-                          (sum, van) => sum + handoverShipments(rows, van.crewAssignmentId).length,
-                          0,
-                        ),
+                        isRecord
+                          ? columns.vans.reduce(
+                              (sum, load) =>
+                                sum + vanHandoverRecord(load.rows, handovers).handedOver,
+                              0,
+                            )
+                          : vans.reduce(
+                              (sum, van) =>
+                                sum + handoverShipments(rows, van.crewAssignmentId).length,
+                              0,
+                            ),
                         locale,
                       )
                     : '…'
                 }
-                data-figure="ready"
+                data-figure={isRecord ? 'handed' : 'ready'}
               />
               {/* R27 critic — one number, one colour: while any wait, the rose of the column's
                   head (its warning, its count); none waiting, the محصنات' own cyan. */}
@@ -560,9 +748,48 @@ export const VaultHandoverPage = (): JSX.Element => {
                 ))}
             </div>
           }
+          end={
+            isRecord ? (
+              // Round 33 — a record has no acts: where they would stand, the day says it is one, and
+              // the way back to today (a move between days, not a change — for every reader).
+              <span
+                data-handover-record-acts="true"
+                className="flex max-w-full flex-wrap items-center justify-center gap-1.5 sm:justify-end"
+              >
+                <span
+                  data-handover-record-mark="true"
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-[11px] font-black text-sky-800 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:border-sky-400/30 dark:bg-sky-400/10 dark:text-sky-200"
+                >
+                  <BoardIcon d={[...PATH.lock]} className="h-3.5 w-3.5" />
+                  {t('operations.distribution.record.mark')}
+                </span>
+                <button
+                  type="button"
+                  data-handover-today="true"
+                  onClick={backToToday}
+                  title={t('operations.handover.record.todayHint', {
+                    day: dayText(`${today}T00:00:00.000Z`),
+                  })}
+                  className={BRAND_BUTTON}
+                >
+                  <BoardIcon d={[...SHIPMENT_PATH.calendar]} className="h-3.5 w-3.5" />
+                  {t('operations.distribution.record.today')}
+                </button>
+              </span>
+            ) : undefined
+          }
         />
 
-        {handoverToday ? (
+        {isRecord ? (
+          // Round 33 — a past day: the calm notice of «توزيع المحصنات»'s record, in the hint's place.
+          <RecordNotice
+            data-handover-record={day}
+            title={t('operations.distribution.record.title', {
+              day: dayText(`${day}T00:00:00.000Z`),
+            })}
+            body={t('operations.handover.record.body')}
+          />
+        ) : handoverToday ? (
           <DayNote data-handover-bar="true">
             <BoardIcon
               d={[...SHIPMENT_PATH.info]}

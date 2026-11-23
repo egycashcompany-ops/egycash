@@ -33,7 +33,8 @@ let app: Express;
  * `src/seed-navigation.spec.ts` pins the same number against the DECLARATIONS and needs no
  * database, so adding a row fails there first — on the author's machine, naming the number.
  */
-const SEEDED_APPLICATIONS = 139;
+// 139 → 140: «الشحنات المسلَّمة» (Operations, Round 33 B), beneath the day board.
+const SEEDED_APPLICATIONS = 140;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;

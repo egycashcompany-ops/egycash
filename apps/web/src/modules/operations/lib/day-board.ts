@@ -11,6 +11,7 @@ import {
   OPERATIONS_SECURED_STAGES,
   type OperationsCurrencyDto,
   type OperationsDayBoardShipmentDto,
+  type OperationsDeliveredShipmentDto,
   type OperationsSecuredStage,
   type OperationsShipmentDto,
   type OperationsShipmentStatus,
@@ -61,6 +62,11 @@ export interface DayBoardFilters {
   pickup: VaultPickupColumn | '';
   /** Round 13 — the vault queue's «حالة الخزينة» (`vaultHoldOf`): received yet, and where it is now. */
   vault: VaultHoldColumn | '';
+  /**
+   * Round 33 B — «الشحنات المسلَّمة»'s «الحالة»: `no` «بانتظار التأكيد» (delivered, its ✓ not pressed
+   * yet), `yes` «مؤكَّدة» (confirmed with its receipt); empty is «الكل». That board's alone.
+   */
+  confirmed: 'yes' | 'no' | '';
 }
 
 export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
@@ -75,6 +81,7 @@ export const EMPTY_DAY_BOARD_FILTERS: DayBoardFilters = {
   stage: '',
   pickup: '',
   vault: '',
+  confirmed: '',
   notes: '',
 };
 
@@ -122,15 +129,19 @@ export const DAY_BOARD_FILTER_PARAMS = Object.keys(
  *     as the status filter;
  *   · `vault` (Round 13) — the vault's receive queue: the secured board, with its «الحالة» split
  *     into «حالة الاستلام» and «حالة الخزينة» («مكان الحاله عمودين»), each filtered by its own box
- *     (`pickup`, `vault`) where the stage box stands on the secured screen.
+ *     (`pickup`, `vault`) where the stage box stands on the secured screen;
+ *   · `delivered` (Round 33 B) — «الشحنات المسلَّمة»: the day board's columns over what reached its
+ *     bank, daily rows and محصنات side by side («النوع» kept), its «الحالة» the delivery's
+ *     confirmation (`confirmed`) in «التسليم»'s place — every row on it is delivered.
  */
-export type BoardKind = 'shipments' | 'secured' | 'vault';
+export type BoardKind = 'shipments' | 'secured' | 'vault' | 'delivered';
 
 /** The filter params a board offers no box for. */
 const UNOFFERED: Record<BoardKind, readonly (keyof DayBoardFilters)[]> = {
-  shipments: ['stage', 'pickup', 'vault'],
-  secured: ['type', 'received', 'pickup', 'vault'],
-  vault: ['type', 'received', 'stage'],
+  shipments: ['stage', 'pickup', 'vault', 'confirmed'],
+  secured: ['type', 'received', 'pickup', 'vault', 'confirmed'],
+  vault: ['type', 'received', 'stage', 'confirmed'],
+  delivered: ['received', 'stage', 'pickup', 'vault'],
 };
 
 /**
@@ -172,6 +183,7 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
   const stage = params.get('stage') ?? '';
   const pickup = params.get('pickup') ?? '';
   const vault = params.get('vault') ?? '';
+  const confirmed = params.get('confirmed') ?? '';
   return {
     vehicle: params.get('vehicle') ?? '',
     bank: params.get('bank') ?? '',
@@ -190,6 +202,7 @@ export const readDayBoardFilters = (params: URLSearchParams): DayBoardFilters =>
     vault: (VAULT_HOLD_COLUMN as readonly string[]).includes(vault)
       ? (vault as VaultHoldColumn)
       : '',
+    confirmed: confirmed === 'yes' || confirmed === 'no' ? confirmed : '',
     notes: params.get('notes') ?? '',
   };
 };
@@ -318,8 +331,22 @@ export const filterDayBoard = <T extends OperationsShipmentDto>(
       (filters.pickup === '' ||
         vaultPickupOf(shipment as Partial<Pick<OperationsDayBoardShipmentDto, 'pickedUpBy'>>) ===
           filters.pickup) &&
-      (filters.vault === '' || vaultHoldOf(shipment) === filters.vault),
+      (filters.vault === '' || vaultHoldOf(shipment) === filters.vault) &&
+      // Round 33 B — «الشحنات المسلَّمة»'s «الحالة»: confirmed with its receipt, or awaiting its ✓.
+      (filters.confirmed === '' ||
+        (filters.confirmed === 'yes') ===
+          isDeliveryConfirmed(
+            shipment as Partial<Pick<OperationsDeliveredShipmentDto, 'deliveryConfirmation'>>,
+          )),
   );
+
+/**
+ * Round 33 B — is this «الشحنات المسلَّمة» row confirmed with its receipt? A row with no such field
+ * (any other board's) is not.
+ */
+export const isDeliveryConfirmed = (
+  row: Partial<Pick<OperationsDeliveredShipmentDto, 'deliveryConfirmation'>>,
+): boolean => row.deliveryConfirmation != null;
 
 export const legacyRowNumber = (index: number, total: number): number => total - index;
 

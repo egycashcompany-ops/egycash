@@ -79,6 +79,11 @@ export const LOG_KIND_LOOK: Readonly<Record<OperationsShipmentLogKind, LogKindLo
   // amber of a shipment that is running late.
   crewRemoved: { tone: 'rose', icon: SHIPMENT_PATH.crew },
   deliveryRescheduled: { tone: 'amber', icon: SHIPMENT_PATH.calendar },
+  // Round 33 B — «الشحنات المسلَّمة»'s ✓ with the paper receipt: the green of the confirmed row it
+  // turns green, the receipt's drawing apart from the desk's plain ✓; its undo in the rose of
+  // every other undo.
+  deliveryConfirmed: { tone: 'emerald', icon: SHIPMENT_PATH.receipt },
+  deliveryUnconfirmed: { tone: 'rose', icon: SHIPMENT_PATH.undo },
   other: { tone: 'slate', icon: SHIPMENT_PATH.info },
 };
 

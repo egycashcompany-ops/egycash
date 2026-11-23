@@ -14,6 +14,7 @@ import {
   type AssignSecuredDeliveryLeg,
   type CancelVaultReceipt,
   type CompleteOperationsShipment,
+  type ConfirmOperationsDelivery,
   type ConfirmSecuredPickup,
   type CreateOperationsArea,
   type CreateOperationsBank,
@@ -44,6 +45,7 @@ import {
   type UpdateOperationsCurrency,
   type UpdateOperationsShipment,
   type UpdateOperationsShiftType,
+  type UndoOperationsDelivery,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
 import { fetchWholeCatalog } from '../../fleet/lib/whole-catalog';
@@ -308,6 +310,31 @@ export const useOperationsSecuredBoard = (enabled = true) =>
     retry: retryUnless4xx,
   });
 
+/**
+ * Round 33 B — «الشحنات المسلَّمة»'s entry for one Cairo day, inside the DAY BOARD's subtree like the
+ * secured screen's: the captain's «تم التسليم» in the app that adds a row (`useExecutionInvalidation`),
+ * a photo, a desk ✓, an edit or a delete (`useShipmentInvalidation`), a dispatch — each already stales
+ * the board, so the screen can miss none of them; realtime's shipment topics sweep it too, re-read
+ * (one day, never the history's stale-only range).
+ */
+// Round 33 critic — `date` null asks for NO day: the server answers its own Cairo today. That read
+// is keyed by the PC's Cairo day too (`clock`), so a screen left open is asked again when the PC's
+// midnight passes — the PC's clock decides WHEN to ask again, the server WHICH day it is.
+const deliveredBoardKey = (date: string | null, clock: string): readonly unknown[] => [
+  ...featureKey(MODULE, 'dayBoard'),
+  'delivered',
+  date === null ? { date: null, clock } : { date },
+];
+
+/** «الشحنات المسلَّمة» — one Cairo day of deliveries. A 4xx is an answer; it is not retried. */
+export const useOperationsDeliveredBoard = (date: string | null, clock: string, enabled = true) =>
+  useQuery({
+    queryKey: deliveredBoardKey(date, clock),
+    queryFn: () => api.getDeliveredBoard(date),
+    enabled,
+    retry: retryUnless4xx,
+  });
+
 // ── Writes ─────────────────────────────────────────────────────────────────
 
 /** Shared by every shipment mutation, so none of them can forget a surface. */
@@ -385,6 +412,59 @@ export const useSetShipmentReceived = () => {
       body: CompleteOperationsShipment;
     }) => (received ? api.completeShipment(id, body) : api.reopenShipment(id, body)),
     onSuccess: invalidate,
+  });
+};
+
+/**
+ * Round 33 B — the refusals that say the ROW ON SCREEN is stale: not delivered (any more), confirmed
+ * already by a colleague, no confirmation left to take back, or a version that moved. The screen is
+ * re-read on each, so the row comes back as it now stands. Round 33 critic: and a shipment that is
+ * no longer there at all (404 `NOT_FOUND` — deleted by a colleague): the dialog closes on it
+ * (`deliveryRefusalOf` reads it as `stale`), so the screen is re-read and the row leaves it, rather
+ * than stay yellow offering a ✓ that can only be refused again.
+ */
+const DELIVERY_CONFLICTS: ReadonlySet<string> = new Set([
+  'OPERATIONS_SHIPMENT_NOT_DELIVERED',
+  'OPERATIONS_DELIVERY_ALREADY_CONFIRMED',
+  'OPERATIONS_DELIVERY_NOT_CONFIRMED',
+  'STALE_DOCUMENT',
+]);
+export const isDeliveryConflict = (error: unknown): boolean =>
+  error instanceof ApiError &&
+  ((error.status === 409 && DELIVERY_CONFLICTS.has(error.code)) ||
+    (error.status === 404 && error.code === 'NOT_FOUND'));
+
+/**
+ * Round 33 B — «الشحنات المسلَّمة»'s ✓ («تأكيد التسليم»). The DIALOG owns the message (`onError`
+ * declared keeps the global notifier quiet): it marks the receipt box or the side, or says the row
+ * moved; on a conflict the screen is re-read, so the dialog closes onto the row as it now stands.
+ */
+export const useConfirmShipmentDelivery = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ConfirmOperationsDelivery }) =>
+      api.confirmShipmentDelivery(id, body),
+    onSuccess: invalidate,
+    onError: (error: unknown) => {
+      formOwnsTheError();
+      if (isDeliveryConflict(error)) void invalidate();
+    },
+  });
+};
+
+/**
+ * Round 33 B — «إلغاء التأكيد». No `onError`: the global notifier words a refusal; a conflict re-reads
+ * the screen either way (`onSettled`), so a row a colleague already took back shows as it is.
+ */
+export const useUndoShipmentDelivery = () => {
+  const invalidate = useShipmentInvalidation();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UndoOperationsDelivery }) =>
+      api.undoShipmentDelivery(id, body),
+    onSuccess: invalidate,
+    onSettled: async (_data: unknown, error: unknown) => {
+      if (isDeliveryConflict(error)) await invalidate();
+    },
   });
 };
 
@@ -531,6 +611,9 @@ export const __shipmentHistoryKey = shipmentHistoryKey;
 /** Exported for the cache tests — the log's and the deleted list's keys, for the same proof. */
 export const __shipmentLogKey = shipmentLogKey;
 export const __deletedShipmentsKey = deletedShipmentsKey;
+/** Exported for the page tests — «الشحنات المسلَّمة»'s entry for one day. */
+export const __deliveredBoardKey = (date: string | null, clock: string): readonly unknown[] =>
+  deliveredBoardKey(date, clock);
 /** Exported for the cache tests — the secured screen rides the board's subtree too. */
 export const __securedBoardKey = securedBoardKey;
 

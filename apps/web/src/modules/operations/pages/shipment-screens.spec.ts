@@ -119,9 +119,15 @@ describe('«مش هيقدر يضيف … ومش هيقدر منها يسلم ا�
     // …on a row that is not locked (Round 10, pinned below).
     expect(ACTIONS).toMatch(/\{canEdit && !locked && \(\s*<button[\s\S]*?setEditing\(row\)/);
     expect(ACTIONS).toMatch(/\{canDelete && !locked && \(\s*<button[\s\S]*?removeShipment\(row\)/);
+    // Round 33 B — REWRITTEN: the photo follows `canManageReceipts`, which IS `canEditRows` unless a
+    // screen says otherwise («الشحنات المسلَّمة» edits and deletes nothing, and manages the photo).
+    expect(BOARD).toContain('canManageReceipts = canEditRows,');
     expect(BOARD).toMatch(
-      /<ShipmentReceiptImageCell\s+row=\{row\}\s+onPreview=\{setPreviewingReceipt\}\s+readOnly=\{!canEditRows\}\s+\/>/,
+      /<ShipmentReceiptImageCell\s+row=\{row\}\s+onPreview=\{setPreviewingReceipt\}\s+readOnly=\{!canManageReceipts\}\s+\/>/,
     );
+    for (const page of [DAY_PAGE, HISTORY_PAGE, SECURED_PAGE]) {
+      expect(page).not.toContain('canManageReceipts');
+    }
   });
 
   it('the secured screen adds secured shipments — and offers no ✓', () => {
@@ -269,7 +275,9 @@ describe('«شاشة الشحنات المحصنة … زى شاشة اليوم 
   it('«هنزود التاريخ التسليم يظهر فى الجدول» — a delivery-date column, and the date named for what it is', () => {
     expect(SECURED_PAGE).toContain('kind="secured"');
     // The secured board's columns are the secured screen's and the vault's (Round 13, `vault`).
-    expect(BOARD).toContain("const secured = kind !== 'shipments';");
+    // Round 33 B — REWRITTEN from `kind !== 'shipments'`: «الشحنات المسلَّمة» (`delivered`) keeps the
+    // day board's columns, so the two secured boards are named.
+    expect(BOARD).toContain("const secured = kind === 'secured' || kind === 'vault';");
     expect(BOARD).toContain(
       "header: t(secured ? 'operations.board.collectedOn' : 'operations.board.date'),",
     );
@@ -333,9 +341,14 @@ describe('«شاشة الشحنات المحصنة … زى شاشة اليوم 
   it('«والحالة …» — the status is the محصنة’s stage, and so is the filter', () => {
     // `shownStage` (secured-stage.spec) is the stage, or null where the cell says who delivered —
     // a daily row, and a محصنة on the road its delivery captain has delivered.
+    // Round 33 B — REWRITTEN for a page's own cell first (`statusCell`, «الشحنات المسلَّمة»'s
+    // confirmation); every other board hands in none and draws the stage or the delivery as before.
     expect(BOARD).toMatch(
-      /const stage = shownStage\(row\);\s*const badge =\s*stage !== null \? \(\s*<SecuredStageBadge stage=\{stage\} \/>\s*\) : \(\s*<DeliveryStatusBadge delivery=\{boardDelivery\(row\)\} \/>/,
+      /const stage = shownStage\(row\);\s*const badge =\s*statusCell !== undefined \? \(\s*statusCell\(row\)\s*\) : stage !== null \? \(\s*<SecuredStageBadge stage=\{stage\} \/>\s*\) : \(\s*<DeliveryStatusBadge delivery=\{boardDelivery\(row\)\} \/>/,
     );
+    for (const page of [DAY_PAGE, HISTORY_PAGE, SECURED_PAGE]) {
+      expect(page).not.toContain('statusCell');
+    }
     // A page may add a line under the badge («محصنات الخزينة»'s "since"); the badge is the same.
     expect(BOARD).toContain('const note = statusNote?.(row);');
     // The stage box is the secured board's status filter (day-board-filters.spec pins the bar).

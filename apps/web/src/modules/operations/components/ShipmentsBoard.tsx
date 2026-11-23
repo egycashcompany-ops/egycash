@@ -72,6 +72,14 @@
 // functions in `lib/day-board.ts`, because the legacy versions of them read rendered HTML
 // (main_ops.ejs:995). The history also hands in its range for the deleted shipments' icon.
 //
+// ROUND 33 B — A FIFTH SCREEN, «الشحنات المسلَّمة» (`pages/DeliveredShipmentsPage.tsx`, `kind=
+// "delivered"`): «زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت». The day board's columns, filters and
+// figures over what reached its bank on one day; its «الحالة» is the delivery's confirmation
+// (`statusCell`, the page's — «تم التسليم» awaiting its ✓, «مؤكَّدة» with the receipt), filtered by
+// «حالة التأكيد» in «التسليم»'s place; its ✓ is the page's `rowAction`. No edit or delete there (the
+// day board's and the history's), but the receipt photo is managed as on the day board
+// (`canManageReceipts`).
+//
 // THE LEGACY TABLE (main_ops.ejs:829-897): م | السيارة | اسم البنك | من فرع | الى فرع | العملة |
 // قيمة الشحنة | قائد الطاقم | التاريخ | النوع | المنطقة | ملاحظات | actions.
 import { Fragment, useState, type ReactNode } from 'react';
@@ -304,6 +312,8 @@ export interface BoardDatePicker {
    * is for the history's short «من» and «إلى», which always hold a day).
    */
   optional?: boolean;
+  /** The latest day the box takes ('YYYY-MM-DD') — «الشحنات المسلَّمة»'s today. */
+  max?: string;
   value: string;
   onChange: (value: string) => void;
 }
@@ -357,6 +367,7 @@ export const BoardDateBox = ({ picker }: { picker: BoardDatePicker }): JSX.Eleme
         aria-label={picker.label}
         title={picker.label}
         value={picker.value}
+        {...(picker.max === undefined ? {} : { max: picker.max })}
         onChange={(e) => picker.onChange(e.target.value)}
         // On an English page the date would start right after the calendar, where
         // the name is written: it goes to the box's far side instead, as on an Arabic
@@ -435,6 +446,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   canConfirmPickup = false,
   canCancelReceipt = false,
   selection,
+  statusCell,
+  canManageReceipts = canEditRows,
 }: {
   /** The page's `useSearchParams()` — the filters live in the URL beside the page's period. */
   search: [URLSearchParams, SetURLSearchParams];
@@ -562,6 +575,19 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   canCancelReceipt?: boolean;
   /** Rows ticked for an act over several (see `BoardSelection`) — a box at each row's start. */
   selection?: BoardSelection<T>;
+  /**
+   * Round 33 B — the row's «الحالة» drawn by the page instead of the board's badge: «الشحنات
+   * المسلَّمة»'s confirmation («تم التسليم» awaiting its ✓, «مؤكَّدة» with the receipt). A
+   * `statusNote` still goes under it.
+   */
+  statusCell?: (row: T) => ReactNode;
+  /**
+   * The receipt photo's upload / replace / delete are offered here (still subject to the grant and
+   * to the row's lock, `ShipmentReceiptImageCell`). The same as `canEditRows` unless a screen says
+   * otherwise: «الشحنات المسلَّمة» edits and deletes nothing, and manages the photo as the day board
+   * does («ويفضل الصورة تكون مرفوعه»).
+   */
+  canManageReceipts?: boolean;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -588,8 +614,11 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   // A filter this board offers no box for reads as empty: a param with no box on screen never
   // narrows the table.
   const filters = offeredFilters(readDayBoardFilters(sp), kind, stages);
-  // The secured board's columns — the secured screen's and the vault's (`kind`).
-  const secured = kind !== 'shipments';
+  // The secured board's columns — the secured screen's and the vault's (`kind`). «الشحنات
+  // المسلَّمة» (Round 33 B) keeps the day board's: daily rows and محصنات side by side.
+  const secured = kind === 'secured' || kind === 'vault';
+  // Round 33 B — «الشحنات المسلَّمة»: «الحالة» is the delivery's confirmation, its own box.
+  const delivered = kind === 'delivered';
   // Round 13 — «مكان الحاله عمودين»: the vault's board alone says its status in two columns.
   const splitStatus = kind === 'vault';
   const setFilter = (patch: Partial<DayBoardFilters>): void => {
@@ -948,7 +977,9 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
       render: (row) => {
         const stage = shownStage(row);
         const badge =
-          stage !== null ? (
+          statusCell !== undefined ? (
+            statusCell(row)
+          ) : stage !== null ? (
             <SecuredStageBadge stage={stage} />
           ) : (
             <DeliveryStatusBadge delivery={boardDelivery(row)} />
@@ -1004,7 +1035,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
         <ShipmentReceiptImageCell
           row={row}
           onPreview={setPreviewingReceipt}
-          readOnly={!canEditRows}
+          readOnly={!canManageReceipts}
         />
       ),
     },
@@ -1149,6 +1180,8 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
   const stageValue = filters.stage === '' ? [] : [filters.stage];
   const pickupValue = filters.pickup === '' ? [] : [filters.pickup];
   const vaultValue = filters.vault === '' ? [] : [filters.vault];
+  // Round 33 B — «الكل» is said in the box when nothing narrows it, as the owner listed it.
+  const confirmedValue = filters.confirmed === '' ? ['all'] : [filters.confirmed];
 
   return (
     <>
@@ -1479,6 +1512,34 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
                   />
                 </FilterWithIcon>
               </>
+            ) : delivered ? (
+              // Round 33 B — «بانتظار التأكيد» / «مؤكَّدة» / «الكل», the confirmation's own box.
+              <FilterWithIcon
+                icon={FILTER_ICON.status}
+                tone="text-emerald-600 dark:text-emerald-400"
+              >
+                <MultiSelect
+                  fullWidth
+                  density={TIGHT}
+                  showSelectedValues
+                  label={t('operations.delivered.filter')}
+                  options={[
+                    { value: 'no', label: t('operations.delivered.filter.awaiting') },
+                    { value: 'yes', label: t('operations.delivered.filter.confirmed') },
+                    { value: 'all', label: t('operations.delivered.filter.all') },
+                  ]}
+                  value={confirmedValue}
+                  onChange={(next) => {
+                    const picked = pickOne(confirmedValue, next);
+                    setFilter({
+                      confirmed:
+                        picked === 'yes' || picked === 'no'
+                          ? (picked as DayBoardFilters['confirmed'])
+                          : '',
+                    });
+                  }}
+                />
+              </FilterWithIcon>
             ) : secured ? (
               <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-600 dark:text-slate-300">
                 <MultiSelect
@@ -1590,7 +1651,7 @@ export const ShipmentsBoard = <T extends OperationsDayBoardShipmentDto>({
         open={previewingReceipt !== null}
         onClose={() => setPreviewingReceipt(null)}
         row={previewingReceipt}
-        readOnly={!canEditRows}
+        readOnly={!canManageReceipts}
       />
 
       <OtherCurrenciesDialog

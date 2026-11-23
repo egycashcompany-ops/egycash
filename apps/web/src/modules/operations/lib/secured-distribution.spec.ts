@@ -21,6 +21,7 @@ import {
   handoverBlock,
   handoverRequest,
   handoverShipments,
+  handoverWhen,
   isProposed,
   isRecordDay,
   isRecordScreen,
@@ -39,8 +40,9 @@ import {
   placeShipment,
   placementOf,
   proposeByDirection,
-  readDistributionDate,
   readDistributionDay,
+  recordHandoverState,
+  recordHandovers,
   recordPackaging,
   refusedShipmentId,
   reschedulesOnSave,
@@ -50,6 +52,7 @@ import {
   shownCaptain,
   takesShipments,
   unsavedOnRecord,
+  vanHandoverRecord,
   withoutShipment,
   type DistributionDraft,
   type DistributionRowFacts,
@@ -115,26 +118,111 @@ const placed = (
     ...over,
   });
 
+// REWRITTEN in Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما
+// عملنا فى شاشة توزيع المحصنات». The vault's screen had its own reader, `readDistributionDate(raw,
+// today)`, which turned a day before today into today; it is gone, and the vault's screen reads its
+// day as «توزيع المحصنات» does (`readDistributionDay`). Its three cases, rewritten to the new rule:
+//   · «reads a real day from today on, else today (the server’s default)» → «reads ANY real day —
+//     from today on as before — else today (the server’s default)»;
+//   · «never a past day on the vault’s screen — a past day’s vans have left» (Round 30's rewrite of
+//     «never a past day — the server refuses one») → «a past day on the vault’s screen too — as its
+//     record, view only (Round 33)»;
+//   · «never a malformed one — an empty or broken `date=` is a 400» — the same rule, on the shared
+//     reader.
 describe('the day «تسليم المحصنات» opens on', () => {
-  it('reads a real day from today on, else today (the server’s default)', () => {
-    expect(readDistributionDate(null, TODAY)).toBeNull();
-    expect(readDistributionDate('', TODAY)).toBeNull();
-    expect(readDistributionDate('2026-11-12', TODAY)).toBe('2026-11-12');
-    expect(readDistributionDate('2026-11-20', TODAY)).toBe('2026-11-20');
+  it('reads ANY real day — from today on as before — else today (the server’s default)', () => {
+    expect(readDistributionDay(null)).toBeNull();
+    expect(readDistributionDay('')).toBeNull();
+    expect(readDistributionDay('2026-11-12')).toBe('2026-11-12');
+    expect(readDistributionDay('2026-11-20')).toBe('2026-11-20');
   });
 
-  // REWRITTEN in Round 30 — it was «never a past day — the server refuses one». The server reads a
-  // past day now (as its record, for «توزيع المحصنات»); the vault's screen still opens none: it hands
-  // over today's vans only, and a past day's have left.
-  it('never a past day on the vault’s screen — a past day’s vans have left', () => {
-    expect(readDistributionDate('2026-11-11', TODAY)).toBeNull();
-    expect(readDistributionDate('2025-12-31', TODAY)).toBeNull();
+  it('a past day on the vault’s screen too — as its record, view only (Round 33)', () => {
+    expect(readDistributionDay('2026-11-11')).toBe('2026-11-11');
+    expect(readDistributionDay('2025-12-31')).toBe('2025-12-31');
+    // …which the screen draws as its record — the distribution's own rule.
+    expect(isRecordScreen('2026-11-11', TODAY, null)).toBe(true);
+    expect(isRecordScreen(TODAY, TODAY, null)).toBe(false);
   });
 
   it('never a malformed one — an empty or broken `date=` is a 400', () => {
-    expect(readDistributionDate('2026-13-01', TODAY)).toBeNull();
-    expect(readDistributionDate('2026-02-30', TODAY)).toBeNull();
-    expect(readDistributionDate('tomorrow', TODAY)).toBeNull();
+    expect(readDistributionDay('2026-13-01')).toBeNull();
+    expect(readDistributionDay('2026-02-30')).toBeNull();
+    expect(readDistributionDay('tomorrow')).toBeNull();
+  });
+});
+
+// Round 33 — what a past day's record on «تسليم المحصنات» says of each van and each محصنة.
+describe('«تسليم المحصنات» on a past day — what was handed over, when and by whom (Round 33)', () => {
+  const DAY = '2026-11-11';
+  const HANDOVERS = recordHandovers([
+    { shipmentId: 'out-1', handedOverAt: '2026-11-11T08:15:00.000Z', handedOverByName: 'سامح' },
+    { shipmentId: 'out-2', handedOverAt: '2026-11-11T09:40:00.000Z', handedOverByName: 'هالة' },
+    { shipmentId: 'out-3', handedOverAt: '2026-11-11T07:05:00.000Z', handedOverByName: 'سامح' },
+    { shipmentId: 'done', handedOverAt: '2026-11-11T07:30:00.000Z', handedOverByName: null },
+  ]);
+
+  it('reads the record’s handovers from the read — none carried on today, a later day, or without the vault’s grant', () => {
+    expect(recordHandovers(null)).toBeNull();
+    expect(recordHandovers(undefined)).toBeNull();
+    expect(recordHandovers([])?.size).toBe(0);
+    expect(HANDOVERS?.get('out-1')).toEqual({ at: '2026-11-11T08:15:00.000Z', byName: 'سامح' });
+    expect(HANDOVERS?.get('done')).toEqual({ at: '2026-11-11T07:30:00.000Z', byName: null });
+    expect(HANDOVERS?.has('kept')).toBe(false);
+  });
+
+  it('says what became of each محصنة by its status now — left the vault, stayed in it, never received', () => {
+    expect(recordHandoverState({ status: 'dispatched' })).toBe('handedOver');
+    expect(recordHandoverState({ status: 'completed' })).toBe('handedOver');
+    expect(recordHandoverState({ status: 'inVault' })).toBe('keptInVault');
+    expect(recordHandoverState({ status: 'draft' })).toBe('notReceived');
+  });
+
+  it('reads a van back: how many left and how many not, the last release, who pressed «تسليم» — each once, in order', () => {
+    const load = [
+      row('out-1', { status: 'dispatched' }),
+      row('out-2', { status: 'dispatched' }),
+      row('out-3', { status: 'dispatched' }),
+      row('done', { status: 'completed' }),
+      row('kept', { status: 'inVault' }),
+      row('draft', { status: 'draft' }),
+    ];
+    expect(vanHandoverRecord(load, HANDOVERS)).toEqual({
+      handedOver: 4,
+      notHandedOver: 2,
+      at: '2026-11-11T09:40:00.000Z',
+      // 07:05 سامح, 07:30 (unnamed), 08:15 سامح, 09:40 هالة.
+      names: ['سامح', 'هالة'],
+    });
+    // A van nothing left: no time, nobody.
+    expect(vanHandoverRecord([row('kept', { status: 'inVault' })], HANDOVERS)).toEqual({
+      handedOver: 0,
+      notHandedOver: 1,
+      at: null,
+      names: [],
+    });
+    // A read that names no handover (a reader without the vault's grant): counted by status alone.
+    expect(vanHandoverRecord(load, null)).toEqual({
+      handedOver: 4,
+      notHandedOver: 2,
+      at: null,
+      names: [],
+    });
+    expect(vanHandoverRecord([], HANDOVERS)).toEqual({
+      handedOver: 0,
+      notHandedOver: 0,
+      at: null,
+      names: [],
+    });
+  });
+
+  it('says when on the Cairo clock — the time alone on the record’s own day, the day too on another', () => {
+    // 08:15 UTC is 10:15 in Cairo (UTC+2 in November).
+    expect(handoverWhen('2026-11-11T08:15:00.000Z', DAY)).toBe('\u206610:15\u2069');
+    // 23:30 UTC on the 10th is 01:30 on the 11th in Cairo — the record's day.
+    expect(handoverWhen('2026-11-10T23:30:00.000Z', DAY)).toBe('\u206601:30\u2069');
+    // Another Cairo day says its day.
+    expect(handoverWhen('2026-11-12T08:15:00.000Z', DAY)).toBe('\u20662026-11-12 10:15\u2069');
   });
 });
 

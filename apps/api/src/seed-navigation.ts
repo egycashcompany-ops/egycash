@@ -660,6 +660,17 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'operationsShipment.view',
       },
       {
+        // Round 33 B — «وعاوز اعمل شاشة جديدة زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت»: the
+        // shipments that reached their bank, by the day of the delivery, and the ✓ with the paper
+        // receipt. Right beneath the day board it is cut from, on the day board's own read grant
+        // (the ✓ is `operationsShipment.complete`, the day board's ✓'s, on the server).
+        en: 'Delivered Shipments',
+        ar: 'الشحنات المسلَّمة',
+        route: '/operations/shipments/delivered',
+        icon: 'receipt',
+        permission: 'operationsShipment.view',
+      },
+      {
         // «عاوز اعمل dublicat للشاشة دى بس التاريخ هيكون من الى … عشان اقدر امسك الhistory بتاع
         // الشحنات»: the same board over a range of days, right beneath the day it extends.
         en: 'Shipments History',

@@ -6,6 +6,9 @@
 // moment; until then its URL falls through to the standard 404. Live routes, each behind its
 // design §16.2 permission:
 //   /operations/shipments  operationsShipment.view    B2  (legacy /main_ops)
+//   /operations/shipments/delivered  operationsShipment.view  (Round 33 B — «الشحنات المسلَّمة»: what
+//                                  reached its bank on a day, and the ✓ with its receipt — the act is
+//                                  `operationsShipment.complete`, the day board's ✓'s, on the server)
 //   /operations/shipments/history  operationsShipment.view  (NO legacy equivalent — the day board
 //                                  over a from–to range: «اعمل dublicat للشاشة دى بس التاريخ … من الى»;
 //                                  daily shipments and محصنات alike: «تكون شحنات ومحصنات»)
@@ -52,6 +55,7 @@ import { OperationsOverviewPage } from './pages/OperationsOverviewPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { DailyOperationsPage } from './pages/DailyOperationsPage';
 import { ShipmentsHistoryPage } from './pages/ShipmentsHistoryPage';
+import { DeliveredShipmentsPage } from './pages/DeliveredShipmentsPage';
 import { CrewBoardPage } from './pages/CrewBoardPage';
 import { RequirementsPage } from './pages/RequirementsPage';
 import { StandingCrewPage } from './pages/StandingCrewPage';
@@ -78,6 +82,15 @@ export default function OperationsRoutes(): JSX.Element {
           element={
             <RequirePermission permission="operationsShipment.view">
               <DailyOperationsPage />
+            </RequirePermission>
+          }
+        />
+        {/* Round 33 B — «الشحنات المسلَّمة»: the day board's delivered rows, on its own read grant. */}
+        <Route
+          path="shipments/delivered"
+          element={
+            <RequirePermission permission="operationsShipment.view">
+              <DeliveredShipmentsPage />
             </RequirePermission>
           }
         />

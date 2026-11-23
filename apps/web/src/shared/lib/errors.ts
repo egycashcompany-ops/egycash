@@ -62,6 +62,22 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     // A cancelled receipt asked for a shipment no longer in the vault (dispatched since, or never in).
     OPERATIONS_SECURED_NOT_IN_VAULT:
       'This secured shipment is not in the vault — its receipt can no longer be cancelled.',
+    // Round 33 B — «الشحنات المسلَّمة»'s ✓ and its undo. The dialog marks its own boxes; these are
+    // the same refusals wherever else they surface (a row that moved under the screen).
+    OPERATIONS_SHIPMENT_NOT_DELIVERED:
+      'This shipment has not reached its bank yet — it can be confirmed once it is delivered.',
+    OPERATIONS_DELIVERY_ALREADY_CONFIRMED: 'This delivery is already confirmed.',
+    OPERATIONS_DELIVERY_NOT_CONFIRMED:
+      'This delivery is not confirmed any more — there is nothing to undo.',
+    OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED:
+      'Enter the receipt number to confirm the delivery.',
+    OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG: 'The receipt number is too long.',
+    OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED:
+      'Choose the bank billed for moving the shipment — “From” or “To”.',
+    // Round 33 critic — the edit form, on a shipment whose delivery is confirmed with its receipt:
+    // its two branches are what the bank billed was chosen between.
+    OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED:
+      'This delivery is confirmed with its receipt, and the bank billed was chosen between its two branches. Undo the confirmation on “Delivered shipments” first, then change “From branch” or “To branch”.',
     // Round 21b — «لو موجوده عندنا لا ك محصنة يبقى مينفعش ولو دخلت وخرجت واتكرر يبقى عادى»: a seal the
     // vault still holds on another محصنة. The receive form marks the seal and names that محصنة
     // itself; these are the same refusal wherever else it surfaces.
@@ -183,6 +199,15 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     OPERATIONS_SECURED_ALREADY_PICKED_UP:
       'استلام هذه المحصنة مؤكَّد بالفعل — من قائدها أو من العمليات.',
     OPERATIONS_SECURED_NOT_IN_VAULT: 'هذه المحصنة ليست بالخزينة، فلم يعد إلغاء استلامها ممكنًا.',
+    OPERATIONS_SHIPMENT_NOT_DELIVERED: 'لم تصل هذه الشحنة إلى بنكها بعد، فلا يمكن تأكيد تسليمها.',
+    OPERATIONS_DELIVERY_ALREADY_CONFIRMED: 'هذا التسليم مؤكَّد بالفعل.',
+    OPERATIONS_DELIVERY_NOT_CONFIRMED: 'لم يعد هذا التسليم مؤكَّدًا، فلا يوجد ما يُلغى.',
+    OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED: 'أدخل رقم الإيصال لتأكيد التسليم.',
+    OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG: 'رقم الإيصال أطول من المسموح.',
+    OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED:
+      'اختر البنك الذي تُحتسب عليه تكلفة النقل: «من» أو «إلى».',
+    OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED:
+      'تسليم هذه الشحنة مؤكَّد بالإيصال، وقد اختير البنك الذي تُحتسب عليه تكلفة النقل من فرعيها. ألغِ التأكيد في «الشحنات المسلَّمة» أولًا، ثم غيِّر «من فرع» أو «إلى فرع».',
     OPERATIONS_SEAL_HELD_IN_VAULT:
       'أحد أختام هذا الاستلام ما زال في الخزينة على محصنة أخرى، ولا يُستلم مجددًا إلا بعد خروجها منها.',
     OPERATIONS_CREW_DAY_MISMATCH:

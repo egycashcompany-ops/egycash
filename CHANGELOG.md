@@ -2715,6 +2715,210 @@ its entry here in the same PR.
         vans, the roster van's drivers, midnight's one gate, `isBoardUndoKey`, the exchange and the
         archived pair, `applySwapToDraft`, `swapOperation`, `modeStepOf`, `shipmentsLeftBehind`, the
         window's pair tick, the shipments note and the notes' line.
+  - Round 33 — «تسليم المحصنات» على يوم مضى، وشاشة «الشحنات المسلَّمة». The owner: «انا عاوزك تفتحلى
+    الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة توزيع المحصنات
+    وعاوز اعمل شاشة جديدة زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت سواء يومى او كانت محصنة ف
+    الخونة واسلمت ل بنك هتظهرلى لما تكون تم التسليم بس الاجراءات هيكون فيه علامة صح
+    لما ادوس عليها لازم يكون فيه رقم الايصال ويفضل الصورة تكون مرفوعه و يحدد البنك من او الى اللى
+    هيتحسب عليه تكلفة نقل الشحنة». His answers: on the day board's ✓ (it completes a shipment with no
+    receipt number) — «الشاشة الجديدة حاجاتها لوحدها»; on the receipt photo at ✓ — «اختيارية مع
+    تنبيه».
+    - A — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة توزيع
+      المحصنات». «تسليم المحصنات» (`VaultHandoverPage`, `/operations/vault/handover`) opens a past
+      day as that day's RECORD, view only, as «توزيع المحصنات» became in Round 30.
+      - «يوم التسليم» takes a past day (it had a floor at today, and a past `?date=` opened on today —
+        `readDistributionDate`, gone: the screen reads its day as the distribution does,
+        `readDistributionDay`). Today stays the default; a later day is still the plan, to read and
+        print, its «تسليم» off as before.
+      - The record is the distribution's (`lib/secured-distribution.ts` `isRecordScreen`): the
+        URL's day before the read is in, then the SERVER's `past` (a PC clock running ahead never
+        turns today into a record), plus midnight passing on a screen left open — yesterday's read
+        turns into yesterday's record. Every act asks ONE gate,
+        `canHandOver = mayHandOver && !isRecord`: no «تسليم» on any van (not even a disabled one), no
+        confirmation (one left open at midnight shuts with the day), nothing sent. In the hint's place the calm notice «سجل يوم …
+        — للعرض فقط، لا يمكن التعديل» and what it shows; where the acts would stand, «سجل · للعرض
+        فقط» and «العودة إلى اليوم». No drag or menu (the screen had none). The van filters, the
+        hover cards and «طباعة» still work.
+      - What it shows: each van of the day with what rode it, and what became of each محصنة as the
+        vault reads it back — «سلّمتها الخزينة» (it left the vault: out for delivery, or delivered
+        since; when, on the Cairo clock, and who pressed «تسليم»), «بقيت بالخزينة ولم تُسلَّم», or
+        «لم تستلمها الخزينة» — on its chip and on its card (`recordHandoverState`). Under each van:
+        «سُلِّمت محصنتان · سلّمها … · 10:15» and how many on it were not handed over
+        (`vanHandoverRecord`, `handoverWhen` — the day too when the release was on another). The top
+        figure «جاهزة للتسليم» becomes «سُلِّمت»; the packages are the read's own (`recordPackages`,
+        a van that went out keeps its counts). Drawn calmly: no rose on «بلا سيارة» or its figure, no
+        placing alarm on a van (`calm`); the left column says «لم تُوزَّع على سيارة في ذلك اليوم».
+      - «طباعة» on a record prints the van's sheet and says it is one: «سجل يوم … — للاطلاع فقط، ولا
+        يُسلَّم منه شيء» in the day's place, and «التسليم: …» (who, how many, when) after the crew
+        (`lib/van-load-sheet.ts` `record`).
+      - The server. The read already answered a past day as its record, for the vault's grant too
+        (`GET /operations/secured/distribution?date=`, `operationsShipment.view` or
+        `operationsVault.view` — Round 30). It now says, on a record and to a reader of the vault
+        only, what was handed over, when and by whom — `recordHandovers` (contracts
+        `OperationsSecuredDistributionHandoverDto`: `shipmentId`, `handedOverAt`,
+        `handedOverByName`), read from the custody's release (`releasedAt`, and `releasedById` — the
+        token's user of the dispatch, now on `VaultCustodyView`), named by the directory (one read
+        for the day, `userDisplayNames`); null on today, on a later day and without the vault's
+        grant. «تسليم» on a past day's van stays refused, before any shipment is read:
+        `POST /operations/secured/dispatch` → 422 `OPERATIONS_DISPATCH_NOT_TODAY` (Round 17
+        `assertTodaysVan`, its tests «refuses a van of a PASSED day the same way — that van has
+        left» and Round 30's «keeps «تسليم» off the record’s vans too — they have left»). A future
+        day keeps its rule (read as the plan, «تسليم» refused). No new permission, page or
+        collection.
+      - Specs rewritten: (web) `lib/secured-distribution.spec.ts` «the day «تسليم المحصنات» opens on»
+        — «reads a real day from today on, else today (the server’s default)» → «reads ANY real day
+        — from today on as before — else today …», «never a past day on the vault’s screen — a past
+        day’s vans have left» → «a past day on the vault’s screen too — as its record, view only
+        (Round 33)», «never a malformed one …» on the shared reader; `pages/secured-distribution.spec.tsx`
+        «yesterday’s read left open past Cairo midnight: «تسليم» is off, the load in the vault
+        notwithstanding» → «… turns into yesterday’s record: no «تسليم» at all …» (the case it drew —
+        a read just in, the server's day behind the PC's — kept as its own: «a read just in whose
+        server day is behind this PC’s clock: not a record — «تسليم» stays off by the live day»),
+        «shuts every act through ONE gate …» (its pins of the vault's floor, `min={minDay}` and
+        `readDistributionDate`, now pin none), «the vault hands over through the existing dispatch
+        …» (the two gates now `day === today && !isRecord` and `canHandOver`). New: (api, run whole)
+        `operations-distribution.spec.ts` «Round 33 — «تسليم المحصنات» on a PAST day …» — the record
+        on the vault's own grant (its van, every status, who handed over and when — a treasurer
+        named apart from the admin who placed), withheld from a desk reader and null on today and a
+        day to come, every «تسليم» of the record refused with nothing released; (web) the page's
+        Round 33 block (the notice, no write control, the marks, the van lines, the figures and
+        packages, calm, before the read, a reader without the dispatch grant, every word in both
+        languages, the one gate), `recordHandovers`, `recordHandoverState`, `vanHandoverRecord`,
+        `handoverWhen`, the record's sheet.
+    - B — «وعاوز اعمل شاشة جديدة زى شاشةاليوم التشغيلى بس يظهر بس اللى اتسلمت سواء يومى او كانت محصنة
+      ف الخونة واسلمت ل بنك هتظهرلى لما تكون تم التسليم بس الاجراءات هيكون فيه علامة صح لما ادوس عليها
+      لازم يكون فيه رقم الايصال ويفضل الصورة تكون مرفوعه و يحدد البنك من او الى اللى هيتحسب عليه تكلفة
+      نقل الشحنة». A new screen, «الشحنات المسلَّمة» («Delivered shipments»,
+      `/operations/shipments/delivered`), a sidebar row and a home card right beneath «اليوم التشغيلي», on
+      the day board's own read grant (`operationsShipment.view`). No new permission, page or collection.
+      - Which rows: what REACHED ITS BANK on one Cairo day — the day board's own «تم التسليم», its crew
+        captain's delivery to the destination in the app (`captainDeliveredAt`, the pickup leg of a
+        daily shipment, the delivery leg of a محصنة), and for a محصنة only once it has left the vault
+        (`dispatched` or `completed` — one in the vault, out and not delivered yet, or delivered into
+        the vault by its pickup leg is not listed). One rule in the contract
+        (`isOperationsShipmentDeliveredToBank`); the leg is read the one way every board reads it
+        (`legDeliveredAt`, apps/api `shipments/delivered.ts`, which `boardView` now uses too). The day
+        is the Cairo day of the delivery, cut at Cairo midnight; oldest delivery first.
+      - The screen is «اليوم التشغيلي»'s board (`ShipmentsBoard`, new `kind="delivered"`): the same
+        figures, the same filters on one row (van, bank, from, to, area, captain, type) with «حالة
+        التأكيد» — «بانتظار التأكيد» / «مؤكَّدة» / «الكل» — in «التسليم»'s place, and «يوم التسليم» (today
+        by default, any day before it; never a later one — `readDeliveredDay`). A row awaiting its ✓ is
+        the day board's yellow «تم التسليم» with the time the captain delivered it; a confirmed one is
+        green, «مؤكَّدة», with «إيصال رقم …», «تُحتسب على البنك (من / إلى)», and «بدون صورة» while it has no
+        receipt photo («اختيارية مع تنبيه»). «صورة الإيصال» is the day board's own column; «السجل» stays;
+        no «إضافة شحنة», no day board ✓, no edit or delete on this screen.
+      - The ✓ (for `operationsShipment.complete`, the day board's ✓ grant) opens «تأكيد التسليم», in the
+        boards' dialog design (Tab kept inside — the swap window's trap, moved to
+        `components/use-focus-trap.ts` and shared; Escape closes): «رقم الإيصال» required (trimmed, at
+        most 40 characters — `deliveryReceiptNumberProblem`, the same rule on the server); «صورة
+        الإيصال» optional — the photo there is shown, a new one is picked and goes up through the day
+        board's own upload right after the confirmation; without one the dialog warns that the row will
+        keep «بدون صورة»; «البنك الذي تُحتسب عليه تكلفة النقل» — exactly two, «من» (the origin branch's
+        bank) and «إلى» (the destination's), each by bank and branch, with a note when both are one
+        bank (the side is still recorded). «إلغاء التأكيد» on a confirmed row, asked first. A refusal
+        that says the row moved (not delivered, confirmed by a colleague, a stale version) re-reads the
+        screen and closes the dialog onto it; a box the server names is marked.
+      - Its own record («الشاشة الجديدة حاجاتها لوحدها»): `deliveryConfirmation` on the shipment —
+        `receiptNumber`, `billedSide` (`origin` / `destination`), `billedBranchId`, `billedBankId`,
+        `confirmedById`, `confirmedAt`; absent or null = not confirmed, no migration. The bank billed is
+        the SERVER's — the bank of the branch on the side chosen, read at the ✓ — and who confirmed is
+        the token's user; the client sends neither (a body naming a bank or a person is refused, 400).
+        Writing it moves NOTHING else: not `status`, not the day board's ✓ (`receivedById` /
+        `receivedAt`), not `mainBankId`, `secondaryBankId`, `receiptNumber` or `vaultReceiptNumber`.
+        The day board's ✓ and its undo work as before, beside it.
+      - API: `GET /operations/shipments/delivered?date=YYYY-MM-DD` (`operationsShipment.view`; today in
+        Cairo by default) → `{date, today, shipments, crews}` (`today` the server's — Round 33
+        critic), the day board's rows (`boardForReader`) with `deliveryConfirmation` (bank and person
+        by name); `POST` / `DELETE` on
+        `/operations/shipments/:id/delivery-confirmation` (`operationsShipment.complete`)
+        `{receiptNumber, billedSide, version}` / `{version}` →
+        `{shipmentId, version, deliveryConfirmation}`. Refused:
+        404 deleted or unknown; 422 `OPERATIONS_DELIVERY_RECEIPT_NUMBER_REQUIRED` /
+        `OPERATIONS_DELIVERY_RECEIPT_NUMBER_TOO_LONG` (detail `receiptNumber`, `REQUIRED` /
+        `MAX_LENGTH`), `OPERATIONS_DELIVERY_BILLED_SIDE_REQUIRED` (detail `billedSide`); 409
+        `OPERATIONS_SHIPMENT_NOT_DELIVERED`, `OPERATIONS_DELIVERY_ALREADY_CONFIRMED`,
+        `OPERATIONS_DELIVERY_NOT_CONFIRMED` (the undo), `STALE_DOCUMENT`. Audited on the shipment;
+        «السجل» shows «أُكِّد التسليم بالإيصال» / «أُلغي تأكيد التسليم بالإيصال» (kinds `deliveryConfirmed`
+        / `deliveryUnconfirmed`, fields `deliveryReceiptNumber`, `billedBank`); events
+        `operations.shipment.deliveryConfirmed` / `.deliveryUnconfirmed`. The screen's read lives
+        under the day board's cache key, so every act that moves the board, and the shipments'
+        realtime topics, move it. One leg index for the day's read (`ix_delivered_at_live`).
+      - The receipt photo's lock (Round 10), opened ONCE: a محصنة the vault has received stays locked,
+        EXCEPT that one which has reached its bank and has NO photo may take its FIRST one — the bank's
+        receipt, which exists only after the delivery (`isOperationsReceiptPhotoAddable`, on the
+        server's upload, the platform's file authorizer and the board's photo cell alike). A photo
+        already there is never replaced or deleted on a locked row; a محصنة in the vault, or out and
+        not delivered, is locked as before.
+      - Specs rewritten (the board's new kind, the rules unchanged): (web) `lib/day-board.spec.ts`
+        «names them in the table’s column order» and «reads every filter from its param» (the new
+        `confirmed` param); `pages/shipment-screens.spec.ts` ««عاوز عادى يعدل و يحذف» …» (the photo
+        follows `canManageReceipts`, `canEditRows` by default), ««هنزود التاريخ التسليم …»»
+        (`const secured = kind === 'secured' || kind === 'vault'`), ««والحالة …»» (a page's `statusCell`
+        first); `pages/day-board-filters.spec.ts` «draws the vault’s two status boxes …» (the
+        confirmation box in the chain); `operations-navigation.spec.ts` (nineteen pages); (api)
+        `seed-navigation-operations.spec.ts` and `operations-navigation.spec.ts` (the new row in the
+        lists), `seed-navigation.spec.ts` «declares the row count …» and `auth-seed-login.spec.ts`
+        `SEEDED_APPLICATIONS` (139 → 140). New: (contracts) `operations-delivered.spec.ts`; (api, run whole)
+        `tests/integration/operations-delivered.spec.ts` — only what reached its bank (daily delivered,
+        محصنة out of the vault delivered; not undelivered, in the vault, out not delivered, delivered
+        into the vault, deleted), Cairo midnight both sides, today by default, the grants, the ✓ with
+        the origin's and the destination's bank and the token's user, nothing else on the shipment
+        changed, the log and the events, every refusal above, the undo, the day board's ✓ beside it,
+        the first photo of a delivered محصنة; (api unit) `shipment-log.spec.ts` «prints the delivery
+        confirmed with its receipt, and its undo, as their own kinds»; (web) `lib/delivered-board.spec.ts`,
+        `pages/delivered-shipments.spec.tsx` (the board, the day box, the filter, both row states and
+        «بدون صورة», the ✓ and undo by grant, no other act, the photo, the dialog's fields, sides and
+        warning, focus and Escape, both languages), the i18n keys; the persistence census
+        (`shared/lib/remembered-filters-coverage.spec.ts`) classifies the new page COVERED, its filters
+        remembered as the day board's and `date` not (it opens on today).
+      - Verified on the real stack (the live API, the captains' «تم التسليم» driven in the app). One
+        fix: a refused «إلغاء التأكيد» (a colleague had taken it back, 409) was said twice, the same
+        sentence from the global notifier and from the row; it is said once now, the global
+        notifier's (`DeliveredRowAction`). New spec: `pages/delivered-shipments.spec.tsx` «says a
+        refused «إلغاء التأكيد» ONCE — the global notifier’s, no toast of its own».
+      - Round 33 critic (the build's, never the owner's):
+        - A confirmed delivery keeps the two branches it was billed between. The ✓ records the bank of
+          «من فرع» or «إلى فرع»; an edit that moved either one afterwards (the day board's form, or the
+          history's on a past row) left the record naming a branch the shipment no longer had. Now
+          `PATCH /operations/shipments/:id` refuses moving either branch while `deliveryConfirmation`
+          stands — 409 `OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED`, nothing written, in both
+          languages on the form: «ألغِ التأكيد في «الشحنات المسلَّمة» أولًا، ثم غيِّر «من فرع» أو «إلى
+          فرع»». A branch sent back unchanged is no move; every other field (the billed main bank, the
+          secondary bank, the lines, the dates, the notes) edits as before — the record reads none of
+          them. One rule for both doors of the edit (`prepareEdit`, `assertConfirmedBranchesKept`).
+        - «Today» is the SERVER's. The screen named the desk PC's Cairo day in every request and
+          bounded «يوم التسليم» by it: a PC a day ahead opened on an empty tomorrow, one a day behind
+          could not reach the server's today at all. The default read now names no day and the read
+          says the server's Cairo `today` (`OperationsDeliveredBoardDto.today`, read once with the day
+          answered); the box's latest day and the day a `?date=` may name are bounded by it
+          (`readDeliveredDay` → the day asked, or null for the default). The PC's clock only says when
+          to ask again: the default read is keyed by it, so a screen left open re-reads at midnight.
+        - Midnight no longer throws away an open ✓. While the screen read the new day, the dialog's row
+          was missing and the dialog vanished with the number typed, the side chosen and the photo
+          picked. The dialog now stays on the row it was opened on while the screen reads another day,
+          or is still reading (`deliveredDialogRow`); on its own day's read it follows its row as
+          before. The day moving on is said once: «بدأ يوم جديد — انتقلت الشاشة إلى تسليمات اليوم.
+          تسليمات يوم … تجدها باختياره في «يوم التسليم»» (`defaultDayLeft`).
+        - A colleague deleted the shipment under an open ✓: the 404 closed the dialog but nothing
+          re-read the screen, so the row stayed yellow, offering a ✓ refused every time. A 404 is now
+          one of the refusals that re-read it (`isDeliveryConflict`).
+        - Screen readers and keyboards: «إلغاء التأكيد» no longer carries `aria-pressed` (it was
+          announced "undo, pressed" — the day board's own warning on its ✓); «من» / «إلى» are one Tab
+          stop, and the arrows move and choose inside the group in the reading direction, down on a
+          phone (`billedSideTabStop`, `billedSideAfterKey`, `modeStepOf` — the swap window's three ways).
+        - The undo's toast said twice was the verifier's fix, above.
+        - Specs rewritten (the rule changed): (web) `lib/delivered-board.spec.ts` «is today by default,
+          any real day before it when asked, never a later one» → «asks a real day before today by
+          name, else NO day — the server’s own today»; `pages/delivered-shipments.spec.tsx` «lives under
+          the day board’s key …» (the key's `null` default beside the PC's clock day). New: (api, run
+          whole) `operations-delivered.spec.ts` «says ITS OWN Cairo today beside the day answered …» and
+          «Round 33 critic — a confirmed delivery keeps the two branches it was billed between» (each
+          branch refused with nothing written and no «السجل» row, the unchanged branches and the other
+          fields edited, undo → edit → ✓ on the new branch's bank); (web) the server's today against a
+          PC a day ahead and a day behind, the dialog past midnight, the day-moved notice, the 404
+          re-read, the undo's name, the one Tab stop, `defaultDayLeft`, `deliveredDialogRow`,
+          `billedSideTabStop`, `billedSideAfterKey`; `shared/lib/errors.spec.ts` the branch lock's words;
+          the i18n keys.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

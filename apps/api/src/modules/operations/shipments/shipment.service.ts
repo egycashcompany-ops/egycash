@@ -72,6 +72,7 @@ import { operationsDayService } from '../days/day.service';
 import { canTransitionShipment, reopenTarget } from './shipment-status';
 import { crewLegOf, deliveryLegOf, securedPickupOf, securedStageOf } from './secured-stage';
 import { assertSecuredUnlocked } from './secured-lock';
+import { legDeliveredAt, receiptPhotoAddable } from './delivered';
 import { operationsShipmentRepository } from './shipment.repository';
 import { operationsShipmentAssignmentRepository } from './shipment-assignment.repository';
 import { fleetDutyAssignmentRepository, fleetVehicleRepository } from '../fleet-boundary';
@@ -193,6 +194,32 @@ const assertDeliveryNotBeforeCollection = (delivery: Date, collection: Date): vo
       `the deliveryDate ${ymdOf(delivery)} is before the collectionDate ${ymdOf(collection)} — a shipment cannot go out before it is collected`,
     );
   }
+};
+
+/**
+ * Round 33 critic — a delivery confirmed with its receipt keeps the two branches it was billed
+ * between: an edit that MOVES «من فرع» or «إلى فرع» is refused (409
+ * `OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED`) while `deliveryConfirmation` stands. A branch sent
+ * back unchanged is no move (the edit form sends every field), and a shipment never confirmed, or
+ * whose confirmation was taken back, edits its branches as before.
+ */
+const assertConfirmedBranchesKept = (
+  before: Pick<
+    OperationsShipmentDoc,
+    'deliveryConfirmation' | 'originBranchId' | 'destinationBranchId'
+  >,
+  input: Pick<UpdateOperationsShipment, 'originBranchId' | 'destinationBranchId'>,
+): void => {
+  if (before.deliveryConfirmation == null) return;
+  const moved = (next: string | undefined, current: Types.ObjectId): boolean =>
+    next !== undefined && next !== String(current);
+  const origin = moved(input.originBranchId, before.originBranchId);
+  const destination = moved(input.destinationBranchId, before.destinationBranchId);
+  if (!origin && !destination) return;
+  throw new ConflictError(
+    `this delivery is confirmed with receipt ${before.deliveryConfirmation.receiptNumber}, billed to the bank of its ${before.deliveryConfirmation.billedSide} branch — take the confirmation back on «الشحنات المسلَّمة» before moving its ${origin ? 'origin' : 'destination'} branch`,
+    ErrorCodes.OPERATIONS_DELIVERY_CONFIRMED_BRANCH_LOCKED,
+  );
 };
 
 /** A date as its calendar day ('YYYY-MM-DD'), null kept — for "did this date move?". */
@@ -761,14 +788,9 @@ class OperationsShipmentService {
     const rows = docs.map((doc): DayBoardRow => {
       const leg = boardLeg(doc);
       // The captain's «تم التسليم» is the leg that reaches the DESTINATION — the pickup leg of a
-      // daily shipment, the delivery leg of a secured one, whichever leg the row prints.
-      // A leg that predates OP-7 has no `executionStatus` at all; it has plainly not been started
-      // (the same reading as execution.service's `statusOf`). Execution only moves forward, so
-      // once the leg is delivered — or completed after it — its `deliveredAt` stays the answer,
-      // even if the desk later reopens the shipment.
+      // daily shipment, the delivery leg of a secured one, whichever leg the row prints — read the
+      // one way every screen reads it (`legDeliveredAt`, delivered.ts).
       const delivering = legFor(doc, deliveryLegOf(doc.shipmentType));
-      const execution = delivering?.executionStatus ?? 'pending';
-      const captainDelivered = execution === 'delivered' || execution === 'completed';
       // A secured row's stage, and who collected it — both read off the shipment's pickup record
       // (Round 10); the PICKUP leg is consulted only for a row whose record was never written.
       const pickup =
@@ -776,7 +798,7 @@ class OperationsShipmentService {
       const captain = leg === null ? undefined : people.get(String(leg.captainEmployeeId));
       return {
         doc,
-        captainDeliveredAt: captainDelivered ? (delivering?.deliveredAt ?? null) : null,
+        captainDeliveredAt: legDeliveredAt(delivering),
         securedStage:
           doc.shipmentType === 'secured' ? securedStageOf(doc.status, pickup) : null,
         pickedUpBy: pickup?.by ?? null,
@@ -1001,6 +1023,14 @@ class OperationsShipmentService {
     const id = String(before._id);
     // Round 10 — checked before anything else: a received محصنة is not edited, whatever the edit.
     assertSecuredUnlocked(before, 'editing it');
+    // Round 33 critic — a delivery CONFIRMED with its receipt on «الشحنات المسلَّمة» billed the bank of
+    // one of its two branches («يحدد البنك من او الى»), read at the ✓. Moving either branch would
+    // leave that record naming a branch the shipment no longer has — «تُحتسب على …» saying «من» of a
+    // «من فرع» that is now another bank's. Refused, nothing written: «إلغاء التأكيد» first, then
+    // the edit, then the ✓ again. Only a branch that actually MOVES (the form sends every field
+    // back), and nothing else is held: the billed main bank, the secondary bank, the lines, the
+    // dates and the notes edit as before — the record reads none of them.
+    assertConfirmedBranchesKept(before, input);
 
     await assertReferences({
       mainBankId: input.mainBankId ?? String(before.mainBankId),
@@ -1190,6 +1220,12 @@ class OperationsShipmentService {
   // alike: «ميقدر حد … يعدل عليها» names no exception, and the photo is part of the record the vault
   // signed for. A photo needed after the receipt goes on through a cancelled receipt (the special
   // grant), like any other change to a locked shipment. Reading the photo is never locked.
+  //
+  // Round 33 B opens ONE door, narrowly: a locked محصنة that has REACHED ITS BANK and has NO photo
+  // yet takes a first one — the bank's paper receipt, which exists only after the delivery
+  // («ويفضل الصورة تكون مرفوعه»; «اختيارية مع تنبيه» — «الشحنات المسلَّمة» keeps «بدون صورة» on the
+  // row until it comes). A photo already there is never replaced or deleted on a locked row
+  // (`isOperationsReceiptPhotoAddable`, delivered.ts `receiptPhotoAddable`).
 
   async setReceiptImage(
     ctx: AuthContext,
@@ -1197,8 +1233,11 @@ class OperationsShipmentService {
     binary: UploadedBinary,
   ): Promise<OperationsShipmentDoc> {
     const before = await operationsShipmentRepository.getById(id);
-    assertSecuredUnlocked(before, 'its receipt photo');
     const current = before.receiptImage ?? null;
+    // A replace keeps Round 10's lock; a FIRST photo is open on a delivered محصنة (Round 33 B).
+    if (current !== null || !(await receiptPhotoAddable(before))) {
+      assertSecuredUnlocked(before, 'its receipt photo');
+    }
     let file: FileDoc;
     if (current === null) {
       file = await fileService.upload(
@@ -1276,8 +1315,13 @@ class OperationsShipmentService {
         const nowLinked = now?.receiptImage == null ? null : String(now.receiptImage.fileId);
         // Round 10 — the write this upload lost to may be the VAULT'S ✓: the lock was checked
         // before the bytes were stored, and the vault may have received the محصنة while they were.
-        // A locked row is never linked again, however the race fell («ميقدر حد … يعدل عليها»).
-        const locked = now !== null && isOperationsShipmentLocked(now);
+        // A locked row is never linked again, however the race fell («ميقدر حد … يعدل عليها») —
+        // except a FIRST photo of a delivered one, which is open (Round 33 B): the write it lost to
+        // may be «الشحنات المسلَّمة»'s ✓ on the same row.
+        const locked =
+          now !== null &&
+          isOperationsShipmentLocked(now) &&
+          !(linked === null && (await receiptPhotoAddable(now)));
         if (now !== null && !locked && nowLinked === linked && attempt < RECEIPT_LINK_ATTEMPTS) {
           version = now.__v;
           continue;

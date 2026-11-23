@@ -358,9 +358,9 @@ export const DayNote = ({
 
 /**
  * The day — «يوم التسليم» — as the boards' date box draws a day (`BoardDateBox`: the calendar at its
- * start, its name written beside the date), with a floor where one is given (`min`): «تسليم
- * المحصنات» picks no day before today. Round 30 — «توزيع المحصنات» gives none: a past day opens as
- * its record, read only (`RecordNotice`).
+ * start, its name written beside the date), with a floor where one is given (`min`). Round 30 —
+ * «توزيع المحصنات» gives none: a past day opens as its record, read only (`RecordNotice`). Round 33 —
+ * nor does «تسليم المحصنات» any more («افتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط»).
  */
 export const DayBox = ({
   label,
@@ -2217,7 +2217,16 @@ export const ChipMark = ({
   ...rest
 }: {
   tone:
-    'proposed' | 'moved' | 'overdue' | 'started' | 'refused' | 'reschedule' | 'waiting' | 'captain';
+    | 'proposed'
+    | 'moved'
+    | 'overdue'
+    | 'started'
+    | 'refused'
+    | 'reschedule'
+    | 'waiting'
+    | 'captain'
+    // Round 33 — on «تسليم المحصنات»'s record: it left the vault on its van.
+    | 'handed';
   icon: readonly string[];
   label: string;
 } & Record<`data-${string}`, string>): JSX.Element => (
@@ -2242,6 +2251,8 @@ export const ChipMark = ({
           'bg-slate-100 text-slate-600 ring-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-600/60',
         captain:
           'bg-emerald-100 text-emerald-800 ring-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-200 dark:ring-emerald-400/40',
+        handed:
+          'bg-sky-100 text-sky-800 ring-sky-300 dark:bg-sky-400/15 dark:text-sky-200 dark:ring-sky-300/40',
       }[tone],
     )}
   >

@@ -50,6 +50,7 @@ import {
   VAN_STATE_STRIPE,
 } from '../components/distribution-look';
 import { RecordNotice, dayText } from '../components/SecuredDistributionParts';
+import { handoverWhen } from '../lib/secured-distribution';
 import { SecuredDistributionPage } from './SecuredDistributionPage';
 import { VaultHandoverPage } from './VaultHandoverPage';
 
@@ -239,6 +240,7 @@ const answer = (
   today: `${TODAY}T00:00:00.000Z`,
   past: false,
   recordPackages: null,
+  recordHandovers: null,
   crewPlanVisible: true,
   crews: VANS,
   shipments: ROWS,
@@ -772,11 +774,14 @@ describe('«توزيع المحصنات» — a PAST day is its record, read onl
       /'onDragOver' \| 'onDragEnter' \| 'onDragLeave' \| 'onDrop'\n {2}> = canEdit\n/,
     );
     expect(DIST).toContain('openingDistributionHistory(data.shipments, data.crews, canEdit)');
-    // The day box has no floor here; the vault's keeps today's, and opens no past day.
+    // The day box has no floor here. REWRITTEN in Round 33 — it pinned that the vault's box kept
+    // today's floor and opened no past day (`min={minDay}`, `readDistributionDate(…, today)`); the
+    // vault's screen now opens a past day as its record too, by the same reader and with no floor.
     expect(DIST).toContain('readDistributionDay(sp.get(');
     expect(DIST).not.toContain('min={minDay}');
-    expect(HANDOVER).toContain('min={minDay}');
-    expect(HANDOVER).toContain("readDistributionDate(sp.get('date'), today)");
+    expect(HANDOVER).not.toContain('min={minDay}');
+    expect(HANDOVER).toContain("readDistributionDay(sp.get('date'))");
+    expect(HANDOVER).not.toContain('readDistributionDate');
   });
 
   // R30 critic — the record still drew the alarms about PLACING: 130 (no captain) framed rose with
@@ -1040,10 +1045,34 @@ describe('«تسليم المحصنات» — «تسليم» on the day the van 
     expect(open).not.toContain(ar('operations.handover.nothing'));
   });
 
-  it('yesterday’s read left open past Cairo midnight: «تسليم» is off, the load in the vault notwithstanding', () => {
+  // REWRITTEN in Round 33 — it was «yesterday’s read left open past Cairo midnight: «تسليم» is off,
+  // the load in the vault notwithstanding», and drew every «تسليم» there, disabled. A past day is
+  // now its RECORD on the vault's screen too («توزيع المحصنات»'s rule, `isRecordScreen`): the read
+  // below arrived YESTERDAY and midnight has passed on the open screen, so no «تسليم» is drawn at
+  // all. The old case — a read that arrived NOW with the server's day behind this PC's clock — is
+  // the next one: not a record (the server's `past: false` decides), and «تسليم» stays off by the
+  // live day, as before.
+  it('yesterday’s read left open past Cairo midnight turns into yesterday’s record: no «تسليم» at all, the load in the vault notwithstanding', () => {
     // No `?date=` — the screen opened on "today", read before midnight and not read again since.
-    // The live Cairo day has moved on, so those vans have left: the day the read SHOWS is checked
-    // against today, not the day the read was made on.
+    const YESTERDAY = new Date(Date.parse(`${TODAY}T00:00:00Z`) - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const html = render({
+      path: '/operations/vault/handover',
+      permissions: VAULT,
+      data: { ...placedOn(YESTERDAY), today: `${YESTERDAY}T00:00:00.000Z` },
+      updatedAt: Date.parse(`${YESTERDAY}T12:00:00.000Z`),
+    });
+    // cr-101's load is in the vault — on today's read its «تسليم» is on (the first case above).
+    expect(html).not.toContain('data-handover-open=');
+    expect(html).toContain(`data-handover-record="${YESTERDAY}"`);
+    expect(html).toContain('data-handover-today="true"');
+    expect(html).not.toContain(ar('operations.handover.hint'));
+    // «طباعة» stays on every van.
+    for (const v of VANS) expect(html).toContain(`data-handover-print="${v.crewAssignmentId}"`);
+  });
+
+  it('a read just in whose server day is behind this PC’s clock: not a record — «تسليم» stays off by the live day', () => {
     const YESTERDAY = new Date(Date.parse(`${TODAY}T00:00:00Z`) - 86_400_000)
       .toISOString()
       .slice(0, 10);
@@ -1052,7 +1081,7 @@ describe('«تسليم المحصنات» — «تسليم» on the day the van 
       permissions: VAULT,
       data: { ...placedOn(YESTERDAY), today: `${YESTERDAY}T00:00:00.000Z` },
     });
-    // cr-101's load is in the vault — on today's read its «تسليم» is on (the first case above).
+    expect(html).not.toContain('data-handover-record=');
     for (const v of VANS) {
       const open = tagOf(html, `data-handover-open="${v.crewAssignmentId}"`);
       expect(open, v.crewAssignmentId).toContain('disabled=""');
@@ -1069,6 +1098,274 @@ describe('«تسليم المحصنات» — «تسليم» on the day the van 
     });
     expect(body).toContain(TODAY);
     expect(translate('en', 'operations.handover.confirmBody', { day: TODAY })).toContain(TODAY);
+  });
+});
+
+// ── Round 33 — «انا عاوزك تفتحلى الايام اللى فاتت فى تسليم المحصنات ك روية فقط زى ما عملنا فى شاشة
+// توزيع المحصنات» ─────────────────────────────────────────────────────────────────────────────────
+describe('«تسليم المحصنات» — a PAST day is its record, view only (Round 33)', () => {
+  const HANDOVER_PATH = '/operations/vault/handover' as const;
+  const YESTERDAY = new Date(Date.parse(`${TODAY}T00:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const due = `${YESTERDAY}T00:00:00.000Z`;
+  /** Handed over on van 101 that morning, by the treasurer. */
+  const OUT = shipment('r-out', {
+    status: 'dispatched',
+    securedStage: 'dispatched',
+    deliveryDate: due,
+    delivery: leg('cr-101', 'c1'),
+    deliveryLegVersion: 1,
+    placedCrewAssignmentId: 'cr-101',
+  });
+  /** Handed over with it, and delivered since. */
+  const DONE = shipment('r-done', {
+    status: 'completed',
+    securedStage: 'completed',
+    deliveryDate: due,
+    delivery: leg('cr-101', 'c1'),
+    deliveryLegVersion: 1,
+    placedCrewAssignmentId: 'cr-101',
+  });
+  /** On van 101, the vault never took it in. */
+  const NEVER = shipment('r-never', {
+    status: 'draft',
+    securedStage: 'withCaptain',
+    vaultReceivedAt: null,
+    deliveryDate: due,
+    delivery: leg('cr-101', 'c1'),
+    deliveryLegVersion: 0,
+    placedCrewAssignmentId: 'cr-101',
+  });
+  /** On van 104, never handed over — still in the vault, «متأخرة» now. */
+  const KEPT = shipment('r-kept', {
+    areaName: 'مدينة نصر',
+    overdue: true,
+    deliveryDate: due,
+    delivery: leg('cr-104', 'c2'),
+    deliveryLegVersion: 0,
+    placedCrewAssignmentId: 'cr-104',
+  });
+  /** Due on the day, on no van. */
+  const LOOSE_ONE = shipment('r-loose', { deliveryDate: due, areaName: 'العباسية' });
+  const OUT_AT = `${YESTERDAY}T08:15:00.000Z`;
+  const DONE_AT = `${YESTERDAY}T07:05:00.000Z`;
+  const recordOf = (over: Partial<OperationsSecuredDistributionDto> = {}) =>
+    answer({
+      date: due,
+      past: true,
+      shipments: [OUT, DONE, NEVER, KEPT, LOOSE_ONE],
+      recordPackages: [
+        { shipmentId: 'r-out', bags: 3, cartons: 1, boxes: 0 },
+        { shipmentId: 'r-done', bags: 2, cartons: 0, boxes: 1 },
+        { shipmentId: 'r-kept', bags: 1, cartons: 0, boxes: 0 },
+      ],
+      recordHandovers: [
+        { shipmentId: 'r-out', handedOverAt: OUT_AT, handedOverByName: 'سامح الخزين' },
+        { shipmentId: 'r-done', handedOverAt: DONE_AT, handedOverByName: 'هالة منير' },
+      ],
+      ...over,
+    });
+  const html = render({
+    path: HANDOVER_PATH,
+    permissions: VAULT,
+    data: recordOf(),
+    date: YESTERDAY,
+  });
+  const WRITES = [
+    'data-handover-open',
+    'data-handover-confirm',
+    'data-handover-block',
+    'data-handover-held',
+    'draggable="true"',
+    'data-move-open',
+    'data-shipment-tone="proposed"',
+  ];
+
+  it('opens the past day in «يوم التسليم» — no floor — and says calmly it is a record, view only', () => {
+    const box = openingTag(html, 'data-distribution-day="true"');
+    expect(box).toContain(`value="${YESTERDAY}"`);
+    expect(box).not.toContain('min=');
+    expect(html).toContain(`data-handover-record="${YESTERDAY}"`);
+    const title = ar('operations.distribution.record.title', { day: dayText(due) });
+    expect(title).toContain('للعرض فقط، لا يمكن التعديل');
+    expect(html).toContain(title);
+    expect(html).toContain(ar('operations.handover.record.body'));
+    // Not the hint of today, nor the plan of a day to come.
+    expect(html).not.toContain(ar('operations.handover.hint'));
+    expect(html).not.toContain('data-handover-plan-day');
+  });
+
+  it('offers no write — no «تسليم», no confirmation, no drag or menu — and the way back to today where the acts would stand', () => {
+    for (const write of WRITES) expect(html, write).not.toContain(write);
+    expect(html).toContain('data-handover-record-acts="true"');
+    expect(html).toContain('data-handover-record-mark="true"');
+    expect(html).toContain(ar('operations.distribution.record.mark'));
+    const back = openingTag(html, 'data-handover-today="true"', 'button');
+    expect(back).toContain('type="button"');
+    expect(back).toContain(
+      `title="${ar('operations.handover.record.todayHint', { day: dayText(`${TODAY}T00:00:00.000Z`) })}"`,
+    );
+    expect(html).toContain(`${ar('operations.distribution.record.today')}</button>`);
+    // Reprinting a past day's sheet is reading: «طباعة» on every van.
+    for (const v of VANS) expect(html).toContain(`data-handover-print="${v.crewAssignmentId}"`);
+  });
+
+  it('shows what rode each van and what became of it — handed over (when, by whom), kept in the vault, never received', () => {
+    const v101 = vanOf(html, 'cr-101');
+    for (const id of ['r-out', 'r-done', 'r-never']) {
+      expect(v101).toContain(`data-distribution-shipment="${id}"`);
+    }
+    expect(vanOf(html, 'cr-104')).toContain('data-distribution-shipment="r-kept"');
+    expect(leftOf(html)).toContain('data-distribution-shipment="r-loose"');
+    // Each chip's mark, its words on hover and for a screen reader.
+    const outMark = ar('operations.handover.record.handedMark');
+    expect(cardOf(html, 'r-out')).toContain('data-mark="handed-over"');
+    expect(cardOf(html, 'r-out')).toContain(
+      `${outMark} · ${handoverWhen(OUT_AT, YESTERDAY)} · سامح الخزين`,
+    );
+    expect(cardOf(html, 'r-done')).toContain('data-mark="handed-over"');
+    expect(cardOf(html, 'r-kept')).toContain('data-mark="kept-in-vault"');
+    expect(cardOf(html, 'r-kept')).toContain(ar('operations.handover.record.keptMark'));
+    expect(cardOf(html, 'r-never')).toContain('data-mark="not-received"');
+    expect(cardOf(html, 'r-never')).toContain(ar('operations.handover.record.notReceivedMark'));
+    // …and on its card (opened on hover), in words — never today's «not in the vault YET».
+    expect(HANDOVER).toContain('key: `record-${state}`,');
+    for (const key of ['keptNote', 'notReceivedNote', 'handedNote', 'handedNoteAt']) {
+      expect(HANDOVER).toContain(`t('operations.handover.record.${key}'`);
+    }
+    expect(HANDOVER).toContain(
+      "const waiting = !isRecord && van !== undefined && row.status !== 'inVault';",
+    );
+    expect(
+      ar('operations.handover.record.handedNote', {
+        when: handoverWhen(OUT_AT, YESTERDAY),
+        name: 'سامح الخزين',
+      }),
+    ).toBe(`خرجت من الخزينة ${handoverWhen(OUT_AT, YESTERDAY)}، وسلّمها سامح الخزين`);
+    expect(html).not.toContain('data-mark="not-in-vault"');
+    expect(html).not.toContain(ar('operations.handover.notInVaultHint'));
+  });
+
+  it('says on each van how many left, who handed them over and when — and how many did not', () => {
+    const v101 = vanOf(html, 'cr-101');
+    expect(v101).toContain('data-handover-record-van="2"');
+    // The two handovers, by two people, the last at 10:15 Cairo.
+    expect(v101).toContain(
+      [
+        ar('operations.handover.record.vanHanded.two'),
+        ar('operations.handover.record.by', { name: 'هالة منير، سامح الخزين' }),
+        handoverWhen(OUT_AT, YESTERDAY),
+      ].join(' · '),
+    );
+    expect(v101).toContain('data-handover-record-kept="1"');
+    expect(v101).toContain(ar('operations.handover.record.vanKept.one'));
+    // Van 104: nothing on it left the vault that day.
+    const v104 = vanOf(html, 'cr-104');
+    expect(v104).toContain('data-handover-record-van="0"');
+    expect(v104).toContain(ar('operations.handover.record.vanNone'));
+    expect(v104).not.toContain('data-handover-record-kept');
+    // A van that carried nothing says so, with no handover line.
+    expect(vanOf(html, 'cr-112')).toContain(ar('operations.distribution.emptyVan'));
+    expect(vanOf(html, 'cr-112')).not.toContain('data-handover-record-van');
+  });
+
+  it('counts the record from the read — «سُلِّمت» in the figures, the packages as the vault took them in', () => {
+    const at = html.indexOf('data-figure="handed"');
+    expect(at).toBeGreaterThan(-1);
+    const pill = html.slice(html.lastIndexOf('<span', at), html.indexOf('data-figure="', at + 10));
+    expect(pill).toContain(ar('operations.handover.record.handedOver'));
+    expect(html).not.toContain('data-figure="ready"');
+    expect(html).not.toContain(`>${ar('operations.handover.ready')}<`);
+    // 101 carries r-out (3/1/0) and r-done (2/0/1), both gone from the vault's holdings now: the
+    // record's own counts (cartons/bags/boxes), not the holdings'.
+    expect(vanOf(html, 'cr-101')).toContain('data-van-packages="1/5/1"');
+  });
+
+  it('draws the record calmly — no rose on the column of no van or its figure, no placing alarm on a van', () => {
+    const left = leftOf(html);
+    const head = left.slice(0, left.indexOf('</header>'));
+    expect(head).toContain('data-column-icon="plain"');
+    expect(head).not.toContain(COLUMN_WARN.count);
+    expect(left).toContain(ar('operations.handover.record.unplacedHint'));
+    expect(left).not.toContain(ar('operations.handover.unplacedHint'));
+    const at = html.indexOf('data-figure="unplaced"');
+    const pill = html.slice(html.lastIndexOf('<span', at), html.indexOf('data-figure="', at + 10));
+    expect(pill).toContain(COUNT_LOOK.shipments.square);
+    expect(pill).not.toContain(COLUMN_WARN.figure);
+    // 130 has no captain: on today it wears the owner's rose; on the record, the card's rest.
+    const card130 = openingTag(html, 'data-distribution-van="cr-130"', 'article');
+    expect(card130).toContain(VAN_CARD.rest);
+    expect(card130).not.toContain(VAN_CARD.noCaptain);
+  });
+
+  it('is a record before the server has answered (the URL’s day), for a reader without the dispatch grant, and in English', () => {
+    const loading = render({
+      path: HANDOVER_PATH,
+      permissions: VAULT,
+      data: null,
+      date: YESTERDAY,
+    });
+    expect(loading).toContain(`data-handover-record="${YESTERDAY}"`);
+    expect(loading).not.toContain('data-handover-open');
+    const viewer = render({
+      path: HANDOVER_PATH,
+      permissions: ['operationsVault.view'],
+      data: recordOf(),
+      date: YESTERDAY,
+    });
+    expect(viewer).toContain(`data-handover-record="${YESTERDAY}"`);
+    expect(viewer).toContain('data-handover-today="true"');
+    expect(viewer).toContain('data-mark="handed-over"');
+    // Every word in both languages.
+    for (const key of [
+      'operations.handover.record.body',
+      'operations.handover.record.todayHint',
+      'operations.handover.record.handedOver',
+      'operations.handover.record.by',
+      'operations.handover.record.vanNone',
+      'operations.handover.record.handedMark',
+      'operations.handover.record.keptMark',
+      'operations.handover.record.notReceivedMark',
+      'operations.handover.record.handedNote',
+      'operations.handover.record.handedNoteAt',
+      'operations.handover.record.keptNote',
+      'operations.handover.record.notReceivedNote',
+      'operations.handover.record.unplacedHint',
+      'operations.handover.sheet.record',
+      'operations.handover.sheet.handedOver',
+    ]) {
+      expect(ar(key), key).not.toBe(key);
+      expect(translate('en', key), key).not.toBe(key);
+    }
+    for (const form of ['one', 'two', 'few', 'many', 'other']) {
+      for (const key of ['vanHanded', 'vanKept']) {
+        const full = `operations.handover.record.${key}.${form}`;
+        expect(ar(full), full).not.toBe(full);
+        expect(translate('en', full), full).not.toBe(full);
+      }
+    }
+    expect(translate('en', 'operations.handover.record.body')).toContain(
+      'Nothing can be handed over',
+    );
+  });
+
+  it('is built on «توزيع المحصنات»’s record — one gate, the server’s `past`, midnight, the day box’s re-read, a printed record', () => {
+    expect(HANDOVER).toContain('const isRecord = isRecordScreen(');
+    expect(HANDOVER).toContain('const canHandOver = mayHandOver && !isRecord;');
+    // The day box: any day; a URL left as it is reads again; «العودة إلى اليوم» is the same act.
+    expect(HANDOVER).toContain(
+      "const { date: asked, reread } = distributionDayChange(sp.get('date'), value, today);",
+    );
+    expect(HANDOVER).toContain('if (reread) void board.refetch();');
+    expect(HANDOVER).toContain("const backToToday = (): void => setDay('');");
+    // The confirmation never opens on a record; one left open shuts with the day.
+    expect(HANDOVER).toContain('confirming === null || !canHandOver');
+    // A record's packages and handovers are the read's own.
+    expect(HANDOVER).toContain('recordPackaging(data?.recordPackages)');
+    expect(HANDOVER).toContain('recordHandovers(data?.recordHandovers)');
+    // Its printed sheet says it is a record.
+    expect(HANDOVER).toContain('record: isRecord');
   });
 });
 
@@ -1121,9 +1418,13 @@ describe('what the screens are built from', () => {
   it('the vault hands over through the existing dispatch with the van’s in-vault shipments only', () => {
     expect(HANDOVER).toContain('handoverRequest(rows, van.crewAssignmentId)');
     // Today only — the button by the pure rule, the dialog's save and the act itself by the day.
+    // REWRITTEN in Round 33 — the two gates pinned `day === today` alone; a record (a past day,
+    // `isRecord`) is now off them too, and the act asks the page's one gate (`canHandOver`).
     expect(HANDOVER).toContain('handoverBlock(day, today, ready.length)');
-    expect(HANDOVER).toContain('const handoverToday = day === today;');
-    expect(HANDOVER).toContain('if (body === null || !handoverToday || sending.current) return;');
+    expect(HANDOVER).toContain('const handoverToday = day === today && !isRecord;');
+    expect(HANDOVER).toContain(
+      'if (body === null || !handoverToday || !canHandOver || sending.current) return;',
+    );
     expect(HANDOVER).toContain('disabled={confirmLoad.length === 0 || !handoverToday}');
     expect(HANDOVER).toContain('day: dayText(day),');
     expect(HANDOVER).toContain('useDispatchSecured()');

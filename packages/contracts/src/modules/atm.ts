@@ -684,21 +684,100 @@ export const ATM_MACHINE_SORT_FIELDS = ['bankName', 'machineCode', 'name', 'area
 export const ATM_MACHINE_CODES_MAX = 200;
 
 /**
- * Machine codes typed or pasted into the ID filter → the codes, normalized exactly as every entry
- * point normalizes them (`normalizeAtmMachineCode`), each once, in the order first written. A
- * machine code holds no space or comma, so whitespace, commas and semicolons (Latin or Arabic) all
- * separate; what is left empty — or only zeros — names no machine and is dropped.
+ * A separator that always ends a machine code: a comma, a semicolon (Latin or Arabic), a line
+ * break. No code holds one.
  */
-export const splitAtmMachineCodeList = (raw: string | readonly string[]): string[] => {
-  const parts = Array.isArray(raw)
-    ? (raw as readonly string[]).flatMap((part) => String(part).split(/[\s,،;؛]+/u))
-    : String(raw).split(/[\s,،;؛]+/u);
+const ATM_CODE_BREAK = /[,،;؛\n\r]/u;
+
+/**
+ * Whether a code may go on past a space. Most codes are digits, or letters run into digits
+ * (`BRKN0004`, `HDB-ATM0003`), and a space after them ends them — a list read off a message is
+ * `1056 1112`. But some are written with a space inside (2026-11-23, «HDB-ATM 9501 … بسبب المسافة
+ * اللى فيها بتتقسم كأنها ماكينتين»: «HDB-ATM 9501», «HDB - 1234»): a code that so far ENDS with a
+ * letter or a dash is not finished, and the space belongs to it.
+ */
+const continuesPastSpace = (code: string): boolean => /[\p{L}-]$/u.test(code);
+
+/** One code as written: its text (spaces inside it single) and where it starts in what was typed. */
+interface AtmCodeSpan {
+  text: string;
+  start: number;
+}
+
+/**
+ * What was typed or pasted, read as codes. A line break, a comma or a semicolon always ends a code;
+ * a space ends one unless the code so far ends with a letter or a dash, or the next word starts
+ * with a dash (`continuesPastSpace`) — so `HDB-ATM 9501 1056` is two codes, `HDB-ATM 9501` and
+ * `1056`, and `1056 1112` two as well. `settled` says whether the last code is FINISHED — a
+ * separator that ends it follows it — or may still be being typed.
+ */
+const readAtmCodeSpans = (raw: string): { spans: AtmCodeSpan[]; settled: boolean } => {
+  const spans: AtmCodeSpan[] = [];
+  let open: AtmCodeSpan | null = null;
+  let spaced = false;
+  let broken = false;
+  for (const token of raw.matchAll(/[,،;؛\n\r]|[^\S\n\r]+|[^\s,،;؛]+/gu)) {
+    const text = token[0];
+    if (ATM_CODE_BREAK.test(text)) {
+      if (open !== null) spans.push(open);
+      open = null;
+      spaced = false;
+      broken = true;
+    } else if (/^\s+$/u.test(text)) {
+      spaced = true;
+    } else {
+      if (open !== null && spaced && (continuesPastSpace(open.text) || text.startsWith('-'))) {
+        open.text = `${open.text} ${text}`;
+      } else {
+        if (open !== null) spans.push(open);
+        open = { text, start: token.index };
+      }
+      spaced = false;
+      broken = false;
+    }
+  }
+  if (open === null) return { spans, settled: true };
+  spans.push(open);
+  return { spans, settled: broken || (spaced && !continuesPastSpace(open.text)) };
+};
+
+/** The codes of a list, normalized (`normalizeAtmMachineCode`), each once, in the order first written. */
+const uniqueCodes = (texts: readonly string[]): string[] => {
   const out: string[] = [];
-  for (const part of parts) {
-    const code = normalizeAtmMachineCode(part);
+  for (const text of texts) {
+    const code = normalizeAtmMachineCode(text);
     if (code !== '' && !out.includes(code)) out.push(code);
   }
   return out;
+};
+
+/**
+ * Machine codes typed or pasted into the ID filter → the codes, normalized exactly as every entry
+ * point normalizes them (`normalizeAtmMachineCode`), each once, in the order first written. Commas,
+ * semicolons (Latin or Arabic) and line breaks separate; so does a space, unless the code before it
+ * ends with a letter or a dash — `HDB-ATM 9501` is ONE code (`readAtmCodeSpans`). What is left
+ * empty — or only zeros — names no machine and is dropped.
+ */
+export const splitAtmMachineCodeList = (raw: string | readonly string[]): string[] => {
+  const parts = Array.isArray(raw) ? (raw as readonly string[]).map(String) : [String(raw)];
+  return uniqueCodes(parts.flatMap((part) => readAtmCodeSpans(part).spans.map((s) => s.text)));
+};
+
+/**
+ * What is typed into the ID filter's box, read as it is typed: the codes already FINISHED — each
+ * followed by a separator that ends it — and the text still being typed, exactly as it stands in
+ * the box (a code that may go on past a space keeps the space: `HDB-ATM ` is still being typed).
+ */
+export const readTypedAtmMachineCodes = (raw: string): { chosen: string[]; typing: string } => {
+  const { spans, settled } = readAtmCodeSpans(raw);
+  const last = spans[spans.length - 1];
+  // Nothing but separators: nothing chosen, and the box starts clean.
+  if (last === undefined) return { chosen: [], typing: '' };
+  if (settled) return { chosen: uniqueCodes(spans.map((s) => s.text)), typing: '' };
+  return {
+    chosen: uniqueCodes(spans.slice(0, -1).map((s) => s.text)),
+    typing: raw.slice(last.start),
+  };
 };
 
 /** The machine codes as a query field: one comma-separated value or a repeated parameter. */
@@ -736,9 +815,8 @@ const atmMachineFilterFields = {
   name: z.string().trim().max(100).optional(),
 };
 
-export const ListAtmMachinesQuerySchema = PaginationQuerySchema.extend(
-  atmMachineFilterFields,
-).strict();
+export const ListAtmMachinesQuerySchema =
+  PaginationQuerySchema.extend(atmMachineFilterFields).strict();
 export type ListAtmMachinesQuery = z.infer<typeof ListAtmMachinesQuerySchema>;
 
 /** The summary takes the list's filters and nothing about pages or order. */

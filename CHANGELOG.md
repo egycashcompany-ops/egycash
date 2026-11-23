@@ -9,6 +9,18 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **ATM: a machine code written with a space inside is searched and filtered whole.** «لما بعمل
+  بحث هنا /atm/machines على الماكينة دى HDB-ATM 9501 بسبب المسافة اللى فيها بتتقسم كأنها
+  ماكينتين ! فمبتظهرش». The ID filter on «كل الماكينات» took every space as the end of a code, so
+  «HDB-ATM 9501» became two codes, «HDB-ATM» and «9501», that no machine carries. Some codes are
+  written that way («HDB-ATM 9501», «HDB - 1234»). A space now ends a code only when the code
+  before it ends with a digit; after a letter or a dash it belongs to the code. A list read off a
+  message («1056 1112», or codes on separate lines) is still taken code by code, and a comma, a
+  semicolon or a line break always ends a code. The same rule reads the page's address and the
+  API's `codes` parameter (`splitAtmMachineCodeList`).
+
 ### Changed
 
 - **Fleet: the owner's follow-ups of 22 November — «أرقام الفترة» removed, «إجمالي العهدة», no

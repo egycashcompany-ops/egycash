@@ -3,11 +3,13 @@
 //
 // An operator usually reads codes off a message, so the search box doubles as the input: each code
 // is taken the moment its separator (a space, a comma, a new line) is typed, and Enter takes the
-// last one. A PASTED list is taken whole, its last code too (`readMachineCodeInput`). Codes — and
-// the fragment searched for — are normalized as every entry point normalizes them (`0123` is
-// machine 123), and Arabic-Indic digits read as digits. One filter asks for at most
-// `ATM_MACHINE_CODES_MAX` codes, the API's limit; past it the reader is told, and nothing is sent
-// that the API would refuse.
+// last one. A space after a code that ends with a letter or a dash does not end it: some codes are
+// written with one inside (2026-11-23, «HDB-ATM 9501»), and the box keeps it as the code goes on
+// (`readTypedAtmMachineCodes`). A PASTED list is taken whole, its last code too
+// (`readMachineCodeInput`). Codes — and the fragment searched for — are normalized as every entry
+// point normalizes them (`0123` is machine 123), and Arabic-Indic digits read as digits. One filter
+// asks for at most `ATM_MACHINE_CODES_MAX` codes, the API's limit; past it the reader is told, and
+// nothing is sent that the API would refuse.
 //
 // THE LIST IS SEARCHED ON THE SERVER. The vehicle filter holds the whole registry (two hundred
 // cars); the directory holds some 2,600 machines, so the picker asks for the codes holding the
@@ -70,7 +72,10 @@ export const MachineCodeFilter = ({
     const id = window.setTimeout(() => setTerm(machineCodeSearchTerm(search)), SEARCH_PAUSE_MS);
     return () => window.clearTimeout(id);
   }, [search]);
-  const found = useAtmMachineCodeSearch({ ...narrow, ...(term === '' ? {} : { code: term }) }, opened);
+  const found = useAtmMachineCodeSearch(
+    { ...narrow, ...(term === '' ? {} : { code: term }) },
+    opened,
+  );
 
   /** `codes` added after `base` — the codes in hand, or none when the list's own ticks are `codes`. */
   const choose = (base: readonly string[], codes: readonly string[]): void => {

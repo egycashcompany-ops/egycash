@@ -20,10 +20,14 @@ export const INK3 = 'text-[color:var(--att-ink-3)]';
 export const FIG = 'att-fig';
 
 /** The attendance canvas: the warm paper every attendance page sits on. */
-export const AttendanceCanvas = ({ children }: { children: ReactNode }): JSX.Element => (
+export const AttendanceCanvas = ({ children, fill = false }: { children: ReactNode; fill?: boolean }): JSX.Element => (
   // No panel of its own any more: the page sits straight on the app background, so the screen is
   // one layer of cards rather than a card inside a card.
-  <div className="att space-y-5 sm:space-y-6">{children}</div>
+  //
+  // `fill`: become a column that takes the shell's spare height and passes it down, so the last
+  // card reaches the bottom of the screen instead of leaving dead space under it. Off by default —
+  // the employee view and the working-hours panel are read down and end where their content ends.
+  <div className={cn('att space-y-5 sm:space-y-6', fill && 'flex flex-1 flex-col')}>{children}</div>
 );
 
 /** A white sheet on a hairline. */

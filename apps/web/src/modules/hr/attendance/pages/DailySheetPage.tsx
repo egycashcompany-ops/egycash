@@ -288,7 +288,9 @@ export const DailySheetPage = (): JSX.Element => {
   }, [counts?.lastPunchAt, locale]);
 
   return (
-    <PageContainer>
+    // `fill`: the sheet reaches the bottom of a tall screen instead of leaving dead space
+    // under it, and a screen it already overflows scrolls exactly as before.
+    <PageContainer fill>
       {exportError !== null && (
         <p role="alert" className="mb-3 text-sm text-red-600">
           {exportError}

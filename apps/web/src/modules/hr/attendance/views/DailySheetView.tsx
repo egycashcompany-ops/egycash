@@ -72,7 +72,7 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
   const [showFilters, setShowFilters] = useState((p.filterCount ?? 0) > 0);
 
   return (
-    <AttendanceCanvas>
+    <AttendanceCanvas fill>
       <PageHeader
         eyebrow={t('dailyAttendance')}
         title={p.dateTitle}
@@ -112,7 +112,7 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
         now={p.now}
       />
 
-      <Sheet className="overflow-hidden">
+      <Sheet className="flex flex-1 flex-col overflow-hidden">
         {/* TITLE BAR — the table's name, then search, Filter and Sort by. */}
         <div className="flex flex-wrap items-center gap-3 px-5 pb-3 pt-5 sm:px-6">
           <h2 className={cn('me-auto text-[17px] font-semibold', INK)}>
@@ -158,8 +158,10 @@ export const DailySheetView = (p: DailySheetViewProps): JSX.Element => {
           <StatusSegments segments={tabs} active={p.activeFilter} allKey="all" onPick={p.onFilter} moreLabel={t('moreStatuses')} ariaLabel={t('status')} />
         </div>
 
-        {/* THE TABLE */}
-        <div className="overflow-x-auto px-3 pb-2 sm:px-4">
+        {/* THE TABLE. `flex-1` so the spare height of a tall screen lands HERE, under the rows,
+            rather than outside the card as a gap — the table keeps its natural height on a screen
+            that is already full, because a flex item never shrinks below its content. */}
+        <div className="flex-1 overflow-x-auto px-3 pb-2 sm:px-4">
           <table className="w-full min-w-[60rem] border-separate border-spacing-0 text-start">
             <thead>
               <tr>

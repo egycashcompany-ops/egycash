@@ -83,6 +83,7 @@ import {
   buildAttendanceQuarantineRouter,
   buildAttendanceRegularizationsRouter,
   buildAttendanceShiftsRouter,
+  buildAttendanceWorkingHoursRouter,
   attendanceSweepService,
   dayRecordService,
   registerHrAttendanceSettings,
@@ -780,6 +781,39 @@ const attendanceShiftAdminPermissions = declarePermissions(
   'hr.attendance-shifts',
 );
 
+/**
+ * «ساعات العمل» — the hours each department owes, and the log of who changed them.
+ *
+ * ITS OWN KEY, on the `hiringRequirement` precedent: a hub tab needs a page, and
+ * `validatePageRegistry` refuses a page that no permission administers (`empty-page`). Borrowing
+ * `attendance.manageShifts` would have left the role matrix saying the company's working hours are
+ * administered by the key that administers the shift catalog — and they are not the same power.
+ * The hours are an input to the derivation: saving them re-prices every unfrozen day of the month
+ * for a whole department, and payroll reads what that writes. The catalog does nothing of the kind.
+ *
+ * A NEW KEY IS HELD BY NOBODY, so the deploy hands it out once rather than leaving the screen
+ * dark. «ساعات العمل» replaces what HR set through the shift catalog until now (a shift carries the
+ * start, the end and the break), so every role and delegated grant holding `attendance.manageShifts`
+ * is given this key by `go-live/working-hours-grants.ts` — the `grantAlongside` mechanism, which
+ * widens nobody because a holder gains it only beside the key it already exercised the same power
+ * under, in the same grant and the same scope. `super-admin` is widened separately by
+ * `attendance.migration.ts`, since a seeded system role is frozen at its first seed. From then on
+ * the two screens are given and taken separately on the roles screen.
+ */
+const attendanceWorkingHoursPermissions = declarePermissions(
+  'hr',
+  'attendance',
+  { en: 'attendance', ar: 'الحضور والانصراف' },
+  [],
+  [
+    {
+      action: 'manageWorkingHours',
+      name: { en: 'Manage working hours', ar: 'إدارة ساعات العمل' },
+    },
+  ],
+  'hr.working-hours',
+);
+
 const attendanceAssignPermissions = declarePermissions(
   'hr',
   'attendance',
@@ -1255,6 +1289,7 @@ const attendanceDevicePermissions = declarePermissions(
 
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
+  ...attendanceWorkingHoursPermissions,
   ...attendanceDevicePermissions,
   ...attendanceAssignPermissions,
   ...attendanceDailyPermissions,
@@ -1390,6 +1425,13 @@ export const hrPages: PageDef[] = [
     name: { en: 'Notification rules', ar: 'قواعد الإشعارات' },
     route: '/hr-settings/notification-rules',
     sortOrder: 6,
+  },
+  {
+    id: 'hr.working-hours',
+    moduleId: 'hr',
+    name: { en: 'Working hours', ar: 'ساعات العمل' },
+    route: '/hr-settings/working-hours',
+    sortOrder: 7,
   },
   {
     id: 'hr.applicants',
@@ -1736,6 +1778,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/contract-templates', router: buildContractTemplatesRouter() },
     { prefix: '/hr/contract-types', router: buildContractTypesRouter() },
     { prefix: '/hr/attendance/shifts', router: buildAttendanceShiftsRouter() },
+    { prefix: '/hr/attendance/working-hours', router: buildAttendanceWorkingHoursRouter() },
     { prefix: '/hr/attendance/assignments', router: buildAttendanceAssignmentsRouter() },
     { prefix: '/hr/attendance/devices', router: buildAttendanceDevicesRouter() },
     { prefix: '/hr/attendance/enrollments', router: buildAttendanceEnrollmentsRouter() },
@@ -1835,6 +1878,9 @@ export const hrModule: ModuleManifest = {
     'hr_training_nominations',
     'hr_training_enrollments',
     'hr_training_records',
+    // Operational bookkeeping, not business data (ADR-025) — the owner's one-off changes to the
+    // live data, each done once (go-live/go-live-run.model.ts).
+    'hr_go_live_runs',
   ],
   // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
   // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no

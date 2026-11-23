@@ -20,6 +20,7 @@ const boardRow = (
   driver2EmployeeId: null,
   drivers: [],
   missionTypeId: null,
+  uncoded: null,
   crew,
 });
 
@@ -33,6 +34,7 @@ const crewOf = (id: string, captains: string[]): OperationsCrewBoardRowDto['crew
   notes: null,
   shiftTypeId: null,
   rowColour: null,
+  shipments: 0,
 });
 
 describe('dispatchCrewOptions', () => {

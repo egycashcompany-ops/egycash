@@ -104,6 +104,18 @@ describe('the period figures', () => {
     expect(figures.daysPresent).toBe(0);
   });
 
+  it('leaves a date with no record, or not yet concluded, out of the denominator', () => {
+    // Before the person's first scan the engine knows nothing about a date; counting it made
+    // «14 of 22» beside 0 absent days — a rate about the data's start, not about the person.
+    const figures = periodFigures([
+      row({ workedMinutes: 480 }),
+      row({ status: 'noRecord', firstInAt: null, lastOutAt: null, workedMinutes: 0 }),
+      row({ status: 'pending', firstInAt: null, lastOutAt: null, workedMinutes: 0 }),
+    ]);
+    expect(figures.daysExpected).toBe(1);
+    expect(figures.daysPresent).toBe(1);
+  });
+
   it('averages hours over the days that HAVE hours', () => {
     const figures = periodFigures([
       row({ workedMinutes: 480 }),

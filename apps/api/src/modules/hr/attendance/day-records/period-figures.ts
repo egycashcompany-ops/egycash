@@ -29,7 +29,12 @@ export const ATTENDED_STATUSES: readonly AttendanceDayStatus[] = [
  * gives, and a covered leave. They are the days «من 24 يوم عمل» leaves out — counting Fridays
  * against somebody's attendance would put a full month out of reach by construction.
  */
-const NOT_EXPECTED: readonly AttendanceDayStatus[] = ['weekend', 'holiday', 'dayOff', 'onLeave'];
+// A day counts as EXPECTED only when somebody was expected AND the engine concluded what happened.
+// `noRecord` (nothing known — typically before the person's first scan) and `pending` (not
+// concluded yet) are left out: counting them made «14 of 22» beside 0 absent days, a rate about
+// the data's start date rather than the person. `noSchedule` stays IN — a missing roster is a
+// gap HR must see.
+const NOT_EXPECTED: readonly AttendanceDayStatus[] = ['weekend', 'holiday', 'dayOff', 'onLeave', 'noRecord', 'pending'];
 
 /** The fields of a day row these figures read — nothing else of it is their business. */
 export interface FigureRow {

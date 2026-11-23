@@ -266,6 +266,8 @@ export const operationsModule: ModuleManifest = {
     'operations_standing_crews',
     'operations_vault_custody',
     'operations_shipment_assignments',
+    // The owner's data the deploy loads once (Round 29b, go-live/go-live-run.model.ts).
+    'operations_go_live_runs',
   ],
   // ADR-023 — the receipt photo on a shipment answers to the SHIPMENT's grants (view to see it,
   // edit to change it), so reaching it through the platform's own file endpoints is guarded

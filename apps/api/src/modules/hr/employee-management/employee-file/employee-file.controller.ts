@@ -8,7 +8,7 @@ import {
   type RemoveEmployeeFileDocument,
   type UploadEmployeeFileDocument,
 } from '@ecms/contracts';
-import { created, ok, okPage, validated } from '../../../../platform/web';
+import { created, ok, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { ValidationError } from '../../../../shared/errors';
 import { scopeSelector, type AuthContext } from '../../../../shared/types';
@@ -16,6 +16,7 @@ import { type UploadedBinary } from '../../../../platform/files';
 import { employeeFileService } from './employee-file.service';
 import { toEmployeeFileDto } from './employee-file.mapper';
 import { type EmployeeFileDoc } from './employee-file.model';
+import { attachOwners } from './employee-file.owners';
 
 type IdParam = { id: string };
 type DocumentParam = { id: string; documentId: string };
@@ -26,7 +27,7 @@ type DocumentParam = { id: string; documentId: string };
  * one read per row would buy nothing.
  */
 const fileDto = async (doc: EmployeeFileDoc, ctx: AuthContext) =>
-  toEmployeeFileDto(doc, await employeeFileService.recruitmentTimelineOf(doc, ctx));
+  (await attachOwners([toEmployeeFileDto(doc, await employeeFileService.recruitmentTimelineOf(doc, ctx))]))[0]!;
 
 const binaryOf = (req: Request): UploadedBinary => {
   const file = req.file;
@@ -49,7 +50,8 @@ export const createEmployeeFile = async (req: Request, res: Response): Promise<v
 export const listEmployeeFiles = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListEmployeeFilesQuery>(req);
-  okPage(res, await employeeFileService.list(query, scopeSelector(ctx, 'employeeFile.view')), toEmployeeFileDto);
+  const page = await employeeFileService.list(query, scopeSelector(ctx, 'employeeFile.view'));
+  ok(res, await attachOwners(page.items.map((doc) => toEmployeeFileDto(doc))), page.meta);
 };
 
 export const getEmployeeFile = async (req: Request, res: Response): Promise<void> => {

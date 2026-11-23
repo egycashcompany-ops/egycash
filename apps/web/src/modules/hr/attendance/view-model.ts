@@ -15,11 +15,51 @@ import {
   type AttendanceSheetRowDto,
   type Locale,
 } from '@ecms/contracts';
-import { type EmployeeDay, type SheetRow, type TimeSpan, type ViewStatus } from './views';
+import { type EmployeeDay, type ScanEntry, type SheetRow, type TimeSpan, type ViewStatus } from './views';
 // One `cairoToday` for the module, and it lives beside the period helpers that default to it.
 export { cairoToday } from './components/period';
 
 /** One formatter, made once. `h23` so midnight reads 00 and never 24. */
+const cairoSeconds = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Africa/Cairo',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+const cairoDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' });
+
+/** A scan as the scan log draws it: to the second, with its device, branch and counted role. */
+const toScan = (
+  workDate: string,
+  scan: AttendanceEmployeeDayDto['punches'][number],
+  locale: Locale,
+): ScanEntry => ({
+  time: cairoSeconds.format(new Date(scan.at)),
+  dayOffset: Math.round(
+    (Date.parse(`${cairoDate.format(new Date(scan.at))}T00:00:00Z`) - Date.parse(`${workDate}T00:00:00Z`)) /
+      86_400_000,
+  ),
+  direction: scan.direction,
+  role: scan.role,
+  source: scan.source,
+  device: scan.deviceName ?? scan.deviceId,
+  branch: scan.branchName === null ? null : scan.branchName[locale],
+});
+
+/**
+ * A check-out on the work date's clock: minutes past that date's midnight, PLUS a day for every
+ * calendar day it fell after the work date. Comparing clock times alone read a 24-hour guard's
+ * 08:07 next-morning check-out as twenty minutes after their 07:47 arrival.
+ */
+const outMinutes = (workDate: string, inAt: number | null, outIso: string): number => {
+  const days = Math.round(
+    (Date.parse(`${cairoDate.format(new Date(outIso))}T00:00:00Z`) - Date.parse(`${workDate}T00:00:00Z`)) / 86_400_000,
+  );
+  const base = cairoMinutes(outIso);
+  return days > 0 ? base + days * 1440 : after(inAt, base);
+};
+
 const cairoClock = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Africa/Cairo',
   hour: '2-digit',
@@ -67,14 +107,18 @@ export const toViewStatus = (status: AttendanceDayStatus): ViewStatus => display
 const expectedSpan = (startAt: string | null, endAt: string | null): TimeSpan | null => {
   if (startAt === null || endAt === null) return null;
   const start = cairoMinutes(startAt);
-  return { start, end: after(start, cairoMinutes(endAt)) };
+  const end = after(start, cairoMinutes(endAt));
+  // A 24-hour expectation (security) ends at the same wall time the next day.
+  return { start, end: end === start && Date.parse(endAt) > Date.parse(startAt) ? end + MINUTES_IN_DAY : end };
 };
 
 /** The row's own marks: the flags the engine raised, and the freeze. Already localized. */
 const marksOf = (day: AttendanceDayDto | null, label: (key: string) => string): string[] => {
   if (day === null) return [];
   return [
-    ...day.flags.map((flag) => label(`attendance.flag.${flag}`)),
+    // Repeated presses are NEVER a mark on the sheet or the day lists (the owner's rule): they
+    // live only in the employee's scan log.
+    ...day.flags.filter((flag) => flag !== 'repeatedPunches').map((flag) => label(`attendance.flag.${flag}`)),
     ...(day.frozenAt === null ? [] : [label('attendance.days.frozen')]),
   ];
 };
@@ -100,19 +144,23 @@ export const toSheetRow = (
     id: row.employeeId,
     name: row.employeeName,
     code: row.employeeCode,
-    // Initials, deliberately: a page of fifty faces is fifty authenticated image requests, and the
-    // photo answers nothing this screen is opened to ask.
+    // The page draws the face from `photoFileId` (one cached request per face, once); initials
+    // stand in for everybody without a photo.
     photoUrl: null,
+    photoFileId: row.employeePhotoFileId,
     department: row.employeeDepartment === null ? null : row.employeeDepartment[options.locale],
+    jobTitle: row.employeeJobTitle === null ? null : row.employeeJobTitle[options.locale],
+    branch: row.employeeBranch === null ? null : row.employeeBranch[options.locale],
     status: toViewStatus(row.status),
     expected: expectedSpan(row.expectedStartAt, row.expectedEndAt),
     inAt,
-    outAt: times?.lastOutAt == null ? null : after(inAt, cairoMinutes(times.lastOutAt)),
+    outAt: times?.lastOutAt == null ? null : outMinutes(row.date, inAt, times.lastOutAt),
     // THE FIGURES ARE THE SERVER'S, nulls and all. This file used to coerce them — `?? 0` here and
     // `workedMinutes === 0 ? null` below — which meant the screen decided what counted as
     // unmeasured and the CSV decided separately. One rule now, applied once, on the server.
     worked: row.figures.workedMinutes,
     lateMinutes: row.figures.lateMinutes,
+    earlyLeaveMinutes: row.figures.earlyLeaveMinutes,
     shortfallMinutes: row.figures.shortfallMinutes,
     overtimeApproved: day?.approvedOvertimeMinutes ?? 0,
     overtimeDerived: row.figures.overtimeMinutes ?? 0,
@@ -134,14 +182,14 @@ export const toSheetRow = (
 export const toEmployeeDay = (
   date: string,
   day: AttendanceEmployeeDayDto | null,
-  options: { today: string; label: (key: string) => string; action?: React.ReactNode },
+  options: { today: string; label: (key: string) => string; action?: React.ReactNode; locale?: Locale },
 ): EmployeeDay => {
   const inAt = day?.firstInAt == null ? null : cairoMinutes(day.firstInAt);
   return {
     date,
     status: day === null ? 'noRecord' : toViewStatus(day.status),
     inAt,
-    outAt: day?.lastOutAt == null ? null : after(inAt, cairoMinutes(day.lastOutAt)),
+    outAt: day?.lastOutAt == null ? null : outMinutes(date, inAt, day.lastOutAt),
     // THE EXPECTATION NOW ARRIVES, resolved per date by the server. The old comment here said the
     // day list did not carry one and that inventing it would be a second derivation — true then,
     // and the reason the period endpoint carries it.
@@ -149,6 +197,7 @@ export const toEmployeeDay = (
     // Hours that were measured, or null — never a confident zero against a day with no check-out.
     worked: day?.figures.workedMinutes ?? null,
     lateMinutes: day?.figures.lateMinutes ?? null,
+    earlyLeave: day?.figures.earlyLeaveMinutes ?? null,
     shortfall: day?.figures.shortfallMinutes ?? null,
     // A provisional day is one the engine has not concluded: the punches are real and the status is
     // a reading of them. Marked so a reader knows which, and so «لا يوجد تسجيل» is not the only
@@ -157,6 +206,8 @@ export const toEmployeeDay = (
       ? [options.label('attendanceView.provisional')]
       : [],
     ...(options.action === undefined ? {} : { action: options.action }),
+    scans: day === null ? [] : day.punches.map((scan) => toScan(date, scan, options.locale ?? 'ar')),
+    repeats: day?.repeatCount ?? 0,
   };
 };
 

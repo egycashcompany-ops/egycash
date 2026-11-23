@@ -1,20 +1,19 @@
-// Electronic Employee File list: free-text search + status filter, a sortable DataTable, pagination,
+// Electronic Employee File list: free-text search + status filter, the files as folders (the same
+// shelf «مستندات المتقدمين» uses — `EmployeeFolders`), pagination,
 // and an assemble entry point — all permission-gated. Search/status/sort/pagination are synchronized
 // with the URL query string (deep-linkable, back/forward aware).
 import { useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { EMPLOYEE_FILE_STATUSES, type EmployeeFileDto, type EmployeeFileStatus, type Locale } from '@ecms/contracts';
+import { useSearchParams } from 'react-router-dom';
+import { EMPLOYEE_FILE_STATUSES, type EmployeeFileStatus } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
-import { useAppSelector } from '../../../../../store';
 import { Can } from '../../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
-import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { EmptyState, ErrorState, LoadingState } from '../../../../../shared/ui';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { PlusIcon } from '../../../../../shared/ui/icons';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
-import { formatDate, formatNumber } from '../../../../../shared/lib/format';
-import { EmployeeFileStatusBadge } from '../components/EmployeeFileStatusBadge';
+import { EmployeeFolders } from '../components/EmployeeFolders';
 import { EmployeeFileFilters, type EmployeeFileFiltersState } from '../components/EmployeeFileFilters';
 import { CreateEmployeeFileDialog } from '../components/CreateEmployeeFileDialog';
 import { useEmployeeFiles } from '../api/employee-file-queries';
@@ -33,8 +32,6 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export const EmployeeFilesListPage = (): JSX.Element => {
   const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
-  const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [createOpen, setCreateOpen] = useState(false);
@@ -66,10 +63,6 @@ export const EmployeeFilesListPage = (): JSX.Element => {
   };
 
   const changeFilters = (nf: EmployeeFileFiltersState): void => patch({ q: nf.search || null, status: writeList(nf.status) });
-  const changeSort = (by: string): void => {
-    const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
-    patch({ sort: `${by}:${dir}` }, false);
-  };
 
   const params = useMemo<EmployeeFileListParams>(
     () => ({
@@ -85,18 +78,6 @@ export const EmployeeFilesListPage = (): JSX.Element => {
 
   const { data, isLoading, isError, error, refetch } = useEmployeeFiles(params);
   const rows = data?.items ?? [];
-
-  const columns: Column<EmployeeFileDto>[] = [
-    {
-      key: 'employeeCode',
-      header: t('employeeFiles.columns.employee'),
-      sortable: true,
-      render: (f) => <span className="font-mono text-xs" dir="ltr">{f.employeeCode}</span>,
-    },
-    { key: 'status', header: t('employeeFiles.columns.status'), render: (f) => <EmployeeFileStatusBadge status={f.status} /> },
-    { key: 'milestones', header: t('employeeFiles.columns.milestones'), align: 'center', render: (f) => formatNumber(f.timeline.length, locale) },
-    { key: 'createdAt', header: t('employeeFiles.columns.created'), sortable: true, render: (f) => formatDate(f.createdAt, locale) },
-  ];
 
   return (
     <PageContainer>
@@ -114,17 +95,15 @@ export const EmployeeFilesListPage = (): JSX.Element => {
 
       <div className="space-y-4">
         <EmployeeFileFilters value={filters} onChange={changeFilters} />
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(f) => f.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          onRowClick={(f) => navigate(f.id)}
-        />
+        {isLoading ? (
+          <LoadingState />
+        ) : isError ? (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        ) : rows.length === 0 ? (
+          <EmptyState title={t('employeeFiles.folder.empty')} />
+        ) : (
+          <EmployeeFolders files={rows} />
+        )}
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}

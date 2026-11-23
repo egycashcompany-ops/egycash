@@ -102,6 +102,7 @@ export const EmployeePeriodView = ({
   onPeriodChange,
   onExport,
   canDecide = false,
+  compactHeader = false,
 }: {
   employeeId: string;
   header: Omit<EmployeeHeader, 'lastPunch'>;
@@ -123,6 +124,8 @@ export const EmployeePeriodView = ({
   onExport?: () => void;
   /** Offered only where `attendance.decide` is held, and never on somebody's own page. */
   canDecide?: boolean;
+  /** Inside the profile: the profile header already names the person. */
+  compactHeader?: boolean;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -292,6 +295,7 @@ export const EmployeePeriodView = ({
     return toEmployeeDay(date, day, {
       today,
       label: t,
+      locale,
       ...(action === undefined ? {} : { action }),
     });
   });
@@ -309,6 +313,8 @@ export const EmployeePeriodView = ({
           employeeBranch: null,
           employeeJobTitle: null,
           punchCount: 0,
+          checkInCount: 0,
+          checkOutCount: 0,
           // The dialog shows no figures — it is deciding what the day WAS, not reporting it.
           figures: NO_FIGURES,
           branchId: '',
@@ -357,6 +363,7 @@ export const EmployeePeriodView = ({
         today={today}
         picked={picked}
         onPickDay={setPicked}
+        compactHeader={compactHeader}
         {...(onExport === undefined ? {} : { onExport })}
       />
       {loading && <span className="sr-only">{t('common.loading')}</span>}

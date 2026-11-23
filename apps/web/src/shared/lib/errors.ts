@@ -120,6 +120,10 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'The vehicle given to the marked row already has another crew on this day — choose another.',
     OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
       'A deleted row carries secured shipments. While they are in the vault, take them off it on «Secured distribution» first; once they have left the vault the row stays — it can be emptied, or given a vehicle.',
+    // Round 32 — a past day is the board's record, view only: its save is refused. The board draws
+    // no act on one; this reaches a board left open past midnight, or an older screen.
+    OPERATIONS_CREW_DAY_IN_PAST:
+      'That day has passed — its board is a record, view only. Plan today or a later day.',
     ATM_MAIL_POLL_BUSY:
       'A reading of the mailbox is already running — its result appears under «Last reading» in a moment.',
     // «عداد الطابعة» (IT consumables, 2026-11-19): a toner goes onto a printer with its counter. The
@@ -212,6 +216,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
       'السيارة المعطاة للصف المُعلَّم عليها طاقم آخر في هذا اليوم — اختر سيارة أخرى.',
     OPERATIONS_CREW_ROW_HAS_SHIPMENTS:
       'على صف محذوف محصنات. ما دامت في الخزينة فأزِلها عنه في «توزيع المحصنات» أولًا؛ وإن كانت قد خرجت من الخزينة فيبقى الصف، ويمكن تفريغه أو إعطاؤه سيارة.',
+    OPERATIONS_CREW_DAY_IN_PAST:
+      'هذا اليوم قد مضى — لوحته سجل للعرض فقط. خطِّط لليوم أو ليوم لاحق.',
     ATM_MAIL_POLL_BUSY: 'تجري الآن قراءة للبريد — ستظهر نتيجتها في «آخر قراءة» بعد لحظات.',
     IT_CONSUMABLE_COUNTER_REQUIRED:
       'هذا الصنف يتطلب عداد الطابعة: حدِّد الطابعة التي يُركَّب عليها وقراءة عدادها، حبارة واحدة في كل سطر.',

@@ -1,0 +1,1616 @@
+{
+  "source": "«فروع CIB - جاهز للاستيراد.xlsx» — CIB — البنك التجاري الدولي: the owner's branch list (Round 29), read by the import's own reader (read-branch-sheet.ts), its first visible tab «الفروع», header on row 1",
+  "bank": "cib",
+  "rowsRead": 201,
+  "leftOut": [],
+  "rows": [
+    {
+      "row": 2,
+      "name": "ZEZNIA",
+      "code": "084",
+      "areaAr": "شرق الإسكندرية",
+      "areaEn": "East Alex",
+      "address": null
+    },
+    {
+      "row": 3,
+      "name": "San Stefano",
+      "code": "056",
+      "areaAr": "شرق الإسكندرية",
+      "areaEn": "East Alex",
+      "address": null
+    },
+    {
+      "row": 4,
+      "name": "Louran",
+      "code": "044",
+      "areaAr": "شرق الإسكندرية",
+      "areaEn": "East Alex",
+      "address": null
+    },
+    {
+      "row": 5,
+      "name": "El-Asafra",
+      "code": "215",
+      "areaAr": "شرق الإسكندرية",
+      "areaEn": "East Alex",
+      "address": null
+    },
+    {
+      "row": 6,
+      "name": "El Mahrousa",
+      "code": "216",
+      "areaAr": "شرق الإسكندرية",
+      "areaEn": "East Alex",
+      "address": null
+    },
+    {
+      "row": 7,
+      "name": "MIAMI",
+      "code": "124",
+      "areaAr": "شرق الإسكندرية",
+      "areaEn": "East Alex",
+      "address": null
+    },
+    {
+      "row": 8,
+      "name": "Montazah",
+      "code": "187",
+      "areaAr": "شرق الإسكندرية",
+      "areaEn": "East Alex",
+      "address": null
+    },
+    {
+      "row": 9,
+      "name": "Roushdy",
+      "code": "009",
+      "areaAr": "شرق الإسكندرية",
+      "areaEn": "East Alex",
+      "address": null
+    },
+    {
+      "row": 10,
+      "name": "Pharous",
+      "code": "087",
+      "areaAr": "وسط الإسكندرية",
+      "areaEn": "Central Alex",
+      "address": null
+    },
+    {
+      "row": 11,
+      "name": "Green Plaza",
+      "code": "042",
+      "areaAr": "وسط الإسكندرية",
+      "areaEn": "Central Alex",
+      "address": null
+    },
+    {
+      "row": 12,
+      "name": "Sporting",
+      "code": "209",
+      "areaAr": "وسط الإسكندرية",
+      "areaEn": "Central Alex",
+      "address": null
+    },
+    {
+      "row": 13,
+      "name": "Semoha",
+      "code": "034",
+      "areaAr": "وسط الإسكندرية",
+      "areaEn": "Central Alex",
+      "address": null
+    },
+    {
+      "row": 14,
+      "name": "Saraya Semoha",
+      "code": "089",
+      "areaAr": "وسط الإسكندرية",
+      "areaEn": "Central Alex",
+      "address": null
+    },
+    {
+      "row": 15,
+      "name": "Azarita Alex",
+      "code": "178",
+      "areaAr": "وسط الإسكندرية",
+      "areaEn": "Central Alex",
+      "address": null
+    },
+    {
+      "row": 16,
+      "name": "MANSHIA",
+      "code": "008",
+      "areaAr": "غرب الإسكندرية",
+      "areaEn": "West Alex",
+      "address": null
+    },
+    {
+      "row": 17,
+      "name": "Manshia Square",
+      "code": "121",
+      "areaAr": "غرب الإسكندرية",
+      "areaEn": "West Alex",
+      "address": null
+    },
+    {
+      "row": 18,
+      "name": "Fouad Street",
+      "code": "158",
+      "areaAr": "غرب الإسكندرية",
+      "areaEn": "West Alex",
+      "address": null
+    },
+    {
+      "row": 19,
+      "name": "Agami Branch",
+      "code": "194",
+      "areaAr": "غرب الإسكندرية",
+      "areaEn": "West Alex",
+      "address": null
+    },
+    {
+      "row": 20,
+      "name": "Porto Marina",
+      "code": "061",
+      "areaAr": "غرب الإسكندرية",
+      "areaEn": "West Alex",
+      "address": null
+    },
+    {
+      "row": 21,
+      "name": "New Alamien",
+      "code": "224",
+      "areaAr": "غرب الإسكندرية",
+      "areaEn": "West Alex",
+      "address": null
+    },
+    {
+      "row": 22,
+      "name": "Marsa Matrouh",
+      "code": "114",
+      "areaAr": "غرب الإسكندرية",
+      "areaEn": "West Alex",
+      "address": null
+    },
+    {
+      "row": 23,
+      "name": "Sultan Hussein",
+      "code": "003",
+      "areaAr": "غرب الإسكندرية الجديدة",
+      "areaEn": "New West Alex",
+      "address": null
+    },
+    {
+      "row": 24,
+      "name": "Kafr Abdou",
+      "code": "041",
+      "areaAr": "غرب الإسكندرية الجديدة",
+      "areaEn": "New West Alex",
+      "address": null
+    },
+    {
+      "row": 25,
+      "name": "Lagoon",
+      "code": "088",
+      "areaAr": "غرب الإسكندرية الجديدة",
+      "areaEn": "New West Alex",
+      "address": null
+    },
+    {
+      "row": 26,
+      "name": "Wabour ELMAYA",
+      "code": "190",
+      "areaAr": "غرب الإسكندرية الجديدة",
+      "areaEn": "New West Alex",
+      "address": null
+    },
+    {
+      "row": 27,
+      "name": "Khaled Ibn El Waleed",
+      "code": "219",
+      "areaAr": "غرب الإسكندرية الجديدة",
+      "areaEn": "New West Alex",
+      "address": null
+    },
+    {
+      "row": 28,
+      "name": "Ras El Teen",
+      "code": "227",
+      "areaAr": "غرب الإسكندرية الجديدة",
+      "areaEn": "New West Alex",
+      "address": null
+    },
+    {
+      "row": 29,
+      "name": "Borg El Arab",
+      "code": "021",
+      "areaAr": "ميناء الإسكندرية",
+      "areaEn": "Alex Port",
+      "address": null
+    },
+    {
+      "row": 30,
+      "name": "Alex. Port",
+      "code": "068",
+      "areaAr": "ميناء الإسكندرية",
+      "areaEn": "Alex Port",
+      "address": null
+    },
+    {
+      "row": 31,
+      "name": "FREE ZONE",
+      "code": "047",
+      "areaAr": "ميناء الإسكندرية",
+      "areaEn": "Alex Port",
+      "address": null
+    },
+    {
+      "row": 32,
+      "name": "Free Zone Complex",
+      "code": "071",
+      "areaAr": "ميناء الإسكندرية",
+      "areaEn": "Alex Port",
+      "address": null
+    },
+    {
+      "row": 33,
+      "name": "Dekhila",
+      "code": "046",
+      "areaAr": "ميناء الإسكندرية",
+      "areaEn": "Alex Port",
+      "address": null
+    },
+    {
+      "row": 34,
+      "name": "Mansoura University",
+      "code": "096",
+      "areaAr": "الدلتا 2",
+      "areaEn": "Delta II",
+      "address": null
+    },
+    {
+      "row": 35,
+      "name": "Mansoura",
+      "code": "015",
+      "areaAr": "الدلتا 2",
+      "areaEn": "Delta II",
+      "address": null
+    },
+    {
+      "row": 36,
+      "name": "Kafr El Sheikh",
+      "code": "180",
+      "areaAr": "الدلتا 2",
+      "areaEn": "Delta II",
+      "address": null
+    },
+    {
+      "row": 37,
+      "name": "MEET GHAMR",
+      "code": "164",
+      "areaAr": "الدلتا 2",
+      "areaEn": "Delta II",
+      "address": null
+    },
+    {
+      "row": 38,
+      "name": "Ahmed Maher",
+      "code": "195",
+      "areaAr": "الدلتا 2",
+      "areaEn": "Delta II",
+      "address": null
+    },
+    {
+      "row": 39,
+      "name": "DAMANHOUR",
+      "code": "057",
+      "areaAr": "الدلتا 1",
+      "areaEn": "Delta I",
+      "address": null
+    },
+    {
+      "row": 40,
+      "name": "Kafr Elzayat",
+      "code": "202",
+      "areaAr": "الدلتا 1",
+      "areaEn": "Delta I",
+      "address": null
+    },
+    {
+      "row": 41,
+      "name": "57357 Tanta",
+      "code": "168",
+      "areaAr": "الدلتا 1",
+      "areaEn": "Delta I",
+      "address": null
+    },
+    {
+      "row": 42,
+      "name": "El mahalla",
+      "code": "125",
+      "areaAr": "الدلتا 1",
+      "areaEn": "Delta I",
+      "address": null
+    },
+    {
+      "row": 43,
+      "name": "Mall of Tanta",
+      "code": "223",
+      "areaAr": "الدلتا 1",
+      "areaEn": "Delta I",
+      "address": null
+    },
+    {
+      "row": 44,
+      "name": "Tanta",
+      "code": "011",
+      "areaAr": "الدلتا 1",
+      "areaEn": "Delta I",
+      "address": null
+    },
+    {
+      "row": 45,
+      "name": "El zagazik",
+      "code": "107",
+      "areaAr": "الدلتا 3",
+      "areaEn": "Delta III",
+      "address": null
+    },
+    {
+      "row": 46,
+      "name": "New Zakazik",
+      "code": "213",
+      "areaAr": "الدلتا 3",
+      "areaEn": "Delta III",
+      "address": null
+    },
+    {
+      "row": 47,
+      "name": "Banha branch",
+      "code": "144",
+      "areaAr": "الدلتا 3",
+      "areaEn": "Delta III",
+      "address": null
+    },
+    {
+      "row": 48,
+      "name": "Shebin El Kom",
+      "code": "183",
+      "areaAr": "الدلتا 3",
+      "areaEn": "Delta III",
+      "address": null
+    },
+    {
+      "row": 49,
+      "name": "Quesna",
+      "code": "037",
+      "areaAr": "الدلتا 3",
+      "areaEn": "Delta III",
+      "address": null
+    },
+    {
+      "row": 50,
+      "name": "Assuit",
+      "code": "059",
+      "areaAr": "الصعيد 1",
+      "areaEn": "Upper Egypt I",
+      "address": null
+    },
+    {
+      "row": 51,
+      "name": "Menia",
+      "code": "082",
+      "areaAr": "الصعيد 1",
+      "areaEn": "Upper Egypt I",
+      "address": null
+    },
+    {
+      "row": 52,
+      "name": "Bani Sweif",
+      "code": "186",
+      "areaAr": "الصعيد 1",
+      "areaEn": "Upper Egypt I",
+      "address": null
+    },
+    {
+      "row": 53,
+      "name": "SOHAG",
+      "code": "138",
+      "areaAr": "الصعيد 1",
+      "areaEn": "Upper Egypt I",
+      "address": null
+    },
+    {
+      "row": 54,
+      "name": "Port Said",
+      "code": "002",
+      "areaAr": "بورسعيد",
+      "areaEn": "Port Said",
+      "address": null
+    },
+    {
+      "row": 55,
+      "name": "Cournishe Port Said",
+      "code": "208",
+      "areaAr": "بورسعيد",
+      "areaEn": "Port Said",
+      "address": null
+    },
+    {
+      "row": 56,
+      "name": "Damietta",
+      "code": "039",
+      "areaAr": "بورسعيد",
+      "areaEn": "Port Said",
+      "address": null
+    },
+    {
+      "row": 57,
+      "name": "Damietta Mehwar",
+      "code": "217",
+      "areaAr": "بورسعيد",
+      "areaEn": "Port Said",
+      "address": null
+    },
+    {
+      "row": 58,
+      "name": "Damietta Port",
+      "code": "035",
+      "areaAr": "بورسعيد",
+      "areaEn": "Port Said",
+      "address": null
+    },
+    {
+      "row": 59,
+      "name": "PORT FOUAD",
+      "code": "197",
+      "areaAr": "بورسعيد",
+      "areaEn": "Port Said",
+      "address": null
+    },
+    {
+      "row": 60,
+      "name": "New Damietta",
+      "code": "142",
+      "areaAr": "بورسعيد",
+      "areaEn": "Port Said",
+      "address": null
+    },
+    {
+      "row": 61,
+      "name": "Ismaielia",
+      "code": "108",
+      "areaAr": "العاشر من رمضان",
+      "areaEn": "Tenth of Ramadan",
+      "address": null
+    },
+    {
+      "row": 62,
+      "name": "Ramadan",
+      "code": "023",
+      "areaAr": "العاشر من رمضان",
+      "areaEn": "Tenth of Ramadan",
+      "address": null
+    },
+    {
+      "row": 63,
+      "name": "Sadat",
+      "code": "028",
+      "areaAr": "العاشر من رمضان",
+      "areaEn": "Tenth of Ramadan",
+      "address": null
+    },
+    {
+      "row": 64,
+      "name": "Suez",
+      "code": "036",
+      "areaAr": "السويس",
+      "areaEn": "Suez",
+      "address": null
+    },
+    {
+      "row": 65,
+      "name": "Badr Dry Port",
+      "code": "181",
+      "areaAr": "السويس",
+      "areaEn": "Suez",
+      "address": null
+    },
+    {
+      "row": 66,
+      "name": "SC ZONE",
+      "code": "214",
+      "areaAr": "السويس",
+      "areaEn": "Suez",
+      "address": null
+    },
+    {
+      "row": 67,
+      "name": "New Suez",
+      "code": "218",
+      "areaAr": "السويس",
+      "areaEn": "Suez",
+      "address": null
+    },
+    {
+      "row": 68,
+      "name": "SOKHNA PORT",
+      "code": "147",
+      "areaAr": "السويس",
+      "areaEn": "Suez",
+      "address": null
+    },
+    {
+      "row": 69,
+      "name": "Teda Suez",
+      "code": "161",
+      "areaAr": "السويس",
+      "areaEn": "Suez",
+      "address": null
+    },
+    {
+      "row": 70,
+      "name": "Taba",
+      "code": "113",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 71,
+      "name": "Dahab",
+      "code": "040",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 72,
+      "name": "Genena City",
+      "code": "064",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 73,
+      "name": "Nabq Bay",
+      "code": "063",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 74,
+      "name": "Tour Sinai",
+      "code": "170",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 75,
+      "name": "Sharm El Sheikh",
+      "code": "027",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 76,
+      "name": "SHARM ELHADABA",
+      "code": "131",
+      "areaAr": "سيناء",
+      "areaEn": "Sinai",
+      "address": null
+    },
+    {
+      "row": 77,
+      "name": "Hurghada ( Main )",
+      "code": "019",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 78,
+      "name": "Makadi Bay",
+      "code": "051",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 79,
+      "name": "Sun Rise",
+      "code": "104",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 80,
+      "name": "Hurghada- grand hotel",
+      "code": "076",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 81,
+      "name": "EL BASHA",
+      "code": "052",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 82,
+      "name": "Marina Abo Tig",
+      "code": "189",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 83,
+      "name": "El Gouna",
+      "code": "050",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 84,
+      "name": "Port Ghaleb Marsa Allam",
+      "code": "073",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 85,
+      "name": "El Dahhar",
+      "code": "069",
+      "areaAr": "البحر الأحمر 1 و2",
+      "areaEn": "Red Sea I & II",
+      "address": null
+    },
+    {
+      "row": 86,
+      "name": "Aswan",
+      "code": "030",
+      "areaAr": "الصعيد 2",
+      "areaEn": "Upper Egypt II",
+      "address": null
+    },
+    {
+      "row": 87,
+      "name": "Luxor",
+      "code": "026",
+      "areaAr": "الصعيد 2",
+      "areaEn": "Upper Egypt II",
+      "address": null
+    },
+    {
+      "row": 88,
+      "name": "Quena",
+      "code": "229",
+      "areaAr": "الصعيد 2",
+      "areaEn": "Upper Egypt II",
+      "address": null
+    },
+    {
+      "row": 89,
+      "name": "EL-OBOUR",
+      "code": "118",
+      "areaAr": "العبور",
+      "areaEn": "Obour",
+      "address": null
+    },
+    {
+      "row": 90,
+      "name": "OBOUR CITY 2",
+      "code": "151",
+      "areaAr": "العبور",
+      "areaEn": "Obour",
+      "address": null
+    },
+    {
+      "row": 91,
+      "name": "EL-SAWAH",
+      "code": "016",
+      "areaAr": "ميريلاند",
+      "areaEn": "Merryland",
+      "address": null
+    },
+    {
+      "row": 92,
+      "name": "Abbasia",
+      "code": "072",
+      "areaAr": "ميريلاند",
+      "areaEn": "Merryland",
+      "address": null
+    },
+    {
+      "row": 93,
+      "name": "GESR EL SUEZ",
+      "code": "157",
+      "areaAr": "ميريلاند",
+      "areaEn": "Merryland",
+      "address": null
+    },
+    {
+      "row": 94,
+      "name": "HADAYEK EL KOBBA BRANCH",
+      "code": "137",
+      "areaAr": "ميريلاند",
+      "areaEn": "Merryland",
+      "address": null
+    },
+    {
+      "row": 95,
+      "name": "Merryland",
+      "code": "031",
+      "areaAr": "ميريلاند",
+      "areaEn": "Merryland",
+      "address": null
+    },
+    {
+      "row": 96,
+      "name": "El NOZHA EL GEDIDA",
+      "code": "162",
+      "areaAr": "الشمس",
+      "areaEn": "El Shams",
+      "address": null
+    },
+    {
+      "row": 97,
+      "name": "Elshams",
+      "code": "024",
+      "areaAr": "الشمس",
+      "areaEn": "El Shams",
+      "address": null
+    },
+    {
+      "row": 98,
+      "name": "New Hegaz BRANCH",
+      "code": "172",
+      "areaAr": "الشمس",
+      "areaEn": "El Shams",
+      "address": null
+    },
+    {
+      "row": 99,
+      "name": "joseph tito",
+      "code": "206",
+      "areaAr": "الشمس",
+      "areaEn": "El Shams",
+      "address": null
+    },
+    {
+      "row": 100,
+      "name": "HELIOPOLIS",
+      "code": "006",
+      "areaAr": "مصر الجديدة",
+      "areaEn": "Heliopolis",
+      "address": null
+    },
+    {
+      "row": 101,
+      "name": "EL KHALIFA EL MAAMOUN",
+      "code": "156",
+      "areaAr": "مصر الجديدة",
+      "areaEn": "Heliopolis",
+      "address": null
+    },
+    {
+      "row": 102,
+      "name": "El Merghani",
+      "code": "199",
+      "areaAr": "مصر الجديدة",
+      "areaEn": "Heliopolis",
+      "address": null
+    },
+    {
+      "row": 103,
+      "name": "El Korba",
+      "code": "188",
+      "areaAr": "مصر الجديدة",
+      "areaEn": "Heliopolis",
+      "address": null
+    },
+    {
+      "row": 104,
+      "name": "EL HEGAZ",
+      "code": "115",
+      "areaAr": "مصر الجديدة",
+      "areaEn": "Heliopolis",
+      "address": null
+    },
+    {
+      "row": 105,
+      "name": "Triumph",
+      "code": "032",
+      "areaAr": "شيراتون",
+      "areaEn": "Sheraton",
+      "address": null
+    },
+    {
+      "row": 106,
+      "name": "Sheraton",
+      "code": "127",
+      "areaAr": "شيراتون",
+      "areaEn": "Sheraton",
+      "address": null
+    },
+    {
+      "row": 107,
+      "name": "Moraba el-wozaraa",
+      "code": "204",
+      "areaAr": "شيراتون",
+      "areaEn": "Sheraton",
+      "address": null
+    },
+    {
+      "row": 108,
+      "name": "El thawra",
+      "code": "081",
+      "areaAr": "شيراتون",
+      "areaEn": "Sheraton",
+      "address": null
+    },
+    {
+      "row": 109,
+      "name": "Abbas El Akkad",
+      "code": "014",
+      "areaAr": "عباس العقاد",
+      "areaEn": "Abbas El Akkad",
+      "address": null
+    },
+    {
+      "row": 110,
+      "name": "ELZAHRY",
+      "code": "109",
+      "areaAr": "عباس العقاد",
+      "areaEn": "Abbas El Akkad",
+      "address": null
+    },
+    {
+      "row": 111,
+      "name": "Mostafa El Nahas BRANCH",
+      "code": "175",
+      "areaAr": "عباس العقاد",
+      "areaEn": "Abbas El Akkad",
+      "address": null
+    },
+    {
+      "row": 112,
+      "name": "Hassan El Maamon",
+      "code": "221",
+      "areaAr": "عباس العقاد",
+      "areaEn": "Abbas El Akkad",
+      "address": null
+    },
+    {
+      "row": 113,
+      "name": "el sanhoury",
+      "code": "110",
+      "areaAr": "عباس العقاد",
+      "areaEn": "Abbas El Akkad",
+      "address": null
+    },
+    {
+      "row": 114,
+      "name": "Tayaran Branch",
+      "code": "200",
+      "areaAr": "صلاح سالم",
+      "areaEn": "Salah Salem",
+      "address": null
+    },
+    {
+      "row": 115,
+      "name": "Obour Buildings BRANCH",
+      "code": "177",
+      "areaAr": "صلاح سالم",
+      "areaEn": "Salah Salem",
+      "address": null
+    },
+    {
+      "row": 116,
+      "name": "MINISTRY OF INVESTMENT",
+      "code": "210",
+      "areaAr": "صلاح سالم",
+      "areaEn": "Salah Salem",
+      "address": null
+    },
+    {
+      "row": 117,
+      "name": "Zohour Club",
+      "code": "225",
+      "areaAr": "صلاح سالم",
+      "areaEn": "Salah Salem",
+      "address": null
+    },
+    {
+      "row": 118,
+      "name": "NASR CITY BRANCH",
+      "code": "136",
+      "areaAr": "صلاح سالم",
+      "areaEn": "Salah Salem",
+      "address": null
+    },
+    {
+      "row": 119,
+      "name": "El Mokkattam",
+      "code": "097",
+      "areaAr": "صلاح سالم",
+      "areaEn": "Salah Salem",
+      "address": null
+    },
+    {
+      "row": 120,
+      "name": "El Nasr",
+      "code": "020",
+      "areaAr": "النصر",
+      "areaEn": "El Nasr",
+      "address": null
+    },
+    {
+      "row": 121,
+      "name": "sun city mall",
+      "code": "126",
+      "areaAr": "النصر",
+      "areaEn": "El Nasr",
+      "address": null
+    },
+    {
+      "row": 122,
+      "name": "City Center Almaza",
+      "code": "220",
+      "areaAr": "النصر",
+      "areaEn": "El Nasr",
+      "address": null
+    },
+    {
+      "row": 123,
+      "name": "Air Port",
+      "code": "029",
+      "areaAr": "النصر",
+      "areaEn": "El Nasr",
+      "address": null
+    },
+    {
+      "row": 124,
+      "name": "CITY STARS",
+      "code": "086",
+      "areaAr": "النصر",
+      "areaEn": "El Nasr",
+      "address": null
+    },
+    {
+      "row": 125,
+      "name": "Intercontinental Heliopolis",
+      "code": "058",
+      "areaAr": "النصر",
+      "areaEn": "El Nasr",
+      "address": null
+    },
+    {
+      "row": 126,
+      "name": "Cairo Festival Mall",
+      "code": "152",
+      "areaAr": "التجمع 1",
+      "areaEn": "Tagmaou I",
+      "address": null
+    },
+    {
+      "row": 127,
+      "name": "EL HAMMAD MALL",
+      "code": "154",
+      "areaAr": "التجمع 1",
+      "areaEn": "Tagmaou I",
+      "address": null
+    },
+    {
+      "row": 128,
+      "name": "G U C",
+      "code": "048",
+      "areaAr": "التجمع 1",
+      "areaEn": "Tagmaou I",
+      "address": null
+    },
+    {
+      "row": 129,
+      "name": "Arabella Branch",
+      "code": "129",
+      "areaAr": "التجمع 1",
+      "areaEn": "Tagmaou I",
+      "address": null
+    },
+    {
+      "row": 130,
+      "name": "J W Mariot",
+      "code": "049",
+      "areaAr": "التجمع 1",
+      "areaEn": "Tagmaou I",
+      "address": null
+    },
+    {
+      "row": 131,
+      "name": "EL TESEEN ST.",
+      "code": "145",
+      "areaAr": "التجمع 1",
+      "areaEn": "Tagmaou I",
+      "address": null
+    },
+    {
+      "row": 132,
+      "name": "Mivida",
+      "code": "191",
+      "areaAr": "التجمع 2",
+      "areaEn": "Tagmaou II",
+      "address": null
+    },
+    {
+      "row": 133,
+      "name": "Medi Care",
+      "code": "203",
+      "areaAr": "التجمع 2",
+      "areaEn": "Tagmaou II",
+      "address": null
+    },
+    {
+      "row": 134,
+      "name": "El Tagamou El Khames",
+      "code": "111",
+      "areaAr": "التجمع 2",
+      "areaEn": "Tagmaou II",
+      "address": null
+    },
+    {
+      "row": 135,
+      "name": "EL TAGAMOAA EL AWAL",
+      "code": "146",
+      "areaAr": "التجمع 2",
+      "areaEn": "Tagmaou II",
+      "address": null
+    },
+    {
+      "row": 136,
+      "name": "Water Way Branch",
+      "code": "185",
+      "areaAr": "التجمع 2",
+      "areaEn": "Tagmaou II",
+      "address": null
+    },
+    {
+      "row": 137,
+      "name": "Future University",
+      "code": "103",
+      "areaAr": "التجمع 2",
+      "areaEn": "Tagmaou II",
+      "address": null
+    },
+    {
+      "row": 138,
+      "name": "El Rehab",
+      "code": "091",
+      "areaAr": "الرحاب",
+      "areaEn": "El Rehab",
+      "address": null
+    },
+    {
+      "row": 139,
+      "name": "EL SHEROUK CITY",
+      "code": "155",
+      "areaAr": "الرحاب",
+      "areaEn": "El Rehab",
+      "address": null
+    },
+    {
+      "row": 140,
+      "name": "City Square",
+      "code": "207",
+      "areaAr": "الرحاب",
+      "areaEn": "El Rehab",
+      "address": null
+    },
+    {
+      "row": 141,
+      "name": "MADINATY",
+      "code": "134",
+      "areaAr": "الرحاب",
+      "areaEn": "El Rehab",
+      "address": null
+    },
+    {
+      "row": 142,
+      "name": "BUE",
+      "code": "165",
+      "areaAr": "الرحاب",
+      "areaEn": "El Rehab",
+      "address": null
+    },
+    {
+      "row": 143,
+      "name": "Down Town",
+      "code": "005",
+      "areaAr": "وسط البلد",
+      "areaEn": "Down Town",
+      "address": null
+    },
+    {
+      "row": 144,
+      "name": "MOSKY",
+      "code": "148",
+      "areaAr": "وسط البلد",
+      "areaEn": "Down Town",
+      "address": null
+    },
+    {
+      "row": 145,
+      "name": "El Togareen",
+      "code": "166",
+      "areaAr": "وسط البلد",
+      "areaEn": "Down Town",
+      "address": null
+    },
+    {
+      "row": 146,
+      "name": "Boustan",
+      "code": "212",
+      "areaAr": "وسط البلد",
+      "areaEn": "Down Town",
+      "address": null
+    },
+    {
+      "row": 147,
+      "name": "Kasr El Niel",
+      "code": "060",
+      "areaAr": "وسط البلد",
+      "areaEn": "Down Town",
+      "address": null
+    },
+    {
+      "row": 148,
+      "name": "Ramsis",
+      "code": "083",
+      "areaAr": "وسط البلد",
+      "areaEn": "Down Town",
+      "address": null
+    },
+    {
+      "row": 149,
+      "name": "Gezeira BRANCH",
+      "code": "174",
+      "areaAr": "الزمالك",
+      "areaEn": "Zamalek",
+      "address": null
+    },
+    {
+      "row": 150,
+      "name": "Min. of Foreign Aff",
+      "code": "062",
+      "areaAr": "الزمالك",
+      "areaEn": "Zamalek",
+      "address": null
+    },
+    {
+      "row": 151,
+      "name": "NEW ZAMALEK",
+      "code": "140",
+      "areaAr": "الزمالك",
+      "areaEn": "Zamalek",
+      "address": null
+    },
+    {
+      "row": 152,
+      "name": "ZAMALEK",
+      "code": "007",
+      "areaAr": "الزمالك",
+      "areaEn": "Zamalek",
+      "address": null
+    },
+    {
+      "row": 153,
+      "name": "Mobtadaian",
+      "code": "010",
+      "areaAr": "المبتديان",
+      "areaEn": "Mobtadyan",
+      "address": null
+    },
+    {
+      "row": 154,
+      "name": "NOVA PARK",
+      "code": "055",
+      "areaAr": "المبتديان",
+      "areaEn": "Mobtadyan",
+      "address": null
+    },
+    {
+      "row": 155,
+      "name": "SEMIRAMIS",
+      "code": "022",
+      "areaAr": "المبتديان",
+      "areaEn": "Mobtadyan",
+      "address": null
+    },
+    {
+      "row": 156,
+      "name": "Ashraf",
+      "code": "054",
+      "areaAr": "المبتديان",
+      "areaEn": "Mobtadyan",
+      "address": null
+    },
+    {
+      "row": 157,
+      "name": "57357",
+      "code": "122",
+      "areaAr": "المبتديان",
+      "areaEn": "Mobtadyan",
+      "address": null
+    },
+    {
+      "row": 158,
+      "name": "CORNICHE EL MAADI",
+      "code": "153",
+      "areaAr": "المعادي",
+      "areaEn": "Maadi",
+      "address": null
+    },
+    {
+      "row": 159,
+      "name": "Maadi",
+      "code": "012",
+      "areaAr": "المعادي",
+      "areaEn": "Maadi",
+      "address": null
+    },
+    {
+      "row": 160,
+      "name": "Maadi Towers BRANCH",
+      "code": "173",
+      "areaAr": "المعادي",
+      "areaEn": "Maadi",
+      "address": null
+    },
+    {
+      "row": 161,
+      "name": "Sarayat El maadi",
+      "code": "092",
+      "areaAr": "المعادي",
+      "areaEn": "Maadi",
+      "address": null
+    },
+    {
+      "row": 162,
+      "name": "Helwan",
+      "code": "192",
+      "areaAr": "المعادي",
+      "areaEn": "Maadi",
+      "address": null
+    },
+    {
+      "row": 163,
+      "name": "Grand Mall",
+      "code": "018",
+      "areaAr": "المعادي الجديدة",
+      "areaEn": "New Maadi",
+      "address": null
+    },
+    {
+      "row": 164,
+      "name": "New Maadi",
+      "code": "094",
+      "areaAr": "المعادي الجديدة",
+      "areaEn": "New Maadi",
+      "address": null
+    },
+    {
+      "row": 165,
+      "name": "Meraag",
+      "code": "196",
+      "areaAr": "المعادي الجديدة",
+      "areaEn": "New Maadi",
+      "address": null
+    },
+    {
+      "row": 166,
+      "name": "ZAHRAA EL MAADI",
+      "code": "160",
+      "areaAr": "المعادي الجديدة",
+      "areaEn": "New Maadi",
+      "address": null
+    },
+    {
+      "row": 167,
+      "name": "Ela Silky",
+      "code": "179",
+      "areaAr": "المعادي الجديدة",
+      "areaEn": "New Maadi",
+      "address": null
+    },
+    {
+      "row": 168,
+      "name": "Mohandeseen",
+      "code": "004",
+      "areaAr": "المهندسين",
+      "areaEn": "Mohandessin",
+      "address": null
+    },
+    {
+      "row": 169,
+      "name": "Lebanon",
+      "code": "038",
+      "areaAr": "المهندسين",
+      "areaEn": "Mohandessin",
+      "address": null
+    },
+    {
+      "row": 170,
+      "name": "Abdel moniem Riad",
+      "code": "193",
+      "areaAr": "المهندسين",
+      "areaEn": "Mohandessin",
+      "address": null
+    },
+    {
+      "row": 171,
+      "name": "Geziret El Arab BRANCH",
+      "code": "176",
+      "areaAr": "المهندسين",
+      "areaEn": "Mohandessin",
+      "address": null
+    },
+    {
+      "row": 172,
+      "name": "German chamber",
+      "code": "053",
+      "areaAr": "المهندسين",
+      "areaEn": "Mohandessin",
+      "address": null
+    },
+    {
+      "row": 173,
+      "name": "El Haram",
+      "code": "102",
+      "areaAr": "الجيزة",
+      "areaEn": "Giza",
+      "address": null
+    },
+    {
+      "row": 174,
+      "name": "NEW HARAM",
+      "code": "139",
+      "areaAr": "الجيزة",
+      "areaEn": "Giza",
+      "address": null
+    },
+    {
+      "row": 175,
+      "name": "HARAM EL TAAWON",
+      "code": "211",
+      "areaAr": "الجيزة",
+      "areaEn": "Giza",
+      "address": null
+    },
+    {
+      "row": 176,
+      "name": "Giza",
+      "code": "001",
+      "areaAr": "الجيزة",
+      "areaEn": "Giza",
+      "address": null
+    },
+    {
+      "row": 177,
+      "name": "El Manial",
+      "code": "120",
+      "areaAr": "الجيزة",
+      "areaEn": "Giza",
+      "address": null
+    },
+    {
+      "row": 178,
+      "name": "NEW OCTOBER",
+      "code": "141",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 179,
+      "name": "October",
+      "code": "017",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 180,
+      "name": "Mall of Arabia",
+      "code": "123",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 181,
+      "name": "Mena Garden City",
+      "code": "074",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 182,
+      "name": "Raya",
+      "code": "167",
+      "areaAr": "أكتوبر",
+      "areaEn": "October",
+      "address": null
+    },
+    {
+      "row": 183,
+      "name": "EL Sheikh Zayed",
+      "code": "130",
+      "areaAr": "الشيخ زايد",
+      "areaEn": "Zayed",
+      "address": null
+    },
+    {
+      "row": 184,
+      "name": "EL Rabwa",
+      "code": "135",
+      "areaAr": "الشيخ زايد",
+      "areaEn": "Zayed",
+      "address": null
+    },
+    {
+      "row": 185,
+      "name": "SODIC POLYGON",
+      "code": "159",
+      "areaAr": "الشيخ زايد",
+      "areaEn": "Zayed",
+      "address": null
+    },
+    {
+      "row": 186,
+      "name": "AMERICANA PLAZA",
+      "code": "149",
+      "areaAr": "الشيخ زايد",
+      "areaEn": "Zayed",
+      "address": null
+    },
+    {
+      "row": 187,
+      "name": "Arkan Mall",
+      "code": "226",
+      "areaAr": "الشيخ زايد",
+      "areaEn": "Zayed",
+      "address": null
+    },
+    {
+      "row": 188,
+      "name": "SODIC STRIP",
+      "code": "150",
+      "areaAr": "الشيخ زايد",
+      "areaEn": "Zayed",
+      "address": null
+    },
+    {
+      "row": 189,
+      "name": "Dokki",
+      "code": "080",
+      "areaAr": "الدقي",
+      "areaEn": "Dokki",
+      "address": null
+    },
+    {
+      "row": 190,
+      "name": "Mosadak BRANCH",
+      "code": "171",
+      "areaAr": "الدقي",
+      "areaEn": "Dokki",
+      "address": null
+    },
+    {
+      "row": 191,
+      "name": "El said",
+      "code": "025",
+      "areaAr": "الدقي",
+      "areaEn": "Dokki",
+      "address": null
+    },
+    {
+      "row": 192,
+      "name": "El Mesaha Branch",
+      "code": "184",
+      "areaAr": "الدقي",
+      "areaEn": "Dokki",
+      "address": null
+    },
+    {
+      "row": 193,
+      "name": "Dandy Mall",
+      "code": "095",
+      "areaAr": "القرية الذكية",
+      "areaEn": "Smart Village",
+      "address": null
+    },
+    {
+      "row": 194,
+      "name": "PALM HILLS",
+      "code": "163",
+      "areaAr": "القرية الذكية",
+      "areaEn": "Smart Village",
+      "address": null
+    },
+    {
+      "row": 195,
+      "name": "Mall of Egypt",
+      "code": "198",
+      "areaAr": "القرية الذكية",
+      "areaEn": "Smart Village",
+      "address": null
+    },
+    {
+      "row": 196,
+      "name": "New Giza",
+      "code": "201",
+      "areaAr": "القرية الذكية",
+      "areaEn": "Smart Village",
+      "address": null
+    },
+    {
+      "row": 197,
+      "name": "City view",
+      "code": "133",
+      "areaAr": "القرية الذكية",
+      "areaEn": "Smart Village",
+      "address": null
+    },
+    {
+      "row": 198,
+      "name": "Smart Vilage",
+      "code": "119",
+      "areaAr": "القرية الذكية",
+      "areaEn": "Smart Village",
+      "address": null
+    },
+    {
+      "row": 199,
+      "name": "AGHAKHAN BRANCH",
+      "code": "143",
+      "areaAr": "شبرا",
+      "areaEn": "Shoubra",
+      "address": null
+    },
+    {
+      "row": 200,
+      "name": "ELSABTIA",
+      "code": "045",
+      "areaAr": "شبرا",
+      "areaEn": "Shoubra",
+      "address": null
+    },
+    {
+      "row": 201,
+      "name": "Shobra",
+      "code": "067",
+      "areaAr": "شبرا",
+      "areaEn": "Shoubra",
+      "address": null
+    },
+    {
+      "row": 202,
+      "name": "ARKADIA BRANCH",
+      "code": "033",
+      "areaAr": "شبرا",
+      "areaEn": "Shoubra",
+      "address": null
+    }
+  ]
+}

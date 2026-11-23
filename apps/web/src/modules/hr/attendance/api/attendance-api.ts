@@ -28,6 +28,8 @@ import {
   type AttendanceDeviceDto,
   type AttendanceEnrollmentDto,
   type CreateAttendanceEnrollment,
+  type DepartmentHoursMap,
+  type DepartmentHoursRule,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -37,6 +39,7 @@ import {
   getPage,
   patch,
   post,
+  put,
   type QueryParams,
 } from '../../../../shared/lib/api-client';
 
@@ -263,3 +266,35 @@ export const createAttendanceEnrollment = (
   body: CreateAttendanceEnrollment,
 ): Promise<AttendanceEnrollmentDto> =>
   post<AttendanceEnrollmentDto>('/hr/attendance/enrollments', body);
+
+// ── Working hours per department (Attendance › Working hours) ──────────────────
+export interface WorkingHoursDepartment {
+  id: string;
+  code: string;
+  name: { ar: string; en: string };
+  branchId: string;
+  branchName: { ar: string; en: string } | null;
+  catalogId: string | null;
+  employees: number;
+  rule: DepartmentHoursRule | null;
+}
+export interface WorkingHoursDto {
+  companyDefault: { enabled: boolean; startTime: string; endTime: string; breakMinutes: number; hours: number };
+  departments: WorkingHoursDepartment[];
+}
+export const getWorkingHours = (): Promise<WorkingHoursDto> => get<WorkingHoursDto>('/hr/attendance/working-hours');
+/** One department's working hours changing in one save: who, when, before → after (null = not set). */
+export interface WorkingHoursChange {
+  id: string;
+  at: string;
+  by: { ar: string; en: string } | null;
+  departmentId: string;
+  departmentName: { ar: string; en: string } | null;
+  branchName: { ar: string; en: string } | null;
+  before: { startTime: string; hours: number } | null;
+  after: { startTime: string; hours: number } | null;
+}
+export const getWorkingHoursHistory = (): Promise<WorkingHoursChange[]> =>
+  get<WorkingHoursChange[]>('/hr/attendance/working-hours/history');
+export const saveWorkingHours = (departments: DepartmentHoursMap): Promise<{ saved: number }> =>
+  put<{ saved: number }>('/hr/attendance/working-hours', { departments });

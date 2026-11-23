@@ -137,7 +137,9 @@ describe('the crew-board save — type, colour, and rows without a van', () => {
     ).toBe(true);
   });
 
-  it('Round 24 — names the four refusals of a van given to a row, and of a row that holds محصنات', () => {
+  // Round 32 — rewritten: «دى مشكلة بيظهر عربيات ايه الاصفار دى» adds a fifth group, the cars whose
+  // code names nothing («0», «00» …), listed last by their plate.
+  it('Round 24 — names the four refusals of a van given to a row, and of a row that holds محصنات — and the free list’s groups, «uncoded» last since Round 32', () => {
     expect(ErrorCodes.OPERATIONS_CREW_VEHICLE_NOT_ACTIVE).toBe(
       'OPERATIONS_CREW_VEHICLE_NOT_ACTIVE',
     );
@@ -151,6 +153,7 @@ describe('the crew-board save — type, colour, and rows without a van', () => {
       'cashTransfer',
       'standing',
       'other',
+      'uncoded',
     ]);
   });
 

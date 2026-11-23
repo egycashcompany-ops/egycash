@@ -45,7 +45,7 @@ describe('Attendance routes', () => {
     // `attendanceDevice.manage` had been waiting for since AT-D1, where they were declared
     // deliberately page-less rather than parked on an unrelated screen.
     expect(paths.sort()).toEqual(
-      ['assignments', 'daily', 'devices', 'employees/:id', 'me', 'regularizations', 'shifts'].sort(),
+      ['assignments', 'daily', 'devices', 'employees/:id', 'me', 'regularizations', 'shifts', 'working-hours'].sort(),
     );
   });
 
@@ -54,6 +54,7 @@ describe('Attendance routes', () => {
       (m) => m[1],
     );
     // daily + employees/:id share one guard (an Outlet), so five guards cover six admin routes.
+    // «ساعات العمل» is not among them: its address only redirects to «الإعدادات», which guards it.
     expect(guarded.sort()).toEqual(
       [
         'attendance.assign',
@@ -149,6 +150,7 @@ describe('Attendance navigation matches the routes that exist', () => {
   });
 
   it('carries a row for each of the four administrative screens', () => {
+    // «ساعات العمل» is not one of them: it is a tab of «الإعدادات» (`HR_SETTINGS_HUB`).
     expect(navRows.sort()).toEqual(
       [
         '/attendance/daily',

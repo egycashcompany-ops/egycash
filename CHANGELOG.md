@@ -206,6 +206,39 @@ its entry here in the same PR.
 
 ### Added
 
+- **«ساعات العمل»: the hours each department owes, edited on their own screen.** A new tab on
+  «الإعدادات» (`/hr-settings/working-hours`) sets the working hours per department for employees
+  with no shift assignment — hours, an optional start time, and the end time computed from them —
+  with the department's branch and headcount beside each row, and «سجل التعديلات» showing who
+  changed which department's hours and when. Nothing new is stored for the log: every save goes
+  through the settings service, which already writes the actor, the time and the whole map before
+  and after. Saving re-derives the current month for the people in the departments that changed,
+  so the sheet, the profile and payroll's feed agree with the new rule; frozen days are refused by
+  `computeDay` and never re-priced.
+  - **Its own permission, `attendance.manageWorkingHours`** — not the shift catalog's
+    `attendance.manageShifts`, on the `hiringRequirement` precedent. A hub tab needs a page and
+    `validatePageRegistry` refuses a page no permission administers, so borrowing the shift key
+    would have left the role matrix saying the company's working hours are administered by the key
+    that administers the shift catalog. They are not the same power: saving the hours re-derives a
+    department's unfrozen days and payroll reads what that writes; editing the catalog does not.
+    **Nobody loses the working day on the day of the deploy.** The working hours were HR's to set
+    through the shift catalog until now — a shift carries the start, the end and the break — so
+    every role and every live delegated grant holding `attendance.manageShifts` is given the new
+    key once, by a versioned go-live step. It widens nobody: a holder gains the key only beside the
+    key it already exercised the same power under, in the same grant and the same scope. It runs
+    once, so a key an administrator removes afterwards stays removed. `super-admin` is widened
+    separately, because a seeded system role is frozen at its first seed and no copy writes it.
+  - `hr.attendance.departmentHours` is the setting behind it. It is a map, so the generic settings
+    screen does not try to edit it: the row says how much is set and offers «يُعدَّل من شاشة
+    «ساعات العمل»» rather than a raw-JSON box that would be both unusable and the one disabled
+    control on a screen whose rule is that a holder of `setting.edit` can edit everything it shows.
+
+- **Repeated scans are named rather than counted twice.** A day's punches are now attributed to
+  the shift they belong to (within half a day of its start or end), the arrival and the departure
+  are the two that count, and everything else is marked a repeat — the `repeatedPunches` flag, a
+  per-scan role on the employee's day, and «عدد مرات الحضور / الانصراف» on the sheet row. The
+  attendance report gains the two columns to match.
+
 - **HR bulk photos: one photo per duplicate, chosen for you, and no photo sent twice.** «عايز
   المكرر تختار منه أنت تلقائي واحده وترفعها… مش عايز أرفع اللى اترفعوا».
   ([employee module design](docs/12-planning/employee-module-design.md) §8)
@@ -2344,6 +2377,74 @@ its entry here in the same PR.
       (`aria-pressed`), old → new values say «كان» / «أصبح» to a screen reader, the toast is a short
       title with every count (the English names filled too) in its description. The specs' dates are
       made up (two had come from the owner's sheet), and `shared/xlsx/stream-text.ts` has its own spec.
+  - Round 29b — تحميل فروع البنوك الأربعة مع النشر. Offered the upload screen above or the deploy's
+    own load, the owner: «انا عاوز الداتا اللى باعتهالك دى تتضاف … نفذها». His four sheets go into
+    «البيانات المرجعية» ONCE, by the next deploy, under the import's own rules — nobody uploads them.
+    - The data: `apps/api/assets/operations-go-live/bank-branches-{banque-misr,cib,nbe,banque-du-caire}-2026-11.json`,
+      each sheet's rows as `read-branch-sheet.ts` reads them (the name, the code as text, the area in
+      Arabic and in English, the address), copied into the build by `tsup`'s `publicDir`. بنك مصر's
+      two rows whose name Excel had turned into a date (rows 409 and 456) are left out and listed in
+      its file with why; they are added by hand.
+    - The step (`operations/go-live/bank-branches.ts`, started by the api only, not awaited): each
+      bank is found by name (`bank-branches-banks.ts` — its operations, Arabic or English name,
+      folded: «بنك مصر» / «مصر» / Banque Misr / MISR / BM; «CIB» / «البنك التجاري الدولي» /
+      «التجاري الدولي» / Commercial International Bank; «البنك الأهلي المصري» / «الأهلي المصري» /
+      «الأهلي» / NBE / National Bank of Egypt; «بنك القاهرة» / «القاهرة» / Banque du Caire / BDC —
+      the short ones are the legacy operations names, `bank_name_ops`, that `opsName` keeps, and
+      ATM's labels). One → that bank; none, and no live bank that LOOKS like it (one of its names
+      holding the bank's word, whole: «مصر» / Misr, «الأهلي» / NBE, «القاهرة» / BDC, «التجاري
+      الدولي» / CIB) → created («البنوك» is on the owner's list), its code one past every code
+      given; two, or one another file's names find too, or a look-alike («بنك مصر إيران», «البنك
+      التجاري الدولي (CIB)», «NBE FOREX» named «البنك الأهلي المصري»), or a stopped one → skipped,
+      nothing written but its run row (`status: 'skipped'`, why, which banks), logged at error
+      level — for good (Round 29b critic: a skip asked again on every boot loaded the November
+      sheet whenever it cleared, months later, over the operators' edits); its sheet goes through
+      «استيراد من شيت». The file is then planned by `planBranchImport` and written by
+      `writeBranchImport` — the apply's own transaction body, now exported from
+      `branch-import.service.ts` with its trail (`branchImportAudits`): both
+      areas, an area created or reused and its empty English name filled, a held branch's code and
+      area updated (an empty cell never wipes, an address only where it has none), «-2» / «-3» past
+      every code in use, names tidied.
+    - (Critic) What the import's screen shows a person before «تأكيد الاستيراد», the deploy has no
+      one to show: on a bank that already holds branches, a NEW row that may be one of them — its
+      name a held branch's spelt another way (`similarTo`), or its code, one the sheet gives no
+      other row, already a held branch's of another name — is held back, not written
+      (`go-live/bank-branches-plan.ts`), and listed in the run row with the branch it may be; the
+      rest is planned again without it. A code the sheet repeats («0» eighteen times on بنك مصر's)
+      takes «-2», «-3» as before. Every held branch the load edits is kept in the run row with what
+      it held (`changed`), and `areasReplaced` counts those whose area the sheet's replaced — the
+      owner's «حدّث الكود والمنطقة»; the audit trail is no longer the only record of the old areas.
+      On an empty bank nothing is held back: the dry run below is unchanged.
+    - Once per database, per bank, all or nothing: a new `operations_go_live_runs` collection
+      (unique `key`; IT's `it_go_live_runs` to the letter) whose row is each bank's transaction's
+      LAST write — the bank, its areas, its edits, its new branches and the row commit together or
+      not at all. With the row in, no later boot reads the file again, so a branch or an area
+      edited or deleted afterwards stays as it was left. Written by nobody (`by: null`, the boot
+      steps' system actor) and audited after the commit as the catalog's own adds and edits, each
+      entry marked with the run's key; the run row keeps the bank's counts. (Critic) A load that
+      fails — or whose file the build lacks — is counted under `<key>:failed` (first and last
+      failure, how many, the last error) and tried again on the next boot, for 7 days after its
+      first failure (`BANK_BRANCHES_RETRY_DAYS`); the first boot after that writes the run row
+      `status: 'gaveUp'` and loads nothing, whatever cleared the failure since.
+    - A dry run on a fresh database with the committed files: بنك مصر 672 rows read — 670 new (73
+      codes suffixed), 2 left out, 31 areas created; CIB 201 new, 34 areas created; البنك الأهلي
+      629 new (1 suffixed, no area); بنك القاهرة 230 new (8 suffixed, 211 addresses); the four
+      banks created, 1 730 branches, 65 areas each with both names, no problem rows; a second run
+      writes nothing. On the live database the counts follow what «البنوك» and «المناطق» hold.
+    - Tests: `bank-branches-banks.spec.ts` (the four banks, their aliases and marks, folding, found /
+      missing / two banks / another file's bank / look-alikes / found by a display name only /
+      stopped, the next code, the file's schema, the committed files' row counts and their plan on a
+      fresh catalog), `bank-branches-plan.spec.ts` (held back by a spelling or a held code, a
+      repeated code not, a held-back row's code freed and its twin still refused, the edits kept
+      and the areas replaced counted, nothing held back on the committed files) and the
+      `operations-go-live-bank-branches.spec.ts` integration suite on synthetic files (a run row
+      refused leaves no bank, area, branch or edit, and the failure is counted; the first boot
+      finds a bank by its folded name, creates one, reuses, updates, suffixes and fills, refuses a
+      name twice, holds two rows back, replaces an area and keeps the old one, audits by nobody; a
+      later boot writes nothing and an operator's delete and edit stand; two banks skipped for good,
+      settled months later still nothing; a build without the files counted; a failure past its 7
+      days given up, an operator's edit standing; look-alikes and a stopped bank skipped, no bank
+      created). The run model is in `sync-indexes.models.ts` and the module's manifest.
   - Round 30 — «توزيع المحصنات» على يوم مضى: سجل للعرض فقط. On the screen's top row («يوم التسليم»,
     the figures, «توزيع تلقائي», «تراجع», «حفظ (0)»), the owner: «عاوز هنا يقدر يجيب اليوم اللى قبله
     ك رؤيى بس ميقدرش يعدل عليه او يعمل حاجه ك سجل يعنى».
@@ -2436,6 +2537,167 @@ its entry here in the same PR.
       stacked, «بلا قائد»). R31 review: the fallback spec REWRITTEN («one line HIGH always: … the
       word leaves the view — never a second line, never cut»), the captain spec now pins the name's
       `dir="auto"`; new: the whole count on hover in English, a cut name keeping its start.
+  - Round 32 — «لوحة التشغيلة» و«الطاقم الثابت». The owner, on two screenshots (each van list opening
+    on «0», «00», «000», «0000», «00000», then «61»), and on the board: «دى مشكلة بيظهر عربيات ايه
+    الاصفار دى»، «تانى مشكلة لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار فقط»، and
+    «انا عاوز بقى اقدر اعمل اسوابنج بين عربيتين واقدر احدد هنقل ايه بالظبط للعربيه التانيه».
+    - A — «دى مشكلة بيظهر عربيات ايه الاصفار دى». WHAT THEY ARE: cars typed by hand in «الحركة» →
+      «السيارات» for vans with no Fleet code yet. Neither legacy export the go-live import read
+      (`apps/api/assets/fleet-go-live/cars.json`, `cars-2026-09-29.json`: 213 rows, 4 deleted, 209
+      live) holds a code made only of zeros, and the import invents no code (it refuses an empty or
+      a repeated one, writing nothing — `vehicles-import.ts` `parseCars`); the only other writer is
+      the registry's own add / edit, which requires a code and refuses one already held
+      (`vehicle.service.ts` `create`, the unique index `ux_code`) — hence «0», then «00» because «0»
+      was taken, and so on. Production's lists show 220 in «باقي السيارات» alone, against the 209
+      cars imported.
+      The same form requires a type and a plate, a chassis and a motor number, each unique: such a
+      car is named by its PLATE. Fleet's data is not touched.
+      - The rule (`vehicleCodeNamesNothing`, contracts `operations-vehicle-codes.ts`): a code — or
+        a plate — that is blank, punctuation, or zeros only, in any digit system («0», «0000», «٠٠»,
+        «0-0»). On both lists such a car comes LAST, in its own group «سيارات بلا كود في الأسطول»
+        (`OPERATIONS_CREW_FREE_VEHICLE_GROUPS` gains `uncoded`), drawn by its plate with a quiet
+        «بلا كود» and its make (Fleet's type) under it — never a bare «0000» — and found by its plate
+        («٤٥٢١» too); its zeros match no search. A car whose plate names nothing either cannot be
+        told from the next: left out, and counted on the list's last line — «سيارات بلا كود ولا لوحة
+        في «الحركة»: n — لا تُعرض هنا، وتُصحَّح في «الحركة» ← «السيارات».» (`unidentifiedVehicles` on
+        `GET /operations/crew-board` and `GET /operations/standing-crew`). Never hidden: the day's
+        roster van and a standing-crew van — they keep their group, named by their plate.
+      - The wire: each free car and each «إضافة سيارة» car carries `uncoded` — its plate and its
+        make (`plateNumber`, `typeName`), null for a coded car; Fleet's plate and type are read
+        through `fleet-boundary.ts` (`fleetActiveVehicles` now returns them; `fleetVehicleTypeNames`).
+      - THE ORDER: codes NATURALLY everywhere these lists and the board's van lists sort — 61, 101,
+        150, 213 (`compareVehicleCodesNaturally`, a code that names nothing after every one that
+        does). «الطاقم الثابت»'s rows and its «إضافة سيارة» list were ordered as TEXT on the server
+        («101» before «61»); the board's free list, its van filter and the web lists now share the
+        one rule.
+    - B — «لما بجيب السجل فى لوحة التشغيل بيخلى اعدل وانا عاوزها اظهار فقط». «لوحة التشغيلة» on a
+      past day is that day's RECORD, view only, as «توزيع المحصنات» became in Round 30. The day box
+      still takes any day (`min=""`); a day before today opens as its record.
+      - The read (`GET /operations/crew-board`) answers `today` (Cairo) and `past`. The save
+        (`POST /operations/crew-board`) refuses a past day before anything is read or written — no
+        operating day made, no row touched — 422 `OPERATIONS_CREW_DAY_IN_PAST`, one detail (`date`,
+        `MIN_DATE`, today). It had taken a past day's save. Today and later days save as before.
+      - On the screen (`lib/crew-record.ts` `isCrewRecord` — the distribution's `isRecordScreen`: the
+        URL's day before the read is in, then the SERVER's `past`, plus midnight passing on a board
+        left open): every act asks ONE gate, `canPlan = mayPlan && !isRecord` — no drag, no «+
+        اختيار» or slot list, no van given, no row added, emptied or deleted, no type, colour, time,
+        direction or notes change, no «الطاقم الثابت», no «تراجع» (nor Ctrl+Z), no «حفظ»; «ألوان
+        الأنواع» opens read only. The rows are the server's, never a draft (work left unsaved when
+        the day ended is said, by a toast and on the notice). A calm notice under the bar — «سجل يوم
+        … — للعرض فقط، لا يمكن التعديل» — and, where the acts were, «سجل · للعرض فقط» and «العودة إلى
+        اليوم». The filters, Excel and the hover cards still work. «الطاقم الثابت» has no date —
+        untouched.
+    - C — a SAMPLE, built in the real board so it can ship: «دلوقتى انا لو عندى عربية عينت عليها قادة و
+      اخصائيين و اتجاه وهكذا وجيت غلط المفروض الداتا دى ل عربيه تانية او نص الداتا صح والاقى على عربيه
+      تانية انا عاوز بقى اقدر اعمل اسوابنج بين عربيتين واقدر احدد هنقل ايه بالظبط للعربيه التانيه فاهم
+      قصدى ف ممكن تعملى سامبل كل عربيه بالبيانات على كارد جمب بعض الاتنين». «تبديل بين سيارتين» on
+      «لوحة التشغيلة», today and later days only (a record has no acts).
+      - THE WAY IN: a small «⇄» on each row — on the van code's second line (where «إضافية» goes),
+        and under «بدون سيارة» on a row without a van; beside the colour and the bin it ran the
+        table 24px past its frame at 1440 and 1920, the Round-24 trouble. It opens the window on
+        that row; the second van is picked inside, from the board's other rows (rows without a van
+        included), searchable by code, name or direction.
+      - THE WINDOW (`CrewSwapDialog`): the TWO VANS ON TWO CARDS SIDE BY SIDE — the first on the
+        right in Arabic — each listing everything its row holds: «قائد الطاقم», «أخصائي 1», «أخصائي 2»
+        person by person (role colour, code, «غائب» / «إجازة», a seat held outside the role), then
+        «الاتجاه», «التوقيت», «النوع», «لون الصف», «ملاحظات»; each item a real checkbox named by what
+        it moves and where, and «الكل» · «الطاقم فقط» · «لا شيء» on each card. The drivers are
+        Fleet's: said on the card, they stay with the van, and so do the محصنات placed on it
+        (they ride the van's crew row). BETWEEN the cards, a radio group: «تبديل المحدد ⇄» (the
+        ticks of both cards cross at once — the default), «نقل المحدد ←» and «نقل المحدد →» (only
+        the sending card's ticks; the receiving card says «تستقبل»). UNDER them, the two cards
+        AFTER the change, side by side, before anything is touched: what arrives («من 213»), the
+        value a field moved one way replaces (struck, «بدلًا من …»), what goes («ينتقل إلى …»), and what a
+        rule keeps where it is, with the reason. Tab stays in the window, Escape closes it, the
+        focus goes back to the row's «⇄».
+      - THE RULES (`lib/crew-swap.ts`, pure): a person keeps his slot role — a captain to «قائد
+        الطاقم», a specialist to the same «أخصائي» slot or, that one full, the other; kept where he
+        is, named: somebody away that day (Round 22), a seat his role does not fit on the other row
+        (Round 23 — a seat held there before the rule stays), no room left (two a slot, counted
+        AFTER the operation: the ones leaving make room for the ones arriving), and an archived type
+        (only an active one is given to another row — the save's rule). Nobody is ever on two rows
+        (Q11): people only cross between the two. A field in «تبديل المحدد ⇄» is ONE exchange the two
+        cards share — ticked on either, both values cross (the window ticks the pair); in «نقل
+        المحدد» one way it MOVES (the other row takes it, its own value named as replaced, the
+        sending row left without one).
+      - «تطبيق» changes the DRAFT only, as ONE operation: one press of «تراجع» puts both rows back
+        («تراجع عن: التبديل بين 213 و255»); «حفظ (2)» counts the two rows and saves them as any
+        other change. Nothing new on the server: the save already takes both rows of a move.
+      - The cost, measured at 1280, 1366, 1440 and 1920 against the A/B build: the table's width
+        unchanged at every one (the bin inside the frame); a van row's height unchanged (the code's
+        line is 18px, the «⇄» 16px — the cell keeps its 36px); a van off the roster gets a third
+        line (+16px, «إضافية» and «⇄» do not share a line), a row without a van +18px.
+    - Specs. Rewritten: (contracts) «Round 24 — names the four refusals …» now pins the free list's
+      five groups, `uncoded` last; (web) «opens the card with the catalog grant the reference tab
+      already uses — no new one» → «… — read only on a past day's record (Round 32)». New: (contracts)
+      `operations-vehicle-codes.spec.ts` — what names nothing, the natural order, the wire; (api,
+      run whole) `operations-crew-round32.spec.ts` — the board's free list in number order, the
+      uncoded last by plate and make, the unnamed left out and counted, the roster's and the
+      standing crew's never hidden, an uncoded car taken by a row; the standing crew's rows and
+      list in number order; a past day read as its record, every save of it refused (an edit, a van
+      given, a row added, a removal, a new van, yesterday unplanned) with nothing written, 403
+      before the day, today and later days saved; (web) `crew-round32.spec.tsx` — both lists'
+      order and groups, the roster van kept, the search by plate, the list as drawn (plate, «بلا
+      كود», make, heading, the count line), `isCrewRecord`, the page's one gate, the record's rows,
+      notice and acts, the words in both languages and the refusal's. C — rewritten: (web)
+      `crew-vehicles.spec.ts` «its «إضافية» tag sits UNDER the code, never beside it — the column
+      keeps its width at 1440» → «… — on the code’s second line, with the row’s «⇄» (Round 32 C) —
+      …» (the same rule; the tag now shares its line with «⇄»). New: (web) `lib/crew-swap.spec.ts`
+      — what a card offers, the quick picks, the three ways, swap and move per person and per field,
+      a value replaced, the slot paths, every rule's refusal (held seat, away, unknown person,
+      capacity, capacity after the move, a kept person's seat taken back, an archived type), a row
+      without a van, the draft replaced in place, ONE step of «تراجع», «حفظ (2)», ticks that follow
+      the rows; `components/crew-swap-dialog.spec.tsx` — the window as drawn (the boxes and their
+      names, the drivers, the second van's list, no preview before it, the cards' order, the radio
+      group and its arrows in both languages, the preview's arrivals, struck values, what goes and
+      what stays with its reason, the receiving card), the board's wiring (only where it may be
+      planned, the «⇄» on the code's line and never beside the bin, one operation of «تراجع»), and
+      every word in both languages.
+    - Round 32 critic (the build's, never the owner's):
+      - A, after the pick: a car picked by its plate landed on its row as the bare «0» — on the van's
+        cell, its card, the van filter, Excel, «تراجع»'s words and the swap window — the owner's
+        zeros back on the board. Every board row (and «الطاقم الثابت»'s) now carries `uncoded` from
+        the server (`OperationsCrewBoardRowDto`, `OperationsStandingCrewRowDto`; one Fleet read,
+        `namesByIds`), and the board names the van by its plate with «بلا كود» (`vanName`) wherever it
+        draws or says it — the plate wraps between its letters and its digits, so the van column keeps
+        its width at 1366, 1440 and 1920 (measured: 66px at 1440, the bins inside the frame; on one
+        line it ran them 29px out), the row a line taller. A van freed in the draft keeps its plate on
+        both lists (it came back a bare «0000» in «باقي السيارات»); two uncoded cars are ordered by
+        their PLATE, as the lists said,
+        not by their count of zeros (`compareVehiclesForPicker`); a roster van with no code keeps its
+        drivers under its plate. «توزيع المحصنات» and the screens after it still show Fleet's code.
+      - B: midnight under an open slot list or «بدون سيارة» list wrote into the hidden draft (and said
+        «work not saved» again): every change to the draft now passes `canPlan` (`apply`), and the
+        lists and a picked-up chip shut with the day.
+      - C: an archived type in an exchange was lost from both rows (the other row's type took its
+        place, its own was dropped): the exchange is now off both ways, each row named why
+        («نوع 213 مؤرشف ويبقى عليها — فلا يُبادَل النوعان»). A field ticked on one card in «تبديل
+        المحدد ⇄» threw the other row's value away; it is now exchanged. Ctrl+Z inside the window
+        took back the board's last operation behind it; it does nothing while any window is open
+        (`isBoardUndoKey`). After a swap, «الطاقم الثابت» off emptied the row that now held the
+        other van's people; the swap now lets go of the two rows (`applySwapToDraft`). A one-way move
+        is said as one («نقل المحدد من 213 إلى 255»). The arrow keys follow the language (`modeStepOf`).
+        The preview's notes start their own line. Each card says how many محصنات ride its row
+        (`shipments` on `OperationsCrewBoardCrewDto`, one count for the day), and the preview warns
+        when its captains or its direction change: «تبقى على 213 المحصنات الموزَّعة عليها (6)، وقد
+        وُزِّعت قبل تغيير القائد أو الاتجاه. راجِعها في «توزيع المحصنات» بعد الحفظ».
+      - Specs rewritten (each pinned the defect): (api) `operations-crew-round32.spec.ts` «lists the
+        cars by code NATURALLY, the uncoded LAST by their plate …» and «الطاقم الثابت … the uncoded
+        last» — `['00', '0']` by plate (they pinned `['0', '00']`); (web) `crew-round32.spec.tsx` the
+        two lists' uncoded order, the same; `lib/crew-swap.spec.ts` «a field ticked on BOTH cards is
+        exchanged; ticked on one, it moves …» → «a field is ONE exchange …» and «a type archived since
+        the row took it stays on its row; an active one moves» → «… in an exchange the other row
+        keeps its own too»; `crew-swap-dialog.spec.tsx` the ticked count (the pair's tick) and «the
+        preview … the value a moved field replaces (struck)» → «… the fields exchanged — nothing
+        thrown away» (the struck value is a one-way move's, its own case), and the page's wiring →
+        `applySwapToDraft` / `swapOperation`; `crew-undo.spec.ts` «Ctrl+Z / ⌘Z does the same outside
+        a text box» → through `isBoardUndoKey`; `crew-vehicles.spec.ts` the «إضافية» line (with
+        «بلا كود») and «إزالة»'s words (`vanName`). New: (contracts) `compareVehiclesForPicker`; (api)
+        the rows' `uncoded`, a crew row's `shipments` (live legs only); (web) the van named by its
+        plate through pick, reload, card, filter, Excel and «إزالة», «الطاقم الثابت»'s rows, the freed
+        vans, the roster van's drivers, midnight's one gate, `isBoardUndoKey`, the exchange and the
+        archived pair, `applySwapToDraft`, `swapOperation`, `modeStepOf`, `shipmentsLeftBehind`, the
+        window's pair tick, the shipments note and the notes' line.
 
 - **IT: the vehicle checks dashboard (FR-21).** «فين الـ DashBoard؟ اللى بيظهر فيه التقرير والبيانات
   اللى الناس بتدخلها», then, on the sample, «تمام نفذا الـ Dashboard بتاعت الفحص».

@@ -109,10 +109,23 @@ export interface EmployeeFileDocumentDto {
   uploadedAt: string;
 }
 
+/** Who the file belongs to, as the folder shows it: name, photo, job, department, hire date. */
+export interface EmployeeFileOwnerDto {
+  nameAr: string;
+  nameEn: string | null;
+  photoFileId: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  department: { ar: string; en: string } | null;
+  hiredAt: string | null;
+  status: string;
+}
+
 export interface EmployeeFileDto {
   id: string;
   employeeId: string;
   employeeCode: string;
+  /** The employee, for the folder's face and caption. Absent where it was not read. */
+  owner?: EmployeeFileOwnerDto | null;
   /** null for a DIRECT-registration employee. */
   applicantId: string | null;
   branchId: string;

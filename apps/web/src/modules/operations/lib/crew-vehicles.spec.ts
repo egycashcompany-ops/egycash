@@ -48,6 +48,7 @@ const free = (
   onRoster: false,
   inWorkshop: false,
   drivers: [],
+  uncoded: null,
   ...over,
 });
 
@@ -61,12 +62,15 @@ const crew = (crewId: string, over: Record<string, unknown> = {}) => ({
   notes: null,
   shiftTypeId: null,
   rowColour: null,
+  shipments: 0,
   ...over,
 });
 
 /** A day: roster vans 249 (crewed) and 250 (blank), an off-roster van row 777, two loose rows. */
 const BOARD: OperationsCrewBoardDto = {
   date: '2026-11-17T00:00:00.000Z',
+  today: '2026-11-16T00:00:00.000Z',
+  past: false,
   day: null,
   rows: [
     {
@@ -77,6 +81,7 @@ const BOARD: OperationsCrewBoardDto = {
       driver2EmployeeId: null,
       drivers: [{ employeeId: id(81), fullNameAr: 'سائق أول' }],
       missionTypeId: null,
+      uncoded: null,
       crew: crew(id(11), { captainEmployeeIds: [id(61)] }),
     },
     {
@@ -87,6 +92,7 @@ const BOARD: OperationsCrewBoardDto = {
       driver2EmployeeId: null,
       drivers: [{ employeeId: id(82), fullNameAr: 'سائق ثان' }],
       missionTypeId: null,
+      uncoded: null,
       crew: null,
     },
     {
@@ -97,6 +103,7 @@ const BOARD: OperationsCrewBoardDto = {
       driver2EmployeeId: null,
       drivers: [],
       missionTypeId: null,
+      uncoded: null,
       crew: crew(id(17), { captainEmployeeIds: [id(67)] }),
     },
   ],
@@ -116,6 +123,7 @@ const BOARD: OperationsCrewBoardDto = {
     free(5, '310', { group: 'standing', inWorkshop: true }),
     free(6, '150', { group: 'other' }),
   ],
+  unidentifiedVehicles: 0,
 };
 
 const ORIGINAL = toPlanRows(BOARD);
@@ -136,15 +144,17 @@ describe('the board reads which vans the roster has (`onRoster`)', () => {
     expect(planChanges(discardRow(ORIGINAL, `van:${id(1)}`), ORIGINAL).removedCrewIds).toEqual([]);
   });
 
-  it('its «إضافية» tag sits UNDER the code, never beside it — the column keeps its width at 1440', () => {
+  it('its «إضافية» tag sits UNDER the code, never beside it — on the code’s second line, with the row’s «⇄» (Round 32 C) — the column keeps its width at 1440', () => {
     // Beside the code (and the «short of» mark) it widened the van column from 65px to 95px at
-    // 1440: the table ran 31px past its frame, the row's bin and colour out of sight.
+    // 1440: the table ran 31px past its frame, the row's bin and colour out of sight. Round 32 C
+    // puts the row's «⇄» on the same second line, for the same reason (beside the bin it ran the
+    // table 24px past its frame at 1440 and 1920) — nothing goes BESIDE the code.
     const page = readFileSync(
       fileURLToPath(new URL('../pages/CrewBoardPage.tsx', import.meta.url)),
       'utf8',
     );
     expect(page).toMatch(
-      /<span className="flex flex-col items-start gap-0\.5" data-van-code-stack="true">\s*<CrewVehicleHoverCode[\s\S]*?\{releasable \? \([\s\S]*?data-van-release=[\s\S]*?<\/button>\s*\) : \(\s*!row\.onRoster && \([\s\S]*?data-off-roster="true"[\s\S]*?<\/span>\s*\)\s*\)\}\s*<\/span>\s*\{warn\}/,
+      /<span className="flex flex-col items-start gap-0\.5" data-van-code-stack="true">\s*<CrewVehicleHoverCode[\s\S]*?\/>\s*<span className="flex flex-wrap items-center gap-0\.5" data-van-second-line="true">[\s\S]*?\{releasable \? \([\s\S]*?data-van-release=[\s\S]*?<\/button>\s*\) : \(\s*!row\.onRoster && \([\s\S]*?data-off-roster="true"[\s\S]*?<\/span>\s*\)\s*\)\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?\{row\.uncoded != null && <NoCodeTag [^>]*\/>\}\s*\{swapPill\(row\)\}\s*<\/span>\s*<\/span>\s*\{warn\}/,
     );
   });
 });
@@ -477,7 +487,8 @@ describe('a van the save refused, taken off its row (`releaseVan`, Round 24)', (
     // The button: on the refused row's van cell, one operation «تراجع» can take back.
     expect(page).toContain('data-van-release={row.key}');
     expect(page).toMatch(
-      /applyRows\(\{ kind: 'dropVan', vars: \{ code: row\.vehicleCode \?\? '', row: named \} \}, \(current\) =>\s*releaseVan\(current, serverRows, row\.key\),/,
+      // Round 32 critic — the van named as the row names it (`vanName`: its plate when its code names nothing).
+      /applyRows\(\{ kind: 'dropVan', vars: \{ code: vanName\(row\) \?\? '', row: named \} \}, \(current\) =>\s*releaseVan\(current, serverRows, row\.key\),/,
     );
     // Shown only on a refused row whose van was given here, for someone who may plan.
     expect(page).toContain(

@@ -16,6 +16,33 @@ import { AttendancePunchModel } from './punches/punch.model';
 const ESS_ATTENDANCE_GRANTS = ['attendance.view', 'attendance.requestRegularization'];
 
 /**
+ * «ساعات العمل» — the key that opens the working-hours tab, given to `super-admin` on an install
+ * that was seeded before it existed (22 November).
+ *
+ * WHY: `ensureSystemRole` never touches a role that already exists, so the seeded `super-admin`
+ * carries the registry as it stood on the day of the FIRST seed and no later boot widens it
+ * (rbac.service.ts; the reasoning is written out in full in `operations.seed.ts`). A fresh
+ * database hides this completely — it is created from the CURRENT registry, which is why every
+ * test here passes while an existing install holds the key nowhere. Without this line the tab
+ * ships invisible to every account, including the owner's, and the three routes behind it answer
+ * 403 to everyone. Strictly additive, idempotent, and it invalidates the holders' cached
+ * permission snapshots itself, so it takes effect on the next request rather than the next login.
+ *
+ * ONLY `super-admin` here. Not `platform-admin`, which holds the platform's own keys and no
+ * module's; not `employee-self-service`, which reads one person's own month and settles nothing for
+ * anyone else.
+ *
+ * AND THIS IS NOT THE WHOLE GRANT. Every ordinary role and delegated grant that manages the working
+ * day today — those holding `attendance.manageShifts` — is given the new key once by
+ * `go-live/working-hours-grants.ts`, on the owner's ruling that «ساعات العمل» replaces what HR
+ * already manages and must not disappear for them. That step deliberately never writes
+ * `super-admin` (`ROLES_NEVER_COPIED_INTO`), which is exactly why this line is still needed: a
+ * seeded system role is frozen at its first seed and no copy will widen it. The two together are
+ * what makes the screen reachable on an installed database.
+ */
+const SUPER_ADMIN_WORKING_HOURS_GRANTS = ['attendance.manageWorkingHours'];
+
+/**
  * AT-D1 backfill — give punches written before the split their reader axis.
  *
  * WHY IT IS EXACT RATHER THAN A GUESS. Until AT-D1 every import stamped `branchIdAtPunch` with the
@@ -87,6 +114,17 @@ export const migrateAttendance = async (): Promise<void> => {
   );
   if (added > 0) {
     logger.info({ added }, 'attendance: employee-self-service widened with the ESS attendance keys');
+  }
+
+  const workingHours = await rbacService.addSystemRoleGrants(
+    'super-admin',
+    SUPER_ADMIN_WORKING_HOURS_GRANTS,
+  );
+  if (workingHours > 0) {
+    logger.info(
+      { added: workingHours },
+      'attendance: super-admin widened with the working-hours grant (pre-existing install)',
+    );
   }
 
   const general = await shiftService.ensure({

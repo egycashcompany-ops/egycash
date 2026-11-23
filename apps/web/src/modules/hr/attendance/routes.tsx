@@ -2,7 +2,7 @@
 // its server route checks; My Attendance is the one exception, and for the same reason My Leave
 // is: it needs an authenticated employee login, not a permission — the endpoints behind it are
 // own-scope by construction (the ESS role carries attendance.view/requestRegularization at `own`).
-import { Outlet, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
@@ -60,6 +60,8 @@ export default function AttendanceRoutes(): JSX.Element {
             </RequirePermission>
           }
         />
+        {/* «ساعات العمل» is a tab of «الإعدادات» now; the old address goes there. */}
+        <Route path="working-hours" element={<Navigate to="/hr-settings/working-hours" replace />} />
         <Route
           path="assignments"
           element={

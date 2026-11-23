@@ -18,7 +18,7 @@
 // ٤٨»), so the two numbers never pretend to be one.
 import { foldOperationsAreaName, type OperationsCrewMemberDto } from '@ecms/contracts';
 import { foldIncludes } from '../../../shared/lib/fold';
-import { byVehicleCode } from './crew-vehicles';
+import { byVehicleCode, vanName } from './crew-vehicles';
 import { rowPeople, type PlanRow } from './crew-plan';
 
 /** The van filter's «بدون سيارة», and the direction filter's «بدون اتجاه». */
@@ -73,17 +73,24 @@ export const directionParts = (
 /** The van list: the draft's vans by code (numbers in number order) — `NO_VAN` is the page's. */
 export const vanFilterOptions = (rows: readonly PlanRow[]): { value: string; label: string }[] => {
   const seen = new Set<string>();
-  return rows
-    .flatMap((row) =>
-      row.vehicleId === null || seen.has(row.vehicleId)
-        ? []
-        : [
-            (seen.add(row.vehicleId),
-            { vehicleId: row.vehicleId, vehicleCode: row.vehicleCode ?? '…' }),
-          ],
-    )
-    .sort(byVehicleCode)
-    .map((van) => ({ value: van.vehicleId, label: van.vehicleCode }));
+  return (
+    rows
+      .flatMap((row) =>
+        row.vehicleId === null || seen.has(row.vehicleId)
+          ? []
+          : [
+              (seen.add(row.vehicleId),
+              {
+                vehicleId: row.vehicleId,
+                vehicleCode: row.vehicleCode ?? '…',
+                uncoded: row.uncoded ?? null,
+              }),
+            ],
+      )
+      .sort(byVehicleCode)
+      // Round 32 critic — a code that names nothing is listed by its plate, as the row draws it.
+      .map((van) => ({ value: van.vehicleId, label: vanName(van) ?? van.vehicleCode }))
+  );
 };
 
 /** The direction list: every area the draft's directions name, once, in Arabic order. */

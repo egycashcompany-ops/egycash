@@ -64,6 +64,7 @@ const stored = (
   id: 'sc1',
   vehicleId: 'v1',
   vehicleCode: 'C-1',
+  uncoded: null,
   captainEmployeeIds: [],
   specialist1EmployeeIds: [],
   specialist2EmployeeIds: [],
@@ -342,10 +343,10 @@ describe('Round 27 — the standing rows as the board’s rows', () => {
 
 describe('Round 27 — «إضافة سيارة» offers the vehicles that may still join, through the draft', () => {
   const available = [
-    { vehicleId: 'v-P10', vehicleCode: 'P10' },
-    { vehicleId: 'v-150', vehicleCode: '150' },
-    { vehicleId: 'v-9', vehicleCode: '9' },
-    { vehicleId: 'v-P9', vehicleCode: 'P9' },
+    { vehicleId: 'v-P10', vehicleCode: 'P10', uncoded: null },
+    { vehicleId: 'v-150', vehicleCode: '150', uncoded: null },
+    { vehicleId: 'v-9', vehicleCode: '9', uncoded: null },
+    { vehicleId: 'v-P9', vehicleCode: 'P9', uncoded: null },
   ];
 
   it('the server’s list in number order, under the cash-transfer heading when it is narrowed', () => {

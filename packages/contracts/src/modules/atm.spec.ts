@@ -17,6 +17,8 @@ import {
   AtmRefLabelOptionsQuerySchema,
   CreateAtmRefLabelSchema,
   ListAtmRefLabelsQuerySchema,
+  readTypedAtmMachineCodes,
+  splitAtmMachineCodeList,
   UpdateAtmRefLabelSchema,
 } from './atm.js';
 import { AtmBankCodeSchema } from './atm-register.js';
@@ -161,5 +163,113 @@ describe('the vocabularies the next layers switch on', () => {
         ATM_BANK_CODE_PATTERN.test(code),
       );
     }
+  });
+});
+
+// 2026-11-23: «لما بعمل بحث هنا /atm/machines على الماكينة دى HDB-ATM 9501 بسبب المسافة اللى فيها
+// بتتقسم كأنها ماكينتين ! فمبتظهرش». Of the directory's codes, some are written with a space
+// inside — «HDB-ATM 9501», «HDB - 1234» — and every space used to end a code.
+describe('machine codes written with a space inside', () => {
+  it('keeps a code whole when the part before its space ends with a letter or a dash', () => {
+    expect(splitAtmMachineCodeList('HDB-ATM 9501')).toEqual(['HDB-ATM 9501']);
+    expect(splitAtmMachineCodeList('HDB-ATM   9501')).toEqual(['HDB-ATM 9501']);
+    expect(splitAtmMachineCodeList('HDB - 1234')).toEqual(['HDB - 1234']);
+    expect(splitAtmMachineCodeList('HDB-ATM 0003')).toEqual(['HDB-ATM 0003']);
+  });
+
+  it('still ends a code at a space after a digit — a list read off a message', () => {
+    expect(splitAtmMachineCodeList('1056 1112')).toEqual(['1056', '1112']);
+    expect(splitAtmMachineCodeList('HDB-ATM 9501 1056 HDB-ATM 9502')).toEqual([
+      'HDB-ATM 9501',
+      '1056',
+      'HDB-ATM 9502',
+    ]);
+    // Letters run into digits are a finished code: «BRKN0004», «HDB-ATM0003».
+    expect(splitAtmMachineCodeList('BRKN0004 1056 HDB-ATM0003 0077')).toEqual([
+      'BRKN0004',
+      '1056',
+      'HDB-ATM0003',
+      '77',
+    ]);
+  });
+
+  it('always ends a code at a comma, a semicolon or a line break — the address keeps them apart', () => {
+    expect(splitAtmMachineCodeList('HDB-ATM 9501,1056')).toEqual(['HDB-ATM 9501', '1056']);
+    expect(splitAtmMachineCodeList('HDB-ATM\n9501؛ 0012')).toEqual(['HDB-ATM', '9501', '12']);
+    expect(splitAtmMachineCodeList(['HDB-ATM 9501', '1056 1112'])).toEqual([
+      'HDB-ATM 9501',
+      '1056',
+      '1112',
+    ]);
+  });
+
+  // Review of the first fix: a rule that let any letter or dash run on swallowed the codes of
+  // ordinary lists, and the list showed nothing.
+  it('keeps the codes of a numbered, bulleted or dashed list apart', () => {
+    // A pasted column arrives in the one-line box with its line breaks turned into spaces.
+    expect(splitAtmMachineCodeList('- 1056 - 1112 - HDB-ATM 0003')).toEqual([
+      '-',
+      '1056',
+      '1112',
+      'HDB-ATM 0003',
+    ]);
+    expect(splitAtmMachineCodeList('1- 1056 2- 1112 3- 25995014')).toEqual([
+      '1-',
+      '1056',
+      '2-',
+      '1112',
+      '3-',
+      '25995014',
+    ]);
+    expect(splitAtmMachineCodeList('1056 - 1112 - 1113')).toEqual(['1056', '-', '1112', '1113']);
+  });
+
+  it('keeps a word, a name or a bank next to a code apart from it', () => {
+    expect(splitAtmMachineCodeList('الماكينات المطلوبة 1056 1112')).toEqual([
+      'الماكينات',
+      'المطلوبة',
+      '1056',
+      '1112',
+    ]);
+    expect(splitAtmMachineCodeList('ATM 1056 , ATM 1112')).toEqual(['ATM', '1056', '1112']);
+    // Columns copied out of a sheet: a tab always ends a code.
+    expect(splitAtmMachineCodeList('NBE\t1056 CIB\t1112 HDB\tHDB-ATM 0003')).toEqual([
+      'NBE',
+      '1056',
+      'CIB',
+      '1112',
+      'HDB',
+      'HDB-ATM 0003',
+    ]);
+    // A tab is a column's edge, even between the halves of a spaced shape.
+    expect(splitAtmMachineCodeList('HDB\t- 1234')).toEqual(['HDB', '-', '1234']);
+    expect(splitAtmMachineCodeList('1056\tMall Of Arabia 1112\tCity Stars')).toEqual([
+      '1056',
+      'Mall',
+      'Of',
+      'Arabia',
+      '1112',
+      'City',
+      'Stars',
+    ]);
+  });
+
+  it('reads a code still being typed with its space, and takes it once a separator ends it', () => {
+    expect(readTypedAtmMachineCodes('HDB-ATM')).toEqual({ chosen: [], typing: 'HDB-ATM' });
+    expect(readTypedAtmMachineCodes('HDB-ATM ')).toEqual({ chosen: [], typing: 'HDB-ATM ' });
+    expect(readTypedAtmMachineCodes('HDB-ATM 95')).toEqual({ chosen: [], typing: 'HDB-ATM 95' });
+    expect(readTypedAtmMachineCodes('HDB-ATM 9501 ')).toEqual({
+      chosen: ['HDB-ATM 9501'],
+      typing: '',
+    });
+    expect(readTypedAtmMachineCodes('1056 HDB - ')).toEqual({ chosen: ['1056'], typing: 'HDB - ' });
+    expect(readTypedAtmMachineCodes('HDB-ATM 9501,')).toEqual({
+      chosen: ['HDB-ATM 9501'],
+      typing: '',
+    });
+    expect(readTypedAtmMachineCodes(' , ')).toEqual({ chosen: [], typing: '' });
+    // A word of letters alone may still become «HDB - 1234»; once a digit follows, it was not.
+    expect(readTypedAtmMachineCodes('HDB ')).toEqual({ chosen: [], typing: 'HDB ' });
+    expect(readTypedAtmMachineCodes('NBE 1056 ')).toEqual({ chosen: ['NBE', '1056'], typing: '' });
   });
 });

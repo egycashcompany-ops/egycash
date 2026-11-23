@@ -319,6 +319,7 @@ export const MultiSelect = ({
   searchThreshold = 7,
   onSearch,
   onCommitSearch,
+  onPasteSearch,
   searchValue,
   searching = false,
   emptyText,
@@ -366,6 +367,15 @@ export const MultiSelect = ({
    * when. Opt-in: without it, Enter does what it always did.
    */
   onCommitSearch?: (raw: string) => void;
+  /**
+   * Text pasted into the search box, as it was COPIED — its line breaks kept, which the one-line box
+   * itself would turn into spaces before anyone read them — put where the caret was. Return true to
+   * take it: the box's own paste is cancelled, and the owner says what the box holds next
+   * (`searchValue`). For a filter whose pasted lists mean something line by line (the ATM ID
+   * filter: a line ending in a bank's name must not run into the code on the next). Opt-in:
+   * without it a paste is typing, as it always was.
+   */
+  onPasteSearch?: (raw: string) => boolean;
   /**
    * Take ownership of the search text.
    *
@@ -996,6 +1006,18 @@ export const MultiSelect = ({
                     {...(matchesRow ? { 'aria-describedby': `${listId}-matches` } : {})}
                     value={query}
                     onChange={(e) => searchFor(e.target.value)}
+                    onPaste={(e) => {
+                      if (onPasteSearch === undefined) return;
+                      const box = e.currentTarget;
+                      const from = box.selectionStart ?? box.value.length;
+                      const to = box.selectionEnd ?? from;
+                      const pasted = e.clipboardData.getData('text');
+                      if (onPasteSearch(box.value.slice(0, from) + pasted + box.value.slice(to))) {
+                        e.preventDefault();
+                        setActive(null);
+                        setEdge(null);
+                      }
+                    }}
                     onKeyDown={(e) => {
                       // A highlighted option takes Enter (see `multiSelectKey`); the typed text only
                       // when nothing is highlighted.

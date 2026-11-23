@@ -229,7 +229,10 @@ beforeAll(async () => {
   tantaBranchId = await mkBranch('96', 'طنطا', 'Tanta');
 
   const viewerRole = await rbacService.createRole(
-    { name: { en: 'ATM machine reader', ar: 'قارئ الماكينات' }, permissionKeys: ['atmMachine.view'] },
+    {
+      name: { en: 'ATM machine reader', ar: 'قارئ الماكينات' },
+      permissionKeys: ['atmMachine.view'],
+    },
     adminUserId,
   );
   const alexId = await mkUser('atm-machines-alex@ecms.local', alexBranchId);
@@ -312,7 +315,9 @@ describe('each column filter alone', () => {
   it('Area: several at once, across banks — a name holding a comma too', async () => {
     const smouha = await walk(alexToken, { areas: 'SYN Smouha' });
     expect(smouha.rows).toHaveLength(105);
-    expect(new Set(smouha.rows.map((row) => row.bankName))).toEqual(new Set(['SYN NBE', 'SYN CIB']));
+    expect(new Set(smouha.rows.map((row) => row.bankName))).toEqual(
+      new Set(['SYN NBE', 'SYN CIB']),
+    );
     const raml = await walk(alexToken, {
       areas: joinAtmNameList(['SYN Raml, Station', 'SYN Agami']),
     });
@@ -335,6 +340,34 @@ describe('each column filter alone', () => {
       codesOf(all.filter((row) => row.machineCode.includes('012'))),
     );
     expect(found.rows.length).toBeGreaterThan(1);
+  });
+
+  // 2026-11-23: «HDB-ATM 9501» — a code written with a space inside — was split at its space into
+  // two codes no machine carries, and the machine never showed.
+  it('ID: a code written with a space inside — named whole, and searched whole', async () => {
+    const [spaced] = await AtmMachineModel.insertMany([
+      {
+        branchId: new Types.ObjectId(alexBranchId),
+        bankName: 'SYN SPACE BANK',
+        machineCode: 'HDB-ATM 9501',
+        name: 'SYN Spaced',
+        zone: '',
+        area: 'SYN Space Area',
+        isActive: true,
+      },
+    ]);
+    try {
+      const named = await walk(alexToken, { codes: 'HDB-ATM 9501,10001' });
+      expect(codesOf(named.rows).sort()).toEqual(['10001', 'HDB-ATM 9501']);
+      // Each half alone names nothing.
+      expect((await walk(alexToken, { codes: 'HDB-ATM' })).rows).toHaveLength(0);
+      // What the picker searches as it is typed, its space included.
+      expect(codesOf((await walk(alexToken, { code: 'HDB-ATM 95' })).rows)).toEqual([
+        'HDB-ATM 9501',
+      ]);
+    } finally {
+      await AtmMachineModel.deleteOne({ _id: spaced?._id });
+    }
   });
 
   it('ATM Name: a substring, case-insensitive, typed characters taken literally', async () => {

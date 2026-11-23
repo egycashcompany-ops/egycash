@@ -9,6 +9,23 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **ATM: a machine code written with a space inside is searched and filtered whole.** «لما بعمل
+  بحث هنا /atm/machines على الماكينة دى HDB-ATM 9501 بسبب المسافة اللى فيها بتتقسم كأنها
+  ماكينتين ! فمبتظهرش». The ID filter on «كل الماكينات» took every space as the end of a code, so
+  «HDB-ATM 9501» became two codes, «HDB-ATM» and «9501», that no machine carries. Two shapes of
+  code are written with a space inside: Latin letters joined by a dash, a space, digits («HDB-ATM
+  9501»), and Latin letters, « - », digits («HDB - 1234»). A space now joins the words of those two
+  shapes and still ends every other code: a list read off a message («1056 1112», numbered or
+  bulleted, codes on separate lines), a word or a bank next to a code («NBE 1056»), «1056 - 1112»
+  — each code is taken as before. A comma, a semicolon, a tab or a line break always ends a code.
+  The same rule reads the page's address and the API's `codes` parameter
+  (`splitAtmMachineCodeList`), and the picker searches a code typed with two spaces as written with
+  one. A paste is read as it was copied, its line breaks kept (`MultiSelect`'s new opt-in
+  `onPasteSearch`): the one-line box turns them into spaces, and a line ending in a bank's name
+  («NBE» above «- 1056») would otherwise run into the code below it.
+
 ### Changed
 
 - **Fleet: every figure in Latin digits, in Arabic as in English — and the car record's

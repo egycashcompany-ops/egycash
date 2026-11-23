@@ -20,6 +20,7 @@ import {
   machinesCsv,
   pageBeyondEnd,
   readMachineCodeInput,
+  readPastedMachineCodes,
   readTypedMachineCodes,
 } from './machine-directory';
 
@@ -70,21 +71,95 @@ describe('a typed or pasted ID list', () => {
     expect(readTypedMachineCodes('0123')).toEqual({ chosen: [], typing: '0123' });
     expect(readTypedMachineCodes('0123 ')).toEqual({ chosen: ['123'], typing: '' });
     expect(readTypedMachineCodes('0123,456\n78')).toEqual({ chosen: ['123', '456'], typing: '78' });
-    expect(readTypedMachineCodes('11، 22؛33 4')).toEqual({ chosen: ['11', '22', '33'], typing: '4' });
+    expect(readTypedMachineCodes('11، 22؛33 4')).toEqual({
+      chosen: ['11', '22', '33'],
+      typing: '4',
+    });
   });
 
   // MACH-1: a browser pasting a column into a one-line box turns its new lines into spaces and
   // drops the last one, so the last code came with no separator after it — left in the box as a
   // search, and lost when the list closed. Two of three codes were filtered, and nothing said so.
   it('takes a PASTED list whole — its last code too — however the lines were joined', () => {
-    for (const pasted of ['1001\n1002\n1003', '1001 1002 1003', '1101, 1102, 1103', '1001\r\n1002\t1003']) {
+    for (const pasted of [
+      '1001\n1002\n1003',
+      '1001 1002 1003',
+      '1101, 1102, 1103',
+      '1001\r\n1002\t1003',
+    ]) {
       const { chosen, typing } = readMachineCodeInput('', pasted);
       expect(chosen, pasted).toHaveLength(3);
       expect(typing, pasted).toBe('');
     }
-    expect(readMachineCodeInput('', '0101 0102 0103')).toEqual({ chosen: ['101', '102', '103'], typing: '' });
+    expect(readMachineCodeInput('', '0101 0102 0103')).toEqual({
+      chosen: ['101', '102', '103'],
+      typing: '',
+    });
     // Pasted after codes already typed into the box: every one of them.
-    expect(readMachineCodeInput('7', '71001 1002')).toEqual({ chosen: ['71001', '1002'], typing: '' });
+    expect(readMachineCodeInput('7', '71001 1002')).toEqual({
+      chosen: ['71001', '1002'],
+      typing: '',
+    });
+  });
+
+  // 2026-11-23: «HDB-ATM 9501» — a code written with a space — was split into two at its space.
+  it('keeps a code written with a space whole, typed or pasted', () => {
+    expect(readMachineCodeInput('HDB-ATM', 'HDB-ATM ')).toEqual({ chosen: [], typing: 'HDB-ATM ' });
+    expect(readMachineCodeInput('HDB-ATM 950', 'HDB-ATM 9501')).toEqual({
+      chosen: [],
+      typing: 'HDB-ATM 9501',
+    });
+    expect(readMachineCodeInput('HDB-ATM 9501', 'HDB-ATM 9501 ')).toEqual({
+      chosen: ['HDB-ATM 9501'],
+      typing: '',
+    });
+    expect(readMachineCodeInput('', 'HDB-ATM 9501 1056')).toEqual({
+      chosen: ['HDB-ATM 9501', '1056'],
+      typing: '',
+    });
+    // What the picker then searches for: the whole code, its space included — and single, as the
+    // code taken from the box has it.
+    expect(machineCodeSearchTerm('HDB-ATM 95')).toBe('HDB-ATM 95');
+    expect(machineCodeSearchTerm('HDB-ATM  95')).toBe('HDB-ATM 95');
+    expect(readMachineCodeInput('HDB-ATM  9501', 'HDB-ATM  9501 ')).toEqual({
+      chosen: ['HDB-ATM 9501'],
+      typing: '',
+    });
+  });
+
+  // Review of the fix: the browser turns a paste's line breaks into spaces, so a line ending in a
+  // word ran into the code below it as one code written with a space — and that machine was lost.
+  it('reads a paste with its line breaks — a word on one line never runs into the code below', () => {
+    expect(readPastedMachineCodes('NBE\n- 1056\n- 1112\nCIB\n- 2001')).toEqual([
+      'NBE',
+      '-',
+      '1056',
+      '1112',
+      'CIB',
+      '2001',
+    ]);
+    expect(readPastedMachineCodes('ATM-ID\r\n1056\r\n1112\r\n')).toEqual([
+      'ATM-ID',
+      '1056',
+      '1112',
+    ]);
+    expect(readPastedMachineCodes('1056\tEl-Rehab\r\n1112\tNasr City')).toEqual([
+      '1056',
+      'El-Rehab',
+      '1112',
+      'Nasr',
+      'City',
+    ]);
+    // A code written with a space, pasted alone or in a list, stays whole.
+    expect(readPastedMachineCodes('HDB-ATM 9501')).toEqual(['HDB-ATM 9501']);
+    expect(readPastedMachineCodes('HDB-ATM 9501\nHDB - 1234\n0077')).toEqual([
+      'HDB-ATM 9501',
+      'HDB - 1234',
+      '77',
+    ]);
+    // One code and nothing else — a trailing line break included — is a search, as typed.
+    expect(readPastedMachineCodes('1003')).toBeNull();
+    expect(readPastedMachineCodes('1003\n')).toBeNull();
   });
 
   it('still reads one keystroke at a time as typing — the code in progress stays the search', () => {
@@ -125,7 +200,8 @@ describe('how many codes one filter takes', () => {
     expect(ListAtmMachinesQuerySchema.safeParse(query).success).toBe(true);
     // One past the limit is what it refused.
     expect(
-      ListAtmMachinesQuerySchema.safeParse({ ...query, codes: [...next, '99999'].join(',') }).success,
+      ListAtmMachinesQuerySchema.safeParse({ ...query, codes: [...next, '99999'].join(',') })
+        .success,
     ).toBe(false);
   });
 
@@ -181,7 +257,12 @@ describe('the export', () => {
       asked.push({ page, pageSize });
       return Promise.resolve({
         items: all.slice((page - 1) * pageSize, page * pageSize),
-        meta: { page, pageSize, totalItems: all.length, totalPages: Math.ceil(all.length / pageSize) },
+        meta: {
+          page,
+          pageSize,
+          totalItems: all.length,
+          totalPages: Math.ceil(all.length / pageSize),
+        },
       });
     };
     const rows = await fetchMachinesForExport(fetchPage);

@@ -10,6 +10,7 @@ import {
   ATM_MACHINE_CODES_MAX,
   joinAtmNameList,
   normalizeAtmMachineCode,
+  readTypedAtmMachineCodes,
   splitAtmMachineCodeList,
   type AtmMachineDto,
   type PageMeta,
@@ -54,25 +55,27 @@ export const machineFilterQuery = (filters: MachineFilters): Record<string, stri
   };
 };
 
-/** A machine code holds no space or comma, so any of these ends one being typed. */
+/** Any of these may end a code being typed — a space only when the code is finished (see below). */
 const CODE_SEPARATOR = /[\s,،;؛]/u;
 
 /**
  * What is typed into the ID picker's box: the codes already COMPLETED — each followed by a
- * separator — and the fragment still being typed, which is what the picker searches for.
- * `0123 0456 78` takes 123 and 456 and leaves `78` in the box.
+ * separator that ends it — and the text still being typed, which is what the picker searches for.
+ * `0123 0456 78` takes 123 and 456 and leaves `78` in the box; `HDB-ATM 95` takes nothing, the
+ * space belonging to one of the codes written with one (`readTypedAtmMachineCodes`).
  */
-export const readTypedMachineCodes = (raw: string): { chosen: string[]; typing: string } => {
-  let last = -1;
-  for (let index = raw.length - 1; index >= 0; index -= 1) {
-    if (CODE_SEPARATOR.test(raw.charAt(index))) {
-      last = index;
-      break;
-    }
-  }
-  if (last === -1) return { chosen: [], typing: raw };
-  return { chosen: splitAtmMachineCodeList(raw.slice(0, last)), typing: raw.slice(last + 1) };
-};
+export const readTypedMachineCodes = readTypedAtmMachineCodes;
+
+/**
+ * A paste into the ID picker's box, read as it was COPIED (`onPasteSearch`): the codes it names —
+ * or null for one code and nothing else, which stays in the box as a search, as a typed one does.
+ * The browser turns a paste's line breaks into spaces before the box holds it, and a line ending
+ * in a word — «NBE» above «- 1056», a column's «ATM-ID» header above its first code — would then
+ * run into the code below it as one of the codes written with a space (`splitAtmMachineCodeList`).
+ * Read here, a line break ends a code, as it does everywhere else.
+ */
+export const readPastedMachineCodes = (raw: string): string[] | null =>
+  CODE_SEPARATOR.test(raw.trim()) ? splitAtmMachineCodeList(raw) : null;
 
 /**
  * What the ID picker's box now holds, read against what it held a moment ago. TYPED — one
@@ -93,9 +96,11 @@ export const readMachineCodeInput = (
 /**
  * The fragment the ID picker searches for, normalized as every stored code is
  * (`normalizeAtmMachineCode`): `0123` looks for machine 123, which a stored `0123` never is. Only
- * zeros ask for nothing in particular.
+ * zeros ask for nothing in particular. Spaces inside are single, as a code taken from the box has
+ * them: `HDB-ATM  95` looks for `HDB-ATM 95`.
  */
-export const machineCodeSearchTerm = (typing: string): string => normalizeAtmMachineCode(typing);
+export const machineCodeSearchTerm = (typing: string): string =>
+  normalizeAtmMachineCode(typing.replace(/\s+/gu, ' '));
 
 /**
  * `codes` added to the ID filter's `value`, each once, up to the most one filter may ask
@@ -143,7 +148,9 @@ export const machineCodeOptions = (
   };
   return [
     ...chosen.map(option),
-    ...found.filter((machine) => !chosen.includes(machine.machineCode)).map((m) => option(m.machineCode)),
+    ...found
+      .filter((machine) => !chosen.includes(machine.machineCode))
+      .map((m) => option(m.machineCode)),
   ];
 };
 

@@ -75,8 +75,9 @@ export const MachinesPage = (): JSX.Element => {
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   // The address bar is the filter. A bank or an area may hold a comma — the list escapes it
-  // (`joinAtmNameList`); codes hold none, and read normalized — no more of them than the API takes,
-  // so an old link or a remembered view holding more asks for the first ones, not for an error.
+  // (`joinAtmNameList`); a code holds none (a SPACE it may: «HDB-ATM 9501»), and codes read
+  // normalized — no more of them than the API takes, so an old link or a remembered view holding
+  // more asks for the first ones, not for an error.
   const banks = splitAtmNameList(sp.get('banks') ?? '');
   const codes = splitAtmMachineCodeList(sp.get('codes') ?? '').slice(0, ATM_MACHINE_CODES_MAX);
   const name = sp.get('name') ?? '';

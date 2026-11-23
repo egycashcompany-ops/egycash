@@ -3,11 +3,13 @@
 //
 // An operator usually reads codes off a message, so the search box doubles as the input: each code
 // is taken the moment its separator (a space, a comma, a new line) is typed, and Enter takes the
-// last one. A PASTED list is taken whole, its last code too (`readMachineCodeInput`). Codes — and
-// the fragment searched for — are normalized as every entry point normalizes them (`0123` is
-// machine 123), and Arabic-Indic digits read as digits. One filter asks for at most
-// `ATM_MACHINE_CODES_MAX` codes, the API's limit; past it the reader is told, and nothing is sent
-// that the API would refuse.
+// last one. The space inside the two shapes of code written with one (2026-11-23, «HDB-ATM 9501»,
+// «HDB - 1234») does not end them: the box keeps it as the code goes on
+// (`readTypedAtmMachineCodes`). A PASTED list is taken whole, its last code too
+// (`readMachineCodeInput`). Codes — and the fragment searched for — are normalized as every entry
+// point normalizes them (`0123` is machine 123), and Arabic-Indic digits read as digits. One filter
+// asks for at most `ATM_MACHINE_CODES_MAX` codes, the API's limit; past it the reader is told, and
+// nothing is sent that the API would refuse.
 //
 // THE LIST IS SEARCHED ON THE SERVER. The vehicle filter holds the whole registry (two hundred
 // cars); the directory holds some 2,600 machines, so the picker asks for the codes holding the
@@ -33,6 +35,7 @@ import {
   machineCodeOptions,
   machineCodeSearchTerm,
   readMachineCodeInput,
+  readPastedMachineCodes,
 } from '../lib/machine-directory';
 
 /** The pause after the last keystroke before the picker asks the server. */
@@ -70,7 +73,10 @@ export const MachineCodeFilter = ({
     const id = window.setTimeout(() => setTerm(machineCodeSearchTerm(search)), SEARCH_PAUSE_MS);
     return () => window.clearTimeout(id);
   }, [search]);
-  const found = useAtmMachineCodeSearch({ ...narrow, ...(term === '' ? {} : { code: term }) }, opened);
+  const found = useAtmMachineCodeSearch(
+    { ...narrow, ...(term === '' ? {} : { code: term }) },
+    opened,
+  );
 
   /** `codes` added after `base` — the codes in hand, or none when the list's own ticks are `codes`. */
   const choose = (base: readonly string[], codes: readonly string[]): void => {
@@ -111,6 +117,15 @@ export const MachineCodeFilter = ({
         const { chosen, typing } = readMachineCodeInput(search, asciiDigits(raw));
         add(chosen);
         setSearch(typing);
+      }}
+      // A paste, read with its line breaks before the one-line box flattens them into spaces.
+      onPasteSearch={(raw) => {
+        const codes = readPastedMachineCodes(asciiDigits(raw));
+        if (codes === null) return false;
+        setOpened(true);
+        add(codes);
+        setSearch('');
+        return true;
       }}
       searching={found.isFetching}
       // Enter takes whatever is left in the box — the last code of a list needs no separator.

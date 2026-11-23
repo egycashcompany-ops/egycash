@@ -181,9 +181,11 @@ describe('the board’s bar — «زى شاشة السيارات و السواق
     expect(SOURCE, 'no page title').not.toContain('<PageHeader');
     const toolbar = markup.slice(markup.indexOf('data-alarms-toolbar'), markup.indexOf('<table'));
     // One row is one car, so the count is said in cars — of the FILTERED set.
-    expect(toolbar).toContain(`>${translate('ar', 'fleet.vehicles.count', { count: '٣' })}</span>`);
+    // In Latin digits, in Arabic too («اى ارقام خليها بالانجلش حتى لو عربى»).
+    expect(toolbar).toContain(`>${translate('ar', 'fleet.vehicles.count', { count: '3' })}</span>`);
     const red = render({ route: '/fleet/maintenance-alarms?level=red' });
-    expect(red).toContain(`>${translate('ar', 'fleet.vehicles.count', { count: '١' })}</span>`);
+    expect(red).toContain(`>${translate('ar', 'fleet.vehicles.count', { count: '1' })}</span>`);
+    expect(toolbar, 'no Arabic-Indic digit on the bar').not.toMatch(/[٠-٩]/u);
     expect(toolbar, 'the Excel file is still offered').toContain(
       'data-export="maintenance-alarms"',
     );

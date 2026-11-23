@@ -242,7 +242,7 @@ describe('a recorded operation prints its letter as it was recorded', () => {
         { kind: 'maintenance', amount: 29414 },
       ],
     });
-    expect(letterSheets(paper)[0]).toContain('( ١٠٠,٠٠٠)');
+    expect(letterSheets(paper)[0]).toContain('( 100,000)');
   });
 
   it('a settlement: one row per licensing memo, oldest first, the fund before it in brackets', () => {

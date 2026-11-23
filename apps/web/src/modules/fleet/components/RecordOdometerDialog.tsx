@@ -10,8 +10,6 @@
 // answers. What the operator loses without it is the SIGHT of the distance they are about to
 // record, so the dialog previews it from the server's own expected reading rather than asking.
 import { useEffect, useMemo, useState } from 'react';
-import { type Locale } from '@ecms/contracts';
-import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { Input, Textarea } from '../../../shared/ui/form';
@@ -19,7 +17,7 @@ import { SwapIcon } from '../../../shared/ui/icons';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
-import { formatNumber } from '../../../shared/lib/format';
+import { latinNumber } from '../lib/fleet-figures';
 import {
   useExpectedReading,
   useRecordOdometer,
@@ -55,7 +53,6 @@ export const RecordOdometerDialog = ({
   initialVehicleCode?: string;
 }): JSX.Element => {
   const t = useT();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [vehicleId, setVehicleId] = useState('');
   // A code carried in from the page's filter, until the registry has turned it into an id. Seeded
   // from the prop, not only from the reset effect, so the first paint already knows it.
@@ -230,7 +227,7 @@ export const RecordOdometerDialog = ({
       : expected.data.expectedReading === null
         ? t('fleet.odometer.firstReadingHint')
         : t('fleet.odometer.expectedHint', {
-            km: formatNumber(expected.data.expectedReading, locale),
+            km: latinNumber(expected.data.expectedReading),
           });
 
   // ADVICE, NOT A REFUSAL — the warning channel `Field` had: the save goes through either way.
@@ -382,7 +379,7 @@ export const RecordOdometerDialog = ({
                     {t('fleet.odometer.kmBelowPrevious')}
                   </span>
                 ) : (
-                  t('fleet.odometer.kmValue', { km: formatNumber(derivedKm, locale) })
+                  t('fleet.odometer.kmValue', { km: latinNumber(derivedKm) })
                 )}
               </p>
             </DesignField>

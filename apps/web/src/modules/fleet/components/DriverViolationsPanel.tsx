@@ -31,7 +31,8 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, PrinterIcon, ResetIcon, DownloadIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, PRESSED, actionTone } from './row-actions-look';
 import { SquarePenIcon, Trash2Icon } from './row-action-icons';
-import { formatMoney, formatNumber, localized } from '../../../shared/lib/format';
+import { formatMoney, localized } from '../../../shared/lib/format';
+import { latinNumber } from '../lib/fleet-figures';
 import { violationsLoadState } from '../lib/violations-paging';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useTableSelection } from '../../../shared/ui/useTableSelection';
@@ -871,7 +872,7 @@ export const DriverViolationsPanel = ({
           </Field>
           {/* THE COUNTERS ARE SHUT UNTIL A CAR IS CHOSEN. The batch is filed against ONE car, so
               counting before picking one leads somewhere that cannot be saved: a reader would fill
-              a date, a driver and an amount in the layer, see «١ للتسجيل» and a live-looking
+              a date, a driver and an amount in the layer, see «1 للتسجيل» and a live-looking
               button, and never learn that the one missing thing was behind the layer they were
               working in. Refusing the first keystroke is better than explaining the dead end
               afterwards — and the field that has to be filled first is the one right beside it. */}
@@ -1170,7 +1171,7 @@ export const DriverViolationsPanel = ({
               title={t('fleet.violations.matchedCount')}
               className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-medium tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             >
-              {formatNumber(meta?.totalItems ?? 0, locale)}
+              {latinNumber(meta?.totalItems ?? 0)}
             </span>
           </>
         }
@@ -1429,7 +1430,7 @@ export const DriverViolationsPanel = ({
               This is what stands in for «السابق / التالي», which the owner asked to be gone: the
               board grows downward instead of swapping its contents, so nothing is ever a page
               away. The pair of numbers is the point — the count beside the filters used to say
-              «٤٤٠» over a hundred visible rows with no control anywhere to reach the others, and a
+              «440» over a hundred visible rows with no control anywhere to reach the others, and a
               count that is true and unreachable is worse than no count.
 
               It is the idiom the users screen's activity timeline already uses (`useUserTimeline`
@@ -1443,11 +1444,11 @@ export const DriverViolationsPanel = ({
               >
                 {loadState.complete
                   ? t('fleet.violations.allLoaded', {
-                      total: formatNumber(loadState.total, locale),
+                      total: latinNumber(loadState.total),
                     })
                   : t('fleet.violations.loadedOf', {
-                      shown: formatNumber(loadState.shown, locale),
-                      total: formatNumber(loadState.total, locale),
+                      shown: latinNumber(loadState.shown),
+                      total: latinNumber(loadState.total),
                     })}
               </span>
               {/* WHAT THE GREEN MEANS, on the line that is already here — this board is read beside

@@ -21,6 +21,7 @@ import { useAppSelector } from '../../../store';
 import { formatNumber } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { MinusIcon, PlusIcon, ResetIcon } from '../../../shared/ui/icons';
+import { latinNumber } from '../lib/fleet-figures';
 import {
   containSize,
   FIT,
@@ -44,16 +45,25 @@ const control =
  * `src` is an object URL minted from authorized bytes (the licence is a guarded file — see the
  * hooks in `VehicleLicenseImage` / `DriverLicenseImage`), so this component neither fetches nor
  * revokes: it is handed a URL that is already somebody's responsibility.
+ *
+ * `latinFigures` — every Fleet host passes it: in «الحركة» the readout is «100%» in Arabic too
+ * (owner, 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى» / «انا عاوزك تعدل حاجات الحركة
+ * فقط»). Without it the readout is what it always was — the reader's own digits — because
+ * Operations renders this viewer too (`operations/components/ShipmentReceiptImageCell.tsx`) and
+ * keeps its Arabic-Indic readout.
  */
 export const ZoomableImage = ({
   src,
   alt,
   className,
+  latinFigures = false,
 }: {
   src: string;
   alt: string;
   /** Extra classes for the SURFACE — its height, mainly. */
   className?: string;
+  /** Fleet: the zoom readout in Latin digits in both languages. Default: the reader's digits. */
+  latinFigures?: boolean;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
@@ -257,12 +267,18 @@ export const ZoomableImage = ({
           <MinusIcon className="h-4 w-4" />
         </button>
         {/* The readout is a LABEL, not a control: it says where the reader is, and the reset
-            beside it is what takes them back. Localized digits, like every other number here. */}
+            beside it is what takes them back. In Fleet (`latinFigures`) it is Latin in both
+            languages, «100%», like every other Fleet figure; elsewhere (Operations) it keeps the
+            reader's own digits and the catalogue's Arabic percent sign. */}
         <span
           data-zoom-level=""
           className="min-w-[3.5rem] text-center text-xs font-medium tabular-nums text-slate-600 dark:text-slate-300"
         >
-          {t('fleet.licenseImage.zoomLevel', { value: formatNumber(zoomPercent(zoom), locale) })}
+          {latinFigures
+            ? t('fleet.licenseImage.zoomPercent', { value: latinNumber(zoomPercent(zoom)) })
+            : t('fleet.licenseImage.zoomLevel', {
+                value: formatNumber(zoomPercent(zoom), locale),
+              })}
         </span>
         <button
           type="button"

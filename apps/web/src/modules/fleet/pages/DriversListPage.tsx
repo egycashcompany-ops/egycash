@@ -62,7 +62,8 @@ import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { EyeIcon, PrinterIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, IMAGE_EMPTY_BOX, actionTone } from '../components/row-actions-look';
 import { CloudUploadIcon, SquarePenIcon } from '../components/row-action-icons';
-import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
+import { localized } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { cn } from '../../../shared/lib/cn';
 import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
 import * as fleetApi from '../api/fleet-api';
@@ -653,10 +654,10 @@ export const DriversListPage = (): JSX.Element => {
           person?.phone ?? '',
           person?.address ?? '',
           person?.governorate ?? '',
-          person?.hiredAt == null ? '' : formatDate(person.hiredAt, locale),
+          person?.hiredAt == null ? '' : latinDate(person.hiredAt, locale),
           profile === null ? '' : catalogText(profile.specializationId, specializationName),
           profile === null ? '' : catalogText(profile.licenseTypeId, licenseTypeName),
-          expiry === null ? '' : formatDate(expiry, locale),
+          expiry === null ? '' : latinDate(expiry, locale),
           profile !== null && profile.licenseImage !== null ? t('common.yes') : t('common.no'),
         ];
       }),
@@ -960,7 +961,7 @@ export const DriversListPage = (): JSX.Element => {
           >
             {matchedDrivers === null
               ? ''
-              : t('fleet.drivers.count', { count: formatNumber(matchedDrivers, locale) })}
+              : t('fleet.drivers.count', { count: latinNumber(matchedDrivers) })}
           </span>
           <span className="flex shrink-0 items-center gap-1 sm:gap-2">
             <button
@@ -1045,7 +1046,7 @@ export const DriversListPage = (): JSX.Element => {
         {statsOpen && wholeRegistry.data !== undefined && (
           <section data-driver-figures="true" className="animate-drop-in space-y-2">
             {/* Narrowed to a branch (the top bar's, or the reader's own) while the title and the
-                table follow the URL: say which, so «إجمالي السائقين» under «١٨ سائق» reads. */}
+                table follow the URL: say which, so «إجمالي السائقين» under «18 سائق» reads. */}
             {registryBranches !== null && registryBranches.length > 0 && (
               <p
                 data-driver-figures-scope={registryBranches.join(',')}

@@ -46,7 +46,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { useAppSelector } from '../../../store';
 import { type Locale } from '@ecms/contracts';
 import { cn } from '../../../shared/lib/cn';
-import { formatDate, formatNumber } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { CheckIcon, ChevronIcon } from '../../../shared/ui/icons';
 import { useLicensingBoard, useSetLicensingMark } from '../api/fleet-queries';
 
@@ -373,7 +373,7 @@ export const LicensingPage = (): JSX.Element => {
         row.plateNumber,
         row.chassisNumber,
         row.licenseClass ?? '',
-        formatDate(row.licenseExpiresAt, locale),
+        latinDate(row.licenseExpiresAt, locale),
         done(row.insuranceHandover),
         done(row.insuranceReceipt),
         done(row.taxHandover),
@@ -454,7 +454,7 @@ export const LicensingPage = (): JSX.Element => {
             data-licensing-count
             className="text-sm font-bold text-slate-600 dark:text-slate-300"
           >
-            {t('fleet.licensing.count', { count: formatNumber(rows.length, locale) })}
+            {t('fleet.licensing.count', { count: latinNumber(rows.length) })}
           </span>
           <span className="flex items-center gap-1.5 sm:gap-2">
             <button

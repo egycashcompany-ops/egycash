@@ -28,7 +28,8 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, PrinterIcon, ResetIcon, DownloadIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, PARTLY_PRESSED, PRESSED, actionTone } from './row-actions-look';
 import { SquarePenIcon } from './row-action-icons';
-import { formatMoney, formatNumber } from '../../../shared/lib/format';
+import { formatMoney } from '../../../shared/lib/format';
+import { latinNumber } from '../lib/fleet-figures';
 import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
 import { saveBlob } from '../../../shared/lib/api-client';
@@ -114,7 +115,7 @@ export const CompanyViolationsPanel = ({
 }: {
   /**
    * The years being looked at. EMPTY = every year: the board is read as a history, so no year is
-   * a real answer — and SEVERAL is an ordinary question, «٢٠٢٥ جنب ٢٠٢٦», which one year at a
+   * a real answer — and SEVERAL is an ordinary question, «2025 جنب 2026», which one year at a
    * time made into two readings of the board («اى فلتر ف الحركه زياده عن اتنين ... multi
    * selection»).
    */
@@ -177,7 +178,7 @@ export const CompanyViolationsPanel = ({
    * EVERY CAR THE PICKER HOLDS, not the one the endpoint used to take.
    *
    * The rollup accepted a single `vehicleId`, so this resolved a lone picked code and sent
-   * NOTHING the moment a second was picked: the chips read «١٥٠، ١٥١ +٢» while the table answered
+   * NOTHING the moment a second was picked: the chips read «150، 151 +2» while the table answered
    * for the whole fleet. A filter that silently stops filtering is worse than one that refuses,
    * because the reader has no way to tell the two apart.
    *
@@ -443,7 +444,7 @@ export const CompanyViolationsPanel = ({
       });
       toast.success(
         t('fleet.violations.movedToYear', {
-          count: formatNumber(moved, locale),
+          count: latinNumber(moved),
           code: row.code,
           year: String(row.year),
         }),
@@ -694,9 +695,7 @@ export const CompanyViolationsPanel = ({
               {/* The figure alone: every amount on this screen is EGP and the cell is labelled
                   «المبلغ», so the currency word was spending a third of a cell that had none to
                   spare. The full formatted figure stays on `title` for the reader who wants it. */}
-              {isMoney && isCount
-                ? formatNumber(Number(formValue) * Number(formCount), locale)
-                : '—'}
+              {isMoney && isCount ? latinNumber(Number(formValue) * Number(formCount)) : '—'}
             </output>
           </Field>
           {/* A reader who may not record still sees the bar — it is the screen's shape — but its
@@ -747,7 +746,7 @@ export const CompanyViolationsPanel = ({
               title={t('fleet.violations.matchedGroups')}
               className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-medium tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             >
-              {formatNumber(rows.length, locale)}
+              {latinNumber(rows.length)}
             </span>
           </>
         }
@@ -928,9 +927,7 @@ export const CompanyViolationsPanel = ({
                       >
                         {/* «قبل التظلم» counts nothing — it is a figure, not a tally, and a 0
                             there would read as "no violations" rather than "not applicable". */}
-                        {total.count === null
-                          ? '—'
-                          : formatNumber(row[total.count] as number, locale)}
+                        {total.count === null ? '—' : latinNumber(row[total.count] as number)}
                       </td>
                       <td className={`${cell} text-end tabular-nums`} data-line-amount={total.key}>
                         {formatMoney(row[total.amount] as number, 'EGP', locale)}
@@ -976,8 +973,8 @@ export const CompanyViolationsPanel = ({
                                   year: String(row.year),
                                 })}
                                 title={t('fleet.violations.collectedOf', {
-                                  collected: formatNumber(row.collectedCount, locale),
-                                  total: formatNumber(row.rowCount, locale),
+                                  collected: latinNumber(row.collectedCount),
+                                  total: latinNumber(row.rowCount),
                                 })}
                                 onClick={() => void toggleYear(row)}
                                 // A status, so violet: filled when the whole year is collected,

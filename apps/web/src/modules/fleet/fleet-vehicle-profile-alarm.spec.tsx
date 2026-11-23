@@ -10,8 +10,9 @@
 // seeded under the ONE key the shared hook reads — the same harness the three screens use.
 //
 // Owner, 2026-11-22 («صلحهم»): the car page writes every figure and date of its body in Latin
-// digits, as the rest of the system does — «50,000», not «٥٠٬٠٠٠». Each pin below asserts the
-// Latin form AND the absence of the Arabic-Indic one it replaced.
+// digits — «50,000», not «٥٠٬٠٠٠»; 2026-11-23 («اى ارقام خليها بالانجلش حتى لو عربى»): every figure
+// in Fleet, its print sheet too. Each pin below asserts the Latin form AND the absence of the
+// Arabic-Indic one the shared helpers still write for the other modules.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -311,21 +312,26 @@ describe('the car page writes its figures in Latin digits — the whole body', (
     expect(markup).not.toMatch(ARABIC_INDIC);
   });
 
-  it('the page source: no shared `formatNumber`, and the shared `formatDate` only on the print sheet', () => {
+  it('the page source: no shared digit helper — the print sheet too', () => {
+    // Owner, 2026-11-23 («اى ارقام خليها بالانجلش حتى لو عربى»): the car's printed sheet («طباعة
+    // التقرير») writes its two dates in Latin as the page body does, through Fleet's own helpers.
     const source = readFileSync(join(HERE, 'pages/VehicleDetailPage.tsx'), 'utf8');
     const imported = /import \{([^}]*)\} from '\.\.\/\.\.\/\.\.\/shared\/lib\/format';/u.exec(
       source,
     )?.[1];
     expect(imported, 'the shared format import is found').toBeDefined();
     expect(imported).not.toMatch(/\bformatNumber\b/u);
+    expect(imported).not.toMatch(/\bformatDate\b/u);
     expect(imported).not.toMatch(/\bformatDateTime\b/u);
     expect(source).not.toMatch(/\bformatNumber\(/u);
+    expect(source).not.toMatch(/\bformatDate\(/u);
     expect(source).not.toMatch(/\bformatDateTime\(/u);
-    // The print sheet («طباعة التقرير») keeps the registry's own print — the shared helper —
-    // and nothing else on the page calls it.
+    expect(source).toMatch(
+      /import \{ latinDate, latinDateTime, latinNumber \} from '\.\.\/lib\/fleet-figures';/u,
+    );
     const print = /const printReport = async[\s\S]*?\n {2}\};\n/u.exec(source)?.[0] ?? '';
     expect(print, 'printReport is found').not.toBe('');
-    expect((print.match(/\bformatDate\(/gu) ?? []).length, 'the two print rows').toBe(2);
-    expect((source.match(/\bformatDate\(/gu) ?? []).length, 'and nowhere else').toBe(2);
+    expect(print).toContain('latinDate(vehicle.joinedAt, locale)');
+    expect(print).toContain('latinDate(vehicle.licenseExpiresAt, locale)');
   });
 });

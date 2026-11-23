@@ -12,7 +12,8 @@ import { Badge } from '../../../shared/ui/Badge';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ACTION_GROUP, actionTone } from './row-actions-look';
 import { Trash2Icon } from './row-action-icons';
-import { formatDate, formatMoney } from '../../../shared/lib/format';
+import { formatMoney } from '../../../shared/lib/format';
+import { latinDate } from '../lib/fleet-figures';
 import { useAccidentCarTransfers, useVoidAccidentTransfer } from '../api/fleet-queries';
 
 export const AccidentTransferLogDialog = ({
@@ -114,7 +115,7 @@ export const AccidentTransferLogDialog = ({
                       data-transfer-entry={entry.transferId}
                       className="border-t border-slate-100 dark:border-slate-800"
                     >
-                      <td className="px-3 py-2 tabular-nums">{formatDate(entry.at, locale)}</td>
+                      <td className="px-3 py-2 tabular-nums">{latinDate(entry.at, locale)}</td>
                       <td className="px-3 py-2">
                         <Badge tone={entry.direction === 'in' ? 'success' : 'warning'}>
                           {label(entry)}

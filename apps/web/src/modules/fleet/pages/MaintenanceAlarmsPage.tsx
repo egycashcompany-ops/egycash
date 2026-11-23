@@ -33,7 +33,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { saveSheet } from '../lib/fleet-sheet';
-import { formatDate, formatNumber } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
 import { boardVehicleOptions } from '../lib/board-vehicle-options';
 import {
@@ -101,8 +101,9 @@ const PILL_BUTTON =
 
 /**
  * «تحسين شكل البيانات»: a figure in the table as the vehicles and drivers boards write one — Latin
- * digits grouped with a comma, «5,250», never the Arabic-Indic «٥٬٢٥٠». The count over the table
- * and the Excel file keep their own formatting.
+ * digits grouped with a comma, «5,250», never the Arabic-Indic digits. The count over the table and
+ * the Excel file's date are Latin too, through `lib/fleet-figures` — every figure in Fleet, in
+ * Arabic as in English (owner, 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى»).
  */
 const LATIN = new Intl.NumberFormat('en-US');
 const latin = (value: number): string => LATIN.format(value);
@@ -267,11 +268,11 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
    * heading and make «المستوى» unfilterable. So the level always carries its own word and the
    * reason gets a column of its own, empty on every car whose alarm actually ran.
    *
-   * THE THREE FIGURES GO IN AS NUMBERS, not as the sentences the table draws. `formatNumber`
-   * renders Arabic-Indic digits under `ar` and `RemainingKm` wraps a negative distance in
-   * «متأخر … كم»; either would land in the sheet as text that Excel cannot sort or sum, which is
-   * the one thing a reader opens this file to do. The unit is already in the heading, and the
-   * sign keeps its meaning — a negative «المتبقي» is exactly the overdue distance.
+   * THE THREE FIGURES GO IN AS NUMBERS, not as the sentences the table draws. A formatted figure
+   * («5,250», with its comma) and `RemainingKm`'s «متأخر … كم» around a negative distance would
+   * both land in the sheet as text that Excel cannot sort or sum, which is the one thing a reader
+   * opens this file to do. The unit is already in the heading, and the sign keeps its meaning —
+   * a negative «المتبقي» is exactly the overdue distance.
    */
   const exportSheet = async (): Promise<void> => {
     saveSheet({
@@ -298,7 +299,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
         alarm.sinceServiceKm ?? '',
         alarm.daysWithoutReading,
         alarm.remainingKm ?? '',
-        alarm.lastServiceAt === null ? '' : formatDate(alarm.lastServiceAt, locale),
+        alarm.lastServiceAt === null ? '' : latinDate(alarm.lastServiceAt, locale),
       ]),
     });
   };
@@ -445,7 +446,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
           >
             {alarmsQuery.isPending
               ? ''
-              : t('fleet.vehicles.count', { count: formatNumber(rows.length, locale) })}
+              : t('fleet.vehicles.count', { count: latinNumber(rows.length) })}
           </span>
           <span className="flex shrink-0 items-center gap-1 sm:gap-2">
             {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just

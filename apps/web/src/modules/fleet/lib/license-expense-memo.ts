@@ -66,7 +66,7 @@ const MONTHS = [
   'ديسمبر',
 ];
 
-/** «٥ سيارات» / «١٣ سيارة» — the count and its noun as Arabic counts them. */
+/** «5 سيارات» / «13 سيارة» — the count and its noun as Arabic counts them. */
 export const carsPhrase = (n: number): string => {
   if (n === 1) return 'سيارة واحدة';
   if (n === 2) return 'سيارتين';

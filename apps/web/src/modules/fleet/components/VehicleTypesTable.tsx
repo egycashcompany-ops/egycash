@@ -14,7 +14,7 @@ import { StatusBadge } from '../../../shared/ui/Badge';
 import { ChevronIcon, GripIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, actionTone } from './row-actions-look';
 import { SquarePenIcon } from './row-action-icons';
-import { formatNumber } from '../../../shared/lib/format';
+import { latinNumber } from '../lib/fleet-figures';
 import { errorMessage } from '../../../shared/lib/errors';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useOrderVehicleTypes, useVehicleTypes } from '../api/fleet-queries';
@@ -115,7 +115,7 @@ export const VehicleTypesTable = ({
         r.maintenanceIntervalKm === 0 ? (
           <span className="text-slate-400">{t('fleet.settings.noRule')}</span>
         ) : (
-          formatNumber(r.maintenanceIntervalKm, locale)
+          latinNumber(r.maintenanceIntervalKm)
         ),
     },
     {

@@ -1,10 +1,9 @@
 // His numbers and dates, as his Excel memos and Word letters write them — pinned one format at a
-// time, because a grouping comma or a «٬» in the wrong place is a paper that is not his.
+// time, because a grouping comma or a «٬» in the wrong place is a paper that is not his. Every figure
+// is in Latin digits 0-9, the Word letters' too (owner, 2026-11-23: «اى ارقام بالانجلش»).
 import { describe, expect, it } from 'vitest';
 import {
   TATWEEL,
-  ai,
-  aiAmount,
   dMy,
   dayOf,
   esc,
@@ -42,20 +41,13 @@ describe('the Excel memos: Latin digits in Excel’s own formats', () => {
   });
 });
 
-describe('the Word letters: Arabic-Indic digits — never Intl’s «٬»', () => {
-  it('turns every Latin digit into its Arabic-Indic one, and nothing else', () => {
-    expect(ai('2026')).toBe('٢٠٢٦');
-    expect(ai('5/10/2026')).toBe('٥/١٠/٢٠٢٦');
-    expect(ai('تجديد 5 سياره')).toBe('تجديد ٥ سياره');
-  });
-
-  it('amounts: a Latin comma between thousands, «٫» before piastres only when there are any', () => {
-    expect(aiAmount(81908)).toBe('٨١,٩٠٨');
-    expect(aiAmount(100000)).toBe('١٠٠,٠٠٠');
-    expect(aiAmount(124139.46)).toBe('١٢٤,١٣٩٫٤٦');
+describe('the Word letters: Latin digits — never Intl’s «٬»', () => {
+  it('amounts: Latin digits, a Latin comma between thousands, «.» before piastres only when any', () => {
+    expect(grouped(81908)).toBe('81,908');
+    expect(grouped(100000)).toBe('100,000');
+    expect(grouped(124139.46)).toBe('124,139.46');
     for (const value of [81908, 100000, 124139.46, 1234567.5]) {
-      expect(aiAmount(value), String(value)).not.toContain('٬');
-      expect(aiAmount(value), String(value)).not.toMatch(/[0-9]/u);
+      expect(grouped(value), String(value)).not.toMatch(/[٠-٩٫٬]/u);
     }
   });
 
@@ -65,12 +57,12 @@ describe('the Word letters: Arabic-Indic digits — never Intl’s «٬»', () =
     expect(latin2(5000)).toBe('5,000.00');
   });
 
-  it('his period dates: the parts joined by a tatweel drawn on the baseline', () => {
+  it('his period dates: Latin parts joined by a tatweel drawn on the baseline', () => {
     const tw = `<span class="tw">${TATWEEL}</span>`;
     expect(TATWEEL).toBe('ـ');
-    expect(tatweelDate('2026-09-01', true)).toBe(`٠١${tw}٠٩${tw}٢٠٢٦`);
-    expect(tatweelDate('2026-09-01', false)).toBe(`١${tw}٠٩${tw}٢٠٢٦`);
-    expect(tatweelDate('2026-09-30', false)).toBe(`٣٠${tw}٠٩${tw}٢٠٢٦`);
+    expect(tatweelDate('2026-09-01', true)).toBe(`01${tw}09${tw}2026`);
+    expect(tatweelDate('2026-09-01', false)).toBe(`1${tw}09${tw}2026`);
+    expect(tatweelDate('2026-09-30', false)).toBe(`30${tw}09${tw}2026`);
   });
 });
 

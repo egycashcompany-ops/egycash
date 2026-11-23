@@ -51,7 +51,8 @@ import { cn } from '../../../shared/lib/cn';
 import { CornerDownIcon, WrenchIcon } from '../../../shared/ui/icons';
 import { ACTION_GROUP, actionTone } from '../components/row-actions-look';
 import { SquarePenIcon, Trash2Icon } from '../components/row-action-icons';
-import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
+import { localized } from '../../../shared/lib/format';
+import { latinDate, latinNumber } from '../lib/fleet-figures';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BoardIcon, NUM, PATH, ymd } from '../components/FuelCardBoard';
@@ -120,8 +121,9 @@ const CLOSED_ROW =
 
 /**
  * A figure in the table — «120,000»: Latin digits and a thousands comma, as the vehicles and
- * drivers boards write one. `formatNumber` stays for the count above the table, and the Excel
- * file keeps its own formatting.
+ * drivers boards write one. The count above the table and the Excel file's dates are Latin too,
+ * through `lib/fleet-figures` — every figure in Fleet, in Arabic as in English (owner,
+ * 2026-11-23: «اى ارقام خليها بالانجلش حتى لو عربى»); the Excel reading stays a number.
  */
 const LATIN = new Intl.NumberFormat('en-US');
 
@@ -425,8 +427,8 @@ export const MaintenancePage = (): JSX.Element => {
       ],
       rows: all.map((visit) => {
         return [
-          formatDate(visit.inDate, locale),
-          visit.outDate === null ? t('fleet.maintenance.open') : formatDate(visit.outDate, locale),
+          latinDate(visit.inDate, locale),
+          visit.outDate === null ? t('fleet.maintenance.open') : latinDate(visit.outDate, locale),
           visit.vehicleCode ?? '',
           visit.operationId === null ? '' : (catalogName.get(visit.operationId) ?? ''),
           carBranch(visit) ?? '',
@@ -787,7 +789,7 @@ export const MaintenancePage = (): JSX.Element => {
           >
             {data === undefined
               ? ''
-              : t('common.list.count', { count: formatNumber(data.meta.totalItems, locale) })}
+              : t('common.list.count', { count: latinNumber(data.meta.totalItems) })}
           </span>
           <span className="flex shrink-0 items-center gap-1 sm:gap-2">
             {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just told the
